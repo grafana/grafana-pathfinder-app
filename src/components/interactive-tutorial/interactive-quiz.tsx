@@ -15,6 +15,8 @@ export interface QuizChoice {
   text: string;
   correct: boolean;
   hint?: string;
+  /** When the quiz is shuffled, keep this choice at its authored index. */
+  pinned?: boolean;
 }
 
 export interface InteractiveQuizProps {
@@ -32,6 +34,11 @@ export interface InteractiveQuizProps {
   requirements?: string;
   /** Whether quiz can be skipped */
   skippable?: boolean;
+  /**
+   * Randomize choice display order (default: true). Choices with
+   * `pinned: true` keep their authored index even when shuffling.
+   */
+  shuffle?: boolean;
   /** Rendered children (question content) */
   children?: React.ReactNode;
 
@@ -60,6 +67,47 @@ export function resetQuizCounter(): void {
   quizCounter = 0;
 }
 
+/**
+ * Shuffle quiz choices while keeping any choice with `pinned: true` at its
+ * authored index. Non-pinned choices are Fisher–Yates shuffled into the
+ * remaining slots. `rng` defaults to `Math.random` and is overridable so
+ * tests can produce a deterministic order.
+ */
+export function shuffleQuizChoices(choices: QuizChoice[], rng: () => number = Math.random): QuizChoice[] {
+  if (choices.length <= 1) {
+    return choices.slice();
+  }
+
+  // Reserve pinned slots at their authored positions.
+  const result: Array<QuizChoice | undefined> = new Array(choices.length).fill(undefined);
+  const unpinned: QuizChoice[] = [];
+  for (let i = 0; i < choices.length; i++) {
+    const choice = choices[i]!;
+    if (choice.pinned) {
+      result[i] = choice;
+    } else {
+      unpinned.push(choice);
+    }
+  }
+
+  // Fisher–Yates on the non-pinned subset.
+  for (let i = unpinned.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const tmp = unpinned[i]!;
+    unpinned[i] = unpinned[j]!;
+    unpinned[j] = tmp;
+  }
+
+  // Fill empty slots in order with the shuffled non-pinned choices.
+  let cursor = 0;
+  for (let i = 0; i < result.length; i++) {
+    if (result[i] === undefined) {
+      result[i] = unpinned[cursor++];
+    }
+  }
+  return result as QuizChoice[];
+}
+
 export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   question,
   choices,
@@ -68,6 +116,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   maxAttempts = 3,
   requirements,
   skippable = false,
+  shuffle = true,
   children,
   stepId: providedStepId,
   isEligibleForChecking = true,
@@ -101,6 +150,14 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   const [isRevealed, setIsRevealed] = useState(false);
   const [shakeKey, setShakeKey] = useState(0);
 
+  // Display order. Computed ONCE on mount via lazy init so a parent re-render
+  // cannot reorder choices mid-quiz. Re-shuffled only when the parent triggers
+  // a reset (see effect below). Selection, completion, hints, analytics, and
+  // test IDs are all id-keyed, so display-order changes never alter quiz state.
+  const [displayChoices, setDisplayChoices] = useState<QuizChoice[]>(() =>
+    shuffle ? shuffleQuizChoices(choices) : choices
+  );
+
   // Requirements checking
   const {
     isEnabled,
@@ -116,8 +173,8 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     skippable,
   });
 
-  // Handle reset trigger from parent section
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: reset quiz state when parent section triggers a reset */
+  // Handle reset trigger from parent section.
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: reset quiz state when the parent section increments resetTrigger */
   useEffect(() => {
     if (resetTrigger && resetTrigger > 0) {
       setSelectedIds(new Set());
@@ -126,6 +183,8 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       setLastResult('none');
       setShowHint(null);
       setIsRevealed(false);
+      // Re-shuffle on retry so the user can't lean on remembered positions.
+      setDisplayChoices(shuffle ? shuffleQuizChoices(choices) : choices);
       if (resetStep) {
         resetStep();
       }
@@ -395,7 +454,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         })}
         key={shakeKey}
       >
-        {choices.map((choice) => {
+        {displayChoices.map((choice) => {
           const state = getChoiceState(choice);
           const isSelected = displayedSelection.has(choice.id);
 

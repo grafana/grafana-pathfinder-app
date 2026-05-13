@@ -48,6 +48,105 @@ async function callTool(client: Client, name: string, args: Record<string, unkno
 }
 
 describe('MCP server', () => {
+  it('surfaces non-empty server `instructions` on the initialize handshake (M1 layer 3)', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const instructions = client.getInstructions();
+      expect(typeof instructions).toBe('string');
+      expect(instructions!.length).toBeGreaterThan(0);
+      // Routing vocabulary (#7) — at least one canonical trigger phrase must
+      // make it through so MCP-aware clients have a concrete handle.
+      expect(instructions).toMatch(/create a pathfinder/i);
+      // Selector discipline (#3) — the layer-3 surface is the only hint that
+      // reaches the model BEFORE tool selection, so the "never invent
+      // selectors" rule has to land here, not just in field descriptions.
+      expect(instructions).toMatch(/reftarget/i);
+      expect(instructions).toMatch(/never invent/i);
+      // Composition rule (#8) — same reasoning. The model must see "prefer
+      // siblings over multistep, no noop filler" before it picks a tool.
+      expect(instructions).toMatch(/multistep/i);
+      expect(instructions).toMatch(/noop/i);
+      // Workflow anchor — every flow starts with `pathfinder_authoring_start`,
+      // so the instructions must point there explicitly.
+      expect(instructions).toContain('pathfinder_authoring_start');
+    } finally {
+      await close();
+    }
+  });
+
+  it('surfaces routing vocabulary in pathfinder_authoring_start (issue #7, layer 2)', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const ctx = await callTool(client, 'pathfinder_authoring_start');
+      // `triggers`, `notFor`, and `domains` reaffirm routing for agents that
+      // already reached the MCP, including clients that don't render the
+      // layer-3 server `instructions`. All three come from
+      // `lib/agent-routing.ts` — see the matching layer-3 assertions
+      // earlier in this file.
+      expect(Array.isArray(ctx.triggers)).toBe(true);
+      expect((ctx.triggers as string[]).length).toBeGreaterThan(0);
+      expect(ctx.triggers).toContain('create a pathfinder');
+      // Slice 3 — verb × asset-noun expansion. The looser phrases must
+      // land so any write/edit/create verb + content/guide/tutorial noun
+      // routes here.
+      expect(ctx.triggers).toContain('write content');
+      expect(ctx.triggers).toContain('create a tutorial');
+      expect(ctx.triggers).toContain('author a guide');
+      expect(Array.isArray(ctx.notFor)).toBe(true);
+      expect((ctx.notFor as string[]).length).toBeGreaterThan(0);
+      // Slice 3 — domain vocabulary so an agent already in the MCP can
+      // reaffirm routing when product-area followups come in.
+      expect(Array.isArray(ctx.domains)).toBe(true);
+      expect(ctx.domains).toContain('Prometheus');
+      expect(ctx.domains).toContain('Loki');
+    } finally {
+      await close();
+    }
+  });
+
+  it('surfaces distilled compositionRules in pathfinder_authoring_start (issue #8, OQ7 inline variant)', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const ctx = await callTool(client, 'pathfinder_authoring_start');
+      const rules = ctx.compositionRules as string[];
+      expect(Array.isArray(rules)).toBe(true);
+      // Budget guard — distilled from grafana/interactive-tutorials, hard
+      // ceiling per the slice plan is 25 rules. If a future edit pushes the
+      // list past 20, that's the signal to consider shipping a separate
+      // `pathfinder_authoring_best_practices` tool (OQ7) instead.
+      expect(rules.length).toBeGreaterThanOrEqual(3);
+      expect(rules.length).toBeLessThanOrEqual(20);
+      const joined = rules.join('\n');
+      // The three load-bearing anchors from the slice plan — must always
+      // ship together (#3 selector hallucination, #8 multistep over-use,
+      // #8 noop-as-defense).
+      expect(joined).toMatch(/multistep/i);
+      expect(joined).toMatch(/sibling/i);
+      expect(joined).toMatch(/noop/i);
+      expect(joined).toMatch(/reftarget/i);
+      expect(joined).toMatch(/never invent|do not invent|do not guess/i);
+    } finally {
+      await close();
+    }
+  });
+
+  it('describes every tool with a use-case-led opener so MCP clients can route on description-time hints (issue #7)', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const { tools } = await client.listTools();
+      // The hardening slice (task 3) rewrites every registerTool description
+      // to lead with "Use this tool when the user wants to ..." or, for
+      // meta/introspection tools, "Use this when you need ...". This guard
+      // catches a future edit that reverts to behavior-led prose.
+      const offenders = tools
+        .filter((t) => !/^Use this (tool )?(when|to)\b/i.test(t.description ?? ''))
+        .map((t) => ({ name: t.name, description: t.description }));
+      expect(offenders).toEqual([]);
+    } finally {
+      await close();
+    }
+  });
+
   it('lists every authoring tool', async () => {
     const { client, close } = await spinUp();
     try {
@@ -151,7 +250,7 @@ describe('MCP server', () => {
     }
   });
 
-  it('forwards the YouTube watch-vs-embed remediation hint through pathfinder_add_block', async () => {
+  it('normalizes a YouTube watch URL through pathfinder_add_block and surfaces INPUT_NORMALIZED (issue #2)', async () => {
     const { client, close } = await spinUp();
     try {
       const created = await callTool(client, 'pathfinder_create_package', { title: 'video test', type: 'guide' });
@@ -162,10 +261,16 @@ describe('MCP server', () => {
         type: 'video',
         fields: { src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
       });
-      expect(result.status).toBe('error');
-      // The MCP must surface the CLI's exact remediation hint (URL rewrite)
-      // verbatim so the agent can self-correct in one round-trip.
-      expect(result.message).toContain('https://www.youtube.com/embed/dQw4w9WgXcQ');
+      // M3 — the CLI rewrites the non-canonical form before validation, so
+      // the call succeeds in one round-trip and the agent gets a warning
+      // naming the rewrite. The persisted artifact carries the embed form.
+      expect(result.status).toBe('ok');
+      const warnings = result.warnings as Array<{ code: string; path?: string; message: string }> | undefined;
+      const normalized = warnings?.find((w) => w.code === 'INPUT_NORMALIZED');
+      expect(normalized).toBeDefined();
+      expect(normalized?.message).toContain('https://www.youtube.com/embed/dQw4w9WgXcQ');
+      const blocks = result.artifact?.content.blocks as Array<{ src?: string }>;
+      expect(blocks?.[0]?.src).toBe('https://www.youtube.com/embed/dQw4w9WgXcQ');
     } finally {
       await close();
     }
@@ -193,6 +298,59 @@ describe('MCP server', () => {
       // don't pin the full shape here (it's a CLI-owned contract).
       expect(result.command).toBe('add-block');
       expect(typeof result.summary).toBe('string');
+    } finally {
+      await close();
+    }
+  });
+
+  it('surfaces UNVERIFIED_SELECTOR through pathfinder_add_step (issue #3, M2 outcome-time)', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const created = await callTool(client, 'pathfinder_create_package', { title: 'selector test', type: 'guide' });
+      let artifact = created.artifact!;
+      const withMs = await callTool(client, 'pathfinder_add_block', {
+        artifact,
+        type: 'multistep',
+        explicitId: 'ms-1',
+        fields: { content: 'walk' },
+      });
+      artifact = withMs.artifact!;
+      const stepped = await callTool(client, 'pathfinder_add_step', {
+        artifact,
+        parentId: 'ms-1',
+        fields: { action: 'button', reftarget: '[data-testid="save"]', description: 'Click Save' },
+      });
+      expect(stepped.status).toBe('ok');
+      // End-to-end: warning is emitted by `runAddStep`, rides on the CLI's
+      // `CommandOutcome`, and the MCP forwards it via `outcomeResult` so a
+      // connected client sees it in the tool response.
+      const warnings = stepped.warnings as Array<{ code: string; path?: string }> | undefined;
+      const unverified = warnings?.find((w) => w.code === 'UNVERIFIED_SELECTOR');
+      expect(unverified).toBeDefined();
+      expect(unverified?.path).toContain('reftarget');
+    } finally {
+      await close();
+    }
+  });
+
+  it('surfaces MULTISTEP_COMPOSITION_HINT through pathfinder_add_block (issue #8, M2 outcome-time)', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const created = await callTool(client, 'pathfinder_create_package', { title: 'hint test', type: 'guide' });
+      const artifact = created.artifact!;
+      const result = await callTool(client, 'pathfinder_add_block', {
+        artifact,
+        type: 'multistep',
+        explicitId: 'ms-1',
+        fields: { content: 'walkthrough heading' },
+      });
+      expect(result.status).toBe('ok');
+      // The CLI's `warnings[]` field rides on `CommandOutcome` and the MCP
+      // forwards it verbatim via `outcomeResult` — no transformation. This
+      // assertion closes the loop end-to-end: warning emitted by the runner,
+      // serialized by the renderer, surfaced through the wire.
+      const warnings = result.warnings as Array<{ code: string }> | undefined;
+      expect(warnings?.[0]?.code).toBe('MULTISTEP_COMPOSITION_HINT');
     } finally {
       await close();
     }

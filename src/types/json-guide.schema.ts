@@ -99,6 +99,7 @@ export const JsonQuizChoiceSchema = z.object({
   text: z.string().min(1, 'Choice text is required').describe('Visible choice text'),
   correct: z.boolean().optional().describe('Mark this choice as correct'),
   hint: z.string().optional().describe('Hint shown when this choice is selected'),
+  pinned: z.boolean().optional().describe('Keep this choice at its authored index when the quiz is shuffled'),
 });
 
 // ============ STEP SCHEMA ============
@@ -114,7 +115,9 @@ export const JsonStepSchema = z
     reftarget: z
       .string()
       .optional()
-      .describe('CSS selector or data-testid for the target element (required for non-noop actions)'),
+      .describe(
+        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
+      ),
 
     targetvalue: z
       .string()
@@ -228,10 +231,16 @@ export const JsonImageBlockSchema = z.object({
  * Schema for video block.
  * @coupling Type: JsonVideoBlock
  */
+// JsonVideoBlockSchema — see the SafeUrlSchema description on `src` below.
+// YouTube watch (`/watch?v=`), short (`youtu.be/`), and shorts URLs are
+// auto-normalized to the embed form by the CLI runner before this schema
+// runs (see `src/cli/utils/input-normalizers.ts`).
 export const JsonVideoBlockSchema = z.object({
   type: z.literal('video'),
   id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
-  src: SafeUrlSchema.describe('Video URL (http/https only)'),
+  src: SafeUrlSchema.describe(
+    'Video URL (http/https only). YouTube must be an embed URL (`youtube.com/embed/<id>`); watch (`/watch?v=`), short (`youtu.be/`), and shorts URLs are auto-converted by the CLI to the embed form before this field is persisted.'
+  ),
   provider: z.enum(['youtube', 'native']).optional().describe('Video provider hint'),
   title: z.string().optional().describe('Display title'),
   start: z.number().min(0).optional().describe('Start time in seconds'),
@@ -254,7 +263,9 @@ export const JsonInteractiveBlockSchema = z
     reftarget: z
       .string()
       .optional()
-      .describe('CSS selector or data-testid for the target element (required for non-noop actions)'),
+      .describe(
+        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
+      ),
 
     targetvalue: z
       .string()
@@ -374,6 +385,10 @@ export const JsonQuizBlockSchema = z
     maxAttempts: z.number().optional().describe('Number of attempts allowed when completionMode=max-attempts'),
     requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
     skippable: z.boolean().optional().describe('Allow user to skip this block'),
+    shuffle: z
+      .boolean()
+      .optional()
+      .describe('Randomize choice display order (default: true); pinned choices keep their authored index'),
     ...AuthorAnnotatedSchema.shape,
   })
   .superRefine((quiz, ctx) => {
@@ -491,7 +506,9 @@ export const JsonCodeBlockBlockSchema = z.object({
   reftarget: z
     .string()
     .min(1, 'Code block reftarget is required')
-    .describe('CSS selector for the target Monaco editor'),
+    .describe(
+      'Verified Grafana DOM selector for the target Monaco editor. Do NOT invent or guess. Confirm against the live Grafana DOM or ask the user for the selector — Monaco editors have stable data-testid attributes in Grafana. A wrong selector silently breaks the guide at runtime; the validator cannot catch this.'
+    ),
   language: z.string().optional().describe('Source language hint (e.g., promql, logql, sql)'),
   code: z.string().min(1, 'Code is required').describe('Code to insert into the editor'),
   content: z.string().optional().describe('Optional instructional text shown above the code'),
@@ -687,7 +704,12 @@ const ConditionalProps = {
     .enum(['inline', 'section'])
     .optional()
     .describe('Render the conditional inline or as a collapsible section'),
-  reftarget: z.string().optional().describe('CSS selector consumed by certain conditional styles'),
+  reftarget: z
+    .string()
+    .optional()
+    .describe(
+      'Verified Grafana DOM selector consumed by certain conditional styles. Do NOT invent or guess; confirm against the live Grafana DOM. A wrong selector silently fails at runtime — the validator cannot catch this.'
+    ),
   whenTrueSectionConfig: ConditionalSectionConfigSchema.optional().describe(
     'Section config applied to the whenTrue branch'
   ),
@@ -823,7 +845,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'lazyRender',
     'scrollContainer',
   ]),
-  _choice: new Set(['id', 'text', 'correct', 'hint']),
+  _choice: new Set(['id', 'text', 'correct', 'hint', 'pinned']),
   // `authorNote` is the editor-only annotation spread from
   // `AuthorAnnotatedSchema` into every block type. It's stripped on
   // export, but stays in the schema so authoring tools can persist it.
@@ -896,6 +918,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'maxAttempts',
     'requirements',
     'skippable',
+    'shuffle',
     'authorNote',
   ]),
   input: new Set([

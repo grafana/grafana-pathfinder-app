@@ -196,6 +196,14 @@ If `coverage_confidence` is not `high`, include a short coverage note such as:
 
 > Coverage note: this PR appears to center on an area that is only lightly modeled by `docs/design/CONCERNS.md`. I reviewed it with general concerns and adjacent subsystem logic, but review confidence is reduced there. If this area is important long-term, consider refining or adding a concern entry.
 
+## 6. Documentation drift check
+
+After synthesis, invoke `.cursor/skills/prevent-doc-drift/SKILL.md` in **review mode** to detect whether this PR introduces new subsystems, scripts, skills, docs, plugin routes, feature flags, or architecture changes that require updates to agent guidance (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`).
+
+If the skill emits a "Doc-drift updates recommended" section, include it verbatim in the review output. The PR author can apply the diffs themselves or invoke `prevent-doc-drift` in apply mode to commit them on the same branch.
+
+The doc-drift check is **non-blocking** — guidance drift does not block merge, but unfixed drift accumulates as tech debt future reviewers and agents will pay for.
+
 ## Existing review tables still apply
 
 Use the tables below as implementation detail for the relevant concerns, especially `security`, `correctness-and-reliability`, and `go-backend`.

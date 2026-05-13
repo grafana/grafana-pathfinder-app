@@ -16,7 +16,7 @@ export function registerHelpTool(server: McpServer): void {
     'pathfinder_help',
     {
       description:
-        'Returns the structured help surface for a CLI command, equivalent to `pathfinder-cli <command> --help --format json`. Pass an empty command for the list of commands.',
+        'Use this tool when you need exact flag names, per-block-type field schemas, or the full CLI command list while authoring a Pathfinder guide. Returns the structured help surface for a CLI command, equivalent to `pathfinder-cli <command> --help --format json`. Pass an empty command for the list of commands.',
       inputSchema: {
         command: z
           .string()
