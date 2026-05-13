@@ -41,7 +41,7 @@ function registerListPackages(server: McpServer): void {
     'pathfinder_list_packages',
     {
       description:
-        'List packages from the configured Pathfinder package repository (default: the public Grafana CDN). Optional filters by type, category, and a substring query against title and description.',
+        'Use this tool when the user wants to discover, browse, or search published Pathfinder guides, paths, or journeys from the public Grafana package repository (or a custom one configured via PATHFINDER_REPOSITORY_URL). Optional filters by type, category, and a substring query against title and description.',
       inputSchema: {
         type: z.enum(['guide', 'path', 'journey']).optional().describe('Filter by package type.'),
         category: z.string().optional().describe('Filter by category (exact match).'),
@@ -74,7 +74,7 @@ function registerGetPackage(server: McpServer): void {
     'pathfinder_get_package',
     {
       description:
-        'Fetch the full content.json and manifest.json for a single package by id from the repository CDN. Schema drift surfaces in validation.* but does not hard-fail.',
+        'Use this tool when the user wants to inspect a published Pathfinder package in full (content.json + manifest.json) by id. Reads from the repository CDN. Schema drift surfaces in validation.* but does not hard-fail.',
       inputSchema: {
         id: z.string().min(1).describe('Package id (kebab-case).'),
       },
@@ -109,7 +109,7 @@ function registerGetManifest(server: McpServer): void {
     'pathfinder_get_manifest',
     {
       description:
-        "Fetch only manifest.json for a package by id (cheaper than pathfinder_get_package when you don't need block content). Reads from the repository CDN.",
+        "Use this tool when the user wants only the metadata for a published Pathfinder package (cheaper than `pathfinder_get_package` when block content isn't needed — useful for dependency or composition exploration). Reads from the repository CDN.",
       inputSchema: {
         id: z.string().min(1).describe('Package id (kebab-case).'),
       },
@@ -140,9 +140,9 @@ function registerLaunchPackage(server: McpServer): void {
     'pathfinder_launch_package',
     {
       description:
-        'PARTIAL — see ' +
+        'Use this tool when the user wants a shareable deep-link URL to a published Pathfinder guide. **PARTIAL — see ' +
         LAUNCH_PACKAGE_BUG_URL +
-        ". Constructs a Pathfinder deep-link URL for a CDN-hosted package. The URL shape is correct and resolves to the Pathfinder plugin, but the targeted CDN guide does NOT currently load as an interactive tutorial — it opens to a generic docs view. The bug is in the app-side auto-launch handler, not in this tool. Until that fix lands, prefer pathfinder_get_package or pathfinder_get_manifest for inspecting CDN content; only call this tool when you specifically need the URL shape (e.g., to share a link in a chat) and warn the user about the limitation. Always returns a relative launchPath that the user appends to their own Grafana instance origin. If you already know the user's instance origin (e.g. you are an agent running inside Grafana), pass it as instanceUrl to also receive an absolute launchUrl. If you do not know the instance, omit instanceUrl — do not invent or guess a hostname.",
+        "**: the URL shape is correct and resolves to the Pathfinder plugin, but the targeted CDN guide does NOT currently load as an interactive tutorial — it opens to a generic docs view. The bug is in the app-side auto-launch handler, not in this tool. Until that fix lands, prefer pathfinder_get_package or pathfinder_get_manifest for inspecting CDN content; only call this tool when you specifically need the URL shape (e.g., to share a link in a chat) and warn the user about the limitation. Always returns a relative launchPath that the user appends to their own Grafana instance origin. If you already know the user's instance origin (e.g. you are an agent running inside Grafana), pass it as instanceUrl to also receive an absolute launchUrl. If you do not know the instance, omit instanceUrl — do not invent or guess a hostname.",
       inputSchema: {
         id: z.string().min(1).describe('Package id (kebab-case).'),
         instanceUrl: z
