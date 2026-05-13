@@ -141,6 +141,12 @@ func (a *App) handleCodaExec(w http.ResponseWriter, r *http.Request) {
 	resp, err := runRemoteCommand(execCtx, client, req.Command, mode)
 	if err != nil {
 		ctxLogger.Warn("/coda/exec failed", "user", user, "vmID", vmID, "error", err)
+		if errors.Is(err, errSSHSessionDead) {
+			a.writeError(w,
+				"Terminal session is no longer connected. Reconnect via the terminal panel and try again.",
+				http.StatusServiceUnavailable)
+			return
+		}
 		a.writeError(w, fmt.Sprintf("Exec failed: %v", err), http.StatusBadGateway)
 		return
 	}
@@ -199,6 +205,30 @@ func shellSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+// errSSHSessionDead means the cached SSH client is no longer usable —
+// typically because the user's terminal disconnected (network blip, VM
+// expiry, manual disconnect). Surfaced separately from generic exec errors so
+// the handler can return a clearer status code and message.
+var errSSHSessionDead = errors.New("terminal session is no longer connected")
+
+// isDeadSessionError matches the SSH errors that indicate the underlying
+// connection is broken rather than a recoverable per-session issue.
+func isDeadSessionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	// Errors observed when the underlying client/TCP is dead. Match
+	// substrings rather than exact errors because the SSH library wraps and
+	// the lower transport varies (relay WebSocket vs direct TCP).
+	for _, needle := range []string{"EOF", "use of closed network connection", "connection lost", "broken pipe"} {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
+}
+
 // runRemoteCommand opens a fresh non-interactive SSH session on the given
 // client, runs the command (optionally wrapped for gated mode), captures
 // stdout/stderr (truncated at codaExecMaxOutputBytes), and returns the result.
@@ -207,9 +237,15 @@ func shellSingleQuote(s string) string {
 // terminates the remote command. Note: SSH does not propagate context to the
 // remote process directly — we kill the channel, the remote may continue
 // briefly before its stdout pipe closes, but the caller sees a clean timeout.
+//
+// Returns errSSHSessionDead (wrapped) when the underlying client is gone so
+// the HTTP handler can map this to a tailored 503 response.
 func runRemoteCommand(ctx context.Context, client *ssh.Client, command, mode string) (*CodaExecResponse, error) {
 	session, err := client.NewSession()
 	if err != nil {
+		if isDeadSessionError(err) {
+			return nil, fmt.Errorf("%w: %v", errSSHSessionDead, err)
+		}
 		return nil, fmt.Errorf("failed to create SSH session: %w", err)
 	}
 	defer func() { _ = session.Close() }()

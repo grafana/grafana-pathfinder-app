@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -541,6 +542,33 @@ func TestRunRemoteCommand_Timeout(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "timed out") {
 		t.Errorf("error %q does not mention timeout", err.Error())
+	}
+}
+
+// TestIsDeadSessionError covers the error-classification heuristic used by
+// runRemoteCommand to map SSH client failures onto errSSHSessionDead — the
+// signal the HTTP handler uses to return a tailored 503 ("reconnect via the
+// terminal panel") instead of a generic 502.
+func TestIsDeadSessionError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"unrelated error", errors.New("permission denied"), false},
+		{"EOF from closed transport", errors.New("EOF"), true},
+		{"wrapped EOF", fmt.Errorf("ssh: %w", io.EOF), true},
+		{"use of closed network connection", errors.New("use of closed network connection"), true},
+		{"broken pipe", errors.New("write tcp: broken pipe"), true},
+		{"connection lost", errors.New("client connection lost"), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isDeadSessionError(tc.err); got != tc.want {
+				t.Errorf("isDeadSessionError(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
 	}
 }
 
