@@ -166,7 +166,10 @@ export function ChallengeBlockForm({
         return prev;
       }
       const next = [...prev];
-      [next[idx]!, next[target]!] = [next[target]!, next[idx]!];
+      const a = next[idx]!;
+      const b = next[target]!;
+      next[idx] = b;
+      next[target] = a;
       return next;
     });
   }, []);
@@ -324,22 +327,19 @@ export function ChallengeBlockForm({
                     <div className={challengeStyles.hintActions}>
                       <IconButton
                         name="arrow-up"
-                        tooltip="Move hint up"
-                        aria-label={`Move hint ${index + 1} up`}
+                        tooltip={`Move hint ${index + 1} up`}
                         disabled={index === 0}
                         onClick={() => handleMoveHint(hint.id, -1)}
                       />
                       <IconButton
                         name="arrow-down"
-                        tooltip="Move hint down"
-                        aria-label={`Move hint ${index + 1} down`}
+                        tooltip={`Move hint ${index + 1} down`}
                         disabled={index === hints.length - 1}
                         onClick={() => handleMoveHint(hint.id, 1)}
                       />
                       <IconButton
                         name="trash-alt"
-                        tooltip="Remove hint"
-                        aria-label={`Remove hint ${index + 1}`}
+                        tooltip={`Remove hint ${index + 1}`}
                         onClick={() => handleRemoveHint(hint.id)}
                       />
                     </div>
