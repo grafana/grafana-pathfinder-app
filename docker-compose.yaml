@@ -9,6 +9,12 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: 'false'
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
+    # Persist Grafana's data directory (SQLite DB with plugin settings, users,
+    # dashboards, etc.) across container recreations. Without this, every
+    # `docker compose up -d --build` wipes the Coda enrollment key and other
+    # plugin settings.
+    volumes:
+      - grafana-data:/var/lib/grafana
 
   prometheus:
     image: prom/prometheus:${PROMETHEUS_VERSION:-v3.5.0}
@@ -35,3 +41,6 @@ services:
       - ./demo/config.alloy:/etc/alloy/config.alloy
       - /var/run/docker.sock:/var/run/docker.sock
     command: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+
+volumes:
+  grafana-data:
