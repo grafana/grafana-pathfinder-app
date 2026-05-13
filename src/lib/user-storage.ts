@@ -1173,7 +1173,11 @@ export const interactiveStepStorage = {
             try {
               const ids = JSON.parse(value);
               if (Array.isArray(ids)) {
-                total += ids.length;
+                // Filter out the #842 all-passive ack-marker so it doesn't inflate
+                // the document completion numerator. The marker is persisted to
+                // satisfy the reducer's "ack requires completion" invariant but is
+                // not a real step and is not counted in getTotalDocumentSteps().
+                total += ids.filter((id) => typeof id !== 'string' || !id.endsWith('::ack-marker')).length;
               }
             } catch {
               // Invalid JSON, skip

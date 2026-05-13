@@ -176,6 +176,45 @@ describe('interactiveStepStorage.clearAll', () => {
 });
 
 // ============================================================================
+// countAllCompleted ack-marker filter (#842)
+// ============================================================================
+
+describe('interactiveStepStorage.countAllCompleted — #842 ack-marker filter', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('does not count "::ack-marker" entries toward the document total', () => {
+    // All-passive section stores only a synthetic marker so the reducer's
+    // ACKNOWLEDGE invariant ("ack requires at least one completed step") is
+    // satisfied. The marker is not a real step and must not inflate the
+    // document completion numerator — getTotalDocumentSteps() excludes it
+    // from the denominator.
+    localStorage.setItem(
+      `${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-a-section-passive`,
+      JSON.stringify(['section-passive::ack-marker'])
+    );
+    localStorage.setItem(
+      `${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-a-section-real`,
+      JSON.stringify(['real-step-1', 'real-step-2'])
+    );
+
+    expect(interactiveStepStorage.countAllCompleted('guide-a')).toBe(2);
+  });
+
+  it('returns 0 for a guide whose only completed entries are ack-markers', () => {
+    // Use a distinct content key so the in-memory completedCountCache from a
+    // sibling test cannot bleed into this assertion.
+    localStorage.setItem(
+      `${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-only-passive-section-passive`,
+      JSON.stringify(['section-passive::ack-marker'])
+    );
+
+    expect(interactiveStepStorage.countAllCompleted('guide-only-passive')).toBe(0);
+  });
+});
+
+// ============================================================================
 // interactiveCompletionStorage.clearAll TESTS
 // ============================================================================
 
