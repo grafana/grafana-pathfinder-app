@@ -66,3 +66,6 @@ export type {
   GuideOpsPersistenceInterface,
   GuideOpsModalInterface,
 } from './useGuideOperations';
+
+export { useGuidePreviewProgress } from './useGuidePreviewProgress';
+export type { GuidePreviewProgress } from './useGuidePreviewProgress';

@@ -156,7 +156,9 @@ export function BlockEditorContent({
           onUndo={onJsonUndo}
         />
       ) : viewMode === 'preview' ? (
-        <BlockPreview guide={guide} />
+        // Header owns the "Reset guide" affordance in preview mode, so the
+        // rendered guide stays free of editor chrome.
+        <BlockPreview guide={guide} hideResetButton />
       ) : viewMode === 'edit' && hasBlocks ? (
         <>
           <BlockList
