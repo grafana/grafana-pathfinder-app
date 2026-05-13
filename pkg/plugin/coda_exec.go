@@ -35,10 +35,18 @@ const (
 	codaExecDefaultTimeoutMs = 5000
 	codaExecMaxTimeoutMs     = 30000
 	codaExecMaxOutputBytes   = 32 * 1024
-	// codaSentinelPath lives under /tmp (not /var/run) because the SSH user
-	// is typically unprivileged. The sentinel is a UI-race guard, not a
-	// security boundary — the SSH user already has full shell access — so
-	// world-writable /tmp is appropriate.
+	// codaSentinelPath is the readiness sentinel written by the challenge
+	// block's setup phase. Gated /coda/exec calls refuse to evaluate the
+	// author's success criterion until this file exists.
+	//
+	// IMPORTANT — this is NOT a security boundary. The path lives in /tmp
+	// because the SSH user is unprivileged, which means any process on the
+	// VM (including anything the user runs at the terminal) can create or
+	// delete it. The gate's job is to defend against a UI race where the
+	// learner clicks "Check my work" before the setup phase has finished
+	// breaking the environment. It does not, and cannot, defend against a
+	// learner who is actively trying to bypass the challenge — they have
+	// full shell access to the same VM.
 	codaSentinelPath = "/tmp/pathfinder-ready"
 )
 
