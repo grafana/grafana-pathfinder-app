@@ -45,15 +45,21 @@ function isChallengeBlock(block: JsonBlock): block is JsonChallengeBlock {
   return block.type === 'challenge';
 }
 
-function arrayFromLines(text: string): string[] {
-  return text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function linesFromArray(items: string[] | undefined): string {
-  return items ? items.join('\n') : '';
+/**
+ * Seed the setup-script field. Prefer the new field; migrate the legacy
+ * array. Reads of `setupCommands` are intentional back-compat — this is the
+ * migration path from the old shape to the new one.
+ */
+function seedSetupScript(block: JsonChallengeBlock | null): string {
+  if (block?.setupScript != null) {
+    return block.setupScript;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: migrating legacy field on edit
+  if (block?.setupCommands && block.setupCommands.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: migrating legacy field on edit
+    return block.setupCommands.join('\n');
+  }
+  return '';
 }
 
 function makeHintId(): string {
@@ -70,6 +76,26 @@ function toHintRows(hints: JsonChallengeHint[] | undefined): HintRow[] {
 }
 
 const getChallengeFormStyles = (theme: GrafanaTheme2) => ({
+  setupScriptInput: css({
+    fontFamily: theme.typography.fontFamilyMonospace,
+    fontSize: theme.typography.bodySmall.fontSize,
+  }),
+  successCritDescription: css({
+    '& code': {
+      fontFamily: theme.typography.fontFamilyMonospace,
+      fontSize: theme.typography.bodySmall.fontSize,
+      backgroundColor: theme.colors.background.secondary,
+      padding: `0 ${theme.spacing(0.5)}`,
+      borderRadius: theme.shape.radius.default,
+    },
+    '& ul': {
+      margin: `${theme.spacing(0.5)} 0 0 0`,
+      paddingLeft: theme.spacing(2),
+    },
+    '& li': {
+      marginBottom: theme.spacing(0.25),
+    },
+  }),
   hintList: css({
     display: 'flex',
     flexDirection: 'column',
@@ -127,7 +153,7 @@ export function ChallengeBlockForm({
   const [vmTemplate, setVmTemplate] = useState(initial?.vmTemplate ?? '');
   const [vmScenario, setVmScenario] = useState(initial?.vmScenario ?? '');
   const [vmApp, setVmApp] = useState(initial?.vmApp ?? '');
-  const [setupText, setSetupText] = useState(linesFromArray(initial?.setupCommands));
+  const [setupScript, setSetupScript] = useState(() => seedSetupScript(initial));
   const [successCriteria, setSuccessCriteria] = useState(initial?.successCriteria ?? '');
   const [hints, setHints] = useState<HintRow[]>(() => toHintRows(initial?.hintLevels));
   const [failureMessage, setFailureMessage] = useState(initial?.failureMessage ?? '');
@@ -178,11 +204,15 @@ export function ChallengeBlockForm({
     (e: React.FormEvent) => {
       e.preventDefault();
 
-      const setupCommands = arrayFromLines(setupText);
+      const trimmedScript = setupScript.trim();
       const hintLevels: JsonChallengeHint[] = hints
         .map((h) => ({ text: h.text.trim() }))
         .filter((h) => h.text.length > 0);
 
+      // Form always emits setupScript (never setupCommands) — when an
+      // existing block had legacy setupCommands, the field was seeded with
+      // them joined on newlines, so the migration happens transparently
+      // on first save.
       const block: JsonChallengeBlock = {
         type: 'challenge',
         title: title.trim(),
@@ -191,14 +221,14 @@ export function ChallengeBlockForm({
         ...(vmTemplate.trim() && { vmTemplate: vmTemplate.trim() }),
         ...(vmScenario.trim() && { vmScenario: vmScenario.trim() }),
         ...(vmApp.trim() && { vmApp: vmApp.trim() }),
-        ...(setupCommands.length > 0 && { setupCommands }),
+        ...(trimmedScript.length > 0 && { setupScript: trimmedScript }),
         ...(hintLevels.length > 0 && { hintLevels }),
         ...(failureMessage.trim() && { failureMessage: failureMessage.trim() }),
       };
 
       onSubmit(block as JsonBlock);
     },
-    [title, brief, vmTemplate, vmScenario, vmApp, setupText, successCriteria, hints, failureMessage, onSubmit]
+    [title, brief, vmTemplate, vmScenario, vmApp, setupScript, successCriteria, hints, failureMessage, onSubmit]
   );
 
   const isValid = title.trim().length > 0 && brief.trim().length > 0 && successCriteria.trim().length > 0;
@@ -276,14 +306,17 @@ export function ChallengeBlockForm({
         )}
 
         <Field
-          label="Setup commands"
-          description="Bash commands run sequentially before the challenge starts. One per line. A readiness sentinel is written automatically after these succeed."
+          label="Setup script"
+          description="Bash script run on the VM before the challenge starts. Multi-line is fine — use heredocs, control flow, whatever. A readiness sentinel is written automatically after this completes."
         >
           <TextArea
-            value={setupText}
-            onChange={(e) => setSetupText(e.currentTarget.value)}
-            placeholder={'sudo systemctl stop alloy\nsudo sed -i "s/9090/9091/" /etc/alloy/config.alloy'}
-            rows={4}
+            value={setupScript}
+            onChange={(e) => setSetupScript(e.currentTarget.value)}
+            placeholder={
+              'sudo systemctl stop alloy\nsudo sed -i "s/9090/9091/" /etc/alloy/config.alloy\nsudo systemctl start alloy'
+            }
+            rows={8}
+            className={challengeStyles.setupScriptInput}
           />
         </Field>
       </div>
@@ -294,7 +327,28 @@ export function ChallengeBlockForm({
 
         <Field
           label="Success criterion"
-          description="Requirement evaluated when the user clicks Check my work (typically coda-exit-zero:<command>)"
+          description={
+            <div className={challengeStyles.successCritDescription}>
+              <div>
+                Requirement evaluated when the user clicks <em>Check my work</em> — typically a{' '}
+                <code>coda-exit-zero:&lt;command&gt;</code> check. Common patterns:
+              </div>
+              <ul>
+                <li>
+                  File exists — <code>coda-exit-zero:test -f /path/to/file</code>
+                </li>
+                <li>
+                  File contains a string — <code>coda-exit-zero:grep -q &quot;pattern&quot; /path/to/file</code>
+                </li>
+                <li>
+                  Service responds — <code>coda-exit-zero:curl -sf http://localhost:PORT/path</code>
+                </li>
+                <li>
+                  Process running — <code>coda-exit-zero:pgrep -x process-name</code>
+                </li>
+              </ul>
+            </div>
+          }
           required
         >
           <Input

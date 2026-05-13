@@ -170,6 +170,49 @@ describe('ChallengeBlockForm', () => {
     });
   });
 
+  describe('setup migration', () => {
+    it('seeds the setup-script field from legacy setupCommands joined on newlines', () => {
+      renderForm({ setupCommands: ['echo one', 'echo two'] });
+      // The script TextArea takes the joined value.
+      const scriptTextarea = screen.getByPlaceholderText(/sudo systemctl stop alloy/i) as HTMLTextAreaElement;
+      expect(scriptTextarea.value).toBe('echo one\necho two');
+    });
+
+    it('emits setupScript on submit and drops setupCommands entirely', () => {
+      const onSubmit = jest.fn();
+      renderForm({ setupCommands: ['echo legacy'] }, onSubmit);
+      fireEvent.click(screen.getByRole('button', { name: /update block/i }));
+
+      const submitted = onSubmit.mock.calls[0]![0] as Record<string, unknown>;
+      expect(submitted.setupScript).toBe('echo legacy');
+      expect(submitted.setupCommands).toBeUndefined();
+    });
+
+    it('preserves an existing setupScript over setupCommands when both are present', () => {
+      const onSubmit = jest.fn();
+      renderForm({ setupScript: 'echo from-script', setupCommands: ['echo from-array'] }, onSubmit);
+      fireEvent.click(screen.getByRole('button', { name: /update block/i }));
+
+      const submitted = onSubmit.mock.calls[0]![0] as Record<string, unknown>;
+      expect(submitted.setupScript).toBe('echo from-script');
+      expect(submitted.setupCommands).toBeUndefined();
+    });
+
+    it('omits setupScript entirely when the field is empty', () => {
+      const onSubmit = jest.fn();
+      renderForm({ setupCommands: ['x'] }, onSubmit);
+
+      // Clear the script field.
+      const scriptTextarea = screen.getByPlaceholderText(/sudo systemctl stop alloy/i);
+      fireEvent.change(scriptTextarea, { target: { value: '' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /update block/i }));
+      const submitted = onSubmit.mock.calls[0]![0] as Record<string, unknown>;
+      expect(submitted.setupScript).toBeUndefined();
+      expect(submitted.setupCommands).toBeUndefined();
+    });
+  });
+
   describe('submit serialisation', () => {
     it('serialises hints in the displayed order with empty rows filtered out', () => {
       const onSubmit = jest.fn();
