@@ -8,12 +8,26 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, Input, Combobox, TextArea, useStyles2, type ComboboxOption } from '@grafana/ui';
+import { css } from '@emotion/css';
+import { GrafanaTheme2 } from '@grafana/data';
+import {
+  Badge,
+  Button,
+  Combobox,
+  Field,
+  IconButton,
+  Input,
+  TextArea,
+  useStyles2,
+  type ComboboxOption,
+} from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { useCodaOptions } from './useCodaOptions';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonChallengeBlock, JsonChallengeHint } from '../../../types/json-guide.types';
+import { PLUGIN_BACKEND_URL } from '../../../constants';
 
 const VM_TEMPLATE_OPTIONS: Array<ComboboxOption<string>> = [
   { label: 'Default (vm-aws)', value: '' },
@@ -21,16 +35,14 @@ const VM_TEMPLATE_OPTIONS: Array<ComboboxOption<string>> = [
   { label: 'Alloy scenario (vm-aws-alloy-scenario)', value: 'vm-aws-alloy-scenario' },
 ];
 
+/** Hint with a stable client-side ID used as React key during reorder. */
+interface HintRow {
+  id: string;
+  text: string;
+}
+
 function isChallengeBlock(block: JsonBlock): block is JsonChallengeBlock {
   return block.type === 'challenge';
-}
-
-function linesFromArray(items: string[] | undefined): string {
-  return items ? items.join('\n') : '';
-}
-
-function linesFromHints(hints: JsonChallengeHint[] | undefined): string {
-  return hints ? hints.map((h) => h.text).join('\n') : '';
 }
 
 function arrayFromLines(text: string): string[] {
@@ -40,9 +52,63 @@ function arrayFromLines(text: string): string[] {
     .filter(Boolean);
 }
 
-function hintsFromLines(text: string): JsonChallengeHint[] {
-  return arrayFromLines(text).map((text) => ({ text }));
+function linesFromArray(items: string[] | undefined): string {
+  return items ? items.join('\n') : '';
 }
+
+function makeHintId(): string {
+  // crypto.randomUUID is available in all modern browsers Pathfinder targets;
+  // fall back to a sufficiently-unique string in case of an unusual env.
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `hint-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function toHintRows(hints: JsonChallengeHint[] | undefined): HintRow[] {
+  return (hints ?? []).map((h) => ({ id: makeHintId(), text: h.text }));
+}
+
+const getChallengeFormStyles = (theme: GrafanaTheme2) => ({
+  hintList: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+  }),
+  hintRow: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(1),
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    backgroundColor: theme.colors.background.secondary,
+  }),
+  hintBadge: css({
+    minWidth: '56px',
+    textAlign: 'center',
+    flexShrink: 0,
+  }),
+  hintInput: css({
+    flex: 1,
+  }),
+  hintActions: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.25),
+    flexShrink: 0,
+  }),
+  addHintButton: css({
+    alignSelf: 'flex-start',
+    marginTop: theme.spacing(0.5),
+  }),
+  emptyHints: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    fontStyle: 'italic',
+    padding: theme.spacing(1),
+  }),
+});
 
 export function ChallengeBlockForm({
   initialData,
@@ -52,6 +118,7 @@ export function ChallengeBlockForm({
   onSwitchBlockType,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
+  const challengeStyles = useStyles2(getChallengeFormStyles);
 
   const initial = initialData && isChallengeBlock(initialData) ? initialData : null;
 
@@ -62,18 +129,56 @@ export function ChallengeBlockForm({
   const [vmApp, setVmApp] = useState(initial?.vmApp ?? '');
   const [setupText, setSetupText] = useState(linesFromArray(initial?.setupCommands));
   const [successCriteria, setSuccessCriteria] = useState(initial?.successCriteria ?? '');
-  const [hintsText, setHintsText] = useState(linesFromHints(initial?.hintLevels));
+  const [hints, setHints] = useState<HintRow[]>(() => toHintRows(initial?.hintLevels));
   const [failureMessage, setFailureMessage] = useState(initial?.failureMessage ?? '');
 
   const isAlloyScenario = vmTemplate === 'vm-aws-alloy-scenario';
   const isSampleApp = vmTemplate === 'vm-aws-sample-app';
+
+  const { options: sampleAppOptions, isLoading: isLoadingApps } = useCodaOptions(
+    isSampleApp,
+    `${PLUGIN_BACKEND_URL}/sample-apps`,
+    'apps'
+  );
+  const { options: scenarioOptions, isLoading: isLoadingScenarios } = useCodaOptions(
+    isAlloyScenario,
+    `${PLUGIN_BACKEND_URL}/alloy-scenarios`,
+    'scenarios'
+  );
+
+  const handleAddHint = useCallback(() => {
+    setHints((prev) => [...prev, { id: makeHintId(), text: '' }]);
+  }, []);
+
+  const handleRemoveHint = useCallback((id: string) => {
+    setHints((prev) => prev.filter((h) => h.id !== id));
+  }, []);
+
+  const handleHintTextChange = useCallback((id: string, text: string) => {
+    setHints((prev) => prev.map((h) => (h.id === id ? { ...h, text } : h)));
+  }, []);
+
+  const handleMoveHint = useCallback((id: string, direction: -1 | 1) => {
+    setHints((prev) => {
+      const idx = prev.findIndex((h) => h.id === id);
+      const target = idx + direction;
+      if (idx < 0 || target < 0 || target >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      [next[idx]!, next[target]!] = [next[target]!, next[idx]!];
+      return next;
+    });
+  }, []);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
 
       const setupCommands = arrayFromLines(setupText);
-      const hintLevels = hintsFromLines(hintsText);
+      const hintLevels: JsonChallengeHint[] = hints
+        .map((h) => ({ text: h.text.trim() }))
+        .filter((h) => h.text.length > 0);
 
       const block: JsonChallengeBlock = {
         type: 'challenge',
@@ -90,103 +195,182 @@ export function ChallengeBlockForm({
 
       onSubmit(block as JsonBlock);
     },
-    [title, brief, vmTemplate, vmScenario, vmApp, setupText, successCriteria, hintsText, failureMessage, onSubmit]
+    [title, brief, vmTemplate, vmScenario, vmApp, setupText, successCriteria, hints, failureMessage, onSubmit]
   );
 
   const isValid = title.trim().length > 0 && brief.trim().length > 0 && successCriteria.trim().length > 0;
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
-      <Field label="Title" description="Short heading shown above the brief" required>
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.currentTarget.value)}
-          placeholder="Fix the broken Prometheus scrape"
-        />
-      </Field>
+      {/* ===== Challenge content ===== */}
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>Challenge content</div>
 
-      <Field label="Brief" description="Markdown problem statement explaining what the user needs to do" required>
-        <TextArea
-          value={brief}
-          onChange={(e) => setBrief(e.currentTarget.value)}
-          placeholder="Alloy is misconfigured so metrics never reach Prometheus. Diagnose and restore collection."
-          rows={4}
-        />
-      </Field>
-
-      <Field label="VM template" description="VM template to provision (defaults to vm-aws)">
-        <Combobox
-          options={VM_TEMPLATE_OPTIONS}
-          value={vmTemplate}
-          onChange={(opt) => {
-            setVmTemplate(opt.value);
-            if (!opt.value || opt.value === 'vm-aws-alloy-scenario') {
-              setVmApp('');
-            }
-            if (!opt.value || opt.value !== 'vm-aws-alloy-scenario') {
-              setVmScenario('');
-            }
-          }}
-        />
-      </Field>
-
-      {isAlloyScenario && (
-        <Field label="Scenario" description="Alloy scenario to run on the VM">
-          <Input value={vmScenario} onChange={(e) => setVmScenario(e.currentTarget.value)} />
+        <Field label="Title" description="Short heading shown above the brief" required>
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.currentTarget.value)}
+            placeholder="Fix the broken Prometheus scrape"
+          />
         </Field>
-      )}
 
-      {isSampleApp && (
-        <Field label="App name" description="Sample app to deploy on the VM">
-          <Input value={vmApp} onChange={(e) => setVmApp(e.currentTarget.value)} />
+        <Field label="Brief" description="Markdown problem statement explaining what the user needs to do" required>
+          <TextArea
+            value={brief}
+            onChange={(e) => setBrief(e.currentTarget.value)}
+            placeholder="Alloy is misconfigured so metrics never reach Prometheus. Diagnose and restore collection."
+            rows={4}
+          />
         </Field>
-      )}
+      </div>
 
-      <Field
-        label="Setup commands"
-        description="Bash commands run sequentially before the challenge starts. One per line. A readiness sentinel is written automatically after these succeed."
-      >
-        <TextArea
-          value={setupText}
-          onChange={(e) => setSetupText(e.currentTarget.value)}
-          placeholder={'sudo systemctl stop alloy\nsudo sed -i "s/9090/9091/" /etc/alloy/config.alloy'}
-          rows={4}
-        />
-      </Field>
+      {/* ===== Environment ===== */}
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>Environment</div>
 
-      <Field
-        label="Success criterion"
-        description="Requirement evaluated when the user clicks Check my work (typically coda-exit-zero:<command>)"
-        required
-      >
-        <Input
-          value={successCriteria}
-          onChange={(e) => setSuccessCriteria(e.currentTarget.value)}
-          placeholder='coda-exit-zero:curl -sf "localhost:9090/api/v1/query?query=up" | jq -e ".data.result | length > 0"'
-        />
-      </Field>
+        <Field label="VM template" description="VM template to provision (defaults to vm-aws)">
+          <Combobox
+            options={VM_TEMPLATE_OPTIONS}
+            value={vmTemplate}
+            onChange={(opt) => {
+              setVmTemplate(opt.value);
+              if (!opt.value || opt.value === 'vm-aws-alloy-scenario') {
+                setVmApp('');
+              }
+              if (!opt.value || opt.value !== 'vm-aws-alloy-scenario') {
+                setVmScenario('');
+              }
+            }}
+          />
+        </Field>
 
-      <Field
-        label="Hint levels"
-        description="Progressive hints revealed one per click. One hint per line; first is the gentlest, last is the most explicit."
-      >
-        <TextArea
-          value={hintsText}
-          onChange={(e) => setHintsText(e.currentTarget.value)}
-          placeholder={
-            'Check whether Alloy is running.\nLook at /etc/alloy/config.alloy for the scrape target.\nRevert the port to 9090 and restart Alloy.'
-          }
-          rows={4}
-        />
-      </Field>
+        {isAlloyScenario && (
+          <Field label="Scenario" description="Alloy scenario to run on the VM">
+            <Combobox
+              options={scenarioOptions}
+              value={vmScenario || null}
+              onChange={(opt) => setVmScenario(opt?.value ?? '')}
+              loading={isLoadingScenarios}
+              createCustomValue
+              placeholder="Select a scenario..."
+              isClearable
+            />
+          </Field>
+        )}
 
-      <Field label="Failure message" description="Shown when the success check fails (optional)">
-        <Input
-          value={failureMessage}
-          onChange={(e) => setFailureMessage(e.currentTarget.value)}
-          placeholder="Metrics are not flowing yet. Try the next hint."
-        />
-      </Field>
+        {isSampleApp && (
+          <Field label="App name" description="Sample app to deploy on the VM">
+            <Combobox
+              options={sampleAppOptions}
+              value={vmApp || null}
+              onChange={(opt) => setVmApp(opt?.value ?? '')}
+              loading={isLoadingApps}
+              createCustomValue
+              placeholder="Select a sample app..."
+              isClearable
+            />
+          </Field>
+        )}
+
+        <Field
+          label="Setup commands"
+          description="Bash commands run sequentially before the challenge starts. One per line. A readiness sentinel is written automatically after these succeed."
+        >
+          <TextArea
+            value={setupText}
+            onChange={(e) => setSetupText(e.currentTarget.value)}
+            placeholder={'sudo systemctl stop alloy\nsudo sed -i "s/9090/9091/" /etc/alloy/config.alloy'}
+            rows={4}
+          />
+        </Field>
+      </div>
+
+      {/* ===== Verification ===== */}
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>Verification</div>
+
+        <Field
+          label="Success criterion"
+          description="Requirement evaluated when the user clicks Check my work (typically coda-exit-zero:<command>)"
+          required
+        >
+          <Input
+            value={successCriteria}
+            onChange={(e) => setSuccessCriteria(e.currentTarget.value)}
+            placeholder='coda-exit-zero:curl -sf "localhost:9090/api/v1/query?query=up" | jq -e ".data.result | length > 0"'
+          />
+        </Field>
+
+        <Field
+          label="Hint levels"
+          description="Progressive hints revealed one per click. First is the gentlest, last is the most explicit. Use the arrows to reorder."
+        >
+          <div>
+            {hints.length === 0 ? (
+              <div className={challengeStyles.emptyHints}>No hints yet — authors don&apos;t have to provide any.</div>
+            ) : (
+              <div className={challengeStyles.hintList}>
+                {hints.map((hint, index) => (
+                  <div key={hint.id} className={challengeStyles.hintRow}>
+                    <Badge text={`Hint ${index + 1}`} color="blue" className={challengeStyles.hintBadge} />
+                    <div className={challengeStyles.hintInput}>
+                      <Input
+                        value={hint.text}
+                        onChange={(e) => handleHintTextChange(hint.id, e.currentTarget.value)}
+                        placeholder={`Hint ${index + 1} text`}
+                        aria-label={`Hint ${index + 1} text`}
+                      />
+                    </div>
+                    <div className={challengeStyles.hintActions}>
+                      <IconButton
+                        name="arrow-up"
+                        tooltip="Move hint up"
+                        aria-label={`Move hint ${index + 1} up`}
+                        disabled={index === 0}
+                        onClick={() => handleMoveHint(hint.id, -1)}
+                      />
+                      <IconButton
+                        name="arrow-down"
+                        tooltip="Move hint down"
+                        aria-label={`Move hint ${index + 1} down`}
+                        disabled={index === hints.length - 1}
+                        onClick={() => handleMoveHint(hint.id, 1)}
+                      />
+                      <IconButton
+                        name="trash-alt"
+                        tooltip="Remove hint"
+                        aria-label={`Remove hint ${index + 1}`}
+                        onClick={() => handleRemoveHint(hint.id)}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              icon="plus"
+              size="sm"
+              onClick={handleAddHint}
+              className={challengeStyles.addHintButton}
+            >
+              Add hint
+            </Button>
+          </div>
+        </Field>
+
+        <Field
+          label="Message shown when Check my work fails"
+          description="Displayed alongside the next hint when verification fails. If empty, the block shows a generic 'Not solved yet' message."
+        >
+          <Input
+            value={failureMessage}
+            onChange={(e) => setFailureMessage(e.currentTarget.value)}
+            placeholder="Metrics are not flowing yet. Try the next hint."
+          />
+        </Field>
+      </div>
 
       <div className={styles.footer}>
         {isEditing && onSwitchBlockType && (
