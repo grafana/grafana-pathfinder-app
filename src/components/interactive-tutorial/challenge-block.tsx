@@ -285,7 +285,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       setErrorDetail(message);
       setState('setup-failed');
     }
-  }, [setupCommands]);
+  }, [setupCommands, resetToIdle]);
 
   // Watch terminal status while we're trying to connect. When it goes live,
   // kick off setup. This effect reacts to an external system (the terminal
