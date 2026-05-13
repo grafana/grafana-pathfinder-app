@@ -68,6 +68,18 @@ export interface BlockEditorHeaderProps {
   isSelectionMode: boolean;
   /** Toggle selection mode on/off */
   onToggleSelectionMode: () => void;
+  /** Step backwards through the in-session undo history. */
+  onUndo: () => void;
+  /** Step forwards through the in-session redo history. */
+  onRedo: () => void;
+  /** True iff undo is available. */
+  canUndo: boolean;
+  /** True iff redo is available. */
+  canRedo: boolean;
+  /** Optional label for the next undo target — surfaced as the button tooltip. */
+  undoLabel: string | null;
+  /** Optional label for the next redo target — surfaced as the button tooltip. */
+  redoLabel: string | null;
 }
 
 const getHeaderStyles = (theme: GrafanaTheme2) => ({
@@ -235,6 +247,12 @@ export function BlockEditorHeader({
   hasBlocks,
   isSelectionMode,
   onToggleSelectionMode,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  undoLabel,
+  redoLabel,
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 
@@ -528,6 +546,37 @@ export function BlockEditorHeader({
                 aria-label={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
                 tooltip={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
                 data-testid={testIds.blockEditor.toggleSelectionButton}
+              />
+            </>
+          )}
+
+          {/* Undo / redo for the in-session history ring buffer. The
+              labels (when present) describe the next operation in the
+              stack — useful for tooltip-driven discoverability. The
+              `corner-up-left` / `corner-up-right` icons are the
+              conventional curved-arrow glyphs every word processor /
+              editor uses for undo/redo. */}
+          {viewMode === 'edit' && (
+            <>
+              <IconButton
+                name="corner-up-left"
+                size="sm"
+                variant="secondary"
+                onClick={onUndo}
+                disabled={!canUndo}
+                aria-label={undoLabel ? `Undo: ${undoLabel}` : 'Undo'}
+                tooltip={undoLabel ? `Undo: ${undoLabel}` : 'Undo'}
+                data-testid="pathfinder-block-editor-undo"
+              />
+              <IconButton
+                name="corner-up-right"
+                size="sm"
+                variant="secondary"
+                onClick={onRedo}
+                disabled={!canRedo}
+                aria-label={redoLabel ? `Redo: ${redoLabel}` : 'Redo'}
+                tooltip={redoLabel ? `Redo: ${redoLabel}` : 'Redo'}
+                data-testid="pathfinder-block-editor-redo"
               />
             </>
           )}

@@ -176,6 +176,16 @@ export const AssistantPropsSchema = z.object({
   assistantType: z.enum(['query', 'config', 'code', 'text']).optional(),
 });
 
+/**
+ * Schema for editor-only annotation fields. Spread into every block
+ * schema so authors can attach a private note to any block; stripped
+ * from published output by the editor's export path.
+ * @coupling Type: AuthorAnnotated
+ */
+export const AuthorAnnotatedSchema = z.object({
+  authorNote: z.string().optional(),
+});
+
 // ============ CONTENT BLOCK SCHEMAS ============
 
 /**
@@ -188,6 +198,8 @@ export const JsonMarkdownBlockSchema = z.object({
   content: z.string().min(1, 'Markdown content is required').describe('Markdown body shown to the user'),
   // Assistant customization props
   ...AssistantPropsSchema.shape,
+  // Editor-only annotation (stripped on export)
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
@@ -198,6 +210,7 @@ export const JsonHtmlBlockSchema = z.object({
   type: z.literal('html'),
   id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
   content: z.string().min(1, 'HTML content is required').describe('Sanitized HTML body shown to the user'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
@@ -211,6 +224,7 @@ export const JsonImageBlockSchema = z.object({
   alt: z.string().optional().describe('Alt text for accessibility'),
   width: z.number().optional().describe('Display width in pixels'),
   height: z.number().optional().describe('Display height in pixels'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
@@ -231,6 +245,7 @@ export const JsonVideoBlockSchema = z.object({
   title: z.string().optional().describe('Display title'),
   start: z.number().min(0).optional().describe('Start time in seconds'),
   end: z.number().min(0).optional().describe('End time in seconds'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 // ============ INTERACTIVE BLOCK SCHEMAS ============
@@ -279,6 +294,8 @@ export const JsonInteractiveBlockSchema = z
     openGuide: z.string().optional().describe('Guide ID to open when this block completes'),
     // Assistant customization props
     ...AssistantPropsSchema.shape,
+    // Editor-only annotation (stripped on export)
+    ...AuthorAnnotatedSchema.shape,
   })
   .refine(
     (block) => {
@@ -323,6 +340,7 @@ export const JsonMultistepBlockSchema = z.object({
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
@@ -339,6 +357,7 @@ export const JsonGuidedBlockSchema = z.object({
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
@@ -370,6 +389,7 @@ export const JsonQuizBlockSchema = z
       .boolean()
       .optional()
       .describe('Randomize choice display order (default: true); pinned choices keep their authored index'),
+    ...AuthorAnnotatedSchema.shape,
   })
   .superRefine((quiz, ctx) => {
     // Empty quizzes are a transient authoring state; the publish-time
@@ -436,6 +456,7 @@ export const JsonInputBlockSchema = z.object({
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   datasourceFilter: z.string().optional().describe('Filter for datasource input (e.g., loki, prometheus)'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 // ============ TERMINAL BLOCK SCHEMA ============
@@ -453,6 +474,7 @@ export const JsonTerminalBlockSchema = z.object({
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   hint: z.string().optional().describe('Hint text shown if user is stuck'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 // ============ TERMINAL CONNECT BLOCK SCHEMA ============
@@ -469,6 +491,7 @@ export const JsonTerminalConnectBlockSchema = z.object({
   vmTemplate: z.string().optional().describe('VM template to provision'),
   vmApp: z.string().optional().describe('App to launch in the VM'),
   vmScenario: z.string().optional().describe('Scenario to run in the VM'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 // ============ CODE BLOCK SCHEMA ============
@@ -493,6 +516,7 @@ export const JsonCodeBlockBlockSchema = z.object({
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   hint: z.string().optional().describe('Hint text shown if user is stuck'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 // ============ GROT GUIDE BLOCK SCHEMA ============
@@ -582,6 +606,7 @@ export const JsonGrotGuideBlockSchema = z
       .describe('Stable identifier; grot-guide blocks are authored in the dedicated editor, not the CLI'),
     welcome: GrotGuideWelcomeSchema,
     screens: z.array(GrotGuideScreenSchema).min(1, EMPTY_SCREENS_MESSAGE),
+    ...AuthorAnnotatedSchema.shape,
   })
   .refine(
     (block) => {
@@ -736,6 +761,7 @@ export const JsonBlockSchema = createBlockSchemaWithDepth(0);
 export const JsonSectionBlockSchema = z.object({
   ...SectionProps,
   blocks: z.lazy(() => z.array(JsonBlockSchema)),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
@@ -746,6 +772,7 @@ export const JsonSectionBlockSchema = z.object({
 export const JsonAssistantBlockSchema = z.object({
   ...AssistantProps,
   blocks: z.lazy(() => z.array(JsonBlockSchema)),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
@@ -757,6 +784,7 @@ export const JsonConditionalBlockSchema = z.object({
   ...ConditionalProps,
   whenTrue: z.lazy(() => z.array(JsonBlockSchema)),
   whenFalse: z.lazy(() => z.array(JsonBlockSchema)),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 // ============ ROOT GUIDE SCHEMA ============
@@ -818,10 +846,13 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'scrollContainer',
   ]),
   _choice: new Set(['id', 'text', 'correct', 'hint', 'pinned']),
-  markdown: new Set(['type', 'id', 'content', 'assistantEnabled', 'assistantId', 'assistantType']),
-  html: new Set(['type', 'id', 'content']),
-  image: new Set(['type', 'id', 'src', 'alt', 'width', 'height']),
-  video: new Set(['type', 'id', 'src', 'provider', 'title', 'start', 'end']),
+  // `authorNote` is the editor-only annotation spread from
+  // `AuthorAnnotatedSchema` into every block type. It's stripped on
+  // export, but stays in the schema so authoring tools can persist it.
+  markdown: new Set(['type', 'id', 'content', 'assistantEnabled', 'assistantId', 'assistantType', 'authorNote']),
+  html: new Set(['type', 'id', 'content', 'authorNote']),
+  image: new Set(['type', 'id', 'src', 'alt', 'width', 'height', 'authorNote']),
+  video: new Set(['type', 'id', 'src', 'provider', 'title', 'start', 'end', 'authorNote']),
   interactive: new Set([
     'type',
     'id',
@@ -843,11 +874,13 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'verify',
     'lazyRender',
     'scrollContainer',
+    'openGuide',
     'assistantEnabled',
     'assistantId',
     'assistantType',
+    'authorNote',
   ]),
-  multistep: new Set(['type', 'id', 'content', 'steps', 'requirements', 'objectives', 'skippable']),
+  multistep: new Set(['type', 'id', 'content', 'steps', 'requirements', 'objectives', 'skippable', 'authorNote']),
   guided: new Set([
     'type',
     'id',
@@ -858,8 +891,9 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'objectives',
     'skippable',
     'completeEarly',
+    'authorNote',
   ]),
-  section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives', 'autoCollapse']),
+  section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives', 'autoCollapse', 'authorNote']),
   conditional: new Set([
     'type',
     'id',
@@ -871,6 +905,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'reftarget',
     'whenTrueSectionConfig',
     'whenFalseSectionConfig',
+    'authorNote',
   ]),
   _conditionalSectionConfig: new Set(['title', 'requirements', 'objectives']),
   quiz: new Set([
@@ -884,6 +919,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'requirements',
     'skippable',
     'shuffle',
+    'authorNote',
   ]),
   input: new Set([
     'type',
@@ -900,10 +936,30 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'requirements',
     'skippable',
     'datasourceFilter',
+    'authorNote',
   ]),
-  assistant: new Set(['type', 'id', 'assistantId', 'assistantType', 'blocks']),
-  terminal: new Set(['type', 'id', 'command', 'content', 'requirements', 'objectives', 'skippable', 'hint']),
-  'terminal-connect': new Set(['type', 'id', 'content', 'buttonText', 'vmTemplate', 'vmApp', 'vmScenario']),
+  assistant: new Set(['type', 'id', 'assistantId', 'assistantType', 'blocks', 'authorNote']),
+  terminal: new Set([
+    'type',
+    'id',
+    'command',
+    'content',
+    'requirements',
+    'objectives',
+    'skippable',
+    'hint',
+    'authorNote',
+  ]),
+  'terminal-connect': new Set([
+    'type',
+    'id',
+    'content',
+    'buttonText',
+    'vmTemplate',
+    'vmApp',
+    'vmScenario',
+    'authorNote',
+  ]),
   'code-block': new Set([
     'type',
     'id',
@@ -916,8 +972,9 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'objectives',
     'skippable',
     'hint',
+    'authorNote',
   ]),
-  'grot-guide': new Set(['type', 'id', 'welcome', 'screens']),
+  'grot-guide': new Set(['type', 'id', 'welcome', 'screens', 'authorNote']),
   _manifest: new Set([
     'schemaVersion',
     'id',

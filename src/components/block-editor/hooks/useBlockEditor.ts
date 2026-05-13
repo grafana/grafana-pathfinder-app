@@ -5,7 +5,7 @@
  * Handles blocks array, selection, and guide metadata.
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { EditorBlock, BlockEditorState, JsonBlock, JsonGuide, ViewMode } from '../types';
 import type {
   JsonSectionBlock,
@@ -17,6 +17,7 @@ import type {
 } from '../../../types/json-guide.types';
 import { DEFAULT_GUIDE_METADATA } from '../constants';
 import { copyNestedInstanceId } from '../nestedBlockInstanceId';
+import { useGuideHistory } from './useGuideHistory';
 
 /**
  * Type guard for section blocks
@@ -137,6 +138,20 @@ export interface UseBlockEditorReturn {
   /** Mark the current state as saved */
   markSaved: () => void;
 
+  // Undo / redo
+  /** Step backwards through the in-session history ring buffer. */
+  undo: () => void;
+  /** Step forwards through the in-session history ring buffer. */
+  redo: () => void;
+  /** True iff the undo stack has entries. */
+  canUndo: boolean;
+  /** True iff the redo stack has entries. */
+  canRedo: boolean;
+  /** Optional label for the next undo target — surfaced on the button tooltip. */
+  undoLabel: string | null;
+  /** Optional label for the next redo target. */
+  redoLabel: string | null;
+
   // Block merging operations
   /** Merge selected interactive blocks into a Multistep block */
   mergeBlocksToMultistep: (blockIds: string[]) => void;
@@ -212,7 +227,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       block,
     })) ?? [];
 
-  const [state, setState] = useState<BlockEditorState>({
+  const { state, setState, undo, redo, canUndo, canRedo, undoLabel, redoLabel, resetHistory } = useGuideHistory({
     guide: {
       id: initialGuide?.id ?? DEFAULT_GUIDE_METADATA.id,
       title: initialGuide?.title ?? DEFAULT_GUIDE_METADATA.title,
@@ -250,7 +265,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Add a new block
@@ -278,7 +293,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
 
       return id;
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Update an existing block
@@ -296,7 +311,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Remove a block
@@ -314,7 +329,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Move a block
@@ -344,7 +359,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Duplicate a block
@@ -376,7 +391,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
 
       return newId;
     },
-    [state.blocks, notifyChange]
+    [state.blocks, notifyChange, setState]
   );
 
   // Nest a block inside a section
@@ -421,7 +436,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Unnest a block from a section back to root level
@@ -473,7 +488,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Add a block directly to a section
@@ -516,7 +531,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
 
       return id;
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Update a nested block
@@ -562,7 +577,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Delete a nested block
@@ -599,7 +614,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Duplicate a nested block
@@ -643,7 +658,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Move a nested block within its section
@@ -692,7 +707,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // ============ Conditional branch operations ============
@@ -737,7 +752,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
 
       return id;
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Update a block within a conditional branch
@@ -779,7 +794,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Delete a block from a conditional branch
@@ -816,7 +831,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Duplicate a block within a conditional branch
@@ -860,7 +875,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Move a block within a conditional branch
@@ -909,7 +924,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Nest a root block into a conditional branch
@@ -966,7 +981,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Unnest a block from a conditional branch back to root level
@@ -1021,7 +1036,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Move a block between conditional branches (true <-> false)
@@ -1083,7 +1098,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Move a block from one section to another
@@ -1155,16 +1170,22 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
-  // Set view mode
-  const setViewMode = useCallback((mode: ViewMode) => {
-    setState((prev) => ({
-      ...prev,
-      viewMode: mode,
-    }));
-  }, []);
+  // Set view mode — UI-only change, never enters undo history.
+  const setViewMode = useCallback(
+    (mode: ViewMode) => {
+      setState(
+        (prev) => ({
+          ...prev,
+          viewMode: mode,
+        }),
+        { skipHistory: true }
+      );
+    },
+    [setState]
+  );
 
   // Get guide as JsonGuide
   const getGuide = useCallback((): JsonGuide => {
@@ -1177,46 +1198,60 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     };
   }, [state.guide, state.blocks]);
 
-  // Load a guide
-  const loadGuide = useCallback((guide: JsonGuide, blockIds?: string[]) => {
-    // If blockIds are provided (from persistence), use them to preserve IDs across refreshes
-    // Otherwise generate new IDs (for new/imported guides)
-    const newBlocks: EditorBlock[] = guide.blocks.map((block, index) => ({
-      id: blockIds?.[index] ?? generateBlockId(),
-      block,
-    }));
+  // Load a guide — full reset, undo across this point doesn't make sense.
+  const loadGuide = useCallback(
+    (guide: JsonGuide, blockIds?: string[]) => {
+      // If blockIds are provided (from persistence), use them to preserve IDs across refreshes
+      // Otherwise generate new IDs (for new/imported guides)
+      const newBlocks: EditorBlock[] = guide.blocks.map((block, index) => ({
+        id: blockIds?.[index] ?? generateBlockId(),
+        block,
+      }));
 
-    setState({
-      guide: {
-        id: guide.id,
-        title: guide.title,
-      },
-      blocks: newBlocks,
-      viewMode: 'edit',
-      isDirty: false,
-    });
-  }, []);
+      setState(
+        {
+          guide: {
+            id: guide.id,
+            title: guide.title,
+          },
+          blocks: newBlocks,
+          viewMode: 'edit',
+          isDirty: false,
+        },
+        { skipHistory: true }
+      );
+      resetHistory();
+    },
+    [setState, resetHistory]
+  );
 
-  // Reset to new guide
+  // Reset to new guide — full reset, undo across this point doesn't make sense.
   const resetGuide = useCallback(() => {
-    setState({
-      guide: { ...DEFAULT_GUIDE_METADATA },
-      blocks: [],
-      viewMode: 'edit',
-      isDirty: false,
-    });
-  }, []);
+    setState(
+      {
+        guide: { ...DEFAULT_GUIDE_METADATA },
+        blocks: [],
+        viewMode: 'edit',
+        isDirty: false,
+      },
+      { skipHistory: true }
+    );
+    resetHistory();
+  }, [setState, resetHistory]);
 
-  // Mark as saved
+  // Mark as saved — clears the dirty flag without recording history.
   const markSaved = useCallback(() => {
-    setState((prev) => {
-      // REACT: bail out if already saved - prevents infinite re-render loop (R5)
-      if (!prev.isDirty) {
-        return prev; // Same reference = no re-render
-      }
-      return { ...prev, isDirty: false };
-    });
-  }, []);
+    setState(
+      (prev) => {
+        // REACT: bail out if already saved - prevents infinite re-render loop (R5)
+        if (!prev.isDirty) {
+          return prev; // Same reference = no re-render
+        }
+        return { ...prev, isDirty: false };
+      },
+      { skipHistory: true }
+    );
+  }, [setState]);
 
   /**
    * Parse a block ID to determine if it's a nested block.
@@ -1380,7 +1415,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Merge interactive/multistep/guided blocks into a Guided block
@@ -1496,7 +1531,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         return newState;
       });
     },
-    [notifyChange]
+    [notifyChange, setState]
   );
 
   // Memoize return value
@@ -1522,6 +1557,12 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       resetGuide,
       isDirty: state.isDirty,
       markSaved,
+      undo,
+      redo,
+      canUndo,
+      canRedo,
+      undoLabel,
+      redoLabel,
       mergeBlocksToMultistep,
       mergeBlocksToGuided,
       addBlockToConditionalBranch,
@@ -1554,6 +1595,12 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       loadGuide,
       resetGuide,
       markSaved,
+      undo,
+      redo,
+      canUndo,
+      canRedo,
+      undoLabel,
+      redoLabel,
       mergeBlocksToMultistep,
       mergeBlocksToGuided,
       addBlockToConditionalBranch,

@@ -308,6 +308,14 @@ export const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
     minWidth: 0,
     flex: 1,
   }),
+  // Mirrors BlockItem: small editor-only note indicator. Stripped on export.
+  authorNoteIcon: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    color: theme.colors.text.secondary,
+    cursor: 'help',
+    flexShrink: 0,
+  }),
   actions: css({
     display: 'flex',
     flexDirection: 'row',
