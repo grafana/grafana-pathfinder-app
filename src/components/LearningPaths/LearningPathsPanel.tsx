@@ -44,6 +44,7 @@ export function LearningPathsPanel({ onOpenGuide }: LearningPathsPanelProps) {
     dismissCelebration,
     streakInfo,
     isLoading,
+    isLoadingCourses,
   } = useLearningPaths();
 
   // Handle opening a guide. For URL-typed guide entries, resolve to the URL
@@ -67,7 +68,7 @@ export function LearningPathsPanel({ onOpenGuide }: LearningPathsPanelProps) {
   // Get the badge to celebrate (if any)
   const celebrationBadge = progress.pendingCelebrations[0] ? getBadgeById(progress.pendingCelebrations[0]) : null;
 
-  if (isLoading) {
+  if (isLoading || isLoadingCourses) {
     return (
       <div className={styles.container}>
         <SkeletonLoader type="recommendations" />
