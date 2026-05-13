@@ -50,6 +50,8 @@ Add an optional `warnings: Array<{ code: string; message: string; path?: string 
 
 Where a field has a known canonical form, normalize in the CLI runner instead of failing. Current pattern (fail → agent retries → maybe fixes it) wastes context. Better: normalize and emit a `warnings[]` entry telling the agent what was changed so it learns the canonical form for next time. Candidate normalizations: YouTube URL forms, trailing slashes on URLs, slug-ification of titles, whitespace trimming.
 
+**Status (2026-05-12).** Built in [slice 2 — integrity and normalize](./phases/mcp-hardening-2-integrity-and-normalize.md). The mechanism lives in `src/cli/utils/input-normalizers.ts` exposing `normalizeBlockInput(type, fields) → { normalized, warnings }`; the `INPUT_NORMALIZED` warning constructor sits alongside the existing helpers in `src/cli/utils/warnings.ts`. First consumer is the `video` branch (YouTube URL forms). Adding more normalizations means extending the dispatch in `input-normalizers.ts` — no runner-side changes needed.
+
 ### M4. Selector catalog tool
 
 A new MCP tool `pathfinder_lookup_selector` returning curated, known-good Grafana DOM selectors keyed by area (panel editor, explore, dashboard settings, alerting, etc.). Makes it cheap for agents to do the right thing instead of inventing selectors. Referenced from `pathfinder_authoring_start.discovery` and from any field that accepts a `reftarget`.
@@ -73,6 +75,8 @@ Append new findings here. Number sequentially. Do not renumber on removal — st
 
 **Recommendation.** ETag + sharper description. Turns a confusing class-of-bug into a one-line diagnosis without introducing server-side state.
 
+**Status (2026-05-12).** Addressed in [slice 2 — integrity and normalize](./phases/mcp-hardening-2-integrity-and-normalize.md). Both load-bearing mitigations landed: every response now embeds `artifact.__etag` (SHA-256 over canonical-form `{content, manifest}`, truncated to 16 hex chars); every mutation tool verifies the echoed etag before dispatching and returns a dedicated `ARTIFACT_MUTATED` error with remediation-shaped text on mismatch. The artifact-input `.describe()` is sharpened to spell out the round-trip contract. OQ1 resolved — see slice 2 decision log. The opaque-handle alternative remains tracked under [P5 — GCS-backed authoring sessions](./AI-AUTHORING-IMPLEMENTATION.md#p5--deferred-follow-ups); slice 2 picks the cheapest fix that preserves statelessness.
+
 ### #2. YouTube watch links rejected
 
 **Observed.** Video block requires embed URLs (`youtube.com/embed/<id>`). Agents commonly pass watch (`youtube.com/watch?v=ID`) or short (`youtu.be/ID`) URLs and round-trip through validation failure before correcting.
@@ -84,6 +88,8 @@ Append new findings here. Number sequentially. Do not renumber on removal — st
 - **Remediation-shaped error.** If normalization fails (non-YouTube URL, malformed), return `INVALID_VIDEO_URL` with the exact expected form: _"Got `<url>`. Expected `youtube.com/embed/<id>`."_
 
 **Recommendation.** All three; auto-normalize is the load-bearing one.
+
+**Status (2026-05-12).** Addressed in [slice 2 — integrity and normalize](./phases/mcp-hardening-2-integrity-and-normalize.md). The CLI runner now normalizes `youtube.com/watch?v=ID`, `youtu.be/ID`, and `youtube.com/shorts/ID` (plus missing-protocol and `m.youtube.com` tolerant variants) to the canonical `youtube.com/embed/ID` form before `assertCliBlockFields` runs. An `INPUT_NORMALIZED` warning rides on the outcome naming the rewrite verbatim so the agent learns the canonical form. The video.src schema description names the auto-conversion safety net. `assertEmbeddableVideoUrl` in `cli-validators.ts` keeps its branches as defense-in-depth (dead code for normalized inputs but live for any path that bypasses the runners). The 14-case normalizer test matrix in `src/cli/__tests__/input-normalizers.test.ts` is the regression guard. Slice 2 also builds **M3** (the input-normalization mechanism) which is reusable for future cases (trailing slashes, whitespace, slug-ification).
 
 ### #3. `reftarget` (DOM selector) hallucination
 
@@ -102,6 +108,8 @@ Append new findings here. Number sequentially. Do not renumber on removal — st
 
 **Re-observed (2026-05-08).** Real Grafana Assistant testing reproduced this pattern in concert with #8 — the agent generated a 7-step `multistep` block with invented `reftarget` selectors on the steps that weren't `noop`. Confirms the mitigations above (description hardening, M2/M4 warnings + catalog, M1 layer 3) are still the right ones; this issue should be planned alongside #8, since both share the same root (no compositional opinionation) and the same mitigation surface in `pathfinder_authoring_start`.
 
+**Status (2026-05-12).** Addressed in [slice 1 — routing and composition](./phases/mcp-hardening-1-routing-and-composition.md). Three of the four candidate mitigations landed (M4 selector catalog deferred to a later slice — see OQ3): the `reftarget` field `.describe()` text is hardened on all 4 schema sites (task 7); the same rule rides on layer 3 (server `instructions`, task 2), layer 2 (`_start.compositionRules`, task 5), and outcome-time (`UNVERIFIED_SELECTOR` warning fires on every write in `runAddBlock` / `runAddStep` / `runEditBlock`, task 8). The four-layer reinforcement is what closes this issue — no single layer is sufficient on its own, and the runtime cost still requires a verification round-trip the validator can't do.
+
 ### #4. Steps in multistep / guided blocks are unaddressable
 
 **Observed.** Verbatim agent feedback: _"edit-block does not expose steps as a flag (it only covers named scalar fields), and steps carry no block ids so remove-block can't target them directly. The only path was cascade-remove the multistep and rebuild it — which the tool did automatically."_
@@ -115,6 +123,8 @@ Append new findings here. Number sequentially. Do not renumber on removal — st
 - **Status quo (cascade-and-rebuild).** Wastes context on every nontrivial edit and is error-prone for deep guides. Not viable long-term.
 
 **Recommendation.** Give steps (and likely choices) block ids. Cleaner contract, single addressing model, matches what agents reach for first.
+
+**Status (2026-05-12).** **Deferred pending telemetry.** This is an annoyance, not a correctness issue — first-pass authoring is unaffected; only mid-session step edits pay the cost (cascade-remove parent → re-add → re-add each step, ~9 tool calls vs. 1). Slices 1 and 2 closed the floor-raising issues (#3 selector hallucination silently broke guides at runtime; #7 routing prevented Assistant from invoking the MCP at all; #1 artifact corruption misdirected the diagnosis); #4 sits at "expensive workaround exists" rather than "broken." Re-evaluate after slices 1+2 ship to production and Grafana Assistant traffic reveals the real frequency of mid-session step edits. If telemetry shows the cascade-rebuild path is common, scope a slice around OQ2; if rare, the current state may be fine indefinitely. Decision rationale lives in the chat-of-record alongside [slice 2's PR](https://github.com/grafana/grafana-pathfinder-app/pull/870).
 
 ### #5. Hop-over-hop artifact growth
 
@@ -172,6 +182,20 @@ Append new findings here. Number sequentially. Do not renumber on removal — st
 
 **Recommendation.** MCP-side reposition + server `instructions` first; both are within this doc's scope and don't require Assistant-team coordination. Revisit the Assistant skill / default-list ordering question after observing whether MCP-side fixes alone close the routing gap.
 
+**Status (2026-05-12).** Addressed in [slice 1 — routing and composition](./phases/mcp-hardening-1-routing-and-composition.md). All three layers of the hint surface now carry routing signal: layer 1 (every `registerTool` description rewritten to lead with _"Use this tool when the user wants to …"_, task 3), layer 2 (`triggers` and `notFor` arrays in `pathfinder_authoring_start`, task 4), layer 3 (`buildServer` now passes a non-empty `instructions` string on the `initialize` handshake, task 2). The trigger vocabulary lives single-source in `src/cli/mcp/lib/agent-routing.ts` so layers 2 and 3 cannot drift. The Assistant-team coordination point (default-MCP-list ordering / Assistant skill) is left open for re-evaluation after these MCP-side fixes ship.
+
+**Telemetry (2026-05-12, slice 1 + 2 deployed to Cloud Run).** Real Cursor session against the deployed MCP — prompt _"Create a short interactive tutorial that shows how to add a Prometheus data source in Grafana"_ **did not route to Pathfinder.** Cursor gave a prose answer instead of invoking `pathfinder_authoring_start`. The user's words ("interactive tutorial", "Prometheus data source") were close to the trigger vocabulary but not literally on it; the layer-3 `instructions` text used a hedge-y "Use this server when …" opener that didn't override the model's default "just answer in prose" bias. This is the first hard data point showing slice 1's routing fix is necessary-but-not-sufficient.
+
+**Status (2026-05-12, slice 3 complete).** Telemetry-driven follow-up landed as [slice 3 — routing telemetry response](./phases/mcp-hardening-3-routing-telemetry-response.md). Three changes: (1) trigger vocabulary expanded from 8 phrases to ~25, organized by the verb × asset-noun pattern — any write/edit/update/create/author/build verb + content/guide/tutorial/walkthrough/how-to/learning-content noun should route here; (2) layer-3 `instructions` opener rewritten as an assertive default — _"Default to using this server whenever the user asks to …"_ + _"Generic prose explanations should be a last resort, not the default response"_; (3) new `PATHFINDER_DOMAINS` vocabulary surfaces the Grafana product surface area (Prometheus, Loki, Tempo, Mimir, Beyla, Alloy, dashboards, alerts, data sources, panels, etc.) so product-area mentions carry routing signal even without canonical verbs.
+
+**Re-test (2026-05-12, post-slice-3 deploy).** Three fresh Cursor prompts against the deployed MCP — three-for-three:
+
+- _"I want to write content that walks a beginner through navigating to the Grafana data sources page."_ → Cursor invoked `pathfinder_authoring_start` as its first move. ✓ Routes.
+- _"Put together a step-by-step walkthrough of setting up a Prometheus data source."_ → Cursor invoked `pathfinder_authoring_start` as its first move. ✓ Routes.
+- _"Write a Prometheus query that returns the 95th percentile latency over the last 5 minutes."_ → Cursor answered with the PromQL inline; no Pathfinder tool calls. ✓ Correctly stayed out (anti-routing on the verb+noun disambiguation worked).
+
+Routing thread closed for the MCP-side surface. The Level 3 escalation paths (Cursor client-config description / Assistant-team default-MCP-list coordination) outlined in the slice-3 design conversation are not needed for Cursor. Whether they're needed for Grafana Assistant specifically remains open until the deployed MCP is exercised in a real Assistant session.
+
 ### #8. Composition opinionation: agents default to multistep and noop without warrant
 
 **Observed (2026-05-08).** Two related patterns from real Grafana Assistant testing, same session as #7:
@@ -198,16 +222,24 @@ A body of authoring best-practices already exists in `grafana/interactive-tutori
 
 **Recommendation.** Distilled `compositionRules` section in `pathfinder_authoring_start` is the load-bearing fix; M1 layer 3 instructions and per-block-type description tightening are supporting work. **The hardest part is distillation discipline** — the upstream guide is rich, the agent's context budget is not. Plan this issue alongside #3 (selectors) and #7 (invocation routing); all three share the `pathfinder_authoring_start` payload as their primary mitigation surface.
 
+**Status (2026-05-12).** Addressed in [slice 1 — routing and composition](./phases/mcp-hardening-1-routing-and-composition.md). The load-bearing fix landed: 11 distilled `compositionRules` in `pathfinder_authoring_start` (task 5), sourced from `grafana/interactive-tutorials` `.cursor/authoring-guide.mdc` via `gh api`, comfortably under the 15-rule budget. Supporting work also landed: the multistep / noop rule is restated at layer 3 (task 2), and `runAddBlock` now emits a `MULTISTEP_COMPOSITION_HINT` warning at outcome-time when a multistep block is appended (task 6) so the agent gets a reinforcing nudge even if it ignored the same rule in `_start`. OQ7 was decided to inline the rules in `_start` rather than ship a separate `pathfinder_authoring_best_practices` tool — see the slice's decision log.
+
 ## Open questions
 
-- **OQ1.** Is the right artifact-integrity primitive an ETag (server-side hash check) or a client-visible `__etag` field on the artifact (visible to the model, becomes part of the contract)? The first is invisible plumbing; the second is self-documenting but adds a field to every artifact.
-- **OQ2.** Does giving steps block ids require a content-version bump and migration, or can existing artifacts auto-id on read? Depends on whether step ids are required or optional.
+- **OQ1. _Resolved 2026-05-12 (slice 2)._** Client-visible `__etag` on the artifact envelope (sibling to `content` and `manifest`). Invisible plumbing is impossible under the stateless contract — there is no per-call server state to remember the previous hash, so the agent must echo it back, which means the field must be on the wire. SHA-256 over canonical-form JSON, truncated to 16 hex chars. See the [slice's decision log](./phases/mcp-hardening-2-integrity-and-normalize.md#decision-log).
+- **OQ2. _Deferred pending telemetry (2026-05-12)._** Three options were scoped (required ids + migration; additive optional ids + auto-id on read; index-based addressing). Picking the right one wants production data on how often agents actually need to mid-session-edit a step — speculation from a single observed session isn't enough. Re-open after slices 1+2 have run for a week or two of real Grafana Assistant traffic. See issue #4 Status note for the full rationale.
 - **OQ3.** Where does the curated selector catalog live (M4)? Hand-maintained JSON in the repo, generated from interactive-example guides, or pulled from a Grafana-side source of truth? Affects how it stays current.
-- **OQ4.** Should `warnings[]` (M2) be surfaced to CLI users as well (stderr line, `--format json` field) or MCP-only? CLI users would benefit, but it is a CLI contract change.
+- **OQ4. _Resolved 2026-05-12 (slice 1)._** Surface in both — CLI text output (`Warnings:` block between `text` and `hints`, suppressed in `--quiet`) and `--format json` payload. MCP layer forwards verbatim. Additive `SuccessOutcome.warnings` field; no existing caller breaks. See the [slice's decision log](./phases/mcp-hardening-1-routing-and-composition.md#decision-log).
 - **OQ5.** For #6, should the tracked deploy template be a `.example.sh` sibling (operator copies and edits) or a parameterized script that reads from `.env` / env vars (no copy step, but more moving parts)? The first is simpler and matches the existing personal-script pattern; the second is friendlier to multi-environment operators.
-- **OQ6.** What is the canonical trigger vocabulary list for the M1 layer 3 server `instructions` and the `triggers` field in `pathfinder_authoring_start` (#7)? Hand-maintained in this repo, derived from observed agent prompts in production telemetry, or co-owned with the Assistant team via a tracked vocabulary doc?
-- **OQ7.** What is the distillation strategy for the upstream authoring guide at `grafana/interactive-tutorials` `.cursor/authoring-guide.mdc` (#8)? Inline a curated subset into `pathfinder_authoring_start`, ship a separate `pathfinder_authoring_best_practices` tool returning the distilled text on demand, or both? Operator constraint: _"distill the right bits and not just clog the agent with context."_ Context budget is the binding tradeoff. Affects who owns the distillation (subject-matter expert at the source repo vs. a planner working from this hardening phase) and how it stays in sync upstream.
+- **OQ6. _Resolved 2026-05-12 (slice 1)._** Hand-curated, single-source in `src/cli/mcp/lib/agent-routing.ts` (four readonly arrays: phrases, verbs, nouns, anti-routing). Three consumers read from it — `lib/server-instructions.ts`, `tools/authoring-start.ts`, and the lib-level unit tests. The starter list is curated from the 2026-05-08 Grafana Assistant session in issue #7; evolve with production telemetry. Cross-team coordination with the Assistant team remains open for default-MCP-list ordering. See the [slice's decision log](./phases/mcp-hardening-1-routing-and-composition.md#decision-log).
+- **OQ7. _Resolved 2026-05-12 (slice 1)._** Inline the distilled subset in `pathfinder_authoring_start.compositionRules`. 11 rules shipped, comfortably under the 15-rule target. The separate-tool variant (`pathfinder_authoring_best_practices`) is preserved as a documented escape hatch in `authoring-start.ts` if the inline list grows past 20 rules in a future slice. See the [slice's decision log](./phases/mcp-hardening-1-routing-and-composition.md#decision-log).
 
 ## Decision log
 
-_(Empty until a planning phase picks items off this doc. Append decisions here with date and rationale.)_
+### 2026-05-12 — Slice 1 (routing + composition + selector discipline)
+
+Issues #3, #7, #8 picked up by [`phases/mcp-hardening-1-routing-and-composition.md`](./phases/mcp-hardening-1-routing-and-composition.md). 11 tasks shipped across 9 atomic commits prefixed `MCP-HARDEN-1:` (tasks 9–11 bundled into a single slice-exit commit). Cross-cutting plumbing built once: M1 layers 1+3, M2 `warnings[]`. Full decision log lives in the slice plan. Open questions resolved in the slice (linked to slice's decision log above): OQ4 (warnings visibility), OQ6 (trigger vocabulary source), OQ7 (best-practices distillation strategy). Deferred from this slice: M4 (selector catalog — depends on OQ3), issues #1 / #2 / #4 / #5 (independent fixes that compose cleanly on top of the M1+M2 plumbing this slice built), and the Assistant-team coordination point on broad rollout (issue #7 final paragraph).
+
+### 2026-05-12 — Slice 2 (artifact integrity + input normalization)
+
+Issues #1, #2 picked up by [`phases/mcp-hardening-2-integrity-and-normalize.md`](./phases/mcp-hardening-2-integrity-and-normalize.md). Built **M3** (CLI-side input normalization) as the third cross-cutting mechanism, reusable by future normalizers. New error code `ARTIFACT_MUTATED` and new warning code `INPUT_NORMALIZED` (registered in `docs/developer/MCP_SERVER.md`). Open questions resolved: **OQ1** (ETag visibility — forced by the stateless contract to be on-the-wire as `artifact.__etag`). Deferred from this slice: M4 (still blocked on OQ3), issues #4 / #5 (next conversations), the opaque-handle alternative for #1 (tracked under P5 GCS-sessions in `AI-AUTHORING-IMPLEMENTATION.md`). Slice plan's decision log captures two additional in-slice calls: keep `assertEmbeddableVideoUrl` as defense-in-depth, and surface `INPUT_NORMALIZED` warnings on idempotent no-ops too.

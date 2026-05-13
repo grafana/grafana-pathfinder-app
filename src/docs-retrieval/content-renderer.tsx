@@ -1093,6 +1093,7 @@ function renderParsedElement(
           maxAttempts={element.props.maxAttempts}
           requirements={element.props.requirements}
           skippable={element.props.skippable}
+          shuffle={element.props.shuffle}
           // Standalone step position (for guides without sections)
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}

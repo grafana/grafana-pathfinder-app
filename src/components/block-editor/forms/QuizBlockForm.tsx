@@ -185,6 +185,12 @@ export function QuizBlockForm({
   const [maxAttempts, setMaxAttempts] = useState(initial?.maxAttempts ?? 3);
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
   const [skippable, setSkippable] = useState(initial?.skippable ?? false);
+  const [shuffle, setShuffle] = useState(initial?.shuffle ?? true);
+
+  // Toggle pinned state on a choice
+  const handleTogglePinnedChoice = useCallback((id: string) => {
+    setChoices((prev) => prev.map((c) => (c.id === id ? { ...c, pinned: c.pinned ? undefined : true } : c)));
+  }, []);
 
   // Add a new choice
   const handleAddChoice = useCallback(() => {
@@ -291,6 +297,9 @@ export function QuizBlockForm({
         if (c.hint?.trim()) {
           cleaned.hint = c.hint.trim();
         }
+        if (c.pinned) {
+          cleaned.pinned = true;
+        }
         return cleaned;
       });
 
@@ -303,11 +312,14 @@ export function QuizBlockForm({
         ...(completionMode === 'max-attempts' && maxAttempts !== 3 && { maxAttempts }),
         ...(reqArray.length > 0 && { requirements: reqArray }),
         ...(skippable && { skippable }),
+        // Only emit `shuffle` when opting out — default is true, so omitting
+        // keeps authored JSON minimal (mirrors the multiSelect/skippable pattern).
+        ...(shuffle === false && { shuffle: false }),
       };
 
       onSubmit(block);
     },
-    [question, choices, multiSelect, completionMode, maxAttempts, requirements, skippable, onSubmit]
+    [question, choices, multiSelect, completionMode, maxAttempts, requirements, skippable, shuffle, onSubmit]
   );
 
   // Validation
@@ -345,6 +357,14 @@ export function QuizBlockForm({
             onChange={handleMultiSelectChange}
           />
         </div>
+      </Field>
+
+      {/* Shuffle */}
+      <Field
+        label="Shuffle answer order"
+        description="Randomize the order choices are displayed in. Pin individual choices below to keep them at their authored index."
+      >
+        <Checkbox value={shuffle} onChange={(e) => setShuffle(e.currentTarget.checked)} label="Shuffle on each view" />
       </Field>
 
       {/* Choices */}
@@ -390,6 +410,21 @@ export function QuizBlockForm({
 
                 {/* Actions */}
                 <div className={quizStyles.choiceActions}>
+                  <IconButton
+                    name="gf-pin"
+                    tooltip={
+                      shuffle
+                        ? choice.pinned
+                          ? 'Pinned to this position — unpin to allow shuffling'
+                          : 'Pin to this position (kept fixed when shuffling)'
+                        : 'Pin position (has no effect when shuffle is off)'
+                    }
+                    onClick={() => handleTogglePinnedChoice(choice.id)}
+                    aria-label={`${choice.pinned ? 'Unpin' : 'Pin'} choice ${choice.id}`}
+                    aria-pressed={!!choice.pinned}
+                    variant={choice.pinned ? 'primary' : 'secondary'}
+                    size="md"
+                  />
                   <IconButton
                     name="trash-alt"
                     tooltip="Remove choice"

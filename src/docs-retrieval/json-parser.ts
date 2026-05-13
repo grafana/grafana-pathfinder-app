@@ -717,6 +717,7 @@ function convertQuizBlock(block: JsonQuizBlock, path: string): ConversionResult 
     text: choice.text,
     correct: choice.correct ?? false,
     hint: choice.hint,
+    pinned: choice.pinned ?? false,
   }));
 
   return {
@@ -730,6 +731,7 @@ function convertQuizBlock(block: JsonQuizBlock, path: string): ConversionResult 
         maxAttempts: block.maxAttempts ?? 3,
         requirements,
         skippable: block.skippable ?? false,
+        shuffle: block.shuffle ?? true,
       },
       children: questionElements,
     },

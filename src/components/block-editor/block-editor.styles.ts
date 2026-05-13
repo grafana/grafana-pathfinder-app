@@ -305,8 +305,8 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     justifyContent: 'center',
     width: '16px',
-    color: theme.colors.text.disabled,
-    opacity: 0.4,
+    color: theme.colors.text.secondary,
+    opacity: 0.7,
     transition: 'opacity 0.15s ease',
     flexShrink: 0,
     pointerEvents: 'none', // Visual indicator only - parent handles dragging
@@ -361,6 +361,16 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     whiteSpace: 'nowrap',
     minWidth: 0,
     flex: 1,
+  }),
+
+  // Small editor-only note indicator. Renders only when the block has an
+  // `authorNote`; the tooltip carries the note text. Stripped on export.
+  authorNoteIcon: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    color: theme.colors.text.secondary,
+    cursor: 'help',
+    flexShrink: 0,
   }),
 
   actions: css({

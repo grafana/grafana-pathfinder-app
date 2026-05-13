@@ -201,6 +201,17 @@ export interface BlockOperations {
   onNestedBlockDuplicate: (sectionId: string, nestedIndex: number) => void;
   /** Move a nested block within its section */
   onNestedBlockMove: (sectionId: string, fromIndex: number, toIndex: number) => void;
+  /** Set the editor-only author note on a root block. */
+  onBlockAuthorNoteChange?: (blockId: string, note: string) => void;
+  /** Set the editor-only author note on a section-nested block. */
+  onNestedBlockAuthorNoteChange?: (sectionId: string, nestedIndex: number, note: string) => void;
+  /** Set the editor-only author note on a conditional-branch nested block. */
+  onConditionalBranchBlockAuthorNoteChange?: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    nestedIndex: number,
+    note: string
+  ) => void;
 
   // ============ CONDITIONAL BRANCH OPERATIONS ============
   /** Insert a new block into a conditional branch */

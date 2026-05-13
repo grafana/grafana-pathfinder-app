@@ -148,6 +148,37 @@ export const BLOCK_TYPE_ORDER: BlockType[] = [
 ];
 
 /**
+ * Palette groupings — drives the section headers in `BlockPalette`.
+ * Order is preserved; types within each group keep their `BLOCK_TYPE_ORDER`
+ * relative ordering.
+ *
+ * - **Content** — passive, author-authored material the user reads.
+ * - **Interactive** — blocks that require user action or input at runtime.
+ * - **Structure** — containers and special-purpose framing blocks.
+ */
+export const BLOCK_TYPE_GROUPS: ReadonlyArray<{
+  id: 'content' | 'interactive' | 'structure';
+  label: string;
+  types: BlockType[];
+}> = [
+  {
+    id: 'content',
+    label: 'Content',
+    types: ['markdown', 'image', 'video', 'code-block'],
+  },
+  {
+    id: 'interactive',
+    label: 'Interactive',
+    types: ['interactive', 'multistep', 'guided', 'input', 'quiz', 'terminal', 'terminal-connect'],
+  },
+  {
+    id: 'structure',
+    label: 'Structure',
+    types: ['section', 'conditional', 'grot-guide'],
+  },
+] as const;
+
+/**
  * Local storage key for persisting editor state
  */
 export const BLOCK_EDITOR_STORAGE_KEY = 'pathfinder-block-editor-state';

@@ -20,7 +20,7 @@ export function registerArtifactTools(server: McpServer): void {
     'pathfinder_create_package',
     {
       description:
-        'Create a fresh authoring artifact (content.json + manifest.json) for a new guide. Returns { content, manifest } for use as input to subsequent authoring tools.',
+        'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Returns a fresh authoring artifact ({ content, manifest }) for use as input to subsequent Pathfinder authoring tools.',
       inputSchema: {
         title: z.string().describe('Guide title shown to learners.'),
         id: z

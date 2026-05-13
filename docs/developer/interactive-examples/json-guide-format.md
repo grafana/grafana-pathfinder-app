@@ -521,24 +521,26 @@ Knowledge assessment with single or multiple choice questions.
 }
 ```
 
-| Field            | Type         | Required | Default          | Description                                     |
-| ---------------- | ------------ | -------- | ---------------- | ----------------------------------------------- |
-| `question`       | string       | ✅       | —                | Question text (supports markdown)               |
-| `choices`        | QuizChoice[] | ✅       | —                | Answer choices (see below)                      |
-| `multiSelect`    | boolean      | ❌       | `false`          | Allow multiple answers (checkboxes vs radio)    |
-| `completionMode` | string       | ❌       | `"correct-only"` | `"correct-only"` or `"max-attempts"`            |
-| `maxAttempts`    | number       | ❌       | `3`              | Attempts before revealing answer (max-attempts) |
-| `requirements`   | string[]     | ❌       | —                | Requirements for this quiz                      |
-| `skippable`      | boolean      | ❌       | `false`          | Allow skipping                                  |
+| Field            | Type         | Required | Default          | Description                                                                 |
+| ---------------- | ------------ | -------- | ---------------- | --------------------------------------------------------------------------- |
+| `question`       | string       | ✅       | —                | Question text (supports markdown)                                           |
+| `choices`        | QuizChoice[] | ✅       | —                | Answer choices (see below)                                                  |
+| `multiSelect`    | boolean      | ❌       | `false`          | Allow multiple answers (checkboxes vs radio)                                |
+| `completionMode` | string       | ❌       | `"correct-only"` | `"correct-only"` or `"max-attempts"`                                        |
+| `maxAttempts`    | number       | ❌       | `3`              | Attempts before revealing answer (max-attempts)                             |
+| `requirements`   | string[]     | ❌       | —                | Requirements for this quiz                                                  |
+| `skippable`      | boolean      | ❌       | `false`          | Allow skipping                                                              |
+| `shuffle`        | boolean      | ❌       | `true`           | Randomize choice display order. Set to `false` to render in authored order. |
 
 **Choice Structure:**
 
-| Field     | Type    | Required | Description                                   |
-| --------- | ------- | -------- | --------------------------------------------- |
-| `id`      | string  | ✅       | Choice identifier (e.g., "a", "b", "c")       |
-| `text`    | string  | ✅       | Choice text (supports markdown)               |
-| `correct` | boolean | ❌       | Is this a correct answer?                     |
-| `hint`    | string  | ❌       | Hint shown when this wrong choice is selected |
+| Field     | Type    | Required | Description                                                                                                             |
+| --------- | ------- | -------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `id`      | string  | ✅       | Choice identifier (e.g., "a", "b", "c")                                                                                 |
+| `text`    | string  | ✅       | Choice text (supports markdown)                                                                                         |
+| `correct` | boolean | ❌       | Is this a correct answer?                                                                                               |
+| `hint`    | string  | ❌       | Hint shown when this wrong choice is selected                                                                           |
+| `pinned`  | boolean | ❌       | When the quiz is shuffled, keep this choice at its authored index. Useful for "All of the above" / "None of the above". |
 
 **Completion Modes:**
 
@@ -559,6 +561,39 @@ Knowledge assessment with single or multiple choice questions.
     { "id": "b", "text": "Microsoft Word", "hint": "Word is not a data source!" },
     { "id": "c", "text": "Loki", "correct": true },
     { "id": "d", "text": "InfluxDB", "correct": true }
+  ]
+}
+```
+
+**Shuffle and Pinned Choices:**
+
+By default, quiz choices are shuffled on each view to prevent learners from memorizing answer positions. Authors can opt out at the block level, or pin individual choices to their authored index — useful for "All of the above" / "None of the above" answers that must stay in a specific slot.
+
+```json
+{
+  "type": "quiz",
+  "question": "Which Grafana data source uses PromQL?",
+  "choices": [
+    { "id": "a", "text": "Loki" },
+    { "id": "b", "text": "Prometheus", "correct": true },
+    { "id": "c", "text": "Tempo" },
+    { "id": "d", "text": "All of the above", "pinned": true, "hint": "Only one is correct." }
+  ]
+}
+```
+
+To preserve the authored order across all renders (e.g., when ordering matters pedagogically), set `shuffle: false`:
+
+```json
+{
+  "type": "quiz",
+  "question": "Order matters here — pick the lowest tier.",
+  "shuffle": false,
+  "choices": [
+    { "id": "a", "text": "Free", "correct": true },
+    { "id": "b", "text": "Pro" },
+    { "id": "c", "text": "Advanced" },
+    { "id": "d", "text": "Enterprise" }
   ]
 }
 ```

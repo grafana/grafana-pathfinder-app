@@ -105,6 +105,9 @@ export function BlockList({
     onMoveBlockBetweenSections,
     onBlockPreview,
     onNestedSectionBlockPreview,
+    onBlockAuthorNoteChange,
+    onNestedBlockAuthorNoteChange,
+    onConditionalBranchBlockAuthorNoteChange,
   } = operations;
   const styles = useStyles2(getBlockListStyles);
   const nestedStyles = useStyles2(getNestedStyles);
@@ -744,6 +747,9 @@ export function BlockList({
                         : undefined
                     }
                     isPreviewActive={isBlockItemPreviewActive}
+                    onAuthorNoteChange={
+                      onBlockAuthorNoteChange ? (note) => onBlockAuthorNoteChange(block.id, note) : undefined
+                    }
                   />
                 </SortableBlock>
 
@@ -777,6 +783,7 @@ export function BlockList({
                     onInsertBlockInConditional={onInsertBlockInConditional}
                     justDroppedId={justDroppedId}
                     lastModifiedId={lastModifiedId}
+                    onConditionalBranchBlockAuthorNoteChange={onConditionalBranchBlockAuthorNoteChange}
                   />
                 )}
 
@@ -812,6 +819,7 @@ export function BlockList({
                     pinnedNestedIndices={pinnedNestedIndices}
                     nestedPreviews={nestedPreviewByIndex}
                     previewClasses={previewClasses}
+                    onNestedBlockAuthorNoteChange={onNestedBlockAuthorNoteChange}
                   />
                 )}
 
