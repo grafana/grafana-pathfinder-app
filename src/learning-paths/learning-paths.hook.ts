@@ -22,13 +22,36 @@ import {
   interactiveStepStorage,
   interactiveCompletionStorage,
   journeyCompletionStorage,
-  milestoneCompletionStorage,
 } from '../lib/user-storage';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import { FALLBACK_BADGES } from './bundled-courses';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData, initCoursesData } from './paths-data';
-import { fetchPathGuides, type FetchedPathGuides } from './fetch-path-guides';
+
+/**
+ * A guide entry is a URL guide when it parses as an absolute http(s) URL.
+ * Keep this conservative: just protocol-prefix check, no full URL parse.
+ */
+function isUrlGuide(entry: string): boolean {
+  return entry.startsWith('http://') || entry.startsWith('https://');
+}
+
+/**
+ * Derive a fallback display title for a URL guide from its path segments.
+ * "https://grafana.com/docs/learning-paths/foo/bar/" -> "Bar".
+ */
+function deriveUrlGuideTitle(url: string): string {
+  try {
+    const segments = new URL(url).pathname.split('/').filter(Boolean);
+    const last = segments[segments.length - 1] ?? '';
+    return last
+      .split('-')
+      .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
+      .join(' ');
+  } catch {
+    return url;
+  }
+}
 
 // ============================================================================
 // CONSTANTS
@@ -86,10 +109,6 @@ export function useLearningPaths(): UseLearningPathsReturn {
   const [coursesLoaded, setCoursesLoaded] = useState(false);
   const [usingFallback, setUsingFallback] = useState(false);
 
-  // Dynamic guide data fetched from index.json for URL-based paths
-  const [dynamicGuideData, setDynamicGuideData] = useState<Record<string, FetchedPathGuides>>({});
-  const [isDynamicLoading, setIsDynamicLoading] = useState(false);
-
   // Load CDN course list (or fall back to bundled) on mount
   useEffect(() => {
     let mounted = true;
@@ -109,90 +128,30 @@ export function useLearningPaths(): UseLearningPathsReturn {
     };
   }, []);
 
-  // Get raw paths for the current platform (OSS or Cloud).
-  // Re-derives once `coursesLoaded` flips so we pick up the CDN data.
-  const rawPaths = useMemo(() => {
+  // Paths for the current platform. Re-derives once the CDN fetch settles.
+  const paths = useMemo((): LearningPath[] => {
     return getPathsData().paths;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coursesLoaded]);
 
-  // Fetch dynamic guides for URL-based paths once the course list is ready
-  useEffect(() => {
-    if (!coursesLoaded) {
-      return;
-    }
-    const urlPaths = rawPaths.filter((p) => p.url);
-    if (urlPaths.length === 0) {
-      return;
-    }
-
-    const abortController = new AbortController();
-    setIsDynamicLoading(true);
-
-    void (async () => {
-      const results: Record<string, FetchedPathGuides> = {};
-
-      await Promise.all(
-        urlPaths.map(async (path) => {
-          const data = await fetchPathGuides(path.url!, abortController.signal);
-          if (data) {
-            results[path.id] = data;
-          }
-        })
-      );
-
-      if (!abortController.signal.aborted) {
-        setDynamicGuideData(results);
-        setIsDynamicLoading(false);
-      }
-    })();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [coursesLoaded, rawPaths]);
-
-  // Build effective paths: merge dynamic guides into URL-based paths
-  const paths = useMemo((): LearningPath[] => {
-    return rawPaths.map((path) => {
-      const dynamic = dynamicGuideData[path.id];
-      if (path.url && dynamic) {
-        return { ...path, guides: dynamic.guides };
-      }
-      return path;
-    });
-  }, [rawPaths, dynamicGuideData]);
-
   /**
-   * Gets guide metadata, scoped to a specific path when provided.
+   * Resolves display metadata for a guide entry.
    *
-   * URL-based paths can share guide slugs (e.g. two paths each have an
-   * "intro" guide). When `pathId` is supplied, only that path's dynamic
-   * metadata is consulted, preventing cross-path collisions. When `pathId`
-   * is omitted (callers without path context), all dynamic metadata is
-   * scanned for backwards compatibility.
-   *
-   * Falls back to static metadata from paths.json / paths-cloud.json.
+   * For URL entries, the entry string is the URL; title is taken from any
+   * authored `guideMetadata[<url>]` and otherwise derived from the URL path.
+   * For ID entries, falls back to `guideMetadata[<id>]` or a generic stub.
    */
-  const resolveGuideMetadata = useCallback(
-    (guideId: string, pathId?: string): GuideMetadataEntry => {
-      if (pathId) {
-        const scoped = dynamicGuideData[pathId]?.guideMetadata[guideId];
-        if (scoped) {
-          return scoped;
-        }
-      } else {
-        for (const data of Object.values(dynamicGuideData)) {
-          if (data.guideMetadata[guideId]) {
-            return data.guideMetadata[guideId];
-          }
-        }
-      }
-      const { guideMetadata } = getPathsData();
-      return guideMetadata[guideId] || { title: guideId, estimatedMinutes: 5 };
-    },
-    [dynamicGuideData]
-  );
+  const resolveGuideMetadata = useCallback((guideId: string): GuideMetadataEntry => {
+    const { guideMetadata } = getPathsData();
+    const authored = guideMetadata[guideId];
+    if (authored) {
+      return authored;
+    }
+    if (isUrlGuide(guideId)) {
+      return { title: deriveUrlGuideTitle(guideId), estimatedMinutes: 5, url: guideId };
+    }
+    return { title: guideId, estimatedMinutes: 5 };
+  }, []);
 
   // Load progress from storage
   // Badge awarding is now handled in user-storage.ts when guides complete
@@ -315,9 +274,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
           foundCurrent = true;
         }
 
-        // Scope metadata to this path so two paths sharing a guide slug do
-        // not bleed URLs/titles across each other.
-        const metadata = resolveGuideMetadata(guideId, pathId);
+        const metadata = resolveGuideMetadata(guideId);
 
         return {
           id: guideId,
@@ -331,11 +288,13 @@ export function useLearningPaths(): UseLearningPathsReturn {
     [paths, progress.completedGuides, resolveGuideMetadata]
   );
 
-  // Path-scoped per-guide URL lookup. Used by handlers that receive
-  // (guideId, pathId) and need to navigate to the correct module.
+  // Per-guide URL lookup. Returns the URL for a URL-typed guide entry, or the
+  // authored remote URL for an ID-typed entry (undefined for bundled IDs).
+  // The `pathId` param is kept for API stability but no longer used now that
+  // entries are globally unique within a path's guide list.
   const getGuideUrlForPath = useCallback(
-    (guideId: string, pathId: string): string | undefined => {
-      return resolveGuideMetadata(guideId, pathId).url;
+    (guideId: string, _pathId: string): string | undefined => {
+      return resolveGuideMetadata(guideId).url;
     },
     [resolveGuideMetadata]
   );
@@ -391,7 +350,9 @@ export function useLearningPaths(): UseLearningPathsReturn {
     [progress]
   );
 
-  // Reset a path's progress (clears guides and interactive steps, keeps badges)
+  // Reset a path's progress (clears guides and interactive steps, keeps badges).
+  // For each entry, the content key is the URL itself (URL guide) or
+  // `bundled:<id>` (package-ID guide).
   const resetPath = useCallback(
     async (pathId: string): Promise<void> => {
       const path = paths.find((p) => p.id === pathId);
@@ -399,62 +360,25 @@ export function useLearningPaths(): UseLearningPathsReturn {
         return;
       }
 
-      if (path.url) {
-        // URL-based path: clear milestone tracking and journey completion
-        await milestoneCompletionStorage.clear(path.url);
-        await journeyCompletionStorage.clear(path.url);
+      await Promise.all(
+        path.guides.map((guideId) => {
+          const contentKey = isUrlGuide(guideId) ? guideId : `bundled:${guideId}`;
+          return Promise.all([
+            interactiveStepStorage.clearAllForContent(contentKey),
+            interactiveCompletionStorage.clear(contentKey),
+            journeyCompletionStorage.clear(contentKey),
+          ]);
+        })
+      );
 
-        // Remove milestone slugs from completedGuides (path.guides contains fetched slugs)
-        if (path.guides.length > 0) {
-          await learningProgressStorage.removeCompletedGuides(path.guides);
-        }
+      await learningProgressStorage.removeCompletedGuides(path.guides);
 
-        // Clear interactive steps for milestone URLs (iterate over completed milestones)
-        // Since we don't have the full milestone URLs stored, clear by prefix pattern
-        // The content keys for milestones start with the path URL
-        const [completions, journeyCompletions] = await Promise.all([
-          interactiveCompletionStorage.getAll(),
-          journeyCompletionStorage.getAll(),
-        ]);
-
-        const normalizedUrl = path.url.replace(/\/+$/, '');
-
-        // Batch clear operations for better performance with many milestones
-        await Promise.all([
-          ...Object.keys(completions)
-            .filter((key) => key.startsWith(normalizedUrl))
-            .map((key) =>
-              Promise.all([interactiveCompletionStorage.clear(key), interactiveStepStorage.clearAllForContent(key)])
-            ),
-          ...Object.keys(journeyCompletions)
-            .filter((key) => key.startsWith(normalizedUrl))
-            .map((key) => journeyCompletionStorage.clear(key)),
-        ]);
-      } else {
-        // Static bundled path: clear each guide's progress (batched for performance)
-        await Promise.all(
-          path.guides.map((guideId) => {
-            const contentKey = `bundled:${guideId}`;
-            return Promise.all([
-              interactiveStepStorage.clearAllForContent(contentKey),
-              interactiveCompletionStorage.clear(contentKey),
-              journeyCompletionStorage.clear(contentKey),
-            ]);
-          })
-        );
-
-        // Remove guide IDs from completedGuides
-        await learningProgressStorage.removeCompletedGuides(path.guides);
-      }
-
-      // Dispatch event to notify UI components to refresh
       window.dispatchEvent(
         new CustomEvent('interactive-progress-cleared', {
           detail: { contentKey: '*', pathId },
         })
       );
 
-      // Reload progress to update UI
       await loadProgress({ current: true });
     },
     [paths, loadProgress]
@@ -474,7 +398,6 @@ export function useLearningPaths(): UseLearningPathsReturn {
     dismissCelebration,
     streakInfo,
     isLoading,
-    isDynamicLoading,
     isLoadingCourses: !coursesLoaded,
     usingFallback,
   };

@@ -92,15 +92,12 @@ export function computeNextAction(deps: ComputeNextActionDeps): NextLearningActi
     return null;
   }
 
-  // Prefer the resolved per-guide URL (path-scoped via getPathGuides) so
-  // partially-completed URL-based paths open the actual next module
-  // instead of the path base / first module (issue #744). Fall back to
-  // the path base URL, then to static metadata, then to bundled.
+  // URL-typed guide entries set `currentGuide.url` directly. Package-ID
+  // entries either carry an authored remote URL in static metadata, or fall
+  // back to the `bundled:<id>` content key.
   let guideUrl: string;
   if (currentGuide.url) {
     guideUrl = currentGuide.url;
-  } else if (targetPath.url) {
-    guideUrl = targetPath.url;
   } else {
     const metadata = getPathsData().guideMetadata[currentGuide.id];
     guideUrl = metadata?.url ?? `bundled:${currentGuide.id}`;

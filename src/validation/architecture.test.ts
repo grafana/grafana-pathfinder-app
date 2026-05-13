@@ -128,7 +128,6 @@ const ALLOWED_LATERAL_VIOLATIONS = new Set([
   'docs-retrieval/content-renderer.tsx -> requirements-manager',
   // Phase 4b: 10 interactive component lateral entries removed (files moved to components/)
   // Additional pre-existing cross-engine imports uncovered by AST parsing
-  'docs-retrieval/learning-journey-helpers.ts -> learning-paths',
   'requirements-manager/requirements-checker.hook.ts -> context-engine',
   'requirements-manager/step-checker.hook.ts -> context-engine',
 ]);

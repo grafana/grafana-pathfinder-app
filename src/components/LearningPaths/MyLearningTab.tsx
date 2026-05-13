@@ -304,36 +304,18 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     );
   }, [selectedBadge, progress.completedGuides, progress.streakDays, paths, allBadges]);
 
-  // Handle opening a guide
+  // Handle opening a guide. Resolves the navigation URL for both URL-typed
+  // and package-ID guide entries (URL entries return the URL itself;
+  // package-ID entries return any authored remote URL, else `bundled:<id>`).
   const handleOpenGuide = useCallback(
     (guideId: string, pathId: string) => {
-      // Find the parent path by ID (not by guideId, since multiple paths may share the same guide slugs)
       const parentPath = paths.find((p) => p.id === pathId);
+      const resolvedFromMetadata = getGuideUrlForPath(guideId, pathId);
+      const guideUrl = resolvedFromMetadata ?? `bundled:${guideId}`;
 
-      // URL-based path — open the per-guide URL when known so the user lands
-      // on the actual next module instead of the path base / first module
-      // (issue #744). When dynamic data has not loaded yet, fall back to the
-      // path's base URL.
-      if (parentPath?.url) {
-        const resolvedGuideUrl = getGuideUrlForPath(guideId, parentPath.id) ?? parentPath.url;
-        const guideTitle = getPathGuides(parentPath.id).find((g) => g.id === guideId)?.title;
-        const title = guideTitle || parentPath.title;
-
-        reportAppInteraction(UserInteraction.OpenResourceClick, {
-          content_title: title,
-          content_url: resolvedGuideUrl,
-          content_type: 'learning-journey',
-          interaction_location: 'my_learning_tab',
-        });
-
-        onOpenGuide(resolvedGuideUrl, title);
-        return;
-      }
-
-      // Static guide — open the individual guide content
-      const guideMetadata = getPathsData().guideMetadata[guideId];
-      const title = guideMetadata?.title || guideId;
-      const guideUrl = guideMetadata?.url ?? `bundled:${guideId}`;
+      const guideFromList = getPathGuides(pathId).find((g) => g.id === guideId);
+      const staticTitle = getPathsData().guideMetadata[guideId]?.title;
+      const title = guideFromList?.title || staticTitle || guideId;
 
       reportAppInteraction(UserInteraction.OpenResourceClick, {
         content_title: title,
@@ -342,11 +324,9 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         interaction_location: 'my_learning_tab',
       });
 
-      // Track learning path progress when user opens a guide from a path
       if (parentPath) {
         const pathProgress = getPathProgress(parentPath.id);
-        const pathGuides = getPathGuides(parentPath.id);
-        const completedCount = pathGuides.filter((g) => g.completed).length;
+        const completedCount = getPathGuides(parentPath.id).filter((g) => g.completed).length;
 
         reportAppInteraction(UserInteraction.LearningPathProgress, {
           path_id: parentPath.id,

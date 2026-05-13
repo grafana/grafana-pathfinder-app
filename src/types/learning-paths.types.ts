@@ -20,7 +20,11 @@ export interface LearningPath {
   title: string;
   /** Brief description of what the user will learn */
   description: string;
-  /** Ordered array of guide IDs. Empty when `url` is set (guides fetched dynamically). */
+  /**
+   * Ordered array of guide entries. Each entry is either a package ID (resolved
+   * via the package-engine chain) or an absolute http(s) URL (rendered as an
+   * external-link guide). Runtime distinguishes via `entry.startsWith('http')`.
+   */
   guides: string[];
   /** Badge ID awarded upon path completion */
   badgeId: string;
@@ -30,8 +34,6 @@ export interface LearningPath {
   estimatedMinutes?: number;
   /** Icon name for the path (Grafana icon) */
   icon?: string;
-  /** Remote docs URL for paths backed by a learning journey. When set, guides are fetched from {url}index.json */
-  url?: string;
 }
 
 /**
@@ -247,8 +249,6 @@ export interface UseLearningPathsReturn {
   streakInfo: StreakInfo;
   /** Loading state */
   isLoading: boolean;
-  /** Whether dynamic guide data is still being fetched for URL-based paths */
-  isDynamicLoading: boolean;
   /** Whether the course list is still being fetched from the CDN */
   isLoadingCourses: boolean;
   /** True when the bundled fallback is in use (CDN unreachable or invalid) */

@@ -3,7 +3,7 @@
  *
  * Course definitions now live in the interactive-learning CDN. These tests
  * exercise the wire schema with a representative inline fixture covering
- * every badge trigger type, both static and URL-based courses, and the
+ * every badge trigger type, mixed package-ID + URL guide entries, and the
  * platform field. The schema is the contract between this plugin and the
  * CDN; the CDN-side validation in interactive-tutorials uses the same Zod
  * module via the pathfinder-cli.
@@ -30,8 +30,7 @@ const FIXTURE: CoursesPlatformIndex = {
       id: 'linux-server-integration',
       title: 'Monitor a Linux server',
       description: 'Set up full Linux server observability with Alloy.',
-      url: 'https://grafana.com/docs/learning-paths/linux-server-integration/',
-      guides: [],
+      guides: ['linux-server-integration-lj', 'https://grafana.com/docs/learning-paths/linux-server-integration/'],
       badgeId: 'penguin-wrangler',
       targetPlatform: 'cloud',
       estimatedMinutes: 20,
@@ -89,18 +88,18 @@ describe('CoursesPlatformIndex schema', () => {
     expect(CoursesPlatformIndexSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects a missing badgeId on a course', () => {
+  it('rejects an unsafe URL scheme in a guide entry', () => {
     const bad = {
       ...FIXTURE,
-      courses: [{ ...FIXTURE.courses[0], badgeId: undefined as unknown as string }],
+      courses: [{ ...FIXTURE.courses[0], guides: ['javascript:alert(1)'] }],
     };
     expect(CoursesPlatformIndexSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects a non-https URL on a course', () => {
+  it('rejects a missing badgeId on a course', () => {
     const bad = {
       ...FIXTURE,
-      courses: [{ ...FIXTURE.courses[0], url: 'javascript:alert(1)' }],
+      courses: [{ ...FIXTURE.courses[0], badgeId: undefined as unknown as string }],
     };
     expect(CoursesPlatformIndexSchema.safeParse(bad).success).toBe(false);
   });
@@ -127,11 +126,14 @@ describe('CoursesPlatformIndex schema', () => {
       }
     });
 
-    it('URL-based courses have valid https url and empty guides', () => {
+    it('guide entries are either bare IDs or absolute https URLs', () => {
       for (const course of FIXTURE.courses) {
-        if (course.url) {
-          expect(course.url).toMatch(/^https:\/\//);
-          expect(course.guides).toEqual([]);
+        for (const entry of course.guides) {
+          if (entry.startsWith('http://') || entry.startsWith('https://')) {
+            expect(entry).toMatch(/^https:\/\//);
+          } else {
+            expect(entry).not.toMatch(/^\w+:\/\//);
+          }
         }
       }
     });

@@ -190,71 +190,62 @@ describe('computeNextAction', () => {
   });
 
   // ============================================================================
-  // Issue #744: URL-based paths must point at the next module, not the path base
+  // Unified guides model: URL entries resolve their own URL
   // ============================================================================
-  describe('issue #744: URL-based path next-guide resolution', () => {
-    const urlPath: LearningPath = {
-      id: 'linux-server',
-      title: 'Linux server integration',
-      description: 'Linux server integration',
-      guides: ['select-platform', 'install-alloy', 'configure-alloy'],
-      badgeId: 'linux-server-badge',
-      url: 'https://grafana.com/docs/learning-paths/linux-server-integration/',
+  describe('URL-typed guide entries', () => {
+    const mixedPath: LearningPath = {
+      id: 'infrastructure-alerting',
+      title: 'Infrastructure alerting',
+      description: 'Hands-on alerting plus docs reference.',
+      guides: ['alerting-101', 'https://grafana.com/docs/learning-paths/infrastructure-alerting/'],
+      badgeId: 'alert-guardian',
     };
 
-    const guideUrls: Record<string, string> = {
-      'select-platform': 'https://grafana.com/docs/learning-paths/linux-server-integration/select-platform/',
-      'install-alloy': 'https://grafana.com/docs/learning-paths/linux-server-integration/install-alloy/',
-      'configure-alloy': 'https://grafana.com/docs/learning-paths/linux-server-integration/configure-alloy/',
+    const docsUrl = 'https://grafana.com/docs/learning-paths/infrastructure-alerting/';
+
+    const makeMixedGuides = (completedIds: string[]): PathGuide[] => {
+      let foundCurrent = false;
+      return mixedPath.guides.map((id) => {
+        const completed = completedIds.includes(id);
+        const isCurrent = !completed && !foundCurrent;
+        if (isCurrent) {
+          foundCurrent = true;
+        }
+        const isUrl = id.startsWith('http');
+        return {
+          id,
+          title: isUrl ? 'External docs' : `Guide: ${id}`,
+          completed,
+          isCurrent,
+          url: isUrl ? id : undefined,
+        };
+      });
     };
 
-    /**
-     * Builds PathGuides annotated with the per-guide URL the hook would
-     * resolve from dynamic index.json data.
-     */
-    const makeUrlGuides = (guideIds: string[], completedIds: string[]): PathGuide[] =>
-      makeGuides(guideIds, completedIds).map((g) => ({ ...g, url: guideUrls[g.id] }));
-
-    it('returns the per-guide URL for the next-not-yet-completed module when one is available', () => {
-      // First guide complete; "next" is install-alloy.
+    it('returns the URL itself as guideUrl when the next entry is a URL guide', () => {
       const result = computeNextAction({
-        paths: [urlPath],
-        getPathProgress: () => 33,
-        getPathGuides: () => makeUrlGuides(urlPath.guides, ['select-platform']),
+        paths: [mixedPath],
+        getPathProgress: () => 50,
+        getPathGuides: () => makeMixedGuides(['alerting-101']),
         isPathCompleted: () => false,
       });
 
       expect(result).not.toBeNull();
-      expect(result!.guideId).toBe('install-alloy');
-      // Bug: previously returned urlPath.url (= the path base / first module).
-      expect(result!.guideUrl).toBe(guideUrls['install-alloy']);
-      expect(result!.guideUrl).not.toBe(urlPath.url);
+      expect(result!.guideId).toBe(docsUrl);
+      expect(result!.guideUrl).toBe(docsUrl);
     });
 
-    it('falls back to the path base URL when the current guide has no resolved per-guide URL', () => {
-      // Simulates dynamic data not yet loaded — guide.url is undefined.
+    it('falls back to bundled: scheme when next entry is a package ID with no remote URL', () => {
       const result = computeNextAction({
-        paths: [urlPath],
-        getPathProgress: () => 33,
-        getPathGuides: () => makeGuides(urlPath.guides, ['select-platform']),
-        isPathCompleted: () => false,
-      });
-
-      expect(result).not.toBeNull();
-      expect(result!.guideUrl).toBe(urlPath.url);
-    });
-
-    it('uses guide.url even when starting at the first guide (not yet started but URL known)', () => {
-      const result = computeNextAction({
-        paths: [urlPath],
+        paths: [mixedPath],
         getPathProgress: () => 0,
-        getPathGuides: () => makeUrlGuides(urlPath.guides, []),
+        getPathGuides: () => makeMixedGuides([]),
         isPathCompleted: () => false,
       });
 
       expect(result).not.toBeNull();
-      expect(result!.guideId).toBe('select-platform');
-      expect(result!.guideUrl).toBe(guideUrls['select-platform']);
+      expect(result!.guideId).toBe('alerting-101');
+      expect(result!.guideUrl).toBe('bundled:alerting-101');
     });
   });
 });

@@ -29,10 +29,6 @@ export function LearningPathCard({
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
 
-  // Whether this is a URL-based path (guides fetched dynamically)
-  const isUrlBased = Boolean(path.url);
-  const isLoadingGuides = isUrlBased && guides.length === 0;
-
   // Find the next guide to continue with
   const currentGuide = guides.find((g) => g.isCurrent);
   const firstIncompleteGuide = guides.find((g) => !g.completed);
@@ -98,13 +94,9 @@ export function LearningPathCard({
           <h3 className={cx(styles.title, isCompleted && styles.titleCompleted)}>{path.title}</h3>
 
           <div className={styles.meta}>
-            {isLoadingGuides ? (
-              <span>Loading guides...</span>
-            ) : (
-              <span>
-                {completedCount}/{guides.length} guides
-              </span>
-            )}
+            <span>
+              {completedCount}/{guides.length} guides
+            </span>
             {path.estimatedMinutes && (
               <>
                 <span className={styles.metaDot}>·</span>
@@ -178,28 +170,21 @@ export function LearningPathCard({
         {path.description && <p className={styles.description}>{path.description}</p>}
 
         <div className={styles.guideList}>
-          {isLoadingGuides ? (
-            <div className={styles.guideItem}>
-              <Icon name="fa fa-spinner" size="sm" />
-              <span className={styles.guideTitle}>Loading guides...</span>
+          {guides.map((guide) => (
+            <div key={guide.id} className={cx(styles.guideItem, guide.isCurrent && styles.guideItemCurrent)}>
+              <span
+                className={cx(
+                  styles.guideIcon,
+                  guide.completed && styles.guideIconCompleted,
+                  guide.isCurrent && styles.guideIconCurrent,
+                  !guide.completed && !guide.isCurrent && styles.guideIconPending
+                )}
+              >
+                {guide.completed ? <Icon name="check" size="sm" /> : <Icon name="circle" size="sm" />}
+              </span>
+              <span className={styles.guideTitle}>{guide.title}</span>
             </div>
-          ) : (
-            guides.map((guide) => (
-              <div key={guide.id} className={cx(styles.guideItem, guide.isCurrent && styles.guideItemCurrent)}>
-                <span
-                  className={cx(
-                    styles.guideIcon,
-                    guide.completed && styles.guideIconCompleted,
-                    guide.isCurrent && styles.guideIconCurrent,
-                    !guide.completed && !guide.isCurrent && styles.guideIconPending
-                  )}
-                >
-                  {guide.completed ? <Icon name="check" size="sm" /> : <Icon name="circle" size="sm" />}
-                </span>
-                <span className={styles.guideTitle}>{guide.title}</span>
-              </div>
-            ))
-          )}
+          ))}
         </div>
       </div>
     </div>

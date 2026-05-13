@@ -31,16 +31,38 @@ const GuideMetadataEntrySchema = z.object({
   url: SafeUrlSchema.optional(),
 });
 
+/**
+ * A guide entry is either a bare package ID (no URL scheme) or an absolute
+ * http(s) URL. Anything that looks URL-shaped must pass SafeUrlSchema so
+ * `javascript:`, `data:`, etc. can't slip into the CDN payload.
+ */
+const GuideEntrySchema = z
+  .string()
+  .min(1)
+  .refine(
+    (entry) => {
+      if (!/^\w+:/.test(entry)) {
+        return true;
+      }
+      return SafeUrlSchema.safeParse(entry).success;
+    },
+    { error: 'Guide entry must be a bare ID or an absolute http(s) URL' }
+  );
+
 export const CourseSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
   description: z.string(),
-  guides: z.array(z.string()),
+  /**
+   * Each entry is either a package ID (resolved via the package-engine chain)
+   * or an absolute http(s) URL (rendered as an external-link guide).
+   * Distinguished at runtime by `entry.startsWith('http')`.
+   */
+  guides: z.array(GuideEntrySchema),
   badgeId: z.string().min(1),
   targetPlatform: z.enum(['oss', 'cloud']).optional(),
   estimatedMinutes: z.number().optional(),
   icon: z.string().optional(),
-  url: SafeUrlSchema.optional(),
 });
 
 export const BadgeTriggerSchema = z.discriminatedUnion('type', [
@@ -75,23 +97,22 @@ export const CourseDocumentSchema = z
     id: z.string().min(1),
     title: z.string().min(1),
     description: z.string(),
-    guides: z.array(z.string()),
+    guides: z.array(GuideEntrySchema),
     guideMetadata: z.record(z.string(), GuideMetadataEntrySchema).optional(),
     badgeId: z.string().min(1),
     targetPlatform: z.enum(['oss', 'cloud']).optional(),
     estimatedMinutes: z.number().optional(),
     icon: z.string().optional(),
-    url: SafeUrlSchema.optional(),
   })
   .loose();
 
-export const BadgeDocumentSchema = z
+export const BadgesDocumentSchema = z
   .object({
     schemaVersion: z.string(),
-    badge: BadgeSchema,
+    badges: z.array(BadgeSchema),
   })
   .loose();
 
 export type InferredCoursesPlatformIndex = z.infer<typeof CoursesPlatformIndexSchema>;
 export type InferredCourseDocument = z.infer<typeof CourseDocumentSchema>;
-export type InferredBadgeDocument = z.infer<typeof BadgeDocumentSchema>;
+export type InferredBadgesDocument = z.infer<typeof BadgesDocumentSchema>;

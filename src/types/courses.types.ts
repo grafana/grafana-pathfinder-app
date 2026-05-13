@@ -24,16 +24,16 @@ export interface CourseDocument {
   id: string;
   title: string;
   description: string;
+  /** See CourseSchema.guides — entries are package IDs or absolute URLs. */
   guides: string[];
   guideMetadata?: Record<string, GuideMetadataEntry>;
   badgeId: string;
   targetPlatform?: 'oss' | 'cloud';
   estimatedMinutes?: number;
   icon?: string;
-  url?: string;
 }
 
-export interface BadgeDocument {
+export interface BadgesDocument {
   schemaVersion: string;
-  badge: Badge;
+  badges: Badge[];
 }

@@ -1,8 +1,8 @@
 /**
  * Build Courses Command
  *
- * Aggregates per-course `course.json` files and per-badge `badges/*.json`
- * files into platform-keyed `oss.json` and `cloud.json` indexes for the
+ * Aggregates per-course `course.json` files and a single `badges.json`
+ * file into platform-keyed `oss.json` and `cloud.json` indexes for the
  * interactive-learning CDN.
  *
  * Run from the interactive-tutorials repo as part of its deploy workflow.
@@ -17,7 +17,7 @@ import type { CoursesPlatformIndex, Course } from '../../types/courses.types';
 import {
   COURSES_SCHEMA_VERSION,
   CourseDocumentSchema,
-  BadgeDocumentSchema,
+  BadgesDocumentSchema,
   CoursesPlatformIndexSchema,
 } from '../../types/courses.schema';
 
@@ -37,7 +37,7 @@ function discoverCourseFiles(coursesDir: string): string[] {
   const entries = fs.readdirSync(coursesDir, { withFileTypes: true });
   const out: string[] = [];
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name === 'badges') {
+    if (!entry.isDirectory()) {
       continue;
     }
     const coursePath = path.join(coursesDir, entry.name, 'course.json');
@@ -48,16 +48,8 @@ function discoverCourseFiles(coursesDir: string): string[] {
   return out.sort();
 }
 
-function discoverBadgeFiles(coursesDir: string): string[] {
-  const badgesDir = path.join(coursesDir, 'badges');
-  if (!fs.existsSync(badgesDir)) {
-    return [];
-  }
-  return fs
-    .readdirSync(badgesDir)
-    .filter((f) => f.endsWith('.json'))
-    .map((f) => path.join(badgesDir, f))
-    .sort();
+function badgesFilePath(coursesDir: string): string {
+  return path.join(coursesDir, 'badges.json');
 }
 
 interface LoadedCourse {
@@ -85,11 +77,11 @@ function loadCourses(files: string[], errs: BuildErrors): LoadedCourse[] {
         errs.errors.push(`${file}: ${JSON.stringify(parsed.error.issues)}`);
         continue;
       }
-      const { id, title, description, guides, badgeId, targetPlatform, estimatedMinutes, icon, url, guideMetadata } =
+      const { id, title, description, guides, badgeId, targetPlatform, estimatedMinutes, icon, guideMetadata } =
         parsed.data;
       loaded.push({
         file,
-        course: { id, title, description, guides, badgeId, targetPlatform, estimatedMinutes, icon, url },
+        course: { id, title, description, guides, badgeId, targetPlatform, estimatedMinutes, icon },
         guideMetadata: guideMetadata ?? {},
       });
     } catch (e) {
@@ -99,22 +91,22 @@ function loadCourses(files: string[], errs: BuildErrors): LoadedCourse[] {
   return loaded;
 }
 
-function loadBadges(files: string[], errs: BuildErrors): LoadedBadge[] {
-  const loaded: LoadedBadge[] = [];
-  for (const file of files) {
-    try {
-      const raw = readJson(file);
-      const parsed = BadgeDocumentSchema.safeParse(raw);
-      if (!parsed.success) {
-        errs.errors.push(`${file}: ${JSON.stringify(parsed.error.issues)}`);
-        continue;
-      }
-      loaded.push({ file, badge: parsed.data.badge });
-    } catch (e) {
-      errs.errors.push(`${file}: ${e instanceof Error ? e.message : String(e)}`);
-    }
+function loadBadges(file: string, errs: BuildErrors): LoadedBadge[] {
+  if (!fs.existsSync(file)) {
+    return [];
   }
-  return loaded;
+  try {
+    const raw = readJson(file);
+    const parsed = BadgesDocumentSchema.safeParse(raw);
+    if (!parsed.success) {
+      errs.errors.push(`${file}: ${JSON.stringify(parsed.error.issues)}`);
+      return [];
+    }
+    return parsed.data.badges.map((badge) => ({ file, badge }));
+  } catch (e) {
+    errs.errors.push(`${file}: ${e instanceof Error ? e.message : String(e)}`);
+    return [];
+  }
 }
 
 function buildPlatformIndex(
@@ -174,7 +166,7 @@ export const buildCoursesCommand = new Command('build-courses')
 
     const errs: BuildErrors = { errors: [] };
     const courses = loadCourses(discoverCourseFiles(absDir), errs);
-    const badges = loadBadges(discoverBadgeFiles(absDir), errs);
+    const badges = loadBadges(badgesFilePath(absDir), errs);
 
     if (errs.errors.length > 0) {
       console.error('Validation errors:');
