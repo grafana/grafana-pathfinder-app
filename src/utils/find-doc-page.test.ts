@@ -41,6 +41,35 @@ describe('findDocPage', () => {
     });
   });
 
+  describe('backend-guide: prefix (raw form, e.g. ?doc= from auto-dock or copy-link)', () => {
+    it('returns a backend-guide DocPage for a valid resource name', () => {
+      // The fullscreen "Copy workshop link" copies the tab's baseUrl verbatim,
+      // which for custom guides is `backend-guide:...` — make sure that round
+      // trip works without requiring the api: shorthand.
+      expect(findDocPage('backend-guide:my-guide-a3f9')).toEqual({
+        type: 'docs-page',
+        url: 'backend-guide:my-guide-a3f9',
+        title: 'my-guide-a3f9',
+      });
+    });
+
+    it('trims whitespace from the resource name', () => {
+      expect(findDocPage('backend-guide:  spaced-name  ')).toEqual({
+        type: 'docs-page',
+        url: 'backend-guide:spaced-name',
+        title: 'spaced-name',
+      });
+    });
+
+    it('returns null for backend-guide: with no resource name', () => {
+      expect(findDocPage('backend-guide:')).toBeNull();
+    });
+
+    it('returns null for backend-guide: with only whitespace', () => {
+      expect(findDocPage('backend-guide:   ')).toBeNull();
+    });
+  });
+
   describe('null/empty input', () => {
     it('returns null for empty string', () => {
       expect(findDocPage('')).toBeNull();

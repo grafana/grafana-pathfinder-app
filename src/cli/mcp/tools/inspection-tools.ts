@@ -25,7 +25,7 @@ export function registerInspectionTools(server: McpServer): void {
     'pathfinder_inspect',
     {
       description:
-        'Inspect an artifact: tree summary, block lookup by id, or array enumeration at a JSONPath. Read-only; the artifact passes through unchanged.',
+        'Use this tool when you need to read the current state of an in-flight Pathfinder authoring artifact — tree summary, block lookup by id, or array enumeration at a JSONPath. Read-only; the artifact passes through unchanged.',
       inputSchema: {
         artifact: ArtifactSchema,
         blockId: z.string().optional().describe('Show details for a single block by id.'),
@@ -53,7 +53,7 @@ export function registerInspectionTools(server: McpServer): void {
     'pathfinder_validate',
     {
       description:
-        'Validate an in-flight artifact against the canonical Pathfinder validation pipeline (Zod + cross-file checks + condition syntax). Read-only.',
+        'Use this tool when you need to confirm an in-flight Pathfinder authoring artifact is publishable before calling finalize. Runs the canonical Pathfinder validation pipeline (Zod + cross-file checks + condition syntax). Read-only.',
       inputSchema: {
         artifact: ArtifactSchema,
       },

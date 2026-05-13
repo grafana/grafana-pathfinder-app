@@ -63,6 +63,22 @@ export interface AssistantProps {
   assistantType?: 'query' | 'config' | 'code' | 'text';
 }
 
+/**
+ * Editor-only annotation fields. Stripped before publish/export so the
+ * runtime never sees them.
+ *
+ * Currently just `authorNote` — a private comment the author leaves on
+ * a block (think: "TODO: revisit this selector"). Surfaced as a small
+ * note icon + tooltip in the editor; never rendered to readers.
+ */
+export interface AuthorAnnotated {
+  /**
+   * Editor-only note attached to this block. Visible to authors in the
+   * block list, never published. Stripped during export.
+   */
+  authorNote?: string;
+}
+
 // ============ CONTENT BLOCKS ============
 
 /**
@@ -70,7 +86,7 @@ export interface AssistantProps {
  * Content is rendered as formatted text with support for
  * headings, bold, italic, code, links, and lists.
  */
-export interface JsonMarkdownBlock extends AssistantProps {
+export interface JsonMarkdownBlock extends AssistantProps, AuthorAnnotated {
   type: 'markdown';
   /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
   id?: string;
@@ -83,7 +99,7 @@ export interface JsonMarkdownBlock extends AssistantProps {
  * Used for migration path from HTML guides - prefer markdown for new content.
  * HTML is sanitized before rendering.
  */
-export interface JsonHtmlBlock {
+export interface JsonHtmlBlock extends AuthorAnnotated {
   type: 'html';
   /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
   id?: string;
@@ -94,7 +110,7 @@ export interface JsonHtmlBlock {
 /**
  * Image block for displaying images.
  */
-export interface JsonImageBlock {
+export interface JsonImageBlock extends AuthorAnnotated {
   type: 'image';
   /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
   id?: string;
@@ -111,7 +127,7 @@ export interface JsonImageBlock {
 /**
  * Video block for embedded video content.
  */
-export interface JsonVideoBlock {
+export interface JsonVideoBlock extends AuthorAnnotated {
   type: 'video';
   /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
   id?: string;
@@ -132,7 +148,7 @@ export interface JsonVideoBlock {
  * Wraps multiple child blocks, each getting their own customize button.
  * Uses Grafana Assistant to customize content based on user's datasources and environment.
  */
-export interface JsonAssistantBlock {
+export interface JsonAssistantBlock extends AuthorAnnotated {
   type: 'assistant';
   /** Stable identifier for the assistant block (required for container blocks via CLI) */
   id?: string;
@@ -151,7 +167,7 @@ export interface JsonAssistantBlock {
  * Sections group related interactive steps and provide
  * sequential execution with "Do Section" functionality.
  */
-export interface JsonSectionBlock {
+export interface JsonSectionBlock extends AuthorAnnotated {
   type: 'section';
   /** Optional HTML id for the section */
   id?: string;
@@ -194,7 +210,7 @@ export interface ConditionalSectionConfig {
  * Evaluates conditions at runtime and displays the appropriate branch.
  * Uses the same condition syntax as requirements (e.g., has-datasource:prometheus).
  */
-export interface JsonConditionalBlock {
+export interface JsonConditionalBlock extends AuthorAnnotated {
   type: 'conditional';
   /** Stable identifier for the conditional block (required for container blocks via CLI) */
   id?: string;
@@ -233,7 +249,7 @@ export type JsonInteractiveAction = 'highlight' | 'button' | 'formfill' | 'navig
  * Use showMe/doIt to control button visibility.
  * Supports AI customization via AssistantProps.
  */
-export interface JsonInteractiveBlock extends AssistantProps {
+export interface JsonInteractiveBlock extends AssistantProps, AuthorAnnotated {
   type: 'interactive';
   /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
   id?: string;
@@ -290,7 +306,7 @@ export interface JsonInteractiveBlock extends AssistantProps {
  * Multi-step block for automated action sequences.
  * System performs all steps automatically when "Do it" is clicked.
  */
-export interface JsonMultistepBlock {
+export interface JsonMultistepBlock extends AuthorAnnotated {
   type: 'multistep';
   /** Stable identifier for this block (required for container blocks via CLI) */
   id?: string;
@@ -310,7 +326,7 @@ export interface JsonMultistepBlock {
  * Guided block for user-performed action sequences.
  * System highlights elements and waits for user to perform actions.
  */
-export interface JsonGuidedBlock {
+export interface JsonGuidedBlock extends AuthorAnnotated {
   type: 'guided';
   /** Stable identifier for this block (required for container blocks via CLI) */
   id?: string;
@@ -372,7 +388,7 @@ export interface JsonStep {
  * Quiz block for knowledge assessment.
  * Supports single or multiple choice questions with configurable completion modes.
  */
-export interface JsonQuizBlock {
+export interface JsonQuizBlock extends AuthorAnnotated {
   type: 'quiz';
   /** Stable identifier for this block (required for container blocks via CLI) */
   id?: string;
@@ -390,6 +406,12 @@ export interface JsonQuizBlock {
   requirements?: string[];
   /** Whether quiz can be skipped */
   skippable?: boolean;
+  /**
+   * Randomize choice display order (default: true). Set to false to render
+   * in authored order. Choices with `pinned: true` keep their authored index
+   * even when shuffling is enabled.
+   */
+  shuffle?: boolean;
 }
 
 /**
@@ -404,6 +426,12 @@ export interface JsonQuizChoice {
   correct?: boolean;
   /** Hint shown when this wrong choice is selected */
   hint?: string;
+  /**
+   * Keep this choice at its authored index when the quiz is shuffled.
+   * Useful for "All of the above" / "None of the above" answers that must
+   * stay in a specific slot. Has no effect when `shuffle` is false.
+   */
+  pinned?: boolean;
 }
 
 // ============ INPUT BLOCK ============
@@ -416,7 +444,7 @@ export interface JsonQuizChoice {
  * - As targetvalue in interactive blocks
  * - As variable substitution in reftarget selectors (e.g., "button:contains({{myDatasource}})")
  */
-export interface JsonInputBlock {
+export interface JsonInputBlock extends AuthorAnnotated {
   type: 'input';
   /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
   id?: string;
@@ -455,7 +483,7 @@ export interface JsonInputBlock {
  * Participates in sections and step counting like other interactive blocks.
  * @coupling Zod schema: JsonTerminalBlockSchema in json-guide.schema.ts
  */
-export interface JsonTerminalBlock {
+export interface JsonTerminalBlock extends AuthorAnnotated {
   type: 'terminal';
   /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
   id?: string;
@@ -481,7 +509,7 @@ export interface JsonTerminalBlock {
  * Use this to provide a guided entry point for users to start using the terminal feature.
  * @coupling Zod schema: JsonTerminalConnectBlockSchema in json-guide.schema.ts
  */
-export interface JsonTerminalConnectBlock {
+export interface JsonTerminalConnectBlock extends AuthorAnnotated {
   type: 'terminal-connect';
   /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
   id?: string;
@@ -506,7 +534,7 @@ export interface JsonTerminalConnectBlock {
  * Participates in sections and step counting like other interactive blocks.
  * @coupling Zod schema: JsonCodeBlockBlockSchema in json-guide.schema.ts
  */
-export interface JsonCodeBlockBlock {
+export interface JsonCodeBlockBlock extends AuthorAnnotated {
   type: 'code-block';
   /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
   id?: string;
@@ -614,7 +642,7 @@ export type GrotGuideScreen = GrotGuideQuestionScreen | GrotGuideResultScreen;
  * Users start at the welcome screen, answer questions, and arrive at result screens.
  * @coupling Zod schema: JsonGrotGuideBlockSchema in json-guide.schema.ts
  */
-export interface JsonGrotGuideBlock {
+export interface JsonGrotGuideBlock extends AuthorAnnotated {
   type: 'grot-guide';
   /** Stable identifier for edit-block / remove-block addressing (not exposed via the authoring CLI; grot-guide is authored in the dedicated decision-tree editor) */
   id?: string;

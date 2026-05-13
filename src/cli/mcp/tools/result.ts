@@ -13,6 +13,7 @@
  */
 
 import type { TreeNode } from '../../utils/package-io';
+import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
 
 export function textResult(
@@ -34,6 +35,12 @@ export function textResult(
  * not transform it. This is what makes "schema-illegal output is impossible
  * because it is impossible in the CLI" hold end-to-end: error codes, paths,
  * and structured `data` flow through verbatim.
+ *
+ * When `artifact` is present, the response wraps it with an `__etag` field
+ * (issue #1 — see `src/cli/utils/etag.ts`) sibling to `content` / `manifest`.
+ * The agent is expected to echo the artifact back verbatim on subsequent
+ * mutation calls including `__etag`; mutation tools check the hash to
+ * detect agent-side reformatting before the schema validator runs.
  */
 export function outcomeResult(
   outcome: CommandOutcome,
@@ -42,7 +49,10 @@ export function outcomeResult(
 ): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
   const payload: Record<string, unknown> = { ...outcome };
   if (artifact) {
-    payload.artifact = artifact;
+    payload.artifact = {
+      ...artifact,
+      [ARTIFACT_ETAG_FIELD]: computeArtifactEtag(artifact),
+    };
   }
   if (summary) {
     payload.summary = summary;

@@ -549,6 +549,11 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    // Become a container so `secondaryActionButton`'s `@container` query
+    // can collapse Reset / Pop out / Full screen down to icon-only when
+    // the row gets too narrow to fit all three labels (e.g. a narrow
+    // sidebar). Sized by inline-axis (width); height stays auto.
+    containerType: 'inline-size',
   }),
   metaInfo: css({
     display: 'flex',
@@ -619,6 +624,19 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
       width: '12px',
       height: '12px',
       flexShrink: 0,
+    },
+    // Container query: when the parent toolbar (`contentMeta` or
+    // `milestoneActions`) is narrower than ~360px, hide the text labels
+    // and shrink padding so the buttons read as icon-only. The native
+    // tooltip / aria-label keeps them discoverable. Threshold chosen so
+    // a sidebar narrow enough to wrap the row collapses to icons rather
+    // than stacking onto two lines (which steals vertical space from
+    // the actual guide content).
+    '@container (max-width: 360px)': {
+      padding: theme.spacing(0.5),
+      '& > span': {
+        display: 'none',
+      },
     },
   }),
   // Footer action centered at the bottom of guide content
@@ -710,6 +728,11 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(0.75),
     padding: theme.spacing(1, 0, 0),
     borderTop: `1px solid ${theme.colors.border.weak}`,
+    // Same container-query trick as `contentMeta` — when the journey's
+    // bottom action row (Open / Reset / Pop out / Full screen) outgrows
+    // the panel width, `secondaryActionButton`'s rule collapses the
+    // labels and only the icons remain.
+    containerType: 'inline-size',
   }),
   navButton: css({
     display: 'flex',

@@ -9,7 +9,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Icon, Portal, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { css } from '@emotion/css';
-import { BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER } from './constants';
+import { BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER, BLOCK_TYPE_GROUPS } from './constants';
 import { getConfigWithDefaults } from '../../constants';
 import { testIds } from '../../constants/testIds';
 import type { BlockType, OnBlockTypeSelect } from './types';
@@ -140,6 +140,45 @@ const getPaletteModalStyles = (theme: GrafanaTheme2) => ({
     padding: theme.spacing(2),
     overflowY: 'auto',
     maxHeight: 'calc(80vh - 60px)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(2),
+  }),
+  filterInput: css({
+    width: '100%',
+    padding: theme.spacing(1, 1.5),
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    backgroundColor: theme.colors.background.primary,
+    color: theme.colors.text.primary,
+    fontSize: theme.typography.body.fontSize,
+    fontFamily: theme.typography.fontFamily,
+    outline: 'none',
+    '&:focus': {
+      borderColor: theme.colors.primary.border,
+    },
+    '&::placeholder': {
+      color: theme.colors.text.secondary,
+    },
+  }),
+  groupHeader: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    marginBottom: theme.spacing(0.75),
+  }),
+  group: css({
+    display: 'flex',
+    flexDirection: 'column',
+  }),
+  emptyFilter: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    padding: theme.spacing(2),
   }),
   grid: css({
     display: 'grid',
@@ -242,6 +281,46 @@ export function BlockPalette({
 
   const availableTypes = BLOCK_TYPE_ORDER.filter((type) => !effectiveExcludeTypes.includes(type));
 
+  // Type-to-filter input. Reset on every open transition (React docs'
+  // "adjust state when prop changes" pattern, avoids the cascading
+  // render warning effect-based resets trip).
+  const [filter, setFilter] = useState('');
+  const [paletteWasOpen, setPaletteWasOpen] = useState(isOpen);
+  if (isOpen !== paletteWasOpen) {
+    if (isOpen) {
+      setFilter('');
+    }
+    setPaletteWasOpen(isOpen);
+  }
+
+  // Filtered + grouped views derived from `availableTypes`. We keep
+  // the original group order; types within a group keep their
+  // BLOCK_TYPE_ORDER relative ordering.
+  const filteredGroups = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    const match = (type: BlockType): boolean => {
+      if (!q) {
+        return true;
+      }
+      const meta = BLOCK_TYPE_METADATA[type];
+      return (
+        type.toLowerCase().includes(q) ||
+        meta.name.toLowerCase().includes(q) ||
+        meta.description.toLowerCase().includes(q)
+      );
+    };
+    return BLOCK_TYPE_GROUPS.map((g) => ({
+      id: g.id,
+      label: g.label,
+      types: g.types.filter((t) => availableTypes.includes(t) && match(t)),
+    })).filter((g) => g.types.length > 0);
+  }, [availableTypes, filter]);
+
+  const totalFilteredTypes = useMemo(
+    () => filteredGroups.reduce((sum, g) => sum + g.types.length, 0),
+    [filteredGroups]
+  );
+
   // Handle escape key to close
   useEffect(() => {
     if (!isOpen) {
@@ -315,26 +394,44 @@ export function BlockPalette({
                 </button>
               </div>
               <div className={styles.content}>
-                <div className={styles.grid}>
-                  {availableTypes.map((type) => {
-                    const meta = BLOCK_TYPE_METADATA[type];
-                    return (
-                      <button
-                        key={type}
-                        className={styles.item}
-                        onClick={() => handleSelect(type)}
-                        type="button"
-                        data-testid={testIds.blockEditor.blockTypeButton(type)}
-                      >
-                        <span className={styles.itemIcon}>{meta.icon}</span>
-                        <div className={styles.itemContent}>
-                          <div className={styles.itemName}>{meta.name}</div>
-                          <div className={styles.itemDescription}>{meta.description}</div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                <input
+                  type="text"
+                  className={styles.filterInput}
+                  placeholder="Filter block types..."
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  autoFocus
+                  data-testid="pathfinder-block-editor-palette-filter"
+                />
+                {totalFilteredTypes === 0 ? (
+                  <div className={styles.emptyFilter}>No block types match &quot;{filter}&quot;</div>
+                ) : (
+                  filteredGroups.map((group) => (
+                    <div key={group.id} className={styles.group}>
+                      <div className={styles.groupHeader}>{group.label}</div>
+                      <div className={styles.grid}>
+                        {group.types.map((type) => {
+                          const meta = BLOCK_TYPE_METADATA[type];
+                          return (
+                            <button
+                              key={type}
+                              className={styles.item}
+                              onClick={() => handleSelect(type)}
+                              type="button"
+                              data-testid={testIds.blockEditor.blockTypeButton(type)}
+                            >
+                              <span className={styles.itemIcon}>{meta.icon}</span>
+                              <div className={styles.itemContent}>
+                                <div className={styles.itemName}>{meta.name}</div>
+                                <div className={styles.itemDescription}>{meta.description}</div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>

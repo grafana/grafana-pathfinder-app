@@ -39,6 +39,7 @@ export interface SectionNestedBlocksProps {
   onNestedBlockDelete?: (sectionId: string, nestedIndex: number) => void;
   onNestedBlockDuplicate?: (sectionId: string, nestedIndex: number) => void;
   onInsertBlockInSection: (type: BlockType, sectionId: string, index?: number) => void;
+  onNestedBlockAuthorNoteChange?: (sectionId: string, nestedIndex: number, note: string) => void;
   // Animation
   justDroppedId?: string | null;
   /** ID of the last modified block (for persistent highlight) */
@@ -76,6 +77,7 @@ export function SectionNestedBlocks({
   onNestedBlockDelete,
   onNestedBlockDuplicate,
   onInsertBlockInSection,
+  onNestedBlockAuthorNoteChange,
   justDroppedId,
   lastModifiedId,
   onPreviewSection,
@@ -161,6 +163,11 @@ export function SectionNestedBlocks({
                           : undefined
                       }
                       isPreviewActive={isPreviewActive}
+                      onAuthorNoteChange={
+                        onNestedBlockAuthorNoteChange
+                          ? (note) => onNestedBlockAuthorNoteChange(block.id, nestedIndex, note)
+                          : undefined
+                      }
                     />
                   </div>
                 </SortableBlock>

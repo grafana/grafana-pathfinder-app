@@ -14,10 +14,13 @@ import {
   readOutputOptions,
   renderError,
   type CommandOutcome,
+  type OutcomeWarning,
 } from '../utils/output';
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../utils/block-registry';
 import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
 import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
+import { normalizeBlockInput } from '../utils/input-normalizers';
+import { isNonEmptySelector, unverifiedSelectorWarning } from '../utils/warnings';
 
 export const editBlockCommand = new Command('edit-block')
   .description('Update fields on an existing block by id')
@@ -41,11 +44,11 @@ for (const schema of Object.values(BLOCK_SCHEMA_MAP)) {
   registerSchemaOptions(editBlockCommand, schema, { skipExisting: true, forceOptional: true });
 }
 
-// `--id` is in `id` is in the forbid-list inside editBlock (block-level rename
-// requires updating every reference in the package, which is non-trivial),
-// so hide it from --help. Keeping the flag registered (rather than removing)
-// preserves Commander parsing — passing `--id` still produces a structured
-// error from editBlock rather than Commander's "unknown option".
+// `--id` is in the forbid-list inside editBlock (block-level rename requires
+// updating every reference in the package, which is non-trivial), so hide it
+// from --help. Keeping the flag registered (rather than removing) preserves
+// Commander parsing — passing `--id` still produces a structured error from
+// editBlock rather than Commander's "unknown option".
 const idOption = editBlockCommand.options.find((o) => o.long === '--id');
 if (idOption) {
   idOption.hideHelp(true);
@@ -118,22 +121,27 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
     };
   }
 
-  const patch = parseOptionValues(schema, args.flagValues) as Record<string, unknown>;
+  const rawPatch = parseOptionValues(schema, args.flagValues) as Record<string, unknown>;
   // Drop bridge-defaulted empties — the user didn't provide them, so we
   // shouldn't accidentally clobber existing values.
-  for (const [k, v] of Object.entries(patch)) {
+  for (const [k, v] of Object.entries(rawPatch)) {
     if (Array.isArray(v) && v.length === 0) {
-      delete patch[k];
+      delete rawPatch[k];
     }
   }
 
-  if (Object.keys(patch).length === 0) {
+  if (Object.keys(rawPatch).length === 0) {
     return {
       status: 'error',
       code: 'NO_CHANGES',
       message: 'edit-block needs at least one field flag to change. See --help for the field list of this block type.',
     };
   }
+
+  // M3 — apply known input normalizations to the patch before any
+  // validator runs. The persisted block carries the canonical form, and a
+  // warning rides on the outcome so the agent learns for next time.
+  const { normalized: patch, warnings: normalizationWarnings } = normalizeBlockInput(blockType, rawPatch);
 
   // CLI-strict semantic checks against the patch values.
   try {
@@ -175,6 +183,16 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
     };
   }
 
+  // M3 — normalization warnings always ride on the successful outcome.
+  // Issue #3 — fire the unverified-selector signal only when the patch
+  // itself wrote a non-empty `reftarget`. Edits that touch other fields on
+  // a block whose pre-existing reftarget is unchanged do not re-arm this
+  // warning (the original write was the moment of risk).
+  const warnings: OutcomeWarning[] = [...normalizationWarnings];
+  if (changed.includes('reftarget') && isNonEmptySelector(patch.reftarget)) {
+    warnings.push(unverifiedSelectorWarning(`<id:${args.id}>/reftarget`));
+  }
+
   return {
     status: 'ok',
     summary: `Updated ${blockType} block "${args.id}" (changed: ${changed.join(', ')})`,
@@ -185,6 +203,7 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
       'package valid': true,
       ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
     },
+    ...(warnings.length > 0 ? { warnings } : {}),
     data: {
       type: blockType,
       id: args.id,

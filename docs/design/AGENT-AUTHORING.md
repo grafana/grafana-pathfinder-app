@@ -201,7 +201,7 @@ Append a choice to a `quiz` block.
 pathfinder-cli add-choice <dir> --parent <id> [flags]
 ```
 
-Flags are derived from `JsonQuizChoiceSchema`. The `--parent` flag is required and must reference a block of type `quiz`.
+Flags are derived from `JsonQuizChoiceSchema`. The `--parent` flag is required and must reference a block of type `quiz`. Pass `--pinned` to keep this choice at its authored index when the quiz is shuffled (default behavior); see `--shuffle` on `add-block quiz` to control shuffling at the block level.
 
 **Output on success:**
 
@@ -845,6 +845,11 @@ pathfinder-cli add-choice my-guide/ --parent check-understanding \
 
 pathfinder-cli add-choice my-guide/ --parent check-understanding \
   --id c --text "SQL" --hint "Loki uses its own query language, not SQL."
+
+# Optional: pin "All of the above" so it stays last even when shuffled
+pathfinder-cli add-choice my-guide/ --parent check-understanding \
+  --id d --text "All of the above" --pinned \
+  --hint "Only one is correct."
 
 # Set manifest metadata
 pathfinder-cli set-manifest my-guide/ \

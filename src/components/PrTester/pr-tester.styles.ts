@@ -101,67 +101,9 @@ export const getPrTesterStyles = (theme: GrafanaTheme2) => ({
 
   pathOrderContainer: css({
     marginTop: theme.spacing(1.5),
-  }),
-
-  fileList: css({
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(0.5),
-    marginTop: theme.spacing(1),
-  }),
-
-  fileItem: css({
-    display: 'flex',
-    alignItems: 'center',
-    padding: theme.spacing(1),
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.border.weak}`,
-    cursor: 'grab',
-    transition: 'all 0.2s ease',
-
-    '&:hover': {
-      backgroundColor: theme.colors.emphasize(theme.colors.background.secondary, 0.03),
-      borderColor: theme.colors.border.medium,
-    },
-  }),
-
-  fileItemDragging: css({
-    opacity: 0.5,
-    cursor: 'grabbing',
-  }),
-
-  fileItemNumber: css({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '24px',
-    height: '24px',
-    backgroundColor: theme.colors.primary.main,
-    color: theme.colors.primary.contrastText,
-    borderRadius: '50%',
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    flexShrink: 0,
-    marginRight: theme.spacing(1),
-  }),
-
-  fileItemContent: css({
-    display: 'flex',
-    alignItems: 'center',
     gap: theme.spacing(1),
-    flex: 1,
-  }),
-
-  dragHandle: css({
-    color: theme.colors.text.secondary,
-    cursor: 'grab',
-  }),
-
-  fileName: css({
-    flex: 1,
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontFamily: theme.typography.fontFamilyMonospace,
   }),
 
   allGuidesPreview: css({

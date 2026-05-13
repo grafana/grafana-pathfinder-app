@@ -8,6 +8,7 @@ import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
 import { homePage } from '../../pages/homePage';
 import { docsPage } from '../../pages/docsPage';
+import { fullScreenPage } from '../../pages/fullScreenPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
 import { onPluginStart } from '../../context-engine';
@@ -131,7 +132,7 @@ const getErrorStyles = (theme: GrafanaTheme2) => ({
 
 function getSceneApp() {
   return new SceneApp({
-    pages: [homePage, docsPage],
+    pages: [homePage, docsPage, fullScreenPage],
   });
 }
 

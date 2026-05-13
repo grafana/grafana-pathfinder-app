@@ -27,6 +27,8 @@ export {
   derivePathSlug,
 } from './content-fetcher';
 
+export { fetchPackageInfoFromUrl, isPackageContentUrl } from './package-info-from-url';
+
 export {
   getNextMilestoneUrl as getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrl as getPreviousMilestoneUrlFromContent,
@@ -41,7 +43,7 @@ export { ContentRenderer, useContentRenderer } from './content-renderer';
 export { parseJsonGuide, parseMarkdownToElements, isJsonGuideContent } from './json-parser';
 
 // Docs components
-export { CodeBlock } from './components/docs';
+export { CodeBlock, ImageRenderer, VideoRenderer, YouTubeVideoRenderer } from './components/docs';
 export type { CodeBlockProps } from './components/docs';
 
 // Guide response context (consumed by components/interactive-tutorial/)

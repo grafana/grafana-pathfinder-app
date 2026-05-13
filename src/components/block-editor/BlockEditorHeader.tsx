@@ -75,30 +75,57 @@ export interface BlockEditorHeaderProps {
    */
   hasPreviewProgress?: boolean;
   onResetPreviewProgress?: () => void;
+  /** Step backwards through the in-session undo history. */
+  onUndo: () => void;
+  /** Step forwards through the in-session redo history. */
+  onRedo: () => void;
+  /** True iff undo is available. */
+  canUndo: boolean;
+  /** True iff redo is available. */
+  canRedo: boolean;
+  /** Optional label for the next undo target — surfaced as the button tooltip. */
+  undoLabel: string | null;
+  /** Optional label for the next redo target — surfaced as the button tooltip. */
+  redoLabel: string | null;
 }
 
 const getHeaderStyles = (theme: GrafanaTheme2) => ({
+  // Sticky so the toolbar stays pinned to the top of the editor's scroll
+  // container — same belt-and-braces approach used by the fullscreen layout
+  // (`full-screen.styles.ts:stickyTopBar`). `flexShrink: 0` keeps it from
+  // collapsing inside a flex parent.
   header: css({
     display: 'flex',
     flexDirection: 'column',
     borderBottom: `1px solid ${theme.colors.border.weak}`,
     backgroundColor: theme.colors.background.primary,
+    position: 'sticky',
+    top: 0,
+    zIndex: theme.zIndex.navbarFixed,
+    flexShrink: 0,
   }),
   // Single-row toolbar: title (flex 1) + actions cluster on the right.
-  // Wraps to a second line below ~360px.
+  // `containerType: inline-size` lets the `@container` rule on `actions`
+  // collapse button labels to icon-only when the row gets narrow. Wraps
+  // to a second line when the cluster still doesn't fit.
   row: css({
     display: 'flex',
     alignItems: 'center',
     padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
     gap: theme.spacing(1),
     flexWrap: 'wrap',
+    containerType: 'inline-size',
   }),
+  // Title is guaranteed at least ~180px so the actions cluster has to wrap
+  // to a new row when the row gets narrow, instead of crushing the title to
+  // zero. The input inside still keeps `minWidth: 0 + flex: 1` so long
+  // titles ellipsis within the reserved 180px rather than overflowing.
   titleArea: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
-    minWidth: 0,
-    flex: 1,
+    minWidth: 180,
+    flex: '1 1 180px',
     '&:hover .guide-id': {
       opacity: 1,
     },
@@ -135,11 +162,41 @@ const getHeaderStyles = (theme: GrafanaTheme2) => ({
     flexShrink: 0,
   }),
   // Right-side action cluster.
+  // - `marginLeft: auto` pushes the cluster to the right edge of the row,
+  //   and — when the cluster wraps onto its own line — keeps it right-aligned
+  //   on that line as well.
+  // - `flexWrap` + `rowGap` let the buttons inside the cluster spill onto a
+  //   second line once even the icon-only collapse can't keep them on one row.
+  // - Label collapse below 640px is opt-in via the `collapsibleLabel` class
+  //   on each Button that wants it (rather than a broad `& button > span`
+  //   rule scoped to the whole cluster). That avoids accidentally hiding
+  //   spans nested inside Badges, IconButtons, or future Grafana `Button`
+  //   internals that might add their own child `<span>`s.
   actions: css({
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: theme.spacing(0.5),
     flexShrink: 0,
+    flexWrap: 'wrap',
+    rowGap: theme.spacing(0.5),
+    marginLeft: 'auto',
+  }),
+  // Opt-in collapse for Grafana `Button` components that carry a text label.
+  // Under 640px we hide Button's content `<span>` (its direct child) and
+  // tighten horizontal padding, leaving the icon visible. Tooltips and
+  // aria-labels carry the meaning. Targets `& > span` so it only affects
+  // the labeled span that Grafana renders as a direct child of the
+  // `<button>` element this class is applied to — never any descendants.
+  // Container query fires off `row`'s `containerType: inline-size`.
+  collapsibleLabel: css({
+    '@container (max-width: 640px)': {
+      paddingLeft: theme.spacing(0.75),
+      paddingRight: theme.spacing(0.75),
+      '& > span': {
+        display: 'none',
+      },
+    },
   }),
   // Subtler "Saved" indicator (replaces the green chip) — small
   // check-circle icon. Tooltip preserved for context.
@@ -199,6 +256,12 @@ export function BlockEditorHeader({
   onToggleSelectionMode,
   hasPreviewProgress = false,
   onResetPreviewProgress,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  undoLabel,
+  redoLabel,
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 
@@ -229,6 +292,12 @@ export function BlockEditorHeader({
       document.dispatchEvent(new CustomEvent('pathfinder-request-dock'));
     }
   }, [panelMode]);
+
+  // Symmetric to docs-panel / FloatingPanelManager — both listen for this
+  // event to swap the active surface to full screen.
+  const handleGoFullScreen = useCallback(() => {
+    document.dispatchEvent(new CustomEvent('pathfinder-request-full-screen'));
+  }, []);
 
   // Keep draft in sync when title changes externally (e.g. guide loaded from library)
   useEffect(() => {
@@ -368,6 +437,7 @@ export function BlockEditorHeader({
           onClick={onSaveDraft}
           disabled={isPostingToBackend}
           tooltip="Save as draft without publishing"
+          className={styles.collapsibleLabel}
           data-testid={testIds.blockEditor.saveDraftButton}
         >
           Save as draft
@@ -385,6 +455,7 @@ export function BlockEditorHeader({
             onClick={onSaveDraft}
             disabled={isPostingToBackend}
             tooltip="Save current changes to library draft"
+            className={styles.collapsibleLabel}
             data-testid={testIds.blockEditor.saveDraftButton}
           >
             Update draft
@@ -399,6 +470,7 @@ export function BlockEditorHeader({
           onClick={onPostToBackend}
           disabled={isPostingToBackend}
           tooltip="Publish and make visible to users"
+          className={styles.collapsibleLabel}
           data-testid={testIds.blockEditor.publishButton}
         >
           Publish
@@ -415,6 +487,7 @@ export function BlockEditorHeader({
         onClick={onPostToBackend}
         disabled={isPostingToBackend}
         tooltip="Save changes and keep published"
+        className={styles.collapsibleLabel}
         data-testid={testIds.blockEditor.publishButton}
       >
         Update
@@ -510,6 +583,37 @@ export function BlockEditorHeader({
             </>
           )}
 
+          {/* Undo / redo for the in-session history ring buffer. The
+              labels (when present) describe the next operation in the
+              stack — useful for tooltip-driven discoverability. The
+              `corner-up-left` / `corner-up-right` icons are the
+              conventional curved-arrow glyphs every word processor /
+              editor uses for undo/redo. */}
+          {viewMode === 'edit' && (
+            <>
+              <IconButton
+                name="corner-up-left"
+                size="sm"
+                variant="secondary"
+                onClick={onUndo}
+                disabled={!canUndo}
+                aria-label={undoLabel ? `Undo: ${undoLabel}` : 'Undo'}
+                tooltip={undoLabel ? `Undo: ${undoLabel}` : 'Undo'}
+                data-testid="pathfinder-block-editor-undo"
+              />
+              <IconButton
+                name="corner-up-right"
+                size="sm"
+                variant="secondary"
+                onClick={onRedo}
+                disabled={!canRedo}
+                aria-label={redoLabel ? `Redo: ${redoLabel}` : 'Redo'}
+                tooltip={redoLabel ? `Redo: ${redoLabel}` : 'Redo'}
+                data-testid="pathfinder-block-editor-redo"
+              />
+            </>
+          )}
+
           <ButtonGroup data-testid={testIds.blockEditor.viewModeToggle}>
             <Button
               variant={viewMode === 'edit' ? 'primary' : 'secondary'}
@@ -547,10 +651,28 @@ export function BlockEditorHeader({
                 : 'Dock the editor back into the sidebar'
             }
             aria-label={panelMode === 'sidebar' ? 'Pop out editor' : 'Dock editor'}
+            className={styles.collapsibleLabel}
             data-testid="pathfinder-block-editor-toggle-popout"
           >
             {panelMode === 'sidebar' ? 'Pop out' : 'Dock'}
           </Button>
+
+          {/* Full-screen affordance — hidden when already in fullscreen
+              because the FullScreenLayout's back-arrow handles the inverse. */}
+          {panelMode !== 'fullscreen' && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="expand-arrows"
+              onClick={handleGoFullScreen}
+              tooltip="Open the editor in full screen"
+              aria-label="Open editor in full screen"
+              className={styles.collapsibleLabel}
+              data-testid="pathfinder-block-editor-go-fullscreen"
+            >
+              Full screen
+            </Button>
+          )}
 
           <div className={styles.moreButton}>
             <Dropdown overlay={moreMenu} placement="bottom-end">

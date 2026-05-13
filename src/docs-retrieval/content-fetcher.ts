@@ -484,51 +484,6 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
     }
   }
 
-  // SPECIAL CASE: Handle PR test learning paths from sessionStorage
-  if (contentId.startsWith('pr-tests/')) {
-    try {
-      const pathId = contentId.replace('pr-tests/', '');
-      const storageKey = `pathfinder-bundled-${pathId}`;
-      const pathContent = sessionStorage.getItem(storageKey);
-
-      if (!pathContent || pathContent.trim() === '') {
-        return {
-          content: null,
-          error: 'PR test path not found. It may have expired or been cleared.',
-        };
-      }
-
-      // Content is already JSON - parse to extract title for metadata
-      let title = 'PR Test Path';
-      try {
-        const parsed = JSON.parse(pathContent);
-        if (parsed.title) {
-          title = parsed.title;
-        }
-      } catch {
-        // If parsing fails, use default title
-      }
-
-      const rawContent: RawContent = {
-        content: pathContent, // Already valid JSON guide format
-        metadata: {
-          title,
-        },
-        type: 'interactive',
-        url,
-        lastFetched: new Date().toISOString(),
-      };
-
-      return { content: rawContent };
-    } catch (error) {
-      console.error('Failed to load PR test path:', error);
-      return {
-        content: null,
-        error: `Failed to load test path: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      };
-    }
-  }
-
   // Handle package-format paths: bundled:<package-dir>/content.json
   // These are produced by BundledPackageResolver and follow the two-file package model.
   const SAFE_PACKAGE_PATH = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*\.json$/;
@@ -1685,6 +1640,15 @@ const NEXT_HEADING_RE = /^#{1,3}\s+/m;
 /**
  * Inject "Ready to begin" button, bottom navigation, and orange-outline-list
  * card styling into JSON guide content for path packages.
+ *
+ * Existing markdown blocks are preserved as-is so the downstream renderer
+ * (`parseMarkdownToElements`) handles full markdown — `**bold**`, `*italic*`,
+ * code spans, etc. Only two surgical changes happen here:
+ *   1. The "Here's what to expect" markdown block (if any) is wrapped in the
+ *      orange-outline-list card via `wrapExpectBlockInOrangeOutline`.
+ *   2. The cover-page extras (Ready to Begin button + bottom navigation) are
+ *      appended as a single trailing HTML block.
+ *
  * Falls back to returning the original content if parsing fails.
  */
 export function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: LearningJourneyMetadata): string {
@@ -1693,6 +1657,7 @@ export function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: 
       id?: string;
       title?: string;
       blocks?: Array<{ type: string; content?: string }>;
+      [key: string]: unknown;
     };
     if (!parsed.blocks || !Array.isArray(parsed.blocks)) {
       return jsonContent;
@@ -1701,30 +1666,12 @@ export function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: 
     wrapExpectBlockInOrangeOutline(parsed.blocks);
 
     const extrasHtml = generateJourneyContentWithExtras('', metadata);
+    const blocks = extrasHtml.trim() ? [...parsed.blocks, { type: 'html', content: extrasHtml }] : parsed.blocks;
 
-    const htmlParts: string[] = [];
-    for (const block of parsed.blocks) {
-      if (!block.content) {
-        continue;
-      }
-      if (block.type === 'html') {
-        htmlParts.push(block.content);
-      } else if (block.type === 'markdown') {
-        htmlParts.push(simpleMarkdownToHtml(block.content));
-      }
-    }
-
-    if (extrasHtml.trim()) {
-      htmlParts.push(extrasHtml);
-    }
-
-    const merged = {
-      id: parsed.id,
-      title: parsed.title,
-      blocks: [{ type: 'html', content: htmlParts.join('\n') }],
-    };
-
-    return JSON.stringify(merged);
+    return JSON.stringify({
+      ...parsed,
+      blocks,
+    });
   } catch {
     return jsonContent;
   }

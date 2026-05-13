@@ -99,6 +99,7 @@ export const JsonQuizChoiceSchema = z.object({
   text: z.string().min(1, 'Choice text is required').describe('Visible choice text'),
   correct: z.boolean().optional().describe('Mark this choice as correct'),
   hint: z.string().optional().describe('Hint shown when this choice is selected'),
+  pinned: z.boolean().optional().describe('Keep this choice at its authored index when the quiz is shuffled'),
 });
 
 // ============ STEP SCHEMA ============
@@ -114,7 +115,9 @@ export const JsonStepSchema = z
     reftarget: z
       .string()
       .optional()
-      .describe('CSS selector or data-testid for the target element (required for non-noop actions)'),
+      .describe(
+        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
+      ),
 
     targetvalue: z
       .string()
@@ -173,6 +176,16 @@ export const AssistantPropsSchema = z.object({
   assistantType: z.enum(['query', 'config', 'code', 'text']).optional(),
 });
 
+/**
+ * Schema for editor-only annotation fields. Spread into every block
+ * schema so authors can attach a private note to any block; stripped
+ * from published output by the editor's export path.
+ * @coupling Type: AuthorAnnotated
+ */
+export const AuthorAnnotatedSchema = z.object({
+  authorNote: z.string().optional(),
+});
+
 // ============ CONTENT BLOCK SCHEMAS ============
 
 /**
@@ -185,6 +198,8 @@ export const JsonMarkdownBlockSchema = z.object({
   content: z.string().min(1, 'Markdown content is required').describe('Markdown body shown to the user'),
   // Assistant customization props
   ...AssistantPropsSchema.shape,
+  // Editor-only annotation (stripped on export)
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
@@ -195,6 +210,7 @@ export const JsonHtmlBlockSchema = z.object({
   type: z.literal('html'),
   id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
   content: z.string().min(1, 'HTML content is required').describe('Sanitized HTML body shown to the user'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
@@ -208,20 +224,28 @@ export const JsonImageBlockSchema = z.object({
   alt: z.string().optional().describe('Alt text for accessibility'),
   width: z.number().optional().describe('Display width in pixels'),
   height: z.number().optional().describe('Display height in pixels'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
  * Schema for video block.
  * @coupling Type: JsonVideoBlock
  */
+// JsonVideoBlockSchema — see the SafeUrlSchema description on `src` below.
+// YouTube watch (`/watch?v=`), short (`youtu.be/`), and shorts URLs are
+// auto-normalized to the embed form by the CLI runner before this schema
+// runs (see `src/cli/utils/input-normalizers.ts`).
 export const JsonVideoBlockSchema = z.object({
   type: z.literal('video'),
   id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
-  src: SafeUrlSchema.describe('Video URL (http/https only)'),
+  src: SafeUrlSchema.describe(
+    'Video URL (http/https only). YouTube must be an embed URL (`youtube.com/embed/<id>`); watch (`/watch?v=`), short (`youtu.be/`), and shorts URLs are auto-converted by the CLI to the embed form before this field is persisted.'
+  ),
   provider: z.enum(['youtube', 'native']).optional().describe('Video provider hint'),
   title: z.string().optional().describe('Display title'),
   start: z.number().min(0).optional().describe('Start time in seconds'),
   end: z.number().min(0).optional().describe('End time in seconds'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 // ============ INTERACTIVE BLOCK SCHEMAS ============
@@ -239,7 +263,9 @@ export const JsonInteractiveBlockSchema = z
     reftarget: z
       .string()
       .optional()
-      .describe('CSS selector or data-testid for the target element (required for non-noop actions)'),
+      .describe(
+        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
+      ),
 
     targetvalue: z
       .string()
@@ -268,6 +294,8 @@ export const JsonInteractiveBlockSchema = z
     openGuide: z.string().optional().describe('Guide ID to open when this block completes'),
     // Assistant customization props
     ...AssistantPropsSchema.shape,
+    // Editor-only annotation (stripped on export)
+    ...AuthorAnnotatedSchema.shape,
   })
   .refine(
     (block) => {
@@ -312,6 +340,7 @@ export const JsonMultistepBlockSchema = z.object({
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
@@ -328,6 +357,7 @@ export const JsonGuidedBlockSchema = z.object({
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
@@ -355,6 +385,11 @@ export const JsonQuizBlockSchema = z
     maxAttempts: z.number().optional().describe('Number of attempts allowed when completionMode=max-attempts'),
     requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
     skippable: z.boolean().optional().describe('Allow user to skip this block'),
+    shuffle: z
+      .boolean()
+      .optional()
+      .describe('Randomize choice display order (default: true); pinned choices keep their authored index'),
+    ...AuthorAnnotatedSchema.shape,
   })
   .superRefine((quiz, ctx) => {
     // Empty quizzes are a transient authoring state; the publish-time
@@ -421,6 +456,7 @@ export const JsonInputBlockSchema = z.object({
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   datasourceFilter: z.string().optional().describe('Filter for datasource input (e.g., loki, prometheus)'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 // ============ TERMINAL BLOCK SCHEMA ============
@@ -438,6 +474,7 @@ export const JsonTerminalBlockSchema = z.object({
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   hint: z.string().optional().describe('Hint text shown if user is stuck'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 // ============ TERMINAL CONNECT BLOCK SCHEMA ============
@@ -454,6 +491,7 @@ export const JsonTerminalConnectBlockSchema = z.object({
   vmTemplate: z.string().optional().describe('VM template to provision'),
   vmApp: z.string().optional().describe('App to launch in the VM'),
   vmScenario: z.string().optional().describe('Scenario to run in the VM'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 // ============ CODE BLOCK SCHEMA ============
@@ -468,7 +506,9 @@ export const JsonCodeBlockBlockSchema = z.object({
   reftarget: z
     .string()
     .min(1, 'Code block reftarget is required')
-    .describe('CSS selector for the target Monaco editor'),
+    .describe(
+      'Verified Grafana DOM selector for the target Monaco editor. Do NOT invent or guess. Confirm against the live Grafana DOM or ask the user for the selector — Monaco editors have stable data-testid attributes in Grafana. A wrong selector silently breaks the guide at runtime; the validator cannot catch this.'
+    ),
   language: z.string().optional().describe('Source language hint (e.g., promql, logql, sql)'),
   code: z.string().min(1, 'Code is required').describe('Code to insert into the editor'),
   content: z.string().optional().describe('Optional instructional text shown above the code'),
@@ -476,6 +516,7 @@ export const JsonCodeBlockBlockSchema = z.object({
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   hint: z.string().optional().describe('Hint text shown if user is stuck'),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 // ============ GROT GUIDE BLOCK SCHEMA ============
@@ -565,6 +606,7 @@ export const JsonGrotGuideBlockSchema = z
       .describe('Stable identifier; grot-guide blocks are authored in the dedicated editor, not the CLI'),
     welcome: GrotGuideWelcomeSchema,
     screens: z.array(GrotGuideScreenSchema).min(1, EMPTY_SCREENS_MESSAGE),
+    ...AuthorAnnotatedSchema.shape,
   })
   .refine(
     (block) => {
@@ -662,7 +704,12 @@ const ConditionalProps = {
     .enum(['inline', 'section'])
     .optional()
     .describe('Render the conditional inline or as a collapsible section'),
-  reftarget: z.string().optional().describe('CSS selector consumed by certain conditional styles'),
+  reftarget: z
+    .string()
+    .optional()
+    .describe(
+      'Verified Grafana DOM selector consumed by certain conditional styles. Do NOT invent or guess; confirm against the live Grafana DOM. A wrong selector silently fails at runtime — the validator cannot catch this.'
+    ),
   whenTrueSectionConfig: ConditionalSectionConfigSchema.optional().describe(
     'Section config applied to the whenTrue branch'
   ),
@@ -714,6 +761,7 @@ export const JsonBlockSchema = createBlockSchemaWithDepth(0);
 export const JsonSectionBlockSchema = z.object({
   ...SectionProps,
   blocks: z.lazy(() => z.array(JsonBlockSchema)),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
@@ -724,6 +772,7 @@ export const JsonSectionBlockSchema = z.object({
 export const JsonAssistantBlockSchema = z.object({
   ...AssistantProps,
   blocks: z.lazy(() => z.array(JsonBlockSchema)),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 /**
@@ -735,6 +784,7 @@ export const JsonConditionalBlockSchema = z.object({
   ...ConditionalProps,
   whenTrue: z.lazy(() => z.array(JsonBlockSchema)),
   whenFalse: z.lazy(() => z.array(JsonBlockSchema)),
+  ...AuthorAnnotatedSchema.shape,
 });
 
 // ============ ROOT GUIDE SCHEMA ============
@@ -795,11 +845,14 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'lazyRender',
     'scrollContainer',
   ]),
-  _choice: new Set(['id', 'text', 'correct', 'hint']),
-  markdown: new Set(['type', 'id', 'content', 'assistantEnabled', 'assistantId', 'assistantType']),
-  html: new Set(['type', 'id', 'content']),
-  image: new Set(['type', 'id', 'src', 'alt', 'width', 'height']),
-  video: new Set(['type', 'id', 'src', 'provider', 'title', 'start', 'end']),
+  _choice: new Set(['id', 'text', 'correct', 'hint', 'pinned']),
+  // `authorNote` is the editor-only annotation spread from
+  // `AuthorAnnotatedSchema` into every block type. It's stripped on
+  // export, but stays in the schema so authoring tools can persist it.
+  markdown: new Set(['type', 'id', 'content', 'assistantEnabled', 'assistantId', 'assistantType', 'authorNote']),
+  html: new Set(['type', 'id', 'content', 'authorNote']),
+  image: new Set(['type', 'id', 'src', 'alt', 'width', 'height', 'authorNote']),
+  video: new Set(['type', 'id', 'src', 'provider', 'title', 'start', 'end', 'authorNote']),
   interactive: new Set([
     'type',
     'id',
@@ -821,11 +874,13 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'verify',
     'lazyRender',
     'scrollContainer',
+    'openGuide',
     'assistantEnabled',
     'assistantId',
     'assistantType',
+    'authorNote',
   ]),
-  multistep: new Set(['type', 'id', 'content', 'steps', 'requirements', 'objectives', 'skippable']),
+  multistep: new Set(['type', 'id', 'content', 'steps', 'requirements', 'objectives', 'skippable', 'authorNote']),
   guided: new Set([
     'type',
     'id',
@@ -836,8 +891,9 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'objectives',
     'skippable',
     'completeEarly',
+    'authorNote',
   ]),
-  section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives', 'autoCollapse']),
+  section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives', 'autoCollapse', 'authorNote']),
   conditional: new Set([
     'type',
     'id',
@@ -849,6 +905,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'reftarget',
     'whenTrueSectionConfig',
     'whenFalseSectionConfig',
+    'authorNote',
   ]),
   _conditionalSectionConfig: new Set(['title', 'requirements', 'objectives']),
   quiz: new Set([
@@ -861,6 +918,8 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'maxAttempts',
     'requirements',
     'skippable',
+    'shuffle',
+    'authorNote',
   ]),
   input: new Set([
     'type',
@@ -877,10 +936,30 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'requirements',
     'skippable',
     'datasourceFilter',
+    'authorNote',
   ]),
-  assistant: new Set(['type', 'id', 'assistantId', 'assistantType', 'blocks']),
-  terminal: new Set(['type', 'id', 'command', 'content', 'requirements', 'objectives', 'skippable', 'hint']),
-  'terminal-connect': new Set(['type', 'id', 'content', 'buttonText', 'vmTemplate', 'vmApp', 'vmScenario']),
+  assistant: new Set(['type', 'id', 'assistantId', 'assistantType', 'blocks', 'authorNote']),
+  terminal: new Set([
+    'type',
+    'id',
+    'command',
+    'content',
+    'requirements',
+    'objectives',
+    'skippable',
+    'hint',
+    'authorNote',
+  ]),
+  'terminal-connect': new Set([
+    'type',
+    'id',
+    'content',
+    'buttonText',
+    'vmTemplate',
+    'vmApp',
+    'vmScenario',
+    'authorNote',
+  ]),
   'code-block': new Set([
     'type',
     'id',
@@ -893,8 +972,9 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'objectives',
     'skippable',
     'hint',
+    'authorNote',
   ]),
-  'grot-guide': new Set(['type', 'id', 'welcome', 'screens']),
+  'grot-guide': new Set(['type', 'id', 'welcome', 'screens', 'authorNote']),
   _manifest: new Set([
     'schemaVersion',
     'id',
