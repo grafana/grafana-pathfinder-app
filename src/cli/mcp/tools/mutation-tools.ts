@@ -23,6 +23,7 @@ import { runEditBlock } from '../../commands/edit-block';
 import { runRemoveBlock } from '../../commands/remove-block';
 import { runSetManifest } from '../../commands/set-manifest';
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../../utils/block-registry';
+import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import { outcomeResult } from './result';
 import { withArtifact } from './state-bridge';
 
@@ -31,9 +32,50 @@ const ArtifactInputSchema = {
     .object({
       content: z.record(z.string(), z.unknown()),
       manifest: z.record(z.string(), z.unknown()).optional(),
+      __etag: z
+        .string()
+        .optional()
+        .describe(
+          'Integrity tag issued on the previous response. Pass back verbatim along with content and manifest; the server verifies it before dispatching.'
+        ),
     })
-    .describe('In-flight authoring artifact returned by the previous authoring tool. Pass it in unchanged.'),
+    .describe(
+      'In-flight authoring artifact returned by the previous authoring tool. Echo it back verbatim — including `__etag`. Do not re-serialize, reformat, re-key, or "fix" any field; even fields that look wrong are valid CLI output. The server hashes content+manifest and checks it against the echoed `__etag`; a mismatch returns ARTIFACT_MUTATED before the schema validator runs.'
+    ),
 };
+
+/**
+ * Verify the agent echoed the artifact back verbatim — issue #1. Returns
+ * an `ARTIFACT_MUTATED` outcome on mismatch, or `null` to proceed.
+ *
+ * When `__etag` is absent on the input we skip the check. This preserves
+ * graceful behavior for the first call (no previous response to echo
+ * from) and for any client that omits the field.
+ */
+function verifyArtifactEtag(artifact: {
+  content: Record<string, unknown>;
+  manifest?: Record<string, unknown>;
+  __etag?: string;
+}): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } | null {
+  if (typeof artifact.__etag !== 'string' || artifact.__etag.length === 0) {
+    return null;
+  }
+  const recomputed = computeArtifactEtag({ content: artifact.content, manifest: artifact.manifest });
+  if (recomputed === artifact.__etag) {
+    return null;
+  }
+  return outcomeResult({
+    status: 'error',
+    code: 'ARTIFACT_MUTATED',
+    message:
+      'The artifact you passed in does not match the integrity tag the server issued. Common cause: re-serializing or reformatting fields between calls (e.g., wrapping a markdown `content` string in an array, sorting keys, dropping fields you thought were optional). Re-fetch the latest artifact from your previous tool response and pass it back byte-for-byte.',
+    data: {
+      expected: artifact.__etag,
+      actual: recomputed,
+      field: ARTIFACT_ETAG_FIELD,
+    },
+  });
+}
 
 const FlagValuesSchema = z
   .record(z.string(), z.unknown())
@@ -46,7 +88,7 @@ export function registerMutationTools(server: McpServer): void {
     'pathfinder_add_block',
     {
       description:
-        'Append a block to the package. Block type and field schemas mirror the CLI. Use pathfinder_help with command "add-block" to see per-type fields. Returns the updated artifact.',
+        'Use this tool when the user wants to add a block (markdown, interactive step, multistep, quiz, section, conditional, video, etc.) to a Pathfinder guide. Block type and field schemas mirror the CLI — call `pathfinder_help` with command "add-block" for per-type fields. Returns the updated artifact.',
       inputSchema: {
         ...ArtifactInputSchema,
         type: z.enum(BlockTypeEnum as [string, ...string[]]).describe('Block type discriminator.'),
@@ -64,6 +106,10 @@ export function registerMutationTools(server: McpServer): void {
       },
     },
     async ({ artifact, type, parentId, branch, ifAbsent, explicitId, before, after, position, fields }) => {
+      const mismatch = verifyArtifactEtag(artifact);
+      if (mismatch) {
+        return mismatch;
+      }
       const result = await withArtifact(asArtifact(artifact), (dir) =>
         runAddBlock({
           dir,
@@ -85,7 +131,8 @@ export function registerMutationTools(server: McpServer): void {
   server.registerTool(
     'pathfinder_add_step',
     {
-      description: 'Append a step to a multistep or guided block. Returns the updated artifact.',
+      description:
+        'Use this tool when the user wants to add a step inside a multistep or guided block in a Pathfinder guide. Returns the updated artifact.',
       inputSchema: {
         ...ArtifactInputSchema,
         parentId: z.string().describe('Parent multistep or guided block id.'),
@@ -93,6 +140,10 @@ export function registerMutationTools(server: McpServer): void {
       },
     },
     async ({ artifact, parentId, fields }) => {
+      const mismatch = verifyArtifactEtag(artifact);
+      if (mismatch) {
+        return mismatch;
+      }
       const result = await withArtifact(asArtifact(artifact), (dir) =>
         runAddStep({ dir, parentId, flagValues: fields })
       );
@@ -103,7 +154,8 @@ export function registerMutationTools(server: McpServer): void {
   server.registerTool(
     'pathfinder_add_choice',
     {
-      description: 'Append a choice to a quiz block. Returns the updated artifact.',
+      description:
+        'Use this tool when the user wants to add a choice (answer option) to a quiz block in a Pathfinder guide. Returns the updated artifact.',
       inputSchema: {
         ...ArtifactInputSchema,
         parentId: z.string().describe('Parent quiz block id.'),
@@ -111,6 +163,10 @@ export function registerMutationTools(server: McpServer): void {
       },
     },
     async ({ artifact, parentId, fields }) => {
+      const mismatch = verifyArtifactEtag(artifact);
+      if (mismatch) {
+        return mismatch;
+      }
       const result = await withArtifact(asArtifact(artifact), (dir) =>
         runAddChoice({ dir, parentId, flagValues: fields })
       );
@@ -121,7 +177,8 @@ export function registerMutationTools(server: McpServer): void {
   server.registerTool(
     'pathfinder_edit_block',
     {
-      description: 'Update fields on an existing block. Returns the updated artifact.',
+      description:
+        'Use this tool when the user wants to edit or update an existing block in a Pathfinder guide. Overwrites the named fields; other fields are left untouched. Returns the updated artifact.',
       inputSchema: {
         ...ArtifactInputSchema,
         id: z.string().describe('Block id to edit.'),
@@ -129,6 +186,10 @@ export function registerMutationTools(server: McpServer): void {
       },
     },
     async ({ artifact, id, fields }) => {
+      const mismatch = verifyArtifactEtag(artifact);
+      if (mismatch) {
+        return mismatch;
+      }
       const result = await withArtifact(asArtifact(artifact), (dir) => runEditBlock({ dir, id, flagValues: fields }));
       return outcomeResult(result.outcome, result.artifact, result.summary);
     }
@@ -137,7 +198,8 @@ export function registerMutationTools(server: McpServer): void {
   server.registerTool(
     'pathfinder_remove_block',
     {
-      description: 'Remove a block by id. Returns the updated artifact.',
+      description:
+        'Use this tool when the user wants to delete a block from a Pathfinder guide. Identifies the block by id. Returns the updated artifact.',
       inputSchema: {
         ...ArtifactInputSchema,
         id: z.string().describe('Block id to remove.'),
@@ -149,6 +211,10 @@ export function registerMutationTools(server: McpServer): void {
       },
     },
     async ({ artifact, id, cascade, orphanChildren }) => {
+      const mismatch = verifyArtifactEtag(artifact);
+      if (mismatch) {
+        return mismatch;
+      }
       const result = await withArtifact(asArtifact(artifact), (dir) =>
         runRemoveBlock({ dir, id, cascade, orphanChildren })
       );
@@ -159,13 +225,18 @@ export function registerMutationTools(server: McpServer): void {
   server.registerTool(
     'pathfinder_set_manifest',
     {
-      description: 'Update fields on the package manifest. Returns the updated artifact.',
+      description:
+        'Use this tool when the user wants to set or update top-level Pathfinder guide metadata (description, category, language, etc.) on the package manifest. Returns the updated artifact.',
       inputSchema: {
         ...ArtifactInputSchema,
         fields: FlagValuesSchema.describe('Manifest fields to set (description, category, language, etc.).'),
       },
     },
     async ({ artifact, fields }) => {
+      const mismatch = verifyArtifactEtag(artifact);
+      if (mismatch) {
+        return mismatch;
+      }
       const result = await withArtifact(asArtifact(artifact), (dir) => runSetManifest({ dir, flagValues: fields }));
       return outcomeResult(result.outcome, result.artifact, result.summary);
     }

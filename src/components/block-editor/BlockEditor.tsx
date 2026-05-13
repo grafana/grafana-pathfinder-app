@@ -28,7 +28,7 @@ import { RecordModeOverlay } from './RecordModeOverlay';
 import { GuideLibraryModal } from './GuideLibraryModal';
 import { useActionRecorder } from '../../utils/devtools';
 import type { JsonGuide, JsonBlock, BlockOperations, BlockType, EditorBlock, PreviewTarget } from './types';
-import type { JsonSectionBlock } from '../../types/json-guide.types';
+import { isSectionBlock, isConditionalBlock, type JsonSectionBlock } from '../../types/json-guide.types';
 import { BlockEditorFooter } from './BlockEditorFooter';
 import { BlockEditorHeader } from './BlockEditorHeader';
 import { BlockEditorContent } from './BlockEditorContent';
@@ -556,6 +556,59 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       // Preview
       onBlockPreview: handleRootBlockPreview,
       onNestedSectionBlockPreview: handleNestedSectionBlockPreview,
+
+      // Author-only note save handlers. Each one merges the new note
+      // onto the existing block via the appropriate update method.
+      onBlockAuthorNoteChange: (blockId, note) => {
+        const entry = state.blocks.find((b) => b.id === blockId);
+        if (!entry) {
+          return;
+        }
+        const next: JsonBlock = note
+          ? ({ ...entry.block, authorNote: note } as JsonBlock)
+          : (() => {
+              const copy = { ...(entry.block as unknown as Record<string, unknown>) };
+              delete copy.authorNote;
+              return copy as unknown as JsonBlock;
+            })();
+        editor.updateBlock(blockId, next);
+      },
+      onNestedBlockAuthorNoteChange: (sectionId, nestedIndex, note) => {
+        const section = state.blocks.find((b) => b.id === sectionId);
+        if (!section || !isSectionBlock(section.block)) {
+          return;
+        }
+        const child = section.block.blocks[nestedIndex];
+        if (!child) {
+          return;
+        }
+        const next: JsonBlock = note
+          ? ({ ...child, authorNote: note } as JsonBlock)
+          : (() => {
+              const copy = { ...(child as unknown as Record<string, unknown>) };
+              delete copy.authorNote;
+              return copy as unknown as JsonBlock;
+            })();
+        editor.updateNestedBlock(sectionId, nestedIndex, next);
+      },
+      onConditionalBranchBlockAuthorNoteChange: (conditionalId, branch, nestedIndex, note) => {
+        const conditional = state.blocks.find((b) => b.id === conditionalId);
+        if (!conditional || !isConditionalBlock(conditional.block)) {
+          return;
+        }
+        const child = conditional.block[branch][nestedIndex];
+        if (!child) {
+          return;
+        }
+        const next: JsonBlock = note
+          ? ({ ...child, authorNote: note } as JsonBlock)
+          : (() => {
+              const copy = { ...(child as unknown as Record<string, unknown>) };
+              delete copy.authorNote;
+              return copy as unknown as JsonBlock;
+            })();
+        editor.updateConditionalBranchBlock(conditionalId, branch, nestedIndex, next);
+      },
     }),
     [
       formState,
@@ -566,6 +619,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       recordingActions,
       handleRootBlockPreview,
       handleNestedSectionBlockPreview,
+      state.blocks,
     ]
   );
 
@@ -1003,6 +1057,12 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         hasBlocks={hasBlocks}
         isSelectionMode={selection.isSelectionMode}
         onToggleSelectionMode={selection.toggleSelectionMode}
+        onUndo={editor.undo}
+        onRedo={editor.redo}
+        canUndo={editor.canUndo}
+        canRedo={editor.canRedo}
+        undoLabel={editor.undoLabel}
+        redoLabel={editor.redoLabel}
       />
 
       <BlockEditorContent

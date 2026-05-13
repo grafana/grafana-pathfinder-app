@@ -106,32 +106,45 @@ describe('runAddBlock', () => {
       expect(result.status).toBe('ok');
     });
 
-    it('rejects a YouTube watch URL with a remediation hint', async () => {
+    it('normalizes a YouTube watch URL to the embed form and emits INPUT_NORMALIZED', async () => {
       const dir = await bootstrap();
       const result = await runAddBlock({
         dir,
         type: 'video',
         flagValues: { src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
       });
-      expect(result.status).toBe('error');
-      if (result.status === 'error') {
-        expect(result.code).toBe('SCHEMA_VALIDATION');
-        expect(result.message).toContain('not embeddable');
-        expect(result.message).toContain('https://www.youtube.com/embed/dQw4w9WgXcQ');
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
       }
+      // Issue #2: normalize-on-write replaces the round-tripping error
+      // path. The agent sees a soft warning naming the rewrite (so it
+      // learns the canonical form) and the block is persisted with the
+      // embed URL.
+      const warning = result.warnings?.find((w) => w.code === 'INPUT_NORMALIZED');
+      expect(warning).toBeDefined();
+      expect(warning?.path).toBe('src');
+      expect(warning?.message).toContain('https://www.youtube.com/embed/dQw4w9WgXcQ');
+      const content = readContent(dir);
+      const block = content.blocks[0] as { src?: string };
+      expect(block.src).toBe('https://www.youtube.com/embed/dQw4w9WgXcQ');
     });
 
-    it('rejects a youtu.be share URL with a remediation hint', async () => {
+    it('normalizes a youtu.be share URL to the embed form', async () => {
       const dir = await bootstrap();
       const result = await runAddBlock({
         dir,
         type: 'video',
         flagValues: { src: 'https://youtu.be/dQw4w9WgXcQ' },
       });
-      expect(result.status).toBe('error');
-      if (result.status === 'error') {
-        expect(result.message).toContain('https://www.youtube.com/embed/dQw4w9WgXcQ');
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
       }
+      expect(result.warnings?.some((w) => w.code === 'INPUT_NORMALIZED')).toBe(true);
+      const content = readContent(dir);
+      const block = content.blocks[0] as { src?: string };
+      expect(block.src).toBe('https://www.youtube.com/embed/dQw4w9WgXcQ');
     });
 
     it('passes non-YouTube URLs through unchanged (e.g. Vimeo)', async () => {
@@ -256,6 +269,195 @@ describe('runAddBlock', () => {
     if (result.status === 'error') {
       expect(result.code).toBe('CONTAINER_NOT_FOUND');
     }
+  });
+
+  describe('selector warnings (issue #3)', () => {
+    it('emits UNVERIFIED_SELECTOR when an interactive block is added with a reftarget', async () => {
+      const dir = await bootstrap();
+      const result = await runAddBlock({
+        dir,
+        type: 'interactive',
+        flagValues: { action: 'button', reftarget: '[data-testid="my-btn"]', content: 'Click it' },
+      });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      const warning = result.warnings?.find((w) => w.code === 'UNVERIFIED_SELECTOR');
+      expect(warning).toBeDefined();
+      expect(warning?.path).toBe('blocks[0]/reftarget');
+    });
+
+    it('does NOT emit UNVERIFIED_SELECTOR for noop interactive blocks (no reftarget written)', async () => {
+      const dir = await bootstrap();
+      const result = await runAddBlock({
+        dir,
+        type: 'interactive',
+        flagValues: { action: 'noop', content: 'just look here' },
+      });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      expect(result.warnings?.some((w) => w.code === 'UNVERIFIED_SELECTOR')).toBeFalsy();
+    });
+
+    it('emits UNVERIFIED_SELECTOR on code-block add (reftarget is required for that type)', async () => {
+      const dir = await bootstrap();
+      const result = await runAddBlock({
+        dir,
+        type: 'code-block',
+        flagValues: { reftarget: '[data-testid="monaco-editor"]', code: 'SELECT 1', language: 'sql' },
+      });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      expect(result.warnings?.some((w) => w.code === 'UNVERIFIED_SELECTOR')).toBe(true);
+    });
+
+    it('emits UNVERIFIED_SELECTOR from runAddStep when a step writes a reftarget', async () => {
+      const dir = await bootstrap();
+      await runAddBlock({ dir, type: 'guided', explicitId: 'walk', flagValues: { content: 'walk' } });
+      const result = await runAddStep({
+        dir,
+        parentId: 'walk',
+        flagValues: { action: 'button', reftarget: '[data-testid="b"]', description: 'Click' },
+      });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      const warning = result.warnings?.find((w) => w.code === 'UNVERIFIED_SELECTOR');
+      expect(warning).toBeDefined();
+      // Path is position-anchored so a reviewer can grep for the exact step.
+      expect(warning?.path).toContain('reftarget');
+    });
+
+    it('does NOT emit UNVERIFIED_SELECTOR from runAddStep for noop steps', async () => {
+      const dir = await bootstrap();
+      await runAddBlock({ dir, type: 'multistep', explicitId: 'ms', flagValues: { content: 'walk' } });
+      const result = await runAddStep({
+        dir,
+        parentId: 'ms',
+        flagValues: { action: 'noop', description: 'just look' },
+      });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      expect(result.warnings?.some((w) => w.code === 'UNVERIFIED_SELECTOR')).toBeFalsy();
+    });
+
+    it('emits UNVERIFIED_SELECTOR from runEditBlock when reftarget is changed', async () => {
+      const dir = await bootstrap();
+      await runAddBlock({
+        dir,
+        type: 'interactive',
+        explicitId: 'click-x',
+        flagValues: { action: 'button', reftarget: '[data-testid="old"]', content: 'Click' },
+      });
+      const result = await runEditBlock({
+        dir,
+        id: 'click-x',
+        flagValues: { reftarget: '[data-testid="new"]' },
+      });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      const warning = result.warnings?.find((w) => w.code === 'UNVERIFIED_SELECTOR');
+      expect(warning).toBeDefined();
+      // Edits identify the block by id rather than position — the path
+      // anchors on the id so a reviewer can find the changed block.
+      expect(warning?.path).toBe('<id:click-x>/reftarget');
+    });
+
+    it('does NOT emit UNVERIFIED_SELECTOR from runEditBlock when reftarget is unchanged', async () => {
+      const dir = await bootstrap();
+      await runAddBlock({
+        dir,
+        type: 'interactive',
+        explicitId: 'click-x',
+        flagValues: { action: 'button', reftarget: '[data-testid="old"]', content: 'before' },
+      });
+      const result = await runEditBlock({
+        dir,
+        id: 'click-x',
+        flagValues: { content: 'after' },
+      });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      // The pre-existing reftarget is untouched — the original write was the
+      // moment of risk, not this content-only edit. No re-arm.
+      expect(result.warnings?.some((w) => w.code === 'UNVERIFIED_SELECTOR')).toBeFalsy();
+    });
+  });
+
+  describe('composition warnings (issue #8)', () => {
+    it('emits MULTISTEP_COMPOSITION_HINT when a multistep block is appended', async () => {
+      const dir = await bootstrap();
+      const result = await runAddBlock({
+        dir,
+        type: 'multistep',
+        explicitId: 'walk',
+        flagValues: { content: 'walk' },
+      });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      expect(result.warnings).toEqual([
+        {
+          code: 'MULTISTEP_COMPOSITION_HINT',
+          message: expect.stringMatching(/multistep is for tightly-coupled ordered steps/),
+        },
+      ]);
+    });
+
+    it('does NOT emit MULTISTEP_COMPOSITION_HINT for other block types', async () => {
+      const dir = await bootstrap();
+      const result = await runAddBlock({
+        dir,
+        type: 'markdown',
+        flagValues: { content: 'hello' },
+      });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      expect(result.warnings).toBeUndefined();
+    });
+
+    it('does NOT emit MULTISTEP_COMPOSITION_HINT on an --if-absent no-op', async () => {
+      const dir = await bootstrap();
+      // First call creates the multistep — expected to carry the hint.
+      const first = await runAddBlock({
+        dir,
+        type: 'multistep',
+        explicitId: 'walk',
+        flagValues: { content: 'walk' },
+      });
+      expect(first.status).toBe('ok');
+      if (first.status === 'ok') {
+        expect(first.warnings?.[0]?.code).toBe('MULTISTEP_COMPOSITION_HINT');
+      }
+      // Second call is an idempotent no-op — no append happened, so no hint.
+      const second = await runAddBlock({
+        dir,
+        type: 'multistep',
+        explicitId: 'walk',
+        ifAbsent: true,
+        flagValues: { content: 'walk' },
+      });
+      expect(second.status).toBe('ok');
+      if (second.status === 'ok') {
+        expect(second.data?.appended).toBe(false);
+        expect(second.warnings).toBeUndefined();
+      }
+    });
   });
 });
 

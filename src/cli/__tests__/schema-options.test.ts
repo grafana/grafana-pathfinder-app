@@ -270,6 +270,7 @@ describe('integration with the live JsonInteractiveBlockSchema', () => {
         '--assistant-enabled',
         '--assistant-id <string>',
         '--assistant-type <query|config|code|text>',
+        '--author-note <string>',
       ].sort()
     );
   });

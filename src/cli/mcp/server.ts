@@ -14,6 +14,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { CURRENT_SCHEMA_VERSION } from '../../types/json-guide.schema';
+import { SERVER_INSTRUCTIONS } from './lib/server-instructions';
 import { registerAuthoringTools } from './tools';
 import { instrumentServer, type ToolCallInstrumentation } from './transports/instrumentation';
 
@@ -39,6 +40,11 @@ export function buildServer(options: BuildServerOptions = {}): McpServer {
       capabilities: {
         tools: {},
       },
+      // M1 layer 3 — server-level instructions surfaced to MCP-aware clients
+      // on `initialize`. Reaches the model before tool selection; covers
+      // routing vocabulary (#7) plus the two highest-cost authoring rules
+      // (#3 selector discipline, #8 multistep / noop composition).
+      instructions: SERVER_INSTRUCTIONS,
     }
   );
 

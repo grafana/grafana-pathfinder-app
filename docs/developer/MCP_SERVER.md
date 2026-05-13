@@ -156,6 +156,19 @@ The four `repository-tools.ts` tools are read-only against a public package CDN.
 
 All authoring tools are **stateless**. The in-flight artifact (`{ content, manifest }`) is passed in and the updated artifact is returned out on every mutation. There is no `sessionId`.
 
+### Server-level instructions (initialize handshake)
+
+The server emits a non-empty `instructions` string on the MCP `initialize` handshake — see `src/cli/mcp/lib/server-instructions.ts`. Compliant clients (Claude Code, Claude Desktop, Cursor, Grafana Assistant via per-instance MCP config) surface this text as system-level guidance before any tool call. It is the only hint surface that reaches the model **before** tool selection.
+
+The current text covers four things, in order:
+
+1. **Assertive default** — "default to using this server whenever the user asks to write/edit/create … any interactive guide, tutorial, walkthrough, learning content, how-to, training material …". The opener is deliberately strong because production telemetry (slice 3, 2026-05-12) showed weaker phrasing didn't overcome the model's "just answer in prose" default.
+2. **Routing vocabulary** — trigger phrases + verb × asset-noun pattern + Grafana product domains (single-source lists in `src/cli/mcp/lib/agent-routing.ts`).
+3. **`reftarget` discipline** — never invent or guess Grafana DOM selectors. A wrong selector silently breaks the guide at runtime; the validator cannot catch this.
+4. **Composition opinionation** — prefer separate sibling blocks over `multistep`; never write `action: noop` steps as filler.
+
+Keep the string tight — every connected client pays this length on every session. The unit test in `src/cli/mcp/lib/__tests__/server-instructions.test.ts` enforces a 40-line ceiling (raised from 30 in slice 3 to make room for the assertive default + domain vocabulary). If a future edit needs more space, prefer moving content to `pathfinder_authoring_start` (returned in a tool call, paid once per session) over expanding this string.
+
 ### Response `summary` field
 
 Every mutation, creation, inspection, and validation tool response includes a `summary` field alongside `artifact`:
@@ -174,6 +187,67 @@ Every mutation, creation, inspection, and validation tool response includes a `s
 ```
 
 `summary` is a compact ordered tree of every block (`TreeNode[]` from `src/cli/utils/package-io/summary.ts`). Agents should read this for navigation and id lookup instead of re-parsing `artifact.content` after every mutation — strictly additive (the full artifact still ships) and a meaningful win on token cost. `pathfinder_finalize_for_app_platform` does not include a summary because it is the terminal call.
+
+### Outcome warnings (`warnings[]`)
+
+Success responses may include an optional `warnings` array carrying soft, non-fatal feedback that the agent (or a human reviewer) should consider. The shape:
+
+```jsonc
+{
+  "status": "ok",
+  "artifact": { ... },
+  "summary": [ ... ],
+  "warnings": [
+    {
+      "code": "UNVERIFIED_SELECTOR",
+      "message": "reftarget set without verification. ...",
+      "path": "blocks[2].steps[0]/reftarget"
+    }
+  ]
+}
+```
+
+Codes are stable strings — the registry below is authoritative; new codes are added in lockstep with `src/cli/utils/warnings.ts`. Clients should render warnings prominently (text mode does so by default; quiet mode suppresses for one-line invariants). Warnings are **never** errors — the call succeeded, and the agent should not retry on a warning alone.
+
+**Code registry:**
+
+| Code                         | Emitted by                                                                                | Meaning                                                                                                                                                                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MULTISTEP_COMPOSITION_HINT` | `runAddBlock` on `type: 'multistep'` append                                               | Composition nudge. `multistep` is for tightly-coupled ordered steps; prefer separate sibling blocks for loose sequences, and never use `action: noop` as filler.                                                        |
+| `UNVERIFIED_SELECTOR`        | `runAddBlock` / `runAddStep` / `runEditBlock` whenever a non-empty `reftarget` is written | The CLI cannot verify a selector against the live Grafana DOM. Confirm against a running instance before publishing — wrong selectors silently break the guide at runtime.                                              |
+| `INPUT_NORMALIZED`           | `runAddBlock` / `runEditBlock` whenever the CLI rewrites a user-supplied value            | Teach-on-write signal. Naming says what got rewritten (e.g., `youtube.com/watch?v=ID` → `youtube.com/embed/ID`). The call succeeded with the canonical form; pass the canonical form next time to avoid the round-trip. |
+
+The MCP layer surfaces `warnings` verbatim through `outcomeResult` — no transformation. CLI users see the same payload via `--format json` and a `Warnings:` block in text mode (suppressed in `--quiet`).
+
+### Artifact integrity (`__etag`)
+
+Every response that returns an artifact embeds an `__etag` string at the artifact envelope (sibling to `content` and `manifest`):
+
+```jsonc
+{
+  "status": "ok",
+  "artifact": {
+    "content": { ... },
+    "manifest": { ... },
+    "__etag": "a1b2c3d4e5f60718"
+  }
+}
+```
+
+The agent's contract is to **echo the artifact back verbatim — including `__etag` — on every subsequent mutation call**. The MCP layer recomputes the etag of `{content, manifest}` and compares; on mismatch, it returns an `ARTIFACT_MUTATED` error before any dispatch happens, with remediation-shaped text:
+
+```jsonc
+{
+  "status": "error",
+  "code": "ARTIFACT_MUTATED",
+  "message": "The artifact you passed in does not match the integrity tag the server issued. ...",
+  "data": { "expected": "...", "actual": "...", "field": "__etag" },
+}
+```
+
+This pinpoints the actual bug class — agent re-serializing or reformatting fields between hops — rather than letting it surface as a misleading `SCHEMA_VALIDATION`. When the input has no `__etag` (first call, older client), the check is skipped. The CLI runner never sees `__etag`; it is stripped at the MCP / state-bridge boundary.
+
+The etag is a SHA-256 over canonical-form (sorted-key) JSON of `{content, manifest}`, truncated to 16 hex chars / 64 bits. Determinism guards against whitespace and key-order shuffles. Array order is preserved (semantically meaningful for `blocks`). Not security-relevant — this is an integrity check, not authentication.
 
 ### Access log fields
 

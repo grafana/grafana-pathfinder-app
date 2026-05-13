@@ -7,6 +7,7 @@ import { getBackendSrv, config } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import type { JsonGuide } from '../types';
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
+import { stripAuthorNotes } from '../utils/block-export';
 
 interface BackendGuide {
   metadata: {
@@ -131,16 +132,22 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           metadata.resourceVersion = existingMetadata.resourceVersion;
         }
 
+        // Strip editor-only `authorNote` fields from every block before
+        // sending to the backend — author notes are private to the
+        // editor session and must never be persisted in the published
+        // resource.
+        const exportable = stripAuthorNotes(guide);
+
         // Wrap guide in Kubernetes resource format
         const k8sResource = {
           apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
           kind: 'InteractiveGuide',
           metadata,
           spec: {
-            id: guide.id,
-            title: guide.title,
-            schemaVersion: guide.schemaVersion || '1.0',
-            blocks: guide.blocks,
+            id: exportable.id,
+            title: exportable.title,
+            schemaVersion: exportable.schemaVersion || '1.0',
+            blocks: exportable.blocks,
             status,
           },
         };
