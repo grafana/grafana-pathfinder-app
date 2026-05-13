@@ -2054,10 +2054,18 @@ export function InteractiveSection({
             Mark section as complete
           </Button>
         ) : (
+          // Catch-all action button. The disabled clause's
+          // `stepComponents.length === 0` guard only applies to the Do-
+          // Section path — an all-passive section has zero interactive
+          // children but reaches `done(ack)` via the Mark gate and must
+          // still be Reset-able afterwards.
           <Button
             onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
             disabled={
-              disabled || !sectionRequirementsStatus.passed || stepComponents.length === 0 || isCompletedByObjectives
+              disabled ||
+              !sectionRequirementsStatus.passed ||
+              isCompletedByObjectives ||
+              (!(stepsCompleted && !isCompletedByObjectives) && stepComponents.length === 0)
             }
             size="md"
             variant={isCompleted ? 'secondary' : 'primary'}

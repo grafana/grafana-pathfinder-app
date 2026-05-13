@@ -241,6 +241,31 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_PASSIVE))).toBeInTheDocument());
       expect(screen.queryByTestId(markButton(SECTION_PASSIVE))).not.toBeInTheDocument();
     });
+
+    it('3b. Reset Section is ENABLED after Mark on an all-passive section, and clicking it returns to awaiting-ack', async () => {
+      // Regression for the "all-passive Reset stays permanently
+      // disabled" bug. The catch-all button's empty-section disable
+      // clause is now scoped to the Do-Section path only.
+      renderAllPassiveSection();
+
+      await click(markButton(SECTION_PASSIVE));
+      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_PASSIVE))).toBeInTheDocument());
+
+      // The button must not be disabled.
+      const reset = screen.getByTestId(resetButton(SECTION_PASSIVE));
+      expect(reset).not.toBeDisabled();
+
+      // Clicking it clears completion + ack → the section returns to
+      // awaiting-ack (its only available init state for all-passive).
+      act(() => {
+        reset.click();
+      });
+
+      await waitFor(() => expect(screen.getByTestId(markButton(SECTION_PASSIVE))).toBeInTheDocument());
+      expect(screen.queryByTestId(resetButton(SECTION_PASSIVE))).not.toBeInTheDocument();
+      // Ack storage should also be cleared.
+      expect(memoryStore.get(`section-ack::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`)).toBeUndefined();
+    });
   });
 
   describe('Bug 1 regression — Redo must re-arm the gate', () => {
