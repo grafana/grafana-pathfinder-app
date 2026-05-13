@@ -129,6 +129,14 @@ describe('wrapSectionChildrenForNumbering', () => {
     expect(items[1]?.getAttribute('data-numbered')).toBe('true');
     expect(items[2]?.hasAttribute('data-numbered')).toBe(false);
     expect(items[3]?.getAttribute('data-numbered')).toBe('true');
+
+    // React component children (step, code-block) → data-step="true"
+    // Plain HTML children (<p>) → data-step="false"
+    // Unnumbered children (image) → no data-step at all
+    expect(items[0]?.getAttribute('data-step')).toBe('true'); // InteractiveStep
+    expect(items[1]?.getAttribute('data-step')).toBe('false'); // <p>
+    expect(items[2]?.hasAttribute('data-step')).toBe(false); // ImageRenderer (unnumbered)
+    expect(items[3]?.getAttribute('data-step')).toBe('true'); // CodeBlockStep
   });
 
   it('preserves the original child as the li.firstChild', () => {

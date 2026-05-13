@@ -50,13 +50,28 @@ export function shouldNumberSectionChild(child: React.ReactNode): boolean {
  * Wrap each section child in an <li>, marking content blocks with
  * data-numbered="true" so CSS can apply sequential numbering. Media and
  * wrapper blocks (image/video/conditional) sit in the list without a number.
+ *
+ * data-step="true"  → React component (InteractiveStep, quiz, terminal, etc.)
+ *                     These carry their own CSS margin-top that naturally aligns
+ *                     the card with the ::before number at top: theme.spacing(2).
+ *                     The <li> needs no extra padding.
+ * data-step="false" → Plain HTML content (markdown <p>, headings, etc.)
+ *                     No built-in top margin, so the <li> gets paddingTop via CSS
+ *                     to push the content start down to match the number position.
  */
 export function wrapSectionChildrenForNumbering(children: React.ReactNode): React.ReactNode {
   return React.Children.map(children, (child, index) => {
     const numbered = shouldNumberSectionChild(child);
     const childKey = React.isValidElement(child) && child.key != null ? child.key : `section-child-${index}`;
+    // React components (interactive steps, quiz, terminal…) have typeof type === 'function'.
+    // Plain HTML elements (p, div, h2…) have typeof type === 'string'.
+    const isStep = React.isValidElement(child) && typeof child.type !== 'string';
     return (
-      <li key={childKey} data-numbered={numbered ? 'true' : undefined}>
+      <li
+        key={childKey}
+        data-numbered={numbered ? 'true' : undefined}
+        data-step={numbered ? String(isStep) : undefined}
+      >
         {child}
       </li>
     );
