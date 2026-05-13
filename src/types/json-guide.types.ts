@@ -534,12 +534,28 @@ export interface JsonChallengeBlock {
   vmApp?: string;
   /**
    * Bash commands run sequentially via /coda/exec after the VM is ready
-   * and before "Check my work" becomes available. A sentinel file at
-   * /tmp/pathfinder-ready is written automatically after these run,
-   * gating the success criterion so it cannot pass prematurely.
-   * Non-zero exit on any command aborts setup and surfaces the error.
+   * and before "Check my work" becomes available.
+   *
+   * @deprecated Prefer `setupScript` for new challenges — it accepts
+   *   multi-line shell (heredocs, control flow, etc.) and runs as a
+   *   single command on the remote, which is significantly more
+   *   ergonomic. `setupCommands` is still honored for back-compat with
+   *   existing guides; the block editor migrates it to `setupScript` on
+   *   first save. Runtime prefers `setupScript` when both are set.
    */
   setupCommands?: string[];
+  /**
+   * Bash script run via /coda/exec after the VM is ready and before
+   * "Check my work" becomes available. The whole string (including
+   * newlines) is passed to the remote login shell as a single command,
+   * so heredocs and multi-line control flow work as expected.
+   *
+   * A sentinel file at /tmp/pathfinder-ready is written automatically
+   * after the script exits successfully, gating the success criterion
+   * so it cannot pass prematurely. Non-zero exit aborts setup and
+   * surfaces stderr to the learner.
+   */
+  setupScript?: string;
   /**
    * Requirement string evaluated when the user clicks "Check my work".
    * Typically a `coda-exit-zero:<command>` check, but any requirement

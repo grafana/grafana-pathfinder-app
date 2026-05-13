@@ -481,7 +481,15 @@ export const JsonChallengeBlockSchema = z.object({
   setupCommands: z
     .array(z.string().min(1, 'Setup command cannot be empty'))
     .optional()
-    .describe('Bash commands run server-side after VM is ready, before the challenge becomes verifiable'),
+    .describe(
+      'Deprecated — prefer setupScript. Bash commands run sequentially server-side after the VM is ready; kept for back-compat.'
+    ),
+  setupScript: z
+    .string()
+    .optional()
+    .describe(
+      'Bash script run server-side after the VM is ready. The whole string is passed to the remote login shell as a single command, so multi-line scripts, heredocs, and control flow are supported. Preferred over setupCommands.'
+    ),
   successCriteria: RequirementTokenSchema.describe(
     'Requirement evaluated when the user clicks Check my work (typically coda-exit-zero:<command>)'
   ),

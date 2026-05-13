@@ -1139,6 +1139,7 @@ function renderParsedElement(
           vmScenario={element.props.vmScenario}
           vmApp={element.props.vmApp}
           setupCommands={element.props.setupCommands}
+          setupScript={element.props.setupScript}
           successCriteria={element.props.successCriteria}
           hintLevels={element.props.hintLevels}
           failureMessage={element.props.failureMessage}

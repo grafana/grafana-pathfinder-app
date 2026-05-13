@@ -817,7 +817,9 @@ function convertChallengeBlock(block: JsonChallengeBlock, _path: string): Conver
         vmTemplate: block.vmTemplate,
         vmScenario: block.vmScenario,
         vmApp: block.vmApp,
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional back-compat: runtime block accepts both shapes
         setupCommands: block.setupCommands,
+        setupScript: block.setupScript,
         successCriteria: block.successCriteria,
         hintLevels: block.hintLevels,
         failureMessage: block.failureMessage,

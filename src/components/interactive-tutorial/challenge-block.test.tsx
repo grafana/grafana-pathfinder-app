@@ -123,6 +123,51 @@ describe('ChallengeBlock', () => {
     });
   });
 
+  it('runs setupScript as a single exec call when provided', async () => {
+    const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    setBackend(post);
+    mockTerminalCtx({ status: 'connected' });
+
+    const script = "echo one\necho two\ncat <<'EOF' > /tmp/x\nhello\nEOF";
+    render(<ChallengeBlock {...baseProps} setupScript={script} setupCommands={undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    // Exactly two calls: the script itself, then the sentinel write.
+    await waitFor(() => {
+      expect(post).toHaveBeenCalledTimes(2);
+    });
+    expect(post.mock.calls[0]![1]).toMatchObject({ command: script, mode: 'raw', timeoutMs: 120_000 });
+    expect(post.mock.calls[1]![1]).toMatchObject({
+      command: expect.stringContaining('/tmp/pathfinder-ready'),
+      mode: 'raw',
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+  });
+
+  it('prefers setupScript over setupCommands when both are present', async () => {
+    const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    setBackend(post);
+    mockTerminalCtx({ status: 'connected' });
+
+    render(
+      <ChallengeBlock
+        {...baseProps}
+        setupScript="echo from-script"
+        setupCommands={['echo from-array-1', 'echo from-array-2']}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    await waitFor(() => {
+      expect(post).toHaveBeenCalledTimes(2);
+    });
+    // The first call is the script — the array path is fully skipped.
+    expect(post.mock.calls[0]![1]).toMatchObject({ command: 'echo from-script' });
+  });
+
   it('recovers when Try again is clicked after a VM-provisioning failure', async () => {
     // First mount with status='error' simulates the situation immediately
     // after a credentials failure: the terminalCtx already reports 'error'.

@@ -14,10 +14,7 @@
       "brief": "Alloy is running on this VM and should be scraping `localhost:9100` (Node Exporter) and remote-writing to the local Prometheus at `localhost:9090`. Right now, Prometheus has no series for the `up` metric. Fix the Alloy configuration so metrics start flowing again.",
       "vmTemplate": "vm-aws-alloy-scenario",
       "vmScenario": "broken-scrape",
-      "setupCommands": [
-        "sudo sed -i 's|http://localhost:9100/metrics|http://localhost:9101/metrics|' /etc/alloy/config.alloy",
-        "sudo systemctl restart alloy"
-      ],
+      "setupScript": "sudo sed -i 's|http://localhost:9100/metrics|http://localhost:9101/metrics|' /etc/alloy/config.alloy\nsudo systemctl restart alloy",
       "successCriteria": "coda-exit-zero:curl -sf 'http://localhost:9090/api/v1/query?query=up' | jq -e '.data.result | length > 0 and (any(.[]; .value[1] == \"1\"))'",
       "hintLevels": [
         {

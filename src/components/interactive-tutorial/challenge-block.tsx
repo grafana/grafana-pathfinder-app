@@ -49,7 +49,14 @@ export interface ChallengeBlockProps {
   vmTemplate?: string;
   vmScenario?: string;
   vmApp?: string;
+  /**
+   * Deprecated. Use setupScript for new content. When both are present at
+   * runtime, setupScript wins. Existing JSON guides with setupCommands still
+   * work — the loop runs each command sequentially.
+   */
   setupCommands?: string[];
+  /** Bash script run as a single /coda/exec call on the remote shell. */
+  setupScript?: string;
   successCriteria: string;
   hintLevels?: ChallengeHintProps[];
   failureMessage?: string;
@@ -151,6 +158,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   vmScenario,
   vmApp,
   setupCommands = [],
+  setupScript,
   successCriteria,
   hintLevels = [],
   failureMessage,
@@ -222,28 +230,54 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     setupStartedRef.current = true;
     cancelRequestedRef.current = false;
     setState('preparing');
-    // +1 for the sentinel write that always runs after author setup commands.
-    const totalSteps = setupCommands.length + 1;
+
+    // Two paths: a single bash script (preferred, allows multi-line / heredocs
+    // / control flow) or the legacy per-command array. setupScript wins when
+    // both are set.
+    const useScript = !!setupScript && setupScript.trim().length > 0;
+    // +1 for the sentinel write that always follows successful setup.
+    const totalSteps = useScript ? 2 : setupCommands.length + 1;
     setSetupProgress({ current: 0, total: totalSteps });
     try {
-      for (let i = 0; i < setupCommands.length; i++) {
+      if (useScript) {
         if (cancelRequestedRef.current) {
           resetToIdle();
           return;
         }
-        setSetupProgress({ current: i + 1, total: totalSteps });
-        const cmd = setupCommands[i]!;
-        const result = await runExec(cmd, 'raw', 30000);
+        setSetupProgress({ current: 1, total: totalSteps });
+        // 120s timeout — apt-get / systemctl restart / service-startup waits
+        // are realistic and need the headroom. Backend hard-caps at the same
+        // value, so we just request it.
+        const result = await runExec(setupScript!, 'raw', 120_000);
         if (cancelRequestedRef.current) {
           resetToIdle();
           return;
         }
         if (result.exitCode !== 0) {
-          setErrorDetail(
-            `Setup command failed (exit ${result.exitCode}): ${cmd}\n${result.stderr.trim().slice(0, 500)}`
-          );
+          setErrorDetail(`Setup script failed (exit ${result.exitCode}): ${result.stderr.trim().slice(0, 500)}`);
           setState('setup-failed');
           return;
+        }
+      } else {
+        for (let i = 0; i < setupCommands.length; i++) {
+          if (cancelRequestedRef.current) {
+            resetToIdle();
+            return;
+          }
+          setSetupProgress({ current: i + 1, total: totalSteps });
+          const cmd = setupCommands[i]!;
+          const result = await runExec(cmd, 'raw', 30000);
+          if (cancelRequestedRef.current) {
+            resetToIdle();
+            return;
+          }
+          if (result.exitCode !== 0) {
+            setErrorDetail(
+              `Setup command failed (exit ${result.exitCode}): ${cmd}\n${result.stderr.trim().slice(0, 500)}`
+            );
+            setState('setup-failed');
+            return;
+          }
         }
       }
       // Sentinel write — must be last. Once present, the gated coda-exit-zero
@@ -285,7 +319,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       setErrorDetail(message);
       setState('setup-failed');
     }
-  }, [setupCommands, resetToIdle]);
+  }, [setupCommands, setupScript, resetToIdle]);
 
   // Watch terminal status while we're trying to connect. When it goes live,
   // kick off setup. This effect reacts to an external system (the terminal
