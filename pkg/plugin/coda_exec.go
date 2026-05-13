@@ -33,8 +33,14 @@ import (
 
 const (
 	codaExecDefaultTimeoutMs = 5000
-	codaExecMaxTimeoutMs     = 30000
-	codaExecMaxOutputBytes   = 32 * 1024
+	// Hard cap on per-call timeout. Sized to accommodate real challenge
+	// setup scripts (apt-get install, systemctl restart, sleep-for-service-
+	// startup) when run as a single bash invocation via setupScript. The
+	// default stays at 5s for ordinary verification checks; only callers
+	// that explicitly opt into a longer window (the challenge-block runtime
+	// when running a setupScript) reach the cap.
+	codaExecMaxTimeoutMs   = 120000
+	codaExecMaxOutputBytes = 32 * 1024
 	// codaSentinelPath is the readiness sentinel written by the challenge
 	// block's setup phase. Gated /coda/exec calls refuse to evaluate the
 	// author's success criterion until this file exists.
