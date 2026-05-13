@@ -462,29 +462,10 @@ export function ChallengeBlockForm({
                   </ul>
                 </>
               ) : (
-                <>
-                  <div>
-                    Pathfinder requirement evaluated when the user clicks <em>Check my work</em>. The challenge is
-                    considered solved when the requirement passes. Common patterns:
-                  </div>
-                  <ul>
-                    <li>
-                      Dashboard exists with a name — <code>has-dashboard-named:My Dashboard</code>
-                    </li>
-                    <li>
-                      Data source configured — <code>has-datasource:prometheus</code>
-                    </li>
-                    <li>
-                      User on a specific page — <code>on-page:/d/abc123</code>
-                    </li>
-                    <li>
-                      Plugin installed — <code>has-plugin:grafana-clock-panel</code>
-                    </li>
-                    <li>
-                      Feature toggle enabled — <code>has-feature:publicDashboards</code>
-                    </li>
-                  </ul>
-                </>
+                <div>
+                  Pathfinder requirement that proves the challenge is solved. Multiple chips mean &quot;all must
+                  pass&quot;.
+                </div>
               )}
             </div>
           }
