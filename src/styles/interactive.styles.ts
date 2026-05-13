@@ -564,8 +564,14 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     listStyle: 'none', // Hide default markers since we use CSS counters
     counterReset: 'step-counter', // Initialize counter
 
-    // Increment counter for each step
-    '& > .interactive-step, & > .interactive-multistep, & > .interactive-guided': {
+    // Every direct child sits in a wrapper <li>. Only li[data-numbered="true"]
+    // participates in the sequential numbering — media (image/video) and wrapper
+    // (conditional) blocks render without a number. See issue #841.
+    '& > li': {
+      listStyle: 'none',
+    },
+
+    '& > li[data-numbered="true"]': {
       counterIncrement: 'step-counter',
       position: 'relative',
       paddingLeft: theme.spacing(4), // Space for the number
@@ -575,13 +581,37 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
         content: 'counter(step-counter) "."',
         position: 'absolute',
         left: 0,
-        top: theme.spacing(2), // Align with step content padding
+        top: theme.spacing(2), // Aligns with the content start offset (see below)
         color: theme.colors.text.secondary,
         fontWeight: theme.typography.fontWeightMedium,
         fontSize: theme.typography.body.fontSize,
         width: theme.spacing(3),
         textAlign: 'right',
       },
+    },
+
+    // Interactive step components (InteractiveStep, InteractiveMultiStep, etc.)
+    // carry their own CSS margin-top of theme.spacing(2), which naturally
+    // positions the card 16px below the <li> top — matching the number's
+    // top: theme.spacing(2). They also wrap content in a card with
+    // padding: theme.spacing(2) (16px) and border: 2px solid transparent,
+    // which insets the title text 18px from the card's left edge.
+    // Their <li> therefore needs NO extra padding.
+    //
+    // Plain content blocks (markdown <p>, headings, etc.) have no built-in
+    // margin-top OR card chrome, so they'd start at (top: 0, left: 0 inside
+    // the li padding) while the step's title sits at
+    // (top: theme.spacing(2), left: theme.spacing(2) + 2px) inside the li.
+    // [data-step="false"] marks those <li> items; paddingTop pushes their
+    // content down to align with the number, paddingLeft pushes them right
+    // to align horizontally with the step title text.
+    //
+    // Verified at runtime (issue #841 alignment fix):
+    //   step  title.x = li.x + 32 (li padding) + 2 (step border) + 16 (step padding) = li.x + 50
+    //   plain title.x = li.x + 32 + 18 (extra padding) = li.x + 50  ✓
+    '& > li[data-numbered="true"][data-step="false"]': {
+      paddingTop: theme.spacing(2),
+      paddingLeft: `calc(${theme.spacing(4)} + ${theme.spacing(2)} + 2px)`,
     },
 
     // Step status styles
