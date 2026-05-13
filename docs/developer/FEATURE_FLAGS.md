@@ -230,6 +230,12 @@ import { evaluateFeatureFlag } from '../../utils/openfeature';
 const autoOpen = await evaluateFeatureFlag('pathfinder.auto-open-sidebar');
 ```
 
+### Exposure dedup
+
+`pathfinder_feature_flag_evaluated` fires **once per (hostname, flag, variant) combination per browser**, persisted in localStorage under `grafana-pathfinder-experiment-exposure-reported-{hostname}:{flagKey}:{variant}`. Subsequent page loads where the user is still in the same arm produce zero events; variant reassignment (e.g. control → treatment) yields a new key and re-fires, which is what downstream A/B tools expect for fresh-arm exposures.
+
+The hook keeps an in-memory `Set` as a fast path so the same flag never fires twice within a single page load, even when localStorage is unavailable.
+
 ### Analytics tracking
 
 All flag evaluations are automatically tracked via `TrackingHook` (added during initialization). Flags with a `trackingKey` defined in `pathfinderFeatureFlags` are reported to analytics using that key.
