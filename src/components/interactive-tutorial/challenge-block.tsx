@@ -172,6 +172,10 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   const [errorDetail, setErrorDetail] = useState<string>('');
   const [hintsRevealed, setHintsRevealed] = useState(0);
   const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
+  // Setup progress (current step / total) — surfaced in the status banner so
+  // a slow setup (multiple commands, ~2-30s each) reads as progress rather
+  // than a hang. Reset to null whenever runSetup re-enters.
+  const [setupProgress, setSetupProgress] = useState<{ current: number; total: number } | null>(null);
   const setupStartedRef = useRef(false);
   // Status the terminal had when the user clicked Start. We use this to
   // ignore a stale 'error' (or any other) status until the terminal has
@@ -206,8 +210,13 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     }
     setupStartedRef.current = true;
     setState('preparing');
+    // +1 for the sentinel write that always runs after author setup commands.
+    const totalSteps = setupCommands.length + 1;
+    setSetupProgress({ current: 0, total: totalSteps });
     try {
-      for (const cmd of setupCommands) {
+      for (let i = 0; i < setupCommands.length; i++) {
+        setSetupProgress({ current: i + 1, total: totalSteps });
+        const cmd = setupCommands[i]!;
         const result = await runExec(cmd, 'raw', 30000);
         if (result.exitCode !== 0) {
           setErrorDetail(
@@ -219,12 +228,14 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       }
       // Sentinel write — must be last. Once present, the gated coda-exit-zero
       // check is allowed to evaluate the author's success criterion.
+      setSetupProgress({ current: totalSteps, total: totalSteps });
       const sentinel = await runExec(SENTINEL_WRITE_COMMAND, 'raw', 5000);
       if (sentinel.exitCode !== 0) {
         setErrorDetail(`Could not write readiness sentinel: ${sentinel.stderr.trim().slice(0, 500)}`);
         setState('setup-failed');
         return;
       }
+      setSetupProgress(null);
       setState('ready');
     } catch (err) {
       // Grafana FetchError attaches the backend response on .data; fall back to
@@ -324,7 +335,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       case 'connecting':
         return 'Provisioning challenge VM…';
       case 'preparing':
-        return 'Preparing your environment…';
+        return setupProgress
+          ? `Preparing your environment (step ${setupProgress.current} of ${setupProgress.total})…`
+          : 'Preparing your environment…';
       case 'checking':
         return 'Checking your work…';
       case 'failed-check': {
