@@ -22,6 +22,7 @@ import {
   interactiveStepStorage,
   interactiveCompletionStorage,
   journeyCompletionStorage,
+  milestoneCompletionStorage,
 } from '../lib/user-storage';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import { FALLBACK_BADGES } from './bundled-courses';
@@ -360,18 +361,43 @@ export function useLearningPaths(): UseLearningPathsReturn {
         return;
       }
 
-      await Promise.all(
-        path.guides.map((guideId) => {
+      // For URL guides, milestone completions live in *two* stores:
+      //   - `milestoneCompletionStorage[url]`: the per-journey slug set
+      //     consulted by `markMilestoneDone` to decide whether the journey
+      //     is finished.
+      //   - `completedGuides`: each milestone slug is pushed in there too
+      //     by `markMilestoneDone(milestoneSlug)`, but `path.guides` only
+      //     contains the journey URL, never the slugs.
+      // If we forget to clear either:
+      //   (a) `milestoneCompletionStorage[url]` retains every slug from
+      //       the previous run, so the user's next single-milestone tick
+      //       passes the `completed.size >= totalMilestones` gate and the
+      //       path instantly re-completes — a reset that doesn't actually
+      //       reset.
+      //   (b) Orphaned slugs linger in `completedGuides`, inflating the
+      //       streak/first-steps badge surface and (worse) keeping the
+      //       milestone's `isCompleted` check `true` after reset.
+      // Read the slugs *before* clearing so we can surface them up to the
+      // bulk `removeCompletedGuides` call below.
+      const milestoneSlugsPerUrl = await Promise.all(
+        path.guides.map(async (guideId) => {
           const contentKey = isUrlGuide(guideId) ? guideId : `bundled:${guideId}`;
-          return Promise.all([
+          const baseTasks: Array<Promise<unknown>> = [
             interactiveStepStorage.clearAllForContent(contentKey),
             interactiveCompletionStorage.clear(contentKey),
             journeyCompletionStorage.clear(contentKey),
-          ]);
+          ];
+          if (!isUrlGuide(guideId)) {
+            await Promise.all(baseTasks);
+            return [] as string[];
+          }
+          const completedSlugs = Array.from(await milestoneCompletionStorage.getCompleted(guideId));
+          await Promise.all([...baseTasks, milestoneCompletionStorage.clear(guideId)]);
+          return completedSlugs;
         })
       );
 
-      await learningProgressStorage.removeCompletedGuides(path.guides);
+      await learningProgressStorage.removeCompletedGuides([...path.guides, ...milestoneSlugsPerUrl.flat()]);
 
       window.dispatchEvent(
         new CustomEvent('interactive-progress-cleared', {
