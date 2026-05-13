@@ -221,21 +221,33 @@ export function InteractiveSection({
     return contentKey.indexOf('devtools') > -1 || contentKey.startsWith('block-editor://preview/');
   }, []);
 
-  // Persist completed steps using new user storage system
+  // Persist completed steps using new user storage system.
+  //
+  // Preview-mode sandbox (#842, Bug 3): in block-editor preview the section
+  // is a throwaway render — we must not pollute localStorage with progress
+  // tied to a `block-editor://preview/...` content key. Skip every write
+  // while preserving the in-window event dispatch so listeners that drive
+  // ephemeral UI (useGuidePreviewProgress's "hasProgress" → Reset guide
+  // button visibility) still react during the same session.
   const persistCompletedSteps = useCallback(
     (ids: Set<string>) => {
       const contentKey = getContentKey();
-      interactiveStepStorage.setCompleted(contentKey, sectionId, ids);
 
-      // Compute unified completion percentage across ALL sections (including standalone)
-      const docTotal = getTotalDocumentSteps();
-      const allCompleted = interactiveStepStorage.countAllCompleted(contentKey);
-      const percentage = docTotal > 0 ? Math.round((allCompleted / docTotal) * 100) : undefined;
-      if (percentage !== undefined) {
-        interactiveCompletionStorage.set(contentKey, percentage);
+      let percentage: number | undefined;
+      if (!isPreviewMode) {
+        interactiveStepStorage.setCompleted(contentKey, sectionId, ids);
+
+        // Compute unified completion percentage across ALL sections (including standalone)
+        const docTotal = getTotalDocumentSteps();
+        const allCompleted = interactiveStepStorage.countAllCompleted(contentKey);
+        percentage = docTotal > 0 ? Math.round((allCompleted / docTotal) * 100) : undefined;
+        if (percentage !== undefined) {
+          interactiveCompletionStorage.set(contentKey, percentage);
+        }
       }
 
-      // Dispatch event to notify that progress was saved (for reset button visibility)
+      // Dispatch event to notify that progress was saved (for reset button visibility).
+      // Fires in preview mode too — useGuidePreviewProgress depends on it.
       if (ids.size > 0 && typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('interactive-progress-saved', {
@@ -244,7 +256,7 @@ export function InteractiveSection({
         );
       }
     },
-    [sectionId]
+    [sectionId, isPreviewMode]
   );
 
   // Toggle collapse state and persist to storage (skip persistence in preview mode)
@@ -587,8 +599,16 @@ export function InteractiveSection({
     return steps;
   }, [children, sectionId]);
 
-  // Load persisted completed steps on mount/section change (declared after stepComponents)
+  // Load persisted completed steps on mount/section change (declared after stepComponents).
+  //
+  // Preview-mode sandbox (#842, Bug 3): every preview session starts fresh.
+  // Skipping the storage read here means any stale entries written under a
+  // `block-editor://preview/...` key by prior buggy versions cannot resurrect
+  // and silently mark steps complete on remount.
   useEffect(() => {
+    if (isPreviewMode) {
+      return;
+    }
     const contentKey = getContentKey();
 
     interactiveStepStorage.getCompleted(contentKey, sectionId).then((restored) => {
@@ -605,7 +625,7 @@ export function InteractiveSection({
         }
       }
     });
-  }, [sectionId, stepComponents]);
+  }, [sectionId, stepComponents, isPreviewMode]);
 
   // Objectives checking is handled by the step checker hook
 
@@ -818,20 +838,18 @@ export function InteractiveSection({
       // Find the index of the step being reset
       const resetIndex = stepComponents.findIndex((step) => step.stepId === stepId);
 
-      // Update section state - only remove this step AND all subsequent steps
-      setCompletedSteps((prev) => {
-        const newSet = new Set(prev);
-
-        // Remove the target step and all steps after it
-        for (let i = resetIndex; i < stepComponents.length; i++) {
-          const stepToRemove = stepComponents[i]!.stepId;
-          newSet.delete(stepToRemove);
-        }
-
-        // Persist removal
-        persistCompletedSteps(newSet);
-        return newSet;
-      });
+      // Compute the new set OUTSIDE the setCompletedSteps updater (#842, Bug 5).
+      // React reserves the right to invoke the updater more than once in
+      // concurrent / strict-mode renders; running side effects like
+      // persistCompletedSteps inside an updater is unsafe. Mirrors the
+      // explicit pattern already documented in handleDoSection.
+      const newSet = new Set(completedSteps);
+      for (let i = resetIndex; i < stepComponents.length; i++) {
+        const stepToRemove = stepComponents[i]!.stepId;
+        newSet.delete(stepToRemove);
+      }
+      setCompletedSteps(newSet);
+      persistCompletedSteps(newSet);
 
       // Move currentStepIndex back to the reset step
       if (resetIndex >= 0 && resetIndex < currentStepIndex) {
@@ -847,7 +865,7 @@ export function InteractiveSection({
       // This ensures green checkmarks are cleared from the UI
       setResetTrigger((prev) => prev + 1);
     },
-    [currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps]
+    [completedSteps, currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps]
   );
 
   // Execute a single step (shared between individual and sequence execution)
@@ -1362,6 +1380,21 @@ export function InteractiveSection({
     const contentKey = getContentKey();
     interactiveStepStorage.clear(contentKey, sectionId);
     sectionCollapseStorage.clear(contentKey, sectionId); // Clear collapse state
+
+    // Notify listeners that progress for this content was cleared (#842, Bug 2).
+    // Mirrors the dispatch in BlockPreview's reset() so any consumer driving
+    // ephemeral UI off `interactive-progress-cleared` — most importantly
+    // `useGuidePreviewProgress`, which controls the "Reset guide" button
+    // visibility — sees the section-level reset path too. Without this the
+    // block-editor preview's Reset guide button stays visible after a
+    // per-section reset, even when no progress is left.
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('interactive-progress-cleared', {
+          detail: { contentKey },
+        })
+      );
+    }
 
     // Reset all step states in the global manager
     import('../../requirements-manager').then(({ SequentialRequirementsManager }) => {

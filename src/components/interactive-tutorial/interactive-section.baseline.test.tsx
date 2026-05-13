@@ -337,7 +337,7 @@ describe('InteractiveSection — event-dispatch baseline (Bug 2 tripwire)', () =
     }
   });
 
-  it('does NOT currently dispatch "interactive-progress-cleared" from handleResetSection (bug-2 baseline; expected to flip after phase-3 fix)', async () => {
+  it('dispatches "interactive-progress-cleared" from handleResetSection (bug-2 fix, phase 3)', async () => {
     const events: CustomEvent[] = [];
     const handler = (e: Event) => events.push(e as CustomEvent);
     window.addEventListener('interactive-progress-cleared', handler);
@@ -357,9 +357,10 @@ describe('InteractiveSection — event-dispatch baseline (Bug 2 tripwire)', () =
         screen.getByTestId(testIds.interactive.resetSectionButton(SECTION_BASIC)).click();
       });
 
-      // Give the section a tick to potentially dispatch, then assert nothing fired.
-      await new Promise((r) => setTimeout(r, 20));
-      expect(events).toHaveLength(0);
+      await waitFor(() => {
+        expect(events.length).toBeGreaterThanOrEqual(1);
+      });
+      expect(events[0]!.detail?.contentKey).toBe('/');
     } finally {
       window.removeEventListener('interactive-progress-cleared', handler);
     }
@@ -374,7 +375,7 @@ describe('InteractiveSection — preview-mode storage sandbox (Bug 3 tripwire)',
     (window as any).__DocsPluginActiveTabUrl = 'block-editor://preview/test-guide';
   });
 
-  it('CURRENTLY persists completedSteps in preview mode (bug-3 baseline; expected to flip after phase-3 fix)', async () => {
+  it('does NOT persist completedSteps to storage in preview mode (bug-3 fix, phase 3)', async () => {
     renderSingleStepSection();
     await waitFor(() => expect(screen.getByTestId(`harness-complete-${STEP_BASIC}`)).toBeInTheDocument());
 
@@ -382,13 +383,26 @@ describe('InteractiveSection — preview-mode storage sandbox (Bug 3 tripwire)',
       screen.getByTestId(`harness-complete-${STEP_BASIC}`).click();
     });
 
-    // Bug 3: storage is written even in preview. Phase 3 makes this a no-op.
-    await waitFor(() => {
-      const stored = memoryStore.get(`section-steps::block-editor://preview/test-guide::${SECTION_BASIC}`) as
-        | Set<string>
-        | undefined;
-      expect(stored).toBeDefined();
-      expect(stored!.has(STEP_BASIC)).toBe(true);
-    });
+    // The section still reaches DONE in-memory, but localStorage stays clean.
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.resetSectionButton(SECTION_BASIC))).toBeInTheDocument()
+    );
+
+    const stored = memoryStore.get(`section-steps::block-editor://preview/test-guide::${SECTION_BASIC}`);
+    expect(stored).toBeUndefined();
+  });
+
+  it('does NOT restore completed steps from storage on mount in preview mode (bug-3 fix, phase 3)', async () => {
+    // Seed storage as if a previous buggy version had persisted progress
+    // under the preview content key. The new mount-restore guard must
+    // ignore it — the section comes back to INIT.
+    memoryStore.set(`section-steps::block-editor://preview/test-guide::${SECTION_BASIC}`, new Set([STEP_BASIC]));
+
+    renderSingleStepSection();
+
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.doSectionButton(SECTION_BASIC))).toBeInTheDocument()
+    );
+    expect(screen.queryByTestId(testIds.interactive.resetSectionButton(SECTION_BASIC))).not.toBeInTheDocument();
   });
 });
