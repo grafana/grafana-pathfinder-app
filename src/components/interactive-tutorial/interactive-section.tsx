@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useReducer, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
@@ -15,13 +15,23 @@ import { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 import { InteractiveConditional } from './interactive-conditional';
 import { ImageRenderer, VideoRenderer, YouTubeVideoRenderer } from '../../docs-retrieval';
 import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
-import { interactiveStepStorage, sectionCollapseStorage, interactiveCompletionStorage } from '../../lib/user-storage';
+import {
+  interactiveStepStorage,
+  sectionCollapseStorage,
+  interactiveCompletionStorage,
+  sectionAcknowledgementStorage,
+} from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
 import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
-import { getResumeInfo as computeResumeInfo, computeStepEligibility } from './step-section-utils';
+import {
+  getResumeInfo as computeResumeInfo,
+  computeStepEligibility,
+  type AcknowledgementAnalysis,
+} from './step-section-utils';
+import { initialSectionState, restoreFromStorage, sectionReducer } from './section-state';
 
 // Simple counter for sequential section IDs
 let interactiveSectionCounter = 0;
@@ -190,11 +200,21 @@ export function InteractiveSection({
     return generatedId;
   }, [id]);
 
-  // Sequential state management
-  const [completedSteps, setCompletedSteps] = useState(new Set<string>());
+  // Sequential state management.
+  //
+  // The reducer owns the completion-and-acknowledgement state machine
+  // (Phase 4 of #842 — the gate itself isn't enabled yet; this commit
+  // is a pure structural move). Orthogonal UI flags stay as useState
+  // slots; they don't interact with what "completed" means.
+  //
+  // Local aliases `completedSteps` and `currentStepIndex` preserve the
+  // names used by every existing reader in this file, so the diff for
+  // the surrounding code stays focused on writes → dispatches.
+  const [sectionState, dispatch] = useReducer(sectionReducer, initialSectionState);
+  const completedSteps = sectionState.completed;
+  const currentStepIndex = sectionState.cursor;
   const [currentlyExecutingStep, setCurrentlyExecutingStep] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
-  const [currentStepIndex, setCurrentStepIndex] = useState(0); // Track next uncompleted step
   const [executingStepNumber, setExecutingStepNumber] = useState(0); // Track which step is being executed (1-indexed for display)
   const [resetTrigger, setResetTrigger] = useState(0); // Trigger to reset child steps
   const [isCollapsed, setIsCollapsed] = useState(false); // Collapse state for completed sections
@@ -599,33 +619,69 @@ export function InteractiveSection({
     return steps;
   }, [children, sectionId]);
 
-  // Load persisted completed steps on mount/section change (declared after stepComponents).
+  // Load persisted completion + acknowledgement state on first mount only
+  // (#842, Bug 4 fix).
   //
-  // Preview-mode sandbox (#842, Bug 3): every preview session starts fresh.
-  // Skipping the storage read here means any stale entries written under a
-  // `block-editor://preview/...` key by prior buggy versions cannot resurrect
-  // and silently mark steps complete on remount.
+  // The previous version re-fired whenever `stepComponents` changed
+  // reference — which happens routinely because the parent renderer
+  // produces fresh children on every render. Restoring twice is idempotent
+  // in steady state but masked race conditions during block-editor preview
+  // remounts. The `didRestoreRef` guard makes the contract obvious:
+  // "restore exactly once per InteractiveSection instance."
+  //
+  // Preview-mode sandbox (#842, Bug 3): block-editor previews start fresh
+  // every session — we skip the read entirely so stale entries from prior
+  // buggy versions cannot resurrect.
+  //
+  // Acknowledgement-gate plumbing (#842, Phase 4): we always read the
+  // ack storage namespace so phase 5 can switch the gate on without
+  // touching this effect. With the gate inert (phase 4), the read value
+  // flows through unchanged.
+  const didRestoreRef = useRef(false);
   useEffect(() => {
+    if (didRestoreRef.current) {
+      return;
+    }
+    didRestoreRef.current = true;
     if (isPreviewMode) {
       return;
     }
     const contentKey = getContentKey();
-
-    interactiveStepStorage.getCompleted(contentKey, sectionId).then((restored) => {
-      if (restored.size > 0) {
-        // Only keep steps that exist in current content
-        const validIds = new Set(stepComponents.map((s) => s.stepId));
-        const filtered = Array.from(restored).filter((id) => validIds.has(id));
-        if (filtered.length > 0) {
-          const restoredSet = new Set(filtered);
-          setCompletedSteps(restoredSet);
-          // Move index to next uncompleted
-          const nextIdx = stepComponents.findIndex((s) => !restoredSet.has(s.stepId));
-          setCurrentStepIndex(nextIdx === -1 ? stepComponents.length : nextIdx);
-        }
+    let cancelled = false;
+    Promise.all([
+      interactiveStepStorage.getCompleted(contentKey, sectionId),
+      sectionAcknowledgementStorage.get(contentKey, sectionId),
+    ]).then(([restoredCompleted, restoredAck]) => {
+      if (cancelled) {
+        return;
+      }
+      // Phase 4: gate is inert. Phase 5 swaps in
+      // `analyzeAcknowledgement(stepKinds)`.
+      const inertGate: AcknowledgementAnalysis = { needsAcknowledgement: false, isAllPassive: false };
+      const { state: restoredState, migrated } = restoreFromStorage({
+        completed: restoredCompleted,
+        acknowledged: restoredAck,
+        stepComponents,
+        gate: inertGate,
+      });
+      dispatch({
+        type: 'RESTORE',
+        completed: restoredState.completed,
+        acknowledged: restoredState.acknowledged,
+        allStepIds: stepComponents.map((s) => s.stepId),
+      });
+      if (migrated) {
+        sectionAcknowledgementStorage.set(contentKey, sectionId, true);
       }
     });
-  }, [sectionId, stepComponents, isPreviewMode]);
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally [] — true mount-only. `stepComponents` is closed over
+    // by reference; remounts (instance change) re-trigger the effect via
+    // a fresh `didRestoreRef`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Objectives checking is handled by the step checker hook
 
@@ -657,15 +713,14 @@ export function InteractiveSection({
   // When section objectives are met, mark all child steps as complete (clarification 2, 16)
   useEffect(() => {
     if (isCompletedByObjectives && stepComponents.length > 0) {
-      const allStepIds = new Set(stepComponents.map((step) => step.stepId));
+      const allStepIds = stepComponents.map((step) => step.stepId);
 
-      if (completedSteps && completedSteps.size !== allStepIds.size) {
-        setCompletedSteps(allStepIds);
-        setCurrentStepIndex(stepComponents.length); // Mark as all completed
+      if (completedSteps && completedSteps.size !== allStepIds.length) {
+        dispatch({ type: 'COMPLETE_ALL_STEPS', stepIds: allStepIds });
         // Persist so a remount (e.g. fullscreen → sidebar auto-dock fired
         // by an interactive nav inside this section) doesn't lose the
         // objectives-driven completion and re-lock every step.
-        persistCompletedSteps(allStepIds);
+        persistCompletedSteps(new Set(allStepIds));
       }
     }
   }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps, persistCompletedSteps]);
@@ -789,15 +844,17 @@ export function InteractiveSection({
       }
 
       if (!skipStateUpdate) {
-        // Update state normally - React batches these automatically
-        const newCompletedSteps = new Set([...completedSteps, stepId]);
-        setCompletedSteps(newCompletedSteps);
-        setCurrentlyExecutingStep(null);
-
         const currentIndex = stepComponents.findIndex((step) => step.stepId === stepId);
-        if (currentIndex >= 0) {
-          setCurrentStepIndex(currentIndex + 1);
-        }
+        const newCompletedSteps = new Set([...completedSteps, stepId]);
+
+        // Reducer owns completed + cursor. cursorAdvancedTo is the index
+        // AFTER the completed step (so resume points at the next one).
+        dispatch({
+          type: 'COMPLETE_STEP',
+          stepId,
+          cursorAdvancedTo: currentIndex >= 0 ? currentIndex + 1 : currentStepIndex,
+        });
+        setCurrentlyExecutingStep(null);
 
         persistCompletedSteps(newCompletedSteps);
 
@@ -826,7 +883,7 @@ export function InteractiveSection({
         setCurrentlyExecutingStep(null);
       }
     },
-    [completedSteps, stepComponents, onComplete, persistCompletedSteps, sectionId]
+    [completedSteps, currentStepIndex, onComplete, persistCompletedSteps, sectionId, stepComponents]
   );
 
   /**
@@ -837,23 +894,31 @@ export function InteractiveSection({
     (stepId: string) => {
       // Find the index of the step being reset
       const resetIndex = stepComponents.findIndex((step) => step.stepId === stepId);
+      if (resetIndex < 0) {
+        return;
+      }
 
-      // Compute the new set OUTSIDE the setCompletedSteps updater (#842, Bug 5).
-      // React reserves the right to invoke the updater more than once in
-      // concurrent / strict-mode renders; running side effects like
-      // persistCompletedSteps inside an updater is unsafe. Mirrors the
-      // explicit pattern already documented in handleDoSection.
+      // Build the new completed set + the tail-id list for the reducer.
+      // Computed outside dispatch so persistCompletedSteps gets the exact
+      // value (the reducer's transition is structurally equivalent —
+      // RESET_STEP removes every tailStepIds entry from completed).
+      const tailStepIds: string[] = [];
       const newSet = new Set(completedSteps);
       for (let i = resetIndex; i < stepComponents.length; i++) {
         const stepToRemove = stepComponents[i]!.stepId;
+        tailStepIds.push(stepToRemove);
         newSet.delete(stepToRemove);
       }
-      setCompletedSteps(newSet);
+
+      dispatch({ type: 'RESET_STEP', stepId, tailStepIds, resetIndex });
       persistCompletedSteps(newSet);
 
-      // Move currentStepIndex back to the reset step
-      if (resetIndex >= 0 && resetIndex < currentStepIndex) {
-        setCurrentStepIndex(resetIndex);
+      // Acknowledgement clears alongside completion — the reducer enforces
+      // that invariant. Mirror it in storage so a remount-restore picks up
+      // the cleared ack.
+      const contentKey = getContentKey();
+      if (!isPreviewMode) {
+        sectionAcknowledgementStorage.clear(contentKey, sectionId);
       }
 
       // Also clear currently executing step if it matches
@@ -865,7 +930,7 @@ export function InteractiveSection({
       // This ensures green checkmarks are cleared from the UI
       setResetTrigger((prev) => prev + 1);
     },
-    [completedSteps, currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps]
+    [completedSteps, currentlyExecutingStep, isPreviewMode, persistCompletedSteps, sectionId, stepComponents]
   );
 
   // Execute a single step (shared between individual and sequence execution)
@@ -957,8 +1022,7 @@ export function InteractiveSection({
 
     // If currentStepIndex is beyond the end, it means all steps are completed - reset for full re-run
     if (startIndex >= stepComponents.length) {
-      setCompletedSteps(new Set());
-      setCurrentStepIndex(0);
+      dispatch({ type: 'RESET_SECTION' });
       startIndex = 0;
       // Persist the cleared set so a mid-run unmount (auto-dock from
       // fullscreen) doesn't restore stale "all complete" state and
@@ -1073,7 +1137,7 @@ export function InteractiveSection({
         // Once complete, they can click "Resume" to continue
         if (stepInfo.isGuided) {
           ActionMonitor.getInstance().forceEnable(); // Re-enable monitor for guided mode
-          setCurrentStepIndex(i); // Mark where we stopped
+          // (cursor is already at `i` via the prior COMPLETE_STEP dispatches)
           setIsRunning(false); // Stop the automated loop
           stopSectionBlocking(sectionId); // Remove blocking overlay
 
@@ -1137,8 +1201,10 @@ export function InteractiveSection({
                       }
                       continue; // Continue to next step
                     } else {
-                      // Priority 4: Stop execution if not skippable
-                      setCurrentStepIndex(i);
+                      // Priority 4: Stop execution if not skippable.
+                      // (cursor is already at `i` via the prior
+                      // COMPLETE_STEP dispatches — no explicit setter
+                      // needed.)
                       stoppedDueToRequirements = true;
                       break;
                     }
@@ -1157,8 +1223,7 @@ export function InteractiveSection({
                     }
                     continue;
                   } else {
-                    // Stop execution
-                    setCurrentStepIndex(i);
+                    // Stop execution (cursor already at `i`)
                     stoppedDueToRequirements = true;
                     break;
                   }
@@ -1176,7 +1241,7 @@ export function InteractiveSection({
                   continue; // Continue to next step
                 } else {
                   // Priority 4: Stop execution if not skippable and no fix available
-                  setCurrentStepIndex(i);
+                  // (cursor already at `i`)
                   stoppedDueToRequirements = true;
                   break;
                 }
@@ -1184,7 +1249,6 @@ export function InteractiveSection({
             }
           } catch (error) {
             console.warn(`Step ${i + 1} requirements check failed, stopping section execution:`, error);
-            setCurrentStepIndex(i);
             stoppedDueToRequirements = true;
             break;
           }
@@ -1221,11 +1285,17 @@ export function InteractiveSection({
           completedStepsCount = i + 1; // i is 0-indexed, so +1 gives count of completed steps
 
           // Mark step as completed immediately and persistently.
-          // `persistCompletedSteps` is called DIRECTLY (not inside a setState
-          // updater) so it survives an unmount mid-section — see the long
-          // comment on `accumulatedCompleted` above for the auto-dock race.
+          // `persistCompletedSteps` is called DIRECTLY so it survives a
+          // mid-section unmount — see the long comment on
+          // `accumulatedCompleted` above for the auto-dock race. The
+          // reducer dispatch is best-effort (also dropped on unmount);
+          // localStorage is the source of truth across remounts.
           accumulatedCompleted = new Set([...accumulatedCompleted, stepInfo.stepId]);
-          setCompletedSteps(accumulatedCompleted);
+          dispatch({
+            type: 'COMPLETE_STEP',
+            stepId: stepInfo.stepId,
+            cursorAdvancedTo: i + 1,
+          });
           persistCompletedSteps(accumulatedCompleted);
 
           // Also call the standard completion handler for other side effects (skip state update to avoid double-setting)
@@ -1247,7 +1317,7 @@ export function InteractiveSection({
           }
         } else {
           // Step execution failed after retries - stop and don't auto-complete remaining steps
-          setCurrentStepIndex(i);
+          // (cursor already at `i` via the prior COMPLETE_STEP dispatches)
           stoppedDueToRequirements = true;
 
           // Wait for state to settle, then trigger reactive check
@@ -1267,15 +1337,14 @@ export function InteractiveSection({
       if (!isCancelledRef.current && !stoppedDueToRequirements) {
         // Only auto-complete all steps if we actually completed the entire sequence
         // Don't auto-complete if we stopped due to requirements failure
-        const allStepIds = new Set(stepComponents.map((step) => step.stepId));
-        setCompletedSteps(allStepIds);
-        setCurrentStepIndex(stepComponents.length);
+        const allStepIds = stepComponents.map((step) => step.stepId);
+        dispatch({ type: 'COMPLETE_ALL_STEPS', stepIds: allStepIds });
         // Persist so the user-visible "all done" state survives a
         // remount triggered by the final step's navigation (the
         // fullscreen auto-dock path) — without this, the new mount's
         // restoration sees only the per-step persists from the loop
         // and the section appears half-done despite finishing.
-        persistCompletedSteps(allStepIds);
+        persistCompletedSteps(new Set(allStepIds));
 
         // Force re-evaluation of section completion state
         setTimeout(() => {
@@ -1362,10 +1431,11 @@ export function InteractiveSection({
       return;
     }
 
-    // Clear section state immediately
-    setCompletedSteps(new Set());
+    // Clear section state immediately. The reducer also clears the
+    // acknowledgement flag in lockstep — keeping the post-#842
+    // invariant ("ack requires completion") true at all times.
+    dispatch({ type: 'RESET_SECTION' });
     setCurrentlyExecutingStep(null);
-    setCurrentStepIndex(0); // Reset to start from beginning
 
     // Expand the section if it was collapsed
     setIsCollapsed(false);
@@ -1380,6 +1450,7 @@ export function InteractiveSection({
     const contentKey = getContentKey();
     interactiveStepStorage.clear(contentKey, sectionId);
     sectionCollapseStorage.clear(contentKey, sectionId); // Clear collapse state
+    sectionAcknowledgementStorage.clear(contentKey, sectionId); // Clear ack so the gate re-arms on next pass
 
     // Notify listeners that progress for this content was cleared (#842, Bug 2).
     // Mirrors the dispatch in BlockPreview's reset() so any consumer driving
