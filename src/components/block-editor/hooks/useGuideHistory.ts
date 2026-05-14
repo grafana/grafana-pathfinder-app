@@ -21,7 +21,7 @@
  * persisted by the caller (`useBlockPersistence`) as before.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { BlockEditorState } from '../types';
 
 /** Hard cap on history depth. Older entries are dropped from the bottom of `past`. */
@@ -106,10 +106,15 @@ export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryRetur
   // and silently overwrite previously queued updates — see the regression
   // test "batched setState calls compose, not overwrite" in
   // `useGuideHistory.test.ts` for the concrete failure mode.
+  //
+  // INVARIANT: every code path that calls `setStateInternal` MUST also
+  // write the same value to `latestStateRef.current` on the line above.
+  // Do NOT add a `useEffect(() => { latestStateRef.current = state }, [state])`
+  // to "rescue" the ref — that effect fires after paint and can run
+  // *between* a synchronous ref write in one event and a function-form
+  // `setState` in the next, reverting the ref to the previous render's
+  // `state` and reintroducing the exact bug across event boundaries.
   const latestStateRef = useRef<BlockEditorState>(initial);
-  useEffect(() => {
-    latestStateRef.current = state;
-  }, [state]);
 
   // Stacks live in refs so internal pushes don't force re-renders;
   // we drive the UI from `historyMeta` instead.
