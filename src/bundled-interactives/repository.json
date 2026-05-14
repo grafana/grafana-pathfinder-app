@@ -1,42 +1,10 @@
 {
-  "alloy-broken-scrape": {
-    "path": "alloy-broken-scrape/",
-    "title": "Challenge: fix the broken Alloy scrape",
-    "type": "guide",
-    "description": "CTF-style challenge: diagnose why an Alloy instance has stopped collecting Prometheus metrics, then fix it.",
-    "category": "challenges",
-    "author": {
-      "name": "Interactive Learning",
-      "team": "Grafana Developer Advocacy"
-    },
-    "startingLocation": "/",
-    "testEnvironment": {
-      "tier": "local",
-      "minVersion": "12.2.0"
-    }
-  },
   "block-editor-tutorial": {
     "path": "block-editor-tutorial/",
     "title": "Guide editor tutorial",
     "type": "guide",
     "description": "Learn how to use the guide editor to create and edit interactive guides.",
     "category": "authoring",
-    "author": {
-      "name": "Interactive Learning",
-      "team": "Grafana Developer Advocacy"
-    },
-    "startingLocation": "/",
-    "testEnvironment": {
-      "tier": "local",
-      "minVersion": "12.2.0"
-    }
-  },
-  "create-first-dashboard-challenge": {
-    "path": "create-first-dashboard-challenge/",
-    "title": "Challenge: create your first dashboard",
-    "type": "guide",
-    "description": "Standard-mode CTF: create a dashboard named 'My First Dashboard' in Grafana. Verified by inspecting Grafana state directly — no VM required.",
-    "category": "challenges",
     "author": {
       "name": "Interactive Learning",
       "team": "Grafana Developer Advocacy"
