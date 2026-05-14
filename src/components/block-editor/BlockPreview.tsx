@@ -131,11 +131,19 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
     );
   }
 
+  // Explicit keys on every sibling (#842, Phase 6): the conditional
+  // warnings alert + the conditional reset-actions div appear and
+  // disappear independently as state changes. React's child-array
+  // reconciliation treats unkeyed siblings positionally; without
+  // stable keys, an appearance / disappearance of one sibling can
+  // cause React to reconcile ContentRenderer into a different slot,
+  // which in turn may trigger an unwanted remount and silently reset
+  // the section's reducer state. Keeping every sibling keyed pins
+  // ContentRenderer's identity across hasInteractiveProgress flips.
   return (
     <div className={styles.container}>
-      {/* Show warnings if any */}
       {warnings.length > 0 && (
-        <Alert title="Warnings" severity="warning">
+        <Alert key="preview-warnings" title="Warnings" severity="warning">
           <ul>
             {warnings.map((warning, i) => (
               <li key={i}>{warning}</li>
@@ -144,9 +152,8 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
         </Alert>
       )}
 
-      {/* Keep reset functionality without rendering the preview header bar. */}
       {hasInteractiveProgress && !hideResetButton && (
-        <div className={styles.resetActions}>
+        <div key="preview-reset-actions" className={styles.resetActions}>
           <button
             className={styles.resetButton}
             onClick={() => void reset()}
@@ -160,11 +167,13 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
         </div>
       )}
 
-      {/* Render the content using existing pipeline with proper styling */}
-      {/* key={resetKey} forces remount when reset is triggered, resetting all interactive component state */}
-      {/* previewContent class overrides journey padding for tighter sidebar layout */}
+      {/* `key={resetKey}` forces remount when a Reset guide click bumps
+         the counter, intentionally clearing all interactive component
+         state. The composite key prefix keeps ContentRenderer's slot
+         distinct from the conditional siblings above so the keyed
+         remount path is the ONLY remount path. */}
       <ContentRenderer
-        key={resetKey}
+        key={`preview-content-${resetKey}`}
         content={content}
         className={`${journeyStyles} ${interactiveStyles} ${prismStyles} ${styles.previewContent}`}
       />

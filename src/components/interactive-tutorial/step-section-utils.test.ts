@@ -1,4 +1,4 @@
-import { getResumeInfo, computeStepEligibility } from './step-section-utils';
+import { analyzeAcknowledgement, computeStepEligibility, getResumeInfo, type ChildKind } from './step-section-utils';
 import type { StepInfo } from '../../types/component-props.types';
 
 // Minimal StepInfo factory — only fields used by these utilities
@@ -98,5 +98,96 @@ describe('computeStepEligibility', () => {
     expect(computeStepEligibility(steps, new Set())).toEqual([true, false, false, false]);
     // Complete 'a' → n1 unlocks; n1 is noop so b unlocks too; c still locked
     expect(computeStepEligibility(steps, new Set(['a']))).toEqual([true, true, true, false]);
+  });
+});
+
+// ─── analyzeAcknowledgement ───────────────────────────────────────────────────
+
+describe('analyzeAcknowledgement (#842 gate predicate)', () => {
+  const kinds = (xs: Array<'i' | 'p' | '_'>): ChildKind[] =>
+    xs.map((c) => (c === 'i' ? 'interactive' : c === 'p' ? 'passive' : 'ignore'));
+
+  it('returns no-ack for an empty section', () => {
+    expect(analyzeAcknowledgement([])).toEqual({ needsAcknowledgement: false, isAllPassive: false });
+  });
+
+  it('returns no-ack for an all-interactive section', () => {
+    expect(analyzeAcknowledgement(kinds(['i', 'i', 'i']))).toEqual({
+      needsAcknowledgement: false,
+      isAllPassive: false,
+    });
+  });
+
+  it('returns gate + isAllPassive for an all-passive section', () => {
+    expect(analyzeAcknowledgement(kinds(['p', 'p']))).toEqual({
+      needsAcknowledgement: true,
+      isAllPassive: true,
+    });
+  });
+
+  it('returns gate for trailing passive content after the last interactive', () => {
+    // The canonical issue-#842 case.
+    expect(analyzeAcknowledgement(kinds(['i', 'i', 'p']))).toEqual({
+      needsAcknowledgement: true,
+      isAllPassive: false,
+    });
+  });
+
+  it('returns no-ack for mid-section passive sandwiched between interactives', () => {
+    // The user can act on the trailing interactive — no ack required.
+    expect(analyzeAcknowledgement(kinds(['i', 'p', 'i']))).toEqual({
+      needsAcknowledgement: false,
+      isAllPassive: false,
+    });
+  });
+
+  it('returns no-ack when passive content appears only at the start', () => {
+    // Leading passive is read naturally before the section is interacted with.
+    expect(analyzeAcknowledgement(kinds(['p', 'i', 'i']))).toEqual({
+      needsAcknowledgement: false,
+      isAllPassive: false,
+    });
+  });
+
+  it('returns gate for a single trailing passive after a single interactive', () => {
+    expect(analyzeAcknowledgement(kinds(['i', 'p']))).toEqual({
+      needsAcknowledgement: true,
+      isAllPassive: false,
+    });
+  });
+
+  it('handles a long trailing run of passives', () => {
+    expect(analyzeAcknowledgement(kinds(['i', 'i', 'p', 'p', 'p']))).toEqual({
+      needsAcknowledgement: true,
+      isAllPassive: false,
+    });
+  });
+
+  it('handles mid-section passive plus trailing passive — gate fires for the trailing run', () => {
+    expect(analyzeAcknowledgement(kinds(['i', 'p', 'i', 'p']))).toEqual({
+      needsAcknowledgement: true,
+      isAllPassive: false,
+    });
+  });
+
+  it('ignores `ignore` entries — they neither anchor nor trip the gate', () => {
+    // `interactive, ignore, interactive` is functionally `interactive, interactive`.
+    expect(analyzeAcknowledgement(kinds(['i', '_', 'i']))).toEqual({
+      needsAcknowledgement: false,
+      isAllPassive: false,
+    });
+    // `interactive, passive, ignore` — the trailing ignore doesn't displace the
+    // trailing-passive verdict.
+    expect(analyzeAcknowledgement(kinds(['i', 'p', '_']))).toEqual({
+      needsAcknowledgement: true,
+      isAllPassive: false,
+    });
+  });
+
+  it('returns the all-passive verdict regardless of ignore noise', () => {
+    expect(analyzeAcknowledgement(kinds(['_', 'p', '_', 'p']))).toEqual({
+      needsAcknowledgement: true,
+      isAllPassive: true,
+    });
   });
 });

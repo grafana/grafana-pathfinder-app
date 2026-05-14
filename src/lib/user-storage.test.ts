@@ -1,4 +1,10 @@
-import { wrapEnvelope, unwrapEnvelope, interactiveStepStorage, interactiveCompletionStorage } from './user-storage';
+import {
+  interactiveCompletionStorage,
+  interactiveStepStorage,
+  sectionAcknowledgementStorage,
+  unwrapEnvelope,
+  wrapEnvelope,
+} from './user-storage';
 import { StorageKeys } from './storage-keys';
 
 // ============================================================================
@@ -170,6 +176,45 @@ describe('interactiveStepStorage.clearAll', () => {
 });
 
 // ============================================================================
+// countAllCompleted ack-marker filter (#842)
+// ============================================================================
+
+describe('interactiveStepStorage.countAllCompleted — #842 ack-marker filter', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('does not count "::ack-marker" entries toward the document total', () => {
+    // All-passive section stores only a synthetic marker so the reducer's
+    // ACKNOWLEDGE invariant ("ack requires at least one completed step") is
+    // satisfied. The marker is not a real step and must not inflate the
+    // document completion numerator — getTotalDocumentSteps() excludes it
+    // from the denominator.
+    localStorage.setItem(
+      `${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-a-section-passive`,
+      JSON.stringify(['section-passive::ack-marker'])
+    );
+    localStorage.setItem(
+      `${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-a-section-real`,
+      JSON.stringify(['real-step-1', 'real-step-2'])
+    );
+
+    expect(interactiveStepStorage.countAllCompleted('guide-a')).toBe(2);
+  });
+
+  it('returns 0 for a guide whose only completed entries are ack-markers', () => {
+    // Use a distinct content key so the in-memory completedCountCache from a
+    // sibling test cannot bleed into this assertion.
+    localStorage.setItem(
+      `${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-only-passive-section-passive`,
+      JSON.stringify(['section-passive::ack-marker'])
+    );
+
+    expect(interactiveStepStorage.countAllCompleted('guide-only-passive')).toBe(0);
+  });
+});
+
+// ============================================================================
 // interactiveCompletionStorage.clearAll TESTS
 // ============================================================================
 
@@ -198,5 +243,99 @@ describe('interactiveCompletionStorage.clearAll', () => {
 
     expect(localStorage.getItem(StorageKeys.INTERACTIVE_COMPLETION)).toBeNull();
     expect(localStorage.getItem(StorageKeys.LEARNING_PROGRESS)).not.toBeNull();
+  });
+});
+
+// ============================================================================
+// sectionAcknowledgementStorage TESTS (issue #842 gate)
+// ============================================================================
+
+describe('sectionAcknowledgementStorage', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('returns null when no acknowledgement entry exists', async () => {
+    const value = await sectionAcknowledgementStorage.get('guide-a', 'section-1');
+    expect(value).toBeNull();
+  });
+
+  it('round-trips an explicit true', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    const value = await sectionAcknowledgementStorage.get('guide-a', 'section-1');
+    expect(value).toBe(true);
+  });
+
+  it('clear() removes the entry — subsequent get returns null again', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    await sectionAcknowledgementStorage.clear('guide-a', 'section-1');
+    const value = await sectionAcknowledgementStorage.get('guide-a', 'section-1');
+    expect(value).toBeNull();
+  });
+
+  it('isolates state by content key', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    expect(await sectionAcknowledgementStorage.get('guide-b', 'section-1')).toBeNull();
+  });
+
+  it('isolates state by section id', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    expect(await sectionAcknowledgementStorage.get('guide-a', 'section-2')).toBeNull();
+  });
+
+  it('uses the SECTION_ACKNOWLEDGED_PREFIX storage key shape', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}guide-a-section-1`;
+    expect(localStorage.getItem(key)).not.toBeNull();
+  });
+});
+
+// ============================================================================
+// interactiveStepStorage.clearAllForContent — ack-prefix sweep TESTS
+// ============================================================================
+
+describe('interactiveStepStorage.clearAllForContent — ack prefix sweep (#842)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('removes acknowledgement entries for the matched content key', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    await sectionAcknowledgementStorage.set('guide-a', 'section-2', true);
+
+    await interactiveStepStorage.clearAllForContent('guide-a');
+
+    expect(await sectionAcknowledgementStorage.get('guide-a', 'section-1')).toBeNull();
+    expect(await sectionAcknowledgementStorage.get('guide-a', 'section-2')).toBeNull();
+  });
+
+  it('does NOT remove acknowledgement entries for other content keys', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    await sectionAcknowledgementStorage.set('guide-b', 'section-1', true);
+
+    await interactiveStepStorage.clearAllForContent('guide-a');
+
+    expect(await sectionAcknowledgementStorage.get('guide-a', 'section-1')).toBeNull();
+    expect(await sectionAcknowledgementStorage.get('guide-b', 'section-1')).toBe(true);
+  });
+});
+
+// ============================================================================
+// interactiveStepStorage.clearAll — ack-prefix sweep TESTS
+// ============================================================================
+
+describe('interactiveStepStorage.clearAll — ack prefix sweep (#842)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('removes all SECTION_ACKNOWLEDGED_PREFIX keys from localStorage', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    await sectionAcknowledgementStorage.set('guide-b', 'section-2', true);
+
+    await interactiveStepStorage.clearAll();
+
+    expect(await sectionAcknowledgementStorage.get('guide-a', 'section-1')).toBeNull();
+    expect(await sectionAcknowledgementStorage.get('guide-b', 'section-2')).toBeNull();
   });
 });

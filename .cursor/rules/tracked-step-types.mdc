@@ -1,0 +1,69 @@
+---
+title: Tracked Step Types Registry
+description: Four-site registry of interactive step component types. Read before adding, renaming, or removing an interactive step component.
+globs:
+  - "src/components/interactive-tutorial/*.tsx"
+  - "src/docs-retrieval/content-renderer.tsx"
+  - "src/docs-retrieval/json-parser.ts"
+alwaysApply: false
+---
+
+# Tracked step types registry
+
+The plugin tracks "interactive step component types" — the React components rendered inside an interactive section that count as completable steps the user must execute (as opposed to passive content like markdown, image, or video).
+
+This list is duplicated in **four sites** that drift independently. Adding, renaming, or removing a step type requires editing all four. There is no single source of truth, deliberately: two layers operate on parse-time element strings, two operate on runtime React component identity.
+
+## The four registry sites
+
+| # | File | Constant | Keyed by | What breaks if you forget |
+|---|------|----------|----------|---------------------------|
+| 1 | `src/docs-retrieval/content-renderer.tsx` | `INTERACTIVE_STEP_TYPES` | Parsed-element string name | Standalone steps of the new type don't get `stepIndex` / `totalSteps` props and won't appear in the document-wide progress counter. |
+| 2 | `src/docs-retrieval/content-renderer.tsx` | `SECTION_TRACKED_STEP_TYPES` | Parsed-element string name | `countStepsInSection` undercounts; pre-render step-count predictions are wrong and the section's progress chip drifts. |
+| 3 | `src/components/interactive-tutorial/interactive-section.tsx` | `stepComponents` useMemo branch | React component identity | The new component is invisible to the section: never gets `stepId`, never blocks "Do Section", never tracks completion. |
+| 4 | `src/components/interactive-tutorial/section-child-classifier.ts` | `INTERACTIVE_STEP_COMPONENT_TYPES` | React component identity | Issue #842 acknowledgement gate misclassifies the new type as *passive* — the section wrongly requires "Mark section as complete" even though the user already did the work. |
+
+Sites 1 and 2 use parse-time string keys because they operate on `ParsedElement` trees produced by `json-parser.ts`. Sites 3 and 4 use React component identity (`type === FooStep`) because they operate on rendered `React.Children`. Same conceptual list, two layers.
+
+## Checklist when adding a new tracked step type
+
+Assume you're adding a `FooStep` component:
+
+1. **Component file** — create `src/components/interactive-tutorial/foo-step.tsx`. Copy the closest existing sibling (`terminal-step.tsx` is a good template for a self-contained step; `interactive-multi-step.tsx` for one that orchestrates sub-actions).
+
+2. **JSON schema** — add `JsonFooBlock` to `src/types/json-guide.types.ts` and its Zod counterpart to `src/types/json-guide.schema.ts`. See `.cursor/rules/schema-coupling.mdc` for the type/schema coupling contract.
+
+3. **Parser** — add a `case 'foo':` in `src/docs-retrieval/json-parser.ts` that emits a `ParsedElement` with `type: 'foo-step'`.
+
+4. **Renderer case** — in `src/docs-retrieval/content-renderer.tsx` `renderParsedElement`, add a `case 'foo-step':` that produces `<FooStep ... />`.
+
+5. **Registry site 1** — add `'foo-step'` to `INTERACTIVE_STEP_TYPES` in `content-renderer.tsx`.
+
+6. **Registry site 2** — add `'foo-step'` to `SECTION_TRACKED_STEP_TYPES` in `content-renderer.tsx`.
+
+7. **Registry site 3** — add a `React.isValidElement(child) && (child as any).type === FooStep` branch to the `stepComponents` useMemo in `interactive-section.tsx`. Push a `StepInfo` record with the appropriate `targetAction` / `isMultiStep` / `isGuided` / `isQuiz` flags.
+
+8. **Registry site 4** — add `FooStep` to the `INTERACTIVE_STEP_COMPONENT_TYPES` set in `section-child-classifier.ts`. Add a test case in `section-child-classifier.test.tsx`.
+
+9. **Block editor** (optional) — if authors should be able to create this block via the WYSIWYG editor, add a form in `src/components/block-editor/forms/`.
+
+10. **CLI validation** (optional) — if the block needs CLI authoring support, register it in `src/cli/`.
+
+## What counts as "interactive" vs "passive"
+
+A step type is **interactive** (and therefore belongs in this registry) when it is a tracked step component the user is expected to encounter inside an interactive section. Existing interactive types:
+
+- `InteractiveStep` for **every** `targetAction`, including `'noop'`. Per issue #842 (the acknowledgement-gate design), no-op blocks "still count as interactive" — they don't trigger the Mark Section Complete gate.
+- `InteractiveMultiStep`, `InteractiveGuided`, `InteractiveQuiz`
+- `TerminalStep`, `TerminalConnectStep`, `CodeBlockStep`
+
+A block type is **passive** (and therefore does NOT belong here) when the user only reads it: markdown HTML, image, video, html blocks, and arbitrary non-tracked renderable children. Passive content is handled implicitly by `classifySectionChild` — anything not in the registry is treated as passive for the issue-#842 acknowledgement gate.
+
+## Why not consolidate
+
+It's tempting to derive sites 1–2 from sites 3–4 (or vice-versa) via a shared constant. The two layers genuinely operate on different value spaces:
+
+- Parse-time (sites 1–2) cannot import React components without dragging the entire component tree into the parser's dependency graph.
+- Runtime (sites 3–4) cannot use string keys because parsed strings have already been resolved to component types by the time these sites run.
+
+A shared "name registry" indirection is possible but adds an indirection layer for marginal benefit. The four-site duplication is small, well-isolated, and easy to grep for — the documentation cost is lower than the abstraction cost.
