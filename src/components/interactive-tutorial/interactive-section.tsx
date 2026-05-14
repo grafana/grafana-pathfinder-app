@@ -18,6 +18,48 @@ import { wrapSectionChildrenForNumbering } from './section-numbering';
 // which imports both helpers from this module. New code should import
 // directly from `./section-numbering`.
 export { shouldNumberSectionChild, wrapSectionChildrenForNumbering } from './section-numbering';
+
+// ⚠ TRACKED STEP TYPE REGISTRY — site 3 of 4 (orchestration site).
+// Adding a new interactive step component type requires updates in 4
+// places. The schemas now live in `step-type-registry.ts`; this lookup
+// map zips each component identity to its schema. The other three
+// sites are unchanged:
+//   1. content-renderer.tsx INTERACTIVE_STEP_TYPES
+//   2. content-renderer.tsx SECTION_TRACKED_STEP_TYPES
+//   3. ./step-type-registry.ts STEP_TYPE_SCHEMAS (consumed here)
+//   4. ./section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
+// See .cursor/rules/tracked-step-types.mdc for the full checklist.
+// Lazily initialised — the lookup Map is built on first call rather
+// than at module load. This mirrors the call-time lookup pattern in
+// `shouldNumberSectionChild` and exists for the same reason: the
+// docs-retrieval barrel imports content-renderer, which re-imports
+// the interactive-tutorial index, so a top-level
+// `new Map([[CodeBlockStep, ...], ...])` would resolve component
+// identities to undefined under cycle load order.
+let stepTypeLookup: ReadonlyMap<React.ComponentType<any>, StepTypeSchema> | undefined;
+function getStepTypeLookup(): ReadonlyMap<React.ComponentType<any>, StepTypeSchema> {
+  if (!stepTypeLookup) {
+    stepTypeLookup = new Map<React.ComponentType<any>, StepTypeSchema>([
+      [InteractiveStep, INTERACTIVE_STEP_SCHEMA],
+      [InteractiveMultiStep, INTERACTIVE_MULTISTEP_SCHEMA],
+      [InteractiveGuided, INTERACTIVE_GUIDED_SCHEMA],
+      [InteractiveQuiz, INTERACTIVE_QUIZ_SCHEMA],
+      [TerminalStep, TERMINAL_STEP_SCHEMA],
+      [TerminalConnectStep, TERMINAL_CONNECT_STEP_SCHEMA],
+      [CodeBlockStep, CODE_BLOCK_STEP_SCHEMA],
+    ]);
+  }
+  return stepTypeLookup;
+}
+
+/** Resolve the schema for a child element, or `undefined` if the child
+ *  is not a tracked step type (markdown / media / wrapper). */
+function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
+  if (!React.isValidElement(child)) {
+    return undefined;
+  }
+  return getStepTypeLookup().get(child.type as React.ComponentType<any>);
+}
 import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
 import {
   interactiveStepStorage,
@@ -27,7 +69,7 @@ import {
 } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
-import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
+import type { InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
 import {
@@ -45,6 +87,17 @@ import {
   registerSectionSteps,
   resetRegistry,
 } from './section-registry';
+import {
+  CODE_BLOCK_STEP_SCHEMA,
+  type EnhanceContext,
+  INTERACTIVE_GUIDED_SCHEMA,
+  INTERACTIVE_MULTISTEP_SCHEMA,
+  INTERACTIVE_QUIZ_SCHEMA,
+  INTERACTIVE_STEP_SCHEMA,
+  type StepTypeSchema,
+  TERMINAL_CONNECT_STEP_SCHEMA,
+  TERMINAL_STEP_SCHEMA,
+} from './step-type-registry';
 
 // Re-exports preserved for back-compat with `content-renderer.tsx`
 // and `use-standalone-persistence.ts`. New code should import directly
@@ -355,145 +408,28 @@ export function InteractiveSection({
   // Use executeInteractiveAction directly (no wrapper needed)
   // Section-level blocking is managed separately at the section level
 
-  // Extract step information from children first (needed for completion calculation)
-  //
-  // ⚠ TRACKED STEP TYPE REGISTRY — site 3 of 4. Adding a new interactive step
-  // component type requires updates in 4 places:
-  //   1. content-renderer.tsx INTERACTIVE_STEP_TYPES
-  //   2. content-renderer.tsx SECTION_TRACKED_STEP_TYPES
-  //   3. interactive-section.tsx `stepComponents` useMemo branches (this block)
-  //   4. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
-  // See .cursor/rules/tracked-step-types.mdc for the full checklist.
+  // Extract step information from children. Iterates the children once,
+  // resolves each child to its `StepTypeSchema` via STEP_TYPE_LOOKUP,
+  // and builds the StepInfo entry from the schema's `toStepInfoExtension`.
+  // Non-step children (markdown / media / wrapper) are skipped.
   const stepComponents = useMemo((): StepInfo[] => {
     const steps: StepInfo[] = [];
-    // Track step index separately from child index to handle non-step children
     let stepIndex = 0;
 
     React.Children.forEach(children, (child) => {
-      if (React.isValidElement(child) && (child as any).type === InteractiveStep) {
-        const props = child.props as InteractiveStepProps;
-        const stepId = `${sectionId}-step-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<InteractiveStepProps>,
-          index: stepIndex,
-          targetAction: props.targetAction,
-          refTarget: props.refTarget,
-          targetValue: props.targetValue,
-          targetComment: props.targetComment,
-          requirements: props.requirements,
-          postVerify: props.postVerify,
-          skippable: props.skippable,
-          showMe: props.showMe,
-          isMultiStep: false,
-          isGuided: false,
-        });
-        stepIndex++;
-      } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
-        const props = child.props as any; // InteractiveMultiStepProps
-        const stepId = `${sectionId}-multistep-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<any>,
-          index: stepIndex,
-          targetAction: undefined, // Multi-step handles internally
-          refTarget: undefined,
-          targetValue: undefined,
-          requirements: props.requirements,
-          skippable: props.skippable,
-          isMultiStep: true,
-          isGuided: false,
-        });
-        stepIndex++;
-      } else if (React.isValidElement(child) && (child as any).type === InteractiveGuided) {
-        const props = child.props as any; // InteractiveGuidedProps
-        const stepId = `${sectionId}-guided-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<any>,
-          index: stepIndex,
-          targetAction: undefined, // Guided handles internally
-          refTarget: undefined,
-          targetValue: undefined,
-          requirements: props.requirements,
-          skippable: props.skippable,
-          isMultiStep: false,
-          isGuided: true, // Mark as guided step
-        });
-        stepIndex++;
-      } else if (React.isValidElement(child) && (child as any).type === InteractiveQuiz) {
-        const props = child.props as any; // InteractiveQuizProps
-        const stepId = `${sectionId}-quiz-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<any>,
-          index: stepIndex,
-          targetAction: undefined, // Quiz handles internally
-          refTarget: undefined,
-          targetValue: undefined,
-          requirements: props.requirements,
-          skippable: props.skippable,
-          isMultiStep: false,
-          isGuided: false,
-          isQuiz: true, // Mark as quiz step
-        });
-        stepIndex++;
-      } else if (React.isValidElement(child) && (child as any).type === TerminalStep) {
-        const props = child.props as any;
-        const stepId = `${sectionId}-terminal-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<any>,
-          index: stepIndex,
-          targetAction: 'terminal',
-          refTarget: undefined,
-          targetValue: undefined,
-          requirements: props.requirements,
-          skippable: props.skippable,
-          isMultiStep: false,
-          isGuided: false,
-        });
-        stepIndex++;
-      } else if (React.isValidElement(child) && (child as any).type === TerminalConnectStep) {
-        const props = child.props as any;
-        const stepId = `${sectionId}-terminal-connect-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<any>,
-          index: stepIndex,
-          targetAction: 'terminal-connect',
-          refTarget: undefined,
-          targetValue: undefined,
-          requirements: props.requirements,
-          skippable: props.skippable,
-          isMultiStep: false,
-          isGuided: false,
-        });
-        stepIndex++;
-      } else if (React.isValidElement(child) && (child as any).type === CodeBlockStep) {
-        const props = child.props as any;
-        const stepId = `${sectionId}-codeblock-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<any>,
-          index: stepIndex,
-          targetAction: 'code-block',
-          refTarget: props.refTarget,
-          targetValue: undefined,
-          requirements: props.requirements,
-          skippable: props.skippable,
-          isMultiStep: true,
-          isGuided: false,
-        });
-        stepIndex++;
+      const schema = lookupStepSchema(child);
+      if (!schema) {
+        return;
       }
+      const stepId = `${sectionId}-${schema.idPrefix}-${stepIndex + 1}`;
+      const extension = schema.toStepInfoExtension((child as React.ReactElement<any>).props);
+      steps.push({
+        stepId,
+        element: child as React.ReactElement<any>,
+        index: stepIndex,
+        ...extension,
+      });
+      stepIndex++;
     });
 
     return steps;
@@ -1517,291 +1453,80 @@ export function InteractiveSection({
     }
   }, [currentlyExecutingStep, stepComponents, sectionId, completedSteps]);
 
-  // Render enhanced children with coordination props
+  // Render enhanced children with coordination props. For each child:
+  //   1. Look up its `StepTypeSchema` (undefined → pass-through).
+  //   2. Build the cloneElement bag via `schema.toEnhancedProps(ctx)`.
+  //   3. Attach a `ref` callback based on `schema.refTarget`
+  //      ('stepRefs' / 'multiStepRefs' / 'none').
   const enhancedChildren = useMemo(() => {
-    // Track step index separately from child index to handle non-step children
     let stepIndex = 0;
 
+    const makeRefCallback =
+      (target: 'stepRefs' | 'multiStepRefs', stepId: string) =>
+      (ref: { executeStep: () => Promise<boolean>; markSkipped?: () => void } | null) => {
+        const map = target === 'stepRefs' ? stepRefs.current : multiStepRefs.current;
+        if (ref) {
+          map.set(stepId, ref);
+        } else {
+          map.delete(stepId);
+        }
+      };
+
     return React.Children.map(children, (child) => {
-      if (React.isValidElement(child) && (child as any).type === InteractiveStep) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
-
-        // Get document-wide step position
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        // Increment step index for next step child
-        stepIndex++;
-
-        // Enhanced step props with section coordination
-
-        return React.cloneElement(child as React.ReactElement<InteractiveStepProps>, {
-          ...child.props,
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          isCurrentlyExecuting,
-          onStepComplete: handleStepComplete,
-          stepIndex: documentStepIndex, // 0-indexed position in ENTIRE DOCUMENT
-          totalSteps: documentTotalSteps, // Total steps in ENTIRE DOCUMENT
-          sectionId: sectionId, // Section identifier for analytics
-          sectionTitle: title, // Section title for analytics
-          onStepReset: handleStepReset, // Add step reset callback
-          disabled: disabled || !sectionRequirementsStatus.passed || (isRunning && !isCurrentlyExecuting), // Don't disable currently executing step
-          resetTrigger, // Pass reset signal to child steps
-          key: stepInfo.stepId,
-          ref: (ref: { executeStep: () => Promise<boolean>; markSkipped?: () => void } | null) => {
-            if (ref) {
-              stepRefs.current.set(stepInfo.stepId, ref);
-            } else {
-              stepRefs.current.delete(stepInfo.stepId);
-            }
-          },
-        });
-      } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
-
-        // Get document-wide step position
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        // Increment step index for next step child
-        stepIndex++;
-
-        return React.cloneElement(child as React.ReactElement<any>, {
-          ...(child.props as any),
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          isCurrentlyExecuting,
-          onStepComplete: handleStepComplete,
-          onStepReset: handleStepReset, // Add step reset callback
-          stepIndex: documentStepIndex,
-          totalSteps: documentTotalSteps,
-          sectionId: sectionId,
-          sectionTitle: title,
-          disabled: disabled || !sectionRequirementsStatus.passed || (isRunning && !isCurrentlyExecuting), // Don't disable currently executing step
-          resetTrigger, // Pass reset signal to child multi-steps
-          key: stepInfo.stepId,
-          ref: (
-            ref: {
-              executeStep: () => Promise<boolean>;
-            } | null
-          ) => {
-            if (ref) {
-              multiStepRefs.current.set(stepInfo.stepId, ref);
-            } else {
-              multiStepRefs.current.delete(stepInfo.stepId);
-            }
-          },
-        });
-      } else if (React.isValidElement(child) && (child as any).type === InteractiveGuided) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
-
-        // Get document-wide step position
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        // Increment step index for next step child
-        stepIndex++;
-
-        return React.cloneElement(child as React.ReactElement<any>, {
-          ...(child.props as any),
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          isCurrentlyExecuting,
-          onStepComplete: handleStepComplete,
-          onStepReset: handleStepReset,
-          stepIndex: documentStepIndex,
-          totalSteps: documentTotalSteps,
-          sectionId: sectionId,
-          sectionTitle: title,
-          disabled: disabled || !sectionRequirementsStatus.passed || (isRunning && !isCurrentlyExecuting), // Don't disable during section run
-          resetTrigger,
-          key: stepInfo.stepId,
-          ref: (
-            ref: {
-              executeStep: () => Promise<boolean>;
-            } | null
-          ) => {
-            if (ref) {
-              multiStepRefs.current.set(stepInfo.stepId, ref);
-            } else {
-              multiStepRefs.current.delete(stepInfo.stepId);
-            }
-          },
-        });
-      } else if (React.isValidElement(child) && (child as any).type === InteractiveQuiz) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-
-        // Get document-wide step position
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        // Increment step index for next step child
-        stepIndex++;
-
-        return React.cloneElement(child as React.ReactElement<any>, {
-          ...(child.props as any),
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          onStepComplete: handleStepComplete,
-          stepIndex: documentStepIndex,
-          totalSteps: documentTotalSteps,
-          sectionId: sectionId,
-          sectionTitle: title,
-          disabled: disabled,
-          resetTrigger,
-          key: stepInfo.stepId,
-        });
-      } else if (React.isValidElement(child) && (child as any).type === TerminalStep) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        stepIndex++;
-
-        return React.cloneElement(child as React.ReactElement<any>, {
-          ...(child.props as any),
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          onStepComplete: handleStepComplete,
-          stepIndex: documentStepIndex,
-          totalSteps: documentTotalSteps,
-          sectionId: sectionId,
-          sectionTitle: title,
-          disabled: disabled,
-          resetTrigger,
-          key: stepInfo.stepId,
-        });
-      } else if (React.isValidElement(child) && (child as any).type === TerminalConnectStep) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        stepIndex++;
-
-        return React.cloneElement(child as React.ReactElement<any>, {
-          ...(child.props as any),
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          onStepComplete: handleStepComplete,
-          stepIndex: documentStepIndex,
-          totalSteps: documentTotalSteps,
-          sectionId: sectionId,
-          sectionTitle: title,
-          disabled: disabled,
-          resetTrigger,
-          key: stepInfo.stepId,
-        });
-      } else if (React.isValidElement(child) && (child as any).type === CodeBlockStep) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
-
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        stepIndex++;
-
-        return React.cloneElement(child as React.ReactElement<any>, {
-          ...(child.props as any),
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          isCurrentlyExecuting,
-          onStepComplete: handleStepComplete,
-          stepIndex: documentStepIndex,
-          totalSteps: documentTotalSteps,
-          sectionId: sectionId,
-          sectionTitle: title,
-          disabled: disabled || !sectionRequirementsStatus.passed || (isRunning && !isCurrentlyExecuting),
-          resetTrigger,
-          key: stepInfo.stepId,
-          ref: (
-            ref: {
-              executeStep: () => Promise<boolean>;
-            } | null
-          ) => {
-            if (ref) {
-              multiStepRefs.current.set(stepInfo.stepId, ref);
-            } else {
-              multiStepRefs.current.delete(stepInfo.stepId);
-            }
-          },
-        });
+      const schema = lookupStepSchema(child);
+      if (!schema) {
+        return child;
       }
-      return child;
+      const stepInfo = stepComponents[stepIndex];
+      if (!stepInfo) {
+        return child;
+      }
+
+      const isEligibleForChecking = stepEligibility[stepIndex] ?? false;
+      const isCompleted = completedSteps.has(stepInfo.stepId);
+      const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
+      const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
+        sectionId,
+        stepIndex
+      );
+
+      const enhanceCtx: EnhanceContext = {
+        stepInfo,
+        isEligibleForChecking,
+        isCompleted,
+        isCurrentlyExecuting,
+        documentStepIndex,
+        documentTotalSteps,
+        sectionId,
+        sectionTitle: title,
+        baseDisabled: disabled,
+        isRunning,
+        sectionRequirementsPassed: sectionRequirementsStatus.passed,
+        resetTrigger,
+        onStepComplete: handleStepComplete,
+        onStepReset: handleStepReset,
+      };
+
+      const enhancedProps = schema.toEnhancedProps(enhanceCtx);
+
+      // `ref` and `key` are React-special — they must go onto the
+      // cloneElement props directly, not into `enhancedProps`.
+      const refCallback = schema.refTarget === 'none' ? undefined : makeRefCallback(schema.refTarget, stepInfo.stepId);
+
+      stepIndex++;
+
+      return React.cloneElement(child as React.ReactElement<any>, {
+        ...(child as React.ReactElement<any>).props,
+        ...enhancedProps,
+        key: stepInfo.stepId,
+        ...(refCallback ? { ref: refCallback } : {}),
+      });
     });
   }, [
     children,
     stepComponents,
-    stepEligibility, // Pre-computed array instead of callback
-    completedSteps, // This should trigger re-render when completedSteps changes
+    stepEligibility,
+    completedSteps,
     currentlyExecutingStep,
     handleStepComplete,
     handleStepReset,
@@ -1810,7 +1535,7 @@ export function InteractiveSection({
     resetTrigger,
     sectionId,
     title,
-    sectionRequirementsStatus.passed, // Section requirements gate child steps
+    sectionRequirementsStatus.passed,
   ]);
 
   // Computed once per render so the catch-all action button's `title`
