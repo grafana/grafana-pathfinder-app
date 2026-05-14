@@ -35,9 +35,18 @@ import {
 } from './step-section-utils';
 import { classifySectionChild } from './section-child-classifier';
 import { deriveSectionState, initialSectionState, restoreFromStorage, sectionReducer } from './section-state';
+import {
+  getDocumentStepPosition,
+  getTotalDocumentSteps,
+  nextSectionCounter,
+  registerSectionSteps,
+  resetRegistry,
+} from './section-registry';
 
-// Simple counter for sequential section IDs
-let interactiveSectionCounter = 0;
+// Re-exports preserved for back-compat with `content-renderer.tsx`
+// and `use-standalone-persistence.ts`. New code should import directly
+// from `./section-registry`.
+export { registerSectionSteps, getTotalDocumentSteps, getDocumentStepPosition } from './section-registry';
 
 /**
  * Per issue #841: media and wrapper blocks render in a section without a step
@@ -91,26 +100,12 @@ export function wrapSectionChildrenForNumbering(children: React.ReactNode): Reac
   });
 }
 
-// Global registry to track all steps across all sections in the document
-interface StepRegistryEntry {
-  stepCount: number;
-  /** Explicit document-order index used to sort entries when computing offsets.
-   *  Entries with lower documentOrder appear first (get lower step offsets). */
-  documentOrder: number;
-}
-const globalStepRegistry: Map<string, StepRegistryEntry> = new Map();
-let totalDocumentSteps = 0;
-let documentStepOffsets: Map<string, number> = new Map(); // sectionId -> starting offset
-/** Auto-incrementing fallback for entries registered without an explicit documentOrder. */
-let autoDocumentOrder = 0;
-
-// Function to reset counters (can be called when new content loads)
+// Reset every counter (registry + offsets + per-step-type anonymous-ID
+// counters). Called when new content loads. The registry's own state
+// lives in `./section-registry`; this function adds the step-module
+// resets that depend on imports a pure registry module shouldn't carry.
 export function resetInteractiveCounters() {
-  interactiveSectionCounter = 0;
-  globalStepRegistry.clear();
-  totalDocumentSteps = 0;
-  documentStepOffsets.clear();
-  autoDocumentOrder = 0;
+  resetRegistry();
   // Reset anonymous step ID counters across all step types
   resetStepCounter();
   resetMultiStepCounter();
@@ -120,61 +115,6 @@ export function resetInteractiveCounters() {
   resetTerminalConnectStepCounter();
   resetCodeBlockStepCounter();
   resetChallengeCounter();
-}
-
-// Register a section's steps in the global registry (idempotent)
-//
-// `documentOrder` controls how entries are sorted when computing step offsets.
-// ContentProcessor pre-registers ALL entries (sections + standalone) in visual
-// document order *before* children render. When InteractiveSection later re-registers
-// the same sectionId (to update the step count), the original documentOrder is
-// preserved — only the count is updated.
-//
-// Fallback: if no documentOrder is provided and no prior registration exists,
-// an auto-incrementing counter is used so the behaviour degrades gracefully to
-// registration order.
-export function registerSectionSteps(
-  sectionId: string,
-  stepCount: number,
-  documentOrder?: number
-): { offset: number; total: number } {
-  const existing = globalStepRegistry.get(sectionId);
-  // Prefer explicit order → existing order → auto-increment fallback
-  const order = documentOrder ?? existing?.documentOrder ?? autoDocumentOrder++;
-  globalStepRegistry.set(sectionId, { stepCount, documentOrder: order });
-
-  // Sort entries by documentOrder, then recompute offsets from scratch
-  const sorted = Array.from(globalStepRegistry.entries()).sort(([, a], [, b]) => a.documentOrder - b.documentOrder);
-
-  let runningTotal = 0;
-  documentStepOffsets.clear();
-  for (const [secId, entry] of sorted) {
-    documentStepOffsets.set(secId, runningTotal);
-    runningTotal += entry.stepCount;
-  }
-
-  totalDocumentSteps = runningTotal;
-
-  // Return this section's offset and the new total
-  const offset = documentStepOffsets.get(sectionId) || 0;
-  return { offset, total: totalDocumentSteps };
-}
-
-// Get the total number of interactive steps across all sections (including standalone)
-export function getTotalDocumentSteps(): number {
-  return totalDocumentSteps;
-}
-
-// Get document-wide position for a step within a section
-export function getDocumentStepPosition(
-  sectionId: string,
-  sectionStepIndex: number
-): { stepIndex: number; totalSteps: number } {
-  const offset = documentStepOffsets.get(sectionId) || 0;
-  return {
-    stepIndex: offset + sectionStepIndex,
-    totalSteps: totalDocumentSteps,
-  };
 }
 
 export function InteractiveSection({
@@ -199,8 +139,7 @@ export function InteractiveSection({
       return generatedId;
     }
     // Fallback to sequential ID for sections without explicit id
-    interactiveSectionCounter++;
-    const generatedId = `section-${interactiveSectionCounter}`;
+    const generatedId = `section-${nextSectionCounter()}`;
     return generatedId;
   }, [id]);
 
