@@ -9,6 +9,7 @@ import {
   validateInteractiveRequirements,
 } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { getFeatureFlagValue } from '../../utils/openfeature';
 import type { InteractiveStepProps } from '../../types/component-props.types';
 import {
   type DetectedActionEvent,
@@ -1089,6 +1090,41 @@ export const InteractiveStep = forwardRef<
                     {checker.canFixRequirement ? 'Fix this' : 'Retry'}
                   </button>
                 )}
+
+                {/* Ask AI to fix — last-resort, hidden when a deterministic
+                    fix-registry handler is offered. Dispatches a request event;
+                    the docs-panel orchestrator handles the assistant call,
+                    blocker, and patch apply. */}
+                {isEligibleForChecking &&
+                  !checker.canFixRequirement &&
+                  !checker.isEnabled &&
+                  checker.requiresDomElement &&
+                  getFeatureFlagValue('pathfinder.ai-auto-heal', false) && (
+                    <button
+                      className="interactive-requirement-ai-fix-btn"
+                      data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
+                      onClick={() => {
+                        reportAppInteraction(UserInteraction.AiFixAccepted, {
+                          step_id: stepId ?? '',
+                          rendered_step_id: renderedStepId,
+                          reftarget: refTarget ?? '',
+                          target_action: targetAction ?? '',
+                        });
+                        window.dispatchEvent(
+                          new CustomEvent('pathfinder-ai-fix-request', {
+                            detail: {
+                              stepId,
+                              renderedStepId,
+                              refTarget,
+                              action: targetAction,
+                            },
+                          })
+                        );
+                      }}
+                    >
+                      Ask AI to fix
+                    </button>
+                  )}
 
                 {/* Skip button only for eligible steps with failed requirements */}
                 {isEligibleForChecking && checker.canSkip && checker.markSkipped && !checker.isEnabled && (

@@ -111,6 +111,18 @@ const pathfinderFeatureFlags = {
     defaultValue: DEFAULT_EXPERIMENT_CONFIG as unknown as JsonValue,
     trackingKey: 'after_24h_experiment',
   },
+  /**
+   * AI auto-heal: when a guide step's `exists-reftarget` requirement fails
+   * and no deterministic fix-registry handler matches, surface an "Ask AI
+   * to fix" button that calls the Grafana Assistant for a recovery patch.
+   * Off by default — last-resort path, opt-in via flag rollout.
+   */
+  'pathfinder.ai-auto-heal': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'ai_auto_heal',
+  },
 } as const satisfies Record<`pathfinder.${string}`, FeatureFlag>;
 
 // Helper to get typed keys from the flag definitions

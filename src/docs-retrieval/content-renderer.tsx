@@ -1019,6 +1019,7 @@ function renderParsedElement(
       return (
         <InteractiveStep
           key={key}
+          stepId={element.props.stepId}
           targetAction={element.props.targetAction}
           refTarget={sub(element.props.refTarget) ?? element.props.refTarget}
           targetValue={sub(element.props.targetValue)}
@@ -1046,6 +1047,7 @@ function renderParsedElement(
       return (
         <InteractiveMultiStep
           key={key}
+          stepId={element.props.stepId}
           internalActions={subInternalActions(element.props.internalActions ?? [])}
           skippable={element.props.skippable}
           completeEarly={element.props.completeEarly}
@@ -1064,6 +1066,7 @@ function renderParsedElement(
       return (
         <InteractiveGuided
           key={key}
+          stepId={element.props.stepId}
           internalActions={subInternalActions(element.props.internalActions ?? [])}
           stepTimeout={element.props.stepTimeout}
           skippable={element.props.skippable}

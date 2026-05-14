@@ -493,7 +493,18 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       safeDispatch(actionFromBaseStepState(errorState));
       updateManager(errorState);
     }
-  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skippable, updateManager, safeDispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    objectives,
+    requirements,
+    hints,
+    stepId,
+    isEligibleForChecking,
+    skippable,
+    updateManager,
+    safeDispatch,
+    refTarget,
+    targetAction,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Attempt to automatically fix failed requirements via the fix-handler registry.
@@ -716,16 +727,21 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     return undefined;
   }, [stepId]);
 
-  // Check requirements when step eligibility changes (both true and false)
+  // Check requirements when step eligibility OR refTarget changes (both true and false)
   // Note: We removed managerStepState from deps to prevent infinite loops
   // The manager state changes are handled by the registered step checker callback instead
+  //
+  // `refTarget` is included so that an AI auto-heal patch that swaps the
+  // selector at runtime triggers a fresh check against the new selector.
+  // Without this, the patched component receives the new prop but the
+  // requirements check never re-runs and the step stays "blocked".
   useEffect(() => {
     if (!state.isCompleted && !state.isChecking) {
       // Always recheck when eligibility changes, whether becoming eligible or ineligible
       // This ensures steps show the correct "blocked" state when they become ineligible
       checkStepRef.current();
     }
-  }, [isEligibleForChecking]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isEligibleForChecking, refTarget]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for section completion events (for section dependencies)
   useEffect(() => {
@@ -897,6 +913,12 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     };
   }, [requirements, state.isEnabled, state.isCompleted]);
 
+  // AI auto-heal exposes a single requirements-side signal here. The UI tier
+  // ANDs it with the feature flag + `isAssistantAvailable` to decide whether
+  // to render the "Ask AI to fix" button. Keeping the assistant/flag hooks
+  // out of this engine-tier file avoids a Tier-1 → Tier-3 import.
+  const requiresDomElement = (requirements ?? '').includes('exists-reftarget');
+
   return {
     ...state,
     checkStep,
@@ -906,5 +928,6 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     canFixRequirement: state.canFixRequirement,
     fixType: state.fixType,
     fixRequirement: state.canFixRequirement ? fixRequirement : undefined,
+    requiresDomElement,
   };
 }

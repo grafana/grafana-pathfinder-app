@@ -9,6 +9,7 @@ import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from '..
 import { parseHTMLToComponents } from './html-parser';
 import { validateGuide } from '../validation';
 import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
+import { synthesizeStepIds } from './synthesize-step-ids';
 import { renderMarkdown } from '@grafana/data';
 import DOMPurify from 'dompurify';
 import {
@@ -120,6 +121,11 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
 
   // Preserve validation warnings (e.g., unknown fields, invalid condition syntax)
   warnings.push(...validationResult.warnings.map((w) => w.message));
+
+  // Synthesize runtime ids on any block / step missing one. This is what the
+  // AI auto-heal flow targets when applying a patch — without it, anonymous
+  // blocks would be unreachable. Author-set ids are preserved.
+  synthesizeStepIds(guide);
 
   // Convert blocks to ParsedElements
   const elements: ParsedElement[] = [];
@@ -548,6 +554,10 @@ function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): Con
     element: {
       type: 'interactive-step',
       props: {
+        // `id` is set by `synthesizeStepIds` at parse time when absent;
+        // propagated to InteractiveStep as `stepId` so the AI auto-heal
+        // flow can target this block.
+        stepId: block.id,
         targetAction,
         refTarget: block.reftarget,
         targetValue: block.targetvalue,
@@ -597,6 +607,9 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string): Convers
     element: {
       type: 'interactive-multi-step',
       props: {
+        // Synthesized at parse time when absent; lets the AI fix button
+        // address this multistep as the patch container.
+        stepId: block.id,
         internalActions,
         requirements,
         objectives,
@@ -637,6 +650,9 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string): ConversionRes
     element: {
       type: 'interactive-guided',
       props: {
+        // Synthesized at parse time when absent; lets the AI fix button
+        // address this guided block as the patch container.
+        stepId: block.id,
         internalActions,
         stepTimeout: block.stepTimeout ?? 120000,
         requirements,

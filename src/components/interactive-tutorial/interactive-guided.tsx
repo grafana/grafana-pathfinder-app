@@ -3,6 +3,7 @@ import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { getFeatureFlagValue } from '../../utils/openfeature';
 import {
   GuidedHandler,
   InteractiveStateManager,
@@ -724,6 +725,37 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               >
                 {checker.canFixRequirement ? 'Fix this' : 'Check again'}
               </button>
+              {/* Ask AI to fix — only when no deterministic fix is offered and
+                  the failing requirement is a missing DOM element. Mirrors the
+                  single-step variant in interactive-step.tsx. */}
+              {!checker.canFixRequirement &&
+                checker.requiresDomElement &&
+                getFeatureFlagValue('pathfinder.ai-auto-heal', false) && (
+                  <button
+                    className="interactive-guided-ai-fix-btn"
+                    data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
+                    onClick={() => {
+                      reportAppInteraction(UserInteraction.AiFixAccepted, {
+                        step_id: stepId ?? '',
+                        rendered_step_id: renderedStepId,
+                        reftarget: firstActionRefTarget ?? '',
+                        target_action: firstActionTargetAction ?? '',
+                      });
+                      window.dispatchEvent(
+                        new CustomEvent('pathfinder-ai-fix-request', {
+                          detail: {
+                            stepId,
+                            renderedStepId,
+                            refTarget: firstActionRefTarget,
+                            action: firstActionTargetAction,
+                          },
+                        })
+                      );
+                    }}
+                  >
+                    Ask AI to fix
+                  </button>
+                )}
             </div>
           )}
 
@@ -818,6 +850,44 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
                 >
                   Skip this step
+                </Button>
+              )}
+              {/* Ask AI to fix — for runtime failures during guided execution
+                  (timeout / element-not-found). `stepId` is always set
+                  because docs-retrieval's `synthesizeStepIds` fills missing
+                  ids before the renderer parses the guide. */}
+              {currentStepIndex >= 0 && stepId && getFeatureFlagValue('pathfinder.ai-auto-heal', false) && (
+                <Button
+                  onClick={() => {
+                    const failed = internalActions[currentStepIndex];
+                    reportAppInteraction(UserInteraction.AiFixAccepted, {
+                      step_id: stepId,
+                      rendered_step_id: renderedStepId,
+                      container_kind: 'guided',
+                      sub_step_index: currentStepIndex,
+                    });
+                    window.dispatchEvent(
+                      new CustomEvent('pathfinder-ai-fix-request', {
+                        detail: {
+                          stepId,
+                          renderedStepId,
+                          refTarget: failed?.refTarget,
+                          action: failed?.targetAction,
+                          containerInfo: {
+                            containerId: stepId,
+                            containerKind: 'guided' as const,
+                            subStepIndex: currentStepIndex,
+                          },
+                        },
+                      })
+                    );
+                  }}
+                  size="sm"
+                  variant="secondary"
+                  className="interactive-guided-ai-fix-btn"
+                  data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
+                >
+                  Ask AI to fix
                 </Button>
               )}
             </div>

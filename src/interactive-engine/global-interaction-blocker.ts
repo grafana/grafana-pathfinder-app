@@ -23,6 +23,12 @@ class GlobalInteractionBlocker {
   private headerOverlay: HTMLElement | null = null;
   private fullScreenOverlay: HTMLElement | null = null;
   private statusIndicator: HTMLElement | null = null;
+  /**
+   * Display text shown inside the status indicator. Defaults to the
+   * section-running message; `startAdHocBlocking` overrides this so the
+   * AI auto-heal flow can show its own copy.
+   */
+  private statusMessage = 'Interactive step running...';
 
   static getInstance(): GlobalInteractionBlocker {
     if (!GlobalInteractionBlocker.instance) {
@@ -316,7 +322,7 @@ class GlobalInteractionBlocker {
         border-radius: 50%;
         animation: spin 1s linear infinite;
       "></div>
-      Interactive step running...
+      <span data-pathfinder-status-text></span>
       <button id="cancel-section-btn" style="
         background: var(--grafana-background-secondary, #2d2d31);
         border: 1px solid var(--grafana-border-medium, #404040);
@@ -336,6 +342,13 @@ class GlobalInteractionBlocker {
         ✕ Cancel
       </button>
     `;
+    // Set the message via textContent (not innerHTML) so any caller-supplied
+    // string is rendered as plain text — guards against an accidental HTML
+    // payload reaching the DOM.
+    const statusTextEl = this.statusIndicator.querySelector('[data-pathfinder-status-text]');
+    if (statusTextEl) {
+      statusTextEl.textContent = this.statusMessage;
+    }
 
     // Append directly to body, not to blocking overlay
     document.body.appendChild(this.statusIndicator);
@@ -555,6 +568,51 @@ class GlobalInteractionBlocker {
     this.sectionBlockingActive = false;
     this.cancelCallback = null;
     this.removeBlockingOverlay();
+    this.statusMessage = 'Interactive step running...';
+  }
+
+  /**
+   * Start ad-hoc blocking with a custom status-indicator message. Reuses
+   * the section-blocking overlay machinery — semantically the same
+   * "freeze the page" gesture, but driven by an arbitrary async action
+   * (e.g., the AI auto-heal assistant call) rather than a running section.
+   *
+   * Refuses to start if any blocking is already active so concurrent
+   * callers can't fight over the overlay or status text.
+   */
+  startAdHocBlocking(message: string, cancelCallback?: () => void): void {
+    if (this.sectionBlockingActive) {
+      return;
+    }
+    this.statusMessage = message;
+    this.sectionBlockingActive = true;
+    this.cancelCallback = cancelCallback || null;
+
+    // Minimal stub — `createBlockingOverlay` reads cursor/handler hooks
+    // from `data` only for section semantics; the indicator pulls its
+    // text from `this.statusMessage` directly.
+    const stubData: InteractiveElementData = {
+      reftarget: '',
+      targetaction: '',
+      tagName: 'div',
+    };
+    this.createBlockingOverlay(stubData);
+    this.lastKnownModalState = this.isModalActive();
+  }
+
+  /**
+   * Stop ad-hoc blocking. Idempotent — safe to call from a `finally`
+   * regardless of whether `startAdHocBlocking` actually grabbed the lock
+   * (e.g., refused because section blocking was already active).
+   */
+  stopAdHocBlocking(): void {
+    if (!this.sectionBlockingActive) {
+      return;
+    }
+    this.sectionBlockingActive = false;
+    this.cancelCallback = null;
+    this.removeBlockingOverlay();
+    this.statusMessage = 'Interactive step running...';
   }
 
   /**

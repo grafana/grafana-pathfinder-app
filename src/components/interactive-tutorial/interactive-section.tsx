@@ -452,7 +452,10 @@ export function InteractiveSection({
     React.Children.forEach(children, (child) => {
       if (React.isValidElement(child) && (child as any).type === InteractiveStep) {
         const props = child.props as InteractiveStepProps;
-        const stepId = `${sectionId}-step-${stepIndex + 1}`;
+        // Prefer the parser-set stepId (author-set or content-hash synthesized
+        // by `synthesizeStepIds`); fall back to positional for HTML-source
+        // guides that don't go through json-parser.
+        const stepId = props.stepId || `${sectionId}-step-${stepIndex + 1}`;
 
         steps.push({
           stepId,
@@ -472,7 +475,7 @@ export function InteractiveSection({
         stepIndex++;
       } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
         const props = child.props as any; // InteractiveMultiStepProps
-        const stepId = `${sectionId}-multistep-${stepIndex + 1}`;
+        const stepId = props.stepId || `${sectionId}-multistep-${stepIndex + 1}`;
 
         steps.push({
           stepId,
@@ -489,7 +492,7 @@ export function InteractiveSection({
         stepIndex++;
       } else if (React.isValidElement(child) && (child as any).type === InteractiveGuided) {
         const props = child.props as any; // InteractiveGuidedProps
-        const stepId = `${sectionId}-guided-${stepIndex + 1}`;
+        const stepId = props.stepId || `${sectionId}-guided-${stepIndex + 1}`;
 
         steps.push({
           stepId,

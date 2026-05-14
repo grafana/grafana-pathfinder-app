@@ -139,6 +139,7 @@ export const testIds = {
     requirementFixButton: (stepId: string) => `interactive-requirement-fix-${stepId}`,
     requirementRetryButton: (stepId: string) => `interactive-requirement-retry-${stepId}`,
     requirementSkipButton: (stepId: string) => `interactive-requirement-skip-${stepId}`,
+    requirementAiFixButton: (stepId: string) => `interactive-requirement-ai-fix-${stepId}`,
     stepCompleted: (stepId: string) => `interactive-step-completed-${stepId}`,
     errorMessage: (stepId: string) => `interactive-error-${stepId}`,
     formChecking: (stepId: string) => `interactive-form-checking-${stepId}`,

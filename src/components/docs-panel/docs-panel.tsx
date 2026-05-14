@@ -132,6 +132,11 @@ import {
 import { getPackageRenderType } from '../../types/package.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
+// Lazy-load the AI auto-heal orchestrator so `@grafana/assistant` isn't pulled
+// into the docs-panel module-init chain. Without this, jest fails to load
+// docs-panel because the assistant package throws during init in jsdom.
+const AiFixOrchestrator = lazy(() => import('./AiFixOrchestrator'));
+
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
   public static Component = CombinedPanelRenderer;
 
@@ -1802,6 +1807,23 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   // ContentRenderer renders the content with styling applied via CSS classes
 
+  // AI auto-heal orchestrator: listens for `pathfinder-ai-fix-request` events
+  // from interactive steps, calls the Grafana Assistant, and writes the
+  // validated patch back into the active tab's content. Renders nothing.
+  const handleAiFixPatchApplied = useCallback(
+    (tabId: string, newGuideJson: string) => {
+      const currentTabs = model.state.tabs;
+      const updatedTabs = currentTabs.map((t) => {
+        if (t.id !== tabId || !t.content) {
+          return t;
+        }
+        return { ...t, content: { ...t.content, content: newGuideJson } };
+      });
+      model.setState({ tabs: updatedTabs });
+    },
+    [model]
+  );
+
   return (
     <div
       id="CombinedLearningJourney"
@@ -1809,6 +1831,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       data-pathfinder-content="true"
       data-testid={testIds.docsPanel.container}
     >
+      <Suspense fallback={null}>
+        <AiFixOrchestrator activeTab={activeTab} onPatchApplied={handleAiFixPatchApplied} />
+      </Suspense>
       {/* Live session controls - only render when there's session content */}
       {(isLiveSessionsEnabled || isSessionActive) && (
         <div className={styles.topBar}>

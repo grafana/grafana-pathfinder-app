@@ -42,6 +42,10 @@ export { ContentRenderer, useContentRenderer } from './content-renderer';
 // JSON guide parser
 export { parseJsonGuide, parseMarkdownToElements, isJsonGuideContent } from './json-parser';
 
+// Runtime step-id synthesis (used by the AI auto-heal flow to patch
+// authoring guides that don't carry explicit ids on every block).
+export { synthesizeStepIds, synthesizeStepIdsInJson, SYNTHESIZED_ID_PREFIX } from './synthesize-step-ids';
+
 // Docs components
 export { CodeBlock, ImageRenderer, VideoRenderer, YouTubeVideoRenderer } from './components/docs';
 export type { CodeBlockProps } from './components/docs';

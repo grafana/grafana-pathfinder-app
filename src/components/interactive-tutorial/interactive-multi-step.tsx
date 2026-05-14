@@ -9,6 +9,7 @@ import {
 } from '../../interactive-engine';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { getFeatureFlagValue } from '../../utils/openfeature';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
@@ -175,6 +176,13 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // Use ref for cancellation to avoid closure issues
     const isCancelledRef = React.useRef(false);
 
+    // Captures the failing action's `refTarget` at the moment a failure is
+    // recorded. The watcher effect further down compares this against the
+    // current prop value to detect an AI auto-heal patch — when the runtime
+    // selector swaps, we clear the error state and auto-retry instead of
+    // leaving the user stranded on the "Try again / Ask AI to fix" UI.
+    const failedActionRefTargetRef = useRef<string | undefined>(undefined);
+
     // Handle reset trigger from parent section
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
@@ -330,6 +338,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               );
               setFailedStepIndex(i);
               setExecutionError(requirementsResult.explanation || 'Action requirements not met');
+              failedActionRefTargetRef.current = action.refTarget;
               return false;
             }
           }
@@ -384,6 +393,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             const errorMessage = actionError instanceof Error ? actionError.message : 'Action execution failed';
             setFailedStepIndex(i);
             setExecutionError(`Step ${i + 1} failed: ${errorMessage}`);
+            failedActionRefTargetRef.current = action.refTarget;
             return false;
           }
         }
@@ -453,6 +463,33 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       }),
       [executeStep]
     );
+
+    // AI auto-heal watcher: if the failing action's `refTarget` was replaced
+    // while we're in a failure state, the docs panel has applied an AI fix
+    // patch. Clear the error UI and auto-retry against the new selector so
+    // the user doesn't have to manually click "Try again".
+    //
+    // Compared against `failedActionRefTargetRef.current` (captured at the
+    // moment the failure was recorded) so the trigger fires exactly once per
+    // patch, regardless of how many times `internalActions` re-renders.
+    const currentFailedRefTarget =
+      failedStepIndex >= 0 ? internalActions[failedStepIndex]?.refTarget : undefined;
+    useEffect(() => {
+      if (failedStepIndex < 0 || !executionError) {
+        return;
+      }
+      if (!currentFailedRefTarget || !failedActionRefTargetRef.current) {
+        return;
+      }
+      if (currentFailedRefTarget === failedActionRefTargetRef.current) {
+        return;
+      }
+      failedActionRefTargetRef.current = currentFailedRefTarget;
+      setExecutionError(null);
+      setFailedStepIndex(-1);
+      setCurrentActionIndex(-1);
+      void executeStep();
+    }, [currentFailedRefTarget, executionError, failedStepIndex, executeStep]);
 
     // Convert internalActions to ActionToDetect format for the auto-detection hook
     const actionsToDetect = useMemo(
@@ -855,6 +892,58 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   Skip this step
                 </Button>
               )}
+              {/* Ask AI to fix — for runtime element-not-found errors inside
+                  a multistep's internal action. `stepId` is always set
+                  because docs-retrieval's `synthesizeStepIds` fills missing
+                  ids before the renderer parses the guide. */}
+              {(() => {
+                const flagOn = getFeatureFlagValue('pathfinder.ai-auto-heal', false);
+                const matchesPattern = !!(
+                  executionError && /Element not found|requirements not met/i.test(executionError)
+                );
+                console.warn(
+                  `[AI fix gate :: multistep] flagOn=${flagOn} stepId=${stepId} failedStepIndex=${failedStepIndex} matchesPattern=${matchesPattern}`
+                );
+                return null;
+              })()}
+              {stepId &&
+                failedStepIndex >= 0 &&
+                executionError &&
+                /Element not found|requirements not met/i.test(executionError) &&
+                getFeatureFlagValue('pathfinder.ai-auto-heal', false) && (
+                  <Button
+                    onClick={() => {
+                      const failed = internalActions[failedStepIndex];
+                      reportAppInteraction(UserInteraction.AiFixAccepted, {
+                        step_id: stepId,
+                        rendered_step_id: renderedStepId,
+                        container_kind: 'multistep',
+                        sub_step_index: failedStepIndex,
+                      });
+                      window.dispatchEvent(
+                        new CustomEvent('pathfinder-ai-fix-request', {
+                          detail: {
+                            stepId,
+                            renderedStepId,
+                            refTarget: failed?.refTarget,
+                            action: failed?.targetAction,
+                            containerInfo: {
+                              containerId: stepId,
+                              containerKind: 'multistep' as const,
+                              subStepIndex: failedStepIndex,
+                            },
+                          },
+                        })
+                      );
+                    }}
+                    size="sm"
+                    variant="secondary"
+                    className="interactive-guided-ai-fix-btn"
+                    data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
+                  >
+                    Ask AI to fix
+                  </Button>
+                )}
             </div>
           </div>
         )}
