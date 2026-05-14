@@ -19,6 +19,7 @@ import {
   TerminalStep,
   TerminalConnectStep,
   CodeBlockStep,
+  ChallengeBlock,
   GrotGuideBlock,
   resetInteractiveCounters,
   registerSectionSteps,
@@ -863,6 +864,7 @@ const INTERACTIVE_STEP_TYPES = new Set([
   'terminal-step',
   'terminal-connect-step',
   'code-block-step',
+  'challenge-block',
 ]);
 
 /**
@@ -903,6 +905,7 @@ const SECTION_TRACKED_STEP_TYPES = new Set([
   'terminal-step',
   'terminal-connect-step',
   'code-block-step',
+  'challenge-block',
 ]);
 
 /**
@@ -1143,6 +1146,25 @@ function renderParsedElement(
         >
           {renderChildren(element.children)}
         </TerminalConnectStep>
+      );
+    case 'challenge-block':
+      return (
+        <ChallengeBlock
+          key={key}
+          title={sub(element.props.title) ?? element.props.title}
+          brief={renderChildren(element.children)}
+          mode={element.props.mode}
+          vmTemplate={element.props.vmTemplate}
+          vmScenario={element.props.vmScenario}
+          vmApp={element.props.vmApp}
+          setupCommands={element.props.setupCommands}
+          setupScript={element.props.setupScript}
+          successCriteria={element.props.successCriteria}
+          hintLevels={element.props.hintLevels}
+          failureMessage={element.props.failureMessage}
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        />
       );
     case 'code-block-step':
       return (

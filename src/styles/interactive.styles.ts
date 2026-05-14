@@ -123,13 +123,6 @@ const getBaseInteractiveStyles = (theme: GrafanaTheme2) => ({
     },
   },
 
-  // Button container for "show/do" etc.
-  '.interactive-button-container': {
-    display: 'flex',
-    gap: theme.spacing(0.75),
-    alignItems: 'center',
-    flexShrink: 0,
-  },
   '.tab-content': {
     '& > div > pre': {
       marginTop: 0,
@@ -145,95 +138,6 @@ const getBaseInteractiveStyles = (theme: GrafanaTheme2) => ({
       marginTop: 0,
       marginLeft: 0,
       marginRight: 0,
-    },
-  },
-});
-
-// Button styles (shared across different interactive elements)
-const getInteractiveButtonStyles = (theme: GrafanaTheme2) => ({
-  // General interactive button base
-  '.interactive-button': {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: `${theme.spacing(0.5)} ${theme.spacing(1.25)}`,
-    border: `1px solid transparent`,
-    borderRadius: theme.shape.radius.default,
-    fontSize: '12px',
-    fontWeight: theme.typography.fontWeightMedium,
-    lineHeight: '1.3',
-    textDecoration: 'none',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease-in-out',
-    position: 'relative',
-    minHeight: `${theme.spacing(3.5)}`,
-    whiteSpace: 'nowrap',
-    '&:disabled': {
-      opacity: 0.65,
-      cursor: 'not-allowed',
-      pointerEvents: 'none',
-    },
-    '&:focus': {
-      outline: 'none',
-      boxShadow: `0 0 0 2px ${theme.colors.primary.main}33`,
-    },
-    '&:active': {
-      transform: 'translateY(0)',
-      boxShadow: 'none',
-    },
-  },
-
-  // "Show me" button
-  '.interactive-show-button': {
-    backgroundColor: theme.colors.secondary.main,
-    color: theme.colors.secondary.contrastText,
-    border: `1px solid ${theme.colors.secondary.border}`,
-    '&:hover:not(:disabled)': {
-      backgroundColor: theme.colors.secondary.shade,
-      borderColor: theme.colors.secondary.shade,
-      transform: 'translateY(-1px)',
-      boxShadow: theme.shadows.z1,
-    },
-    '&:focus': {
-      boxShadow: `0 0 0 2px ${theme.colors.secondary.main}33`,
-    },
-  },
-
-  // "Do it" button
-  '.interactive-do-button': {
-    backgroundColor: theme.colors.primary.main,
-    color: theme.colors.primary.contrastText,
-    border: `1px solid ${theme.colors.primary.border}`,
-    '&:hover:not(:disabled)': {
-      backgroundColor: theme.colors.primary.shade,
-      borderColor: theme.colors.primary.shade,
-      transform: 'translateY(-1px)',
-      boxShadow: theme.shadows.z1,
-    },
-    '&:focus': {
-      boxShadow: `0 0 0 2px ${theme.colors.primary.main}33`,
-    },
-  },
-
-  // Section/sequence button
-  '.interactive-sequence-button': {
-    padding: `${theme.spacing(0.75)} ${theme.spacing(1.75)}`,
-    backgroundColor: theme.colors.background.primary,
-    color: theme.colors.text.primary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: theme.shape.radius.default,
-    fontWeight: theme.typography.fontWeightMedium,
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-    fontSize: '11px',
-    '&:hover:not(:disabled)': {
-      backgroundColor: theme.colors.action.hover,
-      borderColor: theme.colors.border.strong,
-      transform: 'translateY(-1px)',
-      boxShadow: theme.shadows.z1,
-    },
-    '&:focus': {
-      boxShadow: `0 0 0 2px ${theme.colors.text.primary}33`,
     },
   },
 });
@@ -291,13 +195,6 @@ const getInteractiveSequenceStyles = (theme: GrafanaTheme2) => ({
       marginTop: theme.spacing(2),
       display: 'block',
       width: 'fit-content',
-    },
-
-    // Button container inside sequence
-    '.interactive-button-container': {
-      marginTop: theme.spacing(2),
-      marginLeft: 0,
-      justifyContent: 'flex-start',
     },
   },
 });
@@ -801,57 +698,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
   },
 
-  '.interactive-step-description-text': {
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
-    fontStyle: 'italic',
-    textAlign: 'center',
-    padding: `${theme.spacing(0.5)} 0`,
-  },
-
-  '.interactive-step-action-btn': {
-    minWidth: '120px',
-  },
-
-  '.interactive-step-completed-indicator': {
-    color: theme.colors.success.main,
-    fontSize: '16px',
-    fontWeight: 'bold',
-
-    // Skipped state - blue instead of green
-    '&.skipped': {
-      color: theme.colors.info.main,
-    },
-  },
-
-  '.interactive-step-completion-group': {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-  },
-
-  '.interactive-step-redo-btn': {
-    padding: '2px 6px',
-    fontSize: '0.75rem',
-    border: `1px solid ${theme.colors.border.medium}`,
-    background: 'transparent',
-    color: theme.colors.text.secondary,
-    borderRadius: theme.shape.radius.default,
-    cursor: 'pointer',
-    minHeight: '20px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-      borderColor: theme.colors.border.strong,
-      color: theme.colors.text.primary,
-    },
-    '&:active': {
-      transform: 'scale(0.95)',
-    },
-  },
-
   // ═══════════════════════════════════════════════════════════════════════════
   // REQUIREMENT/INFO STYLES - Subtle box for sequential step messaging
   // ═══════════════════════════════════════════════════════════════════════════
@@ -954,30 +800,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
       content: '"⚠"',
       fontSize: '1rem',
       flexShrink: 0,
-    },
-  },
-
-  '.interactive-step-error-buttons': {
-    display: 'flex',
-    gap: theme.spacing(1),
-    marginTop: theme.spacing(0.5),
-    width: '100%',
-  },
-
-  '.interactive-error-retry-btn': {
-    padding: '4px 10px',
-    fontSize: '0.8rem',
-    fontWeight: 500,
-    border: `1px solid ${theme.colors.warning.border}`,
-    background: 'transparent',
-    color: theme.colors.warning.text,
-    borderRadius: '4px',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease',
-    '&:hover': {
-      background: theme.colors.warning.main,
-      color: theme.colors.warning.contrastText,
-      borderColor: theme.colors.warning.main,
     },
   },
 
@@ -1466,7 +1288,6 @@ const getExpandableStyles = (theme: GrafanaTheme2) => ({
 export const getInteractiveStyles = (theme: GrafanaTheme2) =>
   css({
     ...getBaseInteractiveStyles(theme),
-    ...getInteractiveButtonStyles(theme),
     ...getInteractiveSequenceStyles(theme),
     ...getCodeBlockStyles(theme),
     ...getInteractiveComponentStyles(theme),

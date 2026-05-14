@@ -100,6 +100,22 @@ function getTotalHistoryBytes(entries: HistoryEntry[]): number {
 export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryReturn {
   const [state, setStateInternal] = useState<BlockEditorState>(initial);
 
+  // Tracks the latest state synchronously so that batched `setState` calls
+  // within a single event handler see each other's results. Without this,
+  // function-form updaters would receive a stale closure-captured `state`
+  // and silently overwrite previously queued updates — see the regression
+  // test "batched setState calls compose, not overwrite" in
+  // `useGuideHistory.test.ts` for the concrete failure mode.
+  //
+  // INVARIANT: every code path that calls `setStateInternal` MUST also
+  // write the same value to `latestStateRef.current` on the line above.
+  // Do NOT add a `useEffect(() => { latestStateRef.current = state }, [state])`
+  // to "rescue" the ref — that effect fires after paint and can run
+  // *between* a synchronous ref write in one event and a function-form
+  // `setState` in the next, reverting the ref to the previous render's
+  // `state` and reintroducing the exact bug across event boundaries.
+  const latestStateRef = useRef<BlockEditorState>(initial);
+
   // Stacks live in refs so internal pushes don't force re-renders;
   // we drive the UI from `historyMeta` instead.
   const pastRef = useRef<HistoryEntry[]>([]);
@@ -126,14 +142,21 @@ export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryRetur
 
   const setState: GuideStateSetter = useCallback(
     (action, options) => {
-      const next = typeof action === 'function' ? (action as (p: BlockEditorState) => BlockEditorState)(state) : action;
+      // Source `prev` from the synchronously-tracked ref, NOT closure `state`,
+      // so a chain of batched setState calls in a single event handler each
+      // see the previous call's result instead of all collapsing onto the
+      // stale render-time state.
+      const prev = latestStateRef.current;
+      const next = typeof action === 'function' ? (action as (p: BlockEditorState) => BlockEditorState)(prev) : action;
 
       // No-op transitions (same reference) skip history regardless.
-      if (next === state) {
+      if (next === prev) {
         return;
       }
 
-      // Apply the state update first (pure)
+      // Apply the state update first (pure). Update the ref synchronously so
+      // any further setState in the same batch sees `next` as its prev.
+      latestStateRef.current = next;
       setStateInternal(next);
 
       // Then handle history side effects outside the updater
@@ -143,9 +166,9 @@ export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryRetur
         const insideCoalesceWindow = key !== null && key === coalesceRef.current.key && now < coalesceRef.current.until;
 
         if (!insideCoalesceWindow) {
-          const estimatedSize = estimateSingleEntryBytes(state);
+          const estimatedSize = estimateSingleEntryBytes(prev);
           const past = pastRef.current;
-          past.push({ state, label: options?.label, estimatedSize });
+          past.push({ state: prev, label: options?.label, estimatedSize });
 
           // Count cap.
           while (past.length > MAX_HISTORY) {
@@ -164,7 +187,7 @@ export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryRetur
         refreshMeta();
       }
     },
-    [state, refreshMeta]
+    [refreshMeta]
   );
 
   const undo = useCallback(() => {
@@ -181,21 +204,23 @@ export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryRetur
 
     // Calculate next state outside updater
     const nextState = target.state;
+    const currentState = latestStateRef.current;
 
     // Update refs (side effects outside updater)
-    const estimatedSize = estimateSingleEntryBytes(state);
+    const estimatedSize = estimateSingleEntryBytes(currentState);
     pastRef.current = past;
-    futureRef.current.unshift({ state, label: target.label, estimatedSize });
+    futureRef.current.unshift({ state: currentState, label: target.label, estimatedSize });
 
     // Reset coalescing so the next setState starts a fresh entry.
     coalesceRef.current = { key: null, until: 0 };
 
     // Apply state change
+    latestStateRef.current = nextState;
     setStateInternal(nextState);
 
     // Refresh UI meta
     refreshMeta();
-  }, [state, refreshMeta]);
+  }, [refreshMeta]);
 
   const redo = useCallback(() => {
     const future = futureRef.current;
@@ -211,20 +236,22 @@ export function useGuideHistory(initial: BlockEditorState): UseGuideHistoryRetur
 
     // Calculate next state outside updater
     const nextState = target.state;
+    const currentState = latestStateRef.current;
 
     // Update refs (side effects outside updater)
-    const estimatedSize = estimateSingleEntryBytes(state);
+    const estimatedSize = estimateSingleEntryBytes(currentState);
     futureRef.current = future;
-    pastRef.current.push({ state, label: target.label, estimatedSize });
+    pastRef.current.push({ state: currentState, label: target.label, estimatedSize });
 
     coalesceRef.current = { key: null, until: 0 };
 
     // Apply state change
+    latestStateRef.current = nextState;
     setStateInternal(nextState);
 
     // Refresh UI meta
     refreshMeta();
-  }, [state, refreshMeta]);
+  }, [refreshMeta]);
 
   const resetHistory = useCallback(() => {
     pastRef.current = [];

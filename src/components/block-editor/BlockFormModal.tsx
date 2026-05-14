@@ -46,6 +46,7 @@ import { QuizBlockForm } from './forms/QuizBlockForm';
 import { InputBlockForm } from './forms/InputBlockForm';
 import { TerminalBlockForm } from './forms/TerminalBlockForm';
 import { TerminalConnectBlockForm } from './forms/TerminalConnectBlockForm';
+import { ChallengeBlockForm } from './forms/ChallengeBlockForm';
 import { CodeBlockForm } from './forms/CodeBlockForm';
 import { GrotGuideBlockForm } from './forms/GrotGuideBlockForm';
 
@@ -121,6 +122,7 @@ const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = 
   input: InputBlockForm,
   terminal: TerminalBlockForm,
   'terminal-connect': TerminalConnectBlockForm,
+  challenge: ChallengeBlockForm,
   'code-block': CodeBlockForm,
   'grot-guide': GrotGuideBlockForm,
 };
