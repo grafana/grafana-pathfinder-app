@@ -1276,8 +1276,11 @@ export const sectionAcknowledgementStorage = {
 
   /**
    * Sets the acknowledgement state for a specific section.
+   *
+   * Only `true` is accepted — the storage layer is intentionally
+   * two-state (see `.get()`). Use `.clear()` to remove an entry.
    */
-  async set(contentKey: string, sectionId: string, isAcknowledged: boolean): Promise<void> {
+  async set(contentKey: string, sectionId: string, isAcknowledged: true): Promise<void> {
     try {
       const storage = createUserStorage();
       const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-${sectionId}`;

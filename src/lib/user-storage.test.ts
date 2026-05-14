@@ -266,13 +266,6 @@ describe('sectionAcknowledgementStorage', () => {
     expect(value).toBe(true);
   });
 
-  it('round-trips an explicit false (distinguishable from null)', async () => {
-    await sectionAcknowledgementStorage.set('guide-a', 'section-1', false);
-    const value = await sectionAcknowledgementStorage.get('guide-a', 'section-1');
-    expect(value).toBe(false);
-    expect(value).not.toBeNull();
-  });
-
   it('clear() removes the entry — subsequent get returns null again', async () => {
     await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
     await sectionAcknowledgementStorage.clear('guide-a', 'section-1');
