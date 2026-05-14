@@ -38,6 +38,9 @@ type App struct {
 	// Active VMs per user (userLogin -> vmID) for cross-reconnection reuse
 	userVMs   map[string]string
 	userVMsMu sync.RWMutex
+
+	// Per-user rate limiter for POST /coda/exec
+	execRateLimiter *execRateLimiter
 }
 
 // NewApp creates a new App instance.
@@ -52,10 +55,11 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 	}
 
 	app := &App{
-		settings:       settings,
-		logger:         logger,
-		streamSessions: make(map[string]*streamSession),
-		userVMs:        make(map[string]string),
+		settings:        settings,
+		logger:          logger,
+		streamSessions:  make(map[string]*streamSession),
+		userVMs:         make(map[string]string),
+		execRateLimiter: newExecRateLimiter(),
 	}
 
 	if settings.RefreshToken != "" && settings.CodaAPIURL != "" {

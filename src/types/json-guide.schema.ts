@@ -494,6 +494,60 @@ export const JsonTerminalConnectBlockSchema = z.object({
   ...AuthorAnnotatedSchema.shape,
 });
 
+// ============ CHALLENGE BLOCK SCHEMA ============
+
+/**
+ * Schema for a single challenge hint.
+ * @coupling Type: JsonChallengeHint
+ */
+export const JsonChallengeHintSchema = z.object({
+  text: z.string().min(1, 'Hint text is required'),
+});
+
+/**
+ * Schema for the challenge block (CTF-style learning task in a Coda VM).
+ * @coupling Type: JsonChallengeBlock
+ */
+export const JsonChallengeBlockSchema = z.object({
+  ...AuthorAnnotatedSchema.shape,
+  type: z.literal('challenge'),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  mode: z
+    .enum(['coda', 'standard'])
+    .optional()
+    .describe(
+      "Execution model. 'standard' runs against the learner's own Grafana — successCriteria is any Pathfinder requirement (e.g. has-dashboard-named:Foo). 'coda' (default) runs in a Coda VM with a terminal — successCriteria is typically coda-exit-zero:<command>."
+    ),
+  title: z.string().min(1, 'Challenge title is required').describe('Short title shown above the brief'),
+  brief: z.string().min(1, 'Challenge brief is required').describe('Markdown problem statement'),
+  vmTemplate: z
+    .string()
+    .optional()
+    .describe('VM template to provision (defaults to vm-aws); ignored when mode is standard'),
+  vmScenario: z.string().optional().describe('Scenario for alloy-scenario template'),
+  vmApp: z.string().optional().describe('App for sample-app template'),
+  setupCommands: z
+    .array(z.string().min(1, 'Setup command cannot be empty'))
+    .optional()
+    .describe(
+      'Deprecated — prefer setupScript. Bash commands run sequentially server-side after the VM is ready; kept for back-compat.'
+    ),
+  setupScript: z
+    .string()
+    .optional()
+    .describe(
+      'Bash script run server-side after the VM is ready. The whole string is passed to the remote login shell as a single command, so multi-line scripts, heredocs, and control flow are supported. Preferred over setupCommands.'
+    ),
+  successCriteria: RequirementTokenSchema.describe(
+    'Requirement evaluated when the user clicks Check my work (typically coda-exit-zero:<command>)'
+  ),
+  hintLevels: z.array(JsonChallengeHintSchema).optional().describe('Progressive hints revealed on demand'),
+  failureMessage: z.string().optional().describe('Message shown when the success check fails'),
+  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions for the challenge'),
+  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+  skippable: z.boolean().optional().describe('Allow user to skip this block'),
+});
+
 // ============ CODE BLOCK SCHEMA ============
 
 /**
@@ -649,6 +703,7 @@ const NonRecursiveBlockSchema = z.union([
   JsonInputBlockSchema,
   JsonTerminalBlockSchema,
   JsonTerminalConnectBlockSchema,
+  JsonChallengeBlockSchema,
   JsonCodeBlockBlockSchema,
   JsonGrotGuideBlockSchema,
 ]);

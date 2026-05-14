@@ -12,6 +12,7 @@ import { InteractiveQuiz, resetQuizCounter } from './interactive-quiz';
 import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
 import { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
+import { resetChallengeCounter } from './challenge-block';
 import { InteractiveConditional } from './interactive-conditional';
 import { ImageRenderer, VideoRenderer, YouTubeVideoRenderer } from '../../docs-retrieval';
 import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
@@ -106,6 +107,7 @@ export function resetInteractiveCounters() {
   resetTerminalStepCounter();
   resetTerminalConnectStepCounter();
   resetCodeBlockStepCounter();
+  resetChallengeCounter();
 }
 
 // Register a section's steps in the global registry (idempotent)
