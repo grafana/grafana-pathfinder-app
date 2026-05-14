@@ -11,6 +11,7 @@
  */
 
 import { experimentAutoOpenStorage } from '../../lib/user-storage';
+import { StorageKeys } from '../../lib/storage-keys';
 import {
   getExperimentConfig,
   setFlagOverride,
@@ -21,6 +22,34 @@ import {
   type ExperimentConfig,
 } from '../openfeature';
 import { getStorageKeys } from './experiment-utils';
+
+interface ExposureMarker {
+  key: string;
+  flag: string;
+  variant: string;
+}
+
+function listExposureMarkers(hostname: string): ExposureMarker[] {
+  const prefix = `${StorageKeys.EXPERIMENT_EXPOSURE_REPORTED_PREFIX}${hostname}:`;
+  const markers: ExposureMarker[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        // Marker shape: `{prefix}{hostname}:{flagKey}:{variant}`
+        // flagKey contains a dot but never a colon, so split on the last colon.
+        const suffix = key.slice(prefix.length);
+        const lastColon = suffix.lastIndexOf(':');
+        const flag = lastColon >= 0 ? suffix.slice(0, lastColon) : suffix;
+        const variant = lastColon >= 0 ? suffix.slice(lastColon + 1) : '';
+        markers.push({ key, flag, variant });
+      }
+    }
+  } catch {
+    // localStorage unavailable — return empty
+  }
+  return markers;
+}
 
 // Rate limiting for refetch
 const REFETCH_COOLDOWN_MS = 5000; // 5 second cooldown
@@ -232,6 +261,42 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
         }
       }
       return overrides;
+    },
+
+    // --- Analytics exposure dedup ---
+    // pathfinder_feature_flag_evaluated fires at most once per (hostname, flag, variant)
+    // per browser, persisted under StorageKeys.EXPERIMENT_EXPOSURE_REPORTED_PREFIX. These
+    // helpers show or clear those markers so a QA tester can verify "did the exposure
+    // event fire already?" and "force it to re-fire on the next reload."
+
+    showExposures: () => {
+      const markers = listExposureMarkers(hostname);
+      if (markers.length === 0) {
+        console.log(
+          '[Pathfinder] No analytics exposures deduped for this hostname. The next non-excluded experiment evaluation will fire pathfinder_feature_flag_evaluated.'
+        );
+      } else {
+        console.log(`[Pathfinder] ${markers.length} analytics exposure(s) already reported for this hostname:`);
+        for (const m of markers) {
+          console.log(`  ${m.flag} (variant=${m.variant})`);
+        }
+      }
+      return markers;
+    },
+
+    clearExposures: () => {
+      const markers = listExposureMarkers(hostname);
+      markers.forEach((m) => {
+        try {
+          localStorage.removeItem(m.key);
+        } catch {
+          // localStorage unavailable
+        }
+      });
+      console.log(
+        `[Pathfinder] Cleared ${markers.length} analytics exposure marker(s). Reload the page to re-fire pathfinder_feature_flag_evaluated for any active experiment.`
+      );
+      return { cleared: markers.length };
     },
   };
 }

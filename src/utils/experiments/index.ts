@@ -37,3 +37,9 @@ export {
 
 // Re-export from experiment-debug
 export { createExperimentDebugger, logExperimentConfig } from './experiment-debug';
+
+// Re-export from highlighted-guide-orchestrator
+export { initializeHighlightedGuideExperiment, setupHighlightedGuideAutoOpen } from './highlighted-guide-orchestrator';
+
+// Re-export from highlighted-guide-utils
+export { buildSyntheticFeaturedRecommendation, matchesHighlightedGuidePage } from './highlighted-guide-utils';
