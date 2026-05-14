@@ -13,8 +13,11 @@ import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
 import { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 import { resetChallengeCounter } from './challenge-block';
-import { InteractiveConditional } from './interactive-conditional';
-import { ImageRenderer, VideoRenderer, YouTubeVideoRenderer } from '../../docs-retrieval';
+import { wrapSectionChildrenForNumbering } from './section-numbering';
+// Re-exports preserved for back-compat with `section-numbering.test.tsx`,
+// which imports both helpers from this module. New code should import
+// directly from `./section-numbering`.
+export { shouldNumberSectionChild, wrapSectionChildrenForNumbering } from './section-numbering';
 import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
 import {
   interactiveStepStorage,
@@ -47,58 +50,6 @@ import {
 // and `use-standalone-persistence.ts`. New code should import directly
 // from `./section-registry`.
 export { registerSectionSteps, getTotalDocumentSteps, getDocumentStepPosition } from './section-registry';
-
-/**
- * Per issue #841: media and wrapper blocks render in a section without a step
- * number; everything else (markdown, code samples, interactive steps, quiz,
- * terminal, input, etc.) participates in the section's `1. 2. 3.` sequence.
- *
- * Lookups happen at call time, not module-init time — the docs-retrieval barrel
- * imports content-renderer, which imports back into this directory, so a top-
- * level `new Set([ImageRenderer, ...])` would resolve to undefined under cycle
- * load order. By checking inside the function, both modules have finished
- * initializing by the first invocation.
- */
-export function shouldNumberSectionChild(child: React.ReactNode): boolean {
-  if (!React.isValidElement(child)) {
-    // Plain strings / numbers / fragments — render but don't number.
-    return false;
-  }
-  const t = child.type;
-  return t !== ImageRenderer && t !== VideoRenderer && t !== YouTubeVideoRenderer && t !== InteractiveConditional;
-}
-
-/**
- * Wrap each section child in an <li>, marking content blocks with
- * data-numbered="true" so CSS can apply sequential numbering. Media and
- * wrapper blocks (image/video/conditional) sit in the list without a number.
- *
- * data-step="true"  → React component (InteractiveStep, quiz, terminal, etc.)
- *                     These carry their own CSS margin-top that naturally aligns
- *                     the card with the ::before number at top: theme.spacing(2).
- *                     The <li> needs no extra padding.
- * data-step="false" → Plain HTML content (markdown <p>, headings, etc.)
- *                     No built-in top margin, so the <li> gets paddingTop via CSS
- *                     to push the content start down to match the number position.
- */
-export function wrapSectionChildrenForNumbering(children: React.ReactNode): React.ReactNode {
-  return React.Children.map(children, (child, index) => {
-    const numbered = shouldNumberSectionChild(child);
-    const childKey = React.isValidElement(child) && child.key != null ? child.key : `section-child-${index}`;
-    // React components (interactive steps, quiz, terminal…) have typeof type === 'function'.
-    // Plain HTML elements (p, div, h2…) have typeof type === 'string'.
-    const isStep = React.isValidElement(child) && typeof child.type !== 'string';
-    return (
-      <li
-        key={childKey}
-        data-numbered={numbered ? 'true' : undefined}
-        data-step={numbered ? String(isStep) : undefined}
-      >
-        {child}
-      </li>
-    );
-  });
-}
 
 // Reset every counter (registry + offsets + per-step-type anonymous-ID
 // counters). Called when new content loads. The registry's own state
