@@ -29,6 +29,12 @@ const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
 // partially-written sentinel.
 const SENTINEL_WRITE_COMMAND = 'touch /tmp/pathfinder-ready.tmp && mv /tmp/pathfinder-ready.tmp /tmp/pathfinder-ready';
 
+// Module-level stable empty array used as the default for `setupCommands`.
+// Defining the default inline (`setupCommands = []`) would mint a new array on
+// every render, churning the `runSetup` callback and cascading remounts through
+// the dependent useEffect. Frozen so an accidental mutation surfaces in dev.
+const EMPTY_SETUP_COMMANDS = Object.freeze([]) as unknown as string[];
+
 export type ChallengeState =
   | 'idle'
   | 'connecting'
@@ -182,7 +188,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   vmTemplate,
   vmScenario,
   vmApp,
-  setupCommands = [],
+  setupCommands = EMPTY_SETUP_COMMANDS,
   setupScript,
   successCriteria,
   hintLevels = [],
@@ -402,17 +408,26 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   const handleCheckMyWork = useCallback(async () => {
     setState('checking');
     setErrorDetail('');
-    const result = await checkPostconditions({
-      requirements: successCriteria,
-      stepId,
-      maxRetries: 0,
-    });
-    if (result.pass) {
-      setState('solved');
-      markComplete();
-    } else {
-      const failure = result.error[0]?.error ?? 'Not solved yet.';
-      setErrorDetail(failure);
+    try {
+      const result = await checkPostconditions({
+        requirements: successCriteria,
+        stepId,
+        maxRetries: 0,
+      });
+      if (result.pass) {
+        setState('solved');
+        markComplete();
+      } else {
+        const failure = result.error[0]?.error ?? 'Not solved yet.';
+        setErrorDetail(failure);
+        setState('failed-check');
+      }
+    } catch (err) {
+      // Unexpected pipeline failure (network blip, requirements bug). Surface it
+      // as a failed check so the user can retry instead of being stuck on a
+      // spinner with no action available.
+      const message = err instanceof Error ? err.message : String(err);
+      setErrorDetail(`Could not run the check: ${message}`);
       setState('failed-check');
     }
   }, [successCriteria, stepId, markComplete]);

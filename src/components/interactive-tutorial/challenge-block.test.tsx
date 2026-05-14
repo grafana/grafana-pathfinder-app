@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { from } from 'rxjs';
 
 import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
+import { resetInteractiveCounters } from './interactive-section';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { checkPostconditions } from '../../requirements-manager';
 import { getBackendSrv } from '@grafana/runtime';
@@ -268,6 +269,29 @@ describe('ChallengeBlock', () => {
     expect(screen.getByRole('button', { name: /check again/i })).toBeInTheDocument();
   });
 
+  it('recovers from a checkPostconditions rejection into failed-check with a retry button', async () => {
+    const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    setBackend(post);
+    // Simulate an unexpected pipeline failure (network blip, requirements bug).
+    // The block must not stay stuck on the 'checking' spinner — it should
+    // surface the error and expose a way to retry.
+    mockedCheckPostconditions.mockRejectedValue(new Error('pipeline exploded'));
+    mockTerminalCtx({ status: 'connected' });
+
+    render(<ChallengeBlock {...baseProps} setupCommands={[]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/pipeline exploded/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /check again/i })).toBeInTheDocument();
+  });
+
   it('cancel button returns the block to idle without finishing setup', async () => {
     // Setup never resolves so we can observe the Cancel button rendered
     // during 'preparing' and verify the state machine returns to idle.
@@ -386,6 +410,28 @@ describe('ChallengeBlock', () => {
       await waitFor(() => {
         expect(screen.getByText(/challenge solved/i)).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('counter integration with resetInteractiveCounters', () => {
+    // Regression: the challenge counter must be reset alongside the other
+    // block-type counters so reset-guide + content-reload doesn't keep
+    // accumulating challenge-N IDs across loads.
+    it('is reset by resetInteractiveCounters so step IDs stay deterministic', () => {
+      mockTerminalCtx();
+
+      const first = render(<ChallengeBlock {...baseProps} />);
+      expect(first.getByTestId('challenge-block-challenge-1')).toBeInTheDocument();
+      first.unmount();
+
+      const second = render(<ChallengeBlock {...baseProps} />);
+      expect(second.getByTestId('challenge-block-challenge-2')).toBeInTheDocument();
+      second.unmount();
+
+      resetInteractiveCounters();
+
+      const third = render(<ChallengeBlock {...baseProps} />);
+      expect(third.getByTestId('challenge-block-challenge-1')).toBeInTheDocument();
     });
   });
 });
