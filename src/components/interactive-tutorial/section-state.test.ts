@@ -40,7 +40,7 @@ function makeStep(stepId: string, targetAction = 'click'): StepInfo {
   };
 }
 
-function makeState(over: { completed?: string[]; cursor?: number; acknowledged?: boolean | null } = {}): SectionState {
+function makeState(over: { completed?: string[]; cursor?: number; acknowledged?: true | null } = {}): SectionState {
   return {
     completed: new Set(over.completed ?? []),
     cursor: over.cursor ?? 0,

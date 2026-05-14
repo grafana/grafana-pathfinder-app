@@ -1257,19 +1257,18 @@ export const sectionAcknowledgementStorage = {
    * Gets the acknowledgement state for a specific section.
    *
    * Returns:
-   *   - `true`  if the user has explicitly acknowledged the section
-   *   - `false` if the user has explicitly de-acknowledged it (rare —
-   *             usually only via the reducer's reset path, which clears
-   *             the entry instead)
-   *   - `null`  if the section has never been acknowledged (no entry
-   *             in storage)
+   *   - `true` if the user has explicitly acknowledged the section
+   *   - `null` if the section has never been acknowledged (no entry
+   *            in storage). The reducer's reset paths call `clear()`
+   *            rather than writing a `false` sentinel, so the storage
+   *            layer is intentionally two-state.
    */
-  async get(contentKey: string, sectionId: string): Promise<boolean | null> {
+  async get(contentKey: string, sectionId: string): Promise<true | null> {
     try {
       const storage = createUserStorage();
       const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-${sectionId}`;
       const acknowledged = await storage.getItem<boolean>(key);
-      return acknowledged ?? null;
+      return acknowledged === true ? true : null;
     } catch {
       return null;
     }

@@ -33,15 +33,17 @@ import type { AcknowledgementAnalysis } from './step-section-utils';
  *     derived `kind` calculation filters them.
  *   - `cursor`: the index of the next non-completed step. Used by
  *     `getResumeInfo` to drive the "Resume" button label.
- *   - `acknowledged`: tri-state for the issue-#842 gate.
+ *   - `acknowledged`: two-state for the issue-#842 gate.
  *       - `null`  → user has never seen the gate (or no gate applies).
  *       - `true`  → user clicked "Mark section as complete".
- *       - `false` → reserved for future use (e.g. explicit revoke).
+ *     Modelled as `true | null` rather than `boolean | null` so the
+ *     "unused state value" asymmetry the reducer was built to prevent
+ *     cannot reappear by accident.
  */
 export interface SectionState {
   completed: Set<string>;
   cursor: number;
-  acknowledged: boolean | null;
+  acknowledged: true | null;
 }
 
 export type SectionStateKind = 'init' | 'partial' | 'awaiting-ack' | 'done';
@@ -63,7 +65,7 @@ export type SectionAction =
   | {
       type: 'RESTORE';
       completed: Set<string>;
-      acknowledged: boolean | null;
+      acknowledged: true | null;
       allStepIds: string[];
     }
   /** A single step reports completion. */
@@ -271,7 +273,7 @@ export function deriveSectionState(
  */
 export function restoreFromStorage(input: {
   completed: Set<string>;
-  acknowledged: boolean | null;
+  acknowledged: true | null;
   stepComponents: StepInfo[];
   gate: AcknowledgementAnalysis;
 }): { state: SectionState; migrated: boolean } {
