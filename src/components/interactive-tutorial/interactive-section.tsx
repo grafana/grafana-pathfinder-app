@@ -1558,14 +1558,27 @@ export function InteractiveSection({
       // marker step id keyed to the section so it can't collide.
       const markerId = `${sectionId}::ack-marker`;
       dispatch({ type: 'COMPLETE_STEP', stepId: markerId, cursorAdvancedTo: 0 });
-      persistCompletedSteps(new Set([markerId]));
+      // Accumulate rather than overwrite. Safe today (gate's `isAllPassive`
+      // implies an empty completed set) but mirrors the reducer's add
+      // semantics so we don't clobber prior entries if classification ever
+      // changes.
+      persistCompletedSteps(new Set([...completedSteps, markerId]));
     }
 
     dispatch({ type: 'ACKNOWLEDGE' });
     if (!isPreviewMode) {
       sectionAcknowledgementStorage.set(contentKey, sectionId, true);
     }
-  }, [disabled, isRunning, sectionKind, gateAnalysis.isAllPassive, isPreviewMode, persistCompletedSteps, sectionId]);
+  }, [
+    disabled,
+    isRunning,
+    sectionKind,
+    gateAnalysis.isAllPassive,
+    isPreviewMode,
+    persistCompletedSteps,
+    sectionId,
+    completedSteps,
+  ]);
 
   // Register this section's steps in the global registry BEFORE rendering children
   // This must happen in useMemo (not useEffect) to ensure totalDocumentSteps is correct
