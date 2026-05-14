@@ -210,4 +210,37 @@ describe('useGuideHistory', () => {
 
     expect(result.current.canUndo).toBe(false);
   });
+
+  it('batched setState calls compose, not overwrite (regression: stale-closure prev)', () => {
+    // Reproduces the JSON-paste -> preview bug. When `handleExitJsonMode`
+    // calls `loadGuide(newGuide)` (object form) followed by
+    // `updateGuideMetadata({})` and `setViewMode('preview')` (function
+    // form) inside the same event, every function-form `prev` must reflect
+    // the latest queued state, not a stale closure capture. Otherwise the
+    // second call's `{...prev, ...}` overwrites the new guide with the old
+    // one and the user sees the old guide in preview.
+    const { result } = renderHook(() => useGuideHistory(makeState({ guide: { id: 'old', title: 'Old' } })));
+
+    act(() => {
+      // Step 1: replace whole state (object form) — analogous to loadGuide.
+      result.current.setState(
+        {
+          guide: { id: 'new', title: 'New' },
+          blocks: [],
+          viewMode: 'edit',
+          isDirty: false,
+        },
+        { skipHistory: true }
+      );
+      // Step 2: function-form mutation — analogous to updateGuideMetadata({}).
+      result.current.setState((prev) => ({ ...prev, isDirty: true }));
+      // Step 3: function-form mutation — analogous to setViewMode('preview').
+      result.current.setState((prev) => ({ ...prev, viewMode: 'preview' }), { skipHistory: true });
+    });
+
+    // Expected composition: the new guide, marked dirty, in preview mode.
+    expect(result.current.state.guide).toEqual({ id: 'new', title: 'New' });
+    expect(result.current.state.isDirty).toBe(true);
+    expect(result.current.state.viewMode).toBe('preview');
+  });
 });
