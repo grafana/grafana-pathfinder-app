@@ -332,26 +332,15 @@ export function InteractiveSection({
     // Target the docs panel scrollable container directly (inner-docs-content)
     const scrollContainer = document.getElementById('inner-docs-content');
 
-    console.warn('[Section] Setting up scroll listener, container found:', !!scrollContainer);
-
     if (!scrollContainer) {
-      console.warn('[Section] No scroll container found!');
       return;
     }
 
     const handleScroll = () => {
-      console.warn(
-        '[Section] Scroll event fired, isProgrammatic:',
-        isProgrammaticScrollRef.current,
-        'userScrolled:',
-        userScrolledRef.current
-      );
       // Ignore programmatic scrolls (our own auto-scroll)
       if (isProgrammaticScrollRef.current) {
-        console.warn('[Section] Ignoring programmatic scroll');
         return;
       }
-      console.warn('[Section] USER SCROLLED - disabling auto-scroll');
       userScrolledRef.current = true; // Permanently disable for this section run
     };
 
@@ -364,15 +353,12 @@ export function InteractiveSection({
 
   // Auto-scroll to current executing step
   const scrollToStep = useCallback((stepId: string) => {
-    console.warn('[Section] scrollToStep called for:', stepId, 'userScrolled:', userScrolledRef.current);
     if (userScrolledRef.current) {
-      console.warn('[Section] Skipping scroll - user has scrolled');
       return; // User has scrolled, don't fight them
     }
 
     // Find the step element by data-step-id
     const stepElement = document.querySelector(`[data-step-id="${stepId}"]`);
-    console.warn('[Section] Step element found:', !!stepElement);
     if (stepElement) {
       // isProgrammaticScrollRef is already true during section execution
       // so we don't need to set/reset it here
@@ -1403,7 +1389,6 @@ export function InteractiveSection({
       setExecutingStepNumber(0);
       // Reset programmatic scroll flag now that section is done
       isProgrammaticScrollRef.current = false;
-      console.warn('[Section] Section finished, isProgrammaticScroll = false');
       // Keep isCancelled state for UI feedback, will be reset on next run
 
       // Track "Do Section" analytics after completion (success or cancel)
