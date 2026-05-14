@@ -1485,11 +1485,17 @@ export function InteractiveSection({
     // Signal all child steps to reset their local state
     setResetTrigger((prev) => prev + 1);
 
-    // Clear storage persistence
+    // Clear storage persistence. In preview mode none of the section-
+    // scoped storage namespaces are written to (see persistCompletedSteps,
+    // sectionCollapseStorage, sectionAcknowledgementStorage call sites)
+    // so the clears would be no-ops — skip them to mirror the rest of
+    // the file's preview-mode contract.
     const contentKey = getContentKey();
-    interactiveStepStorage.clear(contentKey, sectionId);
-    sectionCollapseStorage.clear(contentKey, sectionId); // Clear collapse state
-    sectionAcknowledgementStorage.clear(contentKey, sectionId); // Clear ack so the gate re-arms on next pass
+    if (!isPreviewMode) {
+      interactiveStepStorage.clear(contentKey, sectionId);
+      sectionCollapseStorage.clear(contentKey, sectionId); // Clear collapse state
+      sectionAcknowledgementStorage.clear(contentKey, sectionId); // Clear ack so the gate re-arms on next pass
+    }
 
     // Notify listeners that progress for this content was cleared (#842, Bug 2).
     // Mirrors the dispatch in BlockPreview's reset() so any consumer driving
@@ -1534,7 +1540,7 @@ export function InteractiveSection({
         }, 100);
       }, 200);
     });
-  }, [disabled, isRunning, stepComponents, sectionId]);
+  }, [disabled, isRunning, stepComponents, sectionId, isPreviewMode]);
 
   /**
    * Mark the section as acknowledged (issue #842).
