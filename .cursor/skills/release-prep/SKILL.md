@@ -208,14 +208,14 @@ When the `changelog` skill is invoked from `release-prep`, override its Phase 3 
 
 The skill must abort cleanly (no partial state, no commits) if any of these are true:
 
-| Condition                                     | Reason                                                    |
-| --------------------------------------------- | --------------------------------------------------------- |
-| Working tree dirty                            | Cannot reason about what state is being released          |
-| Branch behind origin                          | Upstream commits would be missing from the release        |
-| Tag `v<version>` already exists               | Cannot reuse a tag; double-tagging breaks GitHub releases |
-| Version is not strictly > last tag            | Regression — semver violation                             |
-| `npm run check` fails                         | Test suite or lint catches a real problem                 |
-| `npm run build` fails                         | Production bundle is broken                               |
+| Condition                                     | Reason                                                                |
+| --------------------------------------------- | --------------------------------------------------------------------- |
+| Working tree dirty                            | Cannot reason about what state is being released                      |
+| Branch behind origin                          | Upstream commits would be missing from the release                    |
+| Tag `v<version>` already exists               | Cannot reuse a tag; double-tagging breaks GitHub releases             |
+| Version is not strictly > last tag            | Regression — semver violation                                         |
+| `npm run check` fails                         | Test suite or lint catches a real problem                             |
+| `npm run build` fails                         | Production bundle is broken                                           |
 | `git diff --name-only` shows unexpected paths | Skill must only touch package.json + package-lock.json + CHANGELOG.md |
 
 When aborting, print the failure reason clearly and (where applicable) the exact log line that triggered the abort. Do not leave partial commits behind.
