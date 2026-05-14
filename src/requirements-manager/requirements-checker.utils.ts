@@ -38,6 +38,7 @@ import { onPageCheck } from './checks/location';
 import { hasFeatureCheck, inEnvironmentCheck, minVersionCheck, rendererCheck } from './checks/env';
 import { guideVariableCheck } from './checks/vars';
 import { terminalActiveCheck } from './checks/terminal';
+import { codaExitZeroCheck } from './checks/coda';
 
 // Re-export types for convenience
 export interface RequirementsCheckResult {
@@ -178,6 +179,11 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
   // Terminal connection check
   if (check === 'is-terminal-active') {
     return terminalActiveCheck(check);
+  }
+
+  // Coda VM exec-based challenge check
+  if (check.startsWith('coda-exit-zero:')) {
+    return codaExitZeroCheck(check);
   }
 
   // Guide response variable checks (e.g., var-policyAccepted:true)

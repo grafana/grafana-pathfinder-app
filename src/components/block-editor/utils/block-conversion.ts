@@ -34,6 +34,7 @@ const CONVERTIBLE_TYPES: readonly BlockType[] = [
   'input',
   'terminal',
   'terminal-connect',
+  'challenge',
   'code-block',
 ];
 
@@ -56,6 +57,7 @@ const CONTENT_FIELDS: Partial<Record<BlockType, string>> = {
   input: 'prompt',
   terminal: 'content',
   'terminal-connect': 'content',
+  challenge: 'brief',
   'code-block': 'content',
 };
 
@@ -79,6 +81,10 @@ const REQUIRED_DEFAULTS: Partial<Record<BlockType, Record<string, unknown>>> = {
   multistep: { content: 'Complete these steps', steps: [{ action: 'noop' }] },
   guided: { content: 'Follow these steps', steps: [{ action: 'noop' }] },
   terminal: { command: 'echo "hello"' },
+  challenge: {
+    title: 'Untitled challenge',
+    successCriteria: 'coda-exit-zero:true',
+  },
   'code-block': { reftarget: "div[data-testid='data-testid Code editor container']", code: '// Your code here' },
 };
 

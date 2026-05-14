@@ -34,6 +34,8 @@ export enum ParameterizedRequirementPrefix {
   VARIABLE = 'var-',
   /** Renderer context check (e.g., renderer:pathfinder, renderer:website) */
   RENDERER = 'renderer:',
+  /** Coda VM exec check — passes when the command exits 0 against the user's active challenge VM */
+  CODA_EXIT_ZERO = 'coda-exit-zero:',
 }
 
 // Helper type for parameterized requirements
@@ -94,6 +96,7 @@ export const PARAMETERIZED_REQUIREMENT_EXAMPLES: ReadonlyArray<{ prefix: string;
   { prefix: 'has-dashboard-named:', example: 'has-dashboard-named:Node Exporter Full' },
   { prefix: 'var-', example: 'var-policyAccepted:true' },
   { prefix: 'renderer:', example: 'renderer:pathfinder' },
+  { prefix: 'coda-exit-zero:', example: 'coda-exit-zero:test -f /etc/myapp.conf' },
 ]);
 
 /**
@@ -135,6 +138,8 @@ export const REQUIREMENT_DESCRIPTIONS: Readonly<Record<string, string>> = Object
   'section-completed:': 'A previous tutorial section is marked complete (e.g. section-completed:setup)',
   'var-': 'A guide variable matches an expected value (e.g. var-policyAccepted:true)',
   'renderer:': 'Renderer context matches (e.g. renderer:pathfinder)',
+  'coda-exit-zero:':
+    "A command exits 0 against the user's active challenge VM (e.g. coda-exit-zero:curl -sf localhost:9090/-/healthy)",
 });
 
 /**

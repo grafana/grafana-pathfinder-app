@@ -41,6 +41,8 @@ describe('Condition Validator', () => {
         ['var-region:us-east-1', ParameterizedRequirementPrefix.VARIABLE],
         ['renderer:pathfinder', ParameterizedRequirementPrefix.RENDERER],
         ['renderer:website', ParameterizedRequirementPrefix.RENDERER],
+        ['coda-exit-zero:test -f /etc/foo', ParameterizedRequirementPrefix.CODA_EXIT_ZERO],
+        ['coda-exit-zero:curl -sf localhost:9090/-/healthy', ParameterizedRequirementPrefix.CODA_EXIT_ZERO],
       ];
 
       it.each(validParameterizedConditions)('accepts parameterized: %s', (condition) => {
@@ -415,6 +417,7 @@ describe('Condition Types Coverage', () => {
     ParameterizedRequirementPrefix.SECTION_COMPLETED,
     ParameterizedRequirementPrefix.VARIABLE,
     ParameterizedRequirementPrefix.RENDERER,
+    ParameterizedRequirementPrefix.CODA_EXIT_ZERO,
   ]);
 
   it('all FixedRequirementType values should be tested', () => {
