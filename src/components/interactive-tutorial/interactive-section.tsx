@@ -1938,6 +1938,10 @@ export function InteractiveSection({
     sectionRequirementsStatus.passed, // Section requirements gate child steps
   ]);
 
+  // Computed once per render so the catch-all action button's `title`
+  // and label IIFEs share a single result instead of recomputing.
+  const resumeInfo = getResumeInfo();
+
   return (
     <div
       id={sectionId}
@@ -2097,7 +2101,6 @@ export function InteractiveSection({
                 : testIds.interactive.doSectionButton(sectionId)
             }
             title={(() => {
-              const resumeInfo = getResumeInfo();
               if (isCompletedByObjectives) {
                 return 'Already done!';
               }
@@ -2111,7 +2114,6 @@ export function InteractiveSection({
             })()}
           >
             {(() => {
-              const resumeInfo = getResumeInfo();
               if (isCompletedByObjectives) {
                 return 'Already done!';
               }
