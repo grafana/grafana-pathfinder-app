@@ -20,6 +20,12 @@ jest.mock('../../lib/user-storage', () => ({
   },
 }));
 
+jest.mock('../../lib/storage-keys', () => ({
+  StorageKeys: {
+    EXPERIMENT_EXPOSURE_REPORTED_PREFIX: 'grafana-pathfinder-experiment-exposure-reported-',
+  },
+}));
+
 // Mock openfeature
 const mockGetExperimentConfig = jest.fn();
 const mockOverrides: Record<string, unknown> = {};
@@ -317,6 +323,69 @@ describe('experiment-debug', () => {
         expect(result).toEqual({});
         expect(consoleSpy).toHaveBeenCalledWith('[Pathfinder] No flag overrides set.');
         consoleSpy.mockRestore();
+      });
+    });
+
+    describe('analytics exposure helpers', () => {
+      const hostname = window.location.hostname;
+      const prefix = 'grafana-pathfinder-experiment-exposure-reported-';
+
+      it('showExposures lists markers for the current hostname, parsing flag + variant', () => {
+        localStorage.setItem(`${prefix}${hostname}:pathfinder.experiment-variant:treatment`, 'true');
+        localStorage.setItem(`${prefix}${hostname}:pathfinder.highlighted-guide-experiment:control`, 'true');
+        // Marker for a different hostname should NOT appear
+        localStorage.setItem(`${prefix}other.host.net:pathfinder.experiment-variant:treatment`, 'true');
+
+        createExperimentDebugger(mockConfig);
+        const result = (window as any).__pathfinderExperiment.showExposures();
+
+        expect(result).toHaveLength(2);
+        expect(result).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ flag: 'pathfinder.experiment-variant', variant: 'treatment' }),
+            expect.objectContaining({ flag: 'pathfinder.highlighted-guide-experiment', variant: 'control' }),
+          ])
+        );
+      });
+
+      it('showExposures returns empty list and explains no exposures deduped', () => {
+        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+        createExperimentDebugger(mockConfig);
+
+        const result = (window as any).__pathfinderExperiment.showExposures();
+
+        expect(result).toEqual([]);
+        expect(consoleSpy).toHaveBeenCalledWith(
+          '[Pathfinder] No analytics exposures deduped for this hostname. The next non-excluded experiment evaluation will fire pathfinder_feature_flag_evaluated.'
+        );
+        consoleSpy.mockRestore();
+      });
+
+      it('clearExposures removes markers for the current hostname only', () => {
+        const myKey1 = `${prefix}${hostname}:pathfinder.experiment-variant:treatment`;
+        const myKey2 = `${prefix}${hostname}:pathfinder.highlighted-guide-experiment:control`;
+        const otherKey = `${prefix}other.host.net:pathfinder.experiment-variant:treatment`;
+        const unrelatedKey = 'some-other-pathfinder-key';
+
+        localStorage.setItem(myKey1, 'true');
+        localStorage.setItem(myKey2, 'true');
+        localStorage.setItem(otherKey, 'true');
+        localStorage.setItem(unrelatedKey, 'keep-me');
+
+        createExperimentDebugger(mockConfig);
+        const result = (window as any).__pathfinderExperiment.clearExposures();
+
+        expect(result).toEqual({ cleared: 2 });
+        expect(localStorage.getItem(myKey1)).toBeNull();
+        expect(localStorage.getItem(myKey2)).toBeNull();
+        expect(localStorage.getItem(otherKey)).toBe('true');
+        expect(localStorage.getItem(unrelatedKey)).toBe('keep-me');
+      });
+
+      it('clearExposures is a no-op when there are no markers', () => {
+        createExperimentDebugger(mockConfig);
+        const result = (window as any).__pathfinderExperiment.clearExposures();
+        expect(result).toEqual({ cleared: 0 });
       });
     });
   });

@@ -47,6 +47,45 @@ export const DEFAULT_EXPERIMENT_CONFIG: ExperimentConfig = {
   resetCache: false,
 };
 
+/**
+ * Highlighted-guide experiment configuration
+ *
+ * Drives the once-per-browser A/B test that opens the Pathfinder sidebar on a
+ * matched Grafana page and surfaces a specific guide in the Featured slot.
+ * Both `control` and `treatment` arms keep Pathfinder visible (this is the
+ * key difference from the existing `pathfinder.experiment-variant` flag, whose
+ * `control` arm hides the sidebar).
+ *
+ * @param variant - 'control' and 'treatment' both trigger sidebar-open + injection; 'excluded' is no-op
+ * @param pages - URL path patterns where the sidebar should open (empty array ⇒ no match, NOT all pages)
+ * @param guideId - Doc id or shorthand: 'bundled:<id>' | 'api:<id>' | 'backend-guide:<id>' | full URL
+ * @param autoOpen - When false, only the Featured-slot injection runs (no auto-open of the sidebar)
+ * @param resetCache - When toggled true, clears the once-per-browser markers so auto-open re-fires
+ * @param docType - Optional override for the Featured-card type. When omitted, `findDocPage`
+ *                  infers the type from the URL pattern. Set explicitly when the inference is
+ *                  wrong (e.g. a `/docs/learning-paths/...` URL that should open as a learning
+ *                  journey, not a single docs page).
+ */
+export type HighlightedGuideDocType = 'docs-page' | 'learning-journey' | 'interactive';
+
+export interface HighlightedGuideConfig extends ExperimentConfig {
+  guideId: string;
+  autoOpen: boolean;
+  docType?: HighlightedGuideDocType;
+}
+
+/**
+ * Default highlighted-guide config when flag is not set or errors.
+ * Defaults to 'excluded' so the auto-open + injection are no-ops.
+ */
+export const DEFAULT_HIGHLIGHTED_GUIDE_CONFIG: HighlightedGuideConfig = {
+  variant: 'excluded',
+  pages: [],
+  guideId: '',
+  autoOpen: true,
+  resetCache: false,
+};
+
 // ============================================================================
 // FEATURE FLAG DEFINITIONS
 // ============================================================================
@@ -110,6 +149,19 @@ const pathfinderFeatureFlags = {
     values: [DEFAULT_EXPERIMENT_CONFIG as unknown as JsonValue],
     defaultValue: DEFAULT_EXPERIMENT_CONFIG as unknown as JsonValue,
     trackingKey: 'after_24h_experiment',
+  },
+  /**
+   * Highlighted-guide popout A/B experiment
+   * - "excluded": Not in experiment, normal Pathfinder behavior (no popout, no Featured-slot injection)
+   * - "control": In experiment, popout + Featured-slot injection on matched pages with `guideId` (variant A)
+   * - "treatment": In experiment, popout + Featured-slot injection on matched pages with `guideId` (variant B)
+   * Both arms keep Pathfinder visible — they differ only in which guide is featured.
+   */
+  'pathfinder.highlighted-guide-experiment': {
+    valueType: 'object',
+    values: [DEFAULT_HIGHLIGHTED_GUIDE_CONFIG as unknown as JsonValue],
+    defaultValue: DEFAULT_HIGHLIGHTED_GUIDE_CONFIG as unknown as JsonValue,
+    trackingKey: 'highlighted_guide_experiment',
   },
 } as const satisfies Record<`pathfinder.${string}`, FeatureFlag>;
 
@@ -465,6 +517,74 @@ export const getExperimentConfig = (flagName: string): ExperimentConfig => {
     return DEFAULT_EXPERIMENT_CONFIG;
   }
 };
+
+/**
+ * Get the highlighted-guide experiment configuration.
+ *
+ * Reads `pathfinder.highlighted-guide-experiment` and validates the extra fields
+ * (`guideId`, `autoOpen`) on top of the base `ExperimentConfig` shape. Falls back
+ * to `DEFAULT_HIGHLIGHTED_GUIDE_CONFIG` (variant: 'excluded') when the flag is
+ * missing, malformed, or evaluation throws.
+ *
+ * Supports the same localStorage override mechanism as `getExperimentConfig`.
+ *
+ * @returns The validated highlighted-guide config or the safe default
+ *
+ * @example
+ * const config = getHighlightedGuideConfig();
+ * if (config.variant !== 'excluded' && matchesHighlightedGuidePage(config.pages, path)) {
+ *   // pop out + inject config.guideId
+ * }
+ */
+export const getHighlightedGuideConfig = (): HighlightedGuideConfig => {
+  const flagName = 'pathfinder.highlighted-guide-experiment';
+  try {
+    const overrides = getFlagOverrides();
+    if (flagName in overrides) {
+      const override = overrides[flagName];
+      const validated = validateHighlightedGuideValue(override);
+      if (validated) {
+        console.warn(`[OpenFeature] Using local override for '${flagName}':`, validated);
+        return validated;
+      }
+    }
+
+    const client = getFeatureFlagClient();
+    const value = client.getObjectValue(flagName, DEFAULT_HIGHLIGHTED_GUIDE_CONFIG as unknown as JsonValue);
+    return validateHighlightedGuideValue(value) ?? DEFAULT_HIGHLIGHTED_GUIDE_CONFIG;
+  } catch (error) {
+    console.error(`[OpenFeature] Error evaluating flag '${flagName}':`, error);
+    return DEFAULT_HIGHLIGHTED_GUIDE_CONFIG;
+  }
+};
+
+function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.variant !== 'string' || !Array.isArray(record.pages) || typeof record.guideId !== 'string') {
+    return null;
+  }
+  const VALID_DOC_TYPES: ReadonlySet<HighlightedGuideDocType> = new Set([
+    'docs-page',
+    'learning-journey',
+    'interactive',
+  ]);
+  const docType =
+    typeof record.docType === 'string' && VALID_DOC_TYPES.has(record.docType as HighlightedGuideDocType)
+      ? (record.docType as HighlightedGuideDocType)
+      : undefined;
+
+  return {
+    variant: record.variant as HighlightedGuideConfig['variant'],
+    pages: record.pages as string[],
+    guideId: record.guideId,
+    autoOpen: typeof record.autoOpen === 'boolean' ? record.autoOpen : true,
+    resetCache: typeof record.resetCache === 'boolean' ? record.resetCache : false,
+    ...(docType ? { docType } : {}),
+  };
+}
 
 // ============================================================================
 // URL PATTERN MATCHING
