@@ -472,8 +472,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // Compared against `failedActionRefTargetRef.current` (captured at the
     // moment the failure was recorded) so the trigger fires exactly once per
     // patch, regardless of how many times `internalActions` re-renders.
-    const currentFailedRefTarget =
-      failedStepIndex >= 0 ? internalActions[failedStepIndex]?.refTarget : undefined;
+    const currentFailedRefTarget = failedStepIndex >= 0 ? internalActions[failedStepIndex]?.refTarget : undefined;
     useEffect(() => {
       if (failedStepIndex < 0 || !executionError) {
         return;
