@@ -79,6 +79,7 @@ import {
   type AcknowledgementAnalysis,
 } from './step-section-utils';
 import { classifySectionChild } from './section-child-classifier';
+import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
 import { deriveSectionState, initialSectionState, restoreFromStorage, sectionReducer } from './section-state';
 import {
   getDocumentStepPosition,
@@ -164,7 +165,6 @@ export function InteractiveSection({
   const [isRunning, setIsRunning] = useState(false);
   const [executingStepNumber, setExecutingStepNumber] = useState(0); // Track which step is being executed (1-indexed for display)
   const [resetTrigger, setResetTrigger] = useState(0); // Trigger to reset child steps
-  const [isCollapsed, setIsCollapsed] = useState(false); // Collapse state for completed sections
 
   // Section requirements state - tracks whether section-level requirements are met
   const [sectionRequirementsStatus, setSectionRequirementsStatus] = useState<{
@@ -226,31 +226,6 @@ export function InteractiveSection({
     [sectionId, isPreviewMode]
   );
 
-  // Toggle collapse state and persist to storage (skip persistence in preview mode)
-  const toggleCollapse = useCallback(() => {
-    const newCollapseState = !isCollapsed;
-    setIsCollapsed(newCollapseState);
-    // Only persist collapse state for non-preview mode to avoid polluting localStorage
-    if (!isPreviewMode) {
-      const contentKey = getContentKey();
-      sectionCollapseStorage.set(contentKey, sectionId, newCollapseState);
-    }
-  }, [isCollapsed, sectionId, isPreviewMode]);
-
-  // Restore collapse state from storage on mount (skip in preview mode)
-  useEffect(() => {
-    // Don't restore collapse state in preview mode - always start expanded
-    if (isPreviewMode) {
-      return;
-    }
-    const restoreCollapseState = async () => {
-      const contentKey = getContentKey();
-      const savedCollapseState = await sectionCollapseStorage.get(contentKey, sectionId);
-      setIsCollapsed(savedCollapseState);
-    };
-    restoreCollapseState();
-  }, [sectionId, isPreviewMode]);
-
   // Use ref for cancellation to avoid closure issues
   const isCancelledRef = useRef(false);
 
@@ -262,9 +237,6 @@ export function InteractiveSection({
       sectionMountedRef.current = false;
     };
   }, []);
-
-  // Track if we've already auto-collapsed to prevent re-collapsing on manual expand
-  const hasAutoCollapsedRef = useRef(false);
 
   // Track user scroll to disable auto-scroll for the rest of section execution
   useEffect(() => {
@@ -587,35 +559,17 @@ export function InteractiveSection({
     return getInteractiveConfig(pluginConfig);
   }, [pluginConfig]);
 
-  // Auto-collapse section when it becomes complete (but only once, don't override manual expansion)
-  // Precedence: preview mode > author autoCollapse > user disableAutoCollapse > default
-  useEffect(() => {
-    // Skip in preview mode - guide authors want to control collapse manually
-    if (isPreviewMode) {
-      return;
-    }
-
-    // Author override: if section explicitly sets autoCollapse: false, never auto-collapse
-    if (autoCollapse === false) {
-      return;
-    }
-
-    // User preference: if disableAutoCollapse is true in config, don't auto-collapse
-    if (pluginConfig.disableAutoCollapse) {
-      return;
-    }
-
-    // Default behavior: auto-collapse on completion
-    if (isCompleted && !hasAutoCollapsedRef.current) {
-      hasAutoCollapsedRef.current = true;
-      setIsCollapsed(true);
-      const contentKey = getContentKey();
-      sectionCollapseStorage.set(contentKey, sectionId, true);
-    } else if (!isCompleted) {
-      // Reset the flag when section becomes incomplete (e.g., after reset)
-      hasAutoCollapsedRef.current = false;
-    }
-  }, [isCompleted, sectionId, isPreviewMode, autoCollapse, pluginConfig.disableAutoCollapse]);
+  // Collapse state + auto-collapse-on-completion + restore-from-storage
+  // are owned by `useSectionAutoCollapse`. The hook call sits here
+  // (rather than at the top of the component) because it depends on
+  // `isCompleted` (derived state above) and `pluginConfig.disableAutoCollapse`.
+  const { isCollapsed, toggleCollapse, resetCollapse } = useSectionAutoCollapse({
+    sectionId,
+    isCompleted,
+    isPreviewMode,
+    autoCollapse,
+    disableAutoCollapse: pluginConfig.disableAutoCollapse,
+  });
 
   // Enable action monitor when component mounts (if feature is enabled in config)
   useEffect(() => {
@@ -1287,11 +1241,9 @@ export function InteractiveSection({
     dispatch({ type: 'RESET_SECTION' });
     setCurrentlyExecutingStep(null);
 
-    // Expand the section if it was collapsed
-    setIsCollapsed(false);
-
-    // Reset the auto-collapse flag so it can auto-collapse again when completed
-    hasAutoCollapsedRef.current = false;
+    // Expand the section and clear the auto-collapse-once guard so a
+    // future completion re-fires the auto-collapse.
+    resetCollapse();
 
     // Signal all child steps to reset their local state
     setResetTrigger((prev) => prev + 1);
@@ -1351,7 +1303,7 @@ export function InteractiveSection({
         }, 100);
       }, 200);
     });
-  }, [disabled, isRunning, stepComponents, sectionId, isPreviewMode]);
+  }, [disabled, isRunning, stepComponents, sectionId, isPreviewMode, resetCollapse]);
 
   /**
    * Mark the section as acknowledged (issue #842).
