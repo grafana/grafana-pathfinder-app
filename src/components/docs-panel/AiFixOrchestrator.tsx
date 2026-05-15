@@ -24,6 +24,7 @@ import { getAppEvents } from '@grafana/runtime';
 
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { useAiFixGeneration } from '../../integrations/assistant-integration/useAiFixGeneration.hook';
+import type { AiFixPatch } from '../../integrations/assistant-integration/ai-fix-patch.schema';
 import { applyPatchToGuide } from '../../integrations/assistant-integration/apply-ai-fix-patch';
 import { synthesizeStepIdsInJson } from '../../docs-retrieval';
 import { GlobalInteractionBlocker } from '../../interactive-engine';
@@ -131,6 +132,105 @@ function tokensFromSelector(selector: string): string[] {
     });
   }
   return Array.from(tokens).slice(0, 6);
+}
+
+/**
+ * Tokens that always appear in selectors but carry no semantic signal
+ * about WHAT the selector targets — these get filtered out before the
+ * confidence overlap comparison so two selectors aren't deemed "related"
+ * just because both contain the literal word "data-testid".
+ */
+const SELECTOR_NOISE_TOKENS: ReadonlySet<string> = new Set([
+  'data-testid',
+  'data-test',
+  'aria-label',
+  'aria-labelledby',
+  'aria-describedby',
+  'role',
+  'class',
+  'id',
+  'name',
+  'type',
+  'div',
+  'span',
+  'button',
+  'input',
+]);
+
+/**
+ * Confidence verdict for an AI-proposed patch.
+ *
+ * `ok: true` means we trust the patch enough to apply it:
+ *   - Its proposed selector resolves to ≥ 1 element in the live DOM
+ *     (so the requirement re-check has a real target), and
+ *   - For selector swaps, its meaningful tokens overlap with the
+ *     original failing selector's tokens (so it's clearly the same
+ *     concept, just spelled differently — this is the gate that
+ *     catches "Bar chart → Bar gauge" hallucinations).
+ *
+ * `ok: false` short-circuits the apply path and surfaces a warning
+ * toast — same UX the existing "no confident fix" sentinel produces.
+ */
+type ConfidenceResult = { ok: true } | { ok: false; reason: string };
+
+function meaningfulTokens(selector: string): string[] {
+  return tokensFromSelector(selector)
+    .map((t) => t.toLowerCase())
+    .filter((t) => !SELECTOR_NOISE_TOKENS.has(t))
+    .filter((t) => !t.includes(' ')); // drop the joined-string entries; only word-level tokens
+}
+
+function evaluatePatchConfidence(patch: AiFixPatch, originalReftarget: string): ConfidenceResult {
+  // Identify the selector this patch wants the runtime to act on next.
+  // For prepend-step, that's the inserted step's reftarget (it has to
+  // resolve in the CURRENT page state, since it runs first).
+  const proposedSelector = patch.type === 'prepend-step' ? (patch.newStep.reftarget ?? '') : patch.newReftarget;
+
+  // Noop / popout prepend-steps without a reftarget are purely
+  // instructional — there's no DOM target to verify, so we accept them.
+  if (patch.type === 'prepend-step' && !proposedSelector) {
+    return { ok: true };
+  }
+
+  if (!proposedSelector) {
+    return { ok: false, reason: 'patch has no selector to verify' };
+  }
+
+  if (typeof document === 'undefined') {
+    // Server / test context — skip verification rather than reject.
+    return { ok: true };
+  }
+
+  let matchCount = 0;
+  try {
+    matchCount = document.querySelectorAll(proposedSelector).length;
+  } catch {
+    return { ok: false, reason: 'proposed selector is not valid CSS' };
+  }
+  if (matchCount === 0) {
+    return { ok: false, reason: 'proposed selector does not match any element on the current page' };
+  }
+
+  // Token overlap is meaningful for selector swaps (the new selector
+  // should target the SAME concept as the failing one). Skip for
+  // prepend-step — by design it targets a different element to set up
+  // the missing UI state.
+  if (patch.type !== 'prepend-step') {
+    const originalTokens = new Set(meaningfulTokens(originalReftarget));
+    const newTokens = meaningfulTokens(proposedSelector);
+    if (originalTokens.size > 0 && newTokens.length > 0) {
+      const hasOverlap = newTokens.some((t) => originalTokens.has(t));
+      if (!hasOverlap) {
+        return {
+          ok: false,
+          reason:
+            'proposed selector shares no meaningful tokens with the original — likely targets an unrelated element',
+        };
+      }
+    }
+  }
+
+  return { ok: true };
 }
 
 /**
@@ -399,6 +499,24 @@ function AiFixOrchestrator({ activeTab, onPatchApplied }: AiFixOrchestratorProps
     const tab = activeTabRef.current;
     const request = pendingRequestRef.current;
     if (!tab?.content?.content || !request) {
+      pendingRequestRef.current = null;
+      GlobalInteractionBlocker.getInstance().stopAdHocBlocking();
+      reset();
+      return;
+    }
+
+    // Confidence gate: only apply patches whose proposed selector
+    // resolves on the current page AND (for selector swaps) shares
+    // meaningful tokens with the original. Hallucinated swaps to
+    // unrelated elements (e.g. Bar chart → Bar gauge) get rejected
+    // here before they can be written into the guide.
+    const confidence = evaluatePatchConfidence(patch, request.refTarget ?? '');
+    if (!confidence.ok) {
+      reportAppInteraction(UserInteraction.AiFixFailed, {
+        step_id: request.stepId ?? '',
+        reason: `low-confidence: ${confidence.reason}`,
+      });
+      publishToast('warning', "AI couldn't find a confident fix", confidence.reason);
       pendingRequestRef.current = null;
       GlobalInteractionBlocker.getInstance().stopAdHocBlocking();
       reset();
