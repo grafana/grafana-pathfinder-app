@@ -28,6 +28,7 @@ import type { AiFixPatch } from '../../integrations/assistant-integration/ai-fix
 import { applyPatchToGuide } from '../../integrations/assistant-integration/apply-ai-fix-patch';
 import { synthesizeStepIdsInJson } from '../../docs-retrieval';
 import { GlobalInteractionBlocker } from '../../interactive-engine';
+import { querySelectorAllEnhanced, resolveSelector } from '../../lib/dom';
 import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 /**
@@ -201,9 +202,20 @@ function evaluatePatchConfidence(patch: AiFixPatch, originalReftarget: string): 
     return { ok: true };
   }
 
+  // Use the same DOM-resolution pipeline the interactive-engine uses at
+  // execution time, so the confidence check matches what the runtime
+  // actually does on re-check:
+  //   - resolveSelector handles `grafana:components.X.Y` and `panel:Title`
+  //     prefixes and turns them into composite CSS selectors (often with
+  //     `:has(…)` pseudo-classes).
+  //   - querySelectorAllEnhanced handles `:has()`, `:contains()`, and
+  //     other selectors that native querySelectorAll can't parse.
+  // Falling back to native here would under-count for any patch the
+  // engine would actually have resolved successfully.
+  const resolved = resolveSelector(proposedSelector);
   let matchCount = 0;
   try {
-    matchCount = document.querySelectorAll(proposedSelector).length;
+    matchCount = querySelectorAllEnhanced(resolved).elements.length;
   } catch {
     return { ok: false, reason: 'proposed selector is not valid CSS' };
   }
