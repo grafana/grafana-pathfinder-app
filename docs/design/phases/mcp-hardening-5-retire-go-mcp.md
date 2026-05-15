@@ -118,24 +118,24 @@ After this phase: the frontend no longer polls. The Go `/mcp/pending-launch` rou
 
 **Phase A exit:** `npm run typecheck` + `npm run test:ci` green. Grep for `usePendingGuideLaunch` in `src/` returns zero hits. Grep for `pending-launch` in `src/` returns zero hits.
 
-### Phase B — Backend retirement (Not started)
+### Phase B — Backend retirement (Complete)
 
 The destructive Go cut. After this phase: the plugin binary has no MCP code at all.
 
-- [ ] **B1. Delete `pkg/plugin/mcp.go`** (all 338 lines).
-- [ ] **B2. Delete `pkg/plugin/mcp_test.go`** (all tests).
-- [ ] **B3. Delete `pkg/plugin/static.go`** — `guidesFS` was the last embed; nothing else uses it.
-- [ ] **B4. Delete `pkg/plugin/static/guides/*.json`** and the empty `static/` directory.
-- [ ] **B5. Unregister routes in `pkg/plugin/resources.go`** — drop the three `mux.HandleFunc` calls (lines 20–22):
+- [x] **B1. Delete `pkg/plugin/mcp.go`** (all 338 lines). ✓ _Complete (2026-05-15, bef3897a)._
+- [x] **B2. Delete `pkg/plugin/mcp_test.go`** (all tests). ✓ _Complete (2026-05-15, bef3897a)._
+- [x] **B3. Delete `pkg/plugin/static.go`** — `guidesFS` was the last embed; nothing else uses it. ✓ _Complete (2026-05-15, bef3897a)._
+- [x] **B4. Delete `pkg/plugin/static/guides/*.json`** and the empty `static/` directory. ✓ _Complete (2026-05-15, bef3897a)._
+- [x] **B5. Unregister routes in `pkg/plugin/resources.go`** — drop the three `mux.HandleFunc` calls (lines 20–22): ✓ _Complete (2026-05-15, bef3897a)._
   - `mux.HandleFunc("/mcp", a.handleMCP)`
   - `mux.HandleFunc("/mcp/pending-launch", a.handlePendingLaunch)`
   - `mux.HandleFunc("/mcp/pending-launch/clear", a.handlePendingLaunch)`
-- [ ] **B6. Delete `scripts/copy-static.js`** and the directory if it's now empty (likely still has other scripts).
-- [ ] **B7. Update `package.json`:**
+- [x] **B6. Delete `scripts/copy-static.js`** and the directory if it's now empty (likely still has other scripts). ✓ _Complete (2026-05-15, bef3897a) — `scripts/` still has 8 other entries._
+- [x] **B7. Update `package.json`:** ✓ _Complete (2026-05-15, bef3897a)._
   - Delete the `"copy-static": "node scripts/copy-static.js"` script.
   - Drop the `npm run copy-static && ` prefix from every `build:backend*` variant (linux, linux-arm64, darwin, darwin-arm64, windows). `build:all` does not invoke `copy-static` directly — verify.
-- [ ] **B8. Run `mage test`, `mage build:linux`, `mage build:linuxARM64`** (or `npm run build:backend` + `npm run build:backend:linux-arm64`) — both green. `pkg/plugin/` should have no remaining references to launch_guide, pending-launch, guideSchemas, repositoryJSON, or guidesFS.
-- [ ] **B9. Smoke 404 locally.** `npm run server`, rebuild the linux_arm64 binary if running on Apple Silicon (gotcha from MH4 phase D), then:
+- [x] **B8. Run `mage test`, `mage build:linux`, `mage build:linuxARM64`** (or `npm run build:backend` + `npm run build:backend:linux-arm64`) — both green. `pkg/plugin/` should have no remaining references to launch*guide, pending-launch, guideSchemas, repositoryJSON, or guidesFS. ✓ \_Complete (2026-05-15, bef3897a) — `mage test` green; both builds produced `dist/gpx_grafana-pathfinder-app_linux_amd64` and `..._linux_arm64`; the only remaining `guideSchemas` reference is the historical comment in `src/cli/mcp/tools/schema-tools.ts` that explains MH4 superseded it (intentionally kept).*
+- [x] **B9. Smoke 404 locally.** `npm run server`, rebuild the linux*arm64 binary if running on Apple Silicon (gotcha from MH4 phase D), then: ✓ \_Complete (2026-05-15, bef3897a) — both routes return HTTP 404 with body `404 page not found` after authenticating via session cookie.*
   - `curl -i -b cookies http://localhost:3000/api/plugins/grafana-pathfinder-app/resources/mcp` → 404
   - `curl -i -b cookies http://localhost:3000/api/plugins/grafana-pathfinder-app/resources/mcp/pending-launch` → 404
 
@@ -190,7 +190,11 @@ The destructive Go cut. After this phase: the plugin binary has no MCP code at a
 
 ## Deviations
 
-_Appended during execution. Currently empty._
+### 2026-05-15 — Phase B also touched `.husky/pre-commit` and added a Go test helper file
+
+- **What.** The plan listed `scripts/copy-static.js` and `package.json` as the only callers of `copy-static`, but the husky pre-commit hook also ran `node scripts/copy-static.js` (and `git add pkg/plugin/static/`) before `npx lint-staged`. Left as-is, every commit on the branch would fail because the script no longer exists. Phase B dropped the two prelude lines from `.husky/pre-commit`; the `npx lint-staged` line is preserved unchanged.
+- **What.** `pkg/plugin/mcp_test.go` defined `newTestApp(t)`, used by 11 callers in `pkg/plugin/package_recommendations_test.go`. Deleting `mcp_test.go` broke the build for `package_recommendations_test.go`. Phase B added a 14-line `pkg/plugin/helpers_test.go` housing only that helper. No other change to the survivor test code.
+- **Why.** Both are mechanical consequences of removing the Go MCP that the original plan didn't enumerate. Not architectural drift — the plan's intent ("the plugin binary has no MCP code at all") is unchanged.
 
 ---
 
