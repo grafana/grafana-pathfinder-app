@@ -12,6 +12,7 @@ import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties }
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
+import { AI_AUTO_HEAL_FEATURE_FLAG, useBooleanFlag } from '../../utils/openfeature';
 // Direct import bypasses the barrel so jsdom tests don't pull `@grafana/assistant`
 // (whose runtime init throws "Class extends value undefined" in jest).
 import { useIsAssistantAvailable } from '../../integrations/assistant-integration/assistant-dev-mode';
@@ -240,10 +241,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       onComplete, // Pass through for objectives auto-completion
     });
 
-    // AI auto-heal availability — gates the runtime "Ask AI to fix" button
-    // for sub-step element-not-found failures inside this multistep.
-    // Assistant rollout is the per-tenant gate.
+    // AI auto-heal requires both the Pathfinder feature flag and Grafana Assistant.
+    const isAiAutoHealEnabled = useBooleanFlag(AI_AUTO_HEAL_FEATURE_FLAG, false);
     const isAssistantAvailable = useIsAssistantAvailable();
+    const canUseAiAutoHeal = isAiAutoHealEnabled && isAssistantAvailable;
 
     // Combined completion state: objectives always win (clarification 1, 2, 18)
     const isCompletedWithObjectives =
@@ -906,7 +907,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                 failedStepIndex >= 0 &&
                 executionError &&
                 /Element not found|requirements not met/i.test(executionError) &&
-                isAssistantAvailable && (
+                canUseAiAutoHeal && (
                   <Button
                     onClick={() => {
                       const failed = internalActions[failedStepIndex];

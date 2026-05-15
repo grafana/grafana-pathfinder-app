@@ -18,6 +18,7 @@ import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
 import { GuidedAction } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
 import { sanitizeDocumentationHTML } from '../../security';
+import { AI_AUTO_HEAL_FEATURE_FLAG, useBooleanFlag } from '../../utils/openfeature';
 // Direct import bypasses the barrel so jsdom tests don't pull `@grafana/assistant`
 // (whose runtime init throws "Class extends value undefined" in jest). See the
 // same pattern in AiFixOrchestrator's lazy-load comment.
@@ -252,10 +253,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     const isCompletedWithObjectives =
       parentCompleted || isLocallyCompleted || checker.completionReason === 'objectives';
 
-    // AI auto-heal availability — gates the "Ask AI to fix" buttons (both
-    // pre-execution requirement failure and runtime guided-execution
-    // failure). Assistant rollout is the per-tenant gate.
+    // AI auto-heal requires both the Pathfinder feature flag and Grafana Assistant.
+    const isAiAutoHealEnabled = useBooleanFlag(AI_AUTO_HEAL_FEATURE_FLAG, false);
     const isAssistantAvailable = useIsAssistantAvailable();
+    const canUseAiAutoHeal = isAiAutoHealEnabled && isAssistantAvailable;
 
     // Main execution logic
     const executeStep = useCallback(async (): Promise<boolean> => {
@@ -736,7 +737,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               {/* Ask AI to fix — only when no deterministic fix is offered and
                   the failing requirement is a missing DOM element. Mirrors the
                   single-step variant in interactive-step.tsx. */}
-              {!checker.canFixRequirement && checker.requiresDomElement && isAssistantAvailable && (
+              {!checker.canFixRequirement && checker.requiresDomElement && canUseAiAutoHeal && (
                 <button
                   className="interactive-guided-ai-fix-btn"
                   data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
@@ -862,7 +863,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   (timeout / element-not-found). `stepId` is always set
                   because docs-retrieval's `synthesizeStepIds` fills missing
                   ids before the renderer parses the guide. */}
-              {currentStepIndex >= 0 && stepId && isAssistantAvailable && (
+              {currentStepIndex >= 0 && stepId && canUseAiAutoHeal && (
                 <Button
                   onClick={() => {
                     const failed = internalActions[currentStepIndex];

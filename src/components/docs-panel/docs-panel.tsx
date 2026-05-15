@@ -94,6 +94,7 @@ import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { buildFullScreenRouteUrl, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
+import { AI_AUTO_HEAL_FEATURE_FLAG, useBooleanFlag } from '../../utils/openfeature';
 import { testIds } from '../../constants/testIds';
 
 // Import extracted components
@@ -1369,6 +1370,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const prismStyles = useStyles2(getPrismStyles);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
+  const isAiAutoHealEnabled = useBooleanFlag(AI_AUTO_HEAL_FEATURE_FLAG, false);
 
   // Tab overflow management - extracted to hook
   const {
@@ -1831,9 +1833,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       data-pathfinder-content="true"
       data-testid={testIds.docsPanel.container}
     >
-      <Suspense fallback={null}>
-        <AiFixOrchestrator activeTab={activeTab} onPatchApplied={handleAiFixPatchApplied} />
-      </Suspense>
+      {isAiAutoHealEnabled && (
+        <Suspense fallback={null}>
+          <AiFixOrchestrator activeTab={activeTab} onPatchApplied={handleAiFixPatchApplied} />
+        </Suspense>
+      )}
       {/* Live session controls - only render when there's session content */}
       {(isLiveSessionsEnabled || isSessionActive) && (
         <div className={styles.topBar}>

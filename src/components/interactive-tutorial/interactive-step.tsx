@@ -23,6 +23,7 @@ import {
   useAssistantBlockValue,
   useIsAssistantAvailable,
 } from '../../integrations/assistant-integration';
+import { AI_AUTO_HEAL_FEATURE_FLAG, useBooleanFlag } from '../../utils/openfeature';
 import { CodeBlock } from '../../docs-retrieval';
 import { scrollUntilElementFound } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
@@ -203,10 +204,10 @@ export const InteractiveStep = forwardRef<
     const [lazyScrollError, setLazyScrollError] = useState<string | null>(null);
     const [lastAttemptedAction, setLastAttemptedAction] = useState<'show' | 'do' | null>(null);
 
-    // AI auto-heal availability — gates the "Ask AI to fix" button. The
-    // assistant rollout is itself the per-tenant gate, so no separate
-    // feature flag is needed here.
+    // AI auto-heal requires both the Pathfinder feature flag and Grafana Assistant.
+    const isAiAutoHealEnabled = useBooleanFlag(AI_AUTO_HEAL_FEATURE_FLAG, false);
     const isAssistantAvailable = useIsAssistantAvailable();
+    const canUseAiAutoHeal = isAiAutoHealEnabled && isAssistantAvailable;
 
     // Persist standalone step completion across page refreshes
     useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
@@ -1041,7 +1042,7 @@ export const InteractiveStep = forwardRef<
                 declares `requirements: "exists-reftarget"`; without it, a
                 missing element only surfaces here at execution time and
                 the AI fallback would otherwise be unreachable. */}
-            {/^Element not found/i.test(lazyScrollError) && isAssistantAvailable && (
+            {/^Element not found/i.test(lazyScrollError) && canUseAiAutoHeal && (
               <button
                 className="interactive-requirement-ai-fix-btn"
                 data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
@@ -1140,7 +1141,7 @@ export const InteractiveStep = forwardRef<
                   !checker.canFixRequirement &&
                   !checker.isEnabled &&
                   checker.requiresDomElement &&
-                  isAssistantAvailable && (
+                  canUseAiAutoHeal && (
                     <button
                       className="interactive-requirement-ai-fix-btn"
                       data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}

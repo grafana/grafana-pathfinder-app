@@ -90,6 +90,8 @@ export const DEFAULT_HIGHLIGHTED_GUIDE_CONFIG: HighlightedGuideConfig = {
 // FEATURE FLAG DEFINITIONS
 // ============================================================================
 
+export const AI_AUTO_HEAL_FEATURE_FLAG = 'pathfinder.ai-auto-heal' as const;
+
 /**
  * All feature flags used in Grafana Pathfinder
  *
@@ -123,6 +125,17 @@ const pathfinderFeatureFlags = {
     values: [true, false],
     defaultValue: false,
     trackingKey: 'auto_open_sidebar',
+  },
+  /**
+   * Gates AI-generated fixes for interactive guide selector failures.
+   * Defaults to false so the feature can be rolled out and disabled independently
+   * of Grafana Assistant availability.
+   */
+  [AI_AUTO_HEAL_FEATURE_FLAG]: {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'ai_auto_heal',
   },
   /**
    * A/B experiment variant for testing Pathfinder impact on onboarding
