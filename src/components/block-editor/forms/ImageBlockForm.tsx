@@ -49,7 +49,7 @@ function isValidUrl(value: string): boolean {
     return true;
   }
   // Accept relative paths with ../ or ./ (e.g., ../img.png, ./images/foo.png)
-  if (/^(?:[a-zA-Z0-9_.\-]+\/)*[a-zA-Z0-9_.\-]+\.(png|jpe?g|gif|webp|svg|avif)$/i.test(trimmed)) {
+  if (/^(?:[a-zA-Z0-9_.\-]+\/)*[a-zA-Z0-9_.\-]+\.(png|jpe?g|gif|webp|svg|avif)(\?[a-zA-Z0-9_.\-=%&+~#]*)?(#[a-zA-Z0-9_.\-=%&+~#]*)?$/i.test(trimmed)) {
     return true;
   }
   return false;
@@ -94,7 +94,7 @@ export function ImageBlockForm({
       };
       onSubmit(block);
     },
-    [src, alt, width, height, onSubmit, urlError]
+    [src, alt, width, height, onSubmit]
   );
 
   const isValid = isValidUrl(src);
