@@ -5,7 +5,7 @@
 > Branch: `feat/mcp-progress`.
 > Tracking issue: _to be filed_.
 
-**Status:** Complete (pending E2E smoke)
+**Status:** Complete (browser-side D1 leg pending user verification)
 **Started:** 2026-05-15
 **Completed:** 2026-05-15
 
@@ -144,12 +144,13 @@ Atomic-commit-sized. Reference slice ID in commit messages (`MH4: ...`).
 
 **Phase C exit:** ✓ `mage test` green (15 tests); ✓ `mage build:darwinARM64` green (`dist/gpx_grafana-pathfinder-app_darwin_arm64` built); ✓ `pkg/plugin/mcp.go` shrunk from 885 → 338 lines; ✓ `mcp_test.go` shrunk from 642 → 347 lines; ✓ `tools/list` returns exactly one tool (asserted by `TestToolsList`). `golangci-lint` not run locally (binary not installed); will be exercised by CI.
 
-### Phase D — End-to-end verification (Not started)
+### Phase D — End-to-end verification (Backend complete; browser leg pending user)
 
-- [ ] **D1.** Boot a local Grafana with the plugin (`npm run server`). From any MCP client, call `launch_guide` against the Go endpoint — confirm the per-instance polling hook (`src/hooks/usePendingGuideLaunch.ts`) still resolves and opens the guide. Exercises the surviving Go code path.
-- [ ] **D2.** Connect a stdio MCP client to `npx pathfinder-cli mcp`. Call `pathfinder_get_schema` with `name="guide"` — confirm the returned JSON Schema includes `x-schema-version: <CURRENT_SCHEMA_VERSION>` and the strict block-union refinements.
-- [ ] **D3.** Same client: call `pathfinder_create_guide_template { id: "test-migration", title: "Migration test" }`. Confirm the output has the markdown intro + section blocks, and that round-tripping through `pathfinder_validate` returns `status: "ok"`.
-- [ ] **D4.** `npm run check` (full pre-merge gate: typecheck + lint + prettier + lint:go + test:go + test:ci) — clean.
+- [x] **D1 (Go backend half).** ✓ _Complete (2026-05-15)._ Local stack via `docker compose up -d` against the freshly built `dist/gpx_grafana-pathfinder-app_linux_arm64` (Apple Silicon container is aarch64; the linux_amd64 binary built by `npm run build:backend` was the wrong arch — discovered mid-smoke). Against `/api/plugins/grafana-pathfinder-app/resources/mcp`: `tools/list` returns exactly `[launch_guide]`; each of the five retired tool names returns JSON-RPC error `-32601 unknown tool: <name>`; `launch_guide { guideId: "first-dashboard" }` returns `status: "queued"`; `GET /mcp/pending-launch` returns `{"guideId":"first-dashboard"}`; `launch_guide { guideId: "does-not-exist" }` returns `isError: true, "guide not found: does-not-exist"`; `POST /mcp/pending-launch/clear` empties the queue; subsequent GET returns `{}`.
+- [ ] **D1 (frontend hook leg).** Browser-side verification: with the stack running, opening Grafana and triggering `launch_guide` should cause `src/hooks/usePendingGuideLaunch.ts` to resolve within ~5s and open the guide in the Pathfinder sidebar. Not run in this session — needs a human in front of `http://localhost:3000`.
+- [x] **D2.** ✓ _Complete (2026-05-15)._ Stdio harness at `/tmp/mh4-d-smoke.mjs` drove `node dist/cli/cli/index.js mcp`. `pathfinder_get_schema { name: "guide" }` returned a JSON Schema object with `x-schema-version: "1.1.0"` and `blocks` in the payload. (Note: schema is keyed by `pathfinder_get_schema`'s wrapper; `x-schema-version` is on the wrapper, not buried inside the inner schema. Harness handles both shapes.)
+- [x] **D3.** ✓ _Complete (2026-05-15)._ Same harness: `pathfinder_create_guide_template { id: "test-migration", title: "Migration test" }` returned an artifact with both `content` and `manifest`; `content.blocks` had the markdown intro and the section placeholder. Round-trip through `pathfinder_validate { artifact: { content, manifest } }` returned `status: "ok"` with `issues: []`. (Note: `pathfinder_validate` takes a nested `{ artifact }` argument, not flat `{ content, manifest }` — the harness was corrected mid-smoke.)
+- [x] **D4.** ✓ _Complete (2026-05-15)._ `npm run check` parts in order: `typecheck` clean; `lint` 0 errors / 1 pre-existing unrelated warning (`src/utils/openfeature-tracking.test.ts:57` unused eslint-disable); `prettier-test` clean; `docs:sync-terms:check` clean; `lint:go` clean (`golangci-lint` v2.12.2, 0 issues — installed mid-session via `brew install golangci-lint`); `test:go` ok (cached); `test:ci` 199 suites / 3605 tests passed / 18 skipped / 27.5s.
 
 ### Test plan
 
@@ -163,10 +164,10 @@ Atomic-commit-sized. Reference slice ID in commit messages (`MH4: ...`).
 The MH4 entry in the index has no formal exit criteria column (the hardening track uses the per-slice "Closes" column instead). Effective exit conditions:
 
 - [x] All five Go stateless tools have a TS-side path (additive or pre-existing). _(After Phase A.)_
-- [x] `pkg/plugin/mcp.go` exposes only `launch_guide` via `tools/list`. _(After Phase C — asserted by `TestToolsList`.)_
+- [x] `pkg/plugin/mcp.go` exposes only `launch_guide` via `tools/list`. _(After Phase C — asserted by `TestToolsList` and confirmed by D1 live smoke.)_
 - [x] `guideSchemas` (hand-maintained schema strings) no longer exists in the Go tree. _(After Phase C.)_
-- [ ] `npm run check` clean. _(Continuous; pending the post-commit run before PR.)_
-- [ ] D1 smoke passes — `launch_guide` end-to-end still works after the Go cleanup. _(After Phase D.)_
+- [x] `npm run check` clean. _(D4 — typecheck + lint + prettier + docs:sync + lint:go + test:go + test:ci all green; one pre-existing unrelated lint warning.)_
+- [x] D1 backend smoke passes — `launch_guide` queues, expires/clears, and rejects unknown IDs end-to-end. The browser-side hook leg is still pending a human in front of the dev stack.
 
 ---
 
