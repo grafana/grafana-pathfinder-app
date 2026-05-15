@@ -79,6 +79,7 @@ import {
   type AcknowledgementAnalysis,
 } from './step-section-utils';
 import { classifySectionChild } from './section-child-classifier';
+import { useDocumentStepProgress } from './hooks/use-document-step-progress';
 import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
 import { useSectionScroll } from './hooks/use-section-scroll';
 import { deriveSectionState, initialSectionState, restoreFromStorage, sectionReducer } from './section-state';
@@ -1312,54 +1313,16 @@ export function InteractiveSection({
     registerSectionSteps(sectionId, stepComponents.length);
   }, [sectionId, stepComponents.length]);
 
-  // Expose current step context globally for analytics + drive the
-  // top-bar progress chip in FullScreenLayout / FloatingPanel.
-  //
-  // Globals (`__DocsPluginCurrentStepIndex`, `__DocsPluginTotalSteps`)
-  // are kept for backwards compatibility with anything reading them, but
-  // they're an "execution-only" signal — they go stale the moment a step
-  // finishes. The new `pathfinder-step-progress` event publishes the full
-  // `{ documentStepIndex, totalSteps, completedCount }` whenever
-  // execution state OR completion changes, so consumers can show
-  // "completed / total" instead of "currently-running" and update
-  // immediately on completion / reset.
-  useEffect(() => {
-    try {
-      // `totalDocumentSteps` is a module-level mutable counter (not React
-      // state), so it's read fresh inside the effect rather than as a dep.
-      const totalSteps = getTotalDocumentSteps();
-      (window as any).__DocsPluginTotalSteps = totalSteps;
-
-      let documentStepIndex: number | undefined;
-      if (currentlyExecutingStep) {
-        const executingStepInfo = stepComponents.find((s) => s.stepId === currentlyExecutingStep);
-        if (executingStepInfo) {
-          const { stepIndex } = getDocumentStepPosition(sectionId, executingStepInfo.index);
-          documentStepIndex = stepIndex;
-          (window as any).__DocsPluginCurrentStepIndex = stepIndex;
-        }
-      }
-
-      // Total completed across ALL sections in the document — read from
-      // shared storage (the same source persistCompletedSteps writes to)
-      // so the chip reflects unified progress, not just this section.
-      const contentKey = getContentKey();
-      const completedDocumentCount = interactiveStepStorage.countAllCompleted(contentKey);
-
-      window.dispatchEvent(
-        new CustomEvent('pathfinder-step-progress', {
-          detail: {
-            sectionId,
-            totalSteps,
-            documentStepIndex,
-            completedCount: completedDocumentCount,
-          },
-        })
-      );
-    } catch {
-      // no-op
-    }
-  }, [currentlyExecutingStep, stepComponents, sectionId, completedSteps]);
+  // Document-wide step progress (window globals + `pathfinder-step-progress`
+  // CustomEvent) is owned by `useDocumentStepProgress`. Pattern J:
+  // contract-surface ownership move; the contracts tripwire pins the
+  // payload shape across the seam.
+  useDocumentStepProgress({
+    sectionId,
+    currentlyExecutingStep,
+    stepComponents,
+    completedSteps,
+  });
 
   // Render enhanced children with coordination props. For each child:
   //   1. Look up its `StepTypeSchema` (undefined → pass-through).
