@@ -116,12 +116,14 @@ Atomic-commit-sized. Reference slice ID in commit messages (`MH4: ...`).
 
 **Phase A exit:** ✓ `npx jest src/cli/mcp/` green (118 tests), `npm run typecheck` clean, two new tools appear in `pathfinder_help` output and `tools/list` JSON-RPC response on a local `npx pathfinder-cli mcp`.
 
-### Phase B — Doc-only deprecation pass (optional, skip if Phase C lands soon)
+### Phase B — Doc-only deprecation pass (skipped)
 
-- [ ] **B1.** Add a "Go MCP runtime tools (deprecated)" section to `docs/developer/MCP_SERVER.md` listing the five Go tools and naming the TS replacement for each. Rationale: schema correctness (canonical Zod runtime), removed schema duplication.
-- [ ] **B2.** Update the `pkg/plugin/mcp.go` row in `AGENTS.md` and `CLAUDE.md` to flag that the runtime tools are deprecated pending Phase C.
+Phase C landed the same day as Phase A (`a51c7c9f`, 2026-05-15), so the optional standalone deprecation prose was moot — the tools disappeared before any deprecation notice could be useful. The two work items below are recorded as `(skipped)` rather than `(pending)` so a fresh agent doesn't read open checkboxes as outstanding work:
 
-**Note (2026-05-15):** Phase B is only worth doing as a standalone step if Phase C is delayed by more than a release cycle. If C follows A directly, the deprecation prose is moot (the tools disappear). Default: skip B, fold the AGENTS.md/CLAUDE.md updates into C.
+- ~~**B1.** Add a "Go MCP runtime tools (deprecated)" section to `docs/developer/MCP_SERVER.md`.~~ _Skipped._ Folded into Phase C12 — `MCP_SERVER.md` was updated directly to reflect the post-cleanup reality (one-line "Go MCP endpoint" pointer).
+- ~~**B2.** Update the `pkg/plugin/mcp.go` row in `AGENTS.md` and `CLAUDE.md` to flag that the runtime tools are deprecated pending Phase C.~~ _Skipped._ Folded into Phase C12 — both files were updated to describe the post-cleanup surface in the same commit as the Go-side deletion.
+
+**Note (2026-05-15):** This collapse-into-C is the path the section preamble flagged as the default, and is what actually happened. If you are a fresh agent grepping for open `- [ ]` entries in this plan and seeing none in Phase B — that is correct; Phase B as a standalone step never ran.
 
 ### Phase C — Go cleanup (Complete)
 
@@ -216,3 +218,4 @@ The MH4 entry in the index has no formal exit criteria column (the hardening tra
 - **Pending Phase D.** D1 (real-instance `launch_guide` smoke through `npm run server`) and D4 (`npm run check`) haven't been run on the destructive commit yet. The Go side is green (`mage test`, `mage build:darwinARM64`, `go vet`); the full pre-merge gate is the next step before PR.
 - **Design-doc drift.** `docs/design/AI-AUTHORING-IMPLEMENTATION.md` still has prose under the P5 / P6 sections that refers to the Go MCP runtime tools as "deferred" — those bullets are now historical context. Worth a sweep on the next AI-authoring doc edit, but not a blocker. `docs/design/HOSTED-AUTHORING-MCP.md` and the per-phase MH plans need no edit.
 - **No client-orchestration impact.** AI clients drive the TS MCP via `pathfinder-cli mcp` (stdio or HTTP) — the Cloud Run deploy and stdio clients are both untouched by this slice. The browser/plugin-side `launch_guide` flow (assistant integration → per-instance `/mcp` POST → `usePendingGuideLaunch.ts` polling) is also untouched.
+- **Superseded by MH5.** The "stays in Go indefinitely" framing in this plan's Goal / Out-of-scope sections (for `launch_guide` and the pending-launch queue) is no longer the project's direction. After the architectural pivot to a single centrally-hosted TS MCP plus Grafana Assistant's web-surface handover tools (P4 status note, 2026-05-15), `launch_guide` is unused and the queue is dead state. Full retirement of `pkg/plugin/mcp.go` — including `launch_guide`, the queue, and `usePendingGuideLaunch.ts` — is planned under [MH5](./mcp-hardening-5-retire-go-mcp.md). Read this plan as the migration record; read MH5 for current direction.
