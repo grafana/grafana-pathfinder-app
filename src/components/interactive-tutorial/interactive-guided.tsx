@@ -759,7 +759,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                     );
                   }}
                 >
-                  Fix with <Icon name="ai-sparkle" size="sm" />
+                  Fix this <Icon name="ai-sparkle" size="sm" />
                 </button>
               )}
             </div>
@@ -893,7 +893,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   className="interactive-guided-ai-fix-btn"
                   data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
                 >
-                  Fix with <Icon name="ai-sparkle" size="sm" />
+                  Fix this <Icon name="ai-sparkle" size="sm" />
                 </Button>
               )}
             </div>

@@ -1065,7 +1065,7 @@ export const InteractiveStep = forwardRef<
                   );
                 }}
               >
-                Fix with <Icon name="ai-sparkle" size="sm" />
+                Fix this <Icon name="ai-sparkle" size="sm" />
               </button>
             )}
           </div>
@@ -1163,7 +1163,7 @@ export const InteractiveStep = forwardRef<
                         );
                       }}
                     >
-                      Fix with <Icon name="ai-sparkle" size="sm" />
+                      Fix this <Icon name="ai-sparkle" size="sm" />
                     </button>
                   )}
 
