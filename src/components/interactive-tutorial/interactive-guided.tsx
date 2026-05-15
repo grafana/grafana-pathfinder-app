@@ -1,5 +1,5 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
-import { Button } from '@grafana/ui';
+import { Button, Icon } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
@@ -759,7 +759,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                     );
                   }}
                 >
-                  Fix with Assistant
+                  Fix with <Icon name="ai-sparkle" size="sm" />
                 </button>
               )}
             </div>
@@ -893,7 +893,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   className="interactive-guided-ai-fix-btn"
                   data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
                 >
-                  Fix with Assistant
+                  Fix with <Icon name="ai-sparkle" size="sm" />
                 </Button>
               )}
             </div>

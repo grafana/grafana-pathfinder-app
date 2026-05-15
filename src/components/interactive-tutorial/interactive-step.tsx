@@ -1,5 +1,5 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
-import { Button } from '@grafana/ui';
+import { Button, Icon } from '@grafana/ui';
 
 import { waitForReactUpdates } from '../../lib/async-utils';
 import {
@@ -1065,7 +1065,7 @@ export const InteractiveStep = forwardRef<
                   );
                 }}
               >
-                Fix with Assistant
+                Fix with <Icon name="ai-sparkle" size="sm" />
               </button>
             )}
           </div>
@@ -1163,7 +1163,7 @@ export const InteractiveStep = forwardRef<
                         );
                       }}
                     >
-                      Fix with Assistant
+                      Fix with <Icon name="ai-sparkle" size="sm" />
                     </button>
                   )}
 

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
-import { Button } from '@grafana/ui';
+import { Button, Icon } from '@grafana/ui';
 
 import {
   useInteractiveElements,
@@ -937,7 +937,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                     className="interactive-guided-ai-fix-btn"
                     data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
                   >
-                    Fix with Assistant
+                    Fix with <Icon name="ai-sparkle" size="sm" />
                   </Button>
                 )}
             </div>
