@@ -103,6 +103,127 @@ function describeElement(el: Element, maxText = 60): string | null {
 }
 
 /**
+ * Parse the leading element tag out of a reftarget so we can ask the
+ * LLM to prefer candidates of the same type. Conservative — returns
+ * undefined when the selector doesn't lead with a tag (e.g. starts
+ * with `[`, `#`, `.`, `:` or a `grafana:`/`panel:` prefix).
+ */
+function tagFromSelector(selector: string): string | undefined {
+  const trimmed = selector.trim();
+  if (!trimmed || /^[[#.:]/.test(trimmed) || /^(?:grafana|panel):/i.test(trimmed)) {
+    return undefined;
+  }
+  const match = trimmed.match(/^([a-z][a-z0-9-]*)/i);
+  return match?.[1]?.toLowerCase();
+}
+
+interface LooseBlock {
+  id?: string;
+  type?: string;
+  content?: unknown;
+  tooltip?: unknown;
+  steps?: unknown;
+  blocks?: unknown;
+  whenTrue?: unknown;
+  whenFalse?: unknown;
+}
+
+function findBlockById(blocks: unknown[], id: string): LooseBlock | null {
+  for (const raw of blocks) {
+    if (!raw || typeof raw !== 'object') {
+      continue;
+    }
+    const block = raw as LooseBlock;
+    if (block.id === id) {
+      return block;
+    }
+    if (Array.isArray(block.blocks)) {
+      const nested = findBlockById(block.blocks, id);
+      if (nested) {
+        return nested;
+      }
+    }
+    if (Array.isArray(block.whenTrue)) {
+      const nested = findBlockById(block.whenTrue, id);
+      if (nested) {
+        return nested;
+      }
+    }
+    if (Array.isArray(block.whenFalse)) {
+      const nested = findBlockById(block.whenFalse, id);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Walk a parsed guide JSON to find the user-facing content of the
+ * failing step. For top-level steps this is the step's `content`
+ * markdown plus any `tooltip`. For sub-steps inside a multistep /
+ * guided container, it's the container's content + the failing
+ * sub-action's comment / hint. Returns trimmed string (capped) or
+ * empty when nothing useful is found.
+ *
+ * This is the LLM's primary semantic signal: the failing selector's
+ * vocabulary is often misleading (page UIs get re-implemented with
+ * different terms) but the user-facing instruction text describes
+ * intent in natural language.
+ */
+function extractStepContent(
+  guideJson: string,
+  stepId: string,
+  containerInfo?: { containerId: string; subStepIndex: number }
+): string {
+  if (!guideJson) {
+    return '';
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(guideJson);
+  } catch {
+    return '';
+  }
+  const targetId = containerInfo?.containerId ?? stepId;
+  if (!targetId || !parsed || typeof parsed !== 'object') {
+    return '';
+  }
+  const blocks = (parsed as { blocks?: unknown }).blocks;
+  if (!Array.isArray(blocks)) {
+    return '';
+  }
+  const found = findBlockById(blocks, targetId);
+  if (!found) {
+    return '';
+  }
+  const parts: string[] = [];
+  if (typeof found.content === 'string' && found.content.trim()) {
+    parts.push(found.content.trim());
+  }
+  if (typeof found.tooltip === 'string' && found.tooltip.trim()) {
+    parts.push(`Tooltip: ${found.tooltip.trim()}`);
+  }
+  if (containerInfo && Array.isArray(found.steps)) {
+    const sub = found.steps[containerInfo.subStepIndex];
+    if (sub && typeof sub === 'object') {
+      const subAny = sub as { comment?: unknown; content?: unknown; hint?: unknown };
+      if (typeof subAny.content === 'string' && subAny.content.trim()) {
+        parts.push(`Sub-step content: ${subAny.content.trim()}`);
+      }
+      if (typeof subAny.comment === 'string' && subAny.comment.trim()) {
+        parts.push(`Sub-step comment: ${subAny.comment.trim()}`);
+      }
+      if (typeof subAny.hint === 'string' && subAny.hint.trim()) {
+        parts.push(`Sub-step hint: ${subAny.hint.trim()}`);
+      }
+    }
+  }
+  return parts.join('\n').slice(0, 1500);
+}
+
+/**
  * Pull tokens out of the failing selector that we can fuzzy-search against
  * live DOM attributes. Returns short distinct strings — ignoring tag names,
  * generic attribute keys, and pseudo-selectors. Tokens drive the
@@ -136,50 +257,21 @@ function tokensFromSelector(selector: string): string[] {
 }
 
 /**
- * Tokens that always appear in selectors but carry no semantic signal
- * about WHAT the selector targets — these get filtered out before the
- * confidence overlap comparison so two selectors aren't deemed "related"
- * just because both contain the literal word "data-testid".
- */
-const SELECTOR_NOISE_TOKENS: ReadonlySet<string> = new Set([
-  'data-testid',
-  'data-test',
-  'aria-label',
-  'aria-labelledby',
-  'aria-describedby',
-  'role',
-  'class',
-  'id',
-  'name',
-  'type',
-  'div',
-  'span',
-  'button',
-  'input',
-]);
-
-/**
  * Confidence verdict for an AI-proposed patch.
  *
- * `ok: true` means we trust the patch enough to apply it:
- *   - Its proposed selector resolves to ≥ 1 element in the live DOM
- *     (so the requirement re-check has a real target), and
- *   - For selector swaps, its meaningful tokens overlap with the
- *     original failing selector's tokens (so it's clearly the same
- *     concept, just spelled differently — this is the gate that
- *     catches "Bar chart → Bar gauge" hallucinations).
+ * `ok: true` means we trust the patch enough to apply it: its proposed
+ * selector resolves to ≥ 1 element in the live DOM, so the requirement
+ * re-check has a real target. The LLM's rationale (carried through to
+ * the success toast) is what gives the user signal about WHAT changed
+ * — token-similarity heuristics were tried but produced too many false
+ * negatives (e.g. `input[placeholder="Filter by label values"]` →
+ * `#var-filters` is a correct fix that shares no exact tokens). The
+ * sentinel "no confident fix" path is the LLM's own self-rejection.
  *
  * `ok: false` short-circuits the apply path and surfaces a warning
  * toast — same UX the existing "no confident fix" sentinel produces.
  */
 type ConfidenceResult = { ok: true } | { ok: false; reason: string };
-
-function meaningfulTokens(selector: string): string[] {
-  return tokensFromSelector(selector)
-    .map((t) => t.toLowerCase())
-    .filter((t) => !SELECTOR_NOISE_TOKENS.has(t))
-    .filter((t) => !t.includes(' ')); // drop the joined-string entries; only word-level tokens
-}
 
 function evaluatePatchConfidence(patch: AiFixPatch, originalReftarget: string): ConfidenceResult {
   // Identify the selector this patch wants the runtime to act on next.
@@ -214,34 +306,18 @@ function evaluatePatchConfidence(patch: AiFixPatch, originalReftarget: string): 
   // engine would actually have resolved successfully.
   const resolved = resolveSelector(proposedSelector);
   let matchCount = 0;
+  let cssError: string | null = null;
   try {
     matchCount = querySelectorAllEnhanced(resolved).elements.length;
-  } catch {
+  } catch (e) {
+    cssError = e instanceof Error ? e.message.slice(0, 200) : 'unknown';
+  }
+  if (cssError) {
     return { ok: false, reason: 'proposed selector is not valid CSS' };
   }
   if (matchCount === 0) {
     return { ok: false, reason: 'proposed selector does not match any element on the current page' };
   }
-
-  // Token overlap is meaningful for selector swaps (the new selector
-  // should target the SAME concept as the failing one). Skip for
-  // prepend-step — by design it targets a different element to set up
-  // the missing UI state.
-  if (patch.type !== 'prepend-step') {
-    const originalTokens = new Set(meaningfulTokens(originalReftarget));
-    const newTokens = meaningfulTokens(proposedSelector);
-    if (originalTokens.size > 0 && newTokens.length > 0) {
-      const hasOverlap = newTokens.some((t) => originalTokens.has(t));
-      if (!hasOverlap) {
-        return {
-          ok: false,
-          reason:
-            'proposed selector shares no meaningful tokens with the original — likely targets an unrelated element',
-        };
-      }
-    }
-  }
-
   return { ok: true };
 }
 
@@ -271,7 +347,10 @@ function nearMatches(failingReftarget: string): Array<{ attr: string; value: str
     } catch {
       return;
     }
-    for (const el of Array.from(matches).slice(0, 4)) {
+    for (const el of Array.from(matches).slice(0, 8)) {
+      if (isPathfinderInternal(el)) {
+        continue;
+      }
       const value = el.getAttribute(attr) ?? '';
       const key = `${attr}=${value}`;
       if (seen.has(key)) {
@@ -319,6 +398,32 @@ function isNavPollution(el: Element): boolean {
     return true;
   }
   if (el.tagName.toLowerCase() === 'svg') {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Predicate: is this element part of Pathfinder's own UI (the docs-panel
+ * sidebar, interactive step descriptors, etc.) rather than the live
+ * Grafana surface the guide is meant to act on?
+ *
+ * The docs-panel root carries `data-pathfinder-content="true"`. Anything
+ * with that as an ancestor — or any element identified by an
+ * `interactive-step-…` testId (the renderer's per-step container) —
+ * MUST be excluded from the candidate lists. Otherwise the LLM gets
+ * confused: those elements contain the step's own description text
+ * verbatim, so they rank to the top of any token-similarity ordering,
+ * and the model picks them as the "target" thinking the matching content
+ * means it found the right element. Runtime evidence captured exactly
+ * this — see CONTEXT-VS-DOM logs.
+ */
+function isPathfinderInternal(el: Element): boolean {
+  if (el.closest?.('[data-pathfinder-content="true"]')) {
+    return true;
+  }
+  const testId = el.getAttribute('data-testid') ?? '';
+  if (/^interactive-step-/i.test(testId)) {
     return true;
   }
   return false;
@@ -385,7 +490,7 @@ function collectDomContext(failingReftarget: string): string {
   const toggleSeen = new Set<string>();
   const toggles: string[] = [];
   for (const el of Array.from(document.querySelectorAll(toggleSelector))) {
-    if (isNavPollution(el)) {
+    if (isNavPollution(el) || isPathfinderInternal(el)) {
       continue;
     }
     const line = describeElement(el);
@@ -409,7 +514,7 @@ function collectDomContext(failingReftarget: string): string {
   const seenSig = new Set<string>();
   const ranked: Array<{ score: number; line: string }> = [];
   for (const el of Array.from(document.querySelectorAll(interactiveSelector))) {
-    if (isNavPollution(el)) {
+    if (isNavPollution(el) || isPathfinderInternal(el)) {
       continue;
     }
     if (!el.hasAttribute('data-testid') && !el.hasAttribute('aria-label') && !el.hasAttribute('id')) {
@@ -429,6 +534,7 @@ function collectDomContext(failingReftarget: string): string {
   }
 
   const headings = Array.from(document.querySelectorAll('h1,h2,h3'))
+    .filter((el) => !isPathfinderInternal(el))
     .map((el) => (el.textContent ?? '').trim())
     .filter(Boolean)
     .slice(0, 8);
@@ -482,6 +588,8 @@ function AiFixOrchestrator({ activeTab, onPatchApplied }: AiFixOrchestratorProps
       // string so the assistant + apply path see the same ids.
       const augmentedJson = synthesizeStepIdsInJson(tab.content.content);
       const domHint = collectDomContext(detail.refTarget ?? '');
+      const failingStepContent = extractStepContent(augmentedJson, detail.stepId ?? '', detail.containerInfo);
+      const failingTag = tagFromSelector(detail.refTarget ?? '');
 
       // NOTE: screenshot capture is intentionally disabled in v1. Embedding
       // a base64 image in the prompt was causing the assistant streaming
@@ -494,6 +602,8 @@ function AiFixOrchestrator({ activeTab, onPatchApplied }: AiFixOrchestratorProps
         failingStepId: detail.stepId ?? '',
         failingReftarget: detail.refTarget ?? '',
         failingAction: detail.action ?? '',
+        failingStepContent: failingStepContent || undefined,
+        failingTag,
         domHint,
         containerInfo: detail.containerInfo,
       });

@@ -35,6 +35,25 @@ export interface AiFixGenerationInput {
   /** The step's `action` (button | formfill | highlight | …) for context. */
   failingAction: string;
   /**
+   * The user-facing content / instruction text for the failing step
+   * (the markdown the user actually reads). This is the LLM's primary
+   * source of SEMANTIC intent — without it, the model has to guess the
+   * user's goal from the failing selector's vocabulary alone, which
+   * breaks down when the right element uses different words (e.g.
+   * `[data-testid="search-services"]` is the correct element for a
+   * step whose description says "filter logs by service name", but
+   * neither selector nor content share words). Optional because the
+   * failing step might not have content text (rare).
+   */
+  failingStepContent?: string;
+  /**
+   * Tag name of the original failing element parsed from the reftarget
+   * (`input`, `button`, `a`, etc.) — used by the system prompt's
+   * tag-match preference rule. Optional: omitted when the original
+   * selector doesn't lead with a tag.
+   */
+  failingTag?: string;
+  /**
    * Short hint about what's visible near where the selector should have
    * matched — typically the headings + button labels currently on screen.
    * Bounded by the caller (we don't want to ship a full DOM dump).
@@ -93,6 +112,8 @@ RULES:
 1. Only ever return one patch. Pick the simplest viable fix.
 2. The new selector MUST be a real CSS selector or data-testid string. No HTML tags, no template literals, no javascript:/data: URLs. Max 512 chars.
 3. Prefer data-testid when present. The DOM context includes a "Near-matches in live DOM for failing selector" section — when one of those candidates is a plausible fix for the user's intent, use it verbatim. Do NOT invent attribute values that do not appear in the DOM context.
+3a. The "What the user is trying to do" section is the AUTHORITATIVE statement of intent. The failing selector's vocabulary is often misleading because the page UI may have been re-implemented with different terms (for example, an instruction to "filter logs by service name" may correspond to an element with data-testid="search-services" even though neither selector nor content shares the words "filter" or "service"). Match elements based on what the user is trying to ACCOMPLISH per the instruction — not based on which DOM attributes contain the same words as the failing selector.
+3b. When "Original element tag" is provided, the proposed selector should target that same tag. If you choose a different tag, your rationale MUST justify why a different tag type is correct (e.g. the original tag has been replaced by a different control type in the new UI).
 4. When the request includes container info, you MUST use "substep-selector-patch" (not "selector-patch") and address the failing step via containerId + subStepIndex.
 5. PREPEND-STEP DECISION: if no near-match satisfies the user's intent AND the DOM context shows a "Visible tabs / toggles" entry whose label suggests it could reveal the missing target (for example, an "All visualizations" tab when the user wants a specific viz tile, a "Show advanced options" toggle when a hidden field is missing, a select whose options contain the target), return a "prepend-step" that activates that control instead of inventing a selector for the missing target itself. The newStep.action MUST be a real verb that progresses the UI — typically "button" (click) for tabs/toggles or "formfill" for inputs — NOT "noop" unless the prepended step is purely instructional with no automatable action available. Prepend-step is NOT supported for substep failures (when the request includes container info) in v1.
 6. If no near-match is plausible, no tab/toggle could reveal the target, and no candidate in the "Interactive candidates" list fits the user's intent, return { "type": "selector-patch", "targetStepId": "<id>", "newReftarget": "<unchanged>", "rationale": "no confident fix" } — the EXACT word "<unchanged>" goes in newReftarget and the EXACT phrase "no confident fix" goes in rationale; the runtime will surface a failure to the user. DO NOT put "no confident fix" inside newReftarget.`;
@@ -111,6 +132,16 @@ export function buildUserPrompt(input: AiFixGenerationInput): string {
   parts.push(`Failing step id: ${input.failingStepId}`);
   parts.push(`Action: ${input.failingAction}`);
   parts.push(`Current reftarget (did not match): ${input.failingReftarget}`);
+  if (input.failingTag) {
+    parts.push(`Original element tag: <${input.failingTag}> (prefer candidates with the same tag)`);
+  }
+  if (input.failingStepContent) {
+    parts.push('');
+    parts.push(
+      "What the user is trying to do (this is the user-facing instruction — use it as the PRIMARY signal for what element they actually want, not the failing selector's vocabulary):"
+    );
+    parts.push(input.failingStepContent);
+  }
   parts.push('');
   parts.push('Visible DOM hint:');
   parts.push(input.domHint || '(none collected)');
