@@ -62,6 +62,15 @@ jest.mock('./use-standalone-persistence', () => ({
   useStandalonePersistence: jest.fn(),
 }));
 
+// ─── Mock assistant availability hook ────────────────────────────────────────
+// Direct mock of the source module avoids pulling `@grafana/assistant` into
+// the jsdom test environment (where its runtime init throws). The hook just
+// returns a boolean — false is correct for tests that don't exercise the
+// AI fix button.
+jest.mock('../../integrations/assistant-integration/assistant-dev-mode', () => ({
+  useIsAssistantAvailable: jest.fn(() => false),
+}));
+
 // ─── Mock requirements manager ───────────────────────────────────────────────
 jest.mock('../../requirements-manager', () => ({
   useStepChecker: jest.fn(() => ({

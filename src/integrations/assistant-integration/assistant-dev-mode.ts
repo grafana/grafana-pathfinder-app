@@ -12,7 +12,7 @@
  * This allows developers to test the text selection and popover UI locally.
  */
 
-import { useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Observable, BehaviorSubject } from 'rxjs';
 import {
   isAssistantAvailable,
@@ -63,6 +63,29 @@ export const getIsAssistantAvailable = (): Observable<boolean> => {
     return getMockIsAssistantAvailable();
   }
   return isAssistantAvailable();
+};
+
+/**
+ * React hook returning the current Grafana Assistant availability.
+ *
+ * Subscribes to `getIsAssistantAvailable()` for the lifetime of the
+ * component and updates state on every emission. Use this from UI gates
+ * (for example, the "Ask AI to fix" button) so they only render when the
+ * assistant is actually reachable in this Grafana instance — the
+ * assistant rollout is itself the per-tenant gate, no separate feature
+ * flag needed.
+ */
+export const useIsAssistantAvailable = (): boolean => {
+  const [isAvailable, setIsAvailable] = useState(false);
+  useEffect(() => {
+    const subscription = getIsAssistantAvailable().subscribe((available: boolean) => {
+      setIsAvailable(available);
+    });
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+  return isAvailable;
 };
 
 /**

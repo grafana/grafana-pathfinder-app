@@ -3,7 +3,6 @@ import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
-import { getFeatureFlagValue } from '../../utils/openfeature';
 import {
   GuidedHandler,
   InteractiveStateManager,
@@ -19,6 +18,10 @@ import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
 import { GuidedAction } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
 import { sanitizeDocumentationHTML } from '../../security';
+// Direct import bypasses the barrel so jsdom tests don't pull `@grafana/assistant`
+// (whose runtime init throws "Class extends value undefined" in jest). See the
+// same pattern in AiFixOrchestrator's lazy-load comment.
+import { useIsAssistantAvailable } from '../../integrations/assistant-integration/assistant-dev-mode';
 import { STEP_STATES } from './step-states';
 import { useStandalonePersistence } from './use-standalone-persistence';
 
@@ -248,6 +251,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Combined completion state: objectives always win
     const isCompletedWithObjectives =
       parentCompleted || isLocallyCompleted || checker.completionReason === 'objectives';
+
+    // AI auto-heal availability — gates the "Ask AI to fix" buttons (both
+    // pre-execution requirement failure and runtime guided-execution
+    // failure). Assistant rollout is the per-tenant gate.
+    const isAssistantAvailable = useIsAssistantAvailable();
 
     // Main execution logic
     const executeStep = useCallback(async (): Promise<boolean> => {
@@ -728,34 +736,32 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               {/* Ask AI to fix — only when no deterministic fix is offered and
                   the failing requirement is a missing DOM element. Mirrors the
                   single-step variant in interactive-step.tsx. */}
-              {!checker.canFixRequirement &&
-                checker.requiresDomElement &&
-                getFeatureFlagValue('pathfinder.ai-auto-heal', false) && (
-                  <button
-                    className="interactive-guided-ai-fix-btn"
-                    data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
-                    onClick={() => {
-                      reportAppInteraction(UserInteraction.AiFixAccepted, {
-                        step_id: stepId ?? '',
-                        rendered_step_id: renderedStepId,
-                        reftarget: firstActionRefTarget ?? '',
-                        target_action: firstActionTargetAction ?? '',
-                      });
-                      window.dispatchEvent(
-                        new CustomEvent('pathfinder-ai-fix-request', {
-                          detail: {
-                            stepId,
-                            renderedStepId,
-                            refTarget: firstActionRefTarget,
-                            action: firstActionTargetAction,
-                          },
-                        })
-                      );
-                    }}
-                  >
-                    Ask AI to fix
-                  </button>
-                )}
+              {!checker.canFixRequirement && checker.requiresDomElement && isAssistantAvailable && (
+                <button
+                  className="interactive-guided-ai-fix-btn"
+                  data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
+                  onClick={() => {
+                    reportAppInteraction(UserInteraction.AiFixAccepted, {
+                      step_id: stepId ?? '',
+                      rendered_step_id: renderedStepId,
+                      reftarget: firstActionRefTarget ?? '',
+                      target_action: firstActionTargetAction ?? '',
+                    });
+                    window.dispatchEvent(
+                      new CustomEvent('pathfinder-ai-fix-request', {
+                        detail: {
+                          stepId,
+                          renderedStepId,
+                          refTarget: firstActionRefTarget,
+                          action: firstActionTargetAction,
+                        },
+                      })
+                    );
+                  }}
+                >
+                  Ask AI to fix
+                </button>
+              )}
             </div>
           )}
 
@@ -856,7 +862,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   (timeout / element-not-found). `stepId` is always set
                   because docs-retrieval's `synthesizeStepIds` fills missing
                   ids before the renderer parses the guide. */}
-              {currentStepIndex >= 0 && stepId && getFeatureFlagValue('pathfinder.ai-auto-heal', false) && (
+              {currentStepIndex >= 0 && stepId && isAssistantAvailable && (
                 <Button
                   onClick={() => {
                     const failed = internalActions[currentStepIndex];

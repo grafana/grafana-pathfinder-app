@@ -63,10 +63,10 @@ export interface UseStepCheckerReturn {
   fixType?: string; // Type of fix available (e.g., 'lazy-scroll', 'navigation', 'location')
   /**
    * True when the step's failure is gated on a `exists-reftarget` requirement
-   * (i.e., a missing DOM element). The AI auto-heal button uses this — combined
-   * with the `pathfinder.ai-auto-heal` flag and assistant availability — to
-   * decide whether to surface itself. Independent of `canFixRequirement`:
-   * AI fix is the last-resort path only when no deterministic handler matched.
+   * (i.e., a missing DOM element). The AI auto-heal button uses this combined
+   * with assistant availability to decide whether to surface itself.
+   * Independent of `canFixRequirement`: AI fix is the last-resort path only
+   * when no deterministic handler matched.
    */
   requiresDomElement?: boolean;
 

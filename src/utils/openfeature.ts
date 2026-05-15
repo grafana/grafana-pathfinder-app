@@ -151,18 +151,6 @@ const pathfinderFeatureFlags = {
     trackingKey: 'after_24h_experiment',
   },
   /**
-   * AI auto-heal: when a guide step's `exists-reftarget` requirement fails
-   * and no deterministic fix-registry handler matches, surface an "Ask AI
-   * to fix" button that calls the Grafana Assistant for a recovery patch.
-   * Off by default — last-resort path, opt-in via flag rollout.
-   */
-  'pathfinder.ai-auto-heal': {
-    valueType: 'boolean',
-    values: [true, false],
-    defaultValue: false,
-    trackingKey: 'ai_auto_heal',
-  },
-  /**
    * Highlighted-guide popout A/B experiment
    * - "excluded": Not in experiment, normal Pathfinder behavior (no popout, no Featured-slot injection)
    * - "control": In experiment, popout + Featured-slot injection on matched pages with `guideId` (variant A)

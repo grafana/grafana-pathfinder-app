@@ -9,7 +9,6 @@ import {
   validateInteractiveRequirements,
 } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
-import { getFeatureFlagValue } from '../../utils/openfeature';
 import type { InteractiveStepProps } from '../../types/component-props.types';
 import {
   type DetectedActionEvent,
@@ -19,7 +18,11 @@ import {
   resolveTargetElement,
 } from '../../interactive-engine';
 import { testIds } from '../../constants/testIds';
-import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../integrations/assistant-integration';
+import {
+  AssistantCustomizableProvider,
+  useAssistantBlockValue,
+  useIsAssistantAvailable,
+} from '../../integrations/assistant-integration';
 import { CodeBlock } from '../../docs-retrieval';
 import { scrollUntilElementFound } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
@@ -199,6 +202,11 @@ export const InteractiveStep = forwardRef<
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
     const [lazyScrollError, setLazyScrollError] = useState<string | null>(null);
     const [lastAttemptedAction, setLastAttemptedAction] = useState<'show' | 'do' | null>(null);
+
+    // AI auto-heal availability — gates the "Ask AI to fix" button. The
+    // assistant rollout is itself the per-tenant gate, so no separate
+    // feature flag is needed here.
+    const isAssistantAvailable = useIsAssistantAvailable();
 
     // Persist standalone step completion across page refreshes
     useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
@@ -1033,7 +1041,7 @@ export const InteractiveStep = forwardRef<
                 declares `requirements: "exists-reftarget"`; without it, a
                 missing element only surfaces here at execution time and
                 the AI fallback would otherwise be unreachable. */}
-            {/^Element not found/i.test(lazyScrollError) && getFeatureFlagValue('pathfinder.ai-auto-heal', false) && (
+            {/^Element not found/i.test(lazyScrollError) && isAssistantAvailable && (
               <button
                 className="interactive-requirement-ai-fix-btn"
                 data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
@@ -1132,7 +1140,7 @@ export const InteractiveStep = forwardRef<
                   !checker.canFixRequirement &&
                   !checker.isEnabled &&
                   checker.requiresDomElement &&
-                  getFeatureFlagValue('pathfinder.ai-auto-heal', false) && (
+                  isAssistantAvailable && (
                     <button
                       className="interactive-requirement-ai-fix-btn"
                       data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
