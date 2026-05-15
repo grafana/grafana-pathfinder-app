@@ -30,6 +30,20 @@ import React from 'react';
 
 export const memoryStore = new Map<string, unknown>();
 
+/** Configurable return value for `checkRequirementsFromData`. Override per-test
+ *  via `setCheckRequirementsResult()`; reset in `resetSectionHarness()`. */
+let _checkRequirementsResult: {
+  pass: boolean;
+  error?: Array<{ requirement?: string; error?: string; canFix?: boolean; fixType?: string; targetHref?: string }>;
+} = {
+  pass: true,
+  error: [],
+};
+
+export function setCheckRequirementsResult(result: typeof _checkRequirementsResult) {
+  _checkRequirementsResult = result;
+}
+
 const stepsKey = (contentKey: string, sectionId: string) => `section-steps::${contentKey}::${sectionId}`;
 const collapseKey = (contentKey: string, sectionId: string) => `section-collapse::${contentKey}::${sectionId}`;
 const ackKey = (contentKey: string, sectionId: string) => `section-ack::${contentKey}::${sectionId}`;
@@ -193,13 +207,18 @@ export function createInteractiveConditionalMock() {
 
 /** Factory for `jest.mock('../../interactive-engine', ...)`. */
 export function createInteractiveEngineMock() {
+  // checkRequirementsFromData must be a stable reference — if it changes identity
+  // on every render (because useInteractiveElements returns a new jest.fn() each
+  // call), the section's useCallback dependency changes and the requirements-check
+  // effect re-fires indefinitely, causing OOM in tests with requirements set.
+  const stableCheckRequirementsFromData = jest.fn(async () => _checkRequirementsResult);
   return {
     useInteractiveElements: () => ({
       executeInteractiveAction: jest.fn(async () => undefined),
       startSectionBlocking: jest.fn(),
       stopSectionBlocking: jest.fn(),
       verifyStepResult: jest.fn(async () => true),
-      checkRequirementsFromData: jest.fn(async () => ({ pass: true })),
+      checkRequirementsFromData: stableCheckRequirementsFromData,
     }),
     ActionMonitor: {
       getInstance: () => ({
@@ -211,6 +230,8 @@ export function createInteractiveEngineMock() {
     NavigationManager: jest.fn().mockImplementation(() => ({
       clearAllHighlights: jest.fn(),
       fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
+      fixLocationRequirement: jest.fn().mockResolvedValue(undefined),
+      expandParentNavigationSection: jest.fn().mockResolvedValue(undefined),
     })),
   };
 }
@@ -237,6 +258,12 @@ export function createRequirementsManagerMock() {
       }),
     },
     validateInteractiveRequirements: jest.fn(),
+    getRequirementExplanation: jest.fn((requirement?: string) => {
+      if (requirement?.startsWith('on-page:')) {
+        return 'Navigate to the correct page first.';
+      }
+      return 'Requirements not yet met.';
+    }),
   };
 }
 
@@ -295,6 +322,7 @@ export function createInteractiveConfigMock() {
 /** Reset the in-memory store between tests. Call from `beforeEach`. */
 export function resetSectionHarness() {
   memoryStore.clear();
+  _checkRequirementsResult = { pass: true, error: [] };
 }
 
 /**
