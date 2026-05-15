@@ -81,6 +81,7 @@ import {
 import { classifySectionChild } from './section-child-classifier';
 import { useDocumentStepProgress } from './hooks/use-document-step-progress';
 import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
+import { useSectionRequirements } from './hooks/use-section-requirements';
 import { useSectionScroll } from './hooks/use-section-scroll';
 import { deriveSectionState, initialSectionState, restoreFromStorage, sectionReducer } from './section-state';
 import {
@@ -168,13 +169,6 @@ export function InteractiveSection({
   const [executingStepNumber, setExecutingStepNumber] = useState(0); // Track which step is being executed (1-indexed for display)
   const [resetTrigger, setResetTrigger] = useState(0); // Trigger to reset child steps
 
-  // Section requirements state - tracks whether section-level requirements are met
-  const [sectionRequirementsStatus, setSectionRequirementsStatus] = useState<{
-    checking: boolean;
-    passed: boolean;
-    error?: string;
-  }>({ checking: !!requirements, passed: !requirements }); // If no requirements, default to passed
-
   // Scroll-tracking state + auto-scroll behaviour are owned by
   // `useSectionScroll`. Returns three callbacks the runner uses to
   // gate its programmatic scroll window. (Pattern F.)
@@ -231,15 +225,6 @@ export function InteractiveSection({
   // Use ref for cancellation to avoid closure issues
   const isCancelledRef = useRef(false);
 
-  // Track mounted state for section requirements checking
-  const sectionMountedRef = useRef(true);
-  useEffect(() => {
-    sectionMountedRef.current = true;
-    return () => {
-      sectionMountedRef.current = false;
-    };
-  }, []);
-
   // Store refs to multistep components for section-level execution
   const multiStepRefs = useRef<Map<string, { executeStep: () => Promise<boolean> }>>(new Map());
 
@@ -255,77 +240,16 @@ export function InteractiveSection({
     checkRequirementsFromData,
   } = useInteractiveElements();
 
-  // Check section-level requirements on mount and when relevant state changes
-  const checkSectionRequirements = useCallback(async () => {
-    if (!requirements || !sectionMountedRef.current) {
-      setSectionRequirementsStatus({ checking: false, passed: true });
-      return;
-    }
-
-    setSectionRequirementsStatus((prev) => ({ ...prev, checking: true }));
-
-    try {
-      const sectionRequirementsData = {
-        requirements: requirements,
-        targetaction: 'section',
-        reftarget: sectionId,
-        targetvalue: undefined,
-        textContent: title || 'Interactive section',
-        tagName: 'section',
-      };
-
-      const result = await checkRequirementsFromData(sectionRequirementsData);
-
-      if (sectionMountedRef.current) {
-        setSectionRequirementsStatus({
-          checking: false,
-          passed: result.pass,
-          error: result.error?.[0]?.error || (result.pass ? undefined : 'Requirements not met'),
-        });
-      }
-    } catch (error) {
-      console.warn('Section requirements check failed:', error);
-      if (sectionMountedRef.current) {
-        // On error, allow section to proceed (fail open for better UX)
-        setSectionRequirementsStatus({ checking: false, passed: true });
-      }
-    }
-  }, [requirements, sectionId, title, checkRequirementsFromData]);
-
-  // Initial requirements check and re-check on relevant events
-  useEffect(() => {
-    if (!requirements) {
-      return;
-    }
-
-    // Initial check
-    checkSectionRequirements();
-
-    // Re-check when relevant events occur
-    const handleDataSourcesChanged = () => checkSectionRequirements();
-    const handlePluginsChanged = () => checkSectionRequirements();
-    const handleLocationChanged = () => checkSectionRequirements();
-
-    window.addEventListener('datasources-changed', handleDataSourcesChanged);
-    window.addEventListener('plugins-changed', handlePluginsChanged);
-    window.addEventListener('popstate', handleLocationChanged);
-
-    // Re-check when a section completes (for section-completed: dependencies)
-    const handleSectionCompleted = () => checkSectionRequirements();
-    document.addEventListener('section-completed', handleSectionCompleted);
-
-    // Re-check periodically to catch other state changes
-    const intervalId = setInterval(checkSectionRequirements, 5000);
-
-    // REACT: cleanup subscriptions (R1)
-    return () => {
-      window.removeEventListener('datasources-changed', handleDataSourcesChanged);
-      window.removeEventListener('plugins-changed', handlePluginsChanged);
-      window.removeEventListener('popstate', handleLocationChanged);
-      document.removeEventListener('section-completed', handleSectionCompleted);
-      clearInterval(intervalId);
-    };
-  }, [requirements, checkSectionRequirements]);
+  // Section-level requirements polling (initial check, 4 event listeners,
+  // 5-second setInterval) is owned by `useSectionRequirements`. Pattern F
+  // timing contract — the 5s cadence is load-bearing for "auto-pickup of
+  // out-of-band state changes that don't fire one of the 4 events".
+  const { status: sectionRequirementsStatus } = useSectionRequirements({
+    requirements,
+    sectionId,
+    title,
+    checkRequirementsFromData,
+  });
 
   // Create cancellation handler
   const handleSectionCancel = useCallback(() => {
