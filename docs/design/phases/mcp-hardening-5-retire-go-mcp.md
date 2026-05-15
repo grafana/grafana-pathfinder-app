@@ -4,9 +4,9 @@
 > Branch: `feat/mcp-progress`.
 > Tracking issue: _to be filed_.
 
-**Status:** In progress
+**Status:** Complete
 **Started:** 2026-05-15
-**Completed:** _YYYY-MM-DD_
+**Completed:** 2026-05-15
 
 ---
 
@@ -52,9 +52,9 @@ End state of MH5:
 
 **Prior-phase exit criteria to re-verify:**
 
-- [ ] MH4 Complete on `feat/mcp-progress` (last commit `8697495d` or later).
-- [ ] `pkg/plugin/mcp.go` exposes only `launch_guide` via `tools/list` (asserted by `TestToolsList`; was confirmed live in MH4 phase D).
-- [ ] Assistant handover PR (#6457 in the assistant repo) is the canonical handover surface — re-confirm by reading the AI-AUTHORING-IMPLEMENTATION.md P4 status note immediately before starting MH5.
+- [x] MH4 Complete on `feat/mcp-progress` (last commit `8697495d` or later). ✓ _Verified 2026-05-15: `git log --oneline` showed `5fd21079 docs(mh4): close out phase doc for fresh-agent currency` on top of `8697495d`._
+- [x] `pkg/plugin/mcp.go` exposes only `launch_guide` via `tools/list` (asserted by `TestToolsList`; was confirmed live in MH4 phase D). ✓ _Verified by reading the MH4 phase doc handoff before starting MH5._
+- [x] Assistant handover PR (#6457 in the assistant repo) is the canonical handover surface — re-confirm by reading the AI-AUTHORING-IMPLEMENTATION.md P4 status note immediately before starting MH5. ✓ _Verified 2026-05-15: re-read the P4 status note (2026-05-15) confirming `pathfinder_manage_guide_drafts` + `pathfinder_publish_guide` are the per-instance handover._
 
 **Surface area this phase touches:**
 
@@ -141,17 +141,17 @@ The destructive Go cut. After this phase: the plugin binary has no MCP code at a
 
 **Phase B exit:** Both routes return 404. `mage test` and `mage build:*` green. `grep -rn "launch_guide\|pending-launch\|guidesFS\|guideSchemas\|repositoryJSON\|copy-static" pkg/ scripts/ src/` returns zero hits.
 
-### Phase C — Docs sweep (Not started)
+### Phase C — Docs sweep (Complete)
 
-- [ ] **C1. Update `AGENTS.md`** — remove `pkg/plugin/mcp.go` and `pkg/plugin/static.go` rows from the backend file tree; remove the `POST /mcp` + `GET|POST /mcp/pending-launch` bullet from the backend request-paths section.
-- [ ] **C2. Update `docs/developer/MCP_SERVER.md`** — collapse the "Go MCP endpoint" section to a single line stating the Go MCP was retired in MH5; link this phase doc.
-- [ ] **C3. Update `docs/design/HOSTED-AUTHORING-MCP.md`** — strip the paragraphs around lines 201/203/223 that frame `launch_guide` and the pending-launch queue as "indefinite-stay" / "genuine reason to remain in-process"; replace with a back-pointer to MH5.
-- [ ] **C4. Update `docs/design/AI-AUTHORING-IMPLEMENTATION.md`:**
+- [x] **C1. Update `AGENTS.md`** — remove `pkg/plugin/mcp.go` and `pkg/plugin/static.go` rows from the backend file tree; remove the `POST /mcp` + `GET|POST /mcp/pending-launch` bullet from the backend request-paths section. ✓ _Complete (2026-05-15, 37606840) — also added a one-line MH5 back-pointer after the resource-API bullets._
+- [x] **C2. Update `docs/developer/MCP_SERVER.md`** — collapse the "Go MCP endpoint" section to a single line stating the Go MCP was retired in MH5; link this phase doc. ✓ _Complete (2026-05-15, 37606840)._
+- [x] **C3. Update `docs/design/HOSTED-AUTHORING-MCP.md`** — strip the paragraphs around lines 201/203/223 that frame `launch_guide` and the pending-launch queue as "indefinite-stay" / "genuine reason to remain in-process"; replace with a back-pointer to MH5. ✓ _Complete (2026-05-15, 37606840) — also recast the up-front "deliberate departure" paragraph in past tense and marked Open Question 3 as resolved._
+- [x] **C4. Update `docs/design/AI-AUTHORING-IMPLEMENTATION.md`:** ✓ _Complete (2026-05-15, 37606840) — MH5 row already in the table from the drafting step; this commit flipped its Status to `Complete (2026-05-15)` and rewrote the P5 bullet so launch_guide is no longer flagged as indefinite-stay._
   - Add MH5 row to the hardening track table; flip its Status to `Complete (YYYY-MM-DD)` on exit.
   - Rewrite the P5 line-252 prose so `launch_guide` is no longer flagged as indefinite-stay — the bullet is now historical; either delete it or fold it into the MH4/MH5 history block.
-- [ ] **C5. Append to `docs/design/phases/mcp-hardening-4-go-mcp-migration.md` Handoff** — one line that MH5 supersedes the "indefinite" framing in MH4.
-- [ ] **C6. Confirm `CLAUDE.md` requires no separate edit** (it inherits via `@AGENTS.md`).
-- [ ] **C7. Run `npm run check`** — typecheck + lint + prettier + docs:sync + lint:go + test:go + test:ci all clean.
+- [x] **C5. Append to `docs/design/phases/mcp-hardening-4-go-mcp-migration.md` Handoff** — one line that MH5 supersedes the "indefinite" framing in MH4. ✓ _Complete (2026-05-15, 37606840) — converted the existing "Superseded by MH5" bullet from forward-looking ("planned under MH5") to retrospective ("retired under MH5 2026-05-15")._
+- [x] **C6. Confirm `CLAUDE.md` requires no separate edit** (it inherits via `@AGENTS.md`). ✓ _Complete (2026-05-15) — grep for `mcp.go`, `pending-launch`, `launch_guide`, `/mcp` in `CLAUDE.md` returned zero hits._
+- [x] **C7. Run `npm run check`** — typecheck + lint + prettier + docs:sync + lint:go + test:go + test:ci all clean. ✓ _Complete (2026-05-15, 37606840) — exit 0; only a single pre-existing eslint warning (`Unused eslint-disable directive`) that predates this branch._
 
 **Phase C exit:** All five rule docs aligned. `npm run check` green. No file in the repo still says the Go MCP is "non-production", "indefinite", "stays", or "experimental spike" with respect to `launch_guide` / pending-launch.
 
@@ -164,10 +164,10 @@ The destructive Go cut. After this phase: the plugin binary has no MCP code at a
 
 ### Verification (effective exit conditions)
 
-- [ ] `pkg/plugin/mcp.go`, `pkg/plugin/mcp_test.go`, `pkg/plugin/static.go`, `pkg/plugin/static/guides/`, `scripts/copy-static.js`, `src/hooks/usePendingGuideLaunch.ts`, `src/hooks/usePendingGuideLaunch.test.ts` all deleted.
-- [ ] `/mcp` and `/mcp/pending-launch*` return 404.
-- [ ] `npm run check` clean.
-- [ ] Grep across the repo for `launch_guide`, `pending-launch`, `guidesFS`, `guideSchemas`, `repositoryJSON`, `copy-static` returns only entries inside historical phase plans (MH4) and design-history breadcrumbs — nothing live.
+- [x] `pkg/plugin/mcp.go`, `pkg/plugin/mcp_test.go`, `pkg/plugin/static.go`, `pkg/plugin/static/guides/`, `scripts/copy-static.js`, `src/hooks/usePendingGuideLaunch.ts`, `src/hooks/usePendingGuideLaunch.test.ts` all deleted. ✓ _Verified post-Phase B._
+- [x] `/mcp` and `/mcp/pending-launch*` return 404. ✓ _Verified live via `curl -b cookies` against `npm run server` at end of Phase B._
+- [x] `npm run check` clean. ✓ _Verified at end of Phase C — exit 0._
+- [x] Grep across the repo for `launch_guide`, `pending-launch`, `guidesFS`, `guideSchemas`, `repositoryJSON`, `copy-static` returns only entries inside historical phase plans (MH4) and design-history breadcrumbs — nothing live. ✓ _Verified — live `guideSchemas` reference survives only in `src/cli/mcp/tools/schema-tools.ts` as an intentional historical comment ("Replaces the hand-maintained `guideSchemas` map that lived in `pkg/plugin/mcp.go`")._
 
 ---
 
@@ -200,4 +200,13 @@ The destructive Go cut. After this phase: the plugin binary has no MCP code at a
 
 ## Handoff to next phase
 
-_Filled at exit. Required: 5–10 bullets covering what's now true that wasn't, gotchas, deferred punts, design docs that drifted._
+- **There is no Go MCP anymore.** `pkg/plugin/` no longer carries `mcp.go`, `mcp_test.go`, `static.go`, or the `static/guides/*.json` embed. The plugin binary is smaller and its MCP attack surface is zero. `/mcp` and `/mcp/pending-launch*` return Grafana's default 404 — verified live against `npm run server`.
+- **All MCP tools now ship in the TS server (`pathfinder-cli mcp`)** under `src/cli/mcp/`. There is no Go-vs-TS split to navigate; agents pointing at the centrally hosted Cloud Run service get the entire tool surface.
+- **`src/global-state/sidebar.ts` retains `openWithGuide`** per the plan instruction ("the helper itself stays"). Live grep shows it has zero callers post-MH5 — flag for follow-up if the dead-code reduction is worth a separate cleanup pass. Removing it would also let `setPendingOpenSource('mcp_launch', ...)` go, since that source enum is now unreached.
+- **Pre-commit hook trimmed.** `.husky/pre-commit` no longer runs `node scripts/copy-static.js`; commits no longer carry copy-static side effects. Without this edit every commit on the branch would have failed because the script is gone.
+- **Test helper relocated.** `pkg/plugin/helpers_test.go` now hosts `newTestApp(t)` (moved from the deleted `mcp_test.go`). Eleven callers in `package_recommendations_test.go` use it. Any future test that wants a stub `*App` should add to this file rather than re-introducing the helper inline.
+- **One intentional grep hit remains.** `src/cli/mcp/tools/schema-tools.ts` still mentions `guideSchemas` and `pkg/plugin/mcp.go` in a top-of-file comment — past tense, narrative. Leave it: it explains _why_ the TS Zod export is the single source of truth, which is a strictly more useful story than removing the breadcrumb.
+- **Design-doc drift swept.** `AGENTS.md`, `MCP_SERVER.md`, `HOSTED-AUTHORING-MCP.md`, `AI-AUTHORING-IMPLEMENTATION.md`, and the MH4 phase doc all reflect the retirement. The earlier "Open Question 3" in `HOSTED-AUTHORING-MCP.md` is now marked resolved.
+- **PR description should mention:** the 2 retired routes return 404 (cite the curl smoke); the build pipeline lost a copy-static prelude; the husky hook lost two lines. Nothing else changes from a consumer perspective. The Cloud Run deploy of the TS MCP is untouched.
+- **No further MH track work pending here.** MH1–MH5 are all Complete. Future MCP hardening discoveries should open a fresh slice rather than extending this one.
+- **Tracking issue.** Still "to be filed" — the branch can ship under whatever PR/epic the team prefers; the per-task SHAs in this doc plus the `MH5: ` prefix in commit messages give a clean audit trail without one.
