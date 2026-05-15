@@ -14,7 +14,7 @@
 
 ## Goal
 
-When an MCP-aware agent (Grafana Assistant, Claude Desktop, Cursor, Claude Code) connects to `pathfinder-mcp`, three things become true that aren't true today:
+When an MCP-aware agent (Grafana Assistant, Claude Desktop, Cursor, Claude Code) connects to `pathfinder-cli mcp`, three things become true that aren't true today:
 
 1. **It can find us.** Server-level `instructions` and use-case-led tool descriptions tell the agent _when_ to reach for Pathfinder — closing the routing gap in issue #7 ("agents don't reach for Pathfinder MCP without explicit prompt vocabulary").
 2. **It composes well.** `pathfinder_authoring_start` carries a distilled `compositionRules` section, and `pathfinder_add_block` emits soft type-aware warnings — closing the "everything is a multistep of noops" pattern in issue #8.
@@ -38,7 +38,7 @@ The cross-cutting plumbing (M1 layers 1+3, M2 `warnings[]`) is built once in thi
 **Prior-phase exit criteria to re-verify before starting:**
 
 - [ ] `npm run check` clean on `main`.
-- [ ] `pathfinder-mcp` stdio + HTTP transports work against current `main` (smoke: `npx pathfinder-mcp --help`, MCP Inspector connect).
+- [ ] `pathfinder-cli mcp` stdio + HTTP transports work against current `main` (smoke: `npx pathfinder-cli mcp --help`, MCP Inspector connect).
 - [ ] Deployed Cloud Run instance reachable (so we can verify deployed behavior at exit — see [#6 runbook](../MCP-AGENT-UX-HARDENING.md#6-deployment--log-inspection-discoverability-for-future-agents) in `docs/developer/MCP_SERVER.md` once it lands).
 
 **Surface area this phase touches:**

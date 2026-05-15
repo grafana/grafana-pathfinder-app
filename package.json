@@ -2,8 +2,7 @@
   "name": "grafana-pathfinder-app",
   "version": "2.11.0",
   "bin": {
-    "pathfinder-cli": "./dist/cli/cli/index.js",
-    "pathfinder-mcp": "./dist/cli/cli/mcp/index.js"
+    "pathfinder-cli": "./dist/cli/cli/index.js"
   },
   "files": [
     "dist/"

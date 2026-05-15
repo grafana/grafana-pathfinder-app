@@ -33,7 +33,7 @@ export interface BuildServerOptions {
 export function buildServer(options: BuildServerOptions = {}): McpServer {
   const server = new McpServer(
     {
-      name: options.name ?? 'pathfinder-mcp',
+      name: options.name ?? 'pathfinder-cli-mcp',
       version: CURRENT_SCHEMA_VERSION,
     },
     {

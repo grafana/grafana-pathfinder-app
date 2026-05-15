@@ -123,19 +123,19 @@ The split is mechanical; the exit criterion above belongs to P1b.
 
 ## P2 — npm + Docker distribution
 
-**Goal.** The `pathfinder-cli` npm package and `grafana/pathfinder-cli` Docker image are published, version-pinned to `CURRENT_SCHEMA_VERSION`, and ready to host a second `pathfinder-mcp` binary entrypoint that P3 adds.
+**Goal.** The `pathfinder-cli` npm package and `grafana/pathfinder-cli` Docker image are published, version-pinned to `CURRENT_SCHEMA_VERSION`, and ready to host the `pathfinder-cli mcp` subcommand that P3 adds.
 
 **Scope.** Sub-phase 7 of [`AGENT-AUTHORING.md` — Implementation plan](./AGENT-AUTHORING.md#implementation-plan):
 
-- npm package layout: single `pathfinder-cli` package with `package.json#bin` exposing `pathfinder-cli` (existing entrypoint from P1) plus a placeholder for `pathfinder-mcp` (filled in P3).
+- npm package layout: single `pathfinder-cli` package with `package.json#bin` exposing `pathfinder-cli` (existing entrypoint from P1); the MCP server arrives in P3 as a subcommand under the same bin.
 - Prepublish script: pin `package.json` version to `CURRENT_SCHEMA_VERSION` so MCP and CLI versions cannot drift.
-- Docker image: `grafana/pathfinder-cli:<version>`. Wraps the published npm package. Convenience entrypoints route to the CLI by default and to `pathfinder-mcp` via `mcp` subcommand.
+- Docker image: `grafana/pathfinder-cli:<version>`. Wraps the published npm package. Convenience entrypoint routes to `pathfinder-cli` by default and forwards a leading `mcp` arg through to the `pathfinder-cli mcp` subcommand.
 - GitHub Actions: build the package and run smoke tests on every merge to `main`; publish to npm and push the Docker image on tagged releases.
 - Smoke tests after release publish:
   - `npx pathfinder-cli@<version> --version` returns `CURRENT_SCHEMA_VERSION`.
   - `docker run --rm grafana/pathfinder-cli:<version> --version` returns `CURRENT_SCHEMA_VERSION`.
 
-**Out of scope.** Per-platform single-file binaries / Node SEA / `pkg` — explicitly retired. Plugin-tarball bundling — explicitly retired (the plugin is no longer the distribution unit for the CLI). The `pathfinder-mcp` entrypoint code itself — added in P3. Windows binary — deferred (Docker covers it).
+**Out of scope.** Per-platform single-file binaries / Node SEA / `pkg` — explicitly retired. Plugin-tarball bundling — explicitly retired (the plugin is no longer the distribution unit for the CLI). The `pathfinder-cli mcp` subcommand code itself — added in P3. Windows binary — deferred (Docker covers it).
 
 **Dependencies.** P1.
 
@@ -154,7 +154,7 @@ The split is mechanical; the exit criterion above belongs to P1b.
 
 **Scope.**
 
-- Add a `pathfinder-mcp` entrypoint under `src/cli/` (e.g., `src/cli/mcp/`) — sibling to the existing CLI entrypoint. Same compiled `dist/` tree, second `package.json#bin` target.
+- Add a `mcp` subcommand to `pathfinder-cli` under `src/cli/mcp/`. Same compiled `dist/` tree, registered alongside the other subcommands in `src/cli/index.ts`.
 - Tool dispatchers map each MCP tool call to the corresponding imported CLI command function (`runCreate`, `runAddBlock`, …) — no shell-out, no temp directory, no `exec.Command`. The CLI test suite already exercises these functions directly without subprocess invocation; P3 composes against the same surface.
 - Stateless artifact model — every mutation tool takes the artifact in and returns the artifact out. No `sessionId`, no server-side cache.
 - Two transports from one codebase:
@@ -176,7 +176,7 @@ The split is mechanical; the exit criterion above belongs to P1b.
 
 **Exit criteria.**
 
-- A non-Grafana-aware MCP client (Cursor, Claude Desktop) can connect to `npx pathfinder-mcp` over stdio, call `pathfinder_authoring_start`, build a multi-block guide via tool calls, validate, and call `pathfinder_finalize_for_app_platform` to receive a handoff containing both `appPlatform` instructions and a `localExport` fallback.
+- A non-Grafana-aware MCP client (Cursor, Claude Desktop) can connect to `npx pathfinder-cli mcp` over stdio, call `pathfinder_authoring_start`, build a multi-block guide via tool calls, validate, and call `pathfinder_finalize_for_app_platform` to receive a handoff containing both `appPlatform` instructions and a `localExport` fallback.
 - The same code, run with the HTTP transport behind the Grafana token verifier, accepts authenticated requests with the same tool surface.
 - Following `localExport`, the client can write `content.json` and `manifest.json` to the user's workspace and the resulting package round-trips through `pathfinder-cli validate`.
 - The MCP server performs no schema validation of its own — confirmed by code review (the only validator entry points are the imported CLI command functions) and by an integration test that introduces a CLI-detectable schema violation and asserts the MCP surfaces the CLI's structured error verbatim.
@@ -186,7 +186,7 @@ The split is mechanical; the exit criterion above belongs to P1b.
 
 ## P4 — Assistant handoff and viewer deep link
 
-**Goal.** Per-instance Grafana Assistant integration with the deployed `pathfinder-mcp` succeeds: the agent receives capability-branched, deterministic instructions; the App Platform write performed by Assistant lands and the user clicks through to a working floating-mode viewer link; OSS and non-Grafana clients fall through to `localExport` cleanly and are pointed at the block-editor Import flow as the re-publish path.
+**Goal.** Per-instance Grafana Assistant integration with the deployed `pathfinder-cli mcp` succeeds: the agent receives capability-branched, deterministic instructions; the App Platform write performed by Assistant lands and the user clicks through to a working floating-mode viewer link; OSS and non-Grafana clients fall through to `localExport` cleanly and are pointed at the block-editor Import flow as the re-publish path.
 
 **Scope.**
 
@@ -224,18 +224,18 @@ The split is mechanical; the exit criterion above belongs to P1b.
 
 Tracked here so they don't get lost; not scoped for the MVP.
 
-- **Broad rollout to all Assistant instances via Assistant's default MCP list (deferred from P4).** P4 ships per-instance Assistant integration via [the public MCP-server config docs](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/configure/mcp-servers/) — operators add the deployed Cloud Run URL on their own instance. Broad rollout, where every Cloud Assistant instance reaches `pathfinder-mcp` by default, requires coordination with the Assistant team on the write-tool surface (see [P0 spike Handoff](./phases/ai-authoring-0-assistant-spike.md#handoff-to-next-phase) — Pathfinder-specific publish tool vs. generic App Platform write tool vs. existing-pattern reuse) and on the default-MCP-list mechanism. Re-evaluate after P4 ships and per-instance integration is exercised in production.
+- **Broad rollout to all Assistant instances via Assistant's default MCP list (deferred from P4).** P4 ships per-instance Assistant integration via [the public MCP-server config docs](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/configure/mcp-servers/) — operators add the deployed Cloud Run URL on their own instance. Broad rollout, where every Cloud Assistant instance reaches `pathfinder-cli mcp` by default, requires coordination with the Assistant team on the write-tool surface (see [P0 spike Handoff](./phases/ai-authoring-0-assistant-spike.md#handoff-to-next-phase) — Pathfinder-specific publish tool vs. generic App Platform write tool vs. existing-pattern reuse) and on the default-MCP-list mechanism. Re-evaluate after P4 ships and per-instance integration is exercised in production.
 - Migrate Go MCP runtime tools to the TS package: `list_guides`, `get_guide`, `get_guide_schema`, `validate_guide_json`, `create_guide_template`. These are stateless and could move cleanly. `launch_guide` and the `pending-launch` queue stay in `pkg/plugin/mcp.go` indefinitely — they are coupled to per-instance frontend polling (`src/hooks/usePendingGuideLaunch.ts`) and genuinely belong in-process. Migration retires the hand-maintained Go schema summaries in `pkg/plugin/mcp.go` (`guideSchemas`).
 - `pathfinder-cli apply` batch command — collapse N mutations into one CLI invocation if it becomes useful for human authors. Originally motivated by amortizing Node cold-start across MCP tool calls, which no longer applies once the MCP imports the CLI directly. Re-evaluate against the human-authoring use case.
 - CRD extension to round-trip manifest fields, lighting up recommendation-engine parity for custom guides for both block-editor and AI-authored guides simultaneously.
 - **GCS-backed authoring sessions (deferred from P3).** The current stateless model passes the full `{content, manifest}` artifact in _and_ out of every mutation tool. Real multi-hop authoring runs on Cloud Run (2026-05-01) showed total wire bytes scaling roughly O(N²) in the number of hops — a 27-hop adversarial guide cost ~50× more agent-side tokens than a single-shot author of the same final artifact. Token cost is the visible problem; the deeper one is **agent confabulation** — when the artifact lives in the agent's context across hops, the agent occasionally edits it speculatively between mutations, producing extra validation roundtrips. Both are solved by storing the artifact server-side and removing it from the wire. This is **not** a package repository (see [Repository-ification deferred](#) below) — App Platform is the per-tenant package store; this bucket is ephemeral working storage for drafts.
   - **Trigger.** Re-open after P4 ships in production, when (a) per-instance Assistant traffic exceeds a few real authoring runs per day, or (b) agent-confabulation cost becomes legible in real session traces. Until then, the stateless design's simplicity and zero-state-liability outweigh the token win.
 
-  - **Storage layout.** Each session is a package directory at `gs://pathfinder-mcp/<SESSION_TOKEN>/`, mirroring the on-disk package layout exactly:
+  - **Storage layout.** Each session is a package directory at `gs://pathfinder-cli-mcp/<SESSION_TOKEN>/`, mirroring the on-disk package layout exactly:
 
     ```
-    gs://pathfinder-mcp/<SESSION_TOKEN>/content.json
-    gs://pathfinder-mcp/<SESSION_TOKEN>/manifest.json
+    gs://pathfinder-cli-mcp/<SESSION_TOKEN>/content.json
+    gs://pathfinder-cli-mcp/<SESSION_TOKEN>/manifest.json
     ```
 
     `<SESSION_TOKEN>` is the bearer capability (high entropy, opaque). The guide `id` field inside `content.json` stays as P1's kebab-case-with-suffix value. These two identifiers serve different purposes — token = access key, guide id = human identity — and must not be conflated.
@@ -281,7 +281,7 @@ Tracked here so they don't get lost; not scoped for the MVP.
 
   - **What this does not solve.** The agent's _own_ conversation history still grows hop-over-hop with prior tool acks and read responses. GCS removes the artifact from the wire and from the agent's working memory of "what the guide looks like" — but it does not compact the conversation history itself. Compaction is the agent host's job, out of scope for this server.
 
-  - **Repository-ification deferred.** `gs://pathfinder-mcp/` is _not_ a package repository in the [PATHFINDER-PACKAGE-DESIGN.md](./PATHFINDER-PACKAGE-DESIGN.md) sense. It has no `repository.json`, no per-tenant attribution, no notion of authorship, no published artifacts. Promoting it would require (a) tenant identity at the MCP layer, which the open + edge-rate-limit posture explicitly does not provide, (b) `repository.json` generation, (c) a publish-vs-draft governance model, and (d) durable retention with a real data-handling posture. None of those are in scope; all are better solved by App Platform under each tenant's existing governance.
+  - **Repository-ification deferred.** `gs://pathfinder-cli-mcp/` is _not_ a package repository in the [PATHFINDER-PACKAGE-DESIGN.md](./PATHFINDER-PACKAGE-DESIGN.md) sense. It has no `repository.json`, no per-tenant attribution, no notion of authorship, no published artifacts. Promoting it would require (a) tenant identity at the MCP layer, which the open + edge-rate-limit posture explicitly does not provide, (b) `repository.json` generation, (c) a publish-vs-draft governance model, and (d) durable retention with a real data-handling posture. None of those are in scope; all are better solved by App Platform under each tenant's existing governance.
 
   - **Precondition: data-handling posture sign-off.** Even with anonymous bearer tokens and 7-day TTL, this design durably stores user-authored content on a service we operate. Users will paste customer-internal hostnames, real emails, or other sensitive strings into drafts. The mitigations (no logging of content, short TTL, deletion-on-finalize, private bucket, token-as-capability) are sufficient for ephemeral debug, but the _decision_ to retain at all needs an explicit yes from whoever owns the data-handling policy for the deployed Cloud Run service. This is a precondition for the phase, not a discovery during deploy review. If the answer is no, fall back to in-memory cache only (lose the debug archive) or to no caching (lose the token economy and confabulation fix).
 
@@ -353,7 +353,7 @@ The "long-lived Node sidecar" item from earlier drafts of this design is no long
 - No privileged resource behind the endpoint — pure CPU on a JSON artifact.
 - OSS / airgapped Grafana users get a hosted authoring path without needing a Grafana Cloud account. This is a meaningful product story: "Pathfinder authoring works for everyone, not just Cloud customers."
 - One less coordination dependency on the Assistant token surface.
-- Local stdio (`npx pathfinder-mcp`) already covers the no-account case, but a hosted open endpoint removes the install step.
+- Local stdio (`npx pathfinder-cli mcp`) already covers the no-account case, but a hosted open endpoint removes the install step.
 
 **Arguments for requiring auth.**
 

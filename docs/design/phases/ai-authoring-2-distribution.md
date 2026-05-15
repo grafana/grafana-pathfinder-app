@@ -18,7 +18,7 @@ The original tag-driven publish-to-three-registries plan is retained below as hi
 
 - Cloud Run deploys can pin `:main-<sha7>` for reproducibility, or follow `:latest` for tip-of-trunk.
 - Other repos' GitHub Actions can `docker run ghcr.io/grafana/pathfinder-cli` to validate Pathfinder packages — no install step.
-- A future `pathfinder-mcp` entrypoint (P3) inherits the same image, same publish flow, no additional CI work.
+- A future `pathfinder-cli mcp` subcommand (P3) inherits the same image, same publish flow, no additional CI work.
 
 What's kept from the original plan: cosign keyless signing of the published digest, the `node:22-alpine` digest pinning, image smoke tests.
 
@@ -55,7 +55,7 @@ Sections below preserve the original decision log for context. Where the live sy
   - `tsconfig.cli.json` — already produces `dist/cli/`; no expected changes unless we add a second entrypoint stub (see task 3).
 - **Docker**
   - New top-level `Dockerfile.cli` (or `cli/Dockerfile`) — wraps the published npm package. Distinct from the existing `docker-compose.yaml` (which runs Grafana for plugin dev) and from any plugin Docker image.
-  - Convenience entrypoint script that routes `mcp` subcommand to `pathfinder-mcp` (placeholder script in P2; real binary added in P3).
+  - Convenience entrypoint script that routes a leading `mcp` arg to `pathfinder-cli mcp` (placeholder script in P2; real subcommand added in P3).
 - **CI**
   - New `.github/workflows/cli-publish.yml` (or addition to the existing `release.yml`) — build + smoke-test on every merge to `main`; publish to npm + push Docker on tagged releases.
   - Existing `release.yml` is for the Grafana plugin tarball — must remain untouched in behavior. Decision required: separate tag prefix (e.g., `cli-v*`) vs. shared tag.
@@ -65,7 +65,7 @@ Sections below preserve the original decision log for context. Where the live sy
 **Public APIs / exported symbols:**
 
 - `package.json#bin.pathfinder-cli` — already exists, must remain stable.
-- `package.json#bin.pathfinder-mcp` — new placeholder, filled in P3. P2 ships either an empty stub or a "not yet available, install in P3" message; the bin slot must exist so P3 is purely additive.
+- The `mcp` subcommand of `pathfinder-cli` — added in P3, not P2. P2 ships only the entrypoint routing in the Docker image; the real subcommand lands later.
 
 **External contracts:**
 
@@ -97,13 +97,13 @@ _Atomic-commit-sized. Reference `P2:` in commit messages._
   - 16 unit tests in `scripts/__tests__/prepublish-cli.test.js` (rewrite shape, dep filtering, deterministic output, integration against the live manifest, missing-dep error path).
   - Jest `testMatch` extended to pick up `scripts/__tests__/`.
   - npm scripts added: `prepublish-cli`, `prepublish-cli:write`, `pack:cli`. **Note:** `prepublishOnly` was deliberately _not_ wired — see Decision log entry "Defer `prepublishOnly` wiring" — the CI workflow in task 6 invokes `prepublish-cli:write` explicitly to keep accidental local `npm publish` from rewriting the working tree.
-- [x] **3.** Add `pathfinder-mcp` placeholder bin. _(Done 2026-04-29.)_
+- [x] **3.** Reserve the `mcp` subcommand routing. _(Done 2026-04-29.)_
   - `src/cli/mcp-placeholder.ts` — shebang + writes a "not yet available, added in P3" pointer to stderr, exits 1. Compiles to `dist/cli/cli/mcp-placeholder.js` via the existing `tsconfig.cli.json`.
-  - `package.json#bin` extended with `"pathfinder-mcp": "./dist/cli/cli/mcp-placeholder.js"`. The prepublish rewrite preserves both bin entries (verified by the existing "preserves the bin map verbatim" test).
-  - Verified: `npm run build:cli` compiles cleanly; `node dist/cli/cli/mcp-placeholder.js` prints the pointer and exits non-zero. P3 will replace the file's contents without touching `package.json` — the bin slot is reserved.
+  - The Docker entrypoint script routes a leading `mcp` arg through to this placeholder during P2; P3 replaces it with the real `pathfinder-cli mcp` subcommand.
+  - Verified: `npm run build:cli` compiles cleanly; `node dist/cli/cli/mcp-placeholder.js` prints the pointer and exits non-zero. P3 lands the real subcommand inside `pathfinder-cli` without changing the image entrypoint.
 - [x] **4.** Add `Dockerfile.cli` + entrypoint + `.dockerignore`. _(Done 2026-04-29.)_
   - Multi-stage build on `node:22-alpine`: builder stage copies the CLI sources (`src/cli`, `src/types`, `src/validation`), runs `npm ci && npm run build:cli && node scripts/prepublish-cli.js --write && npm pack`. Runtime stage installs the resulting tarball globally via `npm install -g`, exercising the same install codepath a real `npm install pathfinder-cli@<version>` would hit.
-  - `scripts/docker-entrypoint.sh` does the routing: `mcp` first-arg shifts and execs `pathfinder-mcp`; otherwise execs `pathfinder-cli` with all args.
+  - `scripts/docker-entrypoint.sh` does the routing: `mcp` first-arg shifts and execs `pathfinder-cli mcp`; otherwise execs `pathfinder-cli` with all args.
   - `.dockerignore` keeps the build context tight by excluding the frontend tree, `pkg/`, tests, and unrelated docs/scripts. Doesn't affect any other build (the repo had no Dockerfile before; `docker-compose.yaml` uses prebuilt images, no build context).
   - Runs as the stock `node` user on `/workspace`. Final image ~172MB.
   - Verified: `docker build -f Dockerfile.cli -t pathfinder-cli:local .` succeeds; `docker run --rm pathfinder-cli:local --version` → `1.1.0`; `docker run --rm pathfinder-cli:local mcp` → placeholder pointer, exit 1; `docker run --rm pathfinder-cli:local --help` flows through to CLI.
@@ -248,12 +248,12 @@ _Appended during execution._
 
 **P3 agent: read this section before drafting the P3 plan.**
 
-- **The `pathfinder-mcp` bin slot is reserved.** `package.json#bin.pathfinder-mcp` points at `./dist/cli/cli/mcp-placeholder.js`, which currently is `src/cli/mcp-placeholder.ts` — a 12-line stderr-pointer + `process.exit(1)`. P3 should replace the file's contents (the real MCP server entrypoint) without touching `package.json#bin`. The bin path stays the same so consumers' existing `npx pathfinder-mcp` invocations work unchanged.
+- **The `mcp` subcommand routing is reserved.** The Docker entrypoint routes `mcp` first-arg through to a placeholder (`src/cli/mcp-placeholder.ts`) — a 12-line stderr-pointer + `process.exit(1)`. P3 lands the real MCP server as the `pathfinder-cli mcp` subcommand and updates the entrypoint to exec it. The Docker first-arg contract stays the same so consumers' existing `docker run ... mcp ...` invocations work unchanged.
 - **`scripts/prepublish-cli.js` is the single point of publish-time rewriting.** It rewrites `name`, `version` (pinned to `CURRENT_SCHEMA_VERSION`), `dependencies` (filtered by an allowlist), `files` (currently `["dist/cli/"]`), and copies `README-cli.md` → `README.md`. **P3 will need to extend `CLI_RUNTIME_DEPENDENCIES`** in this script with whatever MCP runtime libs you pull in (e.g., `@modelcontextprotocol/sdk`). The integration test (`scripts/__tests__/prepublish-cli.test.js`) fails-loud if a CLI/MCP source file imports an external module not declared in `dependencies` — keep that contract.
 - **Both deps and devDeps must be checked.** `commander` was originally in `devDependencies` (correct for an internal build artifact, broken for a published bin). Discovered when the prepublish integration test failed. Same pattern will apply to MCP deps — make sure they land in `dependencies`.
 - **Tag scheme is `cli-v*`.** Plugin uses `v*`; CLI uses `cli-v*`. The CI workflow asserts `cli-v<X>` matches `CURRENT_SCHEMA_VERSION` exactly. P3 follows the same scheme — bump `CURRENT_SCHEMA_VERSION` if MCP additions are a breaking change to the published artifact, then tag.
 - **Secret-gated publish.** `cli-publish.yml` validates the full build/pack/image-build/local-smoke path on every PR and `main` push. Real publish (npm + Docker Hub + GHCR) only fires on `cli-v*` tags AND when `NPM_TOKEN` / `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` are configured. Until those secrets land, the workflow stays green and the build path is exercised; only the registry smoke skips. P3 inherits this and does not need to re-design it.
-- **Docker entrypoint routing.** `scripts/docker-entrypoint.sh` routes `mcp` first-arg → `pathfinder-mcp`. P3's real MCP entrypoint will be picked up automatically through this; no Dockerfile or entrypoint changes needed.
+- **Docker entrypoint routing.** `scripts/docker-entrypoint.sh` routes `mcp` first-arg → `pathfinder-cli mcp`. P3's real MCP subcommand will be picked up automatically through this; no Dockerfile or entrypoint changes needed.
 - **Plugin tarball is provably unaffected.** Verified empirically (`npm run build` on this branch and `main` produce identical `dist/` listings) and structurally (webpack only enters from `src/module.tsx`). P3 maintains this so long as nothing in `src/cli/` is imported from `src/module.tsx` or its frontend reachable graph.
 - **Open external follow-ups (gated on user's auth/secrets work):** confirm `pathfinder-cli` is claimable on npm under the Grafana org; confirm `grafana/pathfinder-cli` Docker Hub path with the org owner; provision `NPM_TOKEN` + `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN` in repo secrets. None of these block P3 development.
 - **Things deferred for a later hardening pass (not P3-blocking):** distroless Docker base; scoped npm name (`@grafana/pathfinder-cli`); excluding `src/validation/import-graph.ts` from `tsconfig.cli.json` (it pulls in `typescript` as a runtime dep but is unreachable from CLI entry points so doesn't actually load).

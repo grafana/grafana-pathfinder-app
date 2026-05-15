@@ -11,13 +11,13 @@ The service is not a replacement for the AI client. The client still reasons abo
 
 ## Where it runs
 
-The authoring MCP service is a **standalone TypeScript MCP server** that lives in this repository at `src/cli/` as a sibling entrypoint to the `pathfinder-cli` command. The CLI and the MCP server are two binary entrypoints of the same npm package: a single source tree, one schema runtime, two `package.json#bin` targets (`pathfinder-cli` and `pathfinder-mcp`).
+The authoring MCP service is a **standalone TypeScript MCP server** that lives in this repository at `src/cli/` and is exposed as the `mcp` subcommand of `pathfinder-cli`. The CLI and the MCP server share one `package.json#bin` target (`pathfinder-cli`) and one source tree and schema runtime — the MCP is just one more subcommand alongside `validate`, `create`, `e2e`, and the rest.
 
 The MCP server **imports CLI commands as library functions**. There is no shell-out, no temporary directory, no `exec.Command`, no per-call Node startup. Every authoring tool call is a synchronous function call against the same Zod schemas the CLI uses.
 
 The server runs in two deployment modes:
 
-1. **Self-serve (stdio transport).** `npx pathfinder-mcp` or `docker run grafana/pathfinder-cli mcp` for Cursor, Claude Desktop, or any local MCP client. The MCP client owns the process; auth is the user's local trust boundary.
+1. **Self-serve (stdio transport).** `npx pathfinder-cli mcp` or `docker run grafana/pathfinder-cli mcp` for Cursor, Claude Desktop, or any local MCP client. The MCP client owns the process; auth is the user's local trust boundary.
 2. **Centrally hosted (HTTP transport).** The same code runs as a Cloud Run service that any MCP-capable client can reach over HTTPS — most importantly Grafana Assistant on Cloud, configured per-instance via [the Assistant MCP servers docs](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/configure/mcp-servers/). Auth on the hosted endpoint is **open** — see [Authentication and authorization](#authentication-and-authorization) below for the rationale and the abuse-mitigation posture.
 
 The hosted deployment lives behind an operator-local script (`deploy-mcp.sh` in this repo, gitignored). Project, region, service name, and resulting URL are operator-specific and intentionally not in tracked files. For deploy-time mechanics and log inspection on the running service, see [`docs/developer/MCP_SERVER.md`](../developer/MCP_SERVER.md).
