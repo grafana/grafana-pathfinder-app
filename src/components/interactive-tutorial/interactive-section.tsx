@@ -430,7 +430,7 @@ export function InteractiveSection({
         setSectionRequirementsStatus({ checking: false, passed: true });
       }
     }
-  }, [requirements, sectionId, title, checkRequirementsFromData]);
+  }, [requirements, sectionId, title, hints, checkRequirementsFromData]);
 
   // Fix section requirements when the user clicks the "Fix this" button in the banner
   const fixSectionRequirements = useCallback(async () => {
