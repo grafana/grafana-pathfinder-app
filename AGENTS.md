@@ -234,9 +234,9 @@ pkg/
     ├── stream.go                    # Grafana Live SubscribeStream/PublishStream/RunStream — 3-tier VM resolution, SSH retry (3x), heartbeat (3s), VM expiry poll (15s)
     ├── terminal.go                  # TerminalSession: SSH over WebSocket relay, PTY, stdin/stdout/stderr pipes, private-key normalization
     ├── coda.go                      # CodaClient: JWT auth, VM CRUD, quota enforcement (max 3/user), token refresh with RWMutex
-    ├── mcp.go                       # Experimental MCP spike (PR #643) — non-production. Real AI authoring lives in src/cli/mcp/
+    ├── mcp.go                       # Hosts only `launch_guide` + the per-instance pending-launch queue (consumed by src/hooks/usePendingGuideLaunch.ts). All other MCP authoring tools live in src/cli/mcp/ (see MH4).
     ├── package_recommendations.go   # CDN package index cache (6h TTL, single-flight, 8-way parallel manifest fetch, bounded memory)
-    ├── static.go                    # embed.FS declarations for repository.json + guides/ content
+    ├── static.go                    # embed.FS declaration for per-guide content.json files (used by launch_guide's existence check)
     └── wsconn.go                    # WebSocket-as-net.Conn adapter for SSH-over-WebSocket relay tunnel
 ```
 
@@ -277,7 +277,7 @@ The Go backend is a thin bridge between the React frontend and the **Coda VM pro
    - `GET /sample-apps`, `GET /alloy-scenarios` — catalog metadata
    - `GET /package-recommendations` — cached CDN package index
    - `POST /coda/register` — exchange enrollment key for tokens
-   - `POST /mcp`, `GET|POST /mcp/pending-launch` — _experimental spike_ (PR #643); production AI authoring lives in `src/cli/mcp/`
+   - `POST /mcp` (JSON-RPC, single tool: `launch_guide`), `GET|POST /mcp/pending-launch` — in-process per-instance launch queue; all other MCP authoring tools live in `src/cli/mcp/`
    - All external URLs pass `isAllowedCodaURL` / `IsAllowedRelayURL` allowlists.
 
 2. **Streaming terminal** (`stream.go` + `terminal.go` + `wsconn.go`) — Grafana Live bidirectional channels.

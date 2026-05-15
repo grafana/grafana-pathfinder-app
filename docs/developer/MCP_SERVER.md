@@ -156,14 +156,9 @@ The four `repository-tools.ts` tools are read-only against a public package CDN.
 
 > Naming note: a future P5 GCS-sessions design also proposes a `pathfinder_get_manifest` tool — but session-scoped, taking a `sessionToken`. P6 ships first with the public-CDN semantics; if/when P5 lands it must rename or add a discriminator. See [P6 phase plan — Decision log](../design/phases/ai-authoring-6-cdn-repository-tools.md#decision-log).
 
-### Migrated from the Go MCP
+### Go MCP endpoint
 
-Two tools were ported from the now-deprecated `pkg/plugin/mcp.go` runtime to the TS server:
-
-- **`pathfinder_get_schema`** replaces the Go `get_guide_schema`. The Go version returned a hand-maintained JSON Schema string from a `guideSchemas` map (`pkg/plugin/mcp.go`). The TS version wraps `exportSchema` / `exportAllSchemas` / `listSchemas` from `src/cli/commands/schema.ts`, which is generated from the canonical Zod schemas in `src/types/`. This retires schema duplication: there is now one source of truth for the schema and the validator. Modes: `one` (named single schema; default when `name` is supplied), `all` (every schema keyed by name), `list` (registry summary without payloads).
-- **`pathfinder_create_guide_template`** replaces the Go `create_guide_template`. Returns a pre-populated starter guide (`{ content, manifest }`) with a markdown intro block and one `section` placeholder, plus default manifest fields (`category: "getting-started"`, `path: "<id>/"`, `startingLocation: "/"`, default `author` and `testEnvironment`). The result is round-tripped through `runValidate` before return — schema-clean by construction.
-
-The other three stateless Go tools (`list_guides`, `get_guide`, `validate_guide_json`) had full TS equivalents already (`pathfinder_list_packages`, `pathfinder_get_package`, `pathfinder_validate`); no migration code was needed. The Go `launch_guide` and pending-launch queue stay in `pkg/plugin/mcp.go` indefinitely — they are coupled to per-instance frontend polling (`src/hooks/usePendingGuideLaunch.ts`) and cannot move to a centrally-hosted server.
+`pkg/plugin/mcp.go` now hosts only the `launch_guide` tool and the per-instance pending-launch queue consumed by `src/hooks/usePendingGuideLaunch.ts`. All other runtime tools were migrated to this TS server under MH4 — see [`docs/design/phases/mcp-hardening-4-go-mcp-migration.md`](../design/phases/mcp-hardening-4-go-mcp-migration.md) for the overlap matrix.
 
 All authoring tools are **stateless**. The in-flight artifact (`{ content, manifest }`) is passed in and the updated artifact is returned out on every mutation. There is no `sessionId`.
 

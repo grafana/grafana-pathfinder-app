@@ -18,13 +18,10 @@ const destDir = path.join(root, 'pkg', 'plugin', 'static');
 // Ensure destination directories exist
 fs.mkdirSync(path.join(destDir, 'guides'), { recursive: true });
 
-// Copy repository.json
-const repoSrc = path.join(srcDir, 'repository.json');
-const repoDest = path.join(destDir, 'repository.json');
-fs.copyFileSync(repoSrc, repoDest);
-console.log(`Copied repository.json → pkg/plugin/static/repository.json`);
-
-// Copy each guide's content.json
+// Copy each guide's content.json.
+// repository.json is no longer copied — after MH4 phase C the Go side only
+// hosts launch_guide, which just needs the per-guide content.json files for
+// an existence check. See docs/design/phases/mcp-hardening-4-go-mcp-migration.md.
 let guideCount = 0;
 const entries = fs.readdirSync(srcDir, { withFileTypes: true });
 for (const entry of entries) {

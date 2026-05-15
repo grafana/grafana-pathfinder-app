@@ -25,12 +25,12 @@ Each row's "Detailed plan" cell is filled in when an agent runs the per-phase pl
 
 Parallel track to P4–P6. Sources from [`MCP-AGENT-UX-HARDENING.md`](./MCP-AGENT-UX-HARDENING.md) — the living parking lot for "the server works, but agents misuse it in predictable ways" findings. Each slice is sized to land independently; they share the M1/M2/M3 plumbing introduced in slice 1.
 
-| Slice | Title                                         | Status      | Detailed plan                                                                                           | Closes                                          |
-| ----- | --------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| MH1   | Routing, composition, and selector discipline | Complete    | [mcp-hardening-1-routing-and-composition.md](./phases/mcp-hardening-1-routing-and-composition.md)       | Hardening issues #3, #7, #8 + M1 + M2 plumbing  |
-| MH2   | Artifact integrity + input normalization      | Complete    | [mcp-hardening-2-integrity-and-normalize.md](./phases/mcp-hardening-2-integrity-and-normalize.md)       | Hardening issues #1, #2 + M3 plumbing           |
-| MH3   | Routing telemetry response                    | Complete    | [mcp-hardening-3-routing-telemetry-response.md](./phases/mcp-hardening-3-routing-telemetry-response.md) | Further close on issue #7 from production trace |
-| MH4   | Migrate Go MCP runtime tools to TS            | In progress | [mcp-hardening-4-go-mcp-migration.md](./phases/mcp-hardening-4-go-mcp-migration.md)                     | P5 "migrate Go MCP runtime tools" deferred item |
+| Slice | Title                                         | Status                | Detailed plan                                                                                           | Closes                                          |
+| ----- | --------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| MH1   | Routing, composition, and selector discipline | Complete              | [mcp-hardening-1-routing-and-composition.md](./phases/mcp-hardening-1-routing-and-composition.md)       | Hardening issues #3, #7, #8 + M1 + M2 plumbing  |
+| MH2   | Artifact integrity + input normalization      | Complete              | [mcp-hardening-2-integrity-and-normalize.md](./phases/mcp-hardening-2-integrity-and-normalize.md)       | Hardening issues #1, #2 + M3 plumbing           |
+| MH3   | Routing telemetry response                    | Complete              | [mcp-hardening-3-routing-telemetry-response.md](./phases/mcp-hardening-3-routing-telemetry-response.md) | Further close on issue #7 from production trace |
+| MH4   | Migrate Go MCP runtime tools to TS            | Complete (2026-05-15) | [mcp-hardening-4-go-mcp-migration.md](./phases/mcp-hardening-4-go-mcp-migration.md)                     | P5 "migrate Go MCP runtime tools" deferred item |
 
 All three landed 2026-05-12 under PR #869. Hardening issues #4 (step/choice block ids) and #5 (hop-over-hop growth, tracked in the P5 GCS-sessions entry) remain open. Issue #6 (deploy/log discoverability) is closed incidentally by the P4 runbook task.
 

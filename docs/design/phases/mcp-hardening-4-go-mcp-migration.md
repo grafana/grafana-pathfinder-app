@@ -5,9 +5,9 @@
 > Branch: `feat/mcp-progress`.
 > Tracking issue: _to be filed_.
 
-**Status:** In progress
+**Status:** Complete (pending E2E smoke)
 **Started:** 2026-05-15
-**Completed:** _YYYY-MM-DD_
+**Completed:** 2026-05-15
 
 ---
 
@@ -123,38 +123,26 @@ Atomic-commit-sized. Reference slice ID in commit messages (`MH4: ...`).
 
 **Note (2026-05-15):** Phase B is only worth doing as a standalone step if Phase C is delayed by more than a release cycle. If C follows A directly, the deprecation prose is moot (the tools disappear). Default: skip B, fold the AGENTS.md/CLAUDE.md updates into C.
 
-### Phase C — Go cleanup (Not started)
+### Phase C — Go cleanup (Complete)
 
-The irreversible step. Land in its own commit after Phase A has been exercised on `main` or `feat/mcp-progress` for at least one cycle.
+- [x] **C1. Delete migrated handlers from `pkg/plugin/mcp.go`.** ✓ _Complete (2026-05-15, <sha>)._ `toolListGuides`, `toolGetGuide`, `toolGetGuideSchema`, `toolValidateGuideJSON`, `toolCreateGuideTemplate` and their argument/result types all removed.
+- [x] **C2. Delete tool registrations in `mcpTools` slice.** ✓ _Complete (2026-05-15, <sha>)._ Slice contains only the `launch_guide` entry.
+- [x] **C3. Delete dispatch arms in `handleToolCall`.** ✓ _Complete (2026-05-15, <sha>)._ Switch keeps `launch_guide` + the `default` not-found arm.
+- [x] **C4. Delete the `guideSchemas` map.** ✓ _Complete (2026-05-15, <sha>)._
+- [x] **C5. Drop now-unused identifiers.** ✓ _Complete (2026-05-15, <sha>)._ `schemaVersionPattern` removed; `errCodeInternal` removed (was already unused even pre-phase, surfaced by the diff). `validGuideIDPattern` retained for `toolLaunchGuide`. Imports `regexp`, `io/fs`, `strings`, `sync`, `time` all still needed.
+- [x] **C6. Delete the `repositoryJSON` embed in `pkg/plugin/static.go`.** ✓ _Complete (2026-05-15, <sha>)._ Comment updated to reflect that `guidesFS` is now consumed only by `launch_guide`'s existence check.
+- [x] **C7. Delete `pkg/plugin/static/repository.json`.** ✓ _Complete (2026-05-15, <sha>)._
+- [x] **C8. Update `scripts/copy-static.js`.** ✓ _Complete (2026-05-15, <sha>)._ Removed the `repository.json` copy step; added an inline comment pointing at this phase doc.
+- [x] **C9. Delete corresponding tests in `pkg/plugin/mcp_test.go`.** ✓ _Complete (2026-05-15, <sha>)._ All `TestToolListGuides_*`, `TestToolGetGuide_*`, `TestToolGetGuideSchema_*`, `TestToolValidateGuideJSON_*`, `TestToolCreateGuideTemplate_*` removed. Helpers (`extractToolData`, `isToolError`, `mcpToolCall`) kept — still used by the `launch_guide` tests.
+- [x] **C10. Update `TestToolsList`.** ✓ _Complete (2026-05-15, <sha>)._ Asserts `len(tools) == 1` and `tool["name"] == "launch_guide"`.
+- [x] **C11. Update `pkg/plugin/mcp.go` top-of-file status comment.** ✓ _Complete (2026-05-15, <sha>)._ Removed the "SPIKE / STUB" framing — the file is now a deliberate, small in-process endpoint, not an experimental spike.
+- [x] **C12. Update docs.** ✓ _Complete (2026-05-15, <sha>)._
+  - `docs/developer/MCP_SERVER.md` — collapsed the "Migrated from the Go MCP" subsection into a single "Go MCP endpoint" line linking to this phase doc.
+  - `docs/design/AI-AUTHORING-IMPLEMENTATION.md` — MH4 row Status set to `Complete (2026-05-15)`.
+  - `AGENTS.md` — `pkg/plugin/mcp.go` row, `pkg/plugin/static.go` row, and the backend request-paths bullet for `/mcp` all updated.
+  - `CLAUDE.md` — inherits via `@AGENTS.md`; no separate mirror needed.
 
-- [ ] **C1. Delete migrated handlers from `pkg/plugin/mcp.go`:**
-  - `toolListGuides` (`pkg/plugin/mcp.go:329-363` + types at 301-327)
-  - `toolGetGuide` (`pkg/plugin/mcp.go:373-404` + types at 369-371)
-  - `toolGetGuideSchema` (`pkg/plugin/mcp.go:414-431` + types at 410-412)
-  - `toolValidateGuideJSON` (`pkg/plugin/mcp.go:575-687` + types at 566-573 — includes `validationIssue` struct)
-  - `toolCreateGuideTemplate` (`pkg/plugin/mcp.go:700-779` + types at 693-698)
-- [ ] **C2. Delete tool registrations in `mcpTools` slice** (`pkg/plugin/mcp.go:106-208` — keep only the `launch_guide` entry at lines 154-167).
-- [ ] **C3. Delete dispatch arms in `handleToolCall`** (`pkg/plugin/mcp.go:280-291` — keep only the `launch_guide` arm at 286-287).
-- [ ] **C4. Delete the `guideSchemas` map** (`pkg/plugin/mcp.go:433-517`).
-- [ ] **C5. Drop now-unused identifiers.** `schemaVersionPattern` (`pkg/plugin/mcp.go:39`) was used only inside `toolValidateGuideJSON`; verify and delete. `validGuideIDPattern` (line 36) stays — `toolLaunchGuide` still uses it. Imports: `regexp` stays (for `validGuideIDPattern`), `io/fs` stays (for `launch_guide` existence check).
-- [ ] **C6. Delete the `repositoryJSON` embed in `pkg/plugin/static.go`** (only consumed by the deleted `toolListGuides`). Keep `guidesFS` (used by `toolLaunchGuide` at line 540 for the existence check).
-- [ ] **C7. Delete `pkg/plugin/static/repository.json`** on disk.
-- [ ] **C8. Update `scripts/copy-static.js`** to skip copying `repository.json` (no Go consumer); keep the per-guide content.json copy loop.
-- [ ] **C9. Delete corresponding tests in `pkg/plugin/mcp_test.go`:**
-  - `TestToolListGuides_*` (3 tests, lines 213-255)
-  - `TestToolGetGuide_*` (4 tests, lines 261-301)
-  - `TestToolGetGuideSchema_*` (2 tests, lines 307-326)
-  - `TestToolValidateGuideJSON_*` (6 tests, lines 483-580)
-  - `TestToolCreateGuideTemplate_*` (3 tests, lines 586-641)
-- [ ] **C10. Update `TestToolsList`** (`pkg/plugin/mcp_test.go:180-207`) to assert that the only tool returned is `launch_guide`.
-- [ ] **C11. Update `pkg/plugin/mcp.go` top-of-file status comment** (lines 3-21) to reflect the post-cleanup reality: the file now hosts only `launch_guide` and the pending-launch queue.
-- [ ] **C12. Update docs:**
-  - `docs/developer/MCP_SERVER.md` — collapse the "Migrated from the Go MCP" subsection to a single line referencing this phase doc; remove the deprecation prose if Phase B was skipped.
-  - `docs/design/AI-AUTHORING-IMPLEMENTATION.md` — flip the MH4 row Status to `Complete`, set Completed date, link this file in the "Detailed plan" column.
-  - `AGENTS.md` — update the `pkg/plugin/mcp.go` row in the backend section.
-  - `CLAUDE.md` — mirror.
-
-**Phase C exit:** `mage test` green; `mage build` green; `pkg/plugin/mcp.go` line count roughly halved; `tools/list` JSON-RPC response from the Go endpoint returns exactly one tool (`launch_guide`).
+**Phase C exit:** ✓ `mage test` green (15 tests); ✓ `mage build:darwinARM64` green (`dist/gpx_grafana-pathfinder-app_darwin_arm64` built); ✓ `pkg/plugin/mcp.go` shrunk from 885 → 338 lines; ✓ `mcp_test.go` shrunk from 642 → 347 lines; ✓ `tools/list` returns exactly one tool (asserted by `TestToolsList`). `golangci-lint` not run locally (binary not installed); will be exercised by CI.
 
 ### Phase D — End-to-end verification (Not started)
 
@@ -175,9 +163,9 @@ The irreversible step. Land in its own commit after Phase A has been exercised o
 The MH4 entry in the index has no formal exit criteria column (the hardening track uses the per-slice "Closes" column instead). Effective exit conditions:
 
 - [x] All five Go stateless tools have a TS-side path (additive or pre-existing). _(After Phase A.)_
-- [ ] `pkg/plugin/mcp.go` exposes only `launch_guide` via `tools/list`. _(After Phase C.)_
-- [ ] `guideSchemas` (hand-maintained schema strings) no longer exists in the Go tree. _(After Phase C.)_
-- [ ] `npm run check` clean. _(Continuous.)_
+- [x] `pkg/plugin/mcp.go` exposes only `launch_guide` via `tools/list`. _(After Phase C — asserted by `TestToolsList`.)_
+- [x] `guideSchemas` (hand-maintained schema strings) no longer exists in the Go tree. _(After Phase C.)_
+- [ ] `npm run check` clean. _(Continuous; pending the post-commit run before PR.)_
 - [ ] D1 smoke passes — `launch_guide` end-to-end still works after the Go cleanup. _(After Phase D.)_
 
 ---
@@ -209,10 +197,21 @@ The MH4 entry in the index has no formal exit criteria column (the hardening tra
 
 ## Deviations
 
-_Appended during execution. Currently empty._
+### 2026-05-15 — Removed `errCodeInternal` even though the plan didn't call it out
+
+- **What.** The plan's C5 listed `schemaVersionPattern` as the unused identifier to delete. While trimming, `errCodeInternal` (one of the JSON-RPC error-code constants) was also unused — it had no callers even before phase C. Removed it in the same commit to keep the const block honest.
+- **Impact.** None functional. The remaining error codes (`errCodeParse`, `errCodeInvalid`, `errCodeNotFound`, `errCodeParams`) are all live.
+- **Why this is not in the Decision log.** Pure dead-code cleanup, no design tradeoff.
 
 ---
 
 ## Handoff to next phase
 
-_Filled at exit. Required: 5–10 bullets covering what's now true that wasn't before, gotchas, deferred punts, design docs that drifted._
+- **Single source of truth for the guide schema.** `pkg/plugin/mcp.go` no longer carries the hand-maintained `guideSchemas` map. The Zod schemas in `src/types/` are now the only place a schema definition lives — `pathfinder_get_schema` exposes them via `exportSchema` / `exportAllSchemas` / `listSchemas`. Any future schema change is a one-file edit.
+- **Go MCP endpoint is now intentionally minimal.** `tools/list` returns exactly one tool (`launch_guide`); everything else lives in the TS MCP. The top-of-file comment was rewritten from "SPIKE / STUB" to "in-process runtime endpoint" — this file is no longer experimental, it's a small deliberate surface.
+- **`launch_guide`'s existence check is preserved.** `pkg/plugin/static.go` still embeds `static/guides/*.json` for `fs.Stat` inside `toolLaunchGuide`. This is defense-in-depth (open question OQ2 resolved no). A future MH5 cleanup pass could drop both the embed and the check; the frontend's content resolution would catch unknown IDs lazily.
+- **`scripts/copy-static.js` no longer copies `repository.json`.** Only per-guide `content.json` files are copied into `pkg/plugin/static/guides/`. If a future Go feature needs the repository index, the script will need a one-line restore — not the embed.
+- **MCP tool surface broke for any caller that named the migrated tools.** The Go endpoint no longer answers to `list_guides`, `get_guide`, `get_guide_schema`, `validate_guide_json`, or `create_guide_template`. The Go MCP was undocumented and labeled "non-production" pre-MH4, so blast radius is expected to be zero — but if a stray internal script broke, the migration paths are in the overlap matrix at the top of this doc.
+- **Pending Phase D.** D1 (real-instance `launch_guide` smoke through `npm run server`) and D4 (`npm run check`) haven't been run on the destructive commit yet. The Go side is green (`mage test`, `mage build:darwinARM64`, `go vet`); the full pre-merge gate is the next step before PR.
+- **Design-doc drift.** `docs/design/AI-AUTHORING-IMPLEMENTATION.md` still has prose under the P5 / P6 sections that refers to the Go MCP runtime tools as "deferred" — those bullets are now historical context. Worth a sweep on the next AI-authoring doc edit, but not a blocker. `docs/design/HOSTED-AUTHORING-MCP.md` and the per-phase MH plans need no edit.
+- **No client-orchestration impact.** AI clients drive the TS MCP via `pathfinder-cli mcp` (stdio or HTTP) — the Cloud Run deploy and stdio clients are both untouched by this slice. The browser/plugin-side `launch_guide` flow (assistant integration → per-instance `/mcp` POST → `usePendingGuideLaunch.ts` polling) is also untouched.
