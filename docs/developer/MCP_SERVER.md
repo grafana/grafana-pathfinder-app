@@ -117,26 +117,28 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 
 ## Tool surface
 
-16 tools, registered in `src/cli/mcp/tools/`:
+18 tools, registered in `src/cli/mcp/tools/`:
 
-| Tool                                   | Module                | Wraps                                                                      |
-| -------------------------------------- | --------------------- | -------------------------------------------------------------------------- |
-| `pathfinder_authoring_start`           | `authoring-start.ts`  | (static context block)                                                     |
-| `pathfinder_help`                      | `help.ts`             | `formatHelpAsJson` over the CLI commands                                   |
-| `pathfinder_create_package`            | `artifact-tools.ts`   | `runCreate`                                                                |
-| `pathfinder_add_block`                 | `mutation-tools.ts`   | `runAddBlock`                                                              |
-| `pathfinder_add_step`                  | `mutation-tools.ts`   | `runAddStep`                                                               |
-| `pathfinder_add_choice`                | `mutation-tools.ts`   | `runAddChoice`                                                             |
-| `pathfinder_edit_block`                | `mutation-tools.ts`   | `runEditBlock`                                                             |
-| `pathfinder_remove_block`              | `mutation-tools.ts`   | `runRemoveBlock`                                                           |
-| `pathfinder_set_manifest`              | `mutation-tools.ts`   | `runSetManifest`                                                           |
-| `pathfinder_inspect`                   | `inspection-tools.ts` | `runInspect`                                                               |
-| `pathfinder_validate`                  | `inspection-tools.ts` | `runValidate`                                                              |
-| `pathfinder_finalize_for_app_platform` | `finalize.ts`         | `runValidate` + handoff payload from `APP-PLATFORM-PUBLISH-HANDOFF.md`     |
-| `pathfinder_list_packages`             | `repository-tools.ts` | CDN `repository.json` + filters (P6)                                       |
-| `pathfinder_get_package`               | `repository-tools.ts` | CDN `content.json` + `manifest.json` for one id                            |
-| `pathfinder_get_manifest`              | `repository-tools.ts` | CDN `manifest.json` only (cheaper variant)                                 |
-| `pathfinder_launch_package`            | `repository-tools.ts` | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug] |
+| Tool                                   | Module                | Wraps                                                                                 |
+| -------------------------------------- | --------------------- | ------------------------------------------------------------------------------------- |
+| `pathfinder_authoring_start`           | `authoring-start.ts`  | (static context block)                                                                |
+| `pathfinder_help`                      | `help.ts`             | `formatHelpAsJson` over the CLI commands                                              |
+| `pathfinder_create_package`            | `artifact-tools.ts`   | `runCreate`                                                                           |
+| `pathfinder_create_guide_template`     | `artifact-tools.ts`   | `newPackageState` + pre-populated starter blocks; round-tripped through `runValidate` |
+| `pathfinder_add_block`                 | `mutation-tools.ts`   | `runAddBlock`                                                                         |
+| `pathfinder_add_step`                  | `mutation-tools.ts`   | `runAddStep`                                                                          |
+| `pathfinder_add_choice`                | `mutation-tools.ts`   | `runAddChoice`                                                                        |
+| `pathfinder_edit_block`                | `mutation-tools.ts`   | `runEditBlock`                                                                        |
+| `pathfinder_remove_block`              | `mutation-tools.ts`   | `runRemoveBlock`                                                                      |
+| `pathfinder_set_manifest`              | `mutation-tools.ts`   | `runSetManifest`                                                                      |
+| `pathfinder_inspect`                   | `inspection-tools.ts` | `runInspect`                                                                          |
+| `pathfinder_validate`                  | `inspection-tools.ts` | `runValidate`                                                                         |
+| `pathfinder_finalize_for_app_platform` | `finalize.ts`         | `runValidate` + handoff payload from `APP-PLATFORM-PUBLISH-HANDOFF.md`                |
+| `pathfinder_list_packages`             | `repository-tools.ts` | CDN `repository.json` + filters (P6)                                                  |
+| `pathfinder_get_package`               | `repository-tools.ts` | CDN `content.json` + `manifest.json` for one id                                       |
+| `pathfinder_get_manifest`              | `repository-tools.ts` | CDN `manifest.json` only (cheaper variant)                                            |
+| `pathfinder_launch_package`            | `repository-tools.ts` | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug]            |
+| `pathfinder_get_schema`                | `schema-tools.ts`     | `exportSchema` / `exportAllSchemas` / `listSchemas` from `src/cli/commands/schema.ts` |
 
 [p6-launch-bug]: https://github.com/grafana/grafana-pathfinder-app/issues/855
 
@@ -153,6 +155,15 @@ The four `repository-tools.ts` tools are read-only against a public package CDN.
 - **`pathfinder_launch_package` ships PARTIAL** — see [#855][p6-launch-bug]. The URL it builds resolves to the Pathfinder plugin but does not currently load the targeted CDN guide as an interactive tutorial; it opens to a generic docs view instead. Every successful response carries a `warning: { status: "partial", message, tracking }` field so agents and clients see the limitation at runtime. The bug is in the app-side `auto-launch-tutorial` handler (`src/components/docs-panel/docs-panel.tsx`), which calls `openDocsPage(url, title)` without the `packageInfo` argument the recommendations panel passes — so the package-aware content pipeline never engages. The MCP tool will keep working as-is once the app-side fix lands.
 
 > Naming note: a future P5 GCS-sessions design also proposes a `pathfinder_get_manifest` tool — but session-scoped, taking a `sessionToken`. P6 ships first with the public-CDN semantics; if/when P5 lands it must rename or add a discriminator. See [P6 phase plan — Decision log](../design/phases/ai-authoring-6-cdn-repository-tools.md#decision-log).
+
+### Migrated from the Go MCP
+
+Two tools were ported from the now-deprecated `pkg/plugin/mcp.go` runtime to the TS server:
+
+- **`pathfinder_get_schema`** replaces the Go `get_guide_schema`. The Go version returned a hand-maintained JSON Schema string from a `guideSchemas` map (`pkg/plugin/mcp.go`). The TS version wraps `exportSchema` / `exportAllSchemas` / `listSchemas` from `src/cli/commands/schema.ts`, which is generated from the canonical Zod schemas in `src/types/`. This retires schema duplication: there is now one source of truth for the schema and the validator. Modes: `one` (named single schema; default when `name` is supplied), `all` (every schema keyed by name), `list` (registry summary without payloads).
+- **`pathfinder_create_guide_template`** replaces the Go `create_guide_template`. Returns a pre-populated starter guide (`{ content, manifest }`) with a markdown intro block and one `section` placeholder, plus default manifest fields (`category: "getting-started"`, `path: "<id>/"`, `startingLocation: "/"`, default `author` and `testEnvironment`). The result is round-tripped through `runValidate` before return — schema-clean by construction.
+
+The other three stateless Go tools (`list_guides`, `get_guide`, `validate_guide_json`) had full TS equivalents already (`pathfinder_list_packages`, `pathfinder_get_package`, `pathfinder_validate`); no migration code was needed. The Go `launch_guide` and pending-launch queue stay in `pkg/plugin/mcp.go` indefinitely — they are coupled to per-instance frontend polling (`src/hooks/usePendingGuideLaunch.ts`) and cannot move to a centrally-hosted server.
 
 All authoring tools are **stateless**. The in-flight artifact (`{ content, manifest }`) is passed in and the updated artifact is returned out on every mutation. There is no `sessionId`.
 
