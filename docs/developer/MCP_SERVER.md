@@ -158,7 +158,7 @@ The four `repository-tools.ts` tools are read-only against a public package CDN.
 
 ### Go MCP endpoint
 
-`pkg/plugin/mcp.go` now hosts only the `launch_guide` tool and the per-instance pending-launch queue consumed by `src/hooks/usePendingGuideLaunch.ts`. All other runtime tools were migrated to this TS server under MH4 — see [`docs/design/phases/mcp-hardening-4-go-mcp-migration.md`](../design/phases/mcp-hardening-4-go-mcp-migration.md) for the overlap matrix.
+The Go MCP at `pkg/plugin/mcp.go` was retired under [MH5](../design/phases/mcp-hardening-5-retire-go-mcp.md). MH4 migrated its five stateless tools to this TS server; MH5 then dropped the final tool (`launch_guide`) and the per-instance pending-launch queue along with the file itself. The `/mcp` and `/mcp/pending-launch` routes now return 404. All MCP tools are served by this TS server.
 
 All authoring tools are **stateless**. The in-flight artifact (`{ content, manifest }`) is passed in and the updated artifact is returned out on every mutation. There is no `sessionId`.
 
