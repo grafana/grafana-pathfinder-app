@@ -127,11 +127,6 @@ function walkBlocks(blocks: JsonBlock[], used: Set<string>, path: string): void 
 export function synthesizeStepIds(guide: JsonGuide): JsonGuide {
   const used = new Set<string>();
   walkBlocks(guide.blocks, used, '$');
-  // Diagnostic — flip to silent once the AI fix flow is verified end-to-end.
-  const synthesizedCount = Array.from(used).filter((id) => id.startsWith(SYNTHESIZED_ID_PREFIX)).length;
-  console.warn(
-    `[AI fix :: synthesizeStepIds] guide="${guide.id}" totalIds=${used.size} synthesized=${synthesizedCount}`
-  );
   return guide;
 }
 

@@ -730,6 +730,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   single-step variant in interactive-step.tsx. */}
               {!checker.canFixRequirement &&
                 checker.requiresDomElement &&
+                stepId &&
                 getFeatureFlagValue('pathfinder.ai-auto-heal', false) && (
                   <button
                     className="interactive-guided-ai-fix-btn"
@@ -748,6 +749,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                             renderedStepId,
                             refTarget: firstActionRefTarget,
                             action: firstActionTargetAction,
+                            containerInfo: {
+                              containerId: stepId,
+                              containerKind: 'guided' as const,
+                              subStepIndex: 0,
+                            },
                           },
                         })
                       );
@@ -852,44 +858,48 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   Skip this step
                 </Button>
               )}
-              {/* Ask AI to fix — for runtime failures during guided execution
-                  (timeout / element-not-found). `stepId` is always set
+              {/* Ask AI to fix — for runtime element-not-found failures during
+                  guided execution. `stepId` is always set
                   because docs-retrieval's `synthesizeStepIds` fills missing
                   ids before the renderer parses the guide. */}
-              {currentStepIndex >= 0 && stepId && getFeatureFlagValue('pathfinder.ai-auto-heal', false) && (
-                <Button
-                  onClick={() => {
-                    const failed = internalActions[currentStepIndex];
-                    reportAppInteraction(UserInteraction.AiFixAccepted, {
-                      step_id: stepId,
-                      rendered_step_id: renderedStepId,
-                      container_kind: 'guided',
-                      sub_step_index: currentStepIndex,
-                    });
-                    window.dispatchEvent(
-                      new CustomEvent('pathfinder-ai-fix-request', {
-                        detail: {
-                          stepId,
-                          renderedStepId,
-                          refTarget: failed?.refTarget,
-                          action: failed?.targetAction,
-                          containerInfo: {
-                            containerId: stepId,
-                            containerKind: 'guided' as const,
-                            subStepIndex: currentStepIndex,
+              {currentStepIndex >= 0 &&
+                stepId &&
+                executionError &&
+                /Element not found|requirements not met/i.test(executionError) &&
+                getFeatureFlagValue('pathfinder.ai-auto-heal', false) && (
+                  <Button
+                    onClick={() => {
+                      const failed = internalActions[currentStepIndex];
+                      reportAppInteraction(UserInteraction.AiFixAccepted, {
+                        step_id: stepId,
+                        rendered_step_id: renderedStepId,
+                        container_kind: 'guided',
+                        sub_step_index: currentStepIndex,
+                      });
+                      window.dispatchEvent(
+                        new CustomEvent('pathfinder-ai-fix-request', {
+                          detail: {
+                            stepId,
+                            renderedStepId,
+                            refTarget: failed?.refTarget,
+                            action: failed?.targetAction,
+                            containerInfo: {
+                              containerId: stepId,
+                              containerKind: 'guided' as const,
+                              subStepIndex: currentStepIndex,
+                            },
                           },
-                        },
-                      })
-                    );
-                  }}
-                  size="sm"
-                  variant="secondary"
-                  className="interactive-guided-ai-fix-btn"
-                  data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
-                >
-                  Ask AI to fix
-                </Button>
-              )}
+                        })
+                      );
+                    }}
+                    size="sm"
+                    variant="secondary"
+                    className="interactive-guided-ai-fix-btn"
+                    data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
+                  >
+                    Ask AI to fix
+                  </Button>
+                )}
             </div>
           </div>
         )}
