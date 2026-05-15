@@ -16,7 +16,7 @@ The client should:
 1. Understand the user's guide goal.
 2. Ask clarifying questions when necessary.
 3. Connect to the Pathfinder authoring MCP via the appropriate transport for the client:
-   - **Stdio (local clients — Cursor, Claude Desktop, MCP Inspector):** spawn `npx pathfinder-mcp` (or `docker run --rm grafana/pathfinder-cli mcp`) and use stdio.
+   - **Stdio (local clients — Cursor, Claude Desktop, MCP Inspector):** spawn `npx pathfinder-cli mcp` (or `docker run --rm grafana/pathfinder-cli mcp`) and use stdio.
    - **HTTPS (Grafana Assistant on Cloud):** connect to the centrally hosted TS MCP using the Grafana MCP token-verifier auth flow.
      The existing Go endpoint at `/api/plugins/grafana-pathfinder-app/resources/mcp` is **not** the destination for authoring tools; it is preserved as a runtime-tools-only stub. See [Pathfinder authoring MCP service — Where it runs](./HOSTED-AUTHORING-MCP.md#where-it-runs).
 4. Call `pathfinder_authoring_start` to receive the current authoring context (always the first tool call).

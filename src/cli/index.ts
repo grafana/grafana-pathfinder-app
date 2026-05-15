@@ -30,6 +30,7 @@ import { requirementsCommand } from './commands/requirements';
 import { schemaCommand } from './commands/schema';
 import { setManifestCommand } from './commands/set-manifest';
 import { validateCommand } from './commands/validate';
+import { mcpCommand } from './mcp';
 
 const program = new Command();
 
@@ -96,6 +97,9 @@ program.addCommand(buildRepositoryCommand);
 program.addCommand(buildGraphCommand);
 program.addCommand(schemaCommand);
 program.addCommand(requirementsCommand);
+
+// MCP authoring server (P3): `pathfinder-cli mcp --transport stdio|http`.
+program.addCommand(mcpCommand);
 
 // Walk the entire command tree (including nested add-block subcommands) and
 // install the JSON help hook. Called after all addCommand() so every node is

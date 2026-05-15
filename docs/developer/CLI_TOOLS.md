@@ -47,7 +47,7 @@ docker run --rm -v "$PWD:/workspace" ghcr.io/grafana/pathfinder-cli:latest creat
 docker run --rm ghcr.io/grafana/pathfinder-cli:main-abc1234 --version
 ```
 
-The image's first positional argument selects the entrypoint: the default is `pathfinder-cli`; `mcp` routes to `pathfinder-mcp` (a placeholder until P3 of the AI authoring rollout — see [`docs/design/AI-AUTHORING-IMPLEMENTATION.md`](../design/AI-AUTHORING-IMPLEMENTATION.md)).
+The image's first positional argument selects the entrypoint: the default is `pathfinder-cli`; `mcp` routes to `pathfinder-cli mcp` (the authoring MCP server — see [`docs/developer/MCP_SERVER.md`](./MCP_SERVER.md) and [`docs/design/AI-AUTHORING-IMPLEMENTATION.md`](../design/AI-AUTHORING-IMPLEMENTATION.md)).
 
 Build and run locally without going to the registry:
 

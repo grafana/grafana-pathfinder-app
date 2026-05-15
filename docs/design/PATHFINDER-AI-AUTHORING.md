@@ -12,7 +12,7 @@ The [Agent authoring CLI](./AGENT-AUTHORING.md) addresses the deterministic auth
 
 Give an AI client an MCP endpoint that provides the current Pathfinder authoring context, exposes deterministic guide-authoring tools, validates the result through the canonical CLI, and returns a machine-actionable handoff artifact that a Grafana-authorized client can publish into the user's instance.
 
-The authoring tools live in a **standalone TypeScript MCP server** under `src/cli/`, shipped as a second binary entrypoint (`pathfinder-mcp`) of the same npm package as `pathfinder-cli`. The MCP imports CLI command functions directly — no `exec.Command`, no temp directory, no IPC. Two TypeScript entrypoints share one Zod schema runtime, so there is exactly one place schema knowledge lives, and the CLI and MCP cannot drift. Deployment is either self-serve over stdio (`npx pathfinder-mcp` for Cursor/Claude Desktop) or centrally hosted over HTTP (for Grafana Assistant on Cloud); see [Pathfinder authoring MCP service — Where it runs](./HOSTED-AUTHORING-MCP.md#where-it-runs).
+The authoring tools live in a **standalone TypeScript MCP server** under `src/cli/`, shipped as the `mcp` subcommand of `pathfinder-cli`. The MCP imports CLI command functions directly — no `exec.Command`, no temp directory, no IPC. The CLI dispatcher and the MCP subcommand share one Zod schema runtime, so there is exactly one place schema knowledge lives, and the CLI and MCP cannot drift. Deployment is either self-serve over stdio (`npx pathfinder-cli mcp` for Cursor/Claude Desktop) or centrally hosted over HTTP (for Grafana Assistant on Cloud); see [Pathfinder authoring MCP service — Where it runs](./HOSTED-AUTHORING-MCP.md#where-it-runs).
 
 The MCP service does not perform App Platform writes itself. It returns publish instructions and a viewer link contract. A caller that has Grafana instance authority, such as Grafana Assistant, performs the final write.
 
@@ -103,7 +103,7 @@ Implement and test the authoring CLI described in [Agent authoring CLI](./AGENT-
 
 ### Phase 2: Distribution
 
-Publish the npm package (`pathfinder-cli`) with two binary entrypoints — `pathfinder-cli` and `pathfinder-mcp` — and a Docker image (`grafana/pathfinder-cli`) wrapping the same package. There is no per-platform single-file binary, no Node SEA / `pkg` step, and no plugin-tarball bundling. The plugin and the MCP package are coordinated through CI but published independently. See [Agent authoring CLI — Distribution](./AGENT-AUTHORING.md#distribution).
+Publish the npm package (`pathfinder-cli`) with a single binary entrypoint (`pathfinder-cli`) that dispatches subcommands — including `mcp` for the authoring MCP server — and a Docker image (`grafana/pathfinder-cli`) wrapping the same package. There is no per-platform single-file binary, no Node SEA / `pkg` step, and no plugin-tarball bundling. The plugin and the CLI are coordinated through CI but published independently. See [Agent authoring CLI — Distribution](./AGENT-AUTHORING.md#distribution).
 
 ### Phase 3: TypeScript MCP server
 

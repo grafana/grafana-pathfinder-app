@@ -6,7 +6,7 @@
 
 ## Purpose
 
-This is a living design doc that captures **functional feedback observed when real agents drive `pathfinder-mcp`** and the proposed mechanisms to address it. It is the parking lot for "the server works, but agents misuse it in predictable ways" findings — items that are not P3 bugs and not P4 prerequisites, but that materially shape the agent authoring experience and should be swept into a future hardening phase.
+This is a living design doc that captures **functional feedback observed when real agents drive the `pathfinder-cli mcp` authoring server** and the proposed mechanisms to address it. It is the parking lot for "the server works, but agents misuse it in predictable ways" findings — items that are not P3 bugs and not P4 prerequisites, but that materially shape the agent authoring experience and should be swept into a future hardening phase.
 
 It is intentionally append-only friendly. Other agents and contributors who discover new failure modes during testing or production use should add them to the [Issue log](#issue-log) below as numbered TODOs, with enough context for a future planner to design the fix.
 
@@ -162,7 +162,7 @@ Append new findings here. Number sequentially. Do not renumber on removal — st
 
 **Recommendation.** Tracked deploy template + `MCP_SERVER.md` runbook section. Both are cheap, neither leaks specifics, and together they give a future agent enough breadcrumbs to (a) realize the server is on Cloud Run, (b) find the operator-specific details, and (c) know the canonical log query.
 
-### #7. Agents don't reach for Pathfinder MCP without explicit prompt vocabulary
+### #7. Agents don't reach for the authoring MCP without explicit prompt vocabulary
 
 **Observed (2026-05-08).** Real Grafana Assistant use, prompt: _"can you create a short and simple pathfinder that shows how to use drilldown metrics with prometheus?"_ — Assistant did not invoke the MCP and instead "tried to show me around" with a generic explainer. Reproducible without explicit naming of "Pathfinder tools" in the prompt; routing flips when the user names them. Operator framing: _"Grafana Assistant may not have enough context about what the MCP server does or the tools do to know when to use which tool."_
 

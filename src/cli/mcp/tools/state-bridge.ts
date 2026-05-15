@@ -67,7 +67,7 @@ export async function withArtifact(
   artifact: ArtifactInput,
   runner: (dir: string) => Promise<CommandOutcome> | CommandOutcome
 ): Promise<ArtifactOutcome> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pathfinder-mcp-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pathfinder-cli-mcp-'));
   try {
     const state: PackageState = {
       content: artifact.content,

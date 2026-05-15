@@ -1,7 +1,7 @@
 # MCP hardening, slice 3 — routing telemetry response
 
 > Follow-up to [slice 1 — routing and composition](./mcp-hardening-1-routing-and-composition.md) and [slice 2 — integrity and normalize](./mcp-hardening-2-integrity-and-normalize.md).
-> Source design: [MCP-AGENT-UX-HARDENING.md — issue #7](../MCP-AGENT-UX-HARDENING.md#7-agents-dont-reach-for-pathfinder-mcp-without-explicit-prompt-vocabulary).
+> Source design: [MCP-AGENT-UX-HARDENING.md — issue #7](../MCP-AGENT-UX-HARDENING.md#7-agents-dont-reach-for-the-authoring-mcp-without-explicit-prompt-vocabulary).
 > Trigger: production telemetry from a 2026-05-12 Cursor session against the deployed MCP — prompt _"Create a short interactive tutorial that shows how to add a Prometheus data source in Grafana"_ did not route to Pathfinder. The layer-3 `instructions` opener from slice 1 was too hedge-y to overcome the model's "just answer in prose" default.
 
 **Status:** Complete
@@ -44,7 +44,7 @@ Close the routing gap slice 1 didn't fully close. Three targeted changes to the 
 - [x] **3. Surface `domains` in `_start` payload.** `tools/authoring-start.ts` reads `PATHFINDER_DOMAINS` and includes it alongside `triggers` and `notFor`.
 - [x] **4. Update tests.** Bump the 30-line ceiling to 40 in `server-instructions.test.ts`; assert presence of "default to using this server" and "last resort"; assert presence of domain anchors (Prometheus, Loki); update `server.test.ts` `_start` assertion to require the new fields and trigger phrases.
 - [x] **5. Update docs.** `docs/developer/MCP_SERVER.md` — describe the new four-section structure of `instructions`; bump the ceiling text. `docs/design/MCP-AGENT-UX-HARDENING.md` — capture the 2026-05-12 telemetry observation under issue #7; append slice-3 status note.
-- [x] **6. Re-deploy + re-test.** ✓ _Complete (2026-05-12)._ Deployed `pathfinder-mcp-00005-jlh` revision to Cloud Run. Three Cursor prompts run fresh (new chats) against the deployed instance:
+- [x] **6. Re-deploy + re-test.** ✓ _Complete (2026-05-12)._ Deployed `pathfinder-cli-mcp-00005-jlh` revision to Cloud Run. Three Cursor prompts run fresh (new chats) against the deployed instance:
   1. _"I want to write content that walks a beginner through navigating to the Grafana data sources page."_ — Cursor invoked `pathfinder_authoring_start` as its first move. ✓ Routes.
   2. _"Put together a step-by-step walkthrough of setting up a Prometheus data source."_ — Cursor invoked `pathfinder_authoring_start` as its first move. ✓ Routes.
   3. _"Write a Prometheus query that returns the 95th percentile latency over the last 5 minutes."_ — Cursor answered with the actual PromQL (`histogram_quantile(0.95, sum(rate(...)) by (le))` with explanation). ✓ Correctly stayed out of Pathfinder.

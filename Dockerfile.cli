@@ -1,15 +1,15 @@
-# Pathfinder CLI / MCP Docker image.
+# Pathfinder CLI Docker image.
 #
 # Multi-stage build. Builder compiles the TypeScript CLI; runtime stage
 # copies the build output and installs only the CLI's runtime
 # dependencies (commander, zod). The plugin's full dependency tree is
 # never installed in the runtime image.
 #
-# Routing: the first positional argument selects the entrypoint.
+# Routing: the first positional argument selects the subcommand.
 #   docker run grafana/pathfinder-cli                 -> pathfinder-cli (no args)
 #   docker run grafana/pathfinder-cli --version       -> pathfinder-cli --version
 #   docker run grafana/pathfinder-cli create my-guide -> pathfinder-cli create my-guide
-#   docker run grafana/pathfinder-cli mcp             -> pathfinder-mcp
+#   docker run grafana/pathfinder-cli mcp             -> pathfinder-cli mcp
 #
 # See docs/design/phases/ai-authoring-2-distribution.md for context.
 
@@ -56,17 +56,15 @@ COPY --from=builder /build/runtime-package.json /app/package.json
 RUN npm install --no-audit --no-fund --omit=optional \
     && npm cache clean --force
 
-# Copy the compiled CLI. Bin entrypoints retain their `#!/usr/bin/env node`
-# shebangs from source; `chmod +x` makes them executable, then symlinks
-# expose them on PATH at the canonical names used by the entrypoint
-# script.
+# Copy the compiled CLI. The bin entry retains its `#!/usr/bin/env node`
+# shebang from source; `chmod +x` makes it executable, then a symlink
+# exposes it on PATH at the canonical name used by the entrypoint script.
 COPY --from=builder /build/dist/cli /app/dist/cli
-RUN chmod +x /app/dist/cli/cli/index.js /app/dist/cli/cli/mcp/index.js \
-    && ln -s /app/dist/cli/cli/index.js /usr/local/bin/pathfinder-cli \
-    && ln -s /app/dist/cli/cli/mcp/index.js /usr/local/bin/pathfinder-mcp
+RUN chmod +x /app/dist/cli/cli/index.js \
+    && ln -s /app/dist/cli/cli/index.js /usr/local/bin/pathfinder-cli
 
-# Routing entrypoint: `mcp` first-arg routes to pathfinder-mcp; otherwise
-# pathfinder-cli is the default.
+# Routing entrypoint: `mcp` first-arg routes to `pathfinder-cli mcp`;
+# otherwise pathfinder-cli is the default.
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
