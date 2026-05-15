@@ -1027,6 +1027,39 @@ export const InteractiveStep = forwardRef<
             >
               Retry
             </button>
+            {/* Ask AI to fix — runtime "element not found" path, mirrors the
+                multistep variant's runtime-error gate. The pre-execution
+                requirements gate (further down) only fires when a step
+                declares `requirements: "exists-reftarget"`; without it, a
+                missing element only surfaces here at execution time and
+                the AI fallback would otherwise be unreachable. */}
+            {/^Element not found/i.test(lazyScrollError) && getFeatureFlagValue('pathfinder.ai-auto-heal', false) && (
+              <button
+                className="interactive-requirement-ai-fix-btn"
+                data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
+                disabled={isShowRunning || isDoRunning}
+                onClick={() => {
+                  reportAppInteraction(UserInteraction.AiFixAccepted, {
+                    step_id: stepId ?? '',
+                    rendered_step_id: renderedStepId,
+                    reftarget: refTarget ?? '',
+                    target_action: targetAction ?? '',
+                  });
+                  window.dispatchEvent(
+                    new CustomEvent('pathfinder-ai-fix-request', {
+                      detail: {
+                        stepId,
+                        renderedStepId,
+                        refTarget,
+                        action: targetAction,
+                      },
+                    })
+                  );
+                }}
+              >
+                Ask AI to fix
+              </button>
+            )}
           </div>
         )}
 

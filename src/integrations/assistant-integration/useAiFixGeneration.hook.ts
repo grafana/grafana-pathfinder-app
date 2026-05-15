@@ -92,10 +92,10 @@ prepend-step — a new top-level step must run before the failing one to set up 
 RULES:
 1. Only ever return one patch. Pick the simplest viable fix.
 2. The new selector MUST be a real CSS selector or data-testid string. No HTML tags, no template literals, no javascript:/data: URLs. Max 512 chars.
-3. Prefer data-testid when present in the DOM hint.
+3. Prefer data-testid when present. The DOM context includes a "Near-matches in live DOM for failing selector" section — when one of those candidates is a plausible fix for the user's intent, use it verbatim. Do NOT invent attribute values that do not appear in the DOM context.
 4. When the request includes container info, you MUST use "substep-selector-patch" (not "selector-patch") and address the failing step via containerId + subStepIndex.
-5. For prepend-step, the newStep must conform to the interactive block schema: type="interactive", an action verb, reftarget (unless action is "noop" or "popout"), and content (markdown shown to the user). Prepend-step is NOT supported for substep failures in v1.
-6. If you cannot determine a fix with confidence, return { "type": "selector-patch", "targetStepId": "<id>", "newReftarget": "<unchanged>", "rationale": "no confident fix" } and the runtime will surface a failure to the user — DO NOT invent a selector.`;
+5. PREPEND-STEP DECISION: if no near-match satisfies the user's intent AND the DOM context shows a "Visible tabs / toggles" entry whose label suggests it could reveal the missing target (for example, an "All visualizations" tab when the user wants a specific viz tile, a "Show advanced options" toggle when a hidden field is missing, a select whose options contain the target), return a "prepend-step" that activates that control instead of inventing a selector for the missing target itself. The newStep.action MUST be a real verb that progresses the UI — typically "button" (click) for tabs/toggles or "formfill" for inputs — NOT "noop" unless the prepended step is purely instructional with no automatable action available. Prepend-step is NOT supported for substep failures (when the request includes container info) in v1.
+6. If no near-match is plausible, no tab/toggle could reveal the target, and no candidate in the "Interactive candidates" list fits the user's intent, return { "type": "selector-patch", "targetStepId": "<id>", "newReftarget": "<unchanged>", "rationale": "no confident fix" } — the EXACT word "<unchanged>" goes in newReftarget and the EXACT phrase "no confident fix" goes in rationale; the runtime will surface a failure to the user. DO NOT put "no confident fix" inside newReftarget.`;
 
 export function buildUserPrompt(input: AiFixGenerationInput): string {
   const parts: string[] = [];
@@ -126,6 +126,25 @@ export function buildUserPrompt(input: AiFixGenerationInput): string {
 }
 
 /**
+ * Sentinel rationale string the system prompt instructs the assistant to
+ * return when it cannot determine a confident fix. Per the contract, the
+ * runtime must surface a failure to the user and NOT apply the (unchanged)
+ * selector — otherwise we silently treadmill on no-op patches. Detected in
+ * `parseAssistantPatch` against both `rationale` and (defensively)
+ * `newReftarget` because the model has been observed putting the sentinel
+ * in the wrong field — see runtime audit logs.
+ */
+const NO_CONFIDENT_FIX_SENTINEL = 'no confident fix';
+
+function looksLikeSentinel(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === NO_CONFIDENT_FIX_SENTINEL || normalized === '<unchanged>';
+}
+
+/**
  * Parse the assistant's text response into a validated patch.
  *
  * Exposed for testing; the hook calls it from `onComplete`.
@@ -146,6 +165,21 @@ export function parseAssistantPatch(text: string): { ok: true; patch: AiFixPatch
     return {
       ok: false,
       error: new Error(`AI fix: response failed schema check (${parsed.error.issues[0]?.message ?? 'unknown'})`),
+    };
+  }
+  if (looksLikeSentinel(parsed.data.rationale)) {
+    return {
+      ok: false,
+      error: new Error("AI couldn't find a confident fix for this step"),
+    };
+  }
+  // Defensive: the model has been observed putting the sentinel string
+  // in newReftarget instead of rationale (see runtime audit logs). Treat
+  // as the same failure mode.
+  if (parsed.data.type !== 'prepend-step' && looksLikeSentinel(parsed.data.newReftarget)) {
+    return {
+      ok: false,
+      error: new Error("AI couldn't find a confident fix for this step"),
     };
   }
   return { ok: true, patch: parsed.data };

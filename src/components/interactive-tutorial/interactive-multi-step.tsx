@@ -895,16 +895,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   a multistep's internal action. `stepId` is always set
                   because docs-retrieval's `synthesizeStepIds` fills missing
                   ids before the renderer parses the guide. */}
-              {(() => {
-                const flagOn = getFeatureFlagValue('pathfinder.ai-auto-heal', false);
-                const matchesPattern = !!(
-                  executionError && /Element not found|requirements not met/i.test(executionError)
-                );
-                console.warn(
-                  `[AI fix gate :: multistep] flagOn=${flagOn} stepId=${stepId} failedStepIndex=${failedStepIndex} matchesPattern=${matchesPattern}`
-                );
-                return null;
-              })()}
               {stepId &&
                 failedStepIndex >= 0 &&
                 executionError &&

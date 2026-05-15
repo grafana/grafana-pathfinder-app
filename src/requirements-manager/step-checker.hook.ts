@@ -493,6 +493,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       safeDispatch(actionFromBaseStepState(errorState));
       updateManager(errorState);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     objectives,
     requirements,
@@ -504,7 +505,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     safeDispatch,
     refTarget,
     targetAction,
-  ]); // eslint-disable-line react-hooks/exhaustive-deps
+  ]);
 
   /**
    * Attempt to automatically fix failed requirements via the fix-handler registry.
