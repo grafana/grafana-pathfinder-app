@@ -7,9 +7,10 @@
  * guide is rejected before we hand it to the renderer.
  *
  * Targeting:
- * - `selector-patch.targetStepId` and `prepend-step.beforeStepId` resolve
- *   against `JsonInteractiveBlock.id`. Anonymous sub-steps inside multistep
- *   / guided containers (which carry no id) are NOT addressable by v1.
+ * - `selector-patch.targetStepId` resolves against `JsonInteractiveBlock.id`.
+ * - `prepend-step.beforeStepId` resolves against interactive / multistep /
+ *   guided block ids. Anonymous sub-steps inside multistep / guided containers
+ *   (which carry no id) are NOT addressable by v1.
  * - Recurses into `JsonSectionBlock.blocks` and `JsonConditionalBlock.blocks`.
  */
 
@@ -49,6 +50,13 @@ function isStepContainerWithId(block: JsonBlock, id: string): block is JsonMulti
   return isStepContainer(block) && block.id === id;
 }
 
+function isPrependTargetWithId(
+  block: JsonBlock,
+  id: string
+): block is JsonInteractiveBlock | JsonMultistepBlock | JsonGuidedBlock {
+  return isInteractiveWithId(block, id) || isStepContainerWithId(block, id);
+}
+
 /**
  * Walk `blocks` and call `mutator` on the parent array + index when the
  * predicate matches. Returns true once a match has been mutated so the
@@ -57,23 +65,24 @@ function isStepContainerWithId(block: JsonBlock, id: string): block is JsonMulti
 function mutateMatchingBlock(
   blocks: JsonBlock[],
   matchId: string,
-  mutator: (parent: JsonBlock[], index: number) => void
+  mutator: (parent: JsonBlock[], index: number) => void,
+  matches: (block: JsonBlock, id: string) => boolean = isInteractiveWithId
 ): boolean {
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!;
-    if (isInteractiveWithId(block, matchId)) {
+    if (matches(block, matchId)) {
       mutator(blocks, i);
       return true;
     }
     if (isSection(block)) {
-      if (mutateMatchingBlock(block.blocks, matchId, mutator)) {
+      if (mutateMatchingBlock(block.blocks, matchId, mutator, matches)) {
         return true;
       }
     } else if (isConditional(block)) {
-      if (mutateMatchingBlock(block.whenTrue, matchId, mutator)) {
+      if (mutateMatchingBlock(block.whenTrue, matchId, mutator, matches)) {
         return true;
       }
-      if (mutateMatchingBlock(block.whenFalse, matchId, mutator)) {
+      if (mutateMatchingBlock(block.whenFalse, matchId, mutator, matches)) {
         return true;
       }
     }
@@ -159,9 +168,14 @@ export function applyPatchToGuide(guideJson: string, patch: AiFixPatch): ApplyRe
       return { ok: false, error: `No interactive block found with id "${patch.targetStepId}"` };
     }
   } else if (patch.type === 'prepend-step') {
-    didMutate = mutateMatchingBlock(guide.blocks, patch.beforeStepId, (parent, index) => {
-      parent.splice(index, 0, patch.newStep as JsonBlock);
-    });
+    didMutate = mutateMatchingBlock(
+      guide.blocks,
+      patch.beforeStepId,
+      (parent, index) => {
+        parent.splice(index, 0, patch.newStep as JsonBlock);
+      },
+      isPrependTargetWithId
+    );
     if (!didMutate) {
       return { ok: false, error: `No interactive block found with id "${patch.beforeStepId}"` };
     }

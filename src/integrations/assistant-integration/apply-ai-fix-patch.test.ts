@@ -193,6 +193,46 @@ describe('applyPatchToGuide', () => {
         expect(sectionBlocks[2].id).toBe('step-1');
       }
     });
+
+    it('inserts before multistep and guided containers by id', () => {
+      const containers = [
+        {
+          type: 'multistep',
+          id: 'multi-1',
+          content: 'Do two things',
+          steps: [{ action: 'button', reftarget: '[data-testid="first"]' }],
+        },
+        {
+          type: 'guided',
+          id: 'guided-1',
+          content: 'Guided sequence',
+          steps: [{ action: 'button', reftarget: '[data-testid="guided"]' }],
+        },
+      ];
+
+      for (const container of containers) {
+        const guideJson = makeGuide([container]);
+        const patch: AiFixPatch = {
+          type: 'prepend-step',
+          beforeStepId: container.id,
+          newStep: {
+            type: 'interactive',
+            action: 'button',
+            reftarget: '[data-testid="setup"]',
+            content: 'Setup',
+          } as never,
+        };
+
+        const result = applyPatchToGuide(guideJson, patch);
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          const parsed = JSON.parse(result.newGuideJson);
+          expect(parsed.blocks[0].reftarget).toBe('[data-testid="setup"]');
+          expect(parsed.blocks[1].id).toBe(container.id);
+        }
+      }
+    });
   });
 
   describe('substep-selector-patch', () => {
