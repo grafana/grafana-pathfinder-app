@@ -106,4 +106,13 @@ program.addCommand(mcpCommand);
 // reachable.
 attachJsonHelpHook(program);
 
-program.parse(process.argv);
+// `parseAsync` (not `parse`) because at least one registered subcommand —
+// `mcp` — has an async action handler. With `parse()`, a rejection from
+// `runStdio()` / `runHttp()` (e.g. `EADDRINUSE`, stdio init failure) would
+// escape as an unhandled promise rejection and surface as a raw Node crash
+// instead of the clean single-line error message below. Commander's docs
+// are explicit: if any action handler is async, use `.parseAsync()`.
+program.parseAsync(process.argv).catch((err) => {
+  process.stderr.write(`pathfinder-cli: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.exit(1);
+});
