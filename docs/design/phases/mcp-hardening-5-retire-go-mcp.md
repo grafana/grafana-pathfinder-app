@@ -4,8 +4,8 @@
 > Branch: `feat/mcp-progress`.
 > Tracking issue: _to be filed_.
 
-**Status:** Not started
-**Started:** _YYYY-MM-DD_
+**Status:** In progress
+**Started:** 2026-05-15
 **Completed:** _YYYY-MM-DD_
 
 ---
@@ -102,19 +102,19 @@ Both endpoints were undocumented and labeled "non-production" through most of th
 
 Atomic-commit-sized. Reference slice ID in commit messages (`MH5: ...`).
 
-### Phase A — Frontend retirement (Not started)
+### Phase A — Frontend retirement (Complete)
 
 After this phase: the frontend no longer polls. The Go `/mcp/pending-launch` route is still alive but has no caller in this repo.
 
-- [ ] **A1. Delete `src/hooks/usePendingGuideLaunch.ts`** and its test `src/hooks/usePendingGuideLaunch.test.ts`.
-- [ ] **A2. Update `src/hooks/index.ts`** — drop the `usePendingGuideLaunch` re-export. Confirm `src/hooks/` still has at least one other export (or delete the barrel if empty).
-- [ ] **A3. Drop call sites:**
+- [x] **A1. Delete `src/hooks/usePendingGuideLaunch.ts`** and its test `src/hooks/usePendingGuideLaunch.test.ts`. ✓ _Complete (2026-05-15, 43a2e7b1)._
+- [x] **A2. Update `src/hooks/index.ts`** — drop the `usePendingGuideLaunch` re-export. Confirm `src/hooks/` still has at least one other export (or delete the barrel if empty). ✓ _Complete (2026-05-15, 43a2e7b1)._
+- [x] **A3. Drop call sites:** ✓ _Complete (2026-05-15, 43a2e7b1)._
   - `src/components/App/ContextPanel.tsx` — import + `usePendingGuideLaunch()` line.
   - `src/components/full-screen/FullScreenPanel.tsx` — import + `usePendingGuideLaunch()` line + the surrounding "Polls the Pathfinder backend for MCP launch_guide handoffs" comment block.
   - `src/components/floating-panel/FloatingPanelManager.tsx` — import + `usePendingGuideLaunch()` line.
-- [ ] **A4. Drop Jest mock entries** in `src/components/docs-panel/docs-panel.tab-restore-guard.test.ts` and `src/components/docs-panel/docs-panel.alignment.test.ts` (`usePendingGuideLaunch: jest.fn()`). Confirm the surrounding mock block still type-checks without it.
-- [ ] **A5. Clean up the stale comment** in `src/global-state/sidebar.ts` ("Used by the MCP launch_guide tool via the frontend polling hook"). The helper itself stays — it's used by other tab-open paths.
-- [ ] **A6. Run `npm run typecheck` + `npm run test:ci`** — both clean. Existing snapshots may need an update if any of the three components rendered the hook as a visible effect (unlikely; the hook does no rendering).
+- [x] **A4. Drop Jest mock entries** in `src/components/docs-panel/docs-panel.tab-restore-guard.test.ts` and `src/components/docs-panel/docs-panel.alignment.test.ts` (`usePendingGuideLaunch: jest.fn()`). Confirm the surrounding mock block still type-checks without it. ✓ _Complete (2026-05-15, 43a2e7b1) — block kept with empty `() => ({})` factory to preserve hook-module isolation for the surrounding tests._
+- [x] **A5. Clean up the stale comment** in `src/global-state/sidebar.ts` ("Used by the MCP launch*guide tool via the frontend polling hook"). The helper itself stays — it's used by other tab-open paths. ✓ \_Complete (2026-05-15, 43a2e7b1).*
+- [x] **A6. Run `npm run typecheck` + `npm run test:ci`** — both clean. Existing snapshots may need an update if any of the three components rendered the hook as a visible effect (unlikely; the hook does no rendering). ✓ _Complete (2026-05-15) — typecheck clean; 198 suites / 3599 tests pass; grep for `usePendingGuideLaunch` and `pending-launch` in `src/` returns zero hits._
 
 **Phase A exit:** `npm run typecheck` + `npm run test:ci` green. Grep for `usePendingGuideLaunch` in `src/` returns zero hits. Grep for `pending-launch` in `src/` returns zero hits.
 
