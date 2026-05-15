@@ -4,12 +4,7 @@ import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
-import {
-  usePendingGuideLaunch,
-  useAlignmentReevaluation,
-  useAutoLaunchTutorial,
-  useStepProgressFromEvents,
-} from '../../hooks';
+import { useAlignmentReevaluation, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
@@ -70,9 +65,6 @@ function FloatingPanelInner() {
   // This component is rendered in a standalone React root (createCompatRoot)
   // outside Grafana's plugin context provider tree. Read config from the
   // global set by module.tsx instead.
-
-  // Poll for MCP guide launches (same as ContextPanel does for sidebar)
-  usePendingGuideLaunch();
 
   const panel = useMemo(() => {
     const globalConfig = (window as any).__pathfinderPluginConfig;

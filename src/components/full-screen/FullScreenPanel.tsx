@@ -10,12 +10,7 @@ import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
-import {
-  usePendingGuideLaunch,
-  useAlignmentReevaluation,
-  useAutoLaunchTutorial,
-  useStepProgressFromEvents,
-} from '../../hooks';
+import { useAlignmentReevaluation, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
@@ -52,9 +47,6 @@ export class FullScreenPanel extends SceneObjectBase<FullScreenPanelState> {
 }
 
 function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
-  // Polls the Pathfinder backend for MCP launch_guide handoffs.
-  usePendingGuideLaunch();
-
   const fullScreenStyles = useStyles2(getFullScreenStyles);
 
   const panel = useMemo(() => {
