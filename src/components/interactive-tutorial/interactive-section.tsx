@@ -420,7 +420,9 @@ export function InteractiveSection({
           targetHref: fixableError?.targetHref,
           explanation: result.pass
             ? undefined
-            : getRequirementExplanation(result.error?.[0]?.requirement, hints, result.error?.[0]?.error),
+            : fixableError
+              ? getRequirementExplanation(fixableError.requirement, hints, fixableError.error)
+              : getRequirementExplanation(result.error?.[0]?.requirement, hints, result.error?.[0]?.error),
         });
       }
     } catch (error) {
