@@ -15,21 +15,21 @@
 **Prior-phase exit criteria to re-verify before starting:**
 
 - [ ] P1 exit holds — an agent can author a multi-block guide via the CLI that passes `validatePackage()`; `npm run check` clean on `main`.
-- [ ] P2 exit holds — `ghcr.io/grafana/pathfinder-cli:main-<sha>` builds and runs; `pathfinder-cli --version` returns `CURRENT_SCHEMA_VERSION`; the `pathfinder-mcp` bin slot is reserved (currently routed to `src/cli/mcp-placeholder.ts`).
-- [ ] `package.json#bin.pathfinder-mcp` resolves to a real entrypoint after this phase replaces the placeholder.
+- [ ] P2 exit holds — `ghcr.io/grafana/pathfinder-cli:main-<sha>` builds and runs; `pathfinder-cli --version` returns `CURRENT_SCHEMA_VERSION`; the `mcp` first-arg routing in the Docker entrypoint is reserved (currently routed to `src/cli/mcp-placeholder.ts`).
+- [ ] The `pathfinder-cli mcp` subcommand resolves to a real entrypoint after this phase replaces the placeholder.
 - [ ] `pkg/plugin/mcp.go` is unchanged from `main` (preserved as a stub per the design).
 
 **Surface area this phase touches:**
 
 - **New code:**
-  - `src/cli/mcp/` — server entrypoint, transport adapters (stdio + HTTP), tool registry, dispatchers. Replaces `src/cli/mcp-placeholder.ts` in `package.json#bin`.
+  - `src/cli/mcp/` — subcommand factory, transport adapters (stdio + HTTP), tool registry, dispatchers. Replaces `src/cli/mcp-placeholder.ts` as the destination for the entrypoint's `mcp` arg.
   - `src/cli/mcp/tools/` — one file per MCP tool (or grouped by family). Each tool is a thin dispatcher that calls a CLI command function and shapes the response for MCP.
   - `src/cli/mcp/__tests__/` — unit tests per tool, integration tests per transport, end-to-end test that drives a multi-block guide through the tool surface.
   - `src/cli/commands/_runners.ts` (or per-command exports) — pure `runX(args, artifact) -> result` functions extracted from each `commands/*.ts`. Today the action logic is inline in `.action(async function () { ... })`; it must be reachable without a Commander parse cycle.
 - **Modified:**
   - `src/cli/commands/*.ts` — refactor each `.action(...)` body to delegate to an exported `runX` function. The Commander wrapper stays. **The CLI's external behavior (flags, output, exit codes) must not change.**
   - `src/cli/utils/output.ts` (or sibling) — ensure structured-error shape is exposed as a typed value the MCP can return verbatim, not just as a stringified `printOutcome` side effect.
-  - `package.json#bin.pathfinder-mcp` — point at the compiled `dist/cli/mcp/index.js`.
+  - `src/cli/index.ts` — register the new `mcp` subcommand alongside the existing ones (`validate`, `create`, `e2e`, …).
   - `tsconfig.cli.json` — include the new `mcp/` subtree.
   - `Dockerfile.cli` — verify the `mcp` subcommand routing still works once the placeholder is replaced (P2 already wired this).
   - `AGENTS.md` and a developer doc (`docs/developer/MCP_SERVER.md` — new) — agent context for the new tools.
@@ -69,7 +69,7 @@ Atomic-commit-sized. Reference phase ID in commit messages (`P3: ...`, `P3a: ...
 - [ ] **B2.** Create `src/cli/mcp/index.ts` — entrypoint. Parses `--transport stdio|http` (default stdio), dispatches to the corresponding transport bootstrap. `--version` returns `CURRENT_SCHEMA_VERSION`.
 - [ ] **B3.** Create `src/cli/mcp/server.ts` — registers all tools with the SDK against a single tool-registry table. Tools are listed once; both transports share the registry.
 - [ ] **B4.** Create `src/cli/mcp/transports/stdio.ts` and `src/cli/mcp/transports/http.ts`. HTTP transport binds to `--port` (default 8080), exposes the SDK's HTTP route shape, and applies the in-process budgets (request size cap, per-call wallclock).
-- [ ] **B5.** Replace `src/cli/mcp-placeholder.ts` with the real entrypoint in `package.json#bin.pathfinder-mcp`. Delete the placeholder.
+- [ ] **B5.** Replace `src/cli/mcp-placeholder.ts` with the real `mcp` subcommand exported from `src/cli/mcp/index.ts` and registered in `src/cli/index.ts`. Update `scripts/docker-entrypoint.sh` to exec `pathfinder-cli mcp "$@"`. Delete the placeholder.
 - [ ] **B6.** Update `tsconfig.cli.json` to include `src/cli/mcp/**`. Verify `dist/cli/mcp/index.js` is produced and executable.
 - [ ] **B7.** Update `Dockerfile.cli` and `scripts/cli-build-utils.js` if the slim runtime manifest needs the new dep.
 
@@ -115,7 +115,7 @@ Each tool: zod input schema, dispatcher to the corresponding `runX`, output mars
 
 ### Verification (matches index exit criteria)
 
-- [ ] A non-Grafana-aware MCP client (Cursor, Claude Desktop) can connect to `npx pathfinder-mcp` over stdio, call `pathfinder_authoring_start`, build a multi-block guide via tool calls, validate, and call `pathfinder_finalize_for_app_platform` to receive a handoff containing both `appPlatform` instructions and a `localExport` fallback.
+- [ ] A non-Grafana-aware MCP client (Cursor, Claude Desktop) can connect to `npx pathfinder-cli mcp` over stdio, call `pathfinder_authoring_start`, build a multi-block guide via tool calls, validate, and call `pathfinder_finalize_for_app_platform` to receive a handoff containing both `appPlatform` instructions and a `localExport` fallback.
 - [ ] The same code, run with the HTTP transport, accepts requests with the same tool surface. (No auth in the MVP — see [resolved open question](../AI-AUTHORING-IMPLEMENTATION.md#does-the-hosted-http-mcp-need-auth-at-all). Edge rate-limiting / autoscaling is a deploy concern, not a code concern.)
 - [ ] Following `localExport`, the client can write `content.json` and `manifest.json` to the user's workspace and the resulting package round-trips through `pathfinder-cli validate`.
 - [ ] The MCP server performs no schema validation of its own — confirmed by code review (the only validator entry points are the imported `runX` functions) and by the D1 integration test.
@@ -158,7 +158,7 @@ _Appended during execution._
 
 ## Handoff to next phase
 
-- **What is now true that wasn't before:** A standalone TypeScript MCP server (`pathfinder-mcp`) ships in the same npm package and Docker image as `pathfinder-cli`. Twelve tools (`pathfinder_authoring_start`, `pathfinder_help`, `pathfinder_create_package`, `pathfinder_add_block`/`add_step`/`add_choice`/`edit_block`/`remove_block`/`set_manifest`, `pathfinder_inspect`, `pathfinder_validate`, `pathfinder_finalize_for_app_platform`) are reachable over **stdio** (`pathfinder-mcp`) and **HTTP** (`pathfinder-mcp --transport http --port <n>`). The CLI is the sole validator end-to-end — confirmed by the integration test that introduces a CLI-strict violation (`pathfinder_add_block` with a conditional block lacking conditions) and asserts the MCP surfaces `SCHEMA_VALIDATION` verbatim.
+- **What is now true that wasn't before:** A standalone TypeScript MCP server (`pathfinder-cli mcp`) ships in the same npm package and Docker image as the rest of `pathfinder-cli`. Twelve tools (`pathfinder_authoring_start`, `pathfinder_help`, `pathfinder_create_package`, `pathfinder_add_block`/`add_step`/`add_choice`/`edit_block`/`remove_block`/`set_manifest`, `pathfinder_inspect`, `pathfinder_validate`, `pathfinder_finalize_for_app_platform`) are reachable over **stdio** (`pathfinder-cli mcp`) and **HTTP** (`pathfinder-cli mcp --transport http --port <n>`). The CLI is the sole validator end-to-end — confirmed by the integration test that introduces a CLI-strict violation (`pathfinder_add_block` with a conditional block lacking conditions) and asserts the MCP surfaces `SCHEMA_VALIDATION` verbatim.
 - **Finalize payload shape (P4 reads this verbatim):** `src/cli/mcp/tools/finalize.ts` constructs the handoff. The integration test in `src/cli/mcp/__tests__/server.test.ts` (`drives a full authoring flow end-to-end`) asserts the key fields (`appPlatform.itemPathTemplate`, `viewer.floatingPath`, `localExport`). P4 should snapshot the full shape before it starts depending on additional fields.
 - **HTTP transport ships open** (no auth) per the resolved open question. Abuse mitigations are `MAX_REQUEST_BYTES` (1 MB) and `PER_CALL_WALLCLOCK_MS` (30 s) in `src/cli/mcp/transports/http.ts` plus deploy-time edge rate limits and autoscaling. P4 should not assume any token verifier on the MCP — the App Platform write authority lives entirely with Assistant's credentials.
 - **State bridge deviation:** Mutation tools marshal the in-flight artifact through a per-call ephemeral `os.tmpdir()` because the CLI runners are directory-oriented. Documented in `docs/developer/MCP_SERVER.md` and in this plan's Deviations. Follow-up to refactor `mutateAndValidate` to an in-memory state mode is **not** a P4 prerequisite — it is a quality-of-life cleanup independent of Assistant integration.
@@ -167,5 +167,5 @@ _Appended during execution._
   - `HOSTED-AUTHORING-MCP.md` "Authentication and authorization" section still describes the original FastMCP token-verifier pattern. Needs a doc PR or a fold-in to P4's docs pass.
   - Hosting model for the HTTP transport (where the centrally hosted MCP runs so Assistant can reach it) is a P4 coordination point with the Assistant team — already noted in P4 wiring items.
   - In-memory state mode for `mutateAndValidate` (collapses the tmpdir bridge to a function call). Quality-of-life only.
-  - **Agent UX hardening — see [`MCP-AGENT-UX-HARDENING.md`](../MCP-AGENT-UX-HARDENING.md).** Living design doc capturing functional feedback observed when real agents drive `pathfinder-mcp` (artifact corruption between calls, YouTube link normalization, `reftarget` selector hallucination, unaddressable steps in multistep blocks, hop-over-hop artifact growth). Not a P4 prerequisite. Other agents who discover new failure modes during testing should append findings to that doc as numbered issues — it is the source of truth for a future MCP hardening phase.
+  - **Agent UX hardening — see [`MCP-AGENT-UX-HARDENING.md`](../MCP-AGENT-UX-HARDENING.md).** Living design doc capturing functional feedback observed when real agents drive `pathfinder-cli mcp` (artifact corruption between calls, YouTube link normalization, `reftarget` selector hallucination, unaddressable steps in multistep blocks, hop-over-hop artifact growth). Not a P4 prerequisite. Other agents who discover new failure modes during testing should append findings to that doc as numbered issues — it is the source of truth for a future MCP hardening phase.
 - **Specific files P4 will be touching:** Assistant-side write-tool surface (out of this repo); the handoff payload in `src/cli/mcp/tools/finalize.ts` (read-only from P4 — do not change shape without snapshot bumps); the viewer deep-link path emitted by the finalize tool (`/a/grafana-pathfinder-app?doc=api%3A<id>&panelMode=floating`) — verify it matches the live `module.tsx` → `findDocPage` → `fetchContent` resolver.

@@ -1,8 +1,8 @@
 # Pathfinder authoring MCP server
 
-The `pathfinder-mcp` server exposes the Pathfinder authoring CLI as a set of MCP tools, so any MCP-capable client (Cursor, Claude Desktop, MCP Inspector, Grafana Assistant) can author guides through tool calls instead of shell invocations.
+The `pathfinder-cli mcp` subcommand exposes the Pathfinder authoring CLI as a set of MCP tools, so any MCP-capable client (Cursor, Claude Desktop, MCP Inspector, Grafana Assistant) can author guides through tool calls instead of shell invocations.
 
-It ships in the same npm package and Docker image as `pathfinder-cli` — there is one source tree, one Zod schema instance, and two `package.json#bin` entrypoints.
+It ships in the same npm package and Docker image as the rest of `pathfinder-cli` — one source tree, one Zod schema instance, one `package.json#bin` entrypoint with subcommand dispatch.
 
 > Design source of truth: `docs/design/HOSTED-AUTHORING-MCP.md`, `docs/design/AUTHORING-SESSION-ARTIFACTS.md`, `docs/design/APP-PLATFORM-PUBLISH-HANDOFF.md`.
 
@@ -12,10 +12,10 @@ It ships in the same npm package and Docker image as `pathfinder-cli` — there 
 
 ```bash
 # After npm run build:cli
-node dist/cli/cli/mcp/index.js
+node dist/cli/cli/index.js mcp
 
 # Or, once the npm package is published:
-npx pathfinder-mcp
+npx pathfinder-cli mcp
 
 # Or via the Docker image:
 docker run --rm -i ghcr.io/grafana/pathfinder-cli:main mcp
@@ -26,7 +26,7 @@ Stdio is the right transport for any MCP client that owns the server's process l
 ### HTTP (centrally hosted)
 
 ```bash
-node dist/cli/cli/mcp/index.js --transport http --port 8080
+node dist/cli/cli/index.js mcp --transport http --port 8080
 ```
 
 The HTTP transport uses the SDK's StreamableHTTP transport in **stateless mode** — `sessionIdGenerator` is omitted so each request gets a fresh transport and there is no server-side session state.
@@ -67,7 +67,7 @@ docker run --rm -i pathfinder-cli:dev mcp
 docker run --rm -p 8080:8080 pathfinder-cli:dev mcp --transport http --port 8080 --host 0.0.0.0
 ```
 
-The `mcp` first-arg routes through `scripts/docker-entrypoint.sh` to `pathfinder-mcp`; anything else routes to `pathfinder-cli`.
+The `mcp` first-arg routes through `scripts/docker-entrypoint.sh` to `pathfinder-cli mcp`; anything else routes to `pathfinder-cli`.
 
 ## Wiring a local agent to the running MCP
 
@@ -75,7 +75,7 @@ The `mcp` first-arg routes through `scripts/docker-entrypoint.sh` to `pathfinder
 
 ```bash
 # Local build (after npm run build:cli)
-claude mcp add pathfinder -- node "$PWD/dist/cli/cli/mcp/index.js"
+claude mcp add pathfinder -- node "$PWD/dist/cli/cli/index.js" mcp
 
 # Or via the local Docker image
 claude mcp add pathfinder -- docker run --rm -i pathfinder-cli:dev mcp
@@ -83,7 +83,7 @@ claude mcp add pathfinder -- docker run --rm -i pathfinder-cli:dev mcp
 # Or project-scoped — drop a .mcp.json at the repo root:
 # {
 #   "mcpServers": {
-#     "pathfinder": { "command": "node", "args": ["./dist/cli/cli/mcp/index.js"] }
+#     "pathfinder": { "command": "node", "args": ["./dist/cli/cli/index.js", "mcp"] }
 #   }
 # }
 ```
@@ -99,7 +99,7 @@ Settings → MCP → "Add new MCP server", or edit `~/.cursor/mcp.json`:
   "mcpServers": {
     "pathfinder": {
       "command": "node",
-      "args": ["/absolute/path/to/dist/cli/cli/mcp/index.js"]
+      "args": ["/absolute/path/to/dist/cli/cli/index.js", "mcp"]
     }
   }
 }
@@ -110,7 +110,7 @@ Swap the `command`/`args` for `docker run --rm -i pathfinder-cli:dev mcp` if you
 ### MCP Inspector
 
 ```bash
-npx @modelcontextprotocol/inspector node "$PWD/dist/cli/cli/mcp/index.js"
+npx @modelcontextprotocol/inspector node "$PWD/dist/cli/cli/index.js" mcp
 ```
 
 Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the loop.
@@ -145,7 +145,7 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 The four `repository-tools.ts` tools are read-only against a public package CDN. They are stateless (no artifact in/out) and need no auth.
 
 - **Default repository**: `https://interactive-learning.grafana.net/packages/`.
-- **Override**: set `PATHFINDER_REPOSITORY_URL` (trailing slash optional) on the process. The HTTP transport's deploy passes this through unchanged; for stdio clients, set it on the `npx pathfinder-mcp` invocation.
+- **Override**: set `PATHFINDER_REPOSITORY_URL` (trailing slash optional) on the process. The HTTP transport's deploy passes this through unchanged; for stdio clients, set it on the `npx pathfinder-cli mcp` invocation.
 - **Caching**: `repository.json` is cached in-process for 60 seconds with single-flight dedup. Per-package `content.json` / `manifest.json` fetches are uncached.
 - **Validation is non-fatal**: the get-tools always return `raw` (the bytes the CDN served) plus a `validation` report. Schema drift surfaces as `validation.issues` and never hard-fails. This is intentional — these tools are a discovery surface and clients debugging drift need to see the actual bytes.
 - **Errors are structured, never thrown**: `{ status: "error", code, message, httpStatus? }` with `code` ∈ `HTTP_ERROR | NETWORK_ERROR | PARSE_ERROR | NOT_FOUND`.
@@ -319,4 +319,4 @@ The integration tests use the SDK's `InMemoryTransport.createLinkedPair()` to ex
 
 ## Deployable artifact
 
-The Docker image `ghcr.io/grafana/pathfinder-cli:main` includes the MCP entrypoint. The convenience `mcp` subcommand (defined in the image's bin routing during P2) delegates to `pathfinder-mcp`, so a hosted deployment is `docker run ghcr.io/grafana/pathfinder-cli:main mcp --transport http --port 8080`. Where the centrally hosted MCP runs is a P4 coordination point with the Assistant team.
+The Docker image `ghcr.io/grafana/pathfinder-cli:main` includes the MCP server as the `pathfinder-cli mcp` subcommand. The image entrypoint routes a leading `mcp` arg through to it, so a hosted deployment is `docker run ghcr.io/grafana/pathfinder-cli:main mcp --transport http --port 8080`. Where the centrally hosted MCP runs is a P4 coordination point with the Assistant team.

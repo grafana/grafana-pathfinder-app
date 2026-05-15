@@ -8,9 +8,9 @@ package plugin
 // intentionally NOT the destination for AI-authoring tools.
 //
 // AI authoring tools live in a standalone TypeScript MCP server under
-// src/cli/ — the same npm package that ships pathfinder-cli, with a second
-// `pathfinder-mcp` entrypoint that imports the CLI commands directly as
-// library functions. See docs/design/HOSTED-AUTHORING-MCP.md and
+// src/cli/ — the same npm package that ships pathfinder-cli, exposed as
+// `pathfinder-cli mcp` which imports the CLI commands directly as library
+// functions. See docs/design/HOSTED-AUTHORING-MCP.md and
 // docs/design/AI-AUTHORING-IMPLEMENTATION.md.
 //
 // The runtime tools in this file (list_guides, get_guide, get_guide_schema,

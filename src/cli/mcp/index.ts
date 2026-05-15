@@ -1,6 +1,5 @@
-#!/usr/bin/env node
 /**
- * Pathfinder authoring MCP server entrypoint (`pathfinder-mcp`).
+ * Pathfinder authoring MCP server subcommand (`pathfinder-cli mcp`).
  *
  * Two transports from one codebase:
  *   - `--transport stdio` (default) for local MCP clients (Cursor, Claude
@@ -11,8 +10,8 @@
  *     "Does the hosted HTTP MCP need auth at all?" — resolved 2026-04-30).
  *
  * The version reported here is intentionally the schema version, not a
- * separate package version — `pathfinder-mcp@1.1.0` means "supports
- * schema 1.1.0", same as the CLI.
+ * separate package version — `pathfinder-cli mcp --version` reports the
+ * schema version it supports, same as `pathfinder-cli --version`.
  */
 
 import { Command, Option } from 'commander';
@@ -21,10 +20,7 @@ import { CURRENT_SCHEMA_VERSION } from '../../types/json-guide.schema';
 import { runHttp } from './transports/http';
 import { runStdio } from './transports/stdio';
 
-const program = new Command();
-
-program
-  .name('pathfinder-mcp')
+export const mcpCommand = new Command('mcp')
   .description('Pathfinder authoring MCP server')
   .version(CURRENT_SCHEMA_VERSION)
   .addOption(new Option('--transport <transport>', 'Transport to bind').choices(['stdio', 'http']).default('stdio'))
@@ -46,7 +42,7 @@ program
     }
 
     const handle = await runHttp({ port: opts.port, host: opts.host });
-    process.stderr.write(`pathfinder-mcp listening on http://${opts.host}:${handle.port}/mcp\n`);
+    process.stderr.write(`pathfinder-cli mcp listening on http://${opts.host}:${handle.port}/mcp\n`);
 
     const shutdown = async (): Promise<void> => {
       try {
@@ -58,8 +54,3 @@ program
     process.on('SIGINT', () => void shutdown());
     process.on('SIGTERM', () => void shutdown());
   });
-
-program.parseAsync(process.argv).catch((err) => {
-  process.stderr.write(`pathfinder-mcp: ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
-});

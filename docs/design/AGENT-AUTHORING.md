@@ -757,14 +757,13 @@ CLI commands are exported as importable library functions (`runCreate`, `runAddB
 
 ## Distribution
 
-The CLI and the MCP server ship as **two binary entrypoints of a single npm package** (`pathfinder-cli`), both pinned to `CURRENT_SCHEMA_VERSION` via a prepublish script. The package's `package.json#bin` exposes:
+The CLI and the MCP server ship as **a single binary entrypoint of one npm package** (`pathfinder-cli`), pinned to `CURRENT_SCHEMA_VERSION` via a prepublish script. The package's `package.json#bin` exposes:
 
-- `pathfinder-cli` — the human and CI-facing command (`create`, `add-block`, …).
-- `pathfinder-mcp` — the MCP server (stdio transport by default; HTTP transport for hosted deployments).
+- `pathfinder-cli` — the human and CI-facing command (`create`, `add-block`, …). The MCP server is the `mcp` subcommand of the same binary (`pathfinder-cli mcp`; stdio transport by default, HTTP transport for hosted deployments).
 
 There are two distribution channels, both wrapping the same npm package:
 
-1. **npm registry** — primary channel. Consumed via `npx pathfinder-cli@<version>` or `npx pathfinder-mcp@<version>` for local-developer and MCP-client use, and via `npm install` in service deployments.
+1. **npm registry** — primary channel. Consumed via `npx pathfinder-cli@<version>` (or `npx pathfinder-cli@<version> mcp` for the authoring MCP server) for local-developer and MCP-client use, and via `npm install` in service deployments.
 2. **Docker image** — `grafana/pathfinder-cli:<version>`. Built on every release and published to a container registry. Convenience entrypoints: `docker run --rm grafana/pathfinder-cli:<version> add-block …` runs the CLI; `docker run --rm grafana/pathfinder-cli:<version> mcp` runs the MCP server. The image wraps the same npm package, so behavior is identical to direct npm use.
 
 There is no per-platform single-file binary, no Node SEA / `pkg` step, and no plugin-tarball-bundled CLI. An earlier draft of this design called for a per-platform Node binary that the plugin's Go MCP would invoke via `exec.Command`; that approach was retired when the MCP itself moved to TypeScript (see [Pathfinder authoring MCP service — Where it runs](./HOSTED-AUTHORING-MCP.md#where-it-runs)).
@@ -781,11 +780,11 @@ GitHub Actions:
 After each release publish:
 
 - `npx pathfinder-cli@<version> --version` returns `CURRENT_SCHEMA_VERSION`.
-- `npx pathfinder-mcp@<version> --version` returns `CURRENT_SCHEMA_VERSION`.
+- `npx pathfinder-cli@<version> mcp --version` returns `CURRENT_SCHEMA_VERSION`.
 - `docker run --rm grafana/pathfinder-cli:<version> --version` returns `CURRENT_SCHEMA_VERSION`.
 - `docker run --rm grafana/pathfinder-cli:<version> mcp --version` returns `CURRENT_SCHEMA_VERSION`.
 
-Both entrypoints execute identical authoring logic. The MCP server imports the CLI commands directly — no IPC, no temp dir, no `exec.Command`. This is what makes the design's core property hold end-to-end: **schema-illegal output is impossible because it is impossible in the CLI**, and the CLI is the only place schema knowledge lives.
+The CLI and its `mcp` subcommand execute identical authoring logic — the MCP imports the CLI commands directly, no IPC, no temp dir, no `exec.Command`. This is what makes the design's core property hold end-to-end: **schema-illegal output is impossible because it is impossible in the CLI**, and the CLI is the only place schema knowledge lives.
 
 ---
 
@@ -943,13 +942,13 @@ The `create` command's auto-generated package `id` (when `--id` is omitted) take
 
 ### Phase 7: Build pipeline and distribution
 
-- Add a `package.json#bin` entry for `pathfinder-mcp` alongside `pathfinder-cli`, both pointing into the same compiled `dist/` tree (the MCP entrypoint is added in P3; the bin map is added here as part of distribution).
+- Keep a single `package.json#bin` entry (`pathfinder-cli`) pointing into the compiled `dist/` tree; the MCP server arrives in P3 as the `mcp` subcommand of that same binary.
 - Add a prepublish script that pins `package.json` version to `CURRENT_SCHEMA_VERSION`.
 - GitHub Actions: on every merge to `main`, build the package and run smoke tests against the local tarball.
 - GitHub Actions: on tagged releases, publish to the npm registry and push the matching Docker image tag.
 - Smoke tests after each release:
   - `npx pathfinder-cli@<version> --version` returns `CURRENT_SCHEMA_VERSION`.
-  - `npx pathfinder-mcp@<version> --version` returns `CURRENT_SCHEMA_VERSION`.
+  - `npx pathfinder-cli@<version> mcp --version` returns `CURRENT_SCHEMA_VERSION`.
   - `docker run --rm grafana/pathfinder-cli:<version> --version` returns `CURRENT_SCHEMA_VERSION`.
   - `docker run --rm grafana/pathfinder-cli:<version> mcp --version` returns `CURRENT_SCHEMA_VERSION`.
 

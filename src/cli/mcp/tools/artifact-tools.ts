@@ -32,7 +32,7 @@ export function registerArtifactTools(server: McpServer): void {
       },
     },
     async ({ title, id, type, description }) => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pathfinder-mcp-create-'));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pathfinder-cli-mcp-create-'));
       try {
         const pkgDir = path.join(dir, 'pkg');
         const finalId = id ?? deriveId(title);
