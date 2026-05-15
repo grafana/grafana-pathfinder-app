@@ -18,11 +18,11 @@ import {
   resolveTargetElement,
 } from '../../interactive-engine';
 import { testIds } from '../../constants/testIds';
-import {
-  AssistantCustomizableProvider,
-  useAssistantBlockValue,
-  useIsAssistantAvailable,
-} from '../../integrations/assistant-integration';
+import { AssistantCustomizableProvider } from '../../integrations/assistant-integration/AssistantCustomizableContext';
+import { useAssistantBlockValue } from '../../integrations/assistant-integration/AssistantBlockValueContext';
+// Direct import bypasses the barrel so jsdom tests don't pull `@grafana/assistant`
+// (whose runtime init throws "Class extends value undefined" in jest).
+import { useIsAssistantAvailable } from '../../integrations/assistant-integration/assistant-dev-mode';
 import { CodeBlock } from '../../docs-retrieval';
 import { scrollUntilElementFound } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
