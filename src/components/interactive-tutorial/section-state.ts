@@ -280,9 +280,20 @@ export function restoreFromStorage(input: {
   const allStepIds = input.stepComponents.map((s) => s.stepId);
   const valid = new Set<string>();
   const allIds = new Set(allStepIds);
+  const legacyIdMap = new Map<string, string>();
+  input.stepComponents.forEach((step) => {
+    if (step.legacyStepId && step.legacyStepId !== step.stepId) {
+      legacyIdMap.set(step.legacyStepId, step.stepId);
+    }
+  });
   input.completed.forEach((id) => {
     if (allIds.has(id)) {
       valid.add(id);
+      return;
+    }
+    const migratedId = legacyIdMap.get(id);
+    if (migratedId) {
+      valid.add(migratedId);
     }
   });
 

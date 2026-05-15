@@ -54,6 +54,20 @@ describe('parseAssistantPatch', () => {
     }
   });
 
+  it('reports the no-confident-fix sentinel before selector schema validation', () => {
+    const text = JSON.stringify({
+      type: 'selector-patch',
+      targetStepId: 'x',
+      newReftarget: '<unchanged>',
+      rationale: 'no confident fix',
+    });
+    const result = parseAssistantPatch(text);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe("AI couldn't find a confident fix for this step");
+    }
+  });
+
   it('accepts a prepend-step patch with a valid interactive block', () => {
     const text = JSON.stringify({
       type: 'prepend-step',

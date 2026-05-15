@@ -351,4 +351,15 @@ describe('restoreFromStorage — migration', () => {
     });
     expect(Array.from(result.state.completed).sort()).toEqual(['a', 'b']);
   });
+
+  it('maps legacy positional step ids to current parser-supplied ids', () => {
+    const result = restoreFromStorage({
+      completed: new Set(['section-1-step-1']),
+      acknowledged: null,
+      stepComponents: [{ ...makeStep('_ai-fix:a1b2c3d4'), legacyStepId: 'section-1-step-1' }],
+      gate: NO_GATE,
+    });
+    expect(Array.from(result.state.completed)).toEqual(['_ai-fix:a1b2c3d4']);
+    expect(result.state.cursor).toBe(1);
+  });
 });

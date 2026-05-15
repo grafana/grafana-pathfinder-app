@@ -485,10 +485,12 @@ export function InteractiveSection({
         // Prefer the parser-set stepId (author-set or content-hash synthesized
         // by `synthesizeStepIds`); fall back to positional for HTML-source
         // guides that don't go through json-parser.
-        const stepId = props.stepId || `${sectionId}-step-${stepIndex + 1}`;
+        const legacyStepId = `${sectionId}-step-${stepIndex + 1}`;
+        const stepId = props.stepId || legacyStepId;
 
         steps.push({
           stepId,
+          legacyStepId,
           element: child as React.ReactElement<InteractiveStepProps>,
           index: stepIndex,
           targetAction: props.targetAction,
@@ -505,10 +507,12 @@ export function InteractiveSection({
         stepIndex++;
       } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
         const props = child.props as any; // InteractiveMultiStepProps
-        const stepId = props.stepId || `${sectionId}-multistep-${stepIndex + 1}`;
+        const legacyStepId = `${sectionId}-multistep-${stepIndex + 1}`;
+        const stepId = props.stepId || legacyStepId;
 
         steps.push({
           stepId,
+          legacyStepId,
           element: child as React.ReactElement<any>,
           index: stepIndex,
           targetAction: undefined, // Multi-step handles internally
@@ -522,10 +526,12 @@ export function InteractiveSection({
         stepIndex++;
       } else if (React.isValidElement(child) && (child as any).type === InteractiveGuided) {
         const props = child.props as any; // InteractiveGuidedProps
-        const stepId = props.stepId || `${sectionId}-guided-${stepIndex + 1}`;
+        const legacyStepId = `${sectionId}-guided-${stepIndex + 1}`;
+        const stepId = props.stepId || legacyStepId;
 
         steps.push({
           stepId,
+          legacyStepId,
           element: child as React.ReactElement<any>,
           index: stepIndex,
           targetAction: undefined, // Guided handles internally

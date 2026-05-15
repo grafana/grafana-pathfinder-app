@@ -9,7 +9,7 @@ import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from '..
 import { parseHTMLToComponents } from './html-parser';
 import { validateGuide } from '../validation';
 import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
-import { synthesizeStepIds } from './synthesize-step-ids';
+import { SYNTHESIZED_ID_PREFIX, synthesizeStepIds } from './synthesize-step-ids';
 import { renderMarkdown } from '@grafana/data';
 import DOMPurify from 'dompurify';
 import {
@@ -215,6 +215,10 @@ interface ConversionResult {
   hasVideo?: boolean;
   hasAssistant?: boolean;
   warning?: string;
+}
+
+function getRenderableSectionId(id: string | undefined): string | undefined {
+  return id?.startsWith(SYNTHESIZED_ID_PREFIX) ? undefined : id;
 }
 
 /**
@@ -472,7 +476,7 @@ function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: st
       props: {
         title: block.title,
         isSequence: true, // Sections are always sequences
-        id: block.id,
+        id: getRenderableSectionId(block.id),
         requirements,
         objectives,
         autoCollapse: block.autoCollapse,

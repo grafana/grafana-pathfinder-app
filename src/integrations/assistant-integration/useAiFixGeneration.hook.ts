@@ -144,6 +144,19 @@ function looksLikeSentinel(value: string | undefined): boolean {
   return normalized === NO_CONFIDENT_FIX_SENTINEL || normalized === '<unchanged>';
 }
 
+function rawPatchHasNoConfidentFixSentinel(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') {
+    return false;
+  }
+  const patch = raw as { rationale?: unknown; newReftarget?: unknown; type?: unknown };
+  if (typeof patch.rationale === 'string' && looksLikeSentinel(patch.rationale)) {
+    return true;
+  }
+  return (
+    patch.type !== 'prepend-step' && typeof patch.newReftarget === 'string' && looksLikeSentinel(patch.newReftarget)
+  );
+}
+
 /**
  * Parse the assistant's text response into a validated patch.
  *
@@ -158,6 +171,12 @@ export function parseAssistantPatch(text: string): { ok: true; patch: AiFixPatch
     return {
       ok: false,
       error: new Error(`AI fix: response was not valid JSON (${e instanceof Error ? e.message : 'parse error'})`),
+    };
+  }
+  if (rawPatchHasNoConfidentFixSentinel(raw)) {
+    return {
+      ok: false,
+      error: new Error("AI couldn't find a confident fix for this step"),
     };
   }
   const parsed = AiFixPatchSchema.safeParse(raw);

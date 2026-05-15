@@ -81,6 +81,8 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
  */
 export interface StepInfo {
   stepId: string;
+  /** Previous positional id used before parser-supplied ids; used to restore old persisted progress. */
+  legacyStepId?: string;
   element: React.ReactElement<InteractiveStepProps> | React.ReactElement<any>;
   index: number;
   targetAction?: string; // Optional for multi-step and guided

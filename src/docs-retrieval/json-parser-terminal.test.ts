@@ -101,6 +101,39 @@ describe('json-parser terminal block', () => {
     expect(terminalChild).toBeDefined();
   });
 
+  it('does not expose synthesized section ids to the rendered section', () => {
+    const guide = JSON.stringify({
+      id: 'test-anonymous-section',
+      title: 'Anonymous section',
+      blocks: [
+        {
+          type: 'section',
+          title: 'Generated at runtime',
+          blocks: [
+            {
+              type: 'interactive',
+              action: 'button',
+              reftarget: '[data-testid="run"]',
+              content: 'Run it',
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = parseJsonGuide(guide);
+    expect(result.isValid).toBe(true);
+
+    const sectionEl = result.data!.elements.find((el) => el.type === 'interactive-section');
+    expect(sectionEl).toBeDefined();
+    expect(sectionEl!.props.id).toBeUndefined();
+    const stepChild = sectionEl!.children.find(
+      (child) => typeof child !== 'string' && child.type === 'interactive-step'
+    );
+    expect(stepChild).toBeDefined();
+    expect((stepChild as any).props.stepId).toMatch(/^_ai-fix:/);
+  });
+
   it('passes autoCollapse property to section block', () => {
     const guide = JSON.stringify({
       id: 'test-section-autocollapse',
