@@ -3,7 +3,7 @@ import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
 import { useInteractiveElements, ActionMonitor } from '../../interactive-engine';
-import { useStepChecker } from '../../requirements-manager';
+import { useStepChecker, getRequirementExplanation } from '../../requirements-manager';
 import { useIsAlignmentPaused, useAlignmentStartingLocation } from '../../global-state/alignment-pending-context';
 import { InteractiveStep, resetStepCounter } from './interactive-step';
 import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
@@ -228,6 +228,10 @@ export function InteractiveSection({
     checking: boolean;
     passed: boolean;
     error?: string;
+    canFix?: boolean;
+    fixType?: string;
+    targetHref?: string;
+    explanation?: string;
   }>({ checking: !!requirements, passed: !requirements }); // If no requirements, default to passed
 
   // Track if user has manually scrolled to avoid fighting with auto-scroll
@@ -406,10 +410,17 @@ export function InteractiveSection({
       const result = await checkRequirementsFromData(sectionRequirementsData);
 
       if (sectionMountedRef.current) {
+        const fixableError = result.error?.find((e) => e.canFix);
         setSectionRequirementsStatus({
           checking: false,
           passed: result.pass,
           error: result.error?.[0]?.error || (result.pass ? undefined : 'Requirements not met'),
+          canFix: !!fixableError,
+          fixType: fixableError?.fixType,
+          targetHref: fixableError?.targetHref,
+          explanation: result.pass
+            ? undefined
+            : getRequirementExplanation(result.error?.[0]?.requirement, undefined, result.error?.[0]?.error),
         });
       }
     } catch (error) {
@@ -420,6 +431,28 @@ export function InteractiveSection({
       }
     }
   }, [requirements, sectionId, title, checkRequirementsFromData]);
+
+  // Fix section requirements when the user clicks the "Fix this" button in the banner
+  const fixSectionRequirements = useCallback(async () => {
+    if (!sectionRequirementsStatus.canFix) {
+      return;
+    }
+    const { fixType, targetHref } = sectionRequirementsStatus;
+    try {
+      const { NavigationManager } = await import('../../interactive-engine');
+      const navigationManager = new NavigationManager();
+      if (fixType === 'expand-parent-navigation' && targetHref) {
+        await navigationManager.expandParentNavigationSection(targetHref);
+      } else if (fixType === 'location' && targetHref) {
+        await navigationManager.fixLocationRequirement(targetHref);
+      } else if (fixType === 'navigation') {
+        await navigationManager.fixNavigationRequirements();
+      }
+      await checkSectionRequirements();
+    } catch (fixError) {
+      console.warn('Failed to fix section requirements:', fixError);
+    }
+  }, [sectionRequirementsStatus, checkSectionRequirements]);
 
   // Initial requirements check and re-check on relevant events
   useEffect(() => {
@@ -1967,7 +2000,14 @@ export function InteractiveSection({
       {!isCollapsed && requirements && !sectionRequirementsStatus.passed && (
         <div className="interactive-section-requirements-banner">
           <span className="interactive-section-requirements-icon">🔒</span>
-          <span className="interactive-section-requirements-message">Requirements not yet met</span>
+          <span className="interactive-section-requirements-message">
+            {sectionRequirementsStatus.explanation || 'Requirements not yet met'}
+          </span>
+          {sectionRequirementsStatus.canFix && (
+            <button type="button" className="interactive-section-fix-button" onClick={fixSectionRequirements}>
+              Fix this
+            </button>
+          )}
         </div>
       )}
 
