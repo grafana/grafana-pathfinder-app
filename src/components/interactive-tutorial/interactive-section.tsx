@@ -61,12 +61,6 @@ function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
   return getStepTypeLookup().get(child.type as React.ComponentType<any>);
 }
 import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
-import {
-  interactiveStepStorage,
-  sectionCollapseStorage,
-  interactiveCompletionStorage,
-  sectionAcknowledgementStorage,
-} from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
 import type { InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
@@ -81,16 +75,11 @@ import {
 import { classifySectionChild } from './section-child-classifier';
 import { useDocumentStepProgress } from './hooks/use-document-step-progress';
 import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
+import { useSectionPersistence } from './hooks/use-section-persistence';
 import { useSectionRequirements } from './hooks/use-section-requirements';
 import { useSectionScroll } from './hooks/use-section-scroll';
-import { deriveSectionState, initialSectionState, restoreFromStorage, sectionReducer } from './section-state';
-import {
-  getDocumentStepPosition,
-  getTotalDocumentSteps,
-  nextSectionCounter,
-  registerSectionSteps,
-  resetRegistry,
-} from './section-registry';
+import { deriveSectionState, initialSectionState, sectionReducer } from './section-state';
+import { getDocumentStepPosition, nextSectionCounter, registerSectionSteps, resetRegistry } from './section-registry';
 import {
   CODE_BLOCK_STEP_SCHEMA,
   type EnhanceContext,
@@ -184,44 +173,6 @@ export function InteractiveSection({
     return contentKey.indexOf('devtools') > -1 || contentKey.startsWith('block-editor://preview/');
   }, []);
 
-  // Persist completed steps using new user storage system.
-  //
-  // Preview-mode sandbox (#842, Bug 3): in block-editor preview the section
-  // is a throwaway render — we must not pollute localStorage with progress
-  // tied to a `block-editor://preview/...` content key. Skip every write
-  // while preserving the in-window event dispatch so listeners that drive
-  // ephemeral UI (useGuidePreviewProgress's "hasProgress" → Reset guide
-  // button visibility) still react during the same session.
-  const persistCompletedSteps = useCallback(
-    (ids: Set<string>) => {
-      const contentKey = getContentKey();
-
-      let percentage: number | undefined;
-      if (!isPreviewMode) {
-        interactiveStepStorage.setCompleted(contentKey, sectionId, ids);
-
-        // Compute unified completion percentage across ALL sections (including standalone)
-        const docTotal = getTotalDocumentSteps();
-        const allCompleted = interactiveStepStorage.countAllCompleted(contentKey);
-        percentage = docTotal > 0 ? Math.round((allCompleted / docTotal) * 100) : undefined;
-        if (percentage !== undefined) {
-          interactiveCompletionStorage.set(contentKey, percentage);
-        }
-      }
-
-      // Dispatch event to notify that progress was saved (for reset button visibility).
-      // Fires in preview mode too — useGuidePreviewProgress depends on it.
-      if (ids.size > 0 && typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('interactive-progress-saved', {
-            detail: { contentKey, hasProgress: true, completionPercentage: percentage },
-          })
-        );
-      }
-    },
-    [sectionId, isPreviewMode]
-  );
-
   // Use ref for cancellation to avoid closure issues
   const isCancelledRef = useRef(false);
 
@@ -305,69 +256,20 @@ export function InteractiveSection({
     return analyzeAcknowledgement(kinds);
   }, [children]);
 
-  // Load persisted completion + acknowledgement state on first mount only
-  // (#842, Bug 4 fix).
-  //
-  // The previous version re-fired whenever `stepComponents` changed
-  // reference — which happens routinely because the parent renderer
-  // produces fresh children on every render. Restoring twice is idempotent
-  // in steady state but masked race conditions during block-editor preview
-  // remounts. The `didRestoreRef` guard makes the contract obvious:
-  // "restore exactly once per InteractiveSection instance."
-  //
-  // Preview-mode sandbox (#842, Bug 3): block-editor previews start fresh
-  // every session — we skip the read entirely so stale entries from prior
-  // buggy versions cannot resurrect.
-  //
-  // Acknowledgement-gate plumbing (#842, Phase 4): we always read the
-  // ack storage namespace so phase 5 can switch the gate on without
-  // touching this effect. With the gate inert (phase 4), the read value
-  // flows through unchanged.
-  const didRestoreRef = useRef(false);
-  useEffect(() => {
-    if (didRestoreRef.current) {
-      return;
-    }
-    didRestoreRef.current = true;
-    if (isPreviewMode) {
-      return;
-    }
-    const contentKey = getContentKey();
-    let cancelled = false;
-    Promise.all([
-      interactiveStepStorage.getCompleted(contentKey, sectionId),
-      sectionAcknowledgementStorage.get(contentKey, sectionId),
-    ]).then(([restoredCompleted, restoredAck]) => {
-      if (cancelled) {
-        return;
-      }
-      // Phase 5 (#842): the gate is on. The mount-only effect deps
-      // are deliberately empty — gateAnalysis is closed over for the
-      // migration decision only, evaluated once on first mount.
-      const { state: restoredState, migrated } = restoreFromStorage({
-        completed: restoredCompleted,
-        acknowledged: restoredAck,
-        stepComponents,
-        gate: gateAnalysis,
-      });
-      dispatch({
-        type: 'RESTORE',
-        completed: restoredState.completed,
-        acknowledged: restoredState.acknowledged,
-        allStepIds: stepComponents.map((s) => s.stepId),
-      });
-      if (migrated) {
-        sectionAcknowledgementStorage.set(contentKey, sectionId, true);
-      }
+  // All storage IO + the `interactive-progress-saved` CustomEvent
+  // dispatch + the mount-only RESTORE effect are owned by
+  // `useSectionPersistence`. Pattern J: contract-surface ownership
+  // move. The four storage namespaces (steps + completion + ack +
+  // collapse-clear) and the event payload shape are pinned by the
+  // Phase 0 contracts tripwire.
+  const { persistCompletedSteps, clearStepAcknowledgement, setAcknowledgement, clearAllStorage } =
+    useSectionPersistence({
+      sectionId,
+      isPreviewMode,
+      stepComponents,
+      gateAnalysis,
+      dispatch,
     });
-    return () => {
-      cancelled = true;
-    };
-    // Intentionally [] — true mount-only. `stepComponents` is closed over
-    // by reference; remounts (instance change) re-trigger the effect via
-    // a fresh `didRestoreRef`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Objectives checking is handled by the step checker hook
 
@@ -600,11 +502,8 @@ export function InteractiveSection({
 
       // Acknowledgement clears alongside completion — the reducer enforces
       // that invariant. Mirror it in storage so a remount-restore picks up
-      // the cleared ack.
-      const contentKey = getContentKey();
-      if (!isPreviewMode) {
-        sectionAcknowledgementStorage.clear(contentKey, sectionId);
-      }
+      // the cleared ack. Hook gates on preview mode internally.
+      clearStepAcknowledgement();
 
       // Also clear currently executing step if it matches
       if (currentlyExecutingStep === stepId) {
@@ -615,7 +514,7 @@ export function InteractiveSection({
       // This ensures green checkmarks are cleared from the UI
       setResetTrigger((prev) => prev + 1);
     },
-    [completedSteps, currentlyExecutingStep, isPreviewMode, persistCompletedSteps, sectionId, stepComponents]
+    [clearStepAcknowledgement, completedSteps, currentlyExecutingStep, persistCompletedSteps, stepComponents]
   );
 
   // Execute a single step (shared between individual and sequence execution)
@@ -1129,17 +1028,11 @@ export function InteractiveSection({
     // Signal all child steps to reset their local state
     setResetTrigger((prev) => prev + 1);
 
-    // Clear storage persistence. In preview mode none of the section-
-    // scoped storage namespaces are written to (see persistCompletedSteps,
-    // sectionCollapseStorage, sectionAcknowledgementStorage call sites)
-    // so the clears would be no-ops — skip them to mirror the rest of
-    // the file's preview-mode contract.
-    const contentKey = getContentKey();
-    if (!isPreviewMode) {
-      interactiveStepStorage.clear(contentKey, sectionId);
-      sectionCollapseStorage.clear(contentKey, sectionId); // Clear collapse state
-      sectionAcknowledgementStorage.clear(contentKey, sectionId); // Clear ack so the gate re-arms on next pass
-    }
+    // Clear storage persistence. Hook gates on preview mode internally
+    // (in preview mode none of the namespaces were written to anyway,
+    // so the clears would be no-ops). Sweeps steps + collapse + ack
+    // in one call.
+    clearAllStorage();
 
     // Notify listeners that progress for this content was cleared (#842, Bug 2).
     // Mirrors the dispatch in BlockPreview's reset() so any consumer driving
@@ -1149,6 +1042,7 @@ export function InteractiveSection({
     // block-editor preview's Reset guide button stays visible after a
     // per-section reset, even when no progress is left.
     if (typeof window !== 'undefined') {
+      const contentKey = getContentKey();
       window.dispatchEvent(
         new CustomEvent('interactive-progress-cleared', {
           detail: { contentKey },
@@ -1184,7 +1078,7 @@ export function InteractiveSection({
         }, 100);
       }, 200);
     });
-  }, [disabled, isRunning, stepComponents, sectionId, isPreviewMode, resetCollapse]);
+  }, [disabled, isRunning, stepComponents, resetCollapse, clearAllStorage]);
 
   /**
    * Mark the section as acknowledged (issue #842).
@@ -1200,8 +1094,6 @@ export function InteractiveSection({
       return;
     }
 
-    const contentKey = getContentKey();
-
     if (gateAnalysis.isAllPassive) {
       // All-passive section: the reducer needs at least one entry in
       // `completed` before it accepts ACKNOWLEDGE. Inject a synthetic
@@ -1216,18 +1108,16 @@ export function InteractiveSection({
     }
 
     dispatch({ type: 'ACKNOWLEDGE' });
-    if (!isPreviewMode) {
-      sectionAcknowledgementStorage.set(contentKey, sectionId, true);
-    }
+    setAcknowledgement();
   }, [
     disabled,
     isRunning,
     sectionKind,
     gateAnalysis.isAllPassive,
-    isPreviewMode,
     persistCompletedSteps,
     sectionId,
     completedSteps,
+    setAcknowledgement,
   ]);
 
   // Register this section's steps in the global registry BEFORE rendering children
