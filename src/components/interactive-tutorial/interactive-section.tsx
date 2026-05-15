@@ -1999,14 +1999,18 @@ export function InteractiveSection({
       {/* Section requirements status banner */}
       {!isCollapsed && requirements && !sectionRequirementsStatus.passed && (
         <div className="interactive-section-requirements-banner">
-          <span className="interactive-section-requirements-icon">🔒</span>
-          <span className="interactive-section-requirements-message">
-            {sectionRequirementsStatus.explanation || 'Requirements not yet met'}
-          </span>
+          <div className="interactive-section-requirements-content">
+            <span className="interactive-section-requirements-icon">🔒</span>
+            <span className="interactive-section-requirements-message">
+              {sectionRequirementsStatus.explanation || 'Requirements not yet met'}
+            </span>
+          </div>
           {sectionRequirementsStatus.canFix && (
-            <button type="button" className="interactive-section-fix-button" onClick={fixSectionRequirements}>
-              Fix this
-            </button>
+            <div className="interactive-step-requirement-buttons">
+              <button type="button" className="interactive-requirement-retry-btn" onClick={fixSectionRequirements}>
+                Fix this
+              </button>
+            </div>
           )}
         </div>
       )}
