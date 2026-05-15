@@ -278,7 +278,7 @@ function tokensFromSelector(selector: string): string[] {
  */
 type ConfidenceResult = { ok: true } | { ok: false; reason: string };
 
-function evaluatePatchConfidence(patch: AiFixPatch, originalReftarget: string): ConfidenceResult {
+function evaluatePatchConfidence(patch: AiFixPatch): ConfidenceResult {
   // Identify the selector this patch wants the runtime to act on next.
   // For prepend-step, that's the inserted step's reftarget (it has to
   // resolve in the CURRENT page state, since it runs first).
@@ -647,11 +647,8 @@ function AiFixOrchestrator({ activeTab, onPatchApplied }: AiFixOrchestratorProps
     }
 
     // Confidence gate: only apply patches whose proposed selector
-    // resolves on the current page AND (for selector swaps) shares
-    // meaningful tokens with the original. Hallucinated swaps to
-    // unrelated elements (e.g. Bar chart → Bar gauge) get rejected
-    // here before they can be written into the guide.
-    const confidence = evaluatePatchConfidence(patch, request.refTarget ?? '');
+    // resolves on the current page before they can be written into the guide.
+    const confidence = evaluatePatchConfidence(patch);
     if (!confidence.ok) {
       reportAppInteraction(UserInteraction.AiFixFailed, {
         step_id: request.stepId ?? '',
