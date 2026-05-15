@@ -21,6 +21,18 @@ The canonical design lives in the six design docs linked from [`PATHFINDER-AI-AU
 
 Each row's "Detailed plan" cell is filled in when an agent runs the per-phase planning step and writes `docs/design/phases/ai-authoring-N-<slug>.md`.
 
+### MCP hardening (post-P3 follow-ups)
+
+Parallel track to P4–P6. Sources from [`MCP-AGENT-UX-HARDENING.md`](./MCP-AGENT-UX-HARDENING.md) — the living parking lot for "the server works, but agents misuse it in predictable ways" findings. Each slice is sized to land independently; they share the M1/M2/M3 plumbing introduced in slice 1.
+
+| Slice | Title                                         | Status   | Detailed plan                                                                                           | Closes                                          |
+| ----- | --------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| MH1   | Routing, composition, and selector discipline | Complete | [mcp-hardening-1-routing-and-composition.md](./phases/mcp-hardening-1-routing-and-composition.md)       | Hardening issues #3, #7, #8 + M1 + M2 plumbing  |
+| MH2   | Artifact integrity + input normalization      | Complete | [mcp-hardening-2-integrity-and-normalize.md](./phases/mcp-hardening-2-integrity-and-normalize.md)       | Hardening issues #1, #2 + M3 plumbing           |
+| MH3   | Routing telemetry response                    | Complete | [mcp-hardening-3-routing-telemetry-response.md](./phases/mcp-hardening-3-routing-telemetry-response.md) | Further close on issue #7 from production trace |
+
+All three landed 2026-05-12 under PR #869. Hardening issues #4 (step/choice block ids) and #5 (hop-over-hop growth, tracked in the P5 GCS-sessions entry) remain open. Issue #6 (deploy/log discoverability) is closed incidentally by the P4 runbook task.
+
 ## How to use this document
 
 1. Pick the next not-started phase whose dependencies are met.
@@ -217,6 +229,17 @@ The split is mechanical; the exit criterion above belongs to P1b.
 - Cross-doc consistency check: `id`, `metadata.name`, `?doc=api:<id>` are the same string at every boundary.
 
 **Status note (2026-05-01, after first integration tests).** D3 (non-Grafana client) passes end-to-end. D1 (Cloud Assistant) is **partial**: Assistant correctly drives the authoring loop and reads `clientGuidance.grafanaAppPlatform`, then stops at the publish step because it has no generic App Platform write tool, falling through to the block-editor Import flow. This is the [P0 spike](./phases/ai-authoring-0-assistant-spike.md#handoff-to-next-phase) executor gap, not an instruction-quality gap. **The MCP server will not be extended to perform the write itself** — the central Cloud Run deployment holds no per-instance credentials by design (see [HOSTED-AUTHORING-MCP.md — The MCP server does not write to App Platform — by deployment design](./HOSTED-AUTHORING-MCP.md#the-mcp-server-does-not-write-to-app-platform--by-deployment-design)). Closing D1 requires giving Assistant a write capability, drafted in Assistant's tool-pattern (operation enum, scoping field, format hints, endpoint + payload shape, confirmation policy). Tracked as P4 OQ6 in the [phase plan](./phases/ai-authoring-4-assistant-handoff.md).
+
+**Status note (2026-05-15, executor work in flight).** A frontend-only PR in the assistant repo (#6457, open) closes the D1 executor gap. Shape:
+
+- Two web-surface tools registered with Assistant's existing `tool()` factory: `pathfinder_manage_guide_drafts` (`list`/`get`/`apply`/`delete`) and `pathfinder_publish_guide` (`publish`/`unpublish`).
+- Both register with `deferLoading: true` — they only enter conversation context when the agent searches for them, driven by the existing tool-search hooks in our `clientGuidance.grafanaAppPlatform` text.
+- Registration gated on `aggregation.pathfinderbackend-ext-grafana-com.enabled` + frontend `isEditor()`. Writes flow through Assistant's session-authenticated `getBackendSrv()` — consistent with our "MCP holds no per-instance credentials" posture, no MCP server change required.
+- Safety invariants: `apply` forces `spec.status === 'draft'` and refuses to mutate currently-published guides; `metadata.resourceVersion` is stripped on create; `pathfinder_publish_guide` is `alwaysRequiresConfirmation` (cannot be bypassed by skill-level `allowedTools`).
+- Scope is web sidebar / Workspace only — Slack / MS Teams / A2A / CLI surfaces are explicitly deferred (an earlier Go-handler draft was removed because it was unregistered dead code). A `Pathfinder authoring` skill template ships in the same PR to prime the agent on tool selection.
+- An Assistant-team-owned follow-up tracks consolidating the pair into a generic `app_platform_write` tool with an allow-list registry; the per-resource tools land first as the concrete shipping vehicle.
+
+**Pathfinder-side follow-up (post-merge, in this repo).** Update `clientGuidance.grafanaAppPlatform.steps` in `src/cli/mcp/tools/finalize.ts` to name `pathfinder_manage_guide_drafts` and `pathfinder_publish_guide` directly, replacing the current "POST to the collection path" prose with the two-tool draft-then-publish flow. Update the `finalize.test.ts` snapshot in the same commit.
 
 ---
 
