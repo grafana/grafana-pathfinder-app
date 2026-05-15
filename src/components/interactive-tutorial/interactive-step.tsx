@@ -1065,7 +1065,7 @@ export const InteractiveStep = forwardRef<
                   );
                 }}
               >
-                Ask AI to fix
+                Fix with Assistant
               </button>
             )}
           </div>
@@ -1163,7 +1163,7 @@ export const InteractiveStep = forwardRef<
                         );
                       }}
                     >
-                      Ask AI to fix
+                      Fix with Assistant
                     </button>
                   )}
 

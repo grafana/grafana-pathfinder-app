@@ -937,7 +937,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                     className="interactive-guided-ai-fix-btn"
                     data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
                   >
-                    Ask AI to fix
+                    Fix with Assistant
                   </Button>
                 )}
             </div>
