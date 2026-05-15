@@ -12,6 +12,7 @@ import { runInspect } from '../../commands/inspect';
 import { runValidate } from '../../commands/validate';
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import { buildArtifactSummary } from '../../utils/package-io';
+import { readOnly } from './annotations';
 import { outcomeResult } from './result';
 import { withArtifact } from './state-bridge';
 
@@ -26,6 +27,7 @@ export function registerInspectionTools(server: McpServer): void {
     {
       description:
         'Use this tool when you need to read the current state of an in-flight Pathfinder authoring artifact — tree summary, block lookup by id, or array enumeration at a JSONPath. Read-only; the artifact passes through unchanged.',
+      annotations: readOnly('Inspect Pathfinder artifact'),
       inputSchema: {
         artifact: ArtifactSchema,
         blockId: z.string().optional().describe('Show details for a single block by id.'),
@@ -54,6 +56,7 @@ export function registerInspectionTools(server: McpServer): void {
     {
       description:
         'Use this tool when you need to confirm an in-flight Pathfinder authoring artifact is publishable before calling finalize. Runs the canonical Pathfinder validation pipeline (Zod + cross-file checks + condition syntax). Read-only.',
+      annotations: readOnly('Validate Pathfinder artifact'),
       inputSchema: {
         artifact: ArtifactSchema,
       },

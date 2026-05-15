@@ -20,6 +20,7 @@ import { runValidate } from '../../commands/validate';
 import { defaultPackageId } from '../../utils/auto-id';
 import { newPackageState, buildArtifactSummary, readPackage } from '../../utils/package-io';
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
+import { writeAppend } from './annotations';
 import { outcomeResult } from './result';
 
 export function registerArtifactTools(server: McpServer): void {
@@ -28,6 +29,7 @@ export function registerArtifactTools(server: McpServer): void {
     {
       description:
         'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Returns a fresh authoring artifact ({ content, manifest }) for use as input to subsequent Pathfinder authoring tools.',
+      annotations: writeAppend('Create Pathfinder package'),
       inputSchema: {
         title: z.string().describe('Guide title shown to learners.'),
         id: z
@@ -76,6 +78,7 @@ export function registerArtifactTools(server: McpServer): void {
     {
       description:
         'Use this tool when an agent wants a pre-populated starter guide instead of the blank artifact pathfinder_create_package returns. Produces a schema-valid guide with a markdown intro block and one section placeholder, plus a manifest with default category/author/testEnvironment fields. Output passes Pathfinder validation by construction.',
+      annotations: writeAppend('Create Pathfinder guide template'),
       inputSchema: {
         id: z
           .string()

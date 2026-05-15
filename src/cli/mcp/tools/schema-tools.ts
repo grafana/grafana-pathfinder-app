@@ -11,6 +11,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { exportAllSchemas, exportSchema, listSchemas, SCHEMA_REGISTRY } from '../../commands/schema';
+import { readOnly } from './annotations';
 import { outcomeResult, textResult } from './result';
 
 const SCHEMA_NAMES = Object.keys(SCHEMA_REGISTRY);
@@ -22,6 +23,7 @@ export function registerSchemaTools(server: McpServer): void {
     {
       description:
         'Use this tool when an agent or downstream consumer needs the canonical JSON Schema for a Pathfinder authoring artifact (guide, block, content, manifest, repository, graph). Returns the Zod-derived JSON Schema with refinement notes — the same schema the CLI validator enforces. Read-only.',
+      annotations: readOnly('Get Pathfinder schema'),
       inputSchema: {
         name: z
           .string()

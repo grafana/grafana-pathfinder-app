@@ -23,6 +23,7 @@ import { z } from 'zod';
 
 import { runValidate } from '../../commands/validate';
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
+import { readOnly } from './annotations';
 import { textResult } from './result';
 
 const APP_PLATFORM_API_VERSION = 'pathfinderbackend.ext.grafana.com/v1alpha1';
@@ -37,6 +38,7 @@ export function registerFinalizeTool(server: McpServer): void {
     {
       description:
         'Use this tool when the user wants to publish a finished Pathfinder guide to Grafana. Validates the artifact, then returns the App Platform write payload (resource, path templates, viewer link) and a localExport fallback. The MCP does not perform the write — the controlling agent (e.g. Grafana Assistant) does.',
+      annotations: readOnly('Finalize Pathfinder artifact'),
       inputSchema: {
         artifact: z.object({
           content: z.record(z.string(), z.unknown()),
