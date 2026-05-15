@@ -2,7 +2,10 @@
  * AI auto-heal patch wire format.
  *
  * Defines the contract for what the Grafana Assistant is allowed to return
- * when a user clicks "Ask AI to fix" on a failing interactive step. Two
+ * when a user clicks the AI-powered "Fix this" button on a failing
+ * interactive step (the same affordance offered for deterministic
+ * fix-registry recoveries; the sparkle icon distinguishes the AI variant
+ * from a deterministic one). Two
  * shapes are accepted:
  *
  * - `selector-patch`: replace the failing step's `reftarget` with a new

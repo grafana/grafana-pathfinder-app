@@ -610,8 +610,8 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string): Convers
     element: {
       type: 'interactive-multi-step',
       props: {
-        // Synthesized at parse time when absent; lets the AI fix button
-        // address this multistep as the patch container.
+        // Synthesized at parse time when absent; lets the AI-powered
+        // "Fix this" path address this multistep as the patch container.
         stepId: block.id,
         internalActions,
         requirements,
@@ -653,8 +653,8 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string): ConversionRes
     element: {
       type: 'interactive-guided',
       props: {
-        // Synthesized at parse time when absent; lets the AI fix button
-        // address this guided block as the patch container.
+        // Synthesized at parse time when absent; lets the AI-powered
+        // "Fix this" path address this guided block as the patch container.
         stepId: block.id,
         internalActions,
         stepTimeout: block.stepTimeout ?? 120000,

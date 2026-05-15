@@ -182,7 +182,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // recorded. The watcher effect further down compares this against the
     // current prop value to detect an AI auto-heal patch — when the runtime
     // selector swaps, we clear the error state and auto-retry instead of
-    // leaving the user stranded on the "Try again / Ask AI to fix" UI.
+    // leaving the user stranded on the "Try again / Fix this ✨" UI.
     const failedActionRefTargetRef = useRef<string | undefined>(undefined);
 
     // Handle reset trigger from parent section
@@ -240,9 +240,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       onComplete, // Pass through for objectives auto-completion
     });
 
-    // AI auto-heal availability — gates the runtime "Ask AI to fix" button
-    // for sub-step element-not-found failures inside this multistep.
-    // Assistant rollout is the per-tenant gate.
+    // AI auto-heal availability — gates the AI-powered "Fix this" button
+    // (sparkle variant) for sub-step element-not-found failures inside
+    // this multistep. Assistant rollout is the per-tenant gate.
     const isAssistantAvailable = useIsAssistantAvailable();
 
     // Combined completion state: objectives always win (clarification 1, 2, 18)
@@ -898,10 +898,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   Skip this step
                 </Button>
               )}
-              {/* Ask AI to fix — for runtime element-not-found errors inside
-                  a multistep's internal action. `stepId` is always set
-                  because docs-retrieval's `synthesizeStepIds` fills missing
-                  ids before the renderer parses the guide. */}
+              {/* AI-powered "Fix this" — for runtime element-not-found
+                  errors inside a multistep's internal action. `stepId` is
+                  always set because docs-retrieval's `synthesizeStepIds`
+                  fills missing ids before the renderer parses the guide. */}
               {stepId &&
                 failedStepIndex >= 0 &&
                 executionError &&

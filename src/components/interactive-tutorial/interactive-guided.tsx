@@ -252,9 +252,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     const isCompletedWithObjectives =
       parentCompleted || isLocallyCompleted || checker.completionReason === 'objectives';
 
-    // AI auto-heal availability — gates the "Ask AI to fix" buttons (both
-    // pre-execution requirement failure and runtime guided-execution
-    // failure). Assistant rollout is the per-tenant gate.
+    // AI auto-heal availability — gates the AI-powered "Fix this" buttons
+    // (sparkle variant) for both the pre-execution requirement-failure path
+    // and the runtime guided-execution-failure path. Assistant rollout is
+    // the per-tenant gate.
     const isAssistantAvailable = useIsAssistantAvailable();
 
     // Main execution logic
@@ -733,9 +734,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               >
                 {checker.canFixRequirement ? 'Fix this' : 'Check again'}
               </button>
-              {/* Ask AI to fix — only when no deterministic fix is offered and
-                  the failing requirement is a missing DOM element. Mirrors the
-                  single-step variant in interactive-step.tsx. */}
+              {/* AI-powered "Fix this" — surfaces only when no
+                  deterministic fix is offered and the failing requirement
+                  is a missing DOM element. Mirrors the single-step variant
+                  in interactive-step.tsx. */}
               {!checker.canFixRequirement && checker.requiresDomElement && isAssistantAvailable && (
                 <button
                   className="interactive-guided-ai-fix-btn"
@@ -858,10 +860,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   Skip this step
                 </Button>
               )}
-              {/* Ask AI to fix — for runtime failures during guided execution
-                  (timeout / element-not-found). `stepId` is always set
-                  because docs-retrieval's `synthesizeStepIds` fills missing
-                  ids before the renderer parses the guide. */}
+              {/* AI-powered "Fix this" — for runtime failures during
+                  guided execution (timeout / element-not-found). `stepId`
+                  is always set because docs-retrieval's `synthesizeStepIds`
+                  fills missing ids before the renderer parses the guide. */}
               {currentStepIndex >= 0 && stepId && isAssistantAvailable && (
                 <Button
                   onClick={() => {

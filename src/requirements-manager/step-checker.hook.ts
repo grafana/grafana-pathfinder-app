@@ -915,9 +915,10 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   }, [requirements, state.isEnabled, state.isCompleted]);
 
   // AI auto-heal exposes a single requirements-side signal here. The UI tier
-  // ANDs it with the feature flag + `isAssistantAvailable` to decide whether
-  // to render the "Ask AI to fix" button. Keeping the assistant/flag hooks
-  // out of this engine-tier file avoids a Tier-1 → Tier-3 import.
+  // ANDs it with `isAssistantAvailable` to decide whether the AI-powered
+  // "Fix this" affordance should surface (when no deterministic fix-registry
+  // handler matched). Keeping the assistant hook out of this engine-tier
+  // file avoids a Tier-1 → Tier-3 import.
   const requiresDomElement = (requirements ?? '').includes('exists-reftarget');
 
   return {

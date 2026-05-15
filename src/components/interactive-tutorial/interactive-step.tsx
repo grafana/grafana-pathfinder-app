@@ -203,9 +203,10 @@ export const InteractiveStep = forwardRef<
     const [lazyScrollError, setLazyScrollError] = useState<string | null>(null);
     const [lastAttemptedAction, setLastAttemptedAction] = useState<'show' | 'do' | null>(null);
 
-    // AI auto-heal availability — gates the "Ask AI to fix" button. The
+    // AI auto-heal availability — gates the AI-powered "Fix this" button
+    // (the sparkle variant). Surfaces only when the assistant is reachable;
     // assistant rollout is itself the per-tenant gate, so no separate
-    // feature flag is needed here.
+    // feature flag is needed.
     const isAssistantAvailable = useIsAssistantAvailable();
 
     // Persist standalone step completion across page refreshes
@@ -1035,12 +1036,13 @@ export const InteractiveStep = forwardRef<
             >
               Retry
             </button>
-            {/* Ask AI to fix — runtime "element not found" path, mirrors the
-                multistep variant's runtime-error gate. The pre-execution
-                requirements gate (further down) only fires when a step
-                declares `requirements: "exists-reftarget"`; without it, a
-                missing element only surfaces here at execution time and
-                the AI fallback would otherwise be unreachable. */}
+            {/* AI-powered "Fix this" — runtime "element not found" path,
+                mirrors the multistep variant's runtime-error gate. The
+                pre-execution requirements gate (further down) only fires
+                when a step declares `requirements: "exists-reftarget"`;
+                without it, a missing element only surfaces here at
+                execution time and the AI variant would otherwise be
+                unreachable. */}
             {/^Element not found/i.test(lazyScrollError) && isAssistantAvailable && (
               <button
                 className="interactive-requirement-ai-fix-btn"
@@ -1132,10 +1134,12 @@ export const InteractiveStep = forwardRef<
                   </button>
                 )}
 
-                {/* Ask AI to fix — last-resort, hidden when a deterministic
-                    fix-registry handler is offered. Dispatches a request event;
-                    the docs-panel orchestrator handles the assistant call,
-                    blocker, and patch apply. */}
+                {/* AI-powered "Fix this" — last-resort variant of the
+                    same Fix this affordance, hidden when a deterministic
+                    fix-registry handler is offered. Dispatches a request
+                    event; the docs-panel orchestrator handles the
+                    assistant call, blocker, and patch apply. The sparkle
+                    icon distinguishes the AI variant visually. */}
                 {isEligibleForChecking &&
                   !checker.canFixRequirement &&
                   !checker.isEnabled &&

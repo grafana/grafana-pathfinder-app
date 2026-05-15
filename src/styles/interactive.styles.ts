@@ -675,11 +675,12 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     },
   },
 
-  // Shared visual for the "Ask AI to fix" buttons across single-step,
-  // guided, and multistep variants. Matches the retry button so the two
-  // sit consistently side-by-side in any container; the disabled state
-  // is needed for the lazy-error placement (the button respects the
-  // show/do in-flight gating used by the retry button next to it).
+  // Shared visual for the AI-powered "Fix this" buttons (the sparkle
+  // variant) across single-step, guided, and multistep contexts.
+  // Matches the retry button so the two sit consistently side-by-side
+  // in any container; the disabled state is needed for the lazy-error
+  // placement (the button respects the show/do in-flight gating used by
+  // the retry button next to it).
   '.interactive-requirement-ai-fix-btn, .interactive-guided-ai-fix-btn': {
     padding: '4px 10px',
     fontSize: '0.8rem',
@@ -790,10 +791,10 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     },
   },
 
-  // Lazy-error block uses inline layout (no flex), so the AI fix button
-  // needs an explicit left-margin to clear the Retry button. Scoped to
-  // this container so the requirement-buttons flex-gap layout is
-  // unaffected.
+  // Lazy-error block uses inline layout (no flex), so the AI-powered
+  // "Fix this" button needs an explicit left-margin to clear the Retry
+  // button. Scoped to this container so the requirement-buttons
+  // flex-gap layout is unaffected.
   '.interactive-step-lazy-error .interactive-requirement-ai-fix-btn': {
     marginLeft: '8px',
   },

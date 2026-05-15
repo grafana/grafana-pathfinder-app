@@ -95,7 +95,7 @@ export interface UseAiFixGenerationReturn {
 
 const ORIGIN = 'grafana-pathfinder-app/ai-fix';
 
-const SYSTEM_PROMPT = `You are repairing a broken interactive guide step in Grafana Pathfinder. The user clicked an "Ask AI to fix" button after a CSS selector failed to find its target element.
+const SYSTEM_PROMPT = `You are repairing a broken interactive guide step in Grafana Pathfinder. The user clicked the AI-powered "Fix this" button after a CSS selector failed to find its target element.
 
 Return EXACTLY ONE JSON object matching one of these shapes (no prose, no explanation, no code fences):
 

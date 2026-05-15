@@ -1,6 +1,10 @@
 /**
- * AiFixOrchestrator — glue between the "Ask AI to fix" button in interactive
- * steps and the docs-panel Scene model.
+ * AiFixOrchestrator — glue between the AI-powered "Fix this" affordance in
+ * interactive steps and the docs-panel Scene model. This is the same
+ * "Fix this" button shown for deterministic fix-registry recoveries; it
+ * just delegates to the Grafana Assistant when no deterministic handler
+ * matches and the assistant is available (indicated to the user by the
+ * sparkle icon).
  *
  * Listens for `pathfinder-ai-fix-request` events emitted by
  * `interactive-step.tsx` / `interactive-guided.tsx` when a user invokes the

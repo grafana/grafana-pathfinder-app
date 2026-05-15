@@ -15,11 +15,11 @@ export const FIX_TYPES = {
   EXPAND_PARENT_NAVIGATION: 'expand-parent-navigation',
   EXPAND_OPTIONS_GROUP: 'expand-options-group',
   /**
-   * Last-resort recovery: the user clicked "Ask AI to fix" because no
-   * deterministic fix-registry handler matched. The patch is applied via
-   * the assistant-integration `pathfinder-ai-fix-patch` event, NOT through
-   * `dispatchFix`. Listed here only so the value is available for testIds
-   * and analytics.
+   * Last-resort recovery: the user clicked the AI-powered "Fix this"
+   * variant because no deterministic fix-registry handler matched. The
+   * patch is applied via the assistant-integration
+   * `pathfinder-ai-fix-patch` event, NOT through `dispatchFix`. Listed
+   * here only so the value is available for testIds and analytics.
    */
   AI_FIX: 'ai-fix',
 } as const;
