@@ -21,9 +21,9 @@
  * Renders nothing.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
-import { AppEvents } from '@grafana/data';
+import { AppEvents, usePluginContext } from '@grafana/data';
 import { getAppEvents } from '@grafana/runtime';
 
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
@@ -33,6 +33,7 @@ import { applyPatchToGuide } from '../../integrations/assistant-integration/appl
 import { synthesizeStepIdsInJson } from '../../docs-retrieval';
 import { GlobalInteractionBlocker } from '../../interactive-engine';
 import { querySelectorAllEnhanced, resolveSelector } from '../../lib/dom';
+import { getConfigWithDefaults } from '../../constants';
 import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 /**
@@ -552,6 +553,16 @@ function collectDomContext(failingReftarget: string): string {
 function AiFixOrchestrator({ activeTab, onPatchApplied }: AiFixOrchestratorProps): null {
   const contentKey = activeTab?.id ?? 'pathfinder-ai-fix-orchestrator';
   const { generate, patch, error, reset, isAssistantAvailable } = useAiFixGeneration(contentKey);
+  // Defense-in-depth: even though the buttons are config-gated in the step
+  // components, drop any in-flight AI fix request when the admin setting is
+  // off. Without this a stale dispatched event (or a misuse from elsewhere)
+  // could still reach the assistant. Reads the same `enableAiAutoHeal`
+  // plugin admin setting the step-component button gates use.
+  const pluginContext = usePluginContext();
+  const aiAutoHealEnabled = useMemo(
+    () => getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableAiAutoHeal,
+    [pluginContext?.meta?.jsonData]
+  );
 
   // The active request we're servicing. Cleared when patch lands or errors.
   const pendingRequestRef = useRef<AiFixRequestDetail | null>(null);
@@ -569,6 +580,10 @@ function AiFixOrchestrator({ activeTab, onPatchApplied }: AiFixOrchestratorProps
       const detail = (e as CustomEvent<AiFixRequestDetail>).detail;
       const tab = activeTabRef.current;
       if (!tab?.content?.content) {
+        return;
+      }
+      if (!aiAutoHealEnabled) {
+        reportAppInteraction(UserInteraction.AiFixFailed, { reason: 'feature_flag_disabled' });
         return;
       }
       if (!isAssistantAvailable) {
@@ -615,7 +630,7 @@ function AiFixOrchestrator({ activeTab, onPatchApplied }: AiFixOrchestratorProps
 
     window.addEventListener('pathfinder-ai-fix-request', handler);
     return () => window.removeEventListener('pathfinder-ai-fix-request', handler);
-  }, [generate, isAssistantAvailable]);
+  }, [generate, isAssistantAvailable, aiAutoHealEnabled]);
 
   // Apply a successfully-validated patch.
   useEffect(() => {

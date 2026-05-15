@@ -50,6 +50,13 @@ export const DEFAULT_REQUIREMENTS_CHECK_TIMEOUT = 3000; // ms
 export const DEFAULT_GUIDED_STEP_TIMEOUT = 30000; // ms (30 seconds)
 export const DEFAULT_DISABLE_AUTO_COLLAPSE = false; // Auto-collapse enabled by default
 
+// AI auto-heal: opt-in admin-controlled gate for the AI-powered "Fix this"
+// affordance on failing interactive steps. The deterministic fix-registry
+// path is always available; this only governs the LLM-backed sparkle button
+// that asks the Grafana Assistant to mutate guide JSON. Default OFF — write
+// paths that touch guide content require an explicit admin opt-in.
+export const DEFAULT_ENABLE_AI_AUTO_HEAL = false;
+
 // Global Link Interception defaults
 export const DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS = false; // Experimental opt-in feature
 
@@ -115,6 +122,9 @@ export interface DocsPluginConfig {
   requirementsCheckTimeout?: number;
   guidedStepTimeout?: number;
   disableAutoCollapse?: boolean;
+  // AI auto-heal: gates the AI-powered "Fix this" affordance on failing
+  // interactive steps. The deterministic fix-registry path is unaffected.
+  enableAiAutoHeal?: boolean;
   // Global Link Interception
   interceptGlobalDocsLinks?: boolean;
   // Open Panel on Launch
@@ -160,6 +170,7 @@ export const getConfigWithDefaults = (
   requirementsCheckTimeout: config.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
   guidedStepTimeout: config.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
   disableAutoCollapse: config.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE,
+  enableAiAutoHeal: config.enableAiAutoHeal ?? DEFAULT_ENABLE_AI_AUTO_HEAL,
   // Global Link Interception
   interceptGlobalDocsLinks: config.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
   // Open Panel on Launch

@@ -1,7 +1,9 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button, Icon } from '@grafana/ui';
+import { usePluginContext } from '@grafana/data';
 
 import { waitForReactUpdates } from '../../lib/async-utils';
+import { getConfigWithDefaults } from '../../constants';
 import {
   useStepChecker,
   getPostVerifyExplanation,
@@ -163,6 +165,7 @@ export const InteractiveStep = forwardRef<
       className,
       // New unified state management props (passed by parent)
       stepId,
+      sourceStepId,
       isEligibleForChecking = true,
       isCompleted: parentCompleted = false,
       isCurrentlyExecuting = false,
@@ -178,6 +181,12 @@ export const InteractiveStep = forwardRef<
     },
     ref
   ) => {
+    // The id used to address this step inside the guide JSON when
+    // dispatching a `pathfinder-ai-fix-request`. Falls back to `stepId`
+    // for HTML-source guides where no JSON id was synthesized — AI fix
+    // can't address those, but other code paths still need a non-empty
+    // identifier in the analytics payload.
+    const aiFixStepId = sourceStepId ?? stepId;
     const generatedStepIdRef = useRef<string | undefined>(undefined);
     if (!generatedStepIdRef.current) {
       anonymousStepCounter += 1;
@@ -204,10 +213,20 @@ export const InteractiveStep = forwardRef<
     const [lastAttemptedAction, setLastAttemptedAction] = useState<'show' | 'do' | null>(null);
 
     // AI auto-heal availability — gates the AI-powered "Fix this" button
-    // (the sparkle variant). Surfaces only when the assistant is reachable;
-    // assistant rollout is itself the per-tenant gate, so no separate
-    // feature flag is needed.
+    // (the sparkle variant). Requires BOTH:
+    //   1. The assistant being reachable in this Grafana instance.
+    //   2. The `enableAiAutoHeal` plugin admin setting being on (default off).
+    // The setting defaults to `false`, so the LLM-backed write path stays
+    // opt-in per instance even when the assistant is available. Toggling
+    // the setting off removes the sparkle button entirely; the
+    // deterministic fix-registry "Fix this" affordance is unaffected.
     const isAssistantAvailable = useIsAssistantAvailable();
+    const pluginContext = usePluginContext();
+    const aiAutoHealEnabled = useMemo(
+      () => getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableAiAutoHeal,
+      [pluginContext?.meta?.jsonData]
+    );
+    const aiFixEnabled = isAssistantAvailable && aiAutoHealEnabled;
 
     // Persist standalone step completion across page refreshes
     useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
@@ -1043,14 +1062,14 @@ export const InteractiveStep = forwardRef<
                 without it, a missing element only surfaces here at
                 execution time and the AI variant would otherwise be
                 unreachable. */}
-            {/^Element not found/i.test(lazyScrollError) && isAssistantAvailable && (
+            {/^Element not found/i.test(lazyScrollError) && aiFixEnabled && (
               <button
                 className="interactive-requirement-ai-fix-btn"
                 data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
                 disabled={isShowRunning || isDoRunning}
                 onClick={() => {
                   reportAppInteraction(UserInteraction.AiFixAccepted, {
-                    step_id: stepId ?? '',
+                    step_id: aiFixStepId ?? '',
                     rendered_step_id: renderedStepId,
                     reftarget: refTarget ?? '',
                     target_action: targetAction ?? '',
@@ -1058,7 +1077,7 @@ export const InteractiveStep = forwardRef<
                   window.dispatchEvent(
                     new CustomEvent('pathfinder-ai-fix-request', {
                       detail: {
-                        stepId,
+                        stepId: aiFixStepId,
                         renderedStepId,
                         refTarget,
                         action: targetAction,
@@ -1144,13 +1163,13 @@ export const InteractiveStep = forwardRef<
                   !checker.canFixRequirement &&
                   !checker.isEnabled &&
                   checker.requiresDomElement &&
-                  isAssistantAvailable && (
+                  aiFixEnabled && (
                     <button
                       className="interactive-requirement-ai-fix-btn"
                       data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
                       onClick={() => {
                         reportAppInteraction(UserInteraction.AiFixAccepted, {
-                          step_id: stepId ?? '',
+                          step_id: aiFixStepId ?? '',
                           rendered_step_id: renderedStepId,
                           reftarget: refTarget ?? '',
                           target_action: targetAction ?? '',
@@ -1158,7 +1177,7 @@ export const InteractiveStep = forwardRef<
                         window.dispatchEvent(
                           new CustomEvent('pathfinder-ai-fix-request', {
                             detail: {
-                              stepId,
+                              stepId: aiFixStepId,
                               renderedStepId,
                               refTarget,
                               action: targetAction,

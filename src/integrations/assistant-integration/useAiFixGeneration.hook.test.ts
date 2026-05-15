@@ -68,6 +68,55 @@ describe('parseAssistantPatch', () => {
     const result = parseAssistantPatch(text);
     expect(result.ok).toBe(true);
   });
+
+  // The system prompt instructs the model to return the "<unchanged>"
+  // sentinel in `newReftarget` when it can't find a confident fix.
+  // Schema validation rejects `<` / `>` substrings via the selector
+  // deny-list, so the sentinel MUST be detected before schema parsing
+  // — otherwise the user sees a confusing "disallowed substring"
+  // error instead of the friendly couldn't-fix message.
+  it('detects the "<unchanged>" sentinel in newReftarget before schema validation', () => {
+    const text = JSON.stringify({
+      type: 'selector-patch',
+      targetStepId: 'step-1',
+      newReftarget: '<unchanged>',
+      rationale: 'no confident fix',
+    });
+    const result = parseAssistantPatch(text);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe("AI couldn't find a confident fix for this step");
+      expect(result.error.message).not.toMatch(/schema check/);
+      expect(result.error.message).not.toMatch(/disallowed substring/);
+    }
+  });
+
+  it('detects the "no confident fix" sentinel in rationale alone', () => {
+    const text = JSON.stringify({
+      type: 'selector-patch',
+      targetStepId: 'step-1',
+      newReftarget: '[data-testid="something-real"]',
+      rationale: 'No Confident Fix',
+    });
+    const result = parseAssistantPatch(text);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe("AI couldn't find a confident fix for this step");
+    }
+  });
+
+  it('detects the sentinel even when the model omits the rationale field', () => {
+    const text = JSON.stringify({
+      type: 'selector-patch',
+      targetStepId: 'step-1',
+      newReftarget: '<UNCHANGED>',
+    });
+    const result = parseAssistantPatch(text);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe("AI couldn't find a confident fix for this step");
+    }
+  });
 });
 
 describe('buildUserPrompt', () => {

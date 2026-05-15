@@ -482,13 +482,19 @@ export function InteractiveSection({
     React.Children.forEach(children, (child) => {
       if (React.isValidElement(child) && (child as any).type === InteractiveStep) {
         const props = child.props as InteractiveStepProps;
-        // Prefer the parser-set stepId (author-set or content-hash synthesized
-        // by `synthesizeStepIds`); fall back to positional for HTML-source
-        // guides that don't go through json-parser.
-        const stepId = props.stepId || `${sectionId}-step-${stepIndex + 1}`;
+        // `stepId` is ALWAYS positional — it's the storage key for
+        // `interactiveStepStorage` and must remain stable across the
+        // pre-/post-`synthesizeStepIds` boundary so existing user
+        // progress doesn't get orphaned. The JSON id (author-set or
+        // synthesized) is captured separately as `sourceStepId` and
+        // flows to the AI auto-heal patch flow via the cloneElement
+        // forwarder below.
+        const stepId = `${sectionId}-step-${stepIndex + 1}`;
+        const sourceStepId = props.stepId;
 
         steps.push({
           stepId,
+          sourceStepId,
           element: child as React.ReactElement<InteractiveStepProps>,
           index: stepIndex,
           targetAction: props.targetAction,
@@ -505,10 +511,12 @@ export function InteractiveSection({
         stepIndex++;
       } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
         const props = child.props as any; // InteractiveMultiStepProps
-        const stepId = props.stepId || `${sectionId}-multistep-${stepIndex + 1}`;
+        const stepId = `${sectionId}-multistep-${stepIndex + 1}`;
+        const sourceStepId = props.stepId;
 
         steps.push({
           stepId,
+          sourceStepId,
           element: child as React.ReactElement<any>,
           index: stepIndex,
           targetAction: undefined, // Multi-step handles internally
@@ -522,10 +530,12 @@ export function InteractiveSection({
         stepIndex++;
       } else if (React.isValidElement(child) && (child as any).type === InteractiveGuided) {
         const props = child.props as any; // InteractiveGuidedProps
-        const stepId = props.stepId || `${sectionId}-guided-${stepIndex + 1}`;
+        const stepId = `${sectionId}-guided-${stepIndex + 1}`;
+        const sourceStepId = props.stepId;
 
         steps.push({
           stepId,
+          sourceStepId,
           element: child as React.ReactElement<any>,
           index: stepIndex,
           targetAction: undefined, // Guided handles internally
@@ -1660,6 +1670,10 @@ export function InteractiveSection({
         return React.cloneElement(child as React.ReactElement<InteractiveStepProps>, {
           ...child.props,
           stepId: stepInfo.stepId,
+          // Forward the JSON id separately so AI fix dispatched events can
+          // address the failing block in the guide JSON. Storage stays
+          // keyed off the positional `stepId` above.
+          sourceStepId: stepInfo.sourceStepId,
           isEligibleForChecking,
           isCompleted,
           isCurrentlyExecuting,
@@ -1702,6 +1716,9 @@ export function InteractiveSection({
         return React.cloneElement(child as React.ReactElement<any>, {
           ...(child.props as any),
           stepId: stepInfo.stepId,
+          // Forward the JSON id for AI fix addressability — see the
+          // matching note on the InteractiveStep cloneElement above.
+          sourceStepId: stepInfo.sourceStepId,
           isEligibleForChecking,
           isCompleted,
           isCurrentlyExecuting,
@@ -1748,6 +1765,9 @@ export function InteractiveSection({
         return React.cloneElement(child as React.ReactElement<any>, {
           ...(child.props as any),
           stepId: stepInfo.stepId,
+          // Forward the JSON id for AI fix addressability — see the
+          // matching note on the InteractiveStep cloneElement above.
+          sourceStepId: stepInfo.sourceStepId,
           isEligibleForChecking,
           isCompleted,
           isCurrentlyExecuting,

@@ -196,6 +196,7 @@ export const testIds = {
       requirementsTimeout: 'config-interactive-requirements-timeout',
       guidedTimeout: 'config-interactive-guided-timeout',
       disableAutoCollapse: 'config-interactive-disable-auto-collapse',
+      enableAiAutoHeal: 'config-interactive-enable-ai-auto-heal',
       reset: 'config-interactive-reset-defaults',
       submit: 'config-interactive-submit',
     },

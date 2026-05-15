@@ -413,4 +413,69 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument();
     });
   });
+
+  // Regression for the AI auto-heal stepId orphaning bug. The json-parser
+  // calls `synthesizeStepIds` which fills `block.id` with content-hash
+  // values like `_ai-fix:abc123` when authors omit ids. If the section
+  // used those synthesized ids as the storage key, every guide upgrade
+  // would silently orphan existing user progress (which was stored under
+  // pre-synthesizeStepIds positional keys like `section-x-step-1`).
+  //
+  // The fix decouples the storage stepId (always positional) from the
+  // `sourceStepId` used by the AI fix flow to address into JSON. These
+  // tests pin that contract: passing a synthesized stepId via the
+  // child's `props.stepId` must NOT change the storage key.
+  describe('storage stepId stays positional even when JSON id is synthesized', () => {
+    const SYNTHESIZED_STEP_ID = '_ai-fix:abc123de';
+
+    function renderSectionWithSynthesizedStepId() {
+      return render(
+        <InteractiveSection id="synth" title="Synthesized id section" autoCollapse={false}>
+          <InteractiveStep stepId={SYNTHESIZED_STEP_ID} targetAction="highlight" refTarget=".a">
+            Step
+          </InteractiveStep>
+        </InteractiveSection>
+      );
+    }
+
+    it('persists completion under the positional id, not the synthesized JSON id', async () => {
+      renderSectionWithSynthesizedStepId();
+
+      // The harness step stub binds `harness-complete-${stepId}` from the
+      // `stepId` prop the section passes down. The section now passes a
+      // POSITIONAL id (`section-synth-step-1`), not the synthesized id.
+      await waitFor(() => expect(screen.getByTestId('harness-complete-section-synth-step-1')).toBeInTheDocument());
+      // Defensive: the synthesized id must NOT be the rendered stepId.
+      expect(screen.queryByTestId(`harness-complete-${SYNTHESIZED_STEP_ID}`)).not.toBeInTheDocument();
+
+      await click('harness-complete-section-synth-step-1');
+
+      // Storage receives the positional id, matching pre-PR behaviour
+      // so existing user progress isn't orphaned by the upgrade.
+      await waitFor(() => {
+        const stored = memoryStore.get(`section-steps::${NON_PREVIEW_KEY}::section-synth`) as Set<string> | undefined;
+        expect(stored).toBeDefined();
+        expect(stored?.has('section-synth-step-1')).toBe(true);
+        expect(stored?.has(SYNTHESIZED_STEP_ID)).toBe(false);
+      });
+    });
+
+    it('restores completion stored under the positional id (legacy progress survives)', async () => {
+      // Pre-seed legacy progress: a guide that was completed under the
+      // pre-AI-fix positional storage scheme. After upgrade, the same
+      // step now also has a synthesized JSON id, but the section MUST
+      // still recognize the stored entry.
+      memoryStore.set(`section-steps::${NON_PREVIEW_KEY}::section-synth`, new Set(['section-synth-step-1']));
+
+      renderSectionWithSynthesizedStepId();
+
+      // The mount-restore path treats the legacy positional id as
+      // completed → Reset Section is the surfaced affordance, not Do
+      // Section. If the section had keyed storage off the synthesized
+      // id this assertion would fail because the stored set wouldn't
+      // intersect with the new (synthesized) stepId.
+      await waitFor(() => expect(screen.getByTestId(resetButton('section-synth'))).toBeInTheDocument());
+      expect(screen.queryByTestId(doButton('section-synth'))).not.toBeInTheDocument();
+    });
+  });
 });

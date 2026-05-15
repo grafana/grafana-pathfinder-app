@@ -92,6 +92,15 @@ interface InteractiveGuidedProps {
 
   // State management (passed by parent section)
   stepId?: string;
+  /**
+   * The block's JSON id (author-set or synthesized by `synthesizeStepIds`).
+   * Used by the AI auto-heal flow to address the failing sub-step inside
+   * the guide JSON. Kept distinct from `stepId` (the positional storage
+   * key) so existing user progress isn't orphaned across upgrades — see
+   * the matching note in `InteractiveStepProps` and the cloneElement
+   * forwarder in `interactive-section.tsx`.
+   */
+  sourceStepId?: string;
   isEligibleForChecking?: boolean;
   isCompleted?: boolean;
   isCurrentlyExecuting?: boolean;
@@ -126,6 +135,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     {
       internalActions,
       stepId,
+      sourceStepId,
       isEligibleForChecking = true,
       isCompleted: parentCompleted = false,
       isCurrentlyExecuting = false,
@@ -150,6 +160,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     },
     ref
   ) => {
+    // The id used to address this guided block inside the guide JSON when
+    // dispatching a `pathfinder-ai-fix-request`. Falls back to `stepId`
+    // (positional) for HTML-source guides where AI fix isn't supported.
+    const aiFixStepId = sourceStepId ?? stepId;
     const generatedStepIdRef = useRef<string | undefined>(undefined);
     if (!generatedStepIdRef.current) {
       anonymousGuidedCounter += 1;
@@ -254,9 +268,16 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     // AI auto-heal availability — gates the AI-powered "Fix this" buttons
     // (sparkle variant) for both the pre-execution requirement-failure path
-    // and the runtime guided-execution-failure path. Assistant rollout is
-    // the per-tenant gate.
+    // and the runtime guided-execution-failure path. Requires both assistant
+    // availability AND the `enableAiAutoHeal` plugin admin setting (default
+    // off) so the LLM-backed patch path stays opt-in per instance. The
+    // pluginContext is already loaded above for `interactiveConfig`.
     const isAssistantAvailable = useIsAssistantAvailable();
+    const aiAutoHealEnabled = useMemo(
+      () => getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableAiAutoHeal,
+      [pluginContext?.meta?.jsonData]
+    );
+    const aiFixEnabled = isAssistantAvailable && aiAutoHealEnabled;
 
     // Main execution logic
     const executeStep = useCallback(async (): Promise<boolean> => {
@@ -738,13 +759,13 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   deterministic fix is offered and the failing requirement
                   is a missing DOM element. Mirrors the single-step variant
                   in interactive-step.tsx. */}
-              {!checker.canFixRequirement && checker.requiresDomElement && isAssistantAvailable && (
+              {!checker.canFixRequirement && checker.requiresDomElement && aiFixEnabled && (
                 <button
                   className="interactive-guided-ai-fix-btn"
                   data-testid={testIds.interactive.requirementAiFixButton(renderedStepId)}
                   onClick={() => {
                     reportAppInteraction(UserInteraction.AiFixAccepted, {
-                      step_id: stepId ?? '',
+                      step_id: aiFixStepId ?? '',
                       rendered_step_id: renderedStepId,
                       reftarget: firstActionRefTarget ?? '',
                       target_action: firstActionTargetAction ?? '',
@@ -752,7 +773,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                     window.dispatchEvent(
                       new CustomEvent('pathfinder-ai-fix-request', {
                         detail: {
-                          stepId,
+                          stepId: aiFixStepId,
                           renderedStepId,
                           refTarget: firstActionRefTarget,
                           action: firstActionTargetAction,
@@ -864,12 +885,12 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   guided execution (timeout / element-not-found). `stepId`
                   is always set because docs-retrieval's `synthesizeStepIds`
                   fills missing ids before the renderer parses the guide. */}
-              {currentStepIndex >= 0 && stepId && isAssistantAvailable && (
+              {currentStepIndex >= 0 && aiFixStepId && aiFixEnabled && (
                 <Button
                   onClick={() => {
                     const failed = internalActions[currentStepIndex];
                     reportAppInteraction(UserInteraction.AiFixAccepted, {
-                      step_id: stepId,
+                      step_id: aiFixStepId,
                       rendered_step_id: renderedStepId,
                       container_kind: 'guided',
                       sub_step_index: currentStepIndex,
@@ -877,12 +898,15 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                     window.dispatchEvent(
                       new CustomEvent('pathfinder-ai-fix-request', {
                         detail: {
-                          stepId,
+                          stepId: aiFixStepId,
                           renderedStepId,
                           refTarget: failed?.refTarget,
                           action: failed?.targetAction,
                           containerInfo: {
-                            containerId: stepId,
+                            // containerId addresses the guided block in the
+                            // guide JSON — must be the JSON id, not the
+                            // positional storage stepId.
+                            containerId: aiFixStepId,
                             containerKind: 'guided' as const,
                             subStepIndex: currentStepIndex,
                           },

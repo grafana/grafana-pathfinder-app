@@ -47,6 +47,21 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
 
   // Unified state management props (added by parent)
   stepId?: string;
+  /**
+   * The block's id from the parsed JSON guide (author-set or synthesized
+   * by `synthesizeStepIds`). Used by the AI auto-heal flow to address the
+   * step inside the guide JSON when emitting a `pathfinder-ai-fix-request`
+   * event — the orchestrator's `findBlockById` matches against this same
+   * id space.
+   *
+   * Kept SEPARATE from `stepId` (which is the positional id used for
+   * completion-progress storage) because the storage key must remain
+   * stable for backward compatibility with users who already have
+   * progress stored under the pre-`synthesizeStepIds` positional keys.
+   * Without this split, every JSON-source guide would silently orphan
+   * existing progress on the first load after the AI fix change.
+   */
+  sourceStepId?: string;
   isEligibleForChecking?: boolean;
   isCompleted?: boolean;
   isCurrentlyExecuting?: boolean;
@@ -80,7 +95,22 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
  * Internal type used by InteractiveSection to track steps
  */
 export interface StepInfo {
+  /**
+   * Positional id (e.g. `section-1-step-2`). Used as the key for
+   * `completedSteps`, persisted via `interactiveStepStorage`, and for
+   * the React `key` on the rendered element. Stable across the legacy
+   * pre-synthesizeStepIds storage format so existing progress remains
+   * addressable after upgrade.
+   */
   stepId: string;
+  /**
+   * The block's JSON id (author-set or synthesized). Forwarded to the
+   * step component as `sourceStepId` so the AI auto-heal flow can
+   * address the failing step inside the guide JSON. Optional because
+   * HTML-source guides (which don't run through `json-parser`) have no
+   * JSON id, in which case AI fix is unsupported for those steps.
+   */
+  sourceStepId?: string;
   element: React.ReactElement<InteractiveStepProps> | React.ReactElement<any>;
   index: number;
   targetAction?: string; // Optional for multi-step and guided

@@ -160,19 +160,47 @@ export function buildUserPrompt(input: AiFixGenerationInput): string {
  * Sentinel rationale string the system prompt instructs the assistant to
  * return when it cannot determine a confident fix. Per the contract, the
  * runtime must surface a failure to the user and NOT apply the (unchanged)
- * selector — otherwise we silently treadmill on no-op patches. Detected in
- * `parseAssistantPatch` against both `rationale` and (defensively)
- * `newReftarget` because the model has been observed putting the sentinel
- * in the wrong field — see runtime audit logs.
+ * selector — otherwise we silently treadmill on no-op patches.
+ *
+ * The sentinel can appear in either `rationale` ("no confident fix") or
+ * `newReftarget` ("<unchanged>"). We MUST detect both in the raw parsed
+ * payload BEFORE running `AiFixPatchSchema.safeParse`: the schema's
+ * `SafeSelectorSchema` rejects any string containing `<` or `>` via its
+ * `DANGEROUS_SELECTOR_PATTERNS` deny-list, so the literal `"<unchanged>"`
+ * sentinel that the system prompt instructs the model to emit would
+ * otherwise fail with the generic "disallowed substring" error and the
+ * user would never see the friendly "couldn't find a confident fix"
+ * message. See the audit-log comment on the prior post-validation check
+ * — that branch was unreachable in practice for the same reason.
  */
 const NO_CONFIDENT_FIX_SENTINEL = 'no confident fix';
+const UNCHANGED_SENTINEL = '<unchanged>';
 
-function looksLikeSentinel(value: string | undefined): boolean {
-  if (!value) {
+function looksLikeSentinel(value: unknown): boolean {
+  if (typeof value !== 'string' || !value) {
     return false;
   }
   const normalized = value.trim().toLowerCase();
-  return normalized === NO_CONFIDENT_FIX_SENTINEL || normalized === '<unchanged>';
+  return normalized === NO_CONFIDENT_FIX_SENTINEL || normalized === UNCHANGED_SENTINEL;
+}
+
+/**
+ * Detect the no-confident-fix sentinel in the raw assistant payload before
+ * schema validation runs. Inspects `rationale` and `newReftarget` directly
+ * on the parsed object so the `<unchanged>` form (rejected by
+ * `SafeSelectorSchema`) is intercepted with the friendly error path
+ * instead of leaking through as a schema failure.
+ *
+ * `prepend-step` patches don't carry `newReftarget`, but checking the
+ * field is harmless when absent (`looksLikeSentinel` short-circuits on
+ * non-strings).
+ */
+function isNoConfidentFixPayload(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') {
+    return false;
+  }
+  const record = raw as Record<string, unknown>;
+  return looksLikeSentinel(record.rationale) || looksLikeSentinel(record.newReftarget);
 }
 
 /**
@@ -191,26 +219,22 @@ export function parseAssistantPatch(text: string): { ok: true; patch: AiFixPatch
       error: new Error(`AI fix: response was not valid JSON (${e instanceof Error ? e.message : 'parse error'})`),
     };
   }
+  // Sentinel detection MUST run before schema validation: the literal
+  // `"<unchanged>"` newReftarget the prompt instructs the model to emit
+  // contains `<` and `>`, both blocked by SafeSelectorSchema's deny-list.
+  // Without this, the user would see "disallowed substring" errors instead
+  // of the friendly couldn't-fix message.
+  if (isNoConfidentFixPayload(raw)) {
+    return {
+      ok: false,
+      error: new Error("AI couldn't find a confident fix for this step"),
+    };
+  }
   const parsed = AiFixPatchSchema.safeParse(raw);
   if (!parsed.success) {
     return {
       ok: false,
       error: new Error(`AI fix: response failed schema check (${parsed.error.issues[0]?.message ?? 'unknown'})`),
-    };
-  }
-  if (looksLikeSentinel(parsed.data.rationale)) {
-    return {
-      ok: false,
-      error: new Error("AI couldn't find a confident fix for this step"),
-    };
-  }
-  // Defensive: the model has been observed putting the sentinel string
-  // in newReftarget instead of rationale (see runtime audit logs). Treat
-  // as the same failure mode.
-  if (parsed.data.type !== 'prepend-step' && looksLikeSentinel(parsed.data.newReftarget)) {
-    return {
-      ok: false,
-      error: new Error("AI couldn't find a confident fix for this step"),
     };
   }
   return { ok: true, patch: parsed.data };

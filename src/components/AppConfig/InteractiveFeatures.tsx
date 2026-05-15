@@ -9,6 +9,7 @@ import {
   DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
   DEFAULT_GUIDED_STEP_TIMEOUT,
   DEFAULT_DISABLE_AUTO_COLLAPSE,
+  DEFAULT_ENABLE_AI_AUTO_HEAL,
   DEFAULT_ENABLE_KIOSK_MODE,
   DEFAULT_KIOSK_RULES_URL,
   getConfigWithDefaults,
@@ -22,6 +23,7 @@ type State = {
   requirementsCheckTimeout: number;
   guidedStepTimeout: number;
   disableAutoCollapse: boolean;
+  enableAiAutoHeal: boolean;
   enableKioskMode: boolean;
   kioskRulesUrl: string;
 };
@@ -39,6 +41,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     requirementsCheckTimeout: jsonData?.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
     guidedStepTimeout: jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
     disableAutoCollapse: jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE,
+    enableAiAutoHeal: jsonData?.enableAiAutoHeal ?? DEFAULT_ENABLE_AI_AUTO_HEAL,
     enableKioskMode: jsonData?.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE,
     kioskRulesUrl: jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL,
   }));
@@ -71,6 +74,10 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     setState({ ...state, disableAutoCollapse: event.target.checked });
   };
 
+  const onToggleEnableAiAutoHeal = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({ ...state, enableAiAutoHeal: event.target.checked });
+  };
+
   const onChangeRequirementsTimeout = (event: ChangeEvent<HTMLInputElement>) => {
     const value = validateNumber(event.target.value, 1000, 10000, 'requirementsTimeout');
     if (value !== null) {
@@ -99,6 +106,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
       requirementsCheckTimeout: DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
       guidedStepTimeout: DEFAULT_GUIDED_STEP_TIMEOUT,
       disableAutoCollapse: DEFAULT_DISABLE_AUTO_COLLAPSE,
+      enableAiAutoHeal: DEFAULT_ENABLE_AI_AUTO_HEAL,
       enableKioskMode: DEFAULT_ENABLE_KIOSK_MODE,
       kioskRulesUrl: DEFAULT_KIOSK_RULES_URL,
     });
@@ -125,6 +133,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
         requirementsCheckTimeout: state.requirementsCheckTimeout,
         guidedStepTimeout: state.guidedStepTimeout,
         disableAutoCollapse: state.disableAutoCollapse,
+        enableAiAutoHeal: state.enableAiAutoHeal,
         enableKioskMode: state.enableKioskMode,
         kioskRulesUrl: state.kioskRulesUrl,
       };
@@ -157,6 +166,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     state.requirementsCheckTimeout !== (jsonData?.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT) ||
     state.guidedStepTimeout !== (jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT) ||
     state.disableAutoCollapse !== (jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE) ||
+    state.enableAiAutoHeal !== (jsonData?.enableAiAutoHeal ?? DEFAULT_ENABLE_AI_AUTO_HEAL) ||
     state.enableKioskMode !== (jsonData?.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE) ||
     state.kioskRulesUrl !== (jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL);
 
@@ -228,6 +238,41 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
               </Text>
             </div>
           </div>
+        </div>
+
+        <div className={styles.divider} />
+
+        <div className={styles.section}>
+          <Text variant="h4" weight="medium">
+            AI auto-heal
+          </Text>
+          <div className={styles.toggleSection}>
+            <Switch
+              data-testid={testIds.appConfig.interactiveFeatures.enableAiAutoHeal}
+              id="enable-ai-auto-heal"
+              value={state.enableAiAutoHeal}
+              onChange={onToggleEnableAiAutoHeal}
+            />
+            <div className={styles.toggleLabels}>
+              <Text variant="body" weight="medium">
+                Enable AI-powered &quot;Fix this&quot; on failing steps
+              </Text>
+              <Text variant="body" color="secondary">
+                When a step&apos;s selector can&apos;t be matched and no deterministic recovery is available, show the
+                sparkle &quot;Fix this&quot; button. It asks the Grafana Assistant to propose a patch to the guide.
+                Requires the Grafana Assistant to be available.
+              </Text>
+            </div>
+          </div>
+
+          {state.enableAiAutoHeal && (
+            <Alert severity="warning" title="Write path — opt-in" className={styles.infoAlert}>
+              <Text variant="body">
+                Accepted suggestions mutate the in-memory guide JSON for the user&apos;s session. Disable this toggle to
+                hide the AI-powered button entirely; the deterministic &quot;Fix this&quot; recovery path is unaffected.
+              </Text>
+            </Alert>
+          )}
         </div>
 
         <div className={styles.divider} />

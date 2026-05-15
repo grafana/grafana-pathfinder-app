@@ -1,5 +1,6 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button, Icon } from '@grafana/ui';
+import { usePluginContext } from '@grafana/data';
 
 import {
   useInteractiveElements,
@@ -9,6 +10,7 @@ import {
 } from '../../interactive-engine';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { getConfigWithDefaults } from '../../constants';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
@@ -30,6 +32,15 @@ interface InteractiveMultiStepProps {
 
   // State management (passed by parent section)
   stepId?: string;
+  /**
+   * The block's JSON id (author-set or synthesized by `synthesizeStepIds`).
+   * Used by the AI auto-heal flow to address the failing sub-step inside
+   * the guide JSON. Kept distinct from `stepId` (the positional storage
+   * key) so existing user progress isn't orphaned across upgrades — see
+   * the matching note in `InteractiveStepProps` and the cloneElement
+   * forwarder in `interactive-section.tsx`.
+   */
+  sourceStepId?: string;
   isEligibleForChecking?: boolean;
   isCompleted?: boolean;
   isCurrentlyExecuting?: boolean;
@@ -121,6 +132,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     {
       internalActions,
       stepId,
+      sourceStepId,
       isEligibleForChecking = true,
       isCompleted: parentCompleted = false,
       isCurrentlyExecuting = false,
@@ -145,6 +157,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     },
     ref
   ) => {
+    // The id used to address this multistep inside the guide JSON when
+    // dispatching a `pathfinder-ai-fix-request`. Falls back to `stepId`
+    // (positional) for HTML-source guides where AI fix isn't supported.
+    const aiFixStepId = sourceStepId ?? stepId;
     const generatedStepIdRef = useRef<string | undefined>(undefined);
     if (!generatedStepIdRef.current) {
       anonymousMultiStepCounter += 1;
@@ -242,8 +258,16 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
     // AI auto-heal availability — gates the AI-powered "Fix this" button
     // (sparkle variant) for sub-step element-not-found failures inside
-    // this multistep. Assistant rollout is the per-tenant gate.
+    // this multistep. Requires both assistant availability AND the
+    // `enableAiAutoHeal` plugin admin setting (default off) so the
+    // LLM-backed patch path stays opt-in per instance.
     const isAssistantAvailable = useIsAssistantAvailable();
+    const pluginContext = usePluginContext();
+    const aiAutoHealEnabled = useMemo(
+      () => getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableAiAutoHeal,
+      [pluginContext?.meta?.jsonData]
+    );
+    const aiFixEnabled = isAssistantAvailable && aiAutoHealEnabled;
 
     // Combined completion state: objectives always win (clarification 1, 2, 18)
     const isCompletedWithObjectives =
@@ -902,16 +926,16 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   errors inside a multistep's internal action. `stepId` is
                   always set because docs-retrieval's `synthesizeStepIds`
                   fills missing ids before the renderer parses the guide. */}
-              {stepId &&
+              {aiFixStepId &&
                 failedStepIndex >= 0 &&
                 executionError &&
                 /Element not found|requirements not met/i.test(executionError) &&
-                isAssistantAvailable && (
+                aiFixEnabled && (
                   <Button
                     onClick={() => {
                       const failed = internalActions[failedStepIndex];
                       reportAppInteraction(UserInteraction.AiFixAccepted, {
-                        step_id: stepId,
+                        step_id: aiFixStepId,
                         rendered_step_id: renderedStepId,
                         container_kind: 'multistep',
                         sub_step_index: failedStepIndex,
@@ -919,12 +943,15 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                       window.dispatchEvent(
                         new CustomEvent('pathfinder-ai-fix-request', {
                           detail: {
-                            stepId,
+                            stepId: aiFixStepId,
                             renderedStepId,
                             refTarget: failed?.refTarget,
                             action: failed?.targetAction,
                             containerInfo: {
-                              containerId: stepId,
+                              // containerId addresses the multistep block in
+                              // the guide JSON — must be the JSON id, not
+                              // the positional storage stepId.
+                              containerId: aiFixStepId,
                               containerKind: 'multistep' as const,
                               subStepIndex: failedStepIndex,
                             },
