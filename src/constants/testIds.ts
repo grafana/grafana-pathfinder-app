@@ -135,6 +135,7 @@ export const testIds = {
     redoButton: (stepId: string) => `interactive-redo-${stepId}`,
     doSectionButton: (sectionId: string) => `interactive-do-section-${sectionId}`,
     resetSectionButton: (sectionId: string) => `interactive-reset-section-${sectionId}`,
+    markSectionCompleteButton: (sectionId: string) => `interactive-mark-section-complete-${sectionId}`,
     requirementCheck: (requirementId: string) => `interactive-requirement-${requirementId}`,
     requirementFixButton: (stepId: string) => `interactive-requirement-fix-${stepId}`,
     requirementRetryButton: (stepId: string) => `interactive-requirement-retry-${stepId}`,

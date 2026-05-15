@@ -6,11 +6,11 @@
  * and connects to the Coda terminal.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Button, Field, Input, Combobox, TextArea, useStyles2, type ComboboxOption } from '@grafana/ui';
-import { getBackendSrv } from '@grafana/runtime';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
+import { useCodaOptions } from './useCodaOptions';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonTerminalConnectBlock } from '../../../types/json-guide.types';
@@ -21,63 +21,6 @@ const VM_TEMPLATE_OPTIONS: Array<ComboboxOption<string>> = [
   { label: 'Sample app (vm-aws-sample-app)', value: 'vm-aws-sample-app' },
   { label: 'Alloy scenario (vm-aws-alloy-scenario)', value: 'vm-aws-alloy-scenario' },
 ];
-
-interface CodaListItem {
-  id: string;
-  name: string;
-  description: string;
-  status: string;
-}
-
-/**
- * Generic hook for fetching Coda list endpoints (sample apps, alloy scenarios, etc.).
- * @param enabled  Whether the fetch should be active
- * @param url      Backend URL to fetch from
- * @param key      Response key that holds the array (e.g. "apps", "scenarios")
- */
-function useCodaOptions(enabled: boolean, url: string, key: string) {
-  const [options, setOptions] = useState<Array<ComboboxOption<string>>>([]);
-  const [done, setDone] = useState(false);
-  const [prevEnabled, setPrevEnabled] = useState(enabled);
-
-  if (enabled !== prevEnabled) {
-    setPrevEnabled(enabled);
-    if (enabled) {
-      setDone(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!enabled) {
-      return;
-    }
-
-    const sub = getBackendSrv()
-      .fetch<Record<string, CodaListItem[]>>({ url })
-      .subscribe({
-        next(resp) {
-          const items = resp?.data?.[key];
-          if (items) {
-            setOptions(
-              items.map((item) => ({
-                label: item.name,
-                value: item.id,
-                description: item.description,
-              }))
-            );
-          }
-          setDone(true);
-        },
-        error() {
-          setDone(true);
-        },
-      });
-
-    return () => sub.unsubscribe();
-  }, [enabled, url, key]);
-
-  return { options, isLoading: enabled && !done };
-}
 
 function isTerminalConnectBlock(block: JsonBlock): block is JsonTerminalConnectBlock {
   return block.type === 'terminal-connect';

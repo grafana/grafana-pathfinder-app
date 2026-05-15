@@ -36,6 +36,8 @@ import {
   type OnlinePackageEntry,
   type PackageMatchExpr,
 } from '../lib/package-recommendations-client';
+import { getHighlightedGuideConfig } from '../utils/openfeature';
+import { buildSyntheticFeaturedRecommendation, matchesHighlightedGuidePage } from '../utils/experiments';
 
 // Hoisted to module scope so the recursive `usesOnlySupportedMatchPredicates`
 // walk doesn't allocate (and discard) an identical Set on every node.
@@ -337,7 +339,11 @@ export class ContextService {
         const fallbackResult = await this.getFallbackRecommendations(contextData, merged);
         return {
           ...fallbackResult,
-          featuredRecommendations: [],
+          featuredRecommendations: this.injectHighlightedGuide(
+            [],
+            contextData.currentPath,
+            fallbackResult.recommendations
+          ),
           errorType: null,
           usingFallbackRecommendations: false, // Not using fallback due to error, just disabled
         };
@@ -351,7 +357,11 @@ export class ContextService {
       const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
       return {
         ...fallbackResult,
-        featuredRecommendations: [],
+        featuredRecommendations: this.injectHighlightedGuide(
+          [],
+          contextData.currentPath,
+          fallbackResult.recommendations
+        ),
         error: error instanceof Error ? error.message : 'Failed to fetch recommendations',
         errorType: 'other',
         usingFallbackRecommendations: true,
@@ -572,7 +582,11 @@ export class ContextService {
 
         return {
           recommendations: sortedRecommendations,
-          featuredRecommendations: filteredFeaturedRecommendations,
+          featuredRecommendations: this.injectHighlightedGuide(
+            filteredFeaturedRecommendations,
+            contextData.currentPath,
+            sortedRecommendations
+          ),
           error: null,
           errorType: null,
           usingFallbackRecommendations: false,
@@ -647,7 +661,7 @@ export class ContextService {
 
     return {
       ...fallbackResult,
-      featuredRecommendations: [],
+      featuredRecommendations: this.injectHighlightedGuide([], contextData.currentPath, fallbackResult.recommendations),
       error: userMessage,
       errorType,
       usingFallbackRecommendations: true,
@@ -871,6 +885,53 @@ export class ContextService {
     }
 
     return sanitized;
+  }
+
+  /**
+   * Prepend a synthetic Featured-slot card driven by the
+   * `pathfinder.highlighted-guide-experiment` flag.
+   *
+   * No-ops when:
+   *   - variant is 'excluded' (or default)
+   *   - current path doesn't match the flag's `pages[]`
+   *   - `guideId` cannot be resolved to a known doc page
+   *   - the same guide is already in the bundled (regular) recommendations
+   *     (the existing dedup machinery would suppress it anyway)
+   *
+   * When the same URL is already in `featured`, the existing card is promoted
+   * to position 0 rather than duplicated. This guarantees the configured guide
+   * lands in the prime slot whether or not the recommender already surfaced it.
+   */
+  private static injectHighlightedGuide(
+    featured: Recommendation[],
+    currentPath: string,
+    bundled: Recommendation[]
+  ): Recommendation[] {
+    const config = getHighlightedGuideConfig();
+    if (config.variant === 'excluded') {
+      return featured;
+    }
+    if (!matchesHighlightedGuidePage(config.pages, currentPath)) {
+      return featured;
+    }
+
+    const synthetic = buildSyntheticFeaturedRecommendation(config.guideId, config.docType);
+    if (!synthetic) {
+      return featured;
+    }
+
+    const syntheticUrl = synthetic.url.toLowerCase();
+
+    const existing = featured.find((f) => f.url?.toLowerCase() === syntheticUrl);
+    if (existing) {
+      return [existing, ...featured.filter((f) => f !== existing)];
+    }
+
+    if (bundled.some((b) => b.url?.toLowerCase() === syntheticUrl)) {
+      return featured;
+    }
+
+    return [synthetic, ...featured];
   }
 
   /**

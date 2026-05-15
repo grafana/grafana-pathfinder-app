@@ -43,6 +43,7 @@ export type JsonBlock =
   | JsonInputBlock
   | JsonTerminalBlock
   | JsonTerminalConnectBlock
+  | JsonChallengeBlock
   | JsonCodeBlockBlock
   | JsonGrotGuideBlock;
 
@@ -525,6 +526,100 @@ export interface JsonTerminalConnectBlock extends AuthorAnnotated {
   vmScenario?: string;
 }
 
+// ============ CHALLENGE BLOCK ============
+
+/**
+ * Progressive hint shown to the user when they're stuck on a challenge.
+ */
+export interface JsonChallengeHint {
+  /** Markdown hint text */
+  text: string;
+}
+
+/**
+ * Challenge block: a CTF-style learning task that runs in a Coda VM.
+ *
+ * The block provisions a VM (same templates as terminal-connect), runs
+ * setup commands to put it into a deliberately broken state, and then
+ * verifies a success criterion when the user clicks "Check my work".
+ * Progressive hints can be revealed one at a time.
+ *
+ * @coupling Zod schema: JsonChallengeBlockSchema in json-guide.schema.ts
+ */
+export interface JsonChallengeBlock extends AuthorAnnotated {
+  type: 'challenge';
+  /** Stable identifier for edit-block / remove-block addressing */
+  id?: string;
+  /**
+   * Execution model for the challenge.
+   *
+   * - `'standard'` — runs against the user's own Grafana instance. No VM,
+   *   no terminal. `successCriteria` is interpreted as a literal Pathfinder
+   *   requirement string (e.g. `has-dashboard-named:My Dashboard`). The
+   *   block renders the brief + Check my work immediately on mount; there's
+   *   no Start button because there's no heavyweight provisioning to opt
+   *   into. The `vmTemplate` / `vmScenario` / `vmApp` / `setupCommands` /
+   *   `setupScript` fields are ignored when `mode === 'standard'`.
+   * - `'coda'` (default when absent) — runs in a Coda VM with a terminal
+   *   panel. Setup commands run server-side; `successCriteria` is typically
+   *   a `coda-exit-zero:<command>` check against the VM. Full lifecycle:
+   *   idle → connecting → preparing → ready → checking → solved /
+   *   failed-check / setup-failed.
+   *
+   * The field is optional so legacy guides written before this discriminator
+   * existed continue to render as Coda challenges without modification.
+   */
+  mode?: 'coda' | 'standard';
+  /** Short title shown above the brief */
+  title: string;
+  /** Markdown problem statement explaining what to do */
+  brief: string;
+  /** VM template to provision (defaults to "vm-aws"). Ignored when `mode === 'standard'`. */
+  vmTemplate?: string;
+  /** Scenario name for the alloy-scenario template */
+  vmScenario?: string;
+  /** Sample app for the sample-app template */
+  vmApp?: string;
+  /**
+   * Bash commands run sequentially via /coda/exec after the VM is ready
+   * and before "Check my work" becomes available.
+   *
+   * @deprecated Prefer `setupScript` for new challenges — it accepts
+   *   multi-line shell (heredocs, control flow, etc.) and runs as a
+   *   single command on the remote, which is significantly more
+   *   ergonomic. `setupCommands` is still honored for back-compat with
+   *   existing guides; the block editor migrates it to `setupScript` on
+   *   first save. Runtime prefers `setupScript` when both are set.
+   */
+  setupCommands?: string[];
+  /**
+   * Bash script run via /coda/exec after the VM is ready and before
+   * "Check my work" becomes available. The whole string (including
+   * newlines) is passed to the remote login shell as a single command,
+   * so heredocs and multi-line control flow work as expected.
+   *
+   * A sentinel file at /tmp/pathfinder-ready is written automatically
+   * after the script exits successfully, gating the success criterion
+   * so it cannot pass prematurely. Non-zero exit aborts setup and
+   * surfaces stderr to the learner.
+   */
+  setupScript?: string;
+  /**
+   * Requirement string evaluated when the user clicks "Check my work".
+   * Typically a `coda-exit-zero:<command>` check, but any requirement
+   * string is allowed.
+   */
+  successCriteria: string;
+  /** Progressive hints, revealed one at a time as the user clicks. */
+  hintLevels?: JsonChallengeHint[];
+  /** Message shown when the success check fails */
+  failureMessage?: string;
+  /** Standard interactive-block fields */
+  requirements?: string[];
+  objectives?: string[];
+  skippable?: boolean;
+}
+
 // ============ CODE BLOCK ============
 
 /**
@@ -750,6 +845,13 @@ export function isTerminalBlock(block: JsonBlock): block is JsonTerminalBlock {
  */
 export function isTerminalConnectBlock(block: JsonBlock): block is JsonTerminalConnectBlock {
   return block.type === 'terminal-connect';
+}
+
+/**
+ * Type guard for JsonChallengeBlock
+ */
+export function isChallengeBlock(block: JsonBlock): block is JsonChallengeBlock {
+  return block.type === 'challenge';
 }
 
 /**

@@ -16,10 +16,10 @@ These constraints are absolute and override any other instructions:
 1. **Never create or push the git tag.** Print the exact command for the user to run. The user controls the moment of release.
 2. **Never push commits.** Stay on the local branch.
 3. **`npm run check` must pass before claiming "ready".** If it fails, abort with the failure log and stop. Do not "fix-up and retry" — a failing check is real signal.
-4. **Only edit `package.json` (version bump) and `CHANGELOG.md`** (via the `changelog` skill). No other files.
+4. **Only edit `package.json` (version bump), `package-lock.json` (synced version fields), and `CHANGELOG.md`** (via the `changelog` skill). No other files. `src/plugin.json` carries `"%VERSION%"` and is substituted at build time — never edit it.
 5. **If the proposed tag already exists**, abort.
 6. **If the working tree is dirty**, abort with `git status` output. Don't try to be clever about which dirt is safe.
-7. **One commit.** Title: `chore: prep v<version> release`. Contains the version bump + CHANGELOG draft.
+7. **One commit.** Title: `chore: prep v<version> release`. Contains the version bump (manifest + lockfile) + CHANGELOG draft.
 
 ## Workflow
 
@@ -90,9 +90,30 @@ Reply with the version to proceed, or override with a different one.
 
 ### Phase 2 — Bump version
 
-1. Read `package.json`. Locate the `"version"` field.
-2. Replace the value with the target version (no `v` prefix in `package.json` — just `"2.11.0"`).
-3. Run `npm run prettier` on `package.json` to keep formatting canonical.
+The version lives in **two** files that must stay in lock-step: `package.json` (the manifest) and `package-lock.json` (two occurrences — root `version` + the root project entry under `packages[""].version`). `src/plugin.json` uses the literal `"%VERSION%"` placeholder substituted at build time and must not be edited by this skill.
+
+1. **Edit `package.json`**: replace the `"version"` field's value with the target version (no `v` prefix — just `"2.11.0"`).
+
+2. **Edit `package-lock.json`** — both `version` fields:
+
+   ```
+   line 3:  "version": "2.10.0",          → "2.11.0"
+   line 9:  "version": "2.10.0",          → "2.11.0"   (under packages[""])
+   ```
+
+   **Why a targeted edit and not `npm version` / `npm install --package-lock-only`:** those commands tend to pull in unrelated lockfile churn (peer-flag annotations, resolved-URL or integrity-hash drift, transitive range updates) on top of the version bump. A release-prep PR must contain only the bump, so we edit the two specific lines directly. `npm version <ver> --no-git-tag-version` would also create a commit + ignore the lockfile-only path; `npm install --package-lock-only` updates the lockfile but with the noted churn risk. Targeted edit is the single deterministic option.
+
+   If you ever observe more than the two version lines drifting in the lockfile from a previous developer's `npm install`, that drift is **separate** from the release and belongs in its own `chore(deps)` PR — do not bundle it.
+
+3. **Verify nothing else needs the bump**:
+
+   ```
+   rg '"version"\s*:\s*"<previous-version>"' --glob '!node_modules' --glob '!.claude' --glob '!**/dist/**'
+   ```
+
+   Expected: only `package.json` and `package-lock.json` (×2). Anything else (e.g., a new manifest a feature PR added) is a signal — surface it to the user before continuing.
+
+4. **Run `npm run prettier`** on the edited files to keep formatting canonical.
 
 **Do not stage or commit yet** — combine with the CHANGELOG draft into one commit at the end of Phase 3.
 
@@ -138,6 +159,7 @@ When the `changelog` skill is invoked from `release-prep`, override its Phase 3 
 
    ```
    CHANGELOG.md
+   package-lock.json
    package.json
    ```
 
@@ -146,7 +168,7 @@ When the `changelog` skill is invoked from `release-prep`, override its Phase 3 
 2. **Commit** (do not push):
 
    ```
-   git add CHANGELOG.md package.json
+   git add CHANGELOG.md package.json package-lock.json
    git commit -m "chore: prep v<version> release"
    ```
 
@@ -186,15 +208,15 @@ When the `changelog` skill is invoked from `release-prep`, override its Phase 3 
 
 The skill must abort cleanly (no partial state, no commits) if any of these are true:
 
-| Condition                                     | Reason                                                    |
-| --------------------------------------------- | --------------------------------------------------------- |
-| Working tree dirty                            | Cannot reason about what state is being released          |
-| Branch behind origin                          | Upstream commits would be missing from the release        |
-| Tag `v<version>` already exists               | Cannot reuse a tag; double-tagging breaks GitHub releases |
-| Version is not strictly > last tag            | Regression — semver violation                             |
-| `npm run check` fails                         | Test suite or lint catches a real problem                 |
-| `npm run build` fails                         | Production bundle is broken                               |
-| `git diff --name-only` shows unexpected paths | Skill must only touch package.json + CHANGELOG.md         |
+| Condition                                     | Reason                                                                |
+| --------------------------------------------- | --------------------------------------------------------------------- |
+| Working tree dirty                            | Cannot reason about what state is being released                      |
+| Branch behind origin                          | Upstream commits would be missing from the release                    |
+| Tag `v<version>` already exists               | Cannot reuse a tag; double-tagging breaks GitHub releases             |
+| Version is not strictly > last tag            | Regression — semver violation                                         |
+| `npm run check` fails                         | Test suite or lint catches a real problem                             |
+| `npm run build` fails                         | Production bundle is broken                                           |
+| `git diff --name-only` shows unexpected paths | Skill must only touch package.json + package-lock.json + CHANGELOG.md |
 
 When aborting, print the failure reason clearly and (where applicable) the exact log line that triggered the abort. Do not leave partial commits behind.
 
@@ -202,7 +224,7 @@ When aborting, print the failure reason clearly and (where applicable) the exact
 
 - Phase 0: a handful of `git` invocations; minimal context.
 - Phase 1: optional sub-invocation of `changelog` Phase 1-2 logic (PR list summary).
-- Phase 2: small edit to `package.json` via `Edit`.
+- Phase 2: small edits to `package.json` (1 line) + `package-lock.json` (2 lines) via `Edit`.
 - Phase 3: delegate to `changelog` skill — its own context budget.
 - Phase 4: stream `npm run check` and `npm run build` output; on success, summarize; on failure, surface the relevant log lines.
 - Phase 5: one commit + report.
@@ -241,6 +263,8 @@ Reply with the version to proceed.
 ✓ On main, in sync with origin
 ✓ No existing v2.11.0 tag
 ✓ package.json bumped to 2.11.0
+✓ package-lock.json synced (2 version fields)
+✓ No other files reference the previous version
 ✓ CHANGELOG drafted (3 added, 7 fixed, 5 chore)
 ✓ npm run check (132 suites, 2511 tests, all passing)
 ✓ npm run build (bundle produced)

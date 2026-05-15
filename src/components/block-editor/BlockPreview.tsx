@@ -5,14 +5,14 @@
  * Uses the same styling as the main docs panel for consistent appearance.
  */
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useStyles2, Alert, Icon } from '@grafana/ui';
 import { getBlockPreviewStyles } from './block-editor.styles';
 import { parseJsonGuide, ContentRenderer } from '../../docs-retrieval';
 import { journeyContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
-import { interactiveStepStorage, interactiveCompletionStorage } from '../../lib/user-storage';
+import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import type { JsonGuide } from './types';
 import type { RawContent } from '../../types/content.types';
 import { testIds } from '../../constants/testIds';
@@ -22,68 +22,42 @@ export interface BlockPreviewProps {
   guide: JsonGuide;
   /** Whether to render the guide title above native JSON content. */
   showTitle?: boolean;
+  /**
+   * Hide the built-in "Reset guide" button. Use this when a parent surface
+   * (e.g. BlockEditorHeader) is responsible for rendering the reset action,
+   * to avoid duplicating editor chrome inside the rendered content.
+   */
+  hideResetButton?: boolean;
 }
 
 /**
  * Block preview component
  */
-export function BlockPreview({ guide, showTitle = true }: BlockPreviewProps) {
+export function BlockPreview({ guide, showTitle = true, hideResetButton = false }: BlockPreviewProps) {
   const styles = useStyles2(getBlockPreviewStyles);
   // Apply the same styles as the main docs panel for consistent appearance
   const journeyStyles = useStyles2(journeyContentHtml);
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
 
-  // State for reset functionality
-  const [hasInteractiveProgress, setHasInteractiveProgress] = useState(false);
-  const [resetKey, setResetKey] = useState(0);
-
   // Progress key matches the URL used in content rendering
   const progressKey = `block-editor://preview/${guide.id}`;
+  const { hasProgress: hasInteractiveProgress, reset } = useGuidePreviewProgress(progressKey);
 
-  // Check for interactive progress on mount and when guide changes
+  // Force ContentRenderer remount when progress is cleared (locally or by a sibling
+  // surface like BlockEditorHeader). All clears flow through `interactive-progress-cleared`.
+  const [resetKey, setResetKey] = useState(0);
   useEffect(() => {
-    interactiveStepStorage.hasProgress(progressKey).then(setHasInteractiveProgress);
-  }, [progressKey]);
-
-  // Listen for progress saved events to update reset button reactively
-  useEffect(() => {
-    const handleProgressSaved = (event: Event) => {
+    const handleCleared = (event: Event) => {
       const detail = (event as CustomEvent).detail;
-      // Only update if this event is for the current guide's content
-      if (detail?.contentKey === progressKey && detail?.hasProgress) {
-        setHasInteractiveProgress(true);
+      if (detail?.contentKey === progressKey) {
+        setResetKey((prev) => prev + 1);
       }
     };
-
-    window.addEventListener('interactive-progress-saved', handleProgressSaved);
+    window.addEventListener('interactive-progress-cleared', handleCleared);
     return () => {
-      window.removeEventListener('interactive-progress-saved', handleProgressSaved);
+      window.removeEventListener('interactive-progress-cleared', handleCleared);
     };
-  }, [progressKey]);
-
-  // Handle reset guide progress
-  const handleReset = useCallback(async () => {
-    try {
-      // Clear storage
-      await interactiveStepStorage.clearAllForContent(progressKey);
-      await interactiveCompletionStorage.clear(progressKey);
-
-      // Update local state
-      setHasInteractiveProgress(false);
-
-      // Dispatch cross-component event (notifies recommendations panel)
-      window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: progressKey },
-        })
-      );
-
-      // Increment reset key to force ContentRenderer remount
-      setResetKey((prev) => prev + 1);
-    } catch (error) {
-      console.error('[BlockPreview] Failed to reset guide progress:', error);
-    }
   }, [progressKey]);
 
   // Validate the guide and prepare for rendering
@@ -157,11 +131,19 @@ export function BlockPreview({ guide, showTitle = true }: BlockPreviewProps) {
     );
   }
 
+  // Explicit keys on every sibling (#842, Phase 6): the conditional
+  // warnings alert + the conditional reset-actions div appear and
+  // disappear independently as state changes. React's child-array
+  // reconciliation treats unkeyed siblings positionally; without
+  // stable keys, an appearance / disappearance of one sibling can
+  // cause React to reconcile ContentRenderer into a different slot,
+  // which in turn may trigger an unwanted remount and silently reset
+  // the section's reducer state. Keeping every sibling keyed pins
+  // ContentRenderer's identity across hasInteractiveProgress flips.
   return (
     <div className={styles.container}>
-      {/* Show warnings if any */}
       {warnings.length > 0 && (
-        <Alert title="Warnings" severity="warning">
+        <Alert key="preview-warnings" title="Warnings" severity="warning">
           <ul>
             {warnings.map((warning, i) => (
               <li key={i}>{warning}</li>
@@ -170,12 +152,11 @@ export function BlockPreview({ guide, showTitle = true }: BlockPreviewProps) {
         </Alert>
       )}
 
-      {/* Keep reset functionality without rendering the preview header bar. */}
-      {hasInteractiveProgress && (
-        <div className={styles.resetActions}>
+      {hasInteractiveProgress && !hideResetButton && (
+        <div key="preview-reset-actions" className={styles.resetActions}>
           <button
             className={styles.resetButton}
-            onClick={handleReset}
+            onClick={() => void reset()}
             aria-label="Reset guide"
             title="Resets all interactive steps"
             data-testid={testIds.blockEditor.previewResetButton}
@@ -186,11 +167,13 @@ export function BlockPreview({ guide, showTitle = true }: BlockPreviewProps) {
         </div>
       )}
 
-      {/* Render the content using existing pipeline with proper styling */}
-      {/* key={resetKey} forces remount when reset is triggered, resetting all interactive component state */}
-      {/* previewContent class overrides journey padding for tighter sidebar layout */}
+      {/* `key={resetKey}` forces remount when a Reset guide click bumps
+         the counter, intentionally clearing all interactive component
+         state. The composite key prefix keeps ContentRenderer's slot
+         distinct from the conditional siblings above so the keyed
+         remount path is the ONLY remount path. */}
       <ContentRenderer
-        key={resetKey}
+        key={`preview-content-${resetKey}`}
         content={content}
         className={`${journeyStyles} ${interactiveStyles} ${prismStyles} ${styles.previewContent}`}
       />

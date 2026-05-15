@@ -1,19 +1,31 @@
 # Changelog
 
-## Unreleased
-
-_Rolling section for changes merged since v2.10.0. Renamed to the next version number at release time._
+## 2.11.0
 
 ### Added
 
+- **Full-screen mode + real PR-tester learning journeys**: Adds a third presentation surface alongside the sidebar and floating panel, and overhauls the PR tester so it opens path/journey packages as real learning journeys (cover page, milestone toolbar, Alt+←/→ navigation) instead of fabricating a single mega-guide. (#846)
+- **CTF-style challenge blocks running in Coda VMs**: New `challenge` block type lets authors deliberately break a Coda VM environment server-side; learners use the existing terminal panel to diagnose and fix it, and "Check my work" evaluates a success requirement against the VM with progressive hints on failure. (#875)
 - **Pathfinder MCP Server**: TypeScript MCP server (`pathfinder-mcp`) for AI-assisted guide authoring. Supports stdio and HTTP transports, structured `clientGuidance` handoff per client capability (Grafana App Platform / OSS / non-Grafana), and read-only CDN repository tools so MCP clients (Cursor, Claude Desktop, Grafana Assistant) can discover and deep-link to published packages without per-instance plugin involvement. (#831, #844)
+- **Pathfinder agent authoring CLI (Phase 1)**: Deterministic, schema-driven `pathfinder-cli` that AI agents and humans can use to author Pathfinder guide packages without holding the full schema in context. Every command's flags are generated from Zod and every mutation validates before it writes. Ships with the AI-authoring design suite under `docs/design/`. (#789)
+- **Docker packaging + GHCR continuous publish for `pathfinder-cli`**: CLI ships as `ghcr.io/grafana/pathfinder-cli`, rebuilt and pushed on every merge to main as `:latest` and `:main-<short-sha>`. Includes a placeholder shim for `pathfinder-mcp` so the MCP server can be bundled into the same image. (#812)
 - **Block editor authoring resilience + sidebar UX overhaul**: Lint primitives for real-time guide validation, convergence on the canonical validation pipeline, new `ConditionChipsField` for requirements and objectives, `HealthStatusBar` with cross-block diagnostics, and per-block `LintBadge` display. (#848)
+- **Block editor undo/redo, author notes, searchable palette**: In-session ring-buffer history (20 entries, 1MB cap, 500ms coalescing), an optional editor-only `authorNote` field per block, and a searchable block palette in the editor header. (#862)
+- **Quiz answer shuffle (default on, with pin and opt-out)**: Quiz choices are Fisher–Yates shuffled on each view by default. Authors can opt out per block with `shuffle: false` and pin individual choices to their authored index with `pinned: true`. (#867)
+- **Highlighted-guide A/B experiment**: New OpenFeature-driven experiment (`pathfinder.highlighted-guide-experiment`) that auto-opens the Pathfinder sidebar on matched Grafana pages and prepends a configured guide to the Featured slot. Both arms keep Pathfinder visible — they differ only in which `guideId` they assign — so analytics attribute click-through to guide content rather than to Pathfinder's presence. (#874)
+- **Single-block preview in the block editor**: Preview individual blocks without rendering the whole guide. (#788)
 - **Prompted implied 0th step for guide launches**: Auto-recovery now offers a starting-location prompt when a launched guide's implied 0th step is not satisfied at the user's current location. (#810)
 - **External guide-import API**: External (CI / Terraform / scripts) flow for upserting guides via the Pathfinder Backend's K8s aggregator. Companion bash helper at `scripts/upsert-guide.sh` accepts any guide JSON. (#829, #830)
-- **Single-block preview in the block editor**: Preview individual blocks without rendering the whole guide. (#618)
 
 ### Fixed
 
+- **Mark Section Complete gate + state-machine refactor**: Sections that end with non-interactive content no longer auto-complete the moment the last interactive step finishes — trailing markdown / images / video stay visible behind an explicit "Mark section as complete" acknowledgement. All-passive sections also no longer count as complete on first render. (#877, #842)
+- **Section block numbering includes non-interactive blocks**: Sections now number every content block sequentially regardless of whether it's interactive, so a markdown block between two interactive steps no longer breaks the `1. 2. 3.` sequence. (#871, #841)
+- **Block editor preserves new guide when leaving JSON mode**: Fixes a stale-closure bug in `useGuideHistory.setState` that caused the block editor to revert to the old guide when pasting a fresh JSON guide and switching to Preview. The same defect also silently corrupted the backend load and persistence paths whenever local state was dirty. (#878)
+- **Block editor removes duplicate title in preview mode**: Preview no longer renders the guide title twice (the editable title input is hidden when previewing, matching production rendering which only shows the in-content `<h1>`). (#858, #850)
+- **Featured package recommendation metadata**: URL-backed featured recommendations are promoted to matching package-backed recommendations when the same content appears in the main payload, so the featured card gets the package affordance and open behavior. (#803, #746)
+- **Recommender banner config button hidden for non-admins**: `EnableRecommenderBanner` no longer shows the "Go to plugin configuration" button to Viewer / Editor users who lack the required permission, matching Grafana's backend enforcement. (#806)
+- **Fenced code block indentation in block Markdown editor**: New `normalizeCodeIndentation()` post-processor re-aligns fence markers stripped by TipTap's serializer so code blocks inside nested list items emit valid CommonMark. (#805)
 - **Dock-to-sidebar arrow direction**: The arrow on the dock-to-sidebar control now points in the correct direction. (#857)
 - **Floating panel popout viewport**: The floating panel popout stays in view across viewport size changes. (#854)
 
@@ -24,6 +36,12 @@ _Rolling section for changes merged since v2.10.0. Renamed to the next version n
 
 ### Chore
 
+- **MCP authoring server hardening**: Closes five of eight issues in `docs/design/MCP-AGENT-UX-HARDENING.md` and lands three of four cross-cutting mechanisms (M1, M2, M3) for the TS MCP authoring server, including telemetry-validated routing fixes. (#869)
+- **Requirements-manager refactor before auto-recovery**: Six-phase structural refactor of `src/requirements-manager/` to reduce debt before Phase 1 of auto-recovery. All consumer-facing behaviour preserved. (#809)
+- **Split `interactive.styles.ts` into three files**: Pure mechanical split of the 2,237-line `src/styles/interactive.styles.ts` along its three pre-existing semantic layers; every consumer import continues to resolve unchanged via a thin barrel. (#879)
+- **Remove dead CSS rules from `interactive.styles.ts`**: Strict dead-code removal of CSS classes that exist in `src/styles/interactive.styles.ts` but are not applied anywhere in the codebase. Zero functional effect. (#876)
+- **Agent guidance audit + six new skills**: Fixes documentation drift accumulated across recent feature work and adds six new `.cursor/skills/` entries that automate manual workflows the team does today. (#863)
+- **Standardise CLI examples under `pathfinder-cli@...`**: Documentation-only update so all `npx` examples invoke `pathfinder-cli` to avoid namesquatting. (#873)
 - **`lint-staged` to v17** (#859)
 - **`npm` to v11.14.0** (#860)
 - **`actions/cache` to v5** (#814)

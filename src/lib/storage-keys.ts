@@ -18,6 +18,7 @@ export const StorageKeys = {
   WYSIWYG_PREVIEW_JSON: 'grafana-pathfinder-app-wysiwyg-preview-json', // JSON content for test preview
   E2E_TEST_GUIDE: 'grafana-pathfinder-app-e2e-test-guide', // JSON content for E2E test runner
   SECTION_COLLAPSE_PREFIX: 'grafana-pathfinder-app-section-collapse-', // Dynamic: grafana-pathfinder-app-section-collapse-{contentKey}-{sectionId}
+  SECTION_ACKNOWLEDGED_PREFIX: 'grafana-pathfinder-app-section-acknowledged-', // Dynamic: grafana-pathfinder-app-section-acknowledged-{contentKey}-{sectionId} (issue #842 gate)
   // Full screen mode persistence (for page refreshes during recording)
   FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',
   FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
@@ -36,6 +37,15 @@ export const StorageKeys = {
   EXPERIMENT_SESSION_AUTO_OPENED_PREFIX: 'grafana-interactive-learning-panel-auto-opened-',
   EXPERIMENT_TREATMENT_PAGE_PREFIX: 'grafana-pathfinder-treatment-page-',
   EXPERIMENT_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-pop-open-reset-processed-',
+  // Persistent dedup for experiment exposure events. Used with `{hostname}:{flagKey}:{variant}`
+  // suffix so the analytics event fires at most once per arm assignment per browser. Variant
+  // reassignment (e.g. control → treatment) yields a new key and re-fires, which is what
+  // downstream A/B tools expect.
+  EXPERIMENT_EXPOSURE_REPORTED_PREFIX: 'grafana-pathfinder-experiment-exposure-reported-',
+  // Highlighted-guide experiment markers (used with hostname + guideId suffix). LocalStorage,
+  // not session — auto-open fires once per browser, not once per session.
+  HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX: 'grafana-pathfinder-highlighted-guide-auto-open-',
+  HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',
   // External app suggestions for the featured zone (sessionStorage)
   SUGGESTIONS: 'grafana-pathfinder-app-suggestions',
   // Floating panel mode preference (sidebar vs floating)

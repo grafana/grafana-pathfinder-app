@@ -30,6 +30,7 @@ import {
   type JsonInputBlock,
   type JsonTerminalBlock,
   type JsonTerminalConnectBlock,
+  type JsonChallengeBlock,
   type JsonCodeBlockBlock,
   type JsonGrotGuideBlock,
   type JsonStep,
@@ -253,6 +254,8 @@ function convertBlockByType(
       return convertTerminalBlock(block, path);
     case 'terminal-connect':
       return convertTerminalConnectBlock(block, path);
+    case 'challenge':
+      return convertChallengeBlock(block, path);
     case 'code-block':
       return convertCodeBlockBlock(block, path);
     case 'grot-guide':
@@ -816,6 +819,31 @@ function convertTerminalConnectBlock(block: JsonTerminalConnectBlock, _path: str
         vmScenario: block.vmScenario,
       },
       children,
+    },
+    hasInteractive: true,
+  };
+}
+
+function convertChallengeBlock(block: JsonChallengeBlock, _path: string): ConversionResult {
+  const briefElements = parseMarkdownToElements(block.brief);
+
+  return {
+    element: {
+      type: 'challenge-block',
+      props: {
+        title: block.title,
+        mode: block.mode,
+        vmTemplate: block.vmTemplate,
+        vmScenario: block.vmScenario,
+        vmApp: block.vmApp,
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional back-compat: runtime block accepts both shapes
+        setupCommands: block.setupCommands,
+        setupScript: block.setupScript,
+        successCriteria: block.successCriteria,
+        hintLevels: block.hintLevels,
+        failureMessage: block.failureMessage,
+      },
+      children: briefElements,
     },
     hasInteractive: true,
   };
