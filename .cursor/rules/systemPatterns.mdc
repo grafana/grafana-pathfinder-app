@@ -123,7 +123,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 - `styles/` — Theme-aware CSS-in-JS factories (Emotion). One `*.styles.ts` per component.
 - `global-state/` — Cross-component stores (Zustand + React context). Files: `sidebar.ts`, `panel-mode.ts`, `link-interception.ts`, `interactive-navigation.ts`, `alignment-pending-context.ts`.
 - `integrations/` — Optional integrations: `assistant-integration/` (`<assistant>` tags), `coda/` (terminal), `workshop/` (action capture + replay). See `.cursor/rules/coda.mdc`, `docs/developer/ASSISTANT_INTEGRATION.md`, `docs/developer/integrations/workshop.md`.
-- `hooks/` — Cross-cutting hooks: `usePendingGuideLaunch`, `useAlignmentReevaluation`.
+- `hooks/` — Cross-cutting hooks: `useAlignmentReevaluation`, `useAutoLaunchTutorial`, `useStepProgressFromEvents`.
 - `utils/` — Business logic and utilities. Files: `dev-mode.ts`, `openfeature.ts`, `timeout-manager.ts`, `variable-substitution.ts`, `experiments.ts`, `find-doc-page.ts`. See `docs/developer/utils/README.md`.
 - `test-utils/` — Test fixtures. `openfeature-mock.ts`.
 - `bundled-interactives/` — Offline-fallback JSON guides + `repository.json`. Static asset directory; no code.
@@ -165,9 +165,7 @@ The Go backend is a **thin bridge** between the React frontend and the **Coda VM
 | `plugin/terminal.go`                | `TerminalSession` — SSH session over a `WSConn`. PTY, stdin/stdout/stderr pipes, private-key normalization.        |
 | `plugin/wsconn.go`                  | `WSConn` — adapts gorilla/websocket as `net.Conn` for SSH-over-WebSocket. Pong-based read-deadline reset (90s).    |
 | `plugin/coda.go`                    | `CodaClient` — JWT-authenticated REST. VM CRUD, sample apps, alloy scenarios. Token refresh under `RWMutex`. Per-user quota: 3 VMs. |
-| `plugin/mcp.go`                     | **Experimental MCP spike** (PR #643). NON-PRODUCTION. Real AI authoring lives in TypeScript under `src/cli/mcp/`. |
 | `plugin/package_recommendations.go` | CDN package-index cache (6h TTL, single-flight dedup, 8-way parallel manifest fetch, bounded memory).            |
-| `plugin/static.go`                  | `embed.FS` declarations for `repository.json` + `guides/` content.                                                |
 
 **HTTP request flow (e.g., `POST /vms`):**
 

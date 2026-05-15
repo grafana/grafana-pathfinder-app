@@ -203,7 +203,7 @@ src/
 ├── context-engine/        # Tier-1 engine: detects Grafana context, calls recommender API, fetches recommendations
 ├── docs-retrieval/        # Tier-1 engine: multi-strategy content fetcher, JSON/HTML parsers, ContentRenderer, journey-completion helpers
 ├── global-state/          # Cross-component stores: sidebar, panel-mode, link-interception, interactive-navigation, alignment-pending
-├── hooks/                 # Cross-cutting hooks: usePendingGuideLaunch, useAlignmentReevaluation
+├── hooks/                 # Cross-cutting hooks: useAlignmentReevaluation, useAutoLaunchTutorial, useStepProgressFromEvents
 ├── img/                   # Static SVG/PNG assets
 ├── integrations/          # Optional integrations: assistant-integration (<assistant> tags), coda terminal, workshop mode
 ├── interactive-engine/    # Tier-1 engine: executes step actions, auto-completion, navigation manager, state machine
