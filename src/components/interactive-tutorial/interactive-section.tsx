@@ -80,6 +80,7 @@ import {
 } from './step-section-utils';
 import { classifySectionChild } from './section-child-classifier';
 import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
+import { useSectionScroll } from './hooks/use-section-scroll';
 import { deriveSectionState, initialSectionState, restoreFromStorage, sectionReducer } from './section-state';
 import {
   getDocumentStepPosition,
@@ -173,10 +174,10 @@ export function InteractiveSection({
     error?: string;
   }>({ checking: !!requirements, passed: !requirements }); // If no requirements, default to passed
 
-  // Track if user has manually scrolled to avoid fighting with auto-scroll
-  const userScrolledRef = useRef(false);
-  // Track if we're currently doing a programmatic scroll (to ignore it in listener)
-  const isProgrammaticScrollRef = useRef(false);
+  // Scroll-tracking state + auto-scroll behaviour are owned by
+  // `useSectionScroll`. Returns three callbacks the runner uses to
+  // gate its programmatic scroll window. (Pattern F.)
+  const { scrollToStep, beginProgrammaticScroll, endProgrammaticScroll } = useSectionScroll({ isRunning });
 
   // --- Persistence helpers (restore across refresh) ---
   // Content key resolved via shared utility to ensure persist/restore consistency
@@ -236,52 +237,6 @@ export function InteractiveSection({
     return () => {
       sectionMountedRef.current = false;
     };
-  }, []);
-
-  // Track user scroll to disable auto-scroll for the rest of section execution
-  useEffect(() => {
-    if (!isRunning) {
-      return;
-    }
-
-    // Target the docs panel scrollable container directly (inner-docs-content)
-    const scrollContainer = document.getElementById('inner-docs-content');
-
-    if (!scrollContainer) {
-      return;
-    }
-
-    const handleScroll = () => {
-      // Ignore programmatic scrolls (our own auto-scroll)
-      if (isProgrammaticScrollRef.current) {
-        return;
-      }
-      userScrolledRef.current = true; // Permanently disable for this section run
-    };
-
-    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
-
-    return () => {
-      scrollContainer.removeEventListener('scroll', handleScroll);
-    };
-  }, [isRunning]);
-
-  // Auto-scroll to current executing step
-  const scrollToStep = useCallback((stepId: string) => {
-    if (userScrolledRef.current) {
-      return; // User has scrolled, don't fight them
-    }
-
-    // Find the step element by data-step-id
-    const stepElement = document.querySelector(`[data-step-id="${stepId}"]`);
-    if (stepElement) {
-      // isProgrammaticScrollRef is already true during section execution
-      // so we don't need to set/reset it here
-      stepElement.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
-    }
   }, []);
 
   // Store refs to multistep components for section-level execution
@@ -802,10 +757,9 @@ export function InteractiveSection({
 
     setIsRunning(true);
     setExecutingStepNumber(0); // Reset step counter
-    userScrolledRef.current = false; // Reset user scroll tracking
-    // Keep isProgrammaticScroll TRUE for entire section execution
-    // This prevents step execution (button clicks, etc.) from triggering the cancel
-    isProgrammaticScrollRef.current = true;
+    // Reset user scroll tracking + set isProgrammaticScroll=true for
+    // the entire section run. The hook keeps both flags consistent.
+    beginProgrammaticScroll();
     console.warn(
       '[Section] Starting section run, reset userScrolled=false, isProgrammatic=TRUE (will stay true during execution)'
     );
@@ -1167,8 +1121,8 @@ export function InteractiveSection({
       setIsRunning(false);
       setCurrentlyExecutingStep(null);
       setExecutingStepNumber(0);
-      // Reset programmatic scroll flag now that section is done
-      isProgrammaticScrollRef.current = false;
+      // Reset programmatic scroll flag now that section is done.
+      endProgrammaticScroll();
       // Keep isCancelled state for UI feedback, will be reset on next run
 
       // Track "Do Section" analytics after completion (success or cancel)
@@ -1223,6 +1177,8 @@ export function InteractiveSection({
     checkRequirementsFromData,
     persistCompletedSteps,
     scrollToStep,
+    beginProgrammaticScroll,
+    endProgrammaticScroll,
     completedSteps,
   ]);
 
