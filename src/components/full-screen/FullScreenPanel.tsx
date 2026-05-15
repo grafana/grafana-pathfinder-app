@@ -80,10 +80,10 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
 
     document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted', { detail: { timestamp: Date.now() } }));
     // Mirror the floating panel: tell `sidebarState` that a Pathfinder
-    // surface is mounted. Without this, MCP `launch_guide` polling, the
-    // link-interception auto-open path, and `HomePanel`'s open-guide flow
-    // all gate on `getIsSidebarMounted()` and silently fall through (or
-    // try to call `openSidebar`, which now no-ops in fullscreen mode).
+    // surface is mounted. Without this, the link-interception auto-open
+    // path and `HomePanel`'s open-guide flow gate on
+    // `getIsSidebarMounted()` and silently fall through (or try to call
+    // `openSidebar`, which now no-ops in fullscreen mode).
     sidebarState.setIsSidebarMounted(true);
 
     const pendingGuide = panelModeManager.consumePendingGuide();
@@ -98,8 +98,8 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       // transitions to sidebar or floating, those surfaces' mount effects
       // already set the flag to true (sometimes before our cleanup runs in
       // React StrictMode); clobbering it here would leave downstream gates
-      // (MCP launch, link-interception, HomePanel open-guide) thinking no
-      // Pathfinder surface is up. Mirrors `FloatingPanelManager`.
+      // (link-interception, HomePanel open-guide) thinking no Pathfinder
+      // surface is up. Mirrors `FloatingPanelManager`.
       const mode = panelModeManager.getMode();
       if (mode !== 'sidebar' && mode !== 'floating') {
         sidebarState.setIsSidebarMounted(false);

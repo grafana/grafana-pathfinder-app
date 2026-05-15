@@ -17,9 +17,6 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/vms/", a.handleVMByID)
 	mux.HandleFunc("/sample-apps", a.handleSampleApps)
 	mux.HandleFunc("/alloy-scenarios", a.handleAlloyScenarios)
-	mux.HandleFunc("/mcp", a.handleMCP)
-	mux.HandleFunc("/mcp/pending-launch", a.handlePendingLaunch)
-	mux.HandleFunc("/mcp/pending-launch/clear", a.handlePendingLaunch)
 	mux.HandleFunc("/package-recommendations", a.handlePackageRecommendations)
 	mux.HandleFunc("/health", a.handleHealth)
 }
