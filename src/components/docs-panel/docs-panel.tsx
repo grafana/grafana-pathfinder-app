@@ -3,7 +3,7 @@
 
 import React, { useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
-import { IconButton, Alert, Icon, useStyles2, useTheme2, Button, ButtonGroup } from '@grafana/ui';
+import { IconButton, Icon, useStyles2, useTheme2, Button } from '@grafana/ui';
 
 // Lazy load dev tools to keep them out of production bundles
 // This component is only loaded when dev mode is enabled and the tab is opened
@@ -81,10 +81,8 @@ import {
 } from '../../recovery';
 import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
 import { beginInteractiveNavigation, endInteractiveNavigation } from '../../global-state/interactive-navigation';
-import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
+import { PresenterControls, AttendeeJoin, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
-import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
-import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { buildFullScreenRouteUrl, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
@@ -101,6 +99,7 @@ import {
   PanelModeActionButtons,
   LearningJourneyMilestoneToolbar,
   DocsPanelHeaderMenu,
+  LiveSessionTopBar,
 } from './components';
 // Import extracted utilities
 import {
@@ -1709,136 +1708,33 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       data-pathfinder-content="true"
       data-testid={testIds.docsPanel.container}
     >
-      {/* Live session controls - only render when there's session content */}
-      {(isLiveSessionsEnabled || isSessionActive) && (
-        <div className={styles.topBar}>
-          <div className={styles.liveSessionButtons}>
-            {!isSessionActive && isLiveSessionsEnabled && (
-              <>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon="users-alt"
-                  onClick={() => setShowPresenterControls(true)}
-                  tooltip="Start a live session to broadcast your actions to attendees"
-                >
-                  Start live session
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon="user"
-                  onClick={() => setShowAttendeeJoin(true)}
-                  tooltip="Join an existing live session"
-                >
-                  Join live session
-                </Button>
-              </>
-            )}
-            {isSessionActive && sessionRole === 'presenter' && (
-              <>
-                <Button size="sm" variant="primary" icon="circle" onClick={() => setShowPresenterControls(true)}>
-                  Session active
-                </Button>
-                <div ref={handRaiseIndicatorRef}>
-                  <HandRaiseIndicator count={handRaises.length} onClick={() => setShowHandRaiseQueue(true)} />
-                </div>
-              </>
-            )}
-            {isSessionActive && sessionRole === 'attendee' && (
-              <Alert title="" severity="success" style={{ margin: 0, padding: '8px 12px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Icon name="check-circle" />
-                    <span style={{ fontWeight: 500 }}>Connected to: {sessionInfo?.config.name || 'Live session'}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    {FOLLOW_MODE_ENABLED && (
-                      <>
-                        <span style={{ fontSize: '12px', color: 'rgba(204, 204, 220, 0.85)' }}>Mode:</span>
-                        <ButtonGroup>
-                          <Button
-                            size="sm"
-                            variant={attendeeMode === 'guided' ? 'primary' : 'secondary'}
-                            onClick={() => {
-                              if (attendeeMode !== 'guided') {
-                                const newMode: AttendeeMode = 'guided';
-                                // Update session state
-                                setAttendeeMode(newMode);
-                                // Update ActionReplaySystem
-                                if (actionReplayRef.current) {
-                                  actionReplayRef.current.setMode(newMode);
-                                }
-                                // Send mode change to presenter
-                                if (sessionManager) {
-                                  sessionManager.sendToPresenter({
-                                    type: 'mode_change',
-                                    sessionId: sessionInfo?.sessionId || '',
-                                    timestamp: Date.now(),
-                                    senderId: sessionManager.getRole() || 'attendee',
-                                    mode: newMode,
-                                  } as any);
-                                }
-                                logSession('[DocsPanel] Switched to Guided mode');
-                              }
-                            }}
-                            tooltip="Only see highlights when presenter clicks Show Me"
-                          >
-                            Guided
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={attendeeMode === 'follow' ? 'primary' : 'secondary'}
-                            onClick={() => {
-                              if (attendeeMode !== 'follow') {
-                                const newMode: AttendeeMode = 'follow';
-                                // Update session state
-                                setAttendeeMode(newMode);
-                                // Update ActionReplaySystem
-                                if (actionReplayRef.current) {
-                                  actionReplayRef.current.setMode(newMode);
-                                }
-                                // Send mode change to presenter
-                                if (sessionManager) {
-                                  sessionManager.sendToPresenter({
-                                    type: 'mode_change',
-                                    sessionId: sessionInfo?.sessionId || '',
-                                    timestamp: Date.now(),
-                                    senderId: sessionManager.getRole() || 'attendee',
-                                    mode: newMode,
-                                  } as any);
-                                }
-                                logSession('[DocsPanel] Switched to Follow mode');
-                              }
-                            }}
-                            tooltip="Execute actions automatically when presenter clicks Do It"
-                          >
-                            Follow
-                          </Button>
-                        </ButtonGroup>
-                      </>
-                    )}
-                    <HandRaiseButton isRaised={isHandRaised} onToggle={handleHandRaiseToggle} />
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      icon="times"
-                      onClick={() => {
-                        if (confirm('Leave this live session?')) {
-                          endSession();
-                        }
-                      }}
-                      tooltip="Leave the live session"
-                    >
-                      Leave
-                    </Button>
-                  </div>
-                </div>
-              </Alert>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Live session controls - only render when there's session content.
+          The component returns null when both flags are off, preserving the
+          original surface gate. */}
+      <LiveSessionTopBar
+        className={styles.topBar}
+        liveSessionButtonsClassName={styles.liveSessionButtons}
+        isLiveSessionsEnabled={isLiveSessionsEnabled}
+        isSessionActive={isSessionActive}
+        sessionRole={sessionRole}
+        sessionInfo={sessionInfo}
+        sessionManager={sessionManager}
+        handRaises={handRaises}
+        handRaiseIndicatorRef={handRaiseIndicatorRef}
+        attendeeMode={attendeeMode}
+        setAttendeeMode={setAttendeeMode}
+        actionReplayRef={actionReplayRef}
+        isHandRaised={isHandRaised}
+        onHandRaiseToggle={handleHandRaiseToggle}
+        onShowPresenterControls={() => setShowPresenterControls(true)}
+        onShowAttendeeJoin={() => setShowAttendeeJoin(true)}
+        onShowHandRaiseQueue={() => setShowHandRaiseQueue(true)}
+        endSession={endSession}
+        logSession={logSession}
+      />
+      {/* Note: the original markup uses a key-by-condition wrapper; the
+          LiveSessionTopBar component returns null when both flags are off
+          which is observationally equivalent. */}
 
       {/* Tab bar - always show permanent tabs, show guide tabs when open */}
       <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
