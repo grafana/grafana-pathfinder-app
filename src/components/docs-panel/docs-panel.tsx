@@ -114,10 +114,10 @@ import {
   getTranslatedTitle,
   restoreTabsFromStorage,
   restoreActiveTabFromStorage,
-  isGrafanaDocsUrl,
-  cleanDocsUrl,
   loadDocsTabContentResult,
   PERMANENT_TAB_IDS,
+  findCurrentMilestoneIndex,
+  pickGrafanaDocsOpenAction,
 } from './utils';
 // Import extracted hooks
 import { useBadgeCelebrationQueue, useTabOverflow, useScrollPositionPreservation, useContentReset } from './hooks';
@@ -398,7 +398,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         let content = result.content;
 
         if (tab?.pathContext) {
-          const currentMilestone = this.findCurrentMilestoneIndex(tab.pathContext.learningJourney.milestones, url);
+          const currentMilestone = findCurrentMilestoneIndex(tab.pathContext.learningJourney.milestones, url);
           const learningJourney = {
             ...tab.pathContext.learningJourney,
             currentMilestone,
@@ -484,11 +484,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       // Save tabs to storage even when there's an error
       this.saveTabsToStorage();
     }
-  }
-
-  private findCurrentMilestoneIndex(milestones: Array<{ url: string }>, currentUrl: string): number {
-    const index = milestones.findIndex((m) => m.url === currentUrl);
-    return index >= 0 ? index + 1 : 0;
   }
 
   /**
@@ -2319,33 +2314,33 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       {(() => {
-                        const url = activeTab.content?.url || activeTab.baseUrl;
-                        if (isGrafanaDocsUrl(url)) {
-                          const cleanUrl = cleanDocsUrl(url);
-                          return (
-                            <button
-                              className={styles.secondaryActionButton}
-                              aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
-                              onClick={() => {
-                                reportAppInteraction(UserInteraction.OpenExtraResource, {
-                                  content_url: cleanUrl,
-                                  content_type: getContentTypeForAnalytics(cleanUrl, activeTab.type || 'docs'),
-                                  link_text: activeTab.title,
-                                  source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
-                                  link_type: 'external_browser',
-                                  interaction_location: 'docs_content_meta_right',
-                                });
-                                setTimeout(() => {
-                                  window.open(cleanUrl, '_blank', 'noopener,noreferrer');
-                                }, 100);
-                              }}
-                            >
-                              <Icon name="external-link-alt" size="sm" />
-                              <span>{t('docsPanel.open', 'Open')}</span>
-                            </button>
-                          );
+                        const action = pickGrafanaDocsOpenAction(activeTab.content?.url || activeTab.baseUrl);
+                        if (!action.shouldShow || !action.cleanUrl) {
+                          return null;
                         }
-                        return null;
+                        const cleanUrl = action.cleanUrl;
+                        return (
+                          <button
+                            className={styles.secondaryActionButton}
+                            aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
+                            onClick={() => {
+                              reportAppInteraction(UserInteraction.OpenExtraResource, {
+                                content_url: cleanUrl,
+                                content_type: getContentTypeForAnalytics(cleanUrl, activeTab.type || 'docs'),
+                                link_text: activeTab.title,
+                                source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
+                                link_type: 'external_browser',
+                                interaction_location: 'docs_content_meta_right',
+                              });
+                              setTimeout(() => {
+                                window.open(cleanUrl, '_blank', 'noopener,noreferrer');
+                              }, 100);
+                            }}
+                          >
+                            <Icon name="external-link-alt" size="sm" />
+                            <span>{t('docsPanel.open', 'Open')}</span>
+                          </button>
+                        );
                       })()}
                       {(hasInteractiveProgress || activeTab.type === 'interactive') && (
                         <button
