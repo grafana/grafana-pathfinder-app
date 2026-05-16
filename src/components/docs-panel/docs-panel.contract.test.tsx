@@ -113,18 +113,25 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
     file: 'docs-panel.tsx',
     references: [
       'testIds.docsPanel.container',
+      'testIds.docsPanel.content',
+      'testIds.devTools.previewBanner',
+      'testIds.devTools.previewModeIndicator',
+      'testIds.devTools.returnToEditorButton',
+    ],
+  },
+  {
+    // Tab-bar JSX was extracted from docs-panel.tsx to DocsPanelTabBar.tsx.
+    // The test ids are unchanged; ownership moved.
+    file: 'components/DocsPanelTabBar.tsx',
+    references: [
       'testIds.docsPanel.tabBar',
       'testIds.docsPanel.tabList',
-      'testIds.docsPanel.content',
       'testIds.docsPanel.recommendationsTab',
       'testIds.docsPanel.tabOverflowButton',
       'testIds.docsPanel.tabDropdown',
       'testIds.docsPanel.tab(',
       'testIds.docsPanel.tabCloseButton(',
       'testIds.docsPanel.tabDropdownItem(',
-      'testIds.devTools.previewBanner',
-      'testIds.devTools.previewModeIndicator',
-      'testIds.devTools.returnToEditorButton',
     ],
   },
   {

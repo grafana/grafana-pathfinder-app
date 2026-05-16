@@ -92,7 +92,6 @@ import { testIds } from '../../constants/testIds';
 import {
   LoadingIndicator,
   ErrorDisplay,
-  TabBarActions,
   ModalBackdrop,
   AlignmentPrompt,
   FullScreenModeNotice,
@@ -100,12 +99,12 @@ import {
   LearningJourneyMilestoneToolbar,
   DocsPanelHeaderMenu,
   LiveSessionTopBar,
+  DocsPanelTabBar,
 } from './components';
 // Import extracted utilities
 import {
   isDocsLikeTab,
   shouldUseDocsLoader,
-  getTranslatedTitle,
   restoreTabsFromStorage,
   restoreActiveTabFromStorage,
   loadDocsTabContentResult,
@@ -1736,198 +1735,27 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           LiveSessionTopBar component returns null when both flags are off
           which is observationally equivalent. */}
 
-      {/* Tab bar - always show permanent tabs, show guide tabs when open */}
-      <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
-        {/* Permanent icon-only tabs */}
-        <div className={styles.permanentTabs}>
-          <button
-            className={`${styles.iconTab} ${activeTabId === 'recommendations' ? styles.iconTabActive : ''}`}
-            onClick={() => model.setActiveTab('recommendations')}
-            title={t('docsPanel.recommendations', 'Recommendations')}
-            data-testid={testIds.docsPanel.recommendationsTab}
-          >
-            <Icon name="document-info" size="md" />
-          </button>
-          {isEditorUser && (
-            <button
-              className={`${styles.iconTab} ${activeTabId === 'editor' ? styles.iconTabActive : ''}`}
-              onClick={() => model.setActiveTab('editor')}
-              title={t('docsPanel.guideEditor', 'Guide editor')}
-              data-testid={testIds.docsPanel.tab('editor')}
-            >
-              <Icon name="edit" size="md" />
-            </button>
-          )}
-          {isDevMode && (
-            <button
-              className={`${styles.iconTab} ${activeTabId === 'devtools' ? styles.iconTabActive : ''}`}
-              onClick={() => model.setActiveTab('devtools')}
-              title={t('docsPanel.devTools', 'Dev tools')}
-              data-testid={testIds.docsPanel.tab('devtools')}
-            >
-              <Icon name="bug" size="md" />
-            </button>
-          )}
-        </div>
-
-        {/* Divider - only show when there are guide tabs */}
-        {visibleTabs.filter((t) => !PERMANENT_TAB_IDS.has(t.id)).length > 0 && <div className={styles.tabDivider} />}
-
-        {/* Guide tabs with titles */}
-        <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
-          {visibleTabs
-            .filter((tab) => !PERMANENT_TAB_IDS.has(tab.id))
-            .map((tab) => {
-              return (
-                <button
-                  key={tab.id}
-                  className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
-                  onClick={() => model.setActiveTab(tab.id)}
-                  title={getTranslatedTitle(tab.title)}
-                  data-testid={testIds.docsPanel.tab(tab.id)}
-                >
-                  <div className={styles.tabContent}>
-                    {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.tabIcon} />}
-                    <span className={styles.tabTitle}>
-                      {tab.isLoading ? (
-                        <>
-                          <Icon name="sync" size="xs" />
-                          <span>{t('docsPanel.loading', 'Loading...')}</span>
-                        </>
-                      ) : (
-                        getTranslatedTitle(tab.title)
-                      )}
-                    </span>
-                    <IconButton
-                      name="times"
-                      size="sm"
-                      aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
-                        title: getTranslatedTitle(tab.title),
-                      })}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        reportAppInteraction(UserInteraction.CloseTabClick, {
-                          content_type: getContentTypeForAnalytics(
-                            tab.currentUrl || tab.baseUrl,
-                            tab.type || 'learning-journey'
-                          ),
-                          tab_title: tab.title,
-                          content_url: tab.currentUrl || tab.baseUrl,
-                          interaction_location: 'tab_button',
-                          ...(tab.type === 'learning-journey' &&
-                            tab.content && {
-                              completion_percentage: getJourneyProgress(tab.content),
-                              current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                              total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                            }),
-                        });
-                        model.closeTab(tab.id);
-                      }}
-                      className={styles.closeButton}
-                      data-testid={testIds.docsPanel.tabCloseButton(tab.id)}
-                    />
-                  </div>
-                </button>
-              );
-            })}
-        </div>
-
-        {overflowGuideTabs.length > 0 && (
-          <div className={styles.tabOverflow}>
-            <button
-              ref={chevronButtonRef}
-              className={`${styles.tab} ${styles.chevronTab}`}
-              onClick={() => {
-                if (!isDropdownOpen) {
-                  dropdownOpenTimeRef.current = Date.now();
-                }
-                setIsDropdownOpen(!isDropdownOpen);
-              }}
-              aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', {
-                count: overflowGuideTabs.length,
-              })}
-              aria-expanded={isDropdownOpen}
-              aria-haspopup="true"
-              data-testid={testIds.docsPanel.tabOverflowButton}
-            >
-              <Icon name="angle-down" size="sm" />
-              <span>+{overflowGuideTabs.length}</span>
-            </button>
-          </div>
-        )}
-
-        {isDropdownOpen && overflowGuideTabs.length > 0 && (
-          <div
-            ref={dropdownRef}
-            className={styles.tabDropdown}
-            role="menu"
-            aria-label={t('docsPanel.moreTabsMenu', 'More tabs')}
-            data-testid={testIds.docsPanel.tabDropdown}
-          >
-            {overflowGuideTabs.map((tab) => {
-              return (
-                <button
-                  key={tab.id}
-                  className={`${styles.dropdownItem} ${tab.id === activeTabId ? styles.activeDropdownItem : ''}`}
-                  onClick={() => {
-                    model.setActiveTab(tab.id);
-                    setIsDropdownOpen(false);
-                  }}
-                  role="menuitem"
-                  aria-label={t('docsPanel.switchToTab', 'Switch to {{title}}', {
-                    title: getTranslatedTitle(tab.title),
-                  })}
-                  data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
-                >
-                  <div className={styles.dropdownItemContent}>
-                    {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.dropdownItemIcon} />}
-                    <span className={styles.dropdownItemTitle}>
-                      {tab.isLoading ? (
-                        <>
-                          <Icon name="sync" size="xs" />
-                          <span>{t('docsPanel.loading', 'Loading...')}</span>
-                        </>
-                      ) : (
-                        getTranslatedTitle(tab.title)
-                      )}
-                    </span>
-                    <IconButton
-                      name="times"
-                      size="sm"
-                      aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
-                        title: getTranslatedTitle(tab.title),
-                      })}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        reportAppInteraction(UserInteraction.CloseTabClick, {
-                          content_type: getContentTypeForAnalytics(
-                            tab.currentUrl || tab.baseUrl,
-                            tab.type || 'learning-journey'
-                          ),
-                          tab_title: tab.title,
-                          content_url: tab.currentUrl || tab.baseUrl,
-                          close_location: 'dropdown',
-                          ...(tab.type === 'learning-journey' &&
-                            tab.content && {
-                              completion_percentage: getJourneyProgress(tab.content),
-                              current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                              total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                            }),
-                        });
-                        model.closeTab(tab.id);
-                      }}
-                      className={styles.dropdownItemClose}
-                    />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Menu and close actions */}
-        <TabBarActions className={styles.tabBarActions} />
-      </div>
+      {/* Tab bar — extracted to DocsPanelTabBar. All data-testid values
+          preserved; ownership tracked in docs-panel.contract.test.tsx
+          SOURCE_CONTRACT. */}
+      <DocsPanelTabBar
+        styles={styles}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        visibleTabs={visibleTabs}
+        overflowGuideTabs={overflowGuideTabs}
+        isEditorUser={isEditorUser}
+        isDevMode={isDevMode}
+        isDropdownOpen={isDropdownOpen}
+        setIsDropdownOpen={setIsDropdownOpen}
+        tabBarRef={tabBarRef}
+        tabListRef={tabListRef}
+        dropdownRef={dropdownRef}
+        chevronButtonRef={chevronButtonRef}
+        dropdownOpenTimeRef={dropdownOpenTimeRef}
+        onSetActiveTab={(tabId) => model.setActiveTab(tabId)}
+        onCloseTab={(tabId) => model.closeTab(tabId)}
+      />
 
       <div className={styles.content} data-testid={testIds.docsPanel.content}>
         {(() => {

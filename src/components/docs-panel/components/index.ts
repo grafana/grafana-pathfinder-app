@@ -21,3 +21,4 @@ export {
   type FeedbackInteractionLocation,
 } from './DocsPanelHeaderMenu';
 export { LiveSessionTopBar, type LiveSessionTopBarProps } from './LiveSessionTopBar';
+export { DocsPanelTabBar, type DocsPanelTabBarProps } from './DocsPanelTabBar';
