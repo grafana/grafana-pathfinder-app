@@ -111,8 +111,13 @@ describe('E2E Contract: Docs panel test IDs', () => {
 const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
   {
     file: 'docs-panel.tsx',
+    references: ['testIds.docsPanel.container'],
+  },
+  {
+    // Content-area JSX was extracted from docs-panel.tsx to DocsPanelContentArea.tsx.
+    // Test ids stay stable; ownership moved.
+    file: 'components/DocsPanelContentArea.tsx',
     references: [
-      'testIds.docsPanel.container',
       'testIds.docsPanel.content',
       'testIds.devTools.previewBanner',
       'testIds.devTools.previewModeIndicator',
