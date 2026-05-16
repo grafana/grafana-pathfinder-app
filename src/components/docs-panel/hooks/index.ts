@@ -7,3 +7,5 @@ export type { UseScrollPositionPreservationResult } from './useScrollPositionPre
 export { useContentReset } from './useContentReset';
 export { useDevModeLogger } from './useDevModeLogger';
 export type { LogSession } from './useDevModeLogger';
+export { usePanelMode } from './usePanelMode';
+export type { UsePanelModeResult } from './usePanelMode';

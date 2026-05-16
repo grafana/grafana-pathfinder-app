@@ -92,7 +92,7 @@ import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } 
 import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
-import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
+import { panelModeManager } from '../../global-state/panel-mode';
 import { buildFullScreenRouteUrl, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import { testIds } from '../../constants/testIds';
 
@@ -126,6 +126,7 @@ import {
   useScrollPositionPreservation,
   useContentReset,
   useDevModeLogger,
+  usePanelMode,
 } from './hooks';
 
 // Import centralized types
@@ -1043,44 +1044,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     addGlobalModalStyles();
   }, []);
 
-  // Track the current panel mode so the sidebar's content area can render a
-  // "Pathfinder is in full screen" placeholder when the dedicated full-screen
-  // page owns the active session. Without this, opening Grafana's extension
-  // sidebar while full screen is active would mount a *second*
-  // CombinedLearningJourneyPanel instance racing on the shared tabStorage —
-  // see Issue 3 in the autodock plan and `pathfinder-panel-mode-change`
-  // listener in BlockEditorHeader for the same pattern.
-  const [panelMode, setPanelMode] = React.useState<PanelMode>(() => panelModeManager.getMode());
-  React.useEffect(() => {
-    const handleModeChange = (e: CustomEvent<{ mode: PanelMode }>) => {
-      setPanelMode(e.detail.mode);
-    };
-    document.addEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
-    return () => {
-      document.removeEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
-    };
-  }, []);
-
-  // Self-heal stale `'fullscreen'` mode left in localStorage from a previous
-  // session. The sidebar only mounts when Grafana renders the extension
-  // sidebar slot — if we're sitting in the sidebar surface AND the URL is
-  // not the full-screen route, the persisted mode is lying and we'd render
-  // the "Pathfinder is in full screen" placeholder forever (the auto-dock
-  // listener can only fire while FullScreenPanel is mounted). Resetting
-  // here covers tab-close + reopen and direct navigation from
-  // `/fullscreen` to another Grafana page via the global nav.
-  React.useEffect(() => {
-    if (panelMode !== 'fullscreen') {
-      return;
-    }
-    const onFullScreenRoute = window.location.pathname.startsWith(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
-    if (!onFullScreenRoute) {
-      panelModeManager.setMode('sidebar');
-      setPanelMode('sidebar');
-    }
-  }, [panelMode]);
-
-  const isFullScreenActive = panelMode === 'fullscreen';
+  // Track the current panel mode (sidebar / floating / fullscreen) including
+  // the fullscreen self-heal that resets stale localStorage state when the
+  // pathname is not the full-screen route. Extracted to usePanelMode.
+  // See `pathfinder-panel-mode-change` listener docs in BlockEditorHeader for
+  // the same pattern, and `docs-panel.panel-mode.test.tsx` for the contract.
+  const { panelMode, isFullScreenActive } = usePanelMode();
 
   // Get plugin configuration to check if live sessions are enabled
   const isLiveSessionsEnabled = pluginConfig.enableLiveSessions;
