@@ -127,6 +127,7 @@ import {
   useContentReset,
   useDevModeLogger,
   usePanelMode,
+  useSessionJoinUrlCheck,
 } from './hooks';
 
 // Import centralized types
@@ -1081,24 +1082,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     handRaises,
   } = useSession();
 
-  // Check for session join URL on mount and auto-open modal
-  React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.has('session')) {
-      if (!isLiveSessionsEnabled) {
-        // Show notification that live sessions are disabled
-        getAppEvents().publish({
-          type: 'alert-warning',
-          payload: [
-            'Live sessions disabled',
-            'Live sessions are disabled on this Grafana instance. Ask your administrator to enable them in the Pathfinder plugin configuration.',
-          ],
-        });
-      } else {
-        setShowAttendeeJoin(true);
-      }
-    }
-  }, [isLiveSessionsEnabled]);
+  // Check for session join URL on mount and auto-open the attendee-join modal.
+  useSessionJoinUrlCheck({
+    isLiveSessionsEnabled,
+    onShowAttendeeJoin: () => setShowAttendeeJoin(true),
+  });
 
   // Action replay system for attendees
   const navigationManagerRef = useRef<NavigationManager | null>(null);

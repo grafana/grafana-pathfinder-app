@@ -9,3 +9,4 @@ export { useDevModeLogger } from './useDevModeLogger';
 export type { LogSession } from './useDevModeLogger';
 export { usePanelMode } from './usePanelMode';
 export type { UsePanelModeResult } from './usePanelMode';
+export { useSessionJoinUrlCheck } from './useSessionJoinUrlCheck';
