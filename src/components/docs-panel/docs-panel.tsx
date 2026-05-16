@@ -1,7 +1,7 @@
 // Combined Learning Journey and Docs Panel
 // Post-refactoring unified component using new content system only
 
-import React, { useEffect, useLayoutEffect, useRef, useCallback, Suspense, lazy } from 'react';
+import React, { useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2, useTheme2, Button, ButtonGroup, Dropdown, Menu } from '@grafana/ui';
 
@@ -124,6 +124,7 @@ import {
   useSessionJoinUrlCheck,
   useLastMilestoneAutoComplete,
   useScrollTracking,
+  useGlobalActiveTabExposure,
 } from './hooks';
 
 // Import centralized types
@@ -1361,20 +1362,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     [model]
   );
 
-  // Expose current active tab id/url globally for interactive persistence keys.
-  // MUST be useLayoutEffect so the globals are set before children's useEffect
-  // (progress restoration) runs. useEffect runs bottom-up (children first),
-  // so a parent useEffect would still hold the PREVIOUS milestone's URL when
-  // InteractiveSection restores progress. useLayoutEffect fires synchronously
-  // before any passive effects, guaranteeing the correct URL is available.
-  useLayoutEffect(() => {
-    try {
-      (window as any).__DocsPluginActiveTabId = activeTab?.id || '';
-      (window as any).__DocsPluginActiveTabUrl = activeTab?.currentUrl || activeTab?.baseUrl || '';
-    } catch {
-      // no-op
-    }
-  }, [activeTab?.id, activeTab?.currentUrl, activeTab?.baseUrl]);
+  // Expose current active tab id/url on `window` for interactive persistence
+  // keys. Uses useLayoutEffect inside the hook (pinned by H4 in the
+  // pre-mortem) so children's passive useEffects observe the new URL.
+  useGlobalActiveTabExposure({
+    activeTabId: activeTab?.id,
+    activeTabCurrentUrl: activeTab?.currentUrl,
+    activeTabBaseUrl: activeTab?.baseUrl,
+  });
 
   // Auto-complete the final milestone of a learning journey when the rendered
   // content has no interactive steps to drive completion from clicks.
