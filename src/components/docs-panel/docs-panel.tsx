@@ -3,7 +3,7 @@
 
 import React, { useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
-import { IconButton, Alert, Icon, useStyles2, useTheme2, Button, ButtonGroup, Dropdown, Menu } from '@grafana/ui';
+import { IconButton, Alert, Icon, useStyles2, useTheme2, Button, ButtonGroup } from '@grafana/ui';
 
 // Lazy load dev tools to keep them out of production bundles
 // This component is only loaded when dev mode is enabled and the tab is opened
@@ -100,6 +100,7 @@ import {
   FullScreenModeNotice,
   PanelModeActionButtons,
   LearningJourneyMilestoneToolbar,
+  DocsPanelHeaderMenu,
 } from './components';
 // Import extracted utilities
 import {
@@ -2262,50 +2263,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                         </button>
                       )}
                       <PanelModeActionButtons className={styles.secondaryActionButton} />
-                      <Dropdown
-                        placement="bottom-end"
-                        overlay={
-                          <Menu>
-                            {isDevMode && (
-                              <Menu.Item
-                                label={t('docsPanel.refreshDev', 'Refresh (dev)')}
-                                icon="sync"
-                                onClick={() => {
-                                  if (activeTab) {
-                                    reloadActiveTab(activeTab);
-                                  }
-                                }}
-                              />
-                            )}
-                            <Menu.Item
-                              label={t('docsPanel.giveFeedback', 'Give feedback')}
-                              icon="comment-alt-message"
-                              onClick={() => {
-                                reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
-                                  interaction_location: 'docs_panel_header_feedback_menu',
-                                  panel_type: 'combined_learning_journey',
-                                  content_url: activeTab.content?.url || activeTab.baseUrl || '',
-                                  content_type: activeTab.type || 'docs',
-                                });
-                                setTimeout(() => {
-                                  window.open(
-                                    'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
-                                    '_blank',
-                                    'noopener,noreferrer'
-                                  );
-                                }, 100);
-                              }}
-                            />
-                          </Menu>
-                        }
-                      >
-                        <IconButton
-                          name="ellipsis-v"
-                          size="sm"
-                          aria-label={t('docsPanel.menuAriaLabel', 'More options')}
-                          tooltip={t('docsPanel.menuTooltip', 'More options')}
-                        />
-                      </Dropdown>
+                      <DocsPanelHeaderMenu
+                        activeTab={activeTab}
+                        isDevMode={isDevMode}
+                        onReload={reloadActiveTab}
+                        interactionLocation="docs_panel_header_feedback_menu"
+                        defaultContentType="docs"
+                      />
                     </div>
                   </div>
                 )}
@@ -2325,50 +2289,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   trailingActions={
                     <>
                       <PanelModeActionButtons className={styles.secondaryActionButton} />
-                      <Dropdown
-                        placement="bottom-end"
-                        overlay={
-                          <Menu>
-                            {isDevMode && (
-                              <Menu.Item
-                                label={t('docsPanel.refreshDev', 'Refresh (dev)')}
-                                icon="sync"
-                                onClick={() => {
-                                  if (activeTab) {
-                                    reloadActiveTab(activeTab);
-                                  }
-                                }}
-                              />
-                            )}
-                            <Menu.Item
-                              label={t('docsPanel.giveFeedback', 'Give feedback')}
-                              icon="comment-alt-message"
-                              onClick={() => {
-                                reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
-                                  interaction_location: 'milestone_progress_bar_feedback_menu',
-                                  panel_type: 'combined_learning_journey',
-                                  content_url: activeTab.content?.url || activeTab.baseUrl || '',
-                                  content_type: activeTab.type || 'learning-journey',
-                                });
-                                setTimeout(() => {
-                                  window.open(
-                                    'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
-                                    '_blank',
-                                    'noopener,noreferrer'
-                                  );
-                                }, 100);
-                              }}
-                            />
-                          </Menu>
-                        }
-                      >
-                        <IconButton
-                          name="ellipsis-v"
-                          size="sm"
-                          aria-label={t('docsPanel.menuAriaLabel', 'More options')}
-                          tooltip={t('docsPanel.menuTooltip', 'More options')}
-                        />
-                      </Dropdown>
+                      <DocsPanelHeaderMenu
+                        activeTab={activeTab}
+                        isDevMode={isDevMode}
+                        onReload={reloadActiveTab}
+                        interactionLocation="milestone_progress_bar_feedback_menu"
+                        defaultContentType="learning-journey"
+                      />
                     </>
                   }
                 />

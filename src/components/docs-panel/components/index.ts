@@ -15,3 +15,8 @@ export {
   type LearningJourneyMilestoneToolbarProps,
   type MilestoneToolbarSurface,
 } from './LearningJourneyMilestoneToolbar';
+export {
+  DocsPanelHeaderMenu,
+  type DocsPanelHeaderMenuProps,
+  type FeedbackInteractionLocation,
+} from './DocsPanelHeaderMenu';
