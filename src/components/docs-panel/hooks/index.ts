@@ -10,3 +10,4 @@ export type { LogSession } from './useDevModeLogger';
 export { usePanelMode } from './usePanelMode';
 export type { UsePanelModeResult } from './usePanelMode';
 export { useSessionJoinUrlCheck } from './useSessionJoinUrlCheck';
+export { useLastMilestoneAutoComplete } from './useLastMilestoneAutoComplete';

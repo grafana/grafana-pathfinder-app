@@ -61,7 +61,6 @@ import {
   setJourneyCompletionPercentage,
   getMilestoneSlug,
   markMilestoneDone,
-  isLastMilestone,
   setPackageResolver,
   injectJourneyExtrasIntoJsonGuide,
   fetchPackageInfoFromUrl,
@@ -128,6 +127,7 @@ import {
   useDevModeLogger,
   usePanelMode,
   useSessionJoinUrlCheck,
+  useLastMilestoneAutoComplete,
 } from './hooks';
 
 // Import centralized types
@@ -1380,36 +1380,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     }
   }, [activeTab?.id, activeTab?.currentUrl, activeTab?.baseUrl]);
 
-  // Auto-complete last milestone on arrival if it has no interactive steps.
-  // The last milestone has no "Next" button, so there is no click-based trigger
-  // to mark it as done. We wait for the DOM to render, then check for interactive
-  // step elements. If none are found, we mark the milestone complete immediately.
-  useEffect(() => {
-    if (!stableContent || stableContent.type !== 'learning-journey' || !activeTab?.currentUrl || !activeTab?.baseUrl) {
-      return;
-    }
-
-    if (!isLastMilestone(stableContent)) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      const container = contentRef?.current;
-      if (!container) {
-        return;
-      }
-
-      const hasInteractiveSteps = container.querySelectorAll('[data-step-id]').length > 0;
-      if (!hasInteractiveSteps) {
-        const slug = getMilestoneSlug(activeTab.currentUrl!);
-        if (slug) {
-          void markMilestoneDone(activeTab.baseUrl!, slug, stableContent.metadata?.learningJourney?.totalMilestones);
-        }
-      }
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [stableContent, activeTab?.currentUrl, activeTab?.baseUrl, contentRef]);
+  // Auto-complete the final milestone of a learning journey when the rendered
+  // content has no interactive steps to drive completion from clicks.
+  // Extracted to useLastMilestoneAutoComplete.
+  useLastMilestoneAutoComplete({ stableContent, activeTab, contentRef });
 
   // Initialize interactive elements for the content container (side effects only)
   useInteractiveElements({ containerRef: contentRef });
