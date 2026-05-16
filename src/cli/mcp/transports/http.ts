@@ -262,7 +262,26 @@ export async function runHttp(options: RunHttpOptions): Promise<HttpHandle> {
   return {
     server,
     port: boundPort,
-    close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        let done = false;
+        const finish = (err?: Error): void => {
+          if (done) {
+            return;
+          }
+          done = true;
+          err ? reject(err) : resolve();
+        };
+        server.close((err) => finish(err ?? undefined));
+        // Drop idle keep-alive connections immediately so server.close() can
+        // resolve without waiting for the peer's keep-alive timeout to fire.
+        server.closeIdleConnections();
+        // Hard deadline: any connection still active after 5s (e.g. a hung
+        // SSE stream or a stalled client) gets force-closed so the process
+        // exits before the container orchestrator's SIGKILL grace period.
+        const force = setTimeout(() => server.closeAllConnections(), 5_000);
+        force.unref();
+      }),
   };
 }
 
