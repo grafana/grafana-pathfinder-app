@@ -120,7 +120,13 @@ import {
   pickGrafanaDocsOpenAction,
 } from './utils';
 // Import extracted hooks
-import { useBadgeCelebrationQueue, useTabOverflow, useScrollPositionPreservation, useContentReset } from './hooks';
+import {
+  useBadgeCelebrationQueue,
+  useTabOverflow,
+  useScrollPositionPreservation,
+  useContentReset,
+  useDevModeLogger,
+} from './hooks';
 
 // Import centralized types
 import {
@@ -1026,20 +1032,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     currentUser?.orgRole === 'Editor' || currentUser?.orgRole === 'Admin' || currentUser?.isGrafanaAdmin === true;
 
   // SECURITY: Scoped logger that only emits in dev mode to prevent user data leaking to console.
-  // Stored in a ref so it never causes effect re-runs when isDevMode toggles.
-  const logSessionRef = React.useRef((...args: unknown[]) => {
-    if (isDevMode) {
-      console.log(...args);
-    }
-  });
-  logSessionRef.current = (...args: unknown[]) => {
-    if (isDevMode) {
-      console.log(...args);
-    }
-  };
-  const logSession = React.useCallback((...args: unknown[]) => {
-    logSessionRef.current(...args);
-  }, []);
+  // Stable callback identity so effects depending on it do not re-run when isDevMode toggles.
+  const logSession = useDevModeLogger(isDevMode);
 
   // Set global config for utility functions that can't access React context
   (window as any).__pathfinderPluginConfig = pluginConfig;
