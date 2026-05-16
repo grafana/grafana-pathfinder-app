@@ -42,12 +42,7 @@ import { useLinkClickHandler } from './link-handler.hook';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { parseUrlSafely } from '../../security';
 
-import {
-  setupScrollTracking,
-  reportAppInteraction,
-  UserInteraction,
-  getContentTypeForAnalytics,
-} from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
 import { useAlignmentReevaluation, useAutoLaunchTutorial } from '../../hooks';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -128,6 +123,7 @@ import {
   usePanelMode,
   useSessionJoinUrlCheck,
   useLastMilestoneAutoComplete,
+  useScrollTracking,
 } from './hooks';
 
 // Import centralized types
@@ -1704,21 +1700,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     };
   }, [model, isSessionActive]);
 
-  // Scroll tracking
-  useEffect(() => {
-    // Only set up scroll tracking for actual content tabs (not recommendations)
-    if (!isRecommendationsTab && activeTab && activeTab.content) {
-      // Find the actual scrollable element (the div with overflow: auto)
-      const scrollableElement = document.getElementById('inner-docs-content');
-
-      if (scrollableElement) {
-        const cleanup = setupScrollTracking(scrollableElement, activeTab, isRecommendationsTab);
-        return cleanup;
-      }
-    }
-
-    return undefined;
-  }, [activeTab, activeTab?.content, isRecommendationsTab]);
+  // Scroll tracking — wires setupScrollTracking to the `inner-docs-content`
+  // scroll container (DOM id pinned by docs-panel.contract.test.tsx).
+  useScrollTracking({ activeTab, isRecommendationsTab });
 
   // ContentRenderer renders the content with styling applied via CSS classes
 

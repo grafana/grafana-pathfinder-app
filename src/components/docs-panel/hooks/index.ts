@@ -11,3 +11,4 @@ export { usePanelMode } from './usePanelMode';
 export type { UsePanelModeResult } from './usePanelMode';
 export { useSessionJoinUrlCheck } from './useSessionJoinUrlCheck';
 export { useLastMilestoneAutoComplete } from './useLastMilestoneAutoComplete';
+export { useScrollTracking } from './useScrollTracking';
