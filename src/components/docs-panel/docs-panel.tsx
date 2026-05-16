@@ -81,7 +81,6 @@ import {
 } from '../../recovery';
 import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
 import { beginInteractiveNavigation, endInteractiveNavigation } from '../../global-state/interactive-navigation';
-import { PresenterControls, AttendeeJoin, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { panelModeManager } from '../../global-state/panel-mode';
@@ -100,6 +99,7 @@ import {
   DocsPanelHeaderMenu,
   LiveSessionTopBar,
   DocsPanelTabBar,
+  LiveSessionModals,
 } from './components';
 // Import extracted utilities
 import {
@@ -2111,85 +2111,26 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         </Suspense>
       )}
 
-      {/* Live Session Modals */}
-      {showPresenterControls && !isSessionActive && (
-        <div
-          style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            zIndex: 10000,
-            background: theme.colors.background.primary,
-            borderRadius: theme.shape.radius.default,
-            boxShadow: theme.shadows.z3,
-            padding: theme.spacing(3),
-            maxWidth: '600px',
-            maxHeight: '90vh',
-            overflow: 'auto',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: theme.spacing(2),
-            }}
-          >
-            <h3 style={{ margin: 0 }}>Live Session</h3>
-            <IconButton name="times" size="lg" onClick={() => setShowPresenterControls(false)} aria-label="Close" />
-          </div>
-          <PresenterControls tutorialUrl={activeTab?.currentUrl || activeTab?.baseUrl || ''} />
-        </div>
-      )}
-
-      {showPresenterControls && isSessionActive && sessionRole === 'presenter' && (
-        <div
-          style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            zIndex: 10000,
-            background: theme.colors.background.primary,
-            borderRadius: theme.shape.radius.default,
-            boxShadow: theme.shadows.z3,
-            padding: theme.spacing(3),
-            maxWidth: '600px',
-            maxHeight: '90vh',
-            overflow: 'auto',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: theme.spacing(2),
-            }}
-          >
-            <h3 style={{ margin: 0 }}>Live Session</h3>
-            <IconButton name="times" size="lg" onClick={() => setShowPresenterControls(false)} aria-label="Close" />
-          </div>
-          <PresenterControls tutorialUrl={activeTab?.currentUrl || activeTab?.baseUrl || ''} />
-        </div>
-      )}
-
-      <AttendeeJoin
-        isOpen={showAttendeeJoin}
-        onClose={() => setShowAttendeeJoin(false)}
-        onJoined={() => {
+      {/* Live Session Modals — extracted cluster (presenter controls,
+          attendee join, hand-raise queue). ModalBackdrop stays here as a
+          sibling so its z-stacking order vs the badge toast is preserved. */}
+      <LiveSessionModals
+        theme={theme}
+        showPresenterControls={showPresenterControls}
+        isSessionActive={isSessionActive}
+        sessionRole={sessionRole}
+        showAttendeeJoin={showAttendeeJoin}
+        showHandRaiseQueue={showHandRaiseQueue}
+        handRaises={handRaises}
+        handRaiseIndicatorRef={handRaiseIndicatorRef}
+        presenterTutorialUrl={activeTab?.currentUrl || activeTab?.baseUrl || ''}
+        onClosePresenterControls={() => setShowPresenterControls(false)}
+        onCloseAttendeeJoin={() => setShowAttendeeJoin(false)}
+        onAttendeeJoined={() => {
           setShowAttendeeJoin(false);
           // TODO: Start listening for presenter events
         }}
-      />
-
-      <HandRaiseQueue
-        handRaises={handRaises}
-        isOpen={showHandRaiseQueue}
-        onClose={() => setShowHandRaiseQueue(false)}
-        anchorRef={handRaiseIndicatorRef}
+        onCloseHandRaiseQueue={() => setShowHandRaiseQueue(false)}
       />
 
       <ModalBackdrop

@@ -22,3 +22,4 @@ export {
 } from './DocsPanelHeaderMenu';
 export { LiveSessionTopBar, type LiveSessionTopBarProps } from './LiveSessionTopBar';
 export { DocsPanelTabBar, type DocsPanelTabBarProps } from './DocsPanelTabBar';
+export { LiveSessionModals, type LiveSessionModalsProps } from './LiveSessionModals';
