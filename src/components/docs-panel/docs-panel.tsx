@@ -27,7 +27,6 @@ import { useInteractiveElements, NavigationManager } from '../../interactive-eng
 import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
 import { useLinkClickHandler } from './link-handler.hook';
 import { isDevModeEnabled } from '../../utils/dev-mode';
-import { parseUrlSafely } from '../../security';
 
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
@@ -54,7 +53,6 @@ import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import {
-  coerceLaunchSource,
   evaluateAlignment,
   pathMatchesStartingLocation,
   resolveStartingLocation,
@@ -62,7 +60,6 @@ import {
 } from '../../recovery';
 import { beginInteractiveNavigation, endInteractiveNavigation } from '../../global-state/interactive-navigation';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
-import { linkInterceptionState } from '../../global-state/link-interception';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { buildFullScreenRouteUrl, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import { testIds } from '../../constants/testIds';
@@ -98,6 +95,7 @@ import {
   useLastMilestoneAutoComplete,
   useScrollTracking,
   useGlobalActiveTabExposure,
+  useAutoOpenListener,
 } from './hooks';
 
 // Import centralized types
@@ -1204,40 +1202,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
-  React.useEffect(() => {
-    const handleAutoOpen = (event: Event) => {
-      const customEvent = event as CustomEvent<{ url: string; title: string; source?: string }>;
-      const { url, title, source } = customEvent.detail;
-
-      // Coerce the untrusted event.detail.source to a typed LaunchSource at
-      // the boundary. Unknown literals fall through to `null` ("needs check"),
-      // which is the safer default than passing typo'd strings into the model.
-      const typedSource = coerceLaunchSource(source);
-
-      // Always create a new tab for each intercepted link
-      // Call the model method directly to ensure new tabs are created
-      // Use proper URL parsing for security (defense in depth)
-      const urlObj = parseUrlSafely(url);
-      const isLearningJourney =
-        urlObj?.pathname.includes('/learning-journeys/') || urlObj?.pathname.includes('/learning-paths/');
-
-      if (isLearningJourney) {
-        model.openLearningJourney(url, title, { source: typedSource ?? undefined });
-      } else {
-        model.openDocsPage(url, title, { source: typedSource ?? undefined });
-      }
-    };
-
-    // Listen for all auto-open events
-    document.addEventListener('pathfinder-auto-open-docs', handleAutoOpen);
-
-    // todo: investigate why this needs to be kicked to the end of the event loop
-    setTimeout(() => linkInterceptionState.processQueuedLinks(), 0);
-
-    return () => {
-      document.removeEventListener('pathfinder-auto-open-docs', handleAutoOpen);
-    };
-  }, [model]); // Only model as dependency - this component doesn't remount on tab changes
+  useAutoOpenListener(model);
   // removed — using restored custom overflow state below
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
