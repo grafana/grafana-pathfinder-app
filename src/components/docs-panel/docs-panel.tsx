@@ -21,7 +21,7 @@ const TerminalProviderLazy = lazy(() =>
 );
 import { usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import { DocsPluginConfig, getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
+import { DocsPluginConfig, getConfigWithDefaults } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
@@ -61,7 +61,7 @@ import {
 import { beginInteractiveNavigation, endInteractiveNavigation } from '../../global-state/interactive-navigation';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
-import { buildFullScreenRouteUrl, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
+import { shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import { testIds } from '../../constants/testIds';
 
 // Import extracted components
@@ -97,6 +97,7 @@ import {
   useGlobalActiveTabExposure,
   useAutoOpenListener,
   usePopOutHandoff,
+  useFullScreenHandoff,
 } from './hooks';
 
 // Import centralized types
@@ -1467,111 +1468,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   usePopOutHandoff(model);
 
   // Open active content in the full screen mode page. Mirrors the popout
-  // handoff: snapshot tabs, set pendingGuide, switch mode (which closes the
-  // sidebar), then push the route. Live sessions block the switch — a fresh
-  // SessionProvider on the new page would disconnect the session.
-  useEffect(() => {
-    const handleFullScreenRequest = () => {
-      if (isSessionActive) {
-        getAppEvents().publish({
-          type: 'alert-info',
-          payload: ['Leave the live session before switching to full screen.'],
-        });
-        return;
-      }
-
-      const { tabs: currentTabs, activeTabId: currentActiveTabId } = model.state;
-      const activeTab = currentTabs.find((tab) => tab.id === currentActiveTabId);
-
-      // Editor tab: the block editor itself moves into full screen.
-      // We set a pending editor handoff so when the user clicks "Full screen"
-      // on the editor while another guide is already in fullscreen
-      // (`setMode('fullscreen')` no-ops in that case), the receiving panel
-      // still switches its active tab to the editor — replacing the journey.
-      if (activeTab?.type === 'editor') {
-        reportAppInteraction(UserInteraction.FullScreenEnter, {
-          guide_url: '',
-          guide_title: activeTab.title,
-          content_type: 'editor',
-        });
-        // Remember where we came from so explicit Exit can land back on the
-        // user's prior Grafana page instead of the plugin home.
-        //
-        // Intentionally NO `snapshotSidebarTabs()` here: the sidebar and
-        // full-screen surfaces share intent (same tabs, same active guide),
-        // so the snapshot/restore would clobber the milestone progress
-        // full-screen wrote back to tabStorage and the user would land at
-        // the prior milestone on dock-back.
-        panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
-        panelModeManager.setPendingGuide({ title: activeTab.title, type: 'editor' });
-        panelModeManager.setMode('fullscreen');
-        locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
-        return;
-      }
-
-      // Prefer `currentUrl` (the milestone the user is reading) over the
-      // cover-page `baseUrl` so the milestone position carries through to
-      // full screen. The dock-back direction already worked because the
-      // sidebar restores `currentUrl` from tabStorage on remount — this is
-      // the symmetric fix for the forward handoff. For non-journey tabs the
-      // two are equal so the swap is a no-op.
-      const guideUrl = activeTab?.currentUrl || activeTab?.baseUrl;
-      const supportedTab = activeTab && activeTab.id !== 'recommendations' && activeTab.type !== 'devtools' && guideUrl;
-
-      if (!supportedTab) {
-        getAppEvents().publish({
-          type: 'alert-info',
-          payload: ['Open a guide before switching to full screen.'],
-        });
-        return;
-      }
-
-      panelModeManager.setPendingGuide({
-        url: guideUrl,
-        title: activeTab.title,
-        type: activeTab.type === 'learning-journey' ? 'learning-journey' : 'docs',
-        // Forward synthetic packageInfo (e.g. PR-tester journeys whose URL
-        // is a raw GitHub URL, not a recognised package URL) so the
-        // full-screen page rebuilds the milestone toolbar after the handoff.
-        packageInfo: activeTab.packageInfo,
-      });
-
-      reportAppInteraction(UserInteraction.FullScreenEnter, {
-        guide_url: guideUrl,
-        guide_title: activeTab.title,
-        content_type: getContentTypeForAnalytics(guideUrl, activeTab.type || 'docs'),
-      });
-
-      // Remember where we came from so explicit Exit can land back on the
-      // user's prior Grafana page instead of the plugin home.
-      //
-      // Intentionally NO `snapshotSidebarTabs()` here: the sidebar and
-      // full-screen surfaces share intent (same tabs, same active guide),
-      // so the snapshot/restore would clobber the milestone progress
-      // full-screen wrote back to tabStorage and the user would land at
-      // the prior milestone on dock-back.
-      panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
-      panelModeManager.setMode('fullscreen');
-      // Encode the tab type in the URL so a refresh / shared link rehydrates
-      // the right kind of tab. Without this, FullScreenPanel's URL fallback
-      // would call findDocPage and classify a journey package URL as
-      // 'interactive', losing the milestone toolbar on reload.
-      const tabType = activeTab.type === 'learning-journey' ? 'learning-journey' : 'docs';
-      locationService.push(
-        buildFullScreenRouteUrl({
-          pluginBaseUrl: PLUGIN_BASE_URL,
-          fullScreenRoute: ROUTES.FullScreen,
-          doc: guideUrl,
-          guideType: tabType,
-        })
-      );
-    };
-
-    document.addEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
-    return () => {
-      document.removeEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
-    };
-  }, [model, isSessionActive]);
+  // handoff: capturePriorPath, set pendingGuide, switch mode, then push the
+  // route. Live sessions block the switch — a fresh SessionProvider on the
+  // new page would disconnect the session.
+  useFullScreenHandoff(model, isSessionActive);
 
   // Scroll tracking — wires setupScrollTracking to the `inner-docs-content`
   // scroll container (DOM id pinned by docs-panel.contract.test.tsx).
