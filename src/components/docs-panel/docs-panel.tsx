@@ -98,6 +98,7 @@ import {
   useAutoOpenListener,
   usePopOutHandoff,
   useFullScreenHandoff,
+  usePermanentTabs,
 } from './hooks';
 
 // Import centralized types
@@ -1151,56 +1152,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   }, [panelMode]);
 
   // Ensure permanent tabs (devtools, editor) exist when their gate is active.
-  // Merged into a single effect so both additions read from the same up-to-date
-  // tabs array, avoiding a stale-closure overwrite when both gates are true.
-  React.useEffect(() => {
-    const missing: LearningJourneyTab[] = [];
-
-    if (isDevMode && !tabs.some((t) => t.id === 'devtools')) {
-      missing.push({
-        id: 'devtools',
-        title: 'Dev Tools',
-        baseUrl: '',
-        currentUrl: '',
-        content: null,
-        isLoading: false,
-        error: null,
-        type: 'devtools',
-      });
-    }
-
-    if (isEditorUser && !tabs.some((t) => t.id === 'editor')) {
-      missing.push({
-        id: 'editor',
-        title: 'Guide editor',
-        baseUrl: '',
-        currentUrl: '',
-        content: null,
-        isLoading: false,
-        error: null,
-        type: 'editor',
-      });
-    }
-
-    // Remove editor tab if the current user is not an editor/admin (e.g. role
-    // downgrade or different user logged in with a persisted editor tab).
-    const hasStaleEditorTab = !isEditorUser && tabs.some((t) => t.id === 'editor');
-
-    if (missing.length > 0 || hasStaleEditorTab) {
-      let updatedTabs = hasStaleEditorTab ? tabs.filter((t) => t.id !== 'editor') : tabs;
-      updatedTabs = [...updatedTabs, ...missing];
-
-      const patch: Partial<CombinedPanelState> = { tabs: updatedTabs };
-      if (hasStaleEditorTab && model.state.activeTabId === 'editor') {
-        patch.activeTabId = 'recommendations';
-      }
-      model.setState(patch);
-
-      if (hasStaleEditorTab) {
-        model.saveTabsToStorage();
-      }
-    }
-  }, [isDevMode, isEditorUser, tabs, model]);
+  usePermanentTabs({ model, isDevMode, isEditorUser, tabs });
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
