@@ -47,6 +47,22 @@ describe('getAvailableConversions', () => {
       expect(getAvailableConversions('quiz')).toHaveLength(12);
       expect(getAvailableConversions('interactive')).toHaveLength(12);
     });
+
+    it('should exclude guided from generic multistep conversions', () => {
+      const result = getAvailableConversions('multistep');
+
+      expect(result).not.toContain('multistep');
+      expect(result).not.toContain('guided');
+      expect(result).toContain('markdown');
+    });
+
+    it('should exclude multistep from generic guided conversions', () => {
+      const result = getAvailableConversions('guided');
+
+      expect(result).not.toContain('guided');
+      expect(result).not.toContain('multistep');
+      expect(result).toContain('markdown');
+    });
   });
 });
 
