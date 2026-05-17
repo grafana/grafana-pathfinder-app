@@ -14,3 +14,4 @@ export { useLastMilestoneAutoComplete } from './useLastMilestoneAutoComplete';
 export { useScrollTracking } from './useScrollTracking';
 export { useGlobalActiveTabExposure } from './useGlobalActiveTabExposure';
 export { useAutoOpenListener } from './useAutoOpenListener';
+export { usePopOutHandoff } from './usePopOutHandoff';

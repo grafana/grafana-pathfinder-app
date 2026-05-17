@@ -96,6 +96,7 @@ import {
   useScrollTracking,
   useGlobalActiveTabExposure,
   useAutoOpenListener,
+  usePopOutHandoff,
 } from './hooks';
 
 // Import centralized types
@@ -1463,68 +1464,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   });
 
   // Pop-out to floating panel: hand off the active guide before switching modes
-  useEffect(() => {
-    const handlePopOut = () => {
-      const { tabs: currentTabs, activeTabId: currentActiveTabId } = model.state;
-      const activeTab = currentTabs.find((tab) => tab.id === currentActiveTabId);
-      // Prefer `currentUrl` so a popped-out learning journey lands on the
-      // user's current milestone, not the cover page. For non-journey tabs
-      // the two fields are equal.
-      const guideUrl = activeTab?.currentUrl || activeTab?.baseUrl;
-
-      // Editor tab popout: the block editor itself moves into the floating panel.
-      // No pendingGuide handoff — the floating panel detects the editor tab and
-      // renders <BlockEditor /> directly (see FloatingPanelManager).
-      if (activeTab?.type === 'editor') {
-        reportAppInteraction(UserInteraction.FloatingPanelPopOut, {
-          guide_url: '',
-          guide_title: activeTab.title,
-        });
-        panelModeManager.snapshotSidebarTabs();
-        // The floating panel creates a new CombinedLearningJourneyPanel instance
-        // with its own per-instance `_hasRestoredTabs` guard, so it can rehydrate
-        // the editor tab from localStorage without any cross-instance reset.
-        panelModeManager.setMode('floating');
-        return;
-      }
-
-      // Refuse to pop out when there's no guide context — without this guard the
-      // sidebar would close and the floating panel would have nothing to show.
-      // Surface a notification so the user understands why nothing happened.
-      if (!activeTab || activeTab.id === 'recommendations' || !guideUrl) {
-        getAppEvents().publish({
-          type: 'alert-info',
-          payload: ['Open a guide before popping out the panel.'],
-        });
-        return;
-      }
-
-      panelModeManager.setPendingGuide({
-        url: guideUrl,
-        title: activeTab.title,
-        type: activeTab.type === 'learning-journey' ? 'learning-journey' : 'docs',
-        // Forward synthetic packageInfo (e.g. PR-tester journeys whose URL
-        // is a raw GitHub URL, not a recognised package URL) so the floating
-        // panel rebuilds the milestone toolbar after the handoff.
-        packageInfo: activeTab.packageInfo,
-      });
-
-      reportAppInteraction(UserInteraction.FloatingPanelPopOut, {
-        guide_url: guideUrl,
-        guide_title: activeTab.title,
-      });
-
-      // Snapshot sidebar tabs before switching — the floating panel's model
-      // will overwrite tabStorage via openDocsPage → saveTabsToStorage
-      panelModeManager.snapshotSidebarTabs();
-      panelModeManager.setMode('floating');
-    };
-
-    document.addEventListener('pathfinder-request-pop-out', handlePopOut);
-    return () => {
-      document.removeEventListener('pathfinder-request-pop-out', handlePopOut);
-    };
-  }, [model]);
+  usePopOutHandoff(model);
 
   // Open active content in the full screen mode page. Mirrors the popout
   // handoff: snapshot tabs, set pendingGuide, switch mode (which closes the
