@@ -20,7 +20,6 @@ const TerminalProviderLazy = lazy(() =>
   }))
 );
 import { usePluginContext } from '@grafana/data';
-import { t } from '@grafana/i18n';
 import { DocsPluginConfig, getConfigWithDefaults } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
@@ -36,6 +35,7 @@ import {
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
   getJourneyProgress,
+  setJourneyCompletionPercentage,
   setPackageResolver,
   injectJourneyExtrasIntoJsonGuide,
   fetchPackageInfoFromUrl,
@@ -74,14 +74,12 @@ import {
 } from './components';
 // Import extracted utilities
 import {
-  isDocsLikeTab,
   shouldUseDocsLoader,
   restoreTabsFromStorage,
   restoreActiveTabFromStorage,
   loadDocsTabContentResult,
   PERMANENT_TAB_IDS,
   findCurrentMilestoneIndex,
-  pickGrafanaDocsOpenAction,
 } from './utils';
 // Import extracted hooks
 import {

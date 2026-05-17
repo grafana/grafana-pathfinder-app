@@ -35,10 +35,10 @@ export interface DocsPanelTabBarProps {
   isDevMode: boolean;
   isDropdownOpen: boolean;
   setIsDropdownOpen: (open: boolean) => void;
-  tabBarRef: React.RefObject<HTMLDivElement | null>;
-  tabListRef: React.RefObject<HTMLDivElement | null>;
-  dropdownRef: React.RefObject<HTMLDivElement | null>;
-  chevronButtonRef: React.RefObject<HTMLButtonElement | null>;
+  tabBarRef: React.RefObject<HTMLDivElement>;
+  tabListRef: React.RefObject<HTMLDivElement>;
+  dropdownRef: React.RefObject<HTMLDivElement>;
+  chevronButtonRef: React.RefObject<HTMLButtonElement>;
   dropdownOpenTimeRef: React.MutableRefObject<number>;
   onSetActiveTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;

@@ -21,13 +21,16 @@ export function useDevModeLogger(isDevMode: boolean): LogSession {
       console.log(...args);
     }
   });
-  // Refresh the ref on every render so the closure sees the latest isDevMode
-  // value. The callback identity returned below is stable across renders.
-  logSessionRef.current = (...args: unknown[]) => {
-    if (isDevMode) {
-      console.log(...args);
-    }
-  };
+  // Refresh the ref via layout effect (not during render) so the closure
+  // always sees the latest isDevMode value. The callback identity returned
+  // below remains stable across renders.
+  React.useLayoutEffect(() => {
+    logSessionRef.current = (...args: unknown[]) => {
+      if (isDevMode) {
+        console.log(...args);
+      }
+    };
+  });
   return React.useCallback((...args: unknown[]) => {
     logSessionRef.current(...args);
   }, []);

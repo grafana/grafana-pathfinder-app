@@ -26,7 +26,7 @@ import { Button, Icon, IconButton } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { PLUGIN_BASE_URL } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
-import type { LearningJourneyTab, PackageOpenInfo } from '../../../types/content-panel.types';
+import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
 import { isDocsLikeTab, pickGrafanaDocsOpenAction } from '../utils';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../../lib/analytics';
@@ -45,8 +45,9 @@ import { LoadingIndicator } from './LoadingIndicator';
 import { LearningJourneyMilestoneToolbar } from './LearningJourneyMilestoneToolbar';
 import { PanelModeActionButtons } from './PanelModeActionButtons';
 import { DocsPanelHeaderMenu } from './DocsPanelHeaderMenu';
-import type { ContextPanel } from '../context-panel';
-import type { DocsPanelModelOperations, OpenDocsOptions } from '../types';
+import type { SceneObject } from '@grafana/scenes';
+import type { OpenDocsOptions } from '../types';
+import type { CombinedLearningJourneyPanel } from '../docs-panel';
 
 // Kept inside the component file so webpack sees the same dynamic-import
 // module specifiers used pre-refactor. See pre-mortem H8.
@@ -71,8 +72,8 @@ export interface DocsPanelContentAreaProps {
   interactiveStyles: string;
   prismStyles: string;
 
-  model: DocsPanelModelOperations;
-  contextPanel: ContextPanel;
+  model: CombinedLearningJourneyPanel;
+  contextPanel: SceneObject<ContextPanelState>;
 
   isFullScreenActive: boolean;
   isRecommendationsTab: boolean;
@@ -88,7 +89,7 @@ export interface DocsPanelContentAreaProps {
   progressKey: string | null;
   alignmentPendingValue: { isPending: boolean; startingLocation: string | null };
 
-  contentRef: React.RefObject<HTMLDivElement | null>;
+  contentRef: React.RefObject<HTMLDivElement>;
   handleResetGuide: (progressKey: string, activeTab: LearningJourneyTab) => Promise<void>;
   reloadActiveTab: (tab: LearningJourneyTab) => void;
   restoreScrollPosition: () => void;
