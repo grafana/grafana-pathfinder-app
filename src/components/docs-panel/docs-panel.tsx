@@ -99,6 +99,7 @@ import {
   usePopOutHandoff,
   useFullScreenHandoff,
   usePermanentTabs,
+  useTabRestoration,
 } from './hooks';
 
 // Import centralized types
@@ -1122,34 +1123,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   }, [sessionRole, onEvent, logSession]);
 
   // Restore tabs after storage is initialized (fixes race condition)
-  React.useEffect(() => {
-    // Only restore if no user-opened guide tabs exist — permanent system
-    // tabs (`recommendations`, `devtools`, `editor`) don't count, otherwise
-    // the gate fails on a remount where the permanent-tabs effect (below)
-    // has already appended `devtools`/`editor` before this effect re-runs.
-    // The previous `tabs.length === 1` check worked for the initial mount
-    // (where restoration is declared first and runs against [recommendations]
-    // only) but not for the "Return to sidebar" CTA on FullScreenModeNotice,
-    // which fires after permanent tabs are present.
-    const hasOnlyDefaultTabs = tabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
-
-    // Skip restoration when full screen owns the session — otherwise this
-    // sidebar instance would auto-load tab content in parallel with the
-    // FullScreenPanel instance (drift on tabStorage). The `panelMode`
-    // dep makes this re-run when the user returns to sidebar mode
-    // (auto-dock listener, explicit Exit, or the "Return to sidebar"
-    // CTA on `FullScreenModeNotice`). The model's `_hasRestoredTabs`
-    // guard makes a second invocation a no-op when restoration already
-    // succeeded, so re-running here is safe in the happy path.
-    if (panelMode === 'fullscreen') {
-      return;
-    }
-
-    if (hasOnlyDefaultTabs) {
-      model.restoreTabsAsync();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panelMode]);
+  useTabRestoration({ model, panelMode, tabs });
 
   // Ensure permanent tabs (devtools, editor) exist when their gate is active.
   usePermanentTabs({ model, isDevMode, isEditorUser, tabs });

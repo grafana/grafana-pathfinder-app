@@ -17,3 +17,4 @@ export { useAutoOpenListener } from './useAutoOpenListener';
 export { usePopOutHandoff } from './usePopOutHandoff';
 export { useFullScreenHandoff } from './useFullScreenHandoff';
 export { usePermanentTabs } from './usePermanentTabs';
+export { useTabRestoration } from './useTabRestoration';
