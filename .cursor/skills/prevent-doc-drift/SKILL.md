@@ -80,11 +80,14 @@ For each bucket with hits, consult the rules table below. Each rule lists the ta
 | --------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | New frontend subsystem                              | `AGENTS.md`                                             | Add a row to the `src/` tree in "Code organization" with a one-line description. If Tier 1 (engine/provider), add to the tier list in "Subsystem tiers and key relationships" and consider adding an edge to "Key dependency edges". |
 | New frontend subsystem                              | `.cursor/rules/systemPatterns.mdc`                      | Add a one-paragraph entry in "Frontend subsystem reference" (purpose, entry point, tier).                                                                                                                                            |
+| New frontend subsystem                              | `docs/developer/CONTEXT_INDEX.md`                       | Add a row in the most relevant section (e.g., "Subsystem references") with path pattern (`src/<name>/*`), when-to-load description, and auto-triggered globs if the subsystem has a natural file-glob trigger.                       |
 | New backend file                                    | `AGENTS.md`                                             | Add a row to the `pkg/` tree in "Code organization" with a one-line description.                                                                                                                                                     |
 | New developer doc                                   | `AGENTS.md`                                             | Add a row to the "On-demand context" table — file path, when-to-load description, glob trigger if applicable.                                                                                                                        |
+| New developer doc                                   | `docs/developer/CONTEXT_INDEX.md`                       | Verify a row exists in the relevant section pointing at the new doc; add one if missing, with a when-to-load description and glob trigger if applicable.                                                                             |
 | New developer doc with `.cursor/rules/` counterpart | `.cursor/rules/<counterpart>.mdc`                       | Add a "For full reference, see `docs/developer/<file>.md`" link near the top of the rule file.                                                                                                                                       |
 | New design doc                                      | `AGENTS.md`                                             | Add a row to "On-demand context" with the note "Design intent (may not match implementation)" in the description.                                                                                                                    |
 | New rule                                            | `AGENTS.md`                                             | Add a row to "On-demand context" with glob trigger from the rule's frontmatter. If the rule has `alwaysApply: true` or always-on globs, also add an entry to the "Tiered rule architecture" section under "PR reviews".              |
+| New rule                                            | `docs/developer/CONTEXT_INDEX.md`                       | Verify a row exists in "Architecture and project context" (or the relevant section) with glob trigger from the rule's frontmatter; add one if missing.                                                                               |
 | New skill                                           | `CLAUDE.md`                                             | Add a row to the skills table — name, trigger, one-line purpose.                                                                                                                                                                     |
 | New skill                                           | `AGENTS.md`                                             | Add a row to "On-demand context" pointing at `.cursor/skills/<name>/SKILL.md`.                                                                                                                                                       |
 | New npm script                                      | `AGENTS.md`                                             | Add to the appropriate sub-section under "Local development commands". Group with related scripts (build, test, validate, dev-tools).                                                                                                |
@@ -96,6 +99,21 @@ For each bucket with hits, consult the rules table below. Each rule lists the ta
 | Renamed / moved subsystem                           | All doc files                                           | `grep -lr <old-path> AGENTS.md CLAUDE.md .cursor/rules/ docs/developer/` and rewrite each occurrence to the new path.                                                                                                                |
 | Removed subsystem                                   | `AGENTS.md`, `.cursor/rules/systemPatterns.mdc`, others | Remove the corresponding rows / paragraphs. If the removed feature represents an epic-scale change, recommend (in the PR description) a follow-up note in `docs/history/`.                                                           |
 | Tier rule edit                                      | `AGENTS.md`, `.cursor/rules/systemPatterns.mdc`         | If the architecture allowlist changed, update the tier model description to reflect the new exception with one sentence of justification.                                                                                            |
+
+**CONCERNS.md coverage check (read-only)**: `docs/design/CONCERNS.md` is author-curated and forbidden from edits. However, for every **new frontend subsystem** detected, run:
+
+```bash
+grep "src/<new-dir>/" docs/design/CONCERNS.md
+```
+
+If no concern's `trigger_paths` covers the new directory, the subsystem has no review routing. Surface this gap in one of two ways, depending on mode:
+
+- **Apply mode**: append a backlog item to `docs/_maintenance-backlog.md` (Phase 5):
+  `YYYY-MM-DD: No CONCERNS.md concern covers src/<new-dir>/ — consider adding one or extending the nearest subsystem concern.`
+- **Review mode**: add a note in the "Doc-drift updates recommended" section:
+  `No CONCERNS.md concern covers src/<new-dir>/. Consider adding one or extending the nearest subsystem concern (e.g., <closest-matching-concern-id>).`
+
+To identify the closest matching concern, scan the `trigger_paths` column for the concern whose paths share the most path segments with `src/<new-dir>/`.
 
 **Sources of truth for the rules table**: when in doubt, prefer the code over any doc. If a rule says "add a row to the `src/` tree" but the tree is already accurate (because the contributor pre-emptively updated it), do nothing — log "no edit needed" and move on.
 
