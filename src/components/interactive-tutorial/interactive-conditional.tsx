@@ -46,8 +46,8 @@ function conditionsToRequirementsString(conditions: string[]): string {
 }
 
 /** True when conditions may flip after DOM updates (e.g. viz picker opens). */
-function conditionsNeedDomWatch(conditions: string[]): boolean {
-  return conditions.some((c) => c.trim() === 'exists-reftarget' || c.includes('exists-reftarget'));
+function conditionsKeyNeedsDomWatch(conditionsKey: string): boolean {
+  return conditionsKey.includes('exists-reftarget');
 }
 
 /**
@@ -69,14 +69,16 @@ export function InteractiveConditional({
   const [isChecking, setIsChecking] = useState(true);
   const { checkRequirementsFromData } = useInteractiveElements();
 
-  // Generate a stable ID for this conditional
+  // Stable string identity for `conditions`. The parent passes a fresh array
+  // on every render (parsed from JSON), so keying effects off the array would
+  // tear down and re-attach the MutationObserver on every parent render. The
+  // joined string is referentially stable as long as the underlying values are.
+  const conditionsKey = useMemo(() => conditions.join(','), [conditions]);
+
+  // Generate a stable ID for this conditional (derived from the stable key).
   const conditionalId = useMemo(
-    () =>
-      conditions
-        .join('-')
-        .replace(/[^a-zA-Z0-9-]/g, '')
-        .slice(0, 50) || 'unknown',
-    [conditions]
+    () => conditionsKey.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 50) || 'unknown',
+    [conditionsKey]
   );
 
   // Track mounted state to prevent state updates after unmount
@@ -88,6 +90,16 @@ export function InteractiveConditional({
       isMountedRef.current = false;
     };
   }, []);
+
+  // Race guard: when multiple re-evaluations are in flight (MutationObserver
+  // burst + step-completed + action-completed), only the most-recently-started
+  // run is allowed to commit its result. Without this, an older slow promise
+  // can overwrite the result of a newer faster one and flip the branch.
+  const runIdRef = useRef(0);
+
+  // Track scheduled re-eval timers so we can cancel them on unmount or when a
+  // new schedule supersedes an older one. setTimeouts pile up otherwise.
+  const reevalTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Convert conditions to requirements string format
   const requirementsString = conditionsToRequirementsString(conditions);
@@ -105,6 +117,9 @@ export function InteractiveConditional({
         setIsChecking(true);
       }
 
+      runIdRef.current += 1;
+      const myRunId = runIdRef.current;
+
       try {
         // Create requirement data for checking
         // Use provided reftarget for exists-reftarget condition, fallback to placeholder
@@ -119,35 +134,53 @@ export function InteractiveConditional({
 
         const result = await checkRequirementsFromData(requirementData);
 
-        if (isMountedRef.current) {
-          setConditionsPassed(result.pass);
-          setIsChecking(false);
+        // Drop the result if a newer run has started after we awaited - prevents
+        // a stale "false" landing after a fresh "true" (and vice versa).
+        if (!isMountedRef.current || myRunId !== runIdRef.current) {
+          return;
         }
+        setConditionsPassed(result.pass);
+        setIsChecking(false);
       } catch (error) {
         console.warn('Failed to evaluate conditional conditions:', error);
-        if (isMountedRef.current) {
-          // Default to false branch on error
-          setConditionsPassed(false);
-          setIsChecking(false);
+        if (!isMountedRef.current || myRunId !== runIdRef.current) {
+          return;
         }
+        // Default to false branch on error
+        setConditionsPassed(false);
+        setIsChecking(false);
       }
     },
     [requirementsString, checkRequirementsFromData, description, reftarget]
   );
 
+  const needsDomWatch = conditionsKeyNeedsDomWatch(conditionsKey);
+
+  // Stable ref to the latest evaluator. Lets long-lived subscriptions
+  // (MutationObserver, event listeners) invoke the current evaluator without
+  // having to include it in their dep arrays, which would tear down and
+  // re-attach the subscription on every parent render.
+  const evaluateRef = useRef(evaluateConditions);
+  useEffect(() => {
+    evaluateRef.current = evaluateConditions;
+  }, [evaluateConditions]);
+
   const scheduleReevaluation = useCallback(() => {
-    const delay = conditionsNeedDomWatch(conditions) ? 250 : 100;
-    const timeoutId = setTimeout(() => {
-      evaluateConditions({ isReevaluation: true });
+    if (reevalTimerRef.current) {
+      clearTimeout(reevalTimerRef.current);
+    }
+    const delay = needsDomWatch ? 250 : 100;
+    reevalTimerRef.current = setTimeout(() => {
+      reevalTimerRef.current = undefined;
+      evaluateRef.current({ isReevaluation: true });
     }, delay);
-    return () => clearTimeout(timeoutId);
-  }, [conditions, evaluateConditions]);
+  }, [needsDomWatch]);
 
   // Evaluate on mount and re-evaluate when relevant events occur
   useEffect(() => {
     // Initial evaluation (deferred to avoid synchronous setState in effect)
     const initialCheckTimeout = setTimeout(() => {
-      evaluateConditions();
+      evaluateRef.current();
     }, 0);
 
     // Listen for events that might change condition results
@@ -169,7 +202,10 @@ export function InteractiveConditional({
       scheduleReevaluation();
     };
 
-    // Highlight/button actions dispatch on document before section step-completed
+    // `interactive-action-completed` is dispatched from two places with two
+    // different targets: interactive-state-manager fires on `document`, while
+    // challenge-block fires on `window`. Subscribe to both so conditional
+    // re-evaluation never depends on which path completed the action.
     const handleActionCompleted = () => {
       scheduleReevaluation();
     };
@@ -179,22 +215,32 @@ export function InteractiveConditional({
     window.addEventListener('plugins-changed', handlePluginsChanged);
     window.addEventListener('popstate', handleLocationChanged);
     window.addEventListener('interactive-step-completed', handleStepCompleted);
+    window.addEventListener('interactive-action-completed', handleActionCompleted);
     document.addEventListener('interactive-action-completed', handleActionCompleted);
 
     // REACT: cleanup subscriptions (R1)
     return () => {
       clearTimeout(initialCheckTimeout);
+      if (reevalTimerRef.current) {
+        clearTimeout(reevalTimerRef.current);
+        reevalTimerRef.current = undefined;
+      }
       window.removeEventListener('datasources-changed', handleDataSourcesChanged);
       window.removeEventListener('plugins-changed', handlePluginsChanged);
       window.removeEventListener('popstate', handleLocationChanged);
       window.removeEventListener('interactive-step-completed', handleStepCompleted);
+      window.removeEventListener('interactive-action-completed', handleActionCompleted);
       document.removeEventListener('interactive-action-completed', handleActionCompleted);
     };
-  }, [evaluateConditions, scheduleReevaluation]);
+  }, [scheduleReevaluation]);
 
-  // exists-reftarget: re-check when Grafana portals/pickers inject new nodes (e.g. viz picker tabs)
+  // exists-reftarget: re-check when Grafana portals/pickers inject new nodes (e.g. viz picker tabs).
+  // We watch only structural changes (childList + subtree) - attribute churn from panel re-renders
+  // is the noisy part and element-existence transitions are childList events anyway.
+  // Depends only on `needsDomWatch` (effectively a one-shot boolean per conditional) - the latest
+  // evaluator is reached via `evaluateRef` so re-renders never tear down the observer.
   useEffect(() => {
-    if (!conditionsNeedDomWatch(conditions)) {
+    if (!needsDomWatch) {
       return;
     }
 
@@ -205,15 +251,13 @@ export function InteractiveConditional({
         clearTimeout(debounceId);
       }
       debounceId = setTimeout(() => {
-        evaluateConditions({ isReevaluation: true });
+        evaluateRef.current({ isReevaluation: true });
       }, 200);
     });
 
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      attributes: true,
-      attributeFilter: ['data-testid', 'class', 'aria-label', 'aria-expanded'],
     });
 
     return () => {
@@ -222,7 +266,7 @@ export function InteractiveConditional({
       }
       observer.disconnect();
     };
-  }, [conditions, evaluateConditions]);
+  }, [needsDomWatch]);
 
   // Show loading state while checking
   if (isChecking && conditionsPassed === null) {
