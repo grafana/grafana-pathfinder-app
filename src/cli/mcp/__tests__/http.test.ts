@@ -421,4 +421,18 @@ describe('HTTP transport', () => {
     await h.close();
     await expect(fetch(`${h.base}/healthz`)).rejects.toBeDefined();
   });
+
+  it('handle.close() resolves promptly even with an idle keep-alive connection', async () => {
+    // Regression for #883: server.close() without closeIdleConnections() hangs
+    // until the peer disconnects or keepAliveTimeout fires.
+    const h = await start();
+    // Seed an idle keep-alive connection (undici pool retains the socket).
+    await fetch(`${h.base}/healthz`);
+    const t0 = Date.now();
+    await h.close();
+    // closeIdleConnections() fires synchronously inside close(), so the
+    // promise settles well before the 5s force-close deadline.
+    expect(Date.now() - t0).toBeLessThan(2_000);
+    await expect(fetch(`${h.base}/healthz`)).rejects.toBeDefined();
+  });
 });

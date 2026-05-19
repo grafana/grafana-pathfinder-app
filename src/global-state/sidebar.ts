@@ -94,7 +94,6 @@ class GlobalSidebarState {
 
   /**
    * Opens the Pathfinder sidebar and launches a specific bundled guide by ID.
-   * Used by the MCP launch_guide tool via the frontend polling hook.
    *
    * @param guideId - The bundled guide ID (e.g. 'prometheus-grafana-101')
    */

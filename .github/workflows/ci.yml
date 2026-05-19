@@ -234,10 +234,6 @@ jobs:
         with:
           go-version: '1.25'
 
-      - name: Copy static files for Go embed
-        if: steps.check-for-backend.outputs.has-backend == 'true'
-        run: npm run copy-static
-
       - name: Build backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
         uses: magefile/mage-action@07f03e200d4d168576899f4d31ffebfa8fb195ff

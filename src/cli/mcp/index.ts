@@ -44,13 +44,24 @@ export const mcpCommand = new Command('mcp')
     const handle = await runHttp({ port: opts.port, host: opts.host });
     process.stderr.write(`pathfinder-cli mcp listening on http://${opts.host}:${handle.port}/mcp\n`);
 
-    const shutdown = async (): Promise<void> => {
-      try {
-        await handle.close();
-      } finally {
-        process.exit(0);
+    let shuttingDown = false;
+    const shutdown = (): void => {
+      // Idempotent: a second SIGINT/SIGTERM while draining must not start a
+      // second close() that races the first.
+      if (shuttingDown) {
+        return;
       }
+      shuttingDown = true;
+      // Hard fallback: if close() hangs past 10s (e.g. a bug in the force-
+      // close path), exit non-zero rather than burning the full container
+      // grace period and making orchestrators wait for a SIGKILL.
+      const fallback = setTimeout(() => process.exit(1), 10_000);
+      fallback.unref();
+      handle
+        .close()
+        .then(() => process.exit(0))
+        .catch(() => process.exit(1));
     };
-    process.on('SIGINT', () => void shutdown());
-    process.on('SIGTERM', () => void shutdown());
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
   });

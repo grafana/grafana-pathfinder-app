@@ -9,6 +9,7 @@ import { z } from 'zod';
 
 import { formatHelpAsJson } from '../../utils/output';
 import { CLI_COMMANDS } from '../program';
+import { readOnly } from './annotations';
 import { textResult } from './result';
 
 export function registerHelpTool(server: McpServer): void {
@@ -17,6 +18,7 @@ export function registerHelpTool(server: McpServer): void {
     {
       description:
         'Use this tool when you need exact flag names, per-block-type field schemas, or the full CLI command list while authoring a Pathfinder guide. Returns the structured help surface for a CLI command, equivalent to `pathfinder-cli <command> --help --format json`. Pass an empty command for the list of commands.',
+      annotations: readOnly('Show Pathfinder help'),
       inputSchema: {
         command: z
           .string()
