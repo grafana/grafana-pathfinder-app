@@ -118,7 +118,7 @@ location.reload();
 
 ## `pathfinder.highlighted-guide-experiment`
 
-A/B test for guide content. Both `control` and `treatment` keep Pathfinder visible and auto-open the sidebar on matched pages — they differ only in which `guideId` is highlighted + auto-opened. Use this to compare two candidate guides on the same page.
+A/B test for guide content. Both `control` and `treatment` keep Pathfinder visible, auto-open the sidebar, **and auto-launch the configured `guideId` as a tab** on matched pages — using the same `auto-launch-tutorial` seam as the `?doc=` deep link. The user stays on the page they were on; no navigation happens. The Featured-slot injection still runs in parallel so the card is also visible in the recommendations tab. Use this to compare two candidate guides on the same page.
 
 ### Treatment — interactive package
 
@@ -150,9 +150,9 @@ __pathfinderExperiment.setOverride('pathfinder.highlighted-guide-experiment', {
 location.reload();
 ```
 
-### Injection-only mode (no auto-open)
+### Injection-only mode (no auto-open, no auto-launch)
 
-Use this to test the Featured-slot injection without the sidebar auto-popping:
+Use this to test the Featured-slot injection without the sidebar auto-popping or the guide auto-launching as a tab:
 
 ```js
 __pathfinderExperiment.setOverride('pathfinder.highlighted-guide-experiment', {
@@ -200,11 +200,11 @@ When the override is active and `variant !== 'excluded'`, the orchestrator emits
 
 Three events fire end-to-end for the highlighted-guide experiment. Filter the Rudderstack devtools (or your local analytics tap) for:
 
-| Event                               | When                                                                                       | Key properties                                                                                 |
-| ----------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `pathfinder_feature_flag_evaluated` | First time you hit a matched `(hostname, flag, variant)` on this browser — see dedup below | `flag_key`, `flag_value`, `tracking_key`, `variant`                                            |
-| `pathfinder_docs_panel_interaction` | When the sidebar mounts after auto-open                                                    | `action: 'auto-open'`, `source: 'highlighted_guide_experiment'`                                |
-| `pathfinder_open_resource_click`    | When the user clicks the Featured card's "Start guide" button                              | `content_title`, `content_url`, `content_type`, `interaction_location: 'featured_card_button'` |
+| Event                               | When                                                                                                                                               | Key properties                                                                                                                                   |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pathfinder_feature_flag_evaluated` | First time you hit a matched `(hostname, flag, variant)` on this browser — see dedup below                                                         | `flag_key`, `flag_value`, `tracking_key`, `variant`                                                                                              |
+| `pathfinder_docs_panel_interaction` | When the sidebar mounts after auto-open                                                                                                            | `action: 'auto-open'`, `source: 'highlighted_guide_experiment'`                                                                                  |
+| `pathfinder_open_resource_click`    | Fires twice: once when the guide auto-launches as a tab (`trigger_source: 'auto_launch_tutorial'`), and again if the user clicks the Featured card | `content_title`, `content_url`, `content_type`, `interaction_location` (`docs_panel` for auto-launch, `featured_card_button` for the card click) |
 
 ### Why the exposure event might not fire
 
@@ -237,7 +237,9 @@ Variant reassignment is the **only** condition where the event auto-refires acro
 ## Common gotchas
 
 - **`__pathfinderExperiment` is undefined.** Pathfinder is dismounted — usually because you're in `control` on `pathfinder.experiment-variant` or `pathfinder.after-24h-experiment`. Clear `localStorage.grafana-pathfinder-flag-overrides` and reload, or write the override directly into `localStorage`.
-- **Auto-open lands on the wrong tab.** As of [PR #874](https://github.com/grafana/grafana-pathfinder-app/pull/874) the highlighted-guide auto-open pins the active tab to `recommendations` so the Featured slot is visible. If you still see the editor / devtools tab, your build is older than that PR.
+- **Auto-launch landed but I see the wrong tab.** The orchestrator dispatches `auto-launch-tutorial` which calls `openDocsPage` / `openLearningJourney` — those make the new guide tab active automatically. If you instead see the editor / devtools tab from a prior session, the configured `guideId` failed to resolve through `findDocPage`: check the console for `findDocPage returned null for guideId="…"` and fix the id (`bundled:<id>`, `api:<id>`, or a full URL on a whitelisted host).
+- **Auto-launch fires but the guide opens as the wrong type (docs page vs learning journey).** Set the flag's `docType` explicitly (`'docs-page' | 'learning-journey' | 'interactive'`). The operator override wins over `findDocPage`'s URL-based inference.
+- **The Featured card still appears even though the guide auto-launched.** Intentional — the card is kept as a re-entry point if the user closes the auto-launched tab. To suppress it, the `injectHighlightedGuide` seam in `src/context-engine/context.service.ts` would need to gate on auto-launch success.
 - **`resetCache: true` didn't clear my marker.** The reset is sentinel-guarded so an operator-facing `true` doesn't re-clear on every reload. Toggle it false → reload → true → reload, or wipe the storage prefix directly.
 - **Demos: floating-mode leftovers from older builds.** Pathfinder used to switch to floating mode for highlighted guides. If your `localStorage.grafana-pathfinder-app-panel-mode` is stuck on `'floating'`, run step 4 of the reset snippet.
 - **MTFF in production.** This whole flow is local-override only. MTFF flag values aren't editable from the browser — they come from the Grafana Cloud feature-flag service and are evaluated once per page load on boot.
