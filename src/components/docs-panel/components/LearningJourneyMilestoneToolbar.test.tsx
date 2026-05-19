@@ -231,4 +231,101 @@ describe('LearningJourneyMilestoneToolbar', () => {
       expect.objectContaining({ interaction_location: 'milestone_progress_bar' })
     );
   });
+
+  // ===========================================================================
+  // Milestone-arrow analytics: destination semantic
+  // ===========================================================================
+  //
+  // The arrow-click events log the milestone the user is heading TO, not the
+  // one they clicked from. For a 6-milestone journey, a forward click from M5
+  // logs `current_milestone: 6` — so the analytics agrees with the toolbar's
+  // "Milestone 6 of 6" on the end milestone (the previous origin semantic
+  // topped out at `N - 1` and never surfaced the end-milestone landing).
+  describe('milestone arrow click analytics', () => {
+    it('forward click logs the destination milestone (current + 1), not the origin', () => {
+      // currentMilestone = 1, totalMilestones = 3 → forward click should log 2.
+      renderToolbar();
+      fireEvent.click(screen.getByLabelText('Next milestone'));
+
+      expect(reportAppInteractionMock).toHaveBeenCalledWith(
+        'milestone_arrow_interaction_click',
+        expect.objectContaining({
+          current_milestone: 2,
+          total_milestones: 3,
+          direction: 'forward',
+          interaction_location: 'milestone_progress_bar',
+        })
+      );
+    });
+
+    it('backward click logs the destination milestone (current - 1), not the origin', () => {
+      const tab = makeJourneyTab();
+      (tab.content as any).metadata.learningJourney.currentMilestone = 2;
+      renderToolbar({ activeTab: tab });
+      fireEvent.click(screen.getByLabelText('Previous milestone'));
+
+      expect(reportAppInteractionMock).toHaveBeenCalledWith(
+        'milestone_arrow_interaction_click',
+        expect.objectContaining({
+          current_milestone: 1,
+          total_milestones: 3,
+          direction: 'backward',
+          interaction_location: 'milestone_progress_bar',
+        })
+      );
+    });
+
+    it('forward click from the last content milestone logs current_milestone = totalMilestones (the end-journey value)', () => {
+      // currentMilestone = 3 of 3 → forward click lands on M3 (clamped).
+      // In practice `canNavigateNext()` returns false here, but the Math.min
+      // clamp is defence-in-depth and we still document the contract.
+      const tab = makeJourneyTab();
+      (tab.content as any).metadata.learningJourney.currentMilestone = 3;
+      renderToolbar({ activeTab: tab });
+      fireEvent.click(screen.getByLabelText('Next milestone'));
+
+      expect(reportAppInteractionMock).toHaveBeenCalledWith(
+        'milestone_arrow_interaction_click',
+        expect.objectContaining({
+          current_milestone: 3,
+          total_milestones: 3,
+          direction: 'forward',
+        })
+      );
+    });
+
+    it('backward click from M1 logs current_milestone = 0 (heading back to the cover overview)', () => {
+      // The cover is `currentMilestone: 0` in the data model and is the
+      // legitimate destination of a backward click from M1.
+      const tab = makeJourneyTab();
+      (tab.content as any).metadata.learningJourney.currentMilestone = 1;
+      renderToolbar({ activeTab: tab });
+      fireEvent.click(screen.getByLabelText('Previous milestone'));
+
+      expect(reportAppInteractionMock).toHaveBeenCalledWith(
+        'milestone_arrow_interaction_click',
+        expect.objectContaining({
+          current_milestone: 0,
+          total_milestones: 3,
+          direction: 'backward',
+        })
+      );
+    });
+
+    it('OpenExtraResource (Open in new tab) keeps the origin semantic — the user is reading this milestone, not navigating', () => {
+      // currentMilestone = 1 → the Open button logs `current_milestone: 1`
+      // (the page the user is currently viewing). This event is intentionally
+      // unchanged by the destination-semantic flip on the arrow clicks.
+      renderToolbar();
+      fireEvent.click(screen.getByLabelText('Open this page in new tab'));
+
+      expect(reportAppInteractionMock).toHaveBeenCalledWith(
+        'open_extra_resource',
+        expect.objectContaining({
+          current_milestone: 1,
+          total_milestones: 3,
+        })
+      );
+    });
+  });
 });
