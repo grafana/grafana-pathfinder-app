@@ -12,6 +12,17 @@ import type { LearningJourneyTab } from '../../../types/content-panel.types';
 // Mock dependencies
 jest.mock('../../../lib/analytics');
 jest.mock('../../../lib/user-storage');
+jest.mock('@grafana/runtime', () => {
+  const mockPublish = jest.fn();
+  return {
+    getAppEvents: jest.fn(() => ({ publish: mockPublish })),
+    __mockPublish: mockPublish,
+  };
+});
+
+jest.mock('@grafana/i18n', () => ({
+  t: jest.fn((_key: string, fallback: string) => fallback),
+}));
 
 const mockReportAppInteraction = reportAppInteraction as jest.MockedFunction<typeof reportAppInteraction>;
 const mockEnrichWithStepContext = enrichWithStepContext as jest.MockedFunction<typeof enrichWithStepContext>;
@@ -22,6 +33,7 @@ const mockInteractiveStepStorage = interactiveStepStorage as jest.Mocked<typeof 
 const mockInteractiveCompletionStorage = interactiveCompletionStorage as jest.Mocked<
   typeof interactiveCompletionStorage
 >;
+const { __mockPublish: mockPublish } = jest.requireMock('@grafana/runtime');
 
 describe('useContentReset', () => {
   let mockModel: any;
@@ -173,6 +185,12 @@ describe('useContentReset', () => {
 
     // Event should NOT have been dispatched after error
     expect(mockDispatchEvent).not.toHaveBeenCalled();
+
+    // User-facing toast should be surfaced via the app events bus.
+    expect(mockPublish).toHaveBeenCalledWith({
+      type: 'alert-error',
+      payload: ['Reset failed', "Couldn't reset guide progress. Please try again or reload the page."],
+    });
   });
 
   it('handles content reload errors', async () => {
@@ -188,6 +206,21 @@ describe('useContentReset', () => {
     expect(mockReportAppInteraction).toHaveBeenCalled();
     expect(mockInteractiveStepStorage.clearAllForContent).toHaveBeenCalled();
     expect(mockDispatchEvent).toHaveBeenCalled();
+
+    // User-facing toast should be surfaced via the app events bus.
+    expect(mockPublish).toHaveBeenCalledWith({
+      type: 'alert-error',
+      payload: ['Reset failed', "Couldn't reset guide progress. Please try again or reload the page."],
+    });
+  });
+
+  it('does not publish a toast on the happy path', async () => {
+    const { result } = renderHook(() => useContentReset({ model: mockModel }));
+
+    const tab = createMockTab({ type: 'interactive' });
+    await result.current('progress-key-123', tab);
+
+    expect(mockPublish).not.toHaveBeenCalled();
   });
 
   it('returns stable function reference', () => {
