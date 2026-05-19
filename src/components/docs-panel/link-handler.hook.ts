@@ -494,22 +494,27 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         const activeTab = model.getActiveTab();
 
         if (navDirection === 'prev' && model.canNavigatePrevious()) {
+          // Log the destination milestone (where the user is heading TO), not
+          // the origin — mirrors the toolbar handler in
+          // LearningJourneyMilestoneToolbar.tsx so the two surfaces agree.
+          const ljPrev = activeTab?.content?.metadata.learningJourney;
           reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
             content_title: activeTab?.title || 'unknown',
             content_url: activeTab?.baseUrl || 'unknown',
-            current_milestone: activeTab?.content?.metadata.learningJourney?.currentMilestone || 0,
-            total_milestones: activeTab?.content?.metadata.learningJourney?.totalMilestones || 0,
+            current_milestone: Math.max(0, (ljPrev?.currentMilestone ?? 0) - 1),
+            total_milestones: ljPrev?.totalMilestones || 0,
             direction: 'backward',
             interaction_location: 'bottom_navigation',
             completion_percentage: activeTab?.content ? getJourneyProgress(activeTab.content) : 0,
           });
           model.navigateToPreviousMilestone();
         } else if (navDirection === 'next' && model.canNavigateNext()) {
+          const ljNext = activeTab?.content?.metadata.learningJourney;
           reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
             content_title: activeTab?.title || 'unknown',
             content_url: activeTab?.baseUrl || 'unknown',
-            current_milestone: activeTab?.content?.metadata.learningJourney?.currentMilestone || 0,
-            total_milestones: activeTab?.content?.metadata.learningJourney?.totalMilestones || 0,
+            current_milestone: Math.min(ljNext?.totalMilestones ?? 0, (ljNext?.currentMilestone ?? 0) + 1),
+            total_milestones: ljNext?.totalMilestones || 0,
             direction: 'forward',
             interaction_location: 'bottom_navigation',
             completion_percentage: activeTab?.content ? getJourneyProgress(activeTab.content) : 0,
