@@ -130,26 +130,33 @@
           ]
         },
         {
-          "type": "multistep",
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "grafana:components.PanelEditor.toggleVizPicker",
+          "content": "Open the visualization picker to change the panel type.",
+          "tooltip": "Choosing the right visualization is key to telling your data's story. Time series graphs show trends over time, stat panels display single values, tables show raw data, and bar charts compare values side by side.",
+          "requirements": ["exists-reftarget"]
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "button[data-testid=\"data-testid Tab Visualizations\"]",
+          "content": "Select **All visualizations** to browse every panel type.",
+          "tooltip": "Bar chart is not listed under suggested visualizations. Open **All visualizations** to find it.",
+          "requirements": ["exists-reftarget"]
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "div[data-testid=\"data-testid Plugin visualization item Bar chart\"]",
           "content": "Change the visualization to **Bar chart** to compare altitudes.",
-          "steps": [
-            {
-              "action": "highlight",
-              "reftarget": "button[data-testid=\"data-testid toggle-viz-picker\"]",
-              "requirements": ["exists-reftarget"]
-            },
-            {
-              "action": "highlight",
-              "reftarget": "div[data-testid=\"Plugin visualization item Bar chart\"]",
-              "requirements": ["exists-reftarget"],
-              "tooltip": "Choosing the right visualization is key to telling your data's story. Time series graphs show trends over time, stat panels display single values, tables show raw data, and bar charts compare values side by side. For comparing Jack and Jill's final altitudes, a bar chart makes the difference instantly clear - you can see at a glance who climbed higher!"
-            }
-          ]
+          "tooltip": "For comparing Jack and Jill's final altitudes, a bar chart makes the difference instantly clear - you can see at a glance who climbed higher!",
+          "requirements": ["exists-reftarget"]
         },
         {
           "type": "interactive",
           "action": "formfill",
-          "reftarget": "input[data-testid=\"data-testid Panel editor option pane field input Title\"]",
+          "reftarget": "grafana:components.PanelEditor.OptionsPane.fieldInput:Title",
           "targetvalue": "Jack and Jill walk altitude",
           "requirements": ["exists-reftarget"],
           "content": "Give your panel a clear title: **Jack and Jill walk altitude**.",
@@ -169,8 +176,8 @@
           "content": "Click **Save dashboard**, name it **Walking adventure**, and click **Save**.",
           "steps": [
             {
-              "action": "button",
-              "reftarget": "Save Dashboard",
+              "action": "highlight",
+              "reftarget": "button[data-testid='data-testid Save dashboard button']",
               "requirements": ["exists-reftarget"]
             },
             {
@@ -180,8 +187,8 @@
               "requirements": ["exists-reftarget"]
             },
             {
-              "action": "button",
-              "reftarget": "Save",
+              "action": "highlight",
+              "reftarget": "button[data-testid=\"data-testid Save dashboard drawer button\"]",
               "requirements": ["exists-reftarget"]
             }
           ]

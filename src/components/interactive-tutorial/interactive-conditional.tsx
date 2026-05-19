@@ -45,6 +45,11 @@ function conditionsToRequirementsString(conditions: string[]): string {
   return conditions.join(',');
 }
 
+/** True when conditions may flip after DOM updates (e.g. viz picker opens). */
+function conditionsNeedDomWatch(conditions: string[]): boolean {
+  return conditions.some((c) => c.trim() === 'exists-reftarget' || c.includes('exists-reftarget'));
+}
+
 /**
  * Interactive conditional component that evaluates conditions and renders appropriate branch
  */
@@ -88,40 +93,55 @@ export function InteractiveConditional({
   const requirementsString = conditionsToRequirementsString(conditions);
 
   // Function to evaluate conditions
-  const evaluateConditions = useCallback(async () => {
-    if (!isMountedRef.current) {
-      return;
-    }
-
-    setIsChecking(true);
-
-    try {
-      // Create requirement data for checking
-      // Use provided reftarget for exists-reftarget condition, fallback to placeholder
-      const requirementData = {
-        requirements: requirementsString,
-        targetaction: 'conditional',
-        reftarget: reftarget || 'conditional-block',
-        targetvalue: undefined,
-        textContent: description || 'Conditional block',
-        tagName: 'div',
-      };
-
-      const result = await checkRequirementsFromData(requirementData);
-
-      if (isMountedRef.current) {
-        setConditionsPassed(result.pass);
-        setIsChecking(false);
+  const evaluateConditions = useCallback(
+    async (options?: { isReevaluation?: boolean }) => {
+      if (!isMountedRef.current) {
+        return;
       }
-    } catch (error) {
-      console.warn('Failed to evaluate conditional conditions:', error);
-      if (isMountedRef.current) {
-        // Default to false branch on error
-        setConditionsPassed(false);
-        setIsChecking(false);
+
+      // Only block the UI with a spinner on the first evaluation. Re-checks keep the
+      // current branch mounted so steps can appear without a full content refresh.
+      if (!options?.isReevaluation) {
+        setIsChecking(true);
       }
-    }
-  }, [requirementsString, checkRequirementsFromData, description, reftarget]);
+
+      try {
+        // Create requirement data for checking
+        // Use provided reftarget for exists-reftarget condition, fallback to placeholder
+        const requirementData = {
+          requirements: requirementsString,
+          targetaction: 'conditional',
+          reftarget: reftarget || 'conditional-block',
+          targetvalue: undefined,
+          textContent: description || 'Conditional block',
+          tagName: 'div',
+        };
+
+        const result = await checkRequirementsFromData(requirementData);
+
+        if (isMountedRef.current) {
+          setConditionsPassed(result.pass);
+          setIsChecking(false);
+        }
+      } catch (error) {
+        console.warn('Failed to evaluate conditional conditions:', error);
+        if (isMountedRef.current) {
+          // Default to false branch on error
+          setConditionsPassed(false);
+          setIsChecking(false);
+        }
+      }
+    },
+    [requirementsString, checkRequirementsFromData, description, reftarget]
+  );
+
+  const scheduleReevaluation = useCallback(() => {
+    const delay = conditionsNeedDomWatch(conditions) ? 250 : 100;
+    const timeoutId = setTimeout(() => {
+      evaluateConditions({ isReevaluation: true });
+    }, delay);
+    return () => clearTimeout(timeoutId);
+  }, [conditions, evaluateConditions]);
 
   // Evaluate on mount and re-evaluate when relevant events occur
   useEffect(() => {
@@ -132,24 +152,26 @@ export function InteractiveConditional({
 
     // Listen for events that might change condition results
     const handleDataSourcesChanged = () => {
-      evaluateConditions();
+      scheduleReevaluation();
     };
 
     const handlePluginsChanged = () => {
-      evaluateConditions();
+      scheduleReevaluation();
     };
 
     const handleLocationChanged = () => {
-      evaluateConditions();
+      scheduleReevaluation();
     };
 
     // Re-evaluate after interactive steps complete - the step may have changed UI state
     // This handles exists-reftarget conditions where elements appear after actions
     const handleStepCompleted = () => {
-      // Small delay to let DOM settle after the step's action
-      setTimeout(() => {
-        evaluateConditions();
-      }, 100);
+      scheduleReevaluation();
+    };
+
+    // Highlight/button actions dispatch on document before section step-completed
+    const handleActionCompleted = () => {
+      scheduleReevaluation();
     };
 
     // Subscribe to relevant events
@@ -157,6 +179,7 @@ export function InteractiveConditional({
     window.addEventListener('plugins-changed', handlePluginsChanged);
     window.addEventListener('popstate', handleLocationChanged);
     window.addEventListener('interactive-step-completed', handleStepCompleted);
+    document.addEventListener('interactive-action-completed', handleActionCompleted);
 
     // REACT: cleanup subscriptions (R1)
     return () => {
@@ -165,8 +188,41 @@ export function InteractiveConditional({
       window.removeEventListener('plugins-changed', handlePluginsChanged);
       window.removeEventListener('popstate', handleLocationChanged);
       window.removeEventListener('interactive-step-completed', handleStepCompleted);
+      document.removeEventListener('interactive-action-completed', handleActionCompleted);
     };
-  }, [evaluateConditions]);
+  }, [evaluateConditions, scheduleReevaluation]);
+
+  // exists-reftarget: re-check when Grafana portals/pickers inject new nodes (e.g. viz picker tabs)
+  useEffect(() => {
+    if (!conditionsNeedDomWatch(conditions)) {
+      return;
+    }
+
+    let debounceId: ReturnType<typeof setTimeout> | undefined;
+
+    const observer = new MutationObserver(() => {
+      if (debounceId) {
+        clearTimeout(debounceId);
+      }
+      debounceId = setTimeout(() => {
+        evaluateConditions({ isReevaluation: true });
+      }, 200);
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-testid', 'class', 'aria-label', 'aria-expanded'],
+    });
+
+    return () => {
+      if (debounceId) {
+        clearTimeout(debounceId);
+      }
+      observer.disconnect();
+    };
+  }, [conditions, evaluateConditions]);
 
   // Show loading state while checking
   if (isChecking && conditionsPassed === null) {
