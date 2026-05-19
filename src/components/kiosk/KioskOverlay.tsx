@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import DOMPurify from 'dompurify';
+import DOMPurify, { type Config as DOMPurifyConfig } from 'dompurify';
 import { Icon, useStyles2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
 import { getKioskOverlayStyles } from './kiosk-mode.styles';
@@ -10,7 +10,7 @@ import { KioskTile } from './KioskTile';
 // SECURITY: Tags and attributes permitted in the kiosk banner.
 // Includes 'style' because admin-controlled banner content uses inline styles
 // for layout — unlike sanitizeDocumentationHTML which strips style for docs.
-const BANNER_SANITIZE_CONFIG: DOMPurify.Config = {
+const BANNER_SANITIZE_CONFIG: DOMPurifyConfig = {
   ALLOWED_TAGS: ['div', 'img', 'h1', 'h2', 'h3', 'p', 'a', 'span', 'strong', 'em', 'br'],
   ALLOWED_ATTR: ['style', 'src', 'alt', 'href', 'target', 'rel', 'class', 'id'],
 };

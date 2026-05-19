@@ -53,11 +53,12 @@ function makeCapture(name: string): React.FC<any> {
   };
 }
 
-jest.mock('@grafana/ui', () => ({
-  Button: ({ children, onClick, disabled, ...rest }: any) =>
-    React.createElement('button', { onClick, disabled, ...rest }, children),
-}));
-jest.mock('@grafana/data', () => ({ usePluginContext: () => ({ meta: { jsonData: {} } }) }));
+jest.mock('@grafana/ui', () => {
+  return require('../../test-utils/interactive-section-harness').createGrafanaUiMock();
+});
+jest.mock('@grafana/data', () => {
+  return require('../../test-utils/interactive-section-harness').createGrafanaDataMock();
+});
 jest.mock('../../lib/analytics', () => {
   return require('../../test-utils/interactive-section-harness').createAnalyticsMock();
 });
