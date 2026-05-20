@@ -5,6 +5,8 @@ export {
   registerSectionSteps,
   getDocumentStepPosition,
   getTotalDocumentSteps,
+  DEFAULT_INTERACTIVE_SECTION_TITLE,
+  PASSIVE_SECTION_TITLE,
 } from './interactive-section';
 export { InteractiveStep } from './interactive-step';
 export { InteractiveMultiStep } from './interactive-multi-step';

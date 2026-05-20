@@ -24,6 +24,7 @@ import {
   resetInteractiveCounters,
   registerSectionSteps,
   getDocumentStepPosition,
+  DEFAULT_INTERACTIVE_SECTION_TITLE,
 } from '../components/interactive-tutorial';
 import {
   CodeBlock,
@@ -1007,7 +1008,7 @@ function renderParsedElement(
       return (
         <InteractiveSection
           key={key}
-          title={sub(element.props.title) || 'Interactive section'}
+          title={sub(element.props.title) || DEFAULT_INTERACTIVE_SECTION_TITLE}
           isSequence={element.props.isSequence}
           skippable={element.props.skippable}
           requirements={element.props.requirements}
