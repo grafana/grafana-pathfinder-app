@@ -37,12 +37,7 @@ import {
   sessionNotFoundResult,
   sessionOutcomeResult,
 } from './result';
-import {
-  dispatchSessionMutation,
-  isConcurrentModification,
-  isSessionNotFound,
-  withArtifact,
-} from './state-bridge';
+import { dispatchSessionMutation, isConcurrentModification, isSessionNotFound, withArtifact } from './state-bridge';
 
 /**
  * Input schema for the two-mode dispatch (P7). Mutation tools accept
@@ -181,10 +176,7 @@ async function dispatchMutation(
   return outcomeResult(result.outcome, result.artifact, result.summary);
 }
 
-export function registerMutationTools(
-  server: McpServer,
-  options: { sessionStore: SessionStore }
-): void {
+export function registerMutationTools(server: McpServer, options: { sessionStore: SessionStore }): void {
   const { sessionStore } = options;
   server.registerTool(
     'pathfinder_add_block',

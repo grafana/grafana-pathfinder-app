@@ -56,9 +56,7 @@ function readBucket(overrides?: SessionStoreFactoryOverrides): string | undefine
  * first call by design so two callers in the same process can't accidentally
  * land in different backends mid-run.
  */
-export async function getDefaultSessionStore(
-  overrides?: SessionStoreFactoryOverrides
-): Promise<SessionStore> {
+export async function getDefaultSessionStore(overrides?: SessionStoreFactoryOverrides): Promise<SessionStore> {
   if (cached) {
     return cached.store;
   }
@@ -74,9 +72,7 @@ export async function getDefaultSessionStore(
     }
     const bucket = readBucket(overrides);
     if (!bucket) {
-      throw new Error(
-        'PATHFINDER_SESSION_STORE=gcs requires PATHFINDER_SESSION_BUCKET to be set to the bucket name'
-      );
+      throw new Error('PATHFINDER_SESSION_STORE=gcs requires PATHFINDER_SESSION_BUCKET to be set to the bucket name');
     }
     const store = await GcsSessionStore.create({ bucket });
     cached = { store };

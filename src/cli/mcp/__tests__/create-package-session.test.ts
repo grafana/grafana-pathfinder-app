@@ -27,7 +27,10 @@ interface ToolPayload {
 }
 
 async function withHarness<T>(
-  fn: (call: (name: string, args: Record<string, unknown>) => Promise<ToolPayload>, store: InMemorySessionStore) => Promise<T>
+  fn: (
+    call: (name: string, args: Record<string, unknown>) => Promise<ToolPayload>,
+    store: InMemorySessionStore
+  ) => Promise<T>
 ): Promise<T> {
   const store = new InMemorySessionStore();
   const server = buildServer({ sessionStore: store });
@@ -128,7 +131,9 @@ describe('pathfinder_create_guide_template — session mint', () => {
       expect(r.generation).toBe(1);
       expect(r.artifact?.content.blocks.length).toBeGreaterThan(0);
       const loaded = await store.load(r.sessionToken!);
-      expect((loaded?.artifact.content.blocks as unknown[]).length).toBe((r.artifact?.content.blocks as unknown[]).length);
+      expect((loaded?.artifact.content.blocks as unknown[]).length).toBe(
+        (r.artifact?.content.blocks as unknown[]).length
+      );
     });
   });
 });

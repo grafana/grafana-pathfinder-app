@@ -37,9 +37,7 @@ const ArtifactSchema = z
     manifest: z.record(z.string(), z.unknown()).optional(),
   })
   .optional()
-  .describe(
-    'STATELESS MODE. Pass an in-flight artifact directly. Pass EITHER `artifact` OR `sessionToken`, not both.'
-  );
+  .describe('STATELESS MODE. Pass an in-flight artifact directly. Pass EITHER `artifact` OR `sessionToken`, not both.');
 
 const SessionTokenSchema = z
   .string()

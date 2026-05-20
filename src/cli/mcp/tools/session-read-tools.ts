@@ -24,16 +24,10 @@ import { buildArtifactSummary, findBlockById } from '../../utils/package-io';
 import { normalizeSessionToken } from '../lib/session-token';
 import type { SessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
-import {
-  invalidSessionTokenResult,
-  sessionNotFoundResult,
-  textResult,
-} from './result';
+import { invalidSessionTokenResult, sessionNotFoundResult, textResult } from './result';
 
 const SessionTokenInput = {
-  sessionToken: z
-    .string()
-    .describe('Session token returned by pathfinder_create_package or a previous mutation ack.'),
+  sessionToken: z.string().describe('Session token returned by pathfinder_create_package or a previous mutation ack.'),
 };
 
 export function registerSessionReadTools(server: McpServer, options: { sessionStore: SessionStore }): void {
@@ -128,7 +122,7 @@ export function registerSessionReadTools(server: McpServer, options: { sessionSt
     'pathfinder_get_manifest_session',
     {
       description:
-        "Use this tool to read the manifest of a session-stored Pathfinder artifact — separate from pathfinder_get_manifest, which reads from the CDN repository. Returns the manifest object or null if no manifest is authored on this session.",
+        'Use this tool to read the manifest of a session-stored Pathfinder artifact — separate from pathfinder_get_manifest, which reads from the CDN repository. Returns the manifest object or null if no manifest is authored on this session.',
       annotations: readOnly('Get Pathfinder manifest (session)'),
       inputSchema: { ...SessionTokenInput },
     },
