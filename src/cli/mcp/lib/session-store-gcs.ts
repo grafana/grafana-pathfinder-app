@@ -93,6 +93,70 @@ function isPreconditionFailedError(err: unknown): boolean {
   return false;
 }
 
+/**
+ * GCS imposes a per-object write rate limit of ~1 mutation per second
+ * (https://cloud.google.com/storage/docs/gcs429). Real agent flows are
+ * LLM-paced and never approach this, but bursty smoke tests / racing
+ * replicas can. Surface as 429 with reason `rateLimitExceeded`.
+ */
+function isRateLimitedError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') {
+    return false;
+  }
+  const e = err as GcsErrorLike;
+  if (e.code === 429 || e.code === '429') {
+    return true;
+  }
+  if (Array.isArray(e.errors)) {
+    for (const inner of e.errors) {
+      if (inner?.reason === 'rateLimitExceeded') {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Run `fn`, retrying on transient 429 (per-object rate limit) with
+ * exponential backoff + jitter. Cap chosen so the worst case stays
+ * well under the 30s per-call wallclock budget in `transports/http.ts`.
+ * Non-429 errors propagate immediately so precondition-failed,
+ * not-found, and auth errors still surface fast.
+ */
+export interface RetryOptions {
+  maxAttempts?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+async function withRetryOn429<T>(fn: () => Promise<T>, opts: RetryOptions = {}): Promise<T> {
+  const maxAttempts = opts.maxAttempts ?? 5;
+  const baseDelayMs = opts.baseDelayMs ?? 1100;
+  const maxDelayMs = opts.maxDelayMs ?? 8000;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isRateLimitedError(err)) {
+        throw err;
+      }
+      lastErr = err;
+      if (attempt === maxAttempts - 1) {
+        break;
+      }
+      // Exponential backoff with full jitter: random in [baseDelay, min(max, base * 2^attempt)].
+      const exp = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt));
+      const wait = baseDelayMs + Math.random() * (exp - baseDelayMs);
+      await sleep(wait);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 export interface GcsSessionStoreOptions {
   /** Bucket name (no `gs://` prefix). */
   bucket: string;
@@ -102,13 +166,21 @@ export interface GcsSessionStoreOptions {
    * default-credentials client.
    */
   storage?: GcsStorage;
+  /**
+   * Optional override for the 429-retry sleep function. Tests inject a
+   * no-op so the retry path doesn't block on wallclock; production uses
+   * the default `setTimeout`-backed implementation.
+   */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export class GcsSessionStore implements SessionStore {
   private readonly bucket: Bucket;
+  private readonly retryOpts: RetryOptions;
 
   constructor(opts: GcsSessionStoreOptions, storage: GcsStorage) {
     this.bucket = storage.bucket(opts.bucket);
+    this.retryOpts = opts.sleep ? { sleep: opts.sleep } : {};
   }
 
   /**
@@ -222,10 +294,14 @@ export class GcsSessionStore implements SessionStore {
    * callers, so the "no precondition" relaxation is fine.
    */
   async bindMcpSessionId(token: string, mcpSessionId: string): Promise<void> {
-    await this.bucket.file(`${token}/${MCP_SESSION_PIN_OBJECT}`).save(mcpSessionId, {
-      resumable: false,
-      contentType: 'text/plain',
-    });
+    await withRetryOn429(
+      () =>
+        this.bucket.file(`${token}/${MCP_SESSION_PIN_OBJECT}`).save(mcpSessionId, {
+          resumable: false,
+          contentType: 'text/plain',
+        }),
+      this.retryOpts
+    );
   }
 
   async readMcpSessionPin(token: string): Promise<string | null> {
@@ -266,8 +342,7 @@ export class GcsSessionStore implements SessionStore {
   }
 
   private async downloadText(objectName: string): Promise<string | null> {
-    const file = this.bucket.file(objectName);
-    const [buf] = await file.download();
+    const [buf] = await withRetryOn429(() => this.bucket.file(objectName).download(), this.retryOpts);
     if (buf.length === 0) {
       return null;
     }
@@ -275,13 +350,21 @@ export class GcsSessionStore implements SessionStore {
   }
 
   private async uploadJson(objectName: string, value: unknown): Promise<void> {
-    await this.bucket.file(objectName).save(JSON.stringify(value), {
-      resumable: false,
-      contentType: 'application/json',
-    });
+    await withRetryOn429(
+      () =>
+        this.bucket.file(objectName).save(JSON.stringify(value), {
+          resumable: false,
+          contentType: 'application/json',
+        }),
+      this.retryOpts
+    );
   }
 
   private async uploadText(objectName: string, value: string, ifGenerationMatch: number): Promise<void> {
+    // Note: the generation-bump write is NOT wrapped in 429 retry. A 429
+    // on the generation object would race against the precondition logic
+    // (we'd need to peek + re-decide between retries); easier to surface
+    // it as a precondition-style failure for the caller to re-issue.
     await this.bucket.file(objectName).save(value, {
       resumable: false,
       contentType: 'text/plain',

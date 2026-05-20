@@ -74,3 +74,4 @@ src/**/*.js.map
 /.env
 /.env.local
 /.env.*.local
+/.planning/

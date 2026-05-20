@@ -25,6 +25,10 @@
  * Flags:
  *   --url=<endpoint>   Required. The /mcp endpoint of the deployed service.
  *   --hops=<n>         Number of pathfinder_add_block calls per loop. Default 25.
+ *   --delay-ms=<n>     Sleep between hops. Default 1100 — just above GCS's per-object
+ *                      1-mutation/sec rate limit. Real agent flows are LLM-paced so this
+ *                      knob does not exist in production; set to 0 for a synthetic burst
+ *                      test (server will retry 429s with exponential backoff).
  *   --json             Emit a JSON report instead of human-readable output.
  *
  * Exits nonzero on any tool-level error so the script can be wired into
@@ -39,17 +43,30 @@ interface Args {
   url: string;
   hops: number;
   json: boolean;
+  delayMs: number;
 }
 
 function parseArgs(argv: string[]): Args {
   let url: string | undefined;
   let hops = 25;
   let json = false;
+  // GCS imposes a per-object write rate limit of ~1 mutation per second
+  // (https://cloud.google.com/storage/docs/gcs429). Real agent flows are
+  // LLM-paced so they never approach this, but a synthetic smoke loop
+  // fires as fast as the network allows and trivially blows past it on
+  // the per-session content.json / manifest.json objects. The server
+  // retries through 429s with exponential backoff (~1.1s base, exp to 8s),
+  // which keeps the smoke run correct but blows the per-call wallclock
+  // budget on long bursts. Defaulting to 1100ms between hops keeps us
+  // just above the per-object ceiling without relying on retries.
+  let delayMs = 1100;
   for (const arg of argv.slice(2)) {
     if (arg.startsWith('--url=')) {
       url = arg.slice('--url='.length);
     } else if (arg.startsWith('--hops=')) {
       hops = Number.parseInt(arg.slice('--hops='.length), 10);
+    } else if (arg.startsWith('--delay-ms=')) {
+      delayMs = Number.parseInt(arg.slice('--delay-ms='.length), 10);
     } else if (arg === '--json') {
       json = true;
     } else {
@@ -62,7 +79,14 @@ function parseArgs(argv: string[]): Args {
   if (!Number.isFinite(hops) || hops < 1) {
     throw new Error(`--hops must be a positive integer (got ${hops})`);
   }
-  return { url, hops, json };
+  if (!Number.isFinite(delayMs) || delayMs < 0) {
+    throw new Error(`--delay-ms must be a non-negative integer (got ${delayMs})`);
+  }
+  return { url, hops, json, delayMs };
+}
+
+function sleep(ms: number): Promise<void> {
+  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 }
 
 interface RpcResult {
@@ -149,7 +173,7 @@ interface LoopReport {
   totalResponseBytes: number;
 }
 
-async function runStatelessLoop(url: string, hops: number): Promise<LoopReport> {
+async function runStatelessLoop(url: string, hops: number, delayMs: number): Promise<LoopReport> {
   const initial = await rpc(url, 'tools/call', {
     name: 'pathfinder_create_package',
     arguments: { title: `smoke-stateless-${Date.now()}`, type: 'guide' },
@@ -157,6 +181,9 @@ async function runStatelessLoop(url: string, hops: number): Promise<LoopReport> 
   let artifact = (initial.payload as { artifact: unknown }).artifact;
   const metrics: HopMetrics[] = [];
   for (let i = 0; i < hops; i++) {
+    if (i > 0) {
+      await sleep(delayMs);
+    }
     const r = await rpc(url, 'tools/call', {
       name: 'pathfinder_add_block',
       arguments: {
@@ -183,7 +210,11 @@ async function runStatelessLoop(url: string, hops: number): Promise<LoopReport> 
   };
 }
 
-async function runSessionLoop(url: string, hops: number): Promise<LoopReport & { sessionToken: string }> {
+async function runSessionLoop(
+  url: string,
+  hops: number,
+  delayMs: number
+): Promise<LoopReport & { sessionToken: string }> {
   const initial = await rpc(url, 'tools/call', {
     name: 'pathfinder_create_package',
     arguments: { title: `smoke-session-${Date.now()}`, type: 'guide' },
@@ -194,6 +225,9 @@ async function runSessionLoop(url: string, hops: number): Promise<LoopReport & {
   }
   const metrics: HopMetrics[] = [];
   for (let i = 0; i < hops; i++) {
+    if (i > 0) {
+      await sleep(delayMs);
+    }
     const r = await rpc(url, 'tools/call', {
       name: 'pathfinder_add_block',
       arguments: {
@@ -271,8 +305,8 @@ function renderHuman(stateless: LoopReport, session: LoopReport): string {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv);
-  const stateless = await runStatelessLoop(args.url, args.hops);
-  const session = await runSessionLoop(args.url, args.hops);
+  const stateless = await runStatelessLoop(args.url, args.hops, args.delayMs);
+  const session = await runSessionLoop(args.url, args.hops, args.delayMs);
   await verifyFinalizeDeletesSession(args.url, session.sessionToken);
 
   if (args.json) {

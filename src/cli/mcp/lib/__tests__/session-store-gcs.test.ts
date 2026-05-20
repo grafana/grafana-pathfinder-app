@@ -112,7 +112,13 @@ class FakeStorage {
 
 function newStore(): { store: GcsSessionStore; bucket: FakeBucket } {
   const storage = new FakeStorage();
-  const store = new GcsSessionStore({ bucket: 'test-bucket' }, storage as unknown as GcsStorage);
+  const store = new GcsSessionStore(
+    // Inject a no-op sleep so the 429 retry backoff doesn't burn wallclock
+    // in tests. Production omits this and gets the default setTimeout-backed
+    // backoff (~1.1s base, exponential up to 8s).
+    { bucket: 'test-bucket', sleep: () => Promise.resolve() },
+    storage as unknown as GcsStorage
+  );
   return { store, bucket: storage.bucket('test-bucket') };
 }
 
@@ -260,6 +266,83 @@ describe('GcsSessionStore Mcp-Session-Id pin (P7 task 16)', () => {
     await store.save(TOKEN_B, makeArtifact('B'), SESSION_GENERATION_ABSENT);
     await store.bindMcpSessionId(TOKEN_A, 'session-A');
     expect(await store.readMcpSessionPin(TOKEN_B)).toBeNull();
+  });
+});
+
+describe('GcsSessionStore 429 rate-limit retry (P7 hardening — gcs429)', () => {
+  /**
+   * Wrap a FakeBucket so the next N save calls to `objectName` throw
+   * a GCS-shaped 429. The (N+1)th call succeeds. Lets us assert the
+   * retry-with-backoff helper actually retries — under jest's fake
+   * timers so we don't wait wallclock seconds.
+   */
+  function rateLimitOnce(bucket: FakeBucket, objectName: string, failures: number): void {
+    const origFile = bucket.file.bind(bucket);
+    let remaining = failures;
+    bucket.file = (name: string) => {
+      const f = origFile(name);
+      if (name !== objectName) {
+        return f;
+      }
+      const origSave = f.save.bind(f);
+      f.save = async (...args: Parameters<typeof origSave>) => {
+        if (remaining > 0) {
+          remaining -= 1;
+          const err: any = new Error(
+            `The object pathfinder-test/${objectName} exceeded the rate limit for object mutation operations`
+          );
+          err.code = 429;
+          err.errors = [{ reason: 'rateLimitExceeded' }];
+          throw err;
+        }
+        return origSave(...args);
+      };
+      return f;
+    };
+  }
+
+  it('retries through a transient 429 on uploadJson and eventually writes', async () => {
+    {
+const { store, bucket } = newStore();
+      // Two 429s then success — bounded well under the 5-attempt default.
+      rateLimitOnce(bucket, `${TOKEN_A}/manifest.json`, 2);
+      await store.save(TOKEN_A, makeArtifact('v1', /* manifest */ true), SESSION_GENERATION_ABSENT);
+      expect(bucket.has(`${TOKEN_A}/manifest.json`)).toBe(true);
+      expect((await store.load(TOKEN_A))?.artifact.manifest).toBeDefined();
+    }
+  });
+
+  it('eventually surfaces the 429 after exhausting retries', async () => {
+    {
+const { store, bucket } = newStore();
+      // 10 forced failures > 5-attempt default → propagates the 429.
+      rateLimitOnce(bucket, `${TOKEN_A}/content.json`, 10);
+      await expect(store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT)).rejects.toMatchObject({
+        code: 429,
+      });
+    }
+  });
+
+  it('non-429 errors propagate immediately without retry', async () => {
+    const { store, bucket } = newStore();
+    const origFile = bucket.file.bind(bucket);
+    let saveCalls = 0;
+    bucket.file = (name: string) => {
+      const f = origFile(name);
+      if (name === `${TOKEN_A}/content.json`) {
+        f.save = async () => {
+          saveCalls += 1;
+          const err: any = new Error('Forbidden');
+          err.code = 403;
+          throw err;
+        };
+      }
+      return f;
+    };
+    await expect(store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT)).rejects.toMatchObject({
+      code: 403,
+    });
+    expect(saveCalls).toBe(1);
   });
 });
 
