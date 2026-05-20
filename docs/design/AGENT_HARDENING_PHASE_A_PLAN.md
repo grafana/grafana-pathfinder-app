@@ -49,7 +49,7 @@ Sub-checkboxes inside each task are for the executing agent to tick off as they 
 
 - [x] Pre-flight (commit AGENT_HARDENING.md + this plan)
 - [x] A1 — Reconcile tier model docs
-- [ ] A2 — Tier-doc-sync test
+- [x] A2 — Tier-doc-sync test
 - [ ] A3 — Fix prevent-doc-drift section refs
 - [ ] A4 — F-code consistency audit
 - [ ] A5 — Fix CONTEXT_INDEX auto-load claims
@@ -140,7 +140,7 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 ## A2 — Tier-doc-sync test
 
-**Status:** not-started
+**Status:** done (Claude Opus 4.7, 2026-05-20, commit cf9afb2d)
 **Effort:** 1–2h
 **Depends on:** A1
 **Citation:** F-1 prevention (so A1 cannot regress)
@@ -159,12 +159,12 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 **Steps:**
 
-- [ ] Draft the parser (small, regex-based, no new deps)
-- [ ] Add the describe block in `src/validation/architecture.test.ts`
-- [ ] Confirm the test passes against post-A1 docs
-- [ ] Confirm the test fails if you temporarily flip a tier in `AGENTS.md` (manual sanity check; revert)
-- [ ] Run `npm run test:ci -- src/validation/architecture.test.ts --coverage=false`
-- [ ] Commit: `test(validation): assert tier docs stay in sync with TIER_MAP (A2)`
+- [x] Draft the parser (small, regex-based, no new deps)
+- [x] Add the describe block in `src/validation/architecture.test.ts`
+- [x] Confirm the test passes against post-A1 docs
+- [x] Confirm the test fails if you temporarily flip a tier in `AGENTS.md` (manual sanity check; revert) — replaced with permanent in-test regression coverage (approach b in the task brief)
+- [x] Run `npm run test:ci -- src/validation/architecture.test.ts --coverage=false`
+- [x] Commit: `test(validation): assert tier docs stay in sync with TIER_MAP (A2)`
 
 **Acceptance criteria:**
 
@@ -174,7 +174,16 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 **Files touched:**
 
+- `src/validation/architecture.test.ts` — added a `Tier documentation sync` describe block (~200 lines) with a `parseTierDoc` helper, a `diffTierMaps` / `diffExcludedSets` comparator pair, an `it.each` parameterized test over `AGENTS.md` and `.cursor/rules/systemPatterns.mdc`, plus two permanent parser unit tests that feed in hand-crafted markdown with known-wrong directories. Built-in `fs` / `path` only; no new deps.
+
 **Notes:**
+
+- Picked sanity-check approach **(b)**: two permanent in-test cases (`flags a divergent tier when doc and TIER_MAP disagree`, `flags a directory listed in the doc but missing from TIER_MAP`) exercise the comparison logic against hand-crafted bad markdown. Approach (a) would have required a transient `git checkout` round-trip with no lasting coverage; (b) was strictly more valuable.
+- Parser anchors to the `Frontend tier model` heading and slices the section up to the next heading of the same or shallower depth. This isolates the tier-model bullet list from systemPatterns.mdc's more elaborate `Frontend subsystem reference` catalogue further down (which mentions the same directory names under different headings).
+- Tricky parser case: `systemPatterns.mdc` puts a one-sentence description after the dir list on the same bullet line (`... `package-engine/`, `hooks/`. Hold the business logic. Each engine exposes a barrel `index.ts`; ...`). Initial implementation greedily picked up `index.ts` as a tier-2 directory and failed the test on systemPatterns.mdc. Fixed by truncating the matched bullet payload at the first `. ` (period+whitespace) before tokenizing — dir lists are comma-separated, so this cleanly drops the trailing prose. AGENTS.md doesn't have this trailing prose and is unaffected by the change.
+- Free bonus: the test also validates the excluded set (`test-utils`, `cli`, `bundled-interactives`, `img`, `locales`) against `EXCLUDED_TOP_LEVEL` in `import-graph.ts`. Both docs document this list, and both currently match, so the coverage was effectively free.
+- Pre-commit hook (prettier) ran but produced no further changes for the test file.
+- Final run: 11/11 tests pass; ratchet still `vertical=4 lateral=9 barrel=0`.
 
 ---
 
