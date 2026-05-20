@@ -160,7 +160,9 @@ describe('mutation tools — session-mode dispatch', () => {
       expect(r.status).toBe('ok');
       expect(r.generation).toBe(2);
       const loaded = await h.store.load(TOKEN);
-      expect((loaded?.artifact.manifest as Record<string, unknown>)?.description).toBe('updated description');
+      expect((loaded?.artifact.manifest as unknown as Record<string, unknown>)?.description).toBe(
+        'updated description'
+      );
     });
 
     it('edit_block + remove_block: full mutation arc through the session', async () => {
@@ -185,7 +187,7 @@ describe('mutation tools — session-mode dispatch', () => {
       expect(edited.generation).toBe(3);
 
       const afterEdit = await h.store.load(TOKEN);
-      const blocks = afterEdit?.artifact.content.blocks as Array<Record<string, unknown>>;
+      const blocks = afterEdit?.artifact.content.blocks as unknown as Array<Record<string, unknown>>;
       expect(blocks[0]?.content).toBe('rewritten');
 
       // Remove
