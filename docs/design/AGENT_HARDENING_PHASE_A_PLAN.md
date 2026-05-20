@@ -51,7 +51,7 @@ Sub-checkboxes inside each task are for the executing agent to tick off as they 
 - [x] A1 — Reconcile tier model docs
 - [x] A2 — Tier-doc-sync test
 - [x] A3 — Fix prevent-doc-drift section refs
-- [ ] A4 — F-code consistency audit
+- [x] A4 — F-code consistency audit
 - [ ] A5 — Fix CONTEXT_INDEX auto-load claims
 - [ ] Final verification (`npm run check` clean)
 
@@ -234,7 +234,7 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 ## A4 — F-code consistency audit + alignment
 
-**Status:** not-started
+**Status:** done (Claude Opus 4.7, 2026-05-20, commit 26542faa)
 **Effort:** 3–4h
 **Depends on:** —
 **Citation:** F-4
@@ -262,12 +262,12 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 **Steps:**
 
-- [ ] Re-read `frontend-security.mdc` and confirm the table above
-- [ ] Rewrite `.cursor/rules/pr-review.md:240-245` detection table so F1–F6 match canonical IDs and short summaries
-- [ ] Verify `.cursor/skills/secure/SKILL.md:50-61` against canonical; fix any drift
-- [ ] Add a one-line pointer to `frontend-security.mdc` in `docs/design/CONCERNS.md` near the `security` concern entry (do not redefine F-codes there)
-- [ ] `rg -n 'F[1-6]\b' --type md .cursor/ docs/` and confirm every hit either lives in `frontend-security.mdc` or matches its IDs
-- [ ] Commit: `docs(security): align F-code IDs across pr-review, secure skill, and CONCERNS (A4)`
+- [x] Re-read `frontend-security.mdc` and confirm the table above
+- [x] Rewrite `.cursor/rules/pr-review.md:240-245` detection table so F1–F6 match canonical IDs and short summaries
+- [x] Verify `.cursor/skills/secure/SKILL.md:50-61` against canonical; fix any drift
+- [x] Add a one-line pointer to `frontend-security.mdc` in `docs/design/CONCERNS.md` near the `security` concern entry (do not redefine F-codes there)
+- [x] `rg -n 'F[1-6]\b' --type md .cursor/ docs/` and confirm every hit either lives in `frontend-security.mdc` or matches its IDs
+- [x] Commit: `docs(security): align F-code IDs across pr-review, secure skill, and CONCERNS (A4)`
 
 **Acceptance criteria:**
 
@@ -277,7 +277,35 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 **Files touched:**
 
+- `.cursor/rules/pr-review.md` — rewrote the F1–F6 rows in the Unified detection table (lines 240–245) to match canonical IDs and short summaries. Prettier reflowed the column widths in the same commit; no content drift from the intended rewrite.
+- `.cursor/skills/secure/SKILL.md` — extended the F5 row description to include "or dynamic `script.src` assignment" so it matches the canonical "Forbidden" list in `frontend-security.mdc:127-131`. No ID changes — the IDs were already aligned with canonical.
+- `docs/design/CONCERNS.md` — added a "Canonical rule sources" callout (4 lines) between the existing "Coverage-gap detection" section and the first `---` separator, stating that `frontend-security.mdc` is the canonical F1–F6 definition site and that `pr-review.md` / `secure/SKILL.md` are reference-only. Did not add F-code definitions inline (intentional per task brief).
+
 **Notes:**
+
+- **Pre/post F-code mapping in `.cursor/rules/pr-review.md`** (canonical = what `frontend-security.mdc` defines under each ID):
+
+  | ID  | Pre (drifted) wording                                       | Canonical match | Post (aligned) wording                                                         |
+  | --- | ----------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------ |
+  | F1  | `dangerouslySetInnerHTML` without sanitization              | canonical F4    | Untrusted/dynamic SVG without DOMPurify sanitization                           |
+  | F2  | Untrusted/dynamic SVG without DOMPurify                     | canonical F1    | `dangerouslySetInnerHTML` where `{}` auto-escape would do                      |
+  | F3  | Dynamic text rendered via innerHTML instead of `{}`         | canonical F2    | URL built via string concat instead of `new URL()` + searchParams              |
+  | F4  | URL built via string concatenation instead of `URL` API     | canonical F3    | `dangerouslySetInnerHTML` without `textUtil.sanitize()`                        |
+  | F5  | Use of `innerHTML`, `outerHTML`, `insertAdjacentHTML`       | canonical F5 ✓  | Use of `.innerHTML`, `.outerHTML`, `.insertAdjacentHTML`, dynamic `script.src` |
+  | F6  | Unvalidated URL scheme (`javascript:`, `data:`) in link/img | canonical F6 ≈  | URL in `href`/`src` without `textUtil.sanitizeUrl()` or scheme-allowlist check |
+
+  Four rows (F1–F4) were ID-mismatched relative to canonical; F5 was correct but missing the "dynamic `script.src`" sub-case; F6 was conceptually correct but reworded to match canonical's wording ("URL & Link Validation" via `textUtil.sanitizeUrl()` / scheme-allowlist, rather than describing only the `javascript:`/`data:` sub-case). The swap was a clean rewrite — no row was deleted or added; only IDs and summaries shifted.
+
+- **`.cursor/skills/secure/SKILL.md`** — already aligned with canonical IDs (F1=SVG, F2=safe React bindings, F3=URL constructor, F4=sanitize HTML, F5=insecure DOM, F6=URL validation). Single non-ID fix: F5 row extended to mention dynamic `script.src` for parity with the canonical "Forbidden" list. The F-code references in detection-rules prose (`For F1 / F4`, `For F3`, `For F5`, `For F6` at lines 65–68) all match canonical semantics — left untouched.
+- **Canonical-source pointer in `CONCERNS.md`** — added as a new "Canonical rule sources" subsection at line 34 (between the existing "Coverage-gap detection" section and the first `---` separator). Wording: "F1–F6 security rules are defined in `.cursor/rules/frontend-security.mdc`. Other files (`.cursor/rules/pr-review.md`, `.cursor/skills/secure/SKILL.md`) reference these IDs without redefining them — if the summaries diverge, `frontend-security.mdc` wins." Placed in the prelude rather than inline in the `security` row's `load_docs` column because the table format does not support inline notes and the prelude is where someone routing security review or wondering "what is F3?" naturally lands.
+- **Stragglers flagged but not fixed on this branch:**
+  - `docs/history/package-implementation-record.md:321` references "(F4 security rule)" for a code-site using `new URL()` construction. Canonical F4 is "Sanitize HTML and URLs"; `new URL()` is canonical F3 ("Don't Treat URLs as Strings"). This is a wrong F-code citation in a historical implementation record. Out of scope for A4 (history docs are not normative agent guidance), and fixing it would require a separate "history-doc accuracy" pass.
+  - `.cursor/local/REMOVE-HTML-DYNAMICS.md:495-612` uses old F-code groupings: "F1/F2 (HTML sanitization)", "F3/F4 (URL safety)", "F5 (No unsafe DOM APIs)", "F6 (No dangerouslySetInnerHTML in parser)". None of these match canonical (F1=SVG, F2=safe React bindings, F4=HTML sanitization, F6=URL validation). However, `.cursor/local/` is gitignored (see `.gitignore`: `.cursor/local`), so this file is not part of the canonical agent-facing surface and not touched.
+  - `docs/design/AGENT_HARDENING.md:55,102` mentions F-codes in the audit narrative ("F-4 F1–F6 security-rule IDs lack cross-file consistency audit", "Cross-reference F1–F6 …"). These are historical/planning commentary describing _the audit_, not normative rule definitions. Per the task brief, left in place.
+- **Re the "Escalation pointers" wording** in `pr-review.md:257` ("F1-F6 hit: `frontend-security.mdc` is already loaded (always-apply). Reference it directly.") — still accurate post-swap; the pointer references the file, not specific IDs. Same for the comment-prefix table at line 277 ("`[security]` | Security concern (F1-F6)"). Both left untouched.
+- **The "(always-apply)" phrasing in pr-review.md:257** technically overstates Claude Code behavior — it is Cursor-specific. That is exactly the surface A5 will tighten; out of scope for A4.
+- Verification: `npm run test:ci -- src/validation/architecture.test.ts --coverage=false` passed (11/11; ratchet still `vertical=4 lateral=9 barrel=0`).
+- Pre-commit hook (lint-staged + prettier) ran on the content commit and reflowed the `pr-review.md` detection-table column widths after the rewrite. No content drift — only whitespace alignment.
 
 ---
 
