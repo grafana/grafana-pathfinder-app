@@ -4,7 +4,7 @@
 > Phase entry and exit criteria graduate the deferred [P5 — GCS-backed authoring sessions](../AI-AUTHORING-IMPLEMENTATION.md#p5--deferred-follow-ups) bullet into its own phase. The design is fully specified in that bullet (storage layout, token format, tool-surface shape, concurrency, retention, confidentiality); this plan phases the implementation.
 > Tracking issue: _epic issue TBD_.
 
-**Status:** In progress (phase A complete; B–D pending)
+**Status:** In progress (phases A + B complete; C + D pending)
 **Started:** 2026-05-20
 **Completed:** _YYYY-MM-DD_
 
@@ -54,16 +54,17 @@ _Phases A–D below group tasks into shippable PRs. Each PR leaves `main` shippa
 
 **Phase A deliverable — DELIVERED.** `scripts/deploy-mcp.sh --env=dev` (default) deploys the service with the bucket, SA, IAM, lifecycle rule, and env vars all wired, but no tool calls actually use the bucket yet — `authoring-start` still primes stateless flow; mutation tools still take `{artifact}`. The store exists, is callable from any node module via `withSession` / `withFreshSession`, and 173 MCP-suite tests pass.
 
-### Phase B — Session-mode mutations + fine-grained reads
+### Phase B — Session-mode mutations + fine-grained reads — COMPLETE 2026-05-20
 
-- [ ] **8. Discriminated input on every mutation tool.** Each of `pathfinder_add_block`, `pathfinder_add_step`, `pathfinder_add_choice`, `pathfinder_edit_block`, `pathfinder_remove_block`, `pathfinder_set_manifest` accepts **either** `{ sessionToken, expectedGeneration? }` **or** `{ artifact }`. Zod schemas branch via `z.union` with a `superRefine` that requires exactly one. Token-mode dispatch: `withSession(...)` returns the ack `{ sessionToken, generation, added/edited/removed: { kind, id } }` per design. Artifact-mode dispatch is the current code path, unchanged.
-- [ ] **9. `pathfinder_create_package` mints a session on token-less call.** When called without `sessionToken`, mint via `generateSessionToken()`, store the initial artifact, return `{ sessionToken, generation }`. When called with `sessionToken`, refuse with `ALREADY_INITIALIZED` (a session is one package; mint a new one for a new package).
-- [ ] **10. Failed-mutation invariant test.** Introduce a CLI-detectable schema violation (the existing `ARTIFACT_MUTATED` path in `mutation-tools.ts` is the model) and assert that GCS/in-memory state is **unchanged** afterwards. This is the load-bearing test for the P3 "MCP performs no schema validation" contract.
-- [ ] **11. New fine-grained read tools.** `pathfinder_list_blocks({ sessionToken })`, `pathfinder_get_block({ sessionToken, blockId })`, and the renamed `pathfinder_get_manifest_session({ sessionToken })` (final name decided in Open questions). Registered in `src/cli/mcp/tools/index.ts`. Tests cover unknown token (404), unknown block id, happy path.
-- [ ] **12. `pathfinder_inspect` and `pathfinder_validate` accept `{ sessionToken }`.** Same discriminated-input pattern as mutations. Inspect returns the full artifact; validate returns structured errors only. Existing `{ artifact }` mode preserved.
-- [ ] **13. `expectedGeneration` server-side retry-once.** On `PRECONDITION_FAILED` from the store, refetch and retry the mutation once. If it fails again, surface `{ status: 'error', code: 'CONCURRENT_MODIFICATION', expected, actual }`. Test covers both the retry-succeeds and retry-fails paths.
+- [x] **B-extra. Env-driven `SessionStore` factory.** `src/cli/mcp/lib/session-store-factory.ts` resolves `PATHFINDER_SESSION_STORE` (memory | gcs, default memory) + `PATHFINDER_SESSION_BUCKET`, memoized. `buildServer({sessionStore})` accepts an injected store; stdio + http transports resolve the factory once at startup and pass it through. 6 unit tests.
+- [x] **8. Discriminated input on every mutation tool.** All 6 mutation tools accept either `{artifact}` (unchanged stateless contract) or `{sessionToken, expectedGeneration?}`. A shared `dispatchMutation()` helper handles mode resolution + token normalization + branch routing. Session-mode acks drop the artifact body — agent receives `{sessionToken, generation, summary, outcome}` only. New wire codes (INPUT_MODE_AMBIGUOUS / INPUT_MODE_MISSING / INVALID_SESSION_TOKEN / SESSION_NOT_FOUND / CONCURRENT_MODIFICATION) ship as helper functions in `result.ts`. 10 integration tests.
+- [x] **9. `pathfinder_create_package` mints a session on every call.** Both `pathfinder_create_package` and `pathfinder_create_guide_template` now mint a fresh token, persist the seed artifact at generation 1, and return both `sessionToken+generation` AND the artifact — so stateless flows still work end-to-end. `mintSession()` retries up to 4× on token collision (astronomically rare given ~110 bits of entropy). 5 tests.
+- [x] **10. Failed-mutation invariant test.** Dedicated `failed-mutation-invariant.test.ts` snapshots `{generation, artifact}` before/after each failing call and asserts byte-for-byte equality. 6 scenarios: SCHEMA_VALIDATION on empty fields, NOT_FOUND on phantom edit/remove targets, semantic error on add_step against a markdown parent, ok→fail leaves at the ok generation, 5 consecutive failures do not drift the generation.
+- [x] **11. Three new fine-grained read tools.** `pathfinder_list_blocks` (tree summary), `pathfinder_get_block` (one block by id), `pathfinder_get_manifest_session` (named with `_session` suffix to dodge the P6 `pathfinder_get_manifest` collision flagged in the P6 decision log). 8 unit tests covering happy paths + SESSION_NOT_FOUND + INVALID_SESSION_TOKEN + NOT_FOUND-with-generation-echoed.
+- [x] **12. `pathfinder_inspect` and `pathfinder_validate` accept `{sessionToken}`.** Shared `resolveReadOnlyInput()` helper in `inspection-tools.ts` keeps the two tools in lockstep. Inspect is the "pull full artifact" escape hatch in session-mode; validate returns structured errors only. 7 tests.
+- [x] **13. `expectedGeneration` server-side retry-once.** `dispatchSessionMutation()` in `state-bridge.ts` implements the policy: omit `expectedGeneration` → retry once on 412 against refetched state, then surface CONCURRENT_MODIFICATION; pass `expectedGeneration` → surface immediately on any mismatch (no retry — the agent expressed an expectation). 9 unit tests using a `makeRacingStore()` wrapper that bumps the generation between load and save once.
 
-**Phase B deliverable.** Token-mode is live end-to-end. Stateless `{artifact}` mode untouched (fallback per design). Re-deploying via `./deploy-mcp.sh dev` exposes the new tools.
+**Phase B deliverable — DELIVERED.** Session-mode is live end-to-end. Stateless `{artifact}` mode untouched on every tool. Re-deploying via `scripts/deploy-mcp.sh` exposes 3 new tools (`pathfinder_list_blocks`, `pathfinder_get_block`, `pathfinder_get_manifest_session`) and discriminated input on the 8 existing mutation/inspection tools. 224 MCP-suite tests pass (was 173 at end of phase A — 51 new in phase B).
 
 ### Phase C — Guidance + finalize lifecycle
 
@@ -119,6 +120,13 @@ _Appended during execution._
 - **Alternatives considered:** Last-write-wins; surface 412 immediately and require agent to retry.
 - **Rationale:** Keeps agents out of the concurrency model for the common case (single replica, single agent). The structured error remains available for the rare two-replica race so agents _can_ reason about it if they want to.
 - **Touches:** Task 13.
+
+### 2026-05-20 — `pathfinder_get_manifest_session` keeps the `_session` suffix
+
+- **Decision:** Ship the session-scoped manifest read tool as `pathfinder_get_manifest_session`, leaving P6's `pathfinder_get_manifest` (CDN repository tool) unchanged.
+- **Alternatives considered:** Collapse to one tool with a discriminated input (`{id}` vs `{sessionToken}`); rename P6's variant to `pathfinder_get_repository_manifest`.
+- **Rationale:** The two tools read different data sources (public CDN vs session bucket) and serve different mental models. Discriminated input would force agents to remember which keys go with which source. Renaming P6 retroactively would have churned an already-shipped public tool. The `_session` suffix carries the meaning visibly in the tool name and the agent never has to remember which mode goes with which input shape.
+- **Touches:** `src/cli/mcp/tools/session-read-tools.ts`, the P6 [decision log naming-clash entry](./ai-authoring-6-cdn-repository-tools.md#2026-05-08--naming-clash-with-deferred-p5-pathfinder_get_manifest).
 
 ### 2026-05-20 — In-memory `SessionStore` is the local-dev default
 
