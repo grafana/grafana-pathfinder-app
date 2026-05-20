@@ -25,8 +25,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getRequirementExplanation } from '../../../requirements-manager';
-import { dispatchFix } from '../../../requirements-manager/fix-registry';
+import { getRequirementExplanation, dispatchFix } from '../../../requirements-manager';
 
 interface SectionRequirementsResult {
   pass: boolean;

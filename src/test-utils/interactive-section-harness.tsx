@@ -27,6 +27,7 @@
  */
 
 import React from 'react';
+import { dispatchFix } from '../requirements-manager/fix-registry';
 
 export const memoryStore = new Map<string, unknown>();
 
@@ -263,6 +264,8 @@ export function createRequirementsManagerMock() {
       }),
     },
     validateInteractiveRequirements: jest.fn(),
+    // Use the real dispatchFix so handlers delegate to the mocked NavigationManager.
+    dispatchFix,
     getRequirementExplanation: jest.fn((requirement?: string) => {
       if (requirement?.startsWith('on-page:')) {
         return 'Navigate to the correct page first.';
