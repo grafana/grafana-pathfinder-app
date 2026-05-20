@@ -27,7 +27,6 @@
  */
 
 import React from 'react';
-import { dispatchFix } from '../requirements-manager/fix-registry';
 
 export const memoryStore = new Map<string, unknown>();
 
@@ -265,7 +264,12 @@ export function createRequirementsManagerMock() {
     },
     validateInteractiveRequirements: jest.fn(),
     // Use the real dispatchFix so handlers delegate to the mocked NavigationManager.
-    dispatchFix,
+    // Lazy require — NOT a top-level import. A static import would pull in
+    // fix-registry → expand-options-group → constants/interactive-config at
+    // harness initialization time, which fires the jest.mock factory for
+    // interactive-config before the harness finishes loading → TDZ crash.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    dispatchFix: require('../requirements-manager/fix-registry').dispatchFix,
     getRequirementExplanation: jest.fn((requirement?: string) => {
       if (requirement?.startsWith('on-page:')) {
         return 'Navigate to the correct page first.';
