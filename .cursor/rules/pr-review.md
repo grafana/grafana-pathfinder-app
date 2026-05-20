@@ -254,7 +254,7 @@ Scan the diff against the unified detection table below. Security rules (F1-F6) 
 ### Escalation pointers
 
 - **R1-R21 hit**: load `@react-antipatterns.mdc` for the canonical Do/Don't example and fix pattern.
-- **F1-F6 hit**: `frontend-security.mdc` is already loaded (always-apply). Reference it directly.
+- **F1-F6 hit**: load `.cursor/rules/frontend-security.mdc` directly for the canonical rule definition and remediation pattern. (In Cursor, that file's `alwaysApply` frontmatter auto-loads it for matching files; in Claude Code, cite it by path.)
 
 ## Reporting
 

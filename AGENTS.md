@@ -108,7 +108,7 @@ Frequently-needed entries:
 
 - `docs/design/CONCERNS.md` — PR review routing, impact analysis, one-way doors
 - `.cursor/rules/systemPatterns.mdc` — architecture, component relationships, per-subsystem entry points
-- `.cursor/rules/frontend-security.mdc` — frontend security F1-F6 (auto-triggered on `*.ts`/`*.tsx`/`*.js`/`*.jsx`)
+- `.cursor/rules/frontend-security.mdc` — frontend security F1-F6; load when working in `*.ts`/`*.tsx`/`*.js`/`*.jsx` files (Cursor auto-loads via `globs:` frontmatter; Claude Code does not — cite by path)
 - `.cursor/rules/react-antipatterns.mdc` — Do/Don't reference for R1-R21
 - `.cursor/rules/testingStrategy.mdc` — unit/smoke/integration test guidance
 - `docs/developer/E2E_TESTING.md` + `E2E_TESTING_CONTRACT.md` — E2E runner and `data-test-*` attributes

@@ -1,6 +1,8 @@
 # On-demand context index
 
-Load these files **only when working in the relevant domain**. Many are auto-triggered by glob patterns in `.cursor/rules/*.mdc` frontmatter; the rest are loaded by name.
+Load these files **only when working in the relevant domain**.
+
+**Cross-tool behavior — important.** In **Cursor**, many `.cursor/rules/*.mdc` files auto-load via `globs:` / `alwaysApply:` frontmatter. In **Claude Code**, that frontmatter is inert — `.mdc` files are discoverable but not auto-loaded; load them by name when working in the relevant domain (typically because another file like `pr-review.md` or a skill cites them). The "Auto-triggered by globs" column in the tables below documents the Cursor behavior for cross-tool reference; treat it as a hint about a rule's intended scope, not as a load-on-demand guarantee in Claude Code.
 
 `.mdc` files live in `.cursor/rules/`. Developer-facing references (`*.md`) live under `docs/developer/`. Design docs live under `docs/design/` — these capture **design intent** and may not match implemented reality; verify against the code before acting on them. Skills live under `.cursor/skills/<name>/SKILL.md`.
 
