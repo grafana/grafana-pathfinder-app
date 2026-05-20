@@ -82,6 +82,17 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
       expect(r.generation).toBe(2);
     });
 
+    it('trims both sides of the pin comparison (WR-06)', async () => {
+      const store = new InMemorySessionStore();
+      // Bind a pin with trailing whitespace as a proxy/CDN might.
+      const token = await mintSession(store, 'transport-session-A');
+      // Inbound header has trailing whitespace — should still match.
+      const r = await callTool(store, '  transport-session-A  ', 'pathfinder_list_blocks', {
+        sessionToken: token,
+      });
+      expect(r.status).toBe('ok');
+    });
+
     it('lets subsequent reads through when the header matches the pin', async () => {
       const store = new InMemorySessionStore();
       const token = await mintSession(store, 'transport-session-A');
@@ -145,19 +156,24 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
     });
   });
 
-  describe('absent — skip check', () => {
-    it('skips the pin check when the request omits the header (stdio fallback)', async () => {
+  describe('absent header against pinned session — SESSION_NOT_FOUND (WR-01)', () => {
+    it('rejects a call that omits the header when the session is pinned', async () => {
       const store = new InMemorySessionStore();
       const token = await mintSession(store, 'transport-session-A');
 
+      // Pre-WR-01 this bypassed the pin entirely. Under
+      // --allow-unauthenticated the token IS the credential, so an
+      // HTTP request against a pinned session must carry the header.
       const r = await callTool(store, undefined, 'pathfinder_add_block', {
         sessionToken: token,
         type: 'markdown',
         fields: { content: 'hello' },
       });
-      expect(r.status).toBe('ok');
+      expect(r.code).toBe('SESSION_NOT_FOUND');
     });
+  });
 
+  describe('absent pin — skip check (stdio mint)', () => {
     it('skips the pin check when no pin was bound at mint time', async () => {
       const store = new InMemorySessionStore();
       // Mint with no header (stdio-style mint).

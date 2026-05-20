@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  *
- * Tests for `withSession` and `withFreshSession` — the P7 storage seam.
+ * Tests for `withSession` — the P7 storage seam.
  *
  * No public tool surface change yet; these tests exercise the seam
  * directly against the in-memory store, with fake runners that mutate
@@ -13,7 +13,7 @@ import * as path from 'node:path';
 
 import type { ContentJson } from '../../../types/package.types';
 import { SESSION_GENERATION_ABSENT, InMemorySessionStore, SessionPreconditionFailedError } from '../lib/session-store';
-import { SESSION_NOT_FOUND, withFreshSession, withSession, type SessionNotFound } from '../tools/state-bridge';
+import { SESSION_NOT_FOUND, withSession, type SessionNotFound } from '../tools/state-bridge';
 import type { CommandOutcome } from '../../utils/output';
 
 const TOKEN = 'aaaaaaaaaaaaaaaaaaaaaa';
@@ -138,40 +138,3 @@ describe('withSession', () => {
   });
 });
 
-describe('withFreshSession', () => {
-  it('mints a new session at generation 1 from an empty seed', async () => {
-    const store = new InMemorySessionStore();
-    expect(await store.load(TOKEN)).toBeNull();
-
-    const result = await withFreshSession(TOKEN, store, freshArtifact('initial'), setTitleRunner('after-create'));
-    expect(result.outcome.status).toBe('ok');
-    expect(result.generation).toBe(1);
-    expect(result.artifact.content.title).toBe('after-create');
-
-    const reloaded = await store.load(TOKEN);
-    expect(reloaded?.generation).toBe(1);
-    expect(reloaded?.artifact.content.title).toBe('after-create');
-  });
-
-  it('does NOT write on runner failure (no half-minted sessions)', async () => {
-    const store = new InMemorySessionStore();
-    const result = await withFreshSession(TOKEN, store, freshArtifact('seed'), failingRunner());
-    expect(result.outcome.status).toBe('error');
-    expect(result.generation).toBeUndefined();
-    expect(await store.load(TOKEN)).toBeNull();
-  });
-
-  it('rejects mint-over-existing with SessionPreconditionFailedError', async () => {
-    const store = new InMemorySessionStore();
-    await store.save(TOKEN, freshArtifact('v1'), SESSION_GENERATION_ABSENT);
-
-    await expect(
-      withFreshSession(TOKEN, store, freshArtifact('seed'), setTitleRunner('shadow'))
-    ).rejects.toBeInstanceOf(SessionPreconditionFailedError);
-
-    // Existing session untouched.
-    const reloaded = await store.load(TOKEN);
-    expect(reloaded?.artifact.content.title).toBe('v1');
-    expect(reloaded?.generation).toBe(1);
-  });
-});

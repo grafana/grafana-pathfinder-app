@@ -53,18 +53,14 @@ describe('getDefaultSessionStore', () => {
     await expect(getDefaultSessionStore()).rejects.toThrow(/PATHFINDER_SESSION_BUCKET/);
   });
 
-  it('builds a GcsSessionStore when both env vars are set (override path avoids real auth)', async () => {
-    // We exercise the gcs branch through the overrides hook to avoid loading
-    // application default credentials in a unit test.
+  it('builds a GcsSessionStore when both env vars are set', async () => {
+    // The Storage client constructed via Application Default Credentials
+    // is lazy — it doesn't actually authenticate until a request is made,
+    // so this test runs without real GCP creds.
     process.env.PATHFINDER_SESSION_STORE = 'gcs';
     process.env.PATHFINDER_SESSION_BUCKET = 'test-bucket';
     const store = await getDefaultSessionStore();
     expect(store).toBeInstanceOf(GcsSessionStore);
   });
 
-  it('honors the overrides argument over env vars', async () => {
-    process.env.PATHFINDER_SESSION_STORE = 'memory';
-    const store = await getDefaultSessionStore({ storeMode: 'gcs', bucket: 'test-bucket' });
-    expect(store).toBeInstanceOf(GcsSessionStore);
-  });
 });

@@ -24,7 +24,11 @@
  *     behavior cleanly.
  *
  * Failure-mode contract:
- *   - `load` returns `null` for an unknown token (never throws).
+ *   - `load` returns `null` for an unknown token. It may throw
+ *     `SessionStoreCorruptedError` when the backing store holds a
+ *     malformed artifact (unparseable JSON, missing-generation, etc),
+ *     and transport errors from the backing store. It never throws
+ *     for the absent-session case.
  *   - `save` throws `SessionPreconditionFailedError` on generation
  *     mismatch and may throw transport errors from the backing store.
  *   - `delete` is idempotent: deleting an unknown token resolves
@@ -69,6 +73,22 @@ export class SessionPreconditionFailedError extends Error {
   }
 }
 
+/**
+ * Raised by `load` when the backing store contains a session whose
+ * artifacts are unreadable as JSON or otherwise malformed. The HTTP
+ * transport surfaces this as a structured 500 so an operator can
+ * inspect the bucket; agents see an INTERNAL-class error rather than
+ * a silent SESSION_NOT_FOUND (which would mask the corruption).
+ */
+export class SessionStoreCorruptedError extends Error {
+  readonly code = 'SESSION_CORRUPTED' as const;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'SessionStoreCorruptedError';
+  }
+}
+
 export interface SessionStore {
   /**
    * Returns the current artifact and generation for `token`, or `null` if
@@ -102,10 +122,10 @@ export interface SessionStore {
    * (per design — the pin is a confidentiality boundary, not an auth
    * surface, so it surfaces as 404, not 403).
    *
-   * Idempotent for the same pin; overwriting an existing pin with a
-   * different value is implementation-defined (in practice the in-memory
-   * and GCS impls both overwrite, but no production caller does this —
-   * we only ever bind once at mint).
+   * Idempotent for the same pin. WR-05: rebinding an existing pin to a
+   * different value throws `SessionPreconditionFailedError`. No
+   * production caller does this; the failure is structured rather than
+   * a silent overwrite of a confidentiality field.
    */
   bindMcpSessionId(token: string, mcpSessionId: string): Promise<void>;
 
@@ -163,6 +183,12 @@ export class InMemorySessionStore implements SessionStore {
   }
 
   async bindMcpSessionId(token: string, mcpSessionId: string): Promise<void> {
+    // WR-05 parity with GCS: refuse to overwrite an existing pin with a
+    // different value; same-value rebinds are idempotent.
+    const existing = this.pins.get(token);
+    if (existing !== undefined && existing !== mcpSessionId) {
+      throw new SessionPreconditionFailedError(SESSION_GENERATION_ABSENT, 1);
+    }
     this.pins.set(token, mcpSessionId);
   }
 

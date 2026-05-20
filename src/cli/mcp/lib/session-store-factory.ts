@@ -23,18 +23,7 @@ import { InMemorySessionStore, type SessionStore } from './session-store';
 let cached: { store: SessionStore } | null = null;
 let pending: Promise<SessionStore> | null = null;
 
-export interface SessionStoreFactoryOverrides {
-  /** Override the env var value (used in tests). */
-  storeMode?: 'memory' | 'gcs';
-  /** Override the env var value (used in tests). */
-  bucket?: string;
-}
-
-function readMode(overrides?: SessionStoreFactoryOverrides): 'memory' | 'gcs' {
-  const fromOverride = overrides?.storeMode;
-  if (fromOverride) {
-    return fromOverride;
-  }
+function readMode(): 'memory' | 'gcs' {
   const raw = (process.env.PATHFINDER_SESSION_STORE ?? '').trim().toLowerCase();
   if (raw === 'gcs') {
     return 'gcs';
@@ -42,10 +31,7 @@ function readMode(overrides?: SessionStoreFactoryOverrides): 'memory' | 'gcs' {
   return 'memory';
 }
 
-function readBucket(overrides?: SessionStoreFactoryOverrides): string | undefined {
-  if (overrides?.bucket !== undefined) {
-    return overrides.bucket;
-  }
+function readBucket(): string | undefined {
   const raw = (process.env.PATHFINDER_SESSION_BUCKET ?? '').trim();
   return raw.length > 0 ? raw : undefined;
 }
@@ -55,8 +41,11 @@ function readBucket(overrides?: SessionStoreFactoryOverrides): string | undefine
  * same instance regardless of subsequent env changes — env is captured on
  * first call by design so two callers in the same process can't accidentally
  * land in different backends mid-run.
+ *
+ * No public overrides. Tests that need a different backend should construct
+ * a store directly and pass it to `buildServer({ sessionStore })`.
  */
-export async function getDefaultSessionStore(overrides?: SessionStoreFactoryOverrides): Promise<SessionStore> {
+export async function getDefaultSessionStore(): Promise<SessionStore> {
   if (cached) {
     return cached.store;
   }
@@ -64,13 +53,13 @@ export async function getDefaultSessionStore(overrides?: SessionStoreFactoryOver
     return pending;
   }
   pending = (async () => {
-    const mode = readMode(overrides);
+    const mode = readMode();
     if (mode === 'memory') {
       const store = new InMemorySessionStore();
       cached = { store };
       return store;
     }
-    const bucket = readBucket(overrides);
+    const bucket = readBucket();
     if (!bucket) {
       throw new Error('PATHFINDER_SESSION_STORE=gcs requires PATHFINDER_SESSION_BUCKET to be set to the bucket name');
     }

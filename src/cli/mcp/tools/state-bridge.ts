@@ -47,7 +47,7 @@ import {
   type TreeNode,
 } from '../../utils/package-io';
 import type { CommandOutcome } from '../../utils/output';
-import { SESSION_GENERATION_ABSENT, SessionPreconditionFailedError, type SessionStore } from '../lib/session-store';
+import { SessionPreconditionFailedError, type SessionStore } from '../lib/session-store';
 
 export interface ArtifactInput {
   content: ContentJson;
@@ -132,8 +132,9 @@ export async function withArtifact(
  *   1. Load `{artifact, generation}` from the session store. If absent,
  *      return `SESSION_NOT_FOUND` — the caller decides whether that is
  *      an error (an agent passed a stale token) or a signal to mint
- *      (the create-package path uses `withFreshSession` instead, so
- *      this branch is the agent-error branch).
+ *      (the create-package path uses `mintSession` in
+ *      `tools/artifact-tools.ts` instead, so this branch is the
+ *      agent-error branch).
  *   2. Invoke the existing tmpdir-based runner against the loaded
  *      artifact. The CLI is the sole validator.
  *   3. On runner success, persist the updated artifact back to the
@@ -165,31 +166,6 @@ export async function withSession(
   }
 
   const saved = await store.save(token, result.artifact, loaded.generation);
-  return { ...result, generation: saved.generation };
-}
-
-/**
- * Variant for the create-package path: mint a fresh session by writing
- * the runner's output under `ifGenerationMatch=0`. The runner is invoked
- * against an empty package-shaped scratch dir; the CLI runner is
- * responsible for producing valid output.
- *
- * Returns the post-save generation alongside the artifact. On runner
- * failure no store write is attempted and `generation` is `undefined`.
- */
-export async function withFreshSession(
-  token: string,
-  store: SessionStore,
-  seed: ArtifactInput,
-  runner: (dir: string) => Promise<CommandOutcome> | CommandOutcome
-): Promise<SessionOutcome> {
-  const result = await withArtifact(seed, runner);
-
-  if (result.outcome.status !== 'ok') {
-    return { ...result, generation: undefined };
-  }
-
-  const saved = await store.save(token, result.artifact, SESSION_GENERATION_ABSENT);
   return { ...result, generation: saved.generation };
 }
 
