@@ -48,7 +48,7 @@ Sub-checkboxes inside each task are for the executing agent to tick off as they 
 ## Overall progress
 
 - [x] Pre-flight (commit AGENT_HARDENING.md + this plan)
-- [ ] A1 — Reconcile tier model docs
+- [x] A1 — Reconcile tier model docs
 - [ ] A2 — Tier-doc-sync test
 - [ ] A3 — Fix prevent-doc-drift section refs
 - [ ] A4 — F-code consistency audit
@@ -59,16 +59,16 @@ Sub-checkboxes inside each task are for the executing agent to tick off as they 
 
 ## Pre-flight — land design doc + plan on branch
 
-**Status:** in-progress (Claude Opus 4.7, 2026-05-20)
+**Status:** done (Claude Opus 4.7, 2026-05-20, commit 7507c04b)
 
 **Why first:** The design doc is currently untracked on `main`. Both it and this plan need to be on the branch before tasks A1–A5 run so executors can reference them by path.
 
 **Steps:**
 
 - [x] Copy plan file to `docs/design/AGENT_HARDENING_PHASE_A_PLAN.md`
-- [ ] `git add docs/design/AGENT_HARDENING.md docs/design/AGENT_HARDENING_PHASE_A_PLAN.md`
-- [ ] Commit with message: `docs(agent-hardening): add Phase A design doc and implementation plan`
-- [ ] Record SHA in Notes below
+- [x] `git add docs/design/AGENT_HARDENING.md docs/design/AGENT_HARDENING_PHASE_A_PLAN.md`
+- [x] Commit with message: `docs(agent-hardening): add Phase A design doc and implementation plan`
+- [x] Record SHA in Notes below
 
 **Files touched:**
 
@@ -77,11 +77,13 @@ Sub-checkboxes inside each task are for the executing agent to tick off as they 
 
 **Notes:**
 
+- Pre-commit hook (lint-staged + prettier) reformatted the markdown to normalize wrapping and spacing. No content changes. Committed in the same SHA.
+
 ---
 
 ## A1 — Reconcile tier model docs with `TIER_MAP`
 
-**Status:** not-started
+**Status:** done (Claude Opus 4.7, 2026-05-20, commit 7a11cb35)
 **Effort:** 2–4h
 **Depends on:** Pre-flight
 **Citation:** F-1 in AGENT_HARDENING.md
@@ -103,15 +105,15 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 **Steps:**
 
-- [ ] Rewrite `AGENTS.md:68-75` ("Frontend tier model" bullet list) to use 5-tier numbering above
-- [ ] Update `AGENTS.md:98-133` ("Frontend subsystem reference" section) to label each subsystem with its corrected tier number
-- [ ] Rewrite `.cursor/rules/systemPatterns.mdc:85-92` to match (currently 4-tier prose, same content shape as AGENTS.md)
-- [ ] Update `.cursor/rules/systemPatterns.mdc` subsystem reference section (line 133+) tier labels
-- [ ] Scan `CLAUDE.md` for any tier references (exploration found none, but verify) — update if found
-- [ ] Scan `docs/developer/CONTEXT_INDEX.md` for tier references — update if found
-- [ ] Spot-check `docs/developer/` deep-dives for tier mentions: `engines/`, `utils/README.md`, `constants/README.md`, `learning-paths/README.md`
-- [ ] Run `rg -n "Tier [0-3]" --type md AGENTS.md CLAUDE.md docs/ .cursor/rules/` to confirm no stale 4-tier references remain
-- [ ] Commit: `docs(agent-hardening): reconcile tier model prose with import-graph TIER_MAP (A1)`
+- [x] Rewrite `AGENTS.md:68-75` ("Frontend tier model" bullet list) to use 5-tier numbering above
+- [x] Update `AGENTS.md:98-133` ("Frontend subsystem reference" section) to label each subsystem with its corrected tier number — AGENTS.md has no such section; the subsystem catalogue lives only in `.cursor/rules/systemPatterns.mdc` (covered by the next step)
+- [x] Rewrite `.cursor/rules/systemPatterns.mdc:85-92` to match (currently 4-tier prose, same content shape as AGENTS.md)
+- [x] Update `.cursor/rules/systemPatterns.mdc` subsystem reference section (line 133+) tier labels
+- [x] Scan `CLAUDE.md` for any tier references (exploration found none, but verify) — none found
+- [x] Scan `docs/developer/CONTEXT_INDEX.md` for tier references — none found
+- [x] Spot-check `docs/developer/` deep-dives for tier mentions: `engines/`, `utils/README.md`, `constants/README.md`, `learning-paths/README.md` — only hits are content-fetch fallback tiers in `engines/context-engine.md` and an E2E test-attribute tier in `E2E_TESTING_CONTRACT.md`, both unrelated to the import-tier model
+- [x] Run `rg -n "Tier [0-3]" --type md AGENTS.md CLAUDE.md docs/ .cursor/rules/` to confirm no stale 4-tier references remain
+- [x] Commit: `docs(agent-hardening): reconcile tier model prose with import-graph TIER_MAP (A1)`
 
 **Acceptance criteria:**
 
@@ -120,7 +122,19 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 **Files touched:**
 
+- `AGENTS.md` — rewrote the "Frontend tier model" bullet list (lines 68–78) to the 5-tier model and added an "Excluded from tier analysis" line plus pointer to `TIER_MAP`.
+- `.cursor/rules/systemPatterns.mdc` — rewrote the tier-model bullet list (lines 85–95) and reorganized the "Frontend subsystem reference" section (lines 96–135): every subsystem now lives under the correct tier header, `hooks` moves up to Tier 2 with the engines, `integrations` gets its own Tier 3 block, and `test-utils`/`cli`/`bundled-interactives`/`locales`/`img` are split into a clearly-labeled "Excluded from tier analysis" group.
+
 **Notes:**
+
+- AGENTS.md does not contain a "Frontend subsystem reference" section (the per-subsystem catalogue lives only in `.cursor/rules/systemPatterns.mdc`). The plan's step referencing `AGENTS.md:98-133` was a misread of the file; the equivalent edits landed in `systemPatterns.mdc` instead. Noted in the step checkbox.
+- `CLAUDE.md` and `docs/developer/CONTEXT_INDEX.md` have no tier-number references — left untouched.
+- `docs/developer/engines/context-engine.md` mentions "Tier 1/2/3" but those refer to the content-fetch fallback strategy (external recommender → bundled → static links), not the import-graph tier model — left untouched.
+- `docs/developer/E2E_TESTING_CONTRACT.md:259` mentions "Tier 2 attribute" referring to E2E selector attribute classification — unrelated to import tiers, left untouched.
+- `docs/history/package-implementation-record.md` already uses the correct 5-tier numbering (it was written after `validation` was moved to Tier 1) — left untouched.
+- The pre-commit hook (lint-staged + prettier) ran but produced no changes for the two edited files.
+- `AGENTS.md` has a "Key dependency edges" table listing `recovery → requirements-manager`. Under the new tier model, recovery (Tier 1) cannot import from requirements-manager (Tier 2). Verified via `rg`: `src/recovery/` only imports from `types/` (Tier 0), so the table entry describes a conceptual recovery-vs-requirements relationship rather than an actual code-level edge. The architecture test still passes. Leaving as-is — clarifying that table is outside A1's scope and the test wouldn't catch it; flag for a future cleanup pass if desired.
+- Verification: `npm run test:ci -- src/validation/architecture.test.ts --coverage=false` passed (7/7 tests, ratchet still `vertical=4 lateral=9 barrel=0`).
 
 ---
 
