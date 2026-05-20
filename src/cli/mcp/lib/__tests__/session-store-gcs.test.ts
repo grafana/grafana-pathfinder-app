@@ -85,14 +85,32 @@ class FakeFile {
     this.objects.set(this.name, next);
   }
 
-  async download(): Promise<[Buffer]> {
+  async download(opts?: { generation?: number }): Promise<[Buffer]> {
     const obj = this.objects.get(this.name);
     if (!obj || obj.body === null) {
       const err: any = new Error('Not Found');
       err.code = 404;
       throw err;
     }
+    // GCS `generation:` pin — if the caller specified a generation
+    // that doesn't match the current object generation, surface 404
+    // (the object at that generation no longer exists).
+    if (opts?.generation !== undefined && opts.generation !== obj.generation) {
+      const err: any = new Error('Not Found (generation mismatch)');
+      err.code = 404;
+      throw err;
+    }
     return [obj.body];
+  }
+
+  async getMetadata(): Promise<[{ generation: number }]> {
+    const obj = this.objects.get(this.name);
+    if (!obj || obj.body === null) {
+      const err: any = new Error('Not Found');
+      err.code = 404;
+      throw err;
+    }
+    return [{ generation: obj.generation }];
   }
 }
 
@@ -110,13 +128,27 @@ class FakeStorage {
   }
 }
 
-function newStore(): { store: GcsSessionStore; bucket: FakeBucket } {
+function newStore(stageIds?: string[]): { store: GcsSessionStore; bucket: FakeBucket } {
   const storage = new FakeStorage();
+  // Deterministic stage-id generator for tests. If a list is passed,
+  // pull from it in order; otherwise produce sequential `stage-0`,
+  // `stage-1`, ... ids. This is the only test-time difference from
+  // production (random base32).
+  let counter = 0;
+  const generateStageId = stageIds
+    ? () => {
+        const next = stageIds.shift();
+        if (next === undefined) {
+          throw new Error('test stage-id pool exhausted');
+        }
+        return next;
+      }
+    : () => `stage-${counter++}`;
   const store = new GcsSessionStore(
     // Inject a no-op sleep so the 429 retry backoff doesn't burn wallclock
     // in tests. Production omits this and gets the default setTimeout-backed
     // backoff (~1.1s base, exponential up to 8s).
-    { bucket: 'test-bucket', sleep: () => Promise.resolve() },
+    { bucket: 'test-bucket', sleep: () => Promise.resolve(), generateStageId },
     storage as unknown as GcsStorage
   );
   return { store, bucket: storage.bucket('test-bucket') };
@@ -132,11 +164,19 @@ describe('GcsSessionStore.load', () => {
     expect(await store.load(TOKEN_A)).toBeNull();
   });
 
-  it('throws on corruption — content exists but generation file is missing', async () => {
+  it('throws on corruption when the generation pointer references a missing staged dir', async () => {
     const { store, bucket } = newStore();
-    // Directly write only content.json, skipping the generation pin.
-    await bucket.file(`${TOKEN_A}/content.json`).save(JSON.stringify({ id: 'x', title: 't', blocks: [] }));
-    await expect(store.load(TOKEN_A)).rejects.toThrow(/corruption.*generation.*missing/);
+    // Write a generation pointer that names a stage we never staged.
+    await bucket
+      .file(`${TOKEN_A}/generation`)
+      .save(JSON.stringify({ generation: 1, stage: 'nonexistent-stage' }));
+    await expect(store.load(TOKEN_A)).rejects.toThrow(/corruption.*missing/);
+  });
+
+  it('throws on corruption when the generation pointer body is malformed', async () => {
+    const { store, bucket } = newStore();
+    await bucket.file(`${TOKEN_A}/generation`).save('not-json-at-all');
+    await expect(store.load(TOKEN_A)).rejects.toThrow(/corruption.*not valid JSON/);
   });
 
   it('loads content without manifest when manifest was never written', async () => {
@@ -161,8 +201,9 @@ describe('GcsSessionStore.save', () => {
     const { store, bucket } = newStore();
     const result = await store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT);
     expect(result.generation).toBe(1);
-    expect(bucket.has(`${TOKEN_A}/content.json`)).toBe(true);
     expect(bucket.has(`${TOKEN_A}/generation`)).toBe(true);
+    // Content lives under a per-attempt stage prefix, not the top level.
+    expect(bucket.list().some((n) => n.startsWith(`${TOKEN_A}/`) && n.endsWith('/content.json'))).toBe(true);
   });
 
   it('rejects a create when a session already exists (412 -> typed precondition error)', async () => {
@@ -276,12 +317,16 @@ describe('GcsSessionStore 429 rate-limit retry (P7 hardening — gcs429)', () =>
    * retry-with-backoff helper actually retries — under jest's fake
    * timers so we don't wait wallclock seconds.
    */
-  function rateLimitOnce(bucket: FakeBucket, objectName: string, failures: number): void {
+  function rateLimitOnce(bucket: FakeBucket, suffix: string, failures: number): void {
+    // Stage paths are randomised in production; match by suffix so the
+    // test can target "the content.json upload" without knowing the
+    // exact stage id. Path collisions across tests aren't a concern
+    // because each test gets a fresh FakeBucket.
     const origFile = bucket.file.bind(bucket);
     let remaining = failures;
     bucket.file = (name: string) => {
       const f = origFile(name);
-      if (name !== objectName) {
+      if (!name.endsWith(suffix)) {
         return f;
       }
       const origSave = f.save.bind(f);
@@ -289,7 +334,7 @@ describe('GcsSessionStore 429 rate-limit retry (P7 hardening — gcs429)', () =>
         if (remaining > 0) {
           remaining -= 1;
           const err: any = new Error(
-            `The object pathfinder-test/${objectName} exceeded the rate limit for object mutation operations`
+            `The object pathfinder-test/${name} exceeded the rate limit for object mutation operations`
           );
           err.code = 429;
           err.errors = [{ reason: 'rateLimitExceeded' }];
@@ -303,20 +348,20 @@ describe('GcsSessionStore 429 rate-limit retry (P7 hardening — gcs429)', () =>
 
   it('retries through a transient 429 on uploadJson and eventually writes', async () => {
     {
-const { store, bucket } = newStore();
+      const { store, bucket } = newStore();
       // Two 429s then success — bounded well under the 5-attempt default.
-      rateLimitOnce(bucket, `${TOKEN_A}/manifest.json`, 2);
+      rateLimitOnce(bucket, '/manifest.json', 2);
       await store.save(TOKEN_A, makeArtifact('v1', /* manifest */ true), SESSION_GENERATION_ABSENT);
-      expect(bucket.has(`${TOKEN_A}/manifest.json`)).toBe(true);
+      expect(bucket.list().some((n) => n.endsWith('/manifest.json'))).toBe(true);
       expect((await store.load(TOKEN_A))?.artifact.manifest).toBeDefined();
     }
   });
 
   it('eventually surfaces the 429 after exhausting retries', async () => {
     {
-const { store, bucket } = newStore();
+      const { store, bucket } = newStore();
       // 10 forced failures > 5-attempt default → propagates the 429.
-      rateLimitOnce(bucket, `${TOKEN_A}/content.json`, 10);
+      rateLimitOnce(bucket, '/content.json', 10);
       await expect(store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT)).rejects.toMatchObject({
         code: 429,
       });
@@ -329,7 +374,7 @@ const { store, bucket } = newStore();
     let saveCalls = 0;
     bucket.file = (name: string) => {
       const f = origFile(name);
-      if (name === `${TOKEN_A}/content.json`) {
+      if (name.endsWith('/content.json')) {
         f.save = async () => {
           saveCalls += 1;
           const err: any = new Error('Forbidden');
@@ -371,5 +416,82 @@ describe('GcsSessionStore concurrency (precondition fan-out)', () => {
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
     expect((await store.load(TOKEN_A))?.generation).toBe(2);
+  });
+});
+
+describe('GcsSessionStore atomicity (BL-01 / BL-02 regression)', () => {
+  // BL-01 was: artifact uploads happened in shared paths before the
+  // generation pointer flip, so a 412 loser could clobber the winner's
+  // content bytes. After the fix, each save has a private stage prefix
+  // and the loser's cleanup only touches its own stage.
+
+  it('a 412 loser does NOT clobber the winner content (BL-01)', async () => {
+    const { store } = newStore(['seed-stage', 'writer-A-stage', 'writer-B-stage']);
+    await store.save(TOKEN_A, makeArtifact('seed'), SESSION_GENERATION_ABSENT);
+    // Two writers race against generation 1. Pre-WR-01 layout, the
+    // loser's content.json upload would have already clobbered the
+    // winner's at this point — the test would assert content !== seed
+    // AND match exactly one of the writer titles.
+    const results = await Promise.allSettled([
+      store.save(TOKEN_A, makeArtifact('writer-A-content'), 1),
+      store.save(TOKEN_A, makeArtifact('writer-B-content'), 1),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+
+    // The winner's content survives intact. Whichever of A or B won,
+    // load() returns their content — not a mash, not the seed.
+    const loaded = await store.load(TOKEN_A);
+    expect(loaded?.generation).toBe(2);
+    expect(loaded?.artifact.content.title).toMatch(/^writer-(A|B)-content$/);
+    expect(loaded?.artifact.content.title).not.toBe('seed');
+  });
+
+  it('a 412 loser cleans up its own stage prefix (BL-01)', async () => {
+    const { store, bucket } = newStore(['init', 'winner', 'loser']);
+    await store.save(TOKEN_A, makeArtifact('seed'), SESSION_GENERATION_ABSENT);
+    // Winner save first (sequential — guarantees the loser is the one
+    // that gets the 412 against gen=1).
+    await store.save(TOKEN_A, makeArtifact('winner'), 1);
+    await expect(store.save(TOKEN_A, makeArtifact('loser'), 1)).rejects.toBeInstanceOf(
+      SessionPreconditionFailedError
+    );
+    // The loser's staged dir must not linger in the bucket.
+    expect(bucket.list().some((n) => n.startsWith(`${TOKEN_A}/loser/`))).toBe(false);
+    // The winner's staged dir is still live (pointer references it).
+    expect(bucket.list().some((n) => n.startsWith(`${TOKEN_A}/winner/`))).toBe(true);
+  });
+
+  it('load returns the artifact named by the current pointer, not a torn pair (BL-02)', async () => {
+    // Even after many sequential writes — each producing a new stage —
+    // load must follow the pointer to the live stage. Previous stages
+    // are not cleaned up on success (intentional, to avoid racing with
+    // in-flight readers), so the bucket holds multiple stages; load
+    // must not return any but the live one.
+    const { store } = newStore(['s1', 's2', 's3', 's4']);
+    await store.save(TOKEN_A, makeArtifact('gen-1'), SESSION_GENERATION_ABSENT);
+    await store.save(TOKEN_A, makeArtifact('gen-2'), 1);
+    await store.save(TOKEN_A, makeArtifact('gen-3'), 2);
+    await store.save(TOKEN_A, makeArtifact('gen-4'), 3);
+    const loaded = await store.load(TOKEN_A);
+    expect(loaded?.generation).toBe(4);
+    expect(loaded?.artifact.content.title).toBe('gen-4');
+  });
+
+  it('load throws PRECONDITION_FAILED when the caller stale-saves against an old generation (BL-02 boundary)', async () => {
+    const { store } = newStore(['s1', 's2', 's3']);
+    await store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT);
+    await store.save(TOKEN_A, makeArtifact('v2'), 1);
+    // Caller's view is still at gen=1.
+    try {
+      await store.save(TOKEN_A, makeArtifact('stale'), 1);
+      fail('expected SessionPreconditionFailedError');
+    } catch (err) {
+      if (!(err instanceof SessionPreconditionFailedError)) {
+        throw err;
+      }
+      expect(err.expected).toBe(1);
+      expect(err.actual).toBe(2);
+    }
   });
 });

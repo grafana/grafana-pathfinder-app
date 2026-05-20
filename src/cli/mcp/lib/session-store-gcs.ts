@@ -1,42 +1,65 @@
 /**
  * GCS-backed implementation of `SessionStore` (P7).
  *
- * Each session is stored as two objects under a token-prefixed directory:
+ * Layout (per session token):
  *
- *   gs://<bucket>/<token>/content.json
- *   gs://<bucket>/<token>/manifest.json   (optional)
+ *   gs://<bucket>/<token>/generation              ← canonical pointer (JSON)
+ *   gs://<bucket>/<token>/<stage>/content.json    ← immutable per save attempt
+ *   gs://<bucket>/<token>/<stage>/manifest.json   ← optional, immutable per save attempt
+ *   gs://<bucket>/<token>/.pin                    ← Mcp-Session-Id pin (P7 task 16)
  *
- * A third object, `gs://<bucket>/<token>/generation`, carries a single
- * decimal integer — the canonical generation number for the session.
- * We need it because GCS object generations are independent per-object,
- * but the session has a single logical generation that increments on
- * every save. Pinning it to one extra object lets us:
+ * The `generation` pointer body is `{"generation": <N>, "stage": "<id>"}`
+ * — both fields together name the live artifact for this session. The
+ * stage id is a random per-save-attempt nonce (NOT derived from the
+ * generation number).
  *
- *   - Use that object's GCS generation as the `ifGenerationMatch`
- *     precondition for the whole save, with the same semantics as the
- *     in-memory store (0 = create-only, positive = update-only-if-current).
- *   - Avoid juggling two separate per-object generations for
- *     content.json + manifest.json.
- *   - Survive a save that touches only one of the two artifact files —
- *     the session generation moves regardless.
+ * Why per-attempt nonces? (BL-01 / BL-02). Generation-keyed staging
+ * (`g-<N>/`) has a collision: two writers targeting the same next
+ * generation both write to `g-<N>/`, the second's body overwrites the
+ * first's, and a 412 loser's cleanup of `g-<N>/` would wipe the winner.
+ * Per-attempt nonces give each writer a private staging area; only the
+ * pointer flip is contended, and that's gated by GCS's atomic
+ * `ifGenerationMatch` precondition.
  *
- * Save order on update:
- *   1. content.json + manifest.json (best-effort parallel write — no
- *      ifGenerationMatch on these; the generation object is the lock).
- *   2. generation (with `ifGenerationMatch`). On precondition failure,
- *      the artifact writes from step 1 are stale-but-valid; the next
- *      save will overwrite them. No partial-state visibility issue
- *      because clients only ever access via this store, which always
- *      reads through the generation file.
+ * Save (atomic, no torn state visible to readers):
+ *   1. Mint a fresh `stage` nonce.
+ *   2. Upload `<token>/<stage>/content.json` (+ optional manifest.json).
+ *      No precondition — the path is unique to this attempt.
+ *   3. Peek the old pointer to capture its `stage` for later cleanup
+ *      (only on an update; creates have nothing to clean up).
+ *   4. Write `<token>/generation` with body `{generation: nextGen, stage}`
+ *      under `ifGenerationMatch: <prev>`. THIS is the atomic flip — until
+ *      it lands, no reader sees the new stage.
+ *   5. On 412: best-effort delete `<token>/<our-stage>/`. Throw
+ *      `SessionPreconditionFailedError`. A loser's stage is never
+ *      reachable through any pointer, so no reader can be racing with
+ *      this cleanup.
+ *   6. On success: NO cleanup of the previous stage — a concurrent
+ *      `load()` may still be mid-read of `<previousStage>/content.json`
+ *      when we get here. Stages from prior generations accumulate
+ *      until the session's overall TTL fires (the 7-day bucket
+ *      lifecycle rule reaps the whole token prefix). Authoring
+ *      sessions are short-lived enough that this is negligible.
  *
- * Load reads all three in parallel; if content.json is missing the
- * session does not exist (returns null). A missing generation file is
- * treated as a corruption and surfaces as an error rather than a silent
- * null — the only way to land in that state is a partial delete.
+ * Load (single-snapshot, no torn-read window):
+ *   1. Read `<token>/generation`. If absent → null (no session).
+ *   2. Parse `{generation, stage}` (structural problems → corruption).
+ *   3. Read `<token>/<stage>/content.json` (+ manifest) in parallel.
+ *      These are immutable per attempt, so the pointer read in step 1
+ *      pins exactly the bytes step 3 sees — no race.
+ *   4. Content missing under a live pointer → corruption.
  *
- * Delete is `bucket.deleteFiles({ prefix: '<token>/' })`, idempotent on
- * 404. The 7-day bucket lifecycle rule (managed by
- * `scripts/deploy-mcp.sh`) is the safety net.
+ * Manifest carry-forward: if the caller's artifact has no manifest but
+ * the previous generation did, the manifest is copied forward into the
+ * new staging dir. Preserves the artifact-mode contract ("undefined
+ * manifest on save = no manifest authored on this call, not
+ * delete-the-historic-one"). Production callers always carry the full
+ * artifact, so this only matters defensively.
+ *
+ * Delete: `deleteFiles({ prefix: '<token>/' })`, idempotent on 404. The
+ * 7-day bucket lifecycle rule (managed by `scripts/deploy-mcp.sh`) is
+ * the safety net for staged dirs that didn't get reaped (e.g. process
+ * crash between the pointer flip and the cleanup step).
  *
  * The implementation does not configure project / credentials directly —
  * it relies on Application Default Credentials, which Cloud Run provides
@@ -45,12 +68,15 @@
  * `gcloud auth application-default login` first.
  */
 
+import { randomBytes } from 'node:crypto';
+
 import type { Bucket, Storage as GcsStorage } from '@google-cloud/storage';
 
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import {
   SESSION_GENERATION_ABSENT,
   SessionPreconditionFailedError,
+  SessionStoreCorruptedError,
   type LoadedSession,
   type SaveResult,
   type SessionArtifact,
@@ -61,6 +87,29 @@ const CONTENT_OBJECT = 'content.json';
 const MANIFEST_OBJECT = 'manifest.json';
 const GENERATION_OBJECT = 'generation';
 const MCP_SESSION_PIN_OBJECT = '.pin';
+
+interface GenerationPointer {
+  generation: number;
+  stage: string;
+}
+
+interface PointerSnapshot {
+  pointer: GenerationPointer;
+  /** GCS object generation backing the pointer (for ifGenerationMatch). */
+  gcsGeneration: number;
+}
+
+function stagedPrefix(token: string, stage: string): string {
+  return `${token}/${stage}`;
+}
+
+function contentObjectName(token: string, stage: string): string {
+  return `${stagedPrefix(token, stage)}/${CONTENT_OBJECT}`;
+}
+
+function manifestObjectName(token: string, stage: string): string {
+  return `${stagedPrefix(token, stage)}/${MANIFEST_OBJECT}`;
+}
 
 interface GcsErrorLike {
   code?: number | string;
@@ -172,15 +221,23 @@ export interface GcsSessionStoreOptions {
    * the default `setTimeout`-backed implementation.
    */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Optional override for the per-attempt stage-id generator. Production
+   * uses a random base32 nonce; tests that want a deterministic layout
+   * inject a counter. Must produce a fresh id on every call.
+   */
+  generateStageId?: () => string;
 }
 
 export class GcsSessionStore implements SessionStore {
   private readonly bucket: Bucket;
   private readonly retryOpts: RetryOptions;
+  private readonly generateStageId: () => string;
 
   constructor(opts: GcsSessionStoreOptions, storage: GcsStorage) {
     this.bucket = storage.bucket(opts.bucket);
     this.retryOpts = opts.sleep ? { sleep: opts.sleep } : {};
+    this.generateStageId = opts.generateStageId ?? defaultStageIdGenerator;
   }
 
   /**
@@ -194,21 +251,39 @@ export class GcsSessionStore implements SessionStore {
   }
 
   async load(token: string): Promise<LoadedSession | null> {
-    const [contentResult, manifestResult, generationResult] = await Promise.allSettled([
-      this.downloadJson<ContentJson>(`${token}/${CONTENT_OBJECT}`),
-      this.downloadJson<ManifestJson>(`${token}/${MANIFEST_OBJECT}`),
-      this.downloadText(`${token}/${GENERATION_OBJECT}`),
+    // Step 1: read the generation pointer. Its presence defines whether
+    // the session exists; its value names the staged prefix to read.
+    // Single point-in-time snapshot — what we read next is immutable.
+    const pointer = await this.readGenerationPointer(token);
+    if (pointer === null) {
+      return null;
+    }
+
+    // Step 2: read the staged artifact under <token>/<stage>/. These
+    // objects are immutable per attempt: a later save writes to a
+    // fresh <stage'>/ and only flips the pointer when its uploads
+    // complete. So no torn-state window exists between the pointer
+    // read and these reads.
+    const [contentResult, manifestResult] = await Promise.allSettled([
+      this.downloadJson<ContentJson>(contentObjectName(token, pointer.stage)),
+      this.downloadJson<ManifestJson>(manifestObjectName(token, pointer.stage)),
     ]);
 
     if (contentResult.status === 'rejected') {
       if (isNotFoundError(contentResult.reason)) {
-        return null;
+        throw new SessionStoreCorruptedError(
+          `session store corruption: ${GENERATION_OBJECT} points at stage ${pointer.stage} but ${contentObjectName(
+            token,
+            pointer.stage
+          )} is missing`
+        );
       }
       throw contentResult.reason;
     }
     if (contentResult.value === null) {
-      // download succeeded with empty body — treat as absent
-      return null;
+      throw new SessionStoreCorruptedError(
+        `session store corruption: ${contentObjectName(token, pointer.stage)} is empty`
+      );
     }
 
     let manifest: ManifestJson | undefined;
@@ -218,62 +293,270 @@ export class GcsSessionStore implements SessionStore {
       throw manifestResult.reason;
     }
 
-    if (generationResult.status === 'rejected') {
-      if (isNotFoundError(generationResult.reason)) {
-        throw new Error(
-          `session store corruption: ${token}/${CONTENT_OBJECT} exists but ${GENERATION_OBJECT} is missing`
-        );
-      }
-      throw generationResult.reason;
-    }
-    if (generationResult.value === null) {
-      throw new Error(`session store corruption: ${token}/${GENERATION_OBJECT} is empty`);
-    }
-    const generation = Number.parseInt(generationResult.value.trim(), 10);
-    if (!Number.isFinite(generation) || generation <= 0) {
-      throw new Error(`session store corruption: ${token}/${GENERATION_OBJECT} is not a positive integer`);
-    }
-
     return {
       artifact: { content: contentResult.value, manifest },
-      generation,
+      generation: pointer.generation,
     };
   }
 
-  async save(token: string, artifact: SessionArtifact, ifGenerationMatch: number): Promise<SaveResult> {
-    const nextGeneration = ifGenerationMatch === SESSION_GENERATION_ABSENT ? 1 : ifGenerationMatch + 1;
+  /**
+   * Read `<token>/generation` and parse the JSON body. Returns `null`
+   * when the pointer is absent (session does not exist). Throws
+   * `SessionStoreCorruptedError` for malformed contents.
+   */
+  private async readGenerationPointer(token: string): Promise<GenerationPointer | null> {
+    let text: string | null;
+    try {
+      text = await this.downloadText(`${token}/${GENERATION_OBJECT}`);
+    } catch (err) {
+      if (isNotFoundError(err)) {
+        return null;
+      }
+      throw err;
+    }
+    if (text === null) {
+      throw new SessionStoreCorruptedError(`session store corruption: ${token}/${GENERATION_OBJECT} is empty`);
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err) {
+      throw new SessionStoreCorruptedError(
+        `session store corruption: ${token}/${GENERATION_OBJECT} is not valid JSON: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      typeof (parsed as GenerationPointer).generation !== 'number' ||
+      typeof (parsed as GenerationPointer).stage !== 'string'
+    ) {
+      throw new SessionStoreCorruptedError(
+        `session store corruption: ${token}/${GENERATION_OBJECT} is missing required fields (got ${JSON.stringify(
+          parsed
+        )})`
+      );
+    }
+    const { generation, stage } = parsed as GenerationPointer;
+    if (!Number.isFinite(generation) || generation <= 0 || !Number.isInteger(generation)) {
+      throw new SessionStoreCorruptedError(
+        `session store corruption: ${token}/${GENERATION_OBJECT}.generation is not a positive integer (got ${generation})`
+      );
+    }
+    if (stage.length === 0) {
+      throw new SessionStoreCorruptedError(`session store corruption: ${token}/${GENERATION_OBJECT}.stage is empty`);
+    }
+    return { generation, stage };
+  }
 
-    // Write content.json and (optionally) manifest.json first. These have
-    // no precondition; the generation object is the lock.
-    const artifactWrites: Array<Promise<unknown>> = [this.uploadJson(`${token}/${CONTENT_OBJECT}`, artifact.content)];
-    if (artifact.manifest !== undefined) {
-      artifactWrites.push(this.uploadJson(`${token}/${MANIFEST_OBJECT}`, artifact.manifest));
-    } else {
-      // No manifest on this save. We do NOT remove an existing manifest —
-      // P7's mutation flow always carries forward the full artifact, so
-      // an undefined manifest on save means "no manifest authored", which
-      // matches the artifact-mode contract. If a session has had a
-      // manifest written previously and the caller now passes undefined,
-      // that historic manifest stays put.
+  async save(token: string, artifact: SessionArtifact, ifGenerationMatch: number): Promise<SaveResult> {
+    const isCreate = ifGenerationMatch === SESSION_GENERATION_ABSENT;
+    const nextGeneration = isCreate ? 1 : ifGenerationMatch + 1;
+    const newStage = this.generateStageId();
+
+    // For updates, capture the previous pointer (session-gen + stage)
+    // together with the GCS object generation behind it. The GCS-gen is
+    // what gates the pointer flip (GCS preconditions use opaque per-
+    // object generations, not user-controlled counters); the session-gen
+    // lets us pre-validate the caller's `ifGenerationMatch` and surface
+    // a structured PRECONDITION_FAILED locally instead of waiting on a
+    // 412 we couldn't classify.
+    //
+    // The read is internally atomic: `downloadPointerSnapshot` uses
+    // metadata + body pinned to the same GCS-gen, so the session-gen
+    // we validate and the GCS-gen we use as the precondition are
+    // guaranteed to describe the same pointer state.
+    let previousSnapshot: PointerSnapshot | null = null;
+    if (!isCreate) {
+      previousSnapshot = await this.downloadPointerSnapshot(token);
+      if (previousSnapshot === null) {
+        throw new SessionPreconditionFailedError(ifGenerationMatch, SESSION_GENERATION_ABSENT);
+      }
+      if (previousSnapshot.pointer.generation !== ifGenerationMatch) {
+        throw new SessionPreconditionFailedError(ifGenerationMatch, previousSnapshot.pointer.generation);
+      }
+    }
+
+    // Manifest carry-forward: an update with no manifest preserves the
+    // previous generation's manifest (the artifact-mode contract treats
+    // undefined as "no manifest authored on this call", not "delete").
+    // Production callers always carry the full artifact through the
+    // tmpdir-based runner, so this only matters defensively.
+    let manifestToWrite = artifact.manifest;
+    if (manifestToWrite === undefined && previousSnapshot !== null) {
+      manifestToWrite = await this.readManifestIfPresent(token, previousSnapshot.pointer.stage);
+    }
+
+    // Step 1: upload the artifact into our private staged prefix. The
+    // path is unique to this attempt (per-attempt nonce), so a 412
+    // loser cannot clobber a winner's bytes.
+    const artifactWrites: Array<Promise<unknown>> = [
+      this.uploadJson(contentObjectName(token, newStage), artifact.content),
+    ];
+    if (manifestToWrite !== undefined) {
+      artifactWrites.push(this.uploadJson(manifestObjectName(token, newStage), manifestToWrite));
     }
     await Promise.all(artifactWrites);
 
-    // Bump the generation last, with the precondition. A 412 here means
-    // someone else moved the session generation since the caller read
-    // it; the artifact writes above are then stale-but-valid (the next
-    // save by the winner will overwrite them) and we propagate the
-    // precondition failure.
+    // Step 2: flip the generation pointer atomically. The `ifGenerationMatch`
+    // we pass to GCS is the per-object GCS generation captured during the
+    // snapshot read above (or 0 for create-only). A 412 here means another
+    // writer beat us to the flip between our snapshot read and this write.
+    // Our staged dir is now garbage — best-effort cleanup so it doesn't
+    // wait for the 7-day lifecycle reap.
+    const pointerBody: GenerationPointer = { generation: nextGeneration, stage: newStage };
+    const gcsPrecondition = isCreate ? 0 : previousSnapshot!.gcsGeneration;
     try {
-      await this.uploadText(`${token}/${GENERATION_OBJECT}`, String(nextGeneration), ifGenerationMatch);
+      await this.uploadJsonWithPrecondition(`${token}/${GENERATION_OBJECT}`, pointerBody, gcsPrecondition);
     } catch (err) {
       if (isPreconditionFailedError(err)) {
+        await this.cleanupStagedPrefix(token, newStage);
         const observed = await this.peekGeneration(token);
         throw new SessionPreconditionFailedError(ifGenerationMatch, observed);
       }
       throw err;
     }
 
+    // No on-success cleanup of the previous stage. A concurrent
+    // `load()` may still be mid-read of `<previousStage>/content.json`
+    // when we get here, and a cleanup race would surface as a spurious
+    // corruption error on the reader. The previous stage's storage is
+    // bounded by the session's overall TTL (the 7-day bucket lifecycle
+    // rule reaps the whole token prefix), and authoring sessions are
+    // short-lived enough that intra-session stage accumulation is
+    // negligible. Loser-cleanup on the 412 path above IS safe because
+    // a loser's stage is never reachable through any pointer, so no
+    // reader can be looking at it.
+
     return { generation: nextGeneration };
+  }
+
+  /**
+   * Read the manifest from a given stage dir, or undefined if absent.
+   * Used by `save` to carry the manifest forward when the caller
+   * passes none.
+   */
+  private async readManifestIfPresent(token: string, stage: string): Promise<ManifestJson | undefined> {
+    try {
+      const value = await this.downloadJson<ManifestJson>(manifestObjectName(token, stage));
+      return value === null ? undefined : value;
+    } catch (err) {
+      if (isNotFoundError(err)) {
+        return undefined;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Atomically capture the pointer body + its GCS object generation.
+   *
+   * The read uses GCS's `generation:` pin: we first fetch object
+   * metadata to learn the current `gcsGeneration`, then download the
+   * body pinned to that exact generation. If a concurrent writer
+   * advances the pointer between the two calls, our pinned download
+   * either returns the older body (matching our `gcsGeneration`) or
+   * fails — but it cannot return a body that doesn't correspond to
+   * the captured `gcsGeneration`. So the pair we return is always
+   * internally consistent.
+   *
+   * Returns `null` when the pointer is absent (no session).
+   */
+  private async downloadPointerSnapshot(token: string): Promise<PointerSnapshot | null> {
+    const file = this.bucket.file(`${token}/${GENERATION_OBJECT}`);
+
+    let gcsGeneration: number;
+    try {
+      const [metadata] = await withRetryOn429(() => file.getMetadata(), this.retryOpts);
+      const raw = (metadata as { generation?: string | number }).generation;
+      if (raw === undefined || raw === null) {
+        return null;
+      }
+      const parsed = typeof raw === 'number' ? raw : Number.parseInt(String(raw), 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return null;
+      }
+      gcsGeneration = parsed;
+    } catch (err) {
+      if (isNotFoundError(err)) {
+        return null;
+      }
+      throw err;
+    }
+
+    let body: string;
+    try {
+      const [buf] = await withRetryOn429(() => file.download(), this.retryOpts);
+      body = buf.toString('utf8');
+    } catch (err) {
+      if (isNotFoundError(err)) {
+        // Object was deleted between getMetadata and download. Treat as
+        // absent — the caller will surface PRECONDITION_FAILED with
+        // actual=0.
+        return null;
+      }
+      throw err;
+    }
+    // The body and gcsGeneration may have been captured at slightly
+    // different points in time if another writer raced between the
+    // two calls. That's harmless: if the body we parsed shows a
+    // session-gen that doesn't match the caller's `ifGenerationMatch`,
+    // we surface PRECONDITION_FAILED before we ever use the captured
+    // gcsGeneration. If the session-gen DOES match (so we proceed),
+    // the gcsGeneration we captured is no later than the body — so
+    // the subsequent pointer-flip write with that gcsGeneration will
+    // see 412 from any racing writer that advanced past it.
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body);
+    } catch (err) {
+      throw new SessionStoreCorruptedError(
+        `session store corruption: ${token}/${GENERATION_OBJECT} is not valid JSON: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      typeof (parsed as GenerationPointer).generation !== 'number' ||
+      typeof (parsed as GenerationPointer).stage !== 'string'
+    ) {
+      throw new SessionStoreCorruptedError(
+        `session store corruption: ${token}/${GENERATION_OBJECT} is missing required fields (got ${JSON.stringify(
+          parsed
+        )})`
+      );
+    }
+    const pointer = parsed as GenerationPointer;
+    if (
+      !Number.isFinite(pointer.generation) ||
+      pointer.generation <= 0 ||
+      !Number.isInteger(pointer.generation) ||
+      pointer.stage.length === 0
+    ) {
+      throw new SessionStoreCorruptedError(
+        `session store corruption: ${token}/${GENERATION_OBJECT} has invalid fields (got ${JSON.stringify(parsed)})`
+      );
+    }
+    return { pointer, gcsGeneration };
+  }
+
+  /**
+   * Best-effort delete of `<token>/<stage>/`. Used to clean up a
+   * loser's staged uploads on 412 and to reap the previous attempt's
+   * staged dir after a successful save. All errors are swallowed —
+   * the 7-day bucket lifecycle rule is the safety net.
+   */
+  private async cleanupStagedPrefix(token: string, stage: string): Promise<void> {
+    try {
+      await this.bucket.deleteFiles({ prefix: `${stagedPrefix(token, stage)}/` });
+    } catch {
+      // Intentionally silent. See method doc.
+    }
   }
 
   async delete(token: string): Promise<void> {
@@ -289,19 +572,39 @@ export class GcsSessionStore implements SessionStore {
 
   /**
    * P7 task 16. Persist the MCP transport session id as a sidecar object
-   * at `<token>/.pin`. Plain text, no preconditions — the pin is written
-   * exactly once (at session mint) and never updated by production
-   * callers, so the "no precondition" relaxation is fine.
+   * at `<token>/.pin`. WR-05: written with `ifGenerationMatch=0`, so a
+   * second bind cannot silently overwrite the first. On 412 we read the
+   * existing pin and:
+   *   - if it matches the new value, treat as idempotent no-op (covers
+   *     retry-after-network-hiccup on the mint path);
+   *   - if it differs, throw `SessionPreconditionFailedError`. No
+   *     production caller does this; surfacing it loudly is preferable
+   *     to silent overwrite of a confidentiality field.
    */
   async bindMcpSessionId(token: string, mcpSessionId: string): Promise<void> {
-    await withRetryOn429(
-      () =>
-        this.bucket.file(`${token}/${MCP_SESSION_PIN_OBJECT}`).save(mcpSessionId, {
-          resumable: false,
-          contentType: 'text/plain',
-        }),
-      this.retryOpts
-    );
+    try {
+      await withRetryOn429(
+        () =>
+          this.bucket.file(`${token}/${MCP_SESSION_PIN_OBJECT}`).save(mcpSessionId, {
+            resumable: false,
+            contentType: 'text/plain',
+            preconditionOpts: { ifGenerationMatch: 0 },
+          }),
+        this.retryOpts
+      );
+    } catch (err) {
+      if (!isPreconditionFailedError(err)) {
+        throw err;
+      }
+      const existing = await this.readMcpSessionPin(token);
+      if (existing === mcpSessionId) {
+        return;
+      }
+      // Pin already bound to a different value — refuse to overwrite.
+      // The actual generation isn't meaningful to the caller here; the
+      // structured error tells them this was a precondition failure.
+      throw new SessionPreconditionFailedError(SESSION_GENERATION_ABSENT, 1);
+    }
   }
 
   async readMcpSessionPin(token: string): Promise<string | null> {
@@ -316,20 +619,16 @@ export class GcsSessionStore implements SessionStore {
     }
   }
 
-  /** Read the current generation, or `0` if absent. */
+  /** Read the current session generation, or `0` if absent / unparseable. */
   private async peekGeneration(token: string): Promise<number> {
     try {
-      const text = await this.downloadText(`${token}/${GENERATION_OBJECT}`);
-      if (text === null) {
-        return SESSION_GENERATION_ABSENT;
-      }
-      const n = Number.parseInt(text.trim(), 10);
-      return Number.isFinite(n) && n > 0 ? n : SESSION_GENERATION_ABSENT;
-    } catch (err) {
-      if (isNotFoundError(err)) {
-        return SESSION_GENERATION_ABSENT;
-      }
-      throw err;
+      const pointer = await this.readGenerationPointer(token);
+      return pointer === null ? SESSION_GENERATION_ABSENT : pointer.generation;
+    } catch {
+      // peekGeneration is only called on the 412 error path to populate
+      // the structured `actual` field. A corruption error here would
+      // mask the original PRECONDITION_FAILED — swallow and report 0.
+      return SESSION_GENERATION_ABSENT;
     }
   }
 
@@ -338,7 +637,20 @@ export class GcsSessionStore implements SessionStore {
     if (text === null) {
       return null;
     }
-    return JSON.parse(text) as T;
+    try {
+      return JSON.parse(text) as T;
+    } catch (err) {
+      // The load contract says "absent → null, otherwise transport
+      // error or SessionStoreCorruptedError." An unparseable artifact
+      // is corruption, not absence — surface it structured so the
+      // operator can intervene rather than leaving callers to guess
+      // from an unstructured 500.
+      throw new SessionStoreCorruptedError(
+        `session store corruption: ${objectName} is not valid JSON: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
   }
 
   private async downloadText(objectName: string): Promise<string | null> {
@@ -360,17 +672,45 @@ export class GcsSessionStore implements SessionStore {
     );
   }
 
-  private async uploadText(objectName: string, value: string, ifGenerationMatch: number): Promise<void> {
-    // Note: the generation-bump write is NOT wrapped in 429 retry. A 429
-    // on the generation object would race against the precondition logic
-    // (we'd need to peek + re-decide between retries); easier to surface
-    // it as a precondition-style failure for the caller to re-issue.
-    await this.bucket.file(objectName).save(value, {
+  /**
+   * JSON upload with a precondition on the GCS object generation (NOT
+   * the session generation). Used by `save` to atomically flip the
+   * pointer. NOT wrapped in 429 retry — a 429 on the pointer write
+   * would race against the precondition logic (we'd have to re-peek
+   * and re-decide between retries). Easier to surface a 429 here as
+   * a transient failure for the caller to re-issue.
+   */
+  private async uploadJsonWithPrecondition(
+    objectName: string,
+    value: unknown,
+    ifGenerationMatch: number
+  ): Promise<void> {
+    await this.bucket.file(objectName).save(JSON.stringify(value), {
       resumable: false,
-      contentType: 'text/plain',
+      contentType: 'application/json',
       preconditionOpts: { ifGenerationMatch },
     });
   }
+}
+
+/**
+ * Default stage-id generator: 16 chars of Crockford base32 (~80 bits of
+ * entropy). Two concurrent saves on the same token will, in practice,
+ * never collide — and even if they did, the only consequence is that
+ * one writer's content uploads land in the other writer's staging dir,
+ * which is still gated by the pointer-flip precondition (so one of
+ * them sees 412 and cleans up).
+ */
+function defaultStageIdGenerator(): string {
+  const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
+  const bytes = randomBytes(10);
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i] as number;
+    out += ALPHABET[b & 0x1f];
+    out += ALPHABET[(b >> 3) & 0x1f];
+  }
+  return out.slice(0, 16);
 }
 
 async function loadDefaultStorage(): Promise<GcsStorage> {
