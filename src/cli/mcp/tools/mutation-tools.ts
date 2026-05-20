@@ -24,10 +24,34 @@ import { runRemoveBlock } from '../../commands/remove-block';
 import { runSetManifest } from '../../commands/set-manifest';
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../../utils/block-registry';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
+import type { CommandOutcome } from '../../utils/output';
+import { normalizeSessionToken } from '../lib/session-token';
+import type { SessionStore } from '../lib/session-store';
 import { writeAppend, writeDestructive } from './annotations';
-import { outcomeResult } from './result';
-import { withArtifact } from './state-bridge';
+import {
+  concurrentModificationResult,
+  inputModeAmbiguousResult,
+  inputModeMissingResult,
+  invalidSessionTokenResult,
+  outcomeResult,
+  sessionNotFoundResult,
+  sessionOutcomeResult,
+} from './result';
+import {
+  dispatchSessionMutation,
+  isConcurrentModification,
+  isSessionNotFound,
+  withArtifact,
+} from './state-bridge';
 
+/**
+ * Input schema for the two-mode dispatch (P7). Mutation tools accept
+ * EITHER `artifact` (stateless mode, the historical contract) OR
+ * `sessionToken` (session-mode, GCS-backed). Both are optional at the
+ * Zod layer; the handler enforces "exactly one of" at runtime — Zod's
+ * discriminated unions don't map cleanly to MCP tool inputSchema, so
+ * the check is in handler code.
+ */
 const ArtifactInputSchema = {
   artifact: z
     .object({
@@ -40,8 +64,23 @@ const ArtifactInputSchema = {
           'Integrity tag issued on the previous response. Pass back verbatim along with content and manifest; the server verifies it before dispatching.'
         ),
     })
+    .optional()
     .describe(
-      'In-flight authoring artifact returned by the previous authoring tool. Echo it back verbatim — including `__etag`. Do not re-serialize, reformat, re-key, or "fix" any field; even fields that look wrong are valid CLI output. The server hashes content+manifest and checks it against the echoed `__etag`; a mismatch returns ARTIFACT_MUTATED before the schema validator runs.'
+      'STATELESS MODE. In-flight authoring artifact returned by the previous authoring tool. Echo it back verbatim — including `__etag`. Do not re-serialize, reformat, re-key, or "fix" any field; even fields that look wrong are valid CLI output. The server hashes content+manifest and checks it against the echoed `__etag`; a mismatch returns ARTIFACT_MUTATED before the schema validator runs. Pass EITHER `artifact` OR `sessionToken`, not both.'
+    ),
+  sessionToken: z
+    .string()
+    .optional()
+    .describe(
+      'SESSION MODE. Opaque token returned by pathfinder_create_package or a previous mutation ack. The server loads the artifact from session storage, runs the mutation, and writes the result back — the full artifact does not return to your context. Use pathfinder_inspect / pathfinder_get_block / pathfinder_list_blocks to read state on demand. Pass EITHER `artifact` OR `sessionToken`, not both.'
+    ),
+  expectedGeneration: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe(
+      'OPTIONAL with sessionToken. The generation you observed on a previous call. When set, the server surfaces CONCURRENT_MODIFICATION immediately on mismatch instead of retrying. Omit this if you do not have specific concurrency expectations — the server will retry-once silently on a race.'
     ),
 };
 
@@ -84,11 +123,69 @@ const FlagValuesSchema = z
 
 const BlockTypeEnum = Object.keys(BLOCK_SCHEMA_MAP) as BlockType[];
 
-export function registerMutationTools(server: McpServer, _options: { sessionStore: import('../lib/session-store').SessionStore }): void {
-  // _options.sessionStore is unused in this commit. The session-mode
-  // branch of each mutation tool lands in a follow-up commit; the
-  // signature is set up first so the registry wiring is stable.
-  void _options;
+/**
+ * Shared dispatch for every mutation tool's two-mode input. Validates
+ * "exactly one of {artifact} / {sessionToken}", dispatches to the right
+ * branch, maps the result onto a wire-shaped response.
+ *
+ * The `runner` argument is the same per-call runner closure each tool
+ * already builds for `withArtifact` — no per-tool duplication of the
+ * dispatch logic.
+ */
+async function dispatchMutation(
+  store: SessionStore,
+  inputs: {
+    artifact?: {
+      content: Record<string, unknown>;
+      manifest?: Record<string, unknown>;
+      __etag?: string;
+    };
+    sessionToken?: string;
+    expectedGeneration?: number;
+  },
+  runner: (dir: string) => Promise<CommandOutcome> | CommandOutcome
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  const hasArtifact = inputs.artifact !== undefined;
+  const hasSessionToken = typeof inputs.sessionToken === 'string' && inputs.sessionToken.length > 0;
+  if (hasArtifact && hasSessionToken) {
+    return inputModeAmbiguousResult();
+  }
+  if (!hasArtifact && !hasSessionToken) {
+    return inputModeMissingResult();
+  }
+
+  if (hasSessionToken) {
+    const token = normalizeSessionToken(inputs.sessionToken);
+    if (!token) {
+      return invalidSessionTokenResult();
+    }
+    const r = await dispatchSessionMutation(token, store, runner, {
+      expectedGeneration: inputs.expectedGeneration,
+    });
+    if (isSessionNotFound(r)) {
+      return sessionNotFoundResult(token);
+    }
+    if (isConcurrentModification(r)) {
+      return concurrentModificationResult(token, r);
+    }
+    return sessionOutcomeResult(token, r.outcome, r.generation, r.summary);
+  }
+
+  // Stateless mode — unchanged behavior from before P7.
+  const artifact = inputs.artifact!;
+  const mismatch = verifyArtifactEtag(artifact);
+  if (mismatch) {
+    return mismatch;
+  }
+  const result = await withArtifact(asArtifact(artifact), runner);
+  return outcomeResult(result.outcome, result.artifact, result.summary);
+}
+
+export function registerMutationTools(
+  server: McpServer,
+  options: { sessionStore: SessionStore }
+): void {
+  const { sessionStore } = options;
   server.registerTool(
     'pathfinder_add_block',
     {
@@ -111,12 +208,21 @@ export function registerMutationTools(server: McpServer, _options: { sessionStor
         fields: FlagValuesSchema.optional().describe('Block fields keyed by name (e.g. content, action, target).'),
       },
     },
-    async ({ artifact, type, parentId, branch, ifAbsent, explicitId, before, after, position, fields }) => {
-      const mismatch = verifyArtifactEtag(artifact);
-      if (mismatch) {
-        return mismatch;
-      }
-      const result = await withArtifact(asArtifact(artifact), (dir) =>
+    async ({
+      artifact,
+      sessionToken,
+      expectedGeneration,
+      type,
+      parentId,
+      branch,
+      ifAbsent,
+      explicitId,
+      before,
+      after,
+      position,
+      fields,
+    }) =>
+      dispatchMutation(sessionStore, { artifact, sessionToken, expectedGeneration }, (dir) =>
         runAddBlock({
           dir,
           type: type as BlockType,
@@ -129,9 +235,7 @@ export function registerMutationTools(server: McpServer, _options: { sessionStor
           position,
           flagValues: fields ?? {},
         })
-      );
-      return outcomeResult(result.outcome, result.artifact, result.summary);
-    }
+      )
   );
 
   server.registerTool(
@@ -146,16 +250,10 @@ export function registerMutationTools(server: McpServer, _options: { sessionStor
         fields: FlagValuesSchema.describe('Step fields (title, instruction, blocks, etc.).'),
       },
     },
-    async ({ artifact, parentId, fields }) => {
-      const mismatch = verifyArtifactEtag(artifact);
-      if (mismatch) {
-        return mismatch;
-      }
-      const result = await withArtifact(asArtifact(artifact), (dir) =>
+    async ({ artifact, sessionToken, expectedGeneration, parentId, fields }) =>
+      dispatchMutation(sessionStore, { artifact, sessionToken, expectedGeneration }, (dir) =>
         runAddStep({ dir, parentId, flagValues: fields })
-      );
-      return outcomeResult(result.outcome, result.artifact, result.summary);
-    }
+      )
   );
 
   server.registerTool(
@@ -170,16 +268,10 @@ export function registerMutationTools(server: McpServer, _options: { sessionStor
         fields: FlagValuesSchema.describe('Choice fields (text, isCorrect, feedback, etc.).'),
       },
     },
-    async ({ artifact, parentId, fields }) => {
-      const mismatch = verifyArtifactEtag(artifact);
-      if (mismatch) {
-        return mismatch;
-      }
-      const result = await withArtifact(asArtifact(artifact), (dir) =>
+    async ({ artifact, sessionToken, expectedGeneration, parentId, fields }) =>
+      dispatchMutation(sessionStore, { artifact, sessionToken, expectedGeneration }, (dir) =>
         runAddChoice({ dir, parentId, flagValues: fields })
-      );
-      return outcomeResult(result.outcome, result.artifact, result.summary);
-    }
+      )
   );
 
   server.registerTool(
@@ -194,14 +286,10 @@ export function registerMutationTools(server: McpServer, _options: { sessionStor
         fields: FlagValuesSchema.describe('Fields to overwrite (others left untouched).'),
       },
     },
-    async ({ artifact, id, fields }) => {
-      const mismatch = verifyArtifactEtag(artifact);
-      if (mismatch) {
-        return mismatch;
-      }
-      const result = await withArtifact(asArtifact(artifact), (dir) => runEditBlock({ dir, id, flagValues: fields }));
-      return outcomeResult(result.outcome, result.artifact, result.summary);
-    }
+    async ({ artifact, sessionToken, expectedGeneration, id, fields }) =>
+      dispatchMutation(sessionStore, { artifact, sessionToken, expectedGeneration }, (dir) =>
+        runEditBlock({ dir, id, flagValues: fields })
+      )
   );
 
   server.registerTool(
@@ -220,16 +308,10 @@ export function registerMutationTools(server: McpServer, _options: { sessionStor
           .describe("When true, hoist children up to the removed block's parent instead of deleting them."),
       },
     },
-    async ({ artifact, id, cascade, orphanChildren }) => {
-      const mismatch = verifyArtifactEtag(artifact);
-      if (mismatch) {
-        return mismatch;
-      }
-      const result = await withArtifact(asArtifact(artifact), (dir) =>
+    async ({ artifact, sessionToken, expectedGeneration, id, cascade, orphanChildren }) =>
+      dispatchMutation(sessionStore, { artifact, sessionToken, expectedGeneration }, (dir) =>
         runRemoveBlock({ dir, id, cascade, orphanChildren })
-      );
-      return outcomeResult(result.outcome, result.artifact, result.summary);
-    }
+      )
   );
 
   server.registerTool(
@@ -243,14 +325,10 @@ export function registerMutationTools(server: McpServer, _options: { sessionStor
         fields: FlagValuesSchema.describe('Manifest fields to set (description, category, language, etc.).'),
       },
     },
-    async ({ artifact, fields }) => {
-      const mismatch = verifyArtifactEtag(artifact);
-      if (mismatch) {
-        return mismatch;
-      }
-      const result = await withArtifact(asArtifact(artifact), (dir) => runSetManifest({ dir, flagValues: fields }));
-      return outcomeResult(result.outcome, result.artifact, result.summary);
-    }
+    async ({ artifact, sessionToken, expectedGeneration, fields }) =>
+      dispatchMutation(sessionStore, { artifact, sessionToken, expectedGeneration }, (dir) =>
+        runSetManifest({ dir, flagValues: fields })
+      )
   );
 }
 

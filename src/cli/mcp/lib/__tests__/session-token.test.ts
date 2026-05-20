@@ -73,9 +73,23 @@ describe('isValidSessionToken', () => {
   });
 
   it('rejects mixed case (caller must normalize first)', () => {
-    const token = generateSessionToken();
-    const upcased = token.slice(0, -1) + token.slice(-1).toUpperCase();
-    expect(isValidSessionToken(upcased)).toBe(false);
+    // Generate until we get a token containing at least one letter we can
+    // upper-case. Digit-only tokens are theoretically possible but happen
+    // with probability ~10/32 per char — rare enough this loop terminates
+    // in one or two tries, and we want a deterministic test, not a
+    // probabilistic skip.
+    for (let attempt = 0; attempt < 16; attempt++) {
+      const token = generateSessionToken();
+      const idx = [...token].findIndex((ch) => ch >= 'a' && ch <= 'z');
+      if (idx === -1) {
+        continue;
+      }
+      const upcased = token.slice(0, idx) + token[idx]!.toUpperCase() + token.slice(idx + 1);
+      expect(upcased).not.toBe(token);
+      expect(isValidSessionToken(upcased)).toBe(false);
+      return;
+    }
+    throw new Error('failed to generate a token with a letter in 16 attempts (highly improbable)');
   });
 
   it('rejects forbidden lookalike characters', () => {

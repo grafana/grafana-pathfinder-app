@@ -9,12 +9,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import type { ContentJson } from '../../../types/package.types';
-import {
-  InMemorySessionStore,
-  SESSION_GENERATION_ABSENT,
-  SessionPreconditionFailedError,
-  type SessionStore,
-} from '../lib/session-store';
+import { InMemorySessionStore, SESSION_GENERATION_ABSENT, type SessionStore } from '../lib/session-store';
 import {
   dispatchSessionMutation,
   isConcurrentModification,
@@ -58,7 +53,11 @@ function makeRacingStore(real: SessionStore): SessionStore {
         const current = await real.load(token);
         if (current) {
           // Mutate via a different artifact so we can tell which write won.
-          await real.save(token, { ...current.artifact, content: { ...current.artifact.content, title: 'RACED' } }, current.generation);
+          await real.save(
+            token,
+            { ...current.artifact, content: { ...current.artifact.content, title: 'RACED' } },
+            current.generation
+          );
         }
       }
       return real.save(token, artifact, ifGen);
@@ -125,7 +124,11 @@ describe('dispatchSessionMutation', () => {
         save: async (t, art, ifGen) => {
           const current = await inner.load(t);
           if (current) {
-            await inner.save(t, { ...current.artifact, content: { ...current.artifact.content, title: 'RACED' } }, current.generation);
+            await inner.save(
+              t,
+              { ...current.artifact, content: { ...current.artifact.content, title: 'RACED' } },
+              current.generation
+            );
           }
           return inner.save(t, art, ifGen);
         },
@@ -185,7 +188,9 @@ describe('dispatchSessionMutation', () => {
     it('proceeds when expectedGeneration matches', async () => {
       const store = new InMemorySessionStore();
       await store.save(TOKEN, seed('v1'), SESSION_GENERATION_ABSENT);
-      const r = (await dispatchSessionMutation(TOKEN, store, setTitleRunner('v2'), { expectedGeneration: 1 })) as DispatchSessionResult;
+      const r = (await dispatchSessionMutation(TOKEN, store, setTitleRunner('v2'), {
+        expectedGeneration: 1,
+      })) as DispatchSessionResult;
       if (isSessionNotFound(r) || isConcurrentModification(r)) {
         throw new Error('expected outcome');
       }
@@ -201,7 +206,9 @@ describe('dispatchSessionMutation', () => {
       await inner.save(TOKEN, seed('v1'), SESSION_GENERATION_ABSENT);
       const racing = makeRacingStore(inner);
 
-      const r = await dispatchSessionMutation(TOKEN, racing, setTitleRunner('shouldnt-land'), { expectedGeneration: 1 });
+      const r = await dispatchSessionMutation(TOKEN, racing, setTitleRunner('shouldnt-land'), {
+        expectedGeneration: 1,
+      });
       expect(isConcurrentModification(r)).toBe(true);
       // The racing writer landed; our mutation did not. Title remains
       // whatever the racing writer set.

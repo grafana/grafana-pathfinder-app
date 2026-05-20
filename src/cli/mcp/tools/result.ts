@@ -15,6 +15,7 @@
 import type { TreeNode } from '../../utils/package-io';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
+import type { ConcurrentModificationResult } from './state-bridge';
 
 export function textResult(
   text: string,
@@ -58,4 +59,128 @@ export function outcomeResult(
     payload.summary = summary;
   }
   return textResult(JSON.stringify(payload, null, 2), outcome.status === 'error');
+}
+
+/**
+ * Session-mode mutation ack. The full artifact stays in the bucket; the
+ * agent receives only:
+ *
+ *   - `sessionToken` — echo on the next call.
+ *   - `generation` — for optional `expectedGeneration` on the next call.
+ *   - `outcome` — the CLI's `CommandOutcome` verbatim (summary + any
+ *     structured error fields).
+ *   - `summary` — compact navigation tree of the post-mutation artifact,
+ *     so the agent does not need to immediately call
+ *     `pathfinder_list_blocks` after every mutation.
+ *
+ * No artifact body, no `__etag` — both are absent by design. Agents that
+ * need the full artifact call `pathfinder_inspect({ sessionToken })`.
+ */
+export function sessionOutcomeResult(
+  sessionToken: string,
+  outcome: CommandOutcome,
+  generation: number | undefined,
+  summary: TreeNode[]
+): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
+  const payload: Record<string, unknown> = {
+    ...outcome,
+    sessionToken,
+    summary,
+  };
+  if (generation !== undefined) {
+    payload.generation = generation;
+  }
+  return textResult(JSON.stringify(payload, null, 2), outcome.status === 'error');
+}
+
+/** Wire shape for `SESSION_NOT_FOUND` returned by session-mode tools. */
+export function sessionNotFoundResult(sessionToken: string): {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+} {
+  const payload = {
+    status: 'error' as const,
+    code: 'SESSION_NOT_FOUND',
+    message:
+      'No session exists for the provided token. Either the token is wrong, the session expired (7-day TTL), or the session was deleted on finalize. Call pathfinder_create_package to start a new session.',
+    sessionToken,
+  };
+  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
+}
+
+/** Wire shape for `CONCURRENT_MODIFICATION` returned by session-mode tools. */
+export function concurrentModificationResult(
+  sessionToken: string,
+  result: ConcurrentModificationResult
+): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
+  const payload = {
+    status: 'error' as const,
+    code: result.code,
+    message: result.message,
+    sessionToken,
+    data: {
+      expected: result.expected,
+      actual: result.actual,
+    },
+  };
+  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
+}
+
+/** Wire shape for invalid session token format. */
+export function invalidSessionTokenResult(): {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+} {
+  return textResult(
+    JSON.stringify(
+      {
+        status: 'error' as const,
+        code: 'INVALID_SESSION_TOKEN',
+        message:
+          'sessionToken is not in the expected format (22 chars, Crockford base32, lowercase). Pass the value you received from pathfinder_create_package or a previous mutation ack verbatim.',
+      },
+      null,
+      2
+    ),
+    /* isError */ true
+  );
+}
+
+/** Wire shape for "must pass exactly one of {artifact} or {sessionToken}". */
+export function inputModeAmbiguousResult(): {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+} {
+  return textResult(
+    JSON.stringify(
+      {
+        status: 'error' as const,
+        code: 'INPUT_MODE_AMBIGUOUS',
+        message:
+          'Pass exactly one of `artifact` (stateless mode) or `sessionToken` (session mode). Both were provided.',
+      },
+      null,
+      2
+    ),
+    /* isError */ true
+  );
+}
+
+export function inputModeMissingResult(): {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+} {
+  return textResult(
+    JSON.stringify(
+      {
+        status: 'error' as const,
+        code: 'INPUT_MODE_MISSING',
+        message:
+          'Pass exactly one of `artifact` (stateless mode) or `sessionToken` (session mode). Neither was provided.',
+      },
+      null,
+      2
+    ),
+    /* isError */ true
+  );
 }
