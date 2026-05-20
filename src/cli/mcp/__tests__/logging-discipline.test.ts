@@ -132,9 +132,7 @@ describe('P7 task 17 — logging discipline in src/cli/mcp/', () => {
       }
     }
     if (offenders.length > 0) {
-      const rendered = offenders
-        .map((o) => `  ${path.relative(MCP_ROOT, o.file)}:${o.line} — ${o.text}`)
-        .join('\n');
+      const rendered = offenders.map((o) => `  ${path.relative(MCP_ROOT, o.file)}:${o.line} — ${o.text}`).join('\n');
       throw new Error(
         `Found ${offenders.length} log emission(s) that reference a session token without ` +
           `tokenLogPrefix() or tokenLogHash() wrapping:\n${rendered}\n\n` +
