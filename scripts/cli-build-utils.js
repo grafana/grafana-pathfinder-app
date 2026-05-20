@@ -34,7 +34,7 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 // Keep this list minimal. If the Docker build fails with
 // "Cannot find module 'X'", either add X here or remove the
 // import from the CLI codepath.
-const RUNTIME_DEPS = ['commander', 'zod', '@modelcontextprotocol/sdk'];
+const RUNTIME_DEPS = ['commander', 'zod', '@modelcontextprotocol/sdk', '@google-cloud/storage'];
 
 function readSchemaVersion() {
   const src = fs.readFileSync(path.join(REPO_ROOT, 'src/types/json-guide.schema.ts'), 'utf8');
