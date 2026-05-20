@@ -4,8 +4,8 @@
 > Phase entry and exit criteria graduate the deferred [P5 — GCS-backed authoring sessions](../AI-AUTHORING-IMPLEMENTATION.md#p5--deferred-follow-ups) bullet into its own phase. The design is fully specified in that bullet (storage layout, token format, tool-surface shape, concurrency, retention, confidentiality); this plan phases the implementation.
 > Tracking issue: _epic issue TBD_.
 
-**Status:** Not started
-**Started:** _YYYY-MM-DD_
+**Status:** In progress (phase A complete; B–D pending)
+**Started:** 2026-05-20
 **Completed:** _YYYY-MM-DD_
 
 ---
@@ -39,20 +39,20 @@
 
 _Phases A–D below group tasks into shippable PRs. Each PR leaves `main` shippable and `./deploy-mcp.sh dev` working end-to-end._
 
-### Phase A — Infrastructure + storage seam (no public tool surface change)
+### Phase A — Infrastructure + storage seam (no public tool surface change) — COMPLETE 2026-05-20
 
-- [ ] **1. Parameterize `deploy-mcp.sh` by environment.** Add `ENV` (defaults `dev`); derive `BUCKET="pathfinder-mcp-${ENV}"`, `SERVICE_ACCOUNT="pathfinder-mcp-${ENV}@${PROJECT_ID}.iam.gserviceaccount.com"`, optionally `SERVICE="pathfinder-mcp-${ENV}"` (decide at execution — for now keep `SERVICE` unchanged to avoid disturbing the existing dev URL). Project + region stay hardcoded for now; flagged in script comment as the next axis to parameterize when staging/prod arrive.
-- [ ] **2. Idempotent bucket bootstrap in `deploy-mcp.sh`.** Add a preflight block (mirroring the existing artifact-registry block) that:
-  - Enables `storage.googleapis.com`.
-  - Creates `gs://${BUCKET}` if absent (`gcloud storage buckets create`) with uniform bucket-level access on, region matching `${REGION}`, no public access.
-  - Applies the 7-day lifecycle rule via `gcloud storage buckets update --lifecycle-file=`. Lifecycle JSON lives in a heredoc inside the script (no separate file) — keeps the script self-contained.
-- [ ] **3. Dedicated service account in `deploy-mcp.sh`.** Create `${SERVICE_ACCOUNT}` if absent. Grant `roles/storage.objectAdmin` **scoped to the bucket** (`gcloud storage buckets add-iam-policy-binding`), not project-wide. Update the `gcloud run deploy` call to `--service-account=${SERVICE_ACCOUNT}` and `--set-env-vars=PATHFINDER_SESSION_BUCKET=${BUCKET},PATHFINDER_SESSION_STORE=gcs`.
-- [ ] **4. `SessionStore` interface + in-memory impl.** `src/cli/mcp/lib/session-store.ts` exports `interface SessionStore { load(token): Promise<{ artifact, generation } | null>; save(token, artifact, ifGenerationMatch): Promise<{ generation }>; delete(token): Promise<void>; }`. In-memory impl backed by a `Map`, with generation counters incrementing on each write. Throws structured `{ code: 'PRECONDITION_FAILED', expected, actual }` on `ifGenerationMatch` mismatch. Unit tests cover happy path, generation-mismatch, delete-then-load, concurrent writes via `Promise.all`.
-- [ ] **5. GCS impl.** `src/cli/mcp/lib/session-store-gcs.ts` wraps `@google-cloud/storage`. Reads bucket name from `PATHFINDER_SESSION_BUCKET` (constructor arg, env-driven). Objects laid out per design: `<token>/content.json` and `<token>/manifest.json` under the bucket root. `save` is two `file.save({ resumable: false, preconditionOpts: { ifGenerationMatch } })` writes; `load` is two parallel reads; `delete` is `bucket.deleteFiles({ prefix: '<token>/' })`. Unit tests use the `@google-cloud/storage` testing patterns we already lean on elsewhere (mock the GCS client at module level — see `src/lib/package-recommendations-client.ts` test for the pattern).
-- [ ] **6. Token generator + logging helpers.** `src/cli/mcp/lib/session-token.ts`: `generateSessionToken(): string` (22 chars Crockford base32 via `crypto.randomBytes(14)` → reject-and-retry on lookalikes; lowercased output), `isValidSessionToken(s): boolean`, `tokenLogPrefix(s): string` (first 12 chars), `tokenLogHash(s): string` (SHA-256 hex first 16 chars). Unit tests: entropy bound, alphabet excludes `I/L/O/U`, validator rejects mixed-case / wrong-length / wrong-alphabet, prefix and hash are deterministic.
-- [ ] **7. Wire the store into `state-bridge.ts` without changing public tool input.** Add `withSession(token, store, runner)`: load from store → invoke runner via existing `withArtifact`-style tmpdir flow → save back to store with `ifGenerationMatch`. **No mutation-tool input schema change yet** — this task is the seam, not the wire-up. A unit test exercises the seam end-to-end against the in-memory store.
+- [x] **1. Parameterize `scripts/deploy-mcp.sh` by environment.** `--env=<name>` flag (defaults `dev`); derives `BUCKET="pathfinder-mcp-${ENV_NAME}"`, `SERVICE_ACCOUNT="pathfinder-mcp-${ENV_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"`. `SERVICE` stays env-agnostic so the existing dev URL does not move. Project + region remain hardcoded; flagged in the script header as the next axis to parameterize when staging/prod arrive.
+- [x] **2. Idempotent bucket bootstrap in `scripts/deploy-mcp.sh`.** Preflight block:
+  - Enables `storage.googleapis.com` + `iam.googleapis.com`.
+  - Creates `gs://${BUCKET}` if absent with `--uniform-bucket-level-access --public-access-prevention`.
+  - Applies a 7-day lifecycle delete rule via an inline `mktemp` heredoc JSON. Script self-contained.
+- [x] **3. Dedicated service account in `scripts/deploy-mcp.sh`.** Creates `${SERVICE_ACCOUNT_EMAIL}` if absent. Grants `roles/storage.objectAdmin` **scoped to the bucket** via `gcloud storage buckets add-iam-policy-binding`. `gcloud run deploy` now passes `--service-account=${SERVICE_ACCOUNT_EMAIL}` and `--set-env-vars="PATHFINDER_SESSION_STORE=gcs,PATHFINDER_SESSION_BUCKET=${BUCKET}"`.
+- [x] **4. `SessionStore` interface + in-memory impl.** `src/cli/mcp/lib/session-store.ts` exports the interface, `SessionPreconditionFailedError` with `{code, expected, actual}`, the `SESSION_GENERATION_ABSENT` sentinel, and `InMemorySessionStore`. 13 unit tests covering create-from-absent, double-create rejection, expected/actual on precondition failure, monotonic update generation, no-mutation-on-failed-save, idempotent delete, recreate-after-delete, token isolation, two racing creates, two racing updates.
+- [x] **5. GCS impl.** `src/cli/mcp/lib/session-store-gcs.ts` adds `GcsSessionStore` against `@google-cloud/storage@^7`. Layout: `<token>/content.json` + `<token>/manifest.json` + `<token>/generation` (lock object pinning the session's logical generation). Save order is artifact-first, generation-last (with `ifGenerationMatch`); a 412 on the generation write surfaces as `SessionPreconditionFailedError` after a peek. 14 tests against an in-memory GCS fake. `@google-cloud/storage` added to `dependencies` and to `RUNTIME_DEPS` in `scripts/cli-build-utils.js` so the Docker runtime image installs it.
+- [x] **6. Token generator + logging helpers.** `src/cli/mcp/lib/session-token.ts` ships `generateSessionToken`, `isValidSessionToken`, `normalizeSessionToken`, `tokenLogPrefix`, `tokenLogHash`. 22-char lowercase Crockford base32, 110 bits from `crypto.randomBytes`. 19 unit tests.
+- [x] **7. Wire the store into `state-bridge.ts` without changing public tool input.** Added `withSession(token, store, runner)` and `withFreshSession(token, store, seed, runner)`. Both skip the store write when the CLI runner reports failure — explicit "breakingRunner" test asserts a runner that writes invalid output but reports an error does not land. 8 unit tests covering happy path, SESSION_NOT_FOUND, no-write-on-error, propagation of `SessionPreconditionFailedError` from a concurrent writer, fresh-session mint, no half-minted sessions, mint-over-existing rejection.
 
-**Phase A deliverable.** `./deploy-mcp.sh dev` deploys the service with the bucket, SA, and env vars all wired, but no tool calls actually use the bucket yet (`authoring-start` still primes stateless flow; mutation tools still take `{artifact}`). The store exists, is callable from a Node REPL, and tests pass. Rollback = drop one PR, deployed service is unchanged in behavior.
+**Phase A deliverable — DELIVERED.** `scripts/deploy-mcp.sh --env=dev` (default) deploys the service with the bucket, SA, IAM, lifecycle rule, and env vars all wired, but no tool calls actually use the bucket yet — `authoring-start` still primes stateless flow; mutation tools still take `{artifact}`. The store exists, is callable from any node module via `withSession` / `withFreshSession`, and 173 MCP-suite tests pass.
 
 ### Phase B — Session-mode mutations + fine-grained reads
 
@@ -131,7 +131,12 @@ _Appended during execution._
 
 ## Deviations
 
-_Appended during execution._
+### 2026-05-20 — Deploy script lives at `scripts/deploy-mcp.sh`, not the repo root
+
+- **What was planned:** modify the root-level `deploy-mcp.sh` in place.
+- **What changed:** the root-level `deploy-mcp.sh` is gitignored as a "personal manual-deploy" script and remains so; the committed, parameterized version lives at `scripts/deploy-mcp.sh`. `.gitignore` was tightened to anchor the rule at the root (`/deploy-mcp.sh`) so the `scripts/` path is tracked.
+- **Reason:** the root script is the developer's personal scratch copy; turning it into committed infra (now that it provisions a shared GCS bucket + SA) crosses a posture line that wasn't worth bundling into phase A without an explicit decision. Per user direction.
+- **Propagation:** the surface-area note in Preconditions still mentions `deploy-mcp.sh` because the project's docs treat the personal copy as the canonical name; the path is updated above in the Phase A tasks. Once `scripts/deploy-mcp.sh` is exercised in dev and trusted, the root copy should be deleted (a TODO comment in the script header records this).
 
 ---
 
