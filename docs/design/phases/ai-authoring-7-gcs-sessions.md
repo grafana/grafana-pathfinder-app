@@ -100,18 +100,18 @@ _Phases A–D below group tasks into shippable PRs. Each PR leaves `main` shippa
 
 ### Verification (matches the P5 GCS-sessions design bullet)
 
-- [ ] First mutation without `sessionToken` mints a token; every mutation ack carries it.
-- [ ] Mutations return acks, not artifacts. Reads are explicit (`get_manifest_session`, `list_blocks`, `get_block`, `inspect`, `validate`).
-- [ ] Failed CLI mutation leaves the bucket state unchanged (test covers).
-- [ ] `ifGenerationMatch` is enforced; two replicas racing on the same token resolve via 412 → refetch → retry once → surface.
-- [ ] `pathfinder_create_package` without `sessionToken` mints one. No separate `start_session` tool exists.
-- [ ] Stateless `{artifact}` mode still works on every mutation tool.
-- [ ] `pathfinder_finalize_for_app_platform` deletes the session on success.
-- [ ] Bucket has a 7-day lifecycle rule applied; uniform bucket-level access on; IAM-only; no public ACLs.
-- [ ] Tokens are 22-char Crockford base32, no `I/L/O/U`, lowercased on input.
-- [ ] `Mcp-Session-Id` binding works when present, falls back gracefully when absent.
-- [ ] Logs never contain raw tokens or artifact bodies.
-- [ ] `./deploy-mcp.sh dev` is the single command that brings up bucket + SA + IAM + service.
+- [x] First mutation without `sessionToken` mints a token; every mutation ack carries it. _(Phase A task 7 + Phase B task 9; `artifact-tools.ts#mintSession` + `state-bridge.ts#withFreshSession`.)_
+- [x] Mutations return acks, not artifacts. Reads are explicit (`get_manifest_session`, `list_blocks`, `get_block`, `inspect`, `validate`). _(Phase B tasks 8 + 11 + 12; `result.ts#sessionOutcomeResult` drops the artifact body.)_
+- [x] Failed CLI mutation leaves the bucket state unchanged (test covers). _(`__tests__/failed-mutation-invariant.test.ts` — 6 scenarios snapshotting `{generation, artifact}` before/after every failing call.)_
+- [x] `ifGenerationMatch` is enforced; two replicas racing on the same token resolve via 412 → refetch → retry once → surface. _(Phase B task 13; `state-bridge.ts#dispatchSessionMutation` with `makeRacingStore` tests in `__tests__/dispatch-session.test.ts`.)_
+- [x] `pathfinder_create_package` without `sessionToken` mints one. No separate `start_session` tool exists. _(Phase B task 9.)_
+- [x] Stateless `{artifact}` mode still works on every mutation tool. _(`__tests__/mutation-session-mode.test.ts` describe('stateless mode preserved').)_
+- [x] `pathfinder_finalize_for_app_platform` deletes the session on success. _(Phase C task 15; `finalize.ts` + dedicated test in `__tests__/finalize.test.ts`.)_
+- [x] Bucket has a 7-day lifecycle rule applied; uniform bucket-level access on; IAM-only; no public ACLs. _(Phase A tasks 1–3; `scripts/deploy-mcp.sh` `--uniform-bucket-level-access --public-access-prevention` + inline lifecycle JSON.)_
+- [x] Tokens are 22-char Crockford base32, no `I/L/O/U`, lowercased on input. _(Phase A task 6; `lib/session-token.ts` + 19 unit tests.)_
+- [x] `Mcp-Session-Id` binding works when present, falls back gracefully when absent. _(Phase D task 16; `lib/session-pin.ts` + 8 path tests in `__tests__/session-pin.test.ts`.)_
+- [x] Logs never contain raw tokens or artifact bodies. _(Phase D task 17; `__tests__/logging-discipline.test.ts` lint scanner enforces this for every `console.*` / `process.std{err,out}.write` call in `src/cli/mcp/`.)_
+- [x] `scripts/deploy-mcp.sh` is the single command that brings up bucket + SA + IAM + service. _(Phase A tasks 1–3; Phase D parameterization moved operator-specific values to a gitignored `.env`.)_
 
 ---
 
