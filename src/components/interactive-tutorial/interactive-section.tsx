@@ -97,6 +97,12 @@ import {
 // from `./section-registry`.
 export { registerSectionSteps, getTotalDocumentSteps, getDocumentStepPosition } from './section-registry';
 
+// Interactive Section title fallback
+export const DEFAULT_INTERACTIVE_SECTION_TITLE = 'Interactive section';
+
+// Interactive Section title fallback for sections with no interactive steps (passive content only)
+export const PASSIVE_SECTION_TITLE = 'Steps';
+
 // Reset every counter (registry + offsets + per-step-type anonymous-ID
 // counters). Called when new content loads. The registry's own state
 // lives in `./section-registry`; this function adds the step-module
@@ -277,6 +283,11 @@ export function InteractiveSection({
   // Calculate base completion (steps completed) - needed for completion logic
   // Noop steps are always considered complete (they're informational only)
   const nonNoopSteps = stepComponents.filter((s) => s.targetAction !== 'noop');
+
+  // Swap "Interactive section" → "Steps" when the title is the default
+  // fallback and no child step is interactive. Author-set titles pass through.
+  const displayTitle =
+    title === DEFAULT_INTERACTIVE_SECTION_TITLE && nonNoopSteps.length === 0 ? PASSIVE_SECTION_TITLE : title;
   const allInteractiveStepsCompleted =
     stepComponents.length > 0 && (nonNoopSteps.length === 0 || nonNoopSteps.every((s) => completedSteps.has(s.stepId)));
 
@@ -621,7 +632,7 @@ export function InteractiveSection({
         targetaction: 'section',
         reftarget: `section-${sectionId}`,
         targetvalue: undefined,
-        textContent: title || 'Interactive section',
+        textContent: title || DEFAULT_INTERACTIVE_SECTION_TITLE,
         tagName: 'section',
       };
 
@@ -685,7 +696,7 @@ export function InteractiveSection({
       targetvalue: undefined,
       requirements: undefined,
       tagName: 'section',
-      textContent: title || 'Interactive section',
+      textContent: title || DEFAULT_INTERACTIVE_SECTION_TITLE,
       timestamp: Date.now(),
       isPartOfSection: true,
     };
@@ -1252,7 +1263,7 @@ export function InteractiveSection({
           </button>
         )}
         <div className="interactive-section-title-container">
-          <span className="interactive-section-title">{title}</span>
+          <span className="interactive-section-title">{displayTitle}</span>
           {isCompleted && <span className="interactive-section-checkmark">✓</span>}
         </div>
         {hints && (

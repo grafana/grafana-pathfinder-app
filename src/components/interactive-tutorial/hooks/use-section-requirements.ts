@@ -26,6 +26,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getRequirementExplanation, dispatchFix } from '../../../requirements-manager';
+import { DEFAULT_INTERACTIVE_SECTION_TITLE } from '../interactive-section';
 
 interface SectionRequirementsResult {
   pass: boolean;
@@ -113,7 +114,7 @@ export function useSectionRequirements({
         targetaction: 'section',
         reftarget: sectionId,
         targetvalue: undefined,
-        textContent: title || 'Interactive section',
+        textContent: title || DEFAULT_INTERACTIVE_SECTION_TITLE,
         tagName: 'section',
       };
       const result = await checkRequirementsFromData(data);
