@@ -100,8 +100,20 @@ async function rpc(url: string, method: string, params: Record<string, unknown>)
   if (!inner) {
     throw new Error(`rpc ${method} → no text content in: ${text.slice(0, 200)}`);
   }
+  // Many tool responses are JSON-encoded strings inside a text content
+  // block (CommandOutcome shape). Some — server-side errors not wrapped in
+  // wire codes — are plain strings. Tolerate both so the operator can see
+  // what the server actually said.
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(inner);
+  } catch {
+    throw new Error(
+      `rpc ${method} → tool returned non-JSON text content (length ${inner.length}): ${inner.slice(0, 500)}`
+    );
+  }
   return {
-    payload: JSON.parse(inner),
+    payload,
     requestBytes,
     responseBytes,
     durationMs,
