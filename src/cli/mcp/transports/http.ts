@@ -30,7 +30,13 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
 import { getDefaultSessionStore } from '../lib/session-store-factory';
-import { isValidSessionToken, normalizeSessionToken, tokenLogHash, tokenLogPrefix } from '../lib/session-token';
+import {
+  isValidSessionToken,
+  mcpSessionIdLogHash,
+  normalizeSessionToken,
+  tokenLogHash,
+  tokenLogPrefix,
+} from '../lib/session-token';
 import { buildServer } from '../server';
 import { defaultSessionHopCounter, type SessionHopCounter, type ToolCallObservation } from './instrumentation';
 
@@ -153,11 +159,15 @@ export interface AccessLogEntry {
   /** Number of envelopes in a batch request. Absent for single requests. */
   batchSize?: number;
   /**
-   * MCP session id from the client's `mcp-session-id` header, when
-   * supplied. Lets us reconstruct an authoring run end-to-end; clustering
-   * by remote IP fails as soon as two clients share egress NAT.
+   * Stable short hash of the client's `mcp-session-id` header, when
+   * supplied. Lets us reconstruct an authoring run end-to-end without
+   * logging the raw header — the same header value is persisted as the
+   * session pin (see `lib/session-pin.ts`) and is therefore confidentiality
+   * material. A log reader who also held the bearer token could otherwise
+   * replay the pin from logs. Clustering by remote IP fails as soon as
+   * two clients share egress NAT, so the hash earns its keep.
    */
-  sessionId?: string;
+  sessionIdHash?: string;
   /**
    * Hop count within this MCP session. Increments only on `tools/call`,
    * so `initialize`, `tools/list`, and SSE polls do not bump it. Lets us
@@ -345,6 +355,12 @@ async function handleRequest(
   const method = req.method ?? 'GET';
   const reqPath = parsePath(req.url);
   const sessionId = readSessionId(req);
+  // Log-side and hop-counter-side correlator. We hash once at request
+  // entry so all per-request bookkeeping shares the same opaque key —
+  // the raw `sessionId` flows on to `factory(...)` for pin enforcement
+  // (`lib/session-pin.ts`) where the verbatim value is needed; nothing
+  // observability-facing sees it.
+  const sessionIdHash = sessionId !== undefined ? mcpSessionIdLogHash(sessionId) : undefined;
   let bytesIn = 0;
   let bytesOut = 0;
   let rpc: RpcInfo = {};
@@ -388,7 +404,7 @@ async function handleRequest(
       tokensOutEstimate: estimateTokens(bytesOut),
       outcome,
       ...rpc,
-      ...(sessionId !== undefined ? { sessionId } : {}),
+      ...(sessionIdHash !== undefined ? { sessionIdHash } : {}),
       ...(sessionHopCount !== undefined ? { sessionHopCount } : {}),
       ...(observation?.artifactBytesIn !== undefined ? { artifactBytesIn: observation.artifactBytesIn } : {}),
       ...(observation?.artifactBytesOut !== undefined ? { artifactBytesOut: observation.artifactBytesOut } : {}),
@@ -438,8 +454,12 @@ async function handleRequest(
       body = read.body;
       bytesIn = read.bytes;
       rpc = extractRpcInfo(body);
-      if (rpc.rpcMethod === 'tools/call' && sessionId !== undefined) {
-        sessionHopCount = sessionHopCounter.bump(sessionId);
+      if (rpc.rpcMethod === 'tools/call' && sessionIdHash !== undefined) {
+        // Key the hop counter by the hash, not the raw header. The
+        // counter is purely observability state and never needs the
+        // verbatim value, so the same confidentiality reasoning that
+        // gates `sessionIdHash` in the access log applies here too.
+        sessionHopCount = sessionHopCounter.bump(sessionIdHash);
       }
     } catch (err) {
       if (err instanceof RequestTooLarge) {

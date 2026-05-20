@@ -115,6 +115,21 @@ export function tokenLogHash(token: string): string {
   return createHash('sha256').update(token).digest('hex').slice(0, 16);
 }
 
+/**
+ * Short, stable hash of an `Mcp-Session-Id` header value for logs. The
+ * header is persisted as the session pin (see `session-pin.ts`) and is
+ * therefore confidentiality material — a log reader who also has the
+ * bearer token could replay it. Hashing in logs keeps the correlation
+ * signal (same id → same value across log lines) without exposing the
+ * raw value.
+ *
+ * Unlike `tokenLogHash`, this accepts any non-empty string — `Mcp-Session-Id`
+ * has no enforced format and clients are free to choose any opaque value.
+ */
+export function mcpSessionIdLogHash(mcpSessionId: string): string {
+  return createHash('sha256').update(mcpSessionId).digest('hex').slice(0, 16);
+}
+
 export const __testing = {
   ALPHABET,
   TOKEN_LENGTH,
