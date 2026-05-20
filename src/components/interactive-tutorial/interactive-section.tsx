@@ -1266,7 +1266,10 @@ export function InteractiveSection({
 
       {/* Section requirements status banner */}
       {!isCollapsed && requirements && !sectionRequirementsStatus.passed && (
-        <div className="interactive-section-requirements-banner">
+        <div
+          className="interactive-section-requirements-banner"
+          data-testid={testIds.interactive.sectionRequirementsBanner(sectionId)}
+        >
           <div className="interactive-section-requirements-content">
             <span className="interactive-section-requirements-icon">🔒</span>
             <span className="interactive-section-requirements-message">
@@ -1275,7 +1278,12 @@ export function InteractiveSection({
           </div>
           {sectionRequirementsStatus.canFix && (
             <div className="interactive-step-requirement-buttons">
-              <button type="button" className="interactive-requirement-retry-btn" onClick={fixSectionRequirements}>
+              <button
+                type="button"
+                className="interactive-requirement-retry-btn"
+                data-testid={testIds.interactive.requirementFixButton(sectionId)}
+                onClick={fixSectionRequirements}
+              >
                 Fix this
               </button>
             </div>

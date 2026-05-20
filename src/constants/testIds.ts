@@ -138,6 +138,7 @@ export const testIds = {
     markSectionCompleteButton: (sectionId: string) => `interactive-mark-section-complete-${sectionId}`,
     requirementCheck: (requirementId: string) => `interactive-requirement-${requirementId}`,
     requirementFixButton: (stepId: string) => `interactive-requirement-fix-${stepId}`,
+    sectionRequirementsBanner: (sectionId: string) => `interactive-section-requirements-banner-${sectionId}`,
     requirementRetryButton: (stepId: string) => `interactive-requirement-retry-${stepId}`,
     requirementSkipButton: (stepId: string) => `interactive-requirement-skip-${stepId}`,
     stepCompleted: (stepId: string) => `interactive-step-completed-${stepId}`,

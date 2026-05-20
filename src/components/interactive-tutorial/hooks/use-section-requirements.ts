@@ -26,13 +26,21 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getRequirementExplanation } from '../../../requirements-manager';
+import { dispatchFix } from '../../../requirements-manager/fix-registry';
 
 interface SectionRequirementsResult {
   pass: boolean;
   // Matches `CheckResult` from the requirements-manager: each entry's
   // `error` is `string | undefined`. The hook reads only the first
   // entry's `error` for display, falling back to a generic message.
-  error?: Array<{ error?: string; canFix?: boolean; fixType?: string; targetHref?: string; requirement?: string }>;
+  error?: Array<{
+    error?: string;
+    canFix?: boolean;
+    fixType?: string;
+    targetHref?: string;
+    scrollContainer?: string;
+    requirement?: string;
+  }>;
 }
 
 interface SectionRequirementsData {
@@ -51,6 +59,7 @@ export interface SectionRequirementsStatus {
   canFix?: boolean;
   fixType?: string;
   targetHref?: string;
+  scrollContainer?: string;
   explanation?: string;
 }
 
@@ -121,6 +130,7 @@ export function useSectionRequirements({
           canFix: !!fixableError,
           fixType: fixableError?.fixType,
           targetHref: fixableError?.targetHref,
+          scrollContainer: fixableError?.scrollContainer,
           explanation: result.pass
             ? undefined
             : getRequirementExplanation(explanationSource?.requirement, hints, explanationSource?.error),
@@ -143,27 +153,30 @@ export function useSectionRequirements({
   }, [status]);
 
   const fix = useCallback(async () => {
-    const { canFix, fixType, targetHref } = statusRef.current;
+    const { canFix, fixType, targetHref, scrollContainer } = statusRef.current;
     if (!canFix) {
       return;
     }
     try {
       const { NavigationManager } = await import('../../../interactive-engine');
       const navigationManager = new NavigationManager();
-      if (fixType === 'expand-parent-navigation' && targetHref) {
-        await navigationManager.expandParentNavigationSection(targetHref);
-      } else if (fixType === 'location' && targetHref) {
-        await navigationManager.fixLocationRequirement(targetHref);
-      } else if (fixType === 'navigation') {
-        await navigationManager.fixNavigationRequirements();
-      } else {
-        console.warn('useSectionRequirements: unrecognised fixType', fixType);
+      const result = await dispatchFix({
+        fixType,
+        targetHref,
+        scrollContainer,
+        requirements,
+        stepId: sectionId,
+        navigationManager,
+        fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(),
+      });
+      if (!result.ok) {
+        console.warn('useSectionRequirements: fix failed:', result.error);
       }
       await recheck();
     } catch (fixError) {
       console.warn('Failed to fix section requirements:', fixError);
     }
-  }, [recheck]);
+  }, [requirements, sectionId, recheck]);
 
   // Initial requirements check and re-check on relevant events.
   useEffect(() => {
