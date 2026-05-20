@@ -47,7 +47,7 @@ import {
   type TreeNode,
 } from '../../utils/package-io';
 import type { CommandOutcome } from '../../utils/output';
-import { SESSION_GENERATION_ABSENT, type SessionStore } from '../lib/session-store';
+import { SESSION_GENERATION_ABSENT, SessionPreconditionFailedError, type SessionStore } from '../lib/session-store';
 
 export interface ArtifactInput {
   content: ContentJson;
@@ -191,4 +191,119 @@ export async function withFreshSession(
 
   const saved = await store.save(token, result.artifact, SESSION_GENERATION_ABSENT);
   return { ...result, generation: saved.generation };
+}
+
+/**
+ * `dispatchSessionMutation` is the entrypoint mutation tools call. It
+ * wraps `withSession` with the P7 concurrency-control policy:
+ *
+ *   - If `expectedGeneration` is supplied AND it disagrees with the
+ *     currently-stored generation, return CONCURRENT_MODIFICATION
+ *     immediately — the agent has made a deliberate optimistic-
+ *     concurrency claim that the server invalidated.
+ *
+ *   - If `expectedGeneration` is supplied AND matches, run the
+ *     mutation. A `412` from the store on the save (someone wrote
+ *     between our load and save) surfaces as CONCURRENT_MODIFICATION
+ *     without retry — same rationale: the agent expressed an
+ *     expectation, surface mismatches.
+ *
+ *   - If `expectedGeneration` is omitted, run the mutation. On `412`,
+ *     reload and retry exactly once. If the second attempt also hits
+ *     412, surface CONCURRENT_MODIFICATION carrying the observed
+ *     generation. This is the design's default: agents that don't
+ *     pass expectedGeneration don't have to think about concurrency.
+ *
+ * The return type is a discriminated union the tool layer maps onto
+ * `outcomeResult`.
+ */
+export interface SessionMutationOptions {
+  /**
+   * When set, the dispatcher returns CONCURRENT_MODIFICATION on any
+   * generation mismatch (pre-load or post-save). When omitted, the
+   * dispatcher retries once on a post-save 412.
+   */
+  expectedGeneration?: number;
+}
+
+export interface ConcurrentModificationResult {
+  ok: false;
+  code: 'CONCURRENT_MODIFICATION';
+  expected: number;
+  actual: number;
+  message: string;
+}
+
+export function concurrentModification(expected: number, actual: number): ConcurrentModificationResult {
+  return {
+    ok: false,
+    code: 'CONCURRENT_MODIFICATION',
+    expected,
+    actual,
+    message: `Session was modified by another writer (expected generation ${expected}, observed ${actual}). Re-fetch the session via pathfinder_inspect or pathfinder_list_blocks and retry the mutation against the current state.`,
+  };
+}
+
+export type DispatchSessionResult = SessionOutcome | SessionNotFound | ConcurrentModificationResult;
+
+export async function dispatchSessionMutation(
+  token: string,
+  store: SessionStore,
+  runner: (dir: string) => Promise<CommandOutcome> | CommandOutcome,
+  options: SessionMutationOptions = {}
+): Promise<DispatchSessionResult> {
+  // First load — check the optional optimistic-concurrency claim.
+  const loaded = await store.load(token);
+  if (loaded === null) {
+    return SESSION_NOT_FOUND;
+  }
+  if (options.expectedGeneration !== undefined && options.expectedGeneration !== loaded.generation) {
+    return concurrentModification(options.expectedGeneration, loaded.generation);
+  }
+
+  try {
+    const result = await withArtifact(loaded.artifact, runner);
+    if (result.outcome.status !== 'ok') {
+      return { ...result, generation: undefined };
+    }
+    const saved = await store.save(token, result.artifact, loaded.generation);
+    return { ...result, generation: saved.generation };
+  } catch (err) {
+    if (!(err instanceof SessionPreconditionFailedError)) {
+      throw err;
+    }
+    // Save-time 412. If the caller pinned expectedGeneration, surface
+    // immediately so they see their explicit claim was invalidated.
+    if (options.expectedGeneration !== undefined) {
+      return concurrentModification(err.expected, err.actual);
+    }
+    // Default policy: retry once against the refetched state.
+    const reloaded = await store.load(token);
+    if (reloaded === null) {
+      // Another writer deleted the session between our save attempt and
+      // this reload. Treat as not-found rather than concurrent-mod.
+      return SESSION_NOT_FOUND;
+    }
+    try {
+      const result2 = await withArtifact(reloaded.artifact, runner);
+      if (result2.outcome.status !== 'ok') {
+        return { ...result2, generation: undefined };
+      }
+      const saved2 = await store.save(token, result2.artifact, reloaded.generation);
+      return { ...result2, generation: saved2.generation };
+    } catch (err2) {
+      if (err2 instanceof SessionPreconditionFailedError) {
+        return concurrentModification(err2.expected, err2.actual);
+      }
+      throw err2;
+    }
+  }
+}
+
+export function isSessionNotFound(r: unknown): r is SessionNotFound {
+  return typeof r === 'object' && r !== null && (r as SessionNotFound).code === 'SESSION_NOT_FOUND';
+}
+
+export function isConcurrentModification(r: unknown): r is ConcurrentModificationResult {
+  return typeof r === 'object' && r !== null && (r as ConcurrentModificationResult).code === 'CONCURRENT_MODIFICATION';
 }
