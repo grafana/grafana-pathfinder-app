@@ -111,6 +111,9 @@ export function useSectionRequirements({
       const result = await checkRequirementsFromData(data);
       if (sectionMountedRef.current) {
         const fixableError = result.error?.find((e) => e.canFix);
+        // Use the fixable error for explanation when one exists, so the
+        // message matches the issue the Fix button will actually resolve.
+        const explanationSource = fixableError ?? result.error?.[0];
         setStatus({
           checking: false,
           passed: result.pass,
@@ -120,7 +123,7 @@ export function useSectionRequirements({
           targetHref: fixableError?.targetHref,
           explanation: result.pass
             ? undefined
-            : getRequirementExplanation(result.error?.[0]?.requirement, hints, result.error?.[0]?.error),
+            : getRequirementExplanation(explanationSource?.requirement, hints, explanationSource?.error),
         });
       }
     } catch (error) {
@@ -132,11 +135,18 @@ export function useSectionRequirements({
     }
   }, [requirements, sectionId, title, hints, checkRequirementsFromData]);
 
+  // Keep a ref so `fix` closes over current status without recreating on
+  // every polling tick (status.checking flips true/false every 5 seconds).
+  const statusRef = useRef(status);
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
   const fix = useCallback(async () => {
-    if (!status.canFix) {
+    const { canFix, fixType, targetHref } = statusRef.current;
+    if (!canFix) {
       return;
     }
-    const { fixType, targetHref } = status;
     try {
       const { NavigationManager } = await import('../../../interactive-engine');
       const navigationManager = new NavigationManager();
@@ -146,12 +156,14 @@ export function useSectionRequirements({
         await navigationManager.fixLocationRequirement(targetHref);
       } else if (fixType === 'navigation') {
         await navigationManager.fixNavigationRequirements();
+      } else {
+        console.warn('useSectionRequirements: unrecognised fixType', fixType);
       }
       await recheck();
     } catch (fixError) {
       console.warn('Failed to fix section requirements:', fixError);
     }
-  }, [status, recheck]);
+  }, [recheck]);
 
   // Initial requirements check and re-check on relevant events.
   useEffect(() => {

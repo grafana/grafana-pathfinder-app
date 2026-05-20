@@ -422,6 +422,11 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
 // ─── Section requirements fix button — issue #476 ───────────────────────────
 
 describe('InteractiveSection — section requirements fix button (#476)', () => {
+  beforeEach(() => {
+    const { NavigationManager } = jest.requireMock('../../interactive-engine');
+    NavigationManager.mockClear();
+  });
+
   function renderSectionWithRequirements(requirements: string) {
     return render(
       <InteractiveSection

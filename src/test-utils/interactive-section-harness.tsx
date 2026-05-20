@@ -44,6 +44,10 @@ export function setCheckRequirementsResult(result: typeof _checkRequirementsResu
   _checkRequirementsResult = result;
 }
 
+// Module-level reference so resetSectionHarness can clear call history between
+// tests (the factory is only called once by jest.mock, so the fn is shared).
+let _stableCheckRequirementsFromData: jest.Mock | null = null;
+
 const stepsKey = (contentKey: string, sectionId: string) => `section-steps::${contentKey}::${sectionId}`;
 const collapseKey = (contentKey: string, sectionId: string) => `section-collapse::${contentKey}::${sectionId}`;
 const ackKey = (contentKey: string, sectionId: string) => `section-ack::${contentKey}::${sectionId}`;
@@ -211,7 +215,8 @@ export function createInteractiveEngineMock() {
   // on every render (because useInteractiveElements returns a new jest.fn() each
   // call), the section's useCallback dependency changes and the requirements-check
   // effect re-fires indefinitely, causing OOM in tests with requirements set.
-  const stableCheckRequirementsFromData = jest.fn(async () => _checkRequirementsResult);
+  _stableCheckRequirementsFromData = jest.fn(async () => _checkRequirementsResult);
+  const stableCheckRequirementsFromData = _stableCheckRequirementsFromData;
   return {
     useInteractiveElements: () => ({
       executeInteractiveAction: jest.fn(async () => undefined),
@@ -356,6 +361,7 @@ export function createInteractiveConfigMock() {
 export function resetSectionHarness() {
   memoryStore.clear();
   _checkRequirementsResult = { pass: true, error: [] };
+  _stableCheckRequirementsFromData?.mockClear();
 }
 
 /**
