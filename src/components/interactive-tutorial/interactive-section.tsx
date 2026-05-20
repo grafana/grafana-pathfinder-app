@@ -195,10 +195,11 @@ export function InteractiveSection({
   // 5-second setInterval) is owned by `useSectionRequirements`. Pattern F
   // timing contract — the 5s cadence is load-bearing for "auto-pickup of
   // out-of-band state changes that don't fire one of the 4 events".
-  const { status: sectionRequirementsStatus } = useSectionRequirements({
+  const { status: sectionRequirementsStatus, fix: fixSectionRequirements } = useSectionRequirements({
     requirements,
     sectionId,
     title,
+    hints,
     checkRequirementsFromData,
   });
 
@@ -1265,9 +1266,28 @@ export function InteractiveSection({
 
       {/* Section requirements status banner */}
       {!isCollapsed && requirements && !sectionRequirementsStatus.passed && (
-        <div className="interactive-section-requirements-banner">
-          <span className="interactive-section-requirements-icon">🔒</span>
-          <span className="interactive-section-requirements-message">Requirements not yet met</span>
+        <div
+          className="interactive-section-requirements-banner"
+          data-testid={testIds.interactive.sectionRequirementsBanner(sectionId)}
+        >
+          <div className="interactive-section-requirements-content">
+            <span className="interactive-section-requirements-icon">🔒</span>
+            <span className="interactive-section-requirements-message">
+              {sectionRequirementsStatus.explanation || 'Requirements not yet met'}
+            </span>
+          </div>
+          {sectionRequirementsStatus.canFix && (
+            <div className="interactive-step-requirement-buttons">
+              <button
+                type="button"
+                className="interactive-requirement-retry-btn"
+                data-testid={testIds.interactive.requirementFixButton(sectionId)}
+                onClick={fixSectionRequirements}
+              >
+                Fix this
+              </button>
+            </div>
+          )}
         </div>
       )}
 

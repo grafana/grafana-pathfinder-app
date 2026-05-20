@@ -460,13 +460,22 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   // Styled to match individual step requirements (interactive-guided-requirement-box)
   '.interactive-section-requirements-banner': {
     display: 'flex',
-    alignItems: 'flex-start',
-    gap: '8px',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
     margin: `${theme.spacing(1.5)} ${theme.spacing(2)} 0`,
     padding: '10px 12px',
     background: theme.colors.background.secondary,
     border: `1px solid ${theme.colors.border.medium}`,
     borderRadius: '6px',
+    fontSize: '0.875rem',
+    lineHeight: '1.5',
+    color: theme.colors.text.secondary,
+  },
+
+  '.interactive-section-requirements-content': {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '8px',
   },
 
   '.interactive-section-requirements-icon': {

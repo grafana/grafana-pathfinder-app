@@ -17,19 +17,29 @@
  *   - `window` 'popstate' → recheck
  *   - `document` 'section-completed' → recheck
  *
- * Returns the current status. The recheck function is exposed for
- * callers that want to force a recheck (currently no consumers do
- * this; the runner has its own inline check).
+ * Returns the current status, a recheck function, and a fix function.
+ * The recheck function is exposed for callers that want to force a
+ * recheck (currently no consumers do this; the runner has its own
+ * inline check). The fix function navigates to satisfy a fixable
+ * requirement and triggers a recheck afterwards.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getRequirementExplanation, dispatchFix } from '../../../requirements-manager';
 
 interface SectionRequirementsResult {
   pass: boolean;
   // Matches `CheckResult` from the requirements-manager: each entry's
   // `error` is `string | undefined`. The hook reads only the first
   // entry's `error` for display, falling back to a generic message.
-  error?: Array<{ error?: string; canFix?: boolean }>;
+  error?: Array<{
+    error?: string;
+    canFix?: boolean;
+    fixType?: string;
+    targetHref?: string;
+    scrollContainer?: string;
+    requirement?: string;
+  }>;
 }
 
 interface SectionRequirementsData {
@@ -45,12 +55,18 @@ export interface SectionRequirementsStatus {
   checking: boolean;
   passed: boolean;
   error?: string;
+  canFix?: boolean;
+  fixType?: string;
+  targetHref?: string;
+  scrollContainer?: string;
+  explanation?: string;
 }
 
 export interface UseSectionRequirementsArgs {
   requirements: string | undefined;
   sectionId: string;
   title: string | undefined;
+  hints?: string;
   /** Dependency injection: `useInteractiveElements().checkRequirementsFromData`. */
   checkRequirementsFromData: (data: SectionRequirementsData) => Promise<SectionRequirementsResult>;
 }
@@ -58,6 +74,7 @@ export interface UseSectionRequirementsArgs {
 export interface UseSectionRequirementsResult {
   status: SectionRequirementsStatus;
   recheck: () => Promise<void>;
+  fix: () => Promise<void>;
 }
 
 /** Polling interval for periodic recheck (timing contract). */
@@ -67,6 +84,7 @@ export function useSectionRequirements({
   requirements,
   sectionId,
   title,
+  hints,
   checkRequirementsFromData,
 }: UseSectionRequirementsArgs): UseSectionRequirementsResult {
   const [status, setStatus] = useState<SectionRequirementsStatus>({
@@ -100,10 +118,21 @@ export function useSectionRequirements({
       };
       const result = await checkRequirementsFromData(data);
       if (sectionMountedRef.current) {
+        const fixableError = result.error?.find((e) => e.canFix);
+        // Use the fixable error for explanation when one exists, so the
+        // message matches the issue the Fix button will actually resolve.
+        const explanationSource = fixableError ?? result.error?.[0];
         setStatus({
           checking: false,
           passed: result.pass,
           error: result.error?.[0]?.error || (result.pass ? undefined : 'Requirements not met'),
+          canFix: !!fixableError,
+          fixType: fixableError?.fixType,
+          targetHref: fixableError?.targetHref,
+          scrollContainer: fixableError?.scrollContainer,
+          explanation: result.pass
+            ? undefined
+            : getRequirementExplanation(explanationSource?.requirement, hints, explanationSource?.error),
         });
       }
     } catch (error) {
@@ -113,7 +142,40 @@ export function useSectionRequirements({
         setStatus({ checking: false, passed: true });
       }
     }
-  }, [requirements, sectionId, title, checkRequirementsFromData]);
+  }, [requirements, sectionId, title, hints, checkRequirementsFromData]);
+
+  // Keep a ref so `fix` closes over current status without recreating on
+  // every polling tick (status.checking flips true/false every 5 seconds).
+  const statusRef = useRef(status);
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  const fix = useCallback(async () => {
+    const { canFix, fixType, targetHref, scrollContainer } = statusRef.current;
+    if (!canFix) {
+      return;
+    }
+    try {
+      const { NavigationManager } = await import('../../../interactive-engine');
+      const navigationManager = new NavigationManager();
+      const result = await dispatchFix({
+        fixType,
+        targetHref,
+        scrollContainer,
+        requirements,
+        stepId: sectionId,
+        navigationManager,
+        fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(),
+      });
+      if (!result.ok) {
+        console.warn('useSectionRequirements: fix failed:', result.error);
+      }
+      await recheck();
+    } catch (fixError) {
+      console.warn('Failed to fix section requirements:', fixError);
+    }
+  }, [requirements, sectionId, recheck]);
 
   // Initial requirements check and re-check on relevant events.
   useEffect(() => {
@@ -148,5 +210,5 @@ export function useSectionRequirements({
     };
   }, [requirements, recheck]);
 
-  return { status, recheck };
+  return { status, recheck, fix };
 }
