@@ -197,14 +197,48 @@ if ! gcloud iam service-accounts describe "${SERVICE_ACCOUNT_EMAIL}" >/dev/null 
     --display-name="Pathfinder MCP (${ENV_NAME})" \
     --description="Cloud Run identity for ${SERVICE} in env=${ENV_NAME}; scoped to gs://${BUCKET}" \
     --quiet
+
+  # IAM propagation is eventually consistent — a freshly-created SA is not
+  # immediately visible to the IAM policy binding API. Poll until describe
+  # succeeds against the SA before issuing any binding that references it.
+  # Without this, the next `add-iam-policy-binding` call fails with a 400
+  # "Service account does not exist" on a cold project.
+  echo "==> waiting for service account to propagate..."
+  for attempt in $(seq 1 30); do
+    if gcloud iam service-accounts describe "${SERVICE_ACCOUNT_EMAIL}" >/dev/null 2>&1; then
+      break
+    fi
+    if [ "${attempt}" -eq 30 ]; then
+      echo "error: service account ${SERVICE_ACCOUNT_EMAIL} did not become visible after 60s" >&2
+      exit 1
+    fi
+    sleep 2
+  done
 fi
 
 echo "==> granting roles/storage.objectAdmin on gs://${BUCKET} to ${SERVICE_ACCOUNT_EMAIL}..."
-gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
-  --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
-  --role="roles/storage.objectAdmin" \
-  --condition=None \
-  --quiet >/dev/null
+# Even after `describe` succeeds, the binding API sometimes lags by a few
+# seconds. Retry the binding itself on transient "does not exist" 400s.
+for attempt in $(seq 1 10); do
+  if gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+      --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
+      --role="roles/storage.objectAdmin" \
+      --condition=None \
+      --quiet >/dev/null 2>&1; then
+    break
+  fi
+  if [ "${attempt}" -eq 10 ]; then
+    echo "error: IAM binding for ${SERVICE_ACCOUNT_EMAIL} on gs://${BUCKET} failed after 10 retries" >&2
+    # Surface the actual error on the last try (without 2>/dev/null) so the operator sees the cause.
+    gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+      --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
+      --role="roles/storage.objectAdmin" \
+      --condition=None \
+      --quiet
+    exit 1
+  fi
+  sleep 3
+done
 
 # ---------------------------------------------------------------------------
 # Build (linux/amd64 — matches Cloud Run regardless of host arch) and push.
