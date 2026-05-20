@@ -21,7 +21,10 @@ const ArtifactSchema = z.object({
   manifest: z.record(z.string(), z.unknown()).optional(),
 });
 
-export function registerInspectionTools(server: McpServer): void {
+export function registerInspectionTools(server: McpServer, _options: { sessionStore: import('../lib/session-store').SessionStore }): void {
+  // _options.sessionStore is wired in a follow-up commit that adds the
+  // session-mode branch to inspect / validate.
+  void _options;
   server.registerTool(
     'pathfinder_inspect',
     {

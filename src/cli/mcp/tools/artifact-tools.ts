@@ -23,7 +23,10 @@ import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import { writeAppend } from './annotations';
 import { outcomeResult } from './result';
 
-export function registerArtifactTools(server: McpServer): void {
+export function registerArtifactTools(server: McpServer, _options: { sessionStore: import('../lib/session-store').SessionStore }): void {
+  // _options.sessionStore is wired in a follow-up commit that adds the
+  // session-mint branch to pathfinder_create_package.
+  void _options;
   server.registerTool(
     'pathfinder_create_package',
     {

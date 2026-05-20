@@ -29,6 +29,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
+import { getDefaultSessionStore } from '../lib/session-store-factory';
 import { buildServer } from '../server';
 import { defaultSessionHopCounter, type SessionHopCounter, type ToolCallObservation } from './instrumentation';
 
@@ -242,8 +243,14 @@ export async function runHttp(options: RunHttpOptions): Promise<HttpHandle> {
   const log = options.log ?? defaultLog;
   const sessionHopCounter = options.sessionHopCounter ?? defaultSessionHopCounter;
   const wallclockMs = options.wallclockMs ?? PER_CALL_WALLCLOCK_MS;
+  // Resolve the session store once at startup so every per-request McpServer
+  // shares one backend (the in-memory store is process-local; the GCS store
+  // is the authoritative cross-replica backend). Tests that override
+  // `options.buildServer` bypass this path.
+  const sessionStore = options.buildServer ? undefined : await getDefaultSessionStore();
   const factory =
-    options.buildServer ?? ((instrumentation: (obs: ToolCallObservation) => void) => buildServer({ instrumentation }));
+    options.buildServer ??
+    ((instrumentation: (obs: ToolCallObservation) => void) => buildServer({ instrumentation, sessionStore }));
 
   const state = { inFlight: 0 };
 

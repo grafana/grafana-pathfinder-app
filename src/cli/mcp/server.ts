@@ -14,6 +14,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { CURRENT_SCHEMA_VERSION } from '../../types/json-guide.schema';
+import { InMemorySessionStore, type SessionStore } from './lib/session-store';
 import { SERVER_INSTRUCTIONS } from './lib/server-instructions';
 import { registerAuthoringTools } from './tools';
 import { instrumentServer, type ToolCallInstrumentation } from './transports/instrumentation';
@@ -28,6 +29,17 @@ export interface BuildServerOptions {
    * fields the wire-level byte counters can't see; stdio passes nothing.
    */
   instrumentation?: ToolCallInstrumentation;
+  /**
+   * Session store for the P7 session-mode branch of mutation / inspection
+   * tools. When omitted, a fresh process-local `InMemorySessionStore` is
+   * used — the safe default for tests and short-lived stdio sessions.
+   *
+   * Production transports (stdio + http) resolve the env-driven store via
+   * `getDefaultSessionStore()` at startup and pass it here so every
+   * request handler shares one backend. Tests pass a dedicated store for
+   * isolation.
+   */
+  sessionStore?: SessionStore;
 }
 
 export function buildServer(options: BuildServerOptions = {}): McpServer {
@@ -52,7 +64,8 @@ export function buildServer(options: BuildServerOptions = {}): McpServer {
     instrumentServer(server, options.instrumentation);
   }
 
-  registerAuthoringTools(server);
+  const sessionStore = options.sessionStore ?? new InMemorySessionStore();
+  registerAuthoringTools(server, { sessionStore });
 
   return server;
 }

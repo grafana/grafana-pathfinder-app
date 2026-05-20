@@ -10,6 +10,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import type { SessionStore } from '../lib/session-store';
 import { registerArtifactTools } from './artifact-tools';
 import { registerAuthoringStart } from './authoring-start';
 import { registerFinalizeTool } from './finalize';
@@ -19,12 +20,22 @@ import { registerMutationTools } from './mutation-tools';
 import { registerRepositoryTools } from './repository-tools';
 import { registerSchemaTools } from './schema-tools';
 
-export function registerAuthoringTools(server: McpServer): void {
+export interface RegisterAuthoringToolsOptions {
+  /**
+   * Session store used by the session-mode branch of every mutation /
+   * inspection / read tool (P7). Stateless `{artifact}` mode does not
+   * consult the store; tools that only support artifact mode ignore this
+   * option.
+   */
+  sessionStore: SessionStore;
+}
+
+export function registerAuthoringTools(server: McpServer, options: RegisterAuthoringToolsOptions): void {
   registerAuthoringStart(server);
   registerHelpTool(server);
-  registerArtifactTools(server);
-  registerMutationTools(server);
-  registerInspectionTools(server);
+  registerArtifactTools(server, options);
+  registerMutationTools(server, options);
+  registerInspectionTools(server, options);
   registerFinalizeTool(server);
   registerRepositoryTools(server);
   registerSchemaTools(server);

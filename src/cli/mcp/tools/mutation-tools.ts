@@ -84,7 +84,11 @@ const FlagValuesSchema = z
 
 const BlockTypeEnum = Object.keys(BLOCK_SCHEMA_MAP) as BlockType[];
 
-export function registerMutationTools(server: McpServer): void {
+export function registerMutationTools(server: McpServer, _options: { sessionStore: import('../lib/session-store').SessionStore }): void {
+  // _options.sessionStore is unused in this commit. The session-mode
+  // branch of each mutation tool lands in a follow-up commit; the
+  // signature is set up first so the registry wiring is stable.
+  void _options;
   server.registerTool(
     'pathfinder_add_block',
     {
