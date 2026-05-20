@@ -52,8 +52,8 @@ Sub-checkboxes inside each task are for the executing agent to tick off as they 
 - [x] A2 — Tier-doc-sync test
 - [x] A3 — Fix prevent-doc-drift section refs
 - [x] A4 — F-code consistency audit
-- [ ] A5 — Fix CONTEXT_INDEX auto-load claims
-- [ ] Final verification (`npm run check` clean)
+- [x] A5 — Fix CONTEXT_INDEX auto-load claims
+- [ ] Final verification (`npm run check` clean) — **not clean**: `npm run typecheck` fails with 5 strict-mode errors in `src/validation/architecture.test.ts` introduced by A2 (commit `cf9afb2d`). Test passes at runtime via Jest. Unrelated to A5; see A5 Notes for recommended follow-up commit.
 
 ---
 
@@ -311,7 +311,7 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 ## A5 — Fix `CONTEXT_INDEX.md` / `CLAUDE.md` auto-load claims
 
-**Status:** not-started
+**Status:** done (Claude Opus 4.7, 2026-05-20, commit 64b5ee90)
 **Effort:** 2–3h
 **Depends on:** —
 **Citation:** F-3
@@ -332,11 +332,11 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 **Steps:**
 
-- [ ] Rewrite preamble at `CONTEXT_INDEX.md:3-5`
-- [ ] Rewrite the table column header or add a note explaining the column is Cursor metadata
-- [ ] Rewrite `CLAUDE.md:108` (frontend-security entry)
-- [ ] `rg -n 'auto-triggered|auto-load|alwaysApply' --type md AGENTS.md CLAUDE.md docs/ .cursor/` and audit each hit
-- [ ] Commit: `docs(context-index): clarify that .mdc glob auto-load is Cursor-only, not Claude Code (A5)`
+- [x] Rewrite preamble at `CONTEXT_INDEX.md:3-5`
+- [x] Rewrite the table column header or add a note explaining the column is Cursor metadata
+- [x] Rewrite `CLAUDE.md:108` (frontend-security entry) — actual location was AGENTS.md:111 (CLAUDE.md `@AGENTS.md`-includes it; only one site to edit)
+- [x] `rg -n 'auto-triggered|auto-load|alwaysApply' --type md AGENTS.md CLAUDE.md docs/ .cursor/` and audit each hit
+- [x] Commit: `docs(context-index): clarify that .mdc glob auto-load is Cursor-only, not Claude Code (A5)`
 
 **Acceptance criteria:**
 
@@ -345,22 +345,52 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 **Files touched:**
 
+- `docs/developer/CONTEXT_INDEX.md` — rewrote the preamble (line 3 area) to spell out the cross-tool behavior explicitly: Cursor honors `globs:` / `alwaysApply:` frontmatter, Claude Code does not; the "Auto-triggered by globs" column is preserved as Cursor metadata. Column headers and per-row glob entries left intact so the file remains useful as a Cursor cross-tool reference.
+- `AGENTS.md` — rewrote the `frontend-security.mdc` bullet in the "On-demand context — Frequently-needed entries" list (line 111). Old: "(auto-triggered on `*.ts`/…)". New: "load when working in `*.ts`/`*.tsx`/`*.js`/`*.jsx` files (Cursor auto-loads via `globs:` frontmatter; Claude Code does not — cite by path)". (CLAUDE.md `@AGENTS.md`-includes this file, so a single edit propagates to both tools' agent context.)
+- `.cursor/rules/pr-review.md` — rewrote the F1–F6 escalation pointer at line 257. Old: "`frontend-security.mdc` is already loaded (always-apply). Reference it directly." New: "load `.cursor/rules/frontend-security.mdc` directly … (In Cursor, that file's `alwaysApply` frontmatter auto-loads it for matching files; in Claude Code, cite it by path.)" — the A4 straggler.
+- `.cursor/skills/prevent-doc-drift/SKILL.md` — softened the "new frontend subsystem → CONTEXT_INDEX.md" rule row (line 83). Old: "auto-triggered globs if the subsystem has a natural file-glob trigger". New: "glob trigger (for the 'Auto-triggered by globs' column — Cursor metadata, see CONTEXT_INDEX preamble) if …" — aligns the skill's authoring guidance with the new cross-tool framing in CONTEXT_INDEX.
+
 **Notes:**
+
+- **Audit summary:** 16 hits initially for `auto-triggered|auto-load|always[- ]apply|alwaysApply` across `AGENTS.md`, `CLAUDE.md`, `docs/`, `.cursor/`. Four files required content fixes (CONTEXT*INDEX.md, AGENTS.md, pr-review.md, prevent-doc-drift/SKILL.md). The remaining hits split between out-of-scope (design narrative in `docs/design/AGENT_HARDENING.md` and this plan file — both describe \_the issue itself*) and correctly-framed mentions (`maintain-docs/SKILL.md:241` refers to the literal `alwaysApply: false` frontmatter field that should be set on new rule files; `CONCERNS.md:58` lists `alwaysApply` and `globs:` as search keywords for the `ai-subsystem` concern routing — neither makes a behavioral claim).
+- **Brief vs. reality — small location correction:** the task brief pointed to `CLAUDE.md:108`. The actual frontend-security bullet lives at `AGENTS.md:111`; `CLAUDE.md` line 3 includes AGENTS.md via `@AGENTS.md` directive, so a single edit to AGENTS.md propagates to both Cursor and Claude Code agent context. No second edit needed.
+- **Strategy — preserve, don't strip:** kept the "Auto-triggered by globs" column header and all per-row glob entries intact in CONTEXT_INDEX.md. They are genuinely useful Cursor metadata for cross-tool readers; the preamble now disambiguates what the column means in each tool.
+- **A4 cleanup:** explicitly addressed the `pr-review.md:257` "(always-apply)" wording that A4's notes flagged as A5 cleanup territory.
+- **prevent-doc-drift skill update:** the line-83 rule row instructs future agents what to write into CONTEXT_INDEX.md when adding a new frontend subsystem. Reworded so it does not re-introduce the same misleading framing on the next subsystem add.
+- **Final-verification status:** `npm run test:ci -- src/validation/architecture.test.ts --coverage=false` passes (11/11; ratchet still `vertical=4 lateral=9 barrel=0`). `npm run check` **fails on `npm run typecheck`** with 5 strict-mode errors in `src/validation/architecture.test.ts` (lines 351, 370, 371, 390, 413 — `Object is possibly 'undefined'` on regex `match` array index accesses). These errors are in the A2 commit (`cf9afb2d`), not introduced by A5. Per the task brief, reporting the failure but not fixing unrelated problems on this branch. **Recommended follow-up: a small post-A5 commit that adds non-null assertions or explicit guards in the A2 parser helpers** — the test passes at runtime because the regexes always match the well-formed docs, but strict TS does not know that. Out of scope for A5's "no doc implies auto-load" goal but blocks `npm run check`.
+- Pre-commit hook (lint-staged + prettier) reflowed `prevent-doc-drift/SKILL.md` for whitespace alignment after the row rewrite. No content drift.
 
 ---
 
 ## Final verification
 
-**Status:** not-started
+**Status:** partially-clean (Claude Opus 4.7, 2026-05-20) — typecheck fails on pre-existing A2 strict-mode issues; everything else passes
 **Depends on:** A1–A5 all done
 
 **Steps:**
 
-- [ ] `npm run check` passes (typecheck + lint + prettier + lint:go + test:go + test:ci)
-- [ ] `git log --oneline main..HEAD` shows the expected commit shape (pre-flight + 5 task commits + optional plan-update commit)
-- [ ] `## Overall progress` checklist above is fully ticked
-- [ ] Plan file's `Files touched` and `Notes` sections are filled in for every task
-- [ ] Branch ready for PR (PR creation itself is out of scope for this branch — that comes later)
+- [ ] `npm run check` passes (typecheck + lint + prettier + lint:go + test:go + test:ci) — **fails on typecheck** with 5 strict-mode errors in `src/validation/architecture.test.ts` (lines 351, 370, 371, 390, 413). All `Object is possibly 'undefined'` on regex `match[1]` / `match[2]` index accesses inside the parser added by A2 (commit `cf9afb2d`). Test passes at runtime under Jest (regexes always match the well-formed docs in this repo). Unrelated to A5's content edits. Recommended follow-up: a small commit adding non-null assertions (`match[1]!`) or explicit `if (!match) throw` guards in the affected helpers.
+- [x] `git log --oneline main..HEAD` shows the expected commit shape (pre-flight + 5 task commits + 4 plan-update commits — see below)
+- [x] `## Overall progress` checklist above is fully ticked (Final verification entry annotated, not ticked)
+- [x] Plan file's `Files touched` and `Notes` sections are filled in for every task
+- [x] Branch ready for PR (PR creation itself is out of scope for this branch — that comes later). PR-readiness gated on the recommended A2-typecheck follow-up commit landing first.
+
+**Commit shape on branch (`git log --oneline main..HEAD` at A5 close):**
+
+```
+64b5ee90 docs(context-index): clarify that .mdc glob auto-load is Cursor-only, not Claude Code (A5)
+decd8a37 docs(agent-hardening): mark A4 done in Phase A plan
+26542faa docs(security): align F-code IDs across pr-review, secure skill, and CONCERNS (A4)
+b29f67dd docs(agent-hardening): mark A3 done in Phase A plan
+38ded7b4 docs(prevent-doc-drift): align section references and tier examples with current docs (A3)
+103b6881 docs(agent-hardening): mark A2 done in Phase A plan
+cf9afb2d test(validation): assert tier docs stay in sync with TIER_MAP (A2)
+f4bebe1f docs(agent-hardening): mark A1 done in Phase A plan
+7a11cb35 docs(agent-hardening): reconcile tier model prose with import-graph TIER_MAP (A1)
+7507c04b docs(agent-hardening): add Phase A design doc and implementation plan
+```
+
+(Plus the upcoming A5 plan-update commit.)
 
 ## Critical files reference
 
