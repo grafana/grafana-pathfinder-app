@@ -10,10 +10,6 @@
 export const FLOATING_PANEL_MIN_WIDTH = 320;
 export const FLOATING_PANEL_MIN_HEIGHT = 280;
 
-/** Maximum panel dimensions (pixels) */
-export const FLOATING_PANEL_MAX_WIDTH = 600;
-export const FLOATING_PANEL_MAX_HEIGHT = 700;
-
 /** Default panel dimensions (pixels) */
 export const FLOATING_PANEL_DEFAULT_WIDTH = 400;
 export const FLOATING_PANEL_DEFAULT_HEIGHT = 400;
