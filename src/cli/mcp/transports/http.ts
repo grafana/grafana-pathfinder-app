@@ -30,6 +30,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
 import { getDefaultSessionStore } from '../lib/session-store-factory';
+import { isValidSessionToken, normalizeSessionToken, tokenLogHash, tokenLogPrefix } from '../lib/session-token';
 import { buildServer } from '../server';
 import { defaultSessionHopCounter, type SessionHopCounter, type ToolCallObservation } from './instrumentation';
 
@@ -187,6 +188,19 @@ export interface AccessLogEntry {
    * verbatim via `outcomeResult`). Best-effort.
    */
   toolStatus?: string;
+  /**
+   * First 12 chars of the session token in args, when this tool call
+   * carries one (P7 session-mode). Recognizable for humans without
+   * being a usable credential. Raw tokens never appear in the log.
+   * See `lib/session-token.ts#tokenLogPrefix`.
+   */
+  sessionTokenPrefix?: string;
+  /**
+   * Short SHA-256-derived hash of the session token, for stable
+   * correlation across log lines without the human-readability of the
+   * prefix. See `lib/session-token.ts#tokenLogHash`.
+   */
+  sessionTokenHash?: string;
 }
 
 interface RpcInfo {
@@ -194,6 +208,8 @@ interface RpcInfo {
   rpcToolName?: string;
   rpcId?: string | number | null;
   batchSize?: number;
+  sessionTokenPrefix?: string;
+  sessionTokenHash?: string;
 }
 
 /**
@@ -221,9 +237,23 @@ function extractRpcInfo(body: unknown): RpcInfo {
     info.rpcId = obj.id;
   }
   if (info.rpcMethod === 'tools/call' && obj.params && typeof obj.params === 'object') {
-    const name = (obj.params as { name?: unknown }).name;
-    if (typeof name === 'string') {
-      info.rpcToolName = name;
+    const params = obj.params as { name?: unknown; arguments?: unknown };
+    if (typeof params.name === 'string') {
+      info.rpcToolName = params.name;
+    }
+    // P7 task 17 — surface session-token-derived correlators in the
+    // access log so an operator can trace one authoring session across
+    // hops without ever logging the raw token. Best-effort: any shape
+    // we don't recognize is silently skipped.
+    if (params.arguments && typeof params.arguments === 'object') {
+      const raw = (params.arguments as { sessionToken?: unknown }).sessionToken;
+      if (typeof raw === 'string') {
+        const token = normalizeSessionToken(raw);
+        if (token !== null && isValidSessionToken(token)) {
+          info.sessionTokenPrefix = tokenLogPrefix(token);
+          info.sessionTokenHash = tokenLogHash(token);
+        }
+      }
     }
   }
   return info;
@@ -364,6 +394,8 @@ async function handleRequest(
       ...(observation?.artifactBytesOut !== undefined ? { artifactBytesOut: observation.artifactBytesOut } : {}),
       ...(observation ? { toolError: observation.isError } : {}),
       ...(observation?.toolStatus !== undefined ? { toolStatus: observation.toolStatus } : {}),
+      // sessionTokenPrefix / sessionTokenHash flow through via `...rpc`
+      // above when the tools/call args carry a sessionToken.
     });
   };
 

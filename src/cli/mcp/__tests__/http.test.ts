@@ -281,6 +281,54 @@ describe('HTTP transport', () => {
     }
   });
 
+  it('emits sessionTokenPrefix and sessionTokenHash on tools/call args that carry a sessionToken (P7 task 17)', async () => {
+    const h = await start();
+    try {
+      // 22-char Crockford base32 token shape (no i/l/o/u) — the access
+      // log derives the prefix/hash without ever logging the raw value.
+      const token = 'abcdefghjkmnpqrstvwxyz';
+      await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'call',
+          method: 'tools/call',
+          params: { name: 'pathfinder_list_blocks', arguments: { sessionToken: token } },
+        }),
+      });
+      const entry = h.logs.at(-1)!;
+      expect(entry.rpcToolName).toBe('pathfinder_list_blocks');
+      expect(entry.sessionTokenPrefix).toBe('abcdefghjkmn');
+      expect(typeof entry.sessionTokenHash).toBe('string');
+      // Raw token never appears anywhere in the log entry.
+      expect(JSON.stringify(entry)).not.toContain(token);
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('omits sessionToken fields when the call has no sessionToken arg', async () => {
+    const h = await start();
+    try {
+      await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'call',
+          method: 'tools/call',
+          params: { name: 'pathfinder_authoring_start', arguments: {} },
+        }),
+      });
+      const entry = h.logs.at(-1)!;
+      expect(entry.sessionTokenPrefix).toBeUndefined();
+      expect(entry.sessionTokenHash).toBeUndefined();
+    } finally {
+      await h.close();
+    }
+  });
+
   it('omits rpc fields entirely on non-RPC requests', async () => {
     const h = await start();
     try {

@@ -55,10 +55,7 @@ async function callTool(
   }
 }
 
-async function mintSession(
-  store: InMemorySessionStore,
-  mcpSessionId: string | undefined
-): Promise<string> {
+async function mintSession(store: InMemorySessionStore, mcpSessionId: string | undefined): Promise<string> {
   const r = await callTool(store, mcpSessionId, 'pathfinder_create_package', {
     title: 'pin-test',
     type: 'guide',
