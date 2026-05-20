@@ -29,7 +29,7 @@ Stdio is the right transport for any MCP client that owns the server's process l
 node dist/cli/cli/index.js mcp --transport http --port 8080
 ```
 
-The HTTP transport uses the SDK's StreamableHTTP transport in **stateless mode** — `sessionIdGenerator` is omitted so each request gets a fresh transport and there is no server-side session state.
+The HTTP transport uses the SDK's StreamableHTTP transport in **stateless mode** — `sessionIdGenerator` is omitted so each request gets a fresh transport, and the SDK holds no per-connection state on the server. Authoring sessions ([Sessions](#sessions)) layer on top: they are server-side state, but keyed by an opaque token in the tool arguments rather than the transport. The transport stays cache-friendly even when the underlying authoring flow is multi-hop.
 
 **The HTTP transport ships without authentication for the MVP.** See the resolved open question in `docs/design/AI-AUTHORING-IMPLEMENTATION.md` ("Does the hosted HTTP MCP need auth at all?"). The MCP holds no privileged resource — Assistant performs the App Platform write with its own credentials downstream.
 
@@ -117,28 +117,31 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 
 ## Tool surface
 
-18 tools, registered in `src/cli/mcp/tools/`:
+21 tools, registered in `src/cli/mcp/tools/`:
 
-| Tool                                   | Module                | Wraps                                                                                 |
-| -------------------------------------- | --------------------- | ------------------------------------------------------------------------------------- |
-| `pathfinder_authoring_start`           | `authoring-start.ts`  | (static context block)                                                                |
-| `pathfinder_help`                      | `help.ts`             | `formatHelpAsJson` over the CLI commands                                              |
-| `pathfinder_create_package`            | `artifact-tools.ts`   | `runCreate`                                                                           |
-| `pathfinder_create_guide_template`     | `artifact-tools.ts`   | `newPackageState` + pre-populated starter blocks; round-tripped through `runValidate` |
-| `pathfinder_add_block`                 | `mutation-tools.ts`   | `runAddBlock`                                                                         |
-| `pathfinder_add_step`                  | `mutation-tools.ts`   | `runAddStep`                                                                          |
-| `pathfinder_add_choice`                | `mutation-tools.ts`   | `runAddChoice`                                                                        |
-| `pathfinder_edit_block`                | `mutation-tools.ts`   | `runEditBlock`                                                                        |
-| `pathfinder_remove_block`              | `mutation-tools.ts`   | `runRemoveBlock`                                                                      |
-| `pathfinder_set_manifest`              | `mutation-tools.ts`   | `runSetManifest`                                                                      |
-| `pathfinder_inspect`                   | `inspection-tools.ts` | `runInspect`                                                                          |
-| `pathfinder_validate`                  | `inspection-tools.ts` | `runValidate`                                                                         |
-| `pathfinder_finalize_for_app_platform` | `finalize.ts`         | `runValidate` + handoff payload from `APP-PLATFORM-PUBLISH-HANDOFF.md`                |
-| `pathfinder_list_packages`             | `repository-tools.ts` | CDN `repository.json` + filters (P6)                                                  |
-| `pathfinder_get_package`               | `repository-tools.ts` | CDN `content.json` + `manifest.json` for one id                                       |
-| `pathfinder_get_manifest`              | `repository-tools.ts` | CDN `manifest.json` only (cheaper variant)                                            |
-| `pathfinder_launch_package`            | `repository-tools.ts` | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug]            |
-| `pathfinder_get_schema`                | `schema-tools.ts`     | `exportSchema` / `exportAllSchemas` / `listSchemas` from `src/cli/commands/schema.ts` |
+| Tool                                   | Module                  | Wraps                                                                                       |
+| -------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------- |
+| `pathfinder_authoring_start`           | `authoring-start.ts`    | (static context block)                                                                      |
+| `pathfinder_help`                      | `help.ts`               | `formatHelpAsJson` over the CLI commands                                                    |
+| `pathfinder_create_package`            | `artifact-tools.ts`     | `runCreate` — mints a sessionToken + returns the seed artifact (P7)                         |
+| `pathfinder_create_guide_template`     | `artifact-tools.ts`     | `newPackageState` + pre-populated starter blocks; round-tripped through `runValidate` (P7)  |
+| `pathfinder_add_block`                 | `mutation-tools.ts`     | `runAddBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                               |
+| `pathfinder_add_step`                  | `mutation-tools.ts`     | `runAddStep` — accepts `{artifact}` OR `{sessionToken}` (P7)                                |
+| `pathfinder_add_choice`                | `mutation-tools.ts`     | `runAddChoice` — accepts `{artifact}` OR `{sessionToken}` (P7)                              |
+| `pathfinder_edit_block`                | `mutation-tools.ts`     | `runEditBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                              |
+| `pathfinder_remove_block`              | `mutation-tools.ts`     | `runRemoveBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                            |
+| `pathfinder_set_manifest`              | `mutation-tools.ts`     | `runSetManifest` — accepts `{artifact}` OR `{sessionToken}` (P7)                            |
+| `pathfinder_inspect`                   | `inspection-tools.ts`   | `runInspect` — accepts `{artifact}` OR `{sessionToken}` (P7)                                |
+| `pathfinder_validate`                  | `inspection-tools.ts`   | `runValidate` — accepts `{artifact}` OR `{sessionToken}` (P7)                               |
+| `pathfinder_list_blocks`               | `session-read-tools.ts` | Cheap tree summary for a session token (P7)                                                 |
+| `pathfinder_get_block`                 | `session-read-tools.ts` | One block by id from a session token (P7)                                                   |
+| `pathfinder_get_manifest_session`      | `session-read-tools.ts` | Session-stored manifest (distinct from the P6 CDN `pathfinder_get_manifest`) (P7)           |
+| `pathfinder_finalize_for_app_platform` | `finalize.ts`           | `runValidate` + handoff payload; accepts `{artifact}` OR `{sessionToken}`; deletes on success (P7) |
+| `pathfinder_list_packages`             | `repository-tools.ts`   | CDN `repository.json` + filters (P6)                                                        |
+| `pathfinder_get_package`               | `repository-tools.ts`   | CDN `content.json` + `manifest.json` for one id                                             |
+| `pathfinder_get_manifest`              | `repository-tools.ts`   | CDN `manifest.json` only (cheaper variant)                                                  |
+| `pathfinder_launch_package`            | `repository-tools.ts`   | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug]                  |
+| `pathfinder_get_schema`                | `schema-tools.ts`       | `exportSchema` / `exportAllSchemas` / `listSchemas` from `src/cli/commands/schema.ts`       |
 
 [p6-launch-bug]: https://github.com/grafana/grafana-pathfinder-app/issues/855
 
@@ -154,13 +157,57 @@ The four `repository-tools.ts` tools are read-only against a public package CDN.
 - **`pathfinder_launch_package`** returns a relative `launchPath` always; an absolute `launchUrl` when `instanceUrl` is provided. Pass `panelMode: "floating"` to append `&panelMode=floating`. The link is consumed by the existing `?doc=<interactive-learning.grafana.net URL>` path in `src/utils/find-doc-page.ts:60-86` (`isInteractiveLearningUrl` allowlist).
 - **`pathfinder_launch_package` ships PARTIAL** — see [#855][p6-launch-bug]. The URL it builds resolves to the Pathfinder plugin but does not currently load the targeted CDN guide as an interactive tutorial; it opens to a generic docs view instead. Every successful response carries a `warning: { status: "partial", message, tracking }` field so agents and clients see the limitation at runtime. The bug is in the app-side `auto-launch-tutorial` handler (`src/components/docs-panel/docs-panel.tsx`), which calls `openDocsPage(url, title)` without the `packageInfo` argument the recommendations panel passes — so the package-aware content pipeline never engages. The MCP tool will keep working as-is once the app-side fix lands.
 
-> Naming note: a future P5 GCS-sessions design also proposes a `pathfinder_get_manifest` tool — but session-scoped, taking a `sessionToken`. P6 ships first with the public-CDN semantics; if/when P5 lands it must rename or add a discriminator. See [P6 phase plan — Decision log](../design/phases/ai-authoring-6-cdn-repository-tools.md#decision-log).
+> Naming note: P7 ships a session-scoped manifest read as `pathfinder_get_manifest_session` (not `pathfinder_get_manifest`), per the resolved [P7 decision log entry](../design/phases/ai-authoring-7-gcs-sessions.md#2026-05-20--pathfinder_get_manifest_session-keeps-the-_session-suffix). The two tools read different data sources (public CDN vs. session bucket) and serve different mental models.
 
 ### Go MCP endpoint
 
 The Go MCP at `pkg/plugin/mcp.go` was retired under [MH5](../design/phases/mcp-hardening-5-retire-go-mcp.md). MH4 migrated its five stateless tools to this TS server; MH5 then dropped the final tool (`launch_guide`) and the per-instance pending-launch queue along with the file itself. The `/mcp` and `/mcp/pending-launch` routes now return 404. All MCP tools are served by this TS server.
 
-All authoring tools are **stateless**. The in-flight artifact (`{ content, manifest }`) is passed in and the updated artifact is returned out on every mutation. There is no `sessionId`.
+### Sessions
+
+P7 layered server-side authoring sessions on top of the stateless transport. Every mutation, inspection, and finalize tool now accepts EITHER mode:
+
+- **Stateless `{artifact}`** (the historical contract) — the agent threads the full `{content, manifest}` artifact through every call. No server-side state.
+- **Session-mode `{sessionToken}`** (the recommended contract) — `pathfinder_create_package` mints an opaque 22-char Crockford base32 token and persists the seed artifact server-side. Every subsequent call passes only `{sessionToken}` and receives back an **ack** (`{sessionToken, generation, summary, outcome}`) — the full artifact never returns to the agent's context. Cheap explicit reads (`pathfinder_list_blocks` / `pathfinder_get_block` / `pathfinder_get_manifest_session` / `pathfinder_inspect`) are the read surface. The full artifact returns at `pathfinder_finalize_for_app_platform`, which then deletes the session.
+
+Picking a mode is per-call; never mix on a single call (returns `INPUT_MODE_AMBIGUOUS`).
+
+**Storage and retention.** The session store is keyed off `PATHFINDER_SESSION_STORE`:
+
+| Env var                       | Default     | Effect                                                                                                  |
+| ----------------------------- | ----------- | ------------------------------------------------------------------------------------------------------- |
+| `PATHFINDER_SESSION_STORE`    | `memory`    | `memory` keeps sessions in-process (lost on restart; fine for stdio and tests). `gcs` uses the GCS-backed store. |
+| `PATHFINDER_SESSION_BUCKET`   | _(unset)_   | Required when `STORE=gcs`. Bucket name without `gs://` prefix.                                          |
+
+`scripts/deploy-mcp.sh dev` sets `STORE=gcs` and provisions the bucket with a **7-day lifecycle delete rule** as the safety net for abandoned sessions. Happy-path drafts evict immediately on finalize; abandoned ones expire via the lifecycle rule.
+
+**Concurrency.** Mutations use optimistic concurrency via a per-session `generation`. The server retries-once on a 412 race; agents can opt into immediate `CONCURRENT_MODIFICATION` surfacing by passing `expectedGeneration` on a mutation. Failed mutations never bump the generation — the bucket state is invariant under errors.
+
+**`Mcp-Session-Id` binding** (P7 task 16). When the HTTP request carries an `Mcp-Session-Id` header on session mint, the value is persisted as a pin against the new session token. Subsequent calls with a mismatched header surface as `SESSION_NOT_FOUND` (404, not 403 — the pin is a confidentiality boundary). Absence of the header on a subsequent call skips the check; this is the stdio fallback. Sessions minted without a header (stdio) have no pin and are never lazily bound on first-with-header access.
+
+**Ack shape** (session-mode mutations and creates):
+
+```jsonc
+{
+  "status": "ok",
+  "sessionToken": "abc...",   // echo on the next call
+  "generation": 7,            // optional `expectedGeneration` on the next call
+  "summary": [ ... ],         // compact navigation tree
+  // no artifact body — fetch via the explicit read tools or pathfinder_inspect
+}
+```
+
+**Wire codes** unique to session-mode (all carry `status: "error"`):
+
+| Code                       | Meaning                                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `INPUT_MODE_AMBIGUOUS`     | Both `{artifact}` and `{sessionToken}` were passed. Pick one.                                                 |
+| `INPUT_MODE_MISSING`       | Neither was passed.                                                                                           |
+| `INVALID_SESSION_TOKEN`    | Token failed the 22-char Crockford base32 shape check.                                                        |
+| `SESSION_NOT_FOUND`        | Unknown / expired / finalized session, OR `Mcp-Session-Id` pin mismatch. Start over via `pathfinder_create_package`. |
+| `CONCURRENT_MODIFICATION`  | `expectedGeneration` was passed and did not match, OR the internal retry-once also raced. Re-fetch + retry.   |
+
+See `src/cli/mcp/tools/result.ts` for the canonical wire-shape helpers and `docs/design/phases/ai-authoring-7-gcs-sessions.md` for the full design.
 
 ### Server-level instructions (initialize handshake)
 
@@ -272,12 +319,17 @@ The HTTP transport emits one structured JSON line per request with these fields.
   "tokensInEstimate": 108,
   "tokensOutEstimate": 295,
   "outcome": "ok",
+  // tools/call with a sessionToken arg also carries:
+  "sessionTokenPrefix": "abc12def34gh",      // first 12 chars — human-readable, NOT a usable credential
+  "sessionTokenHash": "a1b2c3d4e5f60718",    // SHA-256-derived; stable for cross-line grouping
 }
 ```
 
+Raw session tokens never appear in the log — only the `sessionTokenPrefix` (12 chars) and `sessionTokenHash`. The lint test at `src/cli/mcp/__tests__/logging-discipline.test.ts` enforces this for every `console.*` / `process.std{err,out}.write` call in `src/cli/mcp/`.
+
 ### Inspecting deployed logs
 
-The hosted HTTP transport runs on Google Cloud Run. The deploy is operator-local — the script lives at `deploy-mcp.sh` in this repo and is gitignored, so the project ID, region, service name, and resulting URL are not in tracked files. Ask the operator (or read `deploy-mcp.sh` if you have a copy) for the specifics; the runtime model is fixed.
+The hosted HTTP transport runs on Google Cloud Run. The committed, parameterized deploy script lives at `scripts/deploy-mcp.sh` (an operator-personal `deploy-mcp.sh` at the repo root is gitignored and may also exist on a maintainer's machine). `scripts/deploy-mcp.sh --env=dev` provisions the bucket, dedicated service account, IAM bindings, and 7-day lifecycle rule alongside the Cloud Run service. Ask the operator for the project ID and region; the runtime model is fixed.
 
 Once you know the project and service, the canonical query for the structured access log fields above is:
 

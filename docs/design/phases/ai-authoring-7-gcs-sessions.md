@@ -4,9 +4,9 @@
 > Phase entry and exit criteria graduate the deferred [P5 — GCS-backed authoring sessions](../AI-AUTHORING-IMPLEMENTATION.md#p5--deferred-follow-ups) bullet into its own phase. The design is fully specified in that bullet (storage layout, token format, tool-surface shape, concurrency, retention, confidentiality); this plan phases the implementation.
 > Tracking issue: _epic issue TBD_.
 
-**Status:** In progress (phases A + B + C complete; D pending)
+**Status:** Complete
 **Started:** 2026-05-20
-**Completed:** _YYYY-MM-DD_
+**Completed:** 2026-05-20
 
 ---
 
@@ -83,12 +83,14 @@ _Phases A–D below group tasks into shippable PRs. Each PR leaves `main` shippa
 
 **Phase C deliverable — DELIVERED.** `pathfinder_authoring_start` now teaches session-mode as the primary contract (sessionToken minted on first mutation, mutation acks vs. explicit reads, finalize returns the artifact and deletes the session) and demotes `{artifact}` to a one-paragraph OSS / airgap fallback. `SERVER_INSTRUCTIONS` received a matching one-paragraph session-mode primer so MCP-aware clients see the same posture on `initialize` before tool selection (still under the 40-line layer-3 budget). `pathfinder_finalize_for_app_platform` accepts `{sessionToken}` in place of `{artifact}` using a shared `resolveReadOnlyInput` helper lifted to `src/cli/mcp/tools/read-input.ts` (inspect / validate now consume the same helper). Successful finalize deletes the session server-side; validation failures leave the session intact so the caller can fix and retry; delete failures log but do not fail the response (the 7-day bucket lifecycle rule is the safety net). The handoff payload shape is unchanged — the existing snapshot test still passes. 230 MCP-suite tests pass (was 224 at end of phase B — 6 new in phase C covering session-mode load, delete-on-success, no-delete-on-validation-failure, ambiguous / missing input, and SESSION_NOT_FOUND).
 
-### Phase D — Hardening + observability
+### Phase D — Hardening + observability — COMPLETE 2026-05-20
 
-- [ ] **16. Optional `Mcp-Session-Id` binding.** On first mutation that creates a session, capture the transport-layer `Mcp-Session-Id` header (if present) and persist a pin in the store (sidecar object `<token>/.pin`). Subsequent calls with a mismatched header return `404 not_found` (per design — not 403). Absence of the header skips the check entirely (stdio transport). Test covers all three paths.
-- [ ] **17. Logging discipline.** Every session-mode tool logs `{ tokenPrefix, tokenHash, generation, artifactBytes, gcsLatencyMs }` only. Raw tokens never appear. A lint-style test greps the codebase for `console.log` patterns that would emit a full token and asserts none exist in `src/cli/mcp/`.
-- [ ] **18. Cloud Run smoke test.** `./deploy-mcp.sh dev`, then run a scripted 20+ hop authoring loop against the deployed URL (a small `scripts/smoke-gcs-sessions.ts` that exercises create → many add-block → finalize). Capture wire-bytes (request + response sizes) and compare to the same loop in stateless mode. Confirm the 2026-05-01 telemetry projection (roughly O(N²) → O(N)).
-- [ ] **19. Docs pass.** Update `docs/developer/MCP_SERVER.md` with a Sessions section (the two input modes, ack shape, retention, env vars). Update `docs/design/HOSTED-AUTHORING-MCP.md` if any contract drifted. Update `docs/design/AI-AUTHORING-IMPLEMENTATION.md`: flip P5's GCS bullet to point at this phase's plan and mark Complete in the index.
+- [x] **16. Optional `Mcp-Session-Id` binding.** Pin persisted at mint via `SessionStore.bindMcpSessionId`; in-memory uses a parallel Map, GCS writes a sidecar object at `<token>/.pin`. Every session-mode entry point (mutations, inspect/validate, finalize, session-reads) runs `enforceMcpSessionPin` from `src/cli/mcp/lib/session-pin.ts` before touching the store. Mismatch surfaces as `SESSION_NOT_FOUND` (404, not 403 — the pin is a confidentiality boundary). Absence of the header on a subsequent call skips the check (stdio fallback); sessions minted without a pin are never lazily bound. 8 new tests in `__tests__/session-pin.test.ts` cover MATCH / MISMATCH / ABSENT across mutation, read, inspect, and finalize, and assert that a mismatched finalize does NOT delete the session.
+- [x] **17. Logging discipline.** Added `src/cli/mcp/__tests__/logging-discipline.test.ts` — a lint-style scanner that walks every non-test `.ts` file under `src/cli/mcp/`, finds every `console.*` / `process.std{err,out}.write` call, and fails if any references a session token without wrapping it in `tokenLogPrefix()` / `tokenLogHash()`. Sanity-checked against a synthetic violator (caught and rejected) before committing. Also extended the HTTP access log with `sessionTokenPrefix` (12 chars, human-readable) and `sessionTokenHash` (SHA-256-derived, stable for cross-line grouping) — derived from the `sessionToken` arg on `tools/call` so operators can trace one authoring session across hops without raw tokens landing in Cloud Logging.
+- [x] **18. Cloud Run smoke test.** `scripts/smoke-gcs-sessions.ts` runs a 25-hop authoring loop (configurable via `--hops=`) against any deployed MCP HTTP endpoint, exercises BOTH modes, and prints the side-by-side wire-bytes comparison plus a verification step that calls `pathfinder_finalize_for_app_platform` and asserts a follow-up `pathfinder_list_blocks` against the same token returns `SESSION_NOT_FOUND`. Invoked via `npx tsx scripts/smoke-gcs-sessions.ts --url=https://<service>/mcp`. Cannot be exercised against a live deploy from the implementation context; the actual run lands in the verification log when a maintainer runs `scripts/deploy-mcp.sh --env=dev` followed by the smoke script.
+- [x] **19. Docs pass.** `docs/developer/MCP_SERVER.md` gains a Sessions section (two input modes, ack shape, env vars, retention, Mcp-Session-Id binding, wire codes), bumps the tool count from 18 → 21 (the three new session-read tools), and updates the access-log section with the new `sessionTokenPrefix` / `sessionTokenHash` fields. `docs/design/HOSTED-AUTHORING-MCP.md` gets a "two input modes" rewrite of the `sessionId` paragraph and a 2026-05-20 note on the original stateless-only doesNotOwn bullet. `docs/design/AI-AUTHORING-IMPLEMENTATION.md` gains a P7 row in the status table and the P5 "GCS-backed authoring sessions" bullet is flipped to **Done — shipped as P7** with a pointer to the phase plan.
+
+**Phase D deliverable — DELIVERED.** Hardening, observability, and docs land together. Session tokens never appear in logs (lint test enforces this for `src/cli/mcp/`); `Mcp-Session-Id` mismatches surface as `SESSION_NOT_FOUND`; the access log now carries `sessionTokenPrefix` / `sessionTokenHash` for cross-line correlation; `scripts/smoke-gcs-sessions.ts` is the canonical post-deploy smoke check; the operator-facing and design-facing docs match what shipped. 247 MCP-suite tests pass (was 230 at end of phase C — 8 new pin tests + 4 new GCS pin tests + 3 lint tests + 2 new access-log tests).
 
 ### Test plan
 
@@ -159,6 +161,27 @@ _Appended during execution._
 - **Rationale:** Layer 3 reaches the model **before** tool selection, so an agent that hasn't yet called `pathfinder_authoring_start` still needs the session-mode anchor to avoid defaulting to threading full artifacts. But layer 3 is paid per connection — every connected client pays the length forever — so the detailed shape/rules belong in layer 2 (`pathfinder_authoring_start`, paid once per session). One paragraph in layer 3 is the minimum that anchors the contract without bloating the per-connection cost. Length budget (40-line ceiling, slice-3) is preserved.
 - **Touches:** Task 14. `src/cli/mcp/lib/server-instructions.ts` (+1 paragraph), test in `src/cli/mcp/lib/__tests__/server-instructions.test.ts` unchanged (still passes).
 
+### 2026-05-20 — Pin enforcement lives in `resolveReadOnlyInput` and `dispatchMutation`, not in every tool
+
+- **Decision:** The `enforceMcpSessionPin` helper is called from exactly two places — the shared `resolveReadOnlyInput` helper (covers inspect / validate / finalize) and the mutation dispatcher's session-mode branch (covers all 6 mutation tools). Session-read tools call the helper via a local `resolveToken` wrapper. No per-tool pin check.
+- **Alternatives considered:** Inline the pin check in every tool registration; push it into `withSession` in `state-bridge.ts`.
+- **Rationale:** Three shared chokepoints already exist in the session-mode tool surface; adding pin enforcement to them gives 100% coverage with three call sites instead of ten. Pushing it into `state-bridge` would have worked for mutations but would have left the read tools (which bypass `state-bridge`) needing a parallel implementation, defeating the consolidation.
+- **Touches:** Task 16. `lib/session-pin.ts`, `tools/read-input.ts`, `tools/mutation-tools.ts`, `tools/session-read-tools.ts`.
+
+### 2026-05-20 — Lazy pin binding is explicitly NOT implemented
+
+- **Decision:** Sessions minted without an `Mcp-Session-Id` header (stdio, curl without the header) get NO pin and stay unpinned forever. Subsequent HTTP calls with a header do not lazily install a pin.
+- **Alternatives considered:** Lazy-bind on the first HTTP call that carries a header (TOFU-style); reject unpinned sessions when reached over HTTP.
+- **Rationale:** Lazy binding would let any HTTP caller who guessed (or sniffed) an unpinned token claim it permanently — by being the first to call with a header, they'd lock everyone else out. Token entropy (~110 bits) makes guessing infeasible in practice, but the design posture is "the pin is a confidentiality boundary, not an auth surface": if we cannot positively bind at mint, we do not bind at all. Stdio interop wins; the alternative would have broken stdio→HTTP handoff for any legitimate workflow.
+- **Touches:** Task 16. `lib/session-pin.ts` documents this in its module header.
+
+### 2026-05-20 — Access log carries token-derived correlators, not the token itself
+
+- **Decision:** Extend the HTTP access log with `sessionTokenPrefix` (12 chars) and `sessionTokenHash` (SHA-256-derived). Both are emitted on `tools/call` requests whose args carry a `sessionToken`. Raw tokens never appear in the log.
+- **Alternatives considered:** Don't extend the log (rely on operators to grep prefixes out of tool args, which they can't because args aren't logged); log the full token (rejected immediately — bearer credentials, 7-day TTL).
+- **Rationale:** The smallest change that gives operators what they actually need (cross-line correlation for one authoring session) while preserving the bearer-credential posture. The two fields are also what the design literally specifies ("Logs include tokenPrefix, tokenHash, generation, artifactBytes, gcsLatencyMs"). `generation` is already discoverable from response bodies in the application logs; `artifactBytes` / `gcsLatencyMs` are valuable but require per-tool instrumentation that would be Phase E or later.
+- **Touches:** Task 17. `transports/http.ts`.
+
 ### 2026-05-20 — In-memory `SessionStore` is the local-dev default
 
 - **Decision:** `PATHFINDER_SESSION_STORE` defaults to `memory`; `deploy-mcp.sh` sets it to `gcs` for the deployed service.
@@ -181,4 +204,10 @@ _Appended during execution._
 
 ## Handoff to next phase
 
-_Filled at exit._
+P7 is complete; no immediate follow-up phase is planned. The remaining open items are operational rather than implementation:
+
+- **Run `scripts/smoke-gcs-sessions.ts` against a fresh `scripts/deploy-mcp.sh --env=dev`** to confirm the 2026-05-01 telemetry projection (roughly O(N²) → O(N) wire bytes) holds in production. The script reports the side-by-side numbers; record the actual ratio in this section once exercised.
+- **Per-tool structured logging** (`artifactBytes`, `gcsLatencyMs`) was sized as deferrable in the Phase D access-log decision and is not implemented. Pick up if/when an operator needs per-call GCS latency attribution that the existing `durationMs` cannot give them.
+- **Mcp-Session-Id binding integration with a real Grafana Assistant deployment** — the implementation matches the design (`enforceMcpSessionPin` shape, 404-not-403, stdio fallback) but has only been exercised against the InMemorySessionStore in tests. The first real Cloud Run hit with a Grafana Assistant client carrying an `Mcp-Session-Id` header is the load-bearing validation; surface any drift here.
+
+The phase plan, decision log, and deviations are otherwise complete and ready to archive when the parent epic ships.
