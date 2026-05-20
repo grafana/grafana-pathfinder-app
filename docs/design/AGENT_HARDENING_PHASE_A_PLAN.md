@@ -53,7 +53,7 @@ Sub-checkboxes inside each task are for the executing agent to tick off as they 
 - [x] A3 — Fix prevent-doc-drift section refs
 - [x] A4 — F-code consistency audit
 - [x] A5 — Fix CONTEXT_INDEX auto-load claims
-- [ ] Final verification (`npm run check` clean) — **not clean**: `npm run typecheck` fails with 5 strict-mode errors in `src/validation/architecture.test.ts` introduced by A2 (commit `cf9afb2d`). Test passes at runtime via Jest. Unrelated to A5; see A5 Notes for recommended follow-up commit.
+- [x] Final verification (`npm run check` clean) — fixed in commit `14b22dad` (`fix(validation): satisfy strict null checks in A2 tier-doc parser`). Full `npm run check` now passes: 3809 tests pass, typecheck/lint/prettier/lint:go/test:go all green.
 
 ---
 
