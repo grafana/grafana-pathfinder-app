@@ -75,10 +75,7 @@ const fixtureManifest = {
   repository: 'interactive-tutorials',
 };
 
-async function callFinalizeWithStore(
-  store: InMemorySessionStore,
-  args: Record<string, unknown>
-): Promise<ToolPayload> {
+async function callFinalizeWithStore(store: InMemorySessionStore, args: Record<string, unknown>): Promise<ToolPayload> {
   const server = buildServer({ sessionStore: store });
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

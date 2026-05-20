@@ -4,7 +4,7 @@
 > Phase entry and exit criteria graduate the deferred [P5 — GCS-backed authoring sessions](../AI-AUTHORING-IMPLEMENTATION.md#p5--deferred-follow-ups) bullet into its own phase. The design is fully specified in that bullet (storage layout, token format, tool-surface shape, concurrency, retention, confidentiality); this plan phases the implementation.
 > Tracking issue: _epic issue TBD_.
 
-**Status:** In progress (phases A + B complete; C + D pending)
+**Status:** In progress (phases A + B + C complete; D pending)
 **Started:** 2026-05-20
 **Completed:** _YYYY-MM-DD_
 
@@ -66,7 +66,7 @@ _Phases A–D below group tasks into shippable PRs. Each PR leaves `main` shippa
 
 **Phase B deliverable — DELIVERED.** Session-mode is live end-to-end. Stateless `{artifact}` mode untouched on every tool. Re-deploying via `scripts/deploy-mcp.sh` exposes 3 new tools (`pathfinder_list_blocks`, `pathfinder_get_block`, `pathfinder_get_manifest_session`) and discriminated input on the 8 existing mutation/inspection tools. 224 MCP-suite tests pass (was 173 at end of phase A — 51 new in phase B).
 
-### Phase C — Guidance + finalize lifecycle
+### Phase C — Guidance + finalize lifecycle — COMPLETE 2026-05-20
 
 > **Handoff context for a fresh agent.** Phases A + B left the following in place that this phase reuses:
 >
@@ -78,10 +78,10 @@ _Phases A–D below group tasks into shippable PRs. Each PR leaves `main` shippa
 > - Server-level instructions live at `src/cli/mcp/lib/server-instructions.ts` (`SERVER_INSTRUCTIONS`). These are surfaced to MCP clients on `initialize` — reaching the model **before** tool selection. Consider whether they need a sessionToken-aware update alongside `authoring-start`. (Phase B did not touch these.)
 > - `pathfinder_authoring_start` is the first tool the design expects an agent to call. Today it primes a purely stateless flow; Phase C is the rewrite to teach the session-mode workflow as the primary path with `{artifact}` mentioned as an OSS/airgap fallback.
 
-- [ ] **14. Rewrite `src/cli/mcp/tools/authoring-start.ts`.** Per design: teach token issuance on first mutation, echo-back contract, that mutation responses are acks not full artifacts, that reads are explicit and on-demand (`pathfinder_list_blocks` / `pathfinder_get_block` / `pathfinder_get_manifest_session` / `pathfinder_inspect`), that the artifact returns only at finalize. Bias toward session-token mode; mention `{artifact}` fallback briefly with one trigger (no GCS in OSS / airgap). Update the existing `authoring-start.test.ts` snapshot (if any) in the same commit. Decide whether `SERVER_INSTRUCTIONS` in `lib/server-instructions.ts` needs a parallel update — most likely yes, since those instructions reach the model first.
-- [ ] **15. `pathfinder_finalize_for_app_platform` accepts `{ sessionToken }` and deletes on success.** Mirror the discriminated input from `inspection-tools.ts`. Load → return the existing `clientGuidance` handoff payload (unchanged) → `store.delete(token)` on success only. Delete failure (rare but possible against GCS) logs but does not fail the response — the 7-day lifecycle rule is the safety net so we can't strand a session. Update the `finalize.test.ts` snapshot in the same commit; add a new test asserting the store is empty for that token after a successful finalize.
+- [x] **14. Rewrite `src/cli/mcp/tools/authoring-start.ts`.** Per design: teach token issuance on first mutation, echo-back contract, that mutation responses are acks not full artifacts, that reads are explicit and on-demand (`pathfinder_list_blocks` / `pathfinder_get_block` / `pathfinder_get_manifest_session` / `pathfinder_inspect`), that the artifact returns only at finalize. Bias toward session-token mode; mention `{artifact}` fallback briefly with one trigger (no GCS in OSS / airgap). Update the existing `authoring-start.test.ts` snapshot (if any) in the same commit. Decide whether `SERVER_INSTRUCTIONS` in `lib/server-instructions.ts` needs a parallel update — most likely yes, since those instructions reach the model first.
+- [x] **15. `pathfinder_finalize_for_app_platform` accepts `{ sessionToken }` and deletes on success.** Mirror the discriminated input from `inspection-tools.ts`. Load → return the existing `clientGuidance` handoff payload (unchanged) → `store.delete(token)` on success only. Delete failure (rare but possible against GCS) logs but does not fail the response — the 7-day lifecycle rule is the safety net so we can't strand a session. Update the `finalize.test.ts` snapshot in the same commit; add a new test asserting the store is empty for that token after a successful finalize.
 
-**Phase C deliverable.** Agent guidance now matches the new flow end-to-end: an MCP-aware client following `pathfinder_authoring_start` learns about session tokens, never tries to echo artifacts back through mutations, and finalize cleans up after itself. Happy-path drafts evict immediately on finalize; abandoned ones expire via the 7-day lifecycle rule that already ships in `scripts/deploy-mcp.sh`. No new tool surface beyond a `sessionToken` input on finalize.
+**Phase C deliverable — DELIVERED.** `pathfinder_authoring_start` now teaches session-mode as the primary contract (sessionToken minted on first mutation, mutation acks vs. explicit reads, finalize returns the artifact and deletes the session) and demotes `{artifact}` to a one-paragraph OSS / airgap fallback. `SERVER_INSTRUCTIONS` received a matching one-paragraph session-mode primer so MCP-aware clients see the same posture on `initialize` before tool selection (still under the 40-line layer-3 budget). `pathfinder_finalize_for_app_platform` accepts `{sessionToken}` in place of `{artifact}` using a shared `resolveReadOnlyInput` helper lifted to `src/cli/mcp/tools/read-input.ts` (inspect / validate now consume the same helper). Successful finalize deletes the session server-side; validation failures leave the session intact so the caller can fix and retry; delete failures log but do not fail the response (the 7-day bucket lifecycle rule is the safety net). The handoff payload shape is unchanged — the existing snapshot test still passes. 230 MCP-suite tests pass (was 224 at end of phase B — 6 new in phase C covering session-mode load, delete-on-success, no-delete-on-validation-failure, ambiguous / missing input, and SESSION_NOT_FOUND).
 
 ### Phase D — Hardening + observability
 
@@ -137,6 +137,27 @@ _Appended during execution._
 - **Alternatives considered:** Collapse to one tool with a discriminated input (`{id}` vs `{sessionToken}`); rename P6's variant to `pathfinder_get_repository_manifest`.
 - **Rationale:** The two tools read different data sources (public CDN vs session bucket) and serve different mental models. Discriminated input would force agents to remember which keys go with which source. Renaming P6 retroactively would have churned an already-shipped public tool. The `_session` suffix carries the meaning visibly in the tool name and the agent never has to remember which mode goes with which input shape.
 - **Touches:** `src/cli/mcp/tools/session-read-tools.ts`, the P6 [decision log naming-clash entry](./ai-authoring-6-cdn-repository-tools.md#2026-05-08--naming-clash-with-deferred-p5-pathfinder_get_manifest).
+
+### 2026-05-20 — Lift the read-only input resolver into a shared module
+
+- **Decision:** Move `resolveReadOnlyInput` out of `inspection-tools.ts` into a new `src/cli/mcp/tools/read-input.ts` shared by inspect, validate, and finalize.
+- **Alternatives considered:** Copy-paste the helper into finalize; keep all three tools in `inspection-tools.ts`.
+- **Rationale:** The handoff note in the Phase C section flagged the duplication risk explicitly. Three callers all need byte-identical input semantics and error wire shapes (INPUT_MODE_AMBIGUOUS / INPUT_MODE_MISSING / INVALID_SESSION_TOKEN / SESSION_NOT_FOUND); the only shape variation finalize needed was an extra `sessionToken` field on the success branch so it can call `store.delete()` after handoff. Lifting now is one file change; lifting later after Phase D adds more callers would touch more sites.
+- **Touches:** Task 15. New file `src/cli/mcp/tools/read-input.ts`; `inspection-tools.ts` reduced to its registration logic.
+
+### 2026-05-20 — Finalize does not delete on validation failure
+
+- **Decision:** Session deletion happens only on the `status: ready` branch of finalize. The `status: invalid` branch leaves the session intact.
+- **Alternatives considered:** Always delete on finalize (treat finalize as terminal regardless of outcome); never delete (let the lifecycle rule do all eviction).
+- **Rationale:** The agent's natural recovery path after `status: invalid` is to call the structured CLI errors back into a mutation tool and re-finalize. Deleting on validation failure would force a fresh `pathfinder_create_package` and lose all in-flight context for a recoverable problem. The 7-day lifecycle rule still bounds the worst case if the agent abandons the session after a failed finalize.
+- **Touches:** Task 15.
+
+### 2026-05-20 — `SERVER_INSTRUCTIONS` gets the session-mode primer, not a layer-3 rewrite
+
+- **Decision:** Add one paragraph to `SERVER_INSTRUCTIONS` covering session-mode posture; keep the rest of layer 3 unchanged.
+- **Alternatives considered:** Leave layer 3 alone (rely entirely on `pathfinder_authoring_start` for session-mode teaching); rewrite layer 3 to lead with the session-mode contract.
+- **Rationale:** Layer 3 reaches the model **before** tool selection, so an agent that hasn't yet called `pathfinder_authoring_start` still needs the session-mode anchor to avoid defaulting to threading full artifacts. But layer 3 is paid per connection — every connected client pays the length forever — so the detailed shape/rules belong in layer 2 (`pathfinder_authoring_start`, paid once per session). One paragraph in layer 3 is the minimum that anchors the contract without bloating the per-connection cost. Length budget (40-line ceiling, slice-3) is preserved.
+- **Touches:** Task 14. `src/cli/mcp/lib/server-instructions.ts` (+1 paragraph), test in `src/cli/mcp/lib/__tests__/server-instructions.test.ts` unchanged (still passes).
 
 ### 2026-05-20 — In-memory `SessionStore` is the local-dev default
 
