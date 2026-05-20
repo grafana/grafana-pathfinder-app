@@ -68,10 +68,20 @@ _Phases A–D below group tasks into shippable PRs. Each PR leaves `main` shippa
 
 ### Phase C — Guidance + finalize lifecycle
 
-- [ ] **14. Rewrite `src/cli/mcp/tools/authoring-start.ts`.** Per design: teach token issuance on first mutation, echo-back contract, that mutation responses are acks not full artifacts, that reads are explicit and on-demand, that the artifact returns only at finalize. Bias toward session-token mode; mention `{artifact}` fallback briefly with one trigger (no GCS in OSS/airgap). Update the snapshot test.
-- [ ] **15. `pathfinder_finalize_for_app_platform` accepts `{ sessionToken }` and deletes on success.** Load → return the existing handoff payload → `store.delete(token)` on success. Delete failure logs but does not fail the response (lifecycle rule is the safety net). Update `finalize.test.ts` snapshot in the same commit.
+> **Handoff context for a fresh agent.** Phases A + B left the following in place that this phase reuses:
+>
+> - `dispatchMutation()` and `resolveReadOnlyInput()` patterns in `src/cli/mcp/tools/mutation-tools.ts` and `src/cli/mcp/tools/inspection-tools.ts` are the canonical "exactly one of {artifact} / {sessionToken}" branch shape. Mirror it in finalize. If the helper looks identical to `resolveReadOnlyInput`, consider lifting it to a shared module rather than copy-pasting.
+> - Wire-shaped error helpers in `src/cli/mcp/tools/result.ts`: `inputModeAmbiguousResult`, `inputModeMissingResult`, `invalidSessionTokenResult`, `sessionNotFoundResult`. Use these — don't invent new shapes.
+> - `normalizeSessionToken()` is the canonical input-boundary normalizer (lowercases + validates). Always normalize before passing the token to the store.
+> - `SessionStore.delete(token)` is already idempotent (in-memory ignores unknown tokens; GCS treats 404 as success). Just call it; don't try/catch unless you specifically want to log.
+> - The current `pathfinder_finalize_for_app_platform` in `src/cli/mcp/tools/finalize.ts` takes `{artifact}` and returns a `clientGuidance` handoff payload (the P4 work). The handoff shape itself does not change; only the input mode and the post-success delete.
+> - Server-level instructions live at `src/cli/mcp/lib/server-instructions.ts` (`SERVER_INSTRUCTIONS`). These are surfaced to MCP clients on `initialize` — reaching the model **before** tool selection. Consider whether they need a sessionToken-aware update alongside `authoring-start`. (Phase B did not touch these.)
+> - `pathfinder_authoring_start` is the first tool the design expects an agent to call. Today it primes a purely stateless flow; Phase C is the rewrite to teach the session-mode workflow as the primary path with `{artifact}` mentioned as an OSS/airgap fallback.
 
-**Phase C deliverable.** Agent guidance now matches the new flow. Happy-path drafts evict immediately; abandoned ones expire via lifecycle.
+- [ ] **14. Rewrite `src/cli/mcp/tools/authoring-start.ts`.** Per design: teach token issuance on first mutation, echo-back contract, that mutation responses are acks not full artifacts, that reads are explicit and on-demand (`pathfinder_list_blocks` / `pathfinder_get_block` / `pathfinder_get_manifest_session` / `pathfinder_inspect`), that the artifact returns only at finalize. Bias toward session-token mode; mention `{artifact}` fallback briefly with one trigger (no GCS in OSS / airgap). Update the existing `authoring-start.test.ts` snapshot (if any) in the same commit. Decide whether `SERVER_INSTRUCTIONS` in `lib/server-instructions.ts` needs a parallel update — most likely yes, since those instructions reach the model first.
+- [ ] **15. `pathfinder_finalize_for_app_platform` accepts `{ sessionToken }` and deletes on success.** Mirror the discriminated input from `inspection-tools.ts`. Load → return the existing `clientGuidance` handoff payload (unchanged) → `store.delete(token)` on success only. Delete failure (rare but possible against GCS) logs but does not fail the response — the 7-day lifecycle rule is the safety net so we can't strand a session. Update the `finalize.test.ts` snapshot in the same commit; add a new test asserting the store is empty for that token after a successful finalize.
+
+**Phase C deliverable.** Agent guidance now matches the new flow end-to-end: an MCP-aware client following `pathfinder_authoring_start` learns about session tokens, never tries to echo artifacts back through mutations, and finalize cleans up after itself. Happy-path drafts evict immediately on finalize; abandoned ones expire via the 7-day lifecycle rule that already ships in `scripts/deploy-mcp.sh`. No new tool surface beyond a `sessionToken` input on finalize.
 
 ### Phase D — Hardening + observability
 
