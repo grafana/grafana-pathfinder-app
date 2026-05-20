@@ -97,22 +97,47 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
         },
         "clientGuidance": {
           "grafanaAppPlatform": {
-            "appliesWhen": "You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-com.enabled"] === true). If you are unsure, try this branch first; on a 404 from the collection POST, switch to grafanaOss.",
+            "appliesWhen": "You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-com.enabled"] === true). If you are unsure, try this branch first; on a 404 from the collection POST or from pathfinder_manage_guide_drafts, switch to grafanaOss.",
             "confirmationPrompt": "Publish guide "Snapshot Fixture" to <namespace> as <status>?",
             "errorHandling": [
-              "404 on collection POST: the InteractiveGuide CRD or the aggregator is not installed in this instance. Switch to the grafanaOss branch (localExport). Do not retry.",
-              "403: the user lacks interactiveguides.create permission. Tell the user, then offer localExport. Do not retry.",
-              "409 on PUT: stale resourceVersion. Re-GET the resource, copy the new metadata.resourceVersion, ask the user to confirm overwrite, retry once. A second 409 means concurrent edits — tell the user and offer localExport.",
-              "5xx, network error, or timeout: retry once with short backoff. If it still fails, surface the error and offer localExport.",
-              "Any other 4xx: surface the error verbatim to the user and offer localExport. Do not retry.",
+              "pathfinder_manage_guide_drafts conflict response (concurrent edit): the tool returns the current server-side resourceVersion in its conflict artifact. Re-read it, ask the user to confirm overwrite, then call op=apply again. A second conflict means concurrent edits are racing — tell the user and offer localExport.",
+              "pathfinder_publish_guide 404 (named draft does not exist): save the guide first with pathfinder_manage_guide_drafts op=apply, then re-attempt publish.",
+              "Either preferred tool returning 403 or a "requires Editor or Admin role" error: the user lacks the role on this Grafana instance. Tell the user, then offer localExport. Do not retry.",
+              "Preferred-path refusal to mutate a currently-published guide: call pathfinder_publish_guide op=unpublish first (with user confirmation), then retry pathfinder_manage_guide_drafts op=apply.",
+              "Generic-write 404 on collection POST: the InteractiveGuide CRD or the aggregator is not installed in this instance. Switch to the grafanaOss branch (localExport). Do not retry.",
+              "Generic-write 403: the user lacks interactiveguides.create permission. Tell the user, then offer localExport. Do not retry.",
+              "Generic-write 409 on PUT: stale resourceVersion. Re-GET the resource, copy the new metadata.resourceVersion, ask the user to confirm overwrite, retry once. A second 409 means concurrent edits — tell the user and offer localExport.",
+              "5xx, network error, or timeout (any path): retry once with short backoff. If it still fails, surface the error and offer localExport.",
+              "Any other 4xx (any path): surface the error verbatim to the user and offer localExport. Do not retry.",
             ],
+            "preferredTools": {
+              "availability": "These are Grafana Assistant frontend tools (web sidebar / Workspace surfaces). Registered only when the Pathfinder backend aggregator feature toggle is on AND the user holds Editor or Admin role. If absent from your environment, fall through to the "generic-write fallback" step below.",
+              "drafts": {
+                "name": "pathfinder_manage_guide_drafts",
+                "note": "op=apply forces spec.status === "draft" server-side regardless of what you send, strips metadata.resourceVersion on create, and refuses to mutate currently-published guides (use pathfinder_publish_guide op=unpublish first if you need to edit a published guide). Confirmation is prompted on apply/delete; list/get execute without prompting.",
+                "operations": [
+                  "list",
+                  "get",
+                  "apply",
+                  "delete",
+                ],
+              },
+              "publish": {
+                "name": "pathfinder_publish_guide",
+                "note": "Always requires explicit user confirmation; this is enforced by the harness and cannot be bypassed by skill-level allowedTools. Operates on an existing saved draft — call pathfinder_manage_guide_drafts op=apply first to create or update the draft.",
+                "operations": [
+                  "publish",
+                  "unpublish",
+                ],
+              },
+            },
             "steps": [
               "Resolve the current Grafana namespace from your runtime config.",
-              "Ask the user whether to save as draft or publish (default draft). Set resource.spec.status to the chosen value before writing.",
-              "Show the user the confirmationPrompt copy from this branch and only proceed on explicit yes.",
-              "POST resource to appPlatform.collectionPathTemplate (substitute {namespace}). Use appPlatform.createMethod (POST).",
-              "If you originally created this guide with an explicit --id and intend to overwrite an existing resource: GET appPlatform.itemPathTemplate first, copy metadata.resourceVersion into resource.metadata.resourceVersion, then PUT to appPlatform.itemPathTemplate using appPlatform.updateMethod (PUT).",
-              "On 2xx success, resolve viewer.floatingPath against the user's Grafana instance origin to produce an absolute URL (e.g., https://example.grafana.net + /a/grafana-pathfinder-app?...) and surface that URL to the user. Do NOT surface a relative path.",
+              "Ask the user whether to save the guide as a draft only, or save and then publish (default draft). A draft is private authoring state; a published guide is visible to every user on this Grafana instance.",
+              "Preferred path — save the draft. If pathfinder_manage_guide_drafts is available, call it with op=apply, namespace=<resolved namespace>, guide=<resource object from this response>. The harness will prompt the user to confirm before the write executes. On success you have a saved draft regardless of what status field you sent.",
+              "Preferred path — publish if requested. If the user chose to publish AND pathfinder_publish_guide is available, call it with op=publish, namespace=<resolved namespace>, name=<resource.metadata.name> after the draft save succeeds. The harness always prompts for explicit user confirmation on this call — do not try to bypass it.",
+              "Generic-write fallback — only if the preferred tools above are not registered in your environment. POST resource to appPlatform.collectionPathTemplate (substitute {namespace}) using appPlatform.createMethod (POST). To overwrite an existing resource, GET appPlatform.itemPathTemplate first, copy metadata.resourceVersion into resource.metadata.resourceVersion, then PUT to appPlatform.itemPathTemplate using appPlatform.updateMethod (PUT). Set resource.spec.status to "draft" or "published" as the user chose. Show the user the confirmationPrompt copy before writing and proceed only on explicit yes.",
+              "On success (either path), resolve viewer.floatingPath against the user's Grafana instance origin to produce an absolute URL (e.g., https://example.grafana.net + /a/grafana-pathfinder-app?...) and surface that URL to the user. Do NOT surface a relative path.",
             ],
           },
           "grafanaOss": {
@@ -138,10 +163,10 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
         "id": "snapshot-fixture",
         "instructions": [
           "This response contains structured guidance under clientGuidance, keyed by client capability. Pick the branch whose appliesWhen matches your environment:",
-          "  - clientGuidance.grafanaAppPlatform: you are running inside Grafana with App Platform available.",
+          "  - clientGuidance.grafanaAppPlatform: you are running inside Grafana with App Platform available. Prefer the named tools in clientGuidance.grafanaAppPlatform.preferredTools (pathfinder_manage_guide_drafts, pathfinder_publish_guide) when they are registered; otherwise follow the generic-write fallback step.",
           "  - clientGuidance.grafanaOss: you are running inside Grafana without App Platform (OSS, or aggregator off).",
           "  - clientGuidance.nonGrafanaClient: you have no Grafana session (Cursor, Claude Desktop, CI).",
-          "If unsure, try grafanaAppPlatform first; on a 404 from the collection POST, fall through to grafanaOss. The localExport block at the end of this response is the fallback used by both grafanaOss and nonGrafanaClient.",
+          "If unsure, try grafanaAppPlatform first; on a 404 from either the preferred tools or the collection POST, fall through to grafanaOss. The localExport block at the end of this response is the fallback used by both grafanaOss and nonGrafanaClient.",
         ],
         "localExport": {
           "files": [

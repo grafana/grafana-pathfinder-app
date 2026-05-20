@@ -43,6 +43,8 @@
     "previousMilestoneTooltip": "Previous milestone (Alt + ←)",
     "recommendations": "Recommendations",
     "resetGuide": "Reset guide",
+    "resetGuideErrorMessage": "Couldn't reset guide progress. Please try again or reload the page.",
+    "resetGuideErrorTitle": "Reset failed",
     "resetGuideTooltip": "Resets all interactive steps",
     "settings": "Settings",
     "showMoreTabs_one": "Show {{count}} more tab",

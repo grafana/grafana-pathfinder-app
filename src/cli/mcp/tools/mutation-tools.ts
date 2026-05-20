@@ -24,6 +24,7 @@ import { runRemoveBlock } from '../../commands/remove-block';
 import { runSetManifest } from '../../commands/set-manifest';
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../../utils/block-registry';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
+import { writeAppend, writeDestructive } from './annotations';
 import { outcomeResult } from './result';
 import { withArtifact } from './state-bridge';
 
@@ -89,6 +90,7 @@ export function registerMutationTools(server: McpServer): void {
     {
       description:
         'Use this tool when the user wants to add a block (markdown, interactive step, multistep, quiz, section, conditional, video, etc.) to a Pathfinder guide. Block type and field schemas mirror the CLI — call `pathfinder_help` with command "add-block" for per-type fields. Returns the updated artifact.',
+      annotations: writeAppend('Add Pathfinder block'),
       inputSchema: {
         ...ArtifactInputSchema,
         type: z.enum(BlockTypeEnum as [string, ...string[]]).describe('Block type discriminator.'),
@@ -133,6 +135,7 @@ export function registerMutationTools(server: McpServer): void {
     {
       description:
         'Use this tool when the user wants to add a step inside a multistep or guided block in a Pathfinder guide. Returns the updated artifact.',
+      annotations: writeAppend('Add Pathfinder step'),
       inputSchema: {
         ...ArtifactInputSchema,
         parentId: z.string().describe('Parent multistep or guided block id.'),
@@ -156,6 +159,7 @@ export function registerMutationTools(server: McpServer): void {
     {
       description:
         'Use this tool when the user wants to add a choice (answer option) to a quiz block in a Pathfinder guide. Returns the updated artifact.',
+      annotations: writeAppend('Add Pathfinder choice'),
       inputSchema: {
         ...ArtifactInputSchema,
         parentId: z.string().describe('Parent quiz block id.'),
@@ -179,6 +183,7 @@ export function registerMutationTools(server: McpServer): void {
     {
       description:
         'Use this tool when the user wants to edit or update an existing block in a Pathfinder guide. Overwrites the named fields; other fields are left untouched. Returns the updated artifact.',
+      annotations: writeDestructive('Edit Pathfinder block'),
       inputSchema: {
         ...ArtifactInputSchema,
         id: z.string().describe('Block id to edit.'),
@@ -200,6 +205,7 @@ export function registerMutationTools(server: McpServer): void {
     {
       description:
         'Use this tool when the user wants to delete a block from a Pathfinder guide. Identifies the block by id. Returns the updated artifact.',
+      annotations: writeDestructive('Remove Pathfinder block'),
       inputSchema: {
         ...ArtifactInputSchema,
         id: z.string().describe('Block id to remove.'),
@@ -227,6 +233,7 @@ export function registerMutationTools(server: McpServer): void {
     {
       description:
         'Use this tool when the user wants to set or update top-level Pathfinder guide metadata (description, category, language, etc.) on the package manifest. Returns the updated artifact.',
+      annotations: writeDestructive('Set Pathfinder manifest', /* idempotent */ true),
       inputSchema: {
         ...ArtifactInputSchema,
         fields: FlagValuesSchema.describe('Manifest fields to set (description, category, language, etc.).'),

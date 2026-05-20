@@ -3,7 +3,7 @@ import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
 import { useInteractiveElements, ActionMonitor } from '../../interactive-engine';
-import { useStepChecker, getRequirementExplanation } from '../../requirements-manager';
+import { useStepChecker } from '../../requirements-manager';
 import { useIsAlignmentPaused, useAlignmentStartingLocation } from '../../global-state/alignment-pending-context';
 import { InteractiveStep, resetStepCounter } from './interactive-step';
 import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
@@ -13,18 +13,57 @@ import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
 import { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 import { resetChallengeCounter } from './challenge-block';
-import { InteractiveConditional } from './interactive-conditional';
-import { ImageRenderer, VideoRenderer, YouTubeVideoRenderer } from '../../docs-retrieval';
+import { wrapSectionChildrenForNumbering } from './section-numbering';
+// Re-exports preserved for back-compat with `section-numbering.test.tsx`,
+// which imports both helpers from this module. New code should import
+// directly from `./section-numbering`.
+export { shouldNumberSectionChild, wrapSectionChildrenForNumbering } from './section-numbering';
+
+// ⚠ TRACKED STEP TYPE REGISTRY — site 3 of 4 (orchestration site).
+// Adding a new interactive step component type requires updates in 4
+// places. The schemas now live in `step-type-registry.ts`; this lookup
+// map zips each component identity to its schema. The other three
+// sites are unchanged:
+//   1. content-renderer.tsx INTERACTIVE_STEP_TYPES
+//   2. content-renderer.tsx SECTION_TRACKED_STEP_TYPES
+//   3. ./step-type-registry.ts STEP_TYPE_SCHEMAS (consumed here)
+//   4. ./section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
+// See .cursor/rules/tracked-step-types.mdc for the full checklist.
+// Lazily initialised — the lookup Map is built on first call rather
+// than at module load. This mirrors the call-time lookup pattern in
+// `shouldNumberSectionChild` and exists for the same reason: the
+// docs-retrieval barrel imports content-renderer, which re-imports
+// the interactive-tutorial index, so a top-level
+// `new Map([[CodeBlockStep, ...], ...])` would resolve component
+// identities to undefined under cycle load order.
+let stepTypeLookup: ReadonlyMap<React.ComponentType<any>, StepTypeSchema> | undefined;
+function getStepTypeLookup(): ReadonlyMap<React.ComponentType<any>, StepTypeSchema> {
+  if (!stepTypeLookup) {
+    stepTypeLookup = new Map<React.ComponentType<any>, StepTypeSchema>([
+      [InteractiveStep, INTERACTIVE_STEP_SCHEMA],
+      [InteractiveMultiStep, INTERACTIVE_MULTISTEP_SCHEMA],
+      [InteractiveGuided, INTERACTIVE_GUIDED_SCHEMA],
+      [InteractiveQuiz, INTERACTIVE_QUIZ_SCHEMA],
+      [TerminalStep, TERMINAL_STEP_SCHEMA],
+      [TerminalConnectStep, TERMINAL_CONNECT_STEP_SCHEMA],
+      [CodeBlockStep, CODE_BLOCK_STEP_SCHEMA],
+    ]);
+  }
+  return stepTypeLookup;
+}
+
+/** Resolve the schema for a child element, or `undefined` if the child
+ *  is not a tracked step type (markdown / media / wrapper). */
+function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
+  if (!React.isValidElement(child)) {
+    return undefined;
+  }
+  return getStepTypeLookup().get(child.type as React.ComponentType<any>);
+}
 import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
-import {
-  interactiveStepStorage,
-  sectionCollapseStorage,
-  interactiveCompletionStorage,
-  sectionAcknowledgementStorage,
-} from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
-import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
+import type { InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
 import {
@@ -34,83 +73,36 @@ import {
   type AcknowledgementAnalysis,
 } from './step-section-utils';
 import { classifySectionChild } from './section-child-classifier';
-import { deriveSectionState, initialSectionState, restoreFromStorage, sectionReducer } from './section-state';
+import { useDocumentStepProgress } from './hooks/use-document-step-progress';
+import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
+import { useSectionPersistence } from './hooks/use-section-persistence';
+import { useSectionRequirements } from './hooks/use-section-requirements';
+import { useSectionScroll } from './hooks/use-section-scroll';
+import { deriveSectionState, initialSectionState, sectionReducer } from './section-state';
+import { getDocumentStepPosition, nextSectionCounter, registerSectionSteps, resetRegistry } from './section-registry';
+import {
+  CODE_BLOCK_STEP_SCHEMA,
+  type EnhanceContext,
+  INTERACTIVE_GUIDED_SCHEMA,
+  INTERACTIVE_MULTISTEP_SCHEMA,
+  INTERACTIVE_QUIZ_SCHEMA,
+  INTERACTIVE_STEP_SCHEMA,
+  type StepTypeSchema,
+  TERMINAL_CONNECT_STEP_SCHEMA,
+  TERMINAL_STEP_SCHEMA,
+} from './step-type-registry';
 
-// Simple counter for sequential section IDs
-let interactiveSectionCounter = 0;
+// Re-exports preserved for back-compat with `content-renderer.tsx`
+// and `use-standalone-persistence.ts`. New code should import directly
+// from `./section-registry`.
+export { registerSectionSteps, getTotalDocumentSteps, getDocumentStepPosition } from './section-registry';
 
-/**
- * Per issue #841: media and wrapper blocks render in a section without a step
- * number; everything else (markdown, code samples, interactive steps, quiz,
- * terminal, input, etc.) participates in the section's `1. 2. 3.` sequence.
- *
- * Lookups happen at call time, not module-init time — the docs-retrieval barrel
- * imports content-renderer, which imports back into this directory, so a top-
- * level `new Set([ImageRenderer, ...])` would resolve to undefined under cycle
- * load order. By checking inside the function, both modules have finished
- * initializing by the first invocation.
- */
-export function shouldNumberSectionChild(child: React.ReactNode): boolean {
-  if (!React.isValidElement(child)) {
-    // Plain strings / numbers / fragments — render but don't number.
-    return false;
-  }
-  const t = child.type;
-  return t !== ImageRenderer && t !== VideoRenderer && t !== YouTubeVideoRenderer && t !== InteractiveConditional;
-}
-
-/**
- * Wrap each section child in an <li>, marking content blocks with
- * data-numbered="true" so CSS can apply sequential numbering. Media and
- * wrapper blocks (image/video/conditional) sit in the list without a number.
- *
- * data-step="true"  → React component (InteractiveStep, quiz, terminal, etc.)
- *                     These carry their own CSS margin-top that naturally aligns
- *                     the card with the ::before number at top: theme.spacing(2).
- *                     The <li> needs no extra padding.
- * data-step="false" → Plain HTML content (markdown <p>, headings, etc.)
- *                     No built-in top margin, so the <li> gets paddingTop via CSS
- *                     to push the content start down to match the number position.
- */
-export function wrapSectionChildrenForNumbering(children: React.ReactNode): React.ReactNode {
-  return React.Children.map(children, (child, index) => {
-    const numbered = shouldNumberSectionChild(child);
-    const childKey = React.isValidElement(child) && child.key != null ? child.key : `section-child-${index}`;
-    // React components (interactive steps, quiz, terminal…) have typeof type === 'function'.
-    // Plain HTML elements (p, div, h2…) have typeof type === 'string'.
-    const isStep = React.isValidElement(child) && typeof child.type !== 'string';
-    return (
-      <li
-        key={childKey}
-        data-numbered={numbered ? 'true' : undefined}
-        data-step={numbered ? String(isStep) : undefined}
-      >
-        {child}
-      </li>
-    );
-  });
-}
-
-// Global registry to track all steps across all sections in the document
-interface StepRegistryEntry {
-  stepCount: number;
-  /** Explicit document-order index used to sort entries when computing offsets.
-   *  Entries with lower documentOrder appear first (get lower step offsets). */
-  documentOrder: number;
-}
-const globalStepRegistry: Map<string, StepRegistryEntry> = new Map();
-let totalDocumentSteps = 0;
-let documentStepOffsets: Map<string, number> = new Map(); // sectionId -> starting offset
-/** Auto-incrementing fallback for entries registered without an explicit documentOrder. */
-let autoDocumentOrder = 0;
-
-// Function to reset counters (can be called when new content loads)
+// Reset every counter (registry + offsets + per-step-type anonymous-ID
+// counters). Called when new content loads. The registry's own state
+// lives in `./section-registry`; this function adds the step-module
+// resets that depend on imports a pure registry module shouldn't carry.
 export function resetInteractiveCounters() {
-  interactiveSectionCounter = 0;
-  globalStepRegistry.clear();
-  totalDocumentSteps = 0;
-  documentStepOffsets.clear();
-  autoDocumentOrder = 0;
+  resetRegistry();
   // Reset anonymous step ID counters across all step types
   resetStepCounter();
   resetMultiStepCounter();
@@ -120,61 +112,6 @@ export function resetInteractiveCounters() {
   resetTerminalConnectStepCounter();
   resetCodeBlockStepCounter();
   resetChallengeCounter();
-}
-
-// Register a section's steps in the global registry (idempotent)
-//
-// `documentOrder` controls how entries are sorted when computing step offsets.
-// ContentProcessor pre-registers ALL entries (sections + standalone) in visual
-// document order *before* children render. When InteractiveSection later re-registers
-// the same sectionId (to update the step count), the original documentOrder is
-// preserved — only the count is updated.
-//
-// Fallback: if no documentOrder is provided and no prior registration exists,
-// an auto-incrementing counter is used so the behaviour degrades gracefully to
-// registration order.
-export function registerSectionSteps(
-  sectionId: string,
-  stepCount: number,
-  documentOrder?: number
-): { offset: number; total: number } {
-  const existing = globalStepRegistry.get(sectionId);
-  // Prefer explicit order → existing order → auto-increment fallback
-  const order = documentOrder ?? existing?.documentOrder ?? autoDocumentOrder++;
-  globalStepRegistry.set(sectionId, { stepCount, documentOrder: order });
-
-  // Sort entries by documentOrder, then recompute offsets from scratch
-  const sorted = Array.from(globalStepRegistry.entries()).sort(([, a], [, b]) => a.documentOrder - b.documentOrder);
-
-  let runningTotal = 0;
-  documentStepOffsets.clear();
-  for (const [secId, entry] of sorted) {
-    documentStepOffsets.set(secId, runningTotal);
-    runningTotal += entry.stepCount;
-  }
-
-  totalDocumentSteps = runningTotal;
-
-  // Return this section's offset and the new total
-  const offset = documentStepOffsets.get(sectionId) || 0;
-  return { offset, total: totalDocumentSteps };
-}
-
-// Get the total number of interactive steps across all sections (including standalone)
-export function getTotalDocumentSteps(): number {
-  return totalDocumentSteps;
-}
-
-// Get document-wide position for a step within a section
-export function getDocumentStepPosition(
-  sectionId: string,
-  sectionStepIndex: number
-): { stepIndex: number; totalSteps: number } {
-  const offset = documentStepOffsets.get(sectionId) || 0;
-  return {
-    stepIndex: offset + sectionStepIndex,
-    totalSteps: totalDocumentSteps,
-  };
 }
 
 export function InteractiveSection({
@@ -199,8 +136,7 @@ export function InteractiveSection({
       return generatedId;
     }
     // Fallback to sequential ID for sections without explicit id
-    interactiveSectionCounter++;
-    const generatedId = `section-${interactiveSectionCounter}`;
+    const generatedId = `section-${nextSectionCounter()}`;
     return generatedId;
   }, [id]);
 
@@ -221,23 +157,11 @@ export function InteractiveSection({
   const [isRunning, setIsRunning] = useState(false);
   const [executingStepNumber, setExecutingStepNumber] = useState(0); // Track which step is being executed (1-indexed for display)
   const [resetTrigger, setResetTrigger] = useState(0); // Trigger to reset child steps
-  const [isCollapsed, setIsCollapsed] = useState(false); // Collapse state for completed sections
 
-  // Section requirements state - tracks whether section-level requirements are met
-  const [sectionRequirementsStatus, setSectionRequirementsStatus] = useState<{
-    checking: boolean;
-    passed: boolean;
-    error?: string;
-    canFix?: boolean;
-    fixType?: string;
-    targetHref?: string;
-    explanation?: string;
-  }>({ checking: !!requirements, passed: !requirements }); // If no requirements, default to passed
-
-  // Track if user has manually scrolled to avoid fighting with auto-scroll
-  const userScrolledRef = useRef(false);
-  // Track if we're currently doing a programmatic scroll (to ignore it in listener)
-  const isProgrammaticScrollRef = useRef(false);
+  // Scroll-tracking state + auto-scroll behaviour are owned by
+  // `useSectionScroll`. Returns three callbacks the runner uses to
+  // gate its programmatic scroll window. (Pattern F.)
+  const { scrollToStep, beginProgrammaticScroll, endProgrammaticScroll } = useSectionScroll({ isRunning });
 
   // --- Persistence helpers (restore across refresh) ---
   // Content key resolved via shared utility to ensure persist/restore consistency
@@ -249,129 +173,8 @@ export function InteractiveSection({
     return contentKey.indexOf('devtools') > -1 || contentKey.startsWith('block-editor://preview/');
   }, []);
 
-  // Persist completed steps using new user storage system.
-  //
-  // Preview-mode sandbox (#842, Bug 3): in block-editor preview the section
-  // is a throwaway render — we must not pollute localStorage with progress
-  // tied to a `block-editor://preview/...` content key. Skip every write
-  // while preserving the in-window event dispatch so listeners that drive
-  // ephemeral UI (useGuidePreviewProgress's "hasProgress" → Reset guide
-  // button visibility) still react during the same session.
-  const persistCompletedSteps = useCallback(
-    (ids: Set<string>) => {
-      const contentKey = getContentKey();
-
-      let percentage: number | undefined;
-      if (!isPreviewMode) {
-        interactiveStepStorage.setCompleted(contentKey, sectionId, ids);
-
-        // Compute unified completion percentage across ALL sections (including standalone)
-        const docTotal = getTotalDocumentSteps();
-        const allCompleted = interactiveStepStorage.countAllCompleted(contentKey);
-        percentage = docTotal > 0 ? Math.round((allCompleted / docTotal) * 100) : undefined;
-        if (percentage !== undefined) {
-          interactiveCompletionStorage.set(contentKey, percentage);
-        }
-      }
-
-      // Dispatch event to notify that progress was saved (for reset button visibility).
-      // Fires in preview mode too — useGuidePreviewProgress depends on it.
-      if (ids.size > 0 && typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('interactive-progress-saved', {
-            detail: { contentKey, hasProgress: true, completionPercentage: percentage },
-          })
-        );
-      }
-    },
-    [sectionId, isPreviewMode]
-  );
-
-  // Toggle collapse state and persist to storage (skip persistence in preview mode)
-  const toggleCollapse = useCallback(() => {
-    const newCollapseState = !isCollapsed;
-    setIsCollapsed(newCollapseState);
-    // Only persist collapse state for non-preview mode to avoid polluting localStorage
-    if (!isPreviewMode) {
-      const contentKey = getContentKey();
-      sectionCollapseStorage.set(contentKey, sectionId, newCollapseState);
-    }
-  }, [isCollapsed, sectionId, isPreviewMode]);
-
-  // Restore collapse state from storage on mount (skip in preview mode)
-  useEffect(() => {
-    // Don't restore collapse state in preview mode - always start expanded
-    if (isPreviewMode) {
-      return;
-    }
-    const restoreCollapseState = async () => {
-      const contentKey = getContentKey();
-      const savedCollapseState = await sectionCollapseStorage.get(contentKey, sectionId);
-      setIsCollapsed(savedCollapseState);
-    };
-    restoreCollapseState();
-  }, [sectionId, isPreviewMode]);
-
   // Use ref for cancellation to avoid closure issues
   const isCancelledRef = useRef(false);
-
-  // Track mounted state for section requirements checking
-  const sectionMountedRef = useRef(true);
-  useEffect(() => {
-    sectionMountedRef.current = true;
-    return () => {
-      sectionMountedRef.current = false;
-    };
-  }, []);
-
-  // Track if we've already auto-collapsed to prevent re-collapsing on manual expand
-  const hasAutoCollapsedRef = useRef(false);
-
-  // Track user scroll to disable auto-scroll for the rest of section execution
-  useEffect(() => {
-    if (!isRunning) {
-      return;
-    }
-
-    // Target the docs panel scrollable container directly (inner-docs-content)
-    const scrollContainer = document.getElementById('inner-docs-content');
-
-    if (!scrollContainer) {
-      return;
-    }
-
-    const handleScroll = () => {
-      // Ignore programmatic scrolls (our own auto-scroll)
-      if (isProgrammaticScrollRef.current) {
-        return;
-      }
-      userScrolledRef.current = true; // Permanently disable for this section run
-    };
-
-    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
-
-    return () => {
-      scrollContainer.removeEventListener('scroll', handleScroll);
-    };
-  }, [isRunning]);
-
-  // Auto-scroll to current executing step
-  const scrollToStep = useCallback((stepId: string) => {
-    if (userScrolledRef.current) {
-      return; // User has scrolled, don't fight them
-    }
-
-    // Find the step element by data-step-id
-    const stepElement = document.querySelector(`[data-step-id="${stepId}"]`);
-    if (stepElement) {
-      // isProgrammaticScrollRef is already true during section execution
-      // so we don't need to set/reset it here
-      stepElement.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
-    }
-  }, []);
 
   // Store refs to multistep components for section-level execution
   const multiStepRefs = useRef<Map<string, { executeStep: () => Promise<boolean> }>>(new Map());
@@ -388,106 +191,17 @@ export function InteractiveSection({
     checkRequirementsFromData,
   } = useInteractiveElements();
 
-  // Check section-level requirements on mount and when relevant state changes
-  const checkSectionRequirements = useCallback(async () => {
-    if (!requirements || !sectionMountedRef.current) {
-      setSectionRequirementsStatus({ checking: false, passed: true });
-      return;
-    }
-
-    setSectionRequirementsStatus((prev) => ({ ...prev, checking: true }));
-
-    try {
-      const sectionRequirementsData = {
-        requirements: requirements,
-        targetaction: 'section',
-        reftarget: sectionId,
-        targetvalue: undefined,
-        textContent: title || 'Interactive section',
-        tagName: 'section',
-      };
-
-      const result = await checkRequirementsFromData(sectionRequirementsData);
-
-      if (sectionMountedRef.current) {
-        const fixableError = result.error?.find((e) => e.canFix);
-        setSectionRequirementsStatus({
-          checking: false,
-          passed: result.pass,
-          error: result.error?.[0]?.error || (result.pass ? undefined : 'Requirements not met'),
-          canFix: !!fixableError,
-          fixType: fixableError?.fixType,
-          targetHref: fixableError?.targetHref,
-          explanation: result.pass
-            ? undefined
-            : getRequirementExplanation(result.error?.[0]?.requirement, hints, result.error?.[0]?.error),
-        });
-      }
-    } catch (error) {
-      console.warn('Section requirements check failed:', error);
-      if (sectionMountedRef.current) {
-        // On error, allow section to proceed (fail open for better UX)
-        setSectionRequirementsStatus({ checking: false, passed: true });
-      }
-    }
-  }, [requirements, sectionId, title, hints, checkRequirementsFromData]);
-
-  // Fix section requirements when the user clicks the "Fix this" button in the banner
-  const fixSectionRequirements = useCallback(async () => {
-    if (!sectionRequirementsStatus.canFix) {
-      return;
-    }
-    const { fixType, targetHref } = sectionRequirementsStatus;
-    try {
-      const { NavigationManager } = await import('../../interactive-engine');
-      const navigationManager = new NavigationManager();
-      if (fixType === 'expand-parent-navigation' && targetHref) {
-        await navigationManager.expandParentNavigationSection(targetHref);
-      } else if (fixType === 'location' && targetHref) {
-        await navigationManager.fixLocationRequirement(targetHref);
-      } else if (fixType === 'navigation') {
-        await navigationManager.fixNavigationRequirements();
-      }
-      await checkSectionRequirements();
-    } catch (fixError) {
-      console.warn('Failed to fix section requirements:', fixError);
-    }
-  }, [sectionRequirementsStatus, checkSectionRequirements]);
-
-  // Initial requirements check and re-check on relevant events
-  useEffect(() => {
-    if (!requirements) {
-      return;
-    }
-
-    // Initial check
-    checkSectionRequirements();
-
-    // Re-check when relevant events occur
-    const handleDataSourcesChanged = () => checkSectionRequirements();
-    const handlePluginsChanged = () => checkSectionRequirements();
-    const handleLocationChanged = () => checkSectionRequirements();
-
-    window.addEventListener('datasources-changed', handleDataSourcesChanged);
-    window.addEventListener('plugins-changed', handlePluginsChanged);
-    window.addEventListener('popstate', handleLocationChanged);
-
-    // Re-check when a section completes (for section-completed: dependencies)
-    const handleSectionCompleted = () => checkSectionRequirements();
-    document.addEventListener('section-completed', handleSectionCompleted);
-
-    // Re-check periodically to catch other state changes
-    const intervalId = setInterval(checkSectionRequirements, 5000);
-
-    // REACT: cleanup subscriptions (R1)
-    return () => {
-      window.removeEventListener('datasources-changed', handleDataSourcesChanged);
-      window.removeEventListener('plugins-changed', handlePluginsChanged);
-      window.removeEventListener('popstate', handleLocationChanged);
-      document.removeEventListener('section-completed', handleSectionCompleted);
-      clearInterval(intervalId);
-    };
-  }, [requirements, checkSectionRequirements]);
+  // Section-level requirements polling (initial check, 4 event listeners,
+  // 5-second setInterval) is owned by `useSectionRequirements`. Pattern F
+  // timing contract — the 5s cadence is load-bearing for "auto-pickup of
+  // out-of-band state changes that don't fire one of the 4 events".
+  const { status: sectionRequirementsStatus, fix: fixSectionRequirements } = useSectionRequirements({
+    requirements,
+    sectionId,
+    title,
+    hints,
+    checkRequirementsFromData,
+  });
 
   // Create cancellation handler
   const handleSectionCancel = useCallback(() => {
@@ -498,145 +212,28 @@ export function InteractiveSection({
   // Use executeInteractiveAction directly (no wrapper needed)
   // Section-level blocking is managed separately at the section level
 
-  // Extract step information from children first (needed for completion calculation)
-  //
-  // ⚠ TRACKED STEP TYPE REGISTRY — site 3 of 4. Adding a new interactive step
-  // component type requires updates in 4 places:
-  //   1. content-renderer.tsx INTERACTIVE_STEP_TYPES
-  //   2. content-renderer.tsx SECTION_TRACKED_STEP_TYPES
-  //   3. interactive-section.tsx `stepComponents` useMemo branches (this block)
-  //   4. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
-  // See .cursor/rules/tracked-step-types.mdc for the full checklist.
+  // Extract step information from children. Iterates the children once,
+  // resolves each child to its `StepTypeSchema` via STEP_TYPE_LOOKUP,
+  // and builds the StepInfo entry from the schema's `toStepInfoExtension`.
+  // Non-step children (markdown / media / wrapper) are skipped.
   const stepComponents = useMemo((): StepInfo[] => {
     const steps: StepInfo[] = [];
-    // Track step index separately from child index to handle non-step children
     let stepIndex = 0;
 
     React.Children.forEach(children, (child) => {
-      if (React.isValidElement(child) && (child as any).type === InteractiveStep) {
-        const props = child.props as InteractiveStepProps;
-        const stepId = `${sectionId}-step-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<InteractiveStepProps>,
-          index: stepIndex,
-          targetAction: props.targetAction,
-          refTarget: props.refTarget,
-          targetValue: props.targetValue,
-          targetComment: props.targetComment,
-          requirements: props.requirements,
-          postVerify: props.postVerify,
-          skippable: props.skippable,
-          showMe: props.showMe,
-          isMultiStep: false,
-          isGuided: false,
-        });
-        stepIndex++;
-      } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
-        const props = child.props as any; // InteractiveMultiStepProps
-        const stepId = `${sectionId}-multistep-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<any>,
-          index: stepIndex,
-          targetAction: undefined, // Multi-step handles internally
-          refTarget: undefined,
-          targetValue: undefined,
-          requirements: props.requirements,
-          skippable: props.skippable,
-          isMultiStep: true,
-          isGuided: false,
-        });
-        stepIndex++;
-      } else if (React.isValidElement(child) && (child as any).type === InteractiveGuided) {
-        const props = child.props as any; // InteractiveGuidedProps
-        const stepId = `${sectionId}-guided-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<any>,
-          index: stepIndex,
-          targetAction: undefined, // Guided handles internally
-          refTarget: undefined,
-          targetValue: undefined,
-          requirements: props.requirements,
-          skippable: props.skippable,
-          isMultiStep: false,
-          isGuided: true, // Mark as guided step
-        });
-        stepIndex++;
-      } else if (React.isValidElement(child) && (child as any).type === InteractiveQuiz) {
-        const props = child.props as any; // InteractiveQuizProps
-        const stepId = `${sectionId}-quiz-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<any>,
-          index: stepIndex,
-          targetAction: undefined, // Quiz handles internally
-          refTarget: undefined,
-          targetValue: undefined,
-          requirements: props.requirements,
-          skippable: props.skippable,
-          isMultiStep: false,
-          isGuided: false,
-          isQuiz: true, // Mark as quiz step
-        });
-        stepIndex++;
-      } else if (React.isValidElement(child) && (child as any).type === TerminalStep) {
-        const props = child.props as any;
-        const stepId = `${sectionId}-terminal-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<any>,
-          index: stepIndex,
-          targetAction: 'terminal',
-          refTarget: undefined,
-          targetValue: undefined,
-          requirements: props.requirements,
-          skippable: props.skippable,
-          isMultiStep: false,
-          isGuided: false,
-        });
-        stepIndex++;
-      } else if (React.isValidElement(child) && (child as any).type === TerminalConnectStep) {
-        const props = child.props as any;
-        const stepId = `${sectionId}-terminal-connect-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<any>,
-          index: stepIndex,
-          targetAction: 'terminal-connect',
-          refTarget: undefined,
-          targetValue: undefined,
-          requirements: props.requirements,
-          skippable: props.skippable,
-          isMultiStep: false,
-          isGuided: false,
-        });
-        stepIndex++;
-      } else if (React.isValidElement(child) && (child as any).type === CodeBlockStep) {
-        const props = child.props as any;
-        const stepId = `${sectionId}-codeblock-${stepIndex + 1}`;
-
-        steps.push({
-          stepId,
-          element: child as React.ReactElement<any>,
-          index: stepIndex,
-          targetAction: 'code-block',
-          refTarget: props.refTarget,
-          targetValue: undefined,
-          requirements: props.requirements,
-          skippable: props.skippable,
-          isMultiStep: true,
-          isGuided: false,
-        });
-        stepIndex++;
+      const schema = lookupStepSchema(child);
+      if (!schema) {
+        return;
       }
+      const stepId = `${sectionId}-${schema.idPrefix}-${stepIndex + 1}`;
+      const extension = schema.toStepInfoExtension((child as React.ReactElement<any>).props);
+      steps.push({
+        stepId,
+        element: child as React.ReactElement<any>,
+        index: stepIndex,
+        ...extension,
+      });
+      stepIndex++;
     });
 
     return steps;
@@ -660,69 +257,20 @@ export function InteractiveSection({
     return analyzeAcknowledgement(kinds);
   }, [children]);
 
-  // Load persisted completion + acknowledgement state on first mount only
-  // (#842, Bug 4 fix).
-  //
-  // The previous version re-fired whenever `stepComponents` changed
-  // reference — which happens routinely because the parent renderer
-  // produces fresh children on every render. Restoring twice is idempotent
-  // in steady state but masked race conditions during block-editor preview
-  // remounts. The `didRestoreRef` guard makes the contract obvious:
-  // "restore exactly once per InteractiveSection instance."
-  //
-  // Preview-mode sandbox (#842, Bug 3): block-editor previews start fresh
-  // every session — we skip the read entirely so stale entries from prior
-  // buggy versions cannot resurrect.
-  //
-  // Acknowledgement-gate plumbing (#842, Phase 4): we always read the
-  // ack storage namespace so phase 5 can switch the gate on without
-  // touching this effect. With the gate inert (phase 4), the read value
-  // flows through unchanged.
-  const didRestoreRef = useRef(false);
-  useEffect(() => {
-    if (didRestoreRef.current) {
-      return;
-    }
-    didRestoreRef.current = true;
-    if (isPreviewMode) {
-      return;
-    }
-    const contentKey = getContentKey();
-    let cancelled = false;
-    Promise.all([
-      interactiveStepStorage.getCompleted(contentKey, sectionId),
-      sectionAcknowledgementStorage.get(contentKey, sectionId),
-    ]).then(([restoredCompleted, restoredAck]) => {
-      if (cancelled) {
-        return;
-      }
-      // Phase 5 (#842): the gate is on. The mount-only effect deps
-      // are deliberately empty — gateAnalysis is closed over for the
-      // migration decision only, evaluated once on first mount.
-      const { state: restoredState, migrated } = restoreFromStorage({
-        completed: restoredCompleted,
-        acknowledged: restoredAck,
-        stepComponents,
-        gate: gateAnalysis,
-      });
-      dispatch({
-        type: 'RESTORE',
-        completed: restoredState.completed,
-        acknowledged: restoredState.acknowledged,
-        allStepIds: stepComponents.map((s) => s.stepId),
-      });
-      if (migrated) {
-        sectionAcknowledgementStorage.set(contentKey, sectionId, true);
-      }
+  // All storage IO + the `interactive-progress-saved` CustomEvent
+  // dispatch + the mount-only RESTORE effect are owned by
+  // `useSectionPersistence`. Pattern J: contract-surface ownership
+  // move. The four storage namespaces (steps + completion + ack +
+  // collapse-clear) and the event payload shape are pinned by the
+  // Phase 0 contracts tripwire.
+  const { persistCompletedSteps, clearStepAcknowledgement, setAcknowledgement, clearAllStorage } =
+    useSectionPersistence({
+      sectionId,
+      isPreviewMode,
+      stepComponents,
+      gateAnalysis,
+      dispatch,
     });
-    return () => {
-      cancelled = true;
-    };
-    // Intentionally [] — true mount-only. `stepComponents` is closed over
-    // by reference; remounts (instance change) re-trigger the effect via
-    // a fresh `didRestoreRef`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Objectives checking is handled by the step checker hook
 
@@ -794,35 +342,17 @@ export function InteractiveSection({
     return getInteractiveConfig(pluginConfig);
   }, [pluginConfig]);
 
-  // Auto-collapse section when it becomes complete (but only once, don't override manual expansion)
-  // Precedence: preview mode > author autoCollapse > user disableAutoCollapse > default
-  useEffect(() => {
-    // Skip in preview mode - guide authors want to control collapse manually
-    if (isPreviewMode) {
-      return;
-    }
-
-    // Author override: if section explicitly sets autoCollapse: false, never auto-collapse
-    if (autoCollapse === false) {
-      return;
-    }
-
-    // User preference: if disableAutoCollapse is true in config, don't auto-collapse
-    if (pluginConfig.disableAutoCollapse) {
-      return;
-    }
-
-    // Default behavior: auto-collapse on completion
-    if (isCompleted && !hasAutoCollapsedRef.current) {
-      hasAutoCollapsedRef.current = true;
-      setIsCollapsed(true);
-      const contentKey = getContentKey();
-      sectionCollapseStorage.set(contentKey, sectionId, true);
-    } else if (!isCompleted) {
-      // Reset the flag when section becomes incomplete (e.g., after reset)
-      hasAutoCollapsedRef.current = false;
-    }
-  }, [isCompleted, sectionId, isPreviewMode, autoCollapse, pluginConfig.disableAutoCollapse]);
+  // Collapse state + auto-collapse-on-completion + restore-from-storage
+  // are owned by `useSectionAutoCollapse`. The hook call sits here
+  // (rather than at the top of the component) because it depends on
+  // `isCompleted` (derived state above) and `pluginConfig.disableAutoCollapse`.
+  const { isCollapsed, toggleCollapse, resetCollapse } = useSectionAutoCollapse({
+    sectionId,
+    isCompleted,
+    isPreviewMode,
+    autoCollapse,
+    disableAutoCollapse: pluginConfig.disableAutoCollapse,
+  });
 
   // Enable action monitor when component mounts (if feature is enabled in config)
   useEffect(() => {
@@ -973,11 +503,8 @@ export function InteractiveSection({
 
       // Acknowledgement clears alongside completion — the reducer enforces
       // that invariant. Mirror it in storage so a remount-restore picks up
-      // the cleared ack.
-      const contentKey = getContentKey();
-      if (!isPreviewMode) {
-        sectionAcknowledgementStorage.clear(contentKey, sectionId);
-      }
+      // the cleared ack. Hook gates on preview mode internally.
+      clearStepAcknowledgement();
 
       // Also clear currently executing step if it matches
       if (currentlyExecutingStep === stepId) {
@@ -988,7 +515,7 @@ export function InteractiveSection({
       // This ensures green checkmarks are cleared from the UI
       setResetTrigger((prev) => prev + 1);
     },
-    [completedSteps, currentlyExecutingStep, isPreviewMode, persistCompletedSteps, sectionId, stepComponents]
+    [clearStepAcknowledgement, completedSteps, currentlyExecutingStep, persistCompletedSteps, stepComponents]
   );
 
   // Execute a single step (shared between individual and sequence execution)
@@ -1055,10 +582,9 @@ export function InteractiveSection({
 
     setIsRunning(true);
     setExecutingStepNumber(0); // Reset step counter
-    userScrolledRef.current = false; // Reset user scroll tracking
-    // Keep isProgrammaticScroll TRUE for entire section execution
-    // This prevents step execution (button clicks, etc.) from triggering the cancel
-    isProgrammaticScrollRef.current = true;
+    // Reset user scroll tracking + set isProgrammaticScroll=true for
+    // the entire section run. The hook keeps both flags consistent.
+    beginProgrammaticScroll();
     console.warn(
       '[Section] Starting section run, reset userScrolled=false, isProgrammatic=TRUE (will stay true during execution)'
     );
@@ -1420,8 +946,8 @@ export function InteractiveSection({
       setIsRunning(false);
       setCurrentlyExecutingStep(null);
       setExecutingStepNumber(0);
-      // Reset programmatic scroll flag now that section is done
-      isProgrammaticScrollRef.current = false;
+      // Reset programmatic scroll flag now that section is done.
+      endProgrammaticScroll();
       // Keep isCancelled state for UI feedback, will be reset on next run
 
       // Track "Do Section" analytics after completion (success or cancel)
@@ -1476,6 +1002,8 @@ export function InteractiveSection({
     checkRequirementsFromData,
     persistCompletedSteps,
     scrollToStep,
+    beginProgrammaticScroll,
+    endProgrammaticScroll,
     completedSteps,
   ]);
 
@@ -1494,26 +1022,18 @@ export function InteractiveSection({
     dispatch({ type: 'RESET_SECTION' });
     setCurrentlyExecutingStep(null);
 
-    // Expand the section if it was collapsed
-    setIsCollapsed(false);
-
-    // Reset the auto-collapse flag so it can auto-collapse again when completed
-    hasAutoCollapsedRef.current = false;
+    // Expand the section and clear the auto-collapse-once guard so a
+    // future completion re-fires the auto-collapse.
+    resetCollapse();
 
     // Signal all child steps to reset their local state
     setResetTrigger((prev) => prev + 1);
 
-    // Clear storage persistence. In preview mode none of the section-
-    // scoped storage namespaces are written to (see persistCompletedSteps,
-    // sectionCollapseStorage, sectionAcknowledgementStorage call sites)
-    // so the clears would be no-ops — skip them to mirror the rest of
-    // the file's preview-mode contract.
-    const contentKey = getContentKey();
-    if (!isPreviewMode) {
-      interactiveStepStorage.clear(contentKey, sectionId);
-      sectionCollapseStorage.clear(contentKey, sectionId); // Clear collapse state
-      sectionAcknowledgementStorage.clear(contentKey, sectionId); // Clear ack so the gate re-arms on next pass
-    }
+    // Clear storage persistence. Hook gates on preview mode internally
+    // (in preview mode none of the namespaces were written to anyway,
+    // so the clears would be no-ops). Sweeps steps + collapse + ack
+    // in one call.
+    clearAllStorage();
 
     // Notify listeners that progress for this content was cleared (#842, Bug 2).
     // Mirrors the dispatch in BlockPreview's reset() so any consumer driving
@@ -1523,6 +1043,7 @@ export function InteractiveSection({
     // block-editor preview's Reset guide button stays visible after a
     // per-section reset, even when no progress is left.
     if (typeof window !== 'undefined') {
+      const contentKey = getContentKey();
       window.dispatchEvent(
         new CustomEvent('interactive-progress-cleared', {
           detail: { contentKey },
@@ -1558,7 +1079,7 @@ export function InteractiveSection({
         }, 100);
       }, 200);
     });
-  }, [disabled, isRunning, stepComponents, sectionId, isPreviewMode]);
+  }, [disabled, isRunning, stepComponents, resetCollapse, clearAllStorage]);
 
   /**
    * Mark the section as acknowledged (issue #842).
@@ -1574,8 +1095,6 @@ export function InteractiveSection({
       return;
     }
 
-    const contentKey = getContentKey();
-
     if (gateAnalysis.isAllPassive) {
       // All-passive section: the reducer needs at least one entry in
       // `completed` before it accepts ACKNOWLEDGE. Inject a synthetic
@@ -1590,18 +1109,16 @@ export function InteractiveSection({
     }
 
     dispatch({ type: 'ACKNOWLEDGE' });
-    if (!isPreviewMode) {
-      sectionAcknowledgementStorage.set(contentKey, sectionId, true);
-    }
+    setAcknowledgement();
   }, [
     disabled,
     isRunning,
     sectionKind,
     gateAnalysis.isAllPassive,
-    isPreviewMode,
     persistCompletedSteps,
     sectionId,
     completedSteps,
+    setAcknowledgement,
   ]);
 
   // Register this section's steps in the global registry BEFORE rendering children
@@ -1611,340 +1128,91 @@ export function InteractiveSection({
     registerSectionSteps(sectionId, stepComponents.length);
   }, [sectionId, stepComponents.length]);
 
-  // Expose current step context globally for analytics + drive the
-  // top-bar progress chip in FullScreenLayout / FloatingPanel.
-  //
-  // Globals (`__DocsPluginCurrentStepIndex`, `__DocsPluginTotalSteps`)
-  // are kept for backwards compatibility with anything reading them, but
-  // they're an "execution-only" signal — they go stale the moment a step
-  // finishes. The new `pathfinder-step-progress` event publishes the full
-  // `{ documentStepIndex, totalSteps, completedCount }` whenever
-  // execution state OR completion changes, so consumers can show
-  // "completed / total" instead of "currently-running" and update
-  // immediately on completion / reset.
-  useEffect(() => {
-    try {
-      // `totalDocumentSteps` is a module-level mutable counter (not React
-      // state), so it's read fresh inside the effect rather than as a dep.
-      const totalSteps = getTotalDocumentSteps();
-      (window as any).__DocsPluginTotalSteps = totalSteps;
+  // Document-wide step progress (window globals + `pathfinder-step-progress`
+  // CustomEvent) is owned by `useDocumentStepProgress`. Pattern J:
+  // contract-surface ownership move; the contracts tripwire pins the
+  // payload shape across the seam.
+  useDocumentStepProgress({
+    sectionId,
+    currentlyExecutingStep,
+    stepComponents,
+    completedSteps,
+  });
 
-      let documentStepIndex: number | undefined;
-      if (currentlyExecutingStep) {
-        const executingStepInfo = stepComponents.find((s) => s.stepId === currentlyExecutingStep);
-        if (executingStepInfo) {
-          const { stepIndex } = getDocumentStepPosition(sectionId, executingStepInfo.index);
-          documentStepIndex = stepIndex;
-          (window as any).__DocsPluginCurrentStepIndex = stepIndex;
-        }
-      }
-
-      // Total completed across ALL sections in the document — read from
-      // shared storage (the same source persistCompletedSteps writes to)
-      // so the chip reflects unified progress, not just this section.
-      const contentKey = getContentKey();
-      const completedDocumentCount = interactiveStepStorage.countAllCompleted(contentKey);
-
-      window.dispatchEvent(
-        new CustomEvent('pathfinder-step-progress', {
-          detail: {
-            sectionId,
-            totalSteps,
-            documentStepIndex,
-            completedCount: completedDocumentCount,
-          },
-        })
-      );
-    } catch {
-      // no-op
-    }
-  }, [currentlyExecutingStep, stepComponents, sectionId, completedSteps]);
-
-  // Render enhanced children with coordination props
+  // Render enhanced children with coordination props. For each child:
+  //   1. Look up its `StepTypeSchema` (undefined → pass-through).
+  //   2. Build the cloneElement bag via `schema.toEnhancedProps(ctx)`.
+  //   3. Attach a `ref` callback based on `schema.refTarget`
+  //      ('stepRefs' / 'multiStepRefs' / 'none').
   const enhancedChildren = useMemo(() => {
-    // Track step index separately from child index to handle non-step children
     let stepIndex = 0;
 
+    const makeRefCallback =
+      (target: 'stepRefs' | 'multiStepRefs', stepId: string) =>
+      (ref: { executeStep: () => Promise<boolean>; markSkipped?: () => void } | null) => {
+        const map = target === 'stepRefs' ? stepRefs.current : multiStepRefs.current;
+        if (ref) {
+          map.set(stepId, ref);
+        } else {
+          map.delete(stepId);
+        }
+      };
+
     return React.Children.map(children, (child) => {
-      if (React.isValidElement(child) && (child as any).type === InteractiveStep) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
-
-        // Get document-wide step position
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        // Increment step index for next step child
-        stepIndex++;
-
-        // Enhanced step props with section coordination
-
-        return React.cloneElement(child as React.ReactElement<InteractiveStepProps>, {
-          ...child.props,
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          isCurrentlyExecuting,
-          onStepComplete: handleStepComplete,
-          stepIndex: documentStepIndex, // 0-indexed position in ENTIRE DOCUMENT
-          totalSteps: documentTotalSteps, // Total steps in ENTIRE DOCUMENT
-          sectionId: sectionId, // Section identifier for analytics
-          sectionTitle: title, // Section title for analytics
-          onStepReset: handleStepReset, // Add step reset callback
-          disabled: disabled || !sectionRequirementsStatus.passed || (isRunning && !isCurrentlyExecuting), // Don't disable currently executing step
-          resetTrigger, // Pass reset signal to child steps
-          key: stepInfo.stepId,
-          ref: (ref: { executeStep: () => Promise<boolean>; markSkipped?: () => void } | null) => {
-            if (ref) {
-              stepRefs.current.set(stepInfo.stepId, ref);
-            } else {
-              stepRefs.current.delete(stepInfo.stepId);
-            }
-          },
-        });
-      } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
-
-        // Get document-wide step position
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        // Increment step index for next step child
-        stepIndex++;
-
-        return React.cloneElement(child as React.ReactElement<any>, {
-          ...(child.props as any),
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          isCurrentlyExecuting,
-          onStepComplete: handleStepComplete,
-          onStepReset: handleStepReset, // Add step reset callback
-          stepIndex: documentStepIndex,
-          totalSteps: documentTotalSteps,
-          sectionId: sectionId,
-          sectionTitle: title,
-          disabled: disabled || !sectionRequirementsStatus.passed || (isRunning && !isCurrentlyExecuting), // Don't disable currently executing step
-          resetTrigger, // Pass reset signal to child multi-steps
-          key: stepInfo.stepId,
-          ref: (
-            ref: {
-              executeStep: () => Promise<boolean>;
-            } | null
-          ) => {
-            if (ref) {
-              multiStepRefs.current.set(stepInfo.stepId, ref);
-            } else {
-              multiStepRefs.current.delete(stepInfo.stepId);
-            }
-          },
-        });
-      } else if (React.isValidElement(child) && (child as any).type === InteractiveGuided) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
-
-        // Get document-wide step position
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        // Increment step index for next step child
-        stepIndex++;
-
-        return React.cloneElement(child as React.ReactElement<any>, {
-          ...(child.props as any),
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          isCurrentlyExecuting,
-          onStepComplete: handleStepComplete,
-          onStepReset: handleStepReset,
-          stepIndex: documentStepIndex,
-          totalSteps: documentTotalSteps,
-          sectionId: sectionId,
-          sectionTitle: title,
-          disabled: disabled || !sectionRequirementsStatus.passed || (isRunning && !isCurrentlyExecuting), // Don't disable during section run
-          resetTrigger,
-          key: stepInfo.stepId,
-          ref: (
-            ref: {
-              executeStep: () => Promise<boolean>;
-            } | null
-          ) => {
-            if (ref) {
-              multiStepRefs.current.set(stepInfo.stepId, ref);
-            } else {
-              multiStepRefs.current.delete(stepInfo.stepId);
-            }
-          },
-        });
-      } else if (React.isValidElement(child) && (child as any).type === InteractiveQuiz) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-
-        // Get document-wide step position
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        // Increment step index for next step child
-        stepIndex++;
-
-        return React.cloneElement(child as React.ReactElement<any>, {
-          ...(child.props as any),
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          onStepComplete: handleStepComplete,
-          stepIndex: documentStepIndex,
-          totalSteps: documentTotalSteps,
-          sectionId: sectionId,
-          sectionTitle: title,
-          disabled: disabled,
-          resetTrigger,
-          key: stepInfo.stepId,
-        });
-      } else if (React.isValidElement(child) && (child as any).type === TerminalStep) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        stepIndex++;
-
-        return React.cloneElement(child as React.ReactElement<any>, {
-          ...(child.props as any),
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          onStepComplete: handleStepComplete,
-          stepIndex: documentStepIndex,
-          totalSteps: documentTotalSteps,
-          sectionId: sectionId,
-          sectionTitle: title,
-          disabled: disabled,
-          resetTrigger,
-          key: stepInfo.stepId,
-        });
-      } else if (React.isValidElement(child) && (child as any).type === TerminalConnectStep) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        stepIndex++;
-
-        return React.cloneElement(child as React.ReactElement<any>, {
-          ...(child.props as any),
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          onStepComplete: handleStepComplete,
-          stepIndex: documentStepIndex,
-          totalSteps: documentTotalSteps,
-          sectionId: sectionId,
-          sectionTitle: title,
-          disabled: disabled,
-          resetTrigger,
-          key: stepInfo.stepId,
-        });
-      } else if (React.isValidElement(child) && (child as any).type === CodeBlockStep) {
-        const stepInfo = stepComponents[stepIndex];
-        if (!stepInfo) {
-          return child;
-        }
-
-        const isEligibleForChecking = stepEligibility[stepIndex];
-        const isCompleted = completedSteps.has(stepInfo.stepId);
-        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
-
-        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-          sectionId,
-          stepIndex
-        );
-
-        stepIndex++;
-
-        return React.cloneElement(child as React.ReactElement<any>, {
-          ...(child.props as any),
-          stepId: stepInfo.stepId,
-          isEligibleForChecking,
-          isCompleted,
-          isCurrentlyExecuting,
-          onStepComplete: handleStepComplete,
-          stepIndex: documentStepIndex,
-          totalSteps: documentTotalSteps,
-          sectionId: sectionId,
-          sectionTitle: title,
-          disabled: disabled || !sectionRequirementsStatus.passed || (isRunning && !isCurrentlyExecuting),
-          resetTrigger,
-          key: stepInfo.stepId,
-          ref: (
-            ref: {
-              executeStep: () => Promise<boolean>;
-            } | null
-          ) => {
-            if (ref) {
-              multiStepRefs.current.set(stepInfo.stepId, ref);
-            } else {
-              multiStepRefs.current.delete(stepInfo.stepId);
-            }
-          },
-        });
+      const schema = lookupStepSchema(child);
+      if (!schema) {
+        return child;
       }
-      return child;
+      const stepInfo = stepComponents[stepIndex];
+      if (!stepInfo) {
+        return child;
+      }
+
+      const isEligibleForChecking = stepEligibility[stepIndex] ?? false;
+      const isCompleted = completedSteps.has(stepInfo.stepId);
+      const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
+      const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
+        sectionId,
+        stepIndex
+      );
+
+      const enhanceCtx: EnhanceContext = {
+        stepInfo,
+        isEligibleForChecking,
+        isCompleted,
+        isCurrentlyExecuting,
+        documentStepIndex,
+        documentTotalSteps,
+        sectionId,
+        sectionTitle: title,
+        baseDisabled: disabled,
+        isRunning,
+        sectionRequirementsPassed: sectionRequirementsStatus.passed,
+        resetTrigger,
+        onStepComplete: handleStepComplete,
+        onStepReset: handleStepReset,
+      };
+
+      const enhancedProps = schema.toEnhancedProps(enhanceCtx);
+
+      // `ref` and `key` are React-special — they must go onto the
+      // cloneElement props directly, not into `enhancedProps`.
+      const refCallback = schema.refTarget === 'none' ? undefined : makeRefCallback(schema.refTarget, stepInfo.stepId);
+
+      stepIndex++;
+
+      return React.cloneElement(child as React.ReactElement<any>, {
+        ...(child as React.ReactElement<any>).props,
+        ...enhancedProps,
+        key: stepInfo.stepId,
+        ...(refCallback ? { ref: refCallback } : {}),
+      });
     });
   }, [
     children,
     stepComponents,
-    stepEligibility, // Pre-computed array instead of callback
-    completedSteps, // This should trigger re-render when completedSteps changes
+    stepEligibility,
+    completedSteps,
     currentlyExecutingStep,
     handleStepComplete,
     handleStepReset,
@@ -1953,7 +1221,7 @@ export function InteractiveSection({
     resetTrigger,
     sectionId,
     title,
-    sectionRequirementsStatus.passed, // Section requirements gate child steps
+    sectionRequirementsStatus.passed,
   ]);
 
   // Computed once per render so the catch-all action button's `title`

@@ -68,7 +68,12 @@ export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
 };
 
 function convertSchema(entry: SchemaRegistryEntry, includeVersion: boolean): Record<string, unknown> {
-  const jsonSchema = z.toJSONSchema(entry.schema) as Record<string, unknown>;
+  // reused: 'ref' is load-bearing. The block schema is recursive (sections /
+  // multisteps / conditionals can each contain blocks), so the default
+  // `reused: 'inline'` produces ~28 MB of duplicated subtrees for content /
+  // block / guide — enough to OOM a 1 GiB Cloud Run instance during a single
+  // tool call. Emitting $defs + $ref keeps the same output under ~35 KB.
+  const jsonSchema = z.toJSONSchema(entry.schema, { reused: 'ref' }) as Record<string, unknown>;
 
   if (entry.refinements && entry.refinements.length > 0) {
     jsonSchema['x-refinements'] = entry.refinements;

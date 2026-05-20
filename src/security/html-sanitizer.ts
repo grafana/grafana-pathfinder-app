@@ -2,7 +2,7 @@
 // Implements XSS protection using DOMPurify with custom configuration
 // for interactive documentation features
 
-import DOMPurify from 'dompurify';
+import DOMPurify, { type Config as DOMPurifyConfig } from 'dompurify';
 import { isYouTubeDomain, isVimeoDomain } from './url-validator';
 
 /**
@@ -27,7 +27,7 @@ export function sanitizeDocumentationHTML(html: string): string {
   }
 
   // Configure DOMPurify with custom settings for documentation
-  const config: DOMPurify.Config = {
+  const config: DOMPurifyConfig = {
     // Allow standard HTML tags plus custom documentation elements
     // Only includes tags actually used by Grafana docs content
     ALLOWED_TAGS: [

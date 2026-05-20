@@ -63,6 +63,25 @@ describe('schema command', () => {
       expect(schema).not.toBeNull();
       expect(schema!['x-refinements']).toBeUndefined();
     });
+
+    // Regression: see src/cli/commands/schema.ts `convertSchema`. The block
+    // schema is recursive, so the default zod-to-JSON-Schema `reused: 'inline'`
+    // emits ~28 MB of duplicated subtrees for content / block / guide. With
+    // `reused: 'ref'` the same exports are ~35 KB. If this test starts failing
+    // the new value is more useful than the threshold — investigate before
+    // bumping the bound.
+    it.each(['content', 'block', 'guide'])(
+      'emits a bounded recursive schema for "%s" (no exponential inlining)',
+      (name) => {
+        const schema = exportSchema(name, false);
+        expect(schema).not.toBeNull();
+        const serialized = JSON.stringify(schema);
+        // Empirical: content ~35 KB, block ~30 KB, guide ~40 KB with reused:'ref'.
+        // Without it, all three explode to tens of megabytes. 200 KB gives plenty
+        // of headroom for legitimate growth without re-admitting the OOM regression.
+        expect(serialized.length).toBeLessThan(200_000);
+      }
+    );
   });
 
   describe('exportAllSchemas', () => {

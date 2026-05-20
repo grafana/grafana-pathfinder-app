@@ -230,9 +230,7 @@ jest.mock('../../types/package.types', () => ({
   getPackageRenderType: jest.fn(() => 'interactive'),
 }));
 
-jest.mock('../../hooks', () => ({
-  usePendingGuideLaunch: jest.fn(),
-}));
+jest.mock('../../hooks', () => ({}));
 
 // Mock the bundled index so the resolver fallback is deterministic.
 jest.mock(

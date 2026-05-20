@@ -217,9 +217,7 @@ jest.mock('../../types/package.types', () => ({
   getPackageRenderType: jest.fn(),
 }));
 
-jest.mock('../../hooks', () => ({
-  usePendingGuideLaunch: jest.fn(),
-}));
+jest.mock('../../hooks', () => ({}));
 
 // ---------------------------------------------------------------------------
 // Import under test

@@ -299,6 +299,39 @@ export function createAnalyticsMock() {
   };
 }
 
+/**
+ * Factory for `jest.mock('@grafana/data', ...)`.
+ *
+ * Spreads the real `@grafana/data` module so `@grafana/runtime` v13's eager
+ * top-level imports keep working (`getThemeById`, `BusEventBase`,
+ * `BusEventWithPayload`, ...) and only overrides `usePluginContext` so the
+ * section's plugin-meta lookups return a stable empty fixture in tests.
+ */
+export function createGrafanaDataMock() {
+  return {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    ...jest.requireActual('@grafana/data'),
+    usePluginContext: () => ({ meta: { jsonData: {} } }),
+  };
+}
+
+/**
+ * Factory for `jest.mock('@grafana/ui', ...)`.
+ *
+ * Mirrors the section's actual surface (`Button`) and the eager hooks
+ * `@grafana/runtime` v13's `LocationService` reaches for at module load
+ * (`createLogger`, `attachDebugger`). Without these, runtime blows up the
+ * moment any module under test transitively imports it.
+ */
+export function createGrafanaUiMock() {
+  return {
+    Button: ({ children, onClick, disabled, ...rest }: any) =>
+      React.createElement('button', { onClick, disabled, ...rest }, children),
+    createLogger: () => ({ logger: jest.fn() }),
+    attachDebugger: jest.fn(),
+  };
+}
+
 /** Factory for `jest.mock('../../constants', ...)`. */
 export function createConstantsMock() {
   return {

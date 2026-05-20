@@ -8,6 +8,8 @@
  */
 
 import { useCallback } from 'react';
+import { getAppEvents } from '@grafana/runtime';
+import { t } from '@grafana/i18n';
 import {
   reportAppInteraction,
   UserInteraction,
@@ -82,7 +84,16 @@ export function useContentReset({ model }: UseContentResetOptions) {
         }
       } catch (error) {
         console.error('[DocsPanel] Failed to reset guide progress:', error);
-        // TODO: Show error toast to user
+        getAppEvents().publish({
+          type: 'alert-error',
+          payload: [
+            t('docsPanel.resetGuideErrorTitle', 'Reset failed'),
+            t(
+              'docsPanel.resetGuideErrorMessage',
+              "Couldn't reset guide progress. Please try again or reload the page."
+            ),
+          ],
+        });
         throw error; // Re-throw so caller can handle if needed
       }
     },
