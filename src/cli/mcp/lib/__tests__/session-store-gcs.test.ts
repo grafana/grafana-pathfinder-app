@@ -12,9 +12,15 @@ import type { Storage as GcsStorage } from '@google-cloud/storage';
 import type { ContentJson } from '../../../../types/package.types';
 import { SESSION_GENERATION_ABSENT, SessionPreconditionFailedError, type SessionArtifact } from '../session-store';
 import { GcsSessionStore } from '../session-store-gcs';
+import { tokenObjectPrefix } from '../session-token';
 
 const TOKEN_A = 'aaaaaaaaaaaaaaaaaaaaaa';
 const TOKEN_B = 'bbbbbbbbbbbbbbbbbbbbbb';
+// Object-name prefix derived from the bearer token. The store hashes
+// the token before using it as a GCS path, so every assertion that
+// references object names must hash through this helper rather than
+// embedding the raw token. See `session-token.ts#tokenObjectPrefix`.
+const PREFIX_A = tokenObjectPrefix(TOKEN_A);
 
 function makeArtifact(title: string, withManifest = false): SessionArtifact {
   const content: ContentJson = { id: 'fixture', title, blocks: [] };
@@ -167,15 +173,13 @@ describe('GcsSessionStore.load', () => {
   it('throws on corruption when the generation pointer references a missing staged dir', async () => {
     const { store, bucket } = newStore();
     // Write a generation pointer that names a stage we never staged.
-    await bucket
-      .file(`${TOKEN_A}/generation`)
-      .save(JSON.stringify({ generation: 1, stage: 'nonexistent-stage' }));
+    await bucket.file(`${PREFIX_A}/generation`).save(JSON.stringify({ generation: 1, stage: 'nonexistent-stage' }));
     await expect(store.load(TOKEN_A)).rejects.toThrow(/corruption.*missing/);
   });
 
   it('throws on corruption when the generation pointer body is malformed', async () => {
     const { store, bucket } = newStore();
-    await bucket.file(`${TOKEN_A}/generation`).save('not-json-at-all');
+    await bucket.file(`${PREFIX_A}/generation`).save('not-json-at-all');
     await expect(store.load(TOKEN_A)).rejects.toThrow(/corruption.*not valid JSON/);
   });
 
@@ -201,9 +205,12 @@ describe('GcsSessionStore.save', () => {
     const { store, bucket } = newStore();
     const result = await store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT);
     expect(result.generation).toBe(1);
-    expect(bucket.has(`${TOKEN_A}/generation`)).toBe(true);
+    expect(bucket.has(`${PREFIX_A}/generation`)).toBe(true);
     // Content lives under a per-attempt stage prefix, not the top level.
-    expect(bucket.list().some((n) => n.startsWith(`${TOKEN_A}/`) && n.endsWith('/content.json'))).toBe(true);
+    expect(bucket.list().some((n) => n.startsWith(`${PREFIX_A}/`) && n.endsWith('/content.json'))).toBe(true);
+    // Raw bearer token must never appear in object names — that's the
+    // whole point of routing through `tokenObjectPrefix`.
+    expect(bucket.list().some((n) => n.includes(TOKEN_A))).toBe(false);
   });
 
   it('rejects a create when a session already exists (412 -> typed precondition error)', async () => {
@@ -259,7 +266,7 @@ describe('GcsSessionStore.delete', () => {
     const { store, bucket } = newStore();
     await store.save(TOKEN_A, makeArtifact('v1', true), SESSION_GENERATION_ABSENT);
     await store.delete(TOKEN_A);
-    expect(bucket.list().filter((n) => n.startsWith(`${TOKEN_A}/`))).toEqual([]);
+    expect(bucket.list().filter((n) => n.startsWith(`${PREFIX_A}/`))).toEqual([]);
     expect(await store.load(TOKEN_A)).toBeNull();
   });
 
@@ -285,11 +292,11 @@ describe('GcsSessionStore Mcp-Session-Id pin (P7 task 16)', () => {
     expect(await store.readMcpSessionPin(TOKEN_A)).toBeNull();
   });
 
-  it('persists the pin as a sidecar object at <token>/.pin', async () => {
+  it('persists the pin as a sidecar object at <prefix>/.pin', async () => {
     const { store, bucket } = newStore();
     await store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT);
     await store.bindMcpSessionId(TOKEN_A, 'transport-session-A');
-    expect(bucket.has(`${TOKEN_A}/.pin`)).toBe(true);
+    expect(bucket.has(`${PREFIX_A}/.pin`)).toBe(true);
     expect(await store.readMcpSessionPin(TOKEN_A)).toBe('transport-session-A');
   });
 
@@ -453,13 +460,11 @@ describe('GcsSessionStore atomicity (BL-01 / BL-02 regression)', () => {
     // Winner save first (sequential — guarantees the loser is the one
     // that gets the 412 against gen=1).
     await store.save(TOKEN_A, makeArtifact('winner'), 1);
-    await expect(store.save(TOKEN_A, makeArtifact('loser'), 1)).rejects.toBeInstanceOf(
-      SessionPreconditionFailedError
-    );
+    await expect(store.save(TOKEN_A, makeArtifact('loser'), 1)).rejects.toBeInstanceOf(SessionPreconditionFailedError);
     // The loser's staged dir must not linger in the bucket.
-    expect(bucket.list().some((n) => n.startsWith(`${TOKEN_A}/loser/`))).toBe(false);
+    expect(bucket.list().some((n) => n.startsWith(`${PREFIX_A}/loser/`))).toBe(false);
     // The winner's staged dir is still live (pointer references it).
-    expect(bucket.list().some((n) => n.startsWith(`${TOKEN_A}/winner/`))).toBe(true);
+    expect(bucket.list().some((n) => n.startsWith(`${PREFIX_A}/winner/`))).toBe(true);
   });
 
   it('load returns the artifact named by the current pointer, not a torn pair (BL-02)', async () => {

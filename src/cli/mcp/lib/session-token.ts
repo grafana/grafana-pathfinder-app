@@ -3,8 +3,10 @@
  *
  * A token is an opaque bearer capability minted by the MCP on the first
  * mutation tool call of an authoring session. The agent passes it back
- * verbatim on every subsequent call; the server uses it as the GCS object
- * prefix (`<token>/content.json`, `<token>/manifest.json`).
+ * verbatim on every subsequent call; the server uses a non-reversible
+ * derivative of the token (see `tokenObjectPrefix`) as the GCS object
+ * prefix. The raw token never appears in object names, so GCS audit logs,
+ * bucket listings, and SDK error messages cannot leak the bearer credential.
  *
  * Format: 22 characters, Crockford base32 (lowercase output).
  *   - Alphabet: 0123456789abcdefghjkmnpqrstvwxyz (drops I, L, O, U to
@@ -113,6 +115,31 @@ export function tokenLogHash(token: string): string {
     throw new Error('tokenLogHash: invalid session token');
   }
   return createHash('sha256').update(token).digest('hex').slice(0, 16);
+}
+
+/**
+ * Non-reversible derivative of the session token used as the GCS object
+ * prefix. Full sha-256 hex (64 chars) — narrower would collide more often
+ * than authoring volume justifies, and prefix length costs us nothing
+ * (GCS bills on bytes, and object names of this length are noise next to
+ * artifact bodies).
+ *
+ * Why this exists: the raw token is a bearer credential. Using it as the
+ * object prefix leaks it into surfaces the app does not control —
+ * `gsutil ls`, Cloud Audit Logs (Data Access events log full object
+ * names), bucket inventory exports, SDK error stack traces, Cloud Console.
+ * Hashing keeps the on-disk layout deterministic for the same token while
+ * making token recovery from any of those surfaces require a preimage
+ * attack on sha-256.
+ *
+ * Throws on invalid input — every production path normalizes/validates
+ * tokens before reaching the store, so an invalid token here is a bug.
+ */
+export function tokenObjectPrefix(token: string): string {
+  if (!isValidSessionToken(token)) {
+    throw new Error('tokenObjectPrefix: invalid session token');
+  }
+  return createHash('sha256').update(token).digest('hex');
 }
 
 /**

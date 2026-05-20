@@ -3,10 +3,17 @@
  *
  * Layout (per session token):
  *
- *   gs://<bucket>/<token>/generation              ← canonical pointer (JSON)
- *   gs://<bucket>/<token>/<stage>/content.json    ← immutable per save attempt
- *   gs://<bucket>/<token>/<stage>/manifest.json   ← optional, immutable per save attempt
- *   gs://<bucket>/<token>/.pin                    ← Mcp-Session-Id pin (P7 task 16)
+ *   gs://<bucket>/<prefix>/generation              ← canonical pointer (JSON)
+ *   gs://<bucket>/<prefix>/<stage>/content.json    ← immutable per save attempt
+ *   gs://<bucket>/<prefix>/<stage>/manifest.json   ← optional, immutable per save attempt
+ *   gs://<bucket>/<prefix>/.pin                    ← Mcp-Session-Id pin (P7 task 16)
+ *
+ * `<prefix>` is `tokenObjectPrefix(token)` — sha-256 hex of the token, NOT
+ * the token itself. The raw token is a bearer credential; using it as the
+ * object name would leak it into bucket listings, Cloud Audit Logs (Data
+ * Access events log object names), SDK error stack traces, and Cloud
+ * Console. Hashing keeps the layout deterministic for the same token
+ * without exposing the credential through GCS-side surfaces.
  *
  * The `generation` pointer body is `{"generation": <N>, "stage": "<id>"}`
  * — both fields together name the live artifact for this session. The
@@ -82,6 +89,7 @@ import {
   type SessionArtifact,
   type SessionStore,
 } from './session-store';
+import { tokenObjectPrefix } from './session-token';
 
 const CONTENT_OBJECT = 'content.json';
 const MANIFEST_OBJECT = 'manifest.json';
@@ -99,8 +107,17 @@ interface PointerSnapshot {
   gcsGeneration: number;
 }
 
+/**
+ * Object-name builder. Every GCS path in this module is built from
+ * `tokenObjectPrefix(token)` rather than the token itself — see the
+ * file-level doc for the why.
+ */
+function sessionPrefix(token: string): string {
+  return tokenObjectPrefix(token);
+}
+
 function stagedPrefix(token: string, stage: string): string {
-  return `${token}/${stage}`;
+  return `${sessionPrefix(token)}/${stage}`;
 }
 
 function contentObjectName(token: string, stage: string): string {
@@ -109,6 +126,14 @@ function contentObjectName(token: string, stage: string): string {
 
 function manifestObjectName(token: string, stage: string): string {
   return `${stagedPrefix(token, stage)}/${MANIFEST_OBJECT}`;
+}
+
+function generationObjectName(token: string): string {
+  return `${sessionPrefix(token)}/${GENERATION_OBJECT}`;
+}
+
+function pinObjectName(token: string): string {
+  return `${sessionPrefix(token)}/${MCP_SESSION_PIN_OBJECT}`;
 }
 
 interface GcsErrorLike {
@@ -300,14 +325,19 @@ export class GcsSessionStore implements SessionStore {
   }
 
   /**
-   * Read `<token>/generation` and parse the JSON body. Returns `null`
+   * Read `<prefix>/generation` and parse the JSON body. Returns `null`
    * when the pointer is absent (session does not exist). Throws
    * `SessionStoreCorruptedError` for malformed contents.
+   *
+   * Corruption messages reference the hashed prefix (the literal GCS
+   * object name) rather than the raw token — the messages may end up in
+   * operator logs and the raw token is a bearer credential.
    */
   private async readGenerationPointer(token: string): Promise<GenerationPointer | null> {
+    const objectName = generationObjectName(token);
     let text: string | null;
     try {
-      text = await this.downloadText(`${token}/${GENERATION_OBJECT}`);
+      text = await this.downloadText(objectName);
     } catch (err) {
       if (isNotFoundError(err)) {
         return null;
@@ -315,14 +345,14 @@ export class GcsSessionStore implements SessionStore {
       throw err;
     }
     if (text === null) {
-      throw new SessionStoreCorruptedError(`session store corruption: ${token}/${GENERATION_OBJECT} is empty`);
+      throw new SessionStoreCorruptedError(`session store corruption: ${objectName} is empty`);
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch (err) {
       throw new SessionStoreCorruptedError(
-        `session store corruption: ${token}/${GENERATION_OBJECT} is not valid JSON: ${
+        `session store corruption: ${objectName} is not valid JSON: ${
           err instanceof Error ? err.message : String(err)
         }`
       );
@@ -334,19 +364,17 @@ export class GcsSessionStore implements SessionStore {
       typeof (parsed as GenerationPointer).stage !== 'string'
     ) {
       throw new SessionStoreCorruptedError(
-        `session store corruption: ${token}/${GENERATION_OBJECT} is missing required fields (got ${JSON.stringify(
-          parsed
-        )})`
+        `session store corruption: ${objectName} is missing required fields (got ${JSON.stringify(parsed)})`
       );
     }
     const { generation, stage } = parsed as GenerationPointer;
     if (!Number.isFinite(generation) || generation <= 0 || !Number.isInteger(generation)) {
       throw new SessionStoreCorruptedError(
-        `session store corruption: ${token}/${GENERATION_OBJECT}.generation is not a positive integer (got ${generation})`
+        `session store corruption: ${objectName}.generation is not a positive integer (got ${generation})`
       );
     }
     if (stage.length === 0) {
-      throw new SessionStoreCorruptedError(`session store corruption: ${token}/${GENERATION_OBJECT}.stage is empty`);
+      throw new SessionStoreCorruptedError(`session store corruption: ${objectName}.stage is empty`);
     }
     return { generation, stage };
   }
@@ -409,7 +437,7 @@ export class GcsSessionStore implements SessionStore {
     const pointerBody: GenerationPointer = { generation: nextGeneration, stage: newStage };
     const gcsPrecondition = isCreate ? 0 : previousSnapshot!.gcsGeneration;
     try {
-      await this.uploadJsonWithPrecondition(`${token}/${GENERATION_OBJECT}`, pointerBody, gcsPrecondition);
+      await this.uploadJsonWithPrecondition(generationObjectName(token), pointerBody, gcsPrecondition);
     } catch (err) {
       if (isPreconditionFailedError(err)) {
         await this.cleanupStagedPrefix(token, newStage);
@@ -465,7 +493,8 @@ export class GcsSessionStore implements SessionStore {
    * Returns `null` when the pointer is absent (no session).
    */
   private async downloadPointerSnapshot(token: string): Promise<PointerSnapshot | null> {
-    const file = this.bucket.file(`${token}/${GENERATION_OBJECT}`);
+    const objectName = generationObjectName(token);
+    const file = this.bucket.file(objectName);
 
     let gcsGeneration: number;
     try {
@@ -514,7 +543,7 @@ export class GcsSessionStore implements SessionStore {
       parsed = JSON.parse(body);
     } catch (err) {
       throw new SessionStoreCorruptedError(
-        `session store corruption: ${token}/${GENERATION_OBJECT} is not valid JSON: ${
+        `session store corruption: ${objectName} is not valid JSON: ${
           err instanceof Error ? err.message : String(err)
         }`
       );
@@ -526,9 +555,7 @@ export class GcsSessionStore implements SessionStore {
       typeof (parsed as GenerationPointer).stage !== 'string'
     ) {
       throw new SessionStoreCorruptedError(
-        `session store corruption: ${token}/${GENERATION_OBJECT} is missing required fields (got ${JSON.stringify(
-          parsed
-        )})`
+        `session store corruption: ${objectName} is missing required fields (got ${JSON.stringify(parsed)})`
       );
     }
     const pointer = parsed as GenerationPointer;
@@ -539,7 +566,7 @@ export class GcsSessionStore implements SessionStore {
       pointer.stage.length === 0
     ) {
       throw new SessionStoreCorruptedError(
-        `session store corruption: ${token}/${GENERATION_OBJECT} has invalid fields (got ${JSON.stringify(parsed)})`
+        `session store corruption: ${objectName} has invalid fields (got ${JSON.stringify(parsed)})`
       );
     }
     return { pointer, gcsGeneration };
@@ -561,7 +588,7 @@ export class GcsSessionStore implements SessionStore {
 
   async delete(token: string): Promise<void> {
     try {
-      await this.bucket.deleteFiles({ prefix: `${token}/` });
+      await this.bucket.deleteFiles({ prefix: `${sessionPrefix(token)}/` });
     } catch (err) {
       if (isNotFoundError(err)) {
         return;
@@ -572,7 +599,7 @@ export class GcsSessionStore implements SessionStore {
 
   /**
    * P7 task 16. Persist the MCP transport session id as a sidecar object
-   * at `<token>/.pin`. WR-05: written with `ifGenerationMatch=0`, so a
+   * at `<prefix>/.pin`. WR-05: written with `ifGenerationMatch=0`, so a
    * second bind cannot silently overwrite the first. On 412 we read the
    * existing pin and:
    *   - if it matches the new value, treat as idempotent no-op (covers
@@ -585,7 +612,7 @@ export class GcsSessionStore implements SessionStore {
     try {
       await withRetryOn429(
         () =>
-          this.bucket.file(`${token}/${MCP_SESSION_PIN_OBJECT}`).save(mcpSessionId, {
+          this.bucket.file(pinObjectName(token)).save(mcpSessionId, {
             resumable: false,
             contentType: 'text/plain',
             preconditionOpts: { ifGenerationMatch: 0 },
@@ -609,7 +636,7 @@ export class GcsSessionStore implements SessionStore {
 
   async readMcpSessionPin(token: string): Promise<string | null> {
     try {
-      const text = await this.downloadText(`${token}/${MCP_SESSION_PIN_OBJECT}`);
+      const text = await this.downloadText(pinObjectName(token));
       return text === null ? null : text.trim();
     } catch (err) {
       if (isNotFoundError(err)) {
@@ -646,9 +673,7 @@ export class GcsSessionStore implements SessionStore {
       // operator can intervene rather than leaving callers to guess
       // from an unstructured 500.
       throw new SessionStoreCorruptedError(
-        `session store corruption: ${objectName} is not valid JSON: ${
-          err instanceof Error ? err.message : String(err)
-        }`
+        `session store corruption: ${objectName} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
       );
     }
   }
