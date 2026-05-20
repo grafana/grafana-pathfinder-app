@@ -57,7 +57,7 @@ For each `.ts` / `.tsx` / `.js` / `.jsx` file in scope, read the changed hunks a
 | F2  | `dangerouslySetInnerHTML` used where `{}` auto-escape would do                                                                      | High     |
 | F3  | URL built via string concat (`apiBase + '/users?id=' + userId`) instead of `new URL()` + `URL.searchParams.set()`                   | High     |
 | F4  | `dangerouslySetInnerHTML` without `textUtil.sanitize()` (or `sanitizeDocumentationHTML()` from `src/security/`)                     | Critical |
-| F5  | Any of `.innerHTML`, `.outerHTML`, `.insertAdjacentHTML`                                                                            | Critical |
+| F5  | Any of `.innerHTML`, `.outerHTML`, `.insertAdjacentHTML`, or dynamic `script.src` assignment                                        | Critical |
 | F6  | URL passed to `href` / `src` without `textUtil.sanitizeUrl()` or a scheme-allowlist check (`parseUrlSafely`, `isAllowedContentUrl`) | High     |
 
 **Detection rules:**

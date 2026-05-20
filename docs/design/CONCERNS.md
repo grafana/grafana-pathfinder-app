@@ -31,6 +31,10 @@ Signal counting: a matching changed file path = 1 signal; a high-value semantic 
 
 Flag unmapped clusters, disclose reduced confidence, and suggest new concerns when: a directory with multiple changed files maps weakly to no concern; repeated high-value symbols appear with no concern trigger; most meaningful hunks are covered only by always-on concerns. Coverage-gap detection is a disclosure mechanism, not a gate — do not suppress reviewers to avoid the gap.
 
+## Canonical rule sources
+
+F1–F6 security rules are defined in `.cursor/rules/frontend-security.mdc`. Other files (`.cursor/rules/pr-review.md`, `.cursor/skills/secure/SKILL.md`) reference these IDs without redefining them — if the summaries diverge, `frontend-security.mdc` wins.
+
 ---
 
 ## Concern routing table
