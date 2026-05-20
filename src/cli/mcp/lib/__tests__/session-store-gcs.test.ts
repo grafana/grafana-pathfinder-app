@@ -231,6 +231,38 @@ describe('GcsSessionStore.delete', () => {
   });
 });
 
+describe('GcsSessionStore Mcp-Session-Id pin (P7 task 16)', () => {
+  it('returns null when no pin has ever been bound', async () => {
+    const { store } = newStore();
+    await store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT);
+    expect(await store.readMcpSessionPin(TOKEN_A)).toBeNull();
+  });
+
+  it('persists the pin as a sidecar object at <token>/.pin', async () => {
+    const { store, bucket } = newStore();
+    await store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT);
+    await store.bindMcpSessionId(TOKEN_A, 'transport-session-A');
+    expect(bucket.has(`${TOKEN_A}/.pin`)).toBe(true);
+    expect(await store.readMcpSessionPin(TOKEN_A)).toBe('transport-session-A');
+  });
+
+  it('delete() removes the pin object along with the rest of the session', async () => {
+    const { store } = newStore();
+    await store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT);
+    await store.bindMcpSessionId(TOKEN_A, 'transport-session-A');
+    await store.delete(TOKEN_A);
+    expect(await store.readMcpSessionPin(TOKEN_A)).toBeNull();
+  });
+
+  it('keeps pins scoped to their token (no leak across sessions)', async () => {
+    const { store } = newStore();
+    await store.save(TOKEN_A, makeArtifact('A'), SESSION_GENERATION_ABSENT);
+    await store.save(TOKEN_B, makeArtifact('B'), SESSION_GENERATION_ABSENT);
+    await store.bindMcpSessionId(TOKEN_A, 'session-A');
+    expect(await store.readMcpSessionPin(TOKEN_B)).toBeNull();
+  });
+});
+
 describe('GcsSessionStore concurrency (precondition fan-out)', () => {
   it('only one of two racing creates wins', async () => {
     const { store } = newStore();

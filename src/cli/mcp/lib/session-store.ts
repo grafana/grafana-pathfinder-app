@@ -94,6 +94,27 @@ export interface SessionStore {
    * even if no session is stored under that token.
    */
   delete(token: string): Promise<void>;
+
+  /**
+   * Persist a transport-layer `Mcp-Session-Id` pin against this session
+   * token. P7 task 16: called on session mint so subsequent calls from a
+   * different MCP transport session are rejected with `SESSION_NOT_FOUND`
+   * (per design — the pin is a confidentiality boundary, not an auth
+   * surface, so it surfaces as 404, not 403).
+   *
+   * Idempotent for the same pin; overwriting an existing pin with a
+   * different value is implementation-defined (in practice the in-memory
+   * and GCS impls both overwrite, but no production caller does this —
+   * we only ever bind once at mint).
+   */
+  bindMcpSessionId(token: string, mcpSessionId: string): Promise<void>;
+
+  /**
+   * Read the pinned `Mcp-Session-Id` for this token, or `null` if none was
+   * ever bound (legacy session, stdio transport that doesn't have a
+   * session id, or a client that never sent the header).
+   */
+  readMcpSessionPin(token: string): Promise<string | null>;
 }
 
 /**
@@ -115,6 +136,7 @@ export interface SessionStore {
  */
 export class InMemorySessionStore implements SessionStore {
   private readonly entries = new Map<string, LoadedSession>();
+  private readonly pins = new Map<string, string>();
 
   async load(token: string): Promise<LoadedSession | null> {
     const entry = this.entries.get(token);
@@ -137,6 +159,15 @@ export class InMemorySessionStore implements SessionStore {
 
   async delete(token: string): Promise<void> {
     this.entries.delete(token);
+    this.pins.delete(token);
+  }
+
+  async bindMcpSessionId(token: string, mcpSessionId: string): Promise<void> {
+    this.pins.set(token, mcpSessionId);
+  }
+
+  async readMcpSessionPin(token: string): Promise<string | null> {
+    return this.pins.get(token) ?? null;
   }
 
   /** Test helper — number of live sessions. Not part of the public interface. */

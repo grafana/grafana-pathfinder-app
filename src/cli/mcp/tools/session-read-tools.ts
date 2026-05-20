@@ -21,6 +21,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { buildArtifactSummary, findBlockById } from '../../utils/package-io';
+import { enforceMcpSessionPin } from '../lib/session-pin';
 import { normalizeSessionToken } from '../lib/session-token';
 import type { SessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
@@ -30,8 +31,28 @@ const SessionTokenInput = {
   sessionToken: z.string().describe('Session token returned by pathfinder_create_package or a previous mutation ack.'),
 };
 
-export function registerSessionReadTools(server: McpServer, options: { sessionStore: SessionStore }): void {
-  const { sessionStore } = options;
+export function registerSessionReadTools(
+  server: McpServer,
+  options: { sessionStore: SessionStore; mcpSessionId?: string }
+): void {
+  const { sessionStore, mcpSessionId } = options;
+
+  async function resolveToken(
+    sessionToken: string
+  ): Promise<
+    | { ok: true; token: string }
+    | { ok: false; response: { content: Array<{ type: 'text'; text: string }>; isError?: boolean } }
+  > {
+    const token = normalizeSessionToken(sessionToken);
+    if (!token) {
+      return { ok: false, response: invalidSessionTokenResult() };
+    }
+    const pinFailure = await enforceMcpSessionPin({ store: sessionStore, mcpSessionId }, token);
+    if (pinFailure) {
+      return { ok: false, response: pinFailure };
+    }
+    return { ok: true, token };
+  }
 
   server.registerTool(
     'pathfinder_list_blocks',
@@ -42,10 +63,11 @@ export function registerSessionReadTools(server: McpServer, options: { sessionSt
       inputSchema: { ...SessionTokenInput },
     },
     async ({ sessionToken }) => {
-      const token = normalizeSessionToken(sessionToken);
-      if (!token) {
-        return invalidSessionTokenResult();
+      const r = await resolveToken(sessionToken);
+      if (!r.ok) {
+        return r.response;
       }
+      const { token } = r;
       const loaded = await sessionStore.load(token);
       if (loaded === null) {
         return sessionNotFoundResult(token);
@@ -78,10 +100,11 @@ export function registerSessionReadTools(server: McpServer, options: { sessionSt
       },
     },
     async ({ sessionToken, blockId }) => {
-      const token = normalizeSessionToken(sessionToken);
-      if (!token) {
-        return invalidSessionTokenResult();
+      const r = await resolveToken(sessionToken);
+      if (!r.ok) {
+        return r.response;
       }
+      const { token } = r;
       const loaded = await sessionStore.load(token);
       if (loaded === null) {
         return sessionNotFoundResult(token);
@@ -127,10 +150,11 @@ export function registerSessionReadTools(server: McpServer, options: { sessionSt
       inputSchema: { ...SessionTokenInput },
     },
     async ({ sessionToken }) => {
-      const token = normalizeSessionToken(sessionToken);
-      if (!token) {
-        return invalidSessionTokenResult();
+      const r = await resolveToken(sessionToken);
+      if (!r.ok) {
+        return r.response;
       }
+      const { token } = r;
       const loaded = await sessionStore.load(token);
       if (loaded === null) {
         return sessionNotFoundResult(token);

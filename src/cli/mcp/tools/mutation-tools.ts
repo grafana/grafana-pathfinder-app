@@ -25,6 +25,7 @@ import { runSetManifest } from '../../commands/set-manifest';
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../../utils/block-registry';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
+import { enforceMcpSessionPin } from '../lib/session-pin';
 import { normalizeSessionToken } from '../lib/session-token';
 import type { SessionStore } from '../lib/session-store';
 import { writeAppend, writeDestructive } from './annotations';
@@ -129,6 +130,7 @@ const BlockTypeEnum = Object.keys(BLOCK_SCHEMA_MAP) as BlockType[];
  */
 async function dispatchMutation(
   store: SessionStore,
+  mcpSessionId: string | undefined,
   inputs: {
     artifact?: {
       content: Record<string, unknown>;
@@ -154,6 +156,10 @@ async function dispatchMutation(
     if (!token) {
       return invalidSessionTokenResult();
     }
+    const pinFailure = await enforceMcpSessionPin({ store, mcpSessionId }, token);
+    if (pinFailure) {
+      return pinFailure;
+    }
     const r = await dispatchSessionMutation(token, store, runner, {
       expectedGeneration: inputs.expectedGeneration,
     });
@@ -176,8 +182,11 @@ async function dispatchMutation(
   return outcomeResult(result.outcome, result.artifact, result.summary);
 }
 
-export function registerMutationTools(server: McpServer, options: { sessionStore: SessionStore }): void {
-  const { sessionStore } = options;
+export function registerMutationTools(
+  server: McpServer,
+  options: { sessionStore: SessionStore; mcpSessionId?: string }
+): void {
+  const { sessionStore, mcpSessionId } = options;
   server.registerTool(
     'pathfinder_add_block',
     {
@@ -214,7 +223,7 @@ export function registerMutationTools(server: McpServer, options: { sessionStore
       position,
       fields,
     }) =>
-      dispatchMutation(sessionStore, { artifact, sessionToken, expectedGeneration }, (dir) =>
+      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
         runAddBlock({
           dir,
           type: type as BlockType,
@@ -243,7 +252,7 @@ export function registerMutationTools(server: McpServer, options: { sessionStore
       },
     },
     async ({ artifact, sessionToken, expectedGeneration, parentId, fields }) =>
-      dispatchMutation(sessionStore, { artifact, sessionToken, expectedGeneration }, (dir) =>
+      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
         runAddStep({ dir, parentId, flagValues: fields })
       )
   );
@@ -261,7 +270,7 @@ export function registerMutationTools(server: McpServer, options: { sessionStore
       },
     },
     async ({ artifact, sessionToken, expectedGeneration, parentId, fields }) =>
-      dispatchMutation(sessionStore, { artifact, sessionToken, expectedGeneration }, (dir) =>
+      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
         runAddChoice({ dir, parentId, flagValues: fields })
       )
   );
@@ -279,7 +288,7 @@ export function registerMutationTools(server: McpServer, options: { sessionStore
       },
     },
     async ({ artifact, sessionToken, expectedGeneration, id, fields }) =>
-      dispatchMutation(sessionStore, { artifact, sessionToken, expectedGeneration }, (dir) =>
+      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
         runEditBlock({ dir, id, flagValues: fields })
       )
   );
@@ -301,7 +310,7 @@ export function registerMutationTools(server: McpServer, options: { sessionStore
       },
     },
     async ({ artifact, sessionToken, expectedGeneration, id, cascade, orphanChildren }) =>
-      dispatchMutation(sessionStore, { artifact, sessionToken, expectedGeneration }, (dir) =>
+      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
         runRemoveBlock({ dir, id, cascade, orphanChildren })
       )
   );
@@ -318,7 +327,7 @@ export function registerMutationTools(server: McpServer, options: { sessionStore
       },
     },
     async ({ artifact, sessionToken, expectedGeneration, fields }) =>
-      dispatchMutation(sessionStore, { artifact, sessionToken, expectedGeneration }, (dir) =>
+      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
         runSetManifest({ dir, flagValues: fields })
       )
   );

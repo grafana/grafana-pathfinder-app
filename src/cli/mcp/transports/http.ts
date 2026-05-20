@@ -98,11 +98,13 @@ export interface RunHttpOptions {
   wallclockMs?: number;
   /**
    * Override the server factory. Default constructs the production
-   * `buildServer({ instrumentation })`. Tests override this to register a
-   * deliberately-slow tool that exercises the wallclock timeout path
-   * without racing against real authoring tools.
+   * `buildServer({ instrumentation, sessionStore, mcpSessionId })`. The
+   * factory is called once per request so it can capture per-request
+   * fields (the Mcp-Session-Id header in particular). Tests override
+   * this to register a deliberately-slow tool that exercises the
+   * wallclock timeout path without racing against real authoring tools.
    */
-  buildServer?: (instrumentation: (obs: ToolCallObservation) => void) => McpServer;
+  buildServer?: (instrumentation: (obs: ToolCallObservation) => void, mcpSessionId: string | undefined) => McpServer;
 }
 
 export interface HttpHandle {
@@ -250,7 +252,8 @@ export async function runHttp(options: RunHttpOptions): Promise<HttpHandle> {
   const sessionStore = options.buildServer ? undefined : await getDefaultSessionStore();
   const factory =
     options.buildServer ??
-    ((instrumentation: (obs: ToolCallObservation) => void) => buildServer({ instrumentation, sessionStore }));
+    ((instrumentation: (obs: ToolCallObservation) => void, mcpSessionId: string | undefined) =>
+      buildServer({ instrumentation, sessionStore, mcpSessionId }));
 
   const state = { inFlight: 0 };
 
@@ -305,7 +308,7 @@ async function handleRequest(
   log: (entry: AccessLogEntry) => void,
   sessionHopCounter: SessionHopCounter,
   wallclockMs: number,
-  factory: (instrumentation: (obs: ToolCallObservation) => void) => McpServer
+  factory: (instrumentation: (obs: ToolCallObservation) => void, mcpSessionId: string | undefined) => McpServer
 ): Promise<void> {
   const start = Date.now();
   const remote = req.socket.remoteAddress ?? 'unknown';
@@ -425,7 +428,7 @@ async function handleRequest(
     // undefined and the log line elides the tool fields.
     const mcp = factory((obs) => {
       observation = obs;
-    });
+    }, sessionId);
     const transport = new StreamableHTTPServerTransport({});
 
     let timedOut = false;

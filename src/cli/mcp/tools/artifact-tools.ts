@@ -32,8 +32,11 @@ import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import { writeAppend } from './annotations';
 import { outcomeResult, textResult } from './result';
 
-export function registerArtifactTools(server: McpServer, options: { sessionStore: SessionStore }): void {
-  const { sessionStore } = options;
+export function registerArtifactTools(
+  server: McpServer,
+  options: { sessionStore: SessionStore; mcpSessionId?: string }
+): void {
+  const { sessionStore, mcpSessionId } = options;
   server.registerTool(
     'pathfinder_create_package',
     {
@@ -77,6 +80,9 @@ export function registerArtifactTools(server: McpServer, options: { sessionStore
         // generation collisions are vanishingly rare (~110 bits of
         // entropy) but we retry-on-conflict a few times just in case.
         const sessionToken = await mintSession(sessionStore, artifact);
+        if (mcpSessionId !== undefined) {
+          await sessionStore.bindMcpSessionId(sessionToken, mcpSessionId);
+        }
 
         return sessionCreateResult(sessionToken, outcome, artifact, summary);
       } finally {
@@ -163,6 +169,9 @@ export function registerArtifactTools(server: McpServer, options: { sessionStore
       const artifact = { content, manifest };
       const summary = buildArtifactSummary(content);
       const sessionToken = await mintSession(sessionStore, artifact);
+      if (mcpSessionId !== undefined) {
+        await sessionStore.bindMcpSessionId(sessionToken, mcpSessionId);
+      }
       return sessionCreateResult(
         sessionToken,
         { status: 'ok', summary: 'Pre-populated guide template ready' },

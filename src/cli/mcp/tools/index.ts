@@ -29,6 +29,13 @@ export interface RegisterAuthoringToolsOptions {
    * option.
    */
   sessionStore: SessionStore;
+  /**
+   * P7 task 16. Transport-layer Mcp-Session-Id header value for this
+   * request (HTTP only). Threaded through to session-mode tools so they
+   * can bind the pin on mint and check it on subsequent calls. See
+   * `lib/session-pin.ts`.
+   */
+  mcpSessionId?: string;
 }
 
 export function registerAuthoringTools(server: McpServer, options: RegisterAuthoringToolsOptions): void {

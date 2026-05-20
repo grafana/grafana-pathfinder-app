@@ -40,6 +40,16 @@ export interface BuildServerOptions {
    * isolation.
    */
   sessionStore?: SessionStore;
+  /**
+   * P7 task 16. Transport-layer `Mcp-Session-Id` header value for the
+   * current request. HTTP transport extracts and threads it per request;
+   * stdio omits it (the user's local trust boundary is the process
+   * boundary). On session mint this value is persisted as a pin against
+   * the new session token; on every subsequent session-mode call the
+   * value is compared against the pin — a mismatch surfaces as
+   * SESSION_NOT_FOUND. See `lib/session-pin.ts`.
+   */
+  mcpSessionId?: string;
 }
 
 export function buildServer(options: BuildServerOptions = {}): McpServer {
@@ -65,7 +75,7 @@ export function buildServer(options: BuildServerOptions = {}): McpServer {
   }
 
   const sessionStore = options.sessionStore ?? new InMemorySessionStore();
-  registerAuthoringTools(server, { sessionStore });
+  registerAuthoringTools(server, { sessionStore, mcpSessionId: options.mcpSessionId });
 
   return server;
 }

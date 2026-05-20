@@ -55,8 +55,11 @@ const SessionTokenSchema = z
     'SESSION MODE. Token returned by pathfinder_create_package or a previous mutation ack. On a successful finalize the session is deleted server-side and the token becomes unusable.'
   );
 
-export function registerFinalizeTool(server: McpServer, options: { sessionStore: SessionStore }): void {
-  const { sessionStore } = options;
+export function registerFinalizeTool(
+  server: McpServer,
+  options: { sessionStore: SessionStore; mcpSessionId?: string }
+): void {
+  const { sessionStore, mcpSessionId } = options;
   server.registerTool(
     'pathfinder_finalize_for_app_platform',
     {
@@ -75,7 +78,7 @@ export function registerFinalizeTool(server: McpServer, options: { sessionStore:
       },
     },
     async ({ artifact, sessionToken, status }) => {
-      const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken });
+      const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken }, mcpSessionId);
       if (!resolved.ok) {
         return resolved.response;
       }

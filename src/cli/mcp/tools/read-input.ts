@@ -10,6 +10,7 @@
  */
 
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
+import { enforceMcpSessionPin } from '../lib/session-pin';
 import { normalizeSessionToken } from '../lib/session-token';
 import type { SessionStore } from '../lib/session-store';
 import {
@@ -41,7 +42,8 @@ export async function resolveReadOnlyInput(
   inputs: {
     artifact?: { content: Record<string, unknown>; manifest?: Record<string, unknown> };
     sessionToken?: string;
-  }
+  },
+  mcpSessionId?: string
 ): Promise<ReadInputResolution> {
   const hasArtifact = inputs.artifact !== undefined;
   const hasToken = typeof inputs.sessionToken === 'string' && inputs.sessionToken.length > 0;
@@ -55,6 +57,10 @@ export async function resolveReadOnlyInput(
     const token = normalizeSessionToken(inputs.sessionToken);
     if (!token) {
       return { ok: false, response: invalidSessionTokenResult() };
+    }
+    const pinFailure = await enforceMcpSessionPin({ store, mcpSessionId }, token);
+    if (pinFailure) {
+      return { ok: false, response: pinFailure };
     }
     const loaded = await store.load(token);
     if (loaded === null) {

@@ -60,6 +60,7 @@ import {
 const CONTENT_OBJECT = 'content.json';
 const MANIFEST_OBJECT = 'manifest.json';
 const GENERATION_OBJECT = 'generation';
+const MCP_SESSION_PIN_OBJECT = '.pin';
 
 interface GcsErrorLike {
   code?: number | string;
@@ -209,6 +210,31 @@ export class GcsSessionStore implements SessionStore {
     } catch (err) {
       if (isNotFoundError(err)) {
         return;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * P7 task 16. Persist the MCP transport session id as a sidecar object
+   * at `<token>/.pin`. Plain text, no preconditions — the pin is written
+   * exactly once (at session mint) and never updated by production
+   * callers, so the "no precondition" relaxation is fine.
+   */
+  async bindMcpSessionId(token: string, mcpSessionId: string): Promise<void> {
+    await this.bucket.file(`${token}/${MCP_SESSION_PIN_OBJECT}`).save(mcpSessionId, {
+      resumable: false,
+      contentType: 'text/plain',
+    });
+  }
+
+  async readMcpSessionPin(token: string): Promise<string | null> {
+    try {
+      const text = await this.downloadText(`${token}/${MCP_SESSION_PIN_OBJECT}`);
+      return text === null ? null : text.trim();
+    } catch (err) {
+      if (isNotFoundError(err)) {
+        return null;
       }
       throw err;
     }

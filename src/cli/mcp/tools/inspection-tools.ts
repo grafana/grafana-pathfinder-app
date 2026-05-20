@@ -39,8 +39,11 @@ const SessionTokenSchema = z
     'SESSION MODE. Token returned by pathfinder_create_package. The server loads the artifact from session storage.'
   );
 
-export function registerInspectionTools(server: McpServer, options: { sessionStore: SessionStore }): void {
-  const { sessionStore } = options;
+export function registerInspectionTools(
+  server: McpServer,
+  options: { sessionStore: SessionStore; mcpSessionId?: string }
+): void {
+  const { sessionStore, mcpSessionId } = options;
 
   server.registerTool(
     'pathfinder_inspect',
@@ -61,7 +64,7 @@ export function registerInspectionTools(server: McpServer, options: { sessionSto
       },
     },
     async ({ artifact, sessionToken, blockId, at }) => {
-      const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken });
+      const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken }, mcpSessionId);
       if (!resolved.ok) {
         return resolved.response;
       }
@@ -84,7 +87,7 @@ export function registerInspectionTools(server: McpServer, options: { sessionSto
       },
     },
     async ({ artifact, sessionToken }) => {
-      const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken });
+      const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken }, mcpSessionId);
       if (!resolved.ok) {
         return resolved.response;
       }
