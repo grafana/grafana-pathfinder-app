@@ -50,7 +50,7 @@ Sub-checkboxes inside each task are for the executing agent to tick off as they 
 - [x] Pre-flight (commit AGENT_HARDENING.md + this plan)
 - [x] A1 — Reconcile tier model docs
 - [x] A2 — Tier-doc-sync test
-- [ ] A3 — Fix prevent-doc-drift section refs
+- [x] A3 — Fix prevent-doc-drift section refs
 - [ ] A4 — F-code consistency audit
 - [ ] A5 — Fix CONTEXT_INDEX auto-load claims
 - [ ] Final verification (`npm run check` clean)
@@ -189,7 +189,7 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 ## A3 — Fix `prevent-doc-drift` stale section references
 
-**Status:** not-started
+**Status:** done (Claude Opus 4.7, 2026-05-20, commit 38ded7b4)
 **Effort:** 2h
 **Depends on:** A1 (so updated section content can be referenced if needed)
 **Citation:** F-2
@@ -203,11 +203,11 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 **Steps:**
 
-- [ ] Walk the entire `prevent-doc-drift/SKILL.md` (319 lines) and extract every quoted section reference (e.g., `"Code organization"`, `"Frontend subsystem reference"`, `"On-demand context"`, `"HTTP resource API"`, etc.)
-- [ ] For each reference, `grep` the target doc(s) for the section heading; flag mismatches
-- [ ] Rewrite mismatches; update examples whose "Detected updates" outputs reference the now-corrected tier numbers from A1
-- [ ] Cross-check that example PRs in the skill still type-check against the rules table at lines 79-101
-- [ ] Commit: `docs(prevent-doc-drift): align section references and tier examples with current docs (A3)`
+- [x] Walk the entire `prevent-doc-drift/SKILL.md` (319 lines) and extract every quoted section reference (e.g., `"Code organization"`, `"Frontend subsystem reference"`, `"On-demand context"`, `"HTTP resource API"`, etc.)
+- [x] For each reference, `grep` the target doc(s) for the section heading; flag mismatches
+- [x] Rewrite mismatches; update examples whose "Detected updates" outputs reference the now-corrected tier numbers from A1
+- [x] Cross-check that example PRs in the skill still type-check against the rules table at lines 79-101
+- [x] Commit: `docs(prevent-doc-drift): align section references and tier examples with current docs (A3)`
 
 **Acceptance criteria:**
 
@@ -216,7 +216,19 @@ Plus the excluded set (not tiered, excluded from analysis): `test-utils`, `cli`,
 
 **Files touched:**
 
+- `.cursor/skills/prevent-doc-drift/SKILL.md` — rewrote the rules table (lines 79–101), the tier-detection heuristics (lines ~199–215), the "new frontend subsystem" heuristic bullet (line 193), and Examples 1–3 (lines 251–300). Net: 36 insertions / 37 deletions after prettier.
+
 **Notes:**
+
+- Audited 17 quoted section references in the rules table + 6 in the worked examples (23 total). Of those, ~10 needed fixes: every `AGENTS.md "Subsystem tiers and key relationships"` hit (none — section never existed), every `AGENTS.md "Local development commands"` hit (actual section is "Essential commands" at AGENTS.md:53; AGENTS.md intentionally keeps only a short essentials list and links to `docs/developer/COMMANDS.md` as the canonical full reference), every `AGENTS.md "Backend request paths"`/`"HTTP resource API"`/`"Stream message types"` hit (no such sub-headings in AGENTS.md — the `pkg/` section is a single prose paragraph; the per-file catalogue + stream-type list lives in `.cursor/rules/systemPatterns.mdc` "Backend architecture (\`pkg/\`)" at lines 161/205), and the `AGENTS.md "Tiered rule architecture"` hit (no such section).
+- Routing strategy: redirected per-subsystem / per-file catalogue edits to `systemPatterns.mdc`; redirected per-command/per-flag/per-test-id edits to the appropriate `docs/developer/` file or `CONTEXT_INDEX.md`. AGENTS.md edits are now reserved for the short, load-bearing surfaces (Frontend tier model bullet list, Key dependency edges, Essential commands, On-demand context frequently-needed list).
+- Tier-number examples updated:
+  - Example 1 (skill lines 264–267): "Tier-1 list" → "Tier 2 bullet (engines & hooks)" — engines moved from Tier 1 to Tier 2 in the new 5-tier model.
+  - Tier-detection heuristics (skill lines 199–215): "Tier-1 markers (engines/providers)" → "Tier 2 markers"; "Tier-3 markers (support utilities)" → "Tier 1 markers"; "default to Tier 3" → "default to Tier 1"; added explicit cross-reference to `TIER_MAP` and a note that `recovery` actually lives in Tier 1 (not Tier 2) despite the `-engine`-ish naming because it only depends on `types/`.
+- Skill detection bullet (line 193): "Code organization list" → "Frontend tier model bullet list" — small precision fix; the subsystem listing under "Code organization" is specifically the bullet list inside the "Frontend tier model" subsection, not the heading itself.
+- Ambiguity worth flagging (not fixed here, outside A3 scope): AGENTS.md `pkg/` summary mentions the three primary request paths but contains no per-route or per-stream-type list. If a future PR adds a fourth fundamentally different request path, AGENTS.md prose may need a sentence update — the rules table now defers all per-file/per-route work to `systemPatterns.mdc` but recommends an AGENTS.md prose update if the "three primary request paths" framing changes. Captured in Example 3's "no edit needed unless …" wording.
+- Verification: `npm run test:ci -- src/validation/architecture.test.ts --coverage=false` passed (11/11; ratchet still `vertical=4 lateral=9 barrel=0`).
+- Pre-commit hook (prettier) reformatted the rules table for column alignment after the row rewrites. No content changes — just whitespace.
 
 ---
 
