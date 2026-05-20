@@ -38,7 +38,7 @@ export function registerAuthoringTools(server: McpServer, options: RegisterAutho
   registerMutationTools(server, options);
   registerInspectionTools(server, options);
   registerSessionReadTools(server, options);
-  registerFinalizeTool(server);
+  registerFinalizeTool(server, options);
   registerRepositoryTools(server);
   registerSchemaTools(server);
 }

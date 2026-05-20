@@ -17,18 +17,11 @@ import { z } from 'zod';
 
 import { runInspect } from '../../commands/inspect';
 import { runValidate } from '../../commands/validate';
-import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import { buildArtifactSummary } from '../../utils/package-io';
-import { normalizeSessionToken } from '../lib/session-token';
 import type { SessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
-import {
-  inputModeAmbiguousResult,
-  inputModeMissingResult,
-  invalidSessionTokenResult,
-  outcomeResult,
-  sessionNotFoundResult,
-} from './result';
+import { resolveReadOnlyInput } from './read-input';
+import { outcomeResult } from './result';
 import { withArtifact } from './state-bridge';
 
 const ArtifactSchema = z
@@ -45,54 +38,6 @@ const SessionTokenSchema = z
   .describe(
     'SESSION MODE. Token returned by pathfinder_create_package. The server loads the artifact from session storage.'
   );
-
-/**
- * Resolve the read-only input to a concrete artifact, or return a wire-
- * shaped error response on bad / ambiguous input. Shared between
- * inspect and validate so they have identical input semantics.
- */
-async function resolveReadOnlyInput(
-  store: SessionStore,
-  inputs: {
-    artifact?: { content: Record<string, unknown>; manifest?: Record<string, unknown> };
-    sessionToken?: string;
-  }
-): Promise<
-  | { ok: true; content: ContentJson; manifest: ManifestJson | undefined; manifestAuthored: boolean }
-  | { ok: false; response: { content: Array<{ type: 'text'; text: string }>; isError?: boolean } }
-> {
-  const hasArtifact = inputs.artifact !== undefined;
-  const hasToken = typeof inputs.sessionToken === 'string' && inputs.sessionToken.length > 0;
-  if (hasArtifact && hasToken) {
-    return { ok: false, response: inputModeAmbiguousResult() };
-  }
-  if (!hasArtifact && !hasToken) {
-    return { ok: false, response: inputModeMissingResult() };
-  }
-  if (hasToken) {
-    const token = normalizeSessionToken(inputs.sessionToken);
-    if (!token) {
-      return { ok: false, response: invalidSessionTokenResult() };
-    }
-    const loaded = await store.load(token);
-    if (loaded === null) {
-      return { ok: false, response: sessionNotFoundResult(token) };
-    }
-    return {
-      ok: true,
-      content: loaded.artifact.content,
-      manifest: loaded.artifact.manifest,
-      manifestAuthored: loaded.artifact.manifest !== undefined,
-    };
-  }
-  const a = inputs.artifact!;
-  return {
-    ok: true,
-    content: a.content as unknown as ContentJson,
-    manifest: a.manifest as unknown as ManifestJson | undefined,
-    manifestAuthored: a.manifest !== undefined,
-  };
-}
 
 export function registerInspectionTools(server: McpServer, options: { sessionStore: SessionStore }): void {
   const { sessionStore } = options;

@@ -16,14 +16,22 @@
  * `status: "invalid"` with the structured CLI errors and **omits** the App
  * Platform write payload — clients must not be tempted to publish an
  * invalid artifact.
+ *
+ * P7 session-mode: accepts `{sessionToken}` in place of `{artifact}` using
+ * the shared `resolveReadOnlyInput` helper. On a successful finalize the
+ * server deletes the session — the token is single-use through here. A
+ * failed delete logs but does not fail the response: the 7-day lifecycle
+ * rule on the bucket is the safety net so we cannot strand a session.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { runValidate } from '../../commands/validate';
-import type { ContentJson, ManifestJson } from '../../../types/package.types';
+import { tokenLogPrefix } from '../lib/session-token';
+import type { SessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
+import { resolveReadOnlyInput } from './read-input';
 import { textResult } from './result';
 
 const APP_PLATFORM_API_VERSION = 'pathfinderbackend.ext.grafana.com/v1alpha1';
@@ -32,18 +40,32 @@ const APP_PLATFORM_RESOURCE = 'interactiveguides';
 const NAMESPACE_PLACEHOLDER = '{namespace}';
 const PLUGIN_VIEWER_BASE = '/a/grafana-pathfinder-app';
 
-export function registerFinalizeTool(server: McpServer): void {
+const ArtifactSchema = z
+  .object({
+    content: z.record(z.string(), z.unknown()),
+    manifest: z.record(z.string(), z.unknown()).optional(),
+  })
+  .optional()
+  .describe('STATELESS MODE. Pass an in-flight artifact directly. Pass EITHER `artifact` OR `sessionToken`, not both.');
+
+const SessionTokenSchema = z
+  .string()
+  .optional()
+  .describe(
+    'SESSION MODE. Token returned by pathfinder_create_package or a previous mutation ack. On a successful finalize the session is deleted server-side and the token becomes unusable.'
+  );
+
+export function registerFinalizeTool(server: McpServer, options: { sessionStore: SessionStore }): void {
+  const { sessionStore } = options;
   server.registerTool(
     'pathfinder_finalize_for_app_platform',
     {
       description:
-        'Use this tool when the user wants to publish a finished Pathfinder guide to Grafana. Validates the artifact, then returns the App Platform write payload (resource, path templates, viewer link) and a localExport fallback. The MCP does not perform the write — the controlling agent (e.g. Grafana Assistant) does.',
+        'Use this tool when the user wants to publish a finished Pathfinder guide to Grafana. Validates the artifact, then returns the App Platform write payload (resource, path templates, viewer link) and a localExport fallback. The MCP does not perform the write — the controlling agent (e.g. Grafana Assistant) does. Pass `artifact` for stateless mode or `sessionToken` for session mode; the session is deleted on a successful finalize.',
       annotations: readOnly('Finalize Pathfinder artifact'),
       inputSchema: {
-        artifact: z.object({
-          content: z.record(z.string(), z.unknown()),
-          manifest: z.record(z.string(), z.unknown()).optional(),
-        }),
+        artifact: ArtifactSchema,
+        sessionToken: SessionTokenSchema,
         status: z
           .enum(['draft', 'published'])
           .default('draft')
@@ -52,14 +74,18 @@ export function registerFinalizeTool(server: McpServer): void {
           ),
       },
     },
-    async ({ artifact, status }) => {
-      const content = artifact.content as unknown as ContentJson;
-      const manifest = artifact.manifest as unknown as ManifestJson | undefined;
+    async ({ artifact, sessionToken, status }) => {
+      const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken });
+      if (!resolved.ok) {
+        return resolved.response;
+      }
+      const content = resolved.content;
+      const manifest = resolved.manifest;
 
       const validation = runValidate({
         content,
         manifest,
-        manifestSchemaVersionAuthored: manifest !== undefined,
+        manifestSchemaVersionAuthored: resolved.manifestAuthored,
       });
 
       if (validation.status !== 'ok') {
@@ -215,6 +241,24 @@ export function registerFinalizeTool(server: McpServer): void {
           manifest,
         },
       };
+
+      // Session-mode only: evict the session on success. The handoff
+      // already shipped to the agent, so a delete failure is not a
+      // user-visible failure — the 7-day lifecycle rule on the bucket
+      // catches stranded sessions. Log so it's diagnosable, then return.
+      if (resolved.sessionToken !== undefined) {
+        try {
+          await sessionStore.delete(resolved.sessionToken);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `pathfinder_finalize_for_app_platform: session delete failed for ${tokenLogPrefix(
+              resolved.sessionToken
+            )}; 7-day lifecycle rule will collect it`,
+            err instanceof Error ? err.message : String(err)
+          );
+        }
+      }
 
       return textResult(JSON.stringify(handoff, null, 2));
     }

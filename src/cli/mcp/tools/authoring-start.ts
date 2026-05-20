@@ -48,7 +48,8 @@ const AUTHORING_CONTEXT = {
     ackShape: {
       status: 'ok | error',
       sessionToken: 'string — echo verbatim on the next call',
-      generation: 'number — monotonic; optional `expectedGeneration` on the next call surfaces a CONCURRENT_MODIFICATION error if the session moved underneath you',
+      generation:
+        'number — monotonic; optional `expectedGeneration` on the next call surfaces a CONCURRENT_MODIFICATION error if the session moved underneath you',
       summary: 'compact tree of {path, id, type, hint?, children?} for navigation',
       outcome: 'CommandOutcome shape (status + any code/message/data on error)',
     },
