@@ -5,8 +5,6 @@ import {
   type FloatingPanelGeometry,
   FLOATING_PANEL_MIN_WIDTH,
   FLOATING_PANEL_MIN_HEIGHT,
-  FLOATING_PANEL_MAX_WIDTH,
-  FLOATING_PANEL_MAX_HEIGHT,
 } from '../../constants/floating-panel';
 
 /** Clamp a value between min and max inclusive. */
@@ -149,16 +147,8 @@ function useResize(
       }
       const dx = e.clientX - resizeStartRef.current.startX;
       const dy = e.clientY - resizeStartRef.current.startY;
-      const newWidth = clamp(
-        resizeStartRef.current.originWidth + dx,
-        FLOATING_PANEL_MIN_WIDTH,
-        FLOATING_PANEL_MAX_WIDTH
-      );
-      const newHeight = clamp(
-        resizeStartRef.current.originHeight + dy,
-        FLOATING_PANEL_MIN_HEIGHT,
-        FLOATING_PANEL_MAX_HEIGHT
-      );
+      const newWidth = clamp(resizeStartRef.current.originWidth + dx, FLOATING_PANEL_MIN_WIDTH, window.innerWidth);
+      const newHeight = clamp(resizeStartRef.current.originHeight + dy, FLOATING_PANEL_MIN_HEIGHT, window.innerHeight);
       setGeometry((prev) => ({ ...prev, width: newWidth, height: newHeight }));
     },
     [setGeometry]
