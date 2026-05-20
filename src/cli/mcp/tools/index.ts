@@ -19,6 +19,7 @@ import { registerInspectionTools } from './inspection-tools';
 import { registerMutationTools } from './mutation-tools';
 import { registerRepositoryTools } from './repository-tools';
 import { registerSchemaTools } from './schema-tools';
+import { registerSessionReadTools } from './session-read-tools';
 
 export interface RegisterAuthoringToolsOptions {
   /**
@@ -36,6 +37,7 @@ export function registerAuthoringTools(server: McpServer, options: RegisterAutho
   registerArtifactTools(server, options);
   registerMutationTools(server, options);
   registerInspectionTools(server, options);
+  registerSessionReadTools(server, options);
   registerFinalizeTool(server);
   registerRepositoryTools(server);
   registerSchemaTools(server);

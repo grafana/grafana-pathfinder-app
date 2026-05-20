@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { runCreate } from '../../commands/create';
 import { runValidate } from '../../commands/validate';
 import { defaultPackageId } from '../../utils/auto-id';
-import { newPackageState, buildArtifactSummary, readPackage } from '../../utils/package-io';
+import { newPackageState, buildArtifactSummary, readPackage, type TreeNode } from '../../utils/package-io';
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import { generateSessionToken } from '../lib/session-token';
 import {
@@ -29,7 +29,6 @@ import {
 } from '../lib/session-store';
 import type { CommandOutcome } from '../../utils/output';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
-import type { TreeNode } from '../../utils/package-io';
 import { writeAppend } from './annotations';
 import { outcomeResult, textResult } from './result';
 
