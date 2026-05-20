@@ -1,5 +1,4 @@
 import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, usePluginContext } from '@grafana/data';
-import { locationService } from '@grafana/runtime';
 import React, { lazy, Suspense, useEffect, useMemo } from 'react';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
@@ -13,8 +12,8 @@ import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { panelModeManager } from './global-state/panel-mode';
 import { suggestionState } from './global-state/suggestion';
-import { validateRedirectPath } from './security/url-validator';
-import { parsePathfinderDeepLink, stripPathfinderParams } from './utils/pathfinder-search-params';
+import { handlePathfinderDeepLink, installDeepLinkNavListener } from './utils/pathfinder-deep-link-handler';
+import { parsePathfinderDeepLink } from './utils/pathfinder-search-params';
 
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
@@ -141,170 +140,24 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Set global config immediately so other code can use it
   (window as any).__pathfinderPluginConfig = config;
 
-  // Check for doc query parameter to auto-open specific docs page.
-  // Dynamically imports findDocPage so the bundled JSON data stays out of module.js.
-  // Single typed read — `parsePathfinderDeepLink` is the source of truth for
-  // the param shape; previously the keys were duplicated across this file
-  // and would drift (e.g. one strip block used to omit `type`).
-  const deepLink = parsePathfinderDeepLink(window.location.search);
-  const docsParam = deepLink.doc;
-  const pageParam = deepLink.page;
-  const sourceParam = deepLink.source;
-  // Some package URLs (e.g. interactive-learning.grafana.net
-  // packages/<id>/content.json) classify as 'interactive' via findDocPage even though
-  // they back a learning journey. The ?type= URL hint is the escape hatch that lets
-  // share/refresh links preserve the journey kind (and milestone toolbar).
-  const typeParam = deepLink.type;
-  const kioskSessionParam = deepLink.kioskSession;
+  // Snapshotted before handlePathfinderDeepLink strips it from the URL.
+  const docsParam = parsePathfinderDeepLink(window.location.search).doc;
 
-  if (kioskSessionParam) {
-    (window as any).__pathfinderKioskSessionId = kioskSessionParam;
-  }
+  const sidebarMountable = shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant);
+  const deepLinkDeps = {
+    shouldMountSidebar: sidebarMountable,
+    attemptAutoOpen,
+    loadControlGroupDocPopup: () => import('./components/ControlGroupDocPopup'),
+  };
 
-  // Check for panelMode param (e.g. ?panelMode=floating for workshop links).
-  // Set synchronously so mode is active before any components mount.
-  const panelModeParam = deepLink.panelMode;
-  if (panelModeParam === 'floating') {
-    panelModeManager.setMode('floating');
-    const cleanUrl = new URL(window.location.href);
-    cleanUrl.searchParams.delete('panelMode');
-    window.history.replaceState({}, '', cleanUrl.toString());
-  } else if (panelModeParam === 'fullscreen') {
-    panelModeManager.setMode('fullscreen');
-    const cleanUrl = new URL(window.location.href);
-    cleanUrl.searchParams.delete('panelMode');
-    window.history.replaceState({}, '', cleanUrl.toString());
-    // Route to the full screen page so the rest of init wires up auto-launch
-    // against that route. The doc + type params (if present) flow through the
-    // existing handler and are consumed by FullScreenPanel on mount.
-    let target = `/a/${pluginJson.id}/fullscreen`;
-    if (docsParam) {
-      const fullScreenParams = new URLSearchParams();
-      fullScreenParams.set('doc', docsParam);
-      if (typeParam) {
-        fullScreenParams.set('type', typeParam);
-      }
-      target += `?${fullScreenParams.toString()}`;
-    }
-    locationService.replace(target);
-  }
+  handlePathfinderDeepLink(deepLinkDeps);
+  // Re-runs on SPA navigations; plugin.init fires only once per session.
+  installDeepLinkNavListener(deepLinkDeps);
 
-  // Use the source param if provided, otherwise default to 'url_param'
-  const docOpenSource = sourceParam || 'url_param';
-
-  if (docsParam && !shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
-    const url = new URL(window.location.href);
-    stripPathfinderParams(url);
-    window.history.replaceState({}, '', url.toString());
-
-    import('./components/ControlGroupDocPopup').then(({ showControlGroupDocPopup }) => {
-      showControlGroupDocPopup(docOpenSource);
-    });
+  // Control group + ?doc=: ControlGroupDocPopup already handled it.
+  // Don't widen to panelMode/kiosk — those must reach the mount blocks below.
+  if (docsParam && !sidebarMountable) {
     return;
-  }
-
-  if (docsParam) {
-    import('./utils/find-doc-page')
-      .then(({ findDocPage }) => {
-        const docsPage = findDocPage(docsParam);
-
-        // Determine redirect target (only when doc param is present)
-        // Only redirect when an explicit page param or bundled guide target is provided.
-        // Without one, stay on the current page — the user may be on a specific dashboard
-        // and redirecting would break on instances where users aren't logged in (e.g., Play).
-        // SECURITY: page is only processed when doc is also present,
-        // preventing the plugin page from becoming a general-purpose redirector
-        const rawRedirectTarget = pageParam || docsPage?.targetPage;
-        const redirectTarget = rawRedirectTarget ? validateRedirectPath(rawRedirectTarget) : null;
-
-        // Warn if docsParam is present but no docsPage is found
-        if (!docsPage) {
-          console.warn(
-            'Could not parse doc param:',
-            docsParam,
-            '- Supported formats: api:<resourceName>, bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
-          );
-          // Strip stale params so they don't re-fire on refresh
-          const url = new URL(window.location.href);
-          stripPathfinderParams(url);
-          window.history.replaceState({}, '', url.toString());
-
-          sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
-          attemptAutoOpen(200);
-          return;
-        }
-
-        const needsRedirect = redirectTarget && redirectTarget !== window.location.pathname;
-        const currentMode = panelModeManager.getMode();
-        const isFloatingMode = currentMode === 'floating';
-        const isFullScreenMode = currentMode === 'fullscreen';
-
-        sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
-
-        if (needsRedirect) {
-          locationService.replace(redirectTarget);
-        }
-
-        if (!needsRedirect) {
-          const url = new URL(window.location.href);
-          stripPathfinderParams(url);
-          window.history.replaceState({}, '', url.toString());
-        }
-
-        // In floating or full screen mode, the panel mounts on its own —
-        // don't open the extension sidebar (which would mount a second panel
-        // and collide on tab storage / __DocsPluginActiveTabId).
-        if (!isFloatingMode && !isFullScreenMode) {
-          attemptAutoOpen(needsRedirect ? 500 : 200);
-        }
-
-        // Guard: ensure auto-launch only fires once even if multiple mount events fire
-        let autoLaunched = false;
-        const dispatchAutoLaunch = () => {
-          if (autoLaunched) {
-            return;
-          }
-          autoLaunched = true;
-          // Clean up both listeners
-          window.removeEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch);
-          document.removeEventListener('pathfinder-panel-mounted', dispatchAutoLaunch);
-          // Signal synchronously so the floating panel knows a guide is incoming
-          // before its fallback-to-sidebar effect can fire
-          document.dispatchEvent(new CustomEvent('pathfinder-auto-launch-pending'));
-          setTimeout(() => {
-            document.dispatchEvent(
-              new CustomEvent('auto-launch-tutorial', {
-                detail: {
-                  url: docsPage.url,
-                  title: docsPage.title,
-                  // Honor an explicit ?type=learning-journey hint over findDocPage's
-                  // URL-based classification — package URLs like
-                  // interactive-learning.grafana.net/packages/<id>/content.json
-                  // classify as 'interactive' even when they back a journey.
-                  type: typeParam === 'learning-journey' ? 'learning-journey' : docsPage.type,
-                  source: docOpenSource,
-                },
-              })
-            );
-          }, 500);
-        };
-
-        // Listen for whichever panel type mounts first
-        window.addEventListener('pathfinder-sidebar-mounted', dispatchAutoLaunch, { once: true });
-        document.addEventListener('pathfinder-panel-mounted', dispatchAutoLaunch, { once: true });
-
-        if (sidebarState.getIsSidebarMounted()) {
-          dispatchAutoLaunch();
-        }
-      })
-      .catch((err) => {
-        console.error('[Pathfinder] Failed to load find-doc-page chunk:', err);
-        sidebarState.setPendingOpenSource(docOpenSource, 'auto-open');
-        attemptAutoOpen(200);
-        setTimeout(() => {
-          locationService.replace('/');
-        }, 300);
-      });
   }
 
   // Mount kiosk mode overlay manager if enabled and no ?doc= param
