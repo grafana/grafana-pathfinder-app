@@ -168,14 +168,11 @@ export class GcsSessionStore implements SessionStore {
   }
 
   async save(token: string, artifact: SessionArtifact, ifGenerationMatch: number): Promise<SaveResult> {
-    const nextGeneration =
-      ifGenerationMatch === SESSION_GENERATION_ABSENT ? 1 : ifGenerationMatch + 1;
+    const nextGeneration = ifGenerationMatch === SESSION_GENERATION_ABSENT ? 1 : ifGenerationMatch + 1;
 
     // Write content.json and (optionally) manifest.json first. These have
     // no precondition; the generation object is the lock.
-    const artifactWrites: Array<Promise<unknown>> = [
-      this.uploadJson(`${token}/${CONTENT_OBJECT}`, artifact.content),
-    ];
+    const artifactWrites: Array<Promise<unknown>> = [this.uploadJson(`${token}/${CONTENT_OBJECT}`, artifact.content)];
     if (artifact.manifest !== undefined) {
       artifactWrites.push(this.uploadJson(`${token}/${MANIFEST_OBJECT}`, artifact.manifest));
     } else {
@@ -194,11 +191,7 @@ export class GcsSessionStore implements SessionStore {
     // save by the winner will overwrite them) and we propagate the
     // precondition failure.
     try {
-      await this.uploadText(
-        `${token}/${GENERATION_OBJECT}`,
-        String(nextGeneration),
-        ifGenerationMatch
-      );
+      await this.uploadText(`${token}/${GENERATION_OBJECT}`, String(nextGeneration), ifGenerationMatch);
     } catch (err) {
       if (isPreconditionFailedError(err)) {
         const observed = await this.peekGeneration(token);
@@ -262,11 +255,7 @@ export class GcsSessionStore implements SessionStore {
     });
   }
 
-  private async uploadText(
-    objectName: string,
-    value: string,
-    ifGenerationMatch: number
-  ): Promise<void> {
+  private async uploadText(objectName: string, value: string, ifGenerationMatch: number): Promise<void> {
     await this.bucket.file(objectName).save(value, {
       resumable: false,
       contentType: 'text/plain',

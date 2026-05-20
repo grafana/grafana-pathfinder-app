@@ -37,12 +37,18 @@ export function generateSessionToken(): string {
   let bitCount = 0;
   let out = '';
   for (let i = 0; i < bytes.length && out.length < TOKEN_LENGTH; i++) {
-    bits = (bits << 8) | bytes[i];
+    const byte = bytes[i] ?? 0;
+    bits = (bits << 8) | byte;
     bitCount += 8;
     while (bitCount >= 5 && out.length < TOKEN_LENGTH) {
       bitCount -= 5;
       const idx = (bits >> bitCount) & 0x1f;
-      out += ALPHABET[idx];
+      const ch = ALPHABET[idx];
+      if (ch === undefined) {
+        // Unreachable — idx is masked to 5 bits and ALPHABET has 32 entries.
+        throw new Error('generateSessionToken: index out of range (impossible)');
+      }
+      out += ch;
     }
   }
   return out;
@@ -58,7 +64,8 @@ export function isValidSessionToken(s: unknown): s is string {
     return false;
   }
   for (let i = 0; i < s.length; i++) {
-    if (!ALPHABET.includes(s[i])) {
+    const ch = s[i];
+    if (ch === undefined || !ALPHABET.includes(ch)) {
       return false;
     }
   }

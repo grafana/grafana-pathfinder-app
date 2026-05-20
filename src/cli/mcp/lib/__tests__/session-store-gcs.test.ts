@@ -19,7 +19,7 @@ const TOKEN_B = 'bbbbbbbbbbbbbbbbbbbbbb';
 function makeArtifact(title: string, withManifest = false): SessionArtifact {
   const content: ContentJson = { id: 'fixture', title, blocks: [] };
   if (withManifest) {
-    return { content, manifest: { description: title } };
+    return { content, manifest: { id: 'fixture', type: 'guide', description: title } };
   }
   return { content };
 }
@@ -64,12 +64,12 @@ class FakeBucket {
 }
 
 class FakeFile {
-  constructor(private readonly objects: Map<string, FakeObject>, private readonly name: string) {}
+  constructor(
+    private readonly objects: Map<string, FakeObject>,
+    private readonly name: string
+  ) {}
 
-  async save(
-    data: string | Buffer,
-    opts?: { preconditionOpts?: { ifGenerationMatch?: number } }
-  ): Promise<void> {
+  async save(data: string | Buffer, opts?: { preconditionOpts?: { ifGenerationMatch?: number } }): Promise<void> {
     const existing = this.objects.get(this.name);
     const currentGeneration = existing ? existing.generation : 0;
     const requested = opts?.preconditionOpts?.ifGenerationMatch;
@@ -146,7 +146,7 @@ describe('GcsSessionStore.load', () => {
     const { store } = newStore();
     await store.save(TOKEN_A, makeArtifact('v1', /* manifest */ true), SESSION_GENERATION_ABSENT);
     const loaded = await store.load(TOKEN_A);
-    expect(loaded?.artifact.manifest).toEqual({ description: 'v1' });
+    expect(loaded?.artifact.manifest).toEqual({ id: 'fixture', type: 'guide', description: 'v1' });
   });
 });
 
@@ -202,7 +202,7 @@ describe('GcsSessionStore.save', () => {
     const created = await store.save(TOKEN_A, makeArtifact('v1', true), SESSION_GENERATION_ABSENT);
     await store.save(TOKEN_A, makeArtifact('v2'), created.generation);
     const loaded = await store.load(TOKEN_A);
-    expect(loaded?.artifact.manifest).toEqual({ description: 'v1' });
+    expect(loaded?.artifact.manifest).toEqual({ id: 'fixture', type: 'guide', description: 'v1' });
     expect(loaded?.artifact.content.title).toBe('v2');
   });
 });
@@ -241,7 +241,9 @@ describe('GcsSessionStore concurrency (precondition fan-out)', () => {
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
     expect(rejected).toHaveLength(1);
-    expect(rejected[0].reason).toBeInstanceOf(SessionPreconditionFailedError);
+    const failure = rejected[0];
+    expect(failure).toBeDefined();
+    expect(failure?.reason).toBeInstanceOf(SessionPreconditionFailedError);
   });
 
   it('only one of two racing updates against the same generation wins', async () => {
