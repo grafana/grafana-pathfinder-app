@@ -15,7 +15,7 @@
 **Prior-phase exit criteria to re-verify before starting:**
 
 - [ ] P3 TS MCP server present, mutation tools route through `state-bridge.ts` (`src/cli/mcp/tools/state-bridge.ts`).
-- [ ] `deploy-mcp.sh` currently deploys to Cloud Run successfully against project `your-gcp-project`, region `us-central1`.
+- [ ] `scripts/deploy-mcp.sh` currently deploys to Cloud Run successfully against the project and region configured in the operator's gitignored `.env` (see `.env.example`).
 - [ ] `npm run check` clean on `main`.
 
 **Surface area this phase touches:**
@@ -25,7 +25,7 @@
 - New tools: `pathfinder_get_manifest_session` (session-scoped — see naming note below), `pathfinder_list_blocks`, `pathfinder_get_block`.
 - Modified: `deploy-mcp.sh` — environment parameterization (`ENV` defaults `dev`), idempotent bucket bootstrap, dedicated service account creation, IAM bindings, lifecycle rule application, env var passthrough to Cloud Run service.
 - New: `package.json` adds `@google-cloud/storage` dependency (already transitively allowed; lockfile updated).
-- New env vars on the deployed service: `PATHFINDER_SESSION_BUCKET` (e.g., `test-bucket`), `PATHFINDER_SESSION_STORE` (`gcs` | `memory`, defaults to `memory` for safety; deploy script sets `gcs`).
+- New env vars on the deployed service: `PATHFINDER_SESSION_BUCKET` (bucket name derived from the operator's `.env` `PATHFINDER_GCP_RESOURCE_PREFIX` + `-<env>`), `PATHFINDER_SESSION_STORE` (`gcs` | `memory`, defaults to `memory` for safety; deploy script sets `gcs`).
 
 **Open questions to resolve during execution:**
 

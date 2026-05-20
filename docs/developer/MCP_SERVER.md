@@ -119,29 +119,29 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 
 21 tools, registered in `src/cli/mcp/tools/`:
 
-| Tool                                   | Module                  | Wraps                                                                                       |
-| -------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------- |
-| `pathfinder_authoring_start`           | `authoring-start.ts`    | (static context block)                                                                      |
-| `pathfinder_help`                      | `help.ts`               | `formatHelpAsJson` over the CLI commands                                                    |
-| `pathfinder_create_package`            | `artifact-tools.ts`     | `runCreate` — mints a sessionToken + returns the seed artifact (P7)                         |
-| `pathfinder_create_guide_template`     | `artifact-tools.ts`     | `newPackageState` + pre-populated starter blocks; round-tripped through `runValidate` (P7)  |
-| `pathfinder_add_block`                 | `mutation-tools.ts`     | `runAddBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                               |
-| `pathfinder_add_step`                  | `mutation-tools.ts`     | `runAddStep` — accepts `{artifact}` OR `{sessionToken}` (P7)                                |
-| `pathfinder_add_choice`                | `mutation-tools.ts`     | `runAddChoice` — accepts `{artifact}` OR `{sessionToken}` (P7)                              |
-| `pathfinder_edit_block`                | `mutation-tools.ts`     | `runEditBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                              |
-| `pathfinder_remove_block`              | `mutation-tools.ts`     | `runRemoveBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                            |
-| `pathfinder_set_manifest`              | `mutation-tools.ts`     | `runSetManifest` — accepts `{artifact}` OR `{sessionToken}` (P7)                            |
-| `pathfinder_inspect`                   | `inspection-tools.ts`   | `runInspect` — accepts `{artifact}` OR `{sessionToken}` (P7)                                |
-| `pathfinder_validate`                  | `inspection-tools.ts`   | `runValidate` — accepts `{artifact}` OR `{sessionToken}` (P7)                               |
-| `pathfinder_list_blocks`               | `session-read-tools.ts` | Cheap tree summary for a session token (P7)                                                 |
-| `pathfinder_get_block`                 | `session-read-tools.ts` | One block by id from a session token (P7)                                                   |
-| `pathfinder_get_manifest_session`      | `session-read-tools.ts` | Session-stored manifest (distinct from the P6 CDN `pathfinder_get_manifest`) (P7)           |
+| Tool                                   | Module                  | Wraps                                                                                              |
+| -------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------- |
+| `pathfinder_authoring_start`           | `authoring-start.ts`    | (static context block)                                                                             |
+| `pathfinder_help`                      | `help.ts`               | `formatHelpAsJson` over the CLI commands                                                           |
+| `pathfinder_create_package`            | `artifact-tools.ts`     | `runCreate` — mints a sessionToken + returns the seed artifact (P7)                                |
+| `pathfinder_create_guide_template`     | `artifact-tools.ts`     | `newPackageState` + pre-populated starter blocks; round-tripped through `runValidate` (P7)         |
+| `pathfinder_add_block`                 | `mutation-tools.ts`     | `runAddBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                                      |
+| `pathfinder_add_step`                  | `mutation-tools.ts`     | `runAddStep` — accepts `{artifact}` OR `{sessionToken}` (P7)                                       |
+| `pathfinder_add_choice`                | `mutation-tools.ts`     | `runAddChoice` — accepts `{artifact}` OR `{sessionToken}` (P7)                                     |
+| `pathfinder_edit_block`                | `mutation-tools.ts`     | `runEditBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                                     |
+| `pathfinder_remove_block`              | `mutation-tools.ts`     | `runRemoveBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                                   |
+| `pathfinder_set_manifest`              | `mutation-tools.ts`     | `runSetManifest` — accepts `{artifact}` OR `{sessionToken}` (P7)                                   |
+| `pathfinder_inspect`                   | `inspection-tools.ts`   | `runInspect` — accepts `{artifact}` OR `{sessionToken}` (P7)                                       |
+| `pathfinder_validate`                  | `inspection-tools.ts`   | `runValidate` — accepts `{artifact}` OR `{sessionToken}` (P7)                                      |
+| `pathfinder_list_blocks`               | `session-read-tools.ts` | Cheap tree summary for a session token (P7)                                                        |
+| `pathfinder_get_block`                 | `session-read-tools.ts` | One block by id from a session token (P7)                                                          |
+| `pathfinder_get_manifest_session`      | `session-read-tools.ts` | Session-stored manifest (distinct from the P6 CDN `pathfinder_get_manifest`) (P7)                  |
 | `pathfinder_finalize_for_app_platform` | `finalize.ts`           | `runValidate` + handoff payload; accepts `{artifact}` OR `{sessionToken}`; deletes on success (P7) |
-| `pathfinder_list_packages`             | `repository-tools.ts`   | CDN `repository.json` + filters (P6)                                                        |
-| `pathfinder_get_package`               | `repository-tools.ts`   | CDN `content.json` + `manifest.json` for one id                                             |
-| `pathfinder_get_manifest`              | `repository-tools.ts`   | CDN `manifest.json` only (cheaper variant)                                                  |
-| `pathfinder_launch_package`            | `repository-tools.ts`   | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug]                  |
-| `pathfinder_get_schema`                | `schema-tools.ts`       | `exportSchema` / `exportAllSchemas` / `listSchemas` from `src/cli/commands/schema.ts`       |
+| `pathfinder_list_packages`             | `repository-tools.ts`   | CDN `repository.json` + filters (P6)                                                               |
+| `pathfinder_get_package`               | `repository-tools.ts`   | CDN `content.json` + `manifest.json` for one id                                                    |
+| `pathfinder_get_manifest`              | `repository-tools.ts`   | CDN `manifest.json` only (cheaper variant)                                                         |
+| `pathfinder_launch_package`            | `repository-tools.ts`   | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug]                         |
+| `pathfinder_get_schema`                | `schema-tools.ts`       | `exportSchema` / `exportAllSchemas` / `listSchemas` from `src/cli/commands/schema.ts`              |
 
 [p6-launch-bug]: https://github.com/grafana/grafana-pathfinder-app/issues/855
 
@@ -174,10 +174,10 @@ Picking a mode is per-call; never mix on a single call (returns `INPUT_MODE_AMBI
 
 **Storage and retention.** The session store is keyed off `PATHFINDER_SESSION_STORE`:
 
-| Env var                       | Default     | Effect                                                                                                  |
-| ----------------------------- | ----------- | ------------------------------------------------------------------------------------------------------- |
-| `PATHFINDER_SESSION_STORE`    | `memory`    | `memory` keeps sessions in-process (lost on restart; fine for stdio and tests). `gcs` uses the GCS-backed store. |
-| `PATHFINDER_SESSION_BUCKET`   | _(unset)_   | Required when `STORE=gcs`. Bucket name without `gs://` prefix.                                          |
+| Env var                     | Default   | Effect                                                                                                           |
+| --------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------- |
+| `PATHFINDER_SESSION_STORE`  | `memory`  | `memory` keeps sessions in-process (lost on restart; fine for stdio and tests). `gcs` uses the GCS-backed store. |
+| `PATHFINDER_SESSION_BUCKET` | _(unset)_ | Required when `STORE=gcs`. Bucket name without `gs://` prefix.                                                   |
 
 `scripts/deploy-mcp.sh dev` sets `STORE=gcs` and provisions the bucket with a **7-day lifecycle delete rule** as the safety net for abandoned sessions. Happy-path drafts evict immediately on finalize; abandoned ones expire via the lifecycle rule.
 
@@ -199,13 +199,13 @@ Picking a mode is per-call; never mix on a single call (returns `INPUT_MODE_AMBI
 
 **Wire codes** unique to session-mode (all carry `status: "error"`):
 
-| Code                       | Meaning                                                                                                       |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `INPUT_MODE_AMBIGUOUS`     | Both `{artifact}` and `{sessionToken}` were passed. Pick one.                                                 |
-| `INPUT_MODE_MISSING`       | Neither was passed.                                                                                           |
-| `INVALID_SESSION_TOKEN`    | Token failed the 22-char Crockford base32 shape check.                                                        |
-| `SESSION_NOT_FOUND`        | Unknown / expired / finalized session, OR `Mcp-Session-Id` pin mismatch. Start over via `pathfinder_create_package`. |
-| `CONCURRENT_MODIFICATION`  | `expectedGeneration` was passed and did not match, OR the internal retry-once also raced. Re-fetch + retry.   |
+| Code                      | Meaning                                                                                                              |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `INPUT_MODE_AMBIGUOUS`    | Both `{artifact}` and `{sessionToken}` were passed. Pick one.                                                        |
+| `INPUT_MODE_MISSING`      | Neither was passed.                                                                                                  |
+| `INVALID_SESSION_TOKEN`   | Token failed the 22-char Crockford base32 shape check.                                                               |
+| `SESSION_NOT_FOUND`       | Unknown / expired / finalized session, OR `Mcp-Session-Id` pin mismatch. Start over via `pathfinder_create_package`. |
+| `CONCURRENT_MODIFICATION` | `expectedGeneration` was passed and did not match, OR the internal retry-once also raced. Re-fetch + retry.          |
 
 See `src/cli/mcp/tools/result.ts` for the canonical wire-shape helpers and `docs/design/phases/ai-authoring-7-gcs-sessions.md` for the full design.
 
@@ -320,8 +320,8 @@ The HTTP transport emits one structured JSON line per request with these fields.
   "tokensOutEstimate": 295,
   "outcome": "ok",
   // tools/call with a sessionToken arg also carries:
-  "sessionTokenPrefix": "abc12def34gh",      // first 12 chars — human-readable, NOT a usable credential
-  "sessionTokenHash": "a1b2c3d4e5f60718",    // SHA-256-derived; stable for cross-line grouping
+  "sessionTokenPrefix": "abc12def34gh", // first 12 chars — human-readable, NOT a usable credential
+  "sessionTokenHash": "a1b2c3d4e5f60718", // SHA-256-derived; stable for cross-line grouping
 }
 ```
 

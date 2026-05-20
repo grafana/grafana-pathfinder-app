@@ -67,3 +67,10 @@ src/**/*.js.map
 # repo root; the committed, parameterized version lives at scripts/deploy-mcp.sh
 # (P7+). Root-only match so the scripts/ version is tracked.
 /deploy-mcp.sh
+
+# Operator-specific config sourced by scripts/deploy-mcp.sh (project id,
+# region, service name, bucket prefix). See .env.example for the schema.
+# Root-only match so any test-fixture .env nested elsewhere stays tracked.
+/.env
+/.env.local
+/.env.*.local
