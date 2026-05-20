@@ -35,10 +35,19 @@ import {
   inputModeMissingResult,
   invalidSessionTokenResult,
   outcomeResult,
+  sessionHopLimitResult,
   sessionNotFoundResult,
   sessionOutcomeResult,
+  sessionTooLargeResult,
 } from './result';
-import { dispatchSessionMutation, isConcurrentModification, isSessionNotFound, withArtifact } from './state-bridge';
+import {
+  dispatchSessionMutation,
+  isConcurrentModification,
+  isSessionHopLimit,
+  isSessionNotFound,
+  isSessionTooLarge,
+  withArtifact,
+} from './state-bridge';
 
 /**
  * Input schema for the two-mode dispatch (P7). Mutation tools accept
@@ -168,6 +177,12 @@ async function dispatchMutation(
     }
     if (isConcurrentModification(r)) {
       return concurrentModificationResult(token, r);
+    }
+    if (isSessionTooLarge(r)) {
+      return sessionTooLargeResult(token, r);
+    }
+    if (isSessionHopLimit(r)) {
+      return sessionHopLimitResult(token, r);
     }
     return sessionOutcomeResult(token, r.outcome, r.generation, r.summary);
   }

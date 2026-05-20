@@ -13,7 +13,16 @@ import * as path from 'node:path';
 
 import type { ContentJson } from '../../../types/package.types';
 import { SESSION_GENERATION_ABSENT, InMemorySessionStore, SessionPreconditionFailedError } from '../lib/session-store';
-import { SESSION_NOT_FOUND, withSession, type SessionNotFound } from '../tools/state-bridge';
+import {
+  MAX_SESSION_ARTIFACT_BYTES,
+  SESSION_NOT_FOUND,
+  __resetSessionSaveCounts,
+  isSessionHopLimit,
+  isSessionTooLarge,
+  withSession,
+  type SessionNotFound,
+  type SessionOutcome,
+} from '../tools/state-bridge';
 import type { CommandOutcome } from '../../utils/output';
 
 const TOKEN = 'aaaaaaaaaaaaaaaaaaaaaa';
@@ -51,6 +60,28 @@ function isNotFound(r: unknown): r is SessionNotFound {
   return typeof r === 'object' && r !== null && (r as SessionNotFound).code === 'SESSION_NOT_FOUND';
 }
 
+/**
+ * Narrow a withSession result to the success branch. `withSession`
+ * returns a wider union than the tests originally cared about
+ * (SessionOutcome | SessionNotFound | SessionTooLarge | SessionHopLimit);
+ * the helper centralizes the throw-if-not-success pattern so each test
+ * stays focused on outcome assertions rather than narrowing scaffolding.
+ */
+function expectOutcome(r: Awaited<ReturnType<typeof withSession>>): SessionOutcome {
+  if (isNotFound(r) || isSessionTooLarge(r) || isSessionHopLimit(r)) {
+    throw new Error(`expected SessionOutcome, got ${r.code}`);
+  }
+  return r;
+}
+
+beforeEach(() => {
+  // The per-token save counter is module-scoped to mirror production
+  // behavior (one in-memory counter per replica). Tests share that
+  // module, so reset between cases or later cases inherit the bumped
+  // count and would eventually trip MAX_SESSION_SAVES.
+  __resetSessionSaveCounts();
+});
+
 describe('withSession', () => {
   it('returns SESSION_NOT_FOUND when the token is unknown', async () => {
     const store = new InMemorySessionStore();
@@ -64,13 +95,11 @@ describe('withSession', () => {
     expect(created.generation).toBe(1);
 
     const result = await withSession(TOKEN, store, setTitleRunner('v2'));
-    if (isNotFound(result)) {
-      throw new Error('expected SessionOutcome');
-    }
+    const success = expectOutcome(result);
 
-    expect(result.outcome.status).toBe('ok');
-    expect(result.generation).toBe(2);
-    expect(result.artifact.content.title).toBe('v2');
+    expect(success.outcome.status).toBe('ok');
+    expect(success.generation).toBe(2);
+    expect(success.artifact.content.title).toBe('v2');
 
     // Store state matches the returned outcome.
     const reloaded = await store.load(TOKEN);
@@ -83,12 +112,10 @@ describe('withSession', () => {
     await store.save(TOKEN, freshArtifact('v1'), SESSION_GENERATION_ABSENT);
 
     const result = await withSession(TOKEN, store, failingRunner());
-    if (isNotFound(result)) {
-      throw new Error('expected SessionOutcome');
-    }
+    const success = expectOutcome(result);
 
-    expect(result.outcome.status).toBe('error');
-    expect(result.generation).toBeUndefined();
+    expect(success.outcome.status).toBe('error');
+    expect(success.generation).toBeUndefined();
 
     // The session is still at the prior generation with the prior title —
     // this is the P3 "MCP performs no schema validation" invariant: a failed
@@ -106,10 +133,8 @@ describe('withSession', () => {
     await store.save(TOKEN, freshArtifact('original'), SESSION_GENERATION_ABSENT);
 
     const result = await withSession(TOKEN, store, breakingRunner());
-    if (isNotFound(result)) {
-      throw new Error('expected SessionOutcome');
-    }
-    expect(result.outcome.status).toBe('error');
+    const success = expectOutcome(result);
+    expect(success.outcome.status).toBe('error');
 
     const reloaded = await store.load(TOKEN);
     expect(reloaded?.artifact.content.title).toBe('original');
@@ -136,5 +161,33 @@ describe('withSession', () => {
     // Whichever winner landed, the session has exactly one bump.
     expect((await store.load(TOKEN))?.generation).toBe(2);
   });
-});
 
+  it('rejects with SESSION_TOO_LARGE when the post-mutation artifact exceeds the size cap', async () => {
+    const store = new InMemorySessionStore();
+    await store.save(TOKEN, freshArtifact('v1'), SESSION_GENERATION_ABSENT);
+
+    // Runner that inflates the artifact beyond MAX_SESSION_ARTIFACT_BYTES.
+    // The CLI reports `ok`, so size-gating is the only thing that can
+    // stop the save — which is exactly what we want to verify.
+    const bloatingRunner = (dir: string): CommandOutcome => {
+      const contentPath = path.join(dir, 'content.json');
+      const existing = JSON.parse(fs.readFileSync(contentPath, 'utf8')) as ContentJson;
+      existing.title = 'x'.repeat(MAX_SESSION_ARTIFACT_BYTES + 1);
+      fs.writeFileSync(contentPath, JSON.stringify(existing));
+      return { status: 'ok', summary: 'bloated' };
+    };
+
+    const result = await withSession(TOKEN, store, bloatingRunner);
+    expect(isSessionTooLarge(result)).toBe(true);
+    if (!isSessionTooLarge(result)) {
+      return;
+    }
+    expect(result.artifactBytes).toBeGreaterThan(MAX_SESSION_ARTIFACT_BYTES);
+    expect(result.maxBytes).toBe(MAX_SESSION_ARTIFACT_BYTES);
+
+    // The store is unchanged — the bloated artifact never landed.
+    const reloaded = await store.load(TOKEN);
+    expect(reloaded?.generation).toBe(1);
+    expect(reloaded?.artifact.content.title).toBe('v1');
+  });
+});

@@ -13,8 +13,12 @@ import { InMemorySessionStore, SESSION_GENERATION_ABSENT, type SessionStore } fr
 import {
   dispatchSessionMutation,
   isConcurrentModification,
+  isSessionHopLimit,
   isSessionNotFound,
+  isSessionTooLarge,
+  __resetSessionSaveCounts,
   type DispatchSessionResult,
+  type SessionOutcome,
 } from '../tools/state-bridge';
 import type { CommandOutcome } from '../../utils/output';
 
@@ -68,6 +72,23 @@ function makeRacingStore(real: SessionStore): SessionStore {
   };
 }
 
+/**
+ * Narrow a dispatcher result to the success branch (SessionOutcome).
+ * The dispatcher's return union widened with the H-1 quota guards, so
+ * tests assert the no-quota-tripped happy path through this helper
+ * rather than open-coding the narrowing in every case.
+ */
+function expectOutcome(r: DispatchSessionResult): SessionOutcome {
+  if (isSessionNotFound(r) || isConcurrentModification(r) || isSessionTooLarge(r) || isSessionHopLimit(r)) {
+    throw new Error(`expected SessionOutcome, got ${r.code}`);
+  }
+  return r;
+}
+
+beforeEach(() => {
+  __resetSessionSaveCounts();
+});
+
 describe('dispatchSessionMutation', () => {
   describe('without expectedGeneration (default retry-once)', () => {
     it('returns SESSION_NOT_FOUND when the token is unknown', async () => {
@@ -79,25 +100,20 @@ describe('dispatchSessionMutation', () => {
     it('runs the mutation and saves on success', async () => {
       const store = new InMemorySessionStore();
       await store.save(TOKEN, seed('v1'), SESSION_GENERATION_ABSENT);
-      const r = (await dispatchSessionMutation(TOKEN, store, setTitleRunner('v2'))) as DispatchSessionResult;
-      expect(isSessionNotFound(r) || isConcurrentModification(r)).toBe(false);
-      if (isSessionNotFound(r) || isConcurrentModification(r)) {
-        throw new Error('unreachable');
-      }
-      expect(r.outcome.status).toBe('ok');
-      expect(r.generation).toBe(2);
+      const r = await dispatchSessionMutation(TOKEN, store, setTitleRunner('v2'));
+      const success = expectOutcome(r);
+      expect(success.outcome.status).toBe('ok');
+      expect(success.generation).toBe(2);
       expect((await store.load(TOKEN))?.artifact.content.title).toBe('v2');
     });
 
     it('does NOT write on runner failure', async () => {
       const store = new InMemorySessionStore();
       await store.save(TOKEN, seed('v1'), SESSION_GENERATION_ABSENT);
-      const r = (await dispatchSessionMutation(TOKEN, store, failingRunner())) as DispatchSessionResult;
-      if (isSessionNotFound(r) || isConcurrentModification(r)) {
-        throw new Error('expected an outcome');
-      }
-      expect(r.outcome.status).toBe('error');
-      expect(r.generation).toBeUndefined();
+      const r = await dispatchSessionMutation(TOKEN, store, failingRunner());
+      const success = expectOutcome(r);
+      expect(success.outcome.status).toBe('error');
+      expect(success.generation).toBeUndefined();
       expect((await store.load(TOKEN))?.generation).toBe(1);
     });
 
@@ -105,13 +121,11 @@ describe('dispatchSessionMutation', () => {
       const inner = new InMemorySessionStore();
       await inner.save(TOKEN, seed('v1'), SESSION_GENERATION_ABSENT);
       const racing = makeRacingStore(inner);
-      const r = (await dispatchSessionMutation(TOKEN, racing, setTitleRunner('after-retry'))) as DispatchSessionResult;
-      if (isSessionNotFound(r) || isConcurrentModification(r)) {
-        throw new Error('expected retry success');
-      }
-      expect(r.outcome.status).toBe('ok');
+      const r = await dispatchSessionMutation(TOKEN, racing, setTitleRunner('after-retry'));
+      const success = expectOutcome(r);
+      expect(success.outcome.status).toBe('ok');
       // Generation should be 3: original (1) -> racing writer (2) -> our retry (3).
-      expect(r.generation).toBe(3);
+      expect(success.generation).toBe(3);
       expect((await inner.load(TOKEN))?.artifact.content.title).toBe('after-retry');
     });
 
@@ -194,14 +208,12 @@ describe('dispatchSessionMutation', () => {
     it('proceeds when expectedGeneration matches', async () => {
       const store = new InMemorySessionStore();
       await store.save(TOKEN, seed('v1'), SESSION_GENERATION_ABSENT);
-      const r = (await dispatchSessionMutation(TOKEN, store, setTitleRunner('v2'), {
+      const r = await dispatchSessionMutation(TOKEN, store, setTitleRunner('v2'), {
         expectedGeneration: 1,
-      })) as DispatchSessionResult;
-      if (isSessionNotFound(r) || isConcurrentModification(r)) {
-        throw new Error('expected outcome');
-      }
-      expect(r.outcome.status).toBe('ok');
-      expect(r.generation).toBe(2);
+      });
+      const success = expectOutcome(r);
+      expect(success.outcome.status).toBe('ok');
+      expect(success.generation).toBe(2);
     });
 
     it('does NOT retry when a save-time 412 surfaces — surfaces immediately', async () => {

@@ -15,7 +15,11 @@
 import type { TreeNode } from '../../utils/package-io';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
-import type { ConcurrentModificationResult } from './state-bridge';
+import type {
+  ConcurrentModificationResult,
+  SessionHopLimitResult,
+  SessionTooLargeResult,
+} from './state-bridge';
 
 export function textResult(
   text: string,
@@ -121,6 +125,51 @@ export function concurrentModificationResult(
     data: {
       expected: result.expected,
       actual: result.actual,
+    },
+  };
+  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
+}
+
+/**
+ * Wire shape for `SESSION_TOO_LARGE` — the artifact would exceed the
+ * server-side per-session size cap. The cap is documented on
+ * `MAX_SESSION_ARTIFACT_BYTES`. Surfaced as an error so the agent
+ * stops appending; the prior valid state is unchanged.
+ */
+export function sessionTooLargeResult(
+  sessionToken: string,
+  result: SessionTooLargeResult
+): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
+  const payload = {
+    status: 'error' as const,
+    code: result.code,
+    message: result.message,
+    sessionToken,
+    data: {
+      artifactBytes: result.artifactBytes,
+      maxBytes: result.maxBytes,
+    },
+  };
+  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
+}
+
+/**
+ * Wire shape for `SESSION_HOP_LIMIT` — the per-replica successful-save
+ * cap has been hit. Defense-in-depth against runaway agents; see
+ * `MAX_SESSION_SAVES` for the per-replica reasoning.
+ */
+export function sessionHopLimitResult(
+  sessionToken: string,
+  result: SessionHopLimitResult
+): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
+  const payload = {
+    status: 'error' as const,
+    code: result.code,
+    message: result.message,
+    sessionToken,
+    data: {
+      saves: result.saves,
+      maxSaves: result.maxSaves,
     },
   };
   return textResult(JSON.stringify(payload, null, 2), /* isError */ true);

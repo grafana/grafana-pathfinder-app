@@ -87,6 +87,115 @@ export const SESSION_NOT_FOUND = { ok: false as const, code: 'SESSION_NOT_FOUND'
 export type SessionNotFound = typeof SESSION_NOT_FOUND;
 
 /**
+ * Hard cap on the JSON-serialized size of a session artifact (content +
+ * manifest). Enforced server-side just before we persist a mutation,
+ * AFTER the CLI runner has produced the post-mutation artifact. Sized
+ * generously enough that any realistic authoring guide fits — the goal
+ * is to bound abuse (~1 MB inbound bodies appended in a loop), not to
+ * constrain real authoring.
+ *
+ * Why this exists: the deployed MCP runs with `--allow-unauthenticated`
+ * and persists every successful mutation. The transport-level 1 MB cap
+ * (see `transports/http.ts#MAX_REQUEST_BYTES`) bounds each request, but
+ * NOT the cumulative artifact — block append/update tools can grow
+ * `content.blocks[]` indefinitely. Without this cap, an attacker can
+ * inflate one session's stored artifact unboundedly, which in turn
+ * multiplies the cost of every previous-stage retention (see
+ * `session-store-gcs.ts`).
+ *
+ * 4 MB is ~10× a realistic large guide and ~4× the per-request inbound
+ * cap; a single mutation can never blow through it from a clean start
+ * even if the request body is at the limit.
+ */
+export const MAX_SESSION_ARTIFACT_BYTES = 4_000_000;
+
+/**
+ * Hard cap on successful mutations per session per replica. Counted in
+ * the same per-process `SessionHopCounter` (cf. `transports/instrumentation.ts`)
+ * but keyed by session TOKEN rather than `Mcp-Session-Id`. Cross-replica
+ * coordination is intentionally absent — Cloud Run replicas are
+ * short-lived and each gets its own counter, so the realistic effective
+ * cap is `MAX_SESSION_SAVES × replica-count`. This is defense-in-depth,
+ * not a strict bound; the artifact-size cap above is the primary lever.
+ *
+ * 500 saves comfortably exceeds any realistic LLM-paced authoring run
+ * (a guide reaches steady state in 20-50 mutations).
+ */
+export const MAX_SESSION_SAVES = 500;
+
+export const SESSION_TOO_LARGE = 'SESSION_TOO_LARGE' as const;
+export interface SessionTooLargeResult {
+  ok: false;
+  code: typeof SESSION_TOO_LARGE;
+  artifactBytes: number;
+  maxBytes: number;
+  message: string;
+}
+
+export const SESSION_HOP_LIMIT = 'SESSION_HOP_LIMIT' as const;
+export interface SessionHopLimitResult {
+  ok: false;
+  code: typeof SESSION_HOP_LIMIT;
+  saves: number;
+  maxSaves: number;
+  message: string;
+}
+
+/**
+ * Measure the JSON-serialized byte length of an artifact. Used to enforce
+ * `MAX_SESSION_ARTIFACT_BYTES` before save. Mirrors the encoding the
+ * GCS store will write so the cap is meaningful against actual storage.
+ */
+export function measureArtifactBytes(artifact: ArtifactInput): number {
+  // content and manifest are stored as separate objects; the cap covers
+  // their combined serialized size to match what the GCS layout actually
+  // persists (and what an attacker would actually inflate).
+  const contentBytes = Buffer.byteLength(JSON.stringify(artifact.content));
+  const manifestBytes = artifact.manifest !== undefined ? Buffer.byteLength(JSON.stringify(artifact.manifest)) : 0;
+  return contentBytes + manifestBytes;
+}
+
+function sessionTooLarge(bytes: number): SessionTooLargeResult {
+  return {
+    ok: false,
+    code: SESSION_TOO_LARGE,
+    artifactBytes: bytes,
+    maxBytes: MAX_SESSION_ARTIFACT_BYTES,
+    message: `Session artifact would exceed the ${MAX_SESSION_ARTIFACT_BYTES}-byte cap (got ${bytes} bytes after the mutation). Trim existing blocks before adding more — large authoring runs should be split across multiple guides.`,
+  };
+}
+
+function sessionHopLimit(saves: number): SessionHopLimitResult {
+  return {
+    ok: false,
+    code: SESSION_HOP_LIMIT,
+    saves,
+    maxSaves: MAX_SESSION_SAVES,
+    message: `Session has reached the per-replica mutation cap (${MAX_SESSION_SAVES}). This is a hard guard against runaway agents; if you legitimately need more, start a fresh session with pathfinder_create_package.`,
+  };
+}
+
+/**
+ * Per-token mutation counter. Keyed by the session token so it tracks
+ * authoring state across mcp-session-id transports (a client that
+ * reconnects with a new header but the same token is still the same
+ * session). The counter is per-replica in-memory — see the doc on
+ * `MAX_SESSION_SAVES` for the reasoning.
+ */
+const sessionSaveCounts = new Map<string, number>();
+
+/** Visible for tests. */
+export function __resetSessionSaveCounts(): void {
+  sessionSaveCounts.clear();
+}
+
+function bumpSaveCount(token: string): number {
+  const next = (sessionSaveCounts.get(token) ?? 0) + 1;
+  sessionSaveCounts.set(token, next);
+  return next;
+}
+
+/**
  * Run a directory-based runner against an in-memory artifact. Writes the
  * artifact to a per-call tmpdir, invokes the runner, reads the updated
  * artifact back, and cleans up.
@@ -153,7 +262,7 @@ export async function withSession(
   token: string,
   store: SessionStore,
   runner: (dir: string) => Promise<CommandOutcome> | CommandOutcome
-): Promise<SessionOutcome | SessionNotFound> {
+): Promise<SessionOutcome | SessionNotFound | SessionTooLargeResult | SessionHopLimitResult> {
   const loaded = await store.load(token);
   if (loaded === null) {
     return SESSION_NOT_FOUND;
@@ -163,6 +272,21 @@ export async function withSession(
 
   if (result.outcome.status !== 'ok') {
     return { ...result, generation: undefined };
+  }
+
+  // Size cap is enforced AFTER the CLI runner (so the size is the
+  // post-mutation, post-validation size that would actually land in
+  // storage). Skipping the cap on runner failure is intentional: a
+  // failed mutation doesn't write to the store, so it can't grow the
+  // persisted artifact.
+  const bytes = measureArtifactBytes(result.artifact);
+  if (bytes > MAX_SESSION_ARTIFACT_BYTES) {
+    return sessionTooLarge(bytes);
+  }
+
+  const saves = bumpSaveCount(token);
+  if (saves > MAX_SESSION_SAVES) {
+    return sessionHopLimit(saves);
   }
 
   const saved = await store.save(token, result.artifact, loaded.generation);
@@ -220,7 +344,39 @@ export function concurrentModification(expected: number, actual: number): Concur
   };
 }
 
-export type DispatchSessionResult = SessionOutcome | SessionNotFound | ConcurrentModificationResult;
+export type DispatchSessionResult =
+  | SessionOutcome
+  | SessionNotFound
+  | ConcurrentModificationResult
+  | SessionTooLargeResult
+  | SessionHopLimitResult;
+
+/**
+ * Quota check applied after the CLI runner produces an updated artifact
+ * and before we attempt the store write. Returns a structured
+ * SESSION_TOO_LARGE / SESSION_HOP_LIMIT response when a cap is exceeded,
+ * or `null` to proceed with the save. Pulled out so both the initial
+ * attempt and the post-412 retry share the same gating logic.
+ *
+ * Save-count bumping happens here, on the success path only, so a
+ * failed runner attempt does not consume a save slot. Likewise the
+ * 412-retry path re-runs the runner and re-enters this function, which
+ * means the retry will bump the counter exactly once on its own success.
+ */
+function checkSessionQuota(
+  token: string,
+  artifact: ArtifactInput
+): SessionTooLargeResult | SessionHopLimitResult | null {
+  const bytes = measureArtifactBytes(artifact);
+  if (bytes > MAX_SESSION_ARTIFACT_BYTES) {
+    return sessionTooLarge(bytes);
+  }
+  const saves = bumpSaveCount(token);
+  if (saves > MAX_SESSION_SAVES) {
+    return sessionHopLimit(saves);
+  }
+  return null;
+}
 
 export async function dispatchSessionMutation(
   token: string,
@@ -241,6 +397,10 @@ export async function dispatchSessionMutation(
     const result = await withArtifact(loaded.artifact, runner);
     if (result.outcome.status !== 'ok') {
       return { ...result, generation: undefined };
+    }
+    const quotaFailure = checkSessionQuota(token, result.artifact);
+    if (quotaFailure) {
+      return quotaFailure;
     }
     const saved = await store.save(token, result.artifact, loaded.generation);
     return { ...result, generation: saved.generation };
@@ -265,6 +425,10 @@ export async function dispatchSessionMutation(
       if (result2.outcome.status !== 'ok') {
         return { ...result2, generation: undefined };
       }
+      const quotaFailure2 = checkSessionQuota(token, result2.artifact);
+      if (quotaFailure2) {
+        return quotaFailure2;
+      }
       const saved2 = await store.save(token, result2.artifact, reloaded.generation);
       return { ...result2, generation: saved2.generation };
     } catch (err2) {
@@ -282,4 +446,12 @@ export function isSessionNotFound(r: unknown): r is SessionNotFound {
 
 export function isConcurrentModification(r: unknown): r is ConcurrentModificationResult {
   return typeof r === 'object' && r !== null && (r as ConcurrentModificationResult).code === 'CONCURRENT_MODIFICATION';
+}
+
+export function isSessionTooLarge(r: unknown): r is SessionTooLargeResult {
+  return typeof r === 'object' && r !== null && (r as SessionTooLargeResult).code === SESSION_TOO_LARGE;
+}
+
+export function isSessionHopLimit(r: unknown): r is SessionHopLimitResult {
+  return typeof r === 'object' && r !== null && (r as SessionHopLimitResult).code === SESSION_HOP_LIMIT;
 }
