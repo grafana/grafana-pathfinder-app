@@ -348,7 +348,7 @@ function parseTierDoc(content: string, sourceLabel: string): ParsedTierDoc {
   if (!headingMatch) {
     throw new Error(`Could not find "Frontend tier model" heading in ${sourceLabel}`);
   }
-  const headingDepth = headingMatch[1].length;
+  const headingDepth = headingMatch[1]!.length;
   const sectionStart = headingMatch.index + headingMatch[0].length;
   const rest = content.slice(sectionStart);
   // Match the next heading at depth <= headingDepth
@@ -367,7 +367,8 @@ function parseTierDoc(content: string, sourceLabel: string): ParsedTierDoc {
     // itself contain backtick-quoted tokens like `index.ts`) doesn't leak
     // into the dir list. systemPatterns.mdc puts a one-sentence description
     // after the dir list on the same line; AGENTS.md does not.
-    const dirList = bulletMatch[2].split(/\.\s/)[0];
+    // String.split() always returns >=1 element, so [0]! is safe.
+    const dirList = bulletMatch[2]!.split(/\.\s/)[0]!;
     for (const dir of extractDirs(dirList)) {
       if (tiers.has(dir)) {
         throw new Error(`Directory \`${dir}\` listed under multiple tiers in ${sourceLabel}`);
@@ -387,7 +388,7 @@ function parseTierDoc(content: string, sourceLabel: string): ParsedTierDoc {
   const excludedRe = /Excluded from tier analysis[^:]*:\s*([^.\n]+)/;
   const excludedMatch = excludedRe.exec(section);
   if (excludedMatch) {
-    for (const dir of extractDirs(excludedMatch[1])) {
+    for (const dir of extractDirs(excludedMatch[1]!)) {
       excluded.add(dir);
     }
   }
@@ -410,7 +411,7 @@ function extractDirs(line: string): string[] {
   const tokenRe = /`([^`]+)`/g;
   let tokenMatch: RegExpExecArray | null;
   while ((tokenMatch = tokenRe.exec(line)) !== null) {
-    let token = tokenMatch[1].trim();
+    let token = tokenMatch[1]!.trim();
     if (token.endsWith('/')) {
       token = token.slice(0, -1);
     }
