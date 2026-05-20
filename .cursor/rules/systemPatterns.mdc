@@ -87,44 +87,53 @@ This Grafana App Plugin integrates as a sidebar panel using **Grafana Scenes** f
 Imports flow **downward only** through these tiers. Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; exceptions require an explicit allowlist entry with justification.
 
 - **Tier 0 — Types & constants**: `types/`, `constants/`. Pure type definitions and configuration constants; no runtime behavior; safe to import from anywhere.
-- **Tier 1 — Engines & providers**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `package-engine/`, `learning-paths/`, `requirements-manager/`, `recovery/`, `validation/`. Hold the business logic. Each exposes a barrel `index.ts`; consumers import only the public surface.
-- **Tier 2 — UI**: `components/`, `pages/`. Compose engines into rendered surfaces.
-- **Tier 3 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `integrations/`, `hooks/`, `utils/`, `test-utils/`, `bundled-interactives/`, `locales/`, `img/`, `cli/`. Auxiliary utilities and feature integrations; imported by Tier 1 and Tier 2.
+- **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`. Auxiliary utilities, shared state, theme-aware styles, and validation helpers; importable by higher tiers.
+- **Tier 2 — Engines & hooks**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `hooks/`. Hold the business logic. Each engine exposes a barrel `index.ts`; consumers import only the public surface. Engines are laterally isolated — they cannot import from sibling Tier 2 engines.
+- **Tier 3 — Integrations**: `integrations/`. Optional integrations (assistant, coda, workshop). May import from Tiers 0–2.
+- **Tier 4 — UI**: `components/`, `pages/`. Compose engines and integrations into rendered surfaces.
+
+Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-interactives/`, `img/`, `locales/`. The canonical source is `TIER_MAP` in `src/validation/import-graph.ts`.
 
 ## Frontend subsystem reference
 
 Compact catalogue. For each subsystem: purpose, entry point (file an agent should read first), and its position in the tier model. Per-subsystem deep-dives live in `docs/developer/engines/`, `docs/developer/utils/README.md`, `docs/developer/constants/README.md`, and `docs/developer/learning-paths/README.md`.
 
-**Tier 0:**
+**Tier 0 — types & constants:**
 
 - `types/` — Centralized TypeScript type definitions. Entry: `types/index.ts` barrel. Key modules: `json-guide.types`, `package.types`, `interactive-actions.types`, `requirements.types`, `content.types`, `learning-paths.types`, `v1-recommender.types`.
 - `constants/` — Glob-scoped constants. Entry: `src/constants.ts` (root barrel) + `src/constants/` subdir (selectors, interactive-config, testIds, z-index). See `docs/developer/constants/README.md`.
 
-**Tier 1 — engines:**
-
-- `context-engine/` — Detects Grafana context (URL, datasources, dashboard) and calls the recommender. Entry: `context.service.ts`. Hook: `useContextPanel()`. See `docs/developer/engines/context-engine.md`.
-- `docs-retrieval/` — Multi-strategy content fetcher and renderer. Entry: `content-fetcher.ts` (`fetchUnifiedContent`). Renders via `content-renderer.tsx`. Journey-completion helpers in `learning-journey-helpers.ts`.
-- `interactive-engine/` — Executes interactive step actions. Entry: `interactive.hook.ts` (`useInteractiveElements`). Action handlers under `action-handlers/`. See `docs/developer/engines/interactive-engine.md`.
-- `package-engine/` — Package resolution + loading. Entry: `composite-resolver.ts` (`createCompositeResolver`). Resolver chain: bundled → online CDN → recommender API.
-- `learning-paths/` — Progress / badges / streaks / next-action. Entry: `learning-paths.hook.ts`. Badge definitions in `badges.ts`. See `docs/developer/learning-paths/README.md`.
-- `requirements-manager/` — Prereqs + postconditions for steps. Entry: `requirements-checker.hook.ts` (`useStepChecker`). State machine in `step-state.ts`. See `docs/developer/engines/requirements-manager.md`.
-- `recovery/` — Auto-recovery: decides whether the user is in the right place for a guide. Entry: `alignment-evaluator.ts` (`evaluateAlignment`).
-- `validation/` — Zod schemas + condition validators. Entry: `validate-guide.ts`. Architecture rules enforced by `architecture.test.ts`.
-
-**Tier 2 — UI:**
-
-- `components/` — React + Scenes UI. Major panels: `App/App.tsx` (root), `docs-panel/docs-panel.tsx` (~40 KB hub), `Home/`, `interactive-tutorial/`, `LearningPaths/`, `LiveSession/`, `block-editor/`, `floating-panel/`, `full-screen/`, `kiosk/`, `PrTester/`.
-- `pages/` — Grafana Scenes routing. Entries: `homePage.ts`, `docsPage.ts`. Both registered by `App.tsx`.
-
-**Tier 3 — support:**
+**Tier 1 — support:**
 
 - `lib/` — Shared utilities. Sub-areas: `analytics.ts`, `user-storage.ts`, `dom/` (selector pipeline: detect → generate → validate → retry), `async-utils.ts`, `package-recommendations-client.ts`.
 - `security/` — URL allowlists, HTML / log sanitization. Entry: `security/index.ts`. Key: `parseUrlSafely`, `validateTutorialUrl`, `sanitizeDocumentationHTML`. See `.cursor/rules/frontend-security.mdc`.
 - `styles/` — Theme-aware CSS-in-JS factories (Emotion). One `*.styles.ts` per component.
 - `global-state/` — Cross-component stores (Zustand + React context). Files: `sidebar.ts`, `panel-mode.ts`, `link-interception.ts`, `interactive-navigation.ts`, `alignment-pending-context.ts`.
-- `integrations/` — Optional integrations: `assistant-integration/` (`<assistant>` tags), `coda/` (terminal), `workshop/` (action capture + replay). See `.cursor/rules/coda.mdc`, `docs/developer/ASSISTANT_INTEGRATION.md`, `docs/developer/integrations/workshop.md`.
-- `hooks/` — Cross-cutting hooks: `useAlignmentReevaluation`, `useAutoLaunchTutorial`, `useStepProgressFromEvents`.
 - `utils/` — Business logic and utilities. Files: `dev-mode.ts`, `openfeature.ts`, `timeout-manager.ts`, `variable-substitution.ts`, `experiments.ts`, `find-doc-page.ts`. See `docs/developer/utils/README.md`.
+- `validation/` — Zod schemas + condition validators. Entry: `validate-guide.ts`. Architecture rules enforced by `architecture.test.ts`.
+- `recovery/` — Auto-recovery: decides whether the user is in the right place for a guide. Entry: `alignment-evaluator.ts` (`evaluateAlignment`).
+
+**Tier 2 — engines & hooks:**
+
+- `context-engine/` — Detects Grafana context (URL, datasources, dashboard) and calls the recommender. Entry: `context.service.ts`. Hook: `useContextPanel()`. See `docs/developer/engines/context-engine.md`.
+- `docs-retrieval/` — Multi-strategy content fetcher and renderer. Entry: `content-fetcher.ts` (`fetchUnifiedContent`). Renders via `content-renderer.tsx`. Journey-completion helpers in `learning-journey-helpers.ts`.
+- `interactive-engine/` — Executes interactive step actions. Entry: `interactive.hook.ts` (`useInteractiveElements`). Action handlers under `action-handlers/`. See `docs/developer/engines/interactive-engine.md`.
+- `requirements-manager/` — Prereqs + postconditions for steps. Entry: `requirements-checker.hook.ts` (`useStepChecker`). State machine in `step-state.ts`. See `docs/developer/engines/requirements-manager.md`.
+- `learning-paths/` — Progress / badges / streaks / next-action. Entry: `learning-paths.hook.ts`. Badge definitions in `badges.ts`. See `docs/developer/learning-paths/README.md`.
+- `package-engine/` — Package resolution + loading. Entry: `composite-resolver.ts` (`createCompositeResolver`). Resolver chain: bundled → online CDN → recommender API.
+- `hooks/` — Cross-cutting hooks: `useAlignmentReevaluation`, `useAutoLaunchTutorial`, `useStepProgressFromEvents`.
+
+**Tier 3 — integrations:**
+
+- `integrations/` — Optional integrations: `assistant-integration/` (`<assistant>` tags), `coda/` (terminal), `workshop/` (action capture + replay). See `.cursor/rules/coda.mdc`, `docs/developer/ASSISTANT_INTEGRATION.md`, `docs/developer/integrations/workshop.md`.
+
+**Tier 4 — UI:**
+
+- `components/` — React + Scenes UI. Major panels: `App/App.tsx` (root), `docs-panel/docs-panel.tsx` (~40 KB hub), `Home/`, `interactive-tutorial/`, `LearningPaths/`, `LiveSession/`, `block-editor/`, `floating-panel/`, `full-screen/`, `kiosk/`, `PrTester/`.
+- `pages/` — Grafana Scenes routing. Entries: `homePage.ts`, `docsPage.ts`. Both registered by `App.tsx`.
+
+**Excluded from tier analysis** (not subject to import-graph rules):
+
 - `test-utils/` — Test fixtures. `openfeature-mock.ts`.
 - `bundled-interactives/` — Offline-fallback JSON guides + `repository.json`. Static asset directory; no code.
 - `locales/` — i18n translation files (en-US base + de-DE, fr-FR, es-ES, cs-CZ, etc.). Loaded via `@grafana/i18n`.
