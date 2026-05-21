@@ -130,11 +130,11 @@ https://interactive-learning.grafana.net/packages/<slug>/content.json
 
 This is the form `openLearningJourney` / `openDocsPage` recognise as a package URL (`isPackageContentUrl` in [src/docs-retrieval/package-info-from-url.ts](../../src/docs-retrieval/package-info-from-url.ts)) — that's the gate that triggers the sibling `manifest.json` fetch which populates milestones, the toolbar, and the multi-page navigation. The platform also serves the same guide under `https://interactive-learning.grafana.net/guides/<slug>/`, but that public web-page form bypasses the package gate and falls through to a plain `fetchContent(url)` call — the guide opens as a single page with no milestones. If you only see one page when you expected a learning journey, this is almost always the URL form. See "Common gotchas" below.
 
-### Treatment — interactive package
+### Control — interactive package
 
 ```js
 __pathfinderExperiment.setOverride('pathfinder.highlighted-guide-experiment', {
-  variant: 'treatment',
+  variant: 'control',
   pages: ['/a/grafana-irm-app*'],
   guideId: 'https://interactive-learning.grafana.net/packages/irm-configuration/content.json',
   docType: 'interactive',
@@ -144,13 +144,13 @@ __pathfinderExperiment.setOverride('pathfinder.highlighted-guide-experiment', {
 location.reload();
 ```
 
-### Control — learning journey
+### Treatment — learning journey
 
 Forces the Featured card type to `learning-journey` so the click-through opens with milestone UI rather than as a single docs page.
 
 ```js
 __pathfinderExperiment.setOverride('pathfinder.highlighted-guide-experiment', {
-  variant: 'control',
+  variant: 'treatment',
   pages: ['/a/grafana-irm-app*'],
   guideId: 'https://interactive-learning.grafana.net/packages/grafana-irm-configuration-lj/content.json',
   docType: 'learning-journey',
