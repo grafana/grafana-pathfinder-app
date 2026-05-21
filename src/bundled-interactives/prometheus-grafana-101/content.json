@@ -9,16 +9,16 @@
     },
     {
       "type": "markdown",
-      "content": "# Prometheus + Grafana 101\n\nWelcome to your Prometheus monitoring with Grafana journey! In this interactive guide, we'll take you on a tour of key locations in Grafana and help you set up your first Prometheus data source. By the end, you'll be familiar with:\n\n- Navigating Grafana's main sections\n- Understanding the key areas: Dashboards, Data Sources, Explore, and Alerting\n- Setting up and configuring a Prometheus data source\n- Creating your first dashboard with Prometheus metrics"
+      "content": "# Prometheus + Grafana 101\n\nWelcome to your Prometheus monitoring with Grafana journey! In this interactive guide, we'll take you on a tour of key locations in Grafana and help you set up your first Prometheus data source. By the end, you'll be familiar with:\n\n- Setting up and configuring a Prometheus data source\n- Using **Explore** to investigate your metrics with PromQL\n- Sending an Explore query straight to a new dashboard\n- Customizing a panel and saving your first dashboard"
     },
     {
       "type": "markdown",
-      "content": "## Section 1: Set Up Your Prometheus Data Source\n\nNow that you've seen the main areas, let's set up a Prometheus data source. Prometheus is a powerful monitoring system that's commonly used with Grafana for metrics collection and visualization."
+      "content": "## Section 1: Set up your Prometheus data source\n\nLet's start by configuring a Prometheus data source. Prometheus is a powerful monitoring system that's commonly used with Grafana for metrics collection and visualization."
     },
     {
       "type": "section",
       "id": "setup-datasource",
-      "title": "Set Up Your Prometheus Data Source",
+      "title": "Set up your Prometheus data source",
       "requirements": ["navmenu-open"],
       "blocks": [
         {
@@ -69,161 +69,32 @@
           "tooltip": "This URL `http://prometheus:9090` is the default endpoint for Prometheus servers. Port **9090** is the standard Prometheus port."
         },
         {
-          "type": "guided",
-          "content": "Explore Prometheus configuration settings and save your data source.",
-          "stepTimeout": 45000,
-          "steps": [
-            {
-              "action": "hover",
-              "reftarget": ".gf-form:has([data-testid=\"data-testid prometheus type\"]) label > svg[tabindex=\"0\"]",
-              "requirements": ["exists-reftarget"],
-              "tooltip": "The **Performance** section contains advanced settings that control how Grafana optimizes queries to your Prometheus server. Hovering over the information icon reveals detailed explanations about each setting."
-            },
-            {
-              "action": "highlight",
-              "reftarget": "grafana:components.DataSource.Prometheus.configPage.prometheusType",
-              "skippable": true,
-              "tooltip": "The **Prometheus type** dropdown lets you specify whether you're connecting to a standard Prometheus server or a compatible service like Cortex or Thanos, which helps Grafana optimize query behavior accordingly."
-            },
-            {
-              "action": "button",
-              "reftarget": "Save & test",
-              "tooltip": "Click **Save & test** to create your data source and verify the connection is working."
-            }
-          ]
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "#pageContent label:contains('Prometheus type')",
+          "requirements": ["exists-reftarget"],
+          "skippable": true,
+          "content": "Review the **Prometheus type** setting in the configuration page.",
+          "tooltip": "The **Prometheus type** dropdown lets you specify whether you're connecting to a standard Prometheus server or a compatible service like Cortex or Thanos, which helps Grafana optimize query behavior accordingly."
+        },
+        {
+          "type": "interactive",
+          "action": "button",
+          "reftarget": "Save & test",
+          "requirements": ["exists-reftarget"],
+          "content": "Click **Save & test** to create your data source and verify the connection is working."
         }
       ]
     },
     {
       "type": "markdown",
-      "content": "## Section 2: Create Your First Dashboard\n\nNow let's put your new Prometheus data source to work! We'll create a dashboard and add your first visualization using the \"prometheus-datasource\" you just set up."
-    },
-    {
-      "type": "section",
-      "id": "create-dashboard",
-      "title": "Create Your First Dashboard",
-      "requirements": ["section-completed:section-setup-datasource"],
-      "blocks": [
-        {
-          "type": "interactive",
-          "action": "highlight",
-          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
-          "requirements": ["navmenu-open", "exists-reftarget"],
-          "content": "Click **Dashboards** in the left-side menu."
-        },
-        {
-          "type": "multistep",
-          "content": "Click the **New** button, then select **New dashboard**.",
-          "steps": [
-            {
-              "action": "button",
-              "reftarget": "New",
-              "requirements": ["exists-reftarget"]
-            },
-            {
-              "action": "highlight",
-              "reftarget": "a[href='/dashboard/new']",
-              "requirements": ["exists-reftarget"]
-            }
-          ]
-        },
-        {
-          "type": "multistep",
-          "content": "Click **Add visualization**, then select your **prometheus-datasource**.",
-          "steps": [
-            {
-              "action": "button",
-              "reftarget": "button[data-testid='data-testid Create new panel button']",
-              "requirements": ["exists-reftarget"]
-            },
-            {
-              "action": "button",
-              "reftarget": "prometheus-datasource",
-              "requirements": ["exists-reftarget"]
-            }
-          ]
-        },
-        {
-          "type": "interactive",
-          "action": "highlight",
-          "reftarget": "div[data-testid=\"QueryEditorModeToggle\"] label[for^=\"option-code-radiogroup\"]",
-          "requirements": ["exists-reftarget"],
-          "content": "Switch to **Code** mode by clicking the raw query toggle to write PromQL directly."
-        },
-        {
-          "type": "interactive",
-          "action": "formfill",
-          "reftarget": "textarea.inputarea",
-          "targetvalue": "avg(alloy_component_controller_running_components{})",
-          "requirements": ["exists-reftarget"],
-          "content": "Enter this PromQL query:\n\n`avg(alloy_component_controller_running_components{})`",
-          "tooltip": "This is **PromQL** (Prometheus Query Language)! The `avg()` function calculates the average value, and `alloy_component_controller_running_components{}` is a metric that tracks running components. The empty `{}` means we're not filtering by labels."
-        },
-        {
-          "type": "interactive",
-          "action": "highlight",
-          "reftarget": "button[data-testid='data-testid RefreshPicker run button']",
-          "requirements": ["exists-reftarget"],
-          "content": "Click the **Refresh** button to execute the query and see your Prometheus data.",
-          "tooltip": "The **Refresh** button is used to execute the query and see your Prometheus data."
-        },
-        {
-          "type": "multistep",
-          "content": "Click on the **Visualization type**, then select **Stat** to create a simple number display.",
-          "steps": [
-            {
-              "action": "highlight",
-              "reftarget": "grafana:components.PanelEditor.toggleVizPicker",
-              "tooltip": "Grafana offers **many visualization types**: *Time series* for trends, *Bar charts* for comparisons, *Heatmaps* for distributions, *Tables* for raw data, and *Stat* for single values. Choose based on your data story!"
-            },
-            {
-              "action": "highlight",
-              "reftarget": "div[aria-label=\"Plugin visualization item Stat\"]",
-              "requirements": ["exists-reftarget"]
-            }
-          ]
-        },
-        {
-          "type": "interactive",
-          "action": "formfill",
-          "reftarget": "grafana:components.PanelEditor.OptionsPane.fieldInput:Title",
-          "targetvalue": "Number of running components",
-          "content": "In the panel options, change the **Title** to **Number of running components**.",
-          "tooltip": "The **Title** is the name of the panel. It's used to identify the panel in the dashboard."
-        },
-        {
-          "type": "multistep",
-          "content": "Click **Save Dashboard**, name it **Alloy Self Monitoring**, and click **Save**.",
-          "steps": [
-            {
-              "action": "button",
-              "reftarget": "Save Dashboard",
-              "requirements": ["exists-reftarget"]
-            },
-            {
-              "action": "formfill",
-              "reftarget": "input[aria-label=\"Save dashboard title field\"]",
-              "targetvalue": "Alloy Self Monitoring",
-              "requirements": ["exists-reftarget"]
-            },
-            {
-              "action": "button",
-              "reftarget": "Save",
-              "requirements": ["exists-reftarget"]
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "type": "markdown",
-      "content": "## Section 3: Explore Your Metrics\n\nThe Explore tab is your playground for querying and analyzing data. It's perfect for ad-hoc queries, investigating issues, and experimenting with PromQL before adding panels to dashboards. Let's explore some common Prometheus queries!"
+      "content": "## Section 2: Explore your metrics\n\nBefore building a dashboard, it's a good practice to explore your data first. Think of **Explore** as your data playground - it's where you can experiment with PromQL queries, understand what your metrics look like, and test different approaches without committing to a dashboard.\n\nLet's get familiar with some common Prometheus queries before we send one to a dashboard."
     },
     {
       "type": "section",
       "id": "explore-metrics",
-      "title": "Explore Your Metrics",
-      "requirements": ["section-completed:section-create-dashboard"],
+      "title": "Explore your metrics",
+      "requirements": ["section-completed:section-setup-datasource"],
       "blocks": [
         {
           "type": "interactive",
@@ -306,23 +177,6 @@
           "content": "Run the query to visualize request rates over time."
         },
         {
-          "type": "interactive",
-          "action": "formfill",
-          "reftarget": "textarea.inputarea",
-          "targetvalue": "@@CLEAR@@ prometheus_build_info",
-          "requirements": ["exists-reftarget"],
-          "content": "Clear and query Prometheus build information:\n\n`prometheus_build_info`",
-          "tooltip": "The `prometheus_build_info` metric provides metadata about your Prometheus server, including version, branch, and Go version. It's a useful info metric with labels containing build details."
-        },
-        {
-          "type": "interactive",
-          "action": "highlight",
-          "reftarget": "button[data-testid='data-testid RefreshPicker run button']",
-          "requirements": ["exists-reftarget"],
-          "content": "Execute to see your Prometheus version and build details.",
-          "tooltip": "Info metrics like this one typically have a constant value of **1**, but their labels contain the valuable information about the system."
-        },
-        {
           "type": "multistep",
           "content": "Explore the **time range picker** to adjust your query window.",
           "steps": [
@@ -339,12 +193,134 @@
               "tooltip": "Try different time ranges to see how your metrics change over time. Shorter ranges give more detail, longer ranges show trends."
             }
           ]
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ avg(alloy_component_controller_running_components{})",
+          "requirements": ["exists-reftarget"],
+          "content": "Now let's pick the query we'll send to a dashboard. Clear the editor and enter:\n\n`avg(alloy_component_controller_running_components{})`",
+          "tooltip": "The `avg()` function calculates the average value, and `alloy_component_controller_running_components{}` tracks the number of running components in your Grafana Alloy instance. This produces a single number - perfect for a **Stat** panel on a dashboard."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "button[data-testid='data-testid RefreshPicker run button']",
+          "requirements": ["exists-reftarget"],
+          "content": "Run the query to see the current number of running Alloy components."
         }
       ]
     },
     {
       "type": "markdown",
-      "content": "## Congratulations!\n\nAmazing work! You've completed your comprehensive Prometheus + Grafana 101 tutorial. You now know:\n\n- How to create and configure a Prometheus data source\n- How to set up the Prometheus server URL (http://prometheus:9090)\n- How to create a new dashboard and add visualizations\n- How to write and execute PromQL queries using Code mode\n- How to use the Explore tab for ad-hoc querying and investigation\n- Essential PromQL functions like `sum()`, `rate()`, and `by` grouping\n- How to work with fundamental Prometheus metrics like `up` and build info\n- How to navigate time ranges for analyzing different periods\n\n**Key PromQL Patterns You Learned:**\n\n- `up` - Monitor target health\n- `sum() by (label)` - Aggregate and group metrics\n- `rate(metric[5m])` - Calculate per-second rates over time windows\n- `prometheus_build_info` - Access system metadata through info metrics\n\n**Next Steps:** Continue with [Loki + Grafana 101](bundled:loki-grafana-101) to add logs alongside your metrics, or dive deeper into PromQL to create more sophisticated queries and alerting rules!"
+      "content": "## Section 3: Create a dashboard from Explore\n\nGreat work! You've explored your Prometheus metrics and landed on a query worth keeping. Now let's transform that query into a permanent, shareable dashboard.\n\nGrafana lets you send any Explore query directly to a new or existing dashboard - no need to retype the query in the panel editor. Let's create your first dashboard."
+    },
+    {
+      "type": "section",
+      "id": "create-dashboard",
+      "title": "Create a dashboard from Explore",
+      "requirements": ["section-completed:section-explore-metrics"],
+      "blocks": [
+        {
+          "type": "multistep",
+          "content": "Use the **Add** button to send your query to a new dashboard.",
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "button[aria-label=\"Add\"]",
+              "requirements": ["exists-reftarget"]
+            },
+            {
+              "action": "highlight",
+              "reftarget": "button:contains(\"Add to dashboard\")",
+              "requirements": ["exists-reftarget"]
+            },
+            {
+              "action": "highlight",
+              "reftarget": "button:contains(\"Open dashboard\")",
+              "requirements": ["exists-reftarget"],
+              "tooltip": "One of Grafana's best features is the seamless transition from Explore to dashboards. Instead of manually recreating your queries, you can send them directly from Explore to a new or existing dashboard. This workflow saves time and ensures your carefully crafted queries make it to your dashboard exactly as you tested them."
+            }
+          ]
+        },
+        {
+          "type": "multistep",
+          "content": "Open the panel editor to customize your visualization.",
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "button[data-testid=\"data-testid Panel menu New Panel\"]",
+              "requirements": ["exists-reftarget"]
+            },
+            {
+              "action": "highlight",
+              "reftarget": "a[data-testid=\"data-testid Panel menu item Edit\"]",
+              "requirements": ["exists-reftarget"],
+              "tooltip": "Welcome to your new dashboard! The panel editor is where the magic happens. Each visualization on a dashboard is called a \"panel,\" and the panel editor gives you complete control over how your data looks and behaves."
+            }
+          ]
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "grafana:components.PanelEditor.toggleVizPicker",
+          "requirements": ["exists-reftarget"],
+          "content": "Open the visualization picker to change the panel type.",
+          "tooltip": "Grafana offers **many visualization types**: *Time series* for trends, *Bar charts* for comparisons, *Heatmaps* for distributions, *Tables* for raw data, and *Stat* for single values. Choose based on your data story!"
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "button[data-testid=\"data-testid Tab Visualizations\"]",
+          "requirements": ["exists-reftarget"],
+          "content": "Select **All visualizations** to browse every panel type.",
+          "tooltip": "Stat is not always listed under suggested visualizations. Open **All visualizations** to find it."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "div[data-testid=\"data-testid Plugin visualization item Stat\"]",
+          "requirements": ["exists-reftarget"],
+          "content": "Change the visualization to **Stat** to display the number of running components as a single value.",
+          "tooltip": "The **Stat** panel is ideal for single-value metrics like our `avg()` query. It shows the current value prominently and can also include sparklines, thresholds, and color coding."
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "grafana:components.PanelEditor.OptionsPane.fieldInput:Title",
+          "targetvalue": "Number of running components",
+          "requirements": ["exists-reftarget"],
+          "content": "In the panel options, change the **Title** to **Number of running components**.",
+          "tooltip": "The **Title** is the name of the panel. It's used to identify the panel in the dashboard."
+        },
+        {
+          "type": "multistep",
+          "content": "Click **Save dashboard**, name it **Alloy Self Monitoring**, and click **Save**.",
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "button[data-testid='data-testid Save dashboard button']",
+              "requirements": ["exists-reftarget"]
+            },
+            {
+              "action": "formfill",
+              "reftarget": "input[aria-label=\"Save dashboard title field\"]",
+              "targetvalue": "Alloy Self Monitoring",
+              "requirements": ["exists-reftarget"]
+            },
+            {
+              "action": "highlight",
+              "reftarget": "button[data-testid=\"data-testid Save dashboard drawer button\"]",
+              "requirements": ["exists-reftarget"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## Congratulations!\n\nAmazing work! You've completed your Prometheus + Grafana 101 tutorial. You now know how to:\n\n- Create and configure a Prometheus data source\n- Use the Explore tab for ad-hoc PromQL querying\n- Write essential PromQL with `sum()`, `rate()`, and `by` grouping\n- Adjust the time range to focus on specific windows\n- Send an Explore query straight to a new dashboard with **Add to dashboard**\n- Customize a panel's visualization type and title\n- Save your first Grafana dashboard\n\n**Key PromQL patterns you learned:**\n\n- `up` - Monitor target health\n- `sum() by (label)` - Aggregate and group metrics\n- `rate(metric[5m])` - Calculate per-second rates over time windows\n- `avg(metric)` - Reduce a series to a single average value\n\n**Next steps:** Continue with [Loki + Grafana 101](bundled:loki-grafana-101) to add logs alongside your metrics, or dive deeper into PromQL to create more sophisticated queries and alerting rules!"
     }
   ]
 }
