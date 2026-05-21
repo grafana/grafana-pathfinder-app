@@ -6,6 +6,8 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 <!-- Structural issues requiring dedicated effort. Format: date, description, rationale. Remove when resolved. -->
 
+- 2026-05-21: No CONCERNS.md concern covers `src/snippet-engine/`. Consider adding one or extending `package-engine` / `docs-retrieval-and-rendering` to include the new tier-1 engine. Rationale: prevent-doc-drift cannot edit `docs/design/CONCERNS.md`; surfacing here for a human review pass.
+
 ## Validated docs
 
 <!-- Docs checked against source and found accurate. Format: date, doc path. Update date on re-validation. -->

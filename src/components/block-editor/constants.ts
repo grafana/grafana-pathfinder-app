@@ -123,6 +123,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Grot guide',
     description: 'Choose-your-own-adventure decision tree',
   },
+  'snippet-ref': {
+    type: 'snippet-ref',
+    icon: '🧩',
+    grafanaIcon: 'share-alt',
+    name: 'Snippet',
+    description: 'Reuse a published snippet by reference (always loads the latest)',
+  },
 };
 
 /**
@@ -145,6 +152,7 @@ export const BLOCK_TYPE_ORDER: BlockType[] = [
   'quiz',
   'input',
   'grot-guide',
+  'snippet-ref',
 ];
 
 /**
@@ -157,7 +165,7 @@ export const BLOCK_TYPE_ORDER: BlockType[] = [
  * - **Structure** — containers and special-purpose framing blocks.
  */
 export const BLOCK_TYPE_GROUPS: ReadonlyArray<{
-  id: 'content' | 'interactive' | 'structure';
+  id: 'content' | 'interactive' | 'structure' | 'reusable';
   label: string;
   types: BlockType[];
 }> = [
@@ -175,6 +183,11 @@ export const BLOCK_TYPE_GROUPS: ReadonlyArray<{
     id: 'structure',
     label: 'Structure',
     types: ['section', 'conditional', 'grot-guide'],
+  },
+  {
+    id: 'reusable',
+    label: 'Reusable',
+    types: ['snippet-ref'],
   },
 ] as const;
 

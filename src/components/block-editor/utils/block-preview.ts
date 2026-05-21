@@ -19,6 +19,7 @@ import {
   isInputBlock,
   isTerminalBlock,
   isCodeBlockBlock,
+  isSnippetRefBlock,
   type JsonBlock,
 } from '../../../types/json-guide.types';
 
@@ -115,6 +116,10 @@ export function getBlockPreview(block: JsonBlock, options: BlockPreviewOptions =
   if (isCodeBlockBlock(block)) {
     const firstLine = block.code.split('\n')[0] ?? '';
     return truncate(firstLine, maxLength);
+  }
+
+  if (isSnippetRefBlock(block)) {
+    return `→ ${block.snippetId}`;
   }
 
   // Fallback for unknown block types with content
