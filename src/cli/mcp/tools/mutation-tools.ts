@@ -39,6 +39,8 @@ import {
   sessionNotFoundResult,
   sessionOutcomeResult,
   sessionTooLargeResult,
+  storeUnavailableResult,
+  withToolErrorEnvelope,
 } from './result';
 import {
   dispatchSessionMutation,
@@ -46,6 +48,7 @@ import {
   isSessionHopLimit,
   isSessionNotFound,
   isSessionTooLarge,
+  isStoreUnavailable,
   withArtifact,
 } from './state-bridge';
 
@@ -160,41 +163,50 @@ async function dispatchMutation(
     return inputModeMissingResult();
   }
 
-  if (hasSessionToken) {
-    const token = normalizeSessionToken(inputs.sessionToken);
-    if (!token) {
-      return invalidSessionTokenResult();
-    }
-    const pinFailure = await enforceMcpSessionPin({ store, mcpSessionId }, token);
-    if (pinFailure) {
-      return pinFailure;
-    }
-    const r = await dispatchSessionMutation(token, store, runner, {
-      expectedGeneration: inputs.expectedGeneration,
-    });
-    if (isSessionNotFound(r)) {
-      return sessionNotFoundResult(token);
-    }
-    if (isConcurrentModification(r)) {
-      return concurrentModificationResult(token, r);
-    }
-    if (isSessionTooLarge(r)) {
-      return sessionTooLargeResult(token, r);
-    }
-    if (isSessionHopLimit(r)) {
-      return sessionHopLimitResult(token, r);
-    }
-    return sessionOutcomeResult(token, r.outcome, r.generation, r.summary);
-  }
+  // Capture the (possibly invalid) token for error responses before any
+  // throw can escape, so the catch-all envelope can echo it back.
+  const rawToken = hasSessionToken ? inputs.sessionToken : undefined;
 
-  // Stateless mode — unchanged behavior from before P7.
-  const artifact = inputs.artifact!;
-  const mismatch = verifyArtifactEtag(artifact);
-  if (mismatch) {
-    return mismatch;
-  }
-  const result = await withArtifact(asArtifact(artifact), runner);
-  return outcomeResult(result.outcome, result.artifact, result.summary);
+  return withToolErrorEnvelope(rawToken, 'mutation-tools', async () => {
+    if (hasSessionToken) {
+      const token = normalizeSessionToken(inputs.sessionToken);
+      if (!token) {
+        return invalidSessionTokenResult();
+      }
+      const pinFailure = await enforceMcpSessionPin({ store, mcpSessionId }, token);
+      if (pinFailure) {
+        return pinFailure;
+      }
+      const r = await dispatchSessionMutation(token, store, runner, {
+        expectedGeneration: inputs.expectedGeneration,
+      });
+      if (isSessionNotFound(r)) {
+        return sessionNotFoundResult(token);
+      }
+      if (isConcurrentModification(r)) {
+        return concurrentModificationResult(token, r);
+      }
+      if (isStoreUnavailable(r)) {
+        return storeUnavailableResult(token, r);
+      }
+      if (isSessionTooLarge(r)) {
+        return sessionTooLargeResult(token, r);
+      }
+      if (isSessionHopLimit(r)) {
+        return sessionHopLimitResult(token, r);
+      }
+      return sessionOutcomeResult(token, r.outcome, r.generation, r.summary);
+    }
+
+    // Stateless mode — unchanged behavior from before P7.
+    const artifact = inputs.artifact!;
+    const mismatch = verifyArtifactEtag(artifact);
+    if (mismatch) {
+      return mismatch;
+    }
+    const result = await withArtifact(asArtifact(artifact), runner);
+    return outcomeResult(result.outcome, result.artifact, result.summary);
+  });
 }
 
 export function registerMutationTools(

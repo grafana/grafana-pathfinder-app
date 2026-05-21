@@ -84,6 +84,7 @@ import {
   SESSION_GENERATION_ABSENT,
   SessionPreconditionFailedError,
   SessionStoreCorruptedError,
+  SessionStoreUnavailableError,
   type LoadedSession,
   type SaveResult,
   type SessionArtifact,
@@ -228,7 +229,40 @@ async function withRetryOn429<T>(fn: () => Promise<T>, opts: RetryOptions = {}):
       await sleep(wait);
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  // Exhausted retries on a 429. Wrap so the dispatch layer can surface a
+  // structured CommandOutcome instead of letting the raw GCS error string
+  // (e.g. "The object ... exceeded the rate limit ...") leak to the wire.
+  throw new SessionStoreUnavailableError(
+    'rate_limited',
+    'session storage temporarily rate-limited; retry the request',
+    { cause: lastErr }
+  );
+}
+
+/**
+ * Run `fn` and normalize any unknown error into `SessionStoreUnavailableError`.
+ * Typed errors (`SessionPreconditionFailedError`, `SessionStoreCorruptedError`,
+ * `SessionStoreUnavailableError`) propagate as-is so the dispatch layer can
+ * map them to their specific CommandOutcome codes. Everything else (raw GCS
+ * errors, auth failures, network blips) gets wrapped so the wire response
+ * stays a well-formed CommandOutcome; the original error is preserved via
+ * `cause` for server-side logs.
+ */
+async function wrapStorageErrors<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (
+      err instanceof SessionPreconditionFailedError ||
+      err instanceof SessionStoreCorruptedError ||
+      err instanceof SessionStoreUnavailableError
+    ) {
+      throw err;
+    }
+    throw new SessionStoreUnavailableError('transient', 'session storage temporarily unavailable; retry the request', {
+      cause: err,
+    });
+  }
 }
 
 export interface GcsSessionStoreOptions {
@@ -276,6 +310,10 @@ export class GcsSessionStore implements SessionStore {
   }
 
   async load(token: string): Promise<LoadedSession | null> {
+    return wrapStorageErrors(() => this.loadInner(token));
+  }
+
+  private async loadInner(token: string): Promise<LoadedSession | null> {
     // Step 1: read the generation pointer. Its presence defines whether
     // the session exists; its value names the staged prefix to read.
     // Single point-in-time snapshot — what we read next is immutable.
@@ -352,9 +390,7 @@ export class GcsSessionStore implements SessionStore {
       parsed = JSON.parse(text);
     } catch (err) {
       throw new SessionStoreCorruptedError(
-        `session store corruption: ${objectName} is not valid JSON: ${
-          err instanceof Error ? err.message : String(err)
-        }`
+        `session store corruption: ${objectName} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
       );
     }
     if (
@@ -380,6 +416,10 @@ export class GcsSessionStore implements SessionStore {
   }
 
   async save(token: string, artifact: SessionArtifact, ifGenerationMatch: number): Promise<SaveResult> {
+    return wrapStorageErrors(() => this.saveInner(token, artifact, ifGenerationMatch));
+  }
+
+  private async saveInner(token: string, artifact: SessionArtifact, ifGenerationMatch: number): Promise<SaveResult> {
     const isCreate = ifGenerationMatch === SESSION_GENERATION_ABSENT;
     const nextGeneration = isCreate ? 1 : ifGenerationMatch + 1;
     const newStage = this.generateStageId();
@@ -543,9 +583,7 @@ export class GcsSessionStore implements SessionStore {
       parsed = JSON.parse(body);
     } catch (err) {
       throw new SessionStoreCorruptedError(
-        `session store corruption: ${objectName} is not valid JSON: ${
-          err instanceof Error ? err.message : String(err)
-        }`
+        `session store corruption: ${objectName} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
       );
     }
     if (
@@ -587,14 +625,16 @@ export class GcsSessionStore implements SessionStore {
   }
 
   async delete(token: string): Promise<void> {
-    try {
-      await this.bucket.deleteFiles({ prefix: `${sessionPrefix(token)}/` });
-    } catch (err) {
-      if (isNotFoundError(err)) {
-        return;
+    return wrapStorageErrors(async () => {
+      try {
+        await this.bucket.deleteFiles({ prefix: `${sessionPrefix(token)}/` });
+      } catch (err) {
+        if (isNotFoundError(err)) {
+          return;
+        }
+        throw err;
       }
-      throw err;
-    }
+    });
   }
 
   /**
@@ -609,41 +649,45 @@ export class GcsSessionStore implements SessionStore {
    *     to silent overwrite of a confidentiality field.
    */
   async bindMcpSessionId(token: string, mcpSessionId: string): Promise<void> {
-    try {
-      await withRetryOn429(
-        () =>
-          this.bucket.file(pinObjectName(token)).save(mcpSessionId, {
-            resumable: false,
-            contentType: 'text/plain',
-            preconditionOpts: { ifGenerationMatch: 0 },
-          }),
-        this.retryOpts
-      );
-    } catch (err) {
-      if (!isPreconditionFailedError(err)) {
-        throw err;
+    return wrapStorageErrors(async () => {
+      try {
+        await withRetryOn429(
+          () =>
+            this.bucket.file(pinObjectName(token)).save(mcpSessionId, {
+              resumable: false,
+              contentType: 'text/plain',
+              preconditionOpts: { ifGenerationMatch: 0 },
+            }),
+          this.retryOpts
+        );
+      } catch (err) {
+        if (!isPreconditionFailedError(err)) {
+          throw err;
+        }
+        const existing = await this.readMcpSessionPin(token);
+        if (existing === mcpSessionId) {
+          return;
+        }
+        // Pin already bound to a different value — refuse to overwrite.
+        // The actual generation isn't meaningful to the caller here; the
+        // structured error tells them this was a precondition failure.
+        throw new SessionPreconditionFailedError(SESSION_GENERATION_ABSENT, 1);
       }
-      const existing = await this.readMcpSessionPin(token);
-      if (existing === mcpSessionId) {
-        return;
-      }
-      // Pin already bound to a different value — refuse to overwrite.
-      // The actual generation isn't meaningful to the caller here; the
-      // structured error tells them this was a precondition failure.
-      throw new SessionPreconditionFailedError(SESSION_GENERATION_ABSENT, 1);
-    }
+    });
   }
 
   async readMcpSessionPin(token: string): Promise<string | null> {
-    try {
-      const text = await this.downloadText(pinObjectName(token));
-      return text === null ? null : text.trim();
-    } catch (err) {
-      if (isNotFoundError(err)) {
-        return null;
+    return wrapStorageErrors(async () => {
+      try {
+        const text = await this.downloadText(pinObjectName(token));
+        return text === null ? null : text.trim();
+      } catch (err) {
+        if (isNotFoundError(err)) {
+          return null;
+        }
+        throw err;
       }
-      throw err;
-    }
+    });
   }
 
   /** Read the current session generation, or `0` if absent / unparseable. */

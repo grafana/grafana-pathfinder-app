@@ -25,7 +25,7 @@ import { enforceMcpSessionPin } from '../lib/session-pin';
 import { normalizeSessionToken } from '../lib/session-token';
 import type { SessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
-import { invalidSessionTokenResult, sessionNotFoundResult, textResult } from './result';
+import { invalidSessionTokenResult, sessionNotFoundResult, textResult, withToolErrorEnvelope } from './result';
 
 const SessionTokenInput = {
   sessionToken: z.string().describe('Session token returned by pathfinder_create_package or a previous mutation ack.'),
@@ -62,30 +62,31 @@ export function registerSessionReadTools(
       annotations: readOnly('List Pathfinder blocks (session)'),
       inputSchema: { ...SessionTokenInput },
     },
-    async ({ sessionToken }) => {
-      const r = await resolveToken(sessionToken);
-      if (!r.ok) {
-        return r.response;
-      }
-      const { token } = r;
-      const loaded = await sessionStore.load(token);
-      if (loaded === null) {
-        return sessionNotFoundResult(token);
-      }
-      const summary = buildArtifactSummary(loaded.artifact.content);
-      return textResult(
-        JSON.stringify(
-          {
-            status: 'ok',
-            sessionToken: token,
-            generation: loaded.generation,
-            blocks: summary,
-          },
-          null,
-          2
-        )
-      );
-    }
+    async ({ sessionToken }) =>
+      withToolErrorEnvelope(sessionToken, 'list_blocks', async () => {
+        const r = await resolveToken(sessionToken);
+        if (!r.ok) {
+          return r.response;
+        }
+        const { token } = r;
+        const loaded = await sessionStore.load(token);
+        if (loaded === null) {
+          return sessionNotFoundResult(token);
+        }
+        const summary = buildArtifactSummary(loaded.artifact.content);
+        return textResult(
+          JSON.stringify(
+            {
+              status: 'ok',
+              sessionToken: token,
+              generation: loaded.generation,
+              blocks: summary,
+            },
+            null,
+            2
+          )
+        );
+      })
   );
 
   server.registerTool(
@@ -99,46 +100,47 @@ export function registerSessionReadTools(
         blockId: z.string().describe('Block id to fetch.'),
       },
     },
-    async ({ sessionToken, blockId }) => {
-      const r = await resolveToken(sessionToken);
-      if (!r.ok) {
-        return r.response;
-      }
-      const { token } = r;
-      const loaded = await sessionStore.load(token);
-      if (loaded === null) {
-        return sessionNotFoundResult(token);
-      }
-      const block = findBlockById(loaded.artifact.content, blockId);
-      if (!block) {
+    async ({ sessionToken, blockId }) =>
+      withToolErrorEnvelope(sessionToken, 'get_block', async () => {
+        const r = await resolveToken(sessionToken);
+        if (!r.ok) {
+          return r.response;
+        }
+        const { token } = r;
+        const loaded = await sessionStore.load(token);
+        if (loaded === null) {
+          return sessionNotFoundResult(token);
+        }
+        const block = findBlockById(loaded.artifact.content, blockId);
+        if (!block) {
+          return textResult(
+            JSON.stringify(
+              {
+                status: 'error',
+                code: 'NOT_FOUND',
+                message: `No block with id "${blockId}" in this session.`,
+                sessionToken: token,
+                generation: loaded.generation,
+              },
+              null,
+              2
+            ),
+            /* isError */ true
+          );
+        }
         return textResult(
           JSON.stringify(
             {
-              status: 'error',
-              code: 'NOT_FOUND',
-              message: `No block with id "${blockId}" in this session.`,
+              status: 'ok',
               sessionToken: token,
               generation: loaded.generation,
+              block,
             },
             null,
             2
-          ),
-          /* isError */ true
+          )
         );
-      }
-      return textResult(
-        JSON.stringify(
-          {
-            status: 'ok',
-            sessionToken: token,
-            generation: loaded.generation,
-            block,
-          },
-          null,
-          2
-        )
-      );
-    }
+      })
   );
 
   server.registerTool(
@@ -149,28 +151,29 @@ export function registerSessionReadTools(
       annotations: readOnly('Get Pathfinder manifest (session)'),
       inputSchema: { ...SessionTokenInput },
     },
-    async ({ sessionToken }) => {
-      const r = await resolveToken(sessionToken);
-      if (!r.ok) {
-        return r.response;
-      }
-      const { token } = r;
-      const loaded = await sessionStore.load(token);
-      if (loaded === null) {
-        return sessionNotFoundResult(token);
-      }
-      return textResult(
-        JSON.stringify(
-          {
-            status: 'ok',
-            sessionToken: token,
-            generation: loaded.generation,
-            manifest: loaded.artifact.manifest ?? null,
-          },
-          null,
-          2
-        )
-      );
-    }
+    async ({ sessionToken }) =>
+      withToolErrorEnvelope(sessionToken, 'get_manifest_session', async () => {
+        const r = await resolveToken(sessionToken);
+        if (!r.ok) {
+          return r.response;
+        }
+        const { token } = r;
+        const loaded = await sessionStore.load(token);
+        if (loaded === null) {
+          return sessionNotFoundResult(token);
+        }
+        return textResult(
+          JSON.stringify(
+            {
+              status: 'ok',
+              sessionToken: token,
+              generation: loaded.generation,
+              manifest: loaded.artifact.manifest ?? null,
+            },
+            null,
+            2
+          )
+        );
+      })
   );
 }

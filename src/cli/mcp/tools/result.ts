@@ -15,10 +15,12 @@
 import type { TreeNode } from '../../utils/package-io';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
+import { SessionStoreUnavailableError } from '../lib/session-store';
 import type {
   ConcurrentModificationResult,
   SessionHopLimitResult,
   SessionTooLargeResult,
+  StoreUnavailableResult,
 } from './state-bridge';
 
 export function textResult(
@@ -213,6 +215,79 @@ export function inputModeAmbiguousResult(): {
     ),
     /* isError */ true
   );
+}
+
+/**
+ * Wire shape for `SESSION_STORE_UNAVAILABLE` — the backing store rejected
+ * the operation for a transient reason (exhausted 429 retries, network
+ * blip, auth failure). Returned as a well-formed CommandOutcome so clients
+ * never see a raw GCS error string leak through; the original provider
+ * error is preserved in server logs via the `cause` chain.
+ */
+export function storeUnavailableResult(
+  sessionToken: string | undefined,
+  result: StoreUnavailableResult
+): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
+  const payload = {
+    status: 'error' as const,
+    code: result.code,
+    message: result.message,
+    ...(sessionToken !== undefined ? { sessionToken } : {}),
+    data: { reason: result.reason },
+  };
+  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
+}
+
+/**
+ * Wire shape for an unexpected error inside a tool handler. Last line of
+ * defense against any throw that escapes the dispatch layer — keeps the
+ * wire response a well-formed CommandOutcome so clients can JSON.parse
+ * unconditionally. The original error is logged to stderr by the caller.
+ */
+export function internalErrorResult(sessionToken: string | undefined): {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+} {
+  const payload = {
+    status: 'error' as const,
+    code: 'INTERNAL_ERROR',
+    message:
+      'The server hit an unexpected error handling this request. Retry the operation; if it persists, the server logs contain the underlying cause.',
+    ...(sessionToken !== undefined ? { sessionToken } : {}),
+  };
+  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
+}
+
+/**
+ * Defense-in-depth envelope for tool handlers. Runs `fn` and converts any
+ * thrown error into a well-formed CommandOutcome:
+ *   - `SessionStoreUnavailableError` → `SESSION_STORE_UNAVAILABLE`
+ *   - anything else → `INTERNAL_ERROR` (logged to stderr)
+ *
+ * Use this at every tool's handler boundary so clients see structured JSON
+ * even when something the dispatch layer missed throws. Pass the inbound
+ * `sessionToken` so the envelope can echo it back; pass `undefined` for
+ * stateless tools.
+ */
+export async function withToolErrorEnvelope(
+  sessionToken: string | undefined,
+  toolName: string,
+  fn: () => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }>
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof SessionStoreUnavailableError) {
+      return storeUnavailableResult(sessionToken, {
+        ok: false,
+        code: 'SESSION_STORE_UNAVAILABLE',
+        reason: err.reason,
+        message: err.message,
+      });
+    }
+    console.error(`[${toolName}] uncaught error in tool handler:`, err);
+    return internalErrorResult(sessionToken);
+  }
 }
 
 export function inputModeMissingResult(): {

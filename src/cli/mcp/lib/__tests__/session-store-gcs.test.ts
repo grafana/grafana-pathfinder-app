@@ -10,7 +10,12 @@
 import type { Storage as GcsStorage } from '@google-cloud/storage';
 
 import type { ContentJson } from '../../../../types/package.types';
-import { SESSION_GENERATION_ABSENT, SessionPreconditionFailedError, type SessionArtifact } from '../session-store';
+import {
+  SESSION_GENERATION_ABSENT,
+  SessionPreconditionFailedError,
+  SessionStoreUnavailableError,
+  type SessionArtifact,
+} from '../session-store';
 import { GcsSessionStore } from '../session-store-gcs';
 import { tokenObjectPrefix } from '../session-token';
 
@@ -364,18 +369,27 @@ describe('GcsSessionStore 429 rate-limit retry (P7 hardening — gcs429)', () =>
     }
   });
 
-  it('eventually surfaces the 429 after exhausting retries', async () => {
-    {
-      const { store, bucket } = newStore();
-      // 10 forced failures > 5-attempt default → propagates the 429.
-      rateLimitOnce(bucket, '/content.json', 10);
-      await expect(store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT)).rejects.toMatchObject({
-        code: 429,
-      });
-    }
+  it('exhausted 429 retries surface as SessionStoreUnavailableError(rate_limited)', async () => {
+    const { store, bucket } = newStore();
+    // 10 forced failures > 5-attempt default → wrapped into the typed
+    // unavailable error so the dispatch layer can map it to a structured
+    // CommandOutcome instead of letting the raw GCS string leak.
+    rateLimitOnce(bucket, '/content.json', 10);
+    const err = await store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT).then(
+      () => null,
+      (e) => e
+    );
+    expect(err).toBeInstanceOf(SessionStoreUnavailableError);
+    expect(err).toMatchObject({
+      code: 'SESSION_STORE_UNAVAILABLE',
+      reason: 'rate_limited',
+    });
+    // The original GCS error is preserved on `cause` so server logs still
+    // carry the provider message for debugging.
+    expect((err as { cause?: { code?: number } }).cause?.code).toBe(429);
   });
 
-  it('non-429 errors propagate immediately without retry', async () => {
+  it('non-429 errors are wrapped as SessionStoreUnavailableError(transient)', async () => {
     const { store, bucket } = newStore();
     const origFile = bucket.file.bind(bucket);
     let saveCalls = 0;
@@ -391,10 +405,18 @@ describe('GcsSessionStore 429 rate-limit retry (P7 hardening — gcs429)', () =>
       }
       return f;
     };
-    await expect(store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT)).rejects.toMatchObject({
-      code: 403,
+    const err = await store.save(TOKEN_A, makeArtifact('v1'), SESSION_GENERATION_ABSENT).then(
+      () => null,
+      (e) => e
+    );
+    expect(err).toBeInstanceOf(SessionStoreUnavailableError);
+    expect(err).toMatchObject({
+      code: 'SESSION_STORE_UNAVAILABLE',
+      reason: 'transient',
     });
+    // No retry on a non-429 — wrapped on the first attempt.
     expect(saveCalls).toBe(1);
+    expect((err as { cause?: { code?: number } }).cause?.code).toBe(403);
   });
 });
 

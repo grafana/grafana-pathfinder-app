@@ -47,7 +47,7 @@ import {
   type TreeNode,
 } from '../../utils/package-io';
 import type { CommandOutcome } from '../../utils/output';
-import { SessionPreconditionFailedError, type SessionStore } from '../lib/session-store';
+import { SessionPreconditionFailedError, SessionStoreUnavailableError, type SessionStore } from '../lib/session-store';
 
 export interface ArtifactInput {
   content: ContentJson;
@@ -344,12 +344,29 @@ export function concurrentModification(expected: number, actual: number): Concur
   };
 }
 
+export interface StoreUnavailableResult {
+  ok: false;
+  code: 'SESSION_STORE_UNAVAILABLE';
+  reason: 'rate_limited' | 'transient';
+  message: string;
+}
+
+export function storeUnavailable(err: SessionStoreUnavailableError): StoreUnavailableResult {
+  return {
+    ok: false,
+    code: 'SESSION_STORE_UNAVAILABLE',
+    reason: err.reason,
+    message: err.message,
+  };
+}
+
 export type DispatchSessionResult =
   | SessionOutcome
   | SessionNotFound
   | ConcurrentModificationResult
   | SessionTooLargeResult
-  | SessionHopLimitResult;
+  | SessionHopLimitResult
+  | StoreUnavailableResult;
 
 /**
  * Quota check applied after the CLI runner produces an updated artifact
@@ -385,7 +402,15 @@ export async function dispatchSessionMutation(
   options: SessionMutationOptions = {}
 ): Promise<DispatchSessionResult> {
   // First load — check the optional optimistic-concurrency claim.
-  const loaded = await store.load(token);
+  let loaded: Awaited<ReturnType<typeof store.load>>;
+  try {
+    loaded = await store.load(token);
+  } catch (loadErr) {
+    if (loadErr instanceof SessionStoreUnavailableError) {
+      return storeUnavailable(loadErr);
+    }
+    throw loadErr;
+  }
   if (loaded === null) {
     return SESSION_NOT_FOUND;
   }
@@ -405,6 +430,9 @@ export async function dispatchSessionMutation(
     const saved = await store.save(token, result.artifact, loaded.generation);
     return { ...result, generation: saved.generation };
   } catch (err) {
+    if (err instanceof SessionStoreUnavailableError) {
+      return storeUnavailable(err);
+    }
     if (!(err instanceof SessionPreconditionFailedError)) {
       throw err;
     }
@@ -414,7 +442,15 @@ export async function dispatchSessionMutation(
       return concurrentModification(err.expected, err.actual);
     }
     // Default policy: retry once against the refetched state.
-    const reloaded = await store.load(token);
+    let reloaded: Awaited<ReturnType<typeof store.load>>;
+    try {
+      reloaded = await store.load(token);
+    } catch (reloadErr) {
+      if (reloadErr instanceof SessionStoreUnavailableError) {
+        return storeUnavailable(reloadErr);
+      }
+      throw reloadErr;
+    }
     if (reloaded === null) {
       // Another writer deleted the session between our save attempt and
       // this reload. Treat as not-found rather than concurrent-mod.
@@ -432,6 +468,9 @@ export async function dispatchSessionMutation(
       const saved2 = await store.save(token, result2.artifact, reloaded.generation);
       return { ...result2, generation: saved2.generation };
     } catch (err2) {
+      if (err2 instanceof SessionStoreUnavailableError) {
+        return storeUnavailable(err2);
+      }
       if (err2 instanceof SessionPreconditionFailedError) {
         return concurrentModification(err2.expected, err2.actual);
       }
@@ -446,6 +485,10 @@ export function isSessionNotFound(r: unknown): r is SessionNotFound {
 
 export function isConcurrentModification(r: unknown): r is ConcurrentModificationResult {
   return typeof r === 'object' && r !== null && (r as ConcurrentModificationResult).code === 'CONCURRENT_MODIFICATION';
+}
+
+export function isStoreUnavailable(r: unknown): r is StoreUnavailableResult {
+  return typeof r === 'object' && r !== null && (r as StoreUnavailableResult).code === 'SESSION_STORE_UNAVAILABLE';
 }
 
 export function isSessionTooLarge(r: unknown): r is SessionTooLargeResult {

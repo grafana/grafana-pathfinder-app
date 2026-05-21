@@ -62,5 +62,4 @@ describe('getDefaultSessionStore', () => {
     const store = await getDefaultSessionStore();
     expect(store).toBeInstanceOf(GcsSessionStore);
   });
-
 });

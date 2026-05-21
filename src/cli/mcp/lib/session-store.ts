@@ -89,6 +89,40 @@ export class SessionStoreCorruptedError extends Error {
   }
 }
 
+/**
+ * Raised when the backing store rejected the operation for a reason that
+ * isn't precondition-failure or corruption — typically a GCS 429 that
+ * exhausted retries, a transient network blip, or an auth/permission
+ * failure. The HTTP transport must surface this as a structured
+ * CommandOutcome (code `SESSION_STORE_UNAVAILABLE`) rather than a raw
+ * 500, so well-behaved clients see well-formed JSON and can retry.
+ *
+ * `reason` lets the dispatch layer choose a more specific client-facing
+ * message ("rate-limited; retry" vs "session storage temporarily
+ * unavailable"). The original error is preserved via `cause` so the
+ * unsanitized provider message stays out of the wire response but
+ * remains in server logs.
+ */
+export class SessionStoreUnavailableError extends Error {
+  readonly code = 'SESSION_STORE_UNAVAILABLE' as const;
+  readonly reason: 'rate_limited' | 'transient';
+  readonly cause?: unknown;
+
+  constructor(reason: 'rate_limited' | 'transient', message: string, options?: { cause?: unknown }) {
+    // Assigning `cause` manually instead of passing it through `Error()`'s
+    // ES2022 options bag — the CLI tsconfig targets ES2020 so the typed
+    // 2-arg constructor isn't visible to the type checker. The runtime
+    // (node ≥ 16.9) supports the property either way; this assignment
+    // keeps it accessible to consumers without bumping the build target.
+    super(message);
+    this.name = 'SessionStoreUnavailableError';
+    this.reason = reason;
+    if (options?.cause !== undefined) {
+      this.cause = options.cause;
+    }
+  }
+}
+
 export interface SessionStore {
   /**
    * Returns the current artifact and generation for `token`, or `null` if

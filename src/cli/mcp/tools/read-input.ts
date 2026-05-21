@@ -12,13 +12,15 @@
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import { enforceMcpSessionPin } from '../lib/session-pin';
 import { normalizeSessionToken } from '../lib/session-token';
-import type { SessionStore } from '../lib/session-store';
+import { SessionStoreUnavailableError, type SessionStore } from '../lib/session-store';
 import {
   inputModeAmbiguousResult,
   inputModeMissingResult,
   invalidSessionTokenResult,
   sessionNotFoundResult,
+  storeUnavailableResult,
 } from './result';
+import { storeUnavailable } from './state-bridge';
 
 export type ReadInputResolution =
   | {
@@ -58,21 +60,28 @@ export async function resolveReadOnlyInput(
     if (!token) {
       return { ok: false, response: invalidSessionTokenResult() };
     }
-    const pinFailure = await enforceMcpSessionPin({ store, mcpSessionId }, token);
-    if (pinFailure) {
-      return { ok: false, response: pinFailure };
+    try {
+      const pinFailure = await enforceMcpSessionPin({ store, mcpSessionId }, token);
+      if (pinFailure) {
+        return { ok: false, response: pinFailure };
+      }
+      const loaded = await store.load(token);
+      if (loaded === null) {
+        return { ok: false, response: sessionNotFoundResult(token) };
+      }
+      return {
+        ok: true,
+        content: loaded.artifact.content,
+        manifest: loaded.artifact.manifest,
+        manifestAuthored: loaded.artifact.manifest !== undefined,
+        sessionToken: token,
+      };
+    } catch (err) {
+      if (err instanceof SessionStoreUnavailableError) {
+        return { ok: false, response: storeUnavailableResult(token, storeUnavailable(err)) };
+      }
+      throw err;
     }
-    const loaded = await store.load(token);
-    if (loaded === null) {
-      return { ok: false, response: sessionNotFoundResult(token) };
-    }
-    return {
-      ok: true,
-      content: loaded.artifact.content,
-      manifest: loaded.artifact.manifest,
-      manifestAuthored: loaded.artifact.manifest !== undefined,
-      sessionToken: token,
-    };
   }
   const a = inputs.artifact!;
   return {
