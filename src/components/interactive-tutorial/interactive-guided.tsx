@@ -704,7 +704,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             <div className={`interactive-guided-requirements${checker.isChecking ? ' rechecking' : ''}`}>
               <div className="interactive-guided-requirement-box">
                 <span className="interactive-guided-requirement-icon">👣</span>
-                <span className="interactive-guided-requirement-text">{checker.explanation}</span>
+                <span id={`requirement-explanation-${renderedStepId}`} className="interactive-guided-requirement-text">
+                  {checker.explanation}
+                </span>
                 {checker.isChecking && <span className="interactive-requirement-spinner">⟳</span>}
               </div>
               <button
@@ -714,6 +716,12 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                     ? testIds.interactive.requirementFixButton(renderedStepId)
                     : testIds.interactive.requirementRetryButton(renderedStepId)
                 }
+                title={
+                  checker.canFixRequirement
+                    ? 'Apply the automatic fix for this requirement'
+                    : 'Check whether this requirement is now met'
+                }
+                aria-describedby={`requirement-explanation-${renderedStepId}`}
                 onClick={async () => {
                   if (checker.canFixRequirement && checker.fixRequirement) {
                     await checker.fixRequirement();
