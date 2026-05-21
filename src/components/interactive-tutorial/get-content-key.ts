@@ -15,8 +15,8 @@ function sanitizeKey(key: string): string {
 /**
  * Shared content key resolver for interactive step persistence.
  *
- * Both InteractiveSection and useStandalonePersistence MUST use this function
- * to ensure persist and restore operations target the same storage key.
+ * Used by InteractiveSection and the completion store to ensure persist and
+ * restore operations target the same storage key.
  *
  * IMPORTANT: Prefers tabUrl over contentKey because tabUrl represents the
  * canonical milestone URL without suffixes like "/content.json". Both globals

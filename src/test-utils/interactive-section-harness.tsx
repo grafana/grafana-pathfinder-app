@@ -369,6 +369,14 @@ export function resetSectionHarness() {
   memoryStore.clear();
   _checkRequirementsResult = { pass: true, error: [] };
   _stableCheckRequirementsFromData?.mockClear();
+  // The completion store keeps its own module-scope cache + hydration
+  // tracking. Clear both so tests don't bleed state across runs.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const store = require('../components/interactive-tutorial/completion-store');
+  store.resetCompletionStoreForTests();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const contentKey = require('../global-state/content-key');
+  contentKey.resetContentKeyForTests();
 }
 
 /**

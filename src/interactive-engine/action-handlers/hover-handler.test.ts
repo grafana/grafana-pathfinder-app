@@ -69,8 +69,8 @@ describe('HoverHandler', () => {
       resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
-        reftarget: '#test',
-        targetaction: 'hover',
+        refTarget: '#test',
+        targetAction: 'hover',
         tagName: 'div',
         textContent: 'Test',
         timestamp: Date.now(),
@@ -88,9 +88,9 @@ describe('HoverHandler', () => {
       resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
-        reftarget: '#test',
-        targetaction: 'hover',
-        targetcomment: 'Hover over this element',
+        refTarget: '#test',
+        targetAction: 'hover',
+        targetComment: 'Hover over this element',
         tagName: 'div',
         textContent: 'Test',
         timestamp: Date.now(),
@@ -108,8 +108,8 @@ describe('HoverHandler', () => {
       resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
-        reftarget: '#test',
-        targetaction: 'hover',
+        refTarget: '#test',
+        targetAction: 'hover',
         tagName: 'div',
         textContent: 'Test',
         timestamp: Date.now(),
@@ -125,8 +125,8 @@ describe('HoverHandler', () => {
       resolveWithRetry.mockResolvedValue(null);
 
       const data: InteractiveElementData = {
-        reftarget: '#non-existent',
-        targetaction: 'hover',
+        refTarget: '#non-existent',
+        targetAction: 'hover',
         tagName: 'div',
         textContent: 'Test',
         timestamp: Date.now(),
@@ -145,8 +145,8 @@ describe('HoverHandler', () => {
       resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
-        reftarget: '#test',
-        targetaction: 'hover',
+        refTarget: '#test',
+        targetAction: 'hover',
         tagName: 'div',
         textContent: 'Test',
         timestamp: Date.now(),
@@ -169,8 +169,8 @@ describe('HoverHandler', () => {
       resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
-        reftarget: '#test',
-        targetaction: 'hover',
+        refTarget: '#test',
+        targetAction: 'hover',
         tagName: 'div',
         textContent: 'Test',
         timestamp: Date.now(),
@@ -199,8 +199,8 @@ describe('HoverHandler', () => {
       resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
-        reftarget: '#test',
-        targetaction: 'hover',
+        refTarget: '#test',
+        targetAction: 'hover',
         tagName: 'div',
         textContent: 'Test',
         timestamp: Date.now(),
@@ -224,8 +224,8 @@ describe('HoverHandler', () => {
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
 
       const data: InteractiveElementData = {
-        reftarget: '#hidden-element',
-        targetaction: 'hover',
+        refTarget: '#hidden-element',
+        targetAction: 'hover',
         tagName: 'div',
         textContent: 'Test',
         timestamp: Date.now(),
@@ -257,8 +257,8 @@ describe('HoverHandler', () => {
       resolveWithRetry.mockResolvedValue(makeResolved(mockButton));
 
       const data: InteractiveElementData = {
-        reftarget: 'button#test',
-        targetaction: 'hover',
+        refTarget: 'button#test',
+        targetAction: 'hover',
         tagName: 'button',
         textContent: 'Test',
         timestamp: Date.now(),
@@ -280,8 +280,8 @@ describe('HoverHandler', () => {
       resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
-        reftarget: '#test',
-        targetaction: 'hover',
+        refTarget: '#test',
+        targetAction: 'hover',
         tagName: 'div',
         textContent: 'Test',
         timestamp: Date.now(),
@@ -300,8 +300,8 @@ describe('HoverHandler', () => {
       resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
 
       const data: InteractiveElementData = {
-        reftarget: '#nav-element',
-        targetaction: 'hover',
+        refTarget: '#nav-element',
+        targetAction: 'hover',
         tagName: 'div',
         textContent: 'Test',
         timestamp: Date.now(),
@@ -324,8 +324,8 @@ describe('HoverHandler', () => {
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
 
       const data: InteractiveElementData = {
-        reftarget: '.test-class',
-        targetaction: 'hover',
+        refTarget: '.test-class',
+        targetAction: 'hover',
         tagName: 'div',
         textContent: 'Test',
         timestamp: Date.now(),

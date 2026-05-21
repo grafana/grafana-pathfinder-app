@@ -51,10 +51,21 @@ export interface DocsPanelModelOperations {
   /** Open a docs page in a new tab */
   openDocsPage(url: string, title?: string, options?: OpenDocsOptions): Promise<string>;
 
-  /** Load content for a learning path tab */
+  /**
+   * Unified tab loader. Dispatches to the right content pipeline based on
+   * the tab's shape (and the optional `packageInfo` input). Prefer this
+   * over the legacy `loadTabContent` / `loadDocsTabContent` pair.
+   */
+  loadTab(
+    tabId: string,
+    url: string,
+    options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo }
+  ): Promise<void>;
+
+  /** @deprecated Internal implementation routed via `loadTab`. */
   loadTabContent(tabId: string, url: string): Promise<void>;
 
-  /** Load content for a docs-like tab */
+  /** @deprecated Internal implementation routed via `loadTab`. */
   loadDocsTabContent(
     tabId: string,
     url: string,

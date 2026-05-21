@@ -1,6 +1,6 @@
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
-import { ContentRenderer } from '../../docs-retrieval';
+import { ContentRenderer } from '../content-renderer/content-renderer';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';

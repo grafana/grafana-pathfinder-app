@@ -509,7 +509,7 @@ function convertConditionalBlock(block: JsonConditionalBlock, path: string, base
         conditions: block.conditions,
         description: block.description,
         display: block.display ?? 'inline',
-        reftarget: block.reftarget,
+        refTarget: block.reftarget,
         // Per-branch section configs (each branch has its own title, requirements, objectives)
         whenTrueSectionConfig: block.whenTrueSectionConfig,
         whenFalseSectionConfig: block.whenFalseSectionConfig,
@@ -524,8 +524,13 @@ function convertConditionalBlock(block: JsonConditionalBlock, path: string, base
 }
 
 function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): ConversionResult {
-  // Map 'action' to 'targetAction' for compatibility with existing components
-  const targetAction = block.action;
+  // Authors may write either the canonical lowercase form (`action`,
+  // `reftarget`, `targetvalue`, `targetcomment`) or the camelCase alias
+  // form. Prefer the lowercase slot when present (canonical wins) and
+  // fall back to the camelCase alias.
+  const targetAction = block.action ?? block.targetAction;
+  const refTargetValue = block.reftarget ?? block.refTarget;
+  const targetValue = block.targetvalue ?? block.targetValue;
 
   // Parse content as markdown for children
   const children = parseMarkdownToElements(block.content);
@@ -552,9 +557,10 @@ function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): Con
       type: 'interactive-step',
       props: {
         targetAction,
-        refTarget: block.reftarget,
-        targetValue: block.targetvalue,
+        refTarget: refTargetValue,
+        targetValue,
         targetComment: block.tooltip ? markdownToHtml(block.tooltip) : undefined,
+        ...(block.id ? { stepId: block.id } : {}),
         requirements,
         objectives,
         skippable: block.skippable ?? false,
@@ -580,11 +586,12 @@ function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): Con
 }
 
 function convertMultistepBlock(block: JsonMultistepBlock, path: string): ConversionResult {
-  // Convert steps to internalActions format expected by renderer
+  // Convert steps to internalActions format expected by renderer.
+  // Accept either the lowercase canonical or the camelCase alias on each step.
   const internalActions = block.steps.map((step: JsonStep) => ({
-    targetAction: step.action,
-    refTarget: step.reftarget,
-    targetValue: step.targetvalue,
+    targetAction: step.action ?? step.targetAction,
+    refTarget: step.reftarget ?? step.refTarget,
+    targetValue: step.targetvalue ?? step.targetValue,
     requirements: step.requirements?.join(','),
     targetComment: step.tooltip ? markdownToHtml(step.tooltip) : undefined,
   }));
@@ -612,11 +619,12 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string): Convers
 }
 
 function convertGuidedBlock(block: JsonGuidedBlock, path: string): ConversionResult {
-  // Convert steps to internalActions format expected by renderer
+  // Convert steps to internalActions format expected by renderer.
+  // Accept either the lowercase canonical or the camelCase alias on each step.
   const internalActions = block.steps.map((step: JsonStep) => ({
-    targetAction: step.action,
-    refTarget: step.reftarget,
-    targetValue: step.targetvalue,
+    targetAction: step.action ?? step.targetAction,
+    refTarget: step.reftarget ?? step.refTarget,
+    targetValue: step.targetvalue ?? step.targetValue,
     requirements: step.requirements?.join(','),
     // For guided blocks, prefer description (shown in steps panel), fall back to tooltip for backward compatibility
     targetComment: step.description

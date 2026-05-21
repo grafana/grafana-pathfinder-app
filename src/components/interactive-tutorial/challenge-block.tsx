@@ -21,7 +21,7 @@ import { css } from '@emotion/css';
 
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { checkPostconditions } from '../../requirements-manager';
-import { useStandalonePersistence } from './use-standalone-persistence';
+import { markStepCompleted, useStepCompletion } from './completion-store';
 
 const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
 // /tmp/pathfinder-ready matches codaSentinelPath in the Go backend. The
@@ -75,10 +75,10 @@ export interface ChallengeBlockProps {
   failureMessage?: string;
 
   stepId?: string;
-  isCompleted?: boolean;
   onStepComplete?: (stepId: string) => void;
   stepIndex?: number;
   totalSteps?: number;
+  sectionId?: string;
 }
 
 interface ExecResponse {
@@ -194,9 +194,8 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   hintLevels = [],
   failureMessage,
   stepId: providedStepId,
-  isCompleted: parentCompleted = false,
   onStepComplete,
-  totalSteps,
+  sectionId,
 }) => {
   const styles = useStyles2(getStyles);
   const terminalCtx = useTerminalContext();
@@ -214,7 +213,6 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   const [state, setState] = useState<ChallengeState>(mode === 'standard' ? 'ready' : 'idle');
   const [errorDetail, setErrorDetail] = useState<string>('');
   const [hintsRevealed, setHintsRevealed] = useState(0);
-  const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
   // Setup progress (current step / total) — surfaced in the status banner so
   // a slow setup (multiple commands, ~2-30s each) reads as progress rather
   // than a hang. Reset to null whenever runSetup re-enters.
@@ -231,15 +229,17 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // back to setup-failed before the new connection attempt completes.
   const statusAtStartRef = useRef<string | undefined>(undefined);
 
-  useStandalonePersistence(stepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
-
-  const isCompleted = parentCompleted || isLocallyCompleted || state === 'solved';
+  const { completed: storedCompleted } = useStepCompletion(stepId, sectionId);
+  const isStandalone = !onStepComplete;
+  const isCompleted = storedCompleted || state === 'solved';
 
   const markComplete = useCallback(() => {
-    if (isLocallyCompleted) {
+    if (storedCompleted) {
       return;
     }
-    setIsLocallyCompleted(true);
+    if (isStandalone) {
+      markStepCompleted(stepId, sectionId, 'manual');
+    }
     onStepComplete?.(stepId);
     // Dispatch the same completion event used by the rest of the engine so
     // sections, progress tracking, and analytics all see this as a normal
@@ -249,7 +249,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         detail: { stepId, blockType: 'challenge', state: 'completed' },
       })
     );
-  }, [isLocallyCompleted, onStepComplete, stepId]);
+  }, [storedCompleted, onStepComplete, stepId, sectionId, isStandalone]);
 
   const resetToIdle = useCallback(() => {
     setupStartedRef.current = false;

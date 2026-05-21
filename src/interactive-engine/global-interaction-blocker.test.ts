@@ -17,9 +17,9 @@ describe('GlobalInteractionBlocker', () => {
   let mockTimeoutManager: jest.Mocked<ReturnType<typeof TimeoutManager.getInstance>>;
 
   const mockData: InteractiveElementData = {
-    reftarget: '.test-button',
-    targetaction: 'button',
-    targetvalue: undefined,
+    refTarget: '.test-button',
+    targetAction: 'button',
+    targetValue: undefined,
     requirements: undefined,
     tagName: 'button',
     textContent: 'Test Button',

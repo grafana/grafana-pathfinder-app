@@ -6,7 +6,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { useStepChecker } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
-import { useStandalonePersistence } from './use-standalone-persistence';
+import { markStepCompleted, resetStep, useStepCompletion } from './completion-store';
 
 // ============ Types ============
 
@@ -45,7 +45,6 @@ export interface InteractiveQuizProps {
   // Section integration props
   stepId?: string;
   isEligibleForChecking?: boolean;
-  isCompleted?: boolean;
   onStepComplete?: (stepId: string) => void;
   disabled?: boolean;
   resetTrigger?: number;
@@ -120,7 +119,6 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   children,
   stepId: providedStepId,
   isEligibleForChecking = true,
-  isCompleted: parentCompleted = false,
   onStepComplete,
   disabled = false,
   resetTrigger,
@@ -141,10 +139,22 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   // State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [attempts, setAttempts] = useState(0);
-  const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
 
-  // Persist standalone step completion across page refreshes
-  useStandalonePersistence(stepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
+  // Completion lives in the store. Standalone quizzes (no `onStepComplete`)
+  // write directly; section-managed quizzes notify the section, which
+  // writes through its own persist effect.
+  const { completed: storedCompleted } = useStepCompletion(stepId, sectionId);
+  const isStandalone = !onStepComplete;
+  const persistCompletion = useCallback(() => {
+    if (isStandalone) {
+      markStepCompleted(stepId, sectionId, 'manual');
+    }
+  }, [isStandalone, stepId, sectionId]);
+  const persistReset = useCallback(() => {
+    if (isStandalone) {
+      resetStep(stepId, sectionId);
+    }
+  }, [isStandalone, stepId, sectionId]);
   const [lastResult, setLastResult] = useState<'none' | 'correct' | 'incorrect'>('none');
   const [showHint, setShowHint] = useState<string | null>(null);
   const [isRevealed, setIsRevealed] = useState(false);
@@ -165,7 +175,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     explanation,
     canSkip,
     markSkipped,
-    resetStep,
+    resetStep: checkerResetStep,
   } = useStepChecker({
     requirements,
     stepId,
@@ -179,21 +189,21 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     if (resetTrigger && resetTrigger > 0) {
       setSelectedIds(new Set());
       setAttempts(0);
-      setIsLocallyCompleted(false);
+      persistReset();
       setLastResult('none');
       setShowHint(null);
       setIsRevealed(false);
       // Re-shuffle on retry so the user can't lean on remembered positions.
       setDisplayChoices(shuffle ? shuffleQuizChoices(choices) : choices);
-      if (resetStep) {
-        resetStep();
+      if (checkerResetStep) {
+        checkerResetStep();
       }
     }
   }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Compute effective completion state
-  const isCompleted = parentCompleted || stepCompleted || isLocallyCompleted;
+  const isCompleted = storedCompleted || stepCompleted;
 
   // Get correct answer IDs
   const correctIds = useMemo(() => new Set(choices.filter((c) => c.correct).map((c) => c.id)), [choices]);
@@ -322,7 +332,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 
     if (isCorrect) {
       setLastResult('correct');
-      setIsLocallyCompleted(true);
+      persistCompletion();
       setShowHint(null);
 
       // Report analytics with detailed quiz data
@@ -347,7 +357,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       // Check if max attempts reached (for max-attempts mode)
       if (completionMode === 'max-attempts' && newAttempts >= maxAttempts) {
         setIsRevealed(true);
-        setIsLocallyCompleted(true);
+        persistCompletion();
 
         // Report analytics with detailed quiz data (revealed = true)
         reportAppInteraction(UserInteraction.StepAutoCompleted, buildQuizAnalyticsProps(false, newAttempts, true));
@@ -368,6 +378,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     maxAttempts,
     choices,
     buildQuizAnalyticsProps,
+    persistCompletion,
   ]);
 
   // Handle skip
@@ -375,11 +386,11 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     if (markSkipped) {
       markSkipped();
     }
-    setIsLocallyCompleted(true);
+    persistCompletion();
     if (onStepComplete && stepId) {
       onStepComplete(stepId);
     }
-  }, [markSkipped, onStepComplete, stepId]);
+  }, [markSkipped, onStepComplete, stepId, persistCompletion]);
 
   // Choice state type
   type ChoiceState = 'default' | 'selected' | 'correct' | 'incorrect' | 'revealed';

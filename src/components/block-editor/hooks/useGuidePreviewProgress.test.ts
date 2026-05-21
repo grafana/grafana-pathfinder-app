@@ -65,7 +65,7 @@ describe('useGuidePreviewProgress — listener contract', () => {
     expect(result.current.hasProgress).toBe(true);
   });
 
-  it('flips hasProgress to true on a matching "interactive-progress-saved" event', async () => {
+  it('flips hasProgress to true on a matching pathfinder:progress (kind: guide) event', async () => {
     const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
     await act(async () => {
       await Promise.resolve();
@@ -73,8 +73,8 @@ describe('useGuidePreviewProgress — listener contract', () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-saved', {
-          detail: { contentKey: PROGRESS_KEY, hasProgress: true, completionPercentage: 25 },
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: PROGRESS_KEY, hasProgress: true, percentage: 25 },
         })
       );
     });
@@ -82,7 +82,7 @@ describe('useGuidePreviewProgress — listener contract', () => {
     expect(result.current.hasProgress).toBe(true);
   });
 
-  it('ignores a "interactive-progress-saved" event for a different contentKey', async () => {
+  it('ignores a pathfinder:progress (kind: guide) event for a different contentKey', async () => {
     const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
     await act(async () => {
       await Promise.resolve();
@@ -90,8 +90,8 @@ describe('useGuidePreviewProgress — listener contract', () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-saved', {
-          detail: { contentKey: OTHER_KEY, hasProgress: true },
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: OTHER_KEY, hasProgress: true, percentage: 25 },
         })
       );
     });
@@ -171,8 +171,8 @@ describe('useGuidePreviewProgress — listener contract', () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-saved', {
-          detail: { contentKey: PROGRESS_KEY, hasProgress: true },
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: PROGRESS_KEY, hasProgress: true, percentage: 25 },
         })
       );
     });

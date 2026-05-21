@@ -105,12 +105,9 @@ function recordSectionEvents(): { events: CapturedEvent[]; unsubscribe: () => vo
     return () => (target === 'window' ? window : document).removeEventListener(name, handler);
   };
   const offs = [
-    make('interactive-progress-saved', 'window'),
+    make('pathfinder:progress', 'window'),
     make('interactive-progress-cleared', 'window'),
-    make('interactive-section-completed', 'window'),
-    make('interactive-step-completed', 'window'),
     make('pathfinder-step-progress', 'window'),
-    make('section-completed', 'document'),
   ];
   return { events, unsubscribe: () => offs.forEach((off) => off()) };
 }
@@ -153,7 +150,7 @@ afterEach(() => {
 
 describe('InteractiveSection contracts — Phase 0 tripwire', () => {
   describe('event payload shapes', () => {
-    it('dispatches `interactive-step-completed` with { stepId, sectionId } on step completion', async () => {
+    it('dispatches pathfinder:progress (kind: step) on step completion', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
         renderSingleStepSection();
@@ -163,16 +160,23 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         });
 
         await waitFor(() => {
-          const evt = events.find((e) => e.name === 'interactive-step-completed');
+          const evt = events.find((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'step');
           expect(evt).toBeDefined();
-          expect(evt!.detail).toEqual({ stepId: STEP_ID, sectionId: SECTION_ID });
+          expect(evt!.detail).toEqual(
+            expect.objectContaining({
+              kind: 'step',
+              stepId: STEP_ID,
+              sectionId: SECTION_ID,
+              completed: true,
+            })
+          );
         });
       } finally {
         unsubscribe();
       }
     });
 
-    it('dispatches `interactive-progress-saved` with { contentKey, hasProgress, completionPercentage } on persistence', async () => {
+    it('dispatches pathfinder:progress (kind: guide) with { contentKey, hasProgress, percentage } on persistence', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
         renderSingleStepSection();
@@ -182,24 +186,23 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         });
 
         await waitFor(() => {
-          const evt = events.find((e) => e.name === 'interactive-progress-saved');
+          const evt = events.find((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'guide');
           expect(evt).toBeDefined();
           expect(evt!.detail).toEqual(
             expect.objectContaining({
+              kind: 'guide',
               contentKey: NON_PREVIEW_KEY,
               hasProgress: true,
             })
           );
-          // completionPercentage is set only when total document steps > 0.
-          // Pin its presence as a key in the detail (value may be number | undefined).
-          expect('completionPercentage' in evt!.detail).toBe(true);
+          expect(typeof evt!.detail.percentage).toBe('number');
         });
       } finally {
         unsubscribe();
       }
     });
 
-    it('dispatches `section-completed` on `document` with { sectionId } when section becomes complete', async () => {
+    it('dispatches pathfinder:progress (kind: section) with { sectionId } exactly once per completion', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
         renderSingleStepSection();
@@ -209,28 +212,9 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         });
 
         await waitFor(() => {
-          const evt = events.find((e) => e.name === 'section-completed');
-          expect(evt).toBeDefined();
-          expect(evt!.detail).toEqual({ sectionId: SECTION_ID });
-        });
-      } finally {
-        unsubscribe();
-      }
-    });
-
-    it('dispatches `interactive-section-completed` with { sectionId } exactly once per completion', async () => {
-      const { events, unsubscribe } = recordSectionEvents();
-      try {
-        renderSingleStepSection();
-        await waitFor(() => expect(screen.getByTestId(completeBtn(STEP_ID))).toBeInTheDocument());
-        act(() => {
-          screen.getByTestId(completeBtn(STEP_ID)).click();
-        });
-
-        await waitFor(() => {
-          const completionEvents = events.filter((e) => e.name === 'interactive-section-completed');
-          expect(completionEvents).toHaveLength(1);
-          expect(completionEvents[0]!.detail).toEqual({ sectionId: SECTION_ID });
+          const sectionEvents = events.filter((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'section');
+          expect(sectionEvents).toHaveLength(1);
+          expect(sectionEvents[0]!.detail).toEqual({ kind: 'section', sectionId: SECTION_ID, completed: true });
         });
       } finally {
         unsubscribe();
@@ -301,7 +285,7 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
       (window as any).__DocsPluginActiveTabUrl = PREVIEW_KEY;
     });
 
-    it('suppresses storage writes but still dispatches `interactive-progress-saved` and `interactive-progress-cleared`', async () => {
+    it('suppresses storage writes but still dispatches the unified progress event and the legacy cleared event', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
         renderSingleStepSection();
@@ -310,8 +294,12 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
           screen.getByTestId(completeBtn(STEP_ID)).click();
         });
 
+        // In preview mode the section-level progress event still fires
+        // so the editor's "Reset guide" button can react. The kind:'guide'
+        // event is suppressed in preview because it carries the
+        // completion-percentage (preview has no document total).
         await waitFor(() => {
-          expect(events.find((e) => e.name === 'interactive-progress-saved')).toBeDefined();
+          expect(events.find((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'section')).toBeDefined();
         });
 
         // Storage must be untouched under the preview key.

@@ -19,7 +19,7 @@ import { GuidedAction } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
 import { sanitizeDocumentationHTML } from '../../security';
 import { STEP_STATES } from './step-states';
-import { useStandalonePersistence } from './use-standalone-persistence';
+import { markStepCompleted, resetStep, useStepCompletion } from './completion-store';
 
 /**
  * SafeHTML - Renders sanitized HTML as React components
@@ -89,7 +89,6 @@ interface InteractiveGuidedProps {
   // State management (passed by parent section)
   stepId?: string;
   isEligibleForChecking?: boolean;
-  isCompleted?: boolean;
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   onStepReset?: (stepId: string) => void;
@@ -123,7 +122,6 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       internalActions,
       stepId,
       isEligibleForChecking = true,
-      isCompleted: parentCompleted = false,
       isCurrentlyExecuting = false,
       onStepComplete,
       onStepReset,
@@ -164,15 +162,26 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     );
 
     // Local UI state
-    const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
     const [executionError, setExecutionError] = useState<string | null>(null);
     const [wasCancelled, setWasCancelled] = useState(false);
 
-    // Persist standalone step completion across page refreshes
-    useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
+    // Completion lives in the store. Section-managed steps notify the parent;
+    // standalone steps write directly.
+    const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
+    const isStandalone = !onStepComplete;
+    const persistCompletion = useCallback(() => {
+      if (isStandalone) {
+        markStepCompleted(renderedStepId, sectionId, 'manual');
+      }
+    }, [isStandalone, renderedStepId, sectionId]);
+    const persistReset = useCallback(() => {
+      if (isStandalone) {
+        resetStep(renderedStepId, sectionId);
+      }
+    }, [isStandalone, renderedStepId, sectionId]);
 
     // Get plugin configuration for auto-detection settings
     const pluginContext = usePluginContext();
@@ -200,16 +209,16 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Handle reset trigger from parent section
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
-        setIsLocallyCompleted(false);
+        persistReset();
         setExecutionError(null);
         setCurrentStepIndex(0);
         setCurrentStepStatus('waiting');
         setWasCancelled(false);
       }
-    }, [resetTrigger]);
+    }, [resetTrigger, persistReset]);
 
-    // Combined completion state
-    const isCompleted = parentCompleted || isLocallyCompleted;
+    // Single source of truth: the completion store.
+    const isCompleted = storedCompleted;
 
     // For exists-reftarget requirement, use the first internal action's target
     // This ensures the requirement checker knows which element to look for
@@ -245,8 +254,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     });
 
     // Combined completion state: objectives always win
-    const isCompletedWithObjectives =
-      parentCompleted || isLocallyCompleted || checker.completionReason === 'objectives';
+    const isCompletedWithObjectives = storedCompleted || checker.completionReason === 'objectives';
 
     // Main execution logic
     const executeStep = useCallback(async (): Promise<boolean> => {
@@ -256,7 +264,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
       // Check objectives before executing
       if (checker.completionReason === 'objectives') {
-        setIsLocallyCompleted(true);
+        persistCompletion();
         if (onStepComplete && stepId) {
           onStepComplete(stepId);
         }
@@ -268,7 +276,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
       // NEW: If completeEarly flag is set, mark as completed BEFORE action execution
       if (completeEarly) {
-        setIsLocallyCompleted(true);
+        persistCompletion();
         if (onStepComplete && stepId) {
           onStepComplete(stepId);
         }
@@ -317,7 +325,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
         // NEW: If NOT completeEarly, mark complete after actions (normal flow)
         if (!completeEarly) {
-          setIsLocallyCompleted(true);
+          persistCompletion();
 
           if (onStepComplete && stepId) {
             onStepComplete(stepId);
@@ -349,6 +357,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       stepTimeout,
       onStepComplete,
       onComplete,
+      persistCompletion,
       checker.completionReason,
     ]);
 
@@ -539,7 +548,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         return;
       }
 
-      setIsLocallyCompleted(false);
+      persistReset();
       setExecutionError(null);
       setCurrentStepIndex(0);
       setCurrentStepStatus('waiting');
@@ -548,12 +557,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       if (onStepReset && stepId) {
         onStepReset(stepId);
       }
-    }, [disabled, isExecuting, stepId, onStepReset]);
+    }, [disabled, isExecuting, stepId, onStepReset, persistReset]);
 
     // Handle skip current step on timeout
     const handleSkipStep = useCallback(async () => {
-      // Mark this step as completed and move on
-      setIsLocallyCompleted(true);
+      persistCompletion();
 
       if (onStepComplete && stepId) {
         onStepComplete(stepId);
@@ -562,7 +570,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       if (onComplete) {
         onComplete();
       }
-    }, [stepId, onStepComplete, onComplete]);
+    }, [stepId, onStepComplete, onComplete, persistCompletion]);
 
     // Handle retry after timeout or cancellation
     const handleRetry = useCallback(async () => {
@@ -658,7 +666,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   onClick={async () => {
                     if (checker.markSkipped) {
                       await checker.markSkipped();
-                      setIsLocallyCompleted(true);
+                      persistCompletion();
                       if (onStepComplete && stepId) {
                         onStepComplete(stepId);
                       }

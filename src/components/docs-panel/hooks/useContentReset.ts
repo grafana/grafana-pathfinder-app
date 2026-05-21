@@ -17,7 +17,6 @@ import {
   enrichWithStepContext,
 } from '../../../lib/analytics';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
-import { shouldUseDocsLoader } from '../utils';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 
@@ -68,20 +67,12 @@ export function useContentReset({ model }: UseContentResetOptions) {
         // Step 4: Reload content to reset UI state.
         // Tag the loader call as `internal_reload` (aligned-by-construction)
         // so the implied-0th-step evaluator doesn't surface a spurious
-        // alignment prompt on top of the freshly reloaded guide when the
-        // user happens to be on a non-matching page. Only the docs-like
-        // branch runs alignment evaluation; the learning-journey branch
-        // (`loadTabContent`) doesn't consume this source.
-        if (shouldUseDocsLoader(activeTab)) {
-          // Calling loadDocsTabContent directly (not openDocsPage) so we
-          // reuse the existing tab; the consume-once flag is the right
-          // mechanism here.
-          // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional legacy use; loadDocsTabContent has no source param
-          model._recordAutoLaunchSource('internal_reload');
-          await model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-        } else {
-          await model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-        }
+        // alignment prompt on top of the freshly reloaded guide. Only the
+        // docs branch consumes the source — the learning-journey branch
+        // ignores it, so the record is a no-op in that case. The unified
+        // `loadTab` handles the docs-vs-plain dispatch internally.
+        model._recordAutoLaunchSource('internal_reload');
+        await model.loadTab(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
       } catch (error) {
         console.error('[DocsPanel] Failed to reset guide progress:', error);
         getAppEvents().publish({

@@ -46,7 +46,7 @@ export interface CheckResult {
  */
 function isValidInteractiveElement(data: InteractiveElementData): boolean {
   // Double negative coerces string into boolean
-  return !!data.targetaction && !!data.reftarget;
+  return !!data.targetAction && !!data.refTarget;
 }
 
 export function useInteractiveElements(options: UseInteractiveElementsOptions = {}) {
@@ -159,19 +159,19 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   // Define helper functions using refs to avoid circular dependencies
   const dispatchInteractiveAction = useCallback(
     async (data: InteractiveElementData, click: boolean) => {
-      if (data.targetaction === 'highlight') {
+      if (data.targetAction === 'highlight') {
         await interactiveFocus(data, click);
-      } else if (data.targetaction === 'button') {
+      } else if (data.targetAction === 'button') {
         await interactiveButton(data, click);
-      } else if (data.targetaction === 'formfill') {
+      } else if (data.targetAction === 'formfill') {
         await interactiveFormFill(data, click);
-      } else if (data.targetaction === 'navigate') {
+      } else if (data.targetAction === 'navigate') {
         interactiveNavigate(data, click);
-      } else if (data.targetaction === 'hover') {
+      } else if (data.targetAction === 'hover') {
         await interactiveHover(data, click);
-      } else if (data.targetaction === 'guided') {
+      } else if (data.targetAction === 'guided') {
         await interactiveGuided(data, click);
-      } else if (data.targetaction === 'popout') {
+      } else if (data.targetAction === 'popout') {
         await interactivePopout(data, click);
       }
     },
@@ -214,9 +214,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     async (data: InteractiveElementData): Promise<InteractiveRequirementsCheck> => {
       const options: RequirementsCheckOptions = {
         requirements: data.requirements || '',
-        targetAction: data.targetaction,
-        refTarget: data.reftarget,
-        targetValue: data.targetvalue,
+        targetAction: data.targetAction,
+        refTarget: data.refTarget,
+        targetValue: data.targetValue,
         stepId: data.textContent || 'unknown',
       };
 
@@ -296,8 +296,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   const interactiveSequence = useCallback(
     async (data: InteractiveElementData, showOnly: boolean): Promise<string> => {
       // This is here so recursion cannot happen
-      if (activeRefsRef.current.has(data.reftarget)) {
-        return data.reftarget;
+      if (activeRefsRef.current.has(data.refTarget)) {
+        return data.refTarget;
       }
 
       stateManager.setState(data, 'running');
@@ -305,7 +305,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       try {
         // Resolve grafana: prefix if present
         const { resolveSelector } = await import('../lib/dom');
-        const resolvedSelector = resolveSelector(data.reftarget);
+        const resolvedSelector = resolveSelector(data.refTarget);
 
         const searchContainer = containerRef?.current || document;
         const targetElements = searchContainer.querySelectorAll(resolvedSelector);
@@ -320,7 +320,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           stateManager.handleError(msg, 'interactiveSequence', data, true);
         }
 
-        activeRefsRef.current.add(data.reftarget);
+        activeRefsRef.current.add(data.refTarget);
 
         // Find all interactive elements within the sequence container
         const interactiveElements = Array.from(
@@ -328,7 +328,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         );
 
         if (interactiveElements.length === 0) {
-          const msg = `No interactive elements found within sequence container: ${data.reftarget}`;
+          const msg = `No interactive elements found within sequence container: ${data.refTarget}`;
           stateManager.handleError(msg, 'interactiveSequence', data, true);
         }
 
@@ -343,14 +343,14 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         // Mark as completed after successful execution
         stateManager.setState(data, 'completed');
 
-        activeRefsRef.current.delete(data.reftarget);
-        return data.reftarget;
+        activeRefsRef.current.delete(data.refTarget);
+        return data.refTarget;
       } catch (error) {
         stateManager.handleError(error as Error, 'interactiveSequence', data, false);
-        activeRefsRef.current.delete(data.reftarget);
+        activeRefsRef.current.delete(data.refTarget);
       }
 
-      return data.reftarget;
+      return data.refTarget;
     },
     [containerRef, activeRefsRef, sequenceManager, stateManager]
   );
@@ -382,10 +382,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     ): Promise<void> => {
       // Create InteractiveElementData directly from parameters
       const elementData: InteractiveElementData = {
-        reftarget: refTarget,
-        targetaction: targetAction,
-        targetvalue: targetValue,
-        targetcomment: targetComment,
+        refTarget: refTarget,
+        targetAction: targetAction,
+        targetValue: targetValue,
+        targetComment: targetComment,
         requirements: undefined,
         tagName: 'button', // Simulated for React components
         textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${refTarget}`,

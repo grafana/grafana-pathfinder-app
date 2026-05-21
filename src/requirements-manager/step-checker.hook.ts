@@ -10,6 +10,8 @@
  */
 
 import { useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
+
+import { subscribeProgressEvent } from '../global-state/progress-events';
 // getRequirementExplanation is used in check-phases.ts
 import {
   createObjectivesCompletedState,
@@ -727,29 +729,22 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     }
   }, [isEligibleForChecking]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Listen for section completion events (for section dependencies)
+  // Listen for section completion events (for `section-completed:` requirements).
+  // `step-auto-skipped` was a listener with no dispatcher anywhere in the
+  // repo — removed in C3 as confirmed dead code.
   useEffect(() => {
-    const handleSectionCompletion = () => {
-      if (!state.isCompleted && requirements?.includes('section-completed:')) {
+    const unsubscribe = subscribeProgressEvent((detail) => {
+      if (
+        detail.kind === 'section' &&
+        detail.completed &&
+        !state.isCompleted &&
+        requirements?.includes('section-completed:')
+      ) {
         checkStep();
       }
-    };
-
-    // Listen for auto-skip events from section execution
-    const handleAutoSkip = (event: CustomEvent) => {
-      if (event.detail?.stepId === stepId && !state.isCompleted) {
-        markSkipped();
-      }
-    };
-
-    document.addEventListener('section-completed', handleSectionCompletion);
-    document.addEventListener('step-auto-skipped', handleAutoSkip as EventListener);
-
-    return () => {
-      document.removeEventListener('section-completed', handleSectionCompletion);
-      document.removeEventListener('step-auto-skipped', handleAutoSkip as EventListener);
-    };
-  }, [checkStep, state.isCompleted, requirements, stepId, markSkipped]);
+    });
+    return unsubscribe;
+  }, [checkStep, state.isCompleted, requirements]);
 
   // Track state values in refs to avoid re-subscribing when they change during checks
   const isCheckingRef = useRef(state.isChecking);

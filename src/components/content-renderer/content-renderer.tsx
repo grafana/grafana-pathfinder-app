@@ -3,11 +3,22 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
 
-import { RawContent, ContentParseResult } from '../types/content.types';
-import { parseHTMLToComponents, ParsedElement } from './html-parser';
-import { parseJsonGuide, isJsonGuideContent } from './json-parser';
-import { resolveRelativeUrls } from './resolve-relative-urls';
-// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_VERTICAL_VIOLATIONS: docs-retrieval -> components
+import { RawContent, ContentParseResult } from '../../types/content.types';
+import {
+  parseHTMLToComponents,
+  ParsedElement,
+  parseJsonGuide,
+  isJsonGuideContent,
+  resolveRelativeUrls,
+  CodeBlock,
+  ExpandableTable,
+  ImageRenderer,
+  ContentParsingError,
+  VideoRenderer,
+  YouTubeVideoRenderer,
+  GuideResponseProvider,
+  useGuideResponses,
+} from '../../docs-retrieval';
 import {
   InteractiveSection,
   InteractiveStep,
@@ -25,19 +36,10 @@ import {
   registerSectionSteps,
   getDocumentStepPosition,
   DEFAULT_INTERACTIVE_SECTION_TITLE,
-} from '../components/interactive-tutorial';
-import {
-  CodeBlock,
-  ExpandableTable,
-  ImageRenderer,
-  ContentParsingError,
-  VideoRenderer,
-  YouTubeVideoRenderer,
-} from './components/docs';
-// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: docs-retrieval -> requirements-manager
-import { SequentialRequirementsManager } from '../requirements-manager';
-import { isInteractiveLearningUrl } from '../security';
-// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_VERTICAL_VIOLATIONS: docs-retrieval -> integrations
+} from '../interactive-tutorial';
+import { STEP_TYPE_PARSE_KEYS } from '../interactive-tutorial/step-type-registry';
+import { SequentialRequirementsManager } from '../../requirements-manager';
+import { isInteractiveLearningUrl } from '../../security';
 import {
   useTextSelection,
   AssistantSelectionPopover,
@@ -45,11 +47,10 @@ import {
   AssistantCustomizable,
   AssistantBlockWrapper,
   TextSelectionState,
-} from '../integrations/assistant-integration';
-import { GuideResponseProvider, useGuideResponses } from './GuideResponseContext';
-import { substituteVariables } from '../utils/variable-substitution';
-// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_VERTICAL_VIOLATIONS: docs-retrieval -> components
-import { STANDALONE_SECTION_ID } from '../components/interactive-tutorial/use-standalone-persistence';
+} from '../../integrations/assistant-integration';
+import { substituteVariables } from '../../utils/variable-substitution';
+import { STANDALONE_SECTION_ID } from '../interactive-tutorial/completion-store';
+import { subscribeProgressEvent } from '../../global-state/progress-events';
 
 /**
  * Scroll to and highlight an element with the given fragment ID
@@ -295,14 +296,30 @@ export const ContentRenderer = React.memo(function ContentRenderer({
       }
     };
 
-    window.addEventListener('interactive-section-completed', handleSectionComplete);
-    window.addEventListener('interactive-step-completed', handleStepComplete);
-    window.addEventListener('interactive-progress-saved', handleProgressSaved);
+    // Unified `pathfinder:progress` event routes to the appropriate handler
+    // based on the discriminant.
+    const unsubscribeProgress = subscribeProgressEvent((detail) => {
+      if (detail.kind === 'section' && detail.completed) {
+        handleSectionComplete(new CustomEvent('section', { detail: { sectionId: detail.sectionId } }));
+      } else if (detail.kind === 'step' && detail.completed) {
+        handleStepComplete();
+      } else if (detail.kind === 'guide') {
+        // Mimic the legacy `interactive-progress-saved` payload so the
+        // existing handler logic stays put.
+        handleProgressSaved(
+          new CustomEvent('progress', {
+            detail: {
+              contentKey: detail.contentKey,
+              hasProgress: detail.hasProgress,
+              completionPercentage: detail.percentage,
+            },
+          })
+        );
+      }
+    });
 
     return () => {
-      window.removeEventListener('interactive-section-completed', handleSectionComplete);
-      window.removeEventListener('interactive-step-completed', handleStepComplete);
-      window.removeEventListener('interactive-progress-saved', handleProgressSaved);
+      unsubscribeProgress();
       clearTimeout(settleTimer);
       if (debounceTimer) {
         clearTimeout(debounceTimer);
@@ -841,32 +858,22 @@ interface StandaloneStepPosition {
 
 /**
  * Set of ParsedElement types that represent completable interactive steps.
- * These are the types that track completion state, use persistence hooks,
- * and receive stepIndex/totalSteps props for position tracking.
+ * Derived from the step-type registry (`STEP_TYPE_PARSE_KEYS`), which is
+ * the single source of truth — see
+ * `src/components/interactive-tutorial/step-type-registry.ts`.
  *
- * Note: input-block is intentionally excluded — it doesn't track completion,
- * doesn't use useStandalonePersistence, and would inflate the total step count
- * making 100% completion impossible.
+ * Note: input-block is intentionally excluded — it doesn't track completion
+ * and would inflate the total step count, making 100% completion impossible.
  *
- * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 4. Adding a new interactive step
- * component type requires updates in 4 places:
- *   1. content-renderer.tsx INTERACTIVE_STEP_TYPES (this constant)
- *   2. content-renderer.tsx SECTION_TRACKED_STEP_TYPES (below)
- *   3. interactive-section.tsx `stepComponents` useMemo branches
- *   4. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
- * See .cursor/rules/tracked-step-types.mdc for the full checklist and the
- * specific failure mode if each site is missed.
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 2. Adding a new interactive step
+ * component type requires updates in 2 places:
+ *   1. step-type-registry.ts STEP_TYPE_SCHEMAS (parse + orchestration)
+ *   2. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
+ *      (#842 acknowledgement-gate classification)
+ * The `step-type-registry.tripwire.test.ts` parity test fails if any
+ * registry entry disagrees with this derived set.
  */
-const INTERACTIVE_STEP_TYPES = new Set([
-  'interactive-step',
-  'interactive-multi-step',
-  'interactive-guided',
-  'quiz-block',
-  'terminal-step',
-  'terminal-connect-step',
-  'code-block-step',
-  'challenge-block',
-]);
+const INTERACTIVE_STEP_TYPES: ReadonlySet<string> = new Set<string>(STEP_TYPE_PARSE_KEYS);
 
 /**
  * Check if a ParsedElement is an interactive step (or wraps one).
@@ -886,33 +893,12 @@ function isInteractiveStepElement(element: ParsedElement): boolean {
 }
 
 /**
- * Step types tracked by InteractiveSection as "steps" in its stepComponents array.
- * Must stay in sync with InteractiveSection's React.Children.forEach extraction logic.
- * Note: input-block is NOT tracked by InteractiveSection as a section step.
- *
- * ⚠ TRACKED STEP TYPE REGISTRY — site 2 of 4. Adding a new interactive step
- * component type requires updates in 4 places:
- *   1. content-renderer.tsx INTERACTIVE_STEP_TYPES (above)
- *   2. content-renderer.tsx SECTION_TRACKED_STEP_TYPES (this constant)
- *   3. interactive-section.tsx `stepComponents` useMemo branches
- *   4. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
- * See .cursor/rules/tracked-step-types.mdc for the full checklist.
- */
-const SECTION_TRACKED_STEP_TYPES = new Set([
-  'interactive-step',
-  'interactive-multi-step',
-  'interactive-guided',
-  'quiz-block',
-  'terminal-step',
-  'terminal-connect-step',
-  'code-block-step',
-  'challenge-block',
-]);
-
-/**
  * Count the number of steps inside a parsed interactive-section element.
  * Mirrors InteractiveSection's stepComponents extraction: only counts direct
  * children of the tracked step types (not wrapped children like assistant-block-wrapper).
+ *
+ * Parser-side recognition uses the same `INTERACTIVE_STEP_TYPES` set as
+ * standalone-step counting — the registry has one parse-time key per kind.
  */
 function countStepsInSection(element: ParsedElement): number {
   if (!element.children) {
@@ -923,7 +909,7 @@ function countStepsInSection(element: ParsedElement): number {
       return count;
     }
     const childEl = child as ParsedElement;
-    return count + (SECTION_TRACKED_STEP_TYPES.has(childEl.type) ? 1 : 0);
+    return count + (INTERACTIVE_STEP_TYPES.has(childEl.type) ? 1 : 0);
   }, 0);
 }
 
@@ -1027,7 +1013,7 @@ function renderParsedElement(
           conditions={element.props.conditions || []}
           description={element.props.description}
           display={element.props.display || 'inline'}
-          reftarget={element.props.reftarget}
+          refTarget={element.props.refTarget}
           whenTrueSectionConfig={element.props.whenTrueSectionConfig}
           whenFalseSectionConfig={element.props.whenFalseSectionConfig}
           whenTrueChildren={element.props.whenTrueChildren || []}

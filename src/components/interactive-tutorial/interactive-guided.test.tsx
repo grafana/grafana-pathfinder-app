@@ -57,9 +57,12 @@ jest.mock('../../security', () => ({
   sanitizeDocumentationHTML: jest.fn((html: string) => html),
 }));
 
-// ─── Mock standalone persistence (no-op) ────────────────────────────────────
-jest.mock('./use-standalone-persistence', () => ({
-  useStandalonePersistence: jest.fn(),
+// ─── Mock completion store (no-op for unit tests) ──────────────────────────
+jest.mock('./completion-store', () => ({
+  useStepCompletion: jest.fn(() => ({ completed: false, reason: null })),
+  markStepCompleted: jest.fn(),
+  resetStep: jest.fn(),
+  STANDALONE_SECTION_ID: '__standalone__',
 }));
 
 // ─── Mock requirements manager ───────────────────────────────────────────────

@@ -20,8 +20,11 @@ jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
 }));
 
-jest.mock('./use-standalone-persistence', () => ({
-  useStandalonePersistence: jest.fn(),
+jest.mock('./completion-store', () => ({
+  useStepCompletion: jest.fn(() => ({ completed: false, reason: null })),
+  markStepCompleted: jest.fn(),
+  resetStep: jest.fn(),
+  STANDALONE_SECTION_ID: '__standalone__',
 }));
 
 const mockedUseTerminalContext = useTerminalContext as jest.MockedFunction<typeof useTerminalContext>;

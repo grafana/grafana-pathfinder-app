@@ -239,24 +239,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
 
     if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
-      if (shouldUseDocsLoader(activeTab)) {
-        // Tag the loader call so the implied-0th-step evaluator sees
-        // `browser_restore` (an aligned-by-construction source) instead of an
-        // undefined source. Without this, a restored tab whose path no longer
-        // matches its guide's `startingLocation` would incorrectly trigger the
-        // alignment prompt — second-guessing a user mid-tutorial, which is
-        // exactly what `browser_restore` is meant to suppress.
-        //
-        // We use the legacy flag pattern here (not `openDocsPage`'s options)
-        // because we are calling `loadDocsTabContent` directly to populate
-        // an already-existing restored tab — going through `openDocsPage`
-        // would create a duplicate tab.
-        // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional legacy use (see comment above)
-        this._recordAutoLaunchSource('browser_restore');
-        this.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-      } else {
-        this.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-      }
+      // Tag the loader call so the implied-0th-step evaluator sees
+      // `browser_restore` (an aligned-by-construction source) instead of an
+      // undefined source. Without this, a restored tab whose path no longer
+      // matches its guide's `startingLocation` would incorrectly trigger the
+      // alignment prompt — second-guessing a user mid-tutorial, which is
+      // exactly what `browser_restore` is meant to suppress. The unified
+      // `loadTab` routes to the docs pipeline iff the tab needs it
+      // (matches the old `shouldUseDocsLoader` branch).
+      this._recordAutoLaunchSource('browser_restore');
+      this.loadTab(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
     }
   }
 
@@ -349,6 +341,37 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return tabId;
   }
 
+  /**
+   * Unified tab-loader entry point. Dispatches to the right content
+   * pipeline based on the tab's shape (and the optional `packageInfo`
+   * input).
+   *
+   * Callers should use this instead of branching on `shouldUseDocsLoader`
+   * + the legacy `loadTabContent` / `loadDocsTabContent` pair directly.
+   * The two internal methods remain available as the underlying
+   * implementations; future work can fold them together.
+   */
+  public async loadTab(
+    tabId: string,
+    url: string,
+    options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo }
+  ): Promise<void> {
+    const tab = this.state.tabs.find((t) => t.id === tabId);
+    const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
+    if (needsDocsLoader) {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- delegating to internal implementation
+      await this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- delegating to internal implementation
+    await this.loadTabContent(tabId, url);
+  }
+
+  /**
+   * @deprecated Prefer {@link loadTab}. Internal implementation kept for
+   * the unified dispatcher to route into; will fold into `loadTab` once
+   * the content-fetcher split is removed.
+   */
   public async loadTabContent(tabId: string, url: string) {
     // Skip loading if URL is empty
     if (!url || url.trim() === '') {
@@ -687,11 +710,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // If switching to a tab that hasn't loaded content yet, load it
     const tab = this.state.tabs.find((t) => t.id === tabId);
     if (tab && !tab.isLoading && !tab.error && !tab.content) {
-      if (shouldUseDocsLoader(tab)) {
-        this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
-      } else {
-        this.loadTabContent(tabId, tab.currentUrl || tab.baseUrl);
-      }
+      this.loadTab(tabId, tab.currentUrl || tab.baseUrl);
     }
   }
 
@@ -837,6 +856,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return tabId;
   }
 
+  /**
+   * @deprecated Prefer {@link loadTab}. Internal implementation kept for
+   * the unified dispatcher to route into; will fold into `loadTab` once
+   * the content-fetcher split is removed.
+   */
   public async loadDocsTabContent(
     tabId: string,
     url: string,
@@ -1213,15 +1237,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // `ALIGNED_BY_CONSTRUCTION_SOURCES` for the semantics.
   const reloadActiveTab = useCallback(
     (tab: LearningJourneyTab) => {
-      if (shouldUseDocsLoader(tab)) {
-        // Calling loadDocsTabContent directly (not openDocsPage) to reuse the
-        // existing tab; the consume-once flag is the right mechanism here.
-        // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional legacy use; loadDocsTabContent has no source param
-        model._recordAutoLaunchSource('internal_reload');
-        model.loadDocsTabContent(tab.id, tab.currentUrl || tab.baseUrl);
-      } else {
-        model.loadTabContent(tab.id, tab.currentUrl || tab.baseUrl);
-      }
+      // The unified `loadTab` dispatches on `shouldUseDocsLoader` internally.
+      // `_recordAutoLaunchSource` only matters for the docs branch — the
+      // plain branch never consumes it, so an unconditional record is a
+      // no-op when not needed.
+      model._recordAutoLaunchSource('internal_reload');
+      model.loadTab(tab.id, tab.currentUrl || tab.baseUrl);
     },
     [model]
   );

@@ -51,10 +51,12 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     }
   });
 
-  // Extract core attributes with validation
-  const reftarget = element.getAttribute('data-reftarget') || '';
-  const targetaction = element.getAttribute('data-targetaction') || '';
-  const targetvalue = element.getAttribute('data-targetvalue') || undefined;
+  // Extract core attributes. DOM attribute names are dashed-lowercase
+  // by HTML convention; the resulting JS object uses camelCase, matching
+  // the InteractiveElementData type.
+  const refTarget = element.getAttribute('data-reftarget') || '';
+  const targetAction = element.getAttribute('data-targetaction') || '';
+  const targetValue = element.getAttribute('data-targetvalue') || undefined;
   const requirements = element.getAttribute('data-requirements') || undefined;
   const objectives = element.getAttribute('data-objectives') || undefined;
   const skippable = element.getAttribute('data-skippable') === 'true'; // Default to false, only true if explicitly set
@@ -63,25 +65,24 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   const openGuide = element.getAttribute('data-openguide') || undefined;
   const textContent = element.textContent?.trim() || undefined;
 
-  // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
-  if (reftarget && textContent && reftarget === textContent && reftarget.length > 5) {
-    console.warn(`reftarget "${reftarget}" matches element text - check data-reftarget attribute`);
+  if (refTarget && textContent && refTarget === textContent && refTarget.length > 5) {
+    console.warn(`refTarget "${refTarget}" matches element text — check data-reftarget attribute`);
   }
 
   return {
-    reftarget: reftarget,
-    targetaction: targetaction,
-    targetvalue: targetvalue,
-    requirements: requirements,
-    objectives: objectives,
-    skippable: skippable,
+    refTarget,
+    targetAction,
+    targetValue,
+    requirements,
+    objectives,
+    skippable,
     lazyRender: lazyRender || undefined,
-    scrollContainer: scrollContainer,
-    openGuide: openGuide,
+    scrollContainer,
+    openGuide,
     tagName: element.tagName.toLowerCase(),
     className: element.className || undefined,
     id: element.id || undefined,
-    textContent: textContent,
+    textContent,
     parentTagName: element.parentElement?.tagName.toLowerCase() || undefined,
     timestamp: Date.now(),
     customData: Object.keys(customData).length > 0 ? customData : undefined,

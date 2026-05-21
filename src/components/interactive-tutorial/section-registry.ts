@@ -16,8 +16,7 @@
  * Public functions exposed from `interactive-section.tsx` for
  * back-compat (`registerSectionSteps`, `getTotalDocumentSteps`,
  * `getDocumentStepPosition`) are re-exported there as well so existing
- * importers (`content-renderer.tsx`, `use-standalone-persistence.ts`)
- * do not need to change.
+ * importers (`content-renderer.tsx`) do not need to change.
  */
 
 /** One section's entry in the global step registry. */

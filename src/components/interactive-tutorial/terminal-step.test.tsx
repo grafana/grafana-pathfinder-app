@@ -35,9 +35,12 @@ jest.mock('../../requirements-manager', () => ({
   validateInteractiveRequirements: jest.fn(),
 }));
 
-// Mock useStandalonePersistence
-jest.mock('./use-standalone-persistence', () => ({
-  useStandalonePersistence: jest.fn(),
+// Mock the completion store (unit tests don't drive persistence here)
+jest.mock('./completion-store', () => ({
+  useStepCompletion: jest.fn(() => ({ completed: false, reason: null })),
+  markStepCompleted: jest.fn(),
+  resetStep: jest.fn(),
+  STANDALONE_SECTION_ID: '__standalone__',
 }));
 
 // Mock TerminalContext

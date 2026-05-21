@@ -59,6 +59,7 @@ describe('useContentReset', () => {
 
   beforeEach(() => {
     mockModel = {
+      loadTab: jest.fn().mockResolvedValue(undefined),
       loadDocsTabContent: jest.fn().mockResolvedValue(undefined),
       loadTabContent: jest.fn().mockResolvedValue(undefined),
       _recordAutoLaunchSource: jest.fn(),
@@ -103,9 +104,8 @@ describe('useContentReset', () => {
       })
     );
 
-    // Step 4: Content reload (docs-like uses loadDocsTabContent)
-    expect(mockModel.loadDocsTabContent).toHaveBeenCalledWith('test-tab', 'https://example.com/guide');
-    expect(mockModel.loadTabContent).not.toHaveBeenCalled();
+    // Step 4: Content reload via the unified loadTab dispatcher.
+    expect(mockModel.loadTab).toHaveBeenCalledWith('test-tab', 'https://example.com/guide');
   });
 
   // Regression for the "spurious alignment prompt on reset" bug: the reset
@@ -113,7 +113,7 @@ describe('useContentReset', () => {
   // evaluator treats it as aligned-by-construction. Without this, a reset
   // performed while the user is on a non-matching path would surface an
   // alignment prompt on top of the freshly reloaded guide.
-  it('records `internal_reload` before reloading a docs-like tab', async () => {
+  it('records `internal_reload` before reloading the tab', async () => {
     const { result } = renderHook(() => useContentReset({ model: mockModel }));
 
     const tab = createMockTab({ type: 'interactive' });
@@ -121,20 +121,21 @@ describe('useContentReset', () => {
 
     expect(mockModel._recordAutoLaunchSource).toHaveBeenCalledWith('internal_reload');
     const recordCallOrder = mockModel._recordAutoLaunchSource.mock.invocationCallOrder[0];
-    const loadCallOrder = mockModel.loadDocsTabContent.mock.invocationCallOrder[0];
+    const loadCallOrder = mockModel.loadTab.mock.invocationCallOrder[0];
     expect(recordCallOrder).toBeLessThan(loadCallOrder);
   });
 
-  it('uses loadTabContent for learning-journey type', async () => {
+  it('reloads learning-journey tabs through the unified loadTab dispatcher', async () => {
     const { result } = renderHook(() => useContentReset({ model: mockModel }));
 
     const tab = createMockTab({ type: 'learning-journey' });
     await result.current('progress-key-123', tab);
 
-    expect(mockModel.loadTabContent).toHaveBeenCalledWith('test-tab', 'https://example.com/guide');
-    expect(mockModel.loadDocsTabContent).not.toHaveBeenCalled();
-    // Learning-journey branch doesn't evaluate alignment — no tag needed.
-    expect(mockModel._recordAutoLaunchSource).not.toHaveBeenCalled();
+    expect(mockModel.loadTab).toHaveBeenCalledWith('test-tab', 'https://example.com/guide');
+    // `_recordAutoLaunchSource` is harmless on the learning-journey branch
+    // (the value is never consumed) — but the unified path records it
+    // unconditionally so we don't need a docs-vs-plain branch in the hook.
+    expect(mockModel._recordAutoLaunchSource).toHaveBeenCalledWith('internal_reload');
   });
 
   it('uses baseUrl as fallback for analytics when content.url is missing', async () => {
@@ -197,7 +198,7 @@ describe('useContentReset', () => {
     const { result } = renderHook(() => useContentReset({ model: mockModel }));
 
     const error = new Error('Reload error');
-    mockModel.loadDocsTabContent.mockRejectedValue(error);
+    mockModel.loadTab.mockRejectedValue(error);
 
     const tab = createMockTab({ type: 'interactive' });
     await expect(result.current('progress-key-123', tab)).rejects.toThrow('Reload error');

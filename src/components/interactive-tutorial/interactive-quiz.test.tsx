@@ -20,9 +20,25 @@ jest.mock('../../lib/analytics', () => ({
   buildInteractiveStepProperties: jest.fn((props) => props),
 }));
 
-jest.mock('./use-standalone-persistence', () => ({
-  useStandalonePersistence: jest.fn(),
-}));
+// Stateful mock so the test can exercise the full mark-complete → re-render
+// flow. The real store is exercised in `completion-store.test.tsx`.
+jest.mock('./completion-store', () => {
+  const completed = new Set<string>();
+  return {
+    useStepCompletion: jest.fn((stepId: string) => ({
+      completed: completed.has(stepId),
+      reason: completed.has(stepId) ? 'manual' : null,
+    })),
+    markStepCompleted: jest.fn((stepId: string) => {
+      completed.add(stepId);
+    }),
+    resetStep: jest.fn((stepId: string) => {
+      completed.delete(stepId);
+    }),
+    STANDALONE_SECTION_ID: '__standalone__',
+    __resetMockStore: () => completed.clear(),
+  };
+});
 
 jest.mock('../../requirements-manager', () => ({
   useStepChecker: jest.fn(() => ({
@@ -108,6 +124,7 @@ describe('shuffleQuizChoices', () => {
 describe('InteractiveQuiz: shuffle behavior', () => {
   beforeEach(() => {
     resetQuizCounter();
+    (require('./completion-store') as { __resetMockStore: () => void }).__resetMockStore();
   });
 
   const choices: QuizChoice[] = [
@@ -237,6 +254,7 @@ describe('InteractiveQuiz: shuffle behavior', () => {
 describe('InteractiveQuiz: render-order stability', () => {
   beforeEach(() => {
     resetQuizCounter();
+    (require('./completion-store') as { __resetMockStore: () => void }).__resetMockStore();
   });
 
   const choices: QuizChoice[] = [
