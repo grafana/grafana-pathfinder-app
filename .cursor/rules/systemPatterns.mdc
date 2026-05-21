@@ -121,7 +121,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 - `requirements-manager/` — Prereqs + postconditions for steps. Entry: `requirements-checker.hook.ts` (`useStepChecker`). State machine in `step-state.ts`. See `docs/developer/engines/requirements-manager.md`.
 - `learning-paths/` — Progress / badges / streaks / next-action. Entry: `learning-paths.hook.ts`. Badge definitions in `badges.ts`. See `docs/developer/learning-paths/README.md`.
 - `package-engine/` — Package resolution + loading. Entry: `composite-resolver.ts` (`createCompositeResolver`). Resolver chain: bundled → online CDN → recommender API.
-- `snippet-engine/` — Resolves `snippet-ref` blocks to their content. Entry: `caching-snippet-resolver.ts` (`getSnippetResolver`). Fetches from CDN at `<host>/shared/snippets/<id>.json`; no bundled fallback. `inline-refs.ts` splices resolved snippets into a guide before parsing.
+- `snippet-engine/` — Resolves `snippet-ref` blocks to their content. Entry: `caching-snippet-resolver.ts` (`getSnippetResolver`). Fetches from CDN at `<host>/guides/shared/snippets/<id>.json` (the `/guides/` prefix reflects the existing interactive-tutorials deploy convention); no bundled fallback. `inline-refs.ts` splices resolved snippets into a guide before parsing.
 - `hooks/` — Cross-cutting hooks: `useGuideProgressState`, `useAutoLaunchTutorial`, `useStepProgressFromEvents`.
 
 **Tier 3 — integrations:**

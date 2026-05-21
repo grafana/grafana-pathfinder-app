@@ -1,10 +1,14 @@
 /**
  * Online Snippet Resolver
  *
- * Fetches the catalog from `<host>/shared/snippets/index.json` and
- * individual snippets from `<host>/shared/snippets/<id>.json`. The
- * `/shared/` segment reserves space for sibling reusable types
- * (e.g. templates) that will live under the same prefix.
+ * Fetches the catalog from `<host>/guides/shared/snippets/index.json`
+ * and individual snippets from `<host>/guides/shared/snippets/<id>.json`.
+ * The `/guides/shared/` prefix reflects the existing CDN deploy in
+ * `grafana/interactive-tutorials`: `.github/workflows/deploy.yml` does
+ * `cp -r shared guides/` before pushing to GCS, so everything in the
+ * upstream repo's `shared/` directory lands under `guides/shared/` on
+ * the CDN. The `shared/` segment reserves space for sibling reusable
+ * types (e.g. templates).
  *
  * The host is derived from the existing `/package-recommendations`
  * response by stripping the trailing `/packages` segment off its
@@ -30,14 +34,16 @@ export function deriveSnippetsBaseUrl(packagesBaseUrl: string): string {
   }
   // The recommendations baseUrl points at the packages directory
   // (e.g. `https://interactive-learning.grafana.net/packages`). Snippets
-  // live at the host's `/shared/snippets` path — drop the `/packages`
-  // segment and append `/shared/snippets`.
+  // are deployed under `/guides/shared/snippets/` because the
+  // interactive-tutorials deploy workflow does `cp -r shared guides/`
+  // before pushing to GCS — drop the `/packages` segment and append
+  // `/guides/shared/snippets`.
   if (trimmed.endsWith('/packages')) {
-    return trimmed.slice(0, -'/packages'.length) + '/shared/snippets';
+    return trimmed.slice(0, -'/packages'.length) + '/guides/shared/snippets';
   }
   // Defensive fallback when upstream changes the convention. A 404 here
-  // is harmless — the composite resolver still has the bundled snapshot.
-  return `${trimmed}/shared/snippets`;
+  // is harmless — a failed snippet renders the inert placeholder.
+  return `${trimmed}/guides/shared/snippets`;
 }
 
 export class OnlineCdnSnippetResolver implements SnippetResolver, SnippetCatalogProvider {
