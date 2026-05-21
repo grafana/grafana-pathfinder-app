@@ -134,7 +134,7 @@ This is the form `openLearningJourney` / `openDocsPage` recognise as a package U
 
 ```js
 __pathfinderExperiment.setOverride('pathfinder.highlighted-guide-experiment', {
-  variant: 'control',
+  variant: 'treatment',
   pages: ['/a/grafana-irm-app*'],
   guideId: 'https://interactive-learning.grafana.net/packages/irm-configuration/content.json',
   docType: 'interactive',
@@ -150,7 +150,7 @@ Forces the Featured card type to `learning-journey` so the click-through opens w
 
 ```js
 __pathfinderExperiment.setOverride('pathfinder.highlighted-guide-experiment', {
-  variant: 'treatment',
+  variant: 'control',
   pages: ['/a/grafana-irm-app*'],
   guideId: 'https://interactive-learning.grafana.net/packages/grafana-irm-configuration-lj/content.json',
   docType: 'learning-journey',
