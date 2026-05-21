@@ -156,8 +156,3 @@ export function tokenObjectPrefix(token: string): string {
 export function mcpSessionIdLogHash(mcpSessionId: string): string {
   return createHash('sha256').update(mcpSessionId).digest('hex').slice(0, 16);
 }
-
-export const __testing = {
-  ALPHABET,
-  TOKEN_LENGTH,
-};

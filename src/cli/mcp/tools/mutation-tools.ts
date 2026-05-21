@@ -35,7 +35,6 @@ import {
   inputModeMissingResult,
   invalidSessionTokenResult,
   outcomeResult,
-  sessionHopLimitResult,
   sessionNotFoundResult,
   sessionOutcomeResult,
   sessionTooLargeResult,
@@ -45,7 +44,6 @@ import {
 import {
   dispatchSessionMutation,
   isConcurrentModification,
-  isSessionHopLimit,
   isSessionNotFound,
   isSessionTooLarge,
   isStoreUnavailable,
@@ -191,9 +189,6 @@ async function dispatchMutation(
       }
       if (isSessionTooLarge(r)) {
         return sessionTooLargeResult(token, r);
-      }
-      if (isSessionHopLimit(r)) {
-        return sessionHopLimitResult(token, r);
       }
       return sessionOutcomeResult(token, r.outcome, r.generation, r.summary);
     }

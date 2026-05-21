@@ -24,31 +24,49 @@
  *
  * Flags:
  *   --url=<endpoint>   Required. The /mcp endpoint of the deployed service.
- *   --hops=<n>         Number of pathfinder_add_block calls per loop. Default 25.
- *   --delay-ms=<n>     Sleep between hops. Default 1100 — just above GCS's per-object
- *                      1-mutation/sec rate limit. Real agent flows are LLM-paced so this
- *                      knob does not exist in production; set to 0 for a synthetic burst
- *                      test (server will retry 429s with exponential backoff).
+ *   --mode=<m>         hops (default) or concurrent. See modes below.
+ *   --hops=<n>         hops mode: number of add_block calls per loop. Default 25.
+ *                      concurrent mode: hops per writer. Default 25.
+ *   --writers=<n>      concurrent mode only: number of parallel writers
+ *                      hitting the same session token. Default 4.
+ *   --delay-ms=<n>     hops mode only: sleep between hops. Default 1100 —
+ *                      just above GCS's per-object 1-mutation/sec rate limit.
+ *                      Real agent flows are LLM-paced so this knob does not
+ *                      exist in production; set to 0 for a synthetic burst
+ *                      test (server retries 429s with exponential backoff).
  *   --json             Emit a JSON report instead of human-readable output.
  *
+ * Modes:
+ *   --mode=hops (default) — runs the wire-bytes profile loop twice (stateless
+ *     vs session) and prints the side-by-side comparison. Asserts:
+ *       - session-mode requestBytes per hop is roughly constant,
+ *       - stateless-mode requestBytes per hop grows linearly with N,
+ *       - both modes return the same final block count,
+ *       - finalize deletes the session (next call → SESSION_NOT_FOUND).
+ *   --mode=concurrent — spawns N writers in parallel against one session,
+ *     zero inter-hop delay, to stress the staged-write + 429 retry path.
+ *     Asserts every writer returns parseable JSON. The final block count
+ *     may be < the expected total (concurrent lost-update is a known,
+ *     separately-tracked behavior; it does NOT fail this run).
+ *
  * Exits nonzero on any tool-level error so the script can be wired into
- * deploy gating. Verification asserts:
- *   - session-mode requestBytes per hop is roughly constant (independent of N),
- *   - stateless-mode requestBytes per hop grows linearly with N,
- *   - both modes return the same final block count,
- *   - finalize over session-mode deletes the session (next call → SESSION_NOT_FOUND).
+ * deploy gating.
  */
 
 interface Args {
   url: string;
+  mode: 'hops' | 'concurrent';
   hops: number;
+  writers: number;
   json: boolean;
   delayMs: number;
 }
 
 function parseArgs(argv: string[]): Args {
   let url: string | undefined;
+  let mode: 'hops' | 'concurrent' = 'hops';
   let hops = 25;
+  let writers = 4;
   let json = false;
   // GCS imposes a per-object write rate limit of ~1 mutation per second
   // (https://cloud.google.com/storage/docs/gcs429). Real agent flows are
@@ -59,12 +77,22 @@ function parseArgs(argv: string[]): Args {
   // which keeps the smoke run correct but blows the per-call wallclock
   // budget on long bursts. Defaulting to 1100ms between hops keeps us
   // just above the per-object ceiling without relying on retries.
+  // The concurrent mode deliberately ignores this and runs zero-delay to
+  // stress the staged-write + retry path.
   let delayMs = 1100;
   for (const arg of argv.slice(2)) {
     if (arg.startsWith('--url=')) {
       url = arg.slice('--url='.length);
+    } else if (arg.startsWith('--mode=')) {
+      const v = arg.slice('--mode='.length);
+      if (v !== 'hops' && v !== 'concurrent') {
+        throw new Error(`--mode must be hops|concurrent (got ${v})`);
+      }
+      mode = v;
     } else if (arg.startsWith('--hops=')) {
       hops = Number.parseInt(arg.slice('--hops='.length), 10);
+    } else if (arg.startsWith('--writers=')) {
+      writers = Number.parseInt(arg.slice('--writers='.length), 10);
     } else if (arg.startsWith('--delay-ms=')) {
       delayMs = Number.parseInt(arg.slice('--delay-ms='.length), 10);
     } else if (arg === '--json') {
@@ -79,10 +107,13 @@ function parseArgs(argv: string[]): Args {
   if (!Number.isFinite(hops) || hops < 1) {
     throw new Error(`--hops must be a positive integer (got ${hops})`);
   }
+  if (!Number.isFinite(writers) || writers < 1) {
+    throw new Error(`--writers must be a positive integer (got ${writers})`);
+  }
   if (!Number.isFinite(delayMs) || delayMs < 0) {
     throw new Error(`--delay-ms must be a non-negative integer (got ${delayMs})`);
   }
-  return { url, hops, json, delayMs };
+  return { url, mode, hops, writers, json, delayMs };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -303,8 +334,104 @@ function renderHuman(stateless: LoopReport, session: LoopReport): string {
   ].join('\n');
 }
 
+interface ConcurrentReport {
+  sessionToken: string;
+  writers: number;
+  hopsPerWriter: number;
+  writerOk: number;
+  writerFailures: Array<{ writer: number; error: string }>;
+  finalBlockCount: number;
+  expectedBlockCount: number;
+  elapsedMs: number;
+}
+
+/**
+ * Stress mode: spawn `writers` parallel clients hitting the same session
+ * token at full speed. Exercises the staged-write + 429 retry path on the
+ * server. Every writer must return parseable JSON; the wire-shape contract
+ * is what this test pins. The final block count may legitimately be < the
+ * expected total (concurrent RMW lost-update is a separate, deferred bug).
+ */
+async function runConcurrentLoop(url: string, writers: number, hopsPerWriter: number): Promise<ConcurrentReport> {
+  const initial = await rpc(url, 'tools/call', {
+    name: 'pathfinder_create_package',
+    arguments: { title: `smoke-concurrent-${Date.now()}`, type: 'guide' },
+  });
+  const sessionToken = (initial.payload as { sessionToken: string }).sessionToken;
+  if (!sessionToken) {
+    throw new Error('create_package returned no sessionToken — is the server P7-deployed?');
+  }
+
+  const start = Date.now();
+  const settled = await Promise.allSettled(
+    Array.from({ length: writers }, (_, w) =>
+      (async () => {
+        for (let i = 0; i < hopsPerWriter; i++) {
+          await rpc(url, 'tools/call', {
+            name: 'pathfinder_add_block',
+            arguments: { sessionToken, type: 'markdown', fields: { content: `writer ${w} hop ${i}` } },
+          });
+        }
+      })()
+    )
+  );
+  const elapsedMs = Date.now() - start;
+
+  const writerFailures = settled
+    .map((s, idx) => ({ s, idx }))
+    .filter(({ s }) => s.status === 'rejected')
+    .map(({ s, idx }) => ({
+      writer: idx,
+      error: ((s as PromiseRejectedResult).reason as Error)?.message ?? String((s as PromiseRejectedResult).reason),
+    }));
+
+  const list = await rpc(url, 'tools/call', { name: 'pathfinder_list_blocks', arguments: { sessionToken } });
+  const blocks = (list.payload as { blocks?: unknown[] }).blocks ?? [];
+
+  return {
+    sessionToken,
+    writers,
+    hopsPerWriter,
+    writerOk: settled.length - writerFailures.length,
+    writerFailures,
+    finalBlockCount: blocks.length,
+    expectedBlockCount: writers * hopsPerWriter,
+    elapsedMs,
+  };
+}
+
+function renderConcurrent(r: ConcurrentReport): string {
+  const lines = [
+    `Concurrent smoke — ${r.writers} writers × ${r.hopsPerWriter} hops`,
+    `  session token        : ${r.sessionToken}`,
+    `  writers ok           : ${r.writerOk}/${r.writers} in ${r.elapsedMs}ms`,
+    `  final block count    : ${r.finalBlockCount} (expected ${r.expectedBlockCount})`,
+  ];
+  for (const f of r.writerFailures) {
+    lines.push(`  writer ${f.writer} failed   : ${f.error}`);
+  }
+  return lines.join('\n');
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv);
+
+  if (args.mode === 'concurrent') {
+    const report = await runConcurrentLoop(args.url, args.writers, args.hops);
+    if (args.json) {
+      process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+    } else {
+      process.stdout.write(renderConcurrent(report) + '\n');
+    }
+    // Exit nonzero on any writer failure (parse crash or other) — that's
+    // the contract this mode is here to pin. Lost-update on the block
+    // count is currently expected and does NOT fail the run.
+    if (report.writerFailures.length > 0) {
+      throw new Error(`${report.writerFailures.length}/${report.writers} writers failed`);
+    }
+    return;
+  }
+
   const stateless = await runStatelessLoop(args.url, args.hops, args.delayMs);
   const session = await runSessionLoop(args.url, args.hops, args.delayMs);
   await verifyFinalizeDeletesSession(args.url, session.sessionToken);

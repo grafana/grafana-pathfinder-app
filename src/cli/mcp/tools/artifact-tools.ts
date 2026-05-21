@@ -21,12 +21,7 @@ import { defaultPackageId } from '../../utils/auto-id';
 import { newPackageState, buildArtifactSummary, readPackage, type TreeNode } from '../../utils/package-io';
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import { generateSessionToken } from '../lib/session-token';
-import {
-  SESSION_GENERATION_ABSENT,
-  SessionPreconditionFailedError,
-  type SessionArtifact,
-  type SessionStore,
-} from '../lib/session-store';
+import { SESSION_GENERATION_ABSENT, type SessionArtifact, type SessionStore } from '../lib/session-store';
 import type { CommandOutcome } from '../../utils/output';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import { writeAppend } from './annotations';
@@ -194,30 +189,16 @@ function deriveId(title: string): string | null {
 
 /**
  * Mint a fresh session token and persist `artifact` under it at
- * generation 1. Token collisions are vanishingly rare (~110 bits of
- * entropy); a few retries cover the cosmic-ray case.
+ * generation 1. The token is 110 bits of CSPRNG entropy; a collision
+ * with an existing session is below cosmic-ray probability, so the
+ * `ifGenerationMatch=ABSENT` save is treated as infallible from a
+ * collision standpoint. Any error here (auth, storage outage) is
+ * routed through `withToolErrorEnvelope` by the caller.
  */
 async function mintSession(store: SessionStore, artifact: SessionArtifact): Promise<string> {
-  const MAX_ATTEMPTS = 4;
-  let lastError: unknown;
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const token = generateSessionToken();
-    try {
-      await store.save(token, artifact, SESSION_GENERATION_ABSENT);
-      return token;
-    } catch (err) {
-      if (err instanceof SessionPreconditionFailedError) {
-        // Token collision — try again with a fresh token.
-        lastError = err;
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw new Error(
-    `mintSession: failed to mint a unique session token after ${MAX_ATTEMPTS} attempts ` +
-      `(cause: ${lastError instanceof Error ? lastError.message : String(lastError)})`
-  );
+  const token = generateSessionToken();
+  await store.save(token, artifact, SESSION_GENERATION_ABSENT);
+  return token;
 }
 
 /**

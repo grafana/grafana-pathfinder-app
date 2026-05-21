@@ -10,30 +10,48 @@
  *     for no client win;
  *   - clients that want structured access can JSON.parse the text block —
  *     identical fidelity, simpler contract.
+ *
+ * Error wire shape is consistent across every code:
+ *   `{ status: 'error', code, message, sessionToken?, data? }`
+ * Built via the shared `errorResult` factory; the named wrappers below
+ * exist so call sites read as the intent (`sessionNotFoundResult(token)`)
+ * rather than open-coded code strings.
  */
 
 import type { TreeNode } from '../../utils/package-io';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
 import { SessionStoreUnavailableError } from '../lib/session-store';
-import type {
-  ConcurrentModificationResult,
-  SessionHopLimitResult,
-  SessionTooLargeResult,
-  StoreUnavailableResult,
-} from './state-bridge';
+import type { ConcurrentModificationResult, SessionTooLargeResult, StoreUnavailableResult } from './state-bridge';
 
-export function textResult(
-  text: string,
-  isError = false
-): {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-} {
+type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
+
+export function textResult(text: string, isError = false): ToolResult {
   return {
     content: [{ type: 'text', text }],
     ...(isError ? { isError: true } : {}),
   };
+}
+
+/**
+ * Single error-envelope factory. Every named wrapper below calls this.
+ * `sessionToken` is omitted from the payload when undefined; `data` is
+ * omitted when undefined. Both are common cases — stateless errors have
+ * no token; not every error has structured data.
+ */
+function errorResult(
+  code: string,
+  message: string,
+  opts: { sessionToken?: string; data?: Record<string, unknown> } = {}
+): ToolResult {
+  const payload: Record<string, unknown> = { status: 'error', code, message };
+  if (opts.sessionToken !== undefined) {
+    payload.sessionToken = opts.sessionToken;
+  }
+  if (opts.data !== undefined) {
+    payload.data = opts.data;
+  }
+  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
 }
 
 /**
@@ -53,7 +71,7 @@ export function outcomeResult(
   outcome: CommandOutcome,
   artifact?: { content: unknown; manifest?: unknown },
   summary?: TreeNode[]
-): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
+): ToolResult {
   const payload: Record<string, unknown> = { ...outcome };
   if (artifact) {
     payload.artifact = {
@@ -69,151 +87,65 @@ export function outcomeResult(
 
 /**
  * Session-mode mutation ack. The full artifact stays in the bucket; the
- * agent receives only:
- *
- *   - `sessionToken` — echo on the next call.
- *   - `generation` — for optional `expectedGeneration` on the next call.
- *   - `outcome` — the CLI's `CommandOutcome` verbatim (summary + any
- *     structured error fields).
- *   - `summary` — compact navigation tree of the post-mutation artifact,
- *     so the agent does not need to immediately call
- *     `pathfinder_list_blocks` after every mutation.
- *
- * No artifact body, no `__etag` — both are absent by design. Agents that
- * need the full artifact call `pathfinder_inspect({ sessionToken })`.
+ * agent receives only the outcome, sessionToken, generation, and a compact
+ * navigation summary. Agents that need the full artifact call
+ * `pathfinder_inspect({ sessionToken })`.
  */
 export function sessionOutcomeResult(
   sessionToken: string,
   outcome: CommandOutcome,
   generation: number | undefined,
   summary: TreeNode[]
-): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
-  const payload: Record<string, unknown> = {
-    ...outcome,
-    sessionToken,
-    summary,
-  };
+): ToolResult {
+  const payload: Record<string, unknown> = { ...outcome, sessionToken, summary };
   if (generation !== undefined) {
     payload.generation = generation;
   }
   return textResult(JSON.stringify(payload, null, 2), outcome.status === 'error');
 }
 
-/** Wire shape for `SESSION_NOT_FOUND` returned by session-mode tools. */
-export function sessionNotFoundResult(sessionToken: string): {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-} {
-  const payload = {
-    status: 'error' as const,
-    code: 'SESSION_NOT_FOUND',
-    message:
-      'No session exists for the provided token. Either the token is wrong, the session expired (7-day TTL), or the session was deleted on finalize. Call pathfinder_create_package to start a new session.',
-    sessionToken,
-  };
-  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
-}
+// ── Error wire shapes ────────────────────────────────────────────────────
 
-/** Wire shape for `CONCURRENT_MODIFICATION` returned by session-mode tools. */
-export function concurrentModificationResult(
-  sessionToken: string,
-  result: ConcurrentModificationResult
-): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
-  const payload = {
-    status: 'error' as const,
-    code: result.code,
-    message: result.message,
-    sessionToken,
-    data: {
-      expected: result.expected,
-      actual: result.actual,
-    },
-  };
-  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
-}
-
-/**
- * Wire shape for `SESSION_TOO_LARGE` — the artifact would exceed the
- * server-side per-session size cap. The cap is documented on
- * `MAX_SESSION_ARTIFACT_BYTES`. Surfaced as an error so the agent
- * stops appending; the prior valid state is unchanged.
- */
-export function sessionTooLargeResult(
-  sessionToken: string,
-  result: SessionTooLargeResult
-): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
-  const payload = {
-    status: 'error' as const,
-    code: result.code,
-    message: result.message,
-    sessionToken,
-    data: {
-      artifactBytes: result.artifactBytes,
-      maxBytes: result.maxBytes,
-    },
-  };
-  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
-}
-
-/**
- * Wire shape for `SESSION_HOP_LIMIT` — the per-replica successful-save
- * cap has been hit. Defense-in-depth against runaway agents; see
- * `MAX_SESSION_SAVES` for the per-replica reasoning.
- */
-export function sessionHopLimitResult(
-  sessionToken: string,
-  result: SessionHopLimitResult
-): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
-  const payload = {
-    status: 'error' as const,
-    code: result.code,
-    message: result.message,
-    sessionToken,
-    data: {
-      saves: result.saves,
-      maxSaves: result.maxSaves,
-    },
-  };
-  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
-}
-
-/** Wire shape for invalid session token format. */
-export function invalidSessionTokenResult(): {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-} {
-  return textResult(
-    JSON.stringify(
-      {
-        status: 'error' as const,
-        code: 'INVALID_SESSION_TOKEN',
-        message:
-          'sessionToken is not in the expected format (22 chars, Crockford base32, lowercase). Pass the value you received from pathfinder_create_package or a previous mutation ack verbatim.',
-      },
-      null,
-      2
-    ),
-    /* isError */ true
+export function sessionNotFoundResult(sessionToken: string): ToolResult {
+  return errorResult(
+    'SESSION_NOT_FOUND',
+    'No session exists for the provided token. Either the token is wrong, the session expired (7-day TTL), or the session was deleted on finalize. Call pathfinder_create_package to start a new session.',
+    { sessionToken }
   );
 }
 
-/** Wire shape for "must pass exactly one of {artifact} or {sessionToken}". */
-export function inputModeAmbiguousResult(): {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-} {
-  return textResult(
-    JSON.stringify(
-      {
-        status: 'error' as const,
-        code: 'INPUT_MODE_AMBIGUOUS',
-        message:
-          'Pass exactly one of `artifact` (stateless mode) or `sessionToken` (session mode). Both were provided.',
-      },
-      null,
-      2
-    ),
-    /* isError */ true
+export function concurrentModificationResult(sessionToken: string, result: ConcurrentModificationResult): ToolResult {
+  return errorResult(result.code, result.message, {
+    sessionToken,
+    data: { expected: result.expected, actual: result.actual },
+  });
+}
+
+export function sessionTooLargeResult(sessionToken: string, result: SessionTooLargeResult): ToolResult {
+  return errorResult(result.code, result.message, {
+    sessionToken,
+    data: { artifactBytes: result.artifactBytes, maxBytes: result.maxBytes },
+  });
+}
+
+export function invalidSessionTokenResult(): ToolResult {
+  return errorResult(
+    'INVALID_SESSION_TOKEN',
+    'sessionToken is not in the expected format (22 chars, Crockford base32, lowercase). Pass the value you received from pathfinder_create_package or a previous mutation ack verbatim.'
+  );
+}
+
+export function inputModeAmbiguousResult(): ToolResult {
+  return errorResult(
+    'INPUT_MODE_AMBIGUOUS',
+    'Pass exactly one of `artifact` (stateless mode) or `sessionToken` (session mode). Both were provided.'
+  );
+}
+
+export function inputModeMissingResult(): ToolResult {
+  return errorResult(
+    'INPUT_MODE_MISSING',
+    'Pass exactly one of `artifact` (stateless mode) or `sessionToken` (session mode). Neither was provided.'
   );
 }
 
@@ -224,38 +156,22 @@ export function inputModeAmbiguousResult(): {
  * never see a raw GCS error string leak through; the original provider
  * error is preserved in server logs via the `cause` chain.
  */
-export function storeUnavailableResult(
-  sessionToken: string | undefined,
-  result: StoreUnavailableResult
-): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
-  const payload = {
-    status: 'error' as const,
-    code: result.code,
-    message: result.message,
-    ...(sessionToken !== undefined ? { sessionToken } : {}),
-    data: { reason: result.reason },
-  };
-  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
+export function storeUnavailableResult(sessionToken: string | undefined, result: StoreUnavailableResult): ToolResult {
+  return errorResult(result.code, result.message, { sessionToken, data: { reason: result.reason } });
 }
 
 /**
- * Wire shape for an unexpected error inside a tool handler. Last line of
- * defense against any throw that escapes the dispatch layer — keeps the
- * wire response a well-formed CommandOutcome so clients can JSON.parse
- * unconditionally. The original error is logged to stderr by the caller.
+ * Last-line-of-defense envelope for an uncaught throw inside a tool
+ * handler. Keeps the wire response a well-formed CommandOutcome so
+ * clients can JSON.parse unconditionally; the original error is logged
+ * to stderr by the caller.
  */
-export function internalErrorResult(sessionToken: string | undefined): {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-} {
-  const payload = {
-    status: 'error' as const,
-    code: 'INTERNAL_ERROR',
-    message:
-      'The server hit an unexpected error handling this request. Retry the operation; if it persists, the server logs contain the underlying cause.',
-    ...(sessionToken !== undefined ? { sessionToken } : {}),
-  };
-  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
+export function internalErrorResult(sessionToken: string | undefined): ToolResult {
+  return errorResult(
+    'INTERNAL_ERROR',
+    'The server hit an unexpected error handling this request. Retry the operation; if it persists, the server logs contain the underlying cause.',
+    { sessionToken }
+  );
 }
 
 /**
@@ -272,8 +188,8 @@ export function internalErrorResult(sessionToken: string | undefined): {
 export async function withToolErrorEnvelope(
   sessionToken: string | undefined,
   toolName: string,
-  fn: () => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }>
-): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  fn: () => Promise<ToolResult>
+): Promise<ToolResult> {
   try {
     return await fn();
   } catch (err) {
@@ -288,23 +204,4 @@ export async function withToolErrorEnvelope(
     console.error(`[${toolName}] uncaught error in tool handler:`, err);
     return internalErrorResult(sessionToken);
   }
-}
-
-export function inputModeMissingResult(): {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-} {
-  return textResult(
-    JSON.stringify(
-      {
-        status: 'error' as const,
-        code: 'INPUT_MODE_MISSING',
-        message:
-          'Pass exactly one of `artifact` (stateless mode) or `sessionToken` (session mode). Neither was provided.',
-      },
-      null,
-      2
-    ),
-    /* isError */ true
-  );
 }

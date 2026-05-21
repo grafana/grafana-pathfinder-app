@@ -19,11 +19,9 @@ import {
 import {
   dispatchSessionMutation,
   isConcurrentModification,
-  isSessionHopLimit,
   isSessionNotFound,
   isSessionTooLarge,
   isStoreUnavailable,
-  __resetSessionSaveCounts,
   type DispatchSessionResult,
   type SessionOutcome,
 } from '../tools/state-bridge';
@@ -86,21 +84,11 @@ function makeRacingStore(real: SessionStore): SessionStore {
  * rather than open-coding the narrowing in every case.
  */
 function expectOutcome(r: DispatchSessionResult): SessionOutcome {
-  if (
-    isSessionNotFound(r) ||
-    isConcurrentModification(r) ||
-    isSessionTooLarge(r) ||
-    isSessionHopLimit(r) ||
-    isStoreUnavailable(r)
-  ) {
+  if (isSessionNotFound(r) || isConcurrentModification(r) || isSessionTooLarge(r) || isStoreUnavailable(r)) {
     throw new Error(`expected SessionOutcome, got ${r.code}`);
   }
   return r;
 }
-
-beforeEach(() => {
-  __resetSessionSaveCounts();
-});
 
 describe('dispatchSessionMutation', () => {
   describe('without expectedGeneration (default retry-once)', () => {

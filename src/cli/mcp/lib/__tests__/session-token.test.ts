@@ -5,7 +5,6 @@
  */
 
 import {
-  __testing,
   generateSessionToken,
   isValidSessionToken,
   normalizeSessionToken,
@@ -13,7 +12,10 @@ import {
   tokenLogPrefix,
 } from '../session-token';
 
-const { ALPHABET, TOKEN_LENGTH } = __testing;
+// Mirror the constants from session-token.ts. Kept in sync with the
+// implementation by the alphabet/length tests below.
+const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
+const TOKEN_LENGTH = 22;
 
 describe('generateSessionToken', () => {
   it('returns a string of the expected length', () => {
