@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
@@ -19,6 +19,8 @@ import {
   GuideResponseProvider,
   useGuideResponses,
 } from '../../docs-retrieval';
+import { inlineSnippetRefsInGuide } from '../../snippet-engine';
+import type { JsonGuide } from '../../types/json-guide.types';
 import {
   InteractiveSection,
   InteractiveStep,
@@ -51,6 +53,33 @@ import {
 import { substituteVariables } from '../../utils/variable-substitution';
 import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
+
+/**
+ * Walk a JsonGuide's block tree and return true as soon as a `snippet-ref`
+ * block is encountered. Used to skip the async snippet-resolution pass on
+ * guides that don't reference any snippets — the common case.
+ */
+function guideHasSnippetRefs(guide: JsonGuide): boolean {
+  return blocksContainSnippetRef(guide.blocks);
+}
+
+function blocksContainSnippetRef(blocks: JsonGuide['blocks']): boolean {
+  for (const block of blocks) {
+    if (block.type === 'snippet-ref') {
+      return true;
+    }
+    if (block.type === 'section' || block.type === 'assistant') {
+      if (blocksContainSnippetRef(block.blocks)) {
+        return true;
+      }
+    } else if (block.type === 'conditional') {
+      if (blocksContainSnippetRef(block.whenTrue) || blocksContainSnippetRef(block.whenFalse)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 /**
  * Scroll to and highlight an element with the given fragment ID
@@ -551,13 +580,52 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
     [html]
   );
 
-  // Parse content with fail-fast error handling (memoized to avoid re-parsing on every render)
-  // Detect JSON vs HTML content and use appropriate parser
-  const parseResult: ContentParseResult = useMemo(() => {
+  // Initial parse is synchronous so HTML and snippet-free JSON guides render
+  // on first paint without a loading flicker. Guides that contain
+  // `snippet-ref` blocks will surface as warnings on the first pass; the
+  // effect below then resolves the refs and replaces parseResult with a
+  // fully-inlined parse.
+  const initialParseResult: ContentParseResult = useMemo(() => {
     if (isJsonGuideContent(html)) {
       return parseJsonGuide(html, baseUrl);
     }
     return parseHTMLToComponents(html, baseUrl);
+  }, [html, baseUrl]);
+  const [parseResult, setParseResult] = useState<ContentParseResult>(initialParseResult);
+
+  useEffect(() => {
+    // Keep parseResult in sync when html/baseUrl change before async
+    // resolution kicks in.
+    setParseResult(initialParseResult);
+  }, [initialParseResult]);
+
+  useEffect(() => {
+    if (!isJsonGuideContent(html)) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      let parsedGuide: JsonGuide | undefined;
+      try {
+        parsedGuide = JSON.parse(html) as JsonGuide;
+      } catch {
+        return;
+      }
+      // Skip the async hop when the guide has no snippet refs anywhere.
+      // Counting refs synchronously avoids paying a microtask + state
+      // update on the common case.
+      if (!guideHasSnippetRefs(parsedGuide)) {
+        return;
+      }
+      const resolved = await inlineSnippetRefsInGuide(parsedGuide);
+      if (cancelled) {
+        return;
+      }
+      setParseResult(parseJsonGuide(resolved, baseUrl));
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [html, baseUrl]);
 
   // Start DOM monitoring if interactive elements are present

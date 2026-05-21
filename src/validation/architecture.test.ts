@@ -123,6 +123,10 @@ const ALLOWED_LATERAL_VIOLATIONS = new Set([
   'docs-retrieval/learning-journey-helpers.ts -> learning-paths',
   'requirements-manager/requirements-checker.hook.ts -> context-engine',
   'requirements-manager/step-checker.hook.ts -> context-engine',
+  // Snippet resolution: docs-retrieval invokes snippet-engine to inline
+  // snippet-ref blocks at render time, before parseJsonGuide runs. Keeps
+  // the renderer's resolve→parse pipeline in one place.
+  'docs-retrieval/content-renderer.tsx -> snippet-engine',
 ]);
 
 /**

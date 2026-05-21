@@ -309,6 +309,16 @@ function convertBlockByType(
     case 'assistant':
       // Legacy wrapper format - pass surrounding context for better AI understanding
       return convertAssistantBlock(block, path, baseUrl, surroundingContext);
+    case 'snippet-ref':
+      // Snippet refs are resolved upstream by inlineSnippetRefsInGuide before
+      // the parser runs. Reaching the parser means the resolver failed for a
+      // ref that wasn't pre-resolved — surface a warning so authors can see
+      // it in the editor's parse output. The renderer never sees this block
+      // because element is null.
+      return {
+        element: null,
+        warning: `Unresolved snippet reference at ${path}: ${block.snippetId}`,
+      };
     default:
       return {
         element: null,
