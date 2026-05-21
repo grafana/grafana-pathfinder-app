@@ -697,6 +697,29 @@ export const JsonGrotGuideBlockSchema = z
     { error: 'All screenId references must point to existing screen IDs' }
   );
 
+// ============ SNIPPET REFERENCE BLOCK SCHEMA ============
+
+/**
+ * Kebab-case identifier shared by package and snippet IDs.
+ * Matches the same shape as upstream package IDs in repository.json.
+ */
+const SnippetIdSchema = z
+  .string()
+  .min(1, 'Snippet ID is required')
+  .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Snippet ID must be kebab-case (lowercase letters, numbers, hyphens)');
+
+/**
+ * Schema for snippet reference block. Resolves at parse time — never
+ * reaches the renderer.
+ * @coupling Type: JsonSnippetRefBlock
+ */
+export const JsonSnippetRefBlockSchema = z.object({
+  type: z.literal('snippet-ref'),
+  id: z.string().optional().describe('Stable identifier for this snippet-ref instance'),
+  snippetId: SnippetIdSchema.describe('Upstream snippet ID to resolve at parse time'),
+  ...AuthorAnnotatedSchema.shape,
+});
+
 // ============ BLOCK UNION (Non-recursive blocks) ============
 
 /**
@@ -704,6 +727,29 @@ export const JsonGrotGuideBlockSchema = z
  * Used as building block for the full union.
  */
 const NonRecursiveBlockSchema = z.union([
+  JsonMarkdownBlockSchema,
+  JsonHtmlBlockSchema,
+  JsonImageBlockSchema,
+  JsonVideoBlockSchema,
+  JsonInteractiveBlockSchema,
+  JsonMultistepBlockSchema,
+  JsonGuidedBlockSchema,
+  JsonQuizBlockSchema,
+  JsonInputBlockSchema,
+  JsonTerminalBlockSchema,
+  JsonTerminalConnectBlockSchema,
+  JsonChallengeBlockSchema,
+  JsonCodeBlockBlockSchema,
+  JsonGrotGuideBlockSchema,
+  JsonSnippetRefBlockSchema,
+]);
+
+/**
+ * Schema for non-recursive block types EXCLUDING snippet-ref.
+ * Used by JsonSnippetSchema to reject nested snippet-refs inside snippets.
+ * Snippets are not allowed to contain refs to other snippets in v1.
+ */
+const NonRecursiveBlockSchemaNoRef = z.union([
   JsonMarkdownBlockSchema,
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
@@ -819,6 +865,40 @@ function createBlockSchemaWithDepth(currentDepth: number): z.ZodType {
  * @coupling Type: JsonBlock
  */
 export const JsonBlockSchema = createBlockSchemaWithDepth(0);
+
+// Variant that excludes snippet-ref at every nesting level. Used by the
+// snippet root schema (json-snippet.schema.ts) so a snippet cannot
+// contain a ref to another snippet.
+function createBlockSchemaWithDepthNoRef(currentDepth: number): z.ZodType {
+  if (currentDepth >= MAX_NESTING_DEPTH) {
+    return NonRecursiveBlockSchemaNoRef;
+  }
+
+  const nestedBlockSchema = z.lazy(() => createBlockSchemaWithDepthNoRef(currentDepth + 1));
+
+  return z.union([
+    NonRecursiveBlockSchemaNoRef,
+    z.object({
+      ...SectionProps,
+      blocks: z.array(nestedBlockSchema),
+    }),
+    z.object({
+      ...AssistantProps,
+      blocks: z.array(nestedBlockSchema),
+    }),
+    z.object({
+      ...ConditionalProps,
+      whenTrue: z.array(nestedBlockSchema),
+      whenFalse: z.array(nestedBlockSchema),
+    }),
+  ]);
+}
+
+/**
+ * Block-union schema used inside a JsonSnippet — same as JsonBlockSchema
+ * but rejects snippet-ref at every nesting depth.
+ */
+export const JsonBlockSchemaNoRef = createBlockSchemaWithDepthNoRef(0);
 
 /**
  * Schema for section block (contains nested blocks).
@@ -1042,6 +1122,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'authorNote',
   ]),
   'grot-guide': new Set(['type', 'id', 'welcome', 'screens', 'authorNote']),
+  'snippet-ref': new Set(['type', 'id', 'snippetId', 'authorNote']),
   _manifest: new Set([
     'schemaVersion',
     'id',
@@ -1085,4 +1166,5 @@ export const VALID_BLOCK_TYPES = new Set([
   'terminal-connect',
   'code-block',
   'grot-guide',
+  'snippet-ref',
 ]);
