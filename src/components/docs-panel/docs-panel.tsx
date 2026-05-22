@@ -335,8 +335,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Save tabs to storage immediately after creating
     this.saveTabsToStorage();
 
-    // Load content for the tab
-    this.loadTabContent(tabId, url);
+    // Route through the unified dispatcher so future docs-like or
+    // package-backed learning-journey openings pick the docs loader
+    // without an extra branch here.
+    this.loadTab(tabId, url);
 
     return tabId;
   }
@@ -719,7 +721,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     if (activeTab && activeTab.content) {
       const nextUrl = getNextMilestoneUrlFromContent(activeTab.content);
       if (nextUrl) {
-        this.loadTabContent(activeTab.id, nextUrl);
+        // Unified dispatcher: package-backed journeys need the docs
+        // loader so the next milestone re-resolves the manifest.
+        this.loadTab(activeTab.id, nextUrl);
       }
     }
   }
@@ -729,7 +733,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     if (activeTab && activeTab.content) {
       const prevUrl = getPreviousMilestoneUrlFromContent(activeTab.content);
       if (prevUrl) {
-        this.loadTabContent(activeTab.id, prevUrl);
+        this.loadTab(activeTab.id, prevUrl);
       }
     }
   }

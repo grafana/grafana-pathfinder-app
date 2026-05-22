@@ -5,12 +5,16 @@ import {
   STANDALONE_SECTION_ID,
   getGuideProgress,
   markStepCompleted,
+  markStepsCompleted,
   resetCompletionStoreForTests,
+  resetSection,
   resetStep,
+  resetSteps,
   subscribeProgress,
   useStepCompletion,
 } from './completion-store';
 import { setActiveTabUrl, resetContentKeyForTests } from '../../global-state/content-key';
+import { subscribeProgressEvent, type ProgressEventDetail } from '../../global-state/progress-events';
 
 // In-memory mocks for the persisted-storage layer so tests are hermetic
 // and synchronous-where-they-can-be.
@@ -159,5 +163,113 @@ describe('completion-store', () => {
     act(() => markStepCompleted('step-1', 'section-x', 'manual'));
     expect(listener).toHaveBeenCalled();
     unsubscribe();
+  });
+
+  describe('hydration race', () => {
+    it('does not resurrect a step the user reset while hydration was in flight', async () => {
+      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1', 'step-2']));
+      render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      // Reset BEFORE hydration's microtask runs — this is the race window.
+      act(() => {
+        resetStep('step-1', 'section-x');
+      });
+      await flushMicrotasks();
+      expect(screen.getByTestId('completed').textContent).toBe('false');
+      // The unrelated step the user did not reset should still hydrate.
+      const { rerender } = render(<StepProbe stepId="step-2" sectionId="section-x" />);
+      void rerender;
+      await flushMicrotasks();
+      // Storage now reflects the post-reset state — step-1 cleared, step-2 kept.
+      expect(storedCompleted.get(`${CONTENT_KEY}-section-x`)).toEqual(new Set(['step-2']));
+    });
+
+    it('drops the entire snapshot when resetSection runs during hydration', async () => {
+      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1', 'step-2']));
+      render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      act(() => {
+        resetSection('section-x');
+      });
+      await flushMicrotasks();
+      expect(screen.getByTestId('completed').textContent).toBe('false');
+      expect(storedCompleted.has(`${CONTENT_KEY}-section-x`)).toBe(false);
+    });
+
+    it('honours resetSteps tail-clear across the hydration boundary', async () => {
+      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1', 'step-2', 'step-3']));
+      render(<StepProbe stepId="step-2" sectionId="section-x" />);
+      act(() => {
+        resetSteps(['step-2', 'step-3'], 'section-x');
+      });
+      await flushMicrotasks();
+      expect(screen.getByTestId('completed').textContent).toBe('false');
+      expect(storedCompleted.get(`${CONTENT_KEY}-section-x`)).toEqual(new Set(['step-1']));
+    });
+  });
+
+  describe('bulk progress events', () => {
+    function captureStepEvents(): { events: ProgressEventDetail[]; unsubscribe: () => void } {
+      const events: ProgressEventDetail[] = [];
+      const unsubscribe = subscribeProgressEvent((detail) => {
+        if (detail.kind === 'step') {
+          events.push(detail);
+        }
+      });
+      return { events, unsubscribe };
+    }
+
+    it('markStepsCompleted dispatches per-step completion events for newly completed steps', () => {
+      const { events, unsubscribe } = captureStepEvents();
+      act(() => {
+        markStepsCompleted(['s-1', 's-2', 's-3'], 'section-x', 'objectives');
+      });
+      expect(events).toHaveLength(3);
+      expect(events).toEqual([
+        { kind: 'step', stepId: 's-1', sectionId: 'section-x', completed: true, reason: 'objectives' },
+        { kind: 'step', stepId: 's-2', sectionId: 'section-x', completed: true, reason: 'objectives' },
+        { kind: 'step', stepId: 's-3', sectionId: 'section-x', completed: true, reason: 'objectives' },
+      ]);
+      unsubscribe();
+    });
+
+    it('markStepsCompleted skips events for already-completed steps', () => {
+      act(() => {
+        markStepsCompleted(['s-1'], 'section-x', 'manual');
+      });
+      const { events, unsubscribe } = captureStepEvents();
+      act(() => {
+        markStepsCompleted(['s-1', 's-2'], 'section-x', 'objectives');
+      });
+      expect(events).toEqual([
+        { kind: 'step', stepId: 's-2', sectionId: 'section-x', completed: true, reason: 'objectives' },
+      ]);
+      unsubscribe();
+    });
+
+    it('resetSteps dispatches per-step reset events for actually-cleared steps', async () => {
+      act(() => {
+        markStepsCompleted(['s-1', 's-2', 's-3'], 'section-x', 'manual');
+      });
+      const { events, unsubscribe } = captureStepEvents();
+      act(() => {
+        resetSteps(['s-2', 's-3', 's-never-completed'], 'section-x');
+      });
+      // Only the steps that were actually deleted from the cache should fire.
+      expect(events.map((e) => e.kind === 'step' && e.stepId)).toEqual(['s-2', 's-3']);
+      expect(events.every((e) => e.kind === 'step' && e.completed === false)).toBe(true);
+      unsubscribe();
+    });
+
+    it('resetSection dispatches per-step reset events for each previously completed step', () => {
+      act(() => {
+        markStepsCompleted(['s-1', 's-2'], 'section-x', 'manual');
+      });
+      const { events, unsubscribe } = captureStepEvents();
+      act(() => {
+        resetSection('section-x');
+      });
+      expect(new Set(events.map((e) => e.kind === 'step' && e.stepId))).toEqual(new Set(['s-1', 's-2']));
+      expect(events.every((e) => e.kind === 'step' && e.completed === false)).toBe(true);
+      unsubscribe();
+    });
   });
 });

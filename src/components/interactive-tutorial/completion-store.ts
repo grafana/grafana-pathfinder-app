@@ -9,8 +9,8 @@
  * Every step component subscribes via `useStepCompletion(stepId, sectionId)`
  * and writes via `markStepCompleted` / `resetStep`. Section-managed steps
  * additionally fire `onStepComplete(stepId)` so the section reducer can
- * advance its cursor; the section's persist effect mirrors completions
- * back into the store through `syncSectionCompletionCache`.
+ * advance its cursor; the store's `markStepCompleted` write itself is
+ * authoritative — no mirror-back hook is required.
  */
 
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
@@ -41,6 +41,46 @@ const IDLE_ENTRY: StepCompletionEntry = Object.freeze({
 const entries = new Map<string, Map<string, Map<string, StepCompletionEntry>>>();
 const hydratedSections = new Set<string>();
 const listenersByContent = new Map<string, Set<() => void>>();
+
+/**
+ * Hydration race tracking.
+ *
+ * `ensureHydrated` marks a section as hydrated (in `hydratedSections`)
+ * BEFORE the async `getCompleted` read resolves so that concurrent
+ * `useStepCompletion` calls for the same section don't kick off
+ * duplicate reads. The downside is a TOCTOU window: a reset path can
+ * delete a cache entry while the storage snapshot is still in flight,
+ * and the hydration callback would otherwise re-add that entry from
+ * the stale snapshot, resurrecting cleared progress.
+ *
+ * The fix tracks per-section "cleared since hydration began":
+ *   - `Set<string>` of IDs the user explicitly cleared (resetStep /
+ *     resetSteps) — hydration filters those out of the snapshot.
+ *   - `'all'` sentinel for `resetSection`, where every snapshot ID is
+ *     stale by definition.
+ *   - `undefined` for a section that finished hydrating already (or
+ *     never started) — reset paths don't need to track anything.
+ *
+ * `markStepCompleted` / `markStepsCompleted` are additive and never
+ * conflict with hydration's additive merge, so they don't touch this.
+ */
+const hydrationClears = new Map<string, Set<string> | 'all'>();
+
+function noteHydrationClear(contentKey: string, sectionId: string, cleared: readonly string[] | 'all'): void {
+  const key = `${contentKey}::${sectionId}`;
+  const existing = hydrationClears.get(key);
+  if (existing === undefined) {
+    return;
+  }
+  if (existing === 'all') {
+    return;
+  }
+  if (cleared === 'all') {
+    hydrationClears.set(key, 'all');
+    return;
+  }
+  cleared.forEach((id) => existing.add(id));
+}
 
 function sectionsFor(contentKey: string): Map<string, Map<string, StepCompletionEntry>> {
   let bySection = entries.get(contentKey);
@@ -90,12 +130,27 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
     return;
   }
   hydratedSections.add(key);
+  hydrationClears.set(key, new Set());
   interactiveStepStorage
     .getCompleted(contentKey, sectionId)
     .then((stored) => {
+      const cleared = hydrationClears.get(key);
+      hydrationClears.delete(key);
+      // Whole section was reset during hydration → the entire storage
+      // snapshot is stale. The reset path has already cleared storage,
+      // so nothing more to do.
+      if (cleared === 'all') {
+        return;
+      }
       const bySteps = stepsFor(contentKey, sectionId);
+      const hadClears = cleared !== undefined && cleared.size > 0;
       let changed = false;
       stored.forEach((stepId) => {
+        // The user explicitly cleared this ID since hydration started;
+        // don't resurrect it from the stale snapshot.
+        if (cleared?.has(stepId)) {
+          return;
+        }
         if (!bySteps.has(stepId)) {
           bySteps.set(stepId, { completed: true, reason: null, completedAt: 0 });
           changed = true;
@@ -105,8 +160,14 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
         bumpSectionVersion(contentKey, sectionId);
         notify(contentKey);
       }
+      // Reconcile storage with the filtered cache. Without this, the
+      // cleared IDs would persist in storage and reappear on next reload.
+      if (hadClears) {
+        persistSection(contentKey, sectionId);
+      }
     })
     .catch((error) => {
+      hydrationClears.delete(key);
       console.warn('[completion-store] hydration failed', { contentKey, sectionId, error });
     });
 }
@@ -141,6 +202,22 @@ function persistSection(contentKey: string, sectionId: string): void {
   const percentage = isPreview ? undefined : refreshGuidePercentage(contentKey);
   if (completedIds.size > 0 && percentage !== undefined) {
     dispatchProgress({ kind: 'guide', contentKey, percentage, hasProgress: true });
+  }
+  // Tail-reset / partial-reset coverage for the legacy
+  // `interactive-progress-cleared` event. The manual reset paths
+  // (handleResetSection, useContentReset, block-editor preview reset)
+  // dispatch this event directly; the store also drops to zero progress
+  // when the user redoes the first step or runs a reset path that
+  // doesn't go through one of those manual sites. Fire here whenever
+  // the *guide* total falls to zero so the alignment-prompt and
+  // preview-reset-button consumers see every clear path. Guarded on
+  // !isPreview to mirror persistence; the preview path manages its own
+  // dispatch elsewhere.
+  if (!isPreview && completedIds.size === 0 && typeof window !== 'undefined') {
+    const guideTotal = interactiveStepStorage.countAllCompleted(contentKey);
+    if (guideTotal === 0) {
+      window.dispatchEvent(new CustomEvent('interactive-progress-cleared', { detail: { contentKey } }));
+    }
   }
 }
 
@@ -204,6 +281,10 @@ export function markStepCompleted(stepId: string, sectionId: string | undefined,
 export function resetStep(stepId: string, sectionId: string | undefined = STANDALONE_SECTION_ID): void {
   const contentKey = getContentKey();
   const resolvedSection = sectionId ?? STANDALONE_SECTION_ID;
+  // Race guard: must run BEFORE the early-return below, because the
+  // pending hydration snapshot may still contain this ID even when the
+  // in-memory cache doesn't have it yet.
+  noteHydrationClear(contentKey, resolvedSection, [stepId]);
   const bySteps = stepsFor(contentKey, resolvedSection);
   if (!bySteps.has(stepId)) {
     return;
@@ -306,58 +387,54 @@ function bumpSectionVersion(contentKey: string, sectionId: string): void {
 }
 
 /**
- * Replace the in-memory cache of completed steps for a section without
- * writing to storage. Used by `use-section-persistence.ts` when the
- * section's reducer is the authority for its own completed set — the
- * section writes storage itself; this call keeps the store cache in
- * sync so cross-step reads (e.g. `useStepCompletion` from a sibling
- * component) return current values.
- */
-export function syncSectionCompletionCache(
-  contentKey: string,
-  sectionId: string,
-  completedIds: Set<string>,
-  reason: CompletionReason = 'manual'
-): void {
-  ensureHydrated(contentKey, sectionId);
-  const bySteps = stepsFor(contentKey, sectionId);
-  let changed = false;
-  // Add entries for newly completed steps.
-  completedIds.forEach((stepId) => {
-    const existing = bySteps.get(stepId);
-    if (!existing || !existing.completed) {
-      bySteps.set(stepId, { completed: true, reason, completedAt: Date.now() });
-      changed = true;
-    }
-  });
-  // Remove entries no longer in the set so resets propagate to the cache.
-  bySteps.forEach((entry, stepId) => {
-    if (entry.completed && !completedIds.has(stepId)) {
-      bySteps.delete(stepId);
-      changed = true;
-    }
-  });
-  if (changed) {
-    bumpSectionVersion(contentKey, sectionId);
-    notify(contentKey);
-  }
-}
-
-/**
  * Atomic bulk reset of every step within a section. Used by the section
  * reducer's RESET_SECTION path so a single dispatch produces a single
  * notify pass rather than one per step.
  */
 export function resetSection(sectionId: string): void {
   const contentKey = getContentKey();
+  // Note the clear before inspecting the cache — pending hydration's
+  // snapshot may still contain IDs even when the in-memory cache is empty.
+  noteHydrationClear(contentKey, sectionId, 'all');
   const bySteps = entries.get(contentKey)?.get(sectionId);
-  if (!bySteps || bySteps.size === 0) {
+  const hadEntries = bySteps !== undefined && bySteps.size > 0;
+  // Pending hydration: the in-memory cache may be empty even though the
+  // storage snapshot contains entries that the user just asked to drop.
+  // Clear storage now so the reset survives even if the user navigates
+  // away before hydration resolves.
+  const hydrationPending = hydrationClears.has(`${contentKey}::${sectionId}`);
+  if (!hadEntries && !hydrationPending) {
     return;
   }
-  bySteps.clear();
-  bumpSectionVersion(contentKey, sectionId);
+  const clearedIds: string[] = [];
+  if (bySteps) {
+    bySteps.forEach((entry, stepId) => {
+      if (entry.completed) {
+        clearedIds.push(stepId);
+      }
+    });
+    bySteps.clear();
+  }
+  if (hadEntries) {
+    bumpSectionVersion(contentKey, sectionId);
+  }
   persistSection(contentKey, sectionId);
-  notify(contentKey);
+  if (hadEntries) {
+    notify(contentKey);
+    // Symmetric with resetSteps — fire per-step events so reactive
+    // listeners (interactive-conditional, requirement re-checks) see
+    // the clear, not just the section-level `interactive-progress-cleared`
+    // dispatched by the section's own reset handler.
+    clearedIds.forEach((id) => {
+      dispatchProgress({
+        kind: 'step',
+        stepId: id,
+        sectionId,
+        completed: false,
+        reason: 'none',
+      });
+    });
+  }
 }
 
 /**
@@ -377,6 +454,7 @@ export function evictSectionCache(sectionId: string): void {
     }
   }
   hydratedSections.delete(`${contentKey}::${sectionId}`);
+  hydrationClears.delete(`${contentKey}::${sectionId}`);
   sectionVersions.delete(`${contentKey}::${sectionId}`);
 }
 
@@ -389,20 +467,38 @@ export function resetSteps(stepIds: readonly string[], sectionId: string): void 
     return;
   }
   const contentKey = getContentKey();
+  // Note the clear before the deletes — even IDs absent from the
+  // in-memory cache may still be in the pending storage snapshot.
+  noteHydrationClear(contentKey, sectionId, stepIds);
   const bySteps = entries.get(contentKey)?.get(sectionId);
   if (!bySteps) {
     return;
   }
   let changed = false;
+  const clearedIds: string[] = [];
   stepIds.forEach((id) => {
     if (bySteps.delete(id)) {
       changed = true;
+      clearedIds.push(id);
     }
   });
   if (changed) {
     bumpSectionVersion(contentKey, sectionId);
     persistSection(contentKey, sectionId);
     notify(contentKey);
+    // Per-step progress events keep listeners (interactive-conditional,
+    // step-checker recheck, etc.) symmetric with the single-step
+    // `resetStep` path. Without this, a tail-reset would silently skip
+    // their reactive paths.
+    clearedIds.forEach((id) => {
+      dispatchProgress({
+        kind: 'step',
+        stepId: id,
+        sectionId,
+        completed: false,
+        reason: 'none',
+      });
+    });
   }
 }
 
@@ -423,17 +519,33 @@ export function markStepsCompleted(
   const bySteps = stepsFor(contentKey, sectionId);
   let changed = false;
   const now = Date.now();
+  const newlyCompleted: string[] = [];
   stepIds.forEach((id) => {
     const existing = bySteps.get(id);
     if (!existing || !existing.completed) {
       bySteps.set(id, { completed: true, reason, completedAt: now });
       changed = true;
+      newlyCompleted.push(id);
     }
   });
   if (changed) {
     bumpSectionVersion(contentKey, sectionId);
     persistSection(contentKey, sectionId);
     notify(contentKey);
+    // Per-step events keep `interactive-conditional` and other
+    // `kind: 'step'` listeners reactive after objectives-based and
+    // run-section bulk completions; without these dispatches an
+    // `exists-reftarget` branch could stay stale until the next DOM /
+    // location event.
+    newlyCompleted.forEach((id) => {
+      dispatchProgress({
+        kind: 'step',
+        stepId: id,
+        sectionId,
+        completed: true,
+        reason,
+      });
+    });
   }
 }
 
@@ -441,6 +553,7 @@ export function markStepsCompleted(
 export function resetCompletionStoreForTests(): void {
   entries.clear();
   hydratedSections.clear();
+  hydrationClears.clear();
   listenersByContent.clear();
   sectionVersions.clear();
 }

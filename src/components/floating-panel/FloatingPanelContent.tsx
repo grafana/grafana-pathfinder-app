@@ -16,6 +16,8 @@ import type { OpenDocsOptions, OpenLearningJourneyOptions } from '../docs-panel/
  * Mirrors the inline shape the hook declares so we can pass `panel` directly.
  */
 export interface FloatingPanelContentModel {
+  loadTab: (tabId: string, url: string) => Promise<void>;
+  /** @deprecated Internal; routed via `loadTab`. */
   loadTabContent: (tabId: string, url: string) => void | Promise<void>;
   openLearningJourney: (url: string, title?: string, options?: OpenLearningJourneyOptions) => void | Promise<string>;
   openDocsPage?: (url: string, title?: string, options?: OpenDocsOptions) => void | Promise<string>;

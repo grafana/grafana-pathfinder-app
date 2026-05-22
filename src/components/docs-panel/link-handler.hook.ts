@@ -25,6 +25,8 @@ interface UseLinkClickHandlerProps {
   activeTab: LearningJourneyTab | null;
   theme: GrafanaTheme2;
   model: {
+    loadTab: (tabId: string, url: string) => Promise<void>;
+    /** @deprecated Internal; routed via `loadTab`. Retained for older callers. */
     loadTabContent: (tabId: string, url: string) => void;
     openLearningJourney: (url: string, title: string, options?: OpenLearningJourneyOptions) => void;
     openDocsPage?: (url: string, title: string, options?: OpenDocsOptions) => void;
@@ -80,8 +82,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             total_milestones: activeTab.content?.metadata?.learningJourney?.totalMilestones || 0,
           });
 
-          // Navigate directly to the first milestone URL
-          model.loadTabContent(activeTab.id, milestoneUrl);
+          // Navigate directly to the first milestone URL. Use the unified
+          // dispatcher so package-backed journeys re-run their docs loader.
+          model.loadTab(activeTab.id, milestoneUrl);
         } else if (
           activeTab?.content?.metadata?.learningJourney?.milestones &&
           activeTab.content.metadata.learningJourney.milestones.length > 0
@@ -96,7 +99,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               total_milestones: activeTab.content.metadata.learningJourney.milestones.length,
             });
 
-            model.loadTabContent(activeTab.id, firstMilestone.url);
+            model.loadTab(activeTab.id, firstMilestone.url);
           }
         } else {
           console.warn('No milestone URL found to navigate to');

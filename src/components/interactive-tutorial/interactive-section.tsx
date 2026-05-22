@@ -458,11 +458,16 @@ export function InteractiveSection({
         markStepCompleted(stepId, sectionId, 'manual');
         setCurrentlyExecutingStep(null);
 
-        // Check if all steps are completed. `completedSteps` is the snapshot
-        // from the most recent render — after `markStepCompleted` runs, the
-        // next render will reflect the update. For the local "did we just
-        // finish?" check we count manually.
-        const allStepsCompleted = completedSteps.size + 1 >= stepComponents.length;
+        // `completedSteps` is the render-snapshot from the most recent
+        // commit, so it doesn't yet contain `stepId`. Build the
+        // post-write set explicitly and check every step in the roster
+        // against it. This is robust to any future change in store
+        // sync semantics (e.g. async store) — unlike a `size + 1`
+        // arithmetic check, which would lie if the write became
+        // asynchronous.
+        const postWriteCompleted = new Set(completedSteps);
+        postWriteCompleted.add(stepId);
+        const allStepsCompleted = stepComponents.every((s) => postWriteCompleted.has(s.stepId));
         if (allStepsCompleted) {
           onComplete?.();
         }
