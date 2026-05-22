@@ -162,10 +162,22 @@ describe('completion-store', () => {
     expect(screen.getByTestId('reason').textContent).toBe('skipped');
   });
 
-  it('getGuideProgress returns 0% when total steps is unknown', () => {
-    storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1']));
+  it('getGuideProgress returns 0% when total is unknown and nothing has been completed', () => {
     mockTotalDocumentSteps = 0;
-    expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 0, percentage: 0 });
+    expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 0, percentage: 0 });
+  });
+
+  // F-1 follow-up to PR #909. A guide whose sections are entirely
+  // passive registers no interactive steps, so `getTotalDocumentSteps()`
+  // is 0. The passive ack still persists an ack-marker that
+  // `countAllCompleted` sees, so the numerator is > 0 while the
+  // denominator is 0. Before the fix this 0/0 divided into 0% and the
+  // progress chip / My Learning row stayed at 0 forever; the fix
+  // treats "acknowledged with no interactive total" as 100%.
+  it('getGuideProgress returns 100% for an all-passive guide once an ack-marker is present', () => {
+    storedCompleted.set(`${CONTENT_KEY}-section-passive`, new Set(['__ack-marker__']));
+    mockTotalDocumentSteps = 0;
+    expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 0, percentage: 100 });
   });
 
   it('getGuideProgress computes percentage when total steps is known', () => {

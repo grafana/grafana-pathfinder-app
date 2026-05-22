@@ -245,10 +245,22 @@ function persistSection(contentKey: string, sectionId: string): void {
 
 function refreshGuidePercentage(contentKey: string): number | undefined {
   const docTotal = getTotalDocumentSteps();
+  const allCompleted = interactiveStepStorage.countAllCompleted(contentKey);
   if (docTotal < 1) {
+    // All-passive guide: `registerSectionSteps` only counts non-passive
+    // steps, so a guide whose sections are entirely passive reports
+    // docTotal === 0 even after the user acknowledges every section.
+    // The passive ack still writes an ack-marker entry that
+    // `countAllCompleted` sees, so when `allCompleted > 0` the guide
+    // is effectively 100% complete. Without this branch the persisted
+    // percentage stays unset and My Learning shows 0% for a fully-done
+    // guide (F-1 follow-up to PR #909).
+    if (allCompleted > 0) {
+      interactiveCompletionStorage.set(contentKey, 100);
+      return 100;
+    }
     return undefined;
   }
-  const allCompleted = interactiveStepStorage.countAllCompleted(contentKey);
   const percentage = Math.round((allCompleted / docTotal) * 100);
   interactiveCompletionStorage.set(contentKey, percentage);
   return percentage;
@@ -335,7 +347,12 @@ export function getGuideProgress(contentKey: string): GuideProgress {
   const completedRaw = interactiveStepStorage.countAllCompleted(contentKey);
   const completed = completedRaw < 0 ? 0 : completedRaw;
   if (total < 1) {
-    return { completed, total, percentage: 0 };
+    // All-passive guide: the only persisted entry is an ack-marker from
+    // a passive section the user acknowledged, so `completed > 0` while
+    // `total === 0`. Treat that 0/0 as 100% instead of dividing into the
+    // 0% NaN trap — without this the progress chip reads 0% even after
+    // the user finishes the guide (F-1 follow-up to PR #909).
+    return { completed, total, percentage: completed > 0 ? 100 : 0 };
   }
   // Defensive ceiling. `countAllCompleted` reads roster-blind from
   // storage; if a guide ships a v2 schema that renames or removes a
