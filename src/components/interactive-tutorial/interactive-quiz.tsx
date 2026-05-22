@@ -206,8 +206,11 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       setIsRevealed(false);
       // Re-shuffle on retry so the user can't lean on remembered positions.
       setDisplayChoices(shuffle ? shuffleQuizChoices(choices) : choices);
+      // Section already wrote the store via `resetSteps(tailStepIds)`;
+      // suppress the per-child store write so the broadcast doesn't fan
+      // out and wipe preceding completions (parity with interactive-step).
       if (checkerResetStep) {
-        checkerResetStep();
+        checkerResetStep({ skipStoreWrite: true });
       }
     }
   }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps

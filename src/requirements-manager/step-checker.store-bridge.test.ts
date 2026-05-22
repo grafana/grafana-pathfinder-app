@@ -211,4 +211,37 @@ describe('useStepChecker → completion-store bridge', () => {
 
     expect(mockResetStep).not.toHaveBeenCalled();
   });
+
+  // Broadcast-mode opt-out — added alongside the PR-#909 reset-fan-out fix.
+  //
+  // The section's `resetTrigger` mechanism bumps a counter that fires
+  // `useEffect` in EVERY child step. Pre-fix, each child's effect called
+  // `checker.resetStep()` which writes through to the store via
+  // `writeStoreReset` — so a tail-reset of steps [N..end] would also have
+  // every preceding child (step 0..N-1) silently clear its own store
+  // entry, wiping completions the user wanted to keep.
+  //
+  // The section pre-clears the tail atomically via `resetSteps(tail, sectionId)`
+  // BEFORE bumping `resetTrigger`. Callers in that broadcast position pass
+  // `{ skipStoreWrite: true }` so the FSM-only reset doesn't fan out a
+  // per-step store write. This tripwire pins the contract: a future
+  // refactor that flips or removes the `skipStoreWrite` branch — and
+  // re-introduces the fan-out — fails here.
+  it('skips the store write when resetStep is called with { skipStoreWrite: true } — broadcast-mode opt-out', async () => {
+    const { result } = renderHook(() =>
+      useStepChecker({ stepId: 'step-tail', sectionId: 'section-a', isEligibleForChecking: true })
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.resetStep({ skipStoreWrite: true });
+    });
+
+    // FSM reset still fires (verified by the other resetStep tests above
+    // which exercise the same code path with the option absent), but the
+    // store write does NOT — section's `resetSteps` was the sole writer.
+    expect(mockResetStep).not.toHaveBeenCalled();
+  });
 });

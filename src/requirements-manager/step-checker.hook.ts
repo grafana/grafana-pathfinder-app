@@ -696,37 +696,49 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
    * store and the FSM cannot disagree on the reset axis. Symmetric with
    * `markCompleted` / `markSkipped` / objectives-auto-complete on the
    * write side.
+   *
+   * Callers that have already updated the store (e.g. a section
+   * broadcast that just ran `resetSteps(tailStepIds, sectionId)`) must
+   * pass `{ skipStoreWrite: true }` so the FSM-only reset doesn't fan
+   * out into a section-wide store wipe. Without that, every child
+   * step's broadcast effect would re-clear ITS OWN store entry —
+   * including preceding steps that the user wanted to keep complete.
    */
-  const resetStep = useCallback(() => {
-    writeStoreReset();
-    dispatch({ type: 'RESET', canSkip: skippable });
-    updateManager({
-      isEnabled: false,
-      isCompleted: false,
-      isChecking: false,
-      isSkipped: false,
-      completionReason: 'none',
-      explanation: undefined,
-      error: undefined,
-      canFixRequirement: false,
-      canSkip: skippable,
-      fixType: undefined,
-      targetHref: undefined,
-      scrollContainer: undefined,
-      retryCount: 0,
-      maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
-      isRetrying: false,
-    });
+  const resetStep = useCallback(
+    (options?: { skipStoreWrite?: boolean }) => {
+      if (!options?.skipStoreWrite) {
+        writeStoreReset();
+      }
+      dispatch({ type: 'RESET', canSkip: skippable });
+      updateManager({
+        isEnabled: false,
+        isCompleted: false,
+        isChecking: false,
+        isSkipped: false,
+        completionReason: 'none',
+        explanation: undefined,
+        error: undefined,
+        canFixRequirement: false,
+        canSkip: skippable,
+        fixType: undefined,
+        targetHref: undefined,
+        scrollContainer: undefined,
+        retryCount: 0,
+        maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
+        isRetrying: false,
+      });
 
-    // Recheck requirements after reset
-    timeoutManager.setTimeout(
-      `reset-recheck-${stepId}`,
-      () => {
-        checkStepRef.current();
-      },
-      50
-    );
-  }, [skippable, updateManager, stepId, timeoutManager, writeStoreReset]); // Removed checkStep to prevent infinite loops
+      // Recheck requirements after reset
+      timeoutManager.setTimeout(
+        `reset-recheck-${stepId}`,
+        () => {
+          checkStepRef.current();
+        },
+        50
+      );
+    },
+    [skippable, updateManager, stepId, timeoutManager, writeStoreReset] // eslint-disable-line react-hooks/exhaustive-deps -- checkStep intentionally excluded to prevent infinite loops
+  );
 
   /**
    * Stable reference to checkStep function for event-driven triggers

@@ -394,15 +394,23 @@ export const InteractiveStep = forwardRef<
       onValid: handleFormValidationComplete,
     });
 
-    // Handle reset trigger from parent section
+    // Handle reset trigger from parent section.
+    //
+    // The section has already cleared the store for the tail steps via
+    // `resetSteps(tailStepIds, sectionId)` before bumping `resetTrigger`.
+    // This effect runs for EVERY child in the section — its job is to
+    // clear local UI state (error banners, transient FSM flags). We pass
+    // `{ skipStoreWrite: true }` to `checker.resetStep` so the FSM-only
+    // reset doesn't fan out a per-step store write and wipe preceding
+    // completions the user wanted to keep (regression from PR-#909's
+    // `writeStoreReset` mirror).
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
         persistReset();
         setPostVerifyError(null);
 
-        // Reset step checker state including skipped status
         if (checker.resetStep) {
-          checker.resetStep();
+          checker.resetStep({ skipStoreWrite: true });
         }
       }
     }, [resetTrigger, stepId]); // eslint-disable-line react-hooks/exhaustive-deps

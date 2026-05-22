@@ -84,7 +84,11 @@ export interface UseStepCheckerReturn {
   checkStep: () => Promise<void>;
   markCompleted: () => void;
   markSkipped?: () => void; // Function to skip this step
-  resetStep: () => void; // Reset all step state including skipped
+  // Reset all step state including skipped. Pass `{ skipStoreWrite: true }`
+  // from broadcast callers (e.g. `resetTrigger` effects) whose section has
+  // already written to the completion store via `resetSteps` — otherwise
+  // every child step fans out a write and wipes preceding completions.
+  resetStep: (options?: { skipStoreWrite?: boolean }) => void;
   fixRequirement?: () => Promise<void>; // Function to automatically fix the requirement
 }
 
