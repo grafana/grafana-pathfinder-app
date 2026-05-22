@@ -5,7 +5,7 @@ description: Generate a structured PR description from the current diff using `d
 
 # PR summary
 
-Drafts a complete PR description from the diff. Gives the author a coherent starting point and reviewers better context — the canonical sections (Summary, What changed, Why, Test plan, Risk and reversibility) map to the schema in `.cursor/rules/pr-review.md` so reviewers can route quickly.
+Drafts a complete PR description from the diff. Gives the author a coherent starting point and reviewers better context — the canonical sections (Summary, What changed, Why, Test plan, Risk and reversibility) map to the schema in `docs/design/PR_REVIEW.md` so reviewers can route quickly.
 
 ## Hard constraints
 
@@ -190,7 +190,8 @@ If the user does not confirm, exit cleanly without side effects.
 ## Reuses
 
 - `docs/design/CONCERNS.md` — concern routing (16 IDs, trigger_paths, trigger_keywords, one_way_doors).
-- `.cursor/rules/pr-review.md` — reviewer schema for `activated_concerns`, `risk_signals`, `reversibility` (so the draft uses the same vocabulary the reviewer will).
+- `docs/design/PR_REVIEW.md` — reviewer schema for `activated_concerns`, `risk_signals`, `reversibility` (so the draft uses the same vocabulary the reviewer will).
+- `.cursor/skills/review/SKILL.md` — orchestration workflow that runs the review (this skill drafts, that one reviews).
 - `gh` CLI for reading PR metadata and applying edits.
 - Conventional commit prefix parsing — shared with `/changelog`.
 
