@@ -1,27 +1,11 @@
 ---
 name: review
-description: Principal-engineer PR review orchestrator. Reads `docs/design/CONCERNS.md` for routing, classifies the change, activates concern-specific reviewers (security, correctness, testing, reversibility, cross-cutting always on), runs them with disciplined context, then synthesizes findings. Grounds every finding in the pattern catalog at `docs/design/PR_REVIEW.md` (R1-R21, F1-F6, QC1-QC7, G1-G7). Invokes `prevent-doc-drift` as the closing step. Report-only — the author applies fixes.
+description: Routed PR review orchestrator. Load for `/review` command or any PR review task.
 ---
 
 # PR review orchestrator
 
-Skillifies the `/review` slash-command label in `AGENTS.md` with a real workflow. Conducts a **Principal Engineer level** review in six phases.
-
-This skill complements:
-
-- **`secure`** — invoked as the security pass when the `security` concern from `docs/design/CONCERNS.md` activates.
-- **`prevent-doc-drift`** — invoked in review mode as the final phase to surface guidance drift introduced by the PR.
-- **`pr-summary`** — drafts the PR description using the same vocabulary this skill reviews against.
-
-## Hard constraints
-
-These constraints are absolute and override any other instructions:
-
-1. **Report-only.** Never edit source files. The author applies fixes.
-2. **Ground every finding** in the pattern catalog at `docs/design/PR_REVIEW.md` or a concern entry in `docs/design/CONCERNS.md`. Quote the rule ID or concern ID and the canonical Do/Don't example when reporting.
-3. **`[security]` is reserved for clear violations** — F1-F6 hits, backend allowlist bypasses, token leaks, or known CVEs. Speculative or theoretical risks use `[suggestion]` or `[question]` from the standard prefix table in `docs/design/PR_REVIEW.md`. **False positives erode trust; prefer false negatives.**
-4. **Sentence case** for findings and remediation text.
-5. **Reads only.** No `gh pr edit`, no `git commit`, no file writes.
+Conduct a **Principal Engineer level** review in six phases.
 
 ## 1. Read the concern registry
 
@@ -131,9 +115,9 @@ Additional instructions for subsystem reviewers:
 - Do not spend tokens on generic maintainability, style, or broad "consider edge cases" advice
 - Do not duplicate a finding that is better owned by another concern
 
-### Reviewer output schema
+### Shared reviewer output schema
 
-Every reviewer emits the schema defined in `docs/design/PR_REVIEW.md` (Reviewer output schema). Reference that document for severity, confidence, and reversibility values — do not redefine them inline.
+Every reviewer emits the schema defined in `docs/design/PR_REVIEW.md` (Reviewer output schema), including the severity, confidence, and reversibility values.
 
 ## 5. Synthesize and report
 
@@ -158,12 +142,12 @@ The synthesizer must:
 - disclose when the PR's center of gravity appears only weakly covered by the current concern registry
 - suggest updating `docs/design/CONCERNS.md` when the same unowned area appears important enough to deserve subsystem-aware review
 
-Report findings ordered by severity, then confidence, using the format defined in `docs/design/PR_REVIEW.md` (Reporting, Comment prefixes, Disposition).
+Report findings ordered by severity, then confidence.
 
 Each finding should include:
 
 - concern
-- problem (with rule ID from `docs/design/PR_REVIEW.md` when applicable)
+- problem
 - why it matters
 - reversibility classification
 - suggested action
@@ -182,48 +166,6 @@ If the skill emits a "Doc-drift updates recommended" section, include it verbati
 
 The doc-drift check is **non-blocking** — guidance drift does not block merge, but unfixed drift accumulates as tech debt future reviewers and agents will pay for.
 
-## Pattern catalog
+## Pattern catalog and reporting
 
-For the unified detection table (R1-R21, F1-F6, QC1-QC7) and Go backend table (G1-G7), see `docs/design/PR_REVIEW.md`. Apply those checks during subsystem review under the `correctness-and-reliability`, `security`, and `go-backend` concerns.
-
-## Reuses
-
-- `docs/design/CONCERNS.md` — concern routing, one-way doors, change classification.
-- `docs/design/PR_REVIEW.md` — pattern catalog, reviewer schema, comment prefixes, disposition.
-- `.cursor/rules/frontend-security.mdc` — F1-F6 canonical rules and Do/Don't examples (auto-loaded on `*.ts`/`*.tsx`/`*.js`/`*.jsx`).
-- `.cursor/rules/react-antipatterns.mdc` — R1-R21 canonical Do/Don't examples (load on hit).
-- `.cursor/skills/secure/SKILL.md` — invoked as the security pass when `security` activates.
-- `.cursor/skills/prevent-doc-drift/SKILL.md` — invoked in Phase 6.
-
-## Integration
-
-- **`/review`** invokes this skill directly.
-- **`/secure`** can run independently; this skill invokes it when the `security` concern activates.
-- **`/pr-summary`** drafts using the same `activated_concerns` / `risk_signals` vocabulary this skill uses, so review and summary stay in sync.
-
-## When to exit cleanly without making changes
-
-- No diff to review (e.g., invoked on `main` with no PR context) — exit with "No diff to review. Run `/review` from a PR branch or specify a target."
-- Empty PR (no source changes, only generated files) — exit with "PR contains only generated/auto-updated files. No human-reviewable changes."
-
-## Context window management
-
-- Phase 1-3: list-only; small.
-- Phase 4: each reviewer reads only its concern's relevant hunks. Do not re-read full files when changed hunks suffice.
-- Phase 5: in-memory synthesis; no additional file reads unless a finding requires verification.
-- Phase 6: `prevent-doc-drift` runs its own diff scan; this skill does not re-read the diff.
-
-Total context per run: typically under 40k tokens. Large PRs (>1k LOC) may exceed this — the synthesizer should explicitly note reduced confidence per the "Coverage note" template.
-
-## Expected invocation patterns
-
-- **From `/review`**: standard invocation on a PR branch.
-- **Author self-review**: before pushing, the author runs `/review` to catch issues reviewers would flag.
-- **Re-review after changes**: subsequent runs on the same PR focus on the new diff hunks against previous findings.
-
-## What this skill does NOT do
-
-- Fix violations — report-only, the author applies fixes.
-- Re-implement the `secure` skill's checks — it delegates the security pass.
-- Block on doc drift — Phase 6 is non-blocking by design.
-- Replace human judgment on subjective tradeoffs — flag them as `[question]` and defer.
+The unified detection table (R1-R21, F1-F6, QC1-QC7), Go backend table (G1-G7), comment prefixes, and disposition matrix all live in `docs/design/PR_REVIEW.md`. Apply those checks during subsystem review under the `correctness-and-reliability`, `security`, and `go-backend` concerns, and use the prefix and disposition tables when reporting.
