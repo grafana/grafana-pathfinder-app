@@ -9,6 +9,7 @@
  */
 
 import {
+  CHALLENGE_BLOCK_SCHEMA,
   STEP_TYPE_SCHEMAS,
   INTERACTIVE_STEP_SCHEMA,
   INTERACTIVE_MULTISTEP_SCHEMA,
@@ -37,7 +38,6 @@ function makeCtx(overrides: Partial<EnhanceContext> = {}): EnhanceContext {
   return {
     stepInfo: makeStepInfo(),
     isEligibleForChecking: true,
-    isCompleted: false,
     isCurrentlyExecuting: false,
     documentStepIndex: 5,
     documentTotalSteps: 12,
@@ -55,10 +55,18 @@ function makeCtx(overrides: Partial<EnhanceContext> = {}): EnhanceContext {
 
 describe('step-type-registry', () => {
   describe('STEP_TYPE_SCHEMAS array', () => {
-    it('contains all 7 tracked step-type schemas', () => {
-      expect(STEP_TYPE_SCHEMAS).toHaveLength(7);
+    it('contains every tracked step-type schema in fixed order', () => {
       const kinds = STEP_TYPE_SCHEMAS.map((s) => s.kind);
-      expect(kinds).toEqual(['plain', 'multistep', 'guided', 'quiz', 'terminal', 'terminal-connect', 'codeblock']);
+      expect(kinds).toEqual([
+        'plain',
+        'multistep',
+        'guided',
+        'quiz',
+        'terminal',
+        'terminal-connect',
+        'codeblock',
+        'challenge',
+      ]);
     });
 
     it('every schema has a unique idPrefix', () => {
@@ -99,7 +107,6 @@ describe('step-type-registry', () => {
       expect(props).toEqual({
         stepId: 'section-test-step-1',
         isEligibleForChecking: true,
-        isCompleted: false,
         isCurrentlyExecuting: false,
         onStepComplete: ctx.onStepComplete,
         stepIndex: 5,
@@ -250,6 +257,21 @@ describe('step-type-registry', () => {
     });
   });
 
+  describe('CHALLENGE_BLOCK_SCHEMA', () => {
+    it('refTarget is "none" — challenges do not participate in Do Section orchestration', () => {
+      expect(CHALLENGE_BLOCK_SCHEMA.refTarget).toBe('none');
+    });
+
+    it('toStepInfoExtension marks isMultiStep=false and isGuided=false', () => {
+      const ext = CHALLENGE_BLOCK_SCHEMA.toStepInfoExtension({ requirements: 'r', skippable: true });
+      expect(ext).toMatchObject({ isMultiStep: false, isGuided: false });
+    });
+
+    it('shares the quiz toEnhancedProps formula', () => {
+      expect(CHALLENGE_BLOCK_SCHEMA.toEnhancedProps).toBe(INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps);
+    });
+  });
+
   describe('idPrefix conventions match stepId numbering in symmetry tripwire', () => {
     it.each([
       [INTERACTIVE_STEP_SCHEMA, 'step'],
@@ -259,6 +281,7 @@ describe('step-type-registry', () => {
       [TERMINAL_STEP_SCHEMA, 'terminal'],
       [TERMINAL_CONNECT_STEP_SCHEMA, 'terminal-connect'],
       [CODE_BLOCK_STEP_SCHEMA, 'codeblock'],
+      [CHALLENGE_BLOCK_SCHEMA, 'challenge'],
     ])('%o uses prefix %s', (schema: StepTypeSchema, expected: string) => {
       expect(schema.idPrefix).toBe(expected);
     });

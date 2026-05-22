@@ -14,7 +14,7 @@ import { css } from '@emotion/css';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { clearAndInsertCode, useInteractiveElements } from '../../interactive-engine';
 import { STEP_STATES, type StepStateValue } from './step-states';
-import { useStandalonePersistence } from './use-standalone-persistence';
+import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import { CodeBlock } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 
@@ -33,7 +33,6 @@ export interface CodeBlockStepProps {
 
   stepId?: string;
   isEligibleForChecking?: boolean;
-  isCompleted?: boolean;
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   resetTrigger?: number;
@@ -116,7 +115,6 @@ export const CodeBlockStep = forwardRef<
       className,
       stepId,
       isEligibleForChecking = true,
-      isCompleted: parentCompleted = false,
       isCurrentlyExecuting = false,
       onStepComplete,
       resetTrigger,
@@ -137,7 +135,6 @@ export const CodeBlockStep = forwardRef<
     }
     const renderedStepId = stepId ?? generatedStepIdRef.current;
 
-    const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isInsertRunning, setIsInsertRunning] = useState(false);
     const [insertError, setInsertError] = useState<string | null>(null);
@@ -145,9 +142,9 @@ export const CodeBlockStep = forwardRef<
     // Get executeInteractiveAction for "Show me" highlighting
     const { executeInteractiveAction } = useInteractiveElements();
 
-    useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
-
-    const isCompleted = parentCompleted || isLocallyCompleted;
+    const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
+    const isStandalone = !onStepComplete;
+    const isCompleted = storedCompleted;
 
     useMemo(() => {
       validateInteractiveRequirements({ requirements, stepId: renderedStepId }, 'CodeBlockStep');
@@ -161,17 +158,21 @@ export const CodeBlockStep = forwardRef<
       stepId: renderedStepId,
       isEligibleForChecking,
       skippable,
+      sectionId, // Lets the checker write skip / objectives transitions to the store
     });
 
     const markComplete = useCallback(() => {
-      if (!isCompleted) {
-        setIsLocallyCompleted(true);
-        if (onStepComplete && renderedStepId) {
-          onStepComplete(renderedStepId);
-        }
-        onComplete?.();
+      if (isCompleted) {
+        return;
       }
-    }, [isCompleted, onStepComplete, onComplete, renderedStepId]);
+      if (isStandalone) {
+        markStepCompleted(renderedStepId, sectionId, 'manual');
+      }
+      if (onStepComplete && renderedStepId) {
+        onStepComplete(renderedStepId);
+      }
+      onComplete?.();
+    }, [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]);
 
     const handleShowMe = useCallback(async () => {
       if (isShowRunning) {

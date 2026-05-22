@@ -6,7 +6,8 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { useStepChecker } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
-import { useStandalonePersistence } from './use-standalone-persistence';
+import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import type { ProgressReason } from '../../global-state/progress-events';
 
 // ============ Types ============
 
@@ -45,7 +46,6 @@ export interface InteractiveQuizProps {
   // Section integration props
   stepId?: string;
   isEligibleForChecking?: boolean;
-  isCompleted?: boolean;
   onStepComplete?: (stepId: string) => void;
   disabled?: boolean;
   resetTrigger?: number;
@@ -120,7 +120,6 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   children,
   stepId: providedStepId,
   isEligibleForChecking = true,
-  isCompleted: parentCompleted = false,
   onStepComplete,
   disabled = false,
   resetTrigger,
@@ -141,10 +140,31 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   // State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [attempts, setAttempts] = useState(0);
-  const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
 
-  // Persist standalone step completion across page refreshes
-  useStandalonePersistence(stepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
+  // Completion lives in the store. Standalone quizzes (no `onStepComplete`)
+  // write directly; section-managed quizzes notify the section, which
+  // writes through its own persist effect.
+  const { completed: storedCompleted } = useStepCompletion(stepId, sectionId);
+  const isStandalone = !onStepComplete;
+  // `reason` flows into the `pathfinder:progress` event so downstream
+  // consumers can distinguish a correct-answer completion (`'manual'`)
+  // from a user-initiated skip (`'skipped'`). The checker's own skip
+  // bridge writes `'skipped'` first; without this reason plumbing the
+  // standalone store write here would silently overwrite it with
+  // `'manual'`, making the event lie about intent.
+  const persistCompletion = useCallback(
+    (reason: ProgressReason = 'manual') => {
+      if (isStandalone) {
+        markStepCompleted(stepId, sectionId, reason);
+      }
+    },
+    [isStandalone, stepId, sectionId]
+  );
+  const persistReset = useCallback(() => {
+    if (isStandalone) {
+      resetStep(stepId, sectionId);
+    }
+  }, [isStandalone, stepId, sectionId]);
   const [lastResult, setLastResult] = useState<'none' | 'correct' | 'incorrect'>('none');
   const [showHint, setShowHint] = useState<string | null>(null);
   const [isRevealed, setIsRevealed] = useState(false);
@@ -165,12 +185,13 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     explanation,
     canSkip,
     markSkipped,
-    resetStep,
+    resetStep: checkerResetStep,
   } = useStepChecker({
     requirements,
     stepId,
     isEligibleForChecking,
     skippable,
+    sectionId, // Lets the checker write skip transitions to the store
   });
 
   // Handle reset trigger from parent section.
@@ -179,21 +200,24 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     if (resetTrigger && resetTrigger > 0) {
       setSelectedIds(new Set());
       setAttempts(0);
-      setIsLocallyCompleted(false);
+      persistReset();
       setLastResult('none');
       setShowHint(null);
       setIsRevealed(false);
       // Re-shuffle on retry so the user can't lean on remembered positions.
       setDisplayChoices(shuffle ? shuffleQuizChoices(choices) : choices);
-      if (resetStep) {
-        resetStep();
+      // Section already wrote the store via `resetSteps(tailStepIds)`;
+      // suppress the per-child store write so the broadcast doesn't fan
+      // out and wipe preceding completions (parity with interactive-step).
+      if (checkerResetStep) {
+        checkerResetStep({ skipStoreWrite: true });
       }
     }
   }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Compute effective completion state
-  const isCompleted = parentCompleted || stepCompleted || isLocallyCompleted;
+  const isCompleted = storedCompleted || stepCompleted;
 
   // Get correct answer IDs
   const correctIds = useMemo(() => new Set(choices.filter((c) => c.correct).map((c) => c.id)), [choices]);
@@ -322,7 +346,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 
     if (isCorrect) {
       setLastResult('correct');
-      setIsLocallyCompleted(true);
+      persistCompletion();
       setShowHint(null);
 
       // Report analytics with detailed quiz data
@@ -347,7 +371,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       // Check if max attempts reached (for max-attempts mode)
       if (completionMode === 'max-attempts' && newAttempts >= maxAttempts) {
         setIsRevealed(true);
-        setIsLocallyCompleted(true);
+        persistCompletion();
 
         // Report analytics with detailed quiz data (revealed = true)
         reportAppInteraction(UserInteraction.StepAutoCompleted, buildQuizAnalyticsProps(false, newAttempts, true));
@@ -368,6 +392,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     maxAttempts,
     choices,
     buildQuizAnalyticsProps,
+    persistCompletion,
   ]);
 
   // Handle skip
@@ -375,11 +400,11 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     if (markSkipped) {
       markSkipped();
     }
-    setIsLocallyCompleted(true);
+    persistCompletion('skipped');
     if (onStepComplete && stepId) {
       onStepComplete(stepId);
     }
-  }, [markSkipped, onStepComplete, stepId]);
+  }, [markSkipped, onStepComplete, stepId, persistCompletion]);
 
   // Choice state type
   type ChoiceState = 'default' | 'selected' | 'correct' | 'incorrect' | 'revealed';

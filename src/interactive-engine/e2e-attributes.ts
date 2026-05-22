@@ -26,10 +26,10 @@ export interface E2ECommentBoxAttributeOptions {
 
   /**
    * Selector string for the current target element (E2E contract).
-   * Exposed as data-test-reftarget so the runner can drive actions from the DOM only.
+   * Exposed as data-test-refTarget so the runner can drive actions from the DOM only.
    * Omit for noop (no target).
    */
-  reftarget?: string;
+  refTarget?: string;
 }
 
 /**
@@ -67,7 +67,7 @@ export function applyE2ECommentBoxAttributes(commentBox: HTMLElement, options?: 
   }
 
   // E2E: current target selector (absent for noop)
-  if (options.reftarget) {
-    commentBox.setAttribute('data-test-reftarget', options.reftarget);
+  if (options.refTarget) {
+    commentBox.setAttribute('data-test-refTarget', options.refTarget);
   }
 }

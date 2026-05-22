@@ -23,7 +23,7 @@ import { CodeBlock } from '../../docs-retrieval';
 import { scrollUntilElementFound } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { STEP_STATES } from './step-states';
-import { useStandalonePersistence } from './use-standalone-persistence';
+import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -120,6 +120,14 @@ const mapDatasourceTypeToLanguage = (datasourceType: string | null): string => {
   return typeMapping[datasourceType.toLowerCase()] || 'promql';
 };
 
+/**
+ * Last-resort fallback counter when a component is mounted WITHOUT a
+ * `stepId` prop. In production the JSON parser now always emits a
+ * stable `stepId` (author-supplied `id` or `deriveStepId(...)`), so this
+ * counter only fires from test harnesses / fixtures that construct
+ * step components directly. The unstable `standalone-step-N` ID is
+ * tolerable in that context because those mounts are throwaway.
+ */
 let anonymousStepCounter = 0;
 
 /** Reset the anonymous step counter (called by resetInteractiveCounters). */
@@ -160,7 +168,6 @@ export const InteractiveStep = forwardRef<
       // New unified state management props (passed by parent)
       stepId,
       isEligibleForChecking = true,
-      isCompleted: parentCompleted = false,
       isCurrentlyExecuting = false,
       onStepComplete,
       resetTrigger,
@@ -192,15 +199,27 @@ export const InteractiveStep = forwardRef<
     );
 
     // Local UI state
-    const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isDoRunning, setIsDoRunning] = useState(false);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
     const [lazyScrollError, setLazyScrollError] = useState<string | null>(null);
     const [lastAttemptedAction, setLastAttemptedAction] = useState<'show' | 'do' | null>(null);
 
-    // Persist standalone step completion across page refreshes
-    useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
+    // Completion state lives in the store. Section-managed steps still notify
+    // the parent via `onStepComplete` (which writes through the section's
+    // persist effect); standalone steps must write to the store themselves.
+    const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
+    const isStandalone = !onStepComplete;
+    const persistCompletion = useCallback(() => {
+      if (isStandalone) {
+        markStepCompleted(renderedStepId, sectionId, 'manual');
+      }
+    }, [isStandalone, renderedStepId, sectionId]);
+    const persistReset = useCallback(() => {
+      if (isStandalone) {
+        resetStep(renderedStepId, sectionId);
+      }
+    }, [isStandalone, renderedStepId, sectionId]);
 
     // Check for customized value from parent AssistantBlockWrapper context
     const assistantBlockValue = useAssistantBlockValue();
@@ -224,8 +243,11 @@ export const InteractiveStep = forwardRef<
       setCurrentTargetValue(newValue);
     }, []);
 
-    // Combined completion state (parent takes precedence for coordination)
-    const isCompleted = parentCompleted || isLocallyCompleted;
+    // Single source of truth: the completion store. For section-managed
+    // steps, the section's persist effect writes through to the store on
+    // COMPLETE_STEP; for standalone steps, `persistCompletion()` above
+    // writes directly.
+    const isCompleted = storedCompleted;
 
     // Runtime validation: check for impossible requirement configurations
     useEffect(() => {
@@ -258,16 +280,15 @@ export const InteractiveStep = forwardRef<
       lazyRender, // Enable progressive scroll discovery for virtualized containers
       scrollContainer, // CSS selector for scroll container
       disabled, // Pass through for auto-completion suppression
+      sectionId, // Lets the checker write skip / objectives transitions to the store
       onStepComplete, // Pass through for objectives auto-completion
       onComplete, // Pass through for objectives auto-completion
     });
 
-    // Combined completion state: objectives always win, skipped also counts as completed (clarification 1, 2)
+    // Combined completion state: store-persisted OR checker-derived (objectives
+    // / skipped are render-time signals that may not yet have persisted).
     const isCompletedWithObjectives =
-      parentCompleted ||
-      isLocallyCompleted ||
-      checker.completionReason === 'objectives' ||
-      checker.completionReason === 'skipped';
+      storedCompleted || checker.completionReason === 'objectives' || checker.completionReason === 'skipped';
 
     // Determine if step should show action buttons
     // Section steps require both eligibility AND requirements to be met
@@ -337,8 +358,7 @@ export const InteractiveStep = forwardRef<
 
     // Handle form validation completion
     const handleFormValidationComplete = useCallback(() => {
-      // Mark as completed locally and notify parent
-      setIsLocallyCompleted(true);
+      persistCompletion();
 
       // Notify parent if we have the callback (section coordination)
       if (onStepComplete && stepId) {
@@ -349,7 +369,7 @@ export const InteractiveStep = forwardRef<
       if (onComplete) {
         onComplete();
       }
-    }, [stepId, onStepComplete, onComplete]);
+    }, [stepId, onStepComplete, onComplete, persistCompletion]);
 
     // Strip @@CLEAR@@ prefix from expected value for form validation
     // This prefix is a command to clear the form before filling, not part of the expected value
@@ -374,16 +394,23 @@ export const InteractiveStep = forwardRef<
       onValid: handleFormValidationComplete,
     });
 
-    // Handle reset trigger from parent section
+    // Handle reset trigger from parent section.
+    //
+    // The section has already cleared the store for the tail steps via
+    // `resetSteps(tailStepIds, sectionId)` before bumping `resetTrigger`.
+    // This effect runs for EVERY child in the section — its job is to
+    // clear local UI state (error banners, transient FSM flags). We pass
+    // `{ skipStoreWrite: true }` to `checker.resetStep` so the FSM-only
+    // reset doesn't fan out a per-step store write and wipe preceding
+    // completions the user wanted to keep (regression from PR-#909's
+    // `writeStoreReset` mirror).
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
-        // Reset local completion state
-        setIsLocallyCompleted(false);
+        persistReset();
         setPostVerifyError(null);
 
-        // Reset step checker state including skipped status
         if (checker.resetStep) {
-          checker.resetStep();
+          checker.resetStep({ skipStoreWrite: true });
         }
       }
     }, [resetTrigger, stepId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -397,7 +424,7 @@ export const InteractiveStep = forwardRef<
       try {
         // NEW: If completeEarly flag is set, mark as completed BEFORE action execution
         if (completeEarly) {
-          setIsLocallyCompleted(true);
+          persistCompletion();
           if (onStepComplete && stepId) {
             onStepComplete(stepId);
           }
@@ -446,8 +473,7 @@ export const InteractiveStep = forwardRef<
 
         // NEW: If NOT completeEarly, mark complete after action (normal flow)
         if (!completeEarly) {
-          // Mark as completed locally and notify parent
-          setIsLocallyCompleted(true);
+          persistCompletion();
 
           // Notify parent if we have the callback (section coordination)
           if (onStepComplete && stepId) {
@@ -482,6 +508,7 @@ export const InteractiveStep = forwardRef<
       onStepComplete,
       onComplete,
       renderedStepId,
+      persistCompletion,
     ]);
 
     // Expose execute method for parent (sequence execution)
@@ -545,8 +572,7 @@ export const InteractiveStep = forwardRef<
           }
         }
 
-        // Mark as completed locally and notify parent
-        setIsLocallyCompleted(true);
+        persistCompletion();
 
         // Notify parent if we have the callback (section coordination)
         if (onStepComplete && stepId) {
@@ -583,6 +609,7 @@ export const InteractiveStep = forwardRef<
         onStepComplete,
         onComplete,
         analyticsStepMeta,
+        persistCompletion,
       ]
     );
 
@@ -643,7 +670,7 @@ export const InteractiveStep = forwardRef<
 
         // If doIt is false, mark as completed after showing (like the old highlight-only behavior)
         if (!doIt) {
-          setIsLocallyCompleted(true);
+          persistCompletion();
 
           // Notify parent if we have the callback (section coordination)
           if (onStepComplete && stepId) {
@@ -678,6 +705,7 @@ export const InteractiveStep = forwardRef<
       onComplete,
       stepId,
       analyticsStepMeta,
+      persistCompletion,
     ]);
 
     // Handle individual "Do it" action (delegates to executeStep)
@@ -747,8 +775,7 @@ export const InteractiveStep = forwardRef<
         return;
       }
 
-      // Reset local completion state
-      setIsLocallyCompleted(false);
+      persistReset();
       setPostVerifyError(null);
 
       // Reset skipped state if the checker has a reset function
@@ -764,9 +791,9 @@ export const InteractiveStep = forwardRef<
       }
       // No need for complex timing logic - the section's getStepEligibility
       // will use the updated completedSteps state on the next render
-    }, [disabled, isDoRunning, isShowRunning, stepId, onStepReset]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [disabled, isDoRunning, isShowRunning, stepId, onStepReset, persistReset]); // eslint-disable-line react-hooks/exhaustive-deps
     // Intentionally excluding to prevent circular dependencies:
-    // - setIsLocallyCompleted, setPostVerifyError: stable React setters
+    // - setPostVerifyError: stable React setter
     // - checker.resetStep: including 'checker' would cause infinite re-creation since checker depends on component state
 
     // Handle retry for lazy scroll failures

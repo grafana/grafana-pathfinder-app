@@ -13,11 +13,10 @@
  * React renders within a single document, and `resetRegistry()` is
  * called by `resetInteractiveCounters()` whenever new content loads.
  *
- * Public functions exposed from `interactive-section.tsx` for
- * back-compat (`registerSectionSteps`, `getTotalDocumentSteps`,
- * `getDocumentStepPosition`) are re-exported there as well so existing
- * importers (`content-renderer.tsx`, `use-standalone-persistence.ts`)
- * do not need to change.
+ * Lives in `global-state/` (Tier 1) so the canonical completion store
+ * (also Tier 1) can read the document total without importing into a
+ * higher tier. The interactive-section barrel re-exports the public
+ * surface for back-compat with existing UI-tier callers.
  */
 
 /** One section's entry in the global step registry. */

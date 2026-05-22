@@ -36,7 +36,7 @@ export function getResumeInfo(stepComponents: StepInfo[], currentStepIndex: numb
  * The first step is always eligible. Subsequent steps are eligible only when
  * every preceding step is either completed or a noop (informational) step.
  */
-export function computeStepEligibility(stepComponents: StepInfo[], completedSteps: Set<string>): boolean[] {
+export function computeStepEligibility(stepComponents: StepInfo[], completedSteps: ReadonlySet<string>): boolean[] {
   return stepComponents.map((_, index) => {
     if (index === 0) {
       return true;

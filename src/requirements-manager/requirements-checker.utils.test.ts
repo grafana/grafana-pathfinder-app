@@ -6,9 +6,13 @@ import {
 } from './requirements-checker.utils';
 import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
 import { ContextService } from '../context-engine';
+import { getContentKey } from '../global-state/content-key';
 
 // Mock dom-utils functions with default return values
-// Note: sectionCompletedCheck and formValidCheck are NOT mocked - they use actual DOM
+// Note: formValidCheck is NOT mocked — it uses actual DOM.
+// sectionCompletedCheck lives in `./checks/section-completed-check` and
+// is not part of this lib/dom mock anymore (it's used through the route
+// map by `checkRequirements`).
 jest.mock('../lib/dom', () => {
   const actual = jest.requireActual('../lib/dom');
   return {
@@ -16,7 +20,7 @@ jest.mock('../lib/dom', () => {
     // Only mock these two functions that don't work well in test environment without DOM setup
     reftargetExistsCheck: jest.fn().mockResolvedValue({ requirement: 'exists-reftarget', pass: true }),
     navmenuOpenCheck: jest.fn().mockResolvedValue({ requirement: 'navmenu-open', pass: true }),
-    // sectionCompletedCheck and formValidCheck use actual implementation for DOM-based tests
+    // formValidCheck uses actual implementation for DOM-based tests
   };
 });
 
@@ -676,6 +680,58 @@ describe('requirements-checker.utils', () => {
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
       expect(result.error[0]!.error).toContain('must be completed first');
+    });
+
+    describe('storage-backed (mount-free) path', () => {
+      // Pulls `sectionDoneStorage` directly through the user-storage barrel
+      // — same singleton the section component writes to in production.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { sectionDoneStorage, StorageKeys } = require('../lib/user-storage');
+
+      beforeEach(() => {
+        // Clear localStorage so cross-test pollution can't make a later
+        // "section unmounted" case spuriously pass on a stale entry.
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith(StorageKeys.SECTION_DONE_PREFIX))
+          .forEach((k) => localStorage.removeItem(k));
+      });
+
+      it('passes when sectionDoneStorage has a true entry — section NOT in DOM', async () => {
+        // No DOM element exists for this section. Pre-storage behaviour
+        // would have failed; storage-first behaviour passes.
+        document.body.innerHTML = '';
+        await sectionDoneStorage.set(getContentKey(), 'section-cross-milestone', true);
+
+        const result = await checkRequirements({
+          requirements: 'section-completed:cross-milestone',
+        });
+
+        expect(result.pass).toBe(true);
+      });
+
+      it('clearing the done bit re-blocks the requirement even though the DOM is empty', async () => {
+        await sectionDoneStorage.set(getContentKey(), 'section-redo-test', true);
+        await sectionDoneStorage.clear(getContentKey(), 'section-redo-test');
+        document.body.innerHTML = '';
+
+        const result = await checkRequirements({
+          requirements: 'section-completed:redo-test',
+        });
+
+        expect(result.pass).toBe(false);
+      });
+
+      it('falls back to DOM when storage is empty (transitional window after isCompleted flip)', async () => {
+        // No storage entry but DOM shows complete — the storage write
+        // hasn't resolved yet. The DOM fallback covers this transition.
+        document.body.innerHTML = `<div id="section-just-finished" class="completed"></div>`;
+
+        const result = await checkRequirements({
+          requirements: 'section-completed:just-finished',
+        });
+
+        expect(result.pass).toBe(true);
+      });
     });
   });
 

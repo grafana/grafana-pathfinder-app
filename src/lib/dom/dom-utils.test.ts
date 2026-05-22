@@ -93,12 +93,15 @@ describe('extractInteractiveDataFromElement', () => {
     const result = extractInteractiveDataFromElement(element);
 
     expect(result).toEqual({
-      reftarget: 'Click me',
-      targetaction: 'button',
-      targetvalue: 'submit',
+      refTarget: 'Click me',
+      targetAction: 'button',
+      targetValue: 'submit',
       requirements: 'logged-in',
       objectives: 'learn-navigation',
       skippable: false,
+      lazyRender: undefined,
+      scrollContainer: undefined,
+      openGuide: undefined,
       tagName: 'button',
       className: 'btn-primary',
       id: 'submit-btn',
@@ -116,16 +119,19 @@ describe('extractInteractiveDataFromElement', () => {
     const result = extractInteractiveDataFromElement(element);
 
     expect(result).toEqual({
-      reftarget: '',
-      targetaction: '',
+      refTarget: '',
+      targetAction: '',
+      targetValue: undefined,
       requirements: undefined,
       objectives: undefined,
       skippable: false,
+      lazyRender: undefined,
+      scrollContainer: undefined,
+      openGuide: undefined,
       tagName: 'div',
       className: undefined,
       id: undefined,
       textContent: 'Simple element',
-      targetvalue: undefined,
       parentTagName: undefined,
       timestamp: expect.any(Number),
       customData: undefined,
@@ -155,7 +161,7 @@ describe('extractInteractiveDataFromElement', () => {
     extractInteractiveDataFromElement(element);
 
     expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining('reftarget "This is a very long suspicious value" matches element text')
+      expect.stringContaining('refTarget "This is a very long suspicious value" matches element text')
     );
   });
 

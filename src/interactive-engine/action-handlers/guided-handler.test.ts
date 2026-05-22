@@ -48,8 +48,8 @@ describe('GuidedHandler', () => {
   describe('execute', () => {
     it('should set state to running and then completed', async () => {
       const data = {
-        reftarget: '#test',
-        targetaction: 'guided',
+        refTarget: '#test',
+        targetAction: 'guided',
         tagName: 'button',
         textContent: 'Test',
         timestamp: Date.now(),
@@ -63,8 +63,8 @@ describe('GuidedHandler', () => {
 
     it('should call waitForReactUpdates when performGuided is false', async () => {
       const data = {
-        reftarget: '#test',
-        targetaction: 'guided',
+        refTarget: '#test',
+        targetAction: 'guided',
         tagName: 'button',
         textContent: 'Test',
         timestamp: Date.now(),
@@ -145,7 +145,7 @@ describe('GuidedHandler', () => {
         expect.any(Function),
         undefined,
         undefined,
-        expect.objectContaining({ actionType: 'highlight', reftarget: refTarget })
+        expect.objectContaining({ actionType: 'highlight', refTarget: refTarget })
       );
 
       consoleErrorSpy.mockRestore();
