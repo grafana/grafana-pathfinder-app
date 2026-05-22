@@ -35,7 +35,8 @@
  * SECURITY NOTE: Data is NOT encrypted. Do not store sensitive information.
  */
 
-import { usePluginUserStorage } from '@grafana/runtime';
+import { AppEvents } from '@grafana/data';
+import { getAppEvents, usePluginUserStorage } from '@grafana/runtime';
 import { useCallback, useRef, useEffect } from 'react';
 import { z } from 'zod';
 
@@ -161,6 +162,52 @@ const LIMITS = {
 } as const;
 
 // ============================================================================
+// QUOTA WARNING (N-3 follow-up from PR #909)
+// ============================================================================
+
+/**
+ * Module-level guard so the user only sees one quota-exceeded toast per
+ * page lifecycle. The previous behavior swallowed every QuotaExceededError
+ * into a `console.warn`, so the user never learned that their progress
+ * had silently stopped persisting. See PR #909.
+ */
+let hasWarnedAboutQuota = false;
+
+/**
+ * Publish a single user-visible warning toast the first time any storage
+ * write hits a `QuotaExceededError`. Subsequent calls are no-ops to avoid
+ * spamming the user as repeated writes pile up against the same full quota.
+ *
+ * Wrapped in try/catch because `getAppEvents()` can throw in environments
+ * where `@grafana/runtime` isn't fully initialized (notably some tests).
+ */
+function warnQuotaExceededOnce(): void {
+  if (hasWarnedAboutQuota) {
+    return;
+  }
+  hasWarnedAboutQuota = true;
+  try {
+    getAppEvents().publish({
+      type: AppEvents.alertWarning.name,
+      payload: [
+        'Browser storage full',
+        'Your progress may not be saved. Try resetting old guide progress via My Learning to free up space.',
+      ],
+    });
+  } catch {
+    // getAppEvents() can throw in test envs without a grafana/runtime mock.
+  }
+}
+
+/**
+ * Test-only reset of the module-level `hasWarnedAboutQuota` flag so
+ * suites can exercise the once-per-lifecycle contract deterministically.
+ */
+export function __resetQuotaWarningForTests(): void {
+  hasWarnedAboutQuota = false;
+}
+
+// ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
 
@@ -239,6 +286,7 @@ function createLocalStorage(): UserStorage {
         // SECURITY: Handle QuotaExceededError
         if (error instanceof Error && error.name === 'QuotaExceededError') {
           console.warn('localStorage quota exceeded', error);
+          warnQuotaExceededOnce();
           throw error;
         }
         console.error(`Failed to set item in localStorage: ${key}`, error);
@@ -718,6 +766,7 @@ export const journeyCompletionStorage = {
       // SECURITY: Handle QuotaExceededError gracefully
       if (error instanceof Error && error.name === 'QuotaExceededError') {
         console.warn('Storage quota exceeded, clearing old journey data');
+        warnQuotaExceededOnce();
         await journeyCompletionStorage.cleanup();
         // Retry after cleanup
         await journeyCompletionStorage.set(journeyBaseUrl, percentage);
@@ -865,6 +914,7 @@ export const interactiveCompletionStorage = {
       // SECURITY: Handle QuotaExceededError gracefully
       if (error instanceof Error && error.name === 'QuotaExceededError') {
         console.warn('Storage quota exceeded, clearing old interactive completion data');
+        warnQuotaExceededOnce();
         await interactiveCompletionStorage.cleanup();
         // Retry after cleanup
         await interactiveCompletionStorage.set(contentKey, percentage);
@@ -965,6 +1015,7 @@ export const tabStorage = {
       // SECURITY: Handle QuotaExceededError
       if (error instanceof Error && error.name === 'QuotaExceededError') {
         console.warn('Storage quota exceeded, reducing number of tabs');
+        warnQuotaExceededOnce();
         // Save only the most recent 25 tabs
         const reducedTabs = tabs.slice(-25);
         const storage = createUserStorage();

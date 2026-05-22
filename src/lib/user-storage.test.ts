@@ -1,11 +1,25 @@
+import { getAppEvents } from '@grafana/runtime';
+
 import {
+  __resetQuotaWarningForTests,
   interactiveCompletionStorage,
   interactiveStepStorage,
+  journeyCompletionStorage,
   sectionAcknowledgementStorage,
+  tabStorage,
   unwrapEnvelope,
   wrapEnvelope,
 } from './user-storage';
 import { StorageKeys } from './storage-keys';
+
+// Mock `@grafana/runtime` so the quota-toast helper can publish through a
+// jest spy. The mock is also necessary because user-storage.ts statically
+// imports `usePluginUserStorage` and `getAppEvents` from this module, and
+// the helper calls `getAppEvents()` at runtime.
+jest.mock('@grafana/runtime', () => ({
+  usePluginUserStorage: jest.fn(),
+  getAppEvents: jest.fn(),
+}));
 
 // ============================================================================
 // ENVELOPE FORMAT TESTS
@@ -337,5 +351,103 @@ describe('interactiveStepStorage.clearAll — ack prefix sweep (#842)', () => {
 
     expect(await sectionAcknowledgementStorage.get('guide-a', 'section-1')).toBeNull();
     expect(await sectionAcknowledgementStorage.get('guide-b', 'section-2')).toBeNull();
+  });
+});
+
+// ============================================================================
+// QUOTA-EXCEEDED TOAST (N-3 follow-up from PR #909)
+// ============================================================================
+
+describe('warnQuotaExceededOnce — surfaces a single toast across writes', () => {
+  const publishMock = jest.fn();
+  const originalSetItem = Storage.prototype.setItem;
+  let setItemSpy: jest.SpyInstance;
+  // When true, the next `setItem` call throws a QuotaExceededError and then
+  // the flag flips back to false so the storage helper's fallback / retry
+  // write can complete normally. This mirrors the real browser shape where a
+  // single write trips the quota but a smaller / cleaned-up write succeeds.
+  let throwQuotaOnNextWrite = false;
+
+  beforeEach(() => {
+    localStorage.clear();
+    publishMock.mockClear();
+    __resetQuotaWarningForTests();
+    (getAppEvents as jest.Mock).mockReturnValue({ publish: publishMock });
+    throwQuotaOnNextWrite = false;
+
+    setItemSpy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string
+    ) {
+      if (throwQuotaOnNextWrite) {
+        throwQuotaOnNextWrite = false;
+        const err = new Error('Quota exceeded');
+        err.name = 'QuotaExceededError';
+        throw err;
+      }
+      return originalSetItem.call(this, key, value);
+    });
+  });
+
+  afterEach(() => {
+    setItemSpy.mockRestore();
+  });
+
+  it('publishes exactly one alert-warning toast across many quota-exceeded writes', async () => {
+    // tabStorage.setTabs: first write throws → catch reduces & retries.
+    throwQuotaOnNextWrite = true;
+    await tabStorage.setTabs(['tab-1']);
+
+    throwQuotaOnNextWrite = true;
+    await tabStorage.setTabs(['tab-2']);
+
+    // journeyCompletionStorage.set: first write throws → catch runs
+    // cleanup() (no-op here, since entries < MAX) then retries via recursive
+    // set(), which writes successfully because the flag has already flipped.
+    throwQuotaOnNextWrite = true;
+    await journeyCompletionStorage.set('journey-a', 50);
+
+    throwQuotaOnNextWrite = true;
+    await journeyCompletionStorage.set('journey-b', 75);
+
+    // interactiveCompletionStorage.set: identical shape to the journey path.
+    throwQuotaOnNextWrite = true;
+    await interactiveCompletionStorage.set('guide-a', 25);
+
+    throwQuotaOnNextWrite = true;
+    await interactiveCompletionStorage.set('guide-b', 90);
+
+    expect(publishMock).toHaveBeenCalledTimes(1);
+    expect(publishMock).toHaveBeenCalledWith({
+      type: 'alert-warning',
+      payload: [
+        'Browser storage full',
+        'Your progress may not be saved. Try resetting old guide progress via My Learning to free up space.',
+      ],
+    });
+  });
+
+  it('publishes the toast again after the module flag is reset', async () => {
+    throwQuotaOnNextWrite = true;
+    await tabStorage.setTabs(['tab-1']);
+    expect(publishMock).toHaveBeenCalledTimes(1);
+
+    // Simulate a fresh page lifecycle.
+    __resetQuotaWarningForTests();
+
+    throwQuotaOnNextWrite = true;
+    await tabStorage.setTabs(['tab-2']);
+    expect(publishMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not throw when getAppEvents() itself throws (e.g. uninitialized runtime)', async () => {
+    (getAppEvents as jest.Mock).mockImplementation(() => {
+      throw new Error('grafana/runtime not initialized');
+    });
+
+    throwQuotaOnNextWrite = true;
+    await expect(tabStorage.setTabs(['tab-1'])).resolves.toBeUndefined();
+    expect(publishMock).not.toHaveBeenCalled();
   });
 });
