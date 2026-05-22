@@ -28,11 +28,15 @@
 
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
-import { interactiveCompletionStorage, interactiveStepStorage } from '../lib/user-storage';
+import {
+  interactiveCompletionStorage,
+  interactiveStepStorage,
+  sectionAcknowledgementStorage,
+} from '../lib/user-storage';
 import { StorageKeys } from '../lib/storage-keys';
 
 import { getContentKey } from './content-key';
-import { getTotalDocumentSteps } from './section-registry';
+import { getRegisteredSectionCount, getTotalDocumentSteps } from './section-registry';
 import { dispatchProgress, type ProgressReason } from './progress-events';
 
 /** Synthetic section ID for steps that are not inside an `<InteractiveSection>`. */
@@ -271,7 +275,11 @@ function persistSection(contentKey: string, sectionId: string): void {
   // dispatch elsewhere.
   if (!isPreview && completedIds.size === 0 && typeof window !== 'undefined') {
     const guideTotal = interactiveStepStorage.countAllCompleted(contentKey);
-    if (guideTotal === 0) {
+    // Both counts must be zero — passive acks are real progress even
+    // when no interactive step is recorded, so clearing the last step
+    // in a mixed guide must not fire "cleared" while acks remain.
+    const ackTotal = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
+    if (guideTotal === 0 && ackTotal === 0) {
       window.dispatchEvent(new CustomEvent('interactive-progress-cleared', { detail: { contentKey } }));
     }
   }
@@ -280,12 +288,39 @@ function persistSection(contentKey: string, sectionId: string): void {
 function refreshGuidePercentage(contentKey: string): number | undefined {
   const docTotal = getTotalDocumentSteps();
   if (docTotal < 1) {
-    return undefined;
+    // All-passive guide (F-1, #909 follow-up): no interactive steps
+    // means no `interactiveStepStorage` writes, so derive the
+    // percentage from `sectionAcknowledgementStorage` — the namespace
+    // the production ack writer actually persists to.
+    const sectionCount = getRegisteredSectionCount();
+    if (sectionCount < 1) {
+      return undefined;
+    }
+    const ackCount = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
+    const percentage = Math.min(100, Math.round((ackCount / sectionCount) * 100));
+    interactiveCompletionStorage.set(contentKey, percentage);
+    return percentage;
   }
   const allCompleted = interactiveStepStorage.countAllCompleted(contentKey);
   const percentage = Math.round((allCompleted / docTotal) * 100);
   interactiveCompletionStorage.set(contentKey, percentage);
   return percentage;
+}
+
+/**
+ * Public entry point for callers that update progress outside the
+ * step-write path (e.g. all-passive section ack), where `persistSection`
+ * is never called and would otherwise leave the percentage stale.
+ */
+export function refreshAndNotifyGuideProgress(contentKey: string): void {
+  if (isPreviewContentKey(contentKey)) {
+    return;
+  }
+  const percentage = refreshGuidePercentage(contentKey);
+  if (percentage !== undefined) {
+    dispatchProgress({ kind: 'guide', contentKey, percentage, hasProgress: percentage > 0 });
+  }
+  notify(contentKey);
 }
 
 export interface UseStepCompletionResult {
@@ -369,7 +404,16 @@ export function getGuideProgress(contentKey: string): GuideProgress {
   const completedRaw = interactiveStepStorage.countAllCompleted(contentKey);
   const completed = completedRaw < 0 ? 0 : completedRaw;
   if (total < 1) {
-    return { completed, total, percentage: 0 };
+    // All-passive branch (F-1, #909 follow-up): `completed` / `total`
+    // here count sections, not steps, since there are no interactive
+    // steps to divide by.
+    const sectionCount = getRegisteredSectionCount();
+    const ackCount = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
+    if (sectionCount < 1) {
+      return { completed: 0, total: 0, percentage: 0 };
+    }
+    const percentage = Math.min(100, Math.round((ackCount / sectionCount) * 100));
+    return { completed: ackCount, total: sectionCount, percentage };
   }
   // Defensive ceiling. `countAllCompleted` reads roster-blind from
   // storage; if a guide ships a v2 schema that renames or removes a

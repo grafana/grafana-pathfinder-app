@@ -1332,6 +1332,31 @@ export const sectionAcknowledgementStorage = {
       console.warn('Failed to clear section acknowledgement state:', error);
     }
   },
+
+  /**
+   * Synchronously count acknowledged sections under `contentKey`.
+   * Mirrors `interactiveStepStorage.countAllCompleted`; required so
+   * the completion store can derive an all-passive guide percentage
+   * without an async read.
+   */
+  countAllAcknowledged(contentKey: string): number {
+    try {
+      const prefix = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-`;
+      let count = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix)) {
+          const value = localStorage.getItem(key);
+          if (value === 'true') {
+            count++;
+          }
+        }
+      }
+      return count;
+    } catch {
+      return 0;
+    }
+  },
 };
 
 /**

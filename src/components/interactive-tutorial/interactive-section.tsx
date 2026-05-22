@@ -70,6 +70,7 @@ import {
   markStepCompleted,
   markStepsCompleted,
   reconcileSection,
+  refreshAndNotifyGuideProgress,
   resetSection as resetSectionStore,
   resetSteps,
   useSectionCompletion,
@@ -448,9 +449,12 @@ export function InteractiveSection({
     }
   }, [isCompleted, isPreviewMode, sectionId]);
 
-  // Trigger reactive checks when section completion status changes
+  // Trigger reactive checks when section completion status changes.
+  // The `gateAnalysis.isAllPassive` branch lets sections with zero
+  // interactive steps still persist `sectionDoneStorage` + refresh
+  // guide progress (F-1, #909 follow-up).
   useEffect(() => {
-    if (isCompleted && stepComponents.length > 0) {
+    if (isCompleted && (stepComponents.length > 0 || gateAnalysis.isAllPassive)) {
       // Single unified event — replaces the two legacy CustomEvents
       // (`section-completed` on document + `interactive-section-completed`
       // on window). The `!hasEmittedGuideCompletionRef.current` guard
@@ -466,6 +470,11 @@ export function InteractiveSection({
         // Preview mode is sandboxed — keep the ephemeral check DOM-only.
         if (!isPreviewMode) {
           sectionDoneStorage.set(getContentKey(), sectionId, true);
+          // All-passive sections bypass `persistSection`, so refresh
+          // the guide percentage explicitly.
+          if (gateAnalysis.isAllPassive) {
+            refreshAndNotifyGuideProgress(getContentKey());
+          }
         }
       }
 
@@ -476,7 +485,7 @@ export function InteractiveSection({
         SequentialRequirementsManager.getInstance().watchNextStep(3000); // Watch for 3 seconds
       });
     }
-  }, [isCompleted, sectionId, stepComponents.length, isPreviewMode]);
+  }, [isCompleted, sectionId, stepComponents.length, isPreviewMode, gateAnalysis.isAllPassive]);
 
   // PRE-COMPUTE eligibility for ALL steps once (React best practice)
   // This prevents expensive recalculation on every render
@@ -1069,6 +1078,11 @@ export function InteractiveSection({
           detail: { contentKey },
         })
       );
+      // All-passive sections bypass `persistSection` on reset too;
+      // recompute so the persisted percentage drops in lockstep.
+      if (!isPreviewMode) {
+        refreshAndNotifyGuideProgress(contentKey);
+      }
     }
 
     // Reset all step states in the global manager
@@ -1099,7 +1113,7 @@ export function InteractiveSection({
         }, 100);
       }, 200);
     });
-  }, [disabled, isRunning, stepComponents, resetCollapse, clearAckAndCollapseStorage, sectionId]);
+  }, [disabled, isRunning, stepComponents, resetCollapse, clearAckAndCollapseStorage, sectionId, isPreviewMode]);
 
   /**
    * Mark the section as acknowledged (issue #842).

@@ -9,6 +9,7 @@ import {
   markStepCompleted,
   markStepsCompleted,
   reconcileSection,
+  refreshAndNotifyGuideProgress,
   resetCompletionStoreForTests,
   resetSection,
   resetStep,
@@ -23,6 +24,7 @@ import { StorageKeys } from '../lib/storage-keys';
 // In-memory mocks for the persisted-storage layer so tests are hermetic
 // and synchronous-where-they-can-be.
 const storedCompleted = new Map<string, Set<string>>(); // `${contentKey}-${sectionId}` -> ids
+const storedAcks = new Map<string, true>(); // `${contentKey}-${sectionId}` -> true
 const guidePercentages = new Map<string, number>();
 
 jest.mock('../lib/user-storage', () => ({
@@ -56,19 +58,34 @@ jest.mock('../lib/user-storage', () => ({
       guidePercentages.set(contentKey, percentage);
     }),
   },
+  sectionAcknowledgementStorage: {
+    countAllAcknowledged: jest.fn((contentKey: string) => {
+      let count = 0;
+      storedAcks.forEach((_value, key) => {
+        if (key.startsWith(`${contentKey}-`)) {
+          count++;
+        }
+      });
+      return count;
+    }),
+  },
 }));
 
 let mockTotalDocumentSteps = 0;
+let mockRegisteredSectionCount = 0;
 jest.mock('./section-registry', () => ({
   getTotalDocumentSteps: () => mockTotalDocumentSteps,
+  getRegisteredSectionCount: () => mockRegisteredSectionCount,
 }));
 
 const CONTENT_KEY = 'bundled:test-guide';
 
 beforeEach(() => {
   storedCompleted.clear();
+  storedAcks.clear();
   guidePercentages.clear();
   mockTotalDocumentSteps = 0;
+  mockRegisteredSectionCount = 0;
   resetCompletionStoreForTests();
   resetContentKeyForTests();
   setActiveTabUrl(CONTENT_KEY);
@@ -168,10 +185,53 @@ describe('completion-store', () => {
     expect(screen.getByTestId('reason').textContent).toBe('skipped');
   });
 
-  it('getGuideProgress returns 0% when total steps is unknown', () => {
-    storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1']));
+  it('getGuideProgress returns 0% when total is unknown and nothing has been completed', () => {
     mockTotalDocumentSteps = 0;
-    expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 0, percentage: 0 });
+    expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 0, percentage: 0 });
+  });
+
+  // F-1 (#909 follow-up): all-passive guides have no interactive
+  // steps, so `getGuideProgress` must derive the percentage from
+  // `sectionAcknowledgementStorage` (where the production ack writer
+  // persists) divided by `getRegisteredSectionCount()`, not from the
+  // 0/0 step-count division the pre-fix code did.
+  describe('all-passive guide progress (F-1)', () => {
+    it('returns 100% once every registered section is acknowledged', () => {
+      mockTotalDocumentSteps = 0;
+      mockRegisteredSectionCount = 1;
+      storedAcks.set(`${CONTENT_KEY}-section-passive`, true);
+      expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 1, percentage: 100 });
+    });
+
+    it('returns a partial percentage for multi-section guides with one ack', () => {
+      mockTotalDocumentSteps = 0;
+      mockRegisteredSectionCount = 4;
+      storedAcks.set(`${CONTENT_KEY}-section-1`, true);
+      expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 4, percentage: 25 });
+    });
+
+    it('returns 0% when no sections are acknowledged yet', () => {
+      mockTotalDocumentSteps = 0;
+      mockRegisteredSectionCount = 3;
+      expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 3, percentage: 0 });
+    });
+
+    it('returns 0% when no sections are registered yet (guide not mounted)', () => {
+      mockTotalDocumentSteps = 0;
+      mockRegisteredSectionCount = 0;
+      expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 0, percentage: 0 });
+    });
+
+    it('refreshAndNotifyGuideProgress persists the percentage to interactiveCompletionStorage', () => {
+      mockTotalDocumentSteps = 0;
+      mockRegisteredSectionCount = 2;
+      storedAcks.set(`${CONTENT_KEY}-section-1`, true);
+      storedAcks.set(`${CONTENT_KEY}-section-2`, true);
+
+      refreshAndNotifyGuideProgress(CONTENT_KEY);
+
+      expect(guidePercentages.get(CONTENT_KEY)).toBe(100);
+    });
   });
 
   it('getGuideProgress computes percentage when total steps is known', () => {

@@ -130,6 +130,16 @@ export function createUserStorageMock() {
       clear: jest.fn(async (contentKey: string, sectionId: string) => {
         memoryStore.delete(ackKey(contentKey, sectionId));
       }),
+      countAllAcknowledged: jest.fn((contentKey: string) => {
+        let count = 0;
+        const prefix = ackKey(contentKey, '');
+        memoryStore.forEach((value, key) => {
+          if (key.startsWith(prefix) && value === true) {
+            count++;
+          }
+        });
+        return count;
+      }),
     },
     /** Mount-free `section-completed:` requirement storage (Phase 2 follow-up
      *  for issue #13). Mirrors the two-state shape of
