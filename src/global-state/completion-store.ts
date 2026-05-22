@@ -795,29 +795,29 @@ function handleStorageEvent(event: StorageEvent): void {
     return;
   }
   // Key shape: `${INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`.
-  // `contentKey` may contain hyphens (URLs, bundled paths), so we can't
-  // naively split on '-'. Resolve against the live set of active
-  // content keys: any tab listening for a given content key either has
-  // it in `entries` (post-hydration with at least one step touched) or
-  // in `hydratedSections` (hydration started, possibly still in flight).
-  // We need both — a cross-tab event during an in-flight hydration is
-  // exactly the race the `hydrationVersion` guard exists for, but the
-  // guard never fires if the listener can't even identify the content
-  // key. Content keys we've never seen are not in our cache and need no
-  // eviction; the next render will hydrate fresh.
+  // `contentKey` may contain hyphens (URLs, bundled paths), so naive
+  // prefix matching against a single `contentKey` would misroute when
+  // one active key is a prefix of another (e.g. `bundled:loki-101` and
+  // `bundled:loki-101-extended` both match an event for the longer
+  // key). Disambiguate by reconstructing each known
+  // `(contentKey, sectionId)` pair from `hydratedSections` and
+  // requiring an exact match. Every section with an in-memory cache
+  // passes through `ensureHydrated`, which adds the pair before the
+  // async read fires and keeps it until eviction, so in-flight
+  // hydration (the exact case the `hydrationVersion` guard exists for)
+  // is still represented here. Content keys we've never seen produce
+  // no match; the next render hydrates fresh.
   const stripped = event.key.slice(StorageKeys.INTERACTIVE_STEPS_PREFIX.length);
-  const activeContentKeys = new Set<string>(entries.keys());
   for (const hydratedKey of hydratedSections) {
     const separator = hydratedKey.indexOf('::');
-    if (separator > 0) {
-      activeContentKeys.add(hydratedKey.slice(0, separator));
-    }
-  }
-  for (const contentKey of activeContentKeys) {
-    if (!stripped.startsWith(`${contentKey}-`)) {
+    if (separator <= 0) {
       continue;
     }
-    const sectionId = stripped.slice(contentKey.length + 1);
+    const contentKey = hydratedKey.slice(0, separator);
+    const sectionId = hydratedKey.slice(separator + 2);
+    if (`${contentKey}-${sectionId}` !== stripped) {
+      continue;
+    }
     evictSectionCacheForKey(contentKey, sectionId);
     // `completedCountCache` in `user-storage.ts` is also per-tab and
     // would otherwise return a stale numerator on the next

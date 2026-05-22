@@ -503,6 +503,55 @@ describe('completion-store', () => {
       expect(screen.getByTestId('completed').textContent).toBe('false');
     });
 
+    it('matches exact (contentKey, sectionId) — does not misroute when one content key is a prefix of another', async () => {
+      // Regression for the prefix-collision bug in the original
+      // listener: when one active content key (`bundled:loki-101`)
+      // is a hyphen-delimited string prefix of another
+      // (`bundled:loki-101-extended`), `stripped.startsWith(short + '-')`
+      // matched the shorter key first and evicted the wrong pair,
+      // leaving the longer guide's cache stale until the next mount.
+      const SHORT_KEY = 'bundled:loki-101';
+      const LONG_KEY = 'bundled:loki-101-extended';
+
+      setActiveTabUrl(SHORT_KEY);
+      storedCompleted.set(`${SHORT_KEY}-section-x`, new Set(['step-1']));
+      const short = render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      await flushMicrotasks();
+      expect(short.getByTestId('completed').textContent).toBe('true');
+      short.unmount();
+
+      setActiveTabUrl(LONG_KEY);
+      storedCompleted.set(`${LONG_KEY}-section-y`, new Set(['step-2']));
+      const long = render(<StepProbe stepId="step-2" sectionId="section-y" />);
+      await flushMicrotasks();
+      expect(long.getByTestId('completed').textContent).toBe('true');
+
+      // Tab A clears LONG_KEY's progress; storage event fires here for
+      // the LONG key only. Exact matching evicts the LONG pair; prefix
+      // matching would have evicted a non-existent `(SHORT_KEY, "extended-section-y")`
+      // and left the LONG cache untouched.
+      storedCompleted.delete(`${LONG_KEY}-section-y`);
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${LONG_KEY}-section-y`,
+            newValue: null,
+            oldValue: '["step-2"]',
+          })
+        );
+      });
+      await flushMicrotasks();
+      expect(long.getByTestId('completed').textContent).toBe('false');
+      long.unmount();
+
+      // SHORT_KEY cache must still hold its completion — the exact-match
+      // path never touched it.
+      setActiveTabUrl(SHORT_KEY);
+      const shortAgain = render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      expect(shortAgain.getByTestId('completed').textContent).toBe('true');
+      shortAgain.unmount();
+    });
+
     it('drops stale in-flight hydration when a cross-tab storage event triggers re-hydration', async () => {
       // Race scenario: tab B's `ensureHydrated` has scheduled a storage
       // read with snapshot `{step-1, step-2}`. Tab A clears its progress
