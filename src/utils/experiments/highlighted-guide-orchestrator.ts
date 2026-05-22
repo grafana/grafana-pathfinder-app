@@ -237,8 +237,6 @@ function installHighlightedGuideNavListener(tryAutoOpen: (path: string) => void)
     tryAutoOpen(newPath);
   };
 
-  document.addEventListener('grafana:location-changed', handler);
-
   try {
     const history = locationService.getHistory();
     if (history) {

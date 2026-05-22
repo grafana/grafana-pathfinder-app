@@ -488,17 +488,12 @@ export class SequentialRequirementsManager {
     window.addEventListener('popstate', checkURL);
     window.addEventListener('hashchange', checkURL);
 
-    // Listen for Grafana-specific navigation events if available
-    // These are more reliable than polling for SPA navigation
-    document.addEventListener('grafana:location-changed', checkURL);
-
     // Listen for focus events which can indicate navigation in SPAs
     window.addEventListener('focus', checkURL);
 
     this.navigationUnlisten = () => {
       window.removeEventListener('popstate', checkURL);
       window.removeEventListener('hashchange', checkURL);
-      document.removeEventListener('grafana:location-changed', checkURL);
       window.removeEventListener('focus', checkURL);
     };
   }
