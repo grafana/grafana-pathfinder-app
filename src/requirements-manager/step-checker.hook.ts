@@ -906,7 +906,6 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     // Listen for navigation events
     window.addEventListener('popstate', handleUrlChange);
     window.addEventListener('hashchange', handleUrlChange);
-    document.addEventListener('grafana:location-changed', handleUrlChange);
 
     // Also check periodically for SPA navigation that doesn't fire events
     const urlCheckInterval = setInterval(handleUrlChange, 2000);
@@ -918,7 +917,6 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       }
       window.removeEventListener('popstate', handleUrlChange);
       window.removeEventListener('hashchange', handleUrlChange);
-      document.removeEventListener('grafana:location-changed', handleUrlChange);
       clearInterval(urlCheckInterval);
     };
   }, [isEligibleForChecking, state.isCompleted, state.fixType, lazyRender, stepId]); // Only re-subscribe when eligibility, completion, or lazy-scroll state changes (objectives tracked via ref)

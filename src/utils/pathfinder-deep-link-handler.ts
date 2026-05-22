@@ -177,8 +177,6 @@ export function installDeepLinkNavListener(deps: DeepLinkHandlerDeps): void {
     handlePathfinderDeepLink(deps);
   };
 
-  document.addEventListener('grafana:location-changed', handler);
-
   try {
     const history = locationService.getHistory();
     if (history) {
