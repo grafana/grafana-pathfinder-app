@@ -109,10 +109,9 @@ export function getTotalDocumentSteps(): number {
   return totalDocumentSteps;
 }
 
-/** Number of distinct sections currently registered for this document.
- *  Used by the completion store to compute a guide percentage for the
- *  all-passive case (`getTotalDocumentSteps() === 0`), where there is
- *  nothing to divide by other than the section count. */
+/** Denominator for the all-passive guide percentage in the completion
+ *  store — when `getTotalDocumentSteps() === 0`, sections are the only
+ *  thing left to divide by. */
 export function getRegisteredSectionCount(): number {
   return globalStepRegistry.size;
 }

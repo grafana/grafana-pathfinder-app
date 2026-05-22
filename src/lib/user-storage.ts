@@ -1334,16 +1334,10 @@ export const sectionAcknowledgementStorage = {
   },
 
   /**
-   * Synchronously count how many sections under `contentKey` have been
-   * acknowledged. Scans the localStorage namespace directly (mirrors
-   * `interactiveStepStorage.countAllCompleted`) so the completion store
-   * can derive a guide percentage for all-passive guides — which
-   * register zero interactive steps and therefore never write to
-   * `INTERACTIVE_STEPS_PREFIX`.
-   *
-   * Reads from `localStorage` only; Grafana user-storage entries land in
-   * localStorage first via the hybrid-storage writer, so this count is
-   * always in sync with what the user just did.
+   * Synchronously count acknowledged sections under `contentKey`.
+   * Mirrors `interactiveStepStorage.countAllCompleted`; required so
+   * the completion store can derive an all-passive guide percentage
+   * without an async read.
    */
   countAllAcknowledged(contentKey: string): number {
     try {

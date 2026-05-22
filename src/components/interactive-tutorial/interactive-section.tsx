@@ -450,11 +450,9 @@ export function InteractiveSection({
   }, [isCompleted, isPreviewMode, sectionId]);
 
   // Trigger reactive checks when section completion status changes.
-  // The `stepComponents.length > 0 || gateAnalysis.isAllPassive` guard
-  // lets all-passive sections (which register zero interactive steps)
-  // still flow through this effect so their "section done" bit is
-  // persisted and the guide-level progress percentage refreshes — see
-  // F-1 follow-up to PR #909.
+  // The `gateAnalysis.isAllPassive` branch lets sections with zero
+  // interactive steps still persist `sectionDoneStorage` + refresh
+  // guide progress (F-1, #909 follow-up).
   useEffect(() => {
     if (isCompleted && (stepComponents.length > 0 || gateAnalysis.isAllPassive)) {
       // Single unified event — replaces the two legacy CustomEvents
@@ -472,10 +470,8 @@ export function InteractiveSection({
         // Preview mode is sandboxed — keep the ephemeral check DOM-only.
         if (!isPreviewMode) {
           sectionDoneStorage.set(getContentKey(), sectionId, true);
-          // All-passive sections never write to `interactiveStepStorage`,
-          // so `persistSection` never runs for them and the guide
-          // percentage would otherwise never update. Refresh here so
-          // My Learning + the progress chip reflect the ack.
+          // All-passive sections bypass `persistSection`, so refresh
+          // the guide percentage explicitly.
           if (gateAnalysis.isAllPassive) {
             refreshAndNotifyGuideProgress(getContentKey());
           }
@@ -1082,11 +1078,8 @@ export function InteractiveSection({
           detail: { contentKey },
         })
       );
-      // For all-passive sections the store-based reset doesn't update
-      // the persisted guide percentage (no step writes → no
-      // `persistSection`). Recompute now so My Learning / the chip
-      // catch the drop. Safe for all sections — it's a no-op when
-      // there's nothing to recalculate.
+      // All-passive sections bypass `persistSection` on reset too;
+      // recompute so the persisted percentage drops in lockstep.
       if (!isPreviewMode) {
         refreshAndNotifyGuideProgress(contentKey);
       }

@@ -190,13 +190,11 @@ describe('completion-store', () => {
     expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 0, percentage: 0 });
   });
 
-  // F-1 follow-up to PR #909. A guide whose sections are entirely
-  // passive registers no interactive steps, so `getTotalDocumentSteps()`
-  // is 0. The user's "Mark section complete" click persists an entry in
-  // `sectionAcknowledgementStorage` (not `interactiveStepStorage`), so
-  // the percentage must come from the ack-count divided by the number
-  // of registered sections. Before the fix this 0/0 divided into 0% and
-  // the progress chip / My Learning row stayed at 0 forever.
+  // F-1 (#909 follow-up): all-passive guides have no interactive
+  // steps, so `getGuideProgress` must derive the percentage from
+  // `sectionAcknowledgementStorage` (where the production ack writer
+  // persists) divided by `getRegisteredSectionCount()`, not from the
+  // 0/0 step-count division the pre-fix code did.
   describe('all-passive guide progress (F-1)', () => {
     it('returns 100% once every registered section is acknowledged', () => {
       mockTotalDocumentSteps = 0;
