@@ -23,7 +23,7 @@ import { CodeBlock } from '../../docs-retrieval';
 import { scrollUntilElementFound } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { STEP_STATES } from './step-states';
-import { markStepCompleted, resetStep, useStepCompletion } from './completion-store';
+import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -120,6 +120,14 @@ const mapDatasourceTypeToLanguage = (datasourceType: string | null): string => {
   return typeMapping[datasourceType.toLowerCase()] || 'promql';
 };
 
+/**
+ * Last-resort fallback counter when a component is mounted WITHOUT a
+ * `stepId` prop. In production the JSON parser now always emits a
+ * stable `stepId` (author-supplied `id` or `deriveStepId(...)`), so this
+ * counter only fires from test harnesses / fixtures that construct
+ * step components directly. The unstable `standalone-step-N` ID is
+ * tolerable in that context because those mounts are throwaway.
+ */
 let anonymousStepCounter = 0;
 
 /** Reset the anonymous step counter (called by resetInteractiveCounters). */
@@ -272,6 +280,7 @@ export const InteractiveStep = forwardRef<
       lazyRender, // Enable progressive scroll discovery for virtualized containers
       scrollContainer, // CSS selector for scroll container
       disabled, // Pass through for auto-completion suppression
+      sectionId, // Lets the checker write skip / objectives transitions to the store
       onStepComplete, // Pass through for objectives auto-completion
       onComplete, // Pass through for objectives auto-completion
     });

@@ -1,4 +1,5 @@
 import { InteractiveElementData } from '../../types/interactive.types';
+import { getContentKey } from '../../global-state/content-key';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 import { resolveSelector } from './selector-resolver';
 import { isCssSelector } from './selector-detector';
@@ -511,9 +512,14 @@ export async function navmenuOpenCheck(): Promise<{
  * - Learning paths: enforce completion of foundational concepts
  *
  * How it works:
- * - Looks for DOM element with specified ID
- * - Checks if element has 'completed' CSS class
- * - Used to enforce step dependencies in multi-part tutorials
+ *  1. Read `sectionDoneStorage` first — works for sections that are NOT
+ *     currently mounted (other milestones, virtualized regions,
+ *     conditional branches that haven't rendered yet).
+ *  2. Fall back to the DOM check (the original mechanism): look for the
+ *     `#sectionId.completed` class. This covers the transitional window
+ *     between the section reaching `isCompleted` and the async storage
+ *     write resolving, and any legacy guides that complete via paths
+ *     that bypass the section component (rare).
  */
 export async function sectionCompletedCheck(check: string): Promise<{
   requirement: string;
@@ -525,7 +531,27 @@ export async function sectionCompletedCheck(check: string): Promise<{
     const rawId = check.replace('section-completed:', '');
     const sectionId = rawId.startsWith('section-') ? rawId : `section-${rawId}`;
 
-    // Check if the section exists in DOM and has completed class
+    // Storage-first: persisted "done" bit, mount-independent.
+    //
+    // Dynamic import for `user-storage` (rather than a top-level import)
+    // is deliberate. `user-storage` reaches into `@grafana/runtime` and
+    // related infrastructure at module load — pulling that in eagerly
+    // from `lib/dom` (a low-tier, frequently-imported module) cascades
+    // into every test that mocks `lib/dom` partially, including an
+    // observed JSDOM/Prism flake. Lazy-loading keeps the cost contained
+    // to the actual checker call site.
+    const contentKey = getContentKey();
+    const { sectionDoneStorage } = await import('../user-storage');
+    const persistedDone = await sectionDoneStorage.get(contentKey, sectionId);
+    if (persistedDone === true) {
+      return {
+        requirement: check,
+        pass: true,
+        context: { sectionId, source: 'storage' },
+      };
+    }
+
+    // DOM fallback — preserves pre-storage behaviour.
     const sectionElement = document.getElementById(sectionId);
     const isCompleted = sectionElement?.classList.contains('completed') || false;
 
@@ -533,7 +559,12 @@ export async function sectionCompletedCheck(check: string): Promise<{
       requirement: check,
       pass: isCompleted,
       error: isCompleted ? undefined : `Section '${sectionId}' must be completed first`,
-      context: { sectionId, found: !!sectionElement, hasCompletedClass: isCompleted },
+      context: {
+        sectionId,
+        source: isCompleted ? 'dom' : 'none',
+        found: !!sectionElement,
+        hasCompletedClass: isCompleted,
+      },
     };
   } catch (error) {
     console.error('Section completion check error:', error);

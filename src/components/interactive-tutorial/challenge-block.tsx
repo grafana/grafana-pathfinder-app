@@ -21,7 +21,7 @@ import { css } from '@emotion/css';
 
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { checkPostconditions } from '../../requirements-manager';
-import { markStepCompleted, useStepCompletion } from './completion-store';
+import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 
 const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
 // /tmp/pathfinder-ready matches codaSentinelPath in the Go backend. The

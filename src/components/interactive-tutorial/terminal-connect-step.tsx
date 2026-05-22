@@ -13,7 +13,7 @@ import { css } from '@emotion/css';
 
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { STEP_STATES, type StepStateValue } from './step-states';
-import { markStepCompleted, useStepCompletion } from './completion-store';
+import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 
 export interface TerminalConnectStepProps {
   buttonText?: string;

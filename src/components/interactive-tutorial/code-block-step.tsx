@@ -14,7 +14,7 @@ import { css } from '@emotion/css';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { clearAndInsertCode, useInteractiveElements } from '../../interactive-engine';
 import { STEP_STATES, type StepStateValue } from './step-states';
-import { markStepCompleted, useStepCompletion } from './completion-store';
+import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import { CodeBlock } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 
@@ -158,6 +158,7 @@ export const CodeBlockStep = forwardRef<
       stepId: renderedStepId,
       isEligibleForChecking,
       skippable,
+      sectionId, // Lets the checker write skip / objectives transitions to the store
     });
 
     const markComplete = useCallback(() => {

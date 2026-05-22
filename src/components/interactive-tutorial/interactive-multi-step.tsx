@@ -13,7 +13,7 @@ import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
 import { STEP_STATES } from './step-states';
-import { markStepCompleted, resetStep, useStepCompletion } from './completion-store';
+import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 
 let anonymousMultiStepCounter = 0;
 
@@ -234,6 +234,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       refTarget: firstActionRefTarget,
       targetAction: firstActionTargetAction,
       disabled, // Pass through for auto-completion suppression
+      sectionId, // Lets the checker write skip / objectives transitions to the store
       onStepComplete, // Pass through for objectives auto-completion
       onComplete, // Pass through for objectives auto-completion
     });

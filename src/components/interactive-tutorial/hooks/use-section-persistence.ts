@@ -27,6 +27,7 @@ import {
   interactiveStepStorage,
   sectionAcknowledgementStorage,
   sectionCollapseStorage,
+  sectionDoneStorage,
 } from '../../../lib/user-storage';
 import type { StepInfo } from '../../../types/component-props.types';
 import type { AcknowledgementAnalysis } from '../step-section-utils';
@@ -83,6 +84,10 @@ export function useSectionPersistence({
       const contentKey = getContentKey();
       sectionCollapseStorage.clear(contentKey, sectionId);
       sectionAcknowledgementStorage.clear(contentKey, sectionId);
+      // The section's own `isCompleted` effect also clears `sectionDoneStorage`
+      // when it flips to false, but the user-facing reset path ought to be
+      // atomic — sweep it here too in case the effect runs out of order.
+      sectionDoneStorage.clear(contentKey, sectionId);
     }
   }, [sectionId, isPreviewMode]);
 

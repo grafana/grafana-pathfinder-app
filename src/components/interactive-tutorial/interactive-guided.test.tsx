@@ -58,7 +58,7 @@ jest.mock('../../security', () => ({
 }));
 
 // ─── Mock completion store (no-op for unit tests) ──────────────────────────
-jest.mock('./completion-store', () => ({
+jest.mock('../../global-state/completion-store', () => ({
   useStepCompletion: jest.fn(() => ({ completed: false, reason: null })),
   markStepCompleted: jest.fn(),
   resetStep: jest.fn(),

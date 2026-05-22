@@ -6,7 +6,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { useStepChecker } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
-import { markStepCompleted, resetStep, useStepCompletion } from './completion-store';
+import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 
 // ============ Types ============
 
@@ -181,6 +181,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     stepId,
     isEligibleForChecking,
     skippable,
+    sectionId, // Lets the checker write skip transitions to the store
   });
 
   // Handle reset trigger from parent section.

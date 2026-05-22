@@ -36,7 +36,7 @@ jest.mock('../../requirements-manager', () => ({
 }));
 
 // Mock the completion store (unit tests don't drive persistence here)
-jest.mock('./completion-store', () => ({
+jest.mock('../../global-state/completion-store', () => ({
   useStepCompletion: jest.fn(() => ({ completed: false, reason: null })),
   markStepCompleted: jest.fn(),
   resetStep: jest.fn(),

@@ -28,6 +28,24 @@ export interface UseStepCheckerProps {
    */
   disabled?: boolean;
   /**
+   * Section that owns this step.
+   *
+   * - `string` — the step is section-managed; the checker writes terminal
+   *   transitions (manual, skipped, objectives) to the completion store
+   *   under this sectionId.
+   * - `undefined` — standalone step; writes use the synthetic
+   *   `STANDALONE_SECTION_ID`.
+   * - `null` — non-step context (e.g. the section's own objectives
+   *   checker, which is a section-scope evaluation rather than a step).
+   *   The checker SKIPS all store writes.
+   *
+   * Lets the checker collapse the previous dual-write pattern where the
+   * FSM updated its own state and the step component separately wrote
+   * to the store — closes the FSM/store divergence on the skip and
+   * standalone-objectives paths.
+   */
+  sectionId?: string | null;
+  /**
    * Callback invoked when objectives are satisfied, notifying parent of step completion.
    * Called with stepId when completionReason becomes 'objectives'.
    */

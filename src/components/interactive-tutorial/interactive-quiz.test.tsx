@@ -22,7 +22,7 @@ jest.mock('../../lib/analytics', () => ({
 
 // Stateful mock so the test can exercise the full mark-complete → re-render
 // flow. The real store is exercised in `completion-store.test.tsx`.
-jest.mock('./completion-store', () => {
+jest.mock('../../global-state/completion-store', () => {
   const completed = new Set<string>();
   return {
     useStepCompletion: jest.fn((stepId: string) => ({
@@ -124,7 +124,7 @@ describe('shuffleQuizChoices', () => {
 describe('InteractiveQuiz: shuffle behavior', () => {
   beforeEach(() => {
     resetQuizCounter();
-    (require('./completion-store') as { __resetMockStore: () => void }).__resetMockStore();
+    (require('../../global-state/completion-store') as { __resetMockStore: () => void }).__resetMockStore();
   });
 
   const choices: QuizChoice[] = [
@@ -254,7 +254,7 @@ describe('InteractiveQuiz: shuffle behavior', () => {
 describe('InteractiveQuiz: render-order stability', () => {
   beforeEach(() => {
     resetQuizCounter();
-    (require('./completion-store') as { __resetMockStore: () => void }).__resetMockStore();
+    (require('../../global-state/completion-store') as { __resetMockStore: () => void }).__resetMockStore();
   });
 
   const choices: QuizChoice[] = [

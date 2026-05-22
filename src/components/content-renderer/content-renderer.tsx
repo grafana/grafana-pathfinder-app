@@ -49,7 +49,7 @@ import {
   TextSelectionState,
 } from '../../integrations/assistant-integration';
 import { substituteVariables } from '../../utils/variable-substitution';
-import { STANDALONE_SECTION_ID } from '../interactive-tutorial/completion-store';
+import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 
 /**

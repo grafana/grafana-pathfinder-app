@@ -6,6 +6,7 @@
  */
 
 import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from '../types/content.types';
+import { deriveStepId } from '../global-state/step-id';
 import { parseHTMLToComponents } from './html-parser';
 import { validateGuide } from '../validation';
 import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
@@ -151,7 +152,10 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
         }
       }
 
-      const result = convertBlockToParsedElement(block, `blocks[${i}]`, baseUrl, surroundingContext);
+      // Top-level blocks live outside any section — use the synthetic
+      // standalone parent so derived step IDs are stable across reloads.
+      const stepContext: StepContext = { parentSectionId: STANDALONE_PARENT_ID, index: i };
+      const result = convertBlockToParsedElement(block, `blocks[${i}]`, baseUrl, surroundingContext, stepContext);
       if (result.element) {
         elements.push(result.element);
       }
@@ -212,6 +216,53 @@ interface ConversionResult {
 }
 
 /**
+ * Positional context passed from the iterating parent block to a child
+ * block converter. Used to derive a stable `stepId` for interactive
+ * blocks that don't carry an explicit author `id`, so progress
+ * persistence keys survive remounts and reloads.
+ *
+ * The synthetic `__standalone__` parent ID is the same sentinel the
+ * runtime store uses for steps outside a section.
+ */
+interface StepContext {
+  /**
+   * Stable owning-section / branch identifier the parent has decided to
+   * key children under. Either an author-provided section ID (already
+   * prefixed where conventional), or a synthetic value for top-level /
+   * conditional-branch contexts.
+   */
+  parentSectionId: string;
+  /** Zero-based index of this block within its parent's block array. */
+  index: number;
+}
+
+const STANDALONE_PARENT_ID = '__standalone__';
+
+/** Build the deterministic `stepId` for an interactive block when the
+ *  author hasn't supplied one explicitly. */
+function resolveStepId(
+  authorId: string | undefined,
+  stepContext: StepContext | undefined,
+  action: string | undefined,
+  refTarget: string | undefined,
+  variant?: string
+): string | undefined {
+  if (authorId) {
+    return authorId;
+  }
+  if (!stepContext) {
+    return undefined;
+  }
+  return deriveStepId({
+    sectionId: stepContext.parentSectionId,
+    index: stepContext.index,
+    action,
+    refTarget,
+    variant,
+  });
+}
+
+/**
  * Convert a JsonBlock to a ParsedElement by type.
  * Internal helper that handles the actual conversion without assistant wrapper logic.
  */
@@ -219,7 +270,8 @@ function convertBlockByType(
   block: JsonBlock,
   path: string,
   baseUrl?: string,
-  surroundingContext?: SurroundingContext
+  surroundingContext?: SurroundingContext,
+  stepContext?: StepContext
 ): ConversionResult {
   switch (block.type) {
     case 'markdown':
@@ -231,27 +283,27 @@ function convertBlockByType(
     case 'conditional':
       return convertConditionalBlock(block, path, baseUrl);
     case 'interactive':
-      return convertInteractiveBlock(block, path);
+      return convertInteractiveBlock(block, path, stepContext);
     case 'multistep':
-      return convertMultistepBlock(block, path);
+      return convertMultistepBlock(block, path, stepContext);
     case 'guided':
-      return convertGuidedBlock(block, path);
+      return convertGuidedBlock(block, path, stepContext);
     case 'image':
       return convertImageBlock(block, path, baseUrl);
     case 'video':
       return convertVideoBlock(block, path);
     case 'quiz':
-      return convertQuizBlock(block, path);
+      return convertQuizBlock(block, path, stepContext);
     case 'input':
       return convertInputBlock(block, path);
     case 'terminal':
-      return convertTerminalBlock(block, path);
+      return convertTerminalBlock(block, path, stepContext);
     case 'terminal-connect':
-      return convertTerminalConnectBlock(block, path);
+      return convertTerminalConnectBlock(block, path, stepContext);
     case 'challenge':
-      return convertChallengeBlock(block, path);
+      return convertChallengeBlock(block, path, stepContext);
     case 'code-block':
-      return convertCodeBlockBlock(block, path);
+      return convertCodeBlockBlock(block, path, stepContext);
     case 'grot-guide':
       return convertGrotGuideBlock(block as JsonGrotGuideBlock);
     case 'assistant':
@@ -278,12 +330,13 @@ function convertBlockToParsedElement(
   block: JsonBlock,
   path: string,
   baseUrl?: string,
-  surroundingContext?: SurroundingContext
+  surroundingContext?: SurroundingContext,
+  stepContext?: StepContext
 ): ConversionResult {
   // Check for attribute-based assistant customization (new format)
   if (hasAssistantEnabled(block)) {
     const assistantBlock = block as JsonBlock & AssistantProps;
-    const innerResult = convertBlockByType(block, path, baseUrl, surroundingContext);
+    const innerResult = convertBlockByType(block, path, baseUrl, surroundingContext, stepContext);
 
     if (innerResult.element) {
       // Wrap with assistant-block-wrapper
@@ -311,7 +364,7 @@ function convertBlockToParsedElement(
   }
 
   // Standard conversion (no assistant wrapper)
-  return convertBlockByType(block, path, baseUrl, surroundingContext);
+  return convertBlockByType(block, path, baseUrl, surroundingContext, stepContext);
 }
 
 /**
@@ -445,12 +498,18 @@ function convertHtmlBlock(block: JsonHtmlBlock, path: string, baseUrl?: string):
 }
 
 function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: string): ConversionResult {
-  // Convert child blocks to step elements
+  // Convert child blocks to step elements. The runtime `InteractiveSection`
+  // prefixes author-supplied ids with `section-` when computing DOM ids;
+  // use the same convention here so derived step IDs match the runtime
+  // section's perspective. If the section has no author id, fall back to
+  // the section path — stable across reparses of the same JSON.
+  const sectionParentId = block.id ? `section-${block.id}` : `section:${path}`;
   const children: ParsedElement[] = [];
 
   for (let i = 0; i < block.blocks.length; i++) {
     const childBlock = block.blocks[i]!;
-    const result = convertBlockToParsedElement(childBlock, `${path}.blocks[${i}]`, baseUrl);
+    const stepContext: StepContext = { parentSectionId: sectionParentId, index: i };
+    const result = convertBlockToParsedElement(childBlock, `${path}.blocks[${i}]`, baseUrl, undefined, stepContext);
     if (result.element) {
       children.push(result.element);
     }
@@ -482,21 +541,26 @@ function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: st
  * Conditional blocks show different content based on whether conditions pass or fail.
  */
 function convertConditionalBlock(block: JsonConditionalBlock, path: string, baseUrl?: string): ConversionResult {
-  // Convert whenTrue branch blocks
+  // Conditional branches each get their own synthetic parent so a step
+  // appearing in both branches doesn't share a derived ID.
+  const branchTrueParentId = `conditional-true:${path}`;
+  const branchFalseParentId = `conditional-false:${path}`;
+
   const whenTrueChildren: ParsedElement[] = [];
   for (let i = 0; i < block.whenTrue.length; i++) {
     const childBlock = block.whenTrue[i]!;
-    const result = convertBlockToParsedElement(childBlock, `${path}.whenTrue[${i}]`, baseUrl);
+    const stepContext: StepContext = { parentSectionId: branchTrueParentId, index: i };
+    const result = convertBlockToParsedElement(childBlock, `${path}.whenTrue[${i}]`, baseUrl, undefined, stepContext);
     if (result.element) {
       whenTrueChildren.push(result.element);
     }
   }
 
-  // Convert whenFalse branch blocks
   const whenFalseChildren: ParsedElement[] = [];
   for (let i = 0; i < block.whenFalse.length; i++) {
     const childBlock = block.whenFalse[i]!;
-    const result = convertBlockToParsedElement(childBlock, `${path}.whenFalse[${i}]`, baseUrl);
+    const stepContext: StepContext = { parentSectionId: branchFalseParentId, index: i };
+    const result = convertBlockToParsedElement(childBlock, `${path}.whenFalse[${i}]`, baseUrl, undefined, stepContext);
     if (result.element) {
       whenFalseChildren.push(result.element);
     }
@@ -523,7 +587,11 @@ function convertConditionalBlock(block: JsonConditionalBlock, path: string, base
   };
 }
 
-function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): ConversionResult {
+function convertInteractiveBlock(
+  block: JsonInteractiveBlock,
+  path: string,
+  stepContext?: StepContext
+): ConversionResult {
   // Authors may write either the canonical lowercase form (`action`,
   // `reftarget`, `targetvalue`, `targetcomment`) or the camelCase alias
   // form. Prefer the lowercase slot when present (canonical wins) and
@@ -531,6 +599,7 @@ function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): Con
   const targetAction = block.action ?? block.targetAction;
   const refTargetValue = block.reftarget ?? block.refTarget;
   const targetValue = block.targetvalue ?? block.targetValue;
+  const stepId = resolveStepId(block.id, stepContext, targetAction, refTargetValue);
 
   // Parse content as markdown for children
   const children = parseMarkdownToElements(block.content);
@@ -560,7 +629,7 @@ function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): Con
         refTarget: refTargetValue,
         targetValue,
         targetComment: block.tooltip ? markdownToHtml(block.tooltip) : undefined,
-        ...(block.id ? { stepId: block.id } : {}),
+        ...(stepId ? { stepId } : {}),
         requirements,
         objectives,
         skippable: block.skippable ?? false,
@@ -585,7 +654,7 @@ function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): Con
   };
 }
 
-function convertMultistepBlock(block: JsonMultistepBlock, path: string): ConversionResult {
+function convertMultistepBlock(block: JsonMultistepBlock, path: string, stepContext?: StepContext): ConversionResult {
   // Convert steps to internalActions format expected by renderer.
   // Accept either the lowercase canonical or the camelCase alias on each step.
   const internalActions = block.steps.map((step: JsonStep) => ({
@@ -603,11 +672,22 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string): Convers
   const requirements = block.requirements?.join(',') || undefined;
   const objectives = block.objectives?.join(',') || undefined;
 
+  // The multistep's overall identity uses the first internal action as
+  // the discriminator — that's the action shown when the block opens.
+  const stepId = resolveStepId(
+    block.id,
+    stepContext,
+    internalActions[0]?.targetAction,
+    internalActions[0]?.refTarget,
+    'multistep'
+  );
+
   return {
     element: {
       type: 'interactive-multi-step',
       props: {
         internalActions,
+        ...(stepId ? { stepId } : {}),
         requirements,
         objectives,
         skippable: block.skippable ?? false,
@@ -618,7 +698,7 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string): Convers
   };
 }
 
-function convertGuidedBlock(block: JsonGuidedBlock, path: string): ConversionResult {
+function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: StepContext): ConversionResult {
   // Convert steps to internalActions format expected by renderer.
   // Accept either the lowercase canonical or the camelCase alias on each step.
   const internalActions = block.steps.map((step: JsonStep) => ({
@@ -644,11 +724,20 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string): ConversionRes
   const requirements = block.requirements?.join(',') || undefined;
   const objectives = block.objectives?.join(',') || undefined;
 
+  const stepId = resolveStepId(
+    block.id,
+    stepContext,
+    internalActions[0]?.targetAction,
+    internalActions[0]?.refTarget,
+    'guided'
+  );
+
   return {
     element: {
       type: 'interactive-guided',
       props: {
         internalActions,
+        ...(stepId ? { stepId } : {}),
         stepTimeout: block.stepTimeout ?? 120000,
         requirements,
         objectives,
@@ -712,7 +801,7 @@ function convertVideoBlock(block: JsonVideoBlock, path: string): ConversionResul
   };
 }
 
-function convertQuizBlock(block: JsonQuizBlock, path: string): ConversionResult {
+function convertQuizBlock(block: JsonQuizBlock, path: string, stepContext?: StepContext): ConversionResult {
   // Parse question as markdown for the content
   const questionElements = parseMarkdownToElements(block.question);
 
@@ -728,12 +817,15 @@ function convertQuizBlock(block: JsonQuizBlock, path: string): ConversionResult 
     pinned: choice.pinned ?? false,
   }));
 
+  const stepId = resolveStepId(block.id, stepContext, 'quiz', undefined, block.question);
+
   return {
     element: {
       type: 'quiz-block',
       props: {
         question: block.question,
         choices,
+        ...(stepId ? { stepId } : {}),
         multiSelect: block.multiSelect ?? false,
         completionMode: block.completionMode ?? 'correct-only',
         maxAttempts: block.maxAttempts ?? 3,
@@ -777,16 +869,18 @@ function convertInputBlock(block: JsonInputBlock, path: string): ConversionResul
   };
 }
 
-function convertTerminalBlock(block: JsonTerminalBlock, _path: string): ConversionResult {
+function convertTerminalBlock(block: JsonTerminalBlock, _path: string, stepContext?: StepContext): ConversionResult {
   const children = parseMarkdownToElements(block.content);
   const requirements = block.requirements?.join(',') || undefined;
   const objectives = block.objectives?.join(',') || undefined;
+  const stepId = resolveStepId(block.id, stepContext, 'terminal', block.command);
 
   return {
     element: {
       type: 'terminal-step',
       props: {
         command: block.command,
+        ...(stepId ? { stepId } : {}),
         requirements,
         objectives,
         skippable: block.skippable ?? false,
@@ -798,14 +892,20 @@ function convertTerminalBlock(block: JsonTerminalBlock, _path: string): Conversi
   };
 }
 
-function convertTerminalConnectBlock(block: JsonTerminalConnectBlock, _path: string): ConversionResult {
+function convertTerminalConnectBlock(
+  block: JsonTerminalConnectBlock,
+  _path: string,
+  stepContext?: StepContext
+): ConversionResult {
   const children = parseMarkdownToElements(block.content);
+  const stepId = resolveStepId(block.id, stepContext, 'terminal-connect', block.buttonText);
 
   return {
     element: {
       type: 'terminal-connect-step',
       props: {
         buttonText: block.buttonText,
+        ...(stepId ? { stepId } : {}),
         vmTemplate: block.vmTemplate,
         vmApp: block.vmApp,
         vmScenario: block.vmScenario,
@@ -816,14 +916,16 @@ function convertTerminalConnectBlock(block: JsonTerminalConnectBlock, _path: str
   };
 }
 
-function convertChallengeBlock(block: JsonChallengeBlock, _path: string): ConversionResult {
+function convertChallengeBlock(block: JsonChallengeBlock, _path: string, stepContext?: StepContext): ConversionResult {
   const briefElements = parseMarkdownToElements(block.brief);
+  const stepId = resolveStepId(block.id, stepContext, 'challenge', block.title);
 
   return {
     element: {
       type: 'challenge-block',
       props: {
         title: block.title,
+        ...(stepId ? { stepId } : {}),
         mode: block.mode,
         vmTemplate: block.vmTemplate,
         vmScenario: block.vmScenario,
@@ -841,10 +943,11 @@ function convertChallengeBlock(block: JsonChallengeBlock, _path: string): Conver
   };
 }
 
-function convertCodeBlockBlock(block: JsonCodeBlockBlock, _path: string): ConversionResult {
+function convertCodeBlockBlock(block: JsonCodeBlockBlock, _path: string, stepContext?: StepContext): ConversionResult {
   const children = block.content ? parseMarkdownToElements(block.content) : [];
   const requirements = block.requirements?.join(',') || undefined;
   const objectives = block.objectives?.join(',') || undefined;
+  const stepId = resolveStepId(block.id, stepContext, 'code-block', block.reftarget);
 
   return {
     element: {
@@ -853,6 +956,7 @@ function convertCodeBlockBlock(block: JsonCodeBlockBlock, _path: string): Conver
         code: block.code,
         language: block.language || 'javascript',
         refTarget: block.reftarget,
+        ...(stepId ? { stepId } : {}),
         requirements,
         objectives,
         skippable: block.skippable ?? false,
@@ -1003,9 +1107,10 @@ function convertAssistantBlock(
   for (let i = 0; i < block.blocks.length; i++) {
     const childBlock = block.blocks[i]!;
     const childPath = `${path}.blocks[${i}]`;
+    const stepContext: StepContext = { parentSectionId: `assistant:${path}`, index: i };
 
     // Convert child block normally
-    const childResult = convertBlockToParsedElement(childBlock, childPath, baseUrl);
+    const childResult = convertBlockToParsedElement(childBlock, childPath, baseUrl, undefined, stepContext);
 
     if (childResult.element) {
       // Wrap with assistant-block-wrapper, including surrounding context for better AI understanding

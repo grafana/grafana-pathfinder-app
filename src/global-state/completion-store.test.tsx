@@ -13,15 +13,15 @@ import {
   subscribeProgress,
   useStepCompletion,
 } from './completion-store';
-import { setActiveTabUrl, resetContentKeyForTests } from '../../global-state/content-key';
-import { subscribeProgressEvent, type ProgressEventDetail } from '../../global-state/progress-events';
+import { setActiveTabUrl, resetContentKeyForTests } from './content-key';
+import { subscribeProgressEvent, type ProgressEventDetail } from './progress-events';
 
 // In-memory mocks for the persisted-storage layer so tests are hermetic
 // and synchronous-where-they-can-be.
 const storedCompleted = new Map<string, Set<string>>(); // `${contentKey}-${sectionId}` -> ids
 const guidePercentages = new Map<string, number>();
 
-jest.mock('../../lib/user-storage', () => ({
+jest.mock('../lib/user-storage', () => ({
   interactiveStepStorage: {
     getCompleted: jest.fn(async (contentKey: string, sectionId: string) => {
       return new Set(storedCompleted.get(`${contentKey}-${sectionId}`) ?? []);
@@ -134,7 +134,7 @@ describe('completion-store', () => {
   });
 
   it('skips redundant writes when the same step is marked with the same reason twice', async () => {
-    const { interactiveStepStorage } = require('../../lib/user-storage');
+    const { interactiveStepStorage } = require('../lib/user-storage');
     render(<StepProbe stepId="step-1" sectionId="section-x" />);
     await flushMicrotasks();
 
@@ -143,6 +143,20 @@ describe('completion-store', () => {
 
     act(() => markStepCompleted('step-1', 'section-x', 'manual'));
     expect((interactiveStepStorage.setCompleted as jest.Mock).mock.calls.length).toBe(writesAfterFirst);
+  });
+
+  it('overwrites the stored reason when the same step is re-marked with a different reason', async () => {
+    // Closes the FSM-vs-store divergence on the skip path: when the
+    // FSM reports `markSkipped` after the component already wrote
+    // `'manual'`, the store should pick up the new reason so reload
+    // / introspection sees the authoritative final state.
+    render(<StepProbe stepId="step-1" sectionId="section-x" />);
+    await flushMicrotasks();
+    act(() => markStepCompleted('step-1', 'section-x', 'manual'));
+    expect(screen.getByTestId('reason').textContent).toBe('manual');
+
+    act(() => markStepCompleted('step-1', 'section-x', 'skipped'));
+    expect(screen.getByTestId('reason').textContent).toBe('skipped');
   });
 
   it('getGuideProgress returns 0% when total steps is unknown', () => {

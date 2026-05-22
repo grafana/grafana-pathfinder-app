@@ -11,23 +11,35 @@
  * additionally fire `onStepComplete(stepId)` so the section reducer can
  * advance its cursor; the store's `markStepCompleted` write itself is
  * authoritative — no mirror-back hook is required.
+ *
+ * Lives in `global-state/` (Tier 1) so the requirements engine
+ * (`requirements-manager`, Tier 2) can write authoritatively when the
+ * FSM transitions to a terminal state (manual / skipped / objectives).
+ * This collapses the previous dual-write pattern where the FSM updated
+ * its own state and the step component separately wrote to the store —
+ * a divergence on the skip and standalone-objectives paths.
+ *
+ * Reason values use `ProgressReason` (the Tier-1-resident union in
+ * `./progress-events`), which is structurally identical to
+ * `requirements-manager`'s `CompletionReason`. Kept structurally
+ * duplicated rather than relocating the canonical type to Tier 0 —
+ * the union is small + stable.
  */
 
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
-import { interactiveCompletionStorage, interactiveStepStorage } from '../../lib/user-storage';
-import type { CompletionReason } from '../../requirements-manager';
-import { getContentKey } from '../../global-state/content-key';
+import { interactiveCompletionStorage, interactiveStepStorage } from '../lib/user-storage';
 
+import { getContentKey } from './content-key';
 import { getTotalDocumentSteps } from './section-registry';
-import { dispatchProgress } from '../../global-state/progress-events';
+import { dispatchProgress, type ProgressReason } from './progress-events';
 
 /** Synthetic section ID for steps that are not inside an `<InteractiveSection>`. */
 export const STANDALONE_SECTION_ID = '__standalone__';
 
 export interface StepCompletionEntry {
   completed: boolean;
-  reason: CompletionReason | null;
+  reason: ProgressReason | null;
   /** ms since epoch; 0 when restored from storage (storage doesn't persist the reason or timestamp today). */
   completedAt: number;
 }
@@ -234,7 +246,7 @@ function refreshGuidePercentage(contentKey: string): number | undefined {
 
 export interface UseStepCompletionResult {
   completed: boolean;
-  reason: CompletionReason | null;
+  reason: ProgressReason | null;
 }
 
 export function useStepCompletion(stepId: string, sectionId: string = STANDALONE_SECTION_ID): UseStepCompletionResult {
@@ -252,7 +264,7 @@ export function useStepCompletion(stepId: string, sectionId: string = STANDALONE
   return { completed: snapshot.completed, reason: snapshot.reason };
 }
 
-export function markStepCompleted(stepId: string, sectionId: string | undefined, reason: CompletionReason): void {
+export function markStepCompleted(stepId: string, sectionId: string | undefined, reason: ProgressReason): void {
   const contentKey = getContentKey();
   const resolvedSection = sectionId ?? STANDALONE_SECTION_ID;
   ensureHydrated(contentKey, resolvedSection);
@@ -509,7 +521,7 @@ export function resetSteps(stepIds: readonly string[], sectionId: string): void 
 export function markStepsCompleted(
   stepIds: readonly string[],
   sectionId: string,
-  reason: CompletionReason = 'manual'
+  reason: ProgressReason = 'manual'
 ): void {
   if (stepIds.length === 0) {
     return;

@@ -20,7 +20,7 @@ jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
 }));
 
-jest.mock('./completion-store', () => ({
+jest.mock('../../global-state/completion-store', () => ({
   useStepCompletion: jest.fn(() => ({ completed: false, reason: null })),
   markStepCompleted: jest.fn(),
   resetStep: jest.fn(),

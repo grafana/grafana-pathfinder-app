@@ -47,6 +47,7 @@ function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
   return STEP_TYPE_LOOKUP.get(child.type as React.ComponentType<any>);
 }
 import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
+import { sectionDoneStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
 import type { InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
@@ -71,10 +72,15 @@ import {
   resetSection as resetSectionStore,
   resetSteps,
   useSectionCompletion,
-} from './completion-store';
+} from '../../global-state/completion-store';
 import { dispatchProgress } from '../../global-state/progress-events';
 import { computeCursor, deriveSectionState, initialSectionState, sectionReducer } from './section-state';
-import { getDocumentStepPosition, nextSectionCounter, registerSectionSteps, resetRegistry } from './section-registry';
+import {
+  getDocumentStepPosition,
+  nextSectionCounter,
+  registerSectionSteps,
+  resetRegistry,
+} from '../../global-state/section-registry';
 import {
   CHALLENGE_BLOCK_SCHEMA,
   CODE_BLOCK_STEP_SCHEMA,
@@ -90,7 +96,11 @@ import {
 
 // Re-exports preserved for back-compat with `content-renderer.tsx`. New code
 // should import directly from `./section-registry`.
-export { registerSectionSteps, getTotalDocumentSteps, getDocumentStepPosition } from './section-registry';
+export {
+  registerSectionSteps,
+  getTotalDocumentSteps,
+  getDocumentStepPosition,
+} from '../../global-state/section-registry';
 
 // Interactive Section title fallback
 export const DEFAULT_INTERACTIVE_SECTION_TITLE = 'Interactive section';
@@ -312,6 +322,11 @@ export function InteractiveSection({
     objectives,
     stepId: sectionId,
     isEligibleForChecking: !allInteractiveStepsCompleted,
+    // `null` ⇒ the section's own self-check is not a real step; suppress
+    // the checker's store-write side effects. The section handles its
+    // own completion via `markStepsCompleted` on the child step IDs when
+    // objectives fire.
+    sectionId: null,
   });
 
   const isCompletedByObjectives = objectivesChecker.completionReason === 'objectives';
@@ -392,12 +407,17 @@ export function InteractiveSection({
   // Track if we've emitted the guide-level completion event for this section
   const hasEmittedGuideCompletionRef = useRef(false);
 
-  // Reset the emission flag when section becomes incomplete (e.g., after reset)
+  // Reset the emission flag when section becomes incomplete (e.g., after reset).
+  // Also clear the persisted done bit so `section-completed:` checks on
+  // dependent steps re-block until the user re-completes the section.
   useEffect(() => {
     if (!isCompleted) {
       hasEmittedGuideCompletionRef.current = false;
+      if (!isPreviewMode) {
+        sectionDoneStorage.clear(getContentKey(), sectionId);
+      }
     }
-  }, [isCompleted]);
+  }, [isCompleted, isPreviewMode, sectionId]);
 
   // Trigger reactive checks when section completion status changes
   useEffect(() => {
@@ -411,6 +431,13 @@ export function InteractiveSection({
       if (!hasEmittedGuideCompletionRef.current) {
         hasEmittedGuideCompletionRef.current = true;
         dispatchProgress({ kind: 'section', sectionId, completed: true });
+        // Persist the section's done state so `section-completed:`
+        // requirement checks work without the section being mounted
+        // (other milestones, virtualized regions, conditional branches).
+        // Preview mode is sandboxed — keep the ephemeral check DOM-only.
+        if (!isPreviewMode) {
+          sectionDoneStorage.set(getContentKey(), sectionId, true);
+        }
       }
 
       // Trigger global reactive check to enable next eligible steps
@@ -420,7 +447,7 @@ export function InteractiveSection({
         SequentialRequirementsManager.getInstance().watchNextStep(3000); // Watch for 3 seconds
       });
     }
-  }, [isCompleted, sectionId, stepComponents.length]);
+  }, [isCompleted, sectionId, stepComponents.length, isPreviewMode]);
 
   // PRE-COMPUTE eligibility for ALL steps once (React best practice)
   // This prevents expensive recalculation on every render

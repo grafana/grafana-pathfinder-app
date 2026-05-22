@@ -19,7 +19,7 @@ import { GuidedAction } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
 import { sanitizeDocumentationHTML } from '../../security';
 import { STEP_STATES } from './step-states';
-import { markStepCompleted, resetStep, useStepCompletion } from './completion-store';
+import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 
 /**
  * SafeHTML - Renders sanitized HTML as React components
@@ -249,6 +249,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       refTarget: firstActionRefTarget,
       targetAction: firstActionTargetAction,
       disabled, // Pass through for auto-completion suppression
+      sectionId, // Lets the checker write skip / objectives transitions to the store
       onStepComplete, // Pass through for objectives auto-completion
       onComplete, // Pass through for objectives auto-completion
     });

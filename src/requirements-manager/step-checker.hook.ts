@@ -12,6 +12,7 @@
 import { useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { subscribeProgressEvent } from '../global-state/progress-events';
+import { markStepCompleted, STANDALONE_SECTION_ID } from '../global-state/completion-store';
 // getRequirementExplanation is used in check-phases.ts
 import {
   createObjectivesCompletedState,
@@ -95,9 +96,32 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     lazyRender,
     scrollContainer,
     disabled = false,
+    sectionId,
     onStepComplete,
     onComplete,
   } = props;
+
+  /**
+   * Resolve the store-write target for this checker.
+   *
+   * - `null` ⇒ skip writes (used by the section's own objectives
+   *   checker; `stepId` is the sectionId, not a real step).
+   * - `undefined` ⇒ standalone step.
+   * - `string` ⇒ section-managed step.
+   *
+   * Returns `undefined` when no write should happen, otherwise the
+   * `sectionId` argument to pass to `markStepCompleted`.
+   */
+  const storeSectionTarget: string | null | undefined = sectionId;
+  const writeStoreCompletion = useCallback(
+    (reason: 'manual' | 'skipped' | 'objectives'): void => {
+      if (storeSectionTarget === null) {
+        return;
+      }
+      markStepCompleted(stepId, storeSectionTarget ?? STANDALONE_SECTION_ID, reason);
+    },
+    [stepId, storeSectionTarget]
+  );
 
   // Pause requirement checks while an implied-0th-step alignment prompt is
   // pending — keeps step 1 from racing the user's redirect decision and
@@ -597,6 +621,11 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
   /**
    * Manual completion (for user-executed steps)
+   *
+   * Persists to the completion store in addition to the FSM + manager so
+   * the store stays authoritative across reloads. Idempotent on
+   * `(stepId, reason)`; safe to call alongside the step component's own
+   * `markStepCompleted` for the same step.
    */
   const markCompleted = useCallback(() => {
     dispatch({ type: 'SET_COMPLETED', reason: 'manual', explanation: 'Completed' });
@@ -608,10 +637,15 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       completionReason: 'manual',
       explanation: 'Completed',
     });
-  }, [state, updateManager]);
+    writeStoreCompletion('manual');
+  }, [state, updateManager, writeStoreCompletion]);
 
   /**
    * Mark step as skipped (for steps that can't meet requirements but are skippable)
+   *
+   * Closes the pre-relocate divergence where the FSM thought the step
+   * was done (skipped) but the store had no entry — meaning the user's
+   * skip was lost on reload.
    */
   const markSkipped = useCallback(() => {
     dispatch({ type: 'SET_COMPLETED', reason: 'skipped', explanation: 'Skipped due to requirements' });
@@ -623,6 +657,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       completionReason: 'skipped',
       explanation: 'Skipped due to requirements',
     });
+    writeStoreCompletion('skipped');
 
     // Trigger check for dependent steps when this step is skipped
     if (managerRef.current) {
@@ -634,7 +669,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         100
       );
     }
-  }, [updateManager, stepId, timeoutManager]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [updateManager, stepId, timeoutManager, writeStoreCompletion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Reset step to initial state (including skipped state) and recheck requirements
@@ -687,12 +722,19 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // When a step's objectives are satisfied, notify the parent via callbacks.
   // This centralizes a bug fix needed across
   // interactive-step, interactive-guided, and interactive-multi-step components.
+  //
+  // Also writes the store directly here so standalone steps (which don't
+  // pass `onStepComplete`) and section steps that take the objectives
+  // shortcut both end up in the canonical store. Idempotent on
+  // (stepId, 'objectives') — safe alongside the section's own
+  // `markStepsCompleted(..., 'objectives')` bulk write.
   useEffect(() => {
     if (state.completionReason === 'objectives' && !disabled) {
+      writeStoreCompletion('objectives');
       onStepComplete?.(stepId);
       onComplete?.();
     }
-  }, [state.completionReason, stepId, disabled, onStepComplete, onComplete]);
+  }, [state.completionReason, stepId, disabled, onStepComplete, onComplete, writeStoreCompletion]);
 
   // Register step checker with global manager for targeted re-checking
   // This is called by context changes (EchoSrv), watchNextStep, and triggerStepCheck

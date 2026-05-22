@@ -15,7 +15,7 @@ import { css } from '@emotion/css';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { STEP_STATES, type StepStateValue } from './step-states';
-import { markStepCompleted, useStepCompletion } from './completion-store';
+import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 
 export interface TerminalStepProps {
   command: string;
@@ -158,6 +158,7 @@ export const TerminalStep = forwardRef<
       stepId: renderedStepId,
       isEligibleForChecking,
       skippable,
+      sectionId, // Lets the checker write skip / objectives transitions to the store
     });
 
     const markComplete = useCallback(() => {
