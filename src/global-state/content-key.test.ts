@@ -98,5 +98,11 @@ describe('content-key', () => {
     it('returns undefined when neither the typed value nor the global is set', () => {
       expect(getContentKeyOverride()).toBeUndefined();
     });
+
+    it('returns the raw value without sanitization', () => {
+      const longKey = 'bundled:' + 'a'.repeat(500);
+      setContentKeyOverride(longKey);
+      expect(getContentKeyOverride()).toBe(longKey);
+    });
   });
 });

@@ -4,10 +4,12 @@
  *
  * This module owns the canonical storage as typed module-scope state.
  * The legacy `window.__DocsPluginActiveTabUrl` and
- * `window.__DocsPluginContentKey` globals are still set by their existing
- * owners (`useGlobalActiveTabExposure`, `content-renderer.tsx`); reads
- * here transparently fall back to them so callers can migrate to the
- * typed API piecemeal.
+ * `window.__DocsPluginContentKey` globals are still set and/or read by
+ * their existing owners (`useGlobalActiveTabExposure`,
+ * `content-renderer.tsx`, and `analytics.ts`); the typed readers
+ * transparently fall back to them so callers can migrate to the typed
+ * API piecemeal. The fallback is therefore load-bearing — do not
+ * remove it until those remaining consumers also use the typed API.
  *
  * Resolution order:
  *   1. Active tab URL (canonical: set by `useGlobalActiveTabExposure`)
