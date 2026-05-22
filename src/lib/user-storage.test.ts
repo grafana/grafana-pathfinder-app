@@ -291,6 +291,40 @@ describe('sectionAcknowledgementStorage', () => {
 });
 
 // ============================================================================
+// sectionAcknowledgementStorage.countAllAcknowledged (F-1 follow-up to #909)
+// ============================================================================
+
+describe('sectionAcknowledgementStorage.countAllAcknowledged', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('returns 0 when no acknowledgement entries exist', () => {
+    expect(sectionAcknowledgementStorage.countAllAcknowledged('guide-a')).toBe(0);
+  });
+
+  it('counts each acknowledged section for the given content key', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    await sectionAcknowledgementStorage.set('guide-a', 'section-2', true);
+    expect(sectionAcknowledgementStorage.countAllAcknowledged('guide-a')).toBe(2);
+  });
+
+  it('ignores acknowledgement entries belonging to other content keys', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    await sectionAcknowledgementStorage.set('guide-b', 'section-1', true);
+    expect(sectionAcknowledgementStorage.countAllAcknowledged('guide-a')).toBe(1);
+    expect(sectionAcknowledgementStorage.countAllAcknowledged('guide-b')).toBe(1);
+  });
+
+  it('drops cleared entries from the count', async () => {
+    await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
+    await sectionAcknowledgementStorage.set('guide-a', 'section-2', true);
+    await sectionAcknowledgementStorage.clear('guide-a', 'section-1');
+    expect(sectionAcknowledgementStorage.countAllAcknowledged('guide-a')).toBe(1);
+  });
+});
+
+// ============================================================================
 // interactiveStepStorage.clearAllForContent — ack-prefix sweep TESTS
 // ============================================================================
 

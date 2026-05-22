@@ -70,6 +70,7 @@ import {
   markStepCompleted,
   markStepsCompleted,
   reconcileSection,
+  refreshAndNotifyGuideProgress,
   resetSection as resetSectionStore,
   resetSteps,
   useSectionCompletion,
@@ -448,9 +449,14 @@ export function InteractiveSection({
     }
   }, [isCompleted, isPreviewMode, sectionId]);
 
-  // Trigger reactive checks when section completion status changes
+  // Trigger reactive checks when section completion status changes.
+  // The `stepComponents.length > 0 || gateAnalysis.isAllPassive` guard
+  // lets all-passive sections (which register zero interactive steps)
+  // still flow through this effect so their "section done" bit is
+  // persisted and the guide-level progress percentage refreshes — see
+  // F-1 follow-up to PR #909.
   useEffect(() => {
-    if (isCompleted && stepComponents.length > 0) {
+    if (isCompleted && (stepComponents.length > 0 || gateAnalysis.isAllPassive)) {
       // Single unified event — replaces the two legacy CustomEvents
       // (`section-completed` on document + `interactive-section-completed`
       // on window). The `!hasEmittedGuideCompletionRef.current` guard
@@ -466,6 +472,13 @@ export function InteractiveSection({
         // Preview mode is sandboxed — keep the ephemeral check DOM-only.
         if (!isPreviewMode) {
           sectionDoneStorage.set(getContentKey(), sectionId, true);
+          // All-passive sections never write to `interactiveStepStorage`,
+          // so `persistSection` never runs for them and the guide
+          // percentage would otherwise never update. Refresh here so
+          // My Learning + the progress chip reflect the ack.
+          if (gateAnalysis.isAllPassive) {
+            refreshAndNotifyGuideProgress(getContentKey());
+          }
         }
       }
 
@@ -476,7 +489,7 @@ export function InteractiveSection({
         SequentialRequirementsManager.getInstance().watchNextStep(3000); // Watch for 3 seconds
       });
     }
-  }, [isCompleted, sectionId, stepComponents.length, isPreviewMode]);
+  }, [isCompleted, sectionId, stepComponents.length, isPreviewMode, gateAnalysis.isAllPassive]);
 
   // PRE-COMPUTE eligibility for ALL steps once (React best practice)
   // This prevents expensive recalculation on every render
@@ -1069,6 +1082,14 @@ export function InteractiveSection({
           detail: { contentKey },
         })
       );
+      // For all-passive sections the store-based reset doesn't update
+      // the persisted guide percentage (no step writes → no
+      // `persistSection`). Recompute now so My Learning / the chip
+      // catch the drop. Safe for all sections — it's a no-op when
+      // there's nothing to recalculate.
+      if (!isPreviewMode) {
+        refreshAndNotifyGuideProgress(contentKey);
+      }
     }
 
     // Reset all step states in the global manager
@@ -1099,7 +1120,7 @@ export function InteractiveSection({
         }, 100);
       }, 200);
     });
-  }, [disabled, isRunning, stepComponents, resetCollapse, clearAckAndCollapseStorage, sectionId]);
+  }, [disabled, isRunning, stepComponents, resetCollapse, clearAckAndCollapseStorage, sectionId, isPreviewMode]);
 
   /**
    * Mark the section as acknowledged (issue #842).

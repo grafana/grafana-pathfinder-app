@@ -1319,6 +1319,37 @@ export const sectionAcknowledgementStorage = {
       console.warn('Failed to clear section acknowledgement state:', error);
     }
   },
+
+  /**
+   * Synchronously count how many sections under `contentKey` have been
+   * acknowledged. Scans the localStorage namespace directly (mirrors
+   * `interactiveStepStorage.countAllCompleted`) so the completion store
+   * can derive a guide percentage for all-passive guides — which
+   * register zero interactive steps and therefore never write to
+   * `INTERACTIVE_STEPS_PREFIX`.
+   *
+   * Reads from `localStorage` only; Grafana user-storage entries land in
+   * localStorage first via the hybrid-storage writer, so this count is
+   * always in sync with what the user just did.
+   */
+  countAllAcknowledged(contentKey: string): number {
+    try {
+      const prefix = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-`;
+      let count = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix)) {
+          const value = localStorage.getItem(key);
+          if (value === 'true') {
+            count++;
+          }
+        }
+      }
+      return count;
+    } catch {
+      return 0;
+    }
+  },
 };
 
 /**

@@ -28,10 +28,14 @@
 
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
-import { interactiveCompletionStorage, interactiveStepStorage } from '../lib/user-storage';
+import {
+  interactiveCompletionStorage,
+  interactiveStepStorage,
+  sectionAcknowledgementStorage,
+} from '../lib/user-storage';
 
 import { getContentKey } from './content-key';
-import { getTotalDocumentSteps } from './section-registry';
+import { getRegisteredSectionCount, getTotalDocumentSteps } from './section-registry';
 import { dispatchProgress, type ProgressReason } from './progress-events';
 
 /** Synthetic section ID for steps that are not inside an `<InteractiveSection>`. */
@@ -237,7 +241,14 @@ function persistSection(contentKey: string, sectionId: string): void {
   // dispatch elsewhere.
   if (!isPreview && completedIds.size === 0 && typeof window !== 'undefined') {
     const guideTotal = interactiveStepStorage.countAllCompleted(contentKey);
-    if (guideTotal === 0) {
+    // Don't fire the cleared event while passive acks still exist —
+    // the user has visible progress on this guide even though no
+    // interactive steps are recorded. Without this guard, clearing
+    // the last interactive step in a mixed guide would falsely tell
+    // the alignment / preview-reset consumers that the guide is
+    // back to zero progress.
+    const ackTotal = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
+    if (guideTotal === 0 && ackTotal === 0) {
       window.dispatchEvent(new CustomEvent('interactive-progress-cleared', { detail: { contentKey } }));
     }
   }
@@ -245,25 +256,47 @@ function persistSection(contentKey: string, sectionId: string): void {
 
 function refreshGuidePercentage(contentKey: string): number | undefined {
   const docTotal = getTotalDocumentSteps();
-  const allCompleted = interactiveStepStorage.countAllCompleted(contentKey);
   if (docTotal < 1) {
     // All-passive guide: `registerSectionSteps` only counts non-passive
     // steps, so a guide whose sections are entirely passive reports
     // docTotal === 0 even after the user acknowledges every section.
-    // The passive ack still writes an ack-marker entry that
-    // `countAllCompleted` sees, so when `allCompleted > 0` the guide
-    // is effectively 100% complete. Without this branch the persisted
-    // percentage stays unset and My Learning shows 0% for a fully-done
-    // guide (F-1 follow-up to PR #909).
-    if (allCompleted > 0) {
-      interactiveCompletionStorage.set(contentKey, 100);
-      return 100;
+    // Derive the percentage from `sectionAcknowledgementStorage`
+    // (the production ack writer) against the count of registered
+    // sections so multi-section all-passive guides report partial
+    // progress correctly. Without this branch the persisted
+    // percentage stays unset and My Learning shows 0% for a fully
+    // acknowledged guide (F-1 follow-up to PR #909).
+    const sectionCount = getRegisteredSectionCount();
+    if (sectionCount < 1) {
+      return undefined;
     }
-    return undefined;
+    const ackCount = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
+    const percentage = Math.min(100, Math.round((ackCount / sectionCount) * 100));
+    interactiveCompletionStorage.set(contentKey, percentage);
+    return percentage;
   }
+  const allCompleted = interactiveStepStorage.countAllCompleted(contentKey);
   const percentage = Math.round((allCompleted / docTotal) * 100);
   interactiveCompletionStorage.set(contentKey, percentage);
   return percentage;
+}
+
+/**
+ * Recompute and persist the guide percentage for `contentKey`, then
+ * notify subscribers. Public entry point for callers (notably the
+ * all-passive section ack handler) that update progress outside the
+ * step-write path, where `persistSection` would otherwise refresh
+ * automatically.
+ */
+export function refreshAndNotifyGuideProgress(contentKey: string): void {
+  if (isPreviewContentKey(contentKey)) {
+    return;
+  }
+  const percentage = refreshGuidePercentage(contentKey);
+  if (percentage !== undefined) {
+    dispatchProgress({ kind: 'guide', contentKey, percentage, hasProgress: percentage > 0 });
+  }
+  notify(contentKey);
 }
 
 export interface UseStepCompletionResult {
@@ -347,12 +380,19 @@ export function getGuideProgress(contentKey: string): GuideProgress {
   const completedRaw = interactiveStepStorage.countAllCompleted(contentKey);
   const completed = completedRaw < 0 ? 0 : completedRaw;
   if (total < 1) {
-    // All-passive guide: the only persisted entry is an ack-marker from
-    // a passive section the user acknowledged, so `completed > 0` while
-    // `total === 0`. Treat that 0/0 as 100% instead of dividing into the
-    // 0% NaN trap — without this the progress chip reads 0% even after
-    // the user finishes the guide (F-1 follow-up to PR #909).
-    return { completed, total, percentage: completed > 0 ? 100 : 0 };
+    // All-passive guide: nothing to divide by from the interactive step
+    // count. Derive the percentage from acknowledged sections vs the
+    // registered section count instead. `completed` and `total` here
+    // refer to sections, not steps, so the UI reads as
+    // "acknowledged / registered sections" — without this the chip
+    // would divide 0/0 and report 0% forever (F-1 follow-up to #909).
+    const sectionCount = getRegisteredSectionCount();
+    const ackCount = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
+    if (sectionCount < 1) {
+      return { completed: 0, total: 0, percentage: 0 };
+    }
+    const percentage = Math.min(100, Math.round((ackCount / sectionCount) * 100));
+    return { completed: ackCount, total: sectionCount, percentage };
   }
   // Defensive ceiling. `countAllCompleted` reads roster-blind from
   // storage; if a guide ships a v2 schema that renames or removes a
