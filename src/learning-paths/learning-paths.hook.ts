@@ -24,6 +24,7 @@ import {
   journeyCompletionStorage,
   milestoneCompletionStorage,
 } from '../lib/user-storage';
+import { evictContentCache } from '../global-state/completion-store';
 import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
@@ -387,16 +388,19 @@ export function useLearningPaths(): UseLearningPathsReturn {
         const normalizedUrl = path.url.replace(/\/+$/, '');
 
         // Batch clear operations for better performance with many milestones
+        const milestoneKeys = Object.keys(completions).filter((key) => key.startsWith(normalizedUrl));
         await Promise.all([
-          ...Object.keys(completions)
-            .filter((key) => key.startsWith(normalizedUrl))
-            .map((key) =>
-              Promise.all([interactiveCompletionStorage.clear(key), interactiveStepStorage.clearAllForContent(key)])
-            ),
+          ...milestoneKeys.map((key) =>
+            Promise.all([interactiveCompletionStorage.clear(key), interactiveStepStorage.clearAllForContent(key)])
+          ),
           ...Object.keys(journeyCompletions)
             .filter((key) => key.startsWith(normalizedUrl))
             .map((key) => journeyCompletionStorage.clear(key)),
         ]);
+        // Drop the completion store's in-memory cache for each milestone
+        // we cleared. Without this, any open guide in the path would
+        // still surface its prior completion snapshot via the store.
+        milestoneKeys.forEach((key) => evictContentCache(key));
       } else {
         // Static bundled path: clear each guide's progress (batched for performance)
         await Promise.all(
@@ -409,6 +413,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
             ]);
           })
         );
+        path.guides.forEach((guideId) => evictContentCache(`bundled:${guideId}`));
 
         // Remove guide IDs from completedGuides
         await learningProgressStorage.removeCompletedGuides(path.guides);

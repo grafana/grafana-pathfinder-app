@@ -4,9 +4,9 @@ import { InteractiveElementData } from '../types/interactive.types';
 describe('InteractiveStateManager - Section Blocking Integration', () => {
   let stateManager: InteractiveStateManager;
   const mockData: InteractiveElementData = {
-    reftarget: '.test-button',
-    targetaction: 'button',
-    targetvalue: undefined,
+    refTarget: '.test-button',
+    targetAction: 'button',
+    targetValue: undefined,
     requirements: undefined,
     tagName: 'button',
     textContent: 'Test Button',

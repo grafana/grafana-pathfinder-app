@@ -10,8 +10,8 @@ describe('InteractiveStateManager', () => {
   beforeEach(() => {
     manager = new InteractiveStateManager();
     data = {
-      reftarget: 'selector',
-      targetaction: 'button',
+      refTarget: 'selector',
+      targetAction: 'button',
       tagName: 'button',
     };
     consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});

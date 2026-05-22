@@ -70,9 +70,9 @@ jest.mock('./sequence-manager', () => ({
 // Mock dom-utils
 jest.mock('../lib/dom', () => ({
   extractInteractiveDataFromElement: jest.fn().mockReturnValue({
-    reftarget: 'test-target',
-    targetaction: 'highlight',
-    targetvalue: 'test-value',
+    refTarget: 'test-target',
+    targetAction: 'highlight',
+    targetValue: 'test-value',
     requirements: 'test-requirements',
     tagName: 'div',
     textContent: 'Test Element',
@@ -215,8 +215,8 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveFocus(
           {
-            reftarget: 'a[data-testid="data-testid Nav menu item"][href="/connections"]',
-            targetaction: 'highlight',
+            refTarget: 'a[data-testid="data-testid Nav menu item"][href="/connections"]',
+            targetAction: 'highlight',
             tagName: 'li',
           },
           false // show mode
@@ -233,8 +233,8 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveFocus(
           {
-            reftarget: 'a[data-testid="data-testid Nav menu item"][href="/connections"]',
-            targetaction: 'highlight',
+            refTarget: 'a[data-testid="data-testid Nav menu item"][href="/connections"]',
+            targetAction: 'highlight',
             tagName: 'li',
           },
           true // do mode
@@ -253,9 +253,9 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveFormFill(
           {
-            reftarget: 'input[type="text"]',
-            targetaction: 'formfill',
-            targetvalue: 'Prometheus',
+            refTarget: 'input[type="text"]',
+            targetAction: 'formfill',
+            targetValue: 'Prometheus',
             tagName: 'li',
           },
           true // do mode
@@ -272,9 +272,9 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveFormFill(
           {
-            reftarget: 'input[type="text"]',
-            targetaction: 'formfill',
-            targetvalue: 'Prometheus',
+            refTarget: 'input[type="text"]',
+            targetAction: 'formfill',
+            targetValue: 'Prometheus',
             tagName: 'li',
           },
           false // show mode
@@ -294,8 +294,8 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveButton(
           {
-            reftarget: 'Add new data source',
-            targetaction: 'button',
+            refTarget: 'Add new data source',
+            targetAction: 'button',
             tagName: 'li',
           },
           true // do mode
@@ -312,8 +312,8 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveButton(
           {
-            reftarget: 'Add new data source',
-            targetaction: 'button',
+            refTarget: 'Add new data source',
+            targetAction: 'button',
             tagName: 'li',
           },
           false // show mode
@@ -334,8 +334,8 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveNavigate(
           {
-            reftarget: '/test-route',
-            targetaction: 'navigate',
+            refTarget: '/test-route',
+            targetAction: 'navigate',
             tagName: 'a',
           },
           true // do mode
@@ -352,8 +352,8 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveNavigate(
           {
-            reftarget: '/test-route',
-            targetaction: 'navigate',
+            refTarget: '/test-route',
+            targetAction: 'navigate',
             tagName: 'a',
           },
           false // show mode
@@ -371,8 +371,8 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveNavigate(
           {
-            reftarget: 'https://example.com',
-            targetaction: 'navigate',
+            refTarget: 'https://example.com',
+            targetAction: 'navigate',
             tagName: 'a',
           },
           true // do mode
@@ -391,8 +391,8 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveSequence(
           {
-            reftarget: 'span#test1',
-            targetaction: 'sequence',
+            refTarget: 'span#test1',
+            targetAction: 'sequence',
             tagName: 'span',
           },
           true // show mode
@@ -410,8 +410,8 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveSequence(
           {
-            reftarget: 'span#test1',
-            targetaction: 'sequence',
+            refTarget: 'span#test1',
+            targetAction: 'sequence',
             tagName: 'span',
           },
           false // do mode
@@ -429,8 +429,8 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveSequence(
           {
-            reftarget: '#nonexistent',
-            targetaction: 'sequence',
+            refTarget: '#nonexistent',
+            targetAction: 'sequence',
             tagName: 'span',
           },
           false
@@ -446,8 +446,8 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       const data = {
-        reftarget: 'span#test1',
-        targetaction: 'sequence',
+        refTarget: 'span#test1',
+        targetAction: 'sequence',
         tagName: 'span',
       };
 
@@ -456,7 +456,7 @@ describe('useInteractiveElements', () => {
         await result.current.interactiveSequence(data, false);
       });
 
-      // Second call with same reftarget should return early
+      // Second call with same refTarget should return early
       await act(async () => {
         const result2 = await result.current.interactiveSequence(data, false);
         expect(result2).toBe('span#test1');
@@ -545,9 +545,9 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       const data = {
-        reftarget: 'test-target',
-        targetaction: 'highlight',
-        targetvalue: 'test-value',
+        refTarget: 'test-target',
+        targetAction: 'highlight',
+        targetValue: 'test-value',
         requirements: 'test-requirements',
         tagName: 'div',
         textContent: 'Test Element',
@@ -696,8 +696,8 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveFocus(
           {
-            reftarget: 'test-target',
-            targetaction: 'highlight',
+            refTarget: 'test-target',
+            targetAction: 'highlight',
             tagName: 'div',
           },
           true
@@ -723,8 +723,8 @@ describe('useInteractiveElements', () => {
       await act(async () => {
         await result.current.interactiveSequence(
           {
-            reftarget: 'span#test1',
-            targetaction: 'sequence',
+            refTarget: 'span#test1',
+            targetAction: 'sequence',
             tagName: 'span',
           },
           false
@@ -742,9 +742,9 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       const data = {
-        reftarget: 'test-target',
-        targetaction: 'highlight',
-        targetvalue: 'test-value',
+        refTarget: 'test-target',
+        targetAction: 'highlight',
+        targetValue: 'test-value',
         requirements: '',
         tagName: 'div',
         textContent: 'Test Element',
@@ -766,9 +766,9 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       const data = {
-        reftarget: 'test-target',
-        targetaction: 'highlight',
-        targetvalue: 'test-value',
+        refTarget: 'test-target',
+        targetAction: 'highlight',
+        targetValue: 'test-value',
         requirements: undefined,
         tagName: 'div',
         textContent: 'Test Element',
@@ -790,9 +790,9 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       const data = {
-        reftarget: 'test-target',
-        targetaction: 'highlight',
-        targetvalue: 'test-value',
+        refTarget: 'test-target',
+        targetAction: 'highlight',
+        targetValue: 'test-value',
         requirements: 'test-requirements',
         tagName: 'div',
         textContent: undefined,

@@ -122,9 +122,9 @@ describe('FormFillHandler', () => {
 
   describe('execute', () => {
     const mockData: InteractiveElementData = {
-      reftarget: '#test-input',
-      targetaction: 'formfill',
-      targetvalue: 'test-value',
+      refTarget: '#test-input',
+      targetAction: 'formfill',
+      targetValue: 'test-value',
       requirements: 'test-requirements',
       tagName: 'input',
       textContent: 'Test Input',
@@ -215,7 +215,7 @@ describe('FormFillHandler', () => {
         type: 'checkbox',
         checked: true,
       } as unknown as HTMLInputElement;
-      const uncheckedData = { ...mockData, targetvalue: 'false' };
+      const uncheckedData = { ...mockData, targetValue: 'false' };
       mockQuerySelectorAll.mockReturnValue([checkboxElement]);
 
       await formFillHandler.execute(uncheckedData, true);
@@ -261,7 +261,7 @@ describe('FormFillHandler', () => {
     });
 
     it('should handle empty target value correctly', async () => {
-      const emptyData = { ...mockData, targetvalue: '' };
+      const emptyData = { ...mockData, targetValue: '' };
       mockQuerySelectorAll.mockReturnValue([mockElement]);
 
       await formFillHandler.execute(emptyData, true);
@@ -271,7 +271,7 @@ describe('FormFillHandler', () => {
     });
 
     it('should handle undefined target value correctly', async () => {
-      const undefinedData = { ...mockData, targetvalue: undefined };
+      const undefinedData = { ...mockData, targetValue: undefined };
       mockQuerySelectorAll.mockReturnValue([mockElement]);
 
       await formFillHandler.execute(undefinedData, true);
@@ -383,7 +383,7 @@ describe('FormFillHandler', () => {
         },
         getAttribute: jest.fn().mockReturnValue(null),
       } as unknown as HTMLElement;
-      const dataWithLastChar = { ...mockData, targetvalue: 'test-value-e' };
+      const dataWithLastChar = { ...mockData, targetValue: 'test-value-e' };
       mockQuerySelectorAll.mockReturnValue([monacoElement]);
 
       await formFillHandler.execute(dataWithLastChar, true);
@@ -438,7 +438,7 @@ describe('FormFillHandler', () => {
 
       mockQuerySelectorAll.mockReturnValue([comboboxElement]);
 
-      const clearData = { ...mockData, targetvalue: '@@CLEAR@@' };
+      const clearData = { ...mockData, targetValue: '@@CLEAR@@' };
       await formFillHandler.execute(clearData, true);
 
       expect(mockRemoveButton1.click).toHaveBeenCalled();
@@ -497,7 +497,7 @@ describe('FormFillHandler', () => {
 
       mockQuerySelectorAll.mockReturnValue([comboboxElement]);
 
-      const clearData = { ...mockData, targetvalue: '@@CLEAR@@' };
+      const clearData = { ...mockData, targetValue: '@@CLEAR@@' };
       await formFillHandler.execute(clearData, true);
 
       // Should complete without error
@@ -518,7 +518,7 @@ describe('FormFillHandler', () => {
 
       mockQuerySelectorAll.mockReturnValue([regularInput]);
 
-      const clearData = { ...mockData, targetvalue: '@@CLEAR@@' };
+      const clearData = { ...mockData, targetValue: '@@CLEAR@@' };
       await formFillHandler.execute(clearData, true);
 
       // Should not query for remove buttons on a regular input
@@ -537,7 +537,7 @@ describe('FormFillHandler', () => {
             ),
         },
       } as unknown as HTMLElement;
-      const emptyData = { ...mockData, targetvalue: '' };
+      const emptyData = { ...mockData, targetValue: '' };
       mockQuerySelectorAll.mockReturnValue([monacoElement]);
 
       await formFillHandler.execute(emptyData, true);

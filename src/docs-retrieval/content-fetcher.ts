@@ -392,198 +392,182 @@ function generateUserFriendlyError(error: FetchError | undefined, url: string): 
 /**
  * Fetch bundled interactive content from local files
  */
-async function fetchBundledInteractive(url: string): Promise<ContentFetchResult> {
+/**
+ * Discriminated representation of a `bundled:` URL. Adding a new
+ * bundled URL shape means: extend the union, extend `parseBundledUrl`,
+ * and add a loader case to the dispatcher in `fetchBundledInteractive`.
+ */
+type BundledRef =
+  | { kind: 'wysiwyg-preview' }
+  | { kind: 'e2e-test' }
+  | { kind: 'package'; relativePath: string }
+  | { kind: 'indexed'; id: string }
+  | { kind: 'invalid'; reason: string };
+
+const SAFE_BUNDLED_PACKAGE_PATH = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*\.json$/;
+
+function parseBundledUrl(url: string): BundledRef {
   const contentId = url.replace('bundled:', '');
-
-  // SPECIAL CASE: Handle WYSIWYG preview from localStorage
   if (contentId === 'wysiwyg-preview') {
-    try {
-      // Load JSON content from the dedicated preview key
-      const previewContent = localStorage.getItem(StorageKeys.WYSIWYG_PREVIEW_JSON);
-
-      if (!previewContent || previewContent.trim() === '') {
-        return {
-          content: null,
-          error: 'No preview content available. Create content in the WYSIWYG editor and click Test first.',
-        };
-      }
-
-      // Content is already JSON - parse to extract title for metadata
-      let title = 'Preview: WYSIWYG Guide';
-      try {
-        const parsed = JSON.parse(previewContent);
-        if (parsed.title) {
-          title = parsed.title;
-        }
-      } catch {
-        // If parsing fails, use default title
-      }
-
-      const rawContent: RawContent = {
-        content: previewContent, // Already valid JSON guide format
-        metadata: {
-          title,
-        },
-        type: 'interactive',
-        url,
-        lastFetched: new Date().toISOString(),
-      };
-
-      return { content: rawContent };
-    } catch (error) {
-      console.error('Failed to load WYSIWYG preview:', error);
-      return {
-        content: null,
-        error: `Failed to load preview: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      };
-    }
+    return { kind: 'wysiwyg-preview' };
   }
-
-  // SPECIAL CASE: Handle E2E test guide from localStorage
-  // This is used by the E2E test runner CLI to inject arbitrary JSON guides for testing
   if (contentId === 'e2e-test') {
-    try {
-      // Load JSON content from the E2E test key
-      const testContent = localStorage.getItem(StorageKeys.E2E_TEST_GUIDE);
-
-      if (!testContent || testContent.trim() === '') {
-        return {
-          content: null,
-          error: 'No E2E test content available. The E2E runner must inject JSON into localStorage first.',
-        };
-      }
-
-      // Content is already JSON - parse to extract title for metadata
-      let title = 'E2E Test Guide';
-      try {
-        const parsed = JSON.parse(testContent);
-        if (parsed.title) {
-          title = parsed.title;
-        }
-      } catch {
-        // If parsing fails, use default title
-      }
-
-      const rawContent: RawContent = {
-        content: testContent, // Already valid JSON guide format
-        metadata: {
-          title,
-        },
-        type: 'interactive',
-        url,
-        lastFetched: new Date().toISOString(),
-      };
-
-      return { content: rawContent };
-    } catch (error) {
-      console.error('Failed to load E2E test guide:', error);
-      return {
-        content: null,
-        error: `Failed to load E2E test guide: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      };
-    }
+    return { kind: 'e2e-test' };
   }
-
-  // Handle package-format paths: bundled:<package-dir>/content.json
-  // These are produced by BundledPackageResolver and follow the two-file package model.
-  const SAFE_PACKAGE_PATH = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*\.json$/;
   if (contentId.includes('/') && contentId.endsWith('.json')) {
-    if (!SAFE_PACKAGE_PATH.test(contentId)) {
-      return {
-        content: null,
-        error: `Invalid bundled package path: ${contentId}`,
-        errorType: 'not-found',
-      };
-    }
-
-    try {
-      const jsonModule = require(`../bundled-interactives/${contentId}`);
-      const jsonContent = typeof jsonModule === 'string' ? jsonModule : JSON.stringify(jsonModule);
-
-      if (!jsonContent || jsonContent.trim() === '' || jsonContent === '{}') {
-        return {
-          content: null,
-          error: `Bundled package file not found: ${contentId}`,
-          errorType: 'not-found',
-        };
-      }
-
-      // Webpack imports JSON as objects — read title directly to avoid a round-trip
-      const moduleTitle =
-        typeof jsonModule === 'object' && jsonModule !== null && typeof jsonModule.title === 'string'
-          ? jsonModule.title
-          : undefined;
-      const title: string = moduleTitle ?? contentId.split('/')[0] ?? contentId;
-
-      const rawContent: RawContent = {
-        content: jsonContent,
-        metadata: { title },
-        type: 'interactive',
-        url,
-        lastFetched: new Date().toISOString(),
-        isNativeJson: true,
-      };
-
-      return { content: rawContent };
-    } catch (err) {
-      console.warn(`[docs-retrieval] Failed to load bundled package file: ${contentId}`, err);
-      return {
-        content: null,
-        error: `Bundled package file not found: ${contentId}`,
-        errorType: 'not-found',
-      };
-    }
+    return SAFE_BUNDLED_PACKAGE_PATH.test(contentId)
+      ? { kind: 'package', relativePath: contentId }
+      : { kind: 'invalid', reason: `Invalid bundled package path: ${contentId}` };
   }
+  if (contentId.length === 0) {
+    return { kind: 'invalid', reason: 'Empty bundled URL' };
+  }
+  return { kind: 'indexed', id: contentId };
+}
 
-  // Load bundled interactive from index.json
-  // JSON format is the standard - all bundled interactives should be .json files
+function readBundledLocalStorageGuide(
+  url: string,
+  storageKey: string,
+  defaultTitle: string,
+  emptyMessage: string,
+  errorPrefix: string
+): ContentFetchResult {
   try {
-    // Load the index.json to find the correct filename for this interactive
-    const indexData = require('../bundled-interactives/index.json');
-    const interactive = indexData?.interactives?.find((item: any) => item.id === contentId);
-
-    if (!interactive) {
-      return {
-        content: null,
-        error: `Bundled interactive not found in index.json: ${contentId}`,
-      };
+    const stored = localStorage.getItem(storageKey);
+    if (!stored || stored.trim() === '') {
+      return { content: null, error: emptyMessage };
     }
-
-    // Load JSON guide (standard format)
-    const filename = interactive.filename || `${contentId}.json`;
-    const jsonModule = require(`../bundled-interactives/${filename}`);
-
-    // JSON files are imported as objects by webpack, stringify for consistent handling
-    const jsonContent = typeof jsonModule === 'string' ? jsonModule : JSON.stringify(jsonModule);
-
-    if (!jsonContent || jsonContent.trim() === '' || jsonContent === '{}') {
-      return {
-        content: null,
-        error: `Bundled interactive content is empty: ${contentId}`,
-      };
+    let title = defaultTitle;
+    try {
+      const parsed = JSON.parse(stored);
+      if (parsed.title) {
+        title = parsed.title;
+      }
+    } catch {
+      // Fall back to default title; bad JSON is the parser's problem.
     }
-
-    // For JSON guides, we store the JSON string in the content field
-    // The ContentProcessor will detect and parse it appropriately
     const rawContent: RawContent = {
-      content: jsonContent,
-      metadata: {
-        title: interactive.title || contentId,
-      },
+      content: stored,
+      metadata: { title },
       type: 'interactive',
       url,
       lastFetched: new Date().toISOString(),
     };
-
     return { content: rawContent };
   } catch (error) {
-    console.error(`Failed to load bundled interactive ${contentId}:`, error);
+    console.error(`${errorPrefix}:`, error);
     return {
       content: null,
-      error: `Failed to load bundled interactive: ${contentId}. Error: ${
+      error: `${errorPrefix}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
+  }
+}
+
+function loadBundledWysiwygPreview(url: string): ContentFetchResult {
+  return readBundledLocalStorageGuide(
+    url,
+    StorageKeys.WYSIWYG_PREVIEW_JSON,
+    'Preview: WYSIWYG Guide',
+    'No preview content available. Create content in the WYSIWYG editor and click Test first.',
+    'Failed to load preview'
+  );
+}
+
+function loadBundledE2ETest(url: string): ContentFetchResult {
+  return readBundledLocalStorageGuide(
+    url,
+    StorageKeys.E2E_TEST_GUIDE,
+    'E2E Test Guide',
+    'No E2E test content available. The E2E runner must inject JSON into localStorage first.',
+    'Failed to load E2E test guide'
+  );
+}
+
+function loadBundledPackage(url: string, relativePath: string): ContentFetchResult {
+  try {
+    const jsonModule = require(`../bundled-interactives/${relativePath}`);
+    const jsonContent = typeof jsonModule === 'string' ? jsonModule : JSON.stringify(jsonModule);
+    if (!jsonContent || jsonContent.trim() === '' || jsonContent === '{}') {
+      return {
+        content: null,
+        error: `Bundled package file not found: ${relativePath}`,
+        errorType: 'not-found',
+      };
+    }
+    const moduleTitle =
+      typeof jsonModule === 'object' && jsonModule !== null && typeof jsonModule.title === 'string'
+        ? jsonModule.title
+        : undefined;
+    const title: string = moduleTitle ?? relativePath.split('/')[0] ?? relativePath;
+    const rawContent: RawContent = {
+      content: jsonContent,
+      metadata: { title },
+      type: 'interactive',
+      url,
+      lastFetched: new Date().toISOString(),
+      isNativeJson: true,
+    };
+    return { content: rawContent };
+  } catch (err) {
+    console.warn(`[docs-retrieval] Failed to load bundled package file: ${relativePath}`, err);
+    return {
+      content: null,
+      error: `Bundled package file not found: ${relativePath}`,
+      errorType: 'not-found',
+    };
+  }
+}
+
+function loadBundledIndexed(url: string, id: string): ContentFetchResult {
+  try {
+    const indexData = require('../bundled-interactives/index.json');
+    const interactive = indexData?.interactives?.find((item: any) => item.id === id);
+    if (!interactive) {
+      return { content: null, error: `Bundled interactive not found in index.json: ${id}` };
+    }
+    const filename = interactive.filename || `${id}.json`;
+    const jsonModule = require(`../bundled-interactives/${filename}`);
+    const jsonContent = typeof jsonModule === 'string' ? jsonModule : JSON.stringify(jsonModule);
+    if (!jsonContent || jsonContent.trim() === '' || jsonContent === '{}') {
+      return { content: null, error: `Bundled interactive content is empty: ${id}` };
+    }
+    const rawContent: RawContent = {
+      content: jsonContent,
+      metadata: { title: interactive.title || id },
+      type: 'interactive',
+      url,
+      lastFetched: new Date().toISOString(),
+    };
+    return { content: rawContent };
+  } catch (error) {
+    console.error(`Failed to load bundled interactive ${id}:`, error);
+    return {
+      content: null,
+      error: `Failed to load bundled interactive: ${id}. Error: ${
         error instanceof Error ? error.message : 'Unknown error'
       }`,
     };
+  }
+}
+
+async function fetchBundledInteractive(url: string): Promise<ContentFetchResult> {
+  const ref = parseBundledUrl(url);
+  switch (ref.kind) {
+    case 'wysiwyg-preview':
+      return loadBundledWysiwygPreview(url);
+    case 'e2e-test':
+      return loadBundledE2ETest(url);
+    case 'package':
+      return loadBundledPackage(url, ref.relativePath);
+    case 'indexed':
+      return loadBundledIndexed(url, ref.id);
+    case 'invalid':
+      return { content: null, error: ref.reason, errorType: 'not-found' };
+    default: {
+      const _exhaustive: never = ref;
+      void _exhaustive;
+      return { content: null, error: 'Unknown bundled URL shape' };
+    }
   }
 }
 

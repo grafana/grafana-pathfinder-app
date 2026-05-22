@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { locationService } from '@grafana/runtime';
 import { interactiveStepStorage } from '../lib/user-storage';
 import { isInteractiveNavigationInProgress } from '../global-state/interactive-navigation';
+import { subscribeProgressEvent } from '../global-state/progress-events';
 
 interface ActiveTabSummary {
   currentUrl?: string;
@@ -42,22 +43,20 @@ export function useAlignmentReevaluation(
   }, [progressKey]);
 
   useEffect(() => {
-    const handleProgressSaved = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      if (detail?.contentKey === progressKey && detail?.hasProgress) {
+    const unsubscribeProgress = subscribeProgressEvent((detail) => {
+      if (detail.kind === 'guide' && detail.contentKey === progressKey && detail.hasProgress) {
         setHasInteractiveProgress(true);
       }
-    };
+    });
     const handleProgressCleared = (event: Event) => {
       const detail = (event as CustomEvent).detail;
       if (detail?.contentKey === progressKey) {
         setHasInteractiveProgress(false);
       }
     };
-    window.addEventListener('interactive-progress-saved', handleProgressSaved);
     window.addEventListener('interactive-progress-cleared', handleProgressCleared);
     return () => {
-      window.removeEventListener('interactive-progress-saved', handleProgressSaved);
+      unsubscribeProgress();
       window.removeEventListener('interactive-progress-cleared', handleProgressCleared);
     };
   }, [progressKey]);

@@ -86,9 +86,9 @@ describe('NavigateHandler', () => {
 
   describe('execute', () => {
     const mockData: InteractiveElementData = {
-      reftarget: '/test-route',
-      targetaction: 'navigate',
-      targetvalue: 'test-value',
+      refTarget: '/test-route',
+      targetAction: 'navigate',
+      targetValue: 'test-value',
       requirements: 'test-requirements',
       tagName: 'a',
       textContent: 'Test Link',
@@ -114,7 +114,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should handle do mode with external URL correctly', async () => {
-      const externalData = { ...mockData, reftarget: 'https://example.com' };
+      const externalData = { ...mockData, refTarget: 'https://example.com' };
 
       await navigateHandler.execute(externalData, true);
 
@@ -126,7 +126,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should handle HTTP external URL correctly', async () => {
-      const httpData = { ...mockData, reftarget: 'http://example.com' };
+      const httpData = { ...mockData, refTarget: 'http://example.com' };
 
       await navigateHandler.execute(httpData, true);
 
@@ -135,7 +135,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should handle HTTPS external URL correctly', async () => {
-      const httpsData = { ...mockData, reftarget: 'https://example.com' };
+      const httpsData = { ...mockData, refTarget: 'https://example.com' };
 
       await navigateHandler.execute(httpsData, true);
 
@@ -144,7 +144,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should block relative internal routes that fail path validation', async () => {
-      const relativeData = { ...mockData, reftarget: './relative-path' };
+      const relativeData = { ...mockData, refTarget: './relative-path' };
 
       await navigateHandler.execute(relativeData, true);
 
@@ -154,7 +154,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should handle absolute internal route correctly', async () => {
-      const absoluteData = { ...mockData, reftarget: '/absolute-path' };
+      const absoluteData = { ...mockData, refTarget: '/absolute-path' };
 
       await navigateHandler.execute(absoluteData, true);
 
@@ -192,7 +192,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should handle window.open errors', async () => {
-      const externalData = { ...mockData, reftarget: 'https://example.com' };
+      const externalData = { ...mockData, refTarget: 'https://example.com' };
       const testError = new Error('Window open failed');
       mockWindowOpen.mockImplementationOnce(() => {
         throw testError;
@@ -204,7 +204,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should block javascript: URLs and not call window.open', async () => {
-      const maliciousData = { ...mockData, reftarget: 'https://javascript:alert(1)' };
+      const maliciousData = { ...mockData, refTarget: 'https://javascript:alert(1)' };
 
       await navigateHandler.execute(maliciousData, true);
 
@@ -215,7 +215,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should block data: URLs that start with http prefix', async () => {
-      const dataUrl = { ...mockData, reftarget: 'http://data:text/html,<script>alert(1)</script>' };
+      const dataUrl = { ...mockData, refTarget: 'http://data:text/html,<script>alert(1)</script>' };
 
       await navigateHandler.execute(dataUrl, true);
 
@@ -226,7 +226,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should allow legitimate https URLs through validation', async () => {
-      const safeData = { ...mockData, reftarget: 'https://grafana.com/docs/grafana/' };
+      const safeData = { ...mockData, refTarget: 'https://grafana.com/docs/grafana/' };
 
       await navigateHandler.execute(safeData, true);
 
@@ -234,7 +234,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should allow legitimate http URLs through validation', async () => {
-      const httpData = { ...mockData, reftarget: 'http://localhost:3000/test' };
+      const httpData = { ...mockData, refTarget: 'http://localhost:3000/test' };
 
       await navigateHandler.execute(httpData, true);
 
@@ -242,7 +242,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should block URLs that fail to parse', async () => {
-      const badUrlData = { ...mockData, reftarget: 'https://' };
+      const badUrlData = { ...mockData, refTarget: 'https://' };
 
       await navigateHandler.execute(badUrlData, true);
 
@@ -250,7 +250,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should still complete the step even when URL is blocked', async () => {
-      const maliciousData = { ...mockData, reftarget: 'https://' };
+      const maliciousData = { ...mockData, refTarget: 'https://' };
 
       await navigateHandler.execute(maliciousData, true);
 
@@ -259,7 +259,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should block navigation to /logout (F-1 / ASE26016)', async () => {
-      const logoutData = { ...mockData, reftarget: '/logout' };
+      const logoutData = { ...mockData, refTarget: '/logout' };
 
       await navigateHandler.execute(logoutData, true);
 
@@ -268,7 +268,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should block navigation to /admin/users (F-1 / ASE26016)', async () => {
-      const adminData = { ...mockData, reftarget: '/admin/users' };
+      const adminData = { ...mockData, refTarget: '/admin/users' };
 
       await navigateHandler.execute(adminData, true);
 
@@ -277,7 +277,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should block navigation to /api/datasources (F-1 / ASE26016)', async () => {
-      const apiData = { ...mockData, reftarget: '/api/datasources' };
+      const apiData = { ...mockData, refTarget: '/api/datasources' };
 
       await navigateHandler.execute(apiData, true);
 
@@ -286,7 +286,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should block navigation to /profile/password (F-1 / ASE26016)', async () => {
-      const profileData = { ...mockData, reftarget: '/profile/password' };
+      const profileData = { ...mockData, refTarget: '/profile/password' };
 
       await navigateHandler.execute(profileData, true);
 
@@ -295,7 +295,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should allow safe internal paths like /explore', async () => {
-      const safeData = { ...mockData, reftarget: '/explore' };
+      const safeData = { ...mockData, refTarget: '/explore' };
 
       await navigateHandler.execute(safeData, true);
 
@@ -303,7 +303,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should allow safe internal paths like /dashboards', async () => {
-      const safeData = { ...mockData, reftarget: '/dashboards' };
+      const safeData = { ...mockData, refTarget: '/dashboards' };
 
       await navigateHandler.execute(safeData, true);
 
@@ -312,7 +312,7 @@ describe('NavigateHandler', () => {
 
     it('should allow Admin users to navigate to /admin/users', async () => {
       (config as any).bootData.user.orgRole = 'Admin';
-      const adminData = { ...mockData, reftarget: '/admin/users' };
+      const adminData = { ...mockData, refTarget: '/admin/users' };
 
       await navigateHandler.execute(adminData, true);
 
@@ -322,7 +322,7 @@ describe('NavigateHandler', () => {
     it('should allow Grafana Server Admin (isGrafanaAdmin) to navigate to /admin/users', async () => {
       (config as any).bootData.user.orgRole = 'Viewer';
       (config as any).bootData.user.isGrafanaAdmin = true;
-      const adminData = { ...mockData, reftarget: '/admin/users' };
+      const adminData = { ...mockData, refTarget: '/admin/users' };
 
       await navigateHandler.execute(adminData, true);
 
@@ -331,7 +331,7 @@ describe('NavigateHandler', () => {
 
     it('should block Viewer users from navigating to /admin/users', async () => {
       (config as any).bootData.user.orgRole = 'Viewer';
-      const adminData = { ...mockData, reftarget: '/admin/users' };
+      const adminData = { ...mockData, refTarget: '/admin/users' };
 
       await navigateHandler.execute(adminData, true);
 
@@ -339,7 +339,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should allow internal paths with query strings (e.g., /explore?orgId=1)', async () => {
-      const queryData = { ...mockData, reftarget: '/explore?orgId=1' };
+      const queryData = { ...mockData, refTarget: '/explore?orgId=1' };
 
       await navigateHandler.execute(queryData, true);
 
@@ -347,7 +347,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should allow internal paths with fragments (e.g., /dashboards#section)', async () => {
-      const fragmentData = { ...mockData, reftarget: '/dashboards#section' };
+      const fragmentData = { ...mockData, refTarget: '/dashboards#section' };
 
       await navigateHandler.execute(fragmentData, true);
 
@@ -355,7 +355,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should allow internal paths with both query strings and fragments', async () => {
-      const bothData = { ...mockData, reftarget: '/connections/datasources?search=prom#config' };
+      const bothData = { ...mockData, refTarget: '/connections/datasources?search=prom#config' };
 
       await navigateHandler.execute(bothData, true);
 
@@ -363,7 +363,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should still block denied paths even with query strings', async () => {
-      const logoutQuery = { ...mockData, reftarget: '/logout?redirect=/' };
+      const logoutQuery = { ...mockData, refTarget: '/logout?redirect=/' };
 
       await navigateHandler.execute(logoutQuery, true);
 
@@ -371,7 +371,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should block protocol-relative URLs like //evil.com', async () => {
-      const protoRelative = { ...mockData, reftarget: '//evil.com' };
+      const protoRelative = { ...mockData, refTarget: '//evil.com' };
 
       await navigateHandler.execute(protoRelative, true);
 
@@ -380,7 +380,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should block protocol-relative URLs with paths like //evil.com/phish', async () => {
-      const protoRelativePath = { ...mockData, reftarget: '//evil.com/phish' };
+      const protoRelativePath = { ...mockData, refTarget: '//evil.com/phish' };
 
       await navigateHandler.execute(protoRelativePath, true);
 
@@ -389,7 +389,7 @@ describe('NavigateHandler', () => {
     });
 
     it('should block inputs that do not start with /', async () => {
-      const noSlash = { ...mockData, reftarget: 'evil.com/foo' };
+      const noSlash = { ...mockData, refTarget: 'evil.com/foo' };
 
       await navigateHandler.execute(noSlash, true);
 
@@ -398,12 +398,12 @@ describe('NavigateHandler', () => {
     });
 
     it('should push validated path, not raw input, for internal routes', async () => {
-      const safeData = { ...mockData, reftarget: '/explore?orgId=1' };
+      const safeData = { ...mockData, refTarget: '/explore?orgId=1' };
 
       await navigateHandler.execute(safeData, true);
 
       // Validates that locationService receives the reconstructed URL from
-      // safePath + parsed.search + parsed.hash, not the raw reftarget.
+      // safePath + parsed.search + parsed.hash, not the raw refTarget.
       expect(locationService.push).toHaveBeenCalledWith('/explore?orgId=1');
     });
   });

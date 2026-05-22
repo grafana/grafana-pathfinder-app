@@ -51,10 +51,12 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     }
   });
 
-  // Extract core attributes with validation
-  const reftarget = element.getAttribute('data-reftarget') || '';
-  const targetaction = element.getAttribute('data-targetaction') || '';
-  const targetvalue = element.getAttribute('data-targetvalue') || undefined;
+  // Extract core attributes. DOM attribute names are dashed-lowercase
+  // by HTML convention; the resulting JS object uses camelCase, matching
+  // the InteractiveElementData type.
+  const refTarget = element.getAttribute('data-reftarget') || '';
+  const targetAction = element.getAttribute('data-targetaction') || '';
+  const targetValue = element.getAttribute('data-targetvalue') || undefined;
   const requirements = element.getAttribute('data-requirements') || undefined;
   const objectives = element.getAttribute('data-objectives') || undefined;
   const skippable = element.getAttribute('data-skippable') === 'true'; // Default to false, only true if explicitly set
@@ -63,25 +65,24 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   const openGuide = element.getAttribute('data-openguide') || undefined;
   const textContent = element.textContent?.trim() || undefined;
 
-  // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
-  if (reftarget && textContent && reftarget === textContent && reftarget.length > 5) {
-    console.warn(`reftarget "${reftarget}" matches element text - check data-reftarget attribute`);
+  if (refTarget && textContent && refTarget === textContent && refTarget.length > 5) {
+    console.warn(`refTarget "${refTarget}" matches element text — check data-reftarget attribute`);
   }
 
   return {
-    reftarget: reftarget,
-    targetaction: targetaction,
-    targetvalue: targetvalue,
-    requirements: requirements,
-    objectives: objectives,
-    skippable: skippable,
+    refTarget,
+    targetAction,
+    targetValue,
+    requirements,
+    objectives,
+    skippable,
     lazyRender: lazyRender || undefined,
-    scrollContainer: scrollContainer,
-    openGuide: openGuide,
+    scrollContainer,
+    openGuide,
     tagName: element.tagName.toLowerCase(),
     className: element.className || undefined,
     id: element.id || undefined,
-    textContent: textContent,
+    textContent,
     parentTagName: element.parentElement?.tagName.toLowerCase() || undefined,
     timestamp: Date.now(),
     customData: Object.keys(customData).length > 0 ? customData : undefined,
@@ -499,50 +500,6 @@ export async function navmenuOpenCheck(): Promise<{
     canFix: true,
     fixType: 'navigation',
   };
-}
-
-/**
- * Section completion checking - verifies that a previous tutorial section was completed
- *
- * Use cases:
- * - Sequential tutorials: ensure users complete steps in order
- * - Prerequisites: verify setup steps before advanced features
- * - Learning paths: enforce completion of foundational concepts
- *
- * How it works:
- * - Looks for DOM element with specified ID
- * - Checks if element has 'completed' CSS class
- * - Used to enforce step dependencies in multi-part tutorials
- */
-export async function sectionCompletedCheck(check: string): Promise<{
-  requirement: string;
-  pass: boolean;
-  error?: string;
-  context?: Record<string, unknown> | null;
-}> {
-  try {
-    const rawId = check.replace('section-completed:', '');
-    const sectionId = rawId.startsWith('section-') ? rawId : `section-${rawId}`;
-
-    // Check if the section exists in DOM and has completed class
-    const sectionElement = document.getElementById(sectionId);
-    const isCompleted = sectionElement?.classList.contains('completed') || false;
-
-    return {
-      requirement: check,
-      pass: isCompleted,
-      error: isCompleted ? undefined : `Section '${sectionId}' must be completed first`,
-      context: { sectionId, found: !!sectionElement, hasCompletedClass: isCompleted },
-    };
-  } catch (error) {
-    console.error('Section completion check error:', error);
-    return {
-      requirement: check,
-      pass: false,
-      error: `Section completion check failed: ${error}`,
-      context: { error },
-    };
-  }
 }
 
 /**

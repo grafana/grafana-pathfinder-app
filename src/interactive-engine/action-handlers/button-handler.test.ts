@@ -64,9 +64,9 @@ describe('ButtonHandler', () => {
 
   describe('execute', () => {
     const mockData: InteractiveElementData = {
-      reftarget: 'test-button',
-      targetaction: 'button',
-      targetvalue: 'test-value',
+      refTarget: 'test-button',
+      targetAction: 'button',
+      targetValue: 'test-value',
       requirements: 'test-requirements',
       tagName: 'button',
       textContent: 'Test Button',

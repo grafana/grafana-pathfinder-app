@@ -30,12 +30,8 @@ import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
 import { isDocsLikeTab, pickGrafanaDocsOpenAction } from '../utils';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../../lib/analytics';
-import {
-  ContentRenderer,
-  getMilestoneSlug,
-  markMilestoneDone,
-  setJourneyCompletionPercentage,
-} from '../../../docs-retrieval';
+import { getMilestoneSlug, markMilestoneDone, setJourneyCompletionPercentage } from '../../../docs-retrieval';
+import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
 import { AlignmentPrompt } from './AlignmentPrompt';

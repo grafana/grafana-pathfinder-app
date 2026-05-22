@@ -1,21 +1,21 @@
 /**
  * PERMANENT — section-state reducer + derivation unit tests.
  *
- * The reducer is pure and reactor-free; these tests run without rendering
- * any React. They lock in the transition contract that the rest of the
- * #842 refactor depends on:
+ * After C2 the reducer owns one bit (`acknowledged`); step completion
+ * lives in the canonical completion store. These tests pin the
+ * post-collapse invariants:
  *
- *   - Every transition that clears `completed` also clears `acknowledged`
- *     (Bug 1 fix is structural).
- *   - Every transition is referentially-equality friendly: identical
- *     inputs return the same object so React skips redundant renders.
- *   - The all-passive branch of `deriveSectionState` flips between
- *     `awaiting-ack` and `done(ack)` based purely on `acknowledged`.
+ *   - `ACKNOWLEDGE` requires `completedCount > 0` (#842 Bug 1).
+ *   - `CLEAR_ACK` always flips ack back to null — the section's reset
+ *     paths rely on this to keep the gate re-firing after a redo.
+ *   - `deriveSectionState` is a pure function of (acknowledged, gate,
+ *     completed set, objectives state, step roster).
  *   - The migration helper auto-acks pre-#842 completed sections exactly
  *     when the gate would otherwise reset them to "incomplete".
  */
 
 import {
+  computeCursor,
   deriveSectionState,
   initialSectionState,
   restoreFromStorage,
@@ -40,10 +40,8 @@ function makeStep(stepId: string, targetAction = 'click'): StepInfo {
   };
 }
 
-function makeState(over: { completed?: string[]; cursor?: number; acknowledged?: true | null } = {}): SectionState {
+function makeState(over: { acknowledged?: true | null } = {}): SectionState {
   return {
-    completed: new Set(over.completed ?? []),
-    cursor: over.cursor ?? 0,
     acknowledged: over.acknowledged ?? null,
   };
 }
@@ -51,144 +49,67 @@ function makeState(over: { completed?: string[]; cursor?: number; acknowledged?:
 // ─── sectionReducer ─────────────────────────────────────────────────────────
 
 describe('sectionReducer — RESTORE', () => {
-  it('filters out step ids that are not in the current roster', () => {
-    const next = sectionReducer(initialSectionState, {
-      type: 'RESTORE',
-      completed: new Set(['a', 'b', 'stale-id']),
-      acknowledged: null,
-      allStepIds: ['a', 'b', 'c'],
-    });
-    expect(Array.from(next.completed).sort()).toEqual(['a', 'b']);
-    expect(next.cursor).toBe(2);
-    expect(next.acknowledged).toBeNull();
-  });
-
-  it('sets cursor to allStepIds.length when every step is completed', () => {
-    const next = sectionReducer(initialSectionState, {
-      type: 'RESTORE',
-      completed: new Set(['a', 'b']),
-      acknowledged: true,
-      allStepIds: ['a', 'b'],
-    });
-    expect(next.cursor).toBe(2);
+  it('writes through the restored acknowledged value', () => {
+    const next = sectionReducer(initialSectionState, { type: 'RESTORE', acknowledged: true });
     expect(next.acknowledged).toBe(true);
   });
-});
 
-describe('sectionReducer — COMPLETE_STEP', () => {
-  it('adds the step id and advances the cursor', () => {
-    const next = sectionReducer(makeState({ completed: ['a'], cursor: 1 }), {
-      type: 'COMPLETE_STEP',
-      stepId: 'b',
-      cursorAdvancedTo: 2,
-    });
-    expect(Array.from(next.completed).sort()).toEqual(['a', 'b']);
-    expect(next.cursor).toBe(2);
-  });
-
-  it('is a no-op when the step is already completed (referential equality)', () => {
-    const prev = makeState({ completed: ['a'], cursor: 1 });
-    const next = sectionReducer(prev, { type: 'COMPLETE_STEP', stepId: 'a', cursorAdvancedTo: 2 });
+  it('is a no-op when restored ack matches current state (referential equality)', () => {
+    const prev = makeState({ acknowledged: null });
+    const next = sectionReducer(prev, { type: 'RESTORE', acknowledged: null });
     expect(next).toBe(prev);
-  });
-
-  it('does NOT clear acknowledgement on completion', () => {
-    const next = sectionReducer(makeState({ completed: ['a'], acknowledged: true, cursor: 1 }), {
-      type: 'COMPLETE_STEP',
-      stepId: 'b',
-      cursorAdvancedTo: 2,
-    });
-    expect(next.acknowledged).toBe(true);
-  });
-});
-
-describe('sectionReducer — COMPLETE_ALL_STEPS (objectives)', () => {
-  it('marks every step complete and parks the cursor at the end', () => {
-    const next = sectionReducer(initialSectionState, {
-      type: 'COMPLETE_ALL_STEPS',
-      stepIds: ['a', 'b', 'c'],
-    });
-    expect(Array.from(next.completed).sort()).toEqual(['a', 'b', 'c']);
-    expect(next.cursor).toBe(3);
-  });
-
-  it('is a no-op when the input set matches the current completed set', () => {
-    const prev = makeState({ completed: ['a', 'b'], cursor: 2 });
-    const next = sectionReducer(prev, { type: 'COMPLETE_ALL_STEPS', stepIds: ['a', 'b'] });
-    expect(next).toBe(prev);
-  });
-});
-
-describe('sectionReducer — RESET_STEP (Redo)', () => {
-  it('removes the step and every tail step from `completed`', () => {
-    const next = sectionReducer(makeState({ completed: ['a', 'b', 'c'], cursor: 3 }), {
-      type: 'RESET_STEP',
-      stepId: 'b',
-      tailStepIds: ['b', 'c'],
-      resetIndex: 1,
-    });
-    expect(Array.from(next.completed).sort()).toEqual(['a']);
-    expect(next.cursor).toBe(1);
-  });
-
-  it('clears acknowledgement — Bug 1 fix is structural', () => {
-    const next = sectionReducer(makeState({ completed: ['a', 'b', 'c'], cursor: 3, acknowledged: true }), {
-      type: 'RESET_STEP',
-      stepId: 'b',
-      tailStepIds: ['b', 'c'],
-      resetIndex: 1,
-    });
-    expect(next.acknowledged).toBeNull();
-  });
-
-  it('keeps cursor stable when reset index is past the cursor', () => {
-    // Edge: a redo on a never-completed tail step shouldn't pull the
-    // cursor backwards past where the user has actually advanced.
-    const next = sectionReducer(makeState({ completed: ['a'], cursor: 1 }), {
-      type: 'RESET_STEP',
-      stepId: 'c',
-      tailStepIds: ['c'],
-      resetIndex: 2,
-    });
-    expect(next.cursor).toBe(1);
   });
 });
 
 describe('sectionReducer — ACKNOWLEDGE', () => {
   it('flips acknowledged to true when at least one step is completed', () => {
-    const next = sectionReducer(makeState({ completed: ['a'], cursor: 1 }), { type: 'ACKNOWLEDGE' });
+    const next = sectionReducer(initialSectionState, { type: 'ACKNOWLEDGE', completedCount: 1 });
     expect(next.acknowledged).toBe(true);
   });
 
-  it('is a no-op when the section has no completed steps (invariant: ack requires progress)', () => {
-    // The reducer refuses to set up a state where completed is empty
-    // and acknowledged is true — Bug 1's class of invariant violation
-    // can't be constructed.
-    const prev = makeState({ completed: [], cursor: 0 });
-    const next = sectionReducer(prev, { type: 'ACKNOWLEDGE' });
+  it('is a no-op when completedCount is 0 (#842 Bug 1 invariant)', () => {
+    const prev = makeState({ acknowledged: null });
+    const next = sectionReducer(prev, { type: 'ACKNOWLEDGE', completedCount: 0 });
     expect(next).toBe(prev);
     expect(next.acknowledged).toBeNull();
   });
 
   it('is a no-op when already acknowledged', () => {
-    const prev = makeState({ completed: ['a'], cursor: 1, acknowledged: true });
-    expect(sectionReducer(prev, { type: 'ACKNOWLEDGE' })).toBe(prev);
+    const prev = makeState({ acknowledged: true });
+    expect(sectionReducer(prev, { type: 'ACKNOWLEDGE', completedCount: 3 })).toBe(prev);
   });
 });
 
-describe('sectionReducer — RESET_SECTION', () => {
-  it('clears completed, cursor, and acknowledgement together', () => {
-    const next = sectionReducer(makeState({ completed: ['a', 'b'], cursor: 2, acknowledged: true }), {
-      type: 'RESET_SECTION',
-    });
-    expect(Array.from(next.completed)).toEqual([]);
-    expect(next.cursor).toBe(0);
+describe('sectionReducer — CLEAR_ACK', () => {
+  it('flips acknowledged back to null', () => {
+    const next = sectionReducer(makeState({ acknowledged: true }), { type: 'CLEAR_ACK' });
     expect(next.acknowledged).toBeNull();
   });
 
-  it('is a no-op when state is already cleared (referential equality)', () => {
-    const prev = initialSectionState;
-    expect(sectionReducer(prev, { type: 'RESET_SECTION' })).toBe(prev);
+  it('is a no-op when ack is already null (referential equality)', () => {
+    const prev = makeState({ acknowledged: null });
+    expect(sectionReducer(prev, { type: 'CLEAR_ACK' })).toBe(prev);
+  });
+});
+
+// ─── computeCursor ──────────────────────────────────────────────────────────
+
+describe('computeCursor', () => {
+  it('returns 0 when nothing is completed', () => {
+    expect(computeCursor(['a', 'b', 'c'], new Set())).toBe(0);
+  });
+
+  it('returns the index of the first non-completed step', () => {
+    expect(computeCursor(['a', 'b', 'c'], new Set(['a']))).toBe(1);
+    expect(computeCursor(['a', 'b', 'c'], new Set(['a', 'b']))).toBe(2);
+  });
+
+  it('returns stepIds.length when every step is completed', () => {
+    expect(computeCursor(['a', 'b'], new Set(['a', 'b']))).toBe(2);
+  });
+
+  it('skips holes — a completed later step does not advance the cursor past an open earlier step', () => {
+    expect(computeCursor(['a', 'b', 'c'], new Set(['c']))).toBe(0);
   });
 });
 
@@ -198,19 +119,19 @@ describe('deriveSectionState — no-gate sections', () => {
   const steps = [makeStep('a'), makeStep('b')];
 
   it('returns kind=init for empty completed', () => {
-    const derived = deriveSectionState(initialSectionState, steps, NO_GATE, false);
+    const derived = deriveSectionState(initialSectionState, steps, NO_GATE, false, new Set());
     expect(derived.kind).toBe('init');
     expect(derived.isCompleted).toBe(false);
   });
 
   it('returns kind=partial when some but not all steps are done', () => {
-    const derived = deriveSectionState(makeState({ completed: ['a'], cursor: 1 }), steps, NO_GATE, false);
+    const derived = deriveSectionState(initialSectionState, steps, NO_GATE, false, new Set(['a']));
     expect(derived.kind).toBe('partial');
     expect(derived.allInteractiveStepsCompleted).toBe(false);
   });
 
   it('returns kind=done with doneVia="no-gate-needed" when all steps are done', () => {
-    const derived = deriveSectionState(makeState({ completed: ['a', 'b'], cursor: 2 }), steps, NO_GATE, false);
+    const derived = deriveSectionState(initialSectionState, steps, NO_GATE, false, new Set(['a', 'b']));
     expect(derived.kind).toBe('done');
     expect(derived.doneVia).toBe('no-gate-needed');
     expect(derived.isCompleted).toBe(true);
@@ -221,7 +142,7 @@ describe('deriveSectionState — trailing-passive gate sections', () => {
   const steps = [makeStep('a'), makeStep('b')];
 
   it('returns kind=awaiting-ack when all interactives done but ack is null', () => {
-    const derived = deriveSectionState(makeState({ completed: ['a', 'b'], cursor: 2 }), steps, TRAILING_GATE, false);
+    const derived = deriveSectionState(initialSectionState, steps, TRAILING_GATE, false, new Set(['a', 'b']));
     expect(derived.kind).toBe('awaiting-ack');
     expect(derived.isCompleted).toBe(false);
     expect(derived.allInteractiveStepsCompleted).toBe(true);
@@ -229,10 +150,11 @@ describe('deriveSectionState — trailing-passive gate sections', () => {
 
   it('returns kind=done(ack) once acknowledged', () => {
     const derived = deriveSectionState(
-      makeState({ completed: ['a', 'b'], cursor: 2, acknowledged: true }),
+      makeState({ acknowledged: true }),
       steps,
       TRAILING_GATE,
-      false
+      false,
+      new Set(['a', 'b'])
     );
     expect(derived.kind).toBe('done');
     expect(derived.doneVia).toBe('ack');
@@ -240,30 +162,23 @@ describe('deriveSectionState — trailing-passive gate sections', () => {
   });
 
   it('returns kind=partial mid-section regardless of the gate', () => {
-    const derived = deriveSectionState(makeState({ completed: ['a'], cursor: 1 }), steps, TRAILING_GATE, false);
+    const derived = deriveSectionState(initialSectionState, steps, TRAILING_GATE, false, new Set(['a']));
     expect(derived.kind).toBe('partial');
   });
 });
 
 describe('deriveSectionState — all-passive sections', () => {
   it('sits in awaiting-ack on first mount with no interactive steps', () => {
-    const derived = deriveSectionState(initialSectionState, [], ALL_PASSIVE_GATE, false);
+    const derived = deriveSectionState(initialSectionState, [], ALL_PASSIVE_GATE, false, new Set());
     expect(derived.kind).toBe('awaiting-ack');
     expect(derived.allInteractiveStepsCompleted).toBe(true);
   });
 
-  it('flips to done(ack) once acknowledged', () => {
-    // Note: the reducer's invariant says ACKNOWLEDGE is a no-op when
-    // `completed.size === 0`, so for an all-passive section the
-    // section component must dispatch COMPLETE_STEP for a synthetic
-    // marker before ACKNOWLEDGE. The phase-5 wiring will do that.
-    // Here we just verify the derivation surface.
-    const derived = deriveSectionState(
-      makeState({ acknowledged: true, completed: ['marker'] }),
-      [],
-      ALL_PASSIVE_GATE,
-      false
-    );
+  it('flips to done(ack) once acknowledged — even with an empty completed set', () => {
+    // The section component dispatches ACKNOWLEDGE with completedCount: 1
+    // for all-passive sections (a synthetic count, no marker step in the
+    // store). The derivation only inspects acknowledged + the gate.
+    const derived = deriveSectionState(makeState({ acknowledged: true }), [], ALL_PASSIVE_GATE, false, new Set());
     expect(derived.kind).toBe('done');
     expect(derived.doneVia).toBe('ack');
   });
@@ -273,7 +188,7 @@ describe('deriveSectionState — objectives win', () => {
   const steps = [makeStep('a'), makeStep('b')];
 
   it('returns kind=done(objectives) regardless of completed/ack state', () => {
-    const derived = deriveSectionState(initialSectionState, steps, TRAILING_GATE, true);
+    const derived = deriveSectionState(initialSectionState, steps, TRAILING_GATE, true, new Set());
     expect(derived.kind).toBe('done');
     expect(derived.doneVia).toBe('objectives');
     expect(derived.isCompleted).toBe(true);
@@ -283,7 +198,7 @@ describe('deriveSectionState — objectives win', () => {
 describe('deriveSectionState — noop steps', () => {
   it('treats a section of all-noop steps as completed (preserves existing precedent)', () => {
     const noopSection = [makeStep('a', 'noop'), makeStep('b', 'noop')];
-    const derived = deriveSectionState(initialSectionState, noopSection, NO_GATE, false);
+    const derived = deriveSectionState(initialSectionState, noopSection, NO_GATE, false, new Set());
     // Per `nonNoop.length === 0` short-circuit: a section composed of
     // only noop steps is considered "done by default" even with empty
     // completed set. Matches the existing `stepsCompleted` derivation
@@ -340,15 +255,5 @@ describe('restoreFromStorage — migration', () => {
     });
     expect(result.state.acknowledged).toBe(true);
     expect(result.migrated).toBe(false);
-  });
-
-  it('filters stale step ids from the restored completed set', () => {
-    const result = restoreFromStorage({
-      completed: new Set(['a', 'b', 'removed-step']),
-      acknowledged: null,
-      stepComponents: steps,
-      gate: NO_GATE,
-    });
-    expect(Array.from(result.state.completed).sort()).toEqual(['a', 'b']);
   });
 });
