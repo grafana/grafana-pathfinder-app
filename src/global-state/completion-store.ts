@@ -33,6 +33,7 @@ import {
   interactiveStepStorage,
   sectionAcknowledgementStorage,
 } from '../lib/user-storage';
+import { StorageKeys } from '../lib/storage-keys';
 
 import { getContentKey } from './content-key';
 import { getRegisteredSectionCount, getTotalDocumentSteps } from './section-registry';
@@ -81,6 +82,25 @@ const listenersByContent = new Map<string, Set<() => void>>();
  * conflict with hydration's additive merge, so they don't touch this.
  */
 const hydrationClears = new Map<string, Set<string> | 'all'>();
+
+/**
+ * Per-section monotonic hydration version. Snapshotted by `ensureHydrated`
+ * at schedule time and re-checked in the `.then` handler so any storage
+ * read whose cycle has been invalidated (by `evictSectionCache`,
+ * `evictContentCache`, or the cross-tab `storage` listener) drops its
+ * merge instead of resurrecting stale data.
+ *
+ * Strictly stronger than the `!hydratedSections.has(key)` race guard:
+ * if a cache eviction is followed by a fresh `ensureHydrated` cycle
+ * (cross-tab path), the section is re-added to `hydratedSections`
+ * before the old `.then` runs, but the version check still catches the
+ * stale read.
+ */
+const hydrationVersion = new Map<string, number>();
+
+function bumpHydrationVersion(key: string): void {
+  hydrationVersion.set(key, (hydrationVersion.get(key) ?? 0) + 1);
+}
 
 function noteHydrationClear(contentKey: string, sectionId: string, cleared: readonly string[] | 'all'): void {
   const key = `${contentKey}::${sectionId}`;
@@ -147,6 +167,10 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
   }
   hydratedSections.add(key);
   hydrationClears.set(key, new Set());
+  // Snapshot the version at schedule time. If a concurrent eviction
+  // (in-tab or cross-tab) bumps the version before our `.then` runs,
+  // we'll see the mismatch and bail rather than merging stale data.
+  const expectedVersion = hydrationVersion.get(key) ?? 0;
   interactiveStepStorage
     .getCompleted(contentKey, sectionId)
     .then((stored) => {
@@ -156,7 +180,16 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
       // map via `stepsFor(...)` and resurrect cleared progress from the
       // stale snapshot — making "Reset guide" durably ineffective until
       // the next mount.
-      if (!hydratedSections.has(key)) {
+      //
+      // The version check additionally covers the cross-tab path: when
+      // the storage listener evicts AND a new `ensureHydrated` cycle
+      // has started (re-adding the key to `hydratedSections`) before
+      // this `.then` runs, the version mismatch detects the stale read.
+      // Coalesce both sides — a key that has never been bumped reads
+      // back `undefined`, and we want that to compare equal to the
+      // `0` captured at schedule time.
+      const currentVersion = hydrationVersion.get(key) ?? 0;
+      if (!hydratedSections.has(key) || currentVersion !== expectedVersion) {
         hydrationClears.delete(key);
         return;
       }
@@ -185,6 +218,7 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
       if (changed) {
         bumpSectionVersion(contentKey, sectionId);
         notify(contentKey);
+        persistSection(contentKey, sectionId);
       }
       // Reconcile storage with the filtered cache. Without this, the
       // cleared IDs would persist in storage and reappear on next reload.
@@ -574,9 +608,26 @@ export function reconcileSection(sectionId: string, roster: readonly string[]): 
  * on unmount in preview mode so a remount under the same preview key
  * starts from an empty cache rather than inheriting the prior session's
  * in-memory state.
+ *
+ * Thin wrapper over `evictSectionCacheForKey` keyed by the currently
+ * active content key. Cross-tab paths that receive a `storage` event for
+ * a non-active content key must call `evictSectionCacheForKey` directly.
  */
 export function evictSectionCache(sectionId: string): void {
-  const contentKey = getContentKey();
+  evictSectionCacheForKey(getContentKey(), sectionId);
+}
+
+/**
+ * Explicit-content-key variant of `evictSectionCache`. The cross-tab
+ * `storage` listener uses this because the event may carry a key that
+ * isn't the tab's currently-active content key.
+ *
+ * Bumps `hydrationVersion[key]` so any hydration scheduled before this
+ * call drops its merge on resolve — replaces the brittle
+ * `!hydratedSections.has(key)` check (the next `ensureHydrated` cycle
+ * re-adds the key before the old `.then` runs).
+ */
+export function evictSectionCacheForKey(contentKey: string, sectionId: string): void {
   const bySection = entries.get(contentKey);
   if (bySection) {
     bySection.delete(sectionId);
@@ -584,9 +635,11 @@ export function evictSectionCache(sectionId: string): void {
       entries.delete(contentKey);
     }
   }
-  hydratedSections.delete(`${contentKey}::${sectionId}`);
-  hydrationClears.delete(`${contentKey}::${sectionId}`);
-  sectionVersions.delete(`${contentKey}::${sectionId}`);
+  const key = `${contentKey}::${sectionId}`;
+  hydratedSections.delete(key);
+  hydrationClears.delete(key);
+  sectionVersions.delete(key);
+  bumpHydrationVersion(key);
 }
 
 /**
@@ -604,6 +657,15 @@ export function evictSectionCache(sectionId: string): void {
  * Safe to call with any contentKey, including ones the store hasn't
  * seen — entries / hydration markers / version counters are all
  * Map-keyed by exact string and unknown keys are no-ops.
+ *
+ * Subscribers via `useStepCompletion` / `useSectionCompletion` capture
+ * `getContentKey()` at hook-render time. Eviction by a content key
+ * that differs from the active hook's captured key will NOT trigger
+ * a re-render for those subscribers — they continue to read from the
+ * old cache slot. In practice this is fine: a user only interacts with
+ * one active content key at a time, and evictions are scoped to that
+ * key. If you need to evict a different content key while subscribers
+ * remain mounted under it, use `evictAllContentCaches()` instead.
  */
 export function evictContentCache(contentKey: string): void {
   entries.delete(contentKey);
@@ -611,6 +673,10 @@ export function evictContentCache(contentKey: string): void {
   for (const key of Array.from(hydratedSections)) {
     if (key.startsWith(prefix)) {
       hydratedSections.delete(key);
+      // Invalidate any in-flight hydration cycle for this section so
+      // its `.then` handler bails rather than resurrecting the stale
+      // snapshot once the storage read resolves.
+      bumpHydrationVersion(key);
     }
   }
   for (const key of Array.from(hydrationClears.keys())) {
@@ -733,6 +799,14 @@ export function markStepsCompleted(
  */
 export function evictAllContentCaches(): void {
   const contentKeys = Array.from(listenersByContent.keys());
+  // Bump every existing hydration version BEFORE clearing the maps so
+  // any in-flight hydration cycle drops its merge on resolve. Clearing
+  // hydrationVersion outright would reset captured versions to 0, which
+  // would then match a fresh ensureHydrated cycle's snapshot and let
+  // stale data merge.
+  for (const key of Array.from(hydratedSections)) {
+    bumpHydrationVersion(key);
+  }
   entries.clear();
   hydratedSections.clear();
   hydrationClears.clear();
@@ -749,6 +823,83 @@ export function resetCompletionStoreForTests(): void {
   entries.clear();
   hydratedSections.clear();
   hydrationClears.clear();
+  hydrationVersion.clear();
   listenersByContent.clear();
   sectionVersions.clear();
 }
+
+/**
+ * Cross-tab synchronisation — `storage` event listener.
+ *
+ * localStorage is shared across every browser tab on the same origin,
+ * but the completion store's caches (`entries`, `hydratedSections`, ...)
+ * live in this module instance and are therefore per-tab. Without this
+ * listener, tab B's stale cache silently writes back over tab A's
+ * authoritative reset (or vice versa) and the user's progress is
+ * silently corrupted — no error, log, or UI indicator.
+ *
+ * The browser fires a `storage` event in every OTHER tab on the same
+ * origin whenever localStorage is mutated. We react by evicting the
+ * affected section's in-memory cache + bumping its hydration version,
+ * then notifying subscribers so the next render re-reads from the
+ * authoritative storage snapshot.
+ *
+ * Best-effort semantics: a pathological interleaving (tab A writes
+ * immediately before tab B writes the same key) follows last-write-
+ * wins. No merge of conflicting changes.
+ *
+ * See `docs/developer/STEP_MODEL.md` "Cross-tab synchronisation".
+ */
+function handleStorageEvent(event: StorageEvent): void {
+  // `event.key === null` means `localStorage.clear()` was called by
+  // another tab. The interactive-step storage namespace can't survive
+  // a full storage wipe, so drop every in-memory cache.
+  if (event.key === null) {
+    evictAllContentCaches();
+    return;
+  }
+  if (!event.key.startsWith(StorageKeys.INTERACTIVE_STEPS_PREFIX)) {
+    return;
+  }
+  // Key shape: `${INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`.
+  // `contentKey` may contain hyphens (URLs, bundled paths), so naive
+  // prefix matching against a single `contentKey` would misroute when
+  // one active key is a prefix of another (e.g. `bundled:loki-101` and
+  // `bundled:loki-101-extended` both match an event for the longer
+  // key). Disambiguate by reconstructing each known
+  // `(contentKey, sectionId)` pair from `hydratedSections` and
+  // requiring an exact match. Every section with an in-memory cache
+  // passes through `ensureHydrated`, which adds the pair before the
+  // async read fires and keeps it until eviction, so in-flight
+  // hydration (the exact case the `hydrationVersion` guard exists for)
+  // is still represented here. Content keys we've never seen produce
+  // no match; the next render hydrates fresh.
+  const stripped = event.key.slice(StorageKeys.INTERACTIVE_STEPS_PREFIX.length);
+  for (const hydratedKey of hydratedSections) {
+    const separator = hydratedKey.indexOf('::');
+    if (separator <= 0) {
+      continue;
+    }
+    const contentKey = hydratedKey.slice(0, separator);
+    const sectionId = hydratedKey.slice(separator + 2);
+    if (`${contentKey}-${sectionId}` !== stripped) {
+      continue;
+    }
+    evictSectionCacheForKey(contentKey, sectionId);
+    // `completedCountCache` in `user-storage.ts` is also per-tab and
+    // would otherwise return a stale numerator on the next
+    // `getGuideProgress` call.
+    interactiveStepStorage.invalidateCountCache(contentKey);
+    notify(contentKey);
+    return;
+  }
+}
+
+function installCrossTabSync(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.addEventListener('storage', handleStorageEvent);
+}
+
+installCrossTabSync();

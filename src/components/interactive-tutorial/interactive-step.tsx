@@ -1093,7 +1093,7 @@ export const InteractiveStep = forwardRef<
               className={`interactive-step-requirement-explanation${checker.isChecking ? ' rechecking' : ''}`}
               data-testid={testIds.interactive.requirementCheck(renderedStepId)}
             >
-              {explanationText}
+              <span id={`requirement-explanation-${renderedStepId}`}>{explanationText}</span>
               {checker.isChecking && <span className="interactive-requirement-spinner">⟳</span>}
               <div className="interactive-step-requirement-buttons">
                 {/* Retry button for eligible steps or fixable requirements */}
@@ -1105,6 +1105,12 @@ export const InteractiveStep = forwardRef<
                         ? testIds.interactive.requirementFixButton(renderedStepId)
                         : testIds.interactive.requirementRetryButton(renderedStepId)
                     }
+                    title={
+                      checker.canFixRequirement
+                        ? 'Apply the automatic fix for this requirement'
+                        : 'Check whether this requirement is now met'
+                    }
+                    aria-describedby={`requirement-explanation-${renderedStepId}`}
                     onClick={async () => {
                       if (checker.canFixRequirement && checker.fixRequirement) {
                         await checker.fixRequirement();

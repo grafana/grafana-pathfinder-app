@@ -18,6 +18,12 @@ The canonical JSON form is lowercase (`action`, `reftarget`, `targetvalue`). The
 
 Authors can also write an explicit `id` on an interactive block; the parser plumbs it through to `ParsedElement.props.stepId`, overriding the section's positional `${sectionId}-step-N` convention. This is the recommended path for stable `section-completed:` requirement targets.
 
+### Step ID stability — type-change caveat
+
+Stable IDs survive position and content edits. They do NOT survive a block-type change (e.g. `interactive-step` → `interactive-multi-step` without an explicit `id`), because `deriveStepId(...)` doesn't include the block's `type` in its hash input — by design, since the type can flip during authoring without the author considering it identity-changing. Authors who want type-change resilience must set an explicit `id` on the block.
+
+The hash inputs are documented at `src/global-state/step-id.ts` (`deriveStepId(...)`): `sectionId`, zero-based `index`, `action`, `refTarget`, and an optional `variant` — notably no `type`. Audit that file to confirm which authoring edits do and do not orphan prior completion state in `interactiveStepStorage`.
+
 ## Completion store — canonical persistence
 
 Step completion lives in `src/global-state/completion-store.ts`. The store is the canonical persistence layer — `SectionState` no longer carries a parallel `completed` set, and step components no longer maintain a local `isLocallyCompleted` flag. The store backs the existing `interactiveStepStorage` namespace so localStorage shape is preserved.
@@ -52,6 +58,23 @@ Known reset sites (each pairs the storage clear with a cache eviction):
 - `MyLearningTab.handleResetAll` (global "Reset progress") — `interactiveStepStorage.clearAll` + `evictAllContentCaches`.
 
 Adding a new reset path: pair the storage clear with the corresponding eviction.
+
+## Cross-tab synchronization
+
+The completion store's caches (`entries`, `hydratedSections`, `hydrationVersion`, ...) live in the module instance for the current browser tab. `localStorage` is shared across every tab on the same origin. Without cross-tab sync, tab B's stale cache could silently write back over tab A's authoritative reset.
+
+A module-scope `storage` event listener (installed via `installCrossTabSync` at module init) reacts to cross-tab writes:
+
+1. `event.key === null` — another tab called `localStorage.clear()`; drop every in-memory cache via `evictAllContentCaches`.
+2. `event.key.startsWith(StorageKeys.INTERACTIVE_STEPS_PREFIX)` — another tab wrote a `(contentKey, sectionId)` slot; resolve the contentKey against the live set of active keys (`entries` ∪ `hydratedSections`), then `evictSectionCacheForKey` + `notify` so the subscriber re-hydrates from authoritative storage on the next render.
+
+A per-section monotonic `hydrationVersion` counter closes the in-flight hydration race: every cache-clearing path bumps the version, and `ensureHydrated` snapshots the version at schedule time. When the storage read resolves, a mismatch indicates the cycle was invalidated (by an eviction or a fresh re-hydration kicked off by the listener) and the merge is dropped. This strictly supersedes the `!hydratedSections.has(key)` race guard — the version check also catches the case where a new `ensureHydrated` cycle has already re-added the key before the old `.then` runs.
+
+Limits — best effort, not transactional:
+
+- Last-write-wins. No merge of conflicting changes between tabs.
+- Tab A writing immediately before tab B writes the same key follows browser-defined ordering; the listener fires after-the-fact in each tab.
+- The `completedCountCache` in `lib/user-storage.ts` is also per-tab — the listener invalidates it via `interactiveStepStorage.invalidateCountCache(contentKey)` so the next `getGuideProgress` re-scans storage.
 
 ## Section reducer — minimal state
 

@@ -1024,6 +1024,19 @@ const completedCountCache = new Map<string, number>();
  */
 export const interactiveStepStorage = {
   /**
+   * Drop the cached completion count for a content key without touching
+   * localStorage. Used by the cross-tab `storage` listener in
+   * `completion-store.ts` so the next `countAllCompleted` / `getGuideProgress`
+   * call re-scans from authoritative storage rather than returning a
+   * stale per-tab snapshot.
+   *
+   * Idempotent on unknown keys; safe to call from any tab.
+   */
+  invalidateCountCache(contentKey: string): void {
+    completedCountCache.delete(contentKey);
+  },
+
+  /**
    * Gets completed step IDs for a specific content/section
    */
   async getCompleted(contentKey: string, sectionId: string): Promise<Set<string>> {
