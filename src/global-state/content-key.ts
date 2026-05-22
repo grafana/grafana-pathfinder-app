@@ -46,6 +46,26 @@ export function setContentKeyOverride(value: string | undefined): void {
   contentKeyOverride = value && value.length > 0 ? value : undefined;
 }
 
+/**
+ * Read the active tab URL as it was last written, falling back to the
+ * legacy `window.__DocsPluginActiveTabUrl` global. Returns the raw value
+ * without sanitization — callers that need a storage-safe identifier
+ * should use {@link getContentKey} instead.
+ */
+export function getActiveTabUrl(): string | undefined {
+  return activeTabUrl ?? readGlobal('__DocsPluginActiveTabUrl');
+}
+
+/**
+ * Read the content-key override, falling back to the legacy
+ * `window.__DocsPluginContentKey` global. Returns the raw value
+ * without sanitization — callers that need a storage-safe identifier
+ * should use {@link getContentKey} instead.
+ */
+export function getContentKeyOverride(): string | undefined {
+  return contentKeyOverride ?? readGlobal('__DocsPluginContentKey');
+}
+
 export function getContentKey(): string {
   const tabUrl = activeTabUrl ?? readGlobal('__DocsPluginActiveTabUrl');
   if (tabUrl) {
