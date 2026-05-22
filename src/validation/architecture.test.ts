@@ -99,9 +99,6 @@ function collectViolations(getViolationKey: (ctx: ResolvedImportContext) => stri
  * Adding new entries means the architecture is degrading.
  */
 const ALLOWED_VERTICAL_VIOLATIONS = new Set([
-  'docs-retrieval/content-renderer.tsx -> integrations',
-  // Phase 4b: content-renderer imports moved interactive components (Tier 2 -> Tier 4)
-  'docs-retrieval/content-renderer.tsx -> components',
   // Existing cross-domain persistence dependency (legacy coupling)
   'lib/user-storage.ts -> learning-paths',
   // Terminal requirement check needs to query terminal connection status from the integrations layer.
@@ -124,9 +121,6 @@ const ALLOWED_LATERAL_VIOLATIONS = new Set([
   'requirements-manager/step-checker.hook.ts -> interactive-engine',
   // Cluster B: context-engine -> docs-retrieval
   'context-engine/context.service.ts -> docs-retrieval',
-  // docs-retrieval cross-engine imports
-  'docs-retrieval/content-renderer.tsx -> requirements-manager',
-  // Phase 4b: 10 interactive component lateral entries removed (files moved to components/)
   // Additional pre-existing cross-engine imports uncovered by AST parsing
   'docs-retrieval/learning-journey-helpers.ts -> learning-paths',
   'requirements-manager/requirements-checker.hook.ts -> context-engine',

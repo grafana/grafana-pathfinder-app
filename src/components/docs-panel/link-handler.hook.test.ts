@@ -23,6 +23,7 @@ describe('useLinkClickHandler', () => {
 
   // Mock model with all required functions
   const mockModel = {
+    loadTab: jest.fn().mockResolvedValue(undefined),
     loadTabContent: jest.fn(),
     openLearningJourney: jest.fn(),
     openDocsPage: jest.fn(),
@@ -84,8 +85,9 @@ describe('useLinkClickHandler', () => {
       // Simulate click
       fireEvent.click(startButton);
 
-      // Verify expected behavior
-      expect(mockModel.loadTabContent).toHaveBeenCalledWith('tab1', 'https://grafana.com/docs/test-journey/milestone1');
+      // Verify the unified dispatcher was used (so packaged journeys
+      // route through the docs loader internally).
+      expect(mockModel.loadTab).toHaveBeenCalledWith('tab1', 'https://grafana.com/docs/test-journey/milestone1');
     });
   });
 

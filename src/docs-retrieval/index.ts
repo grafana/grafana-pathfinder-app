@@ -8,11 +8,19 @@ export * from './content-fetcher';
 // Learning journey helpers
 export * from './learning-journey-helpers';
 
-// React content renderer
-export * from './content-renderer';
-
 // HTML parser for React component conversion
 export * from './html-parser';
+
+// JSON guide parser (re-exported for tests + adjacent modules that import via
+// the barrel; the runtime entry remains in `./json-parser`).
+export { parseJsonGuide, isJsonGuideContent } from './json-parser';
+
+// URL resolver (used by the content-renderer React component, which lives
+// in `components/content-renderer/`).
+export { resolveRelativeUrls } from './resolve-relative-urls';
+
+// Guide response context — provider + read hooks.
+export { GuideResponseProvider, useGuideResponses } from './GuideResponseContext';
 
 // Re-export main functions with clear names for easy migration
 export { fetchContent as fetchUnifiedContent } from './content-fetcher';
@@ -37,13 +45,23 @@ export {
   clearJourneyCompletion,
 } from './learning-journey-helpers';
 
-export { ContentRenderer, useContentRenderer } from './content-renderer';
+// The React `ContentRenderer` lives in `components/content-renderer/` after
+// the C6 tier-violation move — no re-export here to keep `docs-retrieval`
+// as a pure parser tier. Consumers (`BlockPreview`, `FloatingPanelContent`)
+// import directly from the new location.
 
 // JSON guide parser
-export { parseJsonGuide, parseMarkdownToElements, isJsonGuideContent } from './json-parser';
+export { parseMarkdownToElements } from './json-parser';
 
 // Docs components
-export { CodeBlock, ImageRenderer, VideoRenderer, YouTubeVideoRenderer } from './components/docs';
+export {
+  CodeBlock,
+  ExpandableTable,
+  ImageRenderer,
+  ContentParsingError,
+  VideoRenderer,
+  YouTubeVideoRenderer,
+} from './components/docs';
 export type { CodeBlockProps } from './components/docs';
 
 // Guide response context (consumed by components/interactive-tutorial/)

@@ -12,45 +12,31 @@ import { InteractiveQuiz, resetQuizCounter } from './interactive-quiz';
 import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
 import { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
-import { resetChallengeCounter } from './challenge-block';
+import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
 import { wrapSectionChildrenForNumbering } from './section-numbering';
 // Re-exports preserved for back-compat with `section-numbering.test.tsx`,
 // which imports both helpers from this module. New code should import
 // directly from `./section-numbering`.
 export { shouldNumberSectionChild, wrapSectionChildrenForNumbering } from './section-numbering';
 
-// ⚠ TRACKED STEP TYPE REGISTRY — site 3 of 4 (orchestration site).
-// Adding a new interactive step component type requires updates in 4
-// places. The schemas now live in `step-type-registry.ts`; this lookup
-// map zips each component identity to its schema. The other three
-// sites are unchanged:
-//   1. content-renderer.tsx INTERACTIVE_STEP_TYPES
-//   2. content-renderer.tsx SECTION_TRACKED_STEP_TYPES
-//   3. ./step-type-registry.ts STEP_TYPE_SCHEMAS (consumed here)
-//   4. ./section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
+// ⚠ TRACKED STEP TYPE REGISTRY — orchestration site. Zips each React
+// component identity to its schema from `step-type-registry.ts` (site 1
+// of 2). The other site that must be edited when adding a step type is
+// `section-child-classifier.ts` `INTERACTIVE_STEP_COMPONENT_TYPES`.
 // See .cursor/rules/tracked-step-types.mdc for the full checklist.
-// Lazily initialised — the lookup Map is built on first call rather
-// than at module load. This mirrors the call-time lookup pattern in
-// `shouldNumberSectionChild` and exists for the same reason: the
-// docs-retrieval barrel imports content-renderer, which re-imports
-// the interactive-tutorial index, so a top-level
-// `new Map([[CodeBlockStep, ...], ...])` would resolve component
-// identities to undefined under cycle load order.
-let stepTypeLookup: ReadonlyMap<React.ComponentType<any>, StepTypeSchema> | undefined;
-function getStepTypeLookup(): ReadonlyMap<React.ComponentType<any>, StepTypeSchema> {
-  if (!stepTypeLookup) {
-    stepTypeLookup = new Map<React.ComponentType<any>, StepTypeSchema>([
-      [InteractiveStep, INTERACTIVE_STEP_SCHEMA],
-      [InteractiveMultiStep, INTERACTIVE_MULTISTEP_SCHEMA],
-      [InteractiveGuided, INTERACTIVE_GUIDED_SCHEMA],
-      [InteractiveQuiz, INTERACTIVE_QUIZ_SCHEMA],
-      [TerminalStep, TERMINAL_STEP_SCHEMA],
-      [TerminalConnectStep, TERMINAL_CONNECT_STEP_SCHEMA],
-      [CodeBlockStep, CODE_BLOCK_STEP_SCHEMA],
-    ]);
-  }
-  return stepTypeLookup;
-}
+const STEP_TYPE_LOOKUP: ReadonlyMap<React.ComponentType<any>, StepTypeSchema> = new Map<
+  React.ComponentType<any>,
+  StepTypeSchema
+>([
+  [InteractiveStep, INTERACTIVE_STEP_SCHEMA],
+  [InteractiveMultiStep, INTERACTIVE_MULTISTEP_SCHEMA],
+  [InteractiveGuided, INTERACTIVE_GUIDED_SCHEMA],
+  [InteractiveQuiz, INTERACTIVE_QUIZ_SCHEMA],
+  [TerminalStep, TERMINAL_STEP_SCHEMA],
+  [TerminalConnectStep, TERMINAL_CONNECT_STEP_SCHEMA],
+  [CodeBlockStep, CODE_BLOCK_STEP_SCHEMA],
+  [ChallengeBlock, CHALLENGE_BLOCK_SCHEMA],
+]);
 
 /** Resolve the schema for a child element, or `undefined` if the child
  *  is not a tracked step type (markdown / media / wrapper). */
@@ -58,9 +44,10 @@ function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
   if (!React.isValidElement(child)) {
     return undefined;
   }
-  return getStepTypeLookup().get(child.type as React.ComponentType<any>);
+  return STEP_TYPE_LOOKUP.get(child.type as React.ComponentType<any>);
 }
 import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
+import { sectionDoneStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
 import type { InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
@@ -78,9 +65,25 @@ import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
 import { useSectionPersistence } from './hooks/use-section-persistence';
 import { useSectionRequirements } from './hooks/use-section-requirements';
 import { useSectionScroll } from './hooks/use-section-scroll';
-import { deriveSectionState, initialSectionState, sectionReducer } from './section-state';
-import { getDocumentStepPosition, nextSectionCounter, registerSectionSteps, resetRegistry } from './section-registry';
 import {
+  evictSectionCache,
+  markStepCompleted,
+  markStepsCompleted,
+  reconcileSection,
+  resetSection as resetSectionStore,
+  resetSteps,
+  useSectionCompletion,
+} from '../../global-state/completion-store';
+import { dispatchProgress } from '../../global-state/progress-events';
+import { computeCursor, deriveSectionState, initialSectionState, sectionReducer } from './section-state';
+import {
+  getDocumentStepPosition,
+  nextSectionCounter,
+  registerSectionSteps,
+  resetRegistry,
+} from '../../global-state/section-registry';
+import {
+  CHALLENGE_BLOCK_SCHEMA,
   CODE_BLOCK_STEP_SCHEMA,
   type EnhanceContext,
   INTERACTIVE_GUIDED_SCHEMA,
@@ -92,10 +95,19 @@ import {
   TERMINAL_STEP_SCHEMA,
 } from './step-type-registry';
 
-// Re-exports preserved for back-compat with `content-renderer.tsx`
-// and `use-standalone-persistence.ts`. New code should import directly
-// from `./section-registry`.
-export { registerSectionSteps, getTotalDocumentSteps, getDocumentStepPosition } from './section-registry';
+// Re-exports preserved for back-compat with `content-renderer.tsx`. New code
+// should import directly from `./section-registry`.
+export {
+  registerSectionSteps,
+  getTotalDocumentSteps,
+  getDocumentStepPosition,
+} from '../../global-state/section-registry';
+
+// Interactive Section title fallback
+export const DEFAULT_INTERACTIVE_SECTION_TITLE = 'Interactive section';
+
+// Interactive Section title fallback for sections with no interactive steps (passive content only)
+export const PASSIVE_SECTION_TITLE = 'Steps';
 
 // Reset every counter (registry + offsets + per-step-type anonymous-ID
 // counters). Called when new content loads. The registry's own state
@@ -142,17 +154,11 @@ export function InteractiveSection({
 
   // Sequential state management.
   //
-  // The reducer owns the completion-and-acknowledgement state machine
-  // (Phase 4 of #842 — the gate itself isn't enabled yet; this commit
-  // is a pure structural move). Orthogonal UI flags stay as useState
-  // slots; they don't interact with what "completed" means.
-  //
-  // Local aliases `completedSteps` and `currentStepIndex` preserve the
-  // names used by every existing reader in this file, so the diff for
-  // the surrounding code stays focused on writes → dispatches.
+  // Post-C2 the reducer owns one bit: `acknowledged`. Step completion
+  // lives in the canonical `completion-store` (read via
+  // `useSectionCompletion`); the cursor is a pure derivation of the
+  // step roster + the completed set.
   const [sectionState, dispatch] = useReducer(sectionReducer, initialSectionState);
-  const completedSteps = sectionState.completed;
-  const currentStepIndex = sectionState.cursor;
   const [currentlyExecutingStep, setCurrentlyExecutingStep] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [executingStepNumber, setExecutingStepNumber] = useState(0); // Track which step is being executed (1-indexed for display)
@@ -225,8 +231,19 @@ export function InteractiveSection({
       if (!schema) {
         return;
       }
-      const stepId = `${sectionId}-${schema.idPrefix}-${stepIndex + 1}`;
-      const extension = schema.toStepInfoExtension((child as React.ReactElement<any>).props);
+      // Prefer the author/parser-supplied stable stepId on the child over
+      // the positional fallback. The JSON parser threads `props.stepId`
+      // through every interactive-block converter (either the author's
+      // `id` or `deriveStepId(...)`); without this preference the
+      // `cloneElement` in `enhancedChildren` below would overwrite the
+      // stable ID with the positional one on every section render,
+      // re-orphaning completion whenever a sibling block is inserted.
+      const childProps = (child as React.ReactElement<any>).props;
+      const stepId: string =
+        typeof childProps?.stepId === 'string' && childProps.stepId.length > 0
+          ? childProps.stepId
+          : `${sectionId}-${schema.idPrefix}-${stepIndex + 1}`;
+      const extension = schema.toStepInfoExtension(childProps);
       steps.push({
         stepId,
         element: child as React.ReactElement<any>,
@@ -257,26 +274,73 @@ export function InteractiveSection({
     return analyzeAcknowledgement(kinds);
   }, [children]);
 
-  // All storage IO + the `interactive-progress-saved` CustomEvent
-  // dispatch + the mount-only RESTORE effect are owned by
-  // `useSectionPersistence`. Pattern J: contract-surface ownership
-  // move. The four storage namespaces (steps + completion + ack +
-  // collapse-clear) and the event payload shape are pinned by the
-  // Phase 0 contracts tripwire.
-  const { persistCompletedSteps, clearStepAcknowledgement, setAcknowledgement, clearAllStorage } =
-    useSectionPersistence({
-      sectionId,
-      isPreviewMode,
-      stepComponents,
-      gateAnalysis,
-      dispatch,
-    });
+  // Ack + collapse storage IO + the mount-only RESTORE effect are owned
+  // by `useSectionPersistence`. Step-completion storage is owned by the
+  // completion store directly; this section no longer writes through a
+  // local persist callback.
+  const { clearStepAcknowledgement, setAcknowledgement, clearAckAndCollapseStorage } = useSectionPersistence({
+    sectionId,
+    isPreviewMode,
+    stepComponents,
+    gateAnalysis,
+    dispatch,
+  });
+
+  // Authoritative completion set for this section — live snapshot from
+  // the canonical store. `currentStepIndex` is the cursor derivation
+  // (first non-completed step in `stepComponents` order).
+  const completedSteps = useSectionCompletion(sectionId);
+
+  // Roster reconciliation (MF-2): drop any stored step IDs that no
+  // longer appear in the section's current roster. Self-heals storage
+  // after author edits (rename / delete / re-order under stable IDs)
+  // so `countAllCompleted` / `getGuideProgress` can't run > 100%. Runs
+  // once per roster change; idempotent when storage is already aligned.
+  // Skipped in preview mode where storage writes are sandboxed.
+  useEffect(() => {
+    if (isPreviewMode) {
+      return;
+    }
+    const roster = stepComponents.map((s) => s.stepId);
+    if (roster.length === 0) {
+      return;
+    }
+    reconcileSection(sectionId, roster);
+  }, [isPreviewMode, sectionId, stepComponents]);
+
+  // Preview-mode sandbox (#842 Bug 3): the store's in-memory cache is
+  // module-scope and would otherwise survive an unmount/remount cycle
+  // under the same preview content key, leaking the prior session's
+  // completion into the next render. Evict the cache on unmount so
+  // each preview mount starts fresh — storage is already preview-gated
+  // by `persistSection`.
+  useEffect(() => {
+    if (!isPreviewMode) {
+      return;
+    }
+    return () => {
+      evictSectionCache(sectionId);
+    };
+  }, [isPreviewMode, sectionId]);
+  const currentStepIndex = useMemo(
+    () =>
+      computeCursor(
+        stepComponents.map((s) => s.stepId),
+        completedSteps
+      ),
+    [stepComponents, completedSteps]
+  );
 
   // Objectives checking is handled by the step checker hook
 
   // Calculate base completion (steps completed) - needed for completion logic
   // Noop steps are always considered complete (they're informational only)
   const nonNoopSteps = stepComponents.filter((s) => s.targetAction !== 'noop');
+
+  // Swap "Interactive section" → "Steps" when the title is the default
+  // fallback and no child step is interactive. Author-set titles pass through.
+  const displayTitle =
+    title === DEFAULT_INTERACTIVE_SECTION_TITLE && nonNoopSteps.length === 0 ? PASSIVE_SECTION_TITLE : title;
   const allInteractiveStepsCompleted =
     stepComponents.length > 0 && (nonNoopSteps.length === 0 || nonNoopSteps.every((s) => completedSteps.has(s.stepId)));
 
@@ -287,17 +351,20 @@ export function InteractiveSection({
     objectives,
     stepId: sectionId,
     isEligibleForChecking: !allInteractiveStepsCompleted,
+    // `null` ⇒ the section's own self-check is not a real step; suppress
+    // the checker's store-write side effects. The section handles its
+    // own completion via `markStepsCompleted` on the child step IDs when
+    // objectives fire.
+    sectionId: null,
   });
 
   const isCompletedByObjectives = objectivesChecker.completionReason === 'objectives';
 
-  // Derive the high-level state kind from the reducer state + the gate
-  // analysis + objectives. `awaiting-ack` is the new state introduced
-  // in phase 5 — it surfaces only when every interactive step is done
-  // AND the gate predicate says so AND ack hasn't been granted yet.
+  // Derive the high-level state kind from the reducer's ack bit + the
+  // gate analysis + objectives + the live completion set.
   const derived = useMemo(
-    () => deriveSectionState(sectionState, stepComponents, gateAnalysis, isCompletedByObjectives),
-    [sectionState, stepComponents, gateAnalysis, isCompletedByObjectives]
+    () => deriveSectionState(sectionState, stepComponents, gateAnalysis, isCompletedByObjectives, completedSteps),
+    [sectionState, stepComponents, gateAnalysis, isCompletedByObjectives, completedSteps]
   );
   const sectionKind = derived.kind;
   const isCompleted = derived.isCompleted;
@@ -320,16 +387,12 @@ export function InteractiveSection({
   useEffect(() => {
     if (isCompletedByObjectives && stepComponents.length > 0) {
       const allStepIds = stepComponents.map((step) => step.stepId);
-
-      if (completedSteps && completedSteps.size !== allStepIds.length) {
-        dispatch({ type: 'COMPLETE_ALL_STEPS', stepIds: allStepIds });
-        // Persist so a remount (e.g. fullscreen → sidebar auto-dock fired
-        // by an interactive nav inside this section) doesn't lose the
-        // objectives-driven completion and re-lock every step.
-        persistCompletedSteps(new Set(allStepIds));
+      if (completedSteps.size !== allStepIds.length) {
+        // Single bulk write — the store persists + notifies once.
+        markStepsCompleted(allStepIds, sectionId, 'objectives');
       }
     }
-  }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps, persistCompletedSteps]);
+  }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
 
   // Get plugin configuration to determine if auto-detection is enabled
   const pluginContext = usePluginContext();
@@ -373,31 +436,37 @@ export function InteractiveSection({
   // Track if we've emitted the guide-level completion event for this section
   const hasEmittedGuideCompletionRef = useRef(false);
 
-  // Reset the emission flag when section becomes incomplete (e.g., after reset)
+  // Reset the emission flag when section becomes incomplete (e.g., after reset).
+  // Also clear the persisted done bit so `section-completed:` checks on
+  // dependent steps re-block until the user re-completes the section.
   useEffect(() => {
     if (!isCompleted) {
       hasEmittedGuideCompletionRef.current = false;
+      if (!isPreviewMode) {
+        sectionDoneStorage.clear(getContentKey(), sectionId);
+      }
     }
-  }, [isCompleted]);
+  }, [isCompleted, isPreviewMode, sectionId]);
 
   // Trigger reactive checks when section completion status changes
   useEffect(() => {
     if (isCompleted && stepComponents.length > 0) {
-      // Notify dependent steps that this section is complete
-      const completionEvent = new CustomEvent('section-completed', {
-        detail: { sectionId },
-      });
-      document.dispatchEvent(completionEvent);
-
-      // Emit guide-level completion event (for ContentRenderer tracking)
-      // Only emit once per completion to avoid duplicate triggers
+      // Single unified event — replaces the two legacy CustomEvents
+      // (`section-completed` on document + `interactive-section-completed`
+      // on window). The `!hasEmittedGuideCompletionRef.current` guard
+      // becomes redundant for the section dispatch because `isCompleted`
+      // only flips true once per completion, but keep it as a cheap
+      // belt-and-braces against future re-dispatch effects.
       if (!hasEmittedGuideCompletionRef.current) {
         hasEmittedGuideCompletionRef.current = true;
-        window.dispatchEvent(
-          new CustomEvent('interactive-section-completed', {
-            detail: { sectionId },
-          })
-        );
+        dispatchProgress({ kind: 'section', sectionId, completed: true });
+        // Persist the section's done state so `section-completed:`
+        // requirement checks work without the section being mounted
+        // (other milestones, virtualized regions, conditional branches).
+        // Preview mode is sandboxed — keep the ephemeral check DOM-only.
+        if (!isPreviewMode) {
+          sectionDoneStorage.set(getContentKey(), sectionId, true);
+        }
       }
 
       // Trigger global reactive check to enable next eligible steps
@@ -407,7 +476,7 @@ export function InteractiveSection({
         SequentialRequirementsManager.getInstance().watchNextStep(3000); // Watch for 3 seconds
       });
     }
-  }, [isCompleted, sectionId, stepComponents.length]);
+  }, [isCompleted, sectionId, stepComponents.length, isPreviewMode]);
 
   // PRE-COMPUTE eligibility for ALL steps once (React best practice)
   // This prevents expensive recalculation on every render
@@ -422,100 +491,83 @@ export function InteractiveSection({
     [stepComponents, currentStepIndex]
   );
 
-  // Handle individual step completion
+  // Handle individual step completion. The completion write itself goes
+  // through `markStepCompleted` (idempotent — re-firing is a no-op once
+  // the store has the entry). This callback handles the section's own
+  // side effects: clearing the executing-step pointer, firing the legacy
+  // event that other listeners still depend on, and surfacing
+  // `onComplete` when the section is finished.
   const handleStepComplete = useCallback(
     (stepId: string, skipStateUpdate = false) => {
-      // GUARD: Skip if already completed - prevents infinite loops when callbacks are
-      // retriggered due to useCallback/useEffect dependency chains (R1, R2, R3)
+      // GUARD: short-circuit if already complete. The store is idempotent
+      // but cheap callers (auto-detection, multi-firing useEffects) can
+      // still benefit from skipping the bookkeeping below.
       if (completedSteps.has(stepId)) {
         return;
       }
 
       if (!skipStateUpdate) {
-        const currentIndex = stepComponents.findIndex((step) => step.stepId === stepId);
-        const newCompletedSteps = new Set([...completedSteps, stepId]);
-
-        // Reducer owns completed + cursor. cursorAdvancedTo is the index
-        // AFTER the completed step (so resume points at the next one).
-        dispatch({
-          type: 'COMPLETE_STEP',
-          stepId,
-          cursorAdvancedTo: currentIndex >= 0 ? currentIndex + 1 : currentStepIndex,
-        });
+        // `markStepCompleted` writes to the store and itself dispatches
+        // `pathfinder:progress` (kind === 'step'), so no manual event
+        // is needed here — every listener observes the change via the
+        // store's notify path.
+        markStepCompleted(stepId, sectionId, 'manual');
         setCurrentlyExecutingStep(null);
 
-        persistCompletedSteps(newCompletedSteps);
-
-        // React's reactive model handles eligibility updates automatically:
-        // 1. State updates are batched and applied
-        // 2. stepEligibility useMemo recalculates (triggered by completedSteps change)
-        // 3. enhancedChildren useMemo updates (triggered by stepEligibility change)
-        // 4. Child InteractiveStep receives new isEligibleForChecking prop
-        // 5. useStepChecker's useEffect fires (triggered by isEligibleForChecking change)
-        // 6. checkStep runs and next step unlocks
-
-        // useSyncExternalStore ensures manager state stays in sync with React renders
-        // No manual synchronization needed!
-
-        // Emit step completion event for fallback guide completion tracking
-        window.dispatchEvent(new CustomEvent('interactive-step-completed', { detail: { stepId, sectionId } }));
-
-        // Check if all steps are completed
-        const allStepsCompleted = newCompletedSteps.size >= stepComponents.length;
+        // `completedSteps` is the render-snapshot from the most recent
+        // commit, so it doesn't yet contain `stepId`. Build the
+        // post-write set explicitly and check every step in the roster
+        // against it. This is robust to any future change in store
+        // sync semantics (e.g. async store) — unlike a `size + 1`
+        // arithmetic check, which would lie if the write became
+        // asynchronous.
+        const postWriteCompleted = new Set(completedSteps);
+        postWriteCompleted.add(stepId);
+        const allStepsCompleted = stepComponents.every((s) => postWriteCompleted.has(s.stepId));
         if (allStepsCompleted) {
           onComplete?.();
-          // Note: guide-level completion event is emitted by the useEffect
-          // that watches isCompleted state to avoid duplicate emissions
         }
       } else {
         setCurrentlyExecutingStep(null);
       }
     },
-    [completedSteps, currentStepIndex, onComplete, persistCompletedSteps, sectionId, stepComponents]
+    [completedSteps, onComplete, sectionId, stepComponents]
   );
 
   /**
    * Handle individual step reset (redo functionality)
-   * Removes the target step and all subsequent steps from completion state
+   * Removes the target step and all subsequent steps from completion state.
+   * Any reset path clears the acknowledgement bit so re-completing always
+   * re-triggers the #842 gate.
    */
   const handleStepReset = useCallback(
     (stepId: string) => {
-      // Find the index of the step being reset
       const resetIndex = stepComponents.findIndex((step) => step.stepId === stepId);
       if (resetIndex < 0) {
         return;
       }
 
-      // Build the new completed set + the tail-id list for the reducer.
-      // Computed outside dispatch so persistCompletedSteps gets the exact
-      // value (the reducer's transition is structurally equivalent —
-      // RESET_STEP removes every tailStepIds entry from completed).
       const tailStepIds: string[] = [];
-      const newSet = new Set(completedSteps);
       for (let i = resetIndex; i < stepComponents.length; i++) {
-        const stepToRemove = stepComponents[i]!.stepId;
-        tailStepIds.push(stepToRemove);
-        newSet.delete(stepToRemove);
+        tailStepIds.push(stepComponents[i]!.stepId);
       }
 
-      dispatch({ type: 'RESET_STEP', stepId, tailStepIds, resetIndex });
-      persistCompletedSteps(newSet);
+      // Single bulk write to the store; one notify pass instead of one per step.
+      resetSteps(tailStepIds, sectionId);
 
-      // Acknowledgement clears alongside completion — the reducer enforces
-      // that invariant. Mirror it in storage so a remount-restore picks up
-      // the cleared ack. Hook gates on preview mode internally.
+      // Acknowledgement must clear alongside completion (#842, Bug 1).
+      dispatch({ type: 'CLEAR_ACK' });
       clearStepAcknowledgement();
 
-      // Also clear currently executing step if it matches
       if (currentlyExecutingStep === stepId) {
         setCurrentlyExecutingStep(null);
       }
 
-      // CRITICAL: Increment resetTrigger to notify all child steps to clear their local UI state
-      // This ensures green checkmarks are cleared from the UI
+      // Notify child steps to clear their local UI state (e.g. quiz selection,
+      // guided executor's transient state).
       setResetTrigger((prev) => prev + 1);
     },
-    [clearStepAcknowledgement, completedSteps, currentlyExecutingStep, persistCompletedSteps, stepComponents]
+    [clearStepAcknowledgement, currentlyExecutingStep, sectionId, stepComponents]
   );
 
   // Execute a single step (shared between individual and sequence execution)
@@ -606,22 +658,20 @@ export function InteractiveSection({
 
     // If currentStepIndex is beyond the end, it means all steps are completed - reset for full re-run
     if (startIndex >= stepComponents.length) {
-      dispatch({ type: 'RESET_SECTION' });
+      // Single atomic store reset; reducer clears the ack bit too.
+      resetSectionStore(sectionId);
+      dispatch({ type: 'CLEAR_ACK' });
       startIndex = 0;
-      // Persist the cleared set so a mid-run unmount (auto-dock from
-      // fullscreen) doesn't restore stale "all complete" state and
-      // skip the re-run on the next mount.
-      persistCompletedSteps(new Set());
     }
 
     // Check section-level requirements first and apply same priority logic
     if (requirements) {
       const sectionRequirementsData = {
         requirements: requirements,
-        targetaction: 'section',
-        reftarget: `section-${sectionId}`,
-        targetvalue: undefined,
-        textContent: title || 'Interactive section',
+        targetAction: 'section',
+        refTarget: `section-${sectionId}`,
+        targetValue: undefined,
+        textContent: title || DEFAULT_INTERACTIVE_SECTION_TITLE,
         tagName: 'section',
       };
 
@@ -680,12 +730,12 @@ export function InteractiveSection({
 
     // Start section-level blocking (persists for entire section)
     const dummyData = {
-      reftarget: `section-${sectionId}`,
-      targetaction: 'section',
-      targetvalue: undefined,
+      refTarget: `section-${sectionId}`,
+      targetAction: 'section',
+      targetValue: undefined,
       requirements: undefined,
       tagName: 'section',
-      textContent: title || 'Interactive section',
+      textContent: title || DEFAULT_INTERACTIVE_SECTION_TITLE,
       timestamp: Date.now(),
       isPartOfSection: true,
     };
@@ -693,19 +743,13 @@ export function InteractiveSection({
 
     let stoppedDueToRequirements = false;
     let completedStepsCount = startIndex; // Track number of completed steps for analytics (starts at startIndex since those are already done)
-    // Track the accumulated set OUTSIDE the React state so we can call
-    // persistCompletedSteps directly each step. The previous pattern wrapped
-    // the persist inside `setCompletedSteps((prev) => { ...; persistCompletedSteps(newSet); return newSet; })`,
-    // but React skips functional updater invocation when the component is
-    // unmounted — which happens mid-section when an auto-dock fires (a
-    // navigate step pushes a Grafana URL → FullScreenPanel unmounts and the
-    // orphaned do-section loop's per-step persists silently dropped). The
-    // all-complete sweep at the end of the loop still persisted, but the
-    // newly-mounted sidebar's InteractiveSection had already done its
-    // mount-time restore and only saw the pre-unmount snapshot. Keeping the
-    // accumulator local makes persists a direct side-effect that runs
-    // regardless of mount state. Verified via runtime logs (hypothesis H3).
-    let accumulatedCompleted = new Set(completedSteps);
+    // The completion store handles per-step persistence synchronously via
+    // `markStepCompleted` — every write hits the store + storage immediately,
+    // independent of whether the component is still mounted. This is the
+    // mid-section unmount fix (auto-dock from fullscreen): the prior
+    // implementation tracked an accumulator + called `persistCompletedSteps`
+    // wrapped in a functional setState updater, which React skipped on
+    // unmount and silently lost the per-step writes.
 
     try {
       for (let i = startIndex; i < stepComponents.length; i++) {
@@ -737,9 +781,9 @@ export function InteractiveSection({
         if (stepInfo.requirements) {
           const stepRequirementsData = {
             requirements: stepInfo.requirements,
-            targetaction: stepInfo.targetAction || 'button',
-            reftarget: stepInfo.refTarget || '',
-            targetvalue: stepInfo.targetValue,
+            targetAction: stepInfo.targetAction || 'button',
+            refTarget: stepInfo.refTarget || '',
+            targetValue: stepInfo.targetValue,
             textContent: stepInfo.stepId,
             tagName: 'div',
           };
@@ -865,22 +909,12 @@ export function InteractiveSection({
         const success = await executeStep(stepInfo);
 
         if (success) {
-          // Track completed step for analytics
-          completedStepsCount = i + 1; // i is 0-indexed, so +1 gives count of completed steps
+          completedStepsCount = i + 1;
 
-          // Mark step as completed immediately and persistently.
-          // `persistCompletedSteps` is called DIRECTLY so it survives a
-          // mid-section unmount — see the long comment on
-          // `accumulatedCompleted` above for the auto-dock race. The
-          // reducer dispatch is best-effort (also dropped on unmount);
-          // localStorage is the source of truth across remounts.
-          accumulatedCompleted = new Set([...accumulatedCompleted, stepInfo.stepId]);
-          dispatch({
-            type: 'COMPLETE_STEP',
-            stepId: stepInfo.stepId,
-            cursorAdvancedTo: i + 1,
-          });
-          persistCompletedSteps(accumulatedCompleted);
+          // Single synchronous write to the store; survives a mid-section
+          // unmount because the store is module-scope and storage writes
+          // are fire-and-forget.
+          markStepCompleted(stepInfo.stepId, sectionId, 'manual');
 
           // Also call the standard completion handler for other side effects (skip state update to avoid double-setting)
           handleStepComplete(stepInfo.stepId, true);
@@ -919,21 +953,11 @@ export function InteractiveSection({
 
       // Section sequence completed or cancelled
       if (!isCancelledRef.current && !stoppedDueToRequirements) {
-        // Only auto-complete all steps if we actually completed the entire sequence
-        // Don't auto-complete if we stopped due to requirements failure
+        // Belt-and-braces bulk write so any steps that didn't go through the
+        // per-step path (e.g. skipped via fix → `markSkipped` → `handleStepComplete`)
+        // also end up in the store. `markStepsCompleted` is idempotent.
         const allStepIds = stepComponents.map((step) => step.stepId);
-        dispatch({ type: 'COMPLETE_ALL_STEPS', stepIds: allStepIds });
-        // Persist so the user-visible "all done" state survives a
-        // remount triggered by the final step's navigation (the
-        // fullscreen auto-dock path) — without this, the new mount's
-        // restoration sees only the per-step persists from the loop
-        // and the section appears half-done despite finishing.
-        persistCompletedSteps(new Set(allStepIds));
-
-        // Force re-evaluation of section completion state
-        setTimeout(() => {
-          // This will trigger the completion effects now that all steps are marked complete
-        }, 100);
+        markStepsCompleted(allStepIds, sectionId, 'manual');
       }
     } catch (error) {
       console.error('Error running section sequence:', error);
@@ -1000,11 +1024,9 @@ export function InteractiveSection({
     currentStepIndex,
     requirements,
     checkRequirementsFromData,
-    persistCompletedSteps,
     scrollToStep,
     beginProgrammaticScroll,
     endProgrammaticScroll,
-    completedSteps,
   ]);
 
   /**
@@ -1016,10 +1038,11 @@ export function InteractiveSection({
       return;
     }
 
-    // Clear section state immediately. The reducer also clears the
-    // acknowledgement flag in lockstep — keeping the post-#842
-    // invariant ("ack requires completion") true at all times.
-    dispatch({ type: 'RESET_SECTION' });
+    // Clear step completion via the store, ack via the reducer, ack +
+    // collapse storage via the persistence hook. Three writers, one
+    // call site — invariants now live with their respective owners.
+    resetSectionStore(sectionId);
+    dispatch({ type: 'CLEAR_ACK' });
     setCurrentlyExecutingStep(null);
 
     // Expand the section and clear the auto-collapse-once guard so a
@@ -1029,11 +1052,8 @@ export function InteractiveSection({
     // Signal all child steps to reset their local state
     setResetTrigger((prev) => prev + 1);
 
-    // Clear storage persistence. Hook gates on preview mode internally
-    // (in preview mode none of the namespaces were written to anyway,
-    // so the clears would be no-ops). Sweeps steps + collapse + ack
-    // in one call.
-    clearAllStorage();
+    // Clear ack + collapse storage. Hook gates on preview mode internally.
+    clearAckAndCollapseStorage();
 
     // Notify listeners that progress for this content was cleared (#842, Bug 2).
     // Mirrors the dispatch in BlockPreview's reset() so any consumer driving
@@ -1079,47 +1099,25 @@ export function InteractiveSection({
         }, 100);
       }, 200);
     });
-  }, [disabled, isRunning, stepComponents, resetCollapse, clearAllStorage]);
+  }, [disabled, isRunning, stepComponents, resetCollapse, clearAckAndCollapseStorage, sectionId]);
 
   /**
    * Mark the section as acknowledged (issue #842).
    *
    * Available only when the gate is active and pending — i.e. the
-   * derived state is 'awaiting-ack'. For all-passive sections we
-   * synthesise a marker completion so the reducer's ACKNOWLEDGE
-   * invariant ("ack requires at least one completed step") is
-   * satisfied; the marker is internal and never user-visible.
+   * derived state is 'awaiting-ack'. For all-passive sections there
+   * are no real steps to count, so we pass `completedCount: 1` to
+   * satisfy the reducer's "ack requires completion" invariant
+   * without writing a synthetic step into the store.
    */
   const handleMarkSectionComplete = useCallback(() => {
     if (disabled || isRunning || sectionKind !== 'awaiting-ack') {
       return;
     }
-
-    if (gateAnalysis.isAllPassive) {
-      // All-passive section: the reducer needs at least one entry in
-      // `completed` before it accepts ACKNOWLEDGE. Inject a synthetic
-      // marker step id keyed to the section so it can't collide.
-      const markerId = `${sectionId}::ack-marker`;
-      dispatch({ type: 'COMPLETE_STEP', stepId: markerId, cursorAdvancedTo: 0 });
-      // Accumulate rather than overwrite. Safe today (gate's `isAllPassive`
-      // implies an empty completed set) but mirrors the reducer's add
-      // semantics so we don't clobber prior entries if classification ever
-      // changes.
-      persistCompletedSteps(new Set([...completedSteps, markerId]));
-    }
-
-    dispatch({ type: 'ACKNOWLEDGE' });
+    const completedCount = gateAnalysis.isAllPassive ? 1 : completedSteps.size;
+    dispatch({ type: 'ACKNOWLEDGE', completedCount });
     setAcknowledgement();
-  }, [
-    disabled,
-    isRunning,
-    sectionKind,
-    gateAnalysis.isAllPassive,
-    persistCompletedSteps,
-    sectionId,
-    completedSteps,
-    setAcknowledgement,
-  ]);
+  }, [disabled, isRunning, sectionKind, gateAnalysis.isAllPassive, completedSteps, setAcknowledgement]);
 
   // Register this section's steps in the global registry BEFORE rendering children
   // This must happen in useMemo (not useEffect) to ensure totalDocumentSteps is correct
@@ -1169,7 +1167,6 @@ export function InteractiveSection({
       }
 
       const isEligibleForChecking = stepEligibility[stepIndex] ?? false;
-      const isCompleted = completedSteps.has(stepInfo.stepId);
       const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
       const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
         sectionId,
@@ -1179,7 +1176,6 @@ export function InteractiveSection({
       const enhanceCtx: EnhanceContext = {
         stepInfo,
         isEligibleForChecking,
-        isCompleted,
         isCurrentlyExecuting,
         documentStepIndex,
         documentTotalSteps,
@@ -1212,7 +1208,6 @@ export function InteractiveSection({
     children,
     stepComponents,
     stepEligibility,
-    completedSteps,
     currentlyExecutingStep,
     handleStepComplete,
     handleStepReset,
@@ -1252,7 +1247,7 @@ export function InteractiveSection({
           </button>
         )}
         <div className="interactive-section-title-container">
-          <span className="interactive-section-title">{title}</span>
+          <span className="interactive-section-title">{displayTitle}</span>
           {isCompleted && <span className="interactive-section-checkmark">✓</span>}
         </div>
         {hints && (

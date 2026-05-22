@@ -48,7 +48,6 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   // Unified state management props (added by parent)
   stepId?: string;
   isEligibleForChecking?: boolean;
-  isCompleted?: boolean;
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   onStepReset?: (stepId: string) => void; // Signal to parent that step should be reset

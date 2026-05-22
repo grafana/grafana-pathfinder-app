@@ -1,25 +1,21 @@
 /**
  * Section persistence-state reducer for `InteractiveSection`.
  *
- * Owns the completion-and-acknowledgement state machine — and only that.
- * Orthogonal UI concerns (`isRunning`, `isCollapsed`, requirement-check
- * status, scroll tracking, etc.) live as separate `useState` slots inside
- * the section component; they don't change what "completed" means.
+ * After C2 the reducer owns one bit of state: `acknowledged`. Step
+ * completion lives in the canonical `completion-store`, and the
+ * cursor + "completed?" derivations are pure functions of
+ * `completed: ReadonlySet<string>` (from `useSectionCompletion`) plus
+ * the section's step roster.
  *
- * The reducer's purpose, per the #842 refactor:
- *   - Make Bug 1 (Redo bypasses the acknowledgement gate) structurally
- *     impossible. Every transition that clears `completed` also clears
- *     `acknowledged`; every transition that sets `acknowledged` requires
- *     `completed` to already be populated. There is no representable
- *     state where `completed.size === 0` and `acknowledged === true`.
- *   - Centralise the side-effect ordering. The component runs a single
- *     `useEffect` keyed off the reducer state to push changes into
- *     `interactiveStepStorage` and `sectionAcknowledgementStorage`,
- *     instead of every handler poking storage independently.
+ * The #842 ack-gate invariant is preserved:
+ *   - `ACKNOWLEDGE` requires `completedCount > 0` (rejected otherwise).
+ *   - `CLEAR_ACK` fires from every reset path (handleStepReset,
+ *     handleResetSection) so re-completing always re-triggers the gate.
  *
- * The gate itself is wired up in phase 5 of the refactor. Phase 4 ships
- * the reducer with `gateNeedsAcknowledgement` always passed as `false`,
- * which keeps externally observable behaviour identical to pre-refactor.
+ * The reducer no longer has access to `completed` directly; instead the
+ * caller passes `completedCount` on `ACKNOWLEDGE`. This makes the
+ * invariant explicit at the call site rather than implicit in the
+ * reducer's parallel-state set.
  */
 
 import type { StepInfo } from '../../types/component-props.types';
@@ -28,11 +24,6 @@ import type { AcknowledgementAnalysis } from './step-section-utils';
 /**
  * Authoritative section state.
  *
- *   - `completed`: the set of step ids the user (or objectives auto-
- *     completion) has finished. May contain ids for noop steps; the
- *     derived `kind` calculation filters them.
- *   - `cursor`: the index of the next non-completed step. Used by
- *     `getResumeInfo` to drive the "Resume" button label.
  *   - `acknowledged`: two-state for the issue-#842 gate.
  *       - `null`  → user has never seen the gate (or no gate applies).
  *       - `true`  → user clicked "Mark section as complete".
@@ -41,8 +32,6 @@ import type { AcknowledgementAnalysis } from './step-section-utils';
  *     cannot reappear by accident.
  */
 export interface SectionState {
-  completed: Set<string>;
-  cursor: number;
   acknowledged: true | null;
 }
 
@@ -61,39 +50,22 @@ export interface DerivedSectionState {
 }
 
 export type SectionAction =
-  /** Mount-time restore from persisted storage. */
-  | {
-      type: 'RESTORE';
-      completed: Set<string>;
-      acknowledged: true | null;
-      allStepIds: string[];
-    }
-  /** A single step reports completion. */
-  | {
-      type: 'COMPLETE_STEP';
-      stepId: string;
-      cursorAdvancedTo: number;
-    }
-  /** Objectives-based auto-completion — marks every step complete in one shot. */
-  | {
-      type: 'COMPLETE_ALL_STEPS';
-      stepIds: string[];
-    }
-  /** A single step's Redo button — removes the step and all tail steps. */
-  | {
-      type: 'RESET_STEP';
-      stepId: string;
-      tailStepIds: string[];
-      resetIndex: number;
-    }
-  /** The user clicked "Mark section as complete". */
-  | { type: 'ACKNOWLEDGE' }
-  /** The user clicked the per-section "Reset section" button. */
-  | { type: 'RESET_SECTION' };
+  /** Mount-time restore from persisted ack storage. */
+  | { type: 'RESTORE'; acknowledged: true | null }
+  /**
+   * The user clicked "Mark section as complete". Caller passes the
+   * current completion count from the store so the reducer can enforce
+   * the #842 "no empty ack" invariant.
+   */
+  | { type: 'ACKNOWLEDGE'; completedCount: number }
+  /**
+   * Clear the acknowledgement bit. Fired by every reset path
+   * (`handleStepReset`, `handleResetSection`) so re-completing the
+   * section always re-triggers the gate.
+   */
+  | { type: 'CLEAR_ACK' };
 
 export const initialSectionState: SectionState = Object.freeze({
-  completed: new Set<string>(),
-  cursor: 0,
   acknowledged: null,
 });
 
@@ -105,65 +77,31 @@ export const initialSectionState: SectionState = Object.freeze({
 export function sectionReducer(state: SectionState, action: SectionAction): SectionState {
   switch (action.type) {
     case 'RESTORE': {
-      // Filter restored ids against the current step roster so stale
-      // entries (e.g. from a guide whose step ids have changed) don't
-      // linger. The migration policy lives in `restoreFromStorage`
-      // — by the time this action reaches the reducer, `acknowledged`
-      // already reflects the auto-ack decision.
-      const valid = new Set<string>();
-      const allIds = new Set(action.allStepIds);
-      action.completed.forEach((id) => {
-        if (allIds.has(id)) {
-          valid.add(id);
-        }
-      });
-      const cursor = nextCursor(action.allStepIds, valid);
-      return { completed: valid, cursor, acknowledged: action.acknowledged };
-    }
-
-    case 'COMPLETE_STEP': {
-      if (state.completed.has(action.stepId)) {
+      if (state.acknowledged === action.acknowledged) {
         return state;
       }
-      const completed = new Set(state.completed);
-      completed.add(action.stepId);
-      return { ...state, completed, cursor: action.cursorAdvancedTo };
-    }
-
-    case 'COMPLETE_ALL_STEPS': {
-      const allIds = new Set(action.stepIds);
-      if (allIds.size === state.completed.size && action.stepIds.every((id) => state.completed.has(id))) {
-        return state;
-      }
-      return { ...state, completed: allIds, cursor: action.stepIds.length };
-    }
-
-    case 'RESET_STEP': {
-      const completed = new Set(state.completed);
-      action.tailStepIds.forEach((id) => completed.delete(id));
-      const cursor = Math.min(state.cursor, action.resetIndex);
-      // Bug 1 fix (structural): clearing any completed step also clears
-      // acknowledgement. Re-completing must therefore re-trigger the gate.
-      return { completed, cursor, acknowledged: null };
+      return { acknowledged: action.acknowledged };
     }
 
     case 'ACKNOWLEDGE': {
-      // Only meaningful when the section has at least one completion;
-      // an empty section ack would set up Bug 1's invariant violation.
-      if (state.completed.size === 0) {
+      // #842 Bug 1: refuse to set ack when there is nothing completed.
+      // Without this, a guide could land in a state where ack=true but
+      // completed is empty — the gate would then read as "satisfied"
+      // for a never-started section.
+      if (action.completedCount === 0) {
         return state;
       }
       if (state.acknowledged === true) {
         return state;
       }
-      return { ...state, acknowledged: true };
+      return { acknowledged: true };
     }
 
-    case 'RESET_SECTION': {
-      if (state.completed.size === 0 && state.acknowledged === null && state.cursor === 0) {
+    case 'CLEAR_ACK': {
+      if (state.acknowledged === null) {
         return state;
       }
-      return { completed: new Set<string>(), cursor: 0, acknowledged: null };
+      return { acknowledged: null };
     }
 
     default: {
@@ -181,7 +119,7 @@ export function sectionReducer(state: SectionState, action: SectionAction): Sect
  * set of completed ids. Returns the index of the first non-completed
  * step, or `stepIds.length` if every step is in the set.
  */
-function nextCursor(stepIds: string[], completed: Set<string>): number {
+export function computeCursor(stepIds: readonly string[], completed: ReadonlySet<string>): number {
   for (let i = 0; i < stepIds.length; i++) {
     if (!completed.has(stepIds[i]!)) {
       return i;
@@ -191,24 +129,21 @@ function nextCursor(stepIds: string[], completed: Set<string>): number {
 }
 
 /**
- * Derive the section's high-level state kind from the persistent state
- * + the current step roster + the gate analysis + objectives status.
+ * Derive the section's high-level state kind from the persistent ack
+ * state + the current step roster + the gate analysis + objectives
+ * status + completion data from the store.
  *
- * The reducer owns persistent state; this function owns the rendering-
+ * The reducer owns `acknowledged`; this function owns the rendering-
  * time read model. Splitting them keeps the reducer pure and lets the
  * derived view recompute whenever children or objectives change without
  * touching authoritative state.
- *
- * Behaviour during phase 4 (gate not enabled): callers pass
- * `gate = { needsAcknowledgement: false, isAllPassive: false }` so the
- * `awaiting-ack` branch is unreachable. Phase 5 wires up the real
- * analysis and the gate begins to fire.
  */
 export function deriveSectionState(
   state: SectionState,
   stepComponents: StepInfo[],
   gate: AcknowledgementAnalysis,
-  isCompletedByObjectives: boolean
+  isCompletedByObjectives: boolean,
+  completed: ReadonlySet<string>
 ): DerivedSectionState {
   if (isCompletedByObjectives) {
     return {
@@ -224,7 +159,7 @@ export function deriveSectionState(
   }
 
   const nonNoop = stepComponents.filter((s) => s.targetAction !== 'noop');
-  const allInteractiveStepsCompleted = nonNoop.length === 0 || nonNoop.every((s) => state.completed.has(s.stepId));
+  const allInteractiveStepsCompleted = nonNoop.length === 0 || nonNoop.every((s) => completed.has(s.stepId));
 
   if (gate.isAllPassive) {
     // The section has zero interactive steps. The only path to DONE
@@ -238,7 +173,7 @@ export function deriveSectionState(
 
   if (!allInteractiveStepsCompleted) {
     return {
-      kind: state.completed.size > 0 ? 'partial' : 'init',
+      kind: completed.size > 0 ? 'partial' : 'init',
       doneVia: null,
       isCompleted: false,
       allInteractiveStepsCompleted: false,
@@ -277,9 +212,8 @@ export function restoreFromStorage(input: {
   stepComponents: StepInfo[];
   gate: AcknowledgementAnalysis;
 }): { state: SectionState; migrated: boolean } {
-  const allStepIds = input.stepComponents.map((s) => s.stepId);
+  const allIds = new Set(input.stepComponents.map((s) => s.stepId));
   const valid = new Set<string>();
-  const allIds = new Set(allStepIds);
   input.completed.forEach((id) => {
     if (allIds.has(id)) {
       valid.add(id);
@@ -297,11 +231,7 @@ export function restoreFromStorage(input: {
   }
 
   return {
-    state: {
-      completed: valid,
-      cursor: nextCursor(allStepIds, valid),
-      acknowledged,
-    },
+    state: { acknowledged },
     migrated,
   };
 }

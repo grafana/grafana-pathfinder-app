@@ -22,6 +22,14 @@
 export const PATHFINDER_PARAMS = ['doc', 'type', 'source', 'page', 'kiosk_session', 'panelMode'] as const;
 export type PathfinderParam = (typeof PATHFINDER_PARAMS)[number];
 
+// Subset of PATHFINDER_PARAMS that activate the deep-link handler
+export const PATHFINDER_ACTIVATION_PARAMS = [
+  'doc',
+  'panelMode',
+  'kiosk_session',
+] as const satisfies readonly PathfinderParam[];
+export type PathfinderTriggerParam = (typeof PATHFINDER_ACTIVATION_PARAMS)[number];
+
 /** Tab/guide kind discriminator carried by `?type=`. */
 export type PathfinderDeepLinkType = 'learning-journey' | 'docs' | 'interactive';
 

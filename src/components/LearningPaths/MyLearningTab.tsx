@@ -22,6 +22,7 @@ import {
   interactiveStepStorage,
   interactiveCompletionStorage,
 } from '../../lib/user-storage';
+import { evictAllContentCaches } from '../../global-state/completion-store';
 import type { EarnedBadge } from '../../types';
 
 // Badge utilities extracted for testability
@@ -364,12 +365,12 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       // This prevents guides from instantly re-completing when reopened
       await interactiveStepStorage.clearAll();
       await interactiveCompletionStorage.clearAll();
+      // Drop every open guide's in-memory completion snapshot too — without
+      // this, currently mounted `useStepCompletion` subscribers would still
+      // render the prior state until the user closed and reopened the tab.
+      evictAllContentCaches();
 
       // Notify the context engine to refresh recommendations.
-      // Note: already-open interactive guide tabs may still show stale completed
-      // steps until the user closes and reopens them, because individual tab
-      // components don't re-read from storage on this event. Acceptable here
-      // since reset-progress is a dev/QA tool, not a primary user flow.
       window.dispatchEvent(
         new CustomEvent('interactive-progress-cleared', {
           detail: { contentKey: '*' },

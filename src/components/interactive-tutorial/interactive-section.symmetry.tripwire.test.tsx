@@ -160,16 +160,17 @@ afterEach(() => {
 
 /**
  * Expected enhanced-prop surface per tracked step type. Drawn from the
- * cloneElement call sites in `enhancedChildren` (lines ~1657, 1699,
- * 1745, 1790, 1820, 1850, 1881).
+ * cloneElement call sites in `enhancedChildren`.
  *
- * `ref` and `key` are intentionally excluded — React handles them
- * specially and they do not appear in the captured `props`.
+ * `ref`, `key`, and `isCompleted` are intentionally excluded — React
+ * handles `ref`/`key` specially and they do not appear in the captured
+ * `props`. `isCompleted` is no longer injected: children read their
+ * completion state directly from the completion store via
+ * `useStepCompletion(stepId, sectionId)`.
  */
 const COMMON_PROPS = [
   'stepId',
   'isEligibleForChecking',
-  'isCompleted',
   'onStepComplete',
   'stepIndex',
   'totalSteps',

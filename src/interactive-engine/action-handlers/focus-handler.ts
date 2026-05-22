@@ -16,7 +16,7 @@ export class FocusHandler {
     this.stateManager.setState(data, 'running');
 
     try {
-      const resolved = await resolveWithRetry(data.reftarget, 'focus');
+      const resolved = await resolveWithRetry(data.refTarget, 'focus');
 
       let targetElements: HTMLElement[];
       if (!resolved) {
@@ -28,7 +28,7 @@ export class FocusHandler {
       }
 
       if (!click) {
-        await this.handleShowMode(targetElements, data.targetcomment);
+        await this.handleShowMode(targetElements, data.targetComment);
         return;
       }
 

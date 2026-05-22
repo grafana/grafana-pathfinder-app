@@ -20,11 +20,13 @@ jest.mock('@openfeature/ofrep-web-provider', () => ({
   })),
 }));
 
-// Mock the TrackingHook
+// Mock the TrackingHook and the exposure helper
+const mockReportFeatureFlagExposure = jest.fn();
 jest.mock('./openfeature-tracking', () => ({
   TrackingHook: jest.fn().mockImplementation(() => ({
     after: jest.fn(),
   })),
+  reportFeatureFlagExposure: (...args: unknown[]) => mockReportFeatureFlagExposure(...args),
 }));
 
 // Mock analytics to prevent actual tracking
@@ -552,6 +554,7 @@ describe('openfeature', () => {
   describe('flag overrides', () => {
     beforeEach(() => {
       localStorage.clear();
+      mockReportFeatureFlagExposure.mockClear();
     });
 
     it('getFlagOverrides should return empty object when no overrides set', () => {
@@ -696,6 +699,139 @@ describe('openfeature', () => {
         const result = getExperimentConfig('pathfinder.after-24h-experiment');
 
         expect(result).toEqual({ variant: 'excluded', pages: [], resetCache: false });
+        expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
+      });
+    });
+
+    it('getExperimentConfig should fire exposure event when returning via override', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+        const { setFlagOverride, getExperimentConfig } = require('./openfeature');
+        setFlagOverride('pathfinder.experiment-variant', { variant: 'treatment', pages: ['/dashboards'] });
+
+        getExperimentConfig('pathfinder.experiment-variant');
+
+        expect(mockReportFeatureFlagExposure).toHaveBeenCalledTimes(1);
+        expect(mockReportFeatureFlagExposure).toHaveBeenCalledWith('pathfinder.experiment-variant', {
+          variant: 'treatment',
+          pages: ['/dashboards'],
+          resetCache: false,
+        });
+        expect(mockOF.mockClient.getObjectValue).not.toHaveBeenCalled();
+
+        consoleSpy.mockRestore();
+      });
+    });
+
+    it('getExperimentConfig should pass through repeated override calls to the exposure helper (helper handles dedup)', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+        const { setFlagOverride, getExperimentConfig } = require('./openfeature');
+        setFlagOverride('pathfinder.experiment-variant', { variant: 'control', pages: [] });
+
+        getExperimentConfig('pathfinder.experiment-variant');
+        getExperimentConfig('pathfinder.experiment-variant');
+        getExperimentConfig('pathfinder.experiment-variant');
+
+        // openfeature.ts calls reportFeatureFlagExposure on every override evaluation;
+        // the helper itself owns the (flag, variant) dedup — verified end-to-end in
+        // openfeature-tracking.test.ts. Here we only verify that the wiring fires.
+        expect(mockReportFeatureFlagExposure).toHaveBeenCalledTimes(3);
+        consoleSpy.mockRestore();
+      });
+    });
+
+    it('getExperimentConfig should NOT fire exposure when override is invalid and falls through', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        mockOF.mockClient.getObjectValue.mockReturnValue({
+          variant: 'excluded',
+          pages: [],
+        });
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { setFlagOverride, getExperimentConfig } = require('./openfeature');
+        // Missing `variant` field — invalid override, falls through to client.
+        setFlagOverride('pathfinder.experiment-variant', { pages: [] });
+
+        getExperimentConfig('pathfinder.experiment-variant');
+
+        // The override branch did not return — the client path runs and the
+        // real TrackingHook (mocked here) would handle the exposure. The
+        // standalone helper must not be called from the override branch.
+        expect(mockReportFeatureFlagExposure).not.toHaveBeenCalled();
+        expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
+      });
+    });
+
+    it('getHighlightedGuideConfig should fire exposure event when returning via override', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
+        setFlagOverride('pathfinder.highlighted-guide-experiment', {
+          variant: 'treatment',
+          pages: ['/a/grafana-irm-app*'],
+          guideId: 'bundled:my-guide',
+          autoOpen: true,
+        });
+
+        getHighlightedGuideConfig();
+
+        expect(mockReportFeatureFlagExposure).toHaveBeenCalledTimes(1);
+        expect(mockReportFeatureFlagExposure).toHaveBeenCalledWith(
+          'pathfinder.highlighted-guide-experiment',
+          expect.objectContaining({
+            variant: 'treatment',
+            pages: ['/a/grafana-irm-app*'],
+            guideId: 'bundled:my-guide',
+            autoOpen: true,
+          })
+        );
+        expect(mockOF.mockClient.getObjectValue).not.toHaveBeenCalled();
+
+        consoleSpy.mockRestore();
+      });
+    });
+
+    it('getHighlightedGuideConfig should NOT fire exposure when override is invalid and falls through', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        mockOF.mockClient.getObjectValue.mockReturnValue({
+          variant: 'excluded',
+          pages: [],
+          guideId: '',
+        });
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
+        // Missing `guideId` — invalid override per validateHighlightedGuideValue.
+        setFlagOverride('pathfinder.highlighted-guide-experiment', { variant: 'treatment', pages: [] });
+
+        getHighlightedGuideConfig();
+
+        expect(mockReportFeatureFlagExposure).not.toHaveBeenCalled();
         expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
       });
     });

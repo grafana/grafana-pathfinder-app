@@ -46,7 +46,7 @@ This Grafana App Plugin integrates as a sidebar panel using **Grafana Scenes** f
 **Content Loading with Interactive Elements**:
 1. `docs-retrieval/content-fetcher.ts` → Multi-strategy HTML fetching with fallbacks
 2. `docs-retrieval/html-parser.ts` → Parse HTML to React component tree
-3. `docs-retrieval/content-renderer.tsx` → Render React components with interactive elements
+3. `components/content-renderer/content-renderer.tsx` → Render React components with interactive elements
 4. `interactive-engine/interactive.hook.ts` (useInteractiveElements) → Handle "show me"/"do it" events, check requirements, highlight/automate UI elements
 5. `requirements-manager/step-checker.hook.ts` → Validate requirements and objectives
 6. Render in tab with progress tracking

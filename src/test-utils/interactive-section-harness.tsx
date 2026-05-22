@@ -51,10 +51,11 @@ let _stableCheckRequirementsFromData: jest.Mock | null = null;
 const stepsKey = (contentKey: string, sectionId: string) => `section-steps::${contentKey}::${sectionId}`;
 const collapseKey = (contentKey: string, sectionId: string) => `section-collapse::${contentKey}::${sectionId}`;
 const ackKey = (contentKey: string, sectionId: string) => `section-ack::${contentKey}::${sectionId}`;
+const doneKey = (contentKey: string, sectionId: string) => `section-done::${contentKey}::${sectionId}`;
 const completionKey = (contentKey: string) => `interactive-completion::${contentKey}`;
 
 /** Sweep all harness keys for a content key (matches the real
- *  `clearAllForContent` contract — sweeps steps + collapse + ack). */
+ *  `clearAllForContent` contract — sweeps steps + collapse + ack + done). */
 function sweepContent(contentKey: string) {
   for (const k of Array.from(memoryStore.keys())) {
     if (typeof k !== 'string') {
@@ -63,7 +64,8 @@ function sweepContent(contentKey: string) {
     if (
       k.startsWith(`section-steps::${contentKey}::`) ||
       k.startsWith(`section-collapse::${contentKey}::`) ||
-      k.startsWith(`section-ack::${contentKey}::`)
+      k.startsWith(`section-ack::${contentKey}::`) ||
+      k.startsWith(`section-done::${contentKey}::`)
     ) {
       memoryStore.delete(k);
     }
@@ -127,6 +129,21 @@ export function createUserStorageMock() {
       }),
       clear: jest.fn(async (contentKey: string, sectionId: string) => {
         memoryStore.delete(ackKey(contentKey, sectionId));
+      }),
+    },
+    /** Mount-free `section-completed:` requirement storage (Phase 2 follow-up
+     *  for issue #13). Mirrors the two-state shape of
+     *  `sectionAcknowledgementStorage`: `true` or absent (`null`). */
+    sectionDoneStorage: {
+      get: jest.fn(async (contentKey: string, sectionId: string) => {
+        const v = memoryStore.get(doneKey(contentKey, sectionId));
+        return v === undefined ? null : (v as true);
+      }),
+      set: jest.fn(async (contentKey: string, sectionId: string, value: true) => {
+        memoryStore.set(doneKey(contentKey, sectionId), value);
+      }),
+      clear: jest.fn(async (contentKey: string, sectionId: string) => {
+        memoryStore.delete(doneKey(contentKey, sectionId));
       }),
     },
     interactiveCompletionStorage: {
@@ -369,6 +386,14 @@ export function resetSectionHarness() {
   memoryStore.clear();
   _checkRequirementsResult = { pass: true, error: [] };
   _stableCheckRequirementsFromData?.mockClear();
+  // The completion store keeps its own module-scope cache + hydration
+  // tracking. Clear both so tests don't bleed state across runs.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const store = require('../global-state/completion-store');
+  store.resetCompletionStoreForTests();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const contentKey = require('../global-state/content-key');
+  contentKey.resetContentKeyForTests();
 }
 
 /**

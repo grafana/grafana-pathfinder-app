@@ -5,6 +5,8 @@ export {
   registerSectionSteps,
   getDocumentStepPosition,
   getTotalDocumentSteps,
+  DEFAULT_INTERACTIVE_SECTION_TITLE,
+  PASSIVE_SECTION_TITLE,
 } from './interactive-section';
 export { InteractiveStep } from './interactive-step';
 export { InteractiveMultiStep } from './interactive-multi-step';
@@ -17,6 +19,9 @@ export { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal
 export { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 export { ChallengeBlock, resetChallengeCounter } from './challenge-block';
 export { GrotGuideBlock } from './grot-guide-block';
+
+export { STEP_TYPE_PARSE_KEYS, STEP_TYPE_SCHEMAS } from './step-type-registry';
+export type { ParseTypeKey, StepTypeKind } from './step-type-registry';
 
 // Shared types from centralized location
 export type {

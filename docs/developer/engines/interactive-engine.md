@@ -239,7 +239,7 @@ The Interactive Engine integrates with several other system components:
 
 ### Content Renderer
 
-**Location**: `src/docs-retrieval/content-renderer.tsx`
+**Location**: `src/components/content-renderer/content-renderer.tsx`
 
 **Integration**: The Content Renderer creates the interactive step UI that triggers the Interactive Engine.
 

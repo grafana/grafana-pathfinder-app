@@ -59,6 +59,13 @@ function freshHook() {
   return new TrackingHook();
 }
 
+function freshReportFn() {
+  jest.resetModules();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { reportFeatureFlagExposure } = require('./openfeature-tracking');
+  return reportFeatureFlagExposure as (flagKey: string, value: JsonValue) => void;
+}
+
 function ctx(flagKey: string): HookContext {
   return { flagKey } as unknown as HookContext;
 }
@@ -155,6 +162,88 @@ describe('TrackingHook.after', () => {
   it('skips flags from other plugins (non-pathfinder prefix)', () => {
     const hook = freshHook();
     hook.after(ctx('grafana.some-flag'), details({ variant: 'treatment' }));
+    expect(mockReportAppInteraction).not.toHaveBeenCalled();
+  });
+});
+
+describe('reportFeatureFlagExposure', () => {
+  // Exercises the standalone helper that both `TrackingHook.after` and the
+  // local-override short-circuit in openfeature.ts call. Covers the same
+  // filtering + dedup semantics as the hook tests above, but invoked directly.
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockReportAppInteraction.mockClear();
+  });
+
+  it('fires exposure for a treatment variant on first call', () => {
+    const report = freshReportFn();
+    report('pathfinder.highlighted-guide-experiment', {
+      variant: 'treatment',
+      pages: [],
+      guideId: '',
+    });
+    expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
+    expect(mockReportAppInteraction).toHaveBeenCalledWith('feature_flag_evaluated', {
+      flag_key: 'pathfinder.highlighted-guide-experiment',
+      flag_value: JSON.stringify({ variant: 'treatment', pages: [], guideId: '' }),
+      tracking_key: 'highlighted_guide_experiment',
+      variant: 'treatment',
+    });
+  });
+
+  it('persists a marker so a fresh module instance does not re-fire', () => {
+    let report = freshReportFn();
+    report('pathfinder.experiment-variant', { variant: 'treatment', pages: [] });
+    expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
+
+    report = freshReportFn();
+    report('pathfinder.experiment-variant', { variant: 'treatment', pages: [] });
+    expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
+  });
+
+  it('dedups within a single page load even across repeated calls', () => {
+    const report = freshReportFn();
+    report('pathfinder.experiment-variant', { variant: 'treatment', pages: [] });
+    report('pathfinder.experiment-variant', { variant: 'treatment', pages: [] });
+    report('pathfinder.experiment-variant', { variant: 'treatment', pages: [] });
+    expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-fires when the variant for the same flag changes', () => {
+    let report = freshReportFn();
+    report('pathfinder.highlighted-guide-experiment', { variant: 'control' });
+    expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
+
+    report = freshReportFn();
+    report('pathfinder.highlighted-guide-experiment', { variant: 'treatment' });
+    expect(mockReportAppInteraction).toHaveBeenCalledTimes(2);
+    expect(mockReportAppInteraction.mock.calls[1]?.[1].variant).toBe('treatment');
+  });
+
+  it('skips excluded variants', () => {
+    const report = freshReportFn();
+    report('pathfinder.experiment-variant', { variant: 'excluded', pages: [] });
+    expect(mockReportAppInteraction).not.toHaveBeenCalled();
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('skips boolean flags (config, not experiment arms)', () => {
+    const report = freshReportFn();
+    report('pathfinder.enabled', true);
+    expect(mockReportAppInteraction).not.toHaveBeenCalled();
+  });
+
+  it('skips object flags without a trackingKey', () => {
+    const report = freshReportFn();
+    report('pathfinder.no-tracking-key', { variant: 'treatment' });
+    expect(mockReportAppInteraction).not.toHaveBeenCalled();
+  });
+
+  it('skips unknown / non-pathfinder flag keys', () => {
+    const report = freshReportFn();
+    report('grafana.some-flag', { variant: 'treatment' });
+    report('pathfinder.does-not-exist', { variant: 'treatment' });
     expect(mockReportAppInteraction).not.toHaveBeenCalled();
   });
 });
