@@ -185,7 +185,6 @@ function warnQuotaExceededOnce(): void {
   if (hasWarnedAboutQuota) {
     return;
   }
-  hasWarnedAboutQuota = true;
   try {
     getAppEvents().publish({
       type: AppEvents.alertWarning.name,
@@ -194,8 +193,12 @@ function warnQuotaExceededOnce(): void {
         'Your progress may not be saved. Try resetting old guide progress via My Learning to free up space.',
       ],
     });
+    // Only flip the flag after a successful publish so a runtime that
+    // isn't initialized yet doesn't permanently suppress the toast.
+    hasWarnedAboutQuota = true;
   } catch {
-    // getAppEvents() can throw in test envs without a grafana/runtime mock.
+    // getAppEvents() can throw in test envs without a grafana/runtime
+    // mock. Leave the flag false so a later write can retry.
   }
 }
 

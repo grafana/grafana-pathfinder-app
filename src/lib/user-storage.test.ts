@@ -450,4 +450,24 @@ describe('warnQuotaExceededOnce — surfaces a single toast across writes', () =
     await expect(tabStorage.setTabs(['tab-1'])).resolves.toBeUndefined();
     expect(publishMock).not.toHaveBeenCalled();
   });
+
+  it('retries the toast on a later write when getAppEvents() threw on the first attempt', async () => {
+    // First write: runtime not initialized → publish never runs, flag
+    // must remain false so a later write can still surface the toast.
+    (getAppEvents as jest.Mock).mockImplementation(() => {
+      throw new Error('grafana/runtime not initialized');
+    });
+
+    throwQuotaOnNextWrite = true;
+    await tabStorage.setTabs(['tab-1']);
+    expect(publishMock).not.toHaveBeenCalled();
+
+    // Runtime initialized between writes — the helper must surface the
+    // toast now instead of staying permanently silent.
+    (getAppEvents as jest.Mock).mockImplementation(() => ({ publish: publishMock }));
+
+    throwQuotaOnNextWrite = true;
+    await tabStorage.setTabs(['tab-2']);
+    expect(publishMock).toHaveBeenCalledTimes(1);
+  });
 });
