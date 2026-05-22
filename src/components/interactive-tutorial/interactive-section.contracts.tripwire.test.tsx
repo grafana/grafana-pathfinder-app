@@ -454,15 +454,10 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         expect(screen.getByTestId(`harness-complete-step-2`)).toBeInTheDocument();
         expect(screen.getByTestId(`harness-complete-step-1`)).toBeInTheDocument();
 
-        // `useDocumentStepProgress` lives inside the section and has
-        // `completedSteps` in its effect deps. The dispatched payload is
-        // `{ sectionId, totalSteps, documentStepIndex, completedCount }`
-        // — no `completedSteps` field. A re-fire of
-        // `pathfinder-step-progress` for this `sectionId` proves the
-        // section re-committed with a new `completedSteps` reference
-        // (the only dep in the effect that could have changed).
-        // Without the `useSyncExternalStore` wiring, this dispatch
-        // never happens because the effect never re-runs.
+        // Regression probe: this event only re-fires when `completedSteps`
+        // changes in `useDocumentStepProgress`'s deps — which requires
+        // the `useSyncExternalStore` subscription to land the flip in
+        // the section's render commit.
         await waitFor(() => {
           const evt = events.find((e) => e.name === 'pathfinder-step-progress' && e.detail.sectionId === SECTION_ID);
           expect(evt).toBeDefined();
