@@ -599,6 +599,15 @@ export function evictSectionCacheForKey(contentKey: string, sectionId: string): 
  * Safe to call with any contentKey, including ones the store hasn't
  * seen — entries / hydration markers / version counters are all
  * Map-keyed by exact string and unknown keys are no-ops.
+ *
+ * Subscribers via `useStepCompletion` / `useSectionCompletion` capture
+ * `getContentKey()` at hook-render time. Eviction by a content key
+ * that differs from the active hook's captured key will NOT trigger
+ * a re-render for those subscribers — they continue to read from the
+ * old cache slot. In practice this is fine: a user only interacts with
+ * one active content key at a time, and evictions are scoped to that
+ * key. If you need to evict a different content key while subscribers
+ * remain mounted under it, use `evictAllContentCaches()` instead.
  */
 export function evictContentCache(contentKey: string): void {
   entries.delete(contentKey);
