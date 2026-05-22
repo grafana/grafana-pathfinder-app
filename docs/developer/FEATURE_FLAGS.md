@@ -54,7 +54,7 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 **Multi-instance support**: Auto-open tracking is scoped per Grafana instance using hostname. This ensures that users with multiple Cloud instances (e.g., `company1.grafana.net` and `company2.grafana.net`) will see the sidebar auto-open independently per instance.
 
-**Onboarding flow integration**: If a user first lands on the setup guide onboarding flow (`/a/grafana-setupguide-app/onboarding-flow`), the plugin defers auto-open. It listens for navigation events (`grafana:location-changed` and `locationService.getHistory().listen()`) and triggers auto-open when the user navigates away from onboarding to normal Grafana pages.
+**Onboarding flow integration**: If a user first lands on the setup guide onboarding flow (`/a/grafana-setupguide-app/onboarding-flow`), the plugin defers auto-open. It listens for navigation events via `locationService.getHistory().listen()` (with a `popstate` fallback) and triggers auto-open when the user navigates away from onboarding to normal Grafana pages.
 
 **Tracking key**: `auto_open_sidebar`
 
