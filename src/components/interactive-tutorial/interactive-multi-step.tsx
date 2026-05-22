@@ -11,6 +11,7 @@ import { useStepChecker, validateInteractiveRequirements } from '../../requireme
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
+import type { InteractiveElementData } from '../../types/interactive.types';
 import { testIds } from '../../constants/testIds';
 import { STEP_STATES } from './step-states';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
@@ -63,7 +64,7 @@ interface InteractiveMultiStepProps {
 async function checkActionRequirements(
   action: InternalAction,
   actionIndex: number,
-  checkRequirementsFromData: (data: any) => Promise<any>
+  checkRequirementsFromData: (data: InteractiveElementData) => Promise<any>
 ): Promise<{ pass: boolean; explanation?: string }> {
   if (!action.requirements) {
     return { pass: true };
