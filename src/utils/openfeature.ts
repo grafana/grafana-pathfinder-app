@@ -3,7 +3,7 @@ import { useBooleanFlagValue, useStringFlagValue, useNumberFlagValue } from '@op
 import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
 import { config } from '@grafana/runtime';
 
-import { TrackingHook } from './openfeature-tracking';
+import { TrackingHook, reportFeatureFlagExposure } from './openfeature-tracking';
 
 // ============================================================================
 // TYPES
@@ -487,6 +487,10 @@ export const getExperimentConfig = (flagName: string): ExperimentConfig => {
           resetCache: typeof record.resetCache === 'boolean' ? record.resetCache : false,
         };
         console.warn(`[OpenFeature] Using local override for '${flagName}':`, config);
+        // Fire the exposure event so override-driven QA / demo runs produce
+        // the same analytics as a real MTFF assignment. The dedup state is
+        // shared with the OpenFeature hook path — see openfeature-tracking.ts.
+        reportFeatureFlagExposure(flagName, config as unknown as JsonValue);
         return config;
       }
     }
@@ -545,6 +549,10 @@ export const getHighlightedGuideConfig = (): HighlightedGuideConfig => {
       const validated = validateHighlightedGuideValue(override);
       if (validated) {
         console.warn(`[OpenFeature] Using local override for '${flagName}':`, validated);
+        // Fire the exposure event so override-driven QA / demo runs produce
+        // the same analytics as a real MTFF assignment. The dedup state is
+        // shared with the OpenFeature hook path — see openfeature-tracking.ts.
+        reportFeatureFlagExposure(flagName, validated as unknown as JsonValue);
         return validated;
       }
     }
