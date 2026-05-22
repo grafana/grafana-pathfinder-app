@@ -33,9 +33,11 @@ jest.mock('../../global-state/completion-store', () => {
       completed: completed.has(stepId),
       reason: completed.get(stepId) ?? null,
     })),
-    markStepCompleted: jest.fn((stepId: string, _sectionId: string | undefined, reason: 'manual' | 'skipped' | 'objectives') => {
-      completed.set(stepId, reason);
-    }),
+    markStepCompleted: jest.fn(
+      (stepId: string, _sectionId: string | undefined, reason: 'manual' | 'skipped' | 'objectives') => {
+        completed.set(stepId, reason);
+      }
+    ),
     resetStep: jest.fn((stepId: string) => {
       completed.delete(stepId);
     }),
@@ -449,7 +451,9 @@ describe('InteractiveQuiz: skip reason', () => {
 
     fireEvent.click(screen.getByTestId('interactive-quiz-skip-quiz-skip-test'));
 
-    const store = require('../../global-state/completion-store') as { __getStoredReason: (stepId: string) => string | null };
+    const store = require('../../global-state/completion-store') as {
+      __getStoredReason: (stepId: string) => string | null;
+    };
     // Before the fix this asserted 'manual' — the store write hardcoded
     // 'manual' even on skip, making the dispatched pathfinder:progress
     // event lie about user intent.
@@ -466,7 +470,9 @@ describe('InteractiveQuiz: skip reason', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Bravo' }));
     fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
 
-    const store = require('../../global-state/completion-store') as { __getStoredReason: (stepId: string) => string | null };
+    const store = require('../../global-state/completion-store') as {
+      __getStoredReason: (stepId: string) => string | null;
+    };
     expect(store.__getStoredReason('quiz-correct-test')).toBe('manual');
   });
 });
