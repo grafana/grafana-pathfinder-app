@@ -18,6 +18,12 @@ The canonical JSON form is lowercase (`action`, `reftarget`, `targetvalue`). The
 
 Authors can also write an explicit `id` on an interactive block; the parser plumbs it through to `ParsedElement.props.stepId`, overriding the section's positional `${sectionId}-step-N` convention. This is the recommended path for stable `section-completed:` requirement targets.
 
+### Step ID stability — type-change caveat
+
+Stable IDs survive position and content edits. They do NOT survive a block-type change (e.g. `interactive-step` → `interactive-multi-step` without an explicit `id`), because `deriveStepId(...)` doesn't include the block's `type` in its hash input — by design, since the type can flip during authoring without the author considering it identity-changing. Authors who want type-change resilience must set an explicit `id` on the block.
+
+The hash inputs are documented at `src/global-state/step-id.ts` (`deriveStepId(...)`): `sectionId`, zero-based `index`, `action`, `refTarget`, and an optional `variant` — notably no `type`. Audit that file to confirm which authoring edits do and do not orphan prior completion state in `interactiveStepStorage`.
+
 ## Completion store — canonical persistence
 
 Step completion lives in `src/global-state/completion-store.ts`. The store is the canonical persistence layer — `SectionState` no longer carries a parallel `completed` set, and step components no longer maintain a local `isLocallyCompleted` flag. The store backs the existing `interactiveStepStorage` namespace so localStorage shape is preserved.
