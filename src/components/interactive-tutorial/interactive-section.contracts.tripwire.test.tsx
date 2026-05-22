@@ -455,11 +455,14 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         expect(screen.getByTestId(`harness-complete-step-1`)).toBeInTheDocument();
 
         // `useDocumentStepProgress` lives inside the section and has
-        // `completedSteps` in its effect deps. A re-fire of
-        // `pathfinder-step-progress` proves the section re-rendered with
-        // the new `completedSteps` reference returned by the store.
-        // Without the `useSyncExternalStore` wiring, this dispatch never
-        // happens because the effect never re-runs.
+        // `completedSteps` in its effect deps. The dispatched payload is
+        // `{ sectionId, totalSteps, documentStepIndex, completedCount }`
+        // — no `completedSteps` field. A re-fire of
+        // `pathfinder-step-progress` for this `sectionId` proves the
+        // section re-committed with a new `completedSteps` reference
+        // (the only dep in the effect that could have changed).
+        // Without the `useSyncExternalStore` wiring, this dispatch
+        // never happens because the effect never re-runs.
         await waitFor(() => {
           const evt = events.find((e) => e.name === 'pathfinder-step-progress' && e.detail.sectionId === SECTION_ID);
           expect(evt).toBeDefined();
