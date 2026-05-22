@@ -14,6 +14,7 @@ import { InternalAction } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
 import { STEP_STATES } from './step-states';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import type { ProgressReason } from '../../global-state/progress-events';
 
 let anonymousMultiStepCounter = 0;
 
@@ -163,11 +164,20 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // Completion lives in the store.
     const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
     const isStandalone = !onStepComplete;
-    const persistCompletion = useCallback(() => {
-      if (isStandalone) {
-        markStepCompleted(renderedStepId, sectionId, 'manual');
-      }
-    }, [isStandalone, renderedStepId, sectionId]);
+    // `reason` flows into the unified `pathfinder:progress` event so
+    // downstream consumers can distinguish a normal completion
+    // (`'manual'`) from a user-initiated skip (`'skipped'`). The
+    // checker's own skip bridge writes `'skipped'` first; without this
+    // reason plumbing the standalone store write here would silently
+    // overwrite it with `'manual'`, making the event lie about intent.
+    const persistCompletion = useCallback(
+      (reason: ProgressReason = 'manual') => {
+        if (isStandalone) {
+          markStepCompleted(renderedStepId, sectionId, reason);
+        }
+      },
+      [isStandalone, renderedStepId, sectionId]
+    );
     const persistReset = useCallback(() => {
       if (isStandalone) {
         resetStep(renderedStepId, sectionId);
@@ -697,7 +707,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   onClick={async () => {
                     if (checker.markSkipped) {
                       await checker.markSkipped();
-                      persistCompletion();
+                      persistCompletion('skipped');
                       if (onStepComplete && stepId) {
                         onStepComplete(stepId);
                       }
@@ -839,7 +849,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   onClick={async () => {
                     if (checker.markSkipped) {
                       await checker.markSkipped();
-                      persistCompletion();
+                      persistCompletion('skipped');
                       if (onStepComplete && stepId) {
                         onStepComplete(stepId);
                       }

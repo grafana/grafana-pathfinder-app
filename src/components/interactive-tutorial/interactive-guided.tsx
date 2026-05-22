@@ -20,6 +20,7 @@ import { testIds } from '../../constants/testIds';
 import { sanitizeDocumentationHTML } from '../../security';
 import { STEP_STATES } from './step-states';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import type { ProgressReason } from '../../global-state/progress-events';
 
 /**
  * SafeHTML - Renders sanitized HTML as React components
@@ -170,13 +171,23 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     // Completion lives in the store. Section-managed steps notify the parent;
     // standalone steps write directly.
+    //
+    // `reason` flows into the unified `pathfinder:progress` event so
+    // downstream consumers can distinguish a normal completion
+    // (`'manual'`) from a user-initiated skip (`'skipped'`). The
+    // checker's own skip bridge writes `'skipped'` first; without this
+    // reason plumbing the standalone store write here would silently
+    // overwrite it with `'manual'`, making the event lie about intent.
     const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
     const isStandalone = !onStepComplete;
-    const persistCompletion = useCallback(() => {
-      if (isStandalone) {
-        markStepCompleted(renderedStepId, sectionId, 'manual');
-      }
-    }, [isStandalone, renderedStepId, sectionId]);
+    const persistCompletion = useCallback(
+      (reason: ProgressReason = 'manual') => {
+        if (isStandalone) {
+          markStepCompleted(renderedStepId, sectionId, reason);
+        }
+      },
+      [isStandalone, renderedStepId, sectionId]
+    );
     const persistReset = useCallback(() => {
       if (isStandalone) {
         resetStep(renderedStepId, sectionId);
@@ -562,7 +573,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     // Handle skip current step on timeout
     const handleSkipStep = useCallback(async () => {
-      persistCompletion();
+      persistCompletion('skipped');
 
       if (onStepComplete && stepId) {
         onStepComplete(stepId);
@@ -667,7 +678,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   onClick={async () => {
                     if (checker.markSkipped) {
                       await checker.markSkipped();
-                      persistCompletion();
+                      persistCompletion('skipped');
                       if (onStepComplete && stepId) {
                         onStepComplete(stepId);
                       }

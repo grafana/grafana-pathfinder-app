@@ -7,6 +7,7 @@ import { useStepChecker } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import type { ProgressReason } from '../../global-state/progress-events';
 
 // ============ Types ============
 
@@ -145,11 +146,20 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   // writes through its own persist effect.
   const { completed: storedCompleted } = useStepCompletion(stepId, sectionId);
   const isStandalone = !onStepComplete;
-  const persistCompletion = useCallback(() => {
-    if (isStandalone) {
-      markStepCompleted(stepId, sectionId, 'manual');
-    }
-  }, [isStandalone, stepId, sectionId]);
+  // `reason` flows into the `pathfinder:progress` event so downstream
+  // consumers can distinguish a correct-answer completion (`'manual'`)
+  // from a user-initiated skip (`'skipped'`). The checker's own skip
+  // bridge writes `'skipped'` first; without this reason plumbing the
+  // standalone store write here would silently overwrite it with
+  // `'manual'`, making the event lie about intent.
+  const persistCompletion = useCallback(
+    (reason: ProgressReason = 'manual') => {
+      if (isStandalone) {
+        markStepCompleted(stepId, sectionId, reason);
+      }
+    },
+    [isStandalone, stepId, sectionId]
+  );
   const persistReset = useCallback(() => {
     if (isStandalone) {
       resetStep(stepId, sectionId);
@@ -387,7 +397,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     if (markSkipped) {
       markSkipped();
     }
-    persistCompletion();
+    persistCompletion('skipped');
     if (onStepComplete && stepId) {
       onStepComplete(stepId);
     }

@@ -22,21 +22,26 @@ jest.mock('../../lib/analytics', () => ({
 
 // Stateful mock so the test can exercise the full mark-complete → re-render
 // flow. The real store is exercised in `completion-store.test.tsx`.
+//
+// We capture the `reason` argument on each `markStepCompleted` call so the
+// regression test for the skip-reason bug can assert that the quiz writes
+// `'skipped'` (not `'manual'`) when the user clicks Skip.
 jest.mock('../../global-state/completion-store', () => {
-  const completed = new Set<string>();
+  const completed = new Map<string, 'manual' | 'skipped' | 'objectives'>();
   return {
     useStepCompletion: jest.fn((stepId: string) => ({
       completed: completed.has(stepId),
-      reason: completed.has(stepId) ? 'manual' : null,
+      reason: completed.get(stepId) ?? null,
     })),
-    markStepCompleted: jest.fn((stepId: string) => {
-      completed.add(stepId);
+    markStepCompleted: jest.fn((stepId: string, _sectionId: string | undefined, reason: 'manual' | 'skipped' | 'objectives') => {
+      completed.set(stepId, reason);
     }),
     resetStep: jest.fn((stepId: string) => {
       completed.delete(stepId);
     }),
     STANDALONE_SECTION_ID: '__standalone__',
     __resetMockStore: () => completed.clear(),
+    __getStoredReason: (stepId: string) => completed.get(stepId) ?? null,
   };
 });
 
@@ -405,6 +410,64 @@ describe('InteractiveQuiz: render-order stability', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+// ─── Skip reason ─────────────────────────────────────────────────────────────
+
+describe('InteractiveQuiz: skip reason', () => {
+  // Re-mock the requirements manager so `canSkip` is true and a real
+  // `markSkipped` exists — the default mock in this file leaves both
+  // disabled, which would short-circuit the skip button.
+  beforeEach(() => {
+    resetQuizCounter();
+    (require('../../global-state/completion-store') as { __resetMockStore: () => void }).__resetMockStore();
+    const { useStepChecker } = require('../../requirements-manager') as {
+      useStepChecker: jest.Mock;
+    };
+    useStepChecker.mockImplementation(() => ({
+      isEnabled: true,
+      isCompleted: false,
+      explanation: null,
+      canSkip: true,
+      markSkipped: jest.fn(),
+      resetStep: jest.fn(),
+    }));
+  });
+
+  const choices: QuizChoice[] = [
+    { id: 'a', text: 'Alpha', correct: false },
+    { id: 'b', text: 'Bravo', correct: true },
+  ];
+
+  it('writes reason="skipped" to the store when the user clicks Skip', () => {
+    render(
+      <InteractiveQuiz question="Q" choices={choices} skippable shuffle={false} stepId="quiz-skip-test">
+        Q
+      </InteractiveQuiz>
+    );
+
+    fireEvent.click(screen.getByTestId('interactive-quiz-skip-quiz-skip-test'));
+
+    const store = require('../../global-state/completion-store') as { __getStoredReason: (stepId: string) => string | null };
+    // Before the fix this asserted 'manual' — the store write hardcoded
+    // 'manual' even on skip, making the dispatched pathfinder:progress
+    // event lie about user intent.
+    expect(store.__getStoredReason('quiz-skip-test')).toBe('skipped');
+  });
+
+  it('writes reason="manual" to the store when the user answers correctly', () => {
+    render(
+      <InteractiveQuiz question="Q" choices={choices} shuffle={false} stepId="quiz-correct-test">
+        Q
+      </InteractiveQuiz>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bravo' }));
+    fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
+
+    const store = require('../../global-state/completion-store') as { __getStoredReason: (stepId: string) => string | null };
+    expect(store.__getStoredReason('quiz-correct-test')).toBe('manual');
   });
 });
 
