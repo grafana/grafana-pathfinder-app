@@ -29,14 +29,14 @@ Load these files **only when working in the relevant domain**.
 
 ## Security, review, and testing
 
-| File                      | When to load                                                                                                | Auto-triggered by globs                                  |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `frontend-security.mdc`   | Frontend security (from security team)                                                                      | `*.ts`, `*.tsx`, `*.js`, `*.jsx`                         |
-| `react-antipatterns.mdc`  | PR reviews (on hit), hooks/effects/state                                                                    | --                                                       |
-| `testingStrategy.mdc`     | Writing or reviewing tests                                                                                  | `*.test.ts`, `*.test.tsx`, `jest.config*`, `jest.setup*` |
-| `pr-review.md`            | PR review orchestration (`/review`)                                                                         | --                                                       |
-| `E2E_TESTING_CONTRACT.md` | E2E testing, `data-test-*` attributes                                                                       | --                                                       |
-| `E2E_TESTING.md`          | E2E guide test runner: CLI reference, options, troubleshooting, error classification, environment variables | --                                                       |
+| File                       | When to load                                                                                                | Auto-triggered by globs                                  |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `frontend-security.mdc`    | Frontend security (from security team)                                                                      | `*.ts`, `*.tsx`, `*.js`, `*.jsx`                         |
+| `react-antipatterns.mdc`   | PR reviews (on hit), hooks/effects/state                                                                    | --                                                       |
+| `testingStrategy.mdc`      | Writing or reviewing tests                                                                                  | `*.test.ts`, `*.test.tsx`, `jest.config*`, `jest.setup*` |
+| `docs/design/PR_REVIEW.md` | PR review standards: pattern catalog (R1-R21, F1-F6, QC1-QC7, G1-G7), reviewer schema, comment prefixes     | --                                                       |
+| `E2E_TESTING_CONTRACT.md`  | E2E testing, `data-test-*` attributes                                                                       | --                                                       |
+| `E2E_TESTING.md`           | E2E guide test runner: CLI reference, options, troubleshooting, error classification, environment variables | --                                                       |
 
 ## Release, flags, and CI
 
@@ -117,6 +117,7 @@ Load these files **only when working in the relevant domain**.
 
 | File                                        | When to load                                                                                                                                                                                                     | Auto-triggered by globs |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `.cursor/skills/review/SKILL.md`            | **Skill** — `/review` orchestration. Six-phase workflow: read concern registry, classify, route, run reviewers, synthesize, doc-drift check. Grounds findings in `docs/design/PR_REVIEW.md`.                     | --                      |
 | `.cursor/skills/prevent-doc-drift/SKILL.md` | **Skill** — runs on `/review` or before merge. Detects new features / architecture changes in a PR and produces the AGENTS.md / CLAUDE.md / `.cursor/rules/` updates needed in the same PR to prevent drift.     | --                      |
 | `.cursor/skills/maintain-docs/SKILL.md`     | **Skill** — periodic doc-maintenance audit (orphans, drift, staleness). Complementary to `prevent-doc-drift`: runs across the whole repo on a schedule rather than per-PR.                                       | --                      |
 | `.cursor/skills/changelog/SKILL.md`         | **Skill** — drafts CHANGELOG entries from merged PRs since the last release tag. Categorizes by conventional-commit prefix and rewrites titles into sentence-case narrative bullets. Called by `release-prep`.   | --                      |

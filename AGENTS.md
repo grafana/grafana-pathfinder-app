@@ -116,7 +116,7 @@ Frequently-needed entries:
 
 ## PR reviews
 
-Use `/review`. It loads `docs/design/CONCERNS.md` (concern routing) and `.cursor/rules/pr-review.md` (code-quality pattern detector for R1-R21, F1-F6, QC1-QC7); `react-antipatterns.mdc` loads on hit. For Go PRs touching `pkg/**/*.go`, also verify `npm run lint:go`, `npm run test:go`, and `go build ./...` pass.
+Use `/review`. It invokes `.cursor/skills/review/SKILL.md` (orchestration workflow) which loads `docs/design/CONCERNS.md` (concern routing) and `docs/design/PR_REVIEW.md` (pattern catalog for R1-R21, F1-F6, QC1-QC7, G1-G7); `react-antipatterns.mdc` loads on hit. For Go PRs touching `pkg/**/*.go`, also verify `npm run lint:go`, `npm run test:go`, and `go build ./...` pass.
 
 Use `CONCERNS.md` alone for impact analysis, change risk classification, and subsystem-aware debugging.
 
