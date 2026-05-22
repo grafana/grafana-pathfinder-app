@@ -1105,12 +1105,19 @@ export const interactiveStepStorage = {
       const stepsPrefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
       const collapsePrefix = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-`;
       const ackPrefix = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-`;
+      const donePrefix = `${StorageKeys.SECTION_DONE_PREFIX}${contentKey}-`;
 
       // Find and remove all matching keys
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix) || key.startsWith(ackPrefix))) {
+        if (
+          key &&
+          (key.startsWith(stepsPrefix) ||
+            key.startsWith(collapsePrefix) ||
+            key.startsWith(ackPrefix) ||
+            key.startsWith(donePrefix))
+        ) {
           keysToRemove.push(key);
         }
       }
@@ -1142,11 +1149,18 @@ export const interactiveStepStorage = {
       const stepsPrefix = StorageKeys.INTERACTIVE_STEPS_PREFIX;
       const collapsePrefix = StorageKeys.SECTION_COLLAPSE_PREFIX;
       const ackPrefix = StorageKeys.SECTION_ACKNOWLEDGED_PREFIX;
+      const donePrefix = StorageKeys.SECTION_DONE_PREFIX;
 
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix) || key.startsWith(ackPrefix))) {
+        if (
+          key &&
+          (key.startsWith(stepsPrefix) ||
+            key.startsWith(collapsePrefix) ||
+            key.startsWith(ackPrefix) ||
+            key.startsWith(donePrefix))
+        ) {
           keysToRemove.push(key);
         }
       }
@@ -1303,6 +1317,56 @@ export const sectionAcknowledgementStorage = {
       await storage.removeItem(key);
     } catch (error) {
       console.warn('Failed to clear section acknowledgement state:', error);
+    }
+  },
+};
+
+/**
+ * Section "done" bit storage.
+ *
+ * Persists whether a section has reached `isCompleted === true`, derived
+ * from the section's gate analysis, objectives, completion set, and ack
+ * state. Read by the `section-completed:` requirement check so it
+ * works without the section being currently mounted (e.g. when the
+ * dependent step is on a later milestone, in a virtualized scroll
+ * region, or in a conditional branch not yet rendered).
+ *
+ * Storage is intentionally two-state — `true` or absent (`null`). On
+ * reset paths the section calls `.clear()` rather than writing `false`.
+ */
+export const sectionDoneStorage = {
+  /**
+   * Returns `true` when the section is recorded complete; otherwise
+   * `null`. Two-state shape mirrors `sectionAcknowledgementStorage`.
+   */
+  async get(contentKey: string, sectionId: string): Promise<true | null> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_DONE_PREFIX}${contentKey}-${sectionId}`;
+      const done = await storage.getItem<boolean>(key);
+      return done === true ? true : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async set(contentKey: string, sectionId: string, isDone: true): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_DONE_PREFIX}${contentKey}-${sectionId}`;
+      await storage.setItem(key, isDone);
+    } catch (error) {
+      console.warn('Failed to save section done state:', error);
+    }
+  },
+
+  async clear(contentKey: string, sectionId: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_DONE_PREFIX}${contentKey}-${sectionId}`;
+      await storage.removeItem(key);
+    } catch (error) {
+      console.warn('Failed to clear section done state:', error);
     }
   },
 };

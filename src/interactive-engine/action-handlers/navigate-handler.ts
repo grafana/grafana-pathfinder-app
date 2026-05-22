@@ -44,39 +44,39 @@ export class NavigateHandler {
     // Do mode: actually navigate to the target URL
     // Use Grafana's idiomatic navigation pattern via locationService
     // This handles both internal Grafana routes and external URLs appropriately
-    if (data.reftarget.startsWith('http://') || data.reftarget.startsWith('https://')) {
+    if (data.refTarget.startsWith('http://') || data.refTarget.startsWith('https://')) {
       // SECURITY: Validate external URL scheme to prevent javascript:/data: injection
-      const parsed = parseUrlSafely(data.reftarget);
+      const parsed = parseUrlSafely(data.refTarget);
       if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) {
-        console.warn(`[NavigateHandler] Blocked navigation to invalid URL: ${data.reftarget.slice(0, 100)}`);
+        console.warn(`[NavigateHandler] Blocked navigation to invalid URL: ${data.refTarget.slice(0, 100)}`);
         return;
       }
       // External URL - open in new tab to preserve current Grafana session
-      window.open(data.reftarget, '_blank', 'noopener,noreferrer');
+      window.open(data.refTarget, '_blank', 'noopener,noreferrer');
     } else {
       // SECURITY: Reject protocol-relative URLs before URL parsing.
       // '//evil.com' parses via new URL() as cross-origin with pathname '/', which
       // collides with validateRedirectPath's rejection sentinel and bypasses the check.
-      if (!data.reftarget.startsWith('/') || data.reftarget.startsWith('//')) {
-        console.warn(`[NavigateHandler] Blocked navigation to invalid path: ${data.reftarget.slice(0, 100)}`);
+      if (!data.refTarget.startsWith('/') || data.refTarget.startsWith('//')) {
+        console.warn(`[NavigateHandler] Blocked navigation to invalid path: ${data.refTarget.slice(0, 100)}`);
         return;
       }
 
       // SECURITY: Validate internal path against denied routes (F-1 / ASE26016)
       const user = config.bootData?.user;
       const isAdmin = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
-      const safePath = validateRedirectPath(data.reftarget, isAdmin);
+      const safePath = validateRedirectPath(data.refTarget, isAdmin);
 
       let parsed: URL;
       try {
-        parsed = new URL(data.reftarget, window.location.origin);
+        parsed = new URL(data.refTarget, window.location.origin);
       } catch {
-        console.warn(`[NavigateHandler] Blocked navigation to unparseable path: ${data.reftarget.slice(0, 100)}`);
+        console.warn(`[NavigateHandler] Blocked navigation to unparseable path: ${data.refTarget.slice(0, 100)}`);
         return;
       }
 
       if (safePath !== parsed.pathname) {
-        console.warn(`[NavigateHandler] Blocked navigation to restricted path: ${data.reftarget.slice(0, 100)}`);
+        console.warn(`[NavigateHandler] Blocked navigation to restricted path: ${data.refTarget.slice(0, 100)}`);
         return;
       }
 
@@ -87,7 +87,7 @@ export class NavigateHandler {
       }
 
       // SECURITY: Navigate using validated pathname + original query/fragment.
-      // Never push raw data.reftarget — even if the comparison above were bypassed,
+      // Never push raw data.refTarget — even if the comparison above were bypassed,
       // locationService only receives the validated path.
       // Tag the push so `useAlignmentReevaluation` skips reevaluating: this
       // navigation is part of the guide flow, not a user wandering off.

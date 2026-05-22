@@ -46,7 +46,7 @@ This Grafana App Plugin integrates as a sidebar panel using **Grafana Scenes** f
 **Content Loading with Interactive Elements**:
 1. `docs-retrieval/content-fetcher.ts` → Multi-strategy HTML fetching with fallbacks
 2. `docs-retrieval/html-parser.ts` → Parse HTML to React component tree
-3. `docs-retrieval/content-renderer.tsx` → Render React components with interactive elements
+3. `components/content-renderer/content-renderer.tsx` → Render React components with interactive elements
 4. `interactive-engine/interactive.hook.ts` (useInteractiveElements) → Handle "show me"/"do it" events, check requirements, highlight/automate UI elements
 5. `requirements-manager/step-checker.hook.ts` → Validate requirements and objectives
 6. Render in tab with progress tracking
@@ -103,7 +103,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 **Tier 1 — engines:**
 
 - `context-engine/` — Detects Grafana context (URL, datasources, dashboard) and calls the recommender. Entry: `context.service.ts`. Hook: `useContextPanel()`. See `docs/developer/engines/context-engine.md`.
-- `docs-retrieval/` — Multi-strategy content fetcher and renderer. Entry: `content-fetcher.ts` (`fetchUnifiedContent`). Renders via `content-renderer.tsx`. Journey-completion helpers in `learning-journey-helpers.ts`.
+- `docs-retrieval/` — Multi-strategy content fetcher and parser. Entry: `content-fetcher.ts` (`fetchUnifiedContent`). Journey-completion helpers in `learning-journey-helpers.ts`. Rendering lives in `components/content-renderer/content-renderer.tsx` (Tier 2) so the parser stays a pure engine.
 - `interactive-engine/` — Executes interactive step actions. Entry: `interactive.hook.ts` (`useInteractiveElements`). Action handlers under `action-handlers/`. See `docs/developer/engines/interactive-engine.md`.
 - `package-engine/` — Package resolution + loading. Entry: `composite-resolver.ts` (`createCompositeResolver`). Resolver chain: bundled → online CDN → recommender API.
 - `learning-paths/` — Progress / badges / streaks / next-action. Entry: `learning-paths.hook.ts`. Badge definitions in `badges.ts`. See `docs/developer/learning-paths/README.md`.

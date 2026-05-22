@@ -19,6 +19,7 @@
 import { act, renderHook } from '@testing-library/react';
 
 import { useGuidePreviewProgress } from './useGuidePreviewProgress';
+import { resetContentKeyForTests, setActiveTabUrl } from '../../../global-state/content-key';
 
 jest.mock('../../../lib/user-storage', () => ({
   interactiveStepStorage: {
@@ -38,6 +39,8 @@ const OTHER_KEY = 'block-editor://preview/other-guide';
 beforeEach(() => {
   jest.clearAllMocks();
   (interactiveStepStorage.hasProgress as jest.Mock).mockResolvedValue(false);
+  resetContentKeyForTests();
+  setActiveTabUrl(PROGRESS_KEY);
 });
 
 describe('useGuidePreviewProgress — listener contract', () => {
@@ -65,7 +68,7 @@ describe('useGuidePreviewProgress — listener contract', () => {
     expect(result.current.hasProgress).toBe(true);
   });
 
-  it('flips hasProgress to true on a matching "interactive-progress-saved" event', async () => {
+  it('flips hasProgress to true on a matching pathfinder:progress (kind: guide) event', async () => {
     const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
     await act(async () => {
       await Promise.resolve();
@@ -73,8 +76,8 @@ describe('useGuidePreviewProgress — listener contract', () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-saved', {
-          detail: { contentKey: PROGRESS_KEY, hasProgress: true, completionPercentage: 25 },
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: PROGRESS_KEY, hasProgress: true, percentage: 25 },
         })
       );
     });
@@ -82,7 +85,7 @@ describe('useGuidePreviewProgress — listener contract', () => {
     expect(result.current.hasProgress).toBe(true);
   });
 
-  it('ignores a "interactive-progress-saved" event for a different contentKey', async () => {
+  it('ignores a pathfinder:progress (kind: guide) event for a different contentKey', async () => {
     const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
     await act(async () => {
       await Promise.resolve();
@@ -90,8 +93,66 @@ describe('useGuidePreviewProgress — listener contract', () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-saved', {
-          detail: { contentKey: OTHER_KEY, hasProgress: true },
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: OTHER_KEY, hasProgress: true, percentage: 25 },
+        })
+      );
+    });
+
+    expect(result.current.hasProgress).toBe(false);
+  });
+
+  // MF-3 — preview mode suppresses kind:'guide' (no document total),
+  // so the preview "Reset guide" button was structurally unreachable
+  // from a cold session. The hook must also react to step / section
+  // events when the active content key matches the progress key.
+  it('flips hasProgress to true on a matching pathfinder:progress (kind: step) event', async () => {
+    setActiveTabUrl(PROGRESS_KEY);
+    const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'step', stepId: 'step-1', sectionId: 'section-a', completed: true, reason: 'manual' },
+        })
+      );
+    });
+
+    expect(result.current.hasProgress).toBe(true);
+  });
+
+  it('flips hasProgress to true on a matching pathfinder:progress (kind: section) event', async () => {
+    setActiveTabUrl(PROGRESS_KEY);
+    const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'section', sectionId: 'section-a', completed: true },
+        })
+      );
+    });
+
+    expect(result.current.hasProgress).toBe(true);
+  });
+
+  it('ignores step / section events when the active content key does not match', async () => {
+    setActiveTabUrl(OTHER_KEY);
+    const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'step', stepId: 'step-1', sectionId: 'section-a', completed: true, reason: 'manual' },
         })
       );
     });
@@ -171,8 +232,8 @@ describe('useGuidePreviewProgress — listener contract', () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-saved', {
-          detail: { contentKey: PROGRESS_KEY, hasProgress: true },
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: PROGRESS_KEY, hasProgress: true, percentage: 25 },
         })
       );
     });

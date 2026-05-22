@@ -14,6 +14,7 @@ import type { ParsedElement } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 import type { ConditionalDisplayMode, ConditionalSectionConfig } from '../../types/json-guide.types';
 import { InteractiveSection } from './interactive-section';
+import { subscribeProgressEvent } from '../../global-state/progress-events';
 
 export interface InteractiveConditionalProps {
   /** Conditions to evaluate (uses same syntax as requirements) */
@@ -23,7 +24,7 @@ export interface InteractiveConditionalProps {
   /** Display mode: 'inline' (default) or 'section' for section-styled rendering */
   display?: ConditionalDisplayMode;
   /** Target element for exists-reftarget condition (CSS selector or button text) */
-  reftarget?: string;
+  refTarget?: string;
   /** Section config for the 'pass' branch (only used when display is 'section') */
   whenTrueSectionConfig?: ConditionalSectionConfig;
   /** Section config for the 'fail' branch (only used when display is 'section') */
@@ -57,7 +58,7 @@ export function InteractiveConditional({
   conditions,
   description,
   display = 'inline',
-  reftarget,
+  refTarget,
   whenTrueSectionConfig,
   whenFalseSectionConfig,
   whenTrueChildren,
@@ -122,12 +123,12 @@ export function InteractiveConditional({
 
       try {
         // Create requirement data for checking
-        // Use provided reftarget for exists-reftarget condition, fallback to placeholder
+        // Use provided refTarget for exists-reftarget condition, fallback to placeholder
         const requirementData = {
           requirements: requirementsString,
-          targetaction: 'conditional',
-          reftarget: reftarget || 'conditional-block',
-          targetvalue: undefined,
+          targetAction: 'conditional',
+          refTarget: refTarget || 'conditional-block',
+          targetValue: undefined,
           textContent: description || 'Conditional block',
           tagName: 'div',
         };
@@ -151,7 +152,7 @@ export function InteractiveConditional({
         setIsChecking(false);
       }
     },
-    [requirementsString, checkRequirementsFromData, description, reftarget]
+    [requirementsString, checkRequirementsFromData, description, refTarget]
   );
 
   const needsDomWatch = conditionsKeyNeedsDomWatch(conditionsKey);
@@ -197,11 +198,6 @@ export function InteractiveConditional({
     };
 
     // Re-evaluate after interactive steps complete - the step may have changed UI state
-    // This handles exists-reftarget conditions where elements appear after actions
-    const handleStepCompleted = () => {
-      scheduleReevaluation();
-    };
-
     // `interactive-action-completed` is dispatched from two places with two
     // different targets: interactive-state-manager fires on `document`, while
     // challenge-block fires on `window`. Subscribe to both so conditional
@@ -210,11 +206,18 @@ export function InteractiveConditional({
       scheduleReevaluation();
     };
 
-    // Subscribe to relevant events
+    // `pathfinder:progress` (kind === 'step', completed) replaces the legacy
+    // `interactive-step-completed` event: step finishes → re-evaluate
+    // exists-reftarget conditions.
+    const unsubscribeProgress = subscribeProgressEvent((detail) => {
+      if (detail.kind === 'step' && detail.completed) {
+        scheduleReevaluation();
+      }
+    });
+
     window.addEventListener('datasources-changed', handleDataSourcesChanged);
     window.addEventListener('plugins-changed', handlePluginsChanged);
     window.addEventListener('popstate', handleLocationChanged);
-    window.addEventListener('interactive-step-completed', handleStepCompleted);
     window.addEventListener('interactive-action-completed', handleActionCompleted);
     document.addEventListener('interactive-action-completed', handleActionCompleted);
 
@@ -225,10 +228,10 @@ export function InteractiveConditional({
         clearTimeout(reevalTimerRef.current);
         reevalTimerRef.current = undefined;
       }
+      unsubscribeProgress();
       window.removeEventListener('datasources-changed', handleDataSourcesChanged);
       window.removeEventListener('plugins-changed', handlePluginsChanged);
       window.removeEventListener('popstate', handleLocationChanged);
-      window.removeEventListener('interactive-step-completed', handleStepCompleted);
       window.removeEventListener('interactive-action-completed', handleActionCompleted);
       document.removeEventListener('interactive-action-completed', handleActionCompleted);
     };

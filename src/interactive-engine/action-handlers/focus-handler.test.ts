@@ -67,9 +67,9 @@ describe('FocusHandler', () => {
 
   describe('execute', () => {
     const mockData: InteractiveElementData = {
-      reftarget: 'test-selector',
-      targetaction: 'highlight',
-      targetvalue: 'test-value',
+      refTarget: 'test-selector',
+      targetAction: 'highlight',
+      targetValue: 'test-value',
       requirements: 'test-requirements',
       tagName: 'div',
       textContent: 'Test Element',

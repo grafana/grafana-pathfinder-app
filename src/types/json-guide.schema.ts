@@ -88,6 +88,22 @@ export const JsonInteractiveActionSchema = z.enum([
  */
 const POPOUT_TARGET_VALUES = ['sidebar', 'floating'] as const;
 
+// ============ FIELD-NAME ALIAS ACCEPTANCE ============
+//
+// The canonical authoring form is lowercase (`action`, `reftarget`,
+// `targetvalue`, `targetcomment`). The runtime JSON parser
+// (`src/docs-retrieval/json-parser.ts`) additionally tolerates the
+// camelCase aliases (`targetAction`, `refTarget`, `targetValue`,
+// `targetComment`) on the raw JSON input so authors who lean on the
+// engine's JS conventions don't trip a runtime failure.
+//
+// `validate-guide.ts` enforces the canonical lowercase shape — the
+// CLI's flag generator and Commander help text depend on the strict
+// schema and breaking that contract is out of scope here. The runtime
+// parser's lenience is the back-compat hatch.
+//
+// Author tooling (CLI, MCP) emits the lowercase canonical form.
+
 // ============ QUIZ SCHEMAS ============
 
 /**
@@ -110,6 +126,7 @@ export const JsonQuizChoiceSchema = z.object({
  */
 export const JsonStepSchema = z
   .object({
+    id: z.string().optional().describe('Stable identifier for this step (used for cross-step references)'),
     action: JsonInteractiveActionSchema.describe('Action to perform on target element'),
     // reftarget is optional for noop actions (informational steps)
     reftarget: z
@@ -144,7 +161,6 @@ export const JsonStepSchema = z
   )
   .refine(
     (step) => {
-      // formfill with validateInput: true requires targetvalue
       if (step.action === 'formfill' && step.validateInput === true) {
         return step.targetvalue !== undefined && step.targetvalue !== '';
       }
@@ -154,7 +170,6 @@ export const JsonStepSchema = z
   )
   .refine(
     (step) => {
-      // popout requires a valid targetvalue indicating the target panel mode
       if (step.action === 'popout') {
         return step.targetvalue !== undefined && POPOUT_TARGET_VALUES.includes(step.targetvalue as never);
       }
@@ -299,7 +314,6 @@ export const JsonInteractiveBlockSchema = z
   })
   .refine(
     (block) => {
-      // Actions that don't operate on a DOM element don't require reftarget
       if (block.action === 'noop' || block.action === 'popout') {
         return true;
       }
@@ -309,7 +323,6 @@ export const JsonInteractiveBlockSchema = z
   )
   .refine(
     (block) => {
-      // formfill with validateInput: true requires targetvalue
       if (block.action === 'formfill' && block.validateInput === true) {
         return block.targetvalue !== undefined && block.targetvalue !== '';
       }
@@ -319,7 +332,6 @@ export const JsonInteractiveBlockSchema = z
   )
   .refine(
     (block) => {
-      // popout requires a valid targetvalue indicating the target panel mode
       if (block.action === 'popout') {
         return block.targetvalue !== undefined && POPOUT_TARGET_VALUES.includes(block.targetvalue as never);
       }

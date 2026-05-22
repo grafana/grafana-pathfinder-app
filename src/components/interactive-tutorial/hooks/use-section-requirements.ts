@@ -15,7 +15,7 @@
  *   - `window` 'datasources-changed' → recheck
  *   - `window` 'plugins-changed' → recheck
  *   - `window` 'popstate' → recheck
- *   - `document` 'section-completed' → recheck
+ *   - `pathfinder:progress` (kind === 'section', completed) → recheck
  *
  * Returns the current status, a recheck function, and a fix function.
  * The recheck function is exposed for callers that want to force a
@@ -26,6 +26,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getRequirementExplanation, dispatchFix } from '../../../requirements-manager';
+import { subscribeProgressEvent } from '../../../global-state/progress-events';
 import { DEFAULT_INTERACTIVE_SECTION_TITLE } from '../interactive-section';
 
 interface SectionRequirementsResult {
@@ -45,9 +46,9 @@ interface SectionRequirementsResult {
 
 interface SectionRequirementsData {
   requirements: string;
-  targetaction: string;
-  reftarget: string;
-  targetvalue: string | undefined;
+  targetAction: string;
+  refTarget: string;
+  targetValue: string | undefined;
   textContent: string;
   tagName: string;
 }
@@ -111,9 +112,9 @@ export function useSectionRequirements({
     try {
       const data: SectionRequirementsData = {
         requirements,
-        targetaction: 'section',
-        reftarget: sectionId,
-        targetvalue: undefined,
+        targetAction: 'section',
+        refTarget: sectionId,
+        targetValue: undefined,
         textContent: title || DEFAULT_INTERACTIVE_SECTION_TITLE,
         tagName: 'section',
       };
@@ -193,12 +194,15 @@ export function useSectionRequirements({
     const handleDataSourcesChanged = () => recheck();
     const handlePluginsChanged = () => recheck();
     const handleLocationChanged = () => recheck();
-    const handleSectionCompleted = () => recheck();
 
     window.addEventListener('datasources-changed', handleDataSourcesChanged);
     window.addEventListener('plugins-changed', handlePluginsChanged);
     window.addEventListener('popstate', handleLocationChanged);
-    document.addEventListener('section-completed', handleSectionCompleted);
+    const unsubscribeProgress = subscribeProgressEvent((detail) => {
+      if (detail.kind === 'section' && detail.completed) {
+        recheck();
+      }
+    });
 
     const intervalId = setInterval(recheck, RECHECK_INTERVAL_MS);
 
@@ -206,7 +210,7 @@ export function useSectionRequirements({
       window.removeEventListener('datasources-changed', handleDataSourcesChanged);
       window.removeEventListener('plugins-changed', handlePluginsChanged);
       window.removeEventListener('popstate', handleLocationChanged);
-      document.removeEventListener('section-completed', handleSectionCompleted);
+      unsubscribeProgress();
       clearInterval(intervalId);
     };
   }, [requirements, recheck]);

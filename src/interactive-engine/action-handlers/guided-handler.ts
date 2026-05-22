@@ -148,7 +148,7 @@ export class GuidedHandler {
         action.isSkippable,
         action.formHint, // Pass form hint for formfill validation feedback
         action.targetValue, // Pass target value for data-test-target-value attribute
-        action.refTarget! // E2E contract: selector for current target (data-test-reftarget)
+        action.refTarget! // E2E contract: selector for current target (data-test-refTarget)
       );
 
       // Wait for user to complete the action, skip, cancel, or timeout
@@ -509,7 +509,7 @@ export class GuidedHandler {
     isSkippable?: boolean,
     formHint?: string, // Hint for formfill validation
     targetValue?: string, // Target value for data-test-target-value attribute
-    reftarget?: string // E2E contract: selector for current target (data-test-reftarget)
+    refTarget?: string // E2E contract: selector for current target (data-test-refTarget)
   ): Promise<void> {
     // Use custom comment if provided, otherwise generate default message
     const message = customComment || this.getActionMessage(actionType, stepIndex, totalSteps);
@@ -557,7 +557,7 @@ export class GuidedHandler {
         skipAnimations: stepIndex > 0, // Instant transitions after first step
         actionType: actionType, // Pass action type for data-test-action attribute
         targetValue: targetValue, // Pass target value for data-test-target-value attribute
-        reftarget: reftarget, // E2E contract: selector for current target
+        refTarget: refTarget, // E2E contract: selector for current target
       }
     );
 
