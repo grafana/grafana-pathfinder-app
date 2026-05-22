@@ -3,7 +3,7 @@ title: Tracked Step Types Registry
 description: Two-site registry of interactive step component types. Read before adding, renaming, or removing an interactive step component.
 globs:
   - "src/components/interactive-tutorial/*.tsx"
-  - "src/docs-retrieval/content-renderer.tsx"
+  - "src/components/content-renderer/content-renderer.tsx"
   - "src/docs-retrieval/json-parser.ts"
 alwaysApply: false
 ---
@@ -33,7 +33,7 @@ Assume you're adding a `FooStep` component:
 
 3. **Parser** — add a `case 'foo':` in `src/docs-retrieval/json-parser.ts` that emits a `ParsedElement` with `type: 'foo-step'`.
 
-4. **Renderer case** — in `src/docs-retrieval/content-renderer.tsx` `renderParsedElement`, add a `case 'foo-step':` that produces `<FooStep ... />`.
+4. **Renderer case** — in `src/components/content-renderer/content-renderer.tsx` `renderParsedElement`, add a `case 'foo-step':` that produces `<FooStep ... />`. Forward `stepId={element.props.stepId}` so the parser-derived stable ID survives through to the component (required for completion persistence across guide edits).
 
 5. **Registry site 1** — in `step-type-registry.ts`, add `FOO_STEP_SCHEMA` with the right `kind`, `parseTypeKey: 'foo-step'`, `idPrefix`, `refTarget`, `toStepInfoExtension`, `toEnhancedProps`. Append to `STEP_TYPE_SCHEMAS` and `STEP_TYPE_KIND_KEYS`. Add the `ParseTypeKey` literal. Wire `FooStep` into the `getStepTypeLookup()` map in `interactive-section.tsx`.
 

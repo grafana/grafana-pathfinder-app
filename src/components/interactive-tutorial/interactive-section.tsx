@@ -69,6 +69,7 @@ import {
   evictSectionCache,
   markStepCompleted,
   markStepsCompleted,
+  reconcileSection,
   resetSection as resetSectionStore,
   resetSteps,
   useSectionCompletion,
@@ -230,8 +231,19 @@ export function InteractiveSection({
       if (!schema) {
         return;
       }
-      const stepId = `${sectionId}-${schema.idPrefix}-${stepIndex + 1}`;
-      const extension = schema.toStepInfoExtension((child as React.ReactElement<any>).props);
+      // Prefer the author/parser-supplied stable stepId on the child over
+      // the positional fallback. The JSON parser threads `props.stepId`
+      // through every interactive-block converter (either the author's
+      // `id` or `deriveStepId(...)`); without this preference the
+      // `cloneElement` in `enhancedChildren` below would overwrite the
+      // stable ID with the positional one on every section render,
+      // re-orphaning completion whenever a sibling block is inserted.
+      const childProps = (child as React.ReactElement<any>).props;
+      const stepId: string =
+        typeof childProps?.stepId === 'string' && childProps.stepId.length > 0
+          ? childProps.stepId
+          : `${sectionId}-${schema.idPrefix}-${stepIndex + 1}`;
+      const extension = schema.toStepInfoExtension(childProps);
       steps.push({
         stepId,
         element: child as React.ReactElement<any>,
@@ -278,6 +290,23 @@ export function InteractiveSection({
   // the canonical store. `currentStepIndex` is the cursor derivation
   // (first non-completed step in `stepComponents` order).
   const completedSteps = useSectionCompletion(sectionId);
+
+  // Roster reconciliation (MF-2): drop any stored step IDs that no
+  // longer appear in the section's current roster. Self-heals storage
+  // after author edits (rename / delete / re-order under stable IDs)
+  // so `countAllCompleted` / `getGuideProgress` can't run > 100%. Runs
+  // once per roster change; idempotent when storage is already aligned.
+  // Skipped in preview mode where storage writes are sandboxed.
+  useEffect(() => {
+    if (isPreviewMode) {
+      return;
+    }
+    const roster = stepComponents.map((s) => s.stepId);
+    if (roster.length === 0) {
+      return;
+    }
+    reconcileSection(sectionId, roster);
+  }, [isPreviewMode, sectionId, stepComponents]);
 
   // Preview-mode sandbox (#842 Bug 3): the store's in-memory cache is
   // module-scope and would otherwise survive an unmount/remount cycle

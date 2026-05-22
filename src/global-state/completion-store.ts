@@ -146,6 +146,16 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
   interactiveStepStorage
     .getCompleted(contentKey, sectionId)
     .then((stored) => {
+      // Race guard: `evictContentCache` / `evictSectionCache` may have
+      // wiped this section's entry while the storage read was in flight.
+      // Without this check the resolver would lazily recreate the section
+      // map via `stepsFor(...)` and resurrect cleared progress from the
+      // stale snapshot — making "Reset guide" durably ineffective until
+      // the next mount.
+      if (!hydratedSections.has(key)) {
+        hydrationClears.delete(key);
+        return;
+      }
       const cleared = hydrationClears.get(key);
       hydrationClears.delete(key);
       // Whole section was reset during hydration → the entire storage
@@ -327,7 +337,14 @@ export function getGuideProgress(contentKey: string): GuideProgress {
   if (total < 1) {
     return { completed, total, percentage: 0 };
   }
-  const percentage = Math.round((completed / total) * 100);
+  // Defensive ceiling. `countAllCompleted` reads roster-blind from
+  // storage; if a guide ships a v2 schema that renames or removes a
+  // step under stable IDs (`MF-1`), storage may temporarily hold IDs
+  // that the current roster doesn't recognise, producing > 100%. The
+  // structural fix is `reconcileSection` which self-heals on first
+  // mount; this clamp covers the pre-reconcile window so users never
+  // see "167% complete" in a progress chip.
+  const percentage = Math.min(100, Math.round((completed / total) * 100));
   return { completed, total, percentage };
 }
 
@@ -447,6 +464,51 @@ export function resetSection(sectionId: string): void {
       });
     });
   }
+}
+
+/**
+ * Drop any stored completion IDs that are not in the section's current
+ * roster, then persist the filtered set. Self-heals on first mount post
+ * guide-edit so storage doesn't accumulate orphan IDs after authors
+ * rename / delete steps under stable IDs (`MF-1`).
+ *
+ * Called from `InteractiveSection` once `stepComponents` is known. The
+ * call is idempotent — when storage is already aligned with the roster
+ * (the common case after the first reconcile) it is a Set-membership
+ * check + early return with no writes and no notify.
+ *
+ * Pre-conditions:
+ *   - `roster` must contain every stepId the section currently renders
+ *     (including non-completed ones). The function uses the roster as
+ *     the authoritative allow-list; anything in storage that is not in
+ *     the roster is dropped.
+ *   - Safe to call before hydration completes. The hydration `.then`
+ *     handler runs `persistSection` itself when it filters cleared IDs,
+ *     and this function's writes are additive merges on the same cache.
+ */
+export function reconcileSection(sectionId: string, roster: readonly string[]): void {
+  const contentKey = getContentKey();
+  // Make sure the section has been hydrated so we have a complete view
+  // of what's in storage. Idempotent — short-circuits if already done.
+  ensureHydrated(contentKey, sectionId);
+  const bySteps = entries.get(contentKey)?.get(sectionId);
+  if (!bySteps || bySteps.size === 0) {
+    return;
+  }
+  const allowed = new Set(roster);
+  const orphaned: string[] = [];
+  bySteps.forEach((_entry, stepId) => {
+    if (!allowed.has(stepId)) {
+      orphaned.push(stepId);
+    }
+  });
+  if (orphaned.length === 0) {
+    return;
+  }
+  orphaned.forEach((stepId) => bySteps.delete(stepId));
+  bumpSectionVersion(contentKey, sectionId);
+  persistSection(contentKey, sectionId);
+  notify(contentKey);
 }
 
 /**

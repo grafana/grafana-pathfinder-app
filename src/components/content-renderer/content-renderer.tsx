@@ -1026,6 +1026,7 @@ function renderParsedElement(
       return (
         <InteractiveStep
           key={key}
+          stepId={element.props.stepId}
           targetAction={element.props.targetAction}
           refTarget={sub(element.props.refTarget) ?? element.props.refTarget}
           targetValue={sub(element.props.targetValue)}
@@ -1053,6 +1054,7 @@ function renderParsedElement(
       return (
         <InteractiveMultiStep
           key={key}
+          stepId={element.props.stepId}
           internalActions={subInternalActions(element.props.internalActions ?? [])}
           skippable={element.props.skippable}
           completeEarly={element.props.completeEarly}
@@ -1071,6 +1073,7 @@ function renderParsedElement(
       return (
         <InteractiveGuided
           key={key}
+          stepId={element.props.stepId}
           internalActions={subInternalActions(element.props.internalActions ?? [])}
           stepTimeout={element.props.stepTimeout}
           skippable={element.props.skippable}
@@ -1090,6 +1093,7 @@ function renderParsedElement(
       return (
         <InteractiveQuiz
           key={key}
+          stepId={element.props.stepId}
           question={sub(element.props.question) ?? element.props.question}
           choices={element.props.choices}
           multiSelect={element.props.multiSelect}
@@ -1109,6 +1113,7 @@ function renderParsedElement(
       return (
         <TerminalStep
           key={key}
+          stepId={element.props.stepId}
           command={sub(element.props.command) ?? element.props.command}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
@@ -1124,6 +1129,7 @@ function renderParsedElement(
       return (
         <TerminalConnectStep
           key={key}
+          stepId={element.props.stepId}
           buttonText={element.props.buttonText}
           vmTemplate={element.props.vmTemplate}
           vmApp={element.props.vmApp}
@@ -1138,6 +1144,7 @@ function renderParsedElement(
       return (
         <ChallengeBlock
           key={key}
+          stepId={element.props.stepId}
           title={sub(element.props.title) ?? element.props.title}
           brief={renderChildren(element.children)}
           mode={element.props.mode}
@@ -1157,6 +1164,7 @@ function renderParsedElement(
       return (
         <CodeBlockStep
           key={key}
+          stepId={element.props.stepId}
           code={sub(element.props.code) ?? element.props.code}
           language={element.props.language}
           refTarget={sub(element.props.refTarget) ?? element.props.refTarget}

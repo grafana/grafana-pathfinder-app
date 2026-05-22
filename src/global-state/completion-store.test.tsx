@@ -8,6 +8,7 @@ import {
   getGuideProgress,
   markStepCompleted,
   markStepsCompleted,
+  reconcileSection,
   resetCompletionStoreForTests,
   resetSection,
   resetStep,
@@ -346,6 +347,79 @@ describe('completion-store', () => {
       act(() => evictAllContentCaches());
       expect(getByTestId('completed').textContent).toBe('false');
       unmount();
+    });
+
+    // MF-4 / N-1 — race between in-flight hydration and a synchronous
+    // evictContentCache. The earlier test on line 309 awaits microtasks
+    // BEFORE evicting, so hydration completes first and the race window
+    // is never opened. This test exercises the window: storage read
+    // pending, user clicks Reset, evict fires, then the storage promise
+    // resolves with the (now-stale) snapshot. Without the bail guard in
+    // ensureHydrated.then the stale IDs are silently re-inserted and the
+    // UI flips back to "completed".
+    it('evictContentCache during in-flight hydration does not resurrect snapshot', async () => {
+      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1', 'step-2']));
+      render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      act(() => {
+        storedCompleted.delete(`${CONTENT_KEY}-section-x`);
+        evictContentCache(CONTENT_KEY);
+      });
+      await flushMicrotasks();
+      expect(screen.getByTestId('completed').textContent).toBe('false');
+    });
+  });
+
+  // MF-2 — roster reconciliation + getGuideProgress clamp.
+  //
+  // Stable step IDs (MF-1) make storage durable across renames, so
+  // editing a guide can leave orphan IDs in localStorage that the
+  // section's roster doesn't recognise. Without reconciliation /
+  // clamp, `getGuideProgress` divides `countAllCompleted` (storage,
+  // roster-blind) by `getTotalDocumentSteps()` (registry, roster-
+  // aware) and can surface > 100% in the progress chip. The pair of
+  // fixes:
+  //   - `reconcileSection` drops orphans from storage on first mount.
+  //   - `getGuideProgress`'s `Math.min(100, ...)` covers the
+  //     pre-reconcile window.
+  describe('roster reconciliation + percentage clamp', () => {
+    it('reconcileSection drops storage IDs not present in the roster', async () => {
+      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-a', 'step-b', 'orphan']));
+      render(<StepProbe stepId="step-a" sectionId="section-x" />);
+      await flushMicrotasks();
+      act(() => {
+        reconcileSection('section-x', ['step-a', 'step-b']);
+      });
+      await flushMicrotasks();
+      const stored = storedCompleted.get(`${CONTENT_KEY}-section-x`);
+      expect(stored).toBeDefined();
+      expect(stored!.has('orphan')).toBe(false);
+      expect(stored!.has('step-a')).toBe(true);
+      expect(stored!.has('step-b')).toBe(true);
+    });
+
+    it('reconcileSection is a no-op when storage matches the roster', async () => {
+      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-a']));
+      render(<StepProbe stepId="step-a" sectionId="section-x" />);
+      await flushMicrotasks();
+      const persistSpy = jest.spyOn(storedCompleted, 'set');
+      act(() => {
+        reconcileSection('section-x', ['step-a']);
+      });
+      // No write — set was not called again for this section.
+      expect(persistSpy.mock.calls.some((call) => call[0] === `${CONTENT_KEY}-section-x`)).toBe(false);
+      persistSpy.mockRestore();
+    });
+
+    it('getGuideProgress clamps to 100 when storage holds orphan IDs that inflate the numerator', () => {
+      // Storage has 5 IDs across two sections; roster total is only 3.
+      // Pre-clamp this returned 167; clamp keeps it user-presentable.
+      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['s1', 's2', 's3']));
+      storedCompleted.set(`${CONTENT_KEY}-section-y`, new Set(['s4', 's5']));
+      mockTotalDocumentSteps = 3;
+      const progress = getGuideProgress(CONTENT_KEY);
+      expect(progress.completed).toBe(5);
+      expect(progress.total).toBe(3);
+      expect(progress.percentage).toBe(100);
     });
   });
 });

@@ -280,6 +280,76 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
     });
   });
 
+  // MF-1 tripwire — pin author/parser-supplied stable stepId end to end.
+  // The JSON parser emits `props.stepId` for every interactive block
+  // (either the author's `id` or `deriveStepId(...)`). Two earlier
+  // collapse points used to drop it:
+  //   1. content-renderer cases did not forward `element.props.stepId`
+  //      to the step components.
+  //   2. interactive-section's `stepComponents` memo synthesised a
+  //      positional `${sectionId}-${idPrefix}-${index+1}` ID, and
+  //      `cloneElement` spread that over the child's stable ID.
+  // If either regresses, every "stable ID" claim in the PR collapses:
+  // inserting a sibling block re-keys every later step. Pin the contract
+  // here so future refactors can't silently break it.
+  describe('stable stepId forwarding', () => {
+    const STABLE_ID = 'create-ds';
+
+    it('uses author-supplied stepId on the step instead of the positional fallback', async () => {
+      render(
+        <InteractiveSection id="contracts" title="Contracts section" autoCollapse={false}>
+          <InteractiveStep stepId={STABLE_ID} targetAction="highlight" refTarget=".a">
+            Step
+          </InteractiveStep>
+        </InteractiveSection>
+      );
+      // Harness writes `harness-complete-${stepId}` — confirms the
+      // section threaded the child's stepId into cloneElement, NOT the
+      // positional `section-contracts-step-1` value.
+      await waitFor(() => expect(screen.getByTestId(`harness-complete-${STABLE_ID}`)).toBeInTheDocument());
+      expect(screen.queryByTestId(`harness-complete-${SECTION_ID}-step-1`)).toBeNull();
+    });
+
+    it('keeps the stable stepId stable when a sibling step is inserted before it', async () => {
+      const { rerender } = render(
+        <InteractiveSection id="contracts" title="Contracts section" autoCollapse={false}>
+          <InteractiveStep stepId={STABLE_ID} targetAction="highlight" refTarget=".a">
+            Original step
+          </InteractiveStep>
+        </InteractiveSection>
+      );
+      await waitFor(() => expect(screen.getByTestId(`harness-complete-${STABLE_ID}`)).toBeInTheDocument());
+
+      rerender(
+        <InteractiveSection id="contracts" title="Contracts section" autoCollapse={false}>
+          <InteractiveStep stepId="inserted-first" targetAction="highlight" refTarget=".b">
+            Inserted step
+          </InteractiveStep>
+          <InteractiveStep stepId={STABLE_ID} targetAction="highlight" refTarget=".a">
+            Original step
+          </InteractiveStep>
+        </InteractiveSection>
+      );
+
+      // The original step's ID survives the insertion — completion
+      // recorded under STABLE_ID is still addressable.
+      await waitFor(() => expect(screen.getByTestId(`harness-complete-${STABLE_ID}`)).toBeInTheDocument());
+      expect(screen.getByTestId(`harness-complete-inserted-first`)).toBeInTheDocument();
+    });
+
+    it('falls back to the positional id when the child has no stepId prop', async () => {
+      render(
+        <InteractiveSection id="contracts" title="Contracts section" autoCollapse={false}>
+          <InteractiveStep targetAction="highlight" refTarget=".a">
+            Anonymous step
+          </InteractiveStep>
+        </InteractiveSection>
+      );
+      // No author/parser ID → positional fallback (`section-contracts-step-1`).
+      await waitFor(() => expect(screen.getByTestId(`harness-complete-${SECTION_ID}-step-1`)).toBeInTheDocument());
+    });
+  });
+
   describe('preview-mode sandbox', () => {
     beforeEach(() => {
       (window as any).__DocsPluginActiveTabUrl = PREVIEW_KEY;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
 import { evictContentCache } from '../../../global-state/completion-store';
+import { getContentKey } from '../../../global-state/content-key';
 import { subscribeProgressEvent } from '../../../global-state/progress-events';
 
 export interface GuidePreviewProgress {
@@ -36,6 +37,20 @@ export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgre
   useEffect(() => {
     const unsubscribeProgress = subscribeProgressEvent((detail) => {
       if (detail.kind === 'guide' && detail.contentKey === progressKey && detail.hasProgress) {
+        setHasProgress(true);
+        return;
+      }
+      // MF-3 — preview mode suppresses `kind: 'guide'` in `persistSection`
+      // (no document total → no percentage), so the Reset button would
+      // otherwise be unreachable in preview. Flip on per-step / per-section
+      // completion events whose active content key matches this preview
+      // hook's progress key. Reads `getContentKey()` lazily because the
+      // hook isn't necessarily mounted under the same active tab.
+      if (
+        (detail.kind === 'step' || detail.kind === 'section') &&
+        detail.completed === true &&
+        getContentKey() === progressKey
+      ) {
         setHasProgress(true);
       }
     });
