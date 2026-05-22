@@ -392,4 +392,96 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
       }
     });
   });
+
+  // F-2 tripwire — pin the cross-step re-render contract introduced by
+  // PR #909. The store relocation moved completion state out of the
+  // section's reducer and into the global `completion-store`; the section
+  // now subscribes via `useSyncExternalStore(useSectionCompletion)`. If
+  // that wiring regresses (missing listener, stale snapshot, dep-array
+  // gap on the version bump), an external `markStepCompleted` call will
+  // silently fail to trigger a re-render — sibling steps keep rendering
+  // against the pre-flip completion set and section-level derivations
+  // (`stepsCompleted`, `isCompleted`, the Reset button gate) never reflect
+  // the new state. PR #909 deferred this probe as follow-up F-2; this
+  // test pins the contract so the wiring can't quietly regress.
+  describe('cross-step re-render on store flips (F-2)', () => {
+    it('re-renders sibling step + section when markStepCompleted flips from outside React', async () => {
+      const { markStepCompleted } = require('../../global-state/completion-store');
+
+      const flushMicrotasks = async () => {
+        await act(async () => {
+          await Promise.resolve();
+        });
+      };
+
+      const { events, unsubscribe } = recordSectionEvents();
+      try {
+        render(
+          <InteractiveSection id="contracts" title="Contracts section" autoCollapse={false}>
+            <InteractiveStep stepId="step-1" targetAction="highlight" refTarget=".a">
+              Step one
+            </InteractiveStep>
+            <InteractiveStep stepId="step-2" targetAction="highlight" refTarget=".b">
+              Step two
+            </InteractiveStep>
+          </InteractiveSection>
+        );
+
+        // Both children mount with their author-supplied stepIds.
+        await waitFor(() => {
+          expect(screen.getByTestId(`harness-complete-step-1`)).toBeInTheDocument();
+          expect(screen.getByTestId(`harness-complete-step-2`)).toBeInTheDocument();
+        });
+
+        // Drain the initial mount's `useDocumentStepProgress` dispatch so
+        // the post-flip event is unambiguously attributable to a
+        // store-driven re-render rather than the mount-time effect.
+        await waitFor(() => {
+          expect(events.find((e) => e.name === 'pathfinder-step-progress')).toBeDefined();
+        });
+        events.length = 0;
+
+        // Flip completion from outside React. The section must re-render
+        // via its `useSyncExternalStore` subscription to pick this up.
+        await act(async () => {
+          markStepCompleted('step-1', SECTION_ID, 'manual');
+          await Promise.resolve();
+        });
+
+        // Sibling addressability: the store flip didn't unmount or
+        // re-key the unrelated child. Step-1's harness is still in the
+        // DOM too — completed steps are not torn down by the section.
+        expect(screen.getByTestId(`harness-complete-step-2`)).toBeInTheDocument();
+        expect(screen.getByTestId(`harness-complete-step-1`)).toBeInTheDocument();
+
+        // `useDocumentStepProgress` lives inside the section and has
+        // `completedSteps` in its effect deps. A re-fire of
+        // `pathfinder-step-progress` proves the section re-rendered with
+        // the new `completedSteps` reference returned by the store.
+        // Without the `useSyncExternalStore` wiring, this dispatch never
+        // happens because the effect never re-runs.
+        await waitFor(() => {
+          const evt = events.find((e) => e.name === 'pathfinder-step-progress' && e.detail.sectionId === SECTION_ID);
+          expect(evt).toBeDefined();
+        });
+
+        // Drive step-2's harness button. The section's
+        // `handleStepComplete` closure captures `completedSteps` from the
+        // most recent commit; if the prior store flip didn't refresh that
+        // snapshot, the section would still see only step-2 completed and
+        // `stepsCompleted` would stay false (Do Section, not Reset). The
+        // appearance of `resetSectionButton` is the visible-DOM
+        // confirmation that the cross-step re-render contract holds.
+        act(() => {
+          screen.getByTestId(`harness-complete-step-2`).click();
+        });
+        await flushMicrotasks();
+        await waitFor(() => {
+          expect(screen.getByTestId(resetButton(SECTION_ID))).toBeInTheDocument();
+        });
+      } finally {
+        unsubscribe();
+      }
+    });
+  });
 });
