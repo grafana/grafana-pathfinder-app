@@ -1,11 +1,12 @@
 /**
  * Centralized `?doc=` / `?panelMode=` / `?kiosk_session=` deep-link handler.
  *
- * `plugin.init` fires only once — when Grafana loads the extension sidebar
- * module, which can happen before the user navigates to a `?doc=` URL.
+ * `plugin.init` fires only once — from `appPluginPostImport` in Grafana's
+ * plugin importer.
+ *
  * `handlePathfinderDeepLink` is idempotent and deduplicated so it can be
  * called on every navigation; `installDeepLinkNavListener` wires it up to
- * `grafana:location-changed` / `history.listen` for SPA navigations.
+ * `locationService.getHistory().listen()` for SPA navigations
  */
 
 import { locationService } from '@grafana/runtime';

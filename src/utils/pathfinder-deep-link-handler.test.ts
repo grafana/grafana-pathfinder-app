@@ -8,9 +8,8 @@
  *   - `handlePathfinderDeepLink` is a no-op when no Pathfinder params are
  *     present, dedupes same-search re-fires, and routes to the panelMode /
  *     control-group / find-doc-page branches.
- *   - `installDeepLinkNavListener` wires `grafana:location-changed` and
- *     (when available) `history.listen`, falling back to `popstate` only
- *     when `locationService.getHistory()` throws.
+ *   - `installDeepLinkNavListener` wires `history.listen` (primary) and
+ *     falls back to `popstate` when `locationService.getHistory()` throws.
  */
 
 jest.mock('../plugin.json', () => ({
@@ -280,7 +279,7 @@ describe('installDeepLinkNavListener', () => {
     mockGetHistoryImpl = () => ({ listen: mockHistoryListen });
   });
 
-  it('registers grafana:location-changed and history.listen', () => {
+  it('registers history.listen', () => {
     installDeepLinkNavListener(mkDeps());
     expect(mockHistoryListen).toHaveBeenCalledTimes(1);
   });
