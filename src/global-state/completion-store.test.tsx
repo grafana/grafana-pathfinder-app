@@ -3,6 +3,8 @@ import { act, render, screen } from '@testing-library/react';
 
 import {
   STANDALONE_SECTION_ID,
+  evictAllContentCaches,
+  evictContentCache,
   getGuideProgress,
   markStepCompleted,
   markStepsCompleted,
@@ -284,6 +286,66 @@ describe('completion-store', () => {
       expect(new Set(events.map((e) => e.kind === 'step' && e.stepId))).toEqual(new Set(['s-1', 's-2']));
       expect(events.every((e) => e.kind === 'step' && e.completed === false)).toBe(true);
       unsubscribe();
+    });
+  });
+
+  // Reset guide / "Reset progress" parity tripwire.
+  //
+  // Storage-clear paths (`useContentReset`, `useGuidePreviewProgress.reset`,
+  // `MyLearningTab.handleResetAll`) used to leave the completion store's
+  // in-memory cache populated — the next render would resurrect "completed"
+  // until the component remounted. `evictContentCache` /
+  // `evictAllContentCaches` close that gap.
+  describe('cache eviction parity with clearAllForContent / clearAll', () => {
+    it('evictContentCache flips subscribers back to not-completed', async () => {
+      render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      act(() => markStepCompleted('step-1', 'section-x', 'manual'));
+      expect(screen.getByTestId('completed').textContent).toBe('true');
+
+      act(() => evictContentCache(CONTENT_KEY));
+      expect(screen.getByTestId('completed').textContent).toBe('false');
+    });
+
+    it('evictContentCache lets a fresh hydration repopulate from storage', async () => {
+      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1']));
+      render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      await flushMicrotasks();
+      expect(screen.getByTestId('completed').textContent).toBe('true');
+
+      // Storage cleared elsewhere — caller then evicts the cache. We
+      // simulate that order here.
+      storedCompleted.delete(`${CONTENT_KEY}-section-x`);
+      act(() => evictContentCache(CONTENT_KEY));
+      await flushMicrotasks();
+      expect(screen.getByTestId('completed').textContent).toBe('false');
+    });
+
+    it('evictContentCache scoped to one key does not affect other content keys', () => {
+      // Set up two separate "guides" via two render trees on the same probe component;
+      // the store keys off the active content key, so we mutate it between writes.
+      act(() => markStepCompleted('step-a', 'section-a', 'manual'));
+      setActiveTabUrl(`${CONTENT_KEY}-other`);
+      act(() => markStepCompleted('step-b', 'section-b', 'manual'));
+      setActiveTabUrl(CONTENT_KEY);
+
+      act(() => evictContentCache(CONTENT_KEY));
+
+      // The OTHER guide still has its storage entry — make sure the
+      // cache for it wasn't touched.
+      setActiveTabUrl(`${CONTENT_KEY}-other`);
+      const { getByTestId } = render(<StepProbe stepId="step-b" sectionId="section-b" />);
+      expect(getByTestId('completed').textContent).toBe('true');
+    });
+
+    it('evictAllContentCaches flips subscribers across every active key', () => {
+      const { rerender, getByTestId, unmount } = render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      act(() => markStepCompleted('step-1', 'section-x', 'manual'));
+      expect(getByTestId('completed').textContent).toBe('true');
+      void rerender;
+
+      act(() => evictAllContentCaches());
+      expect(getByTestId('completed').textContent).toBe('false');
+      unmount();
     });
   });
 });

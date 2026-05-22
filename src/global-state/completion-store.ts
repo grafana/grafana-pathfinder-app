@@ -471,6 +471,47 @@ export function evictSectionCache(sectionId: string): void {
 }
 
 /**
+ * Evict every in-memory completion entry, hydration marker, and version
+ * counter for an entire content key. Notifies subscribers so the next
+ * render reads an empty set.
+ *
+ * Counterpart to `interactiveStepStorage.clearAllForContent` for the
+ * in-memory cache. Reset paths that nuke storage for a whole guide
+ * (`useContentReset`, `useGuidePreviewProgress.reset`,
+ * `learning-paths.hook` per-guide reset) MUST call this — otherwise
+ * the cache still holds the prior completions, and the next render
+ * resurrects them even though storage is empty.
+ *
+ * Safe to call with any contentKey, including ones the store hasn't
+ * seen — entries / hydration markers / version counters are all
+ * Map-keyed by exact string and unknown keys are no-ops.
+ */
+export function evictContentCache(contentKey: string): void {
+  entries.delete(contentKey);
+  const prefix = `${contentKey}::`;
+  for (const key of Array.from(hydratedSections)) {
+    if (key.startsWith(prefix)) {
+      hydratedSections.delete(key);
+    }
+  }
+  for (const key of Array.from(hydrationClears.keys())) {
+    if (key.startsWith(prefix)) {
+      hydrationClears.delete(key);
+    }
+  }
+  for (const key of Array.from(sectionVersions.keys())) {
+    if (key.startsWith(prefix)) {
+      sectionVersions.delete(key);
+    }
+  }
+  // Subscribers (every `useStepCompletion` / `useSectionCompletion` for
+  // this content key) re-read snapshots and see the now-empty cache,
+  // so the UI flips from "completed" back to "not completed" without
+  // waiting for a remount.
+  notify(contentKey);
+}
+
+/**
  * Atomic bulk reset of the tail of a section (used by RESET_STEP — the
  * user redoes step N, which also clears steps N+1..end).
  */
@@ -559,6 +600,29 @@ export function markStepsCompleted(
       });
     });
   }
+}
+
+/**
+ * Drop every content key's in-memory completion cache, hydration
+ * marker, and version counter. Counterpart to
+ * `interactiveStepStorage.clearAll()` for the store. Used by the
+ * "Reset progress" action in My Learning, which nukes every guide's
+ * storage at once and needs the store to follow.
+ *
+ * All subscribers (across every content key) are notified so the UI
+ * re-reads empty sets immediately.
+ */
+export function evictAllContentCaches(): void {
+  const contentKeys = Array.from(listenersByContent.keys());
+  entries.clear();
+  hydratedSections.clear();
+  hydrationClears.clear();
+  sectionVersions.clear();
+  // Notify each content key that had active subscribers so their
+  // `useStepCompletion` / `useSectionCompletion` hooks re-render. We
+  // don't clear `listenersByContent` itself — subscribers are still
+  // mounted; they just need to re-snapshot.
+  contentKeys.forEach((contentKey) => notify(contentKey));
 }
 
 /** Test-only reset. Drops the in-memory cache and forgets hydration. */

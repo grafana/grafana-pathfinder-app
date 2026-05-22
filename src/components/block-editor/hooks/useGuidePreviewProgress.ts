@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
+import { evictContentCache } from '../../../global-state/completion-store';
 import { subscribeProgressEvent } from '../../../global-state/progress-events';
 
 export interface GuidePreviewProgress {
@@ -55,6 +56,10 @@ export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgre
     try {
       await interactiveStepStorage.clearAllForContent(progressKey);
       await interactiveCompletionStorage.clear(progressKey);
+      // Drop the completion store's in-memory cache too — otherwise
+      // `useStepCompletion` subscribers still see the prior snapshot
+      // and the preview keeps showing steps as completed until remount.
+      evictContentCache(progressKey);
       setHasProgress(false);
       window.dispatchEvent(
         new CustomEvent('interactive-progress-cleared', {
