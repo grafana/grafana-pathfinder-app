@@ -9,7 +9,10 @@ import { ContextService } from '../context-engine';
 import { getContentKey } from '../global-state/content-key';
 
 // Mock dom-utils functions with default return values
-// Note: sectionCompletedCheck and formValidCheck are NOT mocked - they use actual DOM
+// Note: formValidCheck is NOT mocked — it uses actual DOM.
+// sectionCompletedCheck lives in `./checks/section-completed-check` and
+// is not part of this lib/dom mock anymore (it's used through the route
+// map by `checkRequirements`).
 jest.mock('../lib/dom', () => {
   const actual = jest.requireActual('../lib/dom');
   return {
@@ -17,7 +20,7 @@ jest.mock('../lib/dom', () => {
     // Only mock these two functions that don't work well in test environment without DOM setup
     reftargetExistsCheck: jest.fn().mockResolvedValue({ requirement: 'exists-reftarget', pass: true }),
     navmenuOpenCheck: jest.fn().mockResolvedValue({ requirement: 'navmenu-open', pass: true }),
-    // sectionCompletedCheck and formValidCheck use actual implementation for DOM-based tests
+    // formValidCheck uses actual implementation for DOM-based tests
   };
 });
 

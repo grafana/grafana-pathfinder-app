@@ -1,29 +1,32 @@
 /**
- * Tripwire — FSM → completion-store bridge.
+ * Tripwire — FSM ↔ completion-store bridge.
  *
- * Pins the contract that `useStepChecker`'s three terminal transitions
- * (`markCompleted`, `markSkipped`, and the objectives auto-complete
- * effect) write through to the canonical completion store. The bridge
- * closes a pre-relocate divergence where the FSM thought the step was
- * done but the store had no entry — meaning skips and standalone
- * objectives auto-completions were lost on reload.
+ * Pins the contract that `useStepChecker`'s terminal transitions write
+ * through to the canonical completion store on BOTH axes:
  *
- * Verifies all three reasons:
+ *   - Completion writes: `markCompleted` (manual), `markSkipped`, and
+ *     the objectives auto-complete effect.
+ *   - Reset writes: `resetStep` — added by the PR-#909 pushback fix to
+ *     close the reset-axis divergence (the FSM dispatched RESET +
+ *     updateManager but never cleared the store entry, so the next
+ *     reload re-surfaced the stale "completed" state).
+ *
+ * Verifies all three completion reasons:
  *   - `'manual'`   — `markCompleted()` is called
  *   - `'skipped'`  — `markSkipped()` is called
  *   - `'objectives'` — `state.completionReason` becomes `'objectives'`
  *     via the requirements check (we drive this directly through a
  *     mocked checkRequirements result).
  *
- * Also verifies the `sectionId: null` opt-out — used by the section's
- * own objectives self-checker, which is NOT a real step.
+ * Also verifies the `sectionId: null` opt-out on both axes — used by
+ * the section's own objectives self-checker, which is NOT a real step.
  */
 
 import { renderHook, act } from '@testing-library/react';
 
 import { useStepChecker } from './index';
 import { checkRequirements } from './requirements-checker.utils';
-import { markStepCompleted } from '../global-state/completion-store';
+import { markStepCompleted, resetStep } from '../global-state/completion-store';
 
 jest.mock('./requirements-checker.utils', () => ({
   checkRequirements: jest.fn(),
@@ -48,17 +51,21 @@ jest.mock('../interactive-engine', () => ({
 }));
 
 // Spy-mock the canonical store. The bridge in `step-checker.hook.ts`
-// calls `markStepCompleted` directly; we observe via this mock.
+// calls `markStepCompleted` / `resetStep` directly; we observe via
+// these mocks.
 jest.mock('../global-state/completion-store', () => ({
   markStepCompleted: jest.fn(),
+  resetStep: jest.fn(),
   STANDALONE_SECTION_ID: '__standalone__',
 }));
 
 const mockMarkStepCompleted = markStepCompleted as jest.MockedFunction<typeof markStepCompleted>;
+const mockResetStep = resetStep as jest.MockedFunction<typeof resetStep>;
 const mockCheckRequirements = checkRequirements as jest.MockedFunction<typeof checkRequirements>;
 
 beforeEach(() => {
   mockMarkStepCompleted.mockClear();
+  mockResetStep.mockClear();
   mockCheckRequirements.mockResolvedValue({ pass: true, requirements: '', error: [] });
 });
 
@@ -160,5 +167,48 @@ describe('useStepChecker → completion-store bridge', () => {
     });
 
     expect(mockMarkStepCompleted).toHaveBeenCalledWith('step-obj', 'section-a', 'objectives');
+  });
+
+  it('writes store reset on resetStep() — closes the reset-divergence gap', async () => {
+    const { result } = renderHook(() =>
+      useStepChecker({ stepId: 'step-reset', sectionId: 'section-a', isEligibleForChecking: true })
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.resetStep();
+    });
+
+    expect(mockResetStep).toHaveBeenCalledWith('step-reset', 'section-a');
+  });
+
+  it('uses STANDALONE_SECTION_ID for resetStep() when sectionId is undefined', async () => {
+    const { result } = renderHook(() => useStepChecker({ stepId: 'lone-reset', isEligibleForChecking: true }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.resetStep();
+    });
+
+    expect(mockResetStep).toHaveBeenCalledWith('lone-reset', '__standalone__');
+  });
+
+  it('skips the store reset entirely when sectionId is null (section-own objectives self-checker)', async () => {
+    const { result } = renderHook(() =>
+      useStepChecker({ stepId: 'section-self', sectionId: null, isEligibleForChecking: true })
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.resetStep();
+    });
+
+    expect(mockResetStep).not.toHaveBeenCalled();
   });
 });

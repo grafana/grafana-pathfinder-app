@@ -12,7 +12,11 @@
 import { useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { subscribeProgressEvent } from '../global-state/progress-events';
-import { markStepCompleted, STANDALONE_SECTION_ID } from '../global-state/completion-store';
+import {
+  markStepCompleted,
+  resetStep as resetStepInStore,
+  STANDALONE_SECTION_ID,
+} from '../global-state/completion-store';
 // getRequirementExplanation is used in check-phases.ts
 import {
   createObjectivesCompletedState,
@@ -122,6 +126,20 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     },
     [stepId, storeSectionTarget]
   );
+
+  // Mirror of `writeStoreCompletion` for the reset axis. Closes the
+  // pre-pushback divergence where `useStepChecker.resetStep` dispatched
+  // the FSM RESET + updateManager but never wrote to the canonical
+  // store — leaving the store with a stale "completed" entry that
+  // resurfaced on the next reload. Idempotent at the store level
+  // (empty bySteps short-circuits), so safe alongside caller-site
+  // `resetStep(stepId, sectionId)` invocations.
+  const writeStoreReset = useCallback((): void => {
+    if (storeSectionTarget === null) {
+      return;
+    }
+    resetStepInStore(stepId, storeSectionTarget ?? STANDALONE_SECTION_ID);
+  }, [stepId, storeSectionTarget]);
 
   // Pause requirement checks while an implied-0th-step alignment prompt is
   // pending — keeps step 1 from racing the user's redirect decision and
@@ -672,9 +690,15 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   }, [updateManager, stepId, timeoutManager, writeStoreCompletion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
-   * Reset step to initial state (including skipped state) and recheck requirements
+   * Reset step to initial state (including skipped state) and recheck requirements.
+   *
+   * Writes through to the completion store BEFORE the FSM RESET so the
+   * store and the FSM cannot disagree on the reset axis. Symmetric with
+   * `markCompleted` / `markSkipped` / objectives-auto-complete on the
+   * write side.
    */
   const resetStep = useCallback(() => {
+    writeStoreReset();
     dispatch({ type: 'RESET', canSkip: skippable });
     updateManager({
       isEnabled: false,
@@ -702,7 +726,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       },
       50
     );
-  }, [skippable, updateManager, stepId, timeoutManager]); // Removed checkStep to prevent infinite loops
+  }, [skippable, updateManager, stepId, timeoutManager, writeStoreReset]); // Removed checkStep to prevent infinite loops
 
   /**
    * Stable reference to checkStep function for event-driven triggers

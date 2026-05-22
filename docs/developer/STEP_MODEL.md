@@ -18,9 +18,11 @@ The canonical JSON form is lowercase (`action`, `reftarget`, `targetvalue`). The
 
 Authors can also write an explicit `id` on an interactive block; the parser plumbs it through to `ParsedElement.props.stepId`, overriding the section's positional `${sectionId}-step-N` convention. This is the recommended path for stable `section-completed:` requirement targets.
 
-## Completion store — single source of truth
+## Completion store — canonical persistence
 
-Step completion lives in `src/components/interactive-tutorial/completion-store.ts`. The store IS the source of truth — `SectionState` no longer carries a parallel `completed` set, and step components no longer maintain a local `isLocallyCompleted` flag. The store backs the existing `interactiveStepStorage` namespace so localStorage shape is preserved.
+Step completion lives in `src/global-state/completion-store.ts`. The store is the canonical persistence layer — `SectionState` no longer carries a parallel `completed` set, and step components no longer maintain a local `isLocallyCompleted` flag. The store backs the existing `interactiveStepStorage` namespace so localStorage shape is preserved.
+
+The step-checker FSM (`src/requirements-manager/step-checker.hook.ts`) and the `SequentialRequirementsManager` orchestrator remain as mirrors of the store — they hold the in-memory checking state needed to drive the UI. The FSM writes through to the store on every terminal transition (manual completion, skipped, objectives auto-complete, and reset) via `writeStoreCompletion` / `writeStoreReset`, so the orchestration mirrors and the canonical store cannot disagree on either axis. The `step-checker.store-bridge.test.ts` tripwire pins this contract.
 
 Public API:
 
@@ -33,8 +35,23 @@ Public API:
 - `resetSection(sectionId)` — atomic clear used by the section's full-reset path.
 - `getGuideProgress(contentKey)` — `{ completed, total, percentage }` snapshot.
 - `evictSectionCache(sectionId)` — drop a section's cache + hydration marker without writing storage. Called by `InteractiveSection`'s preview-mode unmount path so a remount under the same preview key starts fresh.
+- `evictContentCache(contentKey)` — drop one content key's cache + hydration state + version counters. Called by per-guide reset paths so subscribers re-render against an empty completion set immediately.
+- `evictAllContentCaches()` — drop every active content key's cache. Counterpart to `interactiveStepStorage.clearAll`.
 
 Hydration is lazy and per-section. Preview-mode content keys (`block-editor://preview/...`, `devtools`) bypass storage writes entirely — the in-memory cache still updates so ephemeral preview UI keeps reacting.
+
+## Reset paths must evict the cache
+
+The completion store keeps a module-scope cache (entries + hydration markers + version counters) that outlives any single component. Every path that clears persisted progress MUST also evict the cache, or live subscribers will keep rendering the prior "completed" snapshot until they remount.
+
+Known reset sites (each pairs the storage clear with a cache eviction):
+
+- `useContentReset` (docs-panel "Reset guide") — `interactiveStepStorage.clearAllForContent` + `evictContentCache`.
+- `useGuidePreviewProgress.reset` (block-editor preview reset) — `interactiveStepStorage.clearAllForContent` + `evictContentCache`.
+- `learning-paths.hook.ts` per-path reset — `interactiveStepStorage.clearAllForContent` + `evictContentCache` (URL and bundled branches).
+- `MyLearningTab.handleResetAll` (global "Reset progress") — `interactiveStepStorage.clearAll` + `evictAllContentCaches`.
+
+Adding a new reset path: pair the storage clear with the corresponding eviction.
 
 ## Section reducer — minimal state
 
@@ -87,8 +104,12 @@ The orphan `step-auto-skipped` listener at `step-checker.hook.ts:746` was remove
 
 Each layer owns its own types — there is no central re-export module. Import directly from the authoritative location:
 
-- `StepCompletionEntry`, `GuideProgress`, `UseStepCompletionResult` — `src/components/interactive-tutorial/completion-store.ts`
+- `StepCompletionEntry`, `GuideProgress`, `UseStepCompletionResult` — `src/global-state/completion-store.ts`
 - `ProgressEventDetail` — `src/global-state/progress-events.ts`
 - `CompletionReason` — `src/requirements-manager` (barrel)
 - `InteractiveElementData`, `InteractiveActionType` — `src/types/interactive.types.ts`
 - `SectionState`, `SectionAction`, `computeCursor`, `deriveSectionState` — `src/components/interactive-tutorial/section-state.ts`
+
+## Section-completed requirement gate
+
+`section-completed:<sectionId>` requirements are evaluated by `src/requirements-manager/checks/section-completed-check.ts`. It reads `sectionDoneStorage` first (mount-independent — works for unmounted virtualized sections, cross-milestone gates, conditional branches not yet rendered), then falls back to the legacy `#sectionId.completed` DOM check for the transitional window before the async storage write resolves. Lives in the engines tier (not `lib/dom`) because the check is domain-aware — it knows about content keys and the completion-store persistence namespace.
