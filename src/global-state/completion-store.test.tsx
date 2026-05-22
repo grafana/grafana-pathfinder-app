@@ -221,6 +221,15 @@ describe('completion-store', () => {
       expect(screen.getByTestId('completed').textContent).toBe('false');
       expect(storedCompleted.get(`${CONTENT_KEY}-section-x`)).toEqual(new Set(['step-1']));
     });
+
+    it('mark issued during pending hydration survives the resolve', async () => {
+      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-a']));
+      render(<StepProbe stepId="step-b" sectionId="section-x" />);
+      // Hydration pending.
+      act(() => markStepCompleted('step-b', 'section-x', 'manual'));
+      await flushMicrotasks();
+      expect(storedCompleted.get(`${CONTENT_KEY}-section-x`)).toEqual(new Set(['step-a', 'step-b']));
+    });
   });
 
   describe('bulk progress events', () => {

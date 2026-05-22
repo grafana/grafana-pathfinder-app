@@ -181,6 +181,7 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
       if (changed) {
         bumpSectionVersion(contentKey, sectionId);
         notify(contentKey);
+        persistSection(contentKey, sectionId);
       }
       // Reconcile storage with the filtered cache. Without this, the
       // cleared IDs would persist in storage and reappear on next reload.
