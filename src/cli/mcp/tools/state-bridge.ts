@@ -47,6 +47,7 @@ import {
   type TreeNode,
 } from '../../utils/package-io';
 import type { CommandOutcome } from '../../utils/output';
+import { MCP_TMPDIR_PREFIX } from '../lib/constants';
 import {
   SessionPreconditionFailedError,
   SessionStoreUnavailableError,
@@ -156,7 +157,7 @@ export async function withArtifact(
   artifact: ArtifactInput,
   runner: (dir: string) => Promise<CommandOutcome> | CommandOutcome
 ): Promise<ArtifactOutcome> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pathfinder-cli-mcp-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), MCP_TMPDIR_PREFIX));
   try {
     const state: PackageState = {
       content: artifact.content,

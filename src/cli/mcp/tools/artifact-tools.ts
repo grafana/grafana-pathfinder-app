@@ -20,6 +20,7 @@ import { runValidate } from '../../commands/validate';
 import { defaultPackageId } from '../../utils/auto-id';
 import { newPackageState, buildArtifactSummary, readPackage, type TreeNode } from '../../utils/package-io';
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
+import { MCP_TMPDIR_PREFIX } from '../lib/constants';
 import { generateSessionToken } from '../lib/session-token';
 import { SESSION_GENERATION_ABSENT, type SessionArtifact, type SessionStore } from '../lib/session-store';
 import type { CommandOutcome } from '../../utils/output';
@@ -50,7 +51,7 @@ export function registerArtifactTools(
     },
     async ({ title, id, type, description }) =>
       withToolErrorEnvelope(undefined, 'create_package', async () => {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pathfinder-cli-mcp-create-'));
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), `${MCP_TMPDIR_PREFIX}create-`));
         try {
           const pkgDir = path.join(dir, 'pkg');
           const finalId = id ?? deriveId(title);

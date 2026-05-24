@@ -28,6 +28,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { runValidate } from '../../commands/validate';
+import { PLUGIN_VIEWER_BASE } from '../lib/constants';
 import { tokenLogPrefix } from '../lib/session-token';
 import type { SessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
@@ -38,7 +39,6 @@ const APP_PLATFORM_API_VERSION = 'pathfinderbackend.ext.grafana.com/v1alpha1';
 const APP_PLATFORM_KIND = 'InteractiveGuide';
 const APP_PLATFORM_RESOURCE = 'interactiveguides';
 const NAMESPACE_PLACEHOLDER = '{namespace}';
-const PLUGIN_VIEWER_BASE = '/a/grafana-pathfinder-app';
 
 const ArtifactSchema = z
   .object({
