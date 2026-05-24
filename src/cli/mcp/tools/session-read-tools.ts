@@ -21,11 +21,10 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { buildArtifactSummary, findBlockById } from '../../utils/package-io';
-import { enforceMcpSessionPin } from '../lib/session-pin';
-import { normalizeSessionToken } from '../lib/session-token';
 import type { SessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
-import { invalidSessionTokenResult, sessionNotFoundResult, textResult, withToolErrorEnvelope } from './result';
+import { resolveAndPinToken } from './read-input';
+import { sessionNotFoundResult, textResult, withToolErrorEnvelope } from './result';
 
 const SessionTokenInput = {
   sessionToken: z.string().describe('Session token returned by pathfinder_create_package or a previous mutation ack.'),
@@ -37,22 +36,7 @@ export function registerSessionReadTools(
 ): void {
   const { sessionStore, mcpSessionId } = options;
 
-  async function resolveToken(
-    sessionToken: string
-  ): Promise<
-    | { ok: true; token: string }
-    | { ok: false; response: { content: Array<{ type: 'text'; text: string }>; isError?: boolean } }
-  > {
-    const token = normalizeSessionToken(sessionToken);
-    if (!token) {
-      return { ok: false, response: invalidSessionTokenResult() };
-    }
-    const pinFailure = await enforceMcpSessionPin({ store: sessionStore, mcpSessionId }, token);
-    if (pinFailure) {
-      return { ok: false, response: pinFailure };
-    }
-    return { ok: true, token };
-  }
+  const resolveToken = (sessionToken: string) => resolveAndPinToken(sessionStore, sessionToken, mcpSessionId);
 
   server.registerTool(
     'pathfinder_list_blocks',

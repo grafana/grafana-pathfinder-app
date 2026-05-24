@@ -22,6 +22,8 @@ import {
 } from './result';
 import { storeUnavailable } from './state-bridge';
 
+type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
+
 export type ReadInputResolution =
   | {
       ok: true;
@@ -36,8 +38,35 @@ export type ReadInputResolution =
     }
   | {
       ok: false;
-      response: { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
+      response: ToolResult;
     };
+
+export type TokenResolution = { ok: true; token: string } | { ok: false; response: ToolResult };
+
+/**
+ * Normalize a raw token string, then enforce the optional Mcp-Session-Id
+ * pin. Returns the canonical (lowercased) token, or a wire-shape error
+ * response when the token is invalid or the pin check fails.
+ *
+ * Shared by every session-mode entry point (read-input.ts's read-only
+ * resolver, session-read-tools.ts's fine-grained read tools) so the two
+ * stay in lockstep on validation order and error shapes.
+ */
+export async function resolveAndPinToken(
+  store: SessionStore,
+  rawToken: unknown,
+  mcpSessionId: string | undefined
+): Promise<TokenResolution> {
+  const token = normalizeSessionToken(rawToken);
+  if (!token) {
+    return { ok: false, response: invalidSessionTokenResult() };
+  }
+  const pinFailure = await enforceMcpSessionPin({ store, mcpSessionId }, token);
+  if (pinFailure) {
+    return { ok: false, response: pinFailure };
+  }
+  return { ok: true, token };
+}
 
 export async function resolveReadOnlyInput(
   store: SessionStore,
@@ -56,15 +85,12 @@ export async function resolveReadOnlyInput(
     return { ok: false, response: inputModeMissingResult() };
   }
   if (hasToken) {
-    const token = normalizeSessionToken(inputs.sessionToken);
-    if (!token) {
-      return { ok: false, response: invalidSessionTokenResult() };
+    const resolution = await resolveAndPinToken(store, inputs.sessionToken, mcpSessionId);
+    if (!resolution.ok) {
+      return { ok: false, response: resolution.response };
     }
+    const { token } = resolution;
     try {
-      const pinFailure = await enforceMcpSessionPin({ store, mcpSessionId }, token);
-      if (pinFailure) {
-        return { ok: false, response: pinFailure };
-      }
       const loaded = await store.load(token);
       if (loaded === null) {
         return { ok: false, response: sessionNotFoundResult(token) };
