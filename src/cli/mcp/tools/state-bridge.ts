@@ -275,6 +275,29 @@ function checkSessionQuota(artifact: ArtifactInput): SessionTooLargeResult | nul
   return null;
 }
 
+type LoadResult =
+  | { kind: 'session'; session: LoadedSession }
+  | { kind: 'absent' }
+  | { kind: 'unavailable'; response: StoreUnavailableResult };
+
+/**
+ * Wrap `store.load` with the load-time `SessionStoreUnavailableError`
+ * mapping shared by every dispatch entry point. Returns a discriminated
+ * union so the caller can distinguish the three terminal states (live
+ * session, absent session, store unavailable) without nesting try/catch.
+ */
+async function safeLoad(store: SessionStore, token: string): Promise<LoadResult> {
+  try {
+    const loaded = await store.load(token);
+    return loaded === null ? { kind: 'absent' } : { kind: 'session', session: loaded };
+  } catch (err) {
+    if (err instanceof SessionStoreUnavailableError) {
+      return { kind: 'unavailable', response: storeUnavailable(err) };
+    }
+    throw err;
+  }
+}
+
 /**
  * Policy-free single mutation attempt against a loaded session. Runs the
  * runner through the tmpdir bridge, gates on the post-mutation quota, and
@@ -307,18 +330,14 @@ export async function dispatchSessionMutation(
   options: SessionMutationOptions = {}
 ): Promise<DispatchSessionResult> {
   // First load — check the optional optimistic-concurrency claim.
-  let loaded: Awaited<ReturnType<typeof store.load>>;
-  try {
-    loaded = await store.load(token);
-  } catch (loadErr) {
-    if (loadErr instanceof SessionStoreUnavailableError) {
-      return storeUnavailable(loadErr);
-    }
-    throw loadErr;
+  const first = await safeLoad(store, token);
+  if (first.kind === 'unavailable') {
+    return first.response;
   }
-  if (loaded === null) {
+  if (first.kind === 'absent') {
     return SESSION_NOT_FOUND;
   }
+  const loaded = first.session;
   if (options.expectedGeneration !== undefined && options.expectedGeneration !== loaded.generation) {
     return concurrentModification(options.expectedGeneration, loaded.generation);
   }
@@ -338,20 +357,16 @@ export async function dispatchSessionMutation(
       return concurrentModification(err.expected, err.actual);
     }
     // Default policy: retry once against the refetched state.
-    let reloaded: Awaited<ReturnType<typeof store.load>>;
-    try {
-      reloaded = await store.load(token);
-    } catch (reloadErr) {
-      if (reloadErr instanceof SessionStoreUnavailableError) {
-        return storeUnavailable(reloadErr);
-      }
-      throw reloadErr;
+    const second = await safeLoad(store, token);
+    if (second.kind === 'unavailable') {
+      return second.response;
     }
-    if (reloaded === null) {
+    if (second.kind === 'absent') {
       // Another writer deleted the session between our save attempt and
       // this reload. Treat as not-found rather than concurrent-mod.
       return SESSION_NOT_FOUND;
     }
+    const reloaded = second.session;
     try {
       return await attemptMutation(reloaded, token, store, runner);
     } catch (err2) {
