@@ -1,36 +1,33 @@
 /**
- * Step-type schema registry.
- *
- * Single source of truth for the per-step-type behaviour currently
- * encoded in two parallel `switch-on-component-type` chains inside
- * `interactive-section.tsx`:
+ * Step-type schema registry — single source of truth for per-step-type
+ * orchestration data inside `interactive-section.tsx`:
  *   1. The `stepComponents` useMemo (builds `StepInfo` records).
  *   2. The `enhancedChildren` useMemo (clones each child with the
  *      type-specific enhanced props).
  *
- * Tier A3 (this file) introduces the registry as a *capability* —
- * neither switch chain consumes it yet. Tier A4 collapses both
- * switches into table-driven loops that look up the schema by
- * component identity. Per the High-Risk Refactor Guidelines
- * (Principle 6 — "Separate Adding Functionality from Moving Code"),
- * the capability lands first and is tested independently.
+ * Adding a new step type means editing this registry and
+ * `section-child-classifier.ts`'s `INTERACTIVE_STEP_COMPONENT_TYPES`.
+ * See `.cursor/rules/tracked-step-types.mdc` for the full checklist.
  *
  * The registry intentionally has no imports of the step component
  * modules. That keeps it a pure schema and lets the consumer
  * (`interactive-section.tsx`) build the component-identity ↔ schema
  * lookup at the call site, so the registry's unit tests need no
  * jest.mock of the heavy step modules.
- *
- * 4-site contract: this is the canonical step-type list for
- * `interactive-section.tsx`'s orchestration concerns. The cursor
- * rule `.cursor/rules/tracked-step-types.mdc` documents the three
- * other sites (`content-renderer.tsx` × 2, `section-child-classifier.ts`).
  */
 
 import type { StepInfo } from '../../types/component-props.types';
 
-/** Discriminant for the seven tracked step component types. */
-export type StepTypeKind = 'plain' | 'multistep' | 'guided' | 'quiz' | 'terminal' | 'terminal-connect' | 'codeblock';
+/** Discriminant for the tracked step component types. */
+export type StepTypeKind =
+  | 'plain'
+  | 'multistep'
+  | 'guided'
+  | 'quiz'
+  | 'terminal'
+  | 'terminal-connect'
+  | 'codeblock'
+  | 'challenge';
 
 /** Where the cloneElement `ref` callback for this type should be
  *  stored on the section. `'none'` means no ref is attached. */
@@ -44,7 +41,6 @@ export type StepInfoExtension = Omit<StepInfo, 'stepId' | 'element' | 'index'>;
 export interface EnhanceContext {
   stepInfo: StepInfo;
   isEligibleForChecking: boolean;
-  isCompleted: boolean;
   isCurrentlyExecuting: boolean;
   documentStepIndex: number;
   documentTotalSteps: number;
@@ -63,11 +59,26 @@ export interface EnhanceContext {
   onStepReset: (stepId: string) => void;
 }
 
+/** Parse-time key the JSON parser emits on `ParsedElement.type` for this step kind. */
+export type ParseTypeKey =
+  | 'interactive-step'
+  | 'interactive-multi-step'
+  | 'interactive-guided'
+  | 'quiz-block'
+  | 'terminal-step'
+  | 'terminal-connect-step'
+  | 'code-block-step'
+  | 'challenge-block';
+
 /** Schema for one tracked step component type. */
 export interface StepTypeSchema {
   kind: StepTypeKind;
+  /** ParsedElement.type value emitted by the JSON parser for this kind.
+   *  Phase 1 collapses content-renderer's INTERACTIVE_STEP_TYPES and
+   *  SECTION_TRACKED_STEP_TYPES into a read of this field. */
+  parseTypeKey: ParseTypeKey;
   /** Used to build per-type stepIds (`${sectionId}-${idPrefix}-${n}`). */
-  idPrefix: 'step' | 'multistep' | 'guided' | 'quiz' | 'terminal' | 'terminal-connect' | 'codeblock';
+  idPrefix: 'step' | 'multistep' | 'guided' | 'quiz' | 'terminal' | 'terminal-connect' | 'codeblock' | 'challenge';
   /** Where the section stores ref callbacks for this type. */
   refTarget: RefTargetMap;
   /** Build the StepInfo's type-specific fields from the child's props. */
@@ -91,6 +102,7 @@ function disabledForOrchestratedStep(ctx: EnhanceContext): boolean {
 
 export const INTERACTIVE_STEP_SCHEMA: StepTypeSchema = {
   kind: 'plain',
+  parseTypeKey: 'interactive-step',
   idPrefix: 'step',
   refTarget: 'stepRefs',
   toStepInfoExtension: (props) => ({
@@ -108,7 +120,6 @@ export const INTERACTIVE_STEP_SCHEMA: StepTypeSchema = {
   toEnhancedProps: (ctx) => ({
     stepId: ctx.stepInfo.stepId,
     isEligibleForChecking: ctx.isEligibleForChecking,
-    isCompleted: ctx.isCompleted,
     isCurrentlyExecuting: ctx.isCurrentlyExecuting,
     onStepComplete: ctx.onStepComplete,
     stepIndex: ctx.documentStepIndex,
@@ -123,6 +134,7 @@ export const INTERACTIVE_STEP_SCHEMA: StepTypeSchema = {
 
 export const INTERACTIVE_MULTISTEP_SCHEMA: StepTypeSchema = {
   kind: 'multistep',
+  parseTypeKey: 'interactive-multi-step',
   idPrefix: 'multistep',
   refTarget: 'multiStepRefs',
   toStepInfoExtension: (props) => ({
@@ -140,6 +152,7 @@ export const INTERACTIVE_MULTISTEP_SCHEMA: StepTypeSchema = {
 
 export const INTERACTIVE_GUIDED_SCHEMA: StepTypeSchema = {
   kind: 'guided',
+  parseTypeKey: 'interactive-guided',
   idPrefix: 'guided',
   // Guided step refs are stored in `multiStepRefs` per the pre-extraction
   // behaviour (line 1766 of the original). The ref Map is a bag of
@@ -159,6 +172,7 @@ export const INTERACTIVE_GUIDED_SCHEMA: StepTypeSchema = {
 
 export const INTERACTIVE_QUIZ_SCHEMA: StepTypeSchema = {
   kind: 'quiz',
+  parseTypeKey: 'quiz-block',
   idPrefix: 'quiz',
   refTarget: 'none',
   toStepInfoExtension: (props) => ({
@@ -176,7 +190,6 @@ export const INTERACTIVE_QUIZ_SCHEMA: StepTypeSchema = {
   toEnhancedProps: (ctx) => ({
     stepId: ctx.stepInfo.stepId,
     isEligibleForChecking: ctx.isEligibleForChecking,
-    isCompleted: ctx.isCompleted,
     onStepComplete: ctx.onStepComplete,
     stepIndex: ctx.documentStepIndex,
     totalSteps: ctx.documentTotalSteps,
@@ -189,6 +202,7 @@ export const INTERACTIVE_QUIZ_SCHEMA: StepTypeSchema = {
 
 export const TERMINAL_STEP_SCHEMA: StepTypeSchema = {
   kind: 'terminal',
+  parseTypeKey: 'terminal-step',
   idPrefix: 'terminal',
   refTarget: 'none',
   toStepInfoExtension: (props) => ({
@@ -206,6 +220,7 @@ export const TERMINAL_STEP_SCHEMA: StepTypeSchema = {
 
 export const TERMINAL_CONNECT_STEP_SCHEMA: StepTypeSchema = {
   kind: 'terminal-connect',
+  parseTypeKey: 'terminal-connect-step',
   idPrefix: 'terminal-connect',
   refTarget: 'none',
   toStepInfoExtension: (props) => ({
@@ -222,6 +237,7 @@ export const TERMINAL_CONNECT_STEP_SCHEMA: StepTypeSchema = {
 
 export const CODE_BLOCK_STEP_SCHEMA: StepTypeSchema = {
   kind: 'codeblock',
+  parseTypeKey: 'code-block-step',
   idPrefix: 'codeblock',
   refTarget: 'multiStepRefs',
   toStepInfoExtension: (props) => ({
@@ -238,7 +254,6 @@ export const CODE_BLOCK_STEP_SCHEMA: StepTypeSchema = {
   toEnhancedProps: (ctx) => ({
     stepId: ctx.stepInfo.stepId,
     isEligibleForChecking: ctx.isEligibleForChecking,
-    isCompleted: ctx.isCompleted,
     isCurrentlyExecuting: ctx.isCurrentlyExecuting,
     onStepComplete: ctx.onStepComplete,
     stepIndex: ctx.documentStepIndex,
@@ -248,6 +263,27 @@ export const CODE_BLOCK_STEP_SCHEMA: StepTypeSchema = {
     disabled: disabledForOrchestratedStep(ctx),
     resetTrigger: ctx.resetTrigger,
   }),
+};
+
+export const CHALLENGE_BLOCK_SCHEMA: StepTypeSchema = {
+  kind: 'challenge',
+  parseTypeKey: 'challenge-block',
+  idPrefix: 'challenge',
+  // Challenge runs its own setup/check lifecycle; it doesn't participate
+  // in the section's ref-driven Do Section orchestration.
+  refTarget: 'none',
+  toStepInfoExtension: (props) => ({
+    targetAction: undefined,
+    refTarget: undefined,
+    targetValue: undefined,
+    requirements: props.requirements,
+    skippable: props.skippable,
+    isMultiStep: false,
+    isGuided: false,
+  }),
+  // Mirrors Quiz: challenges don't need isCurrentlyExecuting or
+  // onStepReset — the block manages its own internal state machine.
+  toEnhancedProps: INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps,
 };
 
 /** Ordered array of every tracked step-type schema. The consumer in
@@ -262,4 +298,26 @@ export const STEP_TYPE_SCHEMAS: readonly StepTypeSchema[] = [
   TERMINAL_STEP_SCHEMA,
   TERMINAL_CONNECT_STEP_SCHEMA,
   CODE_BLOCK_STEP_SCHEMA,
+  CHALLENGE_BLOCK_SCHEMA,
 ];
+
+/**
+ * The `kind` value of every registered step schema, as a `const`-asserted
+ * tuple so TypeScript flags additions and removals via the
+ * `step-type-registry.tripwire.test.ts` parity check.
+ */
+export const STEP_TYPE_KIND_KEYS = [
+  'plain',
+  'multistep',
+  'guided',
+  'quiz',
+  'terminal',
+  'terminal-connect',
+  'codeblock',
+  'challenge',
+] as const;
+
+/** Parse-time keys derived from the registry. Phase 1 substitutes this
+ *  set for the duplicated `INTERACTIVE_STEP_TYPES` / `SECTION_TRACKED_STEP_TYPES`
+ *  string sets in `content-renderer.tsx`. */
+export const STEP_TYPE_PARSE_KEYS: readonly ParseTypeKey[] = STEP_TYPE_SCHEMAS.map((s) => s.parseTypeKey);

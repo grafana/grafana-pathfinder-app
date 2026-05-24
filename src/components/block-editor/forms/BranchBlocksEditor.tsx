@@ -395,9 +395,9 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
         setFormContent(block.content);
       } else if (isInteractiveBlock(block)) {
         setFormContent(block.content);
-        setFormAction(block.action);
-        setFormReftarget(block.reftarget || '');
-        setFormTargetvalue(block.targetvalue || '');
+        setFormAction(block.action ?? block.targetAction ?? 'highlight');
+        setFormReftarget(block.reftarget ?? block.refTarget ?? '');
+        setFormTargetvalue(block.targetvalue ?? block.targetValue ?? '');
         setFormRequirements(block.requirements?.join(', ') || '');
       } else if (isImageBlock(block)) {
         setFormSrc(block.src);

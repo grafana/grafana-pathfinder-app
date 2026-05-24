@@ -3,7 +3,7 @@ import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 
 /**
- * Allowed targetvalue values for popout steps.
+ * Allowed targetValue values for popout steps.
  * - 'sidebar' docks the panel back into the Grafana sidebar.
  * - 'floating' undocks the panel into a floating window.
  */
@@ -35,10 +35,10 @@ export class PopoutHandler {
     this.stateManager.setState(data, 'running');
 
     try {
-      const mode = this.resolveTargetMode(data.targetvalue);
+      const mode = this.resolveTargetMode(data.targetValue);
       if (!mode) {
         this.stateManager.handleError(
-          new Error(`PopoutHandler requires targetvalue of 'sidebar' or 'floating', got: ${String(data.targetvalue)}`),
+          new Error(`PopoutHandler requires targetValue of 'sidebar' or 'floating', got: ${String(data.targetValue)}`),
           'PopoutHandler',
           data,
           true

@@ -114,7 +114,7 @@ describe('useAlignmentReevaluation', () => {
       expect(result.current.hasInteractiveProgress).toBe(false);
     });
 
-    it('flips hasInteractiveProgress true on a matching interactive-progress-saved event', async () => {
+    it('flips hasInteractiveProgress true on a matching pathfinder:progress (kind: guide) event', async () => {
       const panel = makePanel();
       const { result } = renderHook(() => useAlignmentReevaluation(panel, 'tab-1', { currentUrl: 'guide-a' }));
 
@@ -125,8 +125,8 @@ describe('useAlignmentReevaluation', () => {
 
       act(() => {
         window.dispatchEvent(
-          new CustomEvent('interactive-progress-saved', {
-            detail: { contentKey: 'guide-a', hasProgress: true },
+          new CustomEvent('pathfinder:progress', {
+            detail: { kind: 'guide', contentKey: 'guide-a', hasProgress: true, percentage: 25 },
           })
         );
       });
@@ -175,7 +175,7 @@ describe('useAlignmentReevaluation', () => {
       expect(result.current.hasInteractiveProgress).toBe(true);
     });
 
-    it('ignores interactive-progress-saved events for a different content key', async () => {
+    it('ignores pathfinder:progress (kind: guide) events for a different content key', async () => {
       const panel = makePanel();
       const { result } = renderHook(() => useAlignmentReevaluation(panel, 'tab-1', { currentUrl: 'guide-a' }));
 
@@ -185,8 +185,8 @@ describe('useAlignmentReevaluation', () => {
 
       act(() => {
         window.dispatchEvent(
-          new CustomEvent('interactive-progress-saved', {
-            detail: { contentKey: 'guide-b', hasProgress: true },
+          new CustomEvent('pathfinder:progress', {
+            detail: { kind: 'guide', contentKey: 'guide-b', hasProgress: true, percentage: 25 },
           })
         );
       });

@@ -635,7 +635,7 @@ export class NavigationManager {
       skipAnimations?: boolean; // For smooth step transitions
       actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
       targetValue?: string;
-      reftarget?: string; // E2E contract: selector for current target
+      refTarget?: string; // E2E contract: selector for current target
     }
   ): Promise<HTMLElement> {
     // First, ensure navigation is open and element is visible
@@ -812,7 +812,7 @@ export class NavigationManager {
       skipAnimations?: boolean;
       actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
       targetValue?: string;
-      reftarget?: string; // E2E contract: selector for current target
+      refTarget?: string; // E2E contract: selector for current target
     }
   ): HTMLElement {
     const commentBox = document.createElement('div');
@@ -822,7 +822,7 @@ export class NavigationManager {
     applyE2ECommentBoxAttributes(commentBox, {
       actionType: options?.actionType,
       targetValue: options?.targetValue,
-      reftarget: options?.reftarget,
+      refTarget: options?.refTarget,
     });
 
     // We'll calculate position after building the content so we can measure actual height
@@ -1527,6 +1527,9 @@ export class NavigationManager {
     // sidebar state, so checking actual DOM content is the reliable signal.
     const navItemsVisible = document.querySelectorAll(NAV_ITEM_SELECTOR).length > 0;
     if (navItemsVisible) {
+      if (ensureDocked) {
+        await this.dockIfInOverlay();
+      }
       return;
     }
 
@@ -1537,6 +1540,9 @@ export class NavigationManager {
     // (if the user's localStorage preference was already set). In that case
     // nav items are already visible and clicking the dock button would UNDOCK it.
     if (document.querySelectorAll(NAV_ITEM_SELECTOR).length > 0) {
+      if (ensureDocked) {
+        await this.dockIfInOverlay();
+      }
       return;
     }
 
@@ -1549,6 +1555,22 @@ export class NavigationManager {
       } else if (logWarnings) {
         console.warn('Dock menu button not found after polling, navigation will remain in modal mode');
       }
+    }
+  }
+
+  /**
+   * Click the dock button iff the nav is currently in overlay mode.
+   * `#dock-menu-button` exists in both docked and overlay states with opposite
+   * semantics — in overlay its aria-label reads "Dock menu" (clicking docks the
+   * nav, what we want); in docked it reads "Undock menu" (clicking would undock,
+   * which would regress the intent of #709). The aria-label is the discriminator.
+   */
+  private async dockIfInOverlay(): Promise<void> {
+    const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement | null;
+    if (dockMenuButton?.getAttribute('aria-label') === 'Dock menu') {
+      dockMenuButton.click();
+      await waitForReactUpdates();
+      await this.pollForNavItems();
     }
   }
 

@@ -224,7 +224,7 @@ When a requirement check fails, the system may identify an automatic fix. The `f
 
 - **Context monitoring** - Listens to ContextService (EchoSrv) for Grafana state changes
 - **DOM monitoring** - Observes specific DOM changes (plugins, datasources) via MutationObserver
-- **Navigation monitoring** - Tracks URL changes and navigation events (popstate, hashchange, grafana:location-changed)
+- **Navigation monitoring** - Tracks URL changes and navigation events (popstate, hashchange, focus)
 - **Guide response monitoring** - Reacts to guide variable updates (input blocks, user responses)
 - **Heartbeat checking** - Optional periodic rechecking for fragile requirements (configurable)
 

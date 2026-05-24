@@ -340,12 +340,13 @@ export function requirementsImpliedByActionButNotDeclared(guide: JsonGuide): Dia
     }
     const isFirstStep = !firstExecutableSeen;
     firstExecutableSeen = true;
-    if (block.action === 'noop' || block.action === 'navigate' || block.action === 'popout') {
+    const action = block.action ?? block.targetAction;
+    if (!action || action === 'noop' || action === 'navigate' || action === 'popout') {
       // These actions have no DOM target / inherent page binding.
       continue;
     }
 
-    const expected = suggestRequirementsFromContext(block.action, block.reftarget ?? '', {
+    const expected = suggestRequirementsFromContext(action, block.reftarget ?? block.refTarget ?? '', {
       isFirstStepInGuide: isFirstStep,
       isInsideMultistep: false,
       currentPath: typeof window !== 'undefined' ? window.location.pathname : undefined,

@@ -28,7 +28,7 @@ describe('InteractiveConditional', () => {
     return render(
       <InteractiveConditional
         conditions={['exists-reftarget']}
-        reftarget={'button[data-testid="data-testid Tab Visualizations"]'}
+        refTarget={'button[data-testid="data-testid Tab Visualizations"]'}
         whenTrueChildren={[
           {
             type: 'interactive-step',
@@ -68,7 +68,7 @@ describe('InteractiveConditional', () => {
     });
   });
 
-  it('re-evaluates on interactive-step-completed for exists-reftarget conditions', async () => {
+  it('re-evaluates on pathfinder:progress (kind: step, completed) for exists-reftarget conditions', async () => {
     renderConditional(false);
 
     await act(async () => {
@@ -78,7 +78,11 @@ describe('InteractiveConditional', () => {
     checkRequirementsFromData.mockResolvedValue({ pass: true, requirements: '', error: [] });
 
     await act(async () => {
-      window.dispatchEvent(new CustomEvent('interactive-step-completed', { detail: { stepId: 'prior-step' } }));
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'step', stepId: 'prior-step', completed: true, reason: 'manual' },
+        })
+      );
       jest.advanceTimersByTime(300);
     });
 
@@ -93,7 +97,7 @@ describe('InteractiveConditional', () => {
     render(
       <InteractiveConditional
         conditions={['exists-reftarget']}
-        reftarget="button.tab"
+        refTarget="button.tab"
         whenTrueChildren={[
           {
             type: 'interactive-step',
@@ -158,9 +162,9 @@ describe('InteractiveConditional - DOM mutation reproduction', () => {
     jest.useRealTimers();
     checkRequirementsFromData.mockReset();
     // Realistic check: actually query the DOM, mirroring reftargetExistsCheck.
-    checkRequirementsFromData.mockImplementation(async (data: { reftarget?: string }) => {
-      const reftarget = data.reftarget ?? '';
-      const found = reftarget ? document.querySelector(reftarget) !== null : false;
+    checkRequirementsFromData.mockImplementation(async (data: { refTarget?: string }) => {
+      const refTarget = data.refTarget ?? '';
+      const found = refTarget ? document.querySelector(refTarget) !== null : false;
       return { pass: found, requirements: 'exists-reftarget', error: [] };
     });
   });
@@ -173,7 +177,7 @@ describe('InteractiveConditional - DOM mutation reproduction', () => {
     render(
       <InteractiveConditional
         conditions={['exists-reftarget']}
-        reftarget={'button[data-testid="data-testid Tab Visualizations"]'}
+        refTarget={'button[data-testid="data-testid Tab Visualizations"]'}
         whenTrueChildren={[
           { type: 'interactive-step', props: { targetAction: 'highlight', refTarget: '.tab' }, children: [] },
         ]}
@@ -244,7 +248,7 @@ describe('InteractiveConditional - DOM mutation reproduction', () => {
       const Harness = ({ conds }: { conds: string[] }) => (
         <InteractiveConditional
           conditions={conds}
-          reftarget={'button[data-testid="data-testid Tab Visualizations"]'}
+          refTarget={'button[data-testid="data-testid Tab Visualizations"]'}
           whenTrueChildren={[]}
           whenFalseChildren={[]}
           renderElement={(_e, k) => <div data-testid={`x-${k}`} />}
@@ -302,7 +306,7 @@ describe('InteractiveConditional - DOM mutation reproduction', () => {
     render(
       <InteractiveConditional
         conditions={['exists-reftarget']}
-        reftarget={'button.race'}
+        refTarget={'button.race'}
         whenTrueChildren={[
           { type: 'interactive-step', props: { targetAction: 'highlight', refTarget: '.race' }, children: [] },
         ]}
@@ -352,7 +356,7 @@ describe('InteractiveConditional - DOM mutation reproduction', () => {
     render(
       <InteractiveConditional
         conditions={['exists-reftarget']}
-        reftarget={'button[data-testid="data-testid Tab Visualizations"]'}
+        refTarget={'button[data-testid="data-testid Tab Visualizations"]'}
         whenTrueChildren={[
           { type: 'interactive-step', props: { targetAction: 'highlight', refTarget: '.tab' }, children: [] },
         ]}

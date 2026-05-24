@@ -17,10 +17,10 @@ export class ButtonHandler {
     this.stateManager.setState(data, 'running');
 
     try {
-      const buttons = await this.findButtons(data.reftarget);
+      const buttons = await this.findButtons(data.refTarget);
 
       if (!click) {
-        await this.handleShowMode(buttons, data.targetcomment);
+        await this.handleShowMode(buttons, data.targetComment);
         return;
       }
 

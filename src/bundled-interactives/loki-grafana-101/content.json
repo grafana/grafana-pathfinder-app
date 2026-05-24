@@ -13,12 +13,12 @@
     },
     {
       "type": "markdown",
-      "content": "## Section 1: Set Up Your Loki Data Source\n\nWe'll configure Loki as a data source so you can visualize logs alongside your metrics."
+      "content": "## Section 1: Set up your Loki data source\n\nWe'll configure Loki as a data source so you can visualize logs alongside your metrics."
     },
     {
       "type": "section",
       "id": "setup-datasource",
-      "title": "Set Up Your Loki Data Source",
+      "title": "Set up your Loki data source",
       "requirements": ["navmenu-open"],
       "blocks": [
         {
@@ -53,25 +53,21 @@
           "content": "Click **Add new data source** to create your Loki connection."
         },
         {
-          "type": "guided",
-          "content": "Configure the Loki data source with a **name** and **connection URL**.",
-          "steps": [
-            {
-              "action": "formfill",
-              "reftarget": "input[id='basic-settings-name']",
-              "targetvalue": "loki-datasource",
-              "requirements": ["exists-reftarget"],
-              "description": "Name your data source **loki-datasource**"
-            },
-            {
-              "action": "formfill",
-              "reftarget": "input[id='connection-url']",
-              "targetvalue": "http://loki:3100",
-              "requirements": ["exists-reftarget"],
-              "description": "Set the URL to **http://loki:3100**",
-              "tooltip": "This URL `http://loki:3100` is the default endpoint for Loki servers. Port **3100** is the standard Loki port."
-            }
-          ]
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "input[id='basic-settings-name']",
+          "targetvalue": "loki-datasource",
+          "requirements": ["exists-reftarget"],
+          "content": "Name your data source **loki-datasource** so you can easily find it later."
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "input[id='connection-url']",
+          "targetvalue": "http://loki:3100",
+          "requirements": ["exists-reftarget"],
+          "content": "Set the **URL** to **http://loki:3100** to connect to your Loki server.",
+          "tooltip": "This URL `http://loki:3100` is the default endpoint for Loki servers. Port **3100** is the standard Loki port."
         },
         {
           "type": "interactive",
@@ -84,12 +80,12 @@
     },
     {
       "type": "markdown",
-      "content": "## Section 2: Add Loki Panel to Existing Dashboard\n\nNext, add a logs panel to the **Alloy Self Monitoring** dashboard you created previously."
+      "content": "## Section 2: Add a Loki panel to your existing dashboard\n\nNext, add a logs panel to the **Alloy Self Monitoring** dashboard you created in the previous tutorial. Adding logs alongside your metrics gives you a single place to investigate both.\n\n> **Tip:** If your dashboard is already in **edit mode** or the **edit sidebar** is already open, use the **Skip** option on the first two steps below to jump straight to adding the visualization."
     },
     {
       "type": "section",
       "id": "create-dashboard",
-      "title": "Add Loki Panel to Existing Dashboard",
+      "title": "Add a Loki panel to your existing dashboard",
       "requirements": ["section-completed:section-setup-datasource"],
       "blocks": [
         {
@@ -117,26 +113,36 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "button[data-testid=\"data-testid Edit dashboard button\"]",
+          "reftarget": "div[data-testid='data-testid dashboard controls'] button[data-testid='data-testid Edit dashboard button']",
           "requirements": ["exists-reftarget"],
-          "content": "Click **Edit** to edit the dashboard.",
+          "content": "Click **Edit** in the dashboard controls to enter edit mode.",
+          "tooltip": "Edit mode unlocks the dashboard so you can add, rearrange, or modify panels. If you're already in edit mode, use **Skip** to move on.",
           "skippable": true
         },
         {
-          "type": "multistep",
-          "content": "Use **Add** → **Visualization** to create a new panel.",
-          "steps": [
-            {
-              "action": "highlight",
-              "reftarget": "button[data-testid=\"data-testid Add button\"]",
-              "requirements": ["exists-reftarget"]
-            },
-            {
-              "action": "highlight",
-              "reftarget": "button[data-testid=\"data-testid Add new visualization menu item\"]",
-              "requirements": ["exists-reftarget"]
-            }
-          ]
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "div[data-testid='data-testid Sidebar container'] button[data-testid='data-testid Dashboard Sidebar new button']",
+          "requirements": ["exists-reftarget"],
+          "content": "Open the **edit sidebar** by clicking the **+ New** button in the right-hand sidebar.",
+          "tooltip": "The edit sidebar is where you add new panels, rows, and other elements to a dashboard. If the sidebar is already expanded, use **Skip** to continue.",
+          "skippable": true
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "div[data-testid='data-testid Sidebar container'] div[data-testid='data-testid sidebar add new panel']",
+          "requirements": ["exists-reftarget"],
+          "content": "Click **Visualization** in the sidebar to add a new panel to the dashboard.",
+          "tooltip": "A **Visualization** is a single panel that renders a query as a chart, table, logs view, or other display. Choosing this drops an empty panel onto your dashboard, ready to be configured."
+        },
+        {
+          "type": "interactive",
+          "action": "button",
+          "reftarget": "Configure visualization",
+          "requirements": ["exists-reftarget"],
+          "content": "Click **Configure visualization** to open the panel editor.",
+          "tooltip": "The panel editor is where you pick a data source, write your query, choose a visualization type, and tweak titles, thresholds, and other options before saving the panel back to the dashboard."
         },
         {
           "type": "multistep",
@@ -163,17 +169,13 @@
           "tooltip": "Code mode lets you write raw **LogQL** queries directly, similar to how PromQL works for Prometheus. This gives you full control over your log queries."
         },
         {
-          "type": "guided",
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "{container=\"alloy\"}",
+          "requirements": ["exists-reftarget"],
           "content": "Enter this LogQL query:\n\n`{container=\"alloy\"}`",
-          "steps": [
-            {
-              "action": "formfill",
-              "reftarget": "textarea.inputarea",
-              "targetvalue": "{container=\"alloy\"}",
-              "requirements": ["exists-reftarget"],
-              "tooltip": "This is **LogQL** (Loki Query Language)! The query `{container=\"alloy\"}` filters logs from containers named \"alloy\". The curly braces `{}` are used for label matching in Loki."
-            }
-          ]
+          "tooltip": "This is **LogQL** (Loki Query Language)! The query `{container=\"alloy\"}` filters logs from containers named \"alloy\". The curly braces `{}` are used for label matching in Loki."
         },
         {
           "type": "interactive",
@@ -184,48 +186,35 @@
           "tooltip": "The **Refresh** button executes your LogQL query and displays the log results from your Loki data source."
         },
         {
-          "type": "multistep",
-          "content": "Change the **Visualization type** to **Logs**.",
-          "steps": [
-            {
-              "action": "highlight",
-              "reftarget": "button[data-testid=\"data-testid toggle-viz-picker\"]",
-              "requirements": ["exists-reftarget"],
-              "tooltip": "The **Logs** visualization is specifically designed for displaying log data with features like log level highlighting, filtering, and live tailing."
-            },
-            {
-              "action": "highlight",
-              "reftarget": "div[aria-label=\"Plugin visualization item Logs\"]",
-              "requirements": ["exists-reftarget"]
-            }
-          ]
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "div[data-testid=\"data-testid suggestion-Logs\"]",
+          "requirements": ["exists-reftarget"],
+          "content": "Change the **Visualization type** to **Logs** by selecting it from the suggestions.",
+          "tooltip": "The **Logs** visualization is specifically designed for displaying log data with features like log level highlighting, filtering, and live tailing."
         },
         {
-          "type": "guided",
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "grafana:components.PanelEditor.OptionsPane.fieldInput:Title",
+          "targetvalue": "/logs/i",
+          "formHint": "Enter a title that contains the word \"Logs\" (e.g., \"Alloy Logs\", \"My Logs\", \"Container Logs\")",
+          "requirements": ["exists-reftarget"],
           "content": "In the panel options, give the panel a title that includes **Logs** (e.g., \"Alloy Logs\", \"Container Logs\").",
-          "steps": [
-            {
-              "action": "formfill",
-              "reftarget": "input[data-testid=\"data-testid Panel editor option pane field input Title\"]",
-              "targetvalue": "/logs/i",
-              "formHint": "Enter a title that contains the word \"Logs\" (e.g., \"Alloy Logs\", \"My Logs\", \"Container Logs\")",
-              "requirements": ["exists-reftarget"],
-              "tooltip": "The **Title** is the name of the panel. It helps identify what logs you're viewing in the dashboard."
-            }
-          ]
+          "tooltip": "The **Title** is the name of the panel. It helps identify what logs you're viewing in the dashboard."
         },
         {
           "type": "multistep",
-          "content": "Click **Save Dashboard** to persist your changes.",
+          "content": "Click **Save dashboard** to persist your changes.",
           "steps": [
             {
-              "action": "button",
-              "reftarget": "Save Dashboard",
+              "action": "highlight",
+              "reftarget": "button[data-testid='data-testid Save dashboard button']",
               "requirements": ["exists-reftarget"]
             },
             {
-              "action": "button",
-              "reftarget": "Save",
+              "action": "highlight",
+              "reftarget": "button[data-testid=\"data-testid Save dashboard drawer button\"]",
               "requirements": ["exists-reftarget"]
             }
           ]
@@ -234,7 +223,7 @@
     },
     {
       "type": "markdown",
-      "content": "## Great job!\n\nYou now have Loki configured and a logs panel added to your existing dashboard. Consider exploring alerting for logs or drilling down between metrics and logs.\n\n- Configured the Loki data source (http://loki:3100)\n- Built a Logs visualization on the existing dashboard"
+      "content": "## Great job!\n\nYou now have Loki configured and a logs panel added to your existing dashboard. Consider exploring alerting for logs or drilling down between metrics and logs.\n\n- Configured the Loki data source (`http://loki:3100`)\n- Added a Logs visualization to the **Alloy Self Monitoring** dashboard"
     }
   ]
 }

@@ -35,7 +35,8 @@
  * SECURITY NOTE: Data is NOT encrypted. Do not store sensitive information.
  */
 
-import { usePluginUserStorage } from '@grafana/runtime';
+import { AppEvents } from '@grafana/data';
+import { getAppEvents, usePluginUserStorage } from '@grafana/runtime';
 import { useCallback, useRef, useEffect } from 'react';
 import { z } from 'zod';
 
@@ -161,6 +162,55 @@ const LIMITS = {
 } as const;
 
 // ============================================================================
+// QUOTA WARNING (N-3 follow-up from PR #909)
+// ============================================================================
+
+/**
+ * Module-level guard so the user only sees one quota-exceeded toast per
+ * page lifecycle. The previous behavior swallowed every QuotaExceededError
+ * into a `console.warn`, so the user never learned that their progress
+ * had silently stopped persisting. See PR #909.
+ */
+let hasWarnedAboutQuota = false;
+
+/**
+ * Publish a single user-visible warning toast the first time any storage
+ * write hits a `QuotaExceededError`. Subsequent calls are no-ops to avoid
+ * spamming the user as repeated writes pile up against the same full quota.
+ *
+ * Wrapped in try/catch because `getAppEvents()` can throw in environments
+ * where `@grafana/runtime` isn't fully initialized (notably some tests).
+ */
+function warnQuotaExceededOnce(): void {
+  if (hasWarnedAboutQuota) {
+    return;
+  }
+  try {
+    getAppEvents().publish({
+      type: AppEvents.alertWarning.name,
+      payload: [
+        'Browser storage full',
+        'Your progress may not be saved. Try resetting old guide progress via My Learning to free up space.',
+      ],
+    });
+    // Only flip the flag after a successful publish so a runtime that
+    // isn't initialized yet doesn't permanently suppress the toast.
+    hasWarnedAboutQuota = true;
+  } catch {
+    // getAppEvents() can throw in test envs without a grafana/runtime
+    // mock. Leave the flag false so a later write can retry.
+  }
+}
+
+/**
+ * Test-only reset of the module-level `hasWarnedAboutQuota` flag so
+ * suites can exercise the once-per-lifecycle contract deterministically.
+ */
+export function __resetQuotaWarningForTests(): void {
+  hasWarnedAboutQuota = false;
+}
+
+// ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
 
@@ -239,6 +289,7 @@ function createLocalStorage(): UserStorage {
         // SECURITY: Handle QuotaExceededError
         if (error instanceof Error && error.name === 'QuotaExceededError') {
           console.warn('localStorage quota exceeded', error);
+          warnQuotaExceededOnce();
           throw error;
         }
         console.error(`Failed to set item in localStorage: ${key}`, error);
@@ -718,6 +769,7 @@ export const journeyCompletionStorage = {
       // SECURITY: Handle QuotaExceededError gracefully
       if (error instanceof Error && error.name === 'QuotaExceededError') {
         console.warn('Storage quota exceeded, clearing old journey data');
+        warnQuotaExceededOnce();
         await journeyCompletionStorage.cleanup();
         // Retry after cleanup
         await journeyCompletionStorage.set(journeyBaseUrl, percentage);
@@ -865,6 +917,7 @@ export const interactiveCompletionStorage = {
       // SECURITY: Handle QuotaExceededError gracefully
       if (error instanceof Error && error.name === 'QuotaExceededError') {
         console.warn('Storage quota exceeded, clearing old interactive completion data');
+        warnQuotaExceededOnce();
         await interactiveCompletionStorage.cleanup();
         // Retry after cleanup
         await interactiveCompletionStorage.set(contentKey, percentage);
@@ -965,6 +1018,7 @@ export const tabStorage = {
       // SECURITY: Handle QuotaExceededError
       if (error instanceof Error && error.name === 'QuotaExceededError') {
         console.warn('Storage quota exceeded, reducing number of tabs');
+        warnQuotaExceededOnce();
         // Save only the most recent 25 tabs
         const reducedTabs = tabs.slice(-25);
         const storage = createUserStorage();
@@ -1023,6 +1077,19 @@ const completedCountCache = new Map<string, number>();
  * Interactive step completion storage operations
  */
 export const interactiveStepStorage = {
+  /**
+   * Drop the cached completion count for a content key without touching
+   * localStorage. Used by the cross-tab `storage` listener in
+   * `completion-store.ts` so the next `countAllCompleted` / `getGuideProgress`
+   * call re-scans from authoritative storage rather than returning a
+   * stale per-tab snapshot.
+   *
+   * Idempotent on unknown keys; safe to call from any tab.
+   */
+  invalidateCountCache(contentKey: string): void {
+    completedCountCache.delete(contentKey);
+  },
+
   /**
    * Gets completed step IDs for a specific content/section
    */
@@ -1105,12 +1172,19 @@ export const interactiveStepStorage = {
       const stepsPrefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
       const collapsePrefix = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-`;
       const ackPrefix = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-`;
+      const donePrefix = `${StorageKeys.SECTION_DONE_PREFIX}${contentKey}-`;
 
       // Find and remove all matching keys
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix) || key.startsWith(ackPrefix))) {
+        if (
+          key &&
+          (key.startsWith(stepsPrefix) ||
+            key.startsWith(collapsePrefix) ||
+            key.startsWith(ackPrefix) ||
+            key.startsWith(donePrefix))
+        ) {
           keysToRemove.push(key);
         }
       }
@@ -1142,11 +1216,18 @@ export const interactiveStepStorage = {
       const stepsPrefix = StorageKeys.INTERACTIVE_STEPS_PREFIX;
       const collapsePrefix = StorageKeys.SECTION_COLLAPSE_PREFIX;
       const ackPrefix = StorageKeys.SECTION_ACKNOWLEDGED_PREFIX;
+      const donePrefix = StorageKeys.SECTION_DONE_PREFIX;
 
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith(stepsPrefix) || key.startsWith(collapsePrefix) || key.startsWith(ackPrefix))) {
+        if (
+          key &&
+          (key.startsWith(stepsPrefix) ||
+            key.startsWith(collapsePrefix) ||
+            key.startsWith(ackPrefix) ||
+            key.startsWith(donePrefix))
+        ) {
           keysToRemove.push(key);
         }
       }
@@ -1303,6 +1384,81 @@ export const sectionAcknowledgementStorage = {
       await storage.removeItem(key);
     } catch (error) {
       console.warn('Failed to clear section acknowledgement state:', error);
+    }
+  },
+
+  /**
+   * Synchronously count acknowledged sections under `contentKey`.
+   * Mirrors `interactiveStepStorage.countAllCompleted`; required so
+   * the completion store can derive an all-passive guide percentage
+   * without an async read.
+   */
+  countAllAcknowledged(contentKey: string): number {
+    try {
+      const prefix = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-`;
+      let count = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix)) {
+          const value = localStorage.getItem(key);
+          if (value === 'true') {
+            count++;
+          }
+        }
+      }
+      return count;
+    } catch {
+      return 0;
+    }
+  },
+};
+
+/**
+ * Section "done" bit storage.
+ *
+ * Persists whether a section has reached `isCompleted === true`, derived
+ * from the section's gate analysis, objectives, completion set, and ack
+ * state. Read by the `section-completed:` requirement check so it
+ * works without the section being currently mounted (e.g. when the
+ * dependent step is on a later milestone, in a virtualized scroll
+ * region, or in a conditional branch not yet rendered).
+ *
+ * Storage is intentionally two-state — `true` or absent (`null`). On
+ * reset paths the section calls `.clear()` rather than writing `false`.
+ */
+export const sectionDoneStorage = {
+  /**
+   * Returns `true` when the section is recorded complete; otherwise
+   * `null`. Two-state shape mirrors `sectionAcknowledgementStorage`.
+   */
+  async get(contentKey: string, sectionId: string): Promise<true | null> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_DONE_PREFIX}${contentKey}-${sectionId}`;
+      const done = await storage.getItem<boolean>(key);
+      return done === true ? true : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async set(contentKey: string, sectionId: string, isDone: true): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_DONE_PREFIX}${contentKey}-${sectionId}`;
+      await storage.setItem(key, isDone);
+    } catch (error) {
+      console.warn('Failed to save section done state:', error);
+    }
+  },
+
+  async clear(contentKey: string, sectionId: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_DONE_PREFIX}${contentKey}-${sectionId}`;
+      await storage.removeItem(key);
+    } catch (error) {
+      console.warn('Failed to clear section done state:', error);
     }
   },
 };

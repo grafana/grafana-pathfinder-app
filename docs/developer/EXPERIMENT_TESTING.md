@@ -120,11 +120,21 @@ location.reload();
 
 A/B test for guide content. Both `control` and `treatment` keep Pathfinder visible, auto-open the sidebar, **and auto-launch the configured `guideId` as a tab** on matched pages — using the same `auto-launch-tutorial` seam as the `?doc=` deep link. The user stays on the page they were on; no navigation happens. The Featured-slot injection still runs in parallel so the card is also visible in the recommendations tab. Use this to compare two candidate guides on the same page.
 
-### Treatment — interactive package
+### `guideId` URL form (read this before configuring an interactive-learning guide)
+
+For guides hosted on `interactive-learning.grafana.net`, **always use the package content URL**:
+
+```
+https://interactive-learning.grafana.net/packages/<slug>/content.json
+```
+
+This is the form `openLearningJourney` / `openDocsPage` recognise as a package URL (`isPackageContentUrl` in [src/docs-retrieval/package-info-from-url.ts](../../src/docs-retrieval/package-info-from-url.ts)) — that's the gate that triggers the sibling `manifest.json` fetch which populates milestones, the toolbar, and the multi-page navigation. The platform also serves the same guide under `https://interactive-learning.grafana.net/guides/<slug>/`, but that public web-page form bypasses the package gate and falls through to a plain `fetchContent(url)` call — the guide opens as a single page with no milestones. If you only see one page when you expected a learning journey, this is almost always the URL form. See "Common gotchas" below.
+
+### Control — interactive package
 
 ```js
 __pathfinderExperiment.setOverride('pathfinder.highlighted-guide-experiment', {
-  variant: 'treatment',
+  variant: 'control',
   pages: ['/a/grafana-irm-app*'],
   guideId: 'https://interactive-learning.grafana.net/packages/irm-configuration/content.json',
   docType: 'interactive',
@@ -134,15 +144,15 @@ __pathfinderExperiment.setOverride('pathfinder.highlighted-guide-experiment', {
 location.reload();
 ```
 
-### Control — learning journey
+### Treatment — learning journey
 
 Forces the Featured card type to `learning-journey` so the click-through opens with milestone UI rather than as a single docs page.
 
 ```js
 __pathfinderExperiment.setOverride('pathfinder.highlighted-guide-experiment', {
-  variant: 'control',
+  variant: 'treatment',
   pages: ['/a/grafana-irm-app*'],
-  guideId: 'https://grafana.com/docs/learning-paths/grafana-irm-configuration/',
+  guideId: 'https://interactive-learning.grafana.net/packages/grafana-irm-configuration-lj/content.json',
   docType: 'learning-journey',
   autoOpen: true,
   resetCache: false,
@@ -239,6 +249,7 @@ Variant reassignment is the **only** condition where the event auto-refires acro
 - **`__pathfinderExperiment` is undefined.** Pathfinder is dismounted — usually because you're in `control` on `pathfinder.experiment-variant` or `pathfinder.after-24h-experiment`. Clear `localStorage.grafana-pathfinder-flag-overrides` and reload, or write the override directly into `localStorage`.
 - **Auto-launch landed but I see the wrong tab.** The orchestrator dispatches `auto-launch-tutorial` which calls `openDocsPage` / `openLearningJourney` — those make the new guide tab active automatically. If you instead see the editor / devtools tab from a prior session, the configured `guideId` failed to resolve through `findDocPage`: check the console for `findDocPage returned null for guideId="…"` and fix the id (`bundled:<id>`, `api:<id>`, or a full URL on a whitelisted host).
 - **Auto-launch fires but the guide opens as the wrong type (docs page vs learning journey).** Set the flag's `docType` explicitly (`'docs-page' | 'learning-journey' | 'interactive'`). The operator override wins over `findDocPage`'s URL-based inference.
+- **Only one page renders / no milestones for an interactive-learning guide.** `guideId` is pointing at the `/guides/<slug>/` web URL rather than the `/packages/<slug>/content.json` package URL. The web URL bypasses `isPackageContentUrl` so the sibling `manifest.json` is never fetched and the docs panel falls through to a plain `fetchContent` render. Swap the URL form (see "`guideId` URL form" above). Quick console probe to confirm both URL forms exist for your guide: `fetch('https://interactive-learning.grafana.net/packages/<slug>/manifest.json').then(r => r.status)` should return `200`.
 - **The Featured card still appears even though the guide auto-launched.** Intentional — the card is kept as a re-entry point if the user closes the auto-launched tab. To suppress it, the `injectHighlightedGuide` seam in `src/context-engine/context.service.ts` would need to gate on auto-launch success.
 - **`resetCache: true` didn't clear my marker.** The reset is sentinel-guarded so an operator-facing `true` doesn't re-clear on every reload. Toggle it false → reload → true → reload, or wipe the storage prefix directly.
 - **Demos: floating-mode leftovers from older builds.** Pathfinder used to switch to floating mode for highlighted guides. If your `localStorage.grafana-pathfinder-app-panel-mode` is stuck on `'floating'`, run step 4 of the reset snippet.

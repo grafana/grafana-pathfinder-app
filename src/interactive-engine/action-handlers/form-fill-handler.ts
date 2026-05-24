@@ -16,11 +16,11 @@ export class FormFillHandler {
     this.stateManager.setState(data, 'running');
 
     try {
-      const targetElement = await this.findTargetElement(data.reftarget);
+      const targetElement = await this.findTargetElement(data.refTarget);
       await this.prepareElement(targetElement);
 
       if (!fillForm) {
-        await this.handleShowMode(targetElement, data.targetcomment);
+        await this.handleShowMode(targetElement, data.targetComment);
         // Mark show actions as completed too for proper state cleanup
         await this.markAsCompleted(data);
         return;
@@ -68,7 +68,7 @@ export class FormFillHandler {
     // Refine target: if the user selected a wrapper (e.g. div), try to find the actual input inside
     const refinedElement = this.descendToFormElement(targetElement);
 
-    const value = data.targetvalue || '';
+    const value = data.targetValue || '';
     const { shouldClear, remainingValue } = this.parseClearCommand(value);
 
     const tagName = refinedElement.tagName.toLowerCase();

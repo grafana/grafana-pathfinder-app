@@ -257,8 +257,6 @@ function setupOnboardingFlowListener(
     }
   };
 
-  document.addEventListener('grafana:location-changed', checkLocationChange);
-
   try {
     const history = locationService.getHistory();
     if (history) {
@@ -290,8 +288,6 @@ function setupTreatmentNavigationListener(hostname: string, targetPages: string[
       }
     }
   };
-
-  document.addEventListener('grafana:location-changed', checkNavigationToTargetPage);
 
   try {
     const history = locationService.getHistory();
