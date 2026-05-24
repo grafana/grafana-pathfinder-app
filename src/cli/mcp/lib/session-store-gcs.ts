@@ -288,6 +288,49 @@ export interface GcsSessionStoreOptions {
   generateStageId?: () => string;
 }
 
+/**
+ * Parse and validate the JSON body of a `generation` pointer object.
+ * Shared between the bare-download path (`readGenerationPointer`) and the
+ * metadata-pinned snapshot path (`downloadPointerSnapshot`) so the two
+ * cannot drift on validation thresholds or corruption messages.
+ *
+ * `objectName` is woven into every error so operator logs name the exact
+ * GCS object whose body failed validation.
+ */
+function parseGenerationPointer(text: string, objectName: string): GenerationPointer {
+  if (text.length === 0) {
+    throw new SessionStoreCorruptedError(`session store corruption: ${objectName} is empty`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new SessionStoreCorruptedError(
+      `session store corruption: ${objectName} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    typeof (parsed as GenerationPointer).generation !== 'number' ||
+    typeof (parsed as GenerationPointer).stage !== 'string'
+  ) {
+    throw new SessionStoreCorruptedError(
+      `session store corruption: ${objectName} is missing required fields (got ${JSON.stringify(parsed)})`
+    );
+  }
+  const { generation, stage } = parsed as GenerationPointer;
+  if (!Number.isFinite(generation) || generation <= 0 || !Number.isInteger(generation)) {
+    throw new SessionStoreCorruptedError(
+      `session store corruption: ${objectName}.generation is not a positive integer (got ${generation})`
+    );
+  }
+  if (stage.length === 0) {
+    throw new SessionStoreCorruptedError(`session store corruption: ${objectName}.stage is empty`);
+  }
+  return { generation, stage };
+}
+
 export class GcsSessionStore implements SessionStore {
   private readonly bucket: Bucket;
   private readonly retryOpts: RetryOptions;
@@ -382,37 +425,7 @@ export class GcsSessionStore implements SessionStore {
       }
       throw err;
     }
-    if (text === null) {
-      throw new SessionStoreCorruptedError(`session store corruption: ${objectName} is empty`);
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch (err) {
-      throw new SessionStoreCorruptedError(
-        `session store corruption: ${objectName} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
-      );
-    }
-    if (
-      !parsed ||
-      typeof parsed !== 'object' ||
-      typeof (parsed as GenerationPointer).generation !== 'number' ||
-      typeof (parsed as GenerationPointer).stage !== 'string'
-    ) {
-      throw new SessionStoreCorruptedError(
-        `session store corruption: ${objectName} is missing required fields (got ${JSON.stringify(parsed)})`
-      );
-    }
-    const { generation, stage } = parsed as GenerationPointer;
-    if (!Number.isFinite(generation) || generation <= 0 || !Number.isInteger(generation)) {
-      throw new SessionStoreCorruptedError(
-        `session store corruption: ${objectName}.generation is not a positive integer (got ${generation})`
-      );
-    }
-    if (stage.length === 0) {
-      throw new SessionStoreCorruptedError(`session store corruption: ${objectName}.stage is empty`);
-    }
-    return { generation, stage };
+    return parseGenerationPointer(text ?? '', objectName);
   }
 
   async save(token: string, artifact: SessionArtifact, ifGenerationMatch: number): Promise<SaveResult> {
@@ -578,35 +591,7 @@ export class GcsSessionStore implements SessionStore {
     // the subsequent pointer-flip write with that gcsGeneration will
     // see 412 from any racing writer that advanced past it.
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(body);
-    } catch (err) {
-      throw new SessionStoreCorruptedError(
-        `session store corruption: ${objectName} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
-      );
-    }
-    if (
-      !parsed ||
-      typeof parsed !== 'object' ||
-      typeof (parsed as GenerationPointer).generation !== 'number' ||
-      typeof (parsed as GenerationPointer).stage !== 'string'
-    ) {
-      throw new SessionStoreCorruptedError(
-        `session store corruption: ${objectName} is missing required fields (got ${JSON.stringify(parsed)})`
-      );
-    }
-    const pointer = parsed as GenerationPointer;
-    if (
-      !Number.isFinite(pointer.generation) ||
-      pointer.generation <= 0 ||
-      !Number.isInteger(pointer.generation) ||
-      pointer.stage.length === 0
-    ) {
-      throw new SessionStoreCorruptedError(
-        `session store corruption: ${objectName} has invalid fields (got ${JSON.stringify(parsed)})`
-      );
-    }
+    const pointer = parseGenerationPointer(body, objectName);
     return { pointer, gcsGeneration };
   }
 

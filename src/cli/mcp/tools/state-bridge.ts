@@ -47,7 +47,12 @@ import {
   type TreeNode,
 } from '../../utils/package-io';
 import type { CommandOutcome } from '../../utils/output';
-import { SessionPreconditionFailedError, SessionStoreUnavailableError, type SessionStore } from '../lib/session-store';
+import {
+  SessionPreconditionFailedError,
+  SessionStoreUnavailableError,
+  type LoadedSession,
+  type SessionStore,
+} from '../lib/session-store';
 
 export interface ArtifactInput {
   content: ContentJson;
@@ -269,6 +274,31 @@ function checkSessionQuota(artifact: ArtifactInput): SessionTooLargeResult | nul
   return null;
 }
 
+/**
+ * Policy-free single mutation attempt against a loaded session. Runs the
+ * runner through the tmpdir bridge, gates on the post-mutation quota, and
+ * persists. Lets `SessionPreconditionFailedError` and
+ * `SessionStoreUnavailableError` propagate — retry / store-unavailable
+ * policy lives in `dispatchSessionMutation`.
+ */
+async function attemptMutation(
+  session: LoadedSession,
+  token: string,
+  store: SessionStore,
+  runner: (dir: string) => Promise<CommandOutcome> | CommandOutcome
+): Promise<SessionOutcome | SessionTooLargeResult> {
+  const result = await withArtifact(session.artifact, runner);
+  if (result.outcome.status !== 'ok') {
+    return { ...result, generation: undefined };
+  }
+  const quotaFailure = checkSessionQuota(result.artifact);
+  if (quotaFailure) {
+    return quotaFailure;
+  }
+  const saved = await store.save(token, result.artifact, session.generation);
+  return { ...result, generation: saved.generation };
+}
+
 export async function dispatchSessionMutation(
   token: string,
   store: SessionStore,
@@ -293,16 +323,7 @@ export async function dispatchSessionMutation(
   }
 
   try {
-    const result = await withArtifact(loaded.artifact, runner);
-    if (result.outcome.status !== 'ok') {
-      return { ...result, generation: undefined };
-    }
-    const quotaFailure = checkSessionQuota(result.artifact);
-    if (quotaFailure) {
-      return quotaFailure;
-    }
-    const saved = await store.save(token, result.artifact, loaded.generation);
-    return { ...result, generation: saved.generation };
+    return await attemptMutation(loaded, token, store, runner);
   } catch (err) {
     if (err instanceof SessionStoreUnavailableError) {
       return storeUnavailable(err);
@@ -331,16 +352,7 @@ export async function dispatchSessionMutation(
       return SESSION_NOT_FOUND;
     }
     try {
-      const result2 = await withArtifact(reloaded.artifact, runner);
-      if (result2.outcome.status !== 'ok') {
-        return { ...result2, generation: undefined };
-      }
-      const quotaFailure2 = checkSessionQuota(result2.artifact);
-      if (quotaFailure2) {
-        return quotaFailure2;
-      }
-      const saved2 = await store.save(token, result2.artifact, reloaded.generation);
-      return { ...result2, generation: saved2.generation };
+      return await attemptMutation(reloaded, token, store, runner);
     } catch (err2) {
       if (err2 instanceof SessionStoreUnavailableError) {
         return storeUnavailable(err2);
