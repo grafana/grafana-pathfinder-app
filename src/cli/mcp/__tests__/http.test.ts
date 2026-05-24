@@ -15,7 +15,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
-import { runHttp, MAX_REQUEST_BYTES, type AccessLogEntry, type HttpHandle } from '../transports/http';
+import { type AccessLogEntry } from '../transports/access-log';
+import { runHttp, MAX_REQUEST_BYTES, type HttpHandle } from '../transports/http';
 import { SessionHopCounter } from '../transports/instrumentation';
 import { mcpSessionIdLogHash } from '../lib/session-token';
 
