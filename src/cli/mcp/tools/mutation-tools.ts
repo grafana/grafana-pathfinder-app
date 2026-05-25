@@ -25,15 +25,13 @@ import { runSetManifest } from '../../commands/set-manifest';
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../../utils/block-registry';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
-import { enforceMcpSessionPin } from '../lib/session-pin';
-import { normalizeSessionToken } from '../lib/session-token';
 import type { SessionStore } from '../lib/session-store';
 import { writeAppend, writeDestructive } from './annotations';
+import { resolveAndPinToken } from './read-input';
 import {
   concurrentModificationResult,
   inputModeAmbiguousResult,
   inputModeMissingResult,
-  invalidSessionTokenResult,
   outcomeResult,
   sessionNotFoundResult,
   sessionOutcomeResult,
@@ -167,14 +165,11 @@ async function dispatchMutation(
 
   return withToolErrorEnvelope(rawToken, 'mutation-tools', async () => {
     if (hasSessionToken) {
-      const token = normalizeSessionToken(inputs.sessionToken);
-      if (!token) {
-        return invalidSessionTokenResult();
+      const resolution = await resolveAndPinToken(store, inputs.sessionToken, mcpSessionId);
+      if (!resolution.ok) {
+        return resolution.response;
       }
-      const pinFailure = await enforceMcpSessionPin({ store, mcpSessionId }, token);
-      if (pinFailure) {
-        return pinFailure;
-      }
+      const { token } = resolution;
       const r = await dispatchSessionMutation(token, store, runner, {
         expectedGeneration: inputs.expectedGeneration,
       });
