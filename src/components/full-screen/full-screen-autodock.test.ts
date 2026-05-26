@@ -9,14 +9,12 @@ import { panelModeManager } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
 import { reportAppInteraction } from '../../lib/analytics';
-import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 jest.mock('../../global-state/panel-mode', () => ({
   panelModeManager: {
     getMode: jest.fn(),
     setMode: jest.fn(),
     setPendingGuide: jest.fn(),
-    restoreSidebarTabSnapshot: jest.fn(),
   },
 }));
 
@@ -39,20 +37,9 @@ jest.mock('../../lib/analytics', () => ({
 const FULL_SCREEN_PATHNAME = '/a/grafana-pathfinder-app/fullscreen';
 const PLUGIN_ID = 'grafana-pathfinder-app';
 
-const baseTab: LearningJourneyTab = {
-  id: 'tab-1',
-  title: 'My journey',
+const baseTab = {
   baseUrl: 'https://raw.githubusercontent.com/x/y/z/cover/content.json',
-  currentUrl: 'https://raw.githubusercontent.com/x/y/z/cover/content.json',
-  content: null,
-  isLoading: false,
-  error: null,
-  type: 'learning-journey',
-  packageInfo: {
-    packageId: 'my-path',
-    packageManifest: { id: 'my-path', type: 'path', milestones: ['m1', 'm2'] },
-    resolvedMilestones: [],
-  },
+  title: 'My journey',
 };
 
 function defaultInputs(overrides: Partial<Parameters<typeof dockOnLeavingFullScreen>[0]> = {}) {
@@ -62,7 +49,6 @@ function defaultInputs(overrides: Partial<Parameters<typeof dockOnLeavingFullScr
     myPluginId: PLUGIN_ID,
     guideUrl: baseTab.baseUrl,
     title: baseTab.title,
-    activeTab: baseTab,
     ...overrides,
   };
 }
@@ -125,17 +111,6 @@ describe('dockOnLeavingFullScreen', () => {
       expect(panelModeManager.setPendingGuide).not.toHaveBeenCalled();
     });
 
-    it('does NOT call restoreSidebarTabSnapshot — fullscreen and sidebar share intent, the latest tabStorage state must win', () => {
-      // Regression: the snapshot/restore mechanism overwrote the milestone
-      // position fullscreen wrote during the user's session (e.g. step
-      // navigation) with the stale "before-fullscreen" snapshot, dumping
-      // the user back at page 1 of the journey on dock.
-      dockOnLeavingFullScreen(defaultInputs());
-      jest.runAllTimers();
-
-      expect(panelModeManager.restoreSidebarTabSnapshot).not.toHaveBeenCalled();
-    });
-
     it('reports analytics with destination=sidebar and reason=navigation_away', () => {
       dockOnLeavingFullScreen(defaultInputs());
 
@@ -171,20 +146,13 @@ describe('dockOnLeavingFullScreen', () => {
       expect(outcome).toBe('floating');
       expect(panelModeManager.setMode).toHaveBeenCalledWith('floating');
       expect(sidebarState.openSidebar).not.toHaveBeenCalled();
-      expect(panelModeManager.restoreSidebarTabSnapshot).not.toHaveBeenCalled();
     });
 
-    it('hands off the active tab via setPendingGuide so the floating panel rebuilds the journey', () => {
+    it('does not set a pending guide — the floating panel restores from tabStorage', () => {
       dockOnLeavingFullScreen(defaultInputs());
+      jest.runAllTimers();
 
-      // setPendingGuide fires synchronously so the consumer (floating
-      // panel mount) sees the handoff data the moment it mounts.
-      expect(panelModeManager.setPendingGuide).toHaveBeenCalledWith({
-        url: baseTab.baseUrl,
-        title: baseTab.title,
-        type: 'learning-journey',
-        packageInfo: baseTab.packageInfo,
-      });
+      expect(panelModeManager.setPendingGuide).not.toHaveBeenCalled();
     });
 
     it('reports analytics with destination=floating and reason=navigation_away_sidebar_occupied', () => {
@@ -196,26 +164,6 @@ describe('dockOnLeavingFullScreen', () => {
         guide_title: baseTab.title,
         reason: 'navigation_away_sidebar_occupied',
       });
-    });
-
-    it('downgrades non-journey tabs to type=docs in the pending guide', () => {
-      const docsTab: LearningJourneyTab = { ...baseTab, type: 'docs', packageInfo: undefined };
-
-      dockOnLeavingFullScreen(defaultInputs({ activeTab: docsTab }));
-
-      expect(panelModeManager.setPendingGuide).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'docs', packageInfo: undefined })
-      );
-    });
-
-    it('skips setPendingGuide when there is no guideUrl or activeTab', () => {
-      dockOnLeavingFullScreen(defaultInputs({ guideUrl: undefined, activeTab: undefined }));
-      jest.runAllTimers();
-
-      expect(panelModeManager.setPendingGuide).not.toHaveBeenCalled();
-      // Mode change still fires so the floating panel mounts (it can fall
-      // back to tabStorage restoration when no pending guide is set).
-      expect(panelModeManager.setMode).toHaveBeenCalledWith('floating');
     });
   });
 });

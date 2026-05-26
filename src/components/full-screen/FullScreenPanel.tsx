@@ -194,25 +194,23 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // that took them there. Decision logic (sidebar vs floating fallback) is
   // factored out into `dockOnLeavingFullScreen` for unit testability.
   //
-  // Latest tab/title/url are read through a ref so the listener subscribes
+  // Latest title/url are read through a ref so the listener subscribes
   // exactly once on mount. Without the ref the effect re-subscribes on
-  // every milestone navigation (`activeTab` is a fresh `find()` reference
-  // per render), which churns the history subscription and risks dropping
-  // the very location event that triggered the navigation.
-  const dockInputsRef = useRef({ guideUrl, title, activeTab });
-  dockInputsRef.current = { guideUrl, title, activeTab };
+  // every milestone navigation, which churns the history subscription and
+  // risks dropping the very location event that triggered the navigation.
+  const dockInputsRef = useRef({ guideUrl, title });
+  dockInputsRef.current = { guideUrl, title };
   useEffect(() => {
     const fullScreenPathname = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
     const history = locationService.getHistory();
     const unlisten = history.listen((location: { pathname: string }) => {
-      const { guideUrl: latestGuideUrl, title: latestTitle, activeTab: latestActiveTab } = dockInputsRef.current;
+      const { guideUrl: latestGuideUrl, title: latestTitle } = dockInputsRef.current;
       dockOnLeavingFullScreen({
         pathname: location.pathname,
         fullScreenPathname,
         myPluginId: pluginJson.id,
         guideUrl: latestGuideUrl,
         title: latestTitle,
-        activeTab: latestActiveTab,
       });
     });
     return unlisten;
