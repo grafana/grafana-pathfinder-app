@@ -52,7 +52,6 @@ export type LaunchSource =
   | 'link_interception'
   | 'queued_link'
   | 'content_link'
-  | 'location_change'
   // Editor authoring (also needs alignment check)
   | 'block_editor_preview'
   | 'custom_guide';
@@ -119,8 +118,6 @@ export const NEEDS_ALIGNMENT_CHECK_SOURCES: ReadonlySet<LaunchSource> = new Set<
   'content_link',
   'block_editor_preview',
   'custom_guide',
-  // Reactive re-evaluation on location change while the user has no progress yet.
-  'location_change',
 ]);
 
 /**

@@ -7,7 +7,7 @@ import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
-import { useAlignmentReevaluation, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
+import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
@@ -191,7 +191,7 @@ function FloatingPanelInner() {
     }
   }, [restorationDone, hasActiveGuide, isEditorTab]);
 
-  const { hasInteractiveProgress, progressKey } = useAlignmentReevaluation(panel, activeTabId, activeTab);
+  const { hasInteractiveProgress, progressKey } = useGuideProgressState(activeTab);
 
   const handleResetGuide = useContentReset({ model: panel });
 
