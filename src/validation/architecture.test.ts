@@ -306,3 +306,204 @@ describe('Architecture ratchet progress', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tier documentation sync (A2 — prevents F-1 regression)
+// ---------------------------------------------------------------------------
+
+const REPO_ROOT = path.resolve(SRC_DIR, '..');
+
+interface ParsedTierDoc {
+  tiers: Map<string, number>;
+  excluded: Set<string>;
+}
+
+/**
+ * Parse the "Frontend tier model" section of a markdown / mdc file.
+ *
+ * Expected shape per tier bullet (whitespace tolerant; backticks and
+ * trailing slashes are optional around directory names):
+ *
+ *   - **Tier N — <Group name>**: `dir1/`, `dir2/`, …
+ *
+ * Plus a trailing line describing the excluded set:
+ *
+ *   Excluded from tier analysis (not tiered): `dir1/`, `dir2/`, …
+ *
+ * Parsing stops at the next top-level heading after "Frontend tier model"
+ * so we don't accidentally pull in the per-subsystem catalogue (which
+ * mentions the same directories under different headings).
+ */
+function parseTierDoc(content: string, sourceLabel: string): ParsedTierDoc {
+  // Anchor to the "Frontend tier model" heading and slice up to the next
+  // heading of the same or shallower depth.
+  const headingRe = /^(#{1,6})\s+Frontend tier model\s*$/m;
+  const headingMatch = headingRe.exec(content);
+  if (!headingMatch) {
+    throw new Error(`Could not find "Frontend tier model" heading in ${sourceLabel}`);
+  }
+  const headingDepth = headingMatch[1]!.length;
+  const sectionStart = headingMatch.index + headingMatch[0].length;
+  const rest = content.slice(sectionStart);
+  // Match the next heading at depth <= headingDepth
+  const nextHeadingRe = new RegExp(`^#{1,${headingDepth}}\\s+\\S`, 'm');
+  const nextHeadingMatch = nextHeadingRe.exec(rest);
+  const section = nextHeadingMatch ? rest.slice(0, nextHeadingMatch.index) : rest;
+
+  // Tier bullets: capture tier number + the rest of the line (the dir list).
+  // Tolerant of em-dash (—), en-dash (–), or hyphen (-) between tier and group name.
+  const tierBulletRe = /^[-*]\s+\*\*Tier\s+(\d+)\s+[—–-][^*]*\*\*\s*:\s*(.+)$/gm;
+  const tiers = new Map<string, number>();
+  let bulletMatch: RegExpExecArray | null;
+  while ((bulletMatch = tierBulletRe.exec(section)) !== null) {
+    const tier = Number(bulletMatch[1]);
+    // Truncate at the first sentence terminator so trailing prose (which may
+    // itself contain backtick-quoted tokens like `index.ts`) doesn't leak
+    // into the dir list. systemPatterns.mdc puts a one-sentence description
+    // after the dir list on the same line; AGENTS.md does not.
+    // String.split() always returns >=1 element, so [0]! is safe.
+    const dirList = bulletMatch[2]!.split(/\.\s/)[0]!;
+    for (const dir of extractDirs(dirList)) {
+      if (tiers.has(dir)) {
+        throw new Error(`Directory \`${dir}\` listed under multiple tiers in ${sourceLabel}`);
+      }
+      tiers.set(dir, tier);
+    }
+  }
+
+  if (tiers.size === 0) {
+    throw new Error(`Parsed zero tier entries from ${sourceLabel} — parser regex may be stale.`);
+  }
+
+  // Excluded line: "Excluded from tier analysis ... :" followed by dir list,
+  // up to the end of the sentence (terminating period that's not inside a
+  // backtick run). Simpler: grab the rest of the line.
+  const excluded = new Set<string>();
+  const excludedRe = /Excluded from tier analysis[^:]*:\s*([^.\n]+)/;
+  const excludedMatch = excludedRe.exec(section);
+  if (excludedMatch) {
+    for (const dir of extractDirs(excludedMatch[1]!)) {
+      excluded.add(dir);
+    }
+  }
+
+  return { tiers, excluded };
+}
+
+/**
+ * Pull directory names out of a comma-separated list like:
+ *   "`lib/`, `security/`, `styles/`. The canonical source ..."
+ *
+ * We:
+ *  - look for backtick-quoted tokens first (the documented style),
+ *  - strip trailing slashes,
+ *  - ignore tokens that look like file paths (contain `/` after the trailing
+ *    slash strip) — tier listings name top-level dirs only.
+ */
+function extractDirs(line: string): string[] {
+  const dirs: string[] = [];
+  const tokenRe = /`([^`]+)`/g;
+  let tokenMatch: RegExpExecArray | null;
+  while ((tokenMatch = tokenRe.exec(line)) !== null) {
+    let token = tokenMatch[1]!.trim();
+    if (token.endsWith('/')) {
+      token = token.slice(0, -1);
+    }
+    // Skip nested paths or non-directory tokens (e.g., file references).
+    if (token.includes('/') || token.length === 0) {
+      continue;
+    }
+    dirs.push(token);
+  }
+  return dirs;
+}
+
+function diffTierMaps(label: string, docTiers: Map<string, number>): string[] {
+  const errors: string[] = [];
+  for (const [dir, tier] of docTiers) {
+    if (!(dir in TIER_MAP)) {
+      errors.push(`${label}: \`${dir}\` is listed (tier ${tier}) but not in TIER_MAP`);
+      continue;
+    }
+    if (TIER_MAP[dir] !== tier) {
+      errors.push(`${label}: \`${dir}\` doc says tier ${tier}, TIER_MAP says tier ${TIER_MAP[dir]}`);
+    }
+  }
+  for (const [dir, tier] of Object.entries(TIER_MAP)) {
+    if (!docTiers.has(dir)) {
+      errors.push(`${label}: \`${dir}\` is in TIER_MAP (tier ${tier}) but not listed in doc`);
+    }
+  }
+  return errors;
+}
+
+function diffExcludedSets(label: string, docExcluded: Set<string>): string[] {
+  const errors: string[] = [];
+  for (const dir of docExcluded) {
+    if (!EXCLUDED_TOP_LEVEL.has(dir)) {
+      errors.push(`${label}: \`${dir}\` is listed as excluded but not in EXCLUDED_TOP_LEVEL`);
+    }
+  }
+  for (const dir of EXCLUDED_TOP_LEVEL) {
+    if (!docExcluded.has(dir)) {
+      errors.push(`${label}: \`${dir}\` is in EXCLUDED_TOP_LEVEL but not listed as excluded in doc`);
+    }
+  }
+  return errors;
+}
+
+describe('Tier documentation sync', () => {
+  const docs: Array<[string, string]> = [
+    ['AGENTS.md', path.join(REPO_ROOT, 'AGENTS.md')],
+    ['.cursor/rules/systemPatterns.mdc', path.join(REPO_ROOT, '.cursor', 'rules', 'systemPatterns.mdc')],
+  ];
+
+  it.each(docs)('tier list in %s matches TIER_MAP', (label, filePath) => {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const parsed = parseTierDoc(content, label);
+
+    const errors = [...diffTierMaps(label, parsed.tiers), ...diffExcludedSets(label, parsed.excluded)];
+
+    if (errors.length > 0) {
+      throw new Error(
+        `Tier documentation in ${label} is out of sync with TIER_MAP / EXCLUDED_TOP_LEVEL ` +
+          `(both defined in src/validation/import-graph.ts):\n\n` +
+          errors.map((e) => `  - ${e}`).join('\n') +
+          `\n\nUpdate the doc's "Frontend tier model" bullet list to match the code, ` +
+          `or update TIER_MAP if the architecture intentionally changed.`
+      );
+    }
+  });
+
+  // Locked-in regression coverage: feed the parser a hand-crafted doc with a
+  // deliberately wrong tier and confirm the comparison logic flags it. Keeps
+  // the assertion path exercised even when both real docs happen to agree.
+  it('flags a divergent tier when doc and TIER_MAP disagree', () => {
+    const fakeDoc = [
+      '## Frontend tier model',
+      '',
+      '- **Tier 0 — Types & constants**: `types/`, `constants/`',
+      '- **Tier 1 — Support**: `lib/`, `hooks/`', // hooks is actually Tier 2
+      '',
+      '## Next section',
+    ].join('\n');
+
+    const parsed = parseTierDoc(fakeDoc, 'fake.md');
+    const errors = diffTierMaps('fake.md', parsed.tiers);
+    expect(errors.some((e) => e.includes('`hooks`') && e.includes('tier 1') && e.includes('tier 2'))).toBe(true);
+  });
+
+  it('flags a directory listed in the doc but missing from TIER_MAP', () => {
+    const fakeDoc = [
+      '## Frontend tier model',
+      '',
+      '- **Tier 1 — Support**: `lib/`, `phantom-module/`',
+      '',
+      '## Next section',
+    ].join('\n');
+
+    const parsed = parseTierDoc(fakeDoc, 'fake.md');
+    const errors = diffTierMaps('fake.md', parsed.tiers);
+    expect(errors.some((e) => e.includes('`phantom-module`') && e.includes('not in TIER_MAP'))).toBe(true);
+  });
+});

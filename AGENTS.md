@@ -70,9 +70,12 @@ Dev server runs at http://localhost:3000 (admin/admin). For the complete command
 Imports flow **downward only** to avoid cycles. Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; exceptions require an explicit allowlist entry with justification.
 
 - **Tier 0 — Types & constants**: `types/`, `constants/`
-- **Tier 1 — Engines & providers**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `package-engine/`, `learning-paths/`, `requirements-manager/`, `recovery/`, `validation/`
-- **Tier 2 — UI**: `components/`, `pages/`
-- **Tier 3 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `integrations/`, `hooks/`, `utils/`, `test-utils/`, `bundled-interactives/`, `locales/`, `img/`, `cli/`
+- **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`
+- **Tier 2 — Engines & hooks**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `hooks/`
+- **Tier 3 — Integrations**: `integrations/`
+- **Tier 4 — UI**: `components/`, `pages/`
+
+Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-interactives/`, `img/`, `locales/`. The canonical source is `TIER_MAP` in `src/validation/import-graph.ts`; this list must stay in sync with it (enforced by `src/validation/architecture.test.ts`).
 
 **Key dependency edges** (where the load-bearing wiring lives):
 
@@ -105,7 +108,7 @@ Frequently-needed entries:
 
 - `docs/design/CONCERNS.md` — PR review routing, impact analysis, one-way doors
 - `.cursor/rules/systemPatterns.mdc` — architecture, component relationships, per-subsystem entry points
-- `.cursor/rules/frontend-security.mdc` — frontend security F1-F6 (auto-triggered on `*.ts`/`*.tsx`/`*.js`/`*.jsx`)
+- `.cursor/rules/frontend-security.mdc` — frontend security F1-F6; load when working in `*.ts`/`*.tsx`/`*.js`/`*.jsx` files (Cursor auto-loads via `globs:` frontmatter; Claude Code does not — cite by path)
 - `.cursor/rules/react-antipatterns.mdc` — Do/Don't reference for R1-R21
 - `.cursor/rules/testingStrategy.mdc` — unit/smoke/integration test guidance
 - `docs/developer/E2E_TESTING.md` + `E2E_TESTING_CONTRACT.md` — E2E runner and `data-test-*` attributes
