@@ -14,7 +14,7 @@
  *   - `section-completed`           : detail `{ sectionId }` (on `document`)
  *   - `interactive-section-completed`: detail `{ sectionId }` (on `window`)
  *   - `interactive-step-completed`  : detail `{ stepId, sectionId }`
- *   - `pathfinder-step-progress`    : detail `{ sectionId, totalSteps, documentStepIndex, completedCount }`
+ *   - `pathfinder:progress` (kind: 'document'): detail `{ kind, contentKey, sectionId, totalSteps, documentStepIndex?, completedCount }`
  *   - `window.__DocsPluginCurrentStepIndex` + `__DocsPluginTotalSteps`
  *   - Preview-mode write-suppression for the four storage namespaces,
  *     with the `interactive-progress-saved` event still firing.
@@ -104,11 +104,7 @@ function recordSectionEvents(): { events: CapturedEvent[]; unsubscribe: () => vo
     (target === 'window' ? window : document).addEventListener(name, handler);
     return () => (target === 'window' ? window : document).removeEventListener(name, handler);
   };
-  const offs = [
-    make('pathfinder:progress', 'window'),
-    make('interactive-progress-cleared', 'window'),
-    make('pathfinder-step-progress', 'window'),
-  ];
+  const offs = [make('pathfinder:progress', 'window'), make('interactive-progress-cleared', 'window')];
   return { events, unsubscribe: () => offs.forEach((off) => off()) };
 }
 
@@ -221,7 +217,7 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
       }
     });
 
-    it('dispatches `pathfinder-step-progress` with the documented detail shape', async () => {
+    it('dispatches pathfinder:progress (kind: document) with the documented detail shape', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
         renderSingleStepSection();
@@ -231,13 +227,20 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         });
 
         await waitFor(() => {
-          const evt = events.find((e) => e.name === 'pathfinder-step-progress');
+          const evt = events.find((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'document');
           expect(evt).toBeDefined();
-          expect(Object.keys(evt!.detail).sort()).toEqual(
-            ['completedCount', 'documentStepIndex', 'sectionId', 'totalSteps'].sort()
+          // `documentStepIndex` is optional in the unified schema and is
+          // only present while a step is executing; the post-completion
+          // dispatch can omit it.
+          const keys = Object.keys(evt!.detail);
+          expect(keys).toEqual(
+            expect.arrayContaining(['kind', 'contentKey', 'sectionId', 'totalSteps', 'completedCount'])
           );
+          expect(evt!.detail.kind).toBe('document');
           expect(evt!.detail.sectionId).toBe(SECTION_ID);
+          expect(typeof evt!.detail.contentKey).toBe('string');
           expect(typeof evt!.detail.totalSteps).toBe('number');
+          expect(typeof evt!.detail.completedCount).toBe('number');
         });
       } finally {
         unsubscribe();
@@ -437,7 +440,7 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         // the post-flip event is unambiguously attributable to a
         // store-driven re-render rather than the mount-time effect.
         await waitFor(() => {
-          expect(events.find((e) => e.name === 'pathfinder-step-progress')).toBeDefined();
+          expect(events.find((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'document')).toBeDefined();
         });
         events.length = 0;
 
@@ -459,7 +462,9 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         // the `useSyncExternalStore` subscription to land the flip in
         // the section's render commit.
         await waitFor(() => {
-          const evt = events.find((e) => e.name === 'pathfinder-step-progress' && e.detail.sectionId === SECTION_ID);
+          const evt = events.find(
+            (e) => e.name === 'pathfinder:progress' && e.detail.kind === 'document' && e.detail.sectionId === SECTION_ID
+          );
           expect(evt).toBeDefined();
         });
 

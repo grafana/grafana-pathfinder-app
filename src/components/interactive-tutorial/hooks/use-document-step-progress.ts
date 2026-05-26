@@ -3,18 +3,19 @@
  * publishing side-effect.
  *
  * Pattern J (contract surface) per the High-Risk Refactor Guidelines:
- * this hook owns two window globals and one CustomEvent that the
- * rest of the plugin reads.
+ * this hook owns two window globals and one unified-channel event
+ * that the rest of the plugin reads.
  *
  *   - `window.__DocsPluginTotalSteps` — total step count across the
  *     document. Read by `src/lib/analytics.ts`.
  *   - `window.__DocsPluginCurrentStepIndex` — currently-executing
  *     step's document-wide index. Read by `src/lib/analytics.ts`.
- *   - `pathfinder-step-progress` CustomEvent — published whenever
- *     execution state or completion changes. Detail:
- *     `{ sectionId, totalSteps, documentStepIndex, completedCount }`.
- *     Consumed by `src/hooks/useStepProgressFromEvents.ts` to drive
- *     the FullScreenLayout / FloatingPanel progress chip.
+ *   - `pathfinder:progress` event with `kind: 'document'` — published
+ *     whenever execution state or completion changes. Payload:
+ *     `{ kind: 'document', contentKey, sectionId, totalSteps,
+ *        documentStepIndex?, completedCount }`. Consumed by
+ *     `src/hooks/useStepProgressFromEvents.ts` to drive the
+ *     FullScreenLayout / FloatingPanel progress chip.
  *
  * The hook performs a pure side-effect: no return value.
  * Behaviour and payload shapes match the pre-extraction effect
@@ -27,6 +28,7 @@ import { interactiveStepStorage } from '../../../lib/user-storage';
 import type { StepInfo } from '../../../types/component-props.types';
 import { getContentKey } from '../get-content-key';
 import { getDocumentStepPosition, getTotalDocumentSteps } from '../../../global-state/section-registry';
+import { dispatchProgress } from '../../../global-state/progress-events';
 
 export interface UseDocumentStepProgressArgs {
   sectionId: string;
@@ -69,16 +71,14 @@ export function useDocumentStepProgress({
       const contentKey = getContentKey();
       const completedDocumentCount = interactiveStepStorage.countAllCompleted(contentKey);
 
-      window.dispatchEvent(
-        new CustomEvent('pathfinder-step-progress', {
-          detail: {
-            sectionId,
-            totalSteps,
-            documentStepIndex,
-            completedCount: completedDocumentCount,
-          },
-        })
-      );
+      dispatchProgress({
+        kind: 'document',
+        contentKey,
+        sectionId,
+        totalSteps,
+        documentStepIndex,
+        completedCount: completedDocumentCount,
+      });
     } catch {
       // no-op
     }

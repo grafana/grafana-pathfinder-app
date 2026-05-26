@@ -178,8 +178,9 @@ function FloatingPanelInner() {
   // tab is its own kind of "active content" but isn't a guide, so leave it false.
   const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations' && !isEditorTab;
 
-  // Track interactive step progress via the `pathfinder-step-progress`
-  // event — shared subscription with FullScreenPanel via the hook.
+  // Track interactive step progress via the unified `pathfinder:progress`
+  // event (variant `kind: 'document'`) — shared subscription with
+  // FullScreenPanel via the hook.
   const stepProgress = useStepProgressFromEvents(hasActiveGuide);
 
   // After restoration completes, if there's no guide to show and none

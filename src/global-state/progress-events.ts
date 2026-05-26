@@ -1,11 +1,12 @@
 /**
  * Unified progress event channel.
  *
- * Replaces four legacy events:
+ * Replaces five legacy events:
  *   - `interactive-step-completed`
  *   - `section-completed`
  *   - `interactive-section-completed`
  *   - `interactive-progress-saved`
+ *   - `pathfinder-step-progress` (document-wide aggregate)
  *
  * The discriminated payload makes intent explicit at the dispatch site
  * and at every listener. Lives in `global-state` (Tier 1) so both the
@@ -40,6 +41,18 @@ export type ProgressEventDetail =
       contentKey: string;
       percentage: number;
       hasProgress: boolean;
+    }
+  | {
+      // Document-wide aggregate progress for the "X of Y steps" panel chip.
+      // Emitted by `use-document-step-progress` on section mount, step
+      // start/stop, and step completion. `documentStepIndex` is omitted
+      // while no step is currently executing.
+      kind: 'document';
+      contentKey: string;
+      sectionId: string;
+      totalSteps: number;
+      completedCount: number;
+      documentStepIndex?: number;
     };
 
 export const PROGRESS_EVENT = 'pathfinder:progress' as const;

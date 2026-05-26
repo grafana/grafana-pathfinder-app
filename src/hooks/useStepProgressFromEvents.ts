@@ -1,6 +1,7 @@
 /**
- * Subscribe to the `pathfinder-step-progress` window event and project the
- * detail into a "done/total" string for the panel header chip.
+ * Subscribe to the unified `pathfinder:progress` window event (variant
+ * `kind: 'document'`) and project the detail into a "done/total" string
+ * for the panel header chip.
  *
  * Why this exists: identical 20-line subscription used to live in both
  * `FullScreenPanel` and `FloatingPanelManager`. The previous polling on
@@ -18,10 +19,7 @@
 
 import { useEffect, useState } from 'react';
 
-interface StepProgressDetail {
-  totalSteps?: number;
-  completedCount?: number;
-}
+import { subscribeProgressEvent } from '../global-state/progress-events';
 
 export function useStepProgressFromEvents(hasActiveGuide: boolean): string | undefined {
   const [stepProgress, setStepProgress] = useState<string | undefined>();
@@ -31,21 +29,18 @@ export function useStepProgressFromEvents(hasActiveGuide: boolean): string | und
       return;
     }
 
-    const handle = (e: Event) => {
-      const detail = (e as CustomEvent<StepProgressDetail>).detail;
-      const total = detail?.totalSteps ?? 0;
-      const done = detail?.completedCount ?? 0;
+    return subscribeProgressEvent((detail) => {
+      if (detail.kind !== 'document') {
+        return;
+      }
+      const total = detail.totalSteps ?? 0;
+      const done = detail.completedCount ?? 0;
       if (total > 0) {
         setStepProgress(`${done}/${total}`);
       } else {
         setStepProgress(undefined);
       }
-    };
-
-    window.addEventListener('pathfinder-step-progress', handle);
-    return () => {
-      window.removeEventListener('pathfinder-step-progress', handle);
-    };
+    });
   }, [hasActiveGuide]);
 
   // Derived in render rather than via setState in the effect so the
