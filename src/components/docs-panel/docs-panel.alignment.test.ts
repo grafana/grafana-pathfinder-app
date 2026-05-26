@@ -1,7 +1,7 @@
 /**
  * Tests for CombinedLearningJourneyPanel implied-0th-step alignment behavior.
  *
- * The prompt is evaluated once at launch (in `loadDocsTabContent`) and
+ * The prompt is evaluated once at launch (in `loadTab`'s docs branch) and
  * resolved by `confirmAlignment` / `dismissAlignment`. There is no reactive
  * re-evaluation on location changes — guides that step the user across
  * pages must not re-surface the prompt mid-flow.
@@ -11,7 +11,7 @@
 // Mocks — must be declared before any import that triggers docs-panel.tsx
 // ---------------------------------------------------------------------------
 
-const mockLoadDocsTabContentResult = jest.fn();
+const mockLoadTabContentResult = jest.fn();
 const mockLocationServicePush = jest.fn();
 const mockGetLocation = jest.fn(() => ({ pathname: '/explore', search: '' }));
 const mockReportAppInteraction = jest.fn();
@@ -202,7 +202,7 @@ jest.mock('./utils', () => ({
   restoreActiveTabFromStorage: jest.fn(),
   isGrafanaDocsUrl: jest.fn(),
   cleanDocsUrl: jest.fn((url: string) => url),
-  loadDocsTabContentResult: (...args: unknown[]) => mockLoadDocsTabContentResult(...args),
+  loadTabContentResult: (...args: unknown[]) => mockLoadTabContentResult(...args),
   PERMANENT_TAB_IDS: new Set(['recommendations', 'devtools', 'editor']),
 }));
 
@@ -294,15 +294,15 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     mockGetLocation.mockReturnValue({ pathname: '/explore', search: '' });
   });
 
-  describe('loadDocsTabContent — pendingAlignment decision', () => {
+  describe('loadTab (docs branch) — pendingAlignment decision', () => {
     it('sets pendingAlignment when manifest startingLocation differs and source is home_page', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
         packageManifest: { startingLocation: '/connections' },
       });
-      // Allow the async loadDocsTabContent inside openDocsPage to settle
+      // Allow the async loadTab inside openDocsPage to settle
       await new Promise((r) => setTimeout(r, 0));
 
       const tab = getTab(panel, tabId);
@@ -314,7 +314,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     });
 
     it('does NOT set pendingAlignment when source is recommender', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'recommender', {
@@ -326,7 +326,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     });
 
     it('does NOT set pendingAlignment when source is browser_restore', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'browser_restore', {
@@ -344,7 +344,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     // undefined` → not aligned-by-construction → prompt appears on top of
     // the freshly reloaded guide when the user is on a non-matching path.
     it('does NOT set pendingAlignment when source is internal_reload', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'internal_reload', {
@@ -379,7 +379,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       ]);
       utilsMock.restoreActiveTabFromStorage.mockResolvedValue('tab-restored-1');
 
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       // User is somewhere unrelated when the page reloads.
       mockGetLocation.mockReturnValue({ pathname: '/explore', search: '' });
 
@@ -390,11 +390,11 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       const tab = getTab(panel, 'tab-restored-1');
       expect(tab.pendingAlignment).toBeUndefined();
       // Sanity check that the loader actually ran for this tab.
-      expect(mockLoadDocsTabContentResult).toHaveBeenCalled();
+      expect(mockLoadTabContentResult).toHaveBeenCalled();
     });
 
     it('does NOT set pendingAlignment when source is mcp_launch', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'mcp_launch', {
@@ -407,7 +407,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
 
     it('does NOT set pendingAlignment when current path matches startingLocation exactly', async () => {
       mockGetLocation.mockReturnValue({ pathname: '/connections', search: '' });
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
@@ -420,7 +420,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
 
     it('does NOT set pendingAlignment when current path matches startingLocation by prefix', async () => {
       mockGetLocation.mockReturnValue({ pathname: '/connections/datasources', search: '' });
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
@@ -433,7 +433,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
 
     it('falls back to bundled index.json url[0] when manifest has no startingLocation', async () => {
       // Result has no manifest startingLocation; resolver should consult the bundled index.
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult());
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page');
@@ -445,7 +445,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     });
 
     it('does NOT set pendingAlignment when there is no manifest and no bundled fallback (remote URL)', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult());
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(
@@ -459,7 +459,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     });
 
     it('fires AlignmentPromptShown telemetry when a prompt is set', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
@@ -480,7 +480,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
 
     it('does NOT fire AlignmentPromptShown telemetry when no prompt is set', async () => {
       mockGetLocation.mockReturnValue({ pathname: '/connections', search: '' });
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
@@ -493,7 +493,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     });
 
     it('consumes _pendingLaunchSource on read so the next load is not contaminated', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       // First load: home_page → prompt expected
@@ -522,7 +522,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
 
   describe('confirmAlignment', () => {
     it('navigates to startingLocation, fires telemetry, and clears pendingAlignment', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
@@ -549,7 +549,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     });
 
     it('is a no-op when there is no pendingAlignment for the tab', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult());
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(panel, 'bundled:no-url-guide', 'recommender');
@@ -574,7 +574,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     });
 
     it('keeps pendingAlignment undefined after dismissal even if the user navigates away later', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
@@ -598,7 +598,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
 
   describe('dismissAlignment', () => {
     it('clears pendingAlignment without navigating, and fires telemetry', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
@@ -623,7 +623,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     });
 
     it('is a no-op when there is no pendingAlignment for the tab', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult());
       const panel = new CombinedLearningJourneyPanel();
 
       const tabId = await openTabAndLoad(panel, 'bundled:no-url-guide', 'recommender');
@@ -660,7 +660,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     it.each(ALIGNED_SOURCES_TO_VERIFY)(
       'does NOT set pendingAlignment when openDocsPage is called with options.source=%s',
       async (source) => {
-        mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+        mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
         const panel = new CombinedLearningJourneyPanel();
 
         // Use the new options API directly (not the legacy flag pattern via
@@ -691,7 +691,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     it.each(NEEDS_CHECK_SOURCES_TO_VERIFY)(
       'DOES set pendingAlignment when openDocsPage is called with options.source=%s on a misaligned path',
       async (source) => {
-        mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+        mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
         const panel = new CombinedLearningJourneyPanel();
 
         const tabId = await panel.openDocsPage('bundled:connections-guide', 'Test Guide', {
@@ -707,7 +707,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     );
 
     it('options.source overrides any value previously stashed via _recordAutoLaunchSource', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
       // Stash a NEEDS_CHECK source first; the explicit aligned-by-construction

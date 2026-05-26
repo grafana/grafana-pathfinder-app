@@ -44,7 +44,7 @@ interface FloatingPanelContentProps {
   activeTab: LearningJourneyTab | null;
   /**
    * Panel model used by the link click handler for navigation actions
-   * (`loadTabContent`, milestone navigation, opening docs/journeys from
+   * (`loadTab`, milestone navigation, opening docs/journeys from
    * embedded links, etc.). Without this, content links and the
    * "Ready to Begin" CTA on the cover page have no handler.
    */

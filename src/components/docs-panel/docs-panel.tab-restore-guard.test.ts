@@ -190,7 +190,7 @@ jest.mock('./utils', () => ({
   restoreActiveTabFromStorage: (...args: unknown[]) => mockRestoreActiveTabFromStorage(...args),
   isGrafanaDocsUrl: jest.fn(),
   cleanDocsUrl: jest.fn((url: string) => url),
-  loadDocsTabContentResult: jest.fn(),
+  loadTabContentResult: jest.fn(),
   PERMANENT_TAB_IDS: new Set(['recommendations', 'devtools', 'editor']),
 }));
 

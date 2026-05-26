@@ -52,25 +52,15 @@ export interface DocsPanelModelOperations {
   openDocsPage(url: string, title?: string, options?: OpenDocsOptions): Promise<string>;
 
   /**
-   * Unified tab loader. Dispatches to the right content pipeline based on
-   * the tab's shape (and the optional `packageInfo` input). Prefer this
-   * over the legacy `loadTabContent` / `loadDocsTabContent` pair.
+   * Unified tab loader. Dispatches to the docs/package pipeline or the
+   * plain learning-journey pipeline based on the tab's shape (and the
+   * optional `packageInfo` input), then applies the appropriate
+   * content enrichment.
    */
   loadTab(
     tabId: string,
     url: string,
     options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo }
-  ): Promise<void>;
-
-  /** @deprecated Internal implementation routed via `loadTab`. */
-  loadTabContent(tabId: string, url: string): Promise<void>;
-
-  /** @deprecated Internal implementation routed via `loadTab`. */
-  loadDocsTabContent(
-    tabId: string,
-    url: string,
-    skipReadyToBegin?: boolean,
-    packageInfo?: PackageOpenInfo
   ): Promise<void>;
 
   /** Close a tab by ID */
@@ -101,17 +91,18 @@ export interface DocsPanelModelOperations {
   getActiveTab(): LearningJourneyTab | null;
 
   /**
-   * Record the launch source for the next `loadDocsTabContent` call so the
-   * implied-0th-step evaluator classifies it correctly. Consumed once by the
-   * loader; callers that bypass `openDocsPage`/`openLearningJourney` (e.g.
-   * internal reloads from `useContentReset`) must set this explicitly or
-   * risk a spurious alignment prompt.
+   * Record the launch source for the next `loadTab` call so the
+   * implied-0th-step evaluator classifies it correctly. Consumed once by
+   * the loader (only when it dispatches to the docs branch); callers that
+   * bypass `openDocsPage` / `openLearningJourney` (e.g. internal reloads
+   * from `useContentReset`) must set this explicitly or risk a spurious
+   * alignment prompt.
    *
    * @deprecated Prefer `openDocsPage(url, title, { source })` /
    * `openLearningJourney(url, title, { source })`. Retained for callers that
    * cross a callback boundary owned elsewhere (e.g. `ContextPanel`'s
-   * recommender callbacks) and for `loadDocsTabContent` callers that don't
-   * go through `openDocsPage` (e.g. `useContentReset`'s reload path).
+   * recommender callbacks) and for direct `loadTab` callers that don't go
+   * through `openDocsPage` (e.g. `useContentReset`'s reload path).
    */
   _recordAutoLaunchSource(source: LaunchSource | null): void;
 }

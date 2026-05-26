@@ -31,7 +31,6 @@ import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } fro
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
 import { useGuideProgressState, useAutoLaunchTutorial } from '../../hooks';
 import {
-  fetchContent,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
   getJourneyProgress,
@@ -71,7 +70,7 @@ import {
   shouldUseDocsLoader,
   restoreTabsFromStorage,
   restoreActiveTabFromStorage,
-  loadDocsTabContentResult,
+  loadTabContentResult,
   PERMANENT_TAB_IDS,
   findCurrentMilestoneIndex,
 } from './utils';
@@ -119,19 +118,23 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   /**
    * Transient launch-source carrier for the implied-0th-step alignment check.
    *
-   * Set immediately before a `loadDocsTabContent` call so the loader can read
-   * it after content fetch and classify the launch. There are two ways to
-   * populate it:
+   * Set immediately before a `loadTab` call so the loader can read it after
+   * content fetch (in the docs branch) and classify the launch. There are
+   * two ways to populate it:
    *
    *   1. Preferred: pass `{ source }` to `openDocsPage` /
    *      `openLearningJourney`. The wrapper records the source for you,
    *      keeping the contract visible at the call site.
    *   2. Legacy: call `_recordAutoLaunchSource(source)` directly, then call
-   *      `openDocsPage` / `openLearningJourney` / `loadDocsTabContent`. Used
-   *      where (a) a callback signature can't carry the source (e.g.
-   *      `ContextPanel`'s recommender callbacks), or (b) `loadDocsTabContent`
-   *      is called without going through the public open methods (e.g.
+   *      `openDocsPage` / `openLearningJourney` / `loadTab`. Used where
+   *      (a) a callback signature can't carry the source (e.g.
+   *      `ContextPanel`'s recommender callbacks), or (b) `loadTab` is
+   *      called without going through the public open methods (e.g.
    *      `useContentReset`'s reload path).
+   *
+   * Only the docs branch of `loadTab` consumes this value; the journey
+   * branch leaves it alone so a recorded source survives a milestone
+   * reload that happens to traverse the journey path.
    *
    * Mirrors the consume-once pattern in `sidebarState.consumePendingOpenSource`.
    */
@@ -299,12 +302,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       this._recordAutoLaunchSource(options.source);
     }
     // Drain any auto-launch source that the listener (or options.source above)
-    // recorded before branching here. Learning journeys go through
-    // `loadTabContent`, which never consumes `_pendingLaunchSource`, so
-    // without this the value would leak to the next `loadDocsTabContent`
-    // call (e.g. a subsequent recommender or tab-restore open) and
-    // contaminate its alignment evaluation. Until learning journeys grow
-    // their own implied-0th-step logic, we just drop the value.
+    // recorded before branching here. Learning journeys go through `loadTab`'s
+    // journey branch, which intentionally does not consume the carrier (only
+    // the docs branch does), so without this drain the value would leak to
+    // the next docs-loader open (e.g. a subsequent recommender or tab-restore
+    // open) and contaminate its alignment evaluation. Until learning
+    // journeys grow their own implied-0th-step logic, we just drop the value.
     this._consumeAutoLaunchSource();
 
     const finalTitle = title || 'Learning path';
@@ -338,14 +341,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   /**
-   * Unified tab-loader entry point. Dispatches to the right content
-   * pipeline based on the tab's shape (and the optional `packageInfo`
-   * input).
+   * Unified tab-loader entry point. Dispatches between the package-aware
+   * docs pipeline and the plain learning-journey pipeline based on the
+   * tab's shape (and the optional `packageInfo` input), then applies the
+   * appropriate enrichment to the loaded content.
    *
-   * Callers should use this instead of branching on `shouldUseDocsLoader`
-   * + the legacy `loadTabContent` / `loadDocsTabContent` pair directly.
-   * The two internal methods remain available as the underlying
-   * implementations; future work can fold them together.
+   * This is the single canonical implementation; all open-* methods and
+   * internal reloads should call this rather than the deprecated
+   * `loadTabContent` / `loadDocsTabContent` pair (which now exist only as
+   * thin shims for legacy callers).
    */
   public async loadTab(
     tabId: string,
@@ -354,27 +358,195 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   ): Promise<void> {
     const tab = this.state.tabs.find((t) => t.id === tabId);
     const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
-    if (needsDocsLoader) {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- delegating to internal implementation
-      await this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
+
+    // Plain-journey path keeps its empty-URL early return (silent no-op for
+    // backward compat with milestone reloads on tabs whose currentUrl is
+    // momentarily empty). The docs path surfaces an error via
+    // `loadTabContentResult` instead — packageInfo-only opens still resolve
+    // via `fetchPackageById`.
+    if (!needsDocsLoader && (!url || url.trim() === '')) {
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- delegating to internal implementation
-    await this.loadTabContent(tabId, url);
+
+    this.setTabLoading(tabId);
+
+    try {
+      // Consume the launch-source carrier only for the docs branch. The
+      // journey branch has no implied-0th-step alignment evaluator and
+      // consuming here would silently drop a value intended for the next
+      // docs open (e.g. recommender click after a milestone reload).
+      const launchSource = needsDocsLoader ? this._consumeAutoLaunchSource() : null;
+
+      let packageInfo = options?.packageInfo ?? tab?.packageInfo;
+      // Auto-derive packageInfo when opening a package URL via deep-link or
+      // handoff (no recommender). Without the manifest, downstream rendering
+      // falls through to plain fetchContent and the milestone toolbar never
+      // appears. See package-info-from-url.ts for the URL pattern.
+      if (needsDocsLoader && !packageInfo && isPackageContentUrl(url)) {
+        packageInfo = await fetchPackageInfoFromUrl(url);
+      }
+
+      const result = await loadTabContentResult(url, {
+        mode: needsDocsLoader ? 'docs' : 'journey',
+        skipReadyToBegin: options?.skipReadyToBegin,
+        packageInfo,
+      });
+
+      if (!result.content) {
+        const fallback = needsDocsLoader ? 'Failed to load documentation' : 'Failed to load content';
+        this.applyTabLoadFailure(tabId, result.error || fallback);
+        return;
+      }
+
+      if (needsDocsLoader) {
+        this.applyDocsTabSuccess({ tabId, url, content: result.content, packageInfo, launchSource });
+      } else {
+        this.applyJourneyTabSuccess({ tabId, url, content: result.content });
+      }
+    } catch (error) {
+      const label = needsDocsLoader ? 'docs content' : 'journey content';
+      console.error(`Failed to load ${label} for tab ${tabId}:`, error);
+      const fallback = needsDocsLoader ? 'Failed to load documentation' : 'Failed to load content';
+      this.applyTabLoadFailure(tabId, error instanceof Error ? error.message : fallback);
+    }
   }
 
   /**
-   * @deprecated Prefer {@link loadTab}. Internal implementation kept for
-   * the unified dispatcher to route into; will fold into `loadTab` once
-   * the content-fetcher split is removed.
+   * Docs/package success strategy: compute pendingAlignment, build the tab
+   * patch, persist via `applyTabLoadSuccess`, and report the alignment
+   * telemetry. Kept private so the lifecycle (set-loading → fetch →
+   * dispatch strategy) stays in `loadTab`.
    */
-  public async loadTabContent(tabId: string, url: string) {
-    // Skip loading if URL is empty
-    if (!url || url.trim() === '') {
-      return;
+  private applyDocsTabSuccess(args: {
+    tabId: string;
+    url: string;
+    content: NonNullable<Awaited<ReturnType<typeof loadTabContentResult>>['content']>;
+    packageInfo: PackageOpenInfo | undefined;
+    launchSource: LaunchSource | null;
+  }): void {
+    const { tabId, url, content: fetchedContent, packageInfo, launchSource } = args;
+
+    const pathContext = fetchedContent.metadata.learningJourney
+      ? { learningJourney: fetchedContent.metadata.learningJourney }
+      : undefined;
+
+    // Implied 0th step: decide whether to prompt the user to navigate to
+    // the guide's declared starting location before step 1 begins.
+    const startingLocation = resolveStartingLocation(url, packageInfo?.packageManifest);
+    const currentPath = locationService.getLocation().pathname;
+    const evaluation = evaluateAlignment({
+      currentPath,
+      startingLocation,
+      launchSource: launchSource ?? undefined,
+    });
+    const isFullScreenMode = panelModeManager.getMode() === 'fullscreen';
+    const pendingAlignment =
+      !isFullScreenMode && evaluation.shouldPrompt && startingLocation
+        ? {
+            startingLocation,
+            currentPath,
+            launchSource: launchSource ?? 'unknown',
+            decidedAt: Date.now(),
+          }
+        : undefined;
+
+    const refTab = this.state.tabs.find((t) => t.id === tabId);
+    const patch: Partial<LearningJourneyTab> = {
+      content: fetchedContent,
+      baseUrl: refTab?.baseUrl || fetchedContent.url,
+      currentUrl: fetchedContent.url || url,
+      type:
+        packageInfo != null
+          ? getPackageRenderType(packageInfo.packageManifest)
+          : fetchedContent.type === 'interactive'
+            ? 'interactive'
+            : refTab?.type,
+      // Persist auto-derived packageInfo so subsequent reloads/restores
+      // skip the manifest fetch and render with the milestone toolbar.
+      packageInfo: packageInfo ?? refTab?.packageInfo,
+      pathContext,
+      pendingAlignment,
+    };
+
+    // Capture the title BEFORE applyTabLoadSuccess so the telemetry payload
+    // doesn't depend on the post-setState state shape (defensive against
+    // future async/batched setState behaviour).
+    const titleForTelemetry = refTab?.title ?? '';
+
+    this.applyTabLoadSuccess(tabId, patch);
+
+    if (pendingAlignment) {
+      reportAppInteraction(UserInteraction.AlignmentPromptShown, {
+        guide_url: url,
+        guide_title: titleForTelemetry,
+        launch_source: pendingAlignment.launchSource,
+        current_path: pendingAlignment.currentPath,
+        starting_location: pendingAlignment.startingLocation,
+      });
+    }
+  }
+
+  /**
+   * Plain learning-journey success strategy: enrich milestone content from
+   * `pathContext`, persist via `applyTabLoadSuccess`, then update the
+   * cached completion percentage that the recommender reads.
+   */
+  private applyJourneyTabSuccess(args: {
+    tabId: string;
+    url: string;
+    content: NonNullable<Awaited<ReturnType<typeof loadTabContentResult>>['content']>;
+  }): void {
+    const { tabId, url, content: rawContent } = args;
+    const tab = this.state.tabs.find((t) => t.id === tabId);
+    let content = rawContent;
+
+    if (tab?.pathContext) {
+      const currentMilestone = findCurrentMilestoneIndex(tab.pathContext.learningJourney.milestones, url);
+      const learningJourney = {
+        ...tab.pathContext.learningJourney,
+        currentMilestone,
+      };
+
+      if (currentMilestone === 0) {
+        content = {
+          ...content,
+          content: injectJourneyExtrasIntoJsonGuide(content.content, learningJourney),
+        };
+      }
+
+      content = {
+        ...content,
+        type: 'learning-journey',
+        metadata: {
+          ...content.metadata,
+          learningJourney,
+          ...(tab.packageInfo?.packageManifest != null && {
+            packageManifest: tab.packageInfo.packageManifest,
+          }),
+        },
+      };
     }
 
-    // Update tab to loading state
+    this.applyTabLoadSuccess(tabId, { content, currentUrl: url });
+
+    // Update completion percentage for learning journeys.
+    // Use learningJourney.baseUrl (the path's cover page URL) as the storage
+    // key so it matches the key used by context.service.ts when reading
+    // completion via getJourneyCompletionPercentageAsync(rec.contentUrl).
+    const updatedTab = this.state.tabs.find((t) => t.id === tabId);
+    if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
+      const progress = getJourneyProgress(updatedTab.content);
+      const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
+      setJourneyCompletionPercentage(completionKey, progress);
+    }
+  }
+
+  /**
+   * Tab-lifecycle helper: mark `tabId` as loading and clear any prior error.
+   * Pure setState — does not persist (a tab is only persisted once its load
+   * resolves, success or failure).
+   */
+  private setTabLoading(tabId: string): void {
     const updatedTabs = this.state.tabs.map((t) =>
       t.id === tabId
         ? {
@@ -385,102 +557,47 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         : t
     );
     this.setState({ tabs: updatedTabs });
+  }
 
-    try {
-      const tab = this.state.tabs.find((t) => t.id === tabId);
-      const result = await fetchContent(url);
-
-      // Check if fetch succeeded or failed
-      if (result.content) {
-        let content = result.content;
-
-        if (tab?.pathContext) {
-          const currentMilestone = findCurrentMilestoneIndex(tab.pathContext.learningJourney.milestones, url);
-          const learningJourney = {
-            ...tab.pathContext.learningJourney,
-            currentMilestone,
-          };
-
-          if (currentMilestone === 0) {
-            content = {
-              ...content,
-              content: injectJourneyExtrasIntoJsonGuide(content.content, learningJourney),
-            };
+  /**
+   * Tab-lifecycle helper: apply a success patch to `tabId` (forces
+   * `isLoading: false` and `error: null`), then persist tabs to storage.
+   *
+   * `patch` carries any path-specific enrichment (content, currentUrl,
+   * baseUrl, type, packageInfo, pathContext, pendingAlignment) — the helper
+   * adds the loading-state fields so callers can't forget them.
+   */
+  private applyTabLoadSuccess(tabId: string, patch: Partial<LearningJourneyTab>): void {
+    const updatedTabs = this.state.tabs.map((t) =>
+      t.id === tabId
+        ? {
+            ...t,
+            ...patch,
+            isLoading: false,
+            error: null,
           }
+        : t
+    );
+    this.setState({ tabs: updatedTabs });
+    this.saveTabsToStorage();
+  }
 
-          content = {
-            ...content,
-            type: 'learning-journey',
-            metadata: {
-              ...content.metadata,
-              learningJourney,
-              ...(tab.packageInfo?.packageManifest != null && {
-                packageManifest: tab.packageInfo.packageManifest,
-              }),
-            },
-          };
-        }
-
-        // Success: set content and clear error
-        const finalUpdatedTabs = this.state.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                content,
-                isLoading: false,
-                error: null,
-                currentUrl: url,
-              }
-            : t
-        );
-        this.setState({ tabs: finalUpdatedTabs });
-
-        // Save tabs to storage after content is loaded
-        this.saveTabsToStorage();
-
-        // Update completion percentage for learning journeys.
-        // Use learningJourney.baseUrl (the path's cover page URL) as the storage
-        // key so it matches the key used by context.service.ts when reading
-        // completion via getJourneyCompletionPercentageAsync(rec.contentUrl).
-        const updatedTab = finalUpdatedTabs.find((t) => t.id === tabId);
-        if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
-          const progress = getJourneyProgress(updatedTab.content);
-          const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
-          setJourneyCompletionPercentage(completionKey, progress);
-        }
-      } else {
-        // Fetch failed: set error from result
-        const errorUpdatedTabs = this.state.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                isLoading: false,
-                error: result.error || 'Failed to load content',
-              }
-            : t
-        );
-        this.setState({ tabs: errorUpdatedTabs });
-
-        // Save tabs to storage even when there's an error
-        this.saveTabsToStorage();
-      }
-    } catch (error) {
-      console.error(`Failed to load journey content for tab ${tabId}:`, error);
-
-      const errorUpdatedTabs = this.state.tabs.map((t) =>
-        t.id === tabId
-          ? {
-              ...t,
-              isLoading: false,
-              error: error instanceof Error ? error.message : 'Failed to load content',
-            }
-          : t
-      );
-      this.setState({ tabs: errorUpdatedTabs });
-
-      // Save tabs to storage even when there's an error
-      this.saveTabsToStorage();
-    }
+  /**
+   * Tab-lifecycle helper: mark `tabId` failed with `errorMessage`, then
+   * persist tabs to storage so the error survives a refresh.
+   */
+  private applyTabLoadFailure(tabId: string, errorMessage: string): void {
+    const updatedTabs = this.state.tabs.map((t) =>
+      t.id === tabId
+        ? {
+            ...t,
+            isLoading: false,
+            error: errorMessage,
+          }
+        : t
+    );
+    this.setState({ tabs: updatedTabs });
+    this.saveTabsToStorage();
   }
 
   public async confirmAlignment(tabId: string): Promise<void> {
@@ -733,155 +850,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Save tabs to storage immediately after creating
     this.saveTabsToStorage();
 
-    // Load docs content for the tab
-    this.loadDocsTabContent(tabId, url, skipReadyToBegin, packageInfo);
+    // Route through the unified dispatcher so the docs-loader branch
+    // (alignment + manifest auto-derive + launch-source consume) runs.
+    this.loadTab(tabId, url, { skipReadyToBegin, packageInfo });
 
     return tabId;
-  }
-
-  /**
-   * @deprecated Prefer {@link loadTab}. Internal implementation kept for
-   * the unified dispatcher to route into; will fold into `loadTab` once
-   * the content-fetcher split is removed.
-   */
-  public async loadDocsTabContent(
-    tabId: string,
-    url: string,
-    skipReadyToBegin?: boolean,
-    packageInfoArg?: PackageOpenInfo
-  ) {
-    // No early return for empty URLs — loadDocsTabContentResult handles all
-    // edge cases (empty URL with packageInfo falls back to fetchPackageById;
-    // empty URL without packageInfo returns a visible error). Surfacing errors
-    // is preferable to the old silent no-op for corrupted/restored tabs.
-
-    // Update tab to loading state
-    const updatedTabs = this.state.tabs.map((t) =>
-      t.id === tabId
-        ? {
-            ...t,
-            isLoading: true,
-            error: null,
-          }
-        : t
-    );
-    this.setState({ tabs: updatedTabs });
-
-    try {
-      const launchSource = this._consumeAutoLaunchSource();
-      let packageInfo = packageInfoArg ?? this.state.tabs.find((t) => t.id === tabId)?.packageInfo;
-      // Auto-derive packageInfo when opening a package URL via deep-link or
-      // handoff (no recommender). Without the manifest, downstream rendering
-      // falls through to plain fetchContent and the milestone toolbar never
-      // appears. See package-info-from-url.ts for the URL pattern.
-      if (!packageInfo && isPackageContentUrl(url)) {
-        packageInfo = await fetchPackageInfoFromUrl(url);
-      }
-      const result = await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo });
-
-      // Check if fetch succeeded or failed
-      if (result.content) {
-        // Success: set content and clear error
-        const fetchedContent = result.content;
-
-        const pathContext = fetchedContent.metadata.learningJourney
-          ? { learningJourney: fetchedContent.metadata.learningJourney }
-          : undefined;
-
-        // Implied 0th step: decide whether to prompt the user to navigate to
-        // the guide's declared starting location before step 1 begins.
-        const startingLocation = resolveStartingLocation(url, packageInfo?.packageManifest);
-        const currentPath = locationService.getLocation().pathname;
-        const evaluation = evaluateAlignment({
-          currentPath,
-          startingLocation,
-          launchSource: launchSource ?? undefined,
-        });
-        const isFullScreenMode = panelModeManager.getMode() === 'fullscreen';
-        const pendingAlignment =
-          !isFullScreenMode && evaluation.shouldPrompt && startingLocation
-            ? {
-                startingLocation,
-                currentPath,
-                launchSource: launchSource ?? 'unknown',
-                decidedAt: Date.now(),
-              }
-            : undefined;
-
-        const finalUpdatedTabs = this.state.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                content: fetchedContent,
-                isLoading: false,
-                error: null,
-                baseUrl: t.baseUrl || fetchedContent.url,
-                currentUrl: fetchedContent.url || url,
-                type:
-                  packageInfo != null
-                    ? getPackageRenderType(packageInfo.packageManifest)
-                    : fetchedContent.type === 'interactive'
-                      ? 'interactive'
-                      : t.type,
-                // Persist auto-derived packageInfo so subsequent reloads/restores
-                // skip the manifest fetch and render with the milestone toolbar.
-                packageInfo: packageInfo ?? t.packageInfo,
-                pathContext,
-                pendingAlignment,
-              }
-            : t
-        );
-        // Capture the title from the freshly-built tab BEFORE setState so the
-        // telemetry payload doesn't depend on the post-setState state shape
-        // (defensive against future async/batched setState behaviour).
-        const finalTab = finalUpdatedTabs.find((t) => t.id === tabId);
-        this.setState({ tabs: finalUpdatedTabs });
-
-        if (pendingAlignment) {
-          reportAppInteraction(UserInteraction.AlignmentPromptShown, {
-            guide_url: url,
-            guide_title: finalTab?.title ?? '',
-            launch_source: pendingAlignment.launchSource,
-            current_path: pendingAlignment.currentPath,
-            starting_location: pendingAlignment.startingLocation,
-          });
-        }
-
-        // Save tabs to storage after content is loaded
-        this.saveTabsToStorage();
-      } else {
-        // Fetch failed: set error from result
-        const errorUpdatedTabs = this.state.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                isLoading: false,
-                error: result.error || 'Failed to load documentation',
-              }
-            : t
-        );
-        this.setState({ tabs: errorUpdatedTabs });
-
-        // Save tabs to storage even when there's an error
-        this.saveTabsToStorage();
-      }
-    } catch (error) {
-      console.error(`Failed to load docs content for tab ${tabId}:`, error);
-
-      const errorUpdatedTabs = this.state.tabs.map((t) =>
-        t.id === tabId
-          ? {
-              ...t,
-              isLoading: false,
-              error: error instanceof Error ? error.message : 'Failed to load documentation',
-            }
-          : t
-      );
-      this.setState({ tabs: errorUpdatedTabs });
-
-      // Save tabs to storage even when there's an error
-      this.saveTabsToStorage();
-    }
   }
 }
 

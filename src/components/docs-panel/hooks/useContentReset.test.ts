@@ -60,8 +60,6 @@ describe('useContentReset', () => {
   beforeEach(() => {
     mockModel = {
       loadTab: jest.fn().mockResolvedValue(undefined),
-      loadDocsTabContent: jest.fn().mockResolvedValue(undefined),
-      loadTabContent: jest.fn().mockResolvedValue(undefined),
       _recordAutoLaunchSource: jest.fn(),
     };
     mockDispatchEvent = jest.spyOn(window, 'dispatchEvent');

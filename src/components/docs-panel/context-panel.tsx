@@ -96,7 +96,7 @@ const isDocsOnlyRecommendation = (type?: string): boolean => type === 'docs-page
 /**
  * Check if recommendation should use openDocsPage.
  * All packages route through openDocsPage because it handles packageInfo;
- * loadDocsTabContent sets the correct tab type based on the manifest.
+ * `loadTab`'s docs branch sets the correct tab type based on the manifest.
  */
 const shouldUseDocsPageOpener = (type?: string): boolean =>
   type === 'docs-page' || type === 'interactive' || type === 'package';
