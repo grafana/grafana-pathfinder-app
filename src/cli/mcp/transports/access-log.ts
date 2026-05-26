@@ -8,12 +8,7 @@
  * the request handler's local state and don't extract cleanly.
  */
 
-import {
-  isValidSessionToken,
-  normalizeSessionToken,
-  tokenLogHash,
-  tokenLogPrefix,
-} from '../lib/session-token';
+import { isValidSessionToken, normalizeSessionToken, tokenLogHash, tokenLogPrefix } from '../lib/session-token';
 
 export interface AccessLogEntry {
   ts: string;

@@ -32,13 +32,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { getDefaultSessionStore } from '../lib/session-store-factory';
 import { mcpSessionIdLogHash } from '../lib/session-token';
 import { buildServer } from '../server';
-import {
-  defaultLog,
-  estimateTokens,
-  extractRpcInfo,
-  type AccessLogEntry,
-  type RpcInfo,
-} from './access-log';
+import { defaultLog, estimateTokens, extractRpcInfo, type AccessLogEntry, type RpcInfo } from './access-log';
 import { defaultSessionHopCounter, type SessionHopCounter, type ToolCallObservation } from './instrumentation';
 
 /**
