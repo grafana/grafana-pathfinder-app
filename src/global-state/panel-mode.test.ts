@@ -3,8 +3,7 @@
  *
  * Covers the third "fullscreen" mode added alongside sidebar/floating: it must
  * persist, parse back from storage, fire the same close-extension-sidebar
- * event as floating, and not interfere with the existing snapshot/handoff
- * helpers.
+ * event as floating, and round-trip pendingGuide / priorPath handoffs.
  */
 
 import { panelModeManager } from './panel-mode';
@@ -85,25 +84,6 @@ describe('panelModeManager', () => {
       } finally {
         document.removeEventListener('pathfinder-panel-mode-change', handler);
       }
-    });
-  });
-
-  describe('snapshot/restore handoff', () => {
-    it('snapshots sidebar tabs and restores them after a fullscreen round trip', () => {
-      const tabsSnapshot = JSON.stringify([{ id: 'tab-1', title: 'Original' }]);
-      localStorage.setItem(StorageKeys.TABS, tabsSnapshot);
-      localStorage.setItem(StorageKeys.ACTIVE_TAB, 'tab-1');
-
-      panelModeManager.snapshotSidebarTabs();
-
-      // Simulate the fullscreen panel writing different tabs
-      localStorage.setItem(StorageKeys.TABS, JSON.stringify([{ id: 'tab-2', title: 'Other' }]));
-      localStorage.setItem(StorageKeys.ACTIVE_TAB, 'tab-2');
-
-      panelModeManager.restoreSidebarTabSnapshot();
-
-      expect(localStorage.getItem(StorageKeys.TABS)).toBe(tabsSnapshot);
-      expect(localStorage.getItem(StorageKeys.ACTIVE_TAB)).toBe('tab-1');
     });
   });
 

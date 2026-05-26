@@ -4,7 +4,6 @@ import { config, locationService } from '@grafana/runtime';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
-import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
@@ -117,16 +116,6 @@ function FloatingPanelInner() {
     document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted', { detail: { timestamp: Date.now() } }));
     sidebarState.setIsSidebarMounted(true);
 
-    // If a guide was handed off from the sidebar (pop-out), open it now.
-    // Tag the source as `floating_panel_dock` (aligned-by-construction) so
-    // the implied-0th-step evaluator doesn't second-guess a guide the user
-    // is already viewing.
-    const pendingGuide = panelModeManager.consumePendingGuide();
-    if (pendingGuide) {
-      guideOpenInFlightRef.current = true;
-      openPendingGuide(panel, pendingGuide, 'floating_panel_dock');
-    }
-
     return () => {
       document.removeEventListener('pathfinder-auto-launch-pending', handlePending);
       // Only clear if we're still the active owner — during dock-back the
@@ -213,9 +202,6 @@ function FloatingPanelInner() {
       guide_url: guideUrl || '',
       guide_title: title,
     });
-    // Restore the sidebar's original tab state (snapshotted before pop-out)
-    // so the floating panel's tabStorage writes don't wipe the user's tabs
-    panelModeManager.restoreSidebarTabSnapshot();
     panelModeManager.setMode('sidebar');
     sidebarState.setPendingOpenSource('floating_panel_dock', 'open');
     sidebarState.openSidebar('Interactive learning');
@@ -235,7 +221,6 @@ function FloatingPanelInner() {
   }, [handleSwitchToSidebar]);
 
   const handleClose = useCallback(() => {
-    panelModeManager.restoreSidebarTabSnapshot();
     panelModeManager.setMode('sidebar');
   }, []);
 
