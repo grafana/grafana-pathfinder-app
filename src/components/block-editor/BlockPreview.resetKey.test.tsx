@@ -1,0 +1,149 @@
+/**
+ * Locks the BlockPreview "force remount on guide clear" contract.
+ *
+ * BlockPreview re-keys ContentRenderer via a local `resetKey` counter
+ * that bumps when the unified channel emits `kind: 'guide'` with
+ * `hasProgress: false`. Both an exact `contentKey` match AND the
+ * wildcard `'*'` sentinel must trigger the bump — the wildcard is
+ * what makes "Reset all progress" and "Reset learning path" propagate
+ * to any open preview tab.
+ *
+ * Losing the wildcard branch is the most expensive regression here:
+ * the preview would silently render stale interactive state until the
+ * user manually toggled the tab.
+ */
+
+import * as React from 'react';
+import { act, render } from '@testing-library/react';
+
+import { BlockPreview } from './BlockPreview';
+import type { JsonGuide } from './types';
+
+// Substitute a probe for ContentRenderer that surfaces its `key` via the
+// DOM. Each `key` change causes a new mount → new probe element with a
+// fresh mount counter, which we read to assert remount.
+let mountCounter = 0;
+jest.mock('../content-renderer/content-renderer', () => ({
+  __esModule: true,
+  ContentRenderer: () => {
+    const id = React.useMemo(() => {
+      mountCounter += 1;
+      return mountCounter;
+    }, []);
+    return <div data-testid="content-renderer-probe" data-mount-id={id} />;
+  },
+}));
+
+// Heavy style helpers — no-op so the probe DOM stays compact.
+jest.mock('./block-editor.styles', () => ({
+  getBlockPreviewStyles: () => ({
+    container: '',
+    resetActions: '',
+    resetButton: '',
+    previewContent: '',
+  }),
+}));
+jest.mock('../../styles/content-html.styles', () => ({ journeyContentHtml: () => '' }));
+jest.mock('../../styles/interactive.styles', () => ({ getInteractiveStyles: () => '' }));
+jest.mock('../../styles/prism.styles', () => ({ getPrismStyles: () => '' }));
+
+// `parseJsonGuide` must succeed on the minimal fixture so BlockPreview
+// reaches the ContentRenderer branch (not the error / empty fallback).
+jest.mock('../../docs-retrieval', () => ({
+  parseJsonGuide: () => ({
+    isValid: true,
+    rawContent: { html: '<div />', metadata: {} },
+    warnings: [],
+  }),
+}));
+
+jest.mock('@grafana/ui', () => ({
+  useStyles2: (factory: () => unknown) => (typeof factory === 'function' ? factory() : factory),
+  Alert: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+  Icon: () => null,
+  // `@grafana/runtime`'s LocationService reaches for these at module load.
+  createLogger: () => ({ logger: jest.fn() }),
+  attachDebugger: jest.fn(),
+}));
+
+const GUIDE_ID = 'test-guide';
+const PROGRESS_KEY = `block-editor://preview/${GUIDE_ID}`;
+
+const guide: JsonGuide = {
+  id: GUIDE_ID,
+  title: 'Test guide',
+  blocks: [{ type: 'markdown', content: 'hello' }],
+};
+
+beforeEach(() => {
+  mountCounter = 0;
+});
+
+describe('BlockPreview — resetKey remount', () => {
+  it('bumps resetKey on a matching kind:guide clear (hasProgress: false)', () => {
+    const { getByTestId } = render(<BlockPreview guide={guide} />);
+    const initialMountId = getByTestId('content-renderer-probe').getAttribute('data-mount-id');
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: PROGRESS_KEY, percentage: 0, hasProgress: false },
+        })
+      );
+    });
+
+    const afterMountId = getByTestId('content-renderer-probe').getAttribute('data-mount-id');
+    expect(afterMountId).not.toBe(initialMountId);
+  });
+
+  it('bumps resetKey on a wildcard clear (contentKey: "*")', () => {
+    const { getByTestId } = render(<BlockPreview guide={guide} />);
+    const initialMountId = getByTestId('content-renderer-probe').getAttribute('data-mount-id');
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: '*', percentage: 0, hasProgress: false },
+        })
+      );
+    });
+
+    const afterMountId = getByTestId('content-renderer-probe').getAttribute('data-mount-id');
+    expect(afterMountId).not.toBe(initialMountId);
+  });
+
+  it('does NOT bump resetKey on a clear for a different contentKey', () => {
+    const { getByTestId } = render(<BlockPreview guide={guide} />);
+    const initialMountId = getByTestId('content-renderer-probe').getAttribute('data-mount-id');
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: {
+            kind: 'guide',
+            contentKey: 'block-editor://preview/some-other-guide',
+            percentage: 0,
+            hasProgress: false,
+          },
+        })
+      );
+    });
+
+    expect(getByTestId('content-renderer-probe').getAttribute('data-mount-id')).toBe(initialMountId);
+  });
+
+  it('does NOT bump resetKey on a kind:guide event with hasProgress: true', () => {
+    const { getByTestId } = render(<BlockPreview guide={guide} />);
+    const initialMountId = getByTestId('content-renderer-probe').getAttribute('data-mount-id');
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: PROGRESS_KEY, percentage: 50, hasProgress: true },
+        })
+      );
+    });
+
+    expect(getByTestId('content-renderer-probe').getAttribute('data-mount-id')).toBe(initialMountId);
+  });
+});

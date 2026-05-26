@@ -324,8 +324,13 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       renderTrailingGateSection();
 
       const clearedEvents: CustomEvent[] = [];
-      const handler = (e: Event) => clearedEvents.push(e as CustomEvent);
-      window.addEventListener('interactive-progress-cleared', handler);
+      const handler = (e: Event) => {
+        const detail = (e as CustomEvent).detail;
+        if (detail?.kind === 'guide' && detail?.hasProgress === false) {
+          clearedEvents.push(e as CustomEvent);
+        }
+      };
+      window.addEventListener('pathfinder:progress', handler);
 
       try {
         // Mount-restore + migration: completed contains the step, ack
@@ -341,7 +346,7 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
         expect(memoryStore.get(`section-ack::${NON_PREVIEW_KEY}::${SECTION_GATED}`)).toBeUndefined();
         expect(clearedEvents.length).toBeGreaterThanOrEqual(1);
       } finally {
-        window.removeEventListener('interactive-progress-cleared', handler);
+        window.removeEventListener('pathfinder:progress', handler);
       }
     });
   });

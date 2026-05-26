@@ -91,7 +91,7 @@ describe('useGuideProgressState', () => {
     expect(result.current.hasInteractiveProgress).toBe(true);
   });
 
-  it('flips hasInteractiveProgress false on a matching interactive-progress-cleared event', async () => {
+  it('flips hasInteractiveProgress false on a matching kind:guide clear (hasProgress: false)', async () => {
     mockHasProgress.mockResolvedValue(true);
     const { result } = renderHook(() => useGuideProgressState({ currentUrl: 'guide-a' }));
 
@@ -102,8 +102,8 @@ describe('useGuideProgressState', () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: 'guide-a' },
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: 'guide-a', percentage: 0, hasProgress: false },
         })
       );
     });
@@ -111,7 +111,27 @@ describe('useGuideProgressState', () => {
     expect(result.current.hasInteractiveProgress).toBe(false);
   });
 
-  it('ignores interactive-progress-cleared events for a different content key', async () => {
+  it('flips hasInteractiveProgress false on a wildcard clear (contentKey: "*")', async () => {
+    mockHasProgress.mockResolvedValue(true);
+    const { result } = renderHook(() => useGuideProgressState({ currentUrl: 'guide-a' }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.hasInteractiveProgress).toBe(true);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: '*', percentage: 0, hasProgress: false },
+        })
+      );
+    });
+
+    expect(result.current.hasInteractiveProgress).toBe(false);
+  });
+
+  it('ignores kind:guide clear events for a different content key', async () => {
     mockHasProgress.mockResolvedValue(true);
     const { result } = renderHook(() => useGuideProgressState({ currentUrl: 'guide-a' }));
 
@@ -121,8 +141,8 @@ describe('useGuideProgressState', () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: 'guide-b' },
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: 'guide-b', percentage: 0, hasProgress: false },
         })
       );
     });

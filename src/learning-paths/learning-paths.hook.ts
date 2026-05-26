@@ -25,6 +25,7 @@ import {
   milestoneCompletionStorage,
 } from '../lib/user-storage';
 import { evictContentCache } from '../global-state/completion-store';
+import { PROGRESS_CONTENT_KEY_WILDCARD, dispatchProgress } from '../global-state/progress-events';
 import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
@@ -419,12 +420,17 @@ export function useLearningPaths(): UseLearningPathsReturn {
         await learningProgressStorage.removeCompletedGuides(path.guides);
       }
 
-      // Dispatch event to notify UI components to refresh
-      window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: '*', pathId },
-        })
-      );
+      // Broadcast a wildcard clear on the unified channel so the
+      // context engine refreshes recommendations and any open guide
+      // tab's per-key listeners clear their hasProgress flag.
+      // (`pathId` was previously included on the legacy event but no
+      // production listener read it; dropped during the migration.)
+      dispatchProgress({
+        kind: 'guide',
+        contentKey: PROGRESS_CONTENT_KEY_WILDCARD,
+        percentage: 0,
+        hasProgress: false,
+      });
 
       // Reload progress to update UI
       await loadProgress({ current: true });

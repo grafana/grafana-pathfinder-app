@@ -1102,8 +1102,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   );
 
   // Content reset hook - handles complex storage/state/reload orchestration.
-  // It dispatches `interactive-progress-cleared`, which `useGuideProgressState`
-  // listens for to clear `hasInteractiveProgress` for this content key.
+  // It dispatches `pathfinder:progress` with `kind: 'guide'` and
+  // `hasProgress: false`, which `useGuideProgressState` listens for to clear
+  // `hasInteractiveProgress` for this content key.
   const handleResetGuide = useContentReset({ model });
 
   // Helper: Reload active tab content (DRY - was duplicated 3x).

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { interactiveStepStorage } from '../lib/user-storage';
-import { subscribeProgressEvent } from '../global-state/progress-events';
+import { matchesContentKey, subscribeProgressEvent } from '../global-state/progress-events';
 
 interface ActiveTabSummary {
   currentUrl?: string;
@@ -28,22 +28,14 @@ export function useGuideProgressState(activeTab: ActiveTabSummary | null | undef
   }, [progressKey]);
 
   useEffect(() => {
-    const unsubscribeProgress = subscribeProgressEvent((detail) => {
-      if (detail.kind === 'guide' && detail.contentKey === progressKey && detail.hasProgress) {
-        setHasInteractiveProgress(true);
+    // Single subscription on the unified channel. `hasProgress: false`
+    // is the canonical clear signal, and `contentKey: '*'` broadcasts
+    // a clear across every open guide tab (e.g. "Reset all progress").
+    return subscribeProgressEvent((detail) => {
+      if (detail.kind === 'guide' && matchesContentKey(detail, progressKey)) {
+        setHasInteractiveProgress(detail.hasProgress);
       }
     });
-    const handleProgressCleared = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      if (detail?.contentKey === progressKey) {
-        setHasInteractiveProgress(false);
-      }
-    };
-    window.addEventListener('interactive-progress-cleared', handleProgressCleared);
-    return () => {
-      unsubscribeProgress();
-      window.removeEventListener('interactive-progress-cleared', handleProgressCleared);
-    };
   }, [progressKey]);
 
   return { hasInteractiveProgress, progressKey };

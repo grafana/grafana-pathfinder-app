@@ -96,11 +96,16 @@ describe('useContentReset', () => {
     expect(mockInteractiveStepStorage.clearAllForContent).toHaveBeenCalledWith('progress-key-123');
     expect(mockInteractiveCompletionStorage.clear).toHaveBeenCalledWith('progress-key-123');
 
-    // Step 3: Event dispatch
+    // Step 3: Event dispatch (unified channel, kind: 'guide' clear)
     expect(mockDispatchEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'interactive-progress-cleared',
-        detail: { contentKey: 'progress-key-123' },
+        type: 'pathfinder:progress',
+        detail: {
+          kind: 'guide',
+          contentKey: 'progress-key-123',
+          percentage: 0,
+          hasProgress: false,
+        },
       })
     );
 

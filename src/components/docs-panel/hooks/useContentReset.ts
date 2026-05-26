@@ -18,6 +18,7 @@ import {
 } from '../../../lib/analytics';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
 import { evictContentCache } from '../../../global-state/completion-store';
+import { dispatchProgress } from '../../../global-state/progress-events';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 
@@ -63,14 +64,12 @@ export function useContentReset({ model }: UseContentResetOptions) {
         // doesn't invalidate the in-memory state.
         evictContentCache(progressKey);
 
-        // Step 3: Dispatch cross-component event.
-        // Notifies the recommendations panel to refresh and `useGuideProgressState`
-        // to clear its `hasInteractiveProgress` flag for this contentKey.
-        window.dispatchEvent(
-          new CustomEvent('interactive-progress-cleared', {
-            detail: { contentKey: progressKey },
-          })
-        );
+        // Step 3: Dispatch cross-component event on the unified channel.
+        // Notifies the recommendations panel to refresh and
+        // `useGuideProgressState` to clear its `hasInteractiveProgress`
+        // flag for this contentKey via `kind: 'guide'` with
+        // `hasProgress: false`.
+        dispatchProgress({ kind: 'guide', contentKey: progressKey, percentage: 0, hasProgress: false });
 
         // Step 4: Reload content to reset UI state.
         // Tag the loader call as `internal_reload` (aligned-by-construction)

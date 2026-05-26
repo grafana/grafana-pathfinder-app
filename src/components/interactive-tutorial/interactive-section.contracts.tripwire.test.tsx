@@ -10,7 +10,7 @@
  *
  * What is pinned:
  *   - `interactive-progress-saved`  : detail `{ contentKey, hasProgress, completionPercentage }`
- *   - `interactive-progress-cleared`: detail `{ contentKey }`
+ *   - `pathfinder:progress` (kind: 'guide', hasProgress: false): detail `{ kind, contentKey, percentage, hasProgress }` (clear signal)
  *   - `section-completed`           : detail `{ sectionId }` (on `document`)
  *   - `interactive-section-completed`: detail `{ sectionId }` (on `window`)
  *   - `interactive-step-completed`  : detail `{ stepId, sectionId }`
@@ -104,11 +104,7 @@ function recordSectionEvents(): { events: CapturedEvent[]; unsubscribe: () => vo
     (target === 'window' ? window : document).addEventListener(name, handler);
     return () => (target === 'window' ? window : document).removeEventListener(name, handler);
   };
-  const offs = [
-    make('pathfinder:progress', 'window'),
-    make('interactive-progress-cleared', 'window'),
-    make('pathfinder-step-progress', 'window'),
-  ];
+  const offs = [make('pathfinder:progress', 'window'), make('pathfinder-step-progress', 'window')];
   return { events, unsubscribe: () => offs.forEach((off) => off()) };
 }
 
@@ -244,7 +240,7 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
       }
     });
 
-    it('dispatches `interactive-progress-cleared` with { contentKey } on section reset', async () => {
+    it('dispatches pathfinder:progress (kind: guide, hasProgress: false) on section reset', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
         renderSingleStepSection();
@@ -261,9 +257,20 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         });
 
         await waitFor(() => {
-          const evt = events.find((e) => e.name === 'interactive-progress-cleared');
+          const evt = events.find(
+            (e) =>
+              e.name === 'pathfinder:progress' &&
+              e.detail.kind === 'guide' &&
+              e.detail.hasProgress === false &&
+              e.detail.contentKey === NON_PREVIEW_KEY
+          );
           expect(evt).toBeDefined();
-          expect(evt!.detail).toEqual({ contentKey: NON_PREVIEW_KEY });
+          expect(evt!.detail).toEqual({
+            kind: 'guide',
+            contentKey: NON_PREVIEW_KEY,
+            percentage: 0,
+            hasProgress: false,
+          });
         });
       } finally {
         unsubscribe();
@@ -376,16 +383,27 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         expect(memoryStore.get(`section-steps::${PREVIEW_KEY}::${SECTION_ID}`)).toBeUndefined();
         expect(memoryStore.get(`interactive-completion::${PREVIEW_KEY}`)).toBeUndefined();
 
-        // Now reset and confirm the cleared event still fires.
+        // Now reset and confirm the kind:'guide' clear still fires.
         events.length = 0;
         await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_ID))).toBeInTheDocument());
         act(() => {
           screen.getByTestId(resetButton(SECTION_ID)).click();
         });
         await waitFor(() => {
-          const evt = events.find((e) => e.name === 'interactive-progress-cleared');
+          const evt = events.find(
+            (e) =>
+              e.name === 'pathfinder:progress' &&
+              e.detail.kind === 'guide' &&
+              e.detail.hasProgress === false &&
+              e.detail.contentKey === PREVIEW_KEY
+          );
           expect(evt).toBeDefined();
-          expect(evt!.detail).toEqual({ contentKey: PREVIEW_KEY });
+          expect(evt!.detail).toEqual({
+            kind: 'guide',
+            contentKey: PREVIEW_KEY,
+            percentage: 0,
+            hasProgress: false,
+          });
         });
       } finally {
         unsubscribe();

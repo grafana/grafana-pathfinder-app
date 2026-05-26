@@ -6,6 +6,7 @@ import { ContextData, Recommendation, UseContextPanelOptions, UseContextPanelRet
 import type { PackageOpenInfo } from '../types/content-panel.types';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { suggestionState, SUGGESTIONS_UPDATED_EVENT } from '../global-state/suggestion';
+import { subscribeProgressEvent } from '../global-state/progress-events';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
@@ -196,17 +197,17 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     return unsubscribe;
   }, [debouncedRefresh]);
 
-  // Listen for progress cleared events to refresh recommendations
+  // Listen for guide-level clear signals on the unified channel to
+  // refresh recommendations (completion percentages may have dropped).
+  // Matches the legacy "ignore detail, just refresh" behaviour:
+  // wildcard `contentKey: '*'` and specific keys both qualify, since
+  // `kind: 'guide'` with `hasProgress: false` is the canonical clear.
   useEffect(() => {
-    const handleProgressCleared = () => {
-      // Refresh recommendations to update completion percentages
-      debouncedRefresh();
-    };
-
-    window.addEventListener('interactive-progress-cleared', handleProgressCleared);
-    return () => {
-      window.removeEventListener('interactive-progress-cleared', handleProgressCleared);
-    };
+    return subscribeProgressEvent((detail) => {
+      if (detail.kind === 'guide' && !detail.hasProgress) {
+        debouncedRefresh();
+      }
+    });
   }, [debouncedRefresh]);
 
   // Merge external suggestions into featuredRecommendations

@@ -14,6 +14,7 @@ import { journeyContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
+import { matchesContentKey, subscribeProgressEvent } from '../../global-state/progress-events';
 import type { JsonGuide } from './types';
 import type { RawContent } from '../../types/content.types';
 import { testIds } from '../../constants/testIds';
@@ -45,20 +46,17 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
   const progressKey = `block-editor://preview/${guide.id}`;
   const { hasProgress: hasInteractiveProgress, reset } = useGuidePreviewProgress(progressKey);
 
-  // Force ContentRenderer remount when progress is cleared (locally or by a sibling
-  // surface like BlockEditorHeader). All clears flow through `interactive-progress-cleared`.
+  // Force ContentRenderer remount when progress is cleared (locally or by a
+  // sibling surface like BlockEditorHeader). All clears flow through
+  // `pathfinder:progress` with `kind: 'guide'` and `hasProgress: false`;
+  // wildcard `contentKey: '*'` clears (e.g. "reset all") also bump the key.
   const [resetKey, setResetKey] = useState(0);
   useEffect(() => {
-    const handleCleared = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      if (detail?.contentKey === progressKey) {
+    return subscribeProgressEvent((detail) => {
+      if (detail.kind === 'guide' && !detail.hasProgress && matchesContentKey(detail, progressKey)) {
         setResetKey((prev) => prev + 1);
       }
-    };
-    window.addEventListener('interactive-progress-cleared', handleCleared);
-    return () => {
-      window.removeEventListener('interactive-progress-cleared', handleCleared);
-    };
+    });
   }, [progressKey]);
 
   // Validate the guide and prepare for rendering

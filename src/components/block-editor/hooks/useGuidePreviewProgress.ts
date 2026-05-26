@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
 import { evictContentCache } from '../../../global-state/completion-store';
 import { getContentKey } from '../../../global-state/content-key';
-import { subscribeProgressEvent } from '../../../global-state/progress-events';
+import { dispatchProgress, matchesContentKey, subscribeProgressEvent } from '../../../global-state/progress-events';
 
 export interface GuidePreviewProgress {
   hasProgress: boolean;
@@ -16,8 +16,8 @@ export interface GuidePreviewProgress {
  * remounts the renderer on reset) and BlockEditorHeader (which renders the
  * Reset button in preview mode). Both call-sites use this hook with the same
  * `progressKey` and stay in sync via the unified `pathfinder:progress` event
- * (kind === 'guide') plus the legacy `interactive-progress-cleared` event
- * (still dispatched by `handleResetSection` until that path is migrated too).
+ * (kind === 'guide'). `hasProgress: false` is the canonical clear signal;
+ * `contentKey: '*'` broadcasts a clear across every preview.
  */
 export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgress {
   const [hasProgress, setHasProgress] = useState(false);
@@ -35,9 +35,9 @@ export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgre
   }, [progressKey]);
 
   useEffect(() => {
-    const unsubscribeProgress = subscribeProgressEvent((detail) => {
-      if (detail.kind === 'guide' && detail.contentKey === progressKey && detail.hasProgress) {
-        setHasProgress(true);
+    return subscribeProgressEvent((detail) => {
+      if (detail.kind === 'guide' && matchesContentKey(detail, progressKey)) {
+        setHasProgress(detail.hasProgress);
         return;
       }
       // MF-3 — preview mode suppresses `kind: 'guide'` in `persistSection`
@@ -54,17 +54,6 @@ export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgre
         setHasProgress(true);
       }
     });
-    const handleCleared = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      if (detail?.contentKey === progressKey) {
-        setHasProgress(false);
-      }
-    };
-    window.addEventListener('interactive-progress-cleared', handleCleared);
-    return () => {
-      unsubscribeProgress();
-      window.removeEventListener('interactive-progress-cleared', handleCleared);
-    };
   }, [progressKey]);
 
   const reset = useCallback(async () => {
@@ -76,11 +65,7 @@ export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgre
       // and the preview keeps showing steps as completed until remount.
       evictContentCache(progressKey);
       setHasProgress(false);
-      window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: progressKey },
-        })
-      );
+      dispatchProgress({ kind: 'guide', contentKey: progressKey, percentage: 0, hasProgress: false });
     } catch (error) {
       console.error('[useGuidePreviewProgress] Failed to reset progress:', error);
     }

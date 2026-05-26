@@ -365,6 +365,56 @@ describe('completion-store', () => {
     });
   });
 
+  // Ack-aware "fully cleared" predicate tripwire.
+  //
+  // `persistSection` emits a `kind: 'guide'` clear (`hasProgress: false`)
+  // only when BOTH the interactive-step total AND the section-ack total
+  // are zero. Passive section acknowledgements count as real progress —
+  // clearing the last interactive step in a mixed guide must not fire
+  // "cleared" while acks remain, or the alignment-prompt / preview-reset
+  // consumers would race ahead of the actual storage state.
+  describe('ack-aware guide-cleared dispatch', () => {
+    function captureGuideClearEvents(): { events: ProgressEventDetail[]; unsubscribe: () => void } {
+      const events: ProgressEventDetail[] = [];
+      const unsubscribe = subscribeProgressEvent((detail) => {
+        if (detail.kind === 'guide' && detail.hasProgress === false) {
+          events.push(detail);
+        }
+      });
+      return { events, unsubscribe };
+    }
+
+    it('emits guide-cleared when both step total AND ack total are zero', () => {
+      // Seed a single completed step, then reset it. After reset both
+      // counts are zero so the clear must fire.
+      act(() => {
+        markStepCompleted('step-1', 'section-x', 'manual');
+      });
+      const { events, unsubscribe } = captureGuideClearEvents();
+      act(() => {
+        resetStep('step-1', 'section-x');
+      });
+      expect(events).toEqual([expect.objectContaining({ kind: 'guide', contentKey: CONTENT_KEY, hasProgress: false })]);
+      unsubscribe();
+    });
+
+    it('suppresses guide-cleared while acks remain', () => {
+      // Seed an ack for a sibling section + a completed interactive step
+      // in another section. Resetting the interactive step drops its
+      // section's `completedIds` to zero, but the ack total is still 1.
+      storedAcks.set(`${CONTENT_KEY}-section-passive`, true);
+      act(() => {
+        markStepCompleted('step-1', 'section-x', 'manual');
+      });
+      const { events, unsubscribe } = captureGuideClearEvents();
+      act(() => {
+        resetStep('step-1', 'section-x');
+      });
+      expect(events).toEqual([]);
+      unsubscribe();
+    });
+  });
+
   // Reset guide / "Reset progress" parity tripwire.
   //
   // Storage-clear paths (`useContentReset`, `useGuidePreviewProgress.reset`,

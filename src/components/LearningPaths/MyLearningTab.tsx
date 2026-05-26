@@ -23,6 +23,7 @@ import {
   interactiveCompletionStorage,
 } from '../../lib/user-storage';
 import { evictAllContentCaches } from '../../global-state/completion-store';
+import { PROGRESS_CONTENT_KEY_WILDCARD, dispatchProgress } from '../../global-state/progress-events';
 import type { EarnedBadge } from '../../types';
 
 // Badge utilities extracted for testability
@@ -370,12 +371,15 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       // render the prior state until the user closed and reopened the tab.
       evictAllContentCaches();
 
-      // Notify the context engine to refresh recommendations.
-      window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: '*' },
-        })
-      );
+      // Broadcast a wildcard clear so the context engine refreshes
+      // recommendations and any open guide tab's per-key listeners
+      // (e.g. `useGuideProgressState`) clear their hasProgress flag.
+      dispatchProgress({
+        kind: 'guide',
+        contentKey: PROGRESS_CONTENT_KEY_WILDCARD,
+        percentage: 0,
+        hasProgress: false,
+      });
     }
   }, []);
 

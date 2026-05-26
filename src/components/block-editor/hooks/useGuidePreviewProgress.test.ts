@@ -2,18 +2,20 @@
  * PERMANENT — seam tripwire for the BlockPreview ↔ InteractiveSection event
  * contract.
  *
- * `useGuidePreviewProgress` is the listener side of two custom events that
- * cross the block-editor preview boundary:
+ * `useGuidePreviewProgress` is the listener side of the unified
+ * `pathfinder:progress` event:
  *
- *   - `interactive-progress-saved`    (producer: persistCompletedSteps in
- *                                      interactive-section.tsx)
- *   - `interactive-progress-cleared`  (producer: BlockPreview reset +, after
- *                                      phase-3 of #842, handleResetSection)
+ *   - `kind: 'guide'` with `hasProgress: true` — guide acquired progress
+ *   - `kind: 'guide'` with `hasProgress: false` — guide was cleared
+ *     (also dispatched by `handleResetSection` and the wildcard "reset all"
+ *     paths in `MyLearningTab` / `learning-paths.hook`)
+ *   - `kind: 'step' | 'section'` with `completed: true` — MF-3 preview
+ *     fallback when the active content key matches the progress key
  *
- * If a refactor of either side breaks the event names, payload shape, or the
- * progressKey filter, the assertions here will fail. The hook also drives
- * BlockPreview's `resetKey` remount mechanism — losing the cleared-listener
- * is the most expensive regression path.
+ * If a refactor breaks the variant names, payload shape, or the progressKey
+ * filter, the assertions here will fail. The hook also drives BlockPreview's
+ * `resetKey` remount mechanism — losing the clear path is the most expensive
+ * regression here.
  */
 
 import { act, renderHook } from '@testing-library/react';
@@ -160,7 +162,7 @@ describe('useGuidePreviewProgress — listener contract', () => {
     expect(result.current.hasProgress).toBe(false);
   });
 
-  it('flips hasProgress to false on a matching "interactive-progress-cleared" event', async () => {
+  it('flips hasProgress to false on a matching kind:guide clear (hasProgress: false)', async () => {
     (interactiveStepStorage.hasProgress as jest.Mock).mockResolvedValue(true);
     const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
     await act(async () => {
@@ -170,8 +172,8 @@ describe('useGuidePreviewProgress — listener contract', () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: PROGRESS_KEY },
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: PROGRESS_KEY, percentage: 0, hasProgress: false },
         })
       );
     });
@@ -179,7 +181,26 @@ describe('useGuidePreviewProgress — listener contract', () => {
     expect(result.current.hasProgress).toBe(false);
   });
 
-  it('ignores a "interactive-progress-cleared" event for a different contentKey', async () => {
+  it('flips hasProgress to false on a wildcard clear (contentKey: "*")', async () => {
+    (interactiveStepStorage.hasProgress as jest.Mock).mockResolvedValue(true);
+    const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.hasProgress).toBe(true);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: '*', percentage: 0, hasProgress: false },
+        })
+      );
+    });
+
+    expect(result.current.hasProgress).toBe(false);
+  });
+
+  it('ignores a kind:guide clear event for a different contentKey', async () => {
     (interactiveStepStorage.hasProgress as jest.Mock).mockResolvedValue(true);
     const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
     await act(async () => {
@@ -188,8 +209,8 @@ describe('useGuidePreviewProgress — listener contract', () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: OTHER_KEY },
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: OTHER_KEY, percentage: 0, hasProgress: false },
         })
       );
     });
@@ -197,7 +218,7 @@ describe('useGuidePreviewProgress — listener contract', () => {
     expect(result.current.hasProgress).toBe(true);
   });
 
-  it('reset() clears storage, sets hasProgress=false, and dispatches "interactive-progress-cleared"', async () => {
+  it('reset() clears storage, sets hasProgress=false, and dispatches kind:guide with hasProgress=false', async () => {
     (interactiveStepStorage.hasProgress as jest.Mock).mockResolvedValue(true);
     const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
     await act(async () => {
@@ -206,7 +227,7 @@ describe('useGuidePreviewProgress — listener contract', () => {
 
     const events: CustomEvent[] = [];
     const handler = (e: Event) => events.push(e as CustomEvent);
-    window.addEventListener('interactive-progress-cleared', handler);
+    window.addEventListener('pathfinder:progress', handler);
 
     try {
       await act(async () => {
@@ -215,10 +236,16 @@ describe('useGuidePreviewProgress — listener contract', () => {
 
       expect(interactiveStepStorage.clearAllForContent).toHaveBeenCalledWith(PROGRESS_KEY);
       expect(result.current.hasProgress).toBe(false);
-      expect(events).toHaveLength(1);
-      expect(events[0]!.detail).toEqual({ contentKey: PROGRESS_KEY });
+      const clearEvent = events.find((e) => e.detail?.kind === 'guide' && e.detail?.hasProgress === false);
+      expect(clearEvent).toBeDefined();
+      expect(clearEvent!.detail).toEqual({
+        kind: 'guide',
+        contentKey: PROGRESS_KEY,
+        percentage: 0,
+        hasProgress: false,
+      });
     } finally {
-      window.removeEventListener('interactive-progress-cleared', handler);
+      window.removeEventListener('pathfinder:progress', handler);
     }
   });
 
