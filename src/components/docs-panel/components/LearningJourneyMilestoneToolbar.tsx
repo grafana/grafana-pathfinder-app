@@ -75,6 +75,14 @@ export interface LearningJourneyMilestoneToolbarProps {
    * `<Dropdown>`; the fullscreen surface omits it.
    */
   trailingActions?: React.ReactNode;
+  /**
+   * When true, suppresses the entire `milestoneActions` row (Open + Reset +
+   * `trailingActions`). The arrow nav and progress bar still render. Used
+   * by the floating panel to reclaim vertical space — the popout has a much
+   * smaller content area than the sidebar / fullscreen surfaces and the
+   * secondary actions are still reachable from the docked sidebar.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -92,6 +100,7 @@ export function LearningJourneyMilestoneToolbar({
   progressKey,
   onResetGuide,
   trailingActions,
+  compact = false,
 }: LearningJourneyMilestoneToolbarProps) {
   const styles = useStyles2(getMilestoneStyles);
 
@@ -207,48 +216,50 @@ export function LearningJourneyMilestoneToolbar({
             className={styles.navButton}
           />
         </div>
-        <div className={styles.milestoneActions}>
-          {externalUrl && (
-            <button
-              className={actionButtonClassName}
-              aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
-              onClick={() => {
-                reportAppInteraction(UserInteraction.OpenExtraResource, {
-                  content_url: externalUrl,
-                  content_type: getContentTypeForAnalytics(externalUrl, activeTab.type || 'learning-journey'),
-                  link_text: activeTab.title,
-                  source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
-                  link_type: 'external_browser',
-                  interaction_location: openInteractionLocation,
-                  current_milestone: lj.currentMilestone || 0,
-                  total_milestones: lj.totalMilestones || 0,
-                });
-                setTimeout(() => {
-                  window.open(externalUrl, '_blank', 'noopener,noreferrer');
-                }, 100);
-              }}
-            >
-              <Icon name="external-link-alt" size="sm" />
-              <span>{t('docsPanel.open', 'Open')}</span>
-            </button>
-          )}
-          {(hasInteractiveProgress || activeTab.type === 'interactive') && (
-            <button
-              className={actionButtonClassName}
-              aria-label={t('docsPanel.resetGuide', 'Reset guide')}
-              title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
-              onClick={async () => {
-                if (progressKey) {
-                  await onResetGuide(progressKey, activeTab);
-                }
-              }}
-            >
-              <Icon name="history-alt" size="sm" />
-              <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
-            </button>
-          )}
-          {trailingActions}
-        </div>
+        {!compact && (
+          <div className={styles.milestoneActions}>
+            {externalUrl && (
+              <button
+                className={actionButtonClassName}
+                aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
+                onClick={() => {
+                  reportAppInteraction(UserInteraction.OpenExtraResource, {
+                    content_url: externalUrl,
+                    content_type: getContentTypeForAnalytics(externalUrl, activeTab.type || 'learning-journey'),
+                    link_text: activeTab.title,
+                    source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
+                    link_type: 'external_browser',
+                    interaction_location: openInteractionLocation,
+                    current_milestone: lj.currentMilestone || 0,
+                    total_milestones: lj.totalMilestones || 0,
+                  });
+                  setTimeout(() => {
+                    window.open(externalUrl, '_blank', 'noopener,noreferrer');
+                  }, 100);
+                }}
+              >
+                <Icon name="external-link-alt" size="sm" />
+                <span>{t('docsPanel.open', 'Open')}</span>
+              </button>
+            )}
+            {(hasInteractiveProgress || activeTab.type === 'interactive') && (
+              <button
+                className={actionButtonClassName}
+                aria-label={t('docsPanel.resetGuide', 'Reset guide')}
+                title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
+                onClick={async () => {
+                  if (progressKey) {
+                    await onResetGuide(progressKey, activeTab);
+                  }
+                }}
+              >
+                <Icon name="history-alt" size="sm" />
+                <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
+              </button>
+            )}
+            {trailingActions}
+          </div>
+        )}
         <div className={styles.progressBar}>
           <div
             className={styles.progressFill}

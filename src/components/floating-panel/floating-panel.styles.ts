@@ -156,6 +156,23 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
     position: 'relative',
   }),
 
+  // Wraps the milestone toolbar so it sticks to the top of the scrollable
+  // content area as the user scrolls through the guide. The toolbar's own
+  // `milestoneProgress` style sets `backgroundColor: background.canvas` and
+  // a bottom border, so the sticky stripe reads cleanly over content.
+  // Negative horizontal/top margins cancel the content area's
+  // `padding: theme.spacing(1)` so the toolbar spans the full panel width
+  // and sticks flush against the panel chrome instead of leaving a gap.
+  stickyToolbar: css({
+    position: 'sticky',
+    top: -theme.spacing.gridSize,
+    marginLeft: -theme.spacing.gridSize,
+    marginRight: -theme.spacing.gridSize,
+    marginTop: -theme.spacing.gridSize,
+    marginBottom: theme.spacing(1),
+    zIndex: 2,
+  }),
+
   // Open / Reset action buttons inside the milestone toolbar. Visual parity
   // with the sidebar and full-screen `secondaryActionButton`.
   secondaryActionButton: css({

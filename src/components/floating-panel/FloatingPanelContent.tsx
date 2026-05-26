@@ -133,16 +133,19 @@ export function FloatingPanelContent({
     <AlignmentPendingContext.Provider value={alignmentPendingValue}>
       <div ref={contentRef}>
         {showEmbeddedToolbar && activeTab && (
-          <LearningJourneyMilestoneToolbar
-            panel={model}
-            activeTab={activeTab}
-            surface={surface}
-            contentRoot={contentRef}
-            actionButtonClassName={floatingStyles.secondaryActionButton}
-            hasInteractiveProgress={!!hasInteractiveProgress}
-            progressKey={progressKey ?? null}
-            onResetGuide={onResetGuide!}
-          />
+          <div className={floatingStyles.stickyToolbar}>
+            <LearningJourneyMilestoneToolbar
+              panel={model}
+              activeTab={activeTab}
+              surface={surface}
+              contentRoot={contentRef}
+              actionButtonClassName={floatingStyles.secondaryActionButton}
+              hasInteractiveProgress={!!hasInteractiveProgress}
+              progressKey={progressKey ?? null}
+              onResetGuide={onResetGuide!}
+              compact
+            />
+          </div>
         )}
         {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
           <div style={{ padding: 16 }}>
