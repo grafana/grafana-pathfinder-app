@@ -155,4 +155,46 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
   pillWrapper: css({
     position: 'relative',
   }),
+
+  stickyToolbar: css({
+    position: 'sticky',
+    top: -theme.spacing.gridSize,
+    marginLeft: -theme.spacing.gridSize,
+    marginRight: -theme.spacing.gridSize,
+    marginTop: -theme.spacing.gridSize,
+    marginBottom: theme.spacing(1),
+    zIndex: 2,
+  }),
+
+  secondaryActionButton: css({
+    backgroundColor: 'transparent',
+    color: theme.colors.text.primary,
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: theme.shape.radius.default,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(0.5),
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.strong,
+      boxShadow: theme.shadows.z1,
+    },
+    '& svg': {
+      width: '12px',
+      height: '12px',
+      flexShrink: 0,
+    },
+    '@container (max-width: 360px)': {
+      padding: theme.spacing(0.5),
+      '& > span': {
+        display: 'none',
+      },
+    },
+  }),
 });
