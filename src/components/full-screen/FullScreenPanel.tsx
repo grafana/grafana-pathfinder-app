@@ -5,6 +5,7 @@ import { useStyles2 } from '@grafana/ui';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset } from '../docs-panel/hooks';
+import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
@@ -223,6 +224,14 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const { hasInteractiveProgress, progressKey } = useGuideProgressState(activeTab);
 
   const handleResetGuide = useContentReset({ model: panel });
+
+  useKeyboardShortcuts({
+    tabs,
+    activeTabId,
+    activeTab: activeTab ?? null,
+    isRecommendationsTab: activeTabId === 'recommendations',
+    model: panel,
+  });
 
   const handleExitToSidebar = useCallback(() => {
     reportAppInteraction(UserInteraction.FullScreenExit, {
