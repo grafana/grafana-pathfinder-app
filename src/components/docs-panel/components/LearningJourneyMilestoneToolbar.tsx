@@ -57,11 +57,11 @@ export interface LearningJourneyMilestoneToolbarProps {
    */
   actionButtonClassName: string;
   /**
-   * From `useAlignmentReevaluation`. Drives the visibility of the
+   * From `useGuideProgressState`. Drives the visibility of the
    * "Reset guide" button.
    */
   hasInteractiveProgress: boolean;
-  /** From `useAlignmentReevaluation`. Required by the reset handler. */
+  /** From `useGuideProgressState`. Required by the reset handler. */
   progressKey: string | null;
   /**
    * Resolved by the consumer via `useContentReset({ model: panel })` so

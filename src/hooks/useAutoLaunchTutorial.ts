@@ -39,8 +39,7 @@ export interface AutoLaunchTutorialDetail {
 /**
  * Minimal panel shape the hook depends on. Inlined here (rather than
  * imported from `components/`) so the hook stays in tier 2 and doesn't
- * cross the components-tier boundary. Mirrors the same approach used by
- * `useAlignmentReevaluation`'s `AlignmentReevaluationTarget`.
+ * cross the components-tier boundary.
  */
 export interface AutoLaunchPanel {
   openLearningJourney(url: string, title: string, opts?: { source?: LaunchSource }): void;

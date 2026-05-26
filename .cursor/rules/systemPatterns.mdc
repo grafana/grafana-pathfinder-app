@@ -121,9 +121,9 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 - `lib/` — Shared utilities. Sub-areas: `analytics.ts`, `user-storage.ts`, `dom/` (selector pipeline: detect → generate → validate → retry), `async-utils.ts`, `package-recommendations-client.ts`.
 - `security/` — URL allowlists, HTML / log sanitization. Entry: `security/index.ts`. Key: `parseUrlSafely`, `validateTutorialUrl`, `sanitizeDocumentationHTML`. See `.cursor/rules/frontend-security.mdc`.
 - `styles/` — Theme-aware CSS-in-JS factories (Emotion). One `*.styles.ts` per component.
-- `global-state/` — Cross-component stores (Zustand + React context). Files: `sidebar.ts`, `panel-mode.ts`, `link-interception.ts`, `interactive-navigation.ts`, `alignment-pending-context.ts`.
+- `global-state/` — Cross-component stores (Zustand + React context). Files: `sidebar.ts`, `panel-mode.ts`, `link-interception.ts`, `alignment-pending-context.ts`.
 - `integrations/` — Optional integrations: `assistant-integration/` (`<assistant>` tags), `coda/` (terminal), `workshop/` (action capture + replay). See `.cursor/rules/coda.mdc`, `docs/developer/ASSISTANT_INTEGRATION.md`, `docs/developer/integrations/workshop.md`.
-- `hooks/` — Cross-cutting hooks: `useAlignmentReevaluation`, `useAutoLaunchTutorial`, `useStepProgressFromEvents`.
+- `hooks/` — Cross-cutting hooks: `useGuideProgressState`, `useAutoLaunchTutorial`, `useStepProgressFromEvents`.
 - `utils/` — Business logic and utilities. Files: `dev-mode.ts`, `openfeature.ts`, `timeout-manager.ts`, `variable-substitution.ts`, `experiments.ts`, `find-doc-page.ts`. See `docs/developer/utils/README.md`.
 - `test-utils/` — Test fixtures. `openfeature-mock.ts`.
 - `bundled-interactives/` — Offline-fallback JSON guides + `repository.json`. Static asset directory; no code.
@@ -147,7 +147,7 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 | `global-state/sidebar`, `panel-mode`   | `components/docs-panel`, `App`           | Sidebar visibility + content/editor mode                       |
 | `security` (`parseUrlSafely`, `validateTutorialUrl`) | All subsystems handling URLs | Boundary validation for any URL crossing trust zones           |
 | `learning-paths` (`useGuideCompletion`) | `components/docs-panel`, `interactive-engine` | Progress events + badge unlock                          |
-| `recovery` (`evaluateAlignment`)       | `components/docs-panel`, `hooks/useAlignmentReevaluation` | Detects misalignment, triggers prompts            |
+| `recovery` (`evaluateAlignment`)       | `components/docs-panel`                  | One-shot alignment evaluation at guide launch                  |
 
 ## Backend architecture (`pkg/`)
 

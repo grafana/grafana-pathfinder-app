@@ -4,7 +4,7 @@ import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
-import { useAlignmentReevaluation, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
+import { useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
@@ -164,7 +164,6 @@ function FloatingPanelInner() {
     }
   }, [restorationDone, hasActiveGuide, isEditorTab]);
 
-  useAlignmentReevaluation(panel, activeTabId, activeTab);
   // Prefer `currentUrl` (the milestone the user is reading) so when the user
   // goes from floating → fullscreen via `handleSwitchToFullScreen`, or copies
   // a shareable link, the milestone position carries through. `baseUrl` is

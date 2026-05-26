@@ -1,4 +1,4 @@
-export { useAlignmentReevaluation } from './useAlignmentReevaluation';
+export { useGuideProgressState } from './useGuideProgressState';
 export {
   useAutoLaunchTutorial,
   type AutoLaunchTutorialDetail,

@@ -31,7 +31,7 @@ interface UseContentResetOptions {
  * 1. Analytics tracking
  * 2. Storage clearing (interactive steps + completion percentage)
  * 3. Cross-component event dispatch (notifies recommendations panel and
- *    `useAlignmentReevaluation`, which clears its `hasInteractiveProgress` flag)
+ *    `useGuideProgressState`, which clears its `hasInteractiveProgress` flag)
  * 4. Content reload to reset UI state
  *
  * @param options - Configuration object with model
@@ -64,7 +64,7 @@ export function useContentReset({ model }: UseContentResetOptions) {
         evictContentCache(progressKey);
 
         // Step 3: Dispatch cross-component event.
-        // Notifies the recommendations panel to refresh and `useAlignmentReevaluation`
+        // Notifies the recommendations panel to refresh and `useGuideProgressState`
         // to clear its `hasInteractiveProgress` flag for this contentKey.
         window.dispatchEvent(
           new CustomEvent('interactive-progress-cleared', {
