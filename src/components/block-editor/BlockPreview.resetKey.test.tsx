@@ -1,16 +1,8 @@
 /**
- * Locks the BlockPreview "force remount on guide clear" contract.
- *
- * BlockPreview re-keys ContentRenderer via a local `resetKey` counter
- * that bumps when the unified channel emits `kind: 'guide'` with
- * `hasProgress: false`. Both an exact `contentKey` match AND the
- * wildcard `'*'` sentinel must trigger the bump — the wildcard is
- * what makes "Reset all progress" and "Reset learning path" propagate
- * to any open preview tab.
- *
- * Losing the wildcard branch is the most expensive regression here:
- * the preview would silently render stale interactive state until the
- * user manually toggled the tab.
+ * Locks BlockPreview's force-remount on guide clear. Both an exact
+ * `contentKey` match AND the wildcard `'*'` must bump `resetKey`;
+ * losing the wildcard branch leaves the preview rendering stale
+ * interactive state after "Reset all progress" / path reset.
  */
 
 import * as React from 'react';

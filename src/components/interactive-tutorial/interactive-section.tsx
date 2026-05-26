@@ -1064,17 +1064,12 @@ export function InteractiveSection({
     // Clear ack + collapse storage. Hook gates on preview mode internally.
     clearAckAndCollapseStorage();
 
-    // Notify listeners that progress for this content was cleared (#842, Bug 2).
-    // Mirrors the dispatch in `useGuidePreviewProgress.reset()` so any consumer
-    // driving ephemeral UI off `kind: 'guide'` with `hasProgress: false` —
-    // most importantly `useGuidePreviewProgress`, which controls the
-    // "Reset guide" button visibility — sees the section-level reset path too.
-    // Without this the block-editor preview's Reset guide button stays visible
-    // after a per-section reset, even when no progress is left.
+    // #842, Bug 2 — without this the block-editor preview's Reset guide
+    // button stays visible after a per-section reset.
     const contentKey = getContentKey();
     dispatchProgress({ kind: 'guide', contentKey, percentage: 0, hasProgress: false });
-    // All-passive sections bypass `persistSection` on reset too;
-    // recompute so the persisted percentage drops in lockstep.
+    // All-passive sections bypass `persistSection` on reset — recompute
+    // so the persisted percentage drops in lockstep.
     if (!isPreviewMode) {
       refreshAndNotifyGuideProgress(contentKey);
     }

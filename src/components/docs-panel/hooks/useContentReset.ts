@@ -64,11 +64,8 @@ export function useContentReset({ model }: UseContentResetOptions) {
         // doesn't invalidate the in-memory state.
         evictContentCache(progressKey);
 
-        // Step 3: Dispatch cross-component event on the unified channel.
-        // Notifies the recommendations panel to refresh and
-        // `useGuideProgressState` to clear its `hasInteractiveProgress`
-        // flag for this contentKey via `kind: 'guide'` with
-        // `hasProgress: false`.
+        // Step 3: Broadcast clear. Refreshes recommendations and clears
+        // `useGuideProgressState.hasInteractiveProgress` for this key.
         dispatchProgress({ kind: 'guide', contentKey: progressKey, percentage: 0, hasProgress: false });
 
         // Step 4: Reload content to reset UI state.

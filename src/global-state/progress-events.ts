@@ -22,13 +22,7 @@
 
 export type ProgressReason = 'none' | 'objectives' | 'manual' | 'skipped';
 
-/**
- * Sentinel `contentKey` value that means "every guide". Used by
- * "reset all progress" and "reset learning path" flows to broadcast a
- * `kind: 'guide'` clear that any listener (regardless of its tracked
- * key) should react to. Listeners must accept this in addition to an
- * exact `contentKey` match.
- */
+/** Broadcast `contentKey` — every key-scoped listener must accept this. */
 export const PROGRESS_CONTENT_KEY_WILDCARD = '*' as const;
 
 export type ProgressEventDetail =
@@ -46,13 +40,8 @@ export type ProgressEventDetail =
       percentage?: number;
     }
   | {
-      /**
-       * Guide-level aggregate progress. `hasProgress: false` is the
-       * canonical "cleared" signal — supersedes the legacy
-       * `interactive-progress-cleared` window event. `contentKey` may
-       * be `PROGRESS_CONTENT_KEY_WILDCARD` (`'*'`) to broadcast a clear
-       * across every guide (e.g. "reset all progress" / path reset).
-       */
+      // Guide-level aggregate. `hasProgress: false` is the canonical
+      // clear signal; `contentKey: '*'` broadcasts across every guide.
       kind: 'guide';
       contentKey: string;
       percentage: number;
@@ -79,11 +68,7 @@ export function subscribeProgressEvent(listener: (detail: ProgressEventDetail) =
   return () => window.removeEventListener(PROGRESS_EVENT, handler);
 }
 
-/**
- * Returns true when an event's `contentKey` either matches `expected`
- * exactly or is the wildcard sentinel (`'*'`). Use at every
- * key-scoped listener that needs to react to broadcast clears.
- */
+/** Exact match OR the wildcard sentinel. */
 export function matchesContentKey(detail: { contentKey: string }, expected: string): boolean {
   return detail.contentKey === expected || detail.contentKey === PROGRESS_CONTENT_KEY_WILDCARD;
 }

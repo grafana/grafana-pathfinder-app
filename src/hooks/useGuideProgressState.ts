@@ -28,9 +28,6 @@ export function useGuideProgressState(activeTab: ActiveTabSummary | null | undef
   }, [progressKey]);
 
   useEffect(() => {
-    // Single subscription on the unified channel. `hasProgress: false`
-    // is the canonical clear signal, and `contentKey: '*'` broadcasts
-    // a clear across every open guide tab (e.g. "Reset all progress").
     return subscribeProgressEvent((detail) => {
       if (detail.kind === 'guide' && matchesContentKey(detail, progressKey)) {
         setHasInteractiveProgress(detail.hasProgress);

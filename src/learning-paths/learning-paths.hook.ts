@@ -420,11 +420,9 @@ export function useLearningPaths(): UseLearningPathsReturn {
         await learningProgressStorage.removeCompletedGuides(path.guides);
       }
 
-      // Broadcast a wildcard clear on the unified channel so the
-      // context engine refreshes recommendations and any open guide
-      // tab's per-key listeners clear their hasProgress flag.
-      // (`pathId` was previously included on the legacy event but no
-      // production listener read it; dropped during the migration.)
+      // Wildcard clear → context refresh + every open guide tab's
+      // per-key listeners clear their hasProgress flag. (Legacy event
+      // carried `pathId` but no production listener read it.)
       dispatchProgress({
         kind: 'guide',
         contentKey: PROGRESS_CONTENT_KEY_WILDCARD,

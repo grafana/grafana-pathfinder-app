@@ -1,21 +1,10 @@
 /**
- * PERMANENT — seam tripwire for the BlockPreview ↔ InteractiveSection event
- * contract.
- *
- * `useGuidePreviewProgress` is the listener side of the unified
- * `pathfinder:progress` event:
- *
- *   - `kind: 'guide'` with `hasProgress: true` — guide acquired progress
- *   - `kind: 'guide'` with `hasProgress: false` — guide was cleared
- *     (also dispatched by `handleResetSection` and the wildcard "reset all"
- *     paths in `MyLearningTab` / `learning-paths.hook`)
- *   - `kind: 'step' | 'section'` with `completed: true` — MF-3 preview
- *     fallback when the active content key matches the progress key
- *
- * If a refactor breaks the variant names, payload shape, or the progressKey
- * filter, the assertions here will fail. The hook also drives BlockPreview's
- * `resetKey` remount mechanism — losing the clear path is the most expensive
- * regression here.
+ * PERMANENT — seam tripwire for the BlockPreview ↔ InteractiveSection
+ * event contract. `useGuidePreviewProgress` listens to
+ * `pathfinder:progress` for `kind:'guide'` (acquire / clear, including
+ * wildcard) plus the MF-3 step/section preview fallback. Losing the
+ * clear path silently breaks BlockPreview's `resetKey` remount — the
+ * most expensive regression here.
  */
 
 import { act, renderHook } from '@testing-library/react';

@@ -46,10 +46,7 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
   const progressKey = `block-editor://preview/${guide.id}`;
   const { hasProgress: hasInteractiveProgress, reset } = useGuidePreviewProgress(progressKey);
 
-  // Force ContentRenderer remount when progress is cleared (locally or by a
-  // sibling surface like BlockEditorHeader). All clears flow through
-  // `pathfinder:progress` with `kind: 'guide'` and `hasProgress: false`;
-  // wildcard `contentKey: '*'` clears (e.g. "reset all") also bump the key.
+  // Force ContentRenderer remount on any clear (specific key or wildcard).
   const [resetKey, setResetKey] = useState(0);
   useEffect(() => {
     return subscribeProgressEvent((detail) => {

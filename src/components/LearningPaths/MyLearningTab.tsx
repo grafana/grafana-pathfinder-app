@@ -371,9 +371,8 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       // render the prior state until the user closed and reopened the tab.
       evictAllContentCaches();
 
-      // Broadcast a wildcard clear so the context engine refreshes
-      // recommendations and any open guide tab's per-key listeners
-      // (e.g. `useGuideProgressState`) clear their hasProgress flag.
+      // Wildcard clear → context refresh + every open guide tab's
+      // per-key listeners clear their hasProgress flag.
       dispatchProgress({
         kind: 'guide',
         contentKey: PROGRESS_CONTENT_KEY_WILDCARD,

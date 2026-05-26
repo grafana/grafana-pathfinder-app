@@ -197,11 +197,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     return unsubscribe;
   }, [debouncedRefresh]);
 
-  // Listen for guide-level clear signals on the unified channel to
-  // refresh recommendations (completion percentages may have dropped).
-  // Matches the legacy "ignore detail, just refresh" behaviour:
-  // wildcard `contentKey: '*'` and specific keys both qualify, since
-  // `kind: 'guide'` with `hasProgress: false` is the canonical clear.
+  // Any guide clear → refresh recommendations (percentages may have dropped).
   useEffect(() => {
     return subscribeProgressEvent((detail) => {
       if (detail.kind === 'guide' && !detail.hasProgress) {
