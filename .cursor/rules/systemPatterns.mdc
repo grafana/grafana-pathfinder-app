@@ -108,7 +108,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 - `lib/` — Shared utilities. Sub-areas: `analytics.ts`, `user-storage.ts`, `dom/` (selector pipeline: detect → generate → validate → retry), `async-utils.ts`, `package-recommendations-client.ts`.
 - `security/` — URL allowlists, HTML / log sanitization. Entry: `security/index.ts`. Key: `parseUrlSafely`, `validateTutorialUrl`, `sanitizeDocumentationHTML`. See `.cursor/rules/frontend-security.mdc`.
 - `styles/` — Theme-aware CSS-in-JS factories (Emotion). One `*.styles.ts` per component.
-- `global-state/` — Cross-component stores (Zustand + React context). Files: `sidebar.ts`, `panel-mode.ts`, `link-interception.ts`, `interactive-navigation.ts`, `alignment-pending-context.ts`.
+- `global-state/` — Cross-component stores (Zustand + React context). Files: `sidebar.ts`, `panel-mode.ts`, `link-interception.ts`, `alignment-pending-context.ts`.
 - `utils/` — Business logic and utilities. Files: `dev-mode.ts`, `openfeature.ts`, `timeout-manager.ts`, `variable-substitution.ts`, `experiments.ts`, `find-doc-page.ts`. See `docs/developer/utils/README.md`.
 - `validation/` — Zod schemas + condition validators. Entry: `validate-guide.ts`. Architecture rules enforced by `architecture.test.ts`.
 - `recovery/` — Auto-recovery: decides whether the user is in the right place for a guide. Entry: `alignment-evaluator.ts` (`evaluateAlignment`).
@@ -121,7 +121,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 - `requirements-manager/` — Prereqs + postconditions for steps. Entry: `requirements-checker.hook.ts` (`useStepChecker`). State machine in `step-state.ts`. See `docs/developer/engines/requirements-manager.md`.
 - `learning-paths/` — Progress / badges / streaks / next-action. Entry: `learning-paths.hook.ts`. Badge definitions in `badges.ts`. See `docs/developer/learning-paths/README.md`.
 - `package-engine/` — Package resolution + loading. Entry: `composite-resolver.ts` (`createCompositeResolver`). Resolver chain: bundled → online CDN → recommender API.
-- `hooks/` — Cross-cutting hooks: `useAlignmentReevaluation`, `useAutoLaunchTutorial`, `useStepProgressFromEvents`.
+- `hooks/` — Cross-cutting hooks: `useGuideProgressState`, `useAutoLaunchTutorial`, `useStepProgressFromEvents`.
 
 **Tier 3 — integrations:**
 
@@ -156,7 +156,7 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 | `global-state/sidebar`, `panel-mode`   | `components/docs-panel`, `App`           | Sidebar visibility + content/editor mode                       |
 | `security` (`parseUrlSafely`, `validateTutorialUrl`) | All subsystems handling URLs | Boundary validation for any URL crossing trust zones           |
 | `learning-paths` (`useGuideCompletion`) | `components/docs-panel`, `interactive-engine` | Progress events + badge unlock                          |
-| `recovery` (`evaluateAlignment`)       | `components/docs-panel`, `hooks/useAlignmentReevaluation` | Detects misalignment, triggers prompts            |
+| `recovery` (`evaluateAlignment`)       | `components/docs-panel`                  | One-shot alignment evaluation at guide launch                  |
 
 ## Backend architecture (`pkg/`)
 

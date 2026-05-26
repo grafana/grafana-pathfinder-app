@@ -4,10 +4,12 @@
  *
  * This module owns the canonical storage as typed module-scope state.
  * The legacy `window.__DocsPluginActiveTabUrl` and
- * `window.__DocsPluginContentKey` globals are still set by their existing
- * owners (`useGlobalActiveTabExposure`, `content-renderer.tsx`); reads
- * here transparently fall back to them so callers can migrate to the
- * typed API piecemeal.
+ * `window.__DocsPluginContentKey` globals are still set and/or read by
+ * their existing owners (`useGlobalActiveTabExposure`,
+ * `content-renderer.tsx`, and `analytics.ts`); the typed readers
+ * transparently fall back to them so callers can migrate to the typed
+ * API piecemeal. The fallback is therefore load-bearing — do not
+ * remove it until those remaining consumers also use the typed API.
  *
  * Resolution order:
  *   1. Active tab URL (canonical: set by `useGlobalActiveTabExposure`)
@@ -44,6 +46,26 @@ export function setActiveTabUrl(value: string | undefined): void {
 
 export function setContentKeyOverride(value: string | undefined): void {
   contentKeyOverride = value && value.length > 0 ? value : undefined;
+}
+
+/**
+ * Read the active tab URL as it was last written, falling back to the
+ * legacy `window.__DocsPluginActiveTabUrl` global. Returns the raw value
+ * without sanitization — callers that need a storage-safe identifier
+ * should use {@link getContentKey} instead.
+ */
+export function getActiveTabUrl(): string | undefined {
+  return activeTabUrl ?? readGlobal('__DocsPluginActiveTabUrl');
+}
+
+/**
+ * Read the content-key override, falling back to the legacy
+ * `window.__DocsPluginContentKey` global. Returns the raw value
+ * without sanitization — callers that need a storage-safe identifier
+ * should use {@link getContentKey} instead.
+ */
+export function getContentKeyOverride(): string | undefined {
+  return contentKeyOverride ?? readGlobal('__DocsPluginContentKey');
 }
 
 export function getContentKey(): string {

@@ -1,4 +1,11 @@
-import { getContentKey, resetContentKeyForTests, setActiveTabUrl, setContentKeyOverride } from './content-key';
+import {
+  getActiveTabUrl,
+  getContentKey,
+  getContentKeyOverride,
+  resetContentKeyForTests,
+  setActiveTabUrl,
+  setContentKeyOverride,
+} from './content-key';
 
 describe('content-key', () => {
   beforeEach(() => {
@@ -53,5 +60,49 @@ describe('content-key', () => {
   it('treats empty-string inputs as unset', () => {
     setActiveTabUrl('');
     expect(getContentKey()).toBe(window.location.pathname);
+  });
+
+  describe('getActiveTabUrl', () => {
+    it('returns the typed value when set', () => {
+      setActiveTabUrl('https://example.com/guide-a');
+      expect(getActiveTabUrl()).toBe('https://example.com/guide-a');
+    });
+
+    it('falls back to the legacy window global when the typed setter has not been used', () => {
+      (window as any).__DocsPluginActiveTabUrl = 'https://example.com/legacy';
+      expect(getActiveTabUrl()).toBe('https://example.com/legacy');
+    });
+
+    it('returns undefined when neither the typed value nor the global is set', () => {
+      expect(getActiveTabUrl()).toBeUndefined();
+    });
+
+    it('returns the raw value without sanitization', () => {
+      const longUrl = 'https://example.com/' + 'a'.repeat(500);
+      setActiveTabUrl(longUrl);
+      expect(getActiveTabUrl()).toBe(longUrl);
+    });
+  });
+
+  describe('getContentKeyOverride', () => {
+    it('returns the typed value when set', () => {
+      setContentKeyOverride('bundled:first-dashboard');
+      expect(getContentKeyOverride()).toBe('bundled:first-dashboard');
+    });
+
+    it('falls back to the legacy window global when the typed setter has not been used', () => {
+      (window as any).__DocsPluginContentKey = 'bundled:legacy-key';
+      expect(getContentKeyOverride()).toBe('bundled:legacy-key');
+    });
+
+    it('returns undefined when neither the typed value nor the global is set', () => {
+      expect(getContentKeyOverride()).toBeUndefined();
+    });
+
+    it('returns the raw value without sanitization', () => {
+      const longKey = 'bundled:' + 'a'.repeat(500);
+      setContentKeyOverride(longKey);
+      expect(getContentKeyOverride()).toBe(longKey);
+    });
   });
 });

@@ -9,6 +9,7 @@ import {
   markStepCompleted,
   markStepsCompleted,
   reconcileSection,
+  refreshAndNotifyGuideProgress,
   resetCompletionStoreForTests,
   resetSection,
   resetStep,
@@ -18,10 +19,12 @@ import {
 } from './completion-store';
 import { setActiveTabUrl, resetContentKeyForTests } from './content-key';
 import { subscribeProgressEvent, type ProgressEventDetail } from './progress-events';
+import { StorageKeys } from '../lib/storage-keys';
 
 // In-memory mocks for the persisted-storage layer so tests are hermetic
 // and synchronous-where-they-can-be.
 const storedCompleted = new Map<string, Set<string>>(); // `${contentKey}-${sectionId}` -> ids
+const storedAcks = new Map<string, true>(); // `${contentKey}-${sectionId}` -> true
 const guidePercentages = new Map<string, number>();
 
 jest.mock('../lib/user-storage', () => ({
@@ -44,25 +47,45 @@ jest.mock('../lib/user-storage', () => ({
       });
       return total;
     }),
+    // Cross-tab sync invalidates the per-tab numerator cache without
+    // touching localStorage. Our in-memory mock has no cache to clear,
+    // so this is a no-op stub — present only to satisfy the production
+    // store's call site.
+    invalidateCountCache: jest.fn(),
   },
   interactiveCompletionStorage: {
     set: jest.fn(async (contentKey: string, percentage: number) => {
       guidePercentages.set(contentKey, percentage);
     }),
   },
+  sectionAcknowledgementStorage: {
+    countAllAcknowledged: jest.fn((contentKey: string) => {
+      let count = 0;
+      storedAcks.forEach((_value, key) => {
+        if (key.startsWith(`${contentKey}-`)) {
+          count++;
+        }
+      });
+      return count;
+    }),
+  },
 }));
 
 let mockTotalDocumentSteps = 0;
+let mockRegisteredSectionCount = 0;
 jest.mock('./section-registry', () => ({
   getTotalDocumentSteps: () => mockTotalDocumentSteps,
+  getRegisteredSectionCount: () => mockRegisteredSectionCount,
 }));
 
 const CONTENT_KEY = 'bundled:test-guide';
 
 beforeEach(() => {
   storedCompleted.clear();
+  storedAcks.clear();
   guidePercentages.clear();
   mockTotalDocumentSteps = 0;
+  mockRegisteredSectionCount = 0;
   resetCompletionStoreForTests();
   resetContentKeyForTests();
   setActiveTabUrl(CONTENT_KEY);
@@ -162,10 +185,53 @@ describe('completion-store', () => {
     expect(screen.getByTestId('reason').textContent).toBe('skipped');
   });
 
-  it('getGuideProgress returns 0% when total steps is unknown', () => {
-    storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1']));
+  it('getGuideProgress returns 0% when total is unknown and nothing has been completed', () => {
     mockTotalDocumentSteps = 0;
-    expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 0, percentage: 0 });
+    expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 0, percentage: 0 });
+  });
+
+  // F-1 (#909 follow-up): all-passive guides have no interactive
+  // steps, so `getGuideProgress` must derive the percentage from
+  // `sectionAcknowledgementStorage` (where the production ack writer
+  // persists) divided by `getRegisteredSectionCount()`, not from the
+  // 0/0 step-count division the pre-fix code did.
+  describe('all-passive guide progress (F-1)', () => {
+    it('returns 100% once every registered section is acknowledged', () => {
+      mockTotalDocumentSteps = 0;
+      mockRegisteredSectionCount = 1;
+      storedAcks.set(`${CONTENT_KEY}-section-passive`, true);
+      expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 1, percentage: 100 });
+    });
+
+    it('returns a partial percentage for multi-section guides with one ack', () => {
+      mockTotalDocumentSteps = 0;
+      mockRegisteredSectionCount = 4;
+      storedAcks.set(`${CONTENT_KEY}-section-1`, true);
+      expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 4, percentage: 25 });
+    });
+
+    it('returns 0% when no sections are acknowledged yet', () => {
+      mockTotalDocumentSteps = 0;
+      mockRegisteredSectionCount = 3;
+      expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 3, percentage: 0 });
+    });
+
+    it('returns 0% when no sections are registered yet (guide not mounted)', () => {
+      mockTotalDocumentSteps = 0;
+      mockRegisteredSectionCount = 0;
+      expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 0, percentage: 0 });
+    });
+
+    it('refreshAndNotifyGuideProgress persists the percentage to interactiveCompletionStorage', () => {
+      mockTotalDocumentSteps = 0;
+      mockRegisteredSectionCount = 2;
+      storedAcks.set(`${CONTENT_KEY}-section-1`, true);
+      storedAcks.set(`${CONTENT_KEY}-section-2`, true);
+
+      refreshAndNotifyGuideProgress(CONTENT_KEY);
+
+      expect(guidePercentages.get(CONTENT_KEY)).toBe(100);
+    });
   });
 
   it('getGuideProgress computes percentage when total steps is known', () => {
@@ -220,6 +286,15 @@ describe('completion-store', () => {
       await flushMicrotasks();
       expect(screen.getByTestId('completed').textContent).toBe('false');
       expect(storedCompleted.get(`${CONTENT_KEY}-section-x`)).toEqual(new Set(['step-1']));
+    });
+
+    it('mark issued during pending hydration survives the resolve', async () => {
+      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-a']));
+      render(<StepProbe stepId="step-b" sectionId="section-x" />);
+      // Hydration pending.
+      act(() => markStepCompleted('step-b', 'section-x', 'manual'));
+      await flushMicrotasks();
+      expect(storedCompleted.get(`${CONTENT_KEY}-section-x`)).toEqual(new Set(['step-a', 'step-b']));
     });
   });
 
@@ -420,6 +495,160 @@ describe('completion-store', () => {
       expect(progress.completed).toBe(5);
       expect(progress.total).toBe(3);
       expect(progress.percentage).toBe(100);
+    });
+  });
+
+  // N-2 — cross-tab progress corruption.
+  //
+  // localStorage is shared across browser tabs but the store's caches
+  // live per-tab. Before the storage listener, tab B's stale cache
+  // could silently write back over tab A's authoritative reset (or
+  // vice versa). The listener evicts the affected section's cache +
+  // bumps its hydration version, then notifies subscribers so the
+  // next render re-hydrates from authoritative storage.
+  //
+  // Tests dispatch synthetic StorageEvents (jsdom doesn't fire them
+  // for in-tab localStorage writes — and even if it did, the spec
+  // only fires them in OTHER tabs).
+  describe('cross-tab sync', () => {
+    it('evicts the in-memory section cache when another tab writes to localStorage', async () => {
+      render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      act(() => markStepCompleted('step-1', 'section-x', 'manual'));
+      await flushMicrotasks();
+      expect(screen.getByTestId('completed').textContent).toBe('true');
+
+      // Simulate tab A clearing its progress: localStorage now holds
+      // an empty set for our section, and the storage event fires in
+      // tab B (this test runner). Our listener should evict the cache.
+      storedCompleted.delete(`${CONTENT_KEY}-section-x`);
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${CONTENT_KEY}-section-x`,
+            newValue: '[]',
+            oldValue: '["step-1"]',
+          })
+        );
+      });
+      await flushMicrotasks();
+      // Subscriber re-reads authoritative storage on the next render
+      // and sees the empty set.
+      expect(screen.getByTestId('completed').textContent).toBe('false');
+    });
+
+    it('ignores storage events for unrelated localStorage keys', async () => {
+      render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      act(() => markStepCompleted('step-1', 'section-x', 'manual'));
+      await flushMicrotasks();
+      expect(screen.getByTestId('completed').textContent).toBe('true');
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: 'some-other-app-key',
+            newValue: 'irrelevant',
+          })
+        );
+      });
+
+      // Cache untouched — subscriber still sees the completion.
+      expect(screen.getByTestId('completed').textContent).toBe('true');
+    });
+
+    it('treats event.key === null (localStorage.clear from another tab) as a global evict', async () => {
+      render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      act(() => markStepCompleted('step-1', 'section-x', 'manual'));
+      await flushMicrotasks();
+      expect(screen.getByTestId('completed').textContent).toBe('true');
+
+      // Simulate tab A calling `localStorage.clear()` — browsers fire
+      // a `storage` event with key=null in OTHER tabs to signal a
+      // full storage wipe.
+      storedCompleted.clear();
+      act(() => {
+        window.dispatchEvent(new StorageEvent('storage', { key: null }));
+      });
+      await flushMicrotasks();
+      expect(screen.getByTestId('completed').textContent).toBe('false');
+    });
+
+    it('matches exact (contentKey, sectionId) — does not misroute when one content key is a prefix of another', async () => {
+      // Regression for the prefix-collision bug in the original
+      // listener: when one active content key (`bundled:loki-101`)
+      // is a hyphen-delimited string prefix of another
+      // (`bundled:loki-101-extended`), `stripped.startsWith(short + '-')`
+      // matched the shorter key first and evicted the wrong pair,
+      // leaving the longer guide's cache stale until the next mount.
+      const SHORT_KEY = 'bundled:loki-101';
+      const LONG_KEY = 'bundled:loki-101-extended';
+
+      setActiveTabUrl(SHORT_KEY);
+      storedCompleted.set(`${SHORT_KEY}-section-x`, new Set(['step-1']));
+      const short = render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      await flushMicrotasks();
+      expect(short.getByTestId('completed').textContent).toBe('true');
+      short.unmount();
+
+      setActiveTabUrl(LONG_KEY);
+      storedCompleted.set(`${LONG_KEY}-section-y`, new Set(['step-2']));
+      const long = render(<StepProbe stepId="step-2" sectionId="section-y" />);
+      await flushMicrotasks();
+      expect(long.getByTestId('completed').textContent).toBe('true');
+
+      // Tab A clears LONG_KEY's progress; storage event fires here for
+      // the LONG key only. Exact matching evicts the LONG pair; prefix
+      // matching would have evicted a non-existent `(SHORT_KEY, "extended-section-y")`
+      // and left the LONG cache untouched.
+      storedCompleted.delete(`${LONG_KEY}-section-y`);
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${LONG_KEY}-section-y`,
+            newValue: null,
+            oldValue: '["step-2"]',
+          })
+        );
+      });
+      await flushMicrotasks();
+      expect(long.getByTestId('completed').textContent).toBe('false');
+      long.unmount();
+
+      // SHORT_KEY cache must still hold its completion — the exact-match
+      // path never touched it.
+      setActiveTabUrl(SHORT_KEY);
+      const shortAgain = render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      expect(shortAgain.getByTestId('completed').textContent).toBe('true');
+      shortAgain.unmount();
+    });
+
+    it('drops stale in-flight hydration when a cross-tab storage event triggers re-hydration', async () => {
+      // Race scenario: tab B's `ensureHydrated` has scheduled a storage
+      // read with snapshot `{step-1, step-2}`. Tab A clears its progress
+      // BEFORE that read resolves. The storage event fires in tab B
+      // (evicts cache + bumps hydration version), the subscriber
+      // re-renders and starts a fresh hydration cycle. The original
+      // in-flight `.then` then resolves — without the version check it
+      // would merge `{step-1, step-2}` back into the now-empty cache,
+      // silently undoing tab A's clear.
+      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1', 'step-2']));
+      render(<StepProbe stepId="step-2" sectionId="section-x" />);
+      // Hydration pending — do NOT flush yet. The original `.then` is
+      // queued with `expectedVersion = 0`.
+      storedCompleted.delete(`${CONTENT_KEY}-section-x`);
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${CONTENT_KEY}-section-x`,
+            newValue: null,
+            oldValue: '["step-1","step-2"]',
+          })
+        );
+      });
+      await flushMicrotasks();
+      // The fresh re-hydration reads the now-empty storage; the stale
+      // in-flight read drops its merge on resolve. Subscriber stays at
+      // not-completed.
+      expect(screen.getByTestId('completed').textContent).toBe('false');
     });
   });
 });

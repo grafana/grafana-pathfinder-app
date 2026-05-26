@@ -4,7 +4,6 @@ import logoSvg from '../img/logo.svg';
 import { isElementVisible, getScrollParent, getStickyHeaderOffset, getVisibleHighlightTarget } from '../lib/dom';
 import { sanitizeDocumentationHTML } from '../security';
 import { applyE2ECommentBoxAttributes } from './e2e-attributes';
-import { beginInteractiveNavigation, endInteractiveNavigation } from '../global-state/interactive-navigation';
 
 export interface NavigationOptions {
   checkContext?: boolean;
@@ -1282,14 +1281,7 @@ export class NavigationManager {
    */
   async fixLocationRequirement(targetPath: string): Promise<void> {
     const { locationService } = await import('@grafana/runtime');
-    // Tag the push so `useAlignmentReevaluation` skips reevaluating — the
-    // user clicked "Fix this", which is guide-driven, not user navigation.
-    beginInteractiveNavigation();
-    try {
-      locationService.push(targetPath);
-    } finally {
-      endInteractiveNavigation();
-    }
+    locationService.push(targetPath);
     // Wait for navigation to complete and React to update
     await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.navigation));
   }
@@ -1527,6 +1519,9 @@ export class NavigationManager {
     // sidebar state, so checking actual DOM content is the reliable signal.
     const navItemsVisible = document.querySelectorAll(NAV_ITEM_SELECTOR).length > 0;
     if (navItemsVisible) {
+      if (ensureDocked) {
+        await this.dockIfInOverlay();
+      }
       return;
     }
 
@@ -1537,6 +1532,9 @@ export class NavigationManager {
     // (if the user's localStorage preference was already set). In that case
     // nav items are already visible and clicking the dock button would UNDOCK it.
     if (document.querySelectorAll(NAV_ITEM_SELECTOR).length > 0) {
+      if (ensureDocked) {
+        await this.dockIfInOverlay();
+      }
       return;
     }
 
@@ -1549,6 +1547,22 @@ export class NavigationManager {
       } else if (logWarnings) {
         console.warn('Dock menu button not found after polling, navigation will remain in modal mode');
       }
+    }
+  }
+
+  /**
+   * Click the dock button iff the nav is currently in overlay mode.
+   * `#dock-menu-button` exists in both docked and overlay states with opposite
+   * semantics — in overlay its aria-label reads "Dock menu" (clicking docks the
+   * nav, what we want); in docked it reads "Undock menu" (clicking would undock,
+   * which would regress the intent of #709). The aria-label is the discriminator.
+   */
+  private async dockIfInOverlay(): Promise<void> {
+    const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement | null;
+    if (dockMenuButton?.getAttribute('aria-label') === 'Dock menu') {
+      dockMenuButton.click();
+      await waitForReactUpdates();
+      await this.pollForNavItems();
     }
   }
 

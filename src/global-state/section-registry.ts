@@ -109,6 +109,13 @@ export function getTotalDocumentSteps(): number {
   return totalDocumentSteps;
 }
 
+/** Denominator for the all-passive guide percentage in the completion
+ *  store — when `getTotalDocumentSteps() === 0`, sections are the only
+ *  thing left to divide by. */
+export function getRegisteredSectionCount(): number {
+  return globalStepRegistry.size;
+}
+
 /** Document-wide position of a step within a section.
  *  Returns `{ stepIndex: offset + sectionStepIndex, totalSteps: totalDocumentSteps }`.
  *  For unknown sectionIds, offset defaults to 0 (preserving the

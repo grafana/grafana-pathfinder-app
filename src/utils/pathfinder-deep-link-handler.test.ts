@@ -8,9 +8,8 @@
  *   - `handlePathfinderDeepLink` is a no-op when no Pathfinder params are
  *     present, dedupes same-search re-fires, and routes to the panelMode /
  *     control-group / find-doc-page branches.
- *   - `installDeepLinkNavListener` wires `grafana:location-changed` and
- *     (when available) `history.listen`, falling back to `popstate` only
- *     when `locationService.getHistory()` throws.
+ *   - `installDeepLinkNavListener` wires `history.listen` (primary) and
+ *     falls back to `popstate` when `locationService.getHistory()` throws.
  */
 
 jest.mock('../plugin.json', () => ({
@@ -280,7 +279,7 @@ describe('installDeepLinkNavListener', () => {
     mockGetHistoryImpl = () => ({ listen: mockHistoryListen });
   });
 
-  it('registers grafana:location-changed and history.listen', () => {
+  it('registers history.listen', () => {
     installDeepLinkNavListener(mkDeps());
     expect(mockHistoryListen).toHaveBeenCalledTimes(1);
   });
@@ -299,19 +298,19 @@ describe('installDeepLinkNavListener', () => {
 
   it('skips the parse + dedup machinery on URL changes that carry no Pathfinder params', () => {
     installDeepLinkNavListener(mkDeps());
-    // The listener captured `handler`; simulate a Grafana SPA navigation to
-    // a page without any pathfinder params and assert findDocPage was not
-    // touched (a strong proxy for "did the handler run").
+    // Simulate a SPA navigation to a page without any pathfinder params.
+    const historyHandler = mockHistoryListen.mock.calls[0][0] as () => void;
     setSearch('?tab=overview');
-    document.dispatchEvent(new CustomEvent('grafana:location-changed'));
+    historyHandler();
     expect(mockFindDocPage).not.toHaveBeenCalled();
   });
 
   it('re-runs the handler when the URL changes to include ?doc=', async () => {
     installDeepLinkNavListener(mkDeps());
+    const historyHandler = mockHistoryListen.mock.calls[0][0] as () => void;
 
     setSearch('?doc=bundled%3Afoo');
-    document.dispatchEvent(new CustomEvent('grafana:location-changed'));
+    historyHandler();
 
     await flushPromises();
     expect(mockFindDocPage).toHaveBeenCalledWith('bundled:foo');
