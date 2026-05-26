@@ -75,13 +75,6 @@ export interface LearningJourneyMilestoneToolbarProps {
    * `<Dropdown>`; the fullscreen surface omits it.
    */
   trailingActions?: React.ReactNode;
-  /**
-   * When true, suppresses the entire `milestoneActions` row (Open + Reset +
-   * `trailingActions`). The arrow nav and progress bar still render. Used
-   * by the floating panel to reclaim vertical space — the popout has a much
-   * smaller content area than the sidebar / fullscreen surfaces and the
-   * secondary actions are still reachable from the docked sidebar.
-   */
   compact?: boolean;
 }
 
@@ -172,8 +165,8 @@ export function LearningJourneyMilestoneToolbar({
 
   // Distinguish surfaces in analytics for the external-link "Open" button.
   // Arrow-nav analytics intentionally stays on `'milestone_progress_bar'`
-  // for all surfaces — the per-surface split is only meaningful for the
-  // explicit "Open in browser" outbound, not for in-guide nav.
+  // for both surfaces — the sidebar / fullscreen split is only meaningful
+  // for the explicit "Open in browser" outbound, not for in-guide nav.
   const openInteractionLocation =
     surface === 'fullscreen'
       ? 'full_screen_milestone_progress_bar'

@@ -17,17 +17,9 @@ import type { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 
 interface FloatingPanelContentProps {
-  /** Toolbar inputs — when omitted (e.g. recommendations tab) the toolbar self-hides. */
   hasInteractiveProgress?: boolean;
   progressKey?: string | null;
   onResetGuide?: (progressKey: string, tab: LearningJourneyTab) => Promise<void> | void;
-  /**
-   * Which surface this content is rendering on — drives the analytics
-   * `interaction_location` for the toolbar's "Open" button. Defaults to
-   * `'floating'` since this component's primary home is the floating panel;
-   * the full-screen surface renders its own toolbar separately and omits the
-   * toolbar props, so the default never leaks into fullscreen analytics.
-   */
   surface?: MilestoneToolbarSurface;
   /** The guide content to render */
   content: RawContent | null;
@@ -51,9 +43,10 @@ interface FloatingPanelContentProps {
    */
   activeTab: LearningJourneyTab | null;
   /**
-   * Panel model — used by the link click handler for navigation actions
+   * Panel model used by the link click handler for navigation actions
    * (`loadTabContent`, milestone navigation, opening docs/journeys from
-   * embedded links, etc.) AND by the milestone toolbar for prev/next + reset.
+   * embedded links, etc.). Without this, content links and the
+   * "Ready to Begin" CTA on the cover page have no handler.
    */
   model: CombinedLearningJourneyPanel;
 }
@@ -123,10 +116,6 @@ export function FloatingPanelContent({
 
   const contentClassName = `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`;
 
-  // Only render the embedded milestone toolbar when the caller passes the
-  // toolbar inputs. The full-screen surface renders its own toolbar in the
-  // layout's sub-header slot and omits these props, which prevents a
-  // double-render of the toolbar on that surface.
   const showEmbeddedToolbar = onResetGuide !== undefined && progressKey !== undefined && activeTab !== null;
 
   return (

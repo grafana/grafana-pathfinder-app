@@ -53,10 +53,6 @@ export function FloatingPanelManager() {
     return null;
   }
 
-  // Wrap in ThemeContext so `useTheme2` / `useStyles2` inside the popout see
-  // Grafana's current theme. Required because module.tsx mounts this manager
-  // via createCompatRoot, outside Grafana's GrafanaContextProvider tree, so
-  // the default theme context would otherwise apply.
   return (
     <ThemeContext.Provider value={theme}>
       <PathfinderFeatureProvider>
@@ -66,15 +62,6 @@ export function FloatingPanelManager() {
   );
 }
 
-/**
- * Tracks Grafana's active theme so the standalone floating-panel React root
- * stays in sync when the user toggles light/dark mode.
- *
- * Grafana doesn't expose a public theme-change event for plugins, but it
- * toggles `theme-dark` / `theme-light` classes on <body> as part of the
- * switch. Observing that class mutation lets us re-read `config.theme2`
- * without a page reload.
- */
 function useGrafanaTheme() {
   const [theme, setTheme] = useState(() => config.theme2);
 
@@ -206,14 +193,8 @@ function FloatingPanelInner() {
 
   const { hasInteractiveProgress, progressKey } = useAlignmentReevaluation(panel, activeTabId, activeTab);
 
-  // Drives the toolbar's "Reset guide" button — same hook the sidebar and
-  // full-screen surfaces use, so reset semantics stay identical across all
-  // three surfaces.
   const handleResetGuide = useContentReset({ model: panel });
 
-  // Wire Alt+ArrowLeft / Alt+ArrowRight milestone navigation in the popout.
-  // Listeners attach to `document`, so they fire from anywhere — but the hook
-  // already skips text-editable focus targets to preserve native word-jump.
   useKeyboardShortcuts({
     tabs,
     activeTabId,
