@@ -174,6 +174,13 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     onIncoming: () => {
       guideOpenInFlightRef.current = true;
     },
+    // The floating→fullscreen handoff pushes a `?doc=` URL, which makes
+    // `handlePathfinderDeepLink` schedule a delayed auto-launch ~500ms later.
+    // By then the pending-guide mount effect has already opened the guide
+    // (with packageInfo). Without this skip, the duplicate open goes through
+    // `openLearningJourney` without packageInfo and replaces the journey
+    // content with a flat single-doc — the milestone arrows disappear.
+    skipLaunch: () => guideOpenInFlightRef.current,
   });
 
   // Active tab projection.

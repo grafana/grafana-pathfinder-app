@@ -154,6 +154,23 @@ describe('useAutoLaunchTutorial', () => {
     expect(onLaunched).not.toHaveBeenCalled();
   });
 
+  it('skips the panel call when skipLaunch returns true but still fires onIncoming', () => {
+    const panel = makePanel();
+    const onIncoming = jest.fn();
+    renderHook(() =>
+      useAutoLaunchTutorial(asPanel(panel), {
+        onIncoming,
+        skipLaunch: () => true,
+      })
+    );
+
+    dispatchAutoLaunch({ url: 'bundled:foo', title: 'Foo', type: 'learning-journey' });
+
+    expect(onIncoming).toHaveBeenCalledTimes(1);
+    expect(panel.openLearningJourney).not.toHaveBeenCalled();
+    expect(panel.openDocsPage).not.toHaveBeenCalled();
+  });
+
   it('unsubscribes on unmount so re-mounts do not double-route', () => {
     const panel = makePanel();
     const { unmount } = renderHook(() => useAutoLaunchTutorial(asPanel(panel)));
