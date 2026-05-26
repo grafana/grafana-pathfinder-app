@@ -25,7 +25,6 @@ export default function MemoizedContextPanel() {
   // mode. The user opened the sidebar so they want it — don't fight it.
   useEffect(() => {
     if (mode === 'floating') {
-      panelModeManager.restoreSidebarTabSnapshot();
       panelModeManager.setMode('sidebar');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

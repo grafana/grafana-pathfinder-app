@@ -5,6 +5,7 @@ import { useStyles2 } from '@grafana/ui';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset } from '../docs-panel/hooks';
+import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
@@ -173,6 +174,13 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     onIncoming: () => {
       guideOpenInFlightRef.current = true;
     },
+    // The floating→fullscreen handoff pushes a `?doc=` URL, which makes
+    // `handlePathfinderDeepLink` schedule a delayed auto-launch ~500ms later.
+    // By then the pending-guide mount effect has already opened the guide
+    // (with packageInfo). Without this skip, the duplicate open goes through
+    // `openLearningJourney` without packageInfo and replaces the journey
+    // content with a flat single-doc — the milestone arrows disappear.
+    skipLaunch: () => guideOpenInFlightRef.current,
   });
 
   // Active tab projection.
@@ -194,25 +202,23 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // that took them there. Decision logic (sidebar vs floating fallback) is
   // factored out into `dockOnLeavingFullScreen` for unit testability.
   //
-  // Latest tab/title/url are read through a ref so the listener subscribes
+  // Latest title/url are read through a ref so the listener subscribes
   // exactly once on mount. Without the ref the effect re-subscribes on
-  // every milestone navigation (`activeTab` is a fresh `find()` reference
-  // per render), which churns the history subscription and risks dropping
-  // the very location event that triggered the navigation.
-  const dockInputsRef = useRef({ guideUrl, title, activeTab });
-  dockInputsRef.current = { guideUrl, title, activeTab };
+  // every milestone navigation, which churns the history subscription and
+  // risks dropping the very location event that triggered the navigation.
+  const dockInputsRef = useRef({ guideUrl, title });
+  dockInputsRef.current = { guideUrl, title };
   useEffect(() => {
     const fullScreenPathname = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
     const history = locationService.getHistory();
     const unlisten = history.listen((location: { pathname: string }) => {
-      const { guideUrl: latestGuideUrl, title: latestTitle, activeTab: latestActiveTab } = dockInputsRef.current;
+      const { guideUrl: latestGuideUrl, title: latestTitle } = dockInputsRef.current;
       dockOnLeavingFullScreen({
         pathname: location.pathname,
         fullScreenPathname,
         myPluginId: pluginJson.id,
         guideUrl: latestGuideUrl,
         title: latestTitle,
-        activeTab: latestActiveTab,
       });
     });
     return unlisten;
@@ -225,6 +231,14 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const { hasInteractiveProgress, progressKey } = useGuideProgressState(activeTab);
 
   const handleResetGuide = useContentReset({ model: panel });
+
+  useKeyboardShortcuts({
+    tabs,
+    activeTabId,
+    activeTab: activeTab ?? null,
+    isRecommendationsTab: activeTabId === 'recommendations',
+    model: panel,
+  });
 
   const handleExitToSidebar = useCallback(() => {
     reportAppInteraction(UserInteraction.FullScreenExit, {

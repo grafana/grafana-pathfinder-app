@@ -61,11 +61,18 @@ export interface UseAutoLaunchTutorialOptions {
    * can wait for completion.
    */
   onLaunched?: (detail: AutoLaunchTutorialDetail, openedAsLearningJourney: boolean) => void;
+  /**
+   * When true, the auto-launch event is ignored. Fullscreen uses this to
+   * skip the deep-link handler's delayed `auto-launch-tutorial` dispatch
+   * when a pending-guide handoff already opened the guide on mount.
+   */
+  skipLaunch?: () => boolean;
 }
 
 export function useAutoLaunchTutorial(panel: AutoLaunchPanel, options?: UseAutoLaunchTutorialOptions): void {
   const onIncoming = options?.onIncoming;
   const onLaunched = options?.onLaunched;
+  const skipLaunch = options?.skipLaunch;
 
   useEffect(() => {
     const handleAutoLaunch = (event: Event) => {
@@ -74,6 +81,10 @@ export function useAutoLaunchTutorial(panel: AutoLaunchPanel, options?: UseAutoL
         return;
       }
       onIncoming?.(detail);
+
+      if (skipLaunch?.()) {
+        return;
+      }
 
       const { url, title, type, source } = detail;
       if (!url || !title) {
@@ -98,5 +109,5 @@ export function useAutoLaunchTutorial(panel: AutoLaunchPanel, options?: UseAutoL
     return () => {
       document.removeEventListener('auto-launch-tutorial', handleAutoLaunch);
     };
-  }, [panel, onIncoming, onLaunched]);
+  }, [panel, onIncoming, onLaunched, skipLaunch]);
 }

@@ -5,17 +5,13 @@
  * surface lands on the user's current milestone.
  *
  * Mirrors usePopOutHandoff's structure (editor branch, refusal branch,
- * active-guide handoff) with three full-screen-specific differences:
+ * active-guide handoff) with two full-screen-specific differences:
  *   1. Live session block: when a session is active, surface an alert and
  *      return without switching. A fresh SessionProvider on the new page
  *      would disconnect the session, which is worse than refusing.
  *   2. devtools tabs are refused alongside `recommendations` (not popped
  *      out). Pop-out has no equivalent block because devtools has its
  *      own UX in the floating mode.
- *   3. *No* `snapshotSidebarTabs()` — the sidebar and full-screen surfaces
- *      share intent (same tabs, same active guide), so snapshot/restore
- *      would clobber milestone progress full-screen wrote back to
- *      tabStorage. The forward handoff keeps tab state shared.
  *
  * Critical closure rule (addresses pre-mortem H1):
  *   Reads `model.state.tabs` and `model.state.activeTabId` *inside* the
@@ -84,12 +80,6 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
         });
         // Remember where we came from so explicit Exit can land back on the
         // user's prior Grafana page instead of the plugin home.
-        //
-        // Intentionally NO `snapshotSidebarTabs()` here: the sidebar and
-        // full-screen surfaces share intent (same tabs, same active guide),
-        // so the snapshot/restore would clobber the milestone progress
-        // full-screen wrote back to tabStorage and the user would land at
-        // the prior milestone on dock-back.
         panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
         panelModeManager.setPendingGuide({ title: activeTab.title, type: 'editor' });
         panelModeManager.setMode('fullscreen');
@@ -132,12 +122,6 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
 
       // Remember where we came from so explicit Exit can land back on the
       // user's prior Grafana page instead of the plugin home.
-      //
-      // Intentionally NO `snapshotSidebarTabs()` here: the sidebar and
-      // full-screen surfaces share intent (same tabs, same active guide),
-      // so the snapshot/restore would clobber the milestone progress
-      // full-screen wrote back to tabStorage and the user would land at
-      // the prior milestone on dock-back.
       panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
       panelModeManager.setMode('fullscreen');
       // Encode the tab type in the URL so a refresh / shared link rehydrates

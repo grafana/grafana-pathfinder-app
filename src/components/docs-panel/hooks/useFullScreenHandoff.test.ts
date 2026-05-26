@@ -41,14 +41,12 @@ function dispatchFullScreen() {
 describe('useFullScreenHandoff', () => {
   let setModeSpy: jest.SpyInstance;
   let setPendingGuideSpy: jest.SpyInstance;
-  let snapshotSpy: jest.SpyInstance;
   let capturePriorPathSpy: jest.SpyInstance;
   let publishMock: jest.Mock;
 
   beforeEach(() => {
     setModeSpy = jest.spyOn(panelModeManager, 'setMode').mockImplementation(() => {});
     setPendingGuideSpy = jest.spyOn(panelModeManager, 'setPendingGuide').mockImplementation(() => {});
-    snapshotSpy = jest.spyOn(panelModeManager, 'snapshotSidebarTabs').mockImplementation(() => {});
     capturePriorPathSpy = jest.spyOn(panelModeManager, 'capturePriorPath').mockImplementation(() => {});
     publishMock = jest.fn();
     (getAppEvents as jest.Mock).mockReturnValue({ publish: publishMock });
@@ -84,7 +82,7 @@ describe('useFullScreenHandoff', () => {
     expect(locationService.push).not.toHaveBeenCalled();
   });
 
-  it('editor branch: pushes the bare full-screen route with no doc query, no snapshot', () => {
+  it('editor branch: pushes the bare full-screen route with no doc query', () => {
     const { model } = makeModel({
       tabs: [{ id: 'editor', type: 'editor', title: 'Block editor', baseUrl: 'bundled:editor' }],
       activeTabId: 'editor',
@@ -95,7 +93,6 @@ describe('useFullScreenHandoff', () => {
     expect(setPendingGuideSpy).toHaveBeenCalledWith({ title: 'Block editor', type: 'editor' });
     expect(capturePriorPathSpy).toHaveBeenCalledTimes(1);
     expect(setModeSpy).toHaveBeenCalledWith('fullscreen');
-    expect(snapshotSpy).not.toHaveBeenCalled();
     expect(locationService.push).toHaveBeenCalledWith(expect.stringContaining('/fullscreen'));
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.FullScreenEnter, {
       guide_url: '',
@@ -159,7 +156,6 @@ describe('useFullScreenHandoff', () => {
     });
     expect(capturePriorPathSpy).toHaveBeenCalledTimes(1);
     expect(setModeSpy).toHaveBeenCalledWith('fullscreen');
-    expect(snapshotSpy).not.toHaveBeenCalled();
     const pushedUrl = (locationService.push as jest.Mock).mock.calls[0][0];
     expect(pushedUrl).toContain('doc=');
     expect(pushedUrl).toContain('type=learning-journey');
