@@ -117,24 +117,14 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   /**
    * Transient launch-source carrier for the implied-0th-step alignment check.
+   * Only the docs branch of `loadTab` consumes this; the journey branch
+   * leaves it alone so a source survives a milestone reload.
    *
-   * Set immediately before a `loadTab` call so the loader can read it after
-   * content fetch (in the docs branch) and classify the launch. There are
-   * two ways to populate it:
-   *
-   *   1. Preferred: pass `{ source }` to `openDocsPage` /
-   *      `openLearningJourney`. The wrapper records the source for you,
-   *      keeping the contract visible at the call site.
-   *   2. Legacy: call `_recordAutoLaunchSource(source)` directly, then call
-   *      `openDocsPage` / `openLearningJourney` / `loadTab`. Used where
-   *      (a) a callback signature can't carry the source (e.g.
-   *      `ContextPanel`'s recommender callbacks), or (b) `loadTab` is
-   *      called without going through the public open methods (e.g.
-   *      `useContentReset`'s reload path).
-   *
-   * Only the docs branch of `loadTab` consumes this value; the journey
-   * branch leaves it alone so a recorded source survives a milestone
-   * reload that happens to traverse the journey path.
+   * Two ways to populate:
+   *   1. Preferred: pass `{ source }` to `openDocsPage` / `openLearningJourney`.
+   *   2. Legacy: call `_recordAutoLaunchSource(source)` directly — used by
+   *      callbacks with fixed signatures (`ContextPanel`'s recommender)
+   *      and callers that bypass the open methods (`useContentReset`).
    *
    * Mirrors the consume-once pattern in `sidebarState.consumePendingOpenSource`.
    */
@@ -236,14 +226,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
 
     if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
-      // Tag the loader call so the implied-0th-step evaluator sees
-      // `browser_restore` (an aligned-by-construction source) instead of an
-      // undefined source. Without this, a restored tab whose path no longer
-      // matches its guide's `startingLocation` would incorrectly trigger the
-      // alignment prompt — second-guessing a user mid-tutorial, which is
-      // exactly what `browser_restore` is meant to suppress. The unified
-      // `loadTab` routes to the docs pipeline iff the tab needs it
-      // (matches the old `shouldUseDocsLoader` branch).
+      // `browser_restore` is aligned-by-construction; without it, a restored
+      // tab whose path no longer matches its guide's `startingLocation`
+      // would prompt mid-tutorial.
       this._recordAutoLaunchSource('browser_restore');
       this.loadTab(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
     }
@@ -301,13 +286,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       // eslint-disable-next-line @typescript-eslint/no-deprecated -- internal bridge to legacy flag (consume-once carrier)
       this._recordAutoLaunchSource(options.source);
     }
-    // Drain any auto-launch source that the listener (or options.source above)
-    // recorded before branching here. Learning journeys go through `loadTab`'s
-    // journey branch, which intentionally does not consume the carrier (only
-    // the docs branch does), so without this drain the value would leak to
-    // the next docs-loader open (e.g. a subsequent recommender or tab-restore
-    // open) and contaminate its alignment evaluation. Until learning
-    // journeys grow their own implied-0th-step logic, we just drop the value.
+    // Drain the carrier here because `loadTab`'s journey branch won't.
+    // Without this, the recorded source would leak into the next docs-loader
+    // open (e.g. a later recommender click) and contaminate its alignment
+    // evaluation. Drop until journeys grow their own implied-0th-step logic.
     this._consumeAutoLaunchSource();
 
     const finalTitle = title || 'Learning path';
@@ -341,15 +323,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   /**
-   * Unified tab-loader entry point. Dispatches between the package-aware
-   * docs pipeline and the plain learning-journey pipeline based on the
+   * Single content-loader for all tab opens and reloads. Dispatches to the
+   * docs/package branch or the plain learning-journey branch based on the
    * tab's shape (and the optional `packageInfo` input), then applies the
-   * appropriate enrichment to the loaded content.
-   *
-   * This is the single canonical implementation; all open-* methods and
-   * internal reloads should call this rather than the deprecated
-   * `loadTabContent` / `loadDocsTabContent` pair (which now exist only as
-   * thin shims for legacy callers).
+   * appropriate enrichment.
    */
   public async loadTab(
     tabId: string,
@@ -359,11 +336,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     const tab = this.state.tabs.find((t) => t.id === tabId);
     const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
 
-    // Plain-journey path keeps its empty-URL early return (silent no-op for
-    // backward compat with milestone reloads on tabs whose currentUrl is
-    // momentarily empty). The docs path surfaces an error via
-    // `loadTabContentResult` instead — packageInfo-only opens still resolve
-    // via `fetchPackageById`.
+    // Silent no-op for journey reloads on tabs whose `currentUrl` is
+    // momentarily empty. The docs branch instead surfaces an error via
+    // `loadTabContentResult` — packageInfo-only opens resolve via
+    // `fetchPackageById`.
     if (!needsDocsLoader && (!url || url.trim() === '')) {
       return;
     }
@@ -371,17 +347,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.setTabLoading(tabId);
 
     try {
-      // Consume the launch-source carrier only for the docs branch. The
-      // journey branch has no implied-0th-step alignment evaluator and
-      // consuming here would silently drop a value intended for the next
-      // docs open (e.g. recommender click after a milestone reload).
       const launchSource = needsDocsLoader ? this._consumeAutoLaunchSource() : null;
 
       let packageInfo = options?.packageInfo ?? tab?.packageInfo;
-      // Auto-derive packageInfo when opening a package URL via deep-link or
-      // handoff (no recommender). Without the manifest, downstream rendering
-      // falls through to plain fetchContent and the milestone toolbar never
-      // appears. See package-info-from-url.ts for the URL pattern.
+      // Deep-links / handoffs land here without a manifest. Without this,
+      // downstream rendering falls through to plain fetchContent and the
+      // milestone toolbar never appears.
       if (needsDocsLoader && !packageInfo && isPackageContentUrl(url)) {
         packageInfo = await fetchPackageInfoFromUrl(url);
       }
@@ -411,12 +382,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  /**
-   * Docs/package success strategy: compute pendingAlignment, build the tab
-   * patch, persist via `applyTabLoadSuccess`, and report the alignment
-   * telemetry. Kept private so the lifecycle (set-loading → fetch →
-   * dispatch strategy) stays in `loadTab`.
-   */
+  /** Docs/package success path: alignment evaluation + tab patch + telemetry. */
   private applyDocsTabSuccess(args: {
     tabId: string;
     url: string;
@@ -430,8 +396,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       ? { learningJourney: fetchedContent.metadata.learningJourney }
       : undefined;
 
-    // Implied 0th step: decide whether to prompt the user to navigate to
-    // the guide's declared starting location before step 1 begins.
+    // Implied 0th step: prompt the user to navigate to the guide's declared
+    // starting location before step 1 begins.
     const startingLocation = resolveStartingLocation(url, packageInfo?.packageManifest);
     const currentPath = locationService.getLocation().pathname;
     const evaluation = evaluateAlignment({
@@ -461,16 +427,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           : fetchedContent.type === 'interactive'
             ? 'interactive'
             : refTab?.type,
-      // Persist auto-derived packageInfo so subsequent reloads/restores
-      // skip the manifest fetch and render with the milestone toolbar.
+      // Persist auto-derived packageInfo so reloads/restores skip the
+      // manifest fetch and render with the milestone toolbar.
       packageInfo: packageInfo ?? refTab?.packageInfo,
       pathContext,
       pendingAlignment,
     };
 
-    // Capture the title BEFORE applyTabLoadSuccess so the telemetry payload
-    // doesn't depend on the post-setState state shape (defensive against
-    // future async/batched setState behaviour).
+    // Capture title before setState; defensive against future async/batched
+    // setState behaviour changing what `this.state` reads back as.
     const titleForTelemetry = refTab?.title ?? '';
 
     this.applyTabLoadSuccess(tabId, patch);
@@ -486,11 +451,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  /**
-   * Plain learning-journey success strategy: enrich milestone content from
-   * `pathContext`, persist via `applyTabLoadSuccess`, then update the
-   * cached completion percentage that the recommender reads.
-   */
+  /** Journey success path: milestone-context enrich + cached completion %. */
   private applyJourneyTabSuccess(args: {
     tabId: string;
     url: string;
@@ -529,10 +490,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     this.applyTabLoadSuccess(tabId, { content, currentUrl: url });
 
-    // Update completion percentage for learning journeys.
-    // Use learningJourney.baseUrl (the path's cover page URL) as the storage
-    // key so it matches the key used by context.service.ts when reading
-    // completion via getJourneyCompletionPercentageAsync(rec.contentUrl).
+    // Storage key must be `learningJourney.baseUrl` (the cover page URL) so
+    // it matches what `context.service.ts` reads via
+    // `getJourneyCompletionPercentageAsync(rec.contentUrl)`.
     const updatedTab = this.state.tabs.find((t) => t.id === tabId);
     if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
       const progress = getJourneyProgress(updatedTab.content);
@@ -541,11 +501,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  /**
-   * Tab-lifecycle helper: mark `tabId` as loading and clear any prior error.
-   * Pure setState — does not persist (a tab is only persisted once its load
-   * resolves, success or failure).
-   */
+  /** Mark `tabId` loading; does not persist (only resolved states are saved). */
   private setTabLoading(tabId: string): void {
     const updatedTabs = this.state.tabs.map((t) =>
       t.id === tabId
@@ -560,12 +516,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   /**
-   * Tab-lifecycle helper: apply a success patch to `tabId` (forces
-   * `isLoading: false` and `error: null`), then persist tabs to storage.
-   *
-   * `patch` carries any path-specific enrichment (content, currentUrl,
-   * baseUrl, type, packageInfo, pathContext, pendingAlignment) — the helper
-   * adds the loading-state fields so callers can't forget them.
+   * Apply `patch` to `tabId`, force-clear the loading-state fields so
+   * callers can't forget them, and persist.
    */
   private applyTabLoadSuccess(tabId: string, patch: Partial<LearningJourneyTab>): void {
     const updatedTabs = this.state.tabs.map((t) =>
@@ -582,10 +534,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.saveTabsToStorage();
   }
 
-  /**
-   * Tab-lifecycle helper: mark `tabId` failed with `errorMessage`, then
-   * persist tabs to storage so the error survives a refresh.
-   */
+  /** Mark `tabId` failed and persist so the error survives a refresh. */
   private applyTabLoadFailure(tabId: string, errorMessage: string): void {
     const updatedTabs = this.state.tabs.map((t) =>
       t.id === tabId
@@ -850,8 +799,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Save tabs to storage immediately after creating
     this.saveTabsToStorage();
 
-    // Route through the unified dispatcher so the docs-loader branch
-    // (alignment + manifest auto-derive + launch-source consume) runs.
     this.loadTab(tabId, url, { skipReadyToBegin, packageInfo });
 
     return tabId;
@@ -1079,17 +1026,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // listens for to clear `hasInteractiveProgress` for this content key.
   const handleResetGuide = useContentReset({ model });
 
-  // Helper: Reload active tab content (DRY - was duplicated 3x).
-  // Used by error-retry and dev-mode refresh. Tag the loader call as
-  // `internal_reload` so the implied-0th-step evaluator doesn't prompt the
-  // user on top of content they're already looking at. See
-  // `ALIGNED_BY_CONSTRUCTION_SOURCES` for the semantics.
+  // Reload active tab content (used by error-retry and dev-mode refresh).
+  // Tag as `internal_reload` (aligned-by-construction) so the evaluator
+  // doesn't prompt on top of content the user is already looking at.
   const reloadActiveTab = useCallback(
     (tab: LearningJourneyTab) => {
-      // The unified `loadTab` dispatches on `shouldUseDocsLoader` internally.
-      // `_recordAutoLaunchSource` only matters for the docs branch — the
-      // plain branch never consumes it, so an unconditional record is a
-      // no-op when not needed.
       model._recordAutoLaunchSource('internal_reload');
       model.loadTab(tab.id, tab.currentUrl || tab.baseUrl);
     },
