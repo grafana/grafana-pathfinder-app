@@ -32,7 +32,7 @@ import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { CombinedLearningJourneyPanel } from '../docs-panel';
 import { cleanDocsUrl } from '../utils';
 
-export type MilestoneToolbarSurface = 'sidebar' | 'fullscreen';
+export type MilestoneToolbarSurface = 'sidebar' | 'fullscreen' | 'floating';
 
 export interface LearningJourneyMilestoneToolbarProps {
   panel: CombinedLearningJourneyPanel;
@@ -163,10 +163,14 @@ export function LearningJourneyMilestoneToolbar({
 
   // Distinguish surfaces in analytics for the external-link "Open" button.
   // Arrow-nav analytics intentionally stays on `'milestone_progress_bar'`
-  // for both surfaces — the sidebar / fullscreen split is only meaningful
-  // for the explicit "Open in browser" outbound, not for in-guide nav.
+  // for all surfaces — the per-surface split is only meaningful for the
+  // explicit "Open in browser" outbound, not for in-guide nav.
   const openInteractionLocation =
-    surface === 'fullscreen' ? 'full_screen_milestone_progress_bar' : 'milestone_progress_bar';
+    surface === 'fullscreen'
+      ? 'full_screen_milestone_progress_bar'
+      : surface === 'floating'
+        ? 'floating_panel_milestone_progress_bar'
+        : 'milestone_progress_bar';
 
   return (
     <div className={styles.milestoneProgress}>

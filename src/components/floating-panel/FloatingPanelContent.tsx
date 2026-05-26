@@ -6,29 +6,29 @@ import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import type { RawContent } from '../../types/content.types';
 import type { LearningJourneyTab, PendingAlignment } from '../../types/content-panel.types';
-import { AlignmentPrompt } from '../docs-panel/components';
+import {
+  AlignmentPrompt,
+  LearningJourneyMilestoneToolbar,
+  type MilestoneToolbarSurface,
+} from '../docs-panel/components';
 import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
 import { useLinkClickHandler } from '../docs-panel/link-handler.hook';
-import type { OpenDocsOptions, OpenLearningJourneyOptions } from '../docs-panel/types';
-
-/**
- * Subset of CombinedLearningJourneyPanel needed by useLinkClickHandler.
- * Mirrors the inline shape the hook declares so we can pass `panel` directly.
- */
-export interface FloatingPanelContentModel {
-  loadTab: (tabId: string, url: string) => Promise<void>;
-  /** @deprecated Internal; routed via `loadTab`. */
-  loadTabContent: (tabId: string, url: string) => void | Promise<void>;
-  openLearningJourney: (url: string, title?: string, options?: OpenLearningJourneyOptions) => void | Promise<string>;
-  openDocsPage?: (url: string, title?: string, options?: OpenDocsOptions) => void | Promise<string>;
-  getActiveTab: () => LearningJourneyTab | null;
-  navigateToNextMilestone: () => void;
-  navigateToPreviousMilestone: () => void;
-  canNavigateNext: () => boolean;
-  canNavigatePrevious: () => boolean;
-}
+import type { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
+import { getFloatingPanelStyles } from './floating-panel.styles';
 
 interface FloatingPanelContentProps {
+  /** Toolbar inputs — when omitted (e.g. recommendations tab) the toolbar self-hides. */
+  hasInteractiveProgress?: boolean;
+  progressKey?: string | null;
+  onResetGuide?: (progressKey: string, tab: LearningJourneyTab) => Promise<void> | void;
+  /**
+   * Which surface this content is rendering on — drives the analytics
+   * `interaction_location` for the toolbar's "Open" button. Defaults to
+   * `'floating'` since this component's primary home is the floating panel;
+   * the full-screen surface renders its own toolbar separately and omits the
+   * toolbar props, so the default never leaks into fullscreen analytics.
+   */
+  surface?: MilestoneToolbarSurface;
   /** The guide content to render */
   content: RawContent | null;
   /** Called when a guide completes all interactive sections */
@@ -51,12 +51,11 @@ interface FloatingPanelContentProps {
    */
   activeTab: LearningJourneyTab | null;
   /**
-   * Panel model used by the link click handler for navigation actions
+   * Panel model — used by the link click handler for navigation actions
    * (`loadTabContent`, milestone navigation, opening docs/journeys from
-   * embedded links, etc.). Without this, content links and the
-   * "Ready to Begin" CTA on the cover page have no handler.
+   * embedded links, etc.) AND by the milestone toolbar for prev/next + reset.
    */
-  model: FloatingPanelContentModel;
+  model: CombinedLearningJourneyPanel;
 }
 
 /**
@@ -74,12 +73,17 @@ export function FloatingPanelContent({
   onAlignmentCancel,
   activeTab,
   model,
+  hasInteractiveProgress,
+  progressKey,
+  onResetGuide,
+  surface = 'floating',
 }: FloatingPanelContentProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
+  const floatingStyles = useStyles2(getFloatingPanelStyles);
   // `useTheme2()` is the canonical hook for grabbing the raw theme; the
   // previous `useStyles2((t) => t)` pattern worked but mis-used the
   // CSS-in-JS hook just for theme access.
@@ -119,9 +123,27 @@ export function FloatingPanelContent({
 
   const contentClassName = `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`;
 
+  // Only render the embedded milestone toolbar when the caller passes the
+  // toolbar inputs. The full-screen surface renders its own toolbar in the
+  // layout's sub-header slot and omits these props, which prevents a
+  // double-render of the toolbar on that surface.
+  const showEmbeddedToolbar = onResetGuide !== undefined && progressKey !== undefined && activeTab !== null;
+
   return (
     <AlignmentPendingContext.Provider value={alignmentPendingValue}>
       <div ref={contentRef}>
+        {showEmbeddedToolbar && activeTab && (
+          <LearningJourneyMilestoneToolbar
+            panel={model}
+            activeTab={activeTab}
+            surface={surface}
+            contentRoot={contentRef}
+            actionButtonClassName={floatingStyles.secondaryActionButton}
+            hasInteractiveProgress={!!hasInteractiveProgress}
+            progressKey={progressKey ?? null}
+            onResetGuide={onResetGuide!}
+          />
+        )}
         {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
           <div style={{ padding: 16 }}>
             <AlignmentPrompt

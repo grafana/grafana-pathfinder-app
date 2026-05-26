@@ -1,6 +1,9 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { locationService } from '@grafana/runtime';
+import { ThemeContext } from '@grafana/data';
+import { config, locationService } from '@grafana/runtime';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
+import { useContentReset } from '../docs-panel/hooks';
+import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
@@ -32,6 +35,7 @@ const EDITOR_FLOATING_TITLE = 'Guide editor';
  */
 export function FloatingPanelManager() {
   const [mode, setMode] = useState<PanelMode>(() => panelModeManager.getMode());
+  const theme = useGrafanaTheme();
 
   // Listen for mode changes
   useEffect(() => {
@@ -49,11 +53,47 @@ export function FloatingPanelManager() {
     return null;
   }
 
+  // Wrap in ThemeContext so `useTheme2` / `useStyles2` inside the popout see
+  // Grafana's current theme. Required because module.tsx mounts this manager
+  // via createCompatRoot, outside Grafana's GrafanaContextProvider tree, so
+  // the default theme context would otherwise apply.
   return (
-    <PathfinderFeatureProvider>
-      <FloatingPanelInner />
-    </PathfinderFeatureProvider>
+    <ThemeContext.Provider value={theme}>
+      <PathfinderFeatureProvider>
+        <FloatingPanelInner />
+      </PathfinderFeatureProvider>
+    </ThemeContext.Provider>
   );
+}
+
+/**
+ * Tracks Grafana's active theme so the standalone floating-panel React root
+ * stays in sync when the user toggles light/dark mode.
+ *
+ * Grafana doesn't expose a public theme-change event for plugins, but it
+ * toggles `theme-dark` / `theme-light` classes on <body> as part of the
+ * switch. Observing that class mutation lets us re-read `config.theme2`
+ * without a page reload.
+ */
+function useGrafanaTheme() {
+  const [theme, setTheme] = useState(() => config.theme2);
+
+  useEffect(() => {
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.attributeName === 'class') {
+          if (config.theme2 !== theme) {
+            setTheme(config.theme2);
+          }
+          break;
+        }
+      }
+    });
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, [theme]);
+
+  return theme;
 }
 
 /**
@@ -164,7 +204,23 @@ function FloatingPanelInner() {
     }
   }, [restorationDone, hasActiveGuide, isEditorTab]);
 
-  useAlignmentReevaluation(panel, activeTabId, activeTab);
+  const { hasInteractiveProgress, progressKey } = useAlignmentReevaluation(panel, activeTabId, activeTab);
+
+  // Drives the toolbar's "Reset guide" button — same hook the sidebar and
+  // full-screen surfaces use, so reset semantics stay identical across all
+  // three surfaces.
+  const handleResetGuide = useContentReset({ model: panel });
+
+  // Wire Alt+ArrowLeft / Alt+ArrowRight milestone navigation in the popout.
+  // Listeners attach to `document`, so they fire from anywhere — but the hook
+  // already skips text-editable focus targets to preserve native word-jump.
+  useKeyboardShortcuts({
+    tabs,
+    activeTabId,
+    activeTab: activeTab ?? null,
+    isRecommendationsTab: activeTabId === 'recommendations',
+    model: panel,
+  });
   // Prefer `currentUrl` (the milestone the user is reading) so when the user
   // goes from floating → fullscreen via `handleSwitchToFullScreen`, or copies
   // a shareable link, the milestone position carries through. `baseUrl` is
@@ -305,6 +361,9 @@ function FloatingPanelInner() {
           onAlignmentCancel={activeTab ? () => panel.dismissAlignment(activeTab.id) : undefined}
           activeTab={activeTab ?? null}
           model={panel}
+          hasInteractiveProgress={hasInteractiveProgress}
+          progressKey={progressKey}
+          onResetGuide={handleResetGuide}
         />
       )}
     </FloatingPanel>

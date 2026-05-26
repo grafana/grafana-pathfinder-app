@@ -155,4 +155,40 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
   pillWrapper: css({
     position: 'relative',
   }),
+
+  // Open / Reset action buttons inside the milestone toolbar. Visual parity
+  // with the sidebar and full-screen `secondaryActionButton`.
+  secondaryActionButton: css({
+    backgroundColor: 'transparent',
+    color: theme.colors.text.primary,
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: theme.shape.radius.default,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(0.5),
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.strong,
+      boxShadow: theme.shadows.z1,
+    },
+    '& svg': {
+      width: '12px',
+      height: '12px',
+      flexShrink: 0,
+    },
+    // Container query mirroring the sidebar's `secondaryActionButton`:
+    // collapse to icon-only when the toolbar gets narrow.
+    '@container (max-width: 360px)': {
+      padding: theme.spacing(0.5),
+      '& > span': {
+        display: 'none',
+      },
+    },
+  }),
 });
