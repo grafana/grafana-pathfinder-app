@@ -1,11 +1,10 @@
 /**
  * Tests for CombinedLearningJourneyPanel implied-0th-step alignment behavior.
  *
- * Verifies that `loadDocsTabContent` sets `pendingAlignment` when the user's
- * current path doesn't match the guide's `startingLocation` AND the launch
- * source isn't aligned-by-construction; that `confirmAlignment` navigates
- * and clears state; and that `dismissAlignment` clears state without
- * navigating.
+ * The prompt is evaluated once at launch (in `loadDocsTabContent`) and
+ * resolved by `confirmAlignment` / `dismissAlignment`. There is no reactive
+ * re-evaluation on location changes — guides that step the user across
+ * pages must not re-surface the prompt mid-flow.
  */
 
 // ---------------------------------------------------------------------------
@@ -565,41 +564,16 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     });
   });
 
-  describe('reevaluateAlignment', () => {
-    it('sets pendingAlignment when the user navigates away from a previously aligned start', async () => {
-      mockGetLocation.mockReturnValue({ pathname: '/connections', search: '' });
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
+  // Regression: a guide whose steps move the user across Grafana pages (e.g.
+  // `/a/foo/fleet-management` -> `/a/foo/alloy`) must NOT re-surface the
+  // alignment prompt after the launch decision was resolved.
+  describe('alignment prompt is one-shot per launch', () => {
+    it('does not expose a reevaluateAlignment method on the panel', () => {
       const panel = new CombinedLearningJourneyPanel();
-
-      // Initial load while already aligned — no prompt.
-      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
-        packageManifest: { startingLocation: '/connections' },
-      });
-      await new Promise((r) => setTimeout(r, 0));
-      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
-      mockReportAppInteraction.mockClear();
-
-      // User navigates somewhere unrelated — re-evaluator should surface a prompt.
-      panel.reevaluateAlignment(tabId, '/dashboards');
-
-      const tab = getTab(panel, tabId);
-      expect(tab.pendingAlignment).toBeDefined();
-      expect(tab.pendingAlignment.startingLocation).toBe('/connections');
-      expect(tab.pendingAlignment.currentPath).toBe('/dashboards');
-      expect(tab.pendingAlignment.launchSource).toBe('location_change');
-
-      const shown = mockReportAppInteraction.mock.calls.find(([type]) => type === 'alignment_prompt_shown');
-      expect(shown).toBeDefined();
-      expect(shown![1]).toEqual(
-        expect.objectContaining({
-          launch_source: 'location_change',
-          current_path: '/dashboards',
-          starting_location: '/connections',
-        })
-      );
+      expect((panel as unknown as { reevaluateAlignment?: unknown }).reevaluateAlignment).toBeUndefined();
     });
 
-    it('clears pendingAlignment when the user navigates back into the starting location', async () => {
+    it('keeps pendingAlignment undefined after dismissal even if the user navigates away later', async () => {
       mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
 
@@ -609,49 +583,16 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       await new Promise((r) => setTimeout(r, 0));
       expect(getTab(panel, tabId).pendingAlignment).toBeDefined();
 
-      panel.reevaluateAlignment(tabId, '/connections/datasources');
+      panel.dismissAlignment(tabId);
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+
+      // Simulate the user navigating to several unrelated pages mid-guide —
+      // no path or hook exists to flip pendingAlignment back on.
+      mockGetLocation.mockReturnValue({ pathname: '/dashboards', search: '' });
+      mockGetLocation.mockReturnValue({ pathname: '/a/grafana-collector-app/alloy', search: '' });
+      mockGetLocation.mockReturnValue({ pathname: '/explore/metrics', search: '' });
 
       expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
-    });
-
-    it('is a no-op when the tab does not exist', () => {
-      const panel = new CombinedLearningJourneyPanel();
-      panel.reevaluateAlignment('does-not-exist', '/anywhere');
-      expect(mockReportAppInteraction.mock.calls.find(([type]) => type === 'alignment_prompt_shown')).toBeUndefined();
-    });
-
-    it('is a no-op when the guide has no resolvable startingLocation', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
-      const panel = new CombinedLearningJourneyPanel();
-
-      const tabId = await openTabAndLoad(
-        panel,
-        'https://interactive-learning.grafana.net/foo/content.json',
-        'home_page'
-      );
-      await new Promise((r) => setTimeout(r, 0));
-
-      mockReportAppInteraction.mockClear();
-      panel.reevaluateAlignment(tabId, '/anywhere');
-
-      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
-      expect(mockReportAppInteraction.mock.calls.find(([type]) => type === 'alignment_prompt_shown')).toBeUndefined();
-    });
-
-    it('does not re-fire telemetry when the tab is already pending and still misaligned', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
-      const panel = new CombinedLearningJourneyPanel();
-
-      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
-        packageManifest: { startingLocation: '/connections' },
-      });
-      await new Promise((r) => setTimeout(r, 0));
-      mockReportAppInteraction.mockClear();
-
-      // Move from one misaligned path to another — still pending, no new prompt.
-      panel.reevaluateAlignment(tabId, '/dashboards');
-
-      expect(mockReportAppInteraction.mock.calls.find(([type]) => type === 'alignment_prompt_shown')).toBeUndefined();
     });
   });
 
@@ -693,145 +634,6 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       expect(
         mockReportAppInteraction.mock.calls.find(([type]) => type === 'alignment_prompt_dismissed')
       ).toBeUndefined();
-    });
-  });
-
-  // F3 regression: confirmAlignment must wrap its `locationService.push` with
-  // begin/endInteractiveNavigation so the reactive `useAlignmentReevaluation`
-  // listener (which fires synchronously during `push`) skips itself instead
-  // of clearing `pendingAlignment` ahead of `confirmAlignment`'s own clear
-  // (a race that surfaces a "Fix this" flash on the next step).
-  describe('confirmAlignment — interactive-navigation guard', () => {
-    let interactiveNav: typeof import('../../global-state/interactive-navigation');
-
-    beforeAll(() => {
-      // Imported lazily so the mock setup at the top of the file doesn't
-      // intercept it (it isn't in any of the jest.mock(...) calls above).
-      interactiveNav = jest.requireActual('../../global-state/interactive-navigation');
-    });
-
-    afterEach(() => {
-      interactiveNav.__resetInteractiveNavigationForTesting();
-    });
-
-    it('marks the navigation as interactive while pushing the new location', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
-      const panel = new CombinedLearningJourneyPanel();
-
-      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
-        packageManifest: { startingLocation: '/connections' },
-      });
-      await new Promise((r) => setTimeout(r, 0));
-
-      let inProgressDuringPush = false;
-      mockLocationServicePush.mockImplementationOnce(() => {
-        // Capture the flag state at the precise moment a `history.listen`
-        // callback would fire. The fix relies on this being true.
-        inProgressDuringPush = interactiveNav.isInteractiveNavigationInProgress();
-      });
-
-      await panel.confirmAlignment(tabId);
-
-      expect(inProgressDuringPush).toBe(true);
-      // And after confirmAlignment returns, the counter must be back to 0
-      // (otherwise subsequent genuine user navigations would be silently
-      // suppressed forever).
-      expect(interactiveNav.isInteractiveNavigationInProgress()).toBe(false);
-    });
-
-    it('still clears pendingAlignment AND balances the nav counter when locationService.push throws', async () => {
-      // Defensive test for two finally-block invariants:
-      //   1. The interactive-navigation counter must be balanced even on the
-      //      failure path (a leak would silently suppress every later user
-      //      navigation in `useAlignmentReevaluation`).
-      //   2. `pendingAlignment` must be cleared even on the failure path —
-      //      `AlignmentPromptConfirmed` telemetry has already fired (above
-      //      the try/finally), so leaving the prompt visible would be
-      //      inconsistent with the recorded event and force the user to
-      //      click "Continue here" to dismiss a prompt for an action they
-      //      already confirmed.
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
-      const panel = new CombinedLearningJourneyPanel();
-
-      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
-        packageManifest: { startingLocation: '/connections' },
-      });
-      await new Promise((r) => setTimeout(r, 0));
-      // Sanity: the prompt is up before we attempt the (failing) confirm.
-      expect(getTab(panel, tabId).pendingAlignment).toBeDefined();
-
-      mockLocationServicePush.mockImplementationOnce(() => {
-        throw new Error('simulated push failure');
-      });
-
-      await expect(panel.confirmAlignment(tabId)).rejects.toThrow('simulated push failure');
-
-      // Counter balanced via the try/finally pair.
-      expect(interactiveNav.isInteractiveNavigationInProgress()).toBe(false);
-      // Prompt cleared via the same finally — UI now matches the
-      // AlignmentPromptConfirmed event we already fired.
-      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
-      // And the telemetry was indeed fired before the throw.
-      const confirmed = mockReportAppInteraction.mock.calls.find(([type]) => type === 'alignment_prompt_confirmed');
-      expect(confirmed).toBeDefined();
-    });
-  });
-
-  // F4 regression: when the user wanders between misaligned pages while the
-  // prompt is already showing, `currentPath` and `decidedAt` must update so
-  // a subsequent confirm/dismiss telemetry payload reflects where the user
-  // actually was when they decided — not where they were when the prompt
-  // first appeared (potentially minutes ago).
-  describe('reevaluateAlignment — stale currentPath refresh', () => {
-    it('refreshes currentPath and decidedAt on misaligned-and-already-pending re-evaluation', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
-      const panel = new CombinedLearningJourneyPanel();
-
-      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
-        packageManifest: { startingLocation: '/connections' },
-      });
-      await new Promise((r) => setTimeout(r, 0));
-      const initialPending = getTab(panel, tabId).pendingAlignment;
-      expect(initialPending).toBeDefined();
-      expect(initialPending.currentPath).toBe('/explore');
-      const initialDecidedAt = initialPending.decidedAt;
-
-      // Force a clock advance so decidedAt change is observable.
-      const dateSpy = jest.spyOn(Date, 'now').mockReturnValue(initialDecidedAt + 1000);
-      try {
-        panel.reevaluateAlignment(tabId, '/dashboards');
-      } finally {
-        dateSpy.mockRestore();
-      }
-
-      const updated = getTab(panel, tabId).pendingAlignment;
-      expect(updated).toBeDefined();
-      expect(updated.currentPath).toBe('/dashboards'); // refreshed
-      expect(updated.startingLocation).toBe('/connections'); // unchanged
-      expect(updated.launchSource).toBe('home_page'); // unchanged
-      expect(updated.decidedAt).toBe(initialDecidedAt + 1000); // refreshed
-    });
-
-    it('does not refresh decidedAt if the user re-evaluates against the same misaligned path', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
-      const panel = new CombinedLearningJourneyPanel();
-
-      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
-        packageManifest: { startingLocation: '/connections' },
-      });
-      await new Promise((r) => setTimeout(r, 0));
-      const initialDecidedAt = getTab(panel, tabId).pendingAlignment.decidedAt;
-
-      const dateSpy = jest.spyOn(Date, 'now').mockReturnValue(initialDecidedAt + 5000);
-      try {
-        // Same path the prompt was originally pinned to (`/explore`); should be a no-op.
-        panel.reevaluateAlignment(tabId, '/explore');
-      } finally {
-        dateSpy.mockRestore();
-      }
-
-      // Unchanged: no setState, no telemetry
-      expect(getTab(panel, tabId).pendingAlignment.decidedAt).toBe(initialDecidedAt);
     });
   });
 

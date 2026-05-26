@@ -4,7 +4,6 @@ import logoSvg from '../img/logo.svg';
 import { isElementVisible, getScrollParent, getStickyHeaderOffset, getVisibleHighlightTarget } from '../lib/dom';
 import { sanitizeDocumentationHTML } from '../security';
 import { applyE2ECommentBoxAttributes } from './e2e-attributes';
-import { beginInteractiveNavigation, endInteractiveNavigation } from '../global-state/interactive-navigation';
 
 export interface NavigationOptions {
   checkContext?: boolean;
@@ -1282,14 +1281,7 @@ export class NavigationManager {
    */
   async fixLocationRequirement(targetPath: string): Promise<void> {
     const { locationService } = await import('@grafana/runtime');
-    // Tag the push so `useAlignmentReevaluation` skips reevaluating — the
-    // user clicked "Fix this", which is guide-driven, not user navigation.
-    beginInteractiveNavigation();
-    try {
-      locationService.push(targetPath);
-    } finally {
-      endInteractiveNavigation();
-    }
+    locationService.push(targetPath);
     // Wait for navigation to complete and React to update
     await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.navigation));
   }

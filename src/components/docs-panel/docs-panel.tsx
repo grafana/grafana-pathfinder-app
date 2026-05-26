@@ -29,7 +29,7 @@ import { isDevModeEnabled } from '../../utils/dev-mode';
 
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
-import { useAlignmentReevaluation, useAutoLaunchTutorial } from '../../hooks';
+import { useGuideProgressState, useAutoLaunchTutorial } from '../../hooks';
 import {
   fetchContent,
   getNextMilestoneUrlFromContent,
@@ -52,13 +52,7 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import {
-  evaluateAlignment,
-  pathMatchesStartingLocation,
-  resolveStartingLocation,
-  type LaunchSource,
-} from '../../recovery';
-import { beginInteractiveNavigation, endInteractiveNavigation } from '../../global-state/interactive-navigation';
+import { evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
@@ -489,10 +483,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  /**
-   * Confirm the implied-0th-step alignment prompt. Navigates to the guide's
-   * `startingLocation` and clears the pending state so step 1 can mount.
-   */
   public async confirmAlignment(tabId: string): Promise<void> {
     const tab = this.state.tabs.find((t) => t.id === tabId);
     const pending = tab?.pendingAlignment;
@@ -509,44 +499,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       latency_ms: Date.now() - pending.decidedAt,
     });
 
-    // Tag this push as a guide-driven navigation so `useAlignmentReevaluation`'s
-    // `history.listen` callback (which fires synchronously during `push`) skips
-    // its own clear path. Without this tag, the listener observes the now-aligned
-    // pathname, calls `reevaluateAlignment`, and silently clears
-    // `pendingAlignment` BEFORE we do — flipping the AlignmentPendingContext
-    // gate off while the route transition is still in flight. Step-1's checker
-    // then runs against a pre-transition DOM and may flash a spurious
-    // "Fix this" / "waiting for element" state.
-    //
-    // The flag pair is the structural fix; the prior 100ms `setTimeout` was a
-    // band-aid that masked the same race on most devices.
-    //
-    // The pendingAlignment clear lives in `finally` so it runs whether the
-    // push succeeded or threw. We've already fired the
-    // `AlignmentPromptConfirmed` telemetry above — leaving the prompt
-    // visible after a thrown push would be inconsistent with the recorded
-    // event and would force the user to click "Continue here" separately
-    // to dismiss a prompt for an action they already confirmed. The
-    // ordering (endInteractiveNavigation before setState) preserves the
-    // listener-race protection: by the time the gate flips off via
-    // setState, the synchronous push (and its synchronous `history.listen`
-    // callback) has already settled.
-    beginInteractiveNavigation();
     try {
       locationService.push(pending.startingLocation);
     } finally {
-      endInteractiveNavigation();
       this.setState({
         tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: undefined } : t)),
       });
     }
   }
 
-  /**
-   * Dismiss the implied-0th-step alignment prompt without navigating. Step 1
-   * mounts and the existing `on-page` `Fix this` will fire if the guide
-   * requires it.
-   */
   public dismissAlignment(tabId: string): void {
     const tab = this.state.tabs.find((t) => t.id === tabId);
     const pending = tab?.pendingAlignment;
@@ -566,88 +527,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.setState({
       tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: undefined } : t)),
     });
-  }
-
-  /**
-   * Re-evaluate alignment for a tab on a location change. Sets/clears
-   * `pendingAlignment` based on whether the user's new path still matches
-   * the guide's `startingLocation`. Caller is responsible for the "user
-   * hasn't made progress yet" gate; this method just compares paths.
-   *
-   * Source classification is bypassed (not at launch time anymore) — any
-   * misalignment during the no-progress phase prompts.
-   */
-  public reevaluateAlignment(tabId: string, currentPath: string): void {
-    const tab = this.state.tabs.find((t) => t.id === tabId);
-    // Only re-evaluate tabs with loaded content; skip recommendations / blank tabs.
-    if (!tab || !tab.content) {
-      return;
-    }
-
-    const guideUrl = tab.baseUrl || tab.currentUrl;
-    const startingLocation = resolveStartingLocation(guideUrl, tab.packageInfo?.packageManifest);
-    if (!startingLocation) {
-      return;
-    }
-
-    const isAligned = pathMatchesStartingLocation(currentPath, startingLocation);
-    const currentlyPending = !!tab.pendingAlignment;
-
-    if (isAligned && currentlyPending) {
-      // User navigated to (or into) the starting location — clear silently.
-      this.setState({
-        tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: undefined } : t)),
-      });
-      return;
-    }
-
-    if (!isAligned && !currentlyPending) {
-      // Same fullscreen guard as the load-time path: the prompt has no
-      // useful action to offer while the user is on the fullscreen route.
-      if (panelModeManager.getMode() === 'fullscreen') {
-        return;
-      }
-      // User drifted away from a previously-aligned start. Surface the prompt.
-      const next = {
-        startingLocation,
-        currentPath,
-        launchSource: 'location_change',
-        decidedAt: Date.now(),
-      };
-      this.setState({
-        tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: next } : t)),
-      });
-      reportAppInteraction(UserInteraction.AlignmentPromptShown, {
-        guide_url: guideUrl,
-        guide_title: tab.title,
-        launch_source: next.launchSource,
-        current_path: currentPath,
-        starting_location: startingLocation,
-      });
-      return;
-    }
-
-    if (!isAligned && currentlyPending && tab.pendingAlignment!.currentPath !== currentPath) {
-      // User wandered between misaligned pages while the prompt was already
-      // showing. Don't re-fire the `alignment_prompt_shown` telemetry (the
-      // user has been seeing the prompt the whole time), but do refresh
-      // `currentPath` and `decidedAt` so that:
-      //   - if they later confirm/dismiss, the telemetry payload reflects the
-      //     path they were on when they decided (not where they were when the
-      //     prompt first appeared);
-      //   - `latency_ms` measures responsiveness since the most recent surface
-      //     of the prompt's relevance, not since the original launch — which
-      //     could be minutes ago after they explored unrelated pages.
-      const updated = {
-        ...tab.pendingAlignment!,
-        currentPath,
-        decidedAt: Date.now(),
-      };
-      this.setState({
-        tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, pendingAlignment: updated } : t)),
-      });
-    }
-    // Aligned-and-not-pending is a no-op.
   }
 
   public closeTab(tabId: string) {
@@ -918,12 +797,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           startingLocation,
           launchSource: launchSource ?? undefined,
         });
-        // Suppress the alignment prompt while the panel is in fullscreen
-        // mode. The "Navigate" button would `locationService.push(...)` the
-        // entire app away from the fullscreen page, and there's no Grafana
-        // surface inside fullscreen to align against anyway. When the user
-        // exits back to sidebar, `useAlignmentReevaluation`'s location
-        // listener re-runs the gate against the new pathname.
         const isFullScreenMode = panelModeManager.getMode() === 'fullscreen';
         const pendingAlignment =
           !isFullScreenMode && evaluation.shouldPrompt && startingLocation
@@ -1188,11 +1061,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     [alignmentPendingIsPending, alignmentPendingStartingLocation]
   );
 
-  // Reactive alignment re-evaluation + interactive progress tracking.
   // MUST use currentUrl || baseUrl (not content.url) for the progress key, to match
   // getContentKey() in interactive sections. content.url includes "/content.json"
   // which would mismatch saved progress.
-  const { hasInteractiveProgress, progressKey } = useAlignmentReevaluation(model, activeTabId, activeTab);
+  const { hasInteractiveProgress, progressKey } = useGuideProgressState(activeTab);
 
   const styles = useStyles2(getComponentStyles);
   const interactiveStyles = useStyles2(getInteractiveStyles);
@@ -1230,7 +1102,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   );
 
   // Content reset hook - handles complex storage/state/reload orchestration.
-  // It dispatches `interactive-progress-cleared`, which `useAlignmentReevaluation`
+  // It dispatches `interactive-progress-cleared`, which `useGuideProgressState`
   // listens for to clear `hasInteractiveProgress` for this content key.
   const handleResetGuide = useContentReset({ model });
 

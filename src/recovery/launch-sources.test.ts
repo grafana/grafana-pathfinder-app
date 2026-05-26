@@ -42,7 +42,6 @@ const ALL_LAUNCH_SOURCES = [
   'link_interception',
   'queued_link',
   'content_link',
-  'location_change',
   'block_editor_preview',
   'custom_guide',
 ] as const satisfies readonly LaunchSource[];
