@@ -43,10 +43,8 @@ export type ProgressEventDetail =
       hasProgress: boolean;
     }
   | {
-      // Document-wide aggregate progress for the "X of Y steps" panel chip.
-      // Emitted by `use-document-step-progress` on section mount, step
-      // start/stop, and step completion. `documentStepIndex` is omitted
-      // while no step is currently executing.
+      // Document-wide aggregate for the "X of Y steps" panel chip.
+      // `documentStepIndex` is omitted when no step is executing.
       kind: 'document';
       contentKey: string;
       sectionId: string;

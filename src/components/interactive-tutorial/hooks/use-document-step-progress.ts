@@ -1,25 +1,11 @@
 /**
- * `useDocumentStepProgress` — owns the document-wide step-progress
- * publishing side-effect.
+ * Owns document-wide step-progress publishing (Pattern J contract surface).
  *
- * Pattern J (contract surface) per the High-Risk Refactor Guidelines:
- * this hook owns two window globals and one unified-channel event
- * that the rest of the plugin reads.
- *
- *   - `window.__DocsPluginTotalSteps` — total step count across the
- *     document. Read by `src/lib/analytics.ts`.
- *   - `window.__DocsPluginCurrentStepIndex` — currently-executing
- *     step's document-wide index. Read by `src/lib/analytics.ts`.
- *   - `pathfinder:progress` event with `kind: 'document'` — published
- *     whenever execution state or completion changes. Payload:
- *     `{ kind: 'document', contentKey, sectionId, totalSteps,
- *        documentStepIndex?, completedCount }`. Consumed by
- *     `src/hooks/useStepProgressFromEvents.ts` to drive the
- *     FullScreenLayout / FloatingPanel progress chip.
- *
- * The hook performs a pure side-effect: no return value.
- * Behaviour and payload shapes match the pre-extraction effect
- * exactly — pinned by the contracts tripwire.
+ * Writes two window globals read by `lib/analytics`
+ * (`__DocsPluginTotalSteps`, `__DocsPluginCurrentStepIndex`) and emits
+ * `pathfinder:progress` with `kind: 'document'`, consumed by
+ * `useStepProgressFromEvents` to drive the panel progress chip.
+ * Payload shape pinned by the contracts tripwire.
  */
 
 import { useEffect } from 'react';

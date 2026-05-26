@@ -1141,9 +1141,8 @@ export function InteractiveSection({
   }, [sectionId, stepComponents.length]);
 
   // Document-wide step progress (window globals + `pathfinder:progress`
-  // `kind: 'document'` payload) is owned by `useDocumentStepProgress`.
-  // Pattern J: contract-surface ownership move; the contracts tripwire
-  // pins the payload shape across the seam.
+  // kind:'document') is owned by `useDocumentStepProgress`. Pattern J
+  // contract surface — payload shape pinned by the contracts tripwire.
   useDocumentStepProgress({
     sectionId,
     currentlyExecutingStep,
