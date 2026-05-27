@@ -32,7 +32,8 @@ describe('mergeBlocksToMultistep / mergeBlocksToGuided', () => {
   it('merges interactive blocks into a multistep block, mapping content to tooltip', () => {
     const guide: JsonGuide = { id: 'g', title: 'T', blocks: [mkInteractive('step A'), mkInteractive('step B')] };
     const { result } = renderHook(() => useBlockEditor({ initialGuide: guide }));
-    const [id0, id1] = result.current.state.blocks.map((b) => b.id);
+    const id0 = result.current.state.blocks[0]!.id!;
+    const id1 = result.current.state.blocks[1]!.id!;
 
     act(() => result.current.mergeBlocksToMultistep([id0, id1]));
 
@@ -49,7 +50,8 @@ describe('mergeBlocksToMultistep / mergeBlocksToGuided', () => {
   it('merges interactive blocks into a guided block, mapping content to description (not tooltip)', () => {
     const guide: JsonGuide = { id: 'g', title: 'T', blocks: [mkInteractive('step A'), mkInteractive('step B')] };
     const { result } = renderHook(() => useBlockEditor({ initialGuide: guide }));
-    const [id0, id1] = result.current.state.blocks.map((b) => b.id);
+    const id0 = result.current.state.blocks[0]!.id!;
+    const id1 = result.current.state.blocks[1]!.id!;
 
     act(() => result.current.mergeBlocksToGuided([id0, id1]));
 
@@ -63,11 +65,15 @@ describe('mergeBlocksToMultistep / mergeBlocksToGuided', () => {
     const existing: JsonMultistepBlock = {
       type: 'multistep',
       content: 'existing',
-      steps: [{ action: 'button', reftarget: '.x' }, { action: 'navigate', reftarget: '/y' }],
+      steps: [
+        { action: 'button', reftarget: '.x' },
+        { action: 'navigate', reftarget: '/y' },
+      ],
     };
     const guide: JsonGuide = { id: 'g', title: 'T', blocks: [existing, mkInteractive('step C')] };
     const { result } = renderHook(() => useBlockEditor({ initialGuide: guide }));
-    const [id0, id1] = result.current.state.blocks.map((b) => b.id);
+    const id0 = result.current.state.blocks[0]!.id!;
+    const id1 = result.current.state.blocks[1]!.id!;
 
     act(() => result.current.mergeBlocksToMultistep([id0, id1]));
 
@@ -79,7 +85,7 @@ describe('mergeBlocksToMultistep / mergeBlocksToGuided', () => {
   it('does nothing when fewer than 2 mergeable blocks are provided', () => {
     const guide: JsonGuide = { id: 'g', title: 'T', blocks: [mkInteractive('only one')] };
     const { result } = renderHook(() => useBlockEditor({ initialGuide: guide }));
-    const [id0] = result.current.state.blocks.map((b) => b.id);
+    const id0 = result.current.state.blocks[0]!.id!;
 
     act(() => result.current.mergeBlocksToMultistep([id0]));
 
