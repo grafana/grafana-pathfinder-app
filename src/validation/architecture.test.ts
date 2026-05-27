@@ -58,7 +58,18 @@ function collectViolations(getViolationKey: (ctx: ResolvedImportContext) => stri
   const allFiles = getAllFileImports();
   const violations = new Set<string>();
 
-  for (const { file, relPath, topLevelDir, imports } of allFiles) {
+  const processResolved = (relPath: string, topLevelDir: string | null, resolved: string): void => {
+    const targetTopLevel = getTargetTopLevel(resolved);
+    if (!targetTopLevel) {
+      return;
+    }
+    const violationKey = getViolationKey({ relPath, topLevelDir, resolved, targetTopLevel });
+    if (violationKey) {
+      violations.add(violationKey);
+    }
+  };
+
+  for (const { file, relPath, topLevelDir, imports, resolvedAliasImports } of allFiles) {
     if (isTestFile(file)) {
       continue;
     }
@@ -66,19 +77,12 @@ function collectViolations(getViolationKey: (ctx: ResolvedImportContext) => stri
     const fileDir = path.dirname(file);
     for (const imp of imports) {
       const resolved = resolveImportToRelative(fileDir, imp);
-      if (!resolved) {
-        continue;
+      if (resolved) {
+        processResolved(relPath, topLevelDir, resolved);
       }
-
-      const targetTopLevel = getTargetTopLevel(resolved);
-      if (!targetTopLevel) {
-        continue;
-      }
-
-      const violationKey = getViolationKey({ relPath, topLevelDir, resolved, targetTopLevel });
-      if (violationKey) {
-        violations.add(violationKey);
-      }
+    }
+    for (const resolved of resolvedAliasImports) {
+      processResolved(relPath, topLevelDir, resolved);
     }
   }
 
@@ -605,7 +609,11 @@ describe('ESLint config sync with TIER_MAP', () => {
     defs.set('TIER_1_PLUS', parseConstantTokens(fakeConfig, 'TIER_1_PLUS'));
 
     const actual = expandTokens('TIER_2_ENGINES', defs);
-    const errors = diffSets('TIER_2_ENGINES', tierDirs((t) => t === 2), actual);
+    const errors = diffSets(
+      'TIER_2_ENGINES',
+      tierDirs((t) => t === 2),
+      actual
+    );
     // Real TIER_MAP has 7 engines, fake config has 2 → expect errors mentioning the missing ones
     expect(errors.length).toBeGreaterThan(0);
     expect(errors.some((e) => e.includes('`hooks`'))).toBe(true);
