@@ -43,7 +43,6 @@ describe('useActionRecorder \u2014 strict mode', () => {
 
     expect(result.current.recordedSteps).toHaveLength(1);
     expect(result.current.recordedSteps[0]!.selector).toBe("button[data-testid='save-btn']");
-    expect(result.current.rejectedCount).toBe(0);
     expect(onSelectorRejected).not.toHaveBeenCalled();
   });
 
@@ -61,7 +60,6 @@ describe('useActionRecorder \u2014 strict mode', () => {
     dispatchClick(button);
 
     expect(result.current.recordedSteps).toHaveLength(0);
-    expect(result.current.rejectedCount).toBe(1);
     expect(onSelectorRejected).toHaveBeenCalledTimes(1);
     const rejection = onSelectorRejected.mock.calls[0]![0];
     expect(rejection.tag).toBe('button');
@@ -81,7 +79,6 @@ describe('useActionRecorder \u2014 strict mode', () => {
     dispatchClick(span);
 
     expect(result.current.recordedSteps).toHaveLength(0);
-    expect(result.current.rejectedCount).toBe(1);
     expect(onSelectorRejected).toHaveBeenCalledTimes(1);
   });
 
@@ -97,22 +94,6 @@ describe('useActionRecorder \u2014 strict mode', () => {
     dispatchClick(button);
 
     expect(result.current.recordedSteps).toHaveLength(1);
-    expect(result.current.rejectedCount).toBe(0);
     expect(onSelectorRejected).not.toHaveBeenCalled();
-  });
-
-  it('clearRecording resets rejectedCount', () => {
-    const button = document.createElement('button');
-    button.textContent = 'rejected button text';
-    document.body.appendChild(button);
-
-    const { result } = renderHook(() => useActionRecorder({ strictMode: true, enableInspector: false }));
-
-    act(() => result.current.startRecording());
-    dispatchClick(button);
-    expect(result.current.rejectedCount).toBe(1);
-
-    act(() => result.current.clearRecording());
-    expect(result.current.rejectedCount).toBe(0);
   });
 });

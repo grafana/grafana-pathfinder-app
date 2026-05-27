@@ -1190,7 +1190,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           formCaptureElement={actionRecorder.formCaptureElement}
           isStrictModeEnabled={isStrictModeEnabled}
           onToggleStrictMode={() => setIsStrictModeEnabled((prev) => !prev)}
-          rejectedCount={actionRecorder.rejectedCount}
         />
       )}
 
