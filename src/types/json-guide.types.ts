@@ -254,15 +254,26 @@ export interface JsonInteractiveBlock extends AssistantProps, AuthorAnnotated {
   type: 'interactive';
   /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
   id?: string;
-  /** The action to perform */
+  /** The action to perform (canonical authoring field). */
   action: JsonInteractiveAction;
+  /**
+   * camelCase alias for `action`. The Zod schema treats `action` as
+   * canonical; the runtime JSON parser
+   * (`src/docs-retrieval/json-parser.ts`) reads this slot too when
+   * present so authors who prefer camelCase still get a working guide.
+   */
+  targetAction?: JsonInteractiveAction;
   /** CSS selector or Grafana selector for the target element (optional for noop actions) */
   reftarget?: string;
+  /** camelCase alias for `reftarget`. Tolerated by the runtime parser. */
+  refTarget?: string;
   /**
    * Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/).
    * For popout actions, must be 'sidebar' (dock) or 'floating' (undock).
    */
   targetvalue?: string;
+  /** camelCase alias for `targetvalue`. Tolerated by the runtime parser. */
+  targetValue?: string;
   /** Markdown description shown to the user */
   content: string;
   /** Tooltip/comment shown when highlighting the element */
@@ -356,15 +367,23 @@ export interface JsonGuidedBlock extends AuthorAnnotated {
  * - guided: steps highlight and wait for user action
  */
 export interface JsonStep {
-  /** The action to perform or wait for */
+  /** Stable identifier for this step (used for cross-step references). */
+  id?: string;
+  /** The action to perform or wait for (canonical authoring field). */
   action: JsonInteractiveAction;
+  /** camelCase alias for `action`. Tolerated by the runtime parser. */
+  targetAction?: JsonInteractiveAction;
   /** CSS selector or Grafana selector for the target element (optional for noop actions) */
   reftarget?: string;
+  /** camelCase alias for `reftarget`. Tolerated by the runtime parser. */
+  refTarget?: string;
   /**
    * Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/).
    * For popout actions, must be 'sidebar' (dock) or 'floating' (undock).
    */
   targetvalue?: string;
+  /** camelCase alias for `targetvalue`. Tolerated by the runtime parser. */
+  targetValue?: string;
   /** Requirements for this specific step */
   requirements?: string[];
   /** Tooltip shown during this step (multistep) */

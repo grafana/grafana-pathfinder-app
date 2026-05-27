@@ -1,0 +1,1423 @@
+import React, { useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import { css } from '@emotion/css';
+import { GrafanaTheme2 } from '@grafana/data';
+import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
+
+import { RawContent, ContentParseResult } from '../../types/content.types';
+import {
+  parseHTMLToComponents,
+  ParsedElement,
+  parseJsonGuide,
+  isJsonGuideContent,
+  resolveRelativeUrls,
+  CodeBlock,
+  ExpandableTable,
+  ImageRenderer,
+  ContentParsingError,
+  VideoRenderer,
+  YouTubeVideoRenderer,
+  GuideResponseProvider,
+  useGuideResponses,
+} from '../../docs-retrieval';
+import {
+  InteractiveSection,
+  InteractiveStep,
+  InteractiveMultiStep,
+  InteractiveGuided,
+  InteractiveQuiz,
+  InteractiveConditional,
+  InputBlock,
+  TerminalStep,
+  TerminalConnectStep,
+  CodeBlockStep,
+  ChallengeBlock,
+  GrotGuideBlock,
+  resetInteractiveCounters,
+  registerSectionSteps,
+  getDocumentStepPosition,
+  DEFAULT_INTERACTIVE_SECTION_TITLE,
+} from '../interactive-tutorial';
+import { STEP_TYPE_PARSE_KEYS } from '../interactive-tutorial/step-type-registry';
+import { SequentialRequirementsManager } from '../../requirements-manager';
+import { isInteractiveLearningUrl } from '../../security';
+import {
+  useTextSelection,
+  AssistantSelectionPopover,
+  buildDocumentContext,
+  AssistantCustomizable,
+  AssistantBlockWrapper,
+  TextSelectionState,
+} from '../../integrations/assistant-integration';
+import { substituteVariables } from '../../utils/variable-substitution';
+import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
+import { subscribeProgressEvent } from '../../global-state/progress-events';
+
+/**
+ * Scroll to and highlight an element with the given fragment ID
+ */
+function scrollToFragment(fragment: string, container: HTMLElement): void {
+  try {
+    // Try multiple selectors to find the target element
+    const selectors = [`#${fragment}`, `[id="${fragment}"]`, `[name="${fragment}"]`, `a[name="${fragment}"]`];
+
+    let targetElement: HTMLElement | null = null;
+
+    for (const selector of selectors) {
+      targetElement = container.querySelector(selector) as HTMLElement;
+      if (targetElement) {
+        break;
+      }
+    }
+
+    if (targetElement) {
+      // Scroll to the element with smooth behavior
+      targetElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'center',
+      });
+
+      // Add highlight effect
+      targetElement.classList.add('fragment-highlight');
+
+      // Remove highlight after animation
+      setTimeout(() => {
+        targetElement!.classList.remove('fragment-highlight');
+      }, 3000);
+    } else {
+      console.warn(`Fragment element not found: #${fragment}`);
+    }
+  } catch (error) {
+    console.warn(`Error scrolling to fragment #${fragment}:`, error);
+  }
+}
+
+interface ContentRendererProps {
+  content: RawContent;
+  onContentReady?: () => void;
+  onGuideComplete?: () => void;
+  className?: string;
+  containerRef?: React.RefObject<HTMLDivElement>;
+}
+
+// Style to hide default browser selection highlight
+const selectionStyle = css`
+  ::selection {
+    background-color: rgba(255, 136, 0, 0.3);
+    color: inherit;
+  }
+`;
+
+// Memoize ContentRenderer to prevent re-renders when parent re-renders
+// but content prop hasn't changed
+export const ContentRenderer = React.memo(function ContentRenderer({
+  content,
+  onContentReady,
+  onGuideComplete,
+  className,
+  containerRef,
+}: ContentRendererProps) {
+  const internalRef = useRef<HTMLDivElement>(null);
+  const activeRef = containerRef || internalRef;
+  const guideCompleteCalledRef = useRef(false);
+
+  // Text selection tracking for assistant integration
+  const selectionState = useTextSelection(activeRef);
+
+  // Build document context for assistant
+  const documentContext = React.useMemo(() => buildDocumentContext(content), [content]);
+
+  // Store completedSections in a ref so it persists across effect re-runs
+  // (inline callbacks in parent cause effect to re-mount - R12 anti-pattern protection)
+  const completedSectionsRef = useRef<Set<string>>(new Set());
+
+  // Store onGuideComplete in a ref so we can use the latest version without it
+  // causing the event listener effect to re-mount (which would lose tracked sections)
+  const onGuideCompleteRef = useRef(onGuideComplete);
+  useEffect(() => {
+    onGuideCompleteRef.current = onGuideComplete;
+  }, [onGuideComplete]);
+
+  // Reset tracking state when content changes (new guide = fresh start)
+  useEffect(() => {
+    guideCompleteCalledRef.current = false;
+    completedSectionsRef.current = new Set();
+  }, [content?.url]);
+
+  // Ref to track the current content URL - updated synchronously before effects run
+  // This allows handlers to detect if they're stale (created for different content)
+  const currentContentUrlRef = useRef<string | undefined>(content?.url);
+  currentContentUrlRef.current = content?.url;
+
+  // Track interactive section completions for guide-level completion
+  // Use debounced check to ensure DOM is stable before counting sections
+  useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Capture the content URL at effect creation time
+    const effectContentUrl = content?.url;
+
+    // CRITICAL: Prevent handlers from triggering completion until content has "settled"
+    // Old components may still fire events during the transition period.
+    // Wait a short time before allowing completion to ensure old events have flushed.
+    let isSettled = false;
+    const settleTimer = setTimeout(() => {
+      isSettled = true;
+    }, 200); // 200ms settling time for old components to unmount
+
+    // Count interactive sections from the DOM
+    const countSections = (): number => {
+      const container = activeRef.current;
+      if (!container) {
+        return 0;
+      }
+      const sections = container.querySelectorAll('[data-interactive-section="true"]');
+      return sections.length;
+    };
+
+    // Debounced completion check to ensure DOM is fully rendered
+    const debouncedCompletionCheck = () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      debounceTimer = setTimeout(() => {
+        if (guideCompleteCalledRef.current) {
+          return;
+        }
+        // CRITICAL: Don't trigger completion until content has settled
+        if (!isSettled) {
+          return;
+        }
+        // CRITICAL: Validate this check is still for the current content
+        if (effectContentUrl !== currentContentUrlRef.current) {
+          return; // This check was scheduled for different content
+        }
+        const totalSections = countSections();
+        if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
+          guideCompleteCalledRef.current = true;
+          onGuideCompleteRef.current?.();
+        }
+      }, 100); // Small delay to ensure DOM is stable
+    };
+
+    const handleSectionComplete = (event: Event) => {
+      const { sectionId } = (event as CustomEvent).detail;
+      completedSectionsRef.current.add(sectionId);
+
+      // CRITICAL: Don't trigger completion until content has settled
+      // This prevents old component events from triggering completion on new content
+      if (!isSettled) {
+        return; // Content hasn't settled yet
+      }
+
+      // Also validate handler is for current content
+      if (effectContentUrl !== currentContentUrlRef.current) {
+        return; // This handler was created for different content
+      }
+
+      // Count sections at the time of completion to ensure accurate count
+      const totalSections = countSections();
+
+      // Check if all sections complete - trigger immediately if count is accurate
+      if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
+        if (!guideCompleteCalledRef.current && onGuideCompleteRef.current) {
+          guideCompleteCalledRef.current = true;
+          onGuideCompleteRef.current();
+        }
+      } else {
+        // If count seems off, use debounced check as fallback
+        debouncedCompletionCheck();
+      }
+    };
+
+    // Fallback: also check completion state when individual steps complete
+    // This catches edge cases where section completion events aren't fired properly
+    const handleStepComplete = () => {
+      // Check if all sections are now completed by examining DOM state
+      const container = activeRef.current;
+      if (!container || guideCompleteCalledRef.current) {
+        return;
+      }
+
+      // CRITICAL: Don't trigger completion until content has settled
+      if (!isSettled) {
+        return;
+      }
+
+      // CRITICAL: Validate this handler is still for the current content
+      if (effectContentUrl !== currentContentUrlRef.current) {
+        return; // This handler was created for different content
+      }
+
+      const sections = container.querySelectorAll('[data-interactive-section="true"]');
+      if (sections.length === 0) {
+        return;
+      }
+
+      // Check each section's completion state via CSS class
+      const allComplete = Array.from(sections).every((section) => section.classList.contains('completed'));
+
+      if (allComplete) {
+        guideCompleteCalledRef.current = true;
+        onGuideCompleteRef.current?.();
+      }
+    };
+
+    // Listen for unified progress events (covers standalone steps outside sections)
+    // Standalone steps don't dispatch interactive-step-completed; they use
+    // interactive-progress-saved with a unified completionPercentage instead.
+    // IMPORTANT: Must verify the event's contentKey matches the current page to avoid
+    // cross-milestone contamination (stale events from a previous milestone triggering
+    // completion on the newly loaded milestone).
+    const handleProgressSaved = (event: Event) => {
+      if (guideCompleteCalledRef.current) {
+        return;
+      }
+      // CRITICAL: Don't trigger completion until content has settled
+      if (!isSettled) {
+        return;
+      }
+      // CRITICAL: Check if this handler is still for the current content
+      if (effectContentUrl !== currentContentUrlRef.current) {
+        return; // This handler was created for different content
+      }
+      const detail = (event as CustomEvent).detail;
+      const currentTabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
+      if (detail?.completionPercentage >= 100 && detail?.contentKey && currentTabUrl) {
+        // Only trigger if the event is for the current page (strict equality after normalization).
+        // Bidirectional startsWith would produce false matches when URLs share a common prefix
+        // (e.g., /docs/dashboard matching /docs/dashboard-variables).
+        const eventKeyNorm = detail.contentKey.replace(/\/+$/, '');
+        const tabUrlNorm = currentTabUrl.replace(/\/+$/, '');
+        if (eventKeyNorm === tabUrlNorm) {
+          guideCompleteCalledRef.current = true;
+          onGuideCompleteRef.current?.();
+        }
+      }
+    };
+
+    // Unified `pathfinder:progress` event routes to the appropriate handler
+    // based on the discriminant.
+    const unsubscribeProgress = subscribeProgressEvent((detail) => {
+      if (detail.kind === 'section' && detail.completed) {
+        handleSectionComplete(new CustomEvent('section', { detail: { sectionId: detail.sectionId } }));
+      } else if (detail.kind === 'step' && detail.completed) {
+        handleStepComplete();
+      } else if (detail.kind === 'guide') {
+        // Mimic the legacy `interactive-progress-saved` payload so the
+        // existing handler logic stays put.
+        handleProgressSaved(
+          new CustomEvent('progress', {
+            detail: {
+              contentKey: detail.contentKey,
+              hasProgress: detail.hasProgress,
+              completionPercentage: detail.percentage,
+            },
+          })
+        );
+      }
+    });
+
+    return () => {
+      unsubscribeProgress();
+      clearTimeout(settleTimer);
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+    };
+  }, [activeRef, content?.url]); // Removed onGuideComplete - using ref instead
+
+  // Expose current content key globally for interactive persistence.
+  // MUST be useLayoutEffect so the global is set before children's useEffect
+  // (progress restoration) runs — prevents stale key from a previous milestone.
+  useLayoutEffect(() => {
+    try {
+      (window as any).__DocsPluginContentKey = content?.url || '';
+    } catch {
+      // no-op
+    }
+  }, [content?.url]);
+
+  const processedContent = React.useMemo(() => {
+    let guideContent = content.content;
+    // Skip URL resolution for JSON guides (they don't have relative URLs and DOMParser would corrupt them)
+    // Note: Learning journey extras are now applied in the content fetcher before wrapping
+    if (!isJsonGuideContent(guideContent)) {
+      guideContent = resolveRelativeUrls(guideContent, content.url);
+    }
+    return guideContent;
+  }, [content]);
+
+  // Handle fragment scrolling after content renders
+  useEffect(() => {
+    if (content.hashFragment && activeRef.current) {
+      // Wait for content to fully render before scrolling
+      const timer = setTimeout(() => {
+        scrollToFragment(content.hashFragment!, activeRef.current!);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processedContent, content.hashFragment]);
+
+  useEffect(() => {
+    if (onContentReady) {
+      const timer = setTimeout(onContentReady, 50);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [processedContent, onContentReady]);
+
+  // Derive guide ID from content URL for response storage
+  const guideId = useMemo(() => {
+    // Use the URL path as the guide identifier, or fallback to 'default'
+    try {
+      const url = new URL(content.url, window.location.origin);
+      // Remove leading slash and use path as ID
+      return url.pathname.replace(/^\//, '').replace(/\//g, '-') || 'default';
+    } catch {
+      return content.url || 'default';
+    }
+  }, [content.url]);
+
+  // Expose guide ID globally for requirements checker to access
+  useEffect(() => {
+    try {
+      (window as any).__DocsPluginGuideId = guideId;
+    } catch {
+      // no-op
+    }
+  }, [guideId]);
+
+  return (
+    <GuideResponseProvider guideId={guideId}>
+      <ContentWithVariables
+        processedContent={processedContent}
+        contentType={content.type}
+        baseUrl={content.url}
+        title={content.metadata.title}
+        isNativeJson={content.isNativeJson ?? false}
+        onContentReady={onContentReady}
+        activeRef={activeRef}
+        className={className}
+        selectionState={selectionState}
+        documentContext={documentContext}
+      />
+    </GuideResponseProvider>
+  );
+});
+
+/** Inner component that has access to GuideResponseContext for variable substitution */
+interface ContentWithVariablesProps {
+  processedContent: string;
+  contentType: 'learning-journey' | 'single-doc' | 'interactive';
+  baseUrl: string;
+  title: string;
+  isNativeJson: boolean;
+  onContentReady?: () => void;
+  activeRef: React.RefObject<HTMLDivElement>;
+  className?: string;
+  selectionState: TextSelectionState;
+  documentContext: ReturnType<typeof buildDocumentContext>;
+}
+
+function ContentWithVariables({
+  processedContent,
+  contentType,
+  baseUrl,
+  title,
+  isNativeJson,
+  onContentReady,
+  activeRef,
+  className,
+  selectionState,
+  documentContext,
+}: ContentWithVariablesProps) {
+  // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
+  // This avoids breaking JSON structure when user values contain special characters
+  const { responses } = useGuideResponses();
+
+  // Intercept clicks on interactive-learning links inside content.
+  // Instead of navigating away, open the guide as a new tab in the sidebar.
+  const handleContentClick = useCallback((e: React.MouseEvent) => {
+    const anchor = (e.target as Element).closest?.('a[href]');
+    if (!anchor) {
+      return;
+    }
+    const href = anchor.getAttribute('href');
+    if (!href) {
+      return;
+    }
+
+    // Resolve relative URLs
+    let fullUrl: string;
+    try {
+      fullUrl = new URL(href, window.location.href).href;
+    } catch {
+      return;
+    }
+
+    if (!isInteractiveLearningUrl(fullUrl)) {
+      return;
+    }
+
+    e.preventDefault();
+
+    // Ensure URL ends with content.json for proper fetching
+    let contentUrl = fullUrl;
+    if (!contentUrl.endsWith('/content.json') && !contentUrl.endsWith('.json')) {
+      contentUrl = contentUrl.replace(/\/+$/, '') + '/content.json';
+    }
+
+    // Derive readable title from the path
+    const cleanedPath = fullUrl.replace(/\/(content\.json|unstyled\.html)$/i, '');
+    const segments = cleanedPath.split('/').filter(Boolean);
+    const slug = segments[segments.length - 1] || 'Interactive tutorial';
+    const title = slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+    // Open as a new tab in the sidebar
+    document.dispatchEvent(
+      new CustomEvent('pathfinder-auto-open-docs', {
+        detail: { url: contentUrl, title, source: 'content_link' },
+      })
+    );
+  }, []);
+
+  const titleStyle = css`
+    font-size: 28px;
+    font-weight: 500;
+    line-height: 1.3;
+    margin: 0 0 24px 0;
+    padding: 0;
+    color: inherit;
+  `;
+
+  return (
+    <div
+      ref={activeRef}
+      className={`${className} ${selectionStyle}`}
+      data-pathfinder-content="true"
+      onClick={handleContentClick}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        overflow: 'visible',
+        position: 'relative',
+      }}
+    >
+      {title && isNativeJson && <h1 className={titleStyle}>{title}</h1>}
+      <ContentProcessor
+        html={processedContent}
+        contentType={contentType}
+        baseUrl={baseUrl}
+        onReady={onContentReady}
+        responses={responses}
+      />
+      {selectionState.isValid && (
+        <AssistantSelectionPopover
+          selectedText={selectionState.selectedText}
+          position={selectionState.position}
+          context={documentContext}
+          containerRef={activeRef}
+        />
+      )}
+    </div>
+  );
+}
+
+interface ContentProcessorProps {
+  html: string;
+  contentType: 'learning-journey' | 'single-doc' | 'interactive';
+  theme?: GrafanaTheme2;
+  baseUrl: string;
+  onReady?: () => void;
+  /** User responses for variable substitution at render time */
+  responses: Record<string, unknown>;
+}
+
+function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: ContentProcessorProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Reset interactive counters only when content changes (not on every render)
+  // This must run BEFORE parsing to ensure clean state for section registration
+  useMemo(
+    () => {
+      resetInteractiveCounters();
+      return null;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [html]
+  );
+
+  // Parse content with fail-fast error handling (memoized to avoid re-parsing on every render)
+  // Detect JSON vs HTML content and use appropriate parser
+  const parseResult: ContentParseResult = useMemo(() => {
+    if (isJsonGuideContent(html)) {
+      return parseJsonGuide(html, baseUrl);
+    }
+    return parseHTMLToComponents(html, baseUrl);
+  }, [html, baseUrl]);
+
+  // Start DOM monitoring if interactive elements are present
+  useEffect(() => {
+    if (parseResult.isValid && parseResult.data) {
+      const hasInteractiveElements = parseResult.data.elements.some(
+        (el) => el.type === 'interactive-section' || el.type === 'interactive-step'
+      );
+
+      if (hasInteractiveElements) {
+        const manager = SequentialRequirementsManager.getInstance();
+        manager.startDOMMonitoring();
+
+        return () => {
+          manager.stopDOMMonitoring();
+        };
+      }
+    }
+    return undefined;
+  }, [parseResult]);
+
+  // Pre-register ALL interactive entries (sections + standalone steps) in visual
+  // document order. This runs before children render (parent useMemo executes first)
+  // so that getDocumentStepPosition returns correct offsets during this render.
+  //
+  // Without explicit documentOrder, the global registry would use Map insertion
+  // order — and because this parent useMemo always fires before child useMemos,
+  // standalone steps would always get offset 0 regardless of their actual position
+  // in the document.
+  //
+  // For sections, we predict the sectionId (matching InteractiveSection's logic)
+  // and count steps from the parsed tree. When InteractiveSection later re-registers
+  // the same sectionId, only the stepCount is updated; the documentOrder is preserved.
+  //
+  // Known limitation: interleaved standalone steps (standalone steps between
+  // different sections) are grouped into a single registry entry positioned at the
+  // first standalone step's document location. Fully interleaved numbering would
+  // require splitting into per-position groups — acceptable trade-off for now.
+  const documentLayout: DocumentLayoutInfo = useMemo(() => {
+    if (!parseResult.isValid || !parseResult.data) {
+      return { standaloneGroupMap: new Map(), totalStandaloneSteps: 0 };
+    }
+
+    const elements = parseResult.data.elements;
+    let docOrder = 0;
+    let sectionCounter = 0; // Simulates interactiveSectionCounter (reset at top of ContentProcessor)
+    let standaloneCount = 0;
+    let standaloneDocOrder: number | null = null;
+    const groupMap = new Map<number, StandaloneGroupInfo>();
+
+    elements.forEach((el, idx) => {
+      if (el.type === 'interactive-section') {
+        // Predict sectionId using the same logic as InteractiveSection's useMemo:
+        // prefer the explicit HTML id prop, otherwise use the sequential counter.
+        const sectionId = el.props.id ? `section-${el.props.id}` : `section-${++sectionCounter}`;
+        const stepCount = countStepsInSection(el);
+        registerSectionSteps(sectionId, stepCount, docOrder);
+        docOrder++;
+      } else if (isInteractiveStepElement(el)) {
+        // First standalone step reserves a document-order slot for the group
+        if (standaloneDocOrder === null) {
+          standaloneDocOrder = docOrder;
+          docOrder++;
+        }
+        groupMap.set(idx, { groupId: STANDALONE_SECTION_ID, indexInGroup: standaloneCount });
+        standaloneCount++;
+      }
+    });
+
+    // Register standalone group with correct document order
+    if (standaloneCount > 0 && standaloneDocOrder !== null) {
+      registerSectionSteps(STANDALONE_SECTION_ID, standaloneCount, standaloneDocOrder);
+    }
+
+    return { standaloneGroupMap: groupMap, totalStandaloneSteps: standaloneCount };
+  }, [parseResult]);
+
+  // Single decision point: either we have valid React components or we display errors
+  if (!parseResult.isValid) {
+    console.error('Content parsing failed:', parseResult.errors);
+    return (
+      <div ref={ref}>
+        <ContentParsingError
+          errors={parseResult.errors}
+          warnings={parseResult.warnings}
+          fallbackHtml={html}
+          onRetry={() => {
+            window.location.reload();
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Success case: render parsed content
+  const { data: parsedContent } = parseResult;
+
+  if (!parsedContent) {
+    console.error('[DocsPlugin] Parsing succeeded but no data returned');
+    return (
+      <div ref={ref}>
+        <ContentParsingError
+          errors={[
+            {
+              type: 'html_parsing',
+              message: 'Parsing succeeded but no content data was returned',
+              location: 'ContentProcessor',
+            },
+          ]}
+          warnings={parseResult.warnings}
+          fallbackHtml={html}
+        />
+      </div>
+    );
+  }
+
+  // Check for empty content where parsing succeeded but produced no renderable elements.
+  // If there are parse failure warnings, promote them to errors.
+  // When we render unstyled HTML, it is first converted to a single JSON HTML block.
+  // The block parser only emits warnings so a single block doesn't break overall rendering, but for this case, a single block failing to render means the whole HTML failed to render because there's only a single block.
+  if (parsedContent.elements.length === 0) {
+    const parseFailureWarnings = (parseResult.warnings || []).filter(
+      (w) => w.includes('Failed to parse') || w.includes('Empty HTML block')
+    );
+
+    if (parseFailureWarnings.length > 0) {
+      // Promote parse failure warnings to errors.
+      const promotedErrors = parseFailureWarnings.map((w) => {
+        // Clean up the error message for single HTML block errors since the block context isn't meaningful.
+        const cleanMessage = w
+          .replace(/^Failed to parse HTML block at blocks\[\d+\]:\s*/, '')
+          .replace(/^Empty HTML block at blocks\[\d+\]$/, 'The HTML content is empty');
+
+        return {
+          type: 'html_parsing' as const,
+          message: cleanMessage,
+          location: undefined,
+        };
+      });
+
+      // Remove promoted warnings from the list
+      const remainingWarnings = (parseResult.warnings || []).filter(
+        (w) => !w.includes('Failed to parse') && !w.includes('Empty HTML block')
+      );
+
+      return (
+        <div ref={ref}>
+          <ContentParsingError errors={promotedErrors} warnings={remainingWarnings} fallbackHtml={html} />
+        </div>
+      );
+    }
+
+    return (
+      <div ref={ref}>
+        <ContentParsingError
+          errors={[
+            {
+              type: 'html_parsing',
+              message:
+                'Content was parsed successfully but produced no renderable elements. The content may be empty, contain only whitespace, or use an unsupported format.',
+              location: 'ContentProcessor',
+            },
+          ]}
+          warnings={parseResult.warnings}
+          fallbackHtml={html}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div ref={ref}>
+      {parsedContent.elements.map((element, index) => {
+        // Look up standalone step position from precomputed document layout
+        const groupInfo = documentLayout.standaloneGroupMap.get(index);
+        const stepPosition = groupInfo ? getDocumentStepPosition(groupInfo.groupId, groupInfo.indexInGroup) : undefined;
+        return renderParsedElement(element, `element-${index}`, baseUrl, responses, stepPosition);
+      })}
+    </div>
+  );
+}
+
+// Legacy: Grafana UI components were previously supported as custom HTML elements
+// but are no longer used. Kept mapping for backward compatibility if needed in future.
+const allowedUiComponents: Record<string, React.ElementType> = {
+  // Note: These are never used in current HTML but kept for potential future use
+  badge: Badge,
+  tooltip: Tooltip,
+};
+
+// TabsWrapper manages tabs state
+function TabsWrapper({ element }: { element: ParsedElement }) {
+  // Extract tab data first to determine initial state
+  const tabsBarElement = element.children?.find(
+    (child) => typeof child !== 'string' && (child as any).props?.['data-element'] === 'tabs-bar'
+  ) as ParsedElement | undefined;
+
+  const tabContentElement = element.children?.find(
+    (child) => typeof child !== 'string' && (child as any).props?.['data-element'] === 'tab-content'
+  ) as ParsedElement | undefined;
+
+  // Extract tab data from tabs-bar children
+  const tabElements =
+    (tabsBarElement?.children?.filter(
+      (child) => typeof child !== 'string' && (child as any).props?.['data-element'] === 'tab'
+    ) as ParsedElement[]) || [];
+
+  const tabsData = tabElements.map((tabEl) => ({
+    key: tabEl.props?.['data-key'] || '',
+    label: tabEl.props?.['data-label'] || '',
+  }));
+
+  const [activeTab, setActiveTab] = React.useState(tabsData[0]?.key || '');
+
+  React.useEffect(() => {
+    if (tabsData.length > 0 && !activeTab) {
+      setActiveTab(tabsData[0]!.key);
+    }
+  }, [tabsData, activeTab]);
+
+  if (!tabsBarElement || !tabContentElement) {
+    console.warn('Missing required tabs elements');
+    return null;
+  }
+
+  // Extract content for each tab from tab-content children
+  // The content items are direct children of tab-content (like <pre> elements), not div[data-element="tab-content-item"]
+  const tabContentItems = tabContentElement.children || [];
+
+  return (
+    <div>
+      <TabsBar>
+        {tabsData.map((tab) => (
+          <Tab
+            key={tab.key}
+            label={tab.label}
+            active={activeTab === tab.key}
+            onChangeTab={() => setActiveTab(tab.key)}
+          />
+        ))}
+      </TabsBar>
+      <TabContent className="tab-content">
+        {(() => {
+          const contentIndex = parseInt(activeTab, 10) || 0;
+          const content = tabContentItems[contentIndex];
+
+          if (content && typeof content !== 'string') {
+            // Render the content as raw HTML to avoid HTML parser interference
+            const originalHTML = (content as any).originalHTML;
+            if (originalHTML) {
+              return <TabContentRenderer html={originalHTML} />;
+            }
+            // Fallback to normal rendering if no originalHTML
+            return renderParsedElement(content, 'tab-content', undefined);
+          }
+          return null;
+        })()}
+      </TabContent>
+    </div>
+  );
+}
+
+// Convert tab-content <pre> elements to CodeBlock components
+// SECURITY: All content goes through parser - no raw HTML fallback
+function TabContentRenderer({ html }: { html: string }) {
+  // Parse the HTML to find <pre> elements and convert them to CodeBlock components
+  const parseResult = parseHTMLToComponents(html);
+
+  if (!parseResult.isValid || !parseResult.data) {
+    // SECURITY: No dangerouslySetInnerHTML fallback - return null on parse failure
+    console.error('TabContentRenderer: Failed to parse content.');
+    return null;
+  }
+
+  // Render the parsed content using the existing component system
+  return (
+    <div>
+      {parseResult.data.elements.map((element, index) =>
+        renderParsedElement(element, `tab-content-${index}`, undefined)
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// STANDALONE STEP POSITION TRACKING
+// ============================================================================
+
+/**
+ * Position override for standalone interactive elements (not inside a section).
+ * Sections handle their own step position tracking internally.
+ * This provides equivalent tracking for sectionless guides.
+ */
+interface StandaloneStepPosition {
+  stepIndex: number;
+  totalSteps: number;
+}
+
+/**
+ * Set of ParsedElement types that represent completable interactive steps.
+ * Derived from the step-type registry (`STEP_TYPE_PARSE_KEYS`), which is
+ * the single source of truth — see
+ * `src/components/interactive-tutorial/step-type-registry.ts`.
+ *
+ * Note: input-block is intentionally excluded — it doesn't track completion
+ * and would inflate the total step count, making 100% completion impossible.
+ *
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 2. Adding a new interactive step
+ * component type requires updates in 2 places:
+ *   1. step-type-registry.ts STEP_TYPE_SCHEMAS (parse + orchestration)
+ *   2. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
+ *      (#842 acknowledgement-gate classification)
+ * The `step-type-registry.tripwire.test.ts` parity test fails if any
+ * registry entry disagrees with this derived set.
+ */
+const INTERACTIVE_STEP_TYPES: ReadonlySet<string> = new Set<string>(STEP_TYPE_PARSE_KEYS);
+
+/**
+ * Check if a ParsedElement is an interactive step (or wraps one).
+ * Used to count standalone interactive elements for position tracking.
+ */
+function isInteractiveStepElement(element: ParsedElement): boolean {
+  if (INTERACTIVE_STEP_TYPES.has(element.type)) {
+    return true;
+  }
+  // Check inside assistant-block-wrapper (wraps a single interactive child)
+  if (element.type === 'assistant-block-wrapper' && element.children) {
+    return element.children.some(
+      (child) => typeof child !== 'string' && INTERACTIVE_STEP_TYPES.has((child as ParsedElement).type)
+    );
+  }
+  return false;
+}
+
+/**
+ * Count the number of steps inside a parsed interactive-section element.
+ * Mirrors InteractiveSection's stepComponents extraction: only counts direct
+ * children of the tracked step types (not wrapped children like assistant-block-wrapper).
+ *
+ * Parser-side recognition uses the same `INTERACTIVE_STEP_TYPES` set as
+ * standalone-step counting — the registry has one parse-time key per kind.
+ */
+function countStepsInSection(element: ParsedElement): number {
+  if (!element.children) {
+    return 0;
+  }
+  return element.children.reduce((count, child) => {
+    if (typeof child === 'string') {
+      return count;
+    }
+    const childEl = child as ParsedElement;
+    return count + (INTERACTIVE_STEP_TYPES.has(childEl.type) ? 1 : 0);
+  }, 0);
+}
+
+/**
+ * Layout information for standalone steps, computed once during document layout
+ * analysis. Maps element indices to their registry group and position within group.
+ */
+interface StandaloneGroupInfo {
+  groupId: string;
+  indexInGroup: number;
+}
+
+/**
+ * Document layout information computed from the parsed element tree.
+ * Used to pre-register all interactive entries in correct document order
+ * and to look up standalone step positions during rendering.
+ */
+interface DocumentLayoutInfo {
+  standaloneGroupMap: Map<number, StandaloneGroupInfo>;
+  totalStandaloneSteps: number;
+}
+
+function renderParsedElement(
+  element: ParsedElement | ParsedElement[],
+  key: string | number,
+  contentKey?: string,
+  responses: Record<string, unknown> = {},
+  standaloneStepPosition?: StandaloneStepPosition
+): React.ReactNode {
+  if (Array.isArray(element)) {
+    return element.map((child, i) => renderParsedElement(child, `${key}-${i}`, contentKey, responses));
+  }
+
+  // Helper to substitute variables in strings at render time
+  // This is safe because it happens AFTER JSON parsing
+  const sub = (value: string | undefined): string | undefined => {
+    if (!value) {
+      return value;
+    }
+    // Cast responses - they may contain any JSON value but substituteVariables
+    // only reads string/boolean/number which it stringifies
+    return substituteVariables(value, responses as Record<string, string | boolean | number>, {
+      preserveUnmatched: true,
+    });
+  };
+
+  // Helper to substitute in string children
+  // Optional childStepPosition allows passing standalone step position through wrappers
+  const renderChildren = (children: Array<ParsedElement | string>, childStepPosition?: StandaloneStepPosition) =>
+    children.map((child: ParsedElement | string, childIndex: number) =>
+      typeof child === 'string'
+        ? sub(child)
+        : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses, childStepPosition)
+    );
+
+  // Helper to substitute variables in internal actions (for multistep/guided blocks)
+  // Uses generic to preserve the input array type (InternalAction[], GuidedAction[], etc.)
+  const subInternalActions = <T extends { refTarget?: string; targetValue?: string }>(actions: T[]): T[] => {
+    return actions.map((action) => ({
+      ...action,
+      refTarget: sub(action.refTarget) ?? action.refTarget,
+      targetValue: sub(action.targetValue),
+    }));
+  };
+
+  // Handle special cases first
+  switch (element.type) {
+    case 'badge':
+      return <Badge key={key} text={element.props.text} color={element.props.color} className="mr-1" />;
+    case 'badge-tooltip':
+      return (
+        <Badge
+          key={key}
+          text={element.props.text}
+          color={element.props.color}
+          icon={element.props.icon}
+          tooltip={element.props.tooltip}
+          className="mr-1"
+        />
+      );
+    case 'interactive-section':
+      return (
+        <InteractiveSection
+          key={key}
+          title={sub(element.props.title) || DEFAULT_INTERACTIVE_SECTION_TITLE}
+          isSequence={element.props.isSequence}
+          skippable={element.props.skippable}
+          requirements={element.props.requirements}
+          objectives={element.props.objectives}
+          hints={element.props.hints}
+          id={element.props.id} // Pass the HTML id attribute
+          autoCollapse={element.props.autoCollapse}
+        >
+          {renderChildren(element.children)}
+        </InteractiveSection>
+      );
+    case 'interactive-conditional':
+      return (
+        <InteractiveConditional
+          key={key}
+          conditions={element.props.conditions || []}
+          description={element.props.description}
+          display={element.props.display || 'inline'}
+          refTarget={element.props.refTarget}
+          whenTrueSectionConfig={element.props.whenTrueSectionConfig}
+          whenFalseSectionConfig={element.props.whenFalseSectionConfig}
+          whenTrueChildren={element.props.whenTrueChildren || []}
+          whenFalseChildren={element.props.whenFalseChildren || []}
+          renderElement={(child: ParsedElement, childKey: string) => renderParsedElement(child, childKey, contentKey)}
+          keyPrefix={String(key)}
+        />
+      );
+    case 'interactive-step':
+      return (
+        <InteractiveStep
+          key={key}
+          stepId={element.props.stepId}
+          targetAction={element.props.targetAction}
+          refTarget={sub(element.props.refTarget) ?? element.props.refTarget}
+          targetValue={sub(element.props.targetValue)}
+          hints={element.props.hints}
+          targetComment={element.props.targetComment}
+          doIt={element.props.doIt}
+          showMe={element.props.showMe}
+          showMeText={element.props.showMeText}
+          skippable={element.props.skippable}
+          completeEarly={element.props.completeEarly}
+          requirements={element.props.requirements}
+          objectives={element.props.objectives}
+          postVerify={element.props.postVerify}
+          title={sub(element.props.title)}
+          lazyRender={element.props.lazyRender}
+          scrollContainer={element.props.scrollContainer}
+          // Standalone step position (for guides without sections)
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        >
+          {renderChildren(element.children)}
+        </InteractiveStep>
+      );
+    case 'interactive-multi-step':
+      return (
+        <InteractiveMultiStep
+          key={key}
+          stepId={element.props.stepId}
+          internalActions={subInternalActions(element.props.internalActions ?? [])}
+          skippable={element.props.skippable}
+          completeEarly={element.props.completeEarly}
+          requirements={element.props.requirements}
+          objectives={element.props.objectives}
+          hints={element.props.hints}
+          title={sub(element.props.title)}
+          // Standalone step position (for guides without sections)
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        >
+          {renderChildren(element.children)}
+        </InteractiveMultiStep>
+      );
+    case 'interactive-guided':
+      return (
+        <InteractiveGuided
+          key={key}
+          stepId={element.props.stepId}
+          internalActions={subInternalActions(element.props.internalActions ?? [])}
+          stepTimeout={element.props.stepTimeout}
+          skippable={element.props.skippable}
+          completeEarly={element.props.completeEarly}
+          requirements={element.props.requirements}
+          objectives={element.props.objectives}
+          hints={element.props.hints}
+          title={sub(element.props.title)}
+          // Standalone step position (for guides without sections)
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        >
+          {renderChildren(element.children)}
+        </InteractiveGuided>
+      );
+    case 'quiz-block':
+      return (
+        <InteractiveQuiz
+          key={key}
+          stepId={element.props.stepId}
+          question={sub(element.props.question) ?? element.props.question}
+          choices={element.props.choices}
+          multiSelect={element.props.multiSelect}
+          completionMode={element.props.completionMode}
+          maxAttempts={element.props.maxAttempts}
+          requirements={element.props.requirements}
+          skippable={element.props.skippable}
+          shuffle={element.props.shuffle}
+          // Standalone step position (for guides without sections)
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        >
+          {renderChildren(element.children)}
+        </InteractiveQuiz>
+      );
+    case 'terminal-step':
+      return (
+        <TerminalStep
+          key={key}
+          stepId={element.props.stepId}
+          command={sub(element.props.command) ?? element.props.command}
+          requirements={element.props.requirements}
+          objectives={element.props.objectives}
+          skippable={element.props.skippable}
+          hints={element.props.hints}
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        >
+          {renderChildren(element.children)}
+        </TerminalStep>
+      );
+    case 'terminal-connect-step':
+      return (
+        <TerminalConnectStep
+          key={key}
+          stepId={element.props.stepId}
+          buttonText={element.props.buttonText}
+          vmTemplate={element.props.vmTemplate}
+          vmApp={element.props.vmApp}
+          vmScenario={element.props.vmScenario}
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        >
+          {renderChildren(element.children)}
+        </TerminalConnectStep>
+      );
+    case 'challenge-block':
+      return (
+        <ChallengeBlock
+          key={key}
+          stepId={element.props.stepId}
+          title={sub(element.props.title) ?? element.props.title}
+          brief={renderChildren(element.children)}
+          mode={element.props.mode}
+          vmTemplate={element.props.vmTemplate}
+          vmScenario={element.props.vmScenario}
+          vmApp={element.props.vmApp}
+          setupCommands={element.props.setupCommands}
+          setupScript={element.props.setupScript}
+          successCriteria={element.props.successCriteria}
+          hintLevels={element.props.hintLevels}
+          failureMessage={element.props.failureMessage}
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        />
+      );
+    case 'code-block-step':
+      return (
+        <CodeBlockStep
+          key={key}
+          stepId={element.props.stepId}
+          code={sub(element.props.code) ?? element.props.code}
+          language={element.props.language}
+          refTarget={sub(element.props.refTarget) ?? element.props.refTarget}
+          requirements={element.props.requirements}
+          objectives={element.props.objectives}
+          skippable={element.props.skippable}
+          hints={element.props.hints}
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        >
+          {renderChildren(element.children)}
+        </CodeBlockStep>
+      );
+    case 'grot-guide':
+      return (
+        <GrotGuideBlock
+          key={key}
+          welcome={element.props.welcome}
+          screens={element.props.screens}
+          responses={responses}
+        />
+      );
+    case 'input-block':
+      return (
+        <InputBlock
+          key={key}
+          prompt={sub(element.props.prompt) ?? element.props.prompt}
+          inputType={element.props.inputType}
+          variableName={element.props.variableName}
+          placeholder={sub(element.props.placeholder)}
+          checkboxLabel={sub(element.props.checkboxLabel)}
+          defaultValue={element.props.defaultValue}
+          required={element.props.required}
+          pattern={element.props.pattern}
+          validationMessage={sub(element.props.validationMessage)}
+          requirements={element.props.requirements}
+          skippable={element.props.skippable}
+          datasourceFilter={element.props.datasourceFilter}
+        >
+          {renderChildren(element.children)}
+        </InputBlock>
+      );
+    case 'video':
+      return (
+        <VideoRenderer
+          key={key}
+          src={element.props.src}
+          baseUrl={element.props.baseUrl}
+          onClick={element.props.onClick}
+          start={element.props.start}
+          end={element.props.end}
+        />
+      );
+    case 'youtube-video':
+      return (
+        <YouTubeVideoRenderer
+          key={key}
+          src={element.props.src}
+          width={element.props.width}
+          height={element.props.height}
+          title={element.props.title}
+          className={element.props.className}
+          start={element.props.start}
+          end={element.props.end}
+          {...element.props}
+        />
+      );
+    case 'image-renderer':
+      return (
+        <ImageRenderer
+          key={key}
+          src={element.props.src}
+          dataSrc={element.props.dataSrc}
+          alt={element.props.alt}
+          className={element.props.className}
+          title={element.props.title}
+          baseUrl={element.props.baseUrl}
+          width={element.props.width}
+          height={element.props.height}
+        />
+      );
+    case 'code-block':
+      return (
+        <CodeBlock
+          key={key}
+          code={element.props.code}
+          language={element.props.language}
+          showCopy={element.props.showCopy}
+          inline={element.props.inline}
+        />
+      );
+    case 'expandable-table':
+      return (
+        <ExpandableTable
+          key={key}
+          defaultCollapsed={element.props.defaultCollapsed}
+          toggleText={sub(element.props.toggleText)}
+          className={element.props.className}
+          isCollapseSection={element.props.isCollapseSection}
+        >
+          {renderChildren(element.children)}
+        </ExpandableTable>
+      );
+    case 'assistant-customizable':
+      return (
+        <AssistantCustomizable
+          key={key}
+          defaultValue={element.props.defaultValue}
+          assistantId={element.props.assistantId}
+          assistantType={element.props.assistantType}
+          inline={element.props.inline}
+          contentKey={contentKey || ''}
+        />
+      );
+    case 'assistant-block-wrapper':
+      return (
+        <AssistantBlockWrapper
+          key={key}
+          assistantId={element.props.assistantId}
+          assistantType={element.props.assistantType}
+          defaultValue={element.props.defaultValue}
+          blockType={element.props.blockType}
+          contentKey={contentKey || ''}
+          surroundingContext={element.props.surroundingContext}
+        >
+          {/* Pass standalone step position through wrapper to interactive child */}
+          {renderChildren(element.children, standaloneStepPosition)}
+        </AssistantBlockWrapper>
+      );
+    case 'raw-html':
+      // SECURITY: raw-html type is removed - all HTML must go through the parser
+      console.error('raw-html element type encountered - this should have been caught during parsing');
+      return null;
+    default:
+      // Handle tabs root
+      if (element.props?.['data-element'] === 'tabs') {
+        // Create a TabsWrapper component to manage state
+        return <TabsWrapper key={key} element={element} />;
+      }
+
+      // Handle tabs bar and content
+      if (typeof element.type === 'string' && element.type === 'div' && element.children) {
+        const hasTabsBar = element.children.some(
+          (child) => typeof child !== 'string' && (child as any).props?.['data-element'] === 'tabs-bar'
+        );
+        const hasTabContent = element.children.some(
+          (child) => typeof child !== 'string' && (child as any).props?.['data-element'] === 'tab-content'
+        );
+
+        if (hasTabsBar && hasTabContent) {
+          // Create a TabsWrapper component to manage state
+          return <TabsWrapper key={key} element={element} />;
+        }
+      }
+
+      // Also check if this is a tab-content div that should be handled specially
+      if (
+        typeof element.type === 'string' &&
+        element.type === 'div' &&
+        element.props?.['data-element'] === 'tab-content'
+      ) {
+        return null;
+      }
+
+      // Legacy Grafana UI components mapping (rarely used but kept for compatibility)
+      if (typeof element.type === 'string') {
+        const lowerType = element.type.toLowerCase();
+        const comp = allowedUiComponents[lowerType];
+        if (comp) {
+          const children = element.children
+            ?.map((child: ParsedElement | string, childIndex: number) =>
+              typeof child === 'string'
+                ? sub(child)
+                : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses)
+            )
+            .filter((child: React.ReactNode) => child !== null);
+
+          // Use props as-is (no custom attribute extraction needed for badge/tooltip)
+          return React.createElement(
+            comp,
+            { key, ...element.props },
+            ...(children && children.length > 0 ? children : [])
+          );
+        }
+      }
+
+      // Standard HTML elements - strict validation
+      if (!element.type || (typeof element.type !== 'string' && typeof element.type !== 'function')) {
+        console.error('Invalid element type for parsed element:', element);
+        throw new Error(`Invalid element type: ${element.type}. This should have been caught during parsing.`);
+      }
+
+      // Handle void/self-closing elements that shouldn't have children
+      const voidElements = new Set([
+        'area',
+        'base',
+        'br',
+        'col',
+        'embed',
+        'hr',
+        'img',
+        'input',
+        'link',
+        'meta',
+        'param',
+        'source',
+        'track',
+        'wbr',
+      ]);
+
+      if (typeof element.type === 'string' && voidElements.has(element.type)) {
+        // Void elements should not have children
+        return React.createElement(element.type, { key, ...element.props });
+      } else {
+        // Regular elements can have children - apply variable substitution to text
+        const children = element.children
+          ?.map((child: ParsedElement | string, childIndex: number) => {
+            if (typeof child === 'string') {
+              // Apply variable substitution and preserve whitespace
+              const substituted = sub(child);
+              return substituted && substituted.length > 0 ? substituted : null;
+            }
+            return renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses);
+          })
+          .filter((child: React.ReactNode) => child !== null);
+
+        return React.createElement(
+          element.type,
+          { key, ...element.props },
+          ...(children && children.length > 0 ? children : [])
+        );
+      }
+  }
+}
+
+export function useContentRenderer(content: RawContent | null) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isReady, setIsReady] = React.useState(false);
+
+  const handleContentReady = React.useCallback(() => {
+    setIsReady(true);
+  }, []);
+
+  const renderer = React.useMemo(() => {
+    if (!content) {
+      return null;
+    }
+    return <ContentRenderer content={content} containerRef={containerRef} onContentReady={handleContentReady} />;
+  }, [content, handleContentReady]);
+
+  return {
+    renderer,
+    containerRef,
+    isReady,
+  };
+}

@@ -25,6 +25,8 @@ interface UseLinkClickHandlerProps {
   activeTab: LearningJourneyTab | null;
   theme: GrafanaTheme2;
   model: {
+    loadTab: (tabId: string, url: string) => Promise<void>;
+    /** @deprecated Internal; routed via `loadTab`. Retained for older callers. */
     loadTabContent: (tabId: string, url: string) => void;
     openLearningJourney: (url: string, title: string, options?: OpenLearningJourneyOptions) => void;
     openDocsPage?: (url: string, title: string, options?: OpenDocsOptions) => void;
@@ -80,8 +82,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             total_milestones: activeTab.content?.metadata?.learningJourney?.totalMilestones || 0,
           });
 
-          // Navigate directly to the first milestone URL
-          model.loadTabContent(activeTab.id, milestoneUrl);
+          // Navigate directly to the first milestone URL. Use the unified
+          // dispatcher so package-backed journeys re-run their docs loader.
+          model.loadTab(activeTab.id, milestoneUrl);
         } else if (
           activeTab?.content?.metadata?.learningJourney?.milestones &&
           activeTab.content.metadata.learningJourney.milestones.length > 0
@@ -96,7 +99,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               total_milestones: activeTab.content.metadata.learningJourney.milestones.length,
             });
 
-            model.loadTabContent(activeTab.id, firstMilestone.url);
+            model.loadTab(activeTab.id, firstMilestone.url);
           }
         } else {
           console.warn('No milestone URL found to navigate to');
@@ -494,22 +497,27 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         const activeTab = model.getActiveTab();
 
         if (navDirection === 'prev' && model.canNavigatePrevious()) {
+          // Log the destination milestone (where the user is heading TO), not
+          // the origin — mirrors the toolbar handler in
+          // LearningJourneyMilestoneToolbar.tsx so the two surfaces agree.
+          const ljPrev = activeTab?.content?.metadata.learningJourney;
           reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
             content_title: activeTab?.title || 'unknown',
             content_url: activeTab?.baseUrl || 'unknown',
-            current_milestone: activeTab?.content?.metadata.learningJourney?.currentMilestone || 0,
-            total_milestones: activeTab?.content?.metadata.learningJourney?.totalMilestones || 0,
+            current_milestone: Math.max(0, (ljPrev?.currentMilestone ?? 0) - 1),
+            total_milestones: ljPrev?.totalMilestones || 0,
             direction: 'backward',
             interaction_location: 'bottom_navigation',
             completion_percentage: activeTab?.content ? getJourneyProgress(activeTab.content) : 0,
           });
           model.navigateToPreviousMilestone();
         } else if (navDirection === 'next' && model.canNavigateNext()) {
+          const ljNext = activeTab?.content?.metadata.learningJourney;
           reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
             content_title: activeTab?.title || 'unknown',
             content_url: activeTab?.baseUrl || 'unknown',
-            current_milestone: activeTab?.content?.metadata.learningJourney?.currentMilestone || 0,
-            total_milestones: activeTab?.content?.metadata.learningJourney?.totalMilestones || 0,
+            current_milestone: Math.min(ljNext?.totalMilestones ?? 0, (ljNext?.currentMilestone ?? 0) + 1),
+            total_milestones: ljNext?.totalMilestones || 0,
             direction: 'forward',
             interaction_location: 'bottom_navigation',
             completion_percentage: activeTab?.content ? getJourneyProgress(activeTab.content) : 0,

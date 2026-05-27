@@ -30,13 +30,32 @@ import React from 'react';
 
 export const memoryStore = new Map<string, unknown>();
 
+/** Configurable return value for `checkRequirementsFromData`. Override per-test
+ *  via `setCheckRequirementsResult()`; reset in `resetSectionHarness()`. */
+let _checkRequirementsResult: {
+  pass: boolean;
+  error?: Array<{ requirement?: string; error?: string; canFix?: boolean; fixType?: string; targetHref?: string }>;
+} = {
+  pass: true,
+  error: [],
+};
+
+export function setCheckRequirementsResult(result: typeof _checkRequirementsResult) {
+  _checkRequirementsResult = result;
+}
+
+// Module-level reference so resetSectionHarness can clear call history between
+// tests (the factory is only called once by jest.mock, so the fn is shared).
+let _stableCheckRequirementsFromData: jest.Mock | null = null;
+
 const stepsKey = (contentKey: string, sectionId: string) => `section-steps::${contentKey}::${sectionId}`;
 const collapseKey = (contentKey: string, sectionId: string) => `section-collapse::${contentKey}::${sectionId}`;
 const ackKey = (contentKey: string, sectionId: string) => `section-ack::${contentKey}::${sectionId}`;
+const doneKey = (contentKey: string, sectionId: string) => `section-done::${contentKey}::${sectionId}`;
 const completionKey = (contentKey: string) => `interactive-completion::${contentKey}`;
 
 /** Sweep all harness keys for a content key (matches the real
- *  `clearAllForContent` contract — sweeps steps + collapse + ack). */
+ *  `clearAllForContent` contract — sweeps steps + collapse + ack + done). */
 function sweepContent(contentKey: string) {
   for (const k of Array.from(memoryStore.keys())) {
     if (typeof k !== 'string') {
@@ -45,7 +64,8 @@ function sweepContent(contentKey: string) {
     if (
       k.startsWith(`section-steps::${contentKey}::`) ||
       k.startsWith(`section-collapse::${contentKey}::`) ||
-      k.startsWith(`section-ack::${contentKey}::`)
+      k.startsWith(`section-ack::${contentKey}::`) ||
+      k.startsWith(`section-done::${contentKey}::`)
     ) {
       memoryStore.delete(k);
     }
@@ -109,6 +129,31 @@ export function createUserStorageMock() {
       }),
       clear: jest.fn(async (contentKey: string, sectionId: string) => {
         memoryStore.delete(ackKey(contentKey, sectionId));
+      }),
+      countAllAcknowledged: jest.fn((contentKey: string) => {
+        let count = 0;
+        const prefix = ackKey(contentKey, '');
+        memoryStore.forEach((value, key) => {
+          if (key.startsWith(prefix) && value === true) {
+            count++;
+          }
+        });
+        return count;
+      }),
+    },
+    /** Mount-free `section-completed:` requirement storage (Phase 2 follow-up
+     *  for issue #13). Mirrors the two-state shape of
+     *  `sectionAcknowledgementStorage`: `true` or absent (`null`). */
+    sectionDoneStorage: {
+      get: jest.fn(async (contentKey: string, sectionId: string) => {
+        const v = memoryStore.get(doneKey(contentKey, sectionId));
+        return v === undefined ? null : (v as true);
+      }),
+      set: jest.fn(async (contentKey: string, sectionId: string, value: true) => {
+        memoryStore.set(doneKey(contentKey, sectionId), value);
+      }),
+      clear: jest.fn(async (contentKey: string, sectionId: string) => {
+        memoryStore.delete(doneKey(contentKey, sectionId));
       }),
     },
     interactiveCompletionStorage: {
@@ -193,13 +238,19 @@ export function createInteractiveConditionalMock() {
 
 /** Factory for `jest.mock('../../interactive-engine', ...)`. */
 export function createInteractiveEngineMock() {
+  // checkRequirementsFromData must be a stable reference — if it changes identity
+  // on every render (because useInteractiveElements returns a new jest.fn() each
+  // call), the section's useCallback dependency changes and the requirements-check
+  // effect re-fires indefinitely, causing OOM in tests with requirements set.
+  _stableCheckRequirementsFromData = jest.fn(async () => _checkRequirementsResult);
+  const stableCheckRequirementsFromData = _stableCheckRequirementsFromData;
   return {
     useInteractiveElements: () => ({
       executeInteractiveAction: jest.fn(async () => undefined),
       startSectionBlocking: jest.fn(),
       stopSectionBlocking: jest.fn(),
       verifyStepResult: jest.fn(async () => true),
-      checkRequirementsFromData: jest.fn(async () => ({ pass: true })),
+      checkRequirementsFromData: stableCheckRequirementsFromData,
     }),
     ActionMonitor: {
       getInstance: () => ({
@@ -211,6 +262,8 @@ export function createInteractiveEngineMock() {
     NavigationManager: jest.fn().mockImplementation(() => ({
       clearAllHighlights: jest.fn(),
       fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
+      fixLocationRequirement: jest.fn().mockResolvedValue(undefined),
+      expandParentNavigationSection: jest.fn().mockResolvedValue(undefined),
     })),
   };
 }
@@ -237,6 +290,19 @@ export function createRequirementsManagerMock() {
       }),
     },
     validateInteractiveRequirements: jest.fn(),
+    // Use the real dispatchFix so handlers delegate to the mocked NavigationManager.
+    // Lazy require — NOT a top-level import. A static import would pull in
+    // fix-registry → expand-options-group → constants/interactive-config at
+    // harness initialization time, which fires the jest.mock factory for
+    // interactive-config before the harness finishes loading → TDZ crash.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    dispatchFix: require('../requirements-manager/fix-registry').dispatchFix,
+    getRequirementExplanation: jest.fn((requirement?: string) => {
+      if (requirement?.startsWith('on-page:')) {
+        return 'Navigate to the correct page first.';
+      }
+      return 'Requirements not yet met.';
+    }),
   };
 }
 
@@ -272,6 +338,39 @@ export function createAnalyticsMock() {
   };
 }
 
+/**
+ * Factory for `jest.mock('@grafana/data', ...)`.
+ *
+ * Spreads the real `@grafana/data` module so `@grafana/runtime` v13's eager
+ * top-level imports keep working (`getThemeById`, `BusEventBase`,
+ * `BusEventWithPayload`, ...) and only overrides `usePluginContext` so the
+ * section's plugin-meta lookups return a stable empty fixture in tests.
+ */
+export function createGrafanaDataMock() {
+  return {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    ...jest.requireActual('@grafana/data'),
+    usePluginContext: () => ({ meta: { jsonData: {} } }),
+  };
+}
+
+/**
+ * Factory for `jest.mock('@grafana/ui', ...)`.
+ *
+ * Mirrors the section's actual surface (`Button`) and the eager hooks
+ * `@grafana/runtime` v13's `LocationService` reaches for at module load
+ * (`createLogger`, `attachDebugger`). Without these, runtime blows up the
+ * moment any module under test transitively imports it.
+ */
+export function createGrafanaUiMock() {
+  return {
+    Button: ({ children, onClick, disabled, ...rest }: any) =>
+      React.createElement('button', { onClick, disabled, ...rest }, children),
+    createLogger: () => ({ logger: jest.fn() }),
+    attachDebugger: jest.fn(),
+  };
+}
+
 /** Factory for `jest.mock('../../constants', ...)`. */
 export function createConstantsMock() {
   return {
@@ -295,6 +394,16 @@ export function createInteractiveConfigMock() {
 /** Reset the in-memory store between tests. Call from `beforeEach`. */
 export function resetSectionHarness() {
   memoryStore.clear();
+  _checkRequirementsResult = { pass: true, error: [] };
+  _stableCheckRequirementsFromData?.mockClear();
+  // The completion store keeps its own module-scope cache + hydration
+  // tracking. Clear both so tests don't bleed state across runs.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const store = require('../global-state/completion-store');
+  store.resetCompletionStoreForTests();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const contentKey = require('../global-state/content-key');
+  contentKey.resetContentKeyForTests();
 }
 
 /**

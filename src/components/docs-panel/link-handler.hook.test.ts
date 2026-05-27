@@ -23,6 +23,7 @@ describe('useLinkClickHandler', () => {
 
   // Mock model with all required functions
   const mockModel = {
+    loadTab: jest.fn().mockResolvedValue(undefined),
     loadTabContent: jest.fn(),
     openLearningJourney: jest.fn(),
     openDocsPage: jest.fn(),
@@ -84,8 +85,9 @@ describe('useLinkClickHandler', () => {
       // Simulate click
       fireEvent.click(startButton);
 
-      // Verify expected behavior
-      expect(mockModel.loadTabContent).toHaveBeenCalledWith('tab1', 'https://grafana.com/docs/test-journey/milestone1');
+      // Verify the unified dispatcher was used (so packaged journeys
+      // route through the docs loader internally).
+      expect(mockModel.loadTab).toHaveBeenCalledWith('tab1', 'https://grafana.com/docs/test-journey/milestone1');
     });
   });
 
@@ -176,6 +178,113 @@ describe('useLinkClickHandler', () => {
       // Test previous navigation
       fireEvent.click(prevButton);
       expect(mockModel.navigateToPreviousMilestone).toHaveBeenCalled();
+    });
+
+    // -------------------------------------------------------------------------
+    // Milestone-arrow analytics: destination semantic
+    // -------------------------------------------------------------------------
+    //
+    // Mirrors the toolbar handler. The bottom-navigation buttons embedded in
+    // the rendered journey content fire `milestone_arrow_interaction_click`
+    // with the milestone the user is heading TO, not the origin.
+    it('logs the destination milestone (current + 1) on bottom-nav forward click', () => {
+      // Need to read the mock from the analytics module via the jest registry
+      // because the import at the top resolved to the mock implementation.
+      const { reportAppInteraction } = jest.requireMock('../../lib/analytics');
+
+      mockModel.getActiveTab.mockReturnValue({
+        id: 'tab1',
+        title: 'Test Journey',
+        baseUrl: 'https://grafana.com/docs/test-journey',
+        currentUrl: 'https://grafana.com/docs/test-journey/m2',
+        type: 'learning-journey',
+        content: {
+          type: 'learning-journey',
+          url: 'https://grafana.com/docs/test-journey/m2',
+          metadata: {
+            learningJourney: {
+              currentMilestone: 2,
+              totalMilestones: 6,
+            },
+          },
+        },
+        isLoading: false,
+        error: null,
+      });
+
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const nextButton = document.createElement('button');
+      nextButton.setAttribute('data-journey-nav', 'next');
+      contentDiv.appendChild(nextButton);
+
+      fireEvent.click(nextButton);
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.MilestoneArrowInteractionClick,
+        expect.objectContaining({
+          current_milestone: 3,
+          total_milestones: 6,
+          direction: 'forward',
+          interaction_location: 'bottom_navigation',
+        })
+      );
+    });
+
+    it('logs the destination milestone (current - 1) on bottom-nav backward click', () => {
+      const { reportAppInteraction } = jest.requireMock('../../lib/analytics');
+
+      mockModel.getActiveTab.mockReturnValue({
+        id: 'tab1',
+        title: 'Test Journey',
+        baseUrl: 'https://grafana.com/docs/test-journey',
+        currentUrl: 'https://grafana.com/docs/test-journey/m3',
+        type: 'learning-journey',
+        content: {
+          type: 'learning-journey',
+          url: 'https://grafana.com/docs/test-journey/m3',
+          metadata: {
+            learningJourney: {
+              currentMilestone: 3,
+              totalMilestones: 6,
+            },
+          },
+        },
+        isLoading: false,
+        error: null,
+      });
+
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const prevButton = document.createElement('button');
+      prevButton.setAttribute('data-journey-nav', 'prev');
+      contentDiv.appendChild(prevButton);
+
+      fireEvent.click(prevButton);
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.MilestoneArrowInteractionClick,
+        expect.objectContaining({
+          current_milestone: 2,
+          total_milestones: 6,
+          direction: 'backward',
+          interaction_location: 'bottom_navigation',
+        })
+      );
     });
   });
 

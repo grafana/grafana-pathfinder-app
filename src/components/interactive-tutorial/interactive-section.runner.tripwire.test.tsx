@@ -35,11 +35,12 @@
 import React from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 
-jest.mock('@grafana/ui', () => ({
-  Button: ({ children, onClick, disabled, ...rest }: any) =>
-    React.createElement('button', { onClick, disabled, ...rest }, children),
-}));
-jest.mock('@grafana/data', () => ({ usePluginContext: () => ({ meta: { jsonData: {} } }) }));
+jest.mock('@grafana/ui', () => {
+  return require('../../test-utils/interactive-section-harness').createGrafanaUiMock();
+});
+jest.mock('@grafana/data', () => {
+  return require('../../test-utils/interactive-section-harness').createGrafanaDataMock();
+});
 jest.mock('../../lib/analytics', () => {
   return require('../../test-utils/interactive-section-harness').createAnalyticsMock();
 });
@@ -141,8 +142,8 @@ function recordEvents(names: string[]): { events: CapturedEvent[]; unsubscribe: 
 
 describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
   describe('happy path', () => {
-    it('runs all plain steps to completion and dispatches `interactive-section-completed` exactly once', async () => {
-      const { events, unsubscribe } = recordEvents(['interactive-section-completed', 'interactive-step-completed']);
+    it('runs all plain steps to completion and dispatches pathfinder:progress (kind: section) exactly once', async () => {
+      const { events, unsubscribe } = recordEvents(['pathfinder:progress']);
       try {
         render(
           <InteractiveSection id="runner" title="Runner" autoCollapse={false}>
@@ -166,10 +167,12 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
         // After execution completes, the Reset button surfaces (section is done).
         await waitFor(() => expect(screen.getByTestId(resetBtn(SECTION_ID))).toBeInTheDocument(), { timeout: 3000 });
 
-        // `interactive-section-completed` must fire exactly once.
-        const sectionCompletions = events.filter((e) => e.name === 'interactive-section-completed');
+        // pathfinder:progress (kind: section, completed: true) must fire exactly once.
+        const sectionCompletions = events.filter(
+          (e) => e.name === 'pathfinder:progress' && e.detail.kind === 'section' && e.detail.completed
+        );
         expect(sectionCompletions).toHaveLength(1);
-        expect(sectionCompletions[0]!.detail).toEqual({ sectionId: SECTION_ID });
+        expect(sectionCompletions[0]!.detail).toEqual({ kind: 'section', sectionId: SECTION_ID, completed: true });
 
         // Final persisted completion set covers all 3 steps.
         const persisted = memoryStore.get(`section-steps::${NON_PREVIEW_KEY}::${SECTION_ID}`) as

@@ -1,15 +1,12 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { locationService } from '@grafana/runtime';
+import { ThemeContext } from '@grafana/data';
+import { config, locationService } from '@grafana/runtime';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
-import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
+import { useContentReset } from '../docs-panel/hooks';
+import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
-import {
-  usePendingGuideLaunch,
-  useAlignmentReevaluation,
-  useAutoLaunchTutorial,
-  useStepProgressFromEvents,
-} from '../../hooks';
+import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
@@ -37,6 +34,7 @@ const EDITOR_FLOATING_TITLE = 'Guide editor';
  */
 export function FloatingPanelManager() {
   const [mode, setMode] = useState<PanelMode>(() => panelModeManager.getMode());
+  const theme = useGrafanaTheme();
 
   // Listen for mode changes
   useEffect(() => {
@@ -55,10 +53,33 @@ export function FloatingPanelManager() {
   }
 
   return (
-    <PathfinderFeatureProvider>
-      <FloatingPanelInner />
-    </PathfinderFeatureProvider>
+    <ThemeContext.Provider value={theme}>
+      <PathfinderFeatureProvider>
+        <FloatingPanelInner />
+      </PathfinderFeatureProvider>
+    </ThemeContext.Provider>
   );
+}
+
+function useGrafanaTheme() {
+  const [theme, setTheme] = useState(() => config.theme2);
+
+  useEffect(() => {
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.attributeName === 'class') {
+          if (config.theme2 !== theme) {
+            setTheme(config.theme2);
+          }
+          break;
+        }
+      }
+    });
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, [theme]);
+
+  return theme;
 }
 
 /**
@@ -70,9 +91,6 @@ function FloatingPanelInner() {
   // This component is rendered in a standalone React root (createCompatRoot)
   // outside Grafana's plugin context provider tree. Read config from the
   // global set by module.tsx instead.
-
-  // Poll for MCP guide launches (same as ContextPanel does for sidebar)
-  usePendingGuideLaunch();
 
   const panel = useMemo(() => {
     const globalConfig = (window as any).__pathfinderPluginConfig;
@@ -97,16 +115,6 @@ function FloatingPanelInner() {
 
     document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted', { detail: { timestamp: Date.now() } }));
     sidebarState.setIsSidebarMounted(true);
-
-    // If a guide was handed off from the sidebar (pop-out), open it now.
-    // Tag the source as `floating_panel_dock` (aligned-by-construction) so
-    // the implied-0th-step evaluator doesn't second-guess a guide the user
-    // is already viewing.
-    const pendingGuide = panelModeManager.consumePendingGuide();
-    if (pendingGuide) {
-      guideOpenInFlightRef.current = true;
-      openPendingGuide(panel, pendingGuide, 'floating_panel_dock');
-    }
 
     return () => {
       document.removeEventListener('pathfinder-auto-launch-pending', handlePending);
@@ -172,7 +180,17 @@ function FloatingPanelInner() {
     }
   }, [restorationDone, hasActiveGuide, isEditorTab]);
 
-  useAlignmentReevaluation(panel, activeTabId, activeTab);
+  const { hasInteractiveProgress, progressKey } = useGuideProgressState(activeTab);
+
+  const handleResetGuide = useContentReset({ model: panel });
+
+  useKeyboardShortcuts({
+    tabs,
+    activeTabId,
+    activeTab: activeTab ?? null,
+    isRecommendationsTab: activeTabId === 'recommendations',
+    model: panel,
+  });
   // Prefer `currentUrl` (the milestone the user is reading) so when the user
   // goes from floating → fullscreen via `handleSwitchToFullScreen`, or copies
   // a shareable link, the milestone position carries through. `baseUrl` is
@@ -184,9 +202,6 @@ function FloatingPanelInner() {
       guide_url: guideUrl || '',
       guide_title: title,
     });
-    // Restore the sidebar's original tab state (snapshotted before pop-out)
-    // so the floating panel's tabStorage writes don't wipe the user's tabs
-    panelModeManager.restoreSidebarTabSnapshot();
     panelModeManager.setMode('sidebar');
     sidebarState.setPendingOpenSource('floating_panel_dock', 'open');
     sidebarState.openSidebar('Interactive learning');
@@ -206,7 +221,6 @@ function FloatingPanelInner() {
   }, [handleSwitchToSidebar]);
 
   const handleClose = useCallback(() => {
-    panelModeManager.restoreSidebarTabSnapshot();
     panelModeManager.setMode('sidebar');
   }, []);
 
@@ -313,6 +327,9 @@ function FloatingPanelInner() {
           onAlignmentCancel={activeTab ? () => panel.dismissAlignment(activeTab.id) : undefined}
           activeTab={activeTab ?? null}
           model={panel}
+          hasInteractiveProgress={hasInteractiveProgress}
+          progressKey={progressKey}
+          onResetGuide={handleResetGuide}
         />
       )}
     </FloatingPanel>

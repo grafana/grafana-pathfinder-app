@@ -27,9 +27,9 @@ const createMockElement = (data: Partial<InteractiveElementData> = {}): Element 
   }) as unknown as Element;
 
 const createMockInteractiveData = (overrides: Partial<InteractiveElementData> = {}): InteractiveElementData => ({
-  reftarget: 'test-selector',
-  targetaction: 'button',
-  targetvalue: 'test-value',
+  refTarget: 'test-selector',
+  targetAction: 'button',
+  targetValue: 'test-value',
   requirements: 'test-requirements',
   tagName: 'button',
   textContent: 'Test Button',

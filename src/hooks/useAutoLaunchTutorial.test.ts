@@ -71,6 +71,28 @@ describe('useAutoLaunchTutorial', () => {
     expect(panel.openLearningJourney).not.toHaveBeenCalled();
   });
 
+  it('passes the highlighted_guide_experiment source through as a typed LaunchSource', () => {
+    // Regression for the highlighted-guide auto-launch wiring: the orchestrator
+    // dispatches `auto-launch-tutorial` with `source: 'highlighted_guide_experiment'`,
+    // which must round-trip through `coerceLaunchSource` (not get dropped to
+    // undefined like an unknown literal would).
+    const panel = makePanel();
+    renderHook(() => useAutoLaunchTutorial(asPanel(panel)));
+
+    dispatchAutoLaunch({
+      url: 'bundled:onboarding',
+      title: 'Onboarding',
+      type: 'docs-page',
+      source: 'highlighted_guide_experiment',
+    });
+
+    expect(panel.openDocsPage).toHaveBeenCalledWith(
+      'bundled:onboarding',
+      'Onboarding',
+      expect.objectContaining({ source: 'highlighted_guide_experiment' })
+    );
+  });
+
   it('coerces unknown source strings to undefined at the boundary (no typo poisoning)', () => {
     const panel = makePanel();
     renderHook(() => useAutoLaunchTutorial(asPanel(panel)));
@@ -130,6 +152,23 @@ describe('useAutoLaunchTutorial', () => {
     dispatchAutoLaunch({ url: '', title: 'Foo' });
 
     expect(onLaunched).not.toHaveBeenCalled();
+  });
+
+  it('skips the panel call when skipLaunch returns true but still fires onIncoming', () => {
+    const panel = makePanel();
+    const onIncoming = jest.fn();
+    renderHook(() =>
+      useAutoLaunchTutorial(asPanel(panel), {
+        onIncoming,
+        skipLaunch: () => true,
+      })
+    );
+
+    dispatchAutoLaunch({ url: 'bundled:foo', title: 'Foo', type: 'learning-journey' });
+
+    expect(onIncoming).toHaveBeenCalledTimes(1);
+    expect(panel.openLearningJourney).not.toHaveBeenCalled();
+    expect(panel.openDocsPage).not.toHaveBeenCalled();
   });
 
   it('unsubscribes on unmount so re-mounts do not double-route', () => {

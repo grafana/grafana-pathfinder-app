@@ -11,10 +11,10 @@ export type InteractiveActionType =
 
 export interface InteractiveElementData {
   // Core interactive attributes
-  reftarget: string;
-  targetaction: string;
-  targetvalue?: string;
-  targetcomment?: string;
+  refTarget: string;
+  targetAction: string;
+  targetValue?: string;
+  targetComment?: string;
   requirements?: string;
   objectives?: string;
   skippable?: boolean; // Whether this step can be skipped if requirements fail

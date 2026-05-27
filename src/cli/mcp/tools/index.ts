@@ -17,6 +17,7 @@ import { registerHelpTool } from './help';
 import { registerInspectionTools } from './inspection-tools';
 import { registerMutationTools } from './mutation-tools';
 import { registerRepositoryTools } from './repository-tools';
+import { registerSchemaTools } from './schema-tools';
 
 export function registerAuthoringTools(server: McpServer): void {
   registerAuthoringStart(server);
@@ -26,4 +27,5 @@ export function registerAuthoringTools(server: McpServer): void {
   registerInspectionTools(server);
   registerFinalizeTool(server);
   registerRepositoryTools(server);
+  registerSchemaTools(server);
 }

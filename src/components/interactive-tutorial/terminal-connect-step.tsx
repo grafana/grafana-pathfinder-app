@@ -13,7 +13,7 @@ import { css } from '@emotion/css';
 
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { STEP_STATES, type StepStateValue } from './step-states';
-import { useStandalonePersistence } from './use-standalone-persistence';
+import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 
 export interface TerminalConnectStepProps {
   buttonText?: string;
@@ -30,7 +30,6 @@ export interface TerminalConnectStepProps {
 
   stepId?: string;
   isEligibleForChecking?: boolean;
-  isCompleted?: boolean;
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   resetTrigger?: number;
@@ -96,7 +95,6 @@ export const TerminalConnectStep = forwardRef<
       vmScenario,
       stepId,
       isEligibleForChecking = true,
-      isCompleted: parentCompleted = false,
       isCurrentlyExecuting = false,
       onStepComplete,
       resetTrigger,
@@ -119,22 +117,24 @@ export const TerminalConnectStep = forwardRef<
     }
     const renderedStepId = stepId ?? generatedStepIdRef.current;
 
-    const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
 
-    useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
-
-    const isCompleted = parentCompleted || isLocallyCompleted;
+    const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
+    const isStandalone = !onStepComplete;
+    const isCompleted = storedCompleted;
 
     const markComplete = useCallback(() => {
-      if (!isCompleted) {
-        setIsLocallyCompleted(true);
-        if (onStepComplete && renderedStepId) {
-          onStepComplete(renderedStepId);
-        }
-        onComplete?.();
+      if (isCompleted) {
+        return;
       }
-    }, [isCompleted, onStepComplete, onComplete, renderedStepId]);
+      if (isStandalone) {
+        markStepCompleted(renderedStepId, sectionId, 'manual');
+      }
+      if (onStepComplete && renderedStepId) {
+        onStepComplete(renderedStepId);
+      }
+      onComplete?.();
+    }, [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]);
 
     const handleConnect = useCallback(() => {
       if (!terminalCtx) {

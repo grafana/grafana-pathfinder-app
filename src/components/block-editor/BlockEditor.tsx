@@ -75,6 +75,33 @@ function notify(type: 'success' | 'error' | 'info', title: string, message?: str
   getAppEvents().publish({ type: eventType, payload: [title, ...(message ? [message] : [])] });
 }
 
+/**
+ * Normalize a guide id or title into a Kubernetes-style resource name:
+ * lowercase, hyphen-separated, no leading/trailing or repeated hyphens.
+ * Returns the empty string if the input has no alphanumeric characters.
+ */
+function toResourceName(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/**
+ * Apply an author note to a block. When `note` is empty/undefined the
+ * `authorNote` field is removed entirely rather than left as an empty string,
+ * so blocks round-trip through JSON without a dangling key.
+ */
+function applyAuthorNote(block: JsonBlock, note: string): JsonBlock {
+  if (note) {
+    return { ...block, authorNote: note } as JsonBlock;
+  }
+  const copy = { ...(block as unknown as Record<string, unknown>) };
+  delete copy.authorNote;
+  return copy as unknown as JsonBlock;
+}
+
 /** Reads persisted backend tracking state from localStorage. Returns null values when nothing is stored. */
 function readBackendTracking(): { resourceName: string | null; lastPublishedJson: string | null } {
   try {
@@ -558,21 +585,14 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       onBlockPreview: handleRootBlockPreview,
       onNestedSectionBlockPreview: handleNestedSectionBlockPreview,
 
-      // Author-only note save handlers. Each one merges the new note
-      // onto the existing block via the appropriate update method.
+      // Author-only note save handlers. Each looks up the target block in its
+      // container and delegates to `applyAuthorNote` for the merge/remove logic.
       onBlockAuthorNoteChange: (blockId, note) => {
         const entry = state.blocks.find((b) => b.id === blockId);
         if (!entry) {
           return;
         }
-        const next: JsonBlock = note
-          ? ({ ...entry.block, authorNote: note } as JsonBlock)
-          : (() => {
-              const copy = { ...(entry.block as unknown as Record<string, unknown>) };
-              delete copy.authorNote;
-              return copy as unknown as JsonBlock;
-            })();
-        editor.updateBlock(blockId, next);
+        editor.updateBlock(blockId, applyAuthorNote(entry.block, note));
       },
       onNestedBlockAuthorNoteChange: (sectionId, nestedIndex, note) => {
         const section = state.blocks.find((b) => b.id === sectionId);
@@ -583,14 +603,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         if (!child) {
           return;
         }
-        const next: JsonBlock = note
-          ? ({ ...child, authorNote: note } as JsonBlock)
-          : (() => {
-              const copy = { ...(child as unknown as Record<string, unknown>) };
-              delete copy.authorNote;
-              return copy as unknown as JsonBlock;
-            })();
-        editor.updateNestedBlock(sectionId, nestedIndex, next);
+        editor.updateNestedBlock(sectionId, nestedIndex, applyAuthorNote(child, note));
       },
       onConditionalBranchBlockAuthorNoteChange: (conditionalId, branch, nestedIndex, note) => {
         const conditional = state.blocks.find((b) => b.id === conditionalId);
@@ -601,14 +614,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         if (!child) {
           return;
         }
-        const next: JsonBlock = note
-          ? ({ ...child, authorNote: note } as JsonBlock)
-          : (() => {
-              const copy = { ...(child as unknown as Record<string, unknown>) };
-              delete copy.authorNote;
-              return copy as unknown as JsonBlock;
-            })();
-        editor.updateConditionalBranchBlock(conditionalId, branch, nestedIndex, next);
+        editor.updateConditionalBranchBlock(conditionalId, branch, nestedIndex, applyAuthorNote(child, note));
       },
     }),
     [
@@ -749,13 +755,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       previousStatus: 'draft' | 'published' | null
     ) => {
       // Generate resource name if not provided
-      const generatedResourceName =
-        resourceName ||
-        (guide.id || guide.title)
-          .toLowerCase()
-          .replace(/[^a-z0-9-]/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '');
+      const generatedResourceName = resourceName || toResourceName(guide.id || guide.title);
 
       if (!generatedResourceName || generatedResourceName.length === 0) {
         throw new Error('Guide title or ID must contain at least one alphanumeric character');
@@ -797,13 +797,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
         const isUpdate = !!currentGuideResourceName;
 
-        const resourceName =
-          currentGuideResourceName ||
-          (guide.id || guide.title)
-            .toLowerCase()
-            .replace(/[^a-z0-9-]/g, '-')
-            .replace(/-+/g, '-')
-            .replace(/^-|-$/g, '');
+        const resourceName = currentGuideResourceName || toResourceName(guide.id || guide.title);
 
         if (!resourceName || resourceName.length === 0) {
           notify('error', 'Invalid guide name', 'Guide title or ID must contain at least one alphanumeric character');

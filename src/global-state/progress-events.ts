@@ -1,0 +1,63 @@
+/**
+ * Unified progress event channel.
+ *
+ * Replaces four legacy events:
+ *   - `interactive-step-completed`
+ *   - `section-completed`
+ *   - `interactive-section-completed`
+ *   - `interactive-progress-saved`
+ *
+ * The discriminated payload makes intent explicit at the dispatch site
+ * and at every listener. Lives in `global-state` (Tier 1) so both the
+ * engines tier (e.g. `requirements-manager`) and the UI tier
+ * (`components/interactive-tutorial`) can subscribe without violating
+ * the import-graph tier ratchet.
+ *
+ * `ProgressReason` is a structural duplicate of
+ * `requirements-manager/step-state.CompletionReason` — Tier 1 cannot
+ * import from Tier 2, and the union is small + stable enough that
+ * keeping them aligned is cheaper than moving the type to Tier 0.
+ */
+
+export type ProgressReason = 'none' | 'objectives' | 'manual' | 'skipped';
+
+export type ProgressEventDetail =
+  | {
+      kind: 'step';
+      stepId: string;
+      sectionId?: string;
+      completed: boolean;
+      reason: ProgressReason;
+    }
+  | {
+      kind: 'section';
+      sectionId: string;
+      completed: boolean;
+      percentage?: number;
+    }
+  | {
+      kind: 'guide';
+      contentKey: string;
+      percentage: number;
+      hasProgress: boolean;
+    };
+
+export const PROGRESS_EVENT = 'pathfinder:progress' as const;
+
+export function dispatchProgress(detail: ProgressEventDetail): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent(PROGRESS_EVENT, { detail }));
+}
+
+export function subscribeProgressEvent(listener: (detail: ProgressEventDetail) => void): () => void {
+  if (typeof window === 'undefined') {
+    return () => undefined;
+  }
+  const handler = (event: Event): void => {
+    listener((event as CustomEvent<ProgressEventDetail>).detail);
+  };
+  window.addEventListener(PROGRESS_EVENT, handler);
+  return () => window.removeEventListener(PROGRESS_EVENT, handler);
+}

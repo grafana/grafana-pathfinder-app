@@ -8,6 +8,8 @@
  */
 
 import { useCallback } from 'react';
+import { getAppEvents } from '@grafana/runtime';
+import { t } from '@grafana/i18n';
 import {
   reportAppInteraction,
   UserInteraction,
@@ -15,7 +17,7 @@ import {
   enrichWithStepContext,
 } from '../../../lib/analytics';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
-import { shouldUseDocsLoader } from '../utils';
+import { evictContentCache } from '../../../global-state/completion-store';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 
@@ -29,7 +31,7 @@ interface UseContentResetOptions {
  * 1. Analytics tracking
  * 2. Storage clearing (interactive steps + completion percentage)
  * 3. Cross-component event dispatch (notifies recommendations panel and
- *    `useAlignmentReevaluation`, which clears its `hasInteractiveProgress` flag)
+ *    `useGuideProgressState`, which clears its `hasInteractiveProgress` flag)
  * 4. Content reload to reset UI state
  *
  * @param options - Configuration object with model
@@ -54,8 +56,15 @@ export function useContentReset({ model }: UseContentResetOptions) {
         await interactiveStepStorage.clearAllForContent(progressKey);
         await interactiveCompletionStorage.clear(progressKey);
 
+        // Step 2b: Evict the completion store's in-memory cache for this
+        // content key. Without this, `useStepCompletion` / `useSectionCompletion`
+        // subscribers would keep returning the prior completion snapshot
+        // until the section components remount — the storage clear alone
+        // doesn't invalidate the in-memory state.
+        evictContentCache(progressKey);
+
         // Step 3: Dispatch cross-component event.
-        // Notifies the recommendations panel to refresh and `useAlignmentReevaluation`
+        // Notifies the recommendations panel to refresh and `useGuideProgressState`
         // to clear its `hasInteractiveProgress` flag for this contentKey.
         window.dispatchEvent(
           new CustomEvent('interactive-progress-cleared', {
@@ -66,23 +75,24 @@ export function useContentReset({ model }: UseContentResetOptions) {
         // Step 4: Reload content to reset UI state.
         // Tag the loader call as `internal_reload` (aligned-by-construction)
         // so the implied-0th-step evaluator doesn't surface a spurious
-        // alignment prompt on top of the freshly reloaded guide when the
-        // user happens to be on a non-matching page. Only the docs-like
-        // branch runs alignment evaluation; the learning-journey branch
-        // (`loadTabContent`) doesn't consume this source.
-        if (shouldUseDocsLoader(activeTab)) {
-          // Calling loadDocsTabContent directly (not openDocsPage) so we
-          // reuse the existing tab; the consume-once flag is the right
-          // mechanism here.
-          // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional legacy use; loadDocsTabContent has no source param
-          model._recordAutoLaunchSource('internal_reload');
-          await model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-        } else {
-          await model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
-        }
+        // alignment prompt on top of the freshly reloaded guide. Only the
+        // docs branch consumes the source — the learning-journey branch
+        // ignores it, so the record is a no-op in that case. The unified
+        // `loadTab` handles the docs-vs-plain dispatch internally.
+        model._recordAutoLaunchSource('internal_reload');
+        await model.loadTab(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
       } catch (error) {
         console.error('[DocsPanel] Failed to reset guide progress:', error);
-        // TODO: Show error toast to user
+        getAppEvents().publish({
+          type: 'alert-error',
+          payload: [
+            t('docsPanel.resetGuideErrorTitle', 'Reset failed'),
+            t(
+              'docsPanel.resetGuideErrorMessage',
+              "Couldn't reset guide progress. Please try again or reload the page."
+            ),
+          ],
+        });
         throw error; // Re-throw so caller can handle if needed
       }
     },

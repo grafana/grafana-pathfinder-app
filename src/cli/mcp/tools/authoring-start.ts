@@ -11,6 +11,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
 import { PATHFINDER_DOMAINS, PATHFINDER_NOT_FOR, PATHFINDER_TRIGGER_PHRASES } from '../lib/agent-routing';
+import { readOnly } from './annotations';
 import { textResult } from './result';
 
 const AUTHORING_CONTEXT = {
@@ -68,6 +69,7 @@ export function registerAuthoringStart(server: McpServer): void {
     {
       description:
         'Use this tool when the user wants to author, create, edit, or publish a Grafana Pathfinder interactive guide, tutorial, or walkthrough. Call this first — once per authoring session before any other Pathfinder tool. Returns Pathfinder authoring context, workflow, composition rules, and discovery hints.',
+      annotations: readOnly('Start Pathfinder authoring'),
       inputSchema: {},
     },
     async () => textResult(JSON.stringify(AUTHORING_CONTEXT, null, 2))

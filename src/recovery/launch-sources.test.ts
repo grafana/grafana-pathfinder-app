@@ -25,6 +25,7 @@ const ALL_LAUNCH_SOURCES = [
   'grot_guide_block',
   'experiment_treatment',
   'experiment_treatment_navigation',
+  'highlighted_guide_experiment',
   'auto_open',
   'floating_panel_dock',
   'fullscreen_handoff',
@@ -41,7 +42,6 @@ const ALL_LAUNCH_SOURCES = [
   'link_interception',
   'queued_link',
   'content_link',
-  'location_change',
   'block_editor_preview',
   'custom_guide',
 ] as const satisfies readonly LaunchSource[];

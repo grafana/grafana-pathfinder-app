@@ -32,7 +32,7 @@ import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { CombinedLearningJourneyPanel } from '../docs-panel';
 import { cleanDocsUrl } from '../utils';
 
-export type MilestoneToolbarSurface = 'sidebar' | 'fullscreen';
+export type MilestoneToolbarSurface = 'sidebar' | 'fullscreen' | 'floating';
 
 export interface LearningJourneyMilestoneToolbarProps {
   panel: CombinedLearningJourneyPanel;
@@ -57,11 +57,11 @@ export interface LearningJourneyMilestoneToolbarProps {
    */
   actionButtonClassName: string;
   /**
-   * From `useAlignmentReevaluation`. Drives the visibility of the
+   * From `useGuideProgressState`. Drives the visibility of the
    * "Reset guide" button.
    */
   hasInteractiveProgress: boolean;
-  /** From `useAlignmentReevaluation`. Required by the reset handler. */
+  /** From `useGuideProgressState`. Required by the reset handler. */
   progressKey: string | null;
   /**
    * Resolved by the consumer via `useContentReset({ model: panel })` so
@@ -75,6 +75,7 @@ export interface LearningJourneyMilestoneToolbarProps {
    * `<Dropdown>`; the fullscreen surface omits it.
    */
   trailingActions?: React.ReactNode;
+  compact?: boolean;
 }
 
 /**
@@ -92,6 +93,7 @@ export function LearningJourneyMilestoneToolbar({
   progressKey,
   onResetGuide,
   trailingActions,
+  compact = false,
 }: LearningJourneyMilestoneToolbarProps) {
   const styles = useStyles2(getMilestoneStyles);
 
@@ -103,10 +105,16 @@ export function LearningJourneyMilestoneToolbar({
   }
 
   const handlePrev = () => {
+    // Log the destination milestone (where the user is heading TO), not the
+    // origin. For a 6-milestone journey, a backward click from M2 logs
+    // current_milestone: 1 — matching the toolbar value the user sees after
+    // navigation lands. The Math.max clamp is defence-in-depth; the
+    // `panel.canNavigatePrevious()` disabled-button gate already prevents
+    // navigating past milestone 0 (cover).
     reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
       content_title: activeTab.title,
       content_url: activeTab.baseUrl,
-      current_milestone: lj.currentMilestone || 0,
+      current_milestone: Math.max(0, (lj.currentMilestone ?? 0) - 1),
       total_milestones: lj.totalMilestones || 0,
       direction: 'backward',
       interaction_location: 'milestone_progress_bar',
@@ -116,10 +124,16 @@ export function LearningJourneyMilestoneToolbar({
   };
 
   const handleNext = () => {
+    // Log the destination milestone (where the user is heading TO), not the
+    // origin. For a 6-milestone journey, a forward click from M5 logs
+    // current_milestone: 6 — so the analytics agrees with the toolbar's
+    // "Milestone 6 of 6" on the end milestone. The Math.min clamp is
+    // defence-in-depth; `panel.canNavigateNext()` already disables the
+    // arrow on the last milestone.
     reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
       content_title: activeTab.title,
       content_url: activeTab.baseUrl,
-      current_milestone: lj.currentMilestone || 0,
+      current_milestone: Math.min(lj.totalMilestones ?? 0, (lj.currentMilestone ?? 0) + 1),
       total_milestones: lj.totalMilestones || 0,
       direction: 'forward',
       interaction_location: 'milestone_progress_bar',
@@ -154,7 +168,11 @@ export function LearningJourneyMilestoneToolbar({
   // for both surfaces — the sidebar / fullscreen split is only meaningful
   // for the explicit "Open in browser" outbound, not for in-guide nav.
   const openInteractionLocation =
-    surface === 'fullscreen' ? 'full_screen_milestone_progress_bar' : 'milestone_progress_bar';
+    surface === 'fullscreen'
+      ? 'full_screen_milestone_progress_bar'
+      : surface === 'floating'
+        ? 'floating_panel_milestone_progress_bar'
+        : 'milestone_progress_bar';
 
   return (
     <div className={styles.milestoneProgress}>
@@ -191,48 +209,50 @@ export function LearningJourneyMilestoneToolbar({
             className={styles.navButton}
           />
         </div>
-        <div className={styles.milestoneActions}>
-          {externalUrl && (
-            <button
-              className={actionButtonClassName}
-              aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
-              onClick={() => {
-                reportAppInteraction(UserInteraction.OpenExtraResource, {
-                  content_url: externalUrl,
-                  content_type: getContentTypeForAnalytics(externalUrl, activeTab.type || 'learning-journey'),
-                  link_text: activeTab.title,
-                  source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
-                  link_type: 'external_browser',
-                  interaction_location: openInteractionLocation,
-                  current_milestone: lj.currentMilestone || 0,
-                  total_milestones: lj.totalMilestones || 0,
-                });
-                setTimeout(() => {
-                  window.open(externalUrl, '_blank', 'noopener,noreferrer');
-                }, 100);
-              }}
-            >
-              <Icon name="external-link-alt" size="sm" />
-              <span>{t('docsPanel.open', 'Open')}</span>
-            </button>
-          )}
-          {(hasInteractiveProgress || activeTab.type === 'interactive') && (
-            <button
-              className={actionButtonClassName}
-              aria-label={t('docsPanel.resetGuide', 'Reset guide')}
-              title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
-              onClick={async () => {
-                if (progressKey) {
-                  await onResetGuide(progressKey, activeTab);
-                }
-              }}
-            >
-              <Icon name="history-alt" size="sm" />
-              <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
-            </button>
-          )}
-          {trailingActions}
-        </div>
+        {!compact && (
+          <div className={styles.milestoneActions}>
+            {externalUrl && (
+              <button
+                className={actionButtonClassName}
+                aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
+                onClick={() => {
+                  reportAppInteraction(UserInteraction.OpenExtraResource, {
+                    content_url: externalUrl,
+                    content_type: getContentTypeForAnalytics(externalUrl, activeTab.type || 'learning-journey'),
+                    link_text: activeTab.title,
+                    source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
+                    link_type: 'external_browser',
+                    interaction_location: openInteractionLocation,
+                    current_milestone: lj.currentMilestone || 0,
+                    total_milestones: lj.totalMilestones || 0,
+                  });
+                  setTimeout(() => {
+                    window.open(externalUrl, '_blank', 'noopener,noreferrer');
+                  }, 100);
+                }}
+              >
+                <Icon name="external-link-alt" size="sm" />
+                <span>{t('docsPanel.open', 'Open')}</span>
+              </button>
+            )}
+            {(hasInteractiveProgress || activeTab.type === 'interactive') && (
+              <button
+                className={actionButtonClassName}
+                aria-label={t('docsPanel.resetGuide', 'Reset guide')}
+                title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
+                onClick={async () => {
+                  if (progressKey) {
+                    await onResetGuide(progressKey, activeTab);
+                  }
+                }}
+              >
+                <Icon name="history-alt" size="sm" />
+                <span>{t('docsPanel.resetGuide', 'Reset guide')}</span>
+              </button>
+            )}
+            {trailingActions}
+          </div>
+        )}
         <div className={styles.progressBar}>
           <div
             className={styles.progressFill}

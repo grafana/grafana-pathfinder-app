@@ -673,4 +673,60 @@ describe('NavigationManager', () => {
       });
     });
   });
+
+  describe('openAndDockNavigation', () => {
+    // Grafana's `#dock-menu-button` exists in both docked and overlay states with opposite
+    // semantics — its `aria-label` flips between "Dock menu" (overlay → click to dock)
+    // and "Undock menu" (docked → click would undock). These tests pin the discrimination.
+    let megaMenuToggle: HTMLButtonElement;
+    let dockMenuButton: HTMLButtonElement;
+    let navItem: HTMLAnchorElement;
+    let dockClickSpy: jest.Mock;
+
+    beforeEach(() => {
+      // openAndDockNavigation early-warns and returns if this toggle is missing.
+      megaMenuToggle = document.createElement('button');
+      megaMenuToggle.id = 'mega-menu-toggle';
+      document.body.appendChild(megaMenuToggle);
+
+      // Matches NAV_ITEM_SELECTOR so `navItemsVisible` is true and the
+      // function takes the early-return code path (lines 1529 / 1539).
+      navItem = document.createElement('a');
+      navItem.setAttribute('data-testid', 'data-testid Nav menu item');
+      document.body.appendChild(navItem);
+
+      // Dock button present in both docked and overlay states; aria-label is what each test configures.
+      dockMenuButton = document.createElement('button');
+      dockMenuButton.id = 'dock-menu-button';
+      document.body.appendChild(dockMenuButton);
+
+      dockClickSpy = jest.fn();
+      dockMenuButton.click = dockClickSpy;
+    });
+
+    afterEach(() => {
+      megaMenuToggle.remove();
+      navItem.remove();
+      dockMenuButton.remove();
+    });
+
+    it('docks the nav when invoked with the nav in overlay mode', async () => {
+      // Overlay state: clicking the dock button docks the nav (desired behavior).
+      dockMenuButton.setAttribute('aria-label', 'Dock menu');
+
+      await navigationManager.openAndDockNavigation();
+
+      expect(dockClickSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not click the dock button when the nav is already docked', async () => {
+      // Docked state: clicking the dock button would UNDOCK the nav — must be a no-op.
+      // This locks in the intent of #709.
+      dockMenuButton.setAttribute('aria-label', 'Undock menu');
+
+      await navigationManager.openAndDockNavigation();
+
+      expect(dockClickSpy).not.toHaveBeenCalled();
+    });
+  });
 });

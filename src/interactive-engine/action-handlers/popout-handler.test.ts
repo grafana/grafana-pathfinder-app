@@ -13,9 +13,9 @@ const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
 
 function makeData(overrides: Partial<InteractiveElementData> = {}): InteractiveElementData {
   return {
-    reftarget: '',
-    targetaction: 'popout',
-    targetvalue: 'floating',
+    refTarget: '',
+    targetAction: 'popout',
+    targetValue: 'floating',
     tagName: 'button',
     textContent: 'Popout step',
     timestamp: Date.now(),
@@ -39,8 +39,8 @@ describe('PopoutHandler', () => {
     jest.useRealTimers();
   });
 
-  it("dispatches 'pathfinder-request-pop-out' when targetvalue is 'floating'", async () => {
-    const data = makeData({ targetvalue: 'floating' });
+  it("dispatches 'pathfinder-request-pop-out' when targetValue is 'floating'", async () => {
+    const data = makeData({ targetValue: 'floating' });
     const promise = handler.execute(data, true);
     await jest.runAllTimersAsync();
     await promise;
@@ -52,8 +52,8 @@ describe('PopoutHandler', () => {
     expect(mockStateManager.setState).toHaveBeenCalledWith(data, 'completed');
   });
 
-  it("dispatches 'pathfinder-request-dock' when targetvalue is 'sidebar'", async () => {
-    const data = makeData({ targetvalue: 'sidebar' });
+  it("dispatches 'pathfinder-request-dock' when targetValue is 'sidebar'", async () => {
+    const data = makeData({ targetValue: 'sidebar' });
     const promise = handler.execute(data, true);
     await jest.runAllTimersAsync();
     await promise;
@@ -65,7 +65,7 @@ describe('PopoutHandler', () => {
 
   it('treats show mode the same as do mode (single-button action)', async () => {
     // Popout has no preview - both buttonType paths should still dispatch and complete.
-    const data = makeData({ targetvalue: 'floating' });
+    const data = makeData({ targetValue: 'floating' });
     const promise = handler.execute(data, false);
     await jest.runAllTimersAsync();
     await promise;
@@ -75,16 +75,16 @@ describe('PopoutHandler', () => {
     expect(mockStateManager.setState).toHaveBeenCalledWith(data, 'completed');
   });
 
-  it('reports an error when targetvalue is missing or invalid', async () => {
-    const data = makeData({ targetvalue: 'nonsense' });
+  it('reports an error when targetValue is missing or invalid', async () => {
+    const data = makeData({ targetValue: 'nonsense' });
     await handler.execute(data, true);
 
     expect(dispatchSpy).not.toHaveBeenCalled();
     expect(mockStateManager.handleError).toHaveBeenCalledWith(expect.any(Error), 'PopoutHandler', data, true);
   });
 
-  it('reports an error when targetvalue is undefined', async () => {
-    const data = makeData({ targetvalue: undefined });
+  it('reports an error when targetValue is undefined', async () => {
+    const data = makeData({ targetValue: undefined });
     await handler.execute(data, true);
 
     expect(dispatchSpy).not.toHaveBeenCalled();

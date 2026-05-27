@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
+import { getActiveTabUrl, getContentKeyOverride } from '../../../global-state/content-key';
 import { parseUrlSafely } from '../../../security/url-validator';
 
 export interface YouTubeVideoRendererProps {
@@ -59,8 +60,8 @@ export function YouTubeVideoRenderer({
   // Get document info for analytics
   const getDocumentInfo = useCallback(() => {
     try {
-      const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
-      const contentKey = (window as any).__DocsPluginContentKey as string | undefined;
+      const tabUrl = getActiveTabUrl();
+      const contentKey = getContentKeyOverride();
 
       const sourceDocument = tabUrl || contentKey || window.location.pathname || 'unknown';
 

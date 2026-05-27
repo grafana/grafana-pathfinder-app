@@ -91,6 +91,7 @@ const REQUIRED_DEFAULTS: Partial<Record<BlockType, Record<string, unknown>>> = {
   multistep: { content: 'Complete these steps', steps: [{ action: 'noop' }] },
   guided: { content: 'Follow these steps', steps: [{ action: 'noop' }] },
   terminal: { command: 'echo "hello"' },
+  'terminal-connect': { content: 'Connect to terminal' },
   challenge: {
     title: 'Untitled challenge',
     successCriteria: 'coda-exit-zero:true',

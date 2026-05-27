@@ -1,32 +1,26 @@
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
-import { ContentRenderer } from '../../docs-retrieval';
+import { ContentRenderer } from '../content-renderer/content-renderer';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import type { RawContent } from '../../types/content.types';
 import type { LearningJourneyTab, PendingAlignment } from '../../types/content-panel.types';
-import { AlignmentPrompt } from '../docs-panel/components';
+import {
+  AlignmentPrompt,
+  LearningJourneyMilestoneToolbar,
+  type MilestoneToolbarSurface,
+} from '../docs-panel/components';
 import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
 import { useLinkClickHandler } from '../docs-panel/link-handler.hook';
-import type { OpenDocsOptions, OpenLearningJourneyOptions } from '../docs-panel/types';
-
-/**
- * Subset of CombinedLearningJourneyPanel needed by useLinkClickHandler.
- * Mirrors the inline shape the hook declares so we can pass `panel` directly.
- */
-export interface FloatingPanelContentModel {
-  loadTabContent: (tabId: string, url: string) => void | Promise<void>;
-  openLearningJourney: (url: string, title?: string, options?: OpenLearningJourneyOptions) => void | Promise<string>;
-  openDocsPage?: (url: string, title?: string, options?: OpenDocsOptions) => void | Promise<string>;
-  getActiveTab: () => LearningJourneyTab | null;
-  navigateToNextMilestone: () => void;
-  navigateToPreviousMilestone: () => void;
-  canNavigateNext: () => boolean;
-  canNavigatePrevious: () => boolean;
-}
+import type { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
+import { getFloatingPanelStyles } from './floating-panel.styles';
 
 interface FloatingPanelContentProps {
+  hasInteractiveProgress?: boolean;
+  progressKey?: string | null;
+  onResetGuide?: (progressKey: string, tab: LearningJourneyTab) => Promise<void> | void;
+  surface?: MilestoneToolbarSurface;
   /** The guide content to render */
   content: RawContent | null;
   /** Called when a guide completes all interactive sections */
@@ -54,7 +48,7 @@ interface FloatingPanelContentProps {
    * embedded links, etc.). Without this, content links and the
    * "Ready to Begin" CTA on the cover page have no handler.
    */
-  model: FloatingPanelContentModel;
+  model: CombinedLearningJourneyPanel;
 }
 
 /**
@@ -72,12 +66,17 @@ export function FloatingPanelContent({
   onAlignmentCancel,
   activeTab,
   model,
+  hasInteractiveProgress,
+  progressKey,
+  onResetGuide,
+  surface = 'floating',
 }: FloatingPanelContentProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
+  const floatingStyles = useStyles2(getFloatingPanelStyles);
   // `useTheme2()` is the canonical hook for grabbing the raw theme; the
   // previous `useStyles2((t) => t)` pattern worked but mis-used the
   // CSS-in-JS hook just for theme access.
@@ -117,9 +116,26 @@ export function FloatingPanelContent({
 
   const contentClassName = `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`;
 
+  const showEmbeddedToolbar = onResetGuide !== undefined && progressKey !== undefined && activeTab !== null;
+
   return (
     <AlignmentPendingContext.Provider value={alignmentPendingValue}>
       <div ref={contentRef}>
+        {showEmbeddedToolbar && activeTab && (
+          <div className={floatingStyles.stickyToolbar}>
+            <LearningJourneyMilestoneToolbar
+              panel={model}
+              activeTab={activeTab}
+              surface={surface}
+              contentRoot={contentRef}
+              actionButtonClassName={floatingStyles.secondaryActionButton}
+              hasInteractiveProgress={!!hasInteractiveProgress}
+              progressKey={progressKey ?? null}
+              onResetGuide={onResetGuide!}
+              compact
+            />
+          </div>
+        )}
         {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
           <div style={{ padding: 16 }}>
             <AlignmentPrompt

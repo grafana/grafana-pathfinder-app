@@ -17,7 +17,7 @@ This skill complements:
 These constraints are absolute and override any other instructions:
 
 1. **Never edit source files.** This skill is report-only. The reviewer applies fixes.
-2. **`[security]` is reserved for clear violations** — F1-F6 hits, backend allowlist bypasses, token leaks, or known CVEs. Speculative or theoretical risks use `[suggestion]` or `[question]` from the standard prefix table in `.cursor/rules/pr-review.md`. **False positives erode trust; prefer false negatives.**
+2. **`[security]` is reserved for clear violations** — F1-F6 hits, backend allowlist bypasses, token leaks, or known CVEs. Speculative or theoretical risks use `[suggestion]` or `[question]` from the standard prefix table in `docs/design/PR_REVIEW.md`. **False positives erode trust; prefer false negatives.**
 3. **Ground every F1-F6 finding** in `.cursor/rules/frontend-security.mdc`. Quote the rule ID and the canonical Do / Don't example when reporting.
 4. **For backend findings, quote the offending line** with `file:line` reference and the canonical pattern (e.g., `isAllowedCodaURL`, `IsAllowedRelayURL`, `setAuthHeader`).
 5. **Sentence case** for findings and remediation text.
@@ -57,7 +57,7 @@ For each `.ts` / `.tsx` / `.js` / `.jsx` file in scope, read the changed hunks a
 | F2  | `dangerouslySetInnerHTML` used where `{}` auto-escape would do                                                                      | High     |
 | F3  | URL built via string concat (`apiBase + '/users?id=' + userId`) instead of `new URL()` + `URL.searchParams.set()`                   | High     |
 | F4  | `dangerouslySetInnerHTML` without `textUtil.sanitize()` (or `sanitizeDocumentationHTML()` from `src/security/`)                     | Critical |
-| F5  | Any of `.innerHTML`, `.outerHTML`, `.insertAdjacentHTML`                                                                            | Critical |
+| F5  | Any of `.innerHTML`, `.outerHTML`, `.insertAdjacentHTML`, or dynamic `script.src` assignment                                        | Critical |
 | F6  | URL passed to `href` / `src` without `textUtil.sanitizeUrl()` or a scheme-allowlist check (`parseUrlSafely`, `isAllowedContentUrl`) | High     |
 
 **Detection rules:**

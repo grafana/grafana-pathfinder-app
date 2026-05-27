@@ -20,11 +20,11 @@ export class HoverHandler {
     this.stateManager.setState(data, 'running');
 
     try {
-      const targetElement = await this.findTargetElement(data.reftarget);
+      const targetElement = await this.findTargetElement(data.refTarget);
       await this.prepareElement(targetElement);
 
       if (!performHover) {
-        await this.handleShowMode(targetElement, data.targetcomment);
+        await this.handleShowMode(targetElement, data.targetComment);
         await this.markAsCompleted(data);
         return;
       }

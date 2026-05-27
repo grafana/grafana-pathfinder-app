@@ -11,9 +11,11 @@ import { useStepChecker, validateInteractiveRequirements } from '../../requireme
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
+import type { InteractiveElementData } from '../../types/interactive.types';
 import { testIds } from '../../constants/testIds';
 import { STEP_STATES } from './step-states';
-import { useStandalonePersistence } from './use-standalone-persistence';
+import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import type { ProgressReason } from '../../global-state/progress-events';
 
 let anonymousMultiStepCounter = 0;
 
@@ -28,7 +30,6 @@ interface InteractiveMultiStepProps {
   // State management (passed by parent section)
   stepId?: string;
   isEligibleForChecking?: boolean;
-  isCompleted?: boolean;
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   onStepReset?: (stepId: string) => void; // Signal to parent that step should be reset
@@ -63,7 +64,7 @@ interface InteractiveMultiStepProps {
 async function checkActionRequirements(
   action: InternalAction,
   actionIndex: number,
-  checkRequirementsFromData: (data: any) => Promise<any>
+  checkRequirementsFromData: (data: InteractiveElementData) => Promise<any>
 ): Promise<{ pass: boolean; explanation?: string }> {
   if (!action.requirements) {
     return { pass: true };
@@ -73,9 +74,9 @@ async function checkActionRequirements(
     // Create data structure compatible with checkRequirementsFromData
     const actionData = {
       requirements: action.requirements,
-      targetaction: action.targetAction,
-      reftarget: action.refTarget || '',
-      targetvalue: action.targetValue,
+      targetAction: action.targetAction,
+      refTarget: action.refTarget || '',
+      targetValue: action.targetValue,
       textContent: `multistep-action-${actionIndex + 1}`,
       tagName: 'span',
     };
@@ -119,7 +120,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       internalActions,
       stepId,
       isEligibleForChecking = true,
-      isCompleted: parentCompleted = false,
       isCurrentlyExecuting = false,
       onStepComplete,
       onStepReset, // New callback for individual step reset
@@ -160,11 +160,30 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     );
 
     // Local UI state (similar to InteractiveStep)
-    const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
 
-    // Persist standalone step completion across page refreshes
-    useStandalonePersistence(renderedStepId, isLocallyCompleted, setIsLocallyCompleted, onStepComplete, totalSteps);
+    // Completion lives in the store.
+    const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
+    const isStandalone = !onStepComplete;
+    // `reason` flows into the unified `pathfinder:progress` event so
+    // downstream consumers can distinguish a normal completion
+    // (`'manual'`) from a user-initiated skip (`'skipped'`). The
+    // checker's own skip bridge writes `'skipped'` first; without this
+    // reason plumbing the standalone store write here would silently
+    // overwrite it with `'manual'`, making the event lie about intent.
+    const persistCompletion = useCallback(
+      (reason: ProgressReason = 'manual') => {
+        if (isStandalone) {
+          markStepCompleted(renderedStepId, sectionId, reason);
+        }
+      },
+      [isStandalone, renderedStepId, sectionId]
+    );
+    const persistReset = useCallback(() => {
+      if (isStandalone) {
+        resetStep(renderedStepId, sectionId);
+      }
+    }, [isStandalone, renderedStepId, sectionId]);
     const [currentActionIndex, setCurrentActionIndex] = useState(-1);
     const [failedStepIndex, setFailedStepIndex] = useState(-1); // Track which step failed for error display
     const [executionError, setExecutionError] = useState<string | null>(null);
@@ -178,16 +197,16 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // Handle reset trigger from parent section
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
-        setIsLocallyCompleted(false);
+        persistReset();
         setExecutionError(null); // Also clear any execution errors
         setFailedStepIndex(-1); // Reset failed step tracking
         setAutoCompletedActions(new Set()); // Clear auto-completed actions
         isCancelledRef.current = false; // Reset cancellation state
       }
-    }, [resetTrigger, stepId]);
+    }, [resetTrigger, stepId, persistReset]);
 
-    // Combined completion state (parent takes precedence for coordination)
-    const isCompleted = parentCompleted || isLocallyCompleted;
+    // Single source of truth: the completion store.
+    const isCompleted = storedCompleted;
 
     // For exists-reftarget requirement, use the first internal action's target
     // This ensures the requirement checker knows which element to look for
@@ -226,13 +245,13 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       refTarget: firstActionRefTarget,
       targetAction: firstActionTargetAction,
       disabled, // Pass through for auto-completion suppression
+      sectionId, // Lets the checker write skip / objectives transitions to the store
       onStepComplete, // Pass through for objectives auto-completion
       onComplete, // Pass through for objectives auto-completion
     });
 
     // Combined completion state: objectives always win (clarification 1, 2, 18)
-    const isCompletedWithObjectives =
-      parentCompleted || isLocallyCompleted || checker.completionReason === 'objectives';
+    const isCompletedWithObjectives = storedCompleted || checker.completionReason === 'objectives';
 
     // Create cancellation handler
     const handleMultiStepCancel = useCallback(() => {
@@ -250,7 +269,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
       // Check objectives before executing internal actions (clarification 18)
       if (checker.completionReason === 'objectives') {
-        setIsLocallyCompleted(true);
+        persistCompletion();
 
         // Notify parent if we have the callback (section coordination)
         if (onStepComplete && stepId) {
@@ -267,7 +286,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
       // NEW: If completeEarly flag is set, mark as completed BEFORE action execution
       if (completeEarly) {
-        setIsLocallyCompleted(true);
+        persistCompletion();
         if (onStepComplete && stepId) {
           onStepComplete(stepId);
         }
@@ -298,9 +317,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       if (!isNestedInSection) {
         // Create dummy data for blocking overlay
         const dummyData = {
-          reftarget: `multistep-${multiStepId}`,
-          targetaction: 'multistep',
-          targetvalue: undefined,
+          refTarget: `multistep-${multiStepId}`,
+          targetAction: 'multistep',
+          targetValue: undefined,
           requirements: undefined,
           tagName: 'div',
           textContent: title || 'Interactive Multi-Step',
@@ -396,7 +415,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         // NEW: If NOT completeEarly, mark complete after actions (normal flow)
         if (!completeEarly) {
           // All internal actions completed successfully
-          setIsLocallyCompleted(true);
+          persistCompletion();
 
           // Notify parent if we have the callback (section coordination)
           if (onStepComplete && stepId) {
@@ -443,6 +462,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       handleMultiStepCancel,
       title,
       renderedStepId,
+      persistCompletion,
     ]);
 
     // Expose execute method for parent (sequence execution)
@@ -502,7 +522,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         const newCompletedCount = autoCompletedActions.size + indicesToMark.length;
         if (newCompletedCount >= internalActions.length) {
           // Mark entire multi-step as completed
-          setIsLocallyCompleted(true);
+          persistCompletion();
 
           // Notify parent if we have the callback (section coordination)
           if (onStepComplete && stepId) {
@@ -538,6 +558,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         onComplete,
         renderedStepId,
         analyticsStepMeta,
+        persistCompletion,
       ]
     );
 
@@ -589,14 +610,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         return;
       }
 
-      // Reset local completion state
-      setIsLocallyCompleted(false);
-
-      // Clear any execution errors
+      persistReset();
       setExecutionError(null);
       setFailedStepIndex(-1);
-
-      // Reset cancellation state
       isCancelledRef.current = false;
 
       // Notify parent section to remove from completed steps
@@ -605,13 +621,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       if (onStepReset && stepId) {
         onStepReset(stepId);
       }
-
-      // No need for complex timing logic - the section's getStepEligibility
-      // will use the updated completedSteps state on the next render
-    }, [disabled, isExecuting, stepId, onStepReset]);
-    // Intentionally excluding to prevent circular dependencies:
-    // - setIsLocallyCompleted, setExecutionError: stable React setters
-    // - isCancelledRef: ref changes don't trigger re-creation, including would cause unnecessary updates
+    }, [disabled, isExecuting, stepId, onStepReset, persistReset]);
+    // setExecutionError is a stable React setter, isCancelledRef is a ref
+    // — neither needs to appear in the deps array.
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
 
@@ -696,7 +708,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   onClick={async () => {
                     if (checker.markSkipped) {
                       await checker.markSkipped();
-                      setIsLocallyCompleted(true);
+                      persistCompletion('skipped');
                       if (onStepComplete && stepId) {
                         onStepComplete(stepId);
                       }
@@ -838,7 +850,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   onClick={async () => {
                     if (checker.markSkipped) {
                       await checker.markSkipped();
-                      setIsLocallyCompleted(true);
+                      persistCompletion('skipped');
                       if (onStepComplete && stepId) {
                         onStepComplete(stepId);
                       }

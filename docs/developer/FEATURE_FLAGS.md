@@ -54,7 +54,7 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 **Multi-instance support**: Auto-open tracking is scoped per Grafana instance using hostname. This ensures that users with multiple Cloud instances (e.g., `company1.grafana.net` and `company2.grafana.net`) will see the sidebar auto-open independently per instance.
 
-**Onboarding flow integration**: If a user first lands on the setup guide onboarding flow (`/a/grafana-setupguide-app/onboarding-flow`), the plugin defers auto-open. It listens for navigation events (`grafana:location-changed` and `locationService.getHistory().listen()`) and triggers auto-open when the user navigates away from onboarding to normal Grafana pages.
+**Onboarding flow integration**: If a user first lands on the setup guide onboarding flow (`/a/grafana-setupguide-app/onboarding-flow`), the plugin defers auto-open. It listens for navigation events via `locationService.getHistory().listen()` (with a `popstate` fallback) and triggers auto-open when the user navigates away from onboarding to normal Grafana pages.
 
 **Tracking key**: `auto_open_sidebar`
 
@@ -98,7 +98,7 @@ interface ExperimentConfig {
 
 **Type**: Object (`HighlightedGuideConfig`)
 
-**Purpose**: A/B test which guide performs better when surfaced as the featured guide on a specific Grafana page. Both arms keep Pathfinder visible — they differ only in which guide id is highlighted. When a matched page is visited, the Pathfinder sidebar auto-opens (once per browser per `guideId`) and the configured guide is prepended to the Featured slot of the recommendations panel.
+**Purpose**: A/B test which guide performs better when surfaced as the featured guide on a specific Grafana page. Both arms keep Pathfinder visible — they differ only in which guide id is highlighted. When a matched page is visited, the Pathfinder sidebar auto-opens (once per browser per `guideId`) **and the configured guide is auto-launched as a sidebar tab** — the same seam used by the `?doc=` deep link. The user stays on the page they were on; no `locationService.replace` is called. The Featured-slot injection still runs in parallel so the card remains a re-entry point if the user closes the auto-launched tab.
 
 This flag is independent of `pathfinder.experiment-variant`: it does not hide Pathfinder, and its auto-open will simply no-op when the user's existing experiment dismounts the plugin.
 
@@ -122,11 +122,11 @@ interface HighlightedGuideConfig {
 
 **Variant behavior**:
 
-| Variant     | Auto-open + injection | Notes                                                    |
-| ----------- | --------------------- | -------------------------------------------------------- |
-| `excluded`  | No                    | Normal Pathfinder behavior — flag is a no-op             |
-| `control`   | Yes (variant A)       | Open sidebar + inject the arm's `guideId` (e.g. guide A) |
-| `treatment` | Yes (variant B)       | Open sidebar + inject the arm's `guideId` (e.g. guide B) |
+| Variant     | Auto-launch + injection | Notes                                                                              |
+| ----------- | ----------------------- | ---------------------------------------------------------------------------------- |
+| `excluded`  | No                      | Normal Pathfinder behavior — flag is a no-op                                       |
+| `control`   | Yes (variant A)         | Open sidebar + auto-launch the arm's `guideId` as a tab + inject Featured (slot A) |
+| `treatment` | Yes (variant B)         | Open sidebar + auto-launch the arm's `guideId` as a tab + inject Featured (slot B) |
 
 A typical A/B setup serves the **same** `pages[]` to both arms with **different** `guideId` values, so the only thing varying between cohorts is the guide content. Analytics distinguishes which arm via the existing `TrackingHook` exposure event (`pathfinder_feature_flag_evaluated` with `tracking_key: highlighted_guide_experiment`).
 
@@ -134,9 +134,13 @@ A typical A/B setup serves the **same** `pages[]` to both arms with **different*
 
 **Once-per-browser semantics**: The auto-open marker is keyed `{hostname}:{guideId}` in localStorage (not sessionStorage). A new `guideId` from MTFF — including the arm-specific value at variant assignment time — produces a new key, so changing the experiment's guide naturally re-fires auto-open without operator intervention. Use `resetCache: true` to force-clear all markers for the current hostname (sentinel-guarded so true→true reloads don't repeatedly clear).
 
-**Injection-only mode**: When `autoOpen` is `false`, the sidebar auto-open is suppressed but the Featured-slot injection still runs on matched pages. Useful for a subtler treatment variant.
+**Injection-only mode**: When `autoOpen` is `false`, both the sidebar auto-open _and_ the auto-launch of the guide tab are suppressed, but the Featured-slot injection still runs on matched pages. Useful for a subtler treatment variant where the operator wants the card visible without forcibly opening the sidebar.
+
+**Auto-launch dispatch mechanics** (for QA / debugging): on a matched page, the orchestrator resolves the `guideId` through `findDocPage`, publishes `open-extension-sidebar`, waits for either `pathfinder-sidebar-mounted` or `pathfinder-panel-mounted`, then dispatches `auto-launch-tutorial` (the same event `?doc=` uses) tagged with `source: 'highlighted_guide_experiment'`. The `useAutoLaunchTutorial` hook routes that to `openDocsPage` / `openLearningJourney` depending on the resolved `type` (with the flag's `docType` winning over `findDocPage`'s URL-based inference). If `findDocPage` returns `null` for the configured `guideId` (typo, unsupported URL), the sidebar still opens and the Featured-slot card is the user's only entry point.
 
 **Tracking key**: `highlighted_guide_experiment`
+
+**Launch source**: Guide tabs opened by this flag are tagged with the `highlighted_guide_experiment` `LaunchSource` (aligned-by-construction — no alignment prompt is shown, since the operator already targeted the page).
 
 ---
 

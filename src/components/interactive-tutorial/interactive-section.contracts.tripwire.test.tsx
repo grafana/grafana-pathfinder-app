@@ -27,11 +27,12 @@
 import React from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 
-jest.mock('@grafana/ui', () => ({
-  Button: ({ children, onClick, disabled, ...rest }: any) =>
-    React.createElement('button', { onClick, disabled, ...rest }, children),
-}));
-jest.mock('@grafana/data', () => ({ usePluginContext: () => ({ meta: { jsonData: {} } }) }));
+jest.mock('@grafana/ui', () => {
+  return require('../../test-utils/interactive-section-harness').createGrafanaUiMock();
+});
+jest.mock('@grafana/data', () => {
+  return require('../../test-utils/interactive-section-harness').createGrafanaDataMock();
+});
 jest.mock('../../lib/analytics', () => {
   return require('../../test-utils/interactive-section-harness').createAnalyticsMock();
 });
@@ -104,12 +105,9 @@ function recordSectionEvents(): { events: CapturedEvent[]; unsubscribe: () => vo
     return () => (target === 'window' ? window : document).removeEventListener(name, handler);
   };
   const offs = [
-    make('interactive-progress-saved', 'window'),
+    make('pathfinder:progress', 'window'),
     make('interactive-progress-cleared', 'window'),
-    make('interactive-section-completed', 'window'),
-    make('interactive-step-completed', 'window'),
     make('pathfinder-step-progress', 'window'),
-    make('section-completed', 'document'),
   ];
   return { events, unsubscribe: () => offs.forEach((off) => off()) };
 }
@@ -152,7 +150,7 @@ afterEach(() => {
 
 describe('InteractiveSection contracts — Phase 0 tripwire', () => {
   describe('event payload shapes', () => {
-    it('dispatches `interactive-step-completed` with { stepId, sectionId } on step completion', async () => {
+    it('dispatches pathfinder:progress (kind: step) on step completion', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
         renderSingleStepSection();
@@ -162,16 +160,23 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         });
 
         await waitFor(() => {
-          const evt = events.find((e) => e.name === 'interactive-step-completed');
+          const evt = events.find((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'step');
           expect(evt).toBeDefined();
-          expect(evt!.detail).toEqual({ stepId: STEP_ID, sectionId: SECTION_ID });
+          expect(evt!.detail).toEqual(
+            expect.objectContaining({
+              kind: 'step',
+              stepId: STEP_ID,
+              sectionId: SECTION_ID,
+              completed: true,
+            })
+          );
         });
       } finally {
         unsubscribe();
       }
     });
 
-    it('dispatches `interactive-progress-saved` with { contentKey, hasProgress, completionPercentage } on persistence', async () => {
+    it('dispatches pathfinder:progress (kind: guide) with { contentKey, hasProgress, percentage } on persistence', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
         renderSingleStepSection();
@@ -181,24 +186,23 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         });
 
         await waitFor(() => {
-          const evt = events.find((e) => e.name === 'interactive-progress-saved');
+          const evt = events.find((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'guide');
           expect(evt).toBeDefined();
           expect(evt!.detail).toEqual(
             expect.objectContaining({
+              kind: 'guide',
               contentKey: NON_PREVIEW_KEY,
               hasProgress: true,
             })
           );
-          // completionPercentage is set only when total document steps > 0.
-          // Pin its presence as a key in the detail (value may be number | undefined).
-          expect('completionPercentage' in evt!.detail).toBe(true);
+          expect(typeof evt!.detail.percentage).toBe('number');
         });
       } finally {
         unsubscribe();
       }
     });
 
-    it('dispatches `section-completed` on `document` with { sectionId } when section becomes complete', async () => {
+    it('dispatches pathfinder:progress (kind: section) with { sectionId } exactly once per completion', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
         renderSingleStepSection();
@@ -208,28 +212,9 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         });
 
         await waitFor(() => {
-          const evt = events.find((e) => e.name === 'section-completed');
-          expect(evt).toBeDefined();
-          expect(evt!.detail).toEqual({ sectionId: SECTION_ID });
-        });
-      } finally {
-        unsubscribe();
-      }
-    });
-
-    it('dispatches `interactive-section-completed` with { sectionId } exactly once per completion', async () => {
-      const { events, unsubscribe } = recordSectionEvents();
-      try {
-        renderSingleStepSection();
-        await waitFor(() => expect(screen.getByTestId(completeBtn(STEP_ID))).toBeInTheDocument());
-        act(() => {
-          screen.getByTestId(completeBtn(STEP_ID)).click();
-        });
-
-        await waitFor(() => {
-          const completionEvents = events.filter((e) => e.name === 'interactive-section-completed');
-          expect(completionEvents).toHaveLength(1);
-          expect(completionEvents[0]!.detail).toEqual({ sectionId: SECTION_ID });
+          const sectionEvents = events.filter((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'section');
+          expect(sectionEvents).toHaveLength(1);
+          expect(sectionEvents[0]!.detail).toEqual({ kind: 'section', sectionId: SECTION_ID, completed: true });
         });
       } finally {
         unsubscribe();
@@ -295,12 +280,82 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
     });
   });
 
+  // MF-1 tripwire — pin author/parser-supplied stable stepId end to end.
+  // The JSON parser emits `props.stepId` for every interactive block
+  // (either the author's `id` or `deriveStepId(...)`). Two earlier
+  // collapse points used to drop it:
+  //   1. content-renderer cases did not forward `element.props.stepId`
+  //      to the step components.
+  //   2. interactive-section's `stepComponents` memo synthesised a
+  //      positional `${sectionId}-${idPrefix}-${index+1}` ID, and
+  //      `cloneElement` spread that over the child's stable ID.
+  // If either regresses, every "stable ID" claim in the PR collapses:
+  // inserting a sibling block re-keys every later step. Pin the contract
+  // here so future refactors can't silently break it.
+  describe('stable stepId forwarding', () => {
+    const STABLE_ID = 'create-ds';
+
+    it('uses author-supplied stepId on the step instead of the positional fallback', async () => {
+      render(
+        <InteractiveSection id="contracts" title="Contracts section" autoCollapse={false}>
+          <InteractiveStep stepId={STABLE_ID} targetAction="highlight" refTarget=".a">
+            Step
+          </InteractiveStep>
+        </InteractiveSection>
+      );
+      // Harness writes `harness-complete-${stepId}` — confirms the
+      // section threaded the child's stepId into cloneElement, NOT the
+      // positional `section-contracts-step-1` value.
+      await waitFor(() => expect(screen.getByTestId(`harness-complete-${STABLE_ID}`)).toBeInTheDocument());
+      expect(screen.queryByTestId(`harness-complete-${SECTION_ID}-step-1`)).toBeNull();
+    });
+
+    it('keeps the stable stepId stable when a sibling step is inserted before it', async () => {
+      const { rerender } = render(
+        <InteractiveSection id="contracts" title="Contracts section" autoCollapse={false}>
+          <InteractiveStep stepId={STABLE_ID} targetAction="highlight" refTarget=".a">
+            Original step
+          </InteractiveStep>
+        </InteractiveSection>
+      );
+      await waitFor(() => expect(screen.getByTestId(`harness-complete-${STABLE_ID}`)).toBeInTheDocument());
+
+      rerender(
+        <InteractiveSection id="contracts" title="Contracts section" autoCollapse={false}>
+          <InteractiveStep stepId="inserted-first" targetAction="highlight" refTarget=".b">
+            Inserted step
+          </InteractiveStep>
+          <InteractiveStep stepId={STABLE_ID} targetAction="highlight" refTarget=".a">
+            Original step
+          </InteractiveStep>
+        </InteractiveSection>
+      );
+
+      // The original step's ID survives the insertion — completion
+      // recorded under STABLE_ID is still addressable.
+      await waitFor(() => expect(screen.getByTestId(`harness-complete-${STABLE_ID}`)).toBeInTheDocument());
+      expect(screen.getByTestId(`harness-complete-inserted-first`)).toBeInTheDocument();
+    });
+
+    it('falls back to the positional id when the child has no stepId prop', async () => {
+      render(
+        <InteractiveSection id="contracts" title="Contracts section" autoCollapse={false}>
+          <InteractiveStep targetAction="highlight" refTarget=".a">
+            Anonymous step
+          </InteractiveStep>
+        </InteractiveSection>
+      );
+      // No author/parser ID → positional fallback (`section-contracts-step-1`).
+      await waitFor(() => expect(screen.getByTestId(`harness-complete-${SECTION_ID}-step-1`)).toBeInTheDocument());
+    });
+  });
+
   describe('preview-mode sandbox', () => {
     beforeEach(() => {
       (window as any).__DocsPluginActiveTabUrl = PREVIEW_KEY;
     });
 
-    it('suppresses storage writes but still dispatches `interactive-progress-saved` and `interactive-progress-cleared`', async () => {
+    it('suppresses storage writes but still dispatches the unified progress event and the legacy cleared event', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
         renderSingleStepSection();
@@ -309,8 +364,12 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
           screen.getByTestId(completeBtn(STEP_ID)).click();
         });
 
+        // In preview mode the section-level progress event still fires
+        // so the editor's "Reset guide" button can react. The kind:'guide'
+        // event is suppressed in preview because it carries the
+        // completion-percentage (preview has no document total).
         await waitFor(() => {
-          expect(events.find((e) => e.name === 'interactive-progress-saved')).toBeDefined();
+          expect(events.find((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'section')).toBeDefined();
         });
 
         // Storage must be untouched under the preview key.
@@ -327,6 +386,96 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
           const evt = events.find((e) => e.name === 'interactive-progress-cleared');
           expect(evt).toBeDefined();
           expect(evt!.detail).toEqual({ contentKey: PREVIEW_KEY });
+        });
+      } finally {
+        unsubscribe();
+      }
+    });
+  });
+
+  // F-2 tripwire — pin the cross-step re-render contract introduced by
+  // PR #909. The store relocation moved completion state out of the
+  // section's reducer and into the global `completion-store`; the section
+  // now subscribes via `useSyncExternalStore(useSectionCompletion)`. If
+  // that wiring regresses (missing listener, stale snapshot, dep-array
+  // gap on the version bump), an external `markStepCompleted` call will
+  // silently fail to trigger a re-render — sibling steps keep rendering
+  // against the pre-flip completion set and section-level derivations
+  // (`stepsCompleted`, `isCompleted`, the Reset button gate) never reflect
+  // the new state. PR #909 deferred this probe as follow-up F-2; this
+  // test pins the contract so the wiring can't quietly regress.
+  describe('cross-step re-render on store flips (F-2)', () => {
+    it('re-renders sibling step + section when markStepCompleted flips from outside React', async () => {
+      const { markStepCompleted } = require('../../global-state/completion-store');
+
+      const flushMicrotasks = async () => {
+        await act(async () => {
+          await Promise.resolve();
+        });
+      };
+
+      const { events, unsubscribe } = recordSectionEvents();
+      try {
+        render(
+          <InteractiveSection id="contracts" title="Contracts section" autoCollapse={false}>
+            <InteractiveStep stepId="step-1" targetAction="highlight" refTarget=".a">
+              Step one
+            </InteractiveStep>
+            <InteractiveStep stepId="step-2" targetAction="highlight" refTarget=".b">
+              Step two
+            </InteractiveStep>
+          </InteractiveSection>
+        );
+
+        // Both children mount with their author-supplied stepIds.
+        await waitFor(() => {
+          expect(screen.getByTestId(`harness-complete-step-1`)).toBeInTheDocument();
+          expect(screen.getByTestId(`harness-complete-step-2`)).toBeInTheDocument();
+        });
+
+        // Drain the initial mount's `useDocumentStepProgress` dispatch so
+        // the post-flip event is unambiguously attributable to a
+        // store-driven re-render rather than the mount-time effect.
+        await waitFor(() => {
+          expect(events.find((e) => e.name === 'pathfinder-step-progress')).toBeDefined();
+        });
+        events.length = 0;
+
+        // Flip completion from outside React. The section must re-render
+        // via its `useSyncExternalStore` subscription to pick this up.
+        await act(async () => {
+          markStepCompleted('step-1', SECTION_ID, 'manual');
+          await Promise.resolve();
+        });
+
+        // Sibling addressability: the store flip didn't unmount or
+        // re-key the unrelated child. Step-1's harness is still in the
+        // DOM too — completed steps are not torn down by the section.
+        expect(screen.getByTestId(`harness-complete-step-2`)).toBeInTheDocument();
+        expect(screen.getByTestId(`harness-complete-step-1`)).toBeInTheDocument();
+
+        // Regression probe: this event only re-fires when `completedSteps`
+        // changes in `useDocumentStepProgress`'s deps — which requires
+        // the `useSyncExternalStore` subscription to land the flip in
+        // the section's render commit.
+        await waitFor(() => {
+          const evt = events.find((e) => e.name === 'pathfinder-step-progress' && e.detail.sectionId === SECTION_ID);
+          expect(evt).toBeDefined();
+        });
+
+        // Drive step-2's harness button. The section's
+        // `handleStepComplete` closure captures `completedSteps` from the
+        // most recent commit; if the prior store flip didn't refresh that
+        // snapshot, the section would still see only step-2 completed and
+        // `stepsCompleted` would stay false (Do Section, not Reset). The
+        // appearance of `resetSectionButton` is the visible-DOM
+        // confirmation that the cross-step re-render contract holds.
+        act(() => {
+          screen.getByTestId(`harness-complete-step-2`).click();
+        });
+        await flushMicrotasks();
+        await waitFor(() => {
+          expect(screen.getByTestId(resetButton(SECTION_ID))).toBeInTheDocument();
         });
       } finally {
         unsubscribe();

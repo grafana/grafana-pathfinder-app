@@ -39,8 +39,7 @@ export interface AutoLaunchTutorialDetail {
 /**
  * Minimal panel shape the hook depends on. Inlined here (rather than
  * imported from `components/`) so the hook stays in tier 2 and doesn't
- * cross the components-tier boundary. Mirrors the same approach used by
- * `useAlignmentReevaluation`'s `AlignmentReevaluationTarget`.
+ * cross the components-tier boundary.
  */
 export interface AutoLaunchPanel {
   openLearningJourney(url: string, title: string, opts?: { source?: LaunchSource }): void;
@@ -62,11 +61,18 @@ export interface UseAutoLaunchTutorialOptions {
    * can wait for completion.
    */
   onLaunched?: (detail: AutoLaunchTutorialDetail, openedAsLearningJourney: boolean) => void;
+  /**
+   * When true, the auto-launch event is ignored. Fullscreen uses this to
+   * skip the deep-link handler's delayed `auto-launch-tutorial` dispatch
+   * when a pending-guide handoff already opened the guide on mount.
+   */
+  skipLaunch?: () => boolean;
 }
 
 export function useAutoLaunchTutorial(panel: AutoLaunchPanel, options?: UseAutoLaunchTutorialOptions): void {
   const onIncoming = options?.onIncoming;
   const onLaunched = options?.onLaunched;
+  const skipLaunch = options?.skipLaunch;
 
   useEffect(() => {
     const handleAutoLaunch = (event: Event) => {
@@ -75,6 +81,10 @@ export function useAutoLaunchTutorial(panel: AutoLaunchPanel, options?: UseAutoL
         return;
       }
       onIncoming?.(detail);
+
+      if (skipLaunch?.()) {
+        return;
+      }
 
       const { url, title, type, source } = detail;
       if (!url || !title) {
@@ -99,5 +109,5 @@ export function useAutoLaunchTutorial(panel: AutoLaunchPanel, options?: UseAutoL
     return () => {
       document.removeEventListener('auto-launch-tutorial', handleAutoLaunch);
     };
-  }, [panel, onIncoming, onLaunched]);
+  }, [panel, onIncoming, onLaunched, skipLaunch]);
 }

@@ -420,9 +420,9 @@ export function StepEditor({
         return;
       }
       setEditingStepIndex(index);
-      setEditAction(step.action);
-      setEditReftarget(step.reftarget ?? '');
-      setEditTargetvalue(step.targetvalue ?? '');
+      setEditAction(step.action ?? step.targetAction ?? 'highlight');
+      setEditReftarget(step.reftarget ?? step.refTarget ?? '');
+      setEditTargetvalue(step.targetvalue ?? step.targetValue ?? '');
       setEditFormHint(step.formHint ?? '');
       setEditValidateInput(step.validateInput ?? false);
       setEditLazyRender(step.lazyRender ?? false);
@@ -931,9 +931,11 @@ export function StepEditor({
                       {/* Content */}
                       <div className={styles.stepContent}>
                         <div className={styles.stepHeader}>
-                          <span>{getActionEmoji(step.action)}</span>
-                          <Badge text={step.action} color="blue" />
-                          {step.targetvalue && <Badge text={`= "${step.targetvalue}"`} color="purple" />}
+                          <span>{getActionEmoji(step.action ?? step.targetAction ?? 'highlight')}</span>
+                          <Badge text={step.action ?? step.targetAction ?? 'highlight'} color="blue" />
+                          {(step.targetvalue ?? step.targetValue) && (
+                            <Badge text={`= "${step.targetvalue ?? step.targetValue}"`} color="purple" />
+                          )}
                         </div>
                         {/* Show description/tooltip if available, otherwise show selector (or "Info step" for noop, "Dock"/"Undock" for popout) */}
                         <div className={styles.stepSelector} title={step.reftarget}>

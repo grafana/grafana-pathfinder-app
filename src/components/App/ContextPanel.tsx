@@ -3,7 +3,6 @@ import { usePluginContext } from '@grafana/data';
 import { CombinedLearningJourneyPanel } from 'components/docs-panel/docs-panel';
 import { getConfigWithDefaults } from '../../constants';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
-import { usePendingGuideLaunch } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 
 export default function MemoizedContextPanel() {
@@ -26,7 +25,6 @@ export default function MemoizedContextPanel() {
   // mode. The user opened the sidebar so they want it — don't fight it.
   useEffect(() => {
     if (mode === 'floating') {
-      panelModeManager.restoreSidebarTabSnapshot();
       panelModeManager.setMode('sidebar');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -41,8 +39,6 @@ export default function MemoizedContextPanel() {
 }
 
 function SidebarContent({ pluginJsonData }: { pluginJsonData: Record<string, unknown> | undefined }) {
-  usePendingGuideLaunch();
-
   const panel = useMemo(() => {
     const config = getConfigWithDefaults(pluginJsonData || {});
     return new CombinedLearningJourneyPanel(config);

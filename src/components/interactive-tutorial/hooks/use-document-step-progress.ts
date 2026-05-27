@@ -26,7 +26,7 @@ import { useEffect } from 'react';
 import { interactiveStepStorage } from '../../../lib/user-storage';
 import type { StepInfo } from '../../../types/component-props.types';
 import { getContentKey } from '../get-content-key';
-import { getDocumentStepPosition, getTotalDocumentSteps } from '../section-registry';
+import { getDocumentStepPosition, getTotalDocumentSteps } from '../../../global-state/section-registry';
 
 export interface UseDocumentStepProgressArgs {
   sectionId: string;

@@ -126,7 +126,7 @@ jest.mock('../../global-state/link-interception', () => ({
 }));
 
 jest.mock('../../global-state/panel-mode', () => ({
-  panelModeManager: { getMode: jest.fn(() => 'sidebar'), setMode: jest.fn(), snapshotSidebarTabs: jest.fn() },
+  panelModeManager: { getMode: jest.fn(() => 'sidebar'), setMode: jest.fn() },
 }));
 
 jest.mock('../LearningPaths', () => ({
@@ -217,9 +217,7 @@ jest.mock('../../types/package.types', () => ({
   getPackageRenderType: jest.fn(),
 }));
 
-jest.mock('../../hooks', () => ({
-  usePendingGuideLaunch: jest.fn(),
-}));
+jest.mock('../../hooks', () => ({}));
 
 // ---------------------------------------------------------------------------
 // Import under test

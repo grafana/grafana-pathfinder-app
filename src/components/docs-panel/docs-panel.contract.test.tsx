@@ -111,20 +111,32 @@ describe('E2E Contract: Docs panel test IDs', () => {
 const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
   {
     file: 'docs-panel.tsx',
+    references: ['testIds.docsPanel.container'],
+  },
+  {
+    // Content-area JSX was extracted from docs-panel.tsx to DocsPanelContentArea.tsx.
+    // Test ids stay stable; ownership moved.
+    file: 'components/DocsPanelContentArea.tsx',
     references: [
-      'testIds.docsPanel.container',
+      'testIds.docsPanel.content',
+      'testIds.devTools.previewBanner',
+      'testIds.devTools.previewModeIndicator',
+      'testIds.devTools.returnToEditorButton',
+    ],
+  },
+  {
+    // Tab-bar JSX was extracted from docs-panel.tsx to DocsPanelTabBar.tsx.
+    // The test ids are unchanged; ownership moved.
+    file: 'components/DocsPanelTabBar.tsx',
+    references: [
       'testIds.docsPanel.tabBar',
       'testIds.docsPanel.tabList',
-      'testIds.docsPanel.content',
       'testIds.docsPanel.recommendationsTab',
       'testIds.docsPanel.tabOverflowButton',
       'testIds.docsPanel.tabDropdown',
       'testIds.docsPanel.tab(',
       'testIds.docsPanel.tabCloseButton(',
       'testIds.docsPanel.tabDropdownItem(',
-      'testIds.devTools.previewBanner',
-      'testIds.devTools.previewModeIndicator',
-      'testIds.devTools.returnToEditorButton',
     ],
   },
   {
@@ -233,19 +245,25 @@ describe('E2E Contract: Scroll-restoration DOM id', () => {
 });
 
 /**
- * Window globals assigned in docs-panel.tsx for cross-component communication.
- * These are read by dev-mode utilities, SelectorDebugPanel, interactive-section,
- * and analytics. Do not remove during refactoring — document for future migration
- * to React Context.
+ * Window globals assigned by the docs-panel surface for cross-component
+ * communication. These are read by dev-mode utilities, SelectorDebugPanel,
+ * interactive-section, and analytics. Do not remove during refactoring —
+ * document for future migration to React Context.
+ *
+ * Owner manifest: each global is assigned in exactly one file. As the
+ * renderer is decomposed, hooks take ownership of individual assignments —
+ * update the owner path here in the same commit that moves the source.
  */
-const WINDOW_GLOBALS = ['__pathfinderPluginConfig', '__DocsPluginActiveTabId', '__DocsPluginActiveTabUrl'];
+const WINDOW_GLOBAL_OWNERS: Array<{ global: string; ownerFile: string }> = [
+  { global: '__pathfinderPluginConfig', ownerFile: 'docs-panel.tsx' },
+  { global: '__DocsPluginActiveTabId', ownerFile: 'hooks/useGlobalActiveTabExposure.ts' },
+  { global: '__DocsPluginActiveTabUrl', ownerFile: 'hooks/useGlobalActiveTabExposure.ts' },
+];
 
-describe('E2E Contract: Window globals assigned in docs-panel', () => {
-  it('docs-panel.tsx references all required window globals', () => {
-    const src = fs.readFileSync(path.join(__dirname, 'docs-panel.tsx'), 'utf-8');
-    for (const global of WINDOW_GLOBALS) {
-      expect(src).toContain(global);
-    }
+describe('E2E Contract: Window globals assigned in docs-panel surface', () => {
+  it.each(WINDOW_GLOBAL_OWNERS)('$ownerFile assigns $global', ({ global, ownerFile }) => {
+    const src = fs.readFileSync(path.join(__dirname, ownerFile), 'utf-8');
+    expect(src).toContain(global);
   });
 });
 

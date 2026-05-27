@@ -21,7 +21,6 @@ import { panelModeManager } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
-import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 export type AutoDockOutcome = 'sidebar' | 'floating' | 'noop';
 
@@ -32,10 +31,9 @@ export interface AutoDockInputs {
   fullScreenPathname: string;
   /** Pathfinder's plugin id, used for the sidebar-ownership comparison. */
   myPluginId: string;
-  /** Captured from `FullScreenPanel`'s active tab — used for the floating handoff. */
+  /** Captured from `FullScreenPanel`'s active tab — reported as analytics context. */
   guideUrl: string | undefined;
   title: string;
-  activeTab: LearningJourneyTab | undefined;
 }
 
 /**
@@ -59,7 +57,7 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
     return 'noop';
   }
 
-  const { guideUrl, title, activeTab, myPluginId } = inputs;
+  const { guideUrl, title, myPluginId } = inputs;
 
   // Defer the actual mode/sidebar side effects to the next macrotask.
   // The history listener fires synchronously on `locationService.push`,
@@ -80,17 +78,6 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
       guide_title: title,
       reason: 'navigation_away_sidebar_occupied',
     });
-    // Hand off the journey + packageInfo so the floating panel rebuilds
-    // the milestone toolbar without round-tripping through tabStorage.
-    if (guideUrl && activeTab) {
-      const tabType = activeTab.type === 'learning-journey' ? 'learning-journey' : 'docs';
-      panelModeManager.setPendingGuide({
-        url: guideUrl,
-        title,
-        type: tabType,
-        packageInfo: activeTab.packageInfo,
-      });
-    }
     deferred(() => panelModeManager.setMode('floating'));
     return 'floating';
   }
@@ -102,12 +89,9 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
     reason: 'navigation_away',
   });
 
-  // No `restoreSidebarTabSnapshot()`: we intentionally keep the latest
-  // tabStorage state full-screen wrote (active milestone URL, completion,
-  // etc.) so the docking sidebar restores the user where they left off,
-  // not where they started. Sidebar and full-screen share intent — the
-  // snapshot mechanism is only useful when surfaces have separate tab
-  // sets (i.e. floating).
+  // All surfaces share `tabStorage` — the docking sidebar restores the
+  // latest milestone URL full-screen wrote during the session, not the
+  // pre-fullscreen position.
   deferred(() => {
     panelModeManager.setMode('sidebar');
     sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');

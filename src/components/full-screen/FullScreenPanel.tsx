@@ -5,17 +5,13 @@ import { useStyles2 } from '@grafana/ui';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset } from '../docs-panel/hooks';
+import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
-import {
-  usePendingGuideLaunch,
-  useAlignmentReevaluation,
-  useAutoLaunchTutorial,
-  useStepProgressFromEvents,
-} from '../../hooks';
+import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
@@ -52,9 +48,6 @@ export class FullScreenPanel extends SceneObjectBase<FullScreenPanelState> {
 }
 
 function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
-  // Polls the Pathfinder backend for MCP launch_guide handoffs.
-  usePendingGuideLaunch();
-
   const fullScreenStyles = useStyles2(getFullScreenStyles);
 
   const panel = useMemo(() => {
@@ -88,10 +81,10 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
 
     document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted', { detail: { timestamp: Date.now() } }));
     // Mirror the floating panel: tell `sidebarState` that a Pathfinder
-    // surface is mounted. Without this, MCP `launch_guide` polling, the
-    // link-interception auto-open path, and `HomePanel`'s open-guide flow
-    // all gate on `getIsSidebarMounted()` and silently fall through (or
-    // try to call `openSidebar`, which now no-ops in fullscreen mode).
+    // surface is mounted. Without this, the link-interception auto-open
+    // path and `HomePanel`'s open-guide flow gate on
+    // `getIsSidebarMounted()` and silently fall through (or try to call
+    // `openSidebar`, which now no-ops in fullscreen mode).
     sidebarState.setIsSidebarMounted(true);
 
     const pendingGuide = panelModeManager.consumePendingGuide();
@@ -106,8 +99,8 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       // transitions to sidebar or floating, those surfaces' mount effects
       // already set the flag to true (sometimes before our cleanup runs in
       // React StrictMode); clobbering it here would leave downstream gates
-      // (MCP launch, link-interception, HomePanel open-guide) thinking no
-      // Pathfinder surface is up. Mirrors `FloatingPanelManager`.
+      // (link-interception, HomePanel open-guide) thinking no Pathfinder
+      // surface is up. Mirrors `FloatingPanelManager`.
       const mode = panelModeManager.getMode();
       if (mode !== 'sidebar' && mode !== 'floating') {
         sidebarState.setIsSidebarMounted(false);
@@ -181,6 +174,13 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     onIncoming: () => {
       guideOpenInFlightRef.current = true;
     },
+    // The floating→fullscreen handoff pushes a `?doc=` URL, which makes
+    // `handlePathfinderDeepLink` schedule a delayed auto-launch ~500ms later.
+    // By then the pending-guide mount effect has already opened the guide
+    // (with packageInfo). Without this skip, the duplicate open goes through
+    // `openLearningJourney` without packageInfo and replaces the journey
+    // content with a flat single-doc — the milestone arrows disappear.
+    skipLaunch: () => guideOpenInFlightRef.current,
   });
 
   // Active tab projection.
@@ -202,25 +202,23 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // that took them there. Decision logic (sidebar vs floating fallback) is
   // factored out into `dockOnLeavingFullScreen` for unit testability.
   //
-  // Latest tab/title/url are read through a ref so the listener subscribes
+  // Latest title/url are read through a ref so the listener subscribes
   // exactly once on mount. Without the ref the effect re-subscribes on
-  // every milestone navigation (`activeTab` is a fresh `find()` reference
-  // per render), which churns the history subscription and risks dropping
-  // the very location event that triggered the navigation.
-  const dockInputsRef = useRef({ guideUrl, title, activeTab });
-  dockInputsRef.current = { guideUrl, title, activeTab };
+  // every milestone navigation, which churns the history subscription and
+  // risks dropping the very location event that triggered the navigation.
+  const dockInputsRef = useRef({ guideUrl, title });
+  dockInputsRef.current = { guideUrl, title };
   useEffect(() => {
     const fullScreenPathname = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
     const history = locationService.getHistory();
     const unlisten = history.listen((location: { pathname: string }) => {
-      const { guideUrl: latestGuideUrl, title: latestTitle, activeTab: latestActiveTab } = dockInputsRef.current;
+      const { guideUrl: latestGuideUrl, title: latestTitle } = dockInputsRef.current;
       dockOnLeavingFullScreen({
         pathname: location.pathname,
         fullScreenPathname,
         myPluginId: pluginJson.id,
         guideUrl: latestGuideUrl,
         title: latestTitle,
-        activeTab: latestActiveTab,
       });
     });
     return unlisten;
@@ -230,9 +228,17 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // floating panel — see `useStepProgressFromEvents` for the rationale.
   const stepProgress = useStepProgressFromEvents(hasActiveGuide);
 
-  const { hasInteractiveProgress, progressKey } = useAlignmentReevaluation(panel, activeTabId, activeTab);
+  const { hasInteractiveProgress, progressKey } = useGuideProgressState(activeTab);
 
   const handleResetGuide = useContentReset({ model: panel });
+
+  useKeyboardShortcuts({
+    tabs,
+    activeTabId,
+    activeTab: activeTab ?? null,
+    isRecommendationsTab: activeTabId === 'recommendations',
+    model: panel,
+  });
 
   const handleExitToSidebar = useCallback(() => {
     reportAppInteraction(UserInteraction.FullScreenExit, {

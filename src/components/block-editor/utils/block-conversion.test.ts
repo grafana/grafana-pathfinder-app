@@ -358,6 +358,31 @@ describe('convertBlockType', () => {
       expect(() => convertBlockType(source, 'input')).not.toThrow();
       expect(() => convertBlockType(source, 'image')).not.toThrow();
       expect(() => convertBlockType(source, 'video')).not.toThrow();
+      expect(() => convertBlockType(source, 'terminal')).not.toThrow();
+      expect(() => convertBlockType(source, 'terminal-connect')).not.toThrow();
+      expect(() => convertBlockType(source, 'code-block')).not.toThrow();
+    });
+
+    it('should convert image to terminal-connect without throwing (regression #619)', () => {
+      const source: JsonBlock = { type: 'image', src: 'https://example.com/img.png', alt: 'alt text' };
+      const result = convertBlockType(source, 'terminal-connect');
+      expect(result.type).toBe('terminal-connect');
+    });
+
+    it('should convert video to terminal-connect without throwing (regression #619)', () => {
+      const source: JsonBlock = { type: 'video', src: 'https://example.com/vid.mp4' };
+      const result = convertBlockType(source, 'terminal-connect');
+      expect(result.type).toBe('terminal-connect');
+    });
+
+    it('should convert code-block without content to terminal-connect without throwing (regression #619)', () => {
+      const source: JsonBlock = {
+        type: 'code-block',
+        reftarget: "div[data-testid='data-testid Code editor container']",
+        code: '',
+      };
+      const result = convertBlockType(source, 'terminal-connect');
+      expect(result.type).toBe('terminal-connect');
     });
   });
 });

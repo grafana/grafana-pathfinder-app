@@ -2,7 +2,7 @@
  * CodeBlockHandler
  *
  * Handles inserting code into Monaco editors by:
- * 1. Finding the Monaco editor container from the reftarget selector
+ * 1. Finding the Monaco editor container from the refTarget selector
  * 2. Locating the Monaco instance or textarea inside
  * 3. Clearing existing content and inserting new code
  */
@@ -31,12 +31,12 @@ export interface CodeBlockInsertResult {
   error?: string;
 }
 
-export async function clearAndInsertCode(reftarget: string, code: string): Promise<CodeBlockInsertResult> {
+export async function clearAndInsertCode(refTarget: string, code: string): Promise<CodeBlockInsertResult> {
   try {
-    const resolved = await resolveWithRetry(reftarget, 'codeblock');
+    const resolved = await resolveWithRetry(refTarget, 'codeblock');
 
     if (!resolved) {
-      return { success: false, error: `Code editor container not found: ${reftarget}` };
+      return { success: false, error: `Code editor container not found: ${refTarget}` };
     }
 
     const container = resolved.element;

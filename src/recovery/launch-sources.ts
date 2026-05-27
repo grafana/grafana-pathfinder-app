@@ -30,6 +30,7 @@ export type LaunchSource =
   | 'grot_guide_block'
   | 'experiment_treatment'
   | 'experiment_treatment_navigation'
+  | 'highlighted_guide_experiment'
   | 'auto_open'
   | 'floating_panel_dock'
   | 'fullscreen_handoff'
@@ -51,7 +52,6 @@ export type LaunchSource =
   | 'link_interception'
   | 'queued_link'
   | 'content_link'
-  | 'location_change'
   // Editor authoring (also needs alignment check)
   | 'block_editor_preview'
   | 'custom_guide';
@@ -82,6 +82,11 @@ export const ALIGNED_BY_CONSTRUCTION_SOURCES: ReadonlySet<LaunchSource> = new Se
   // Experiment treatments and auto-opens already coordinate location.
   'experiment_treatment',
   'experiment_treatment_navigation',
+  // Highlighted-guide experiment auto-opens the sidebar on a matched page and
+  // dispatches `auto-launch-tutorial` immediately after — the user is by
+  // definition on a page the operator configured for this guide, so no
+  // alignment prompt is needed.
+  'highlighted_guide_experiment',
   'auto_open',
   // Floating panel docking back to sidebar — tab already exists.
   'floating_panel_dock',
@@ -113,8 +118,6 @@ export const NEEDS_ALIGNMENT_CHECK_SOURCES: ReadonlySet<LaunchSource> = new Set<
   'content_link',
   'block_editor_preview',
   'custom_guide',
-  // Reactive re-evaluation on location change while the user has no progress yet.
-  'location_change',
 ]);
 
 /**

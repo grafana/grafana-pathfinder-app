@@ -34,7 +34,7 @@ import type {
  * `manifest.id`, the package directory name, the App Platform `metadata.name`,
  * and the `?doc=api:<id>` viewer link key. Aligned with the Kubernetes
  * resource-name format so a valid package ID is always a valid k8s resource
- * name. The Go-side regex in `pkg/plugin/mcp.go` mirrors this exactly.
+ * name.
  */
 export const PACKAGE_ID_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 

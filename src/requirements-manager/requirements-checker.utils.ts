@@ -15,7 +15,8 @@
  *   3. Add the requirement string to `isValidRequirement` in `types/requirements.types.ts`
  */
 
-import { reftargetExistsCheck, navmenuOpenCheck, sectionCompletedCheck, formValidCheck } from '../lib/dom';
+import { reftargetExistsCheck, navmenuOpenCheck, formValidCheck } from '../lib/dom';
+import { sectionCompletedCheck } from './checks/section-completed-check';
 import { isValidRequirement } from '../types/requirements.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { TimeoutManager } from '../utils/timeout-manager';

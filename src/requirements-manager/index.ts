@@ -53,3 +53,7 @@ export type { StepStatus, CompletionReason, StepState, StepAction } from './step
 // Fix type constants — re-exported here so UI consumers (Tier 3-4) can import via the barrel.
 export { FIX_TYPES } from './fix-types';
 export type { FixTypeValue } from './fix-types';
+
+// Fix dispatch — shared by step-checker and section-level requirements.
+export { dispatchFix } from './fix-registry';
+export type { FixContext, FixResult } from './fix-handlers';

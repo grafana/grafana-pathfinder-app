@@ -28,8 +28,12 @@ import { createConstantsMock, createInteractiveConfigMock } from '../../test-uti
 // Mock the heaviest of those to keep the test focused on registry
 // behaviour without dragging in unrelated modules.
 
-jest.mock('@grafana/ui', () => ({ Button: () => null }));
-jest.mock('@grafana/data', () => ({ usePluginContext: () => ({ meta: { jsonData: {} } }) }));
+jest.mock('@grafana/ui', () => {
+  return require('../../test-utils/interactive-section-harness').createGrafanaUiMock();
+});
+jest.mock('@grafana/data', () => {
+  return require('../../test-utils/interactive-section-harness').createGrafanaDataMock();
+});
 jest.mock('../../lib/analytics', () => {
   return require('../../test-utils/interactive-section-harness').createAnalyticsMock();
 });

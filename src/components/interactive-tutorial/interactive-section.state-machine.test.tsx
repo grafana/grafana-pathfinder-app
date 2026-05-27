@@ -23,14 +23,13 @@ import { testIds } from '../../constants/testIds';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-jest.mock('@grafana/ui', () => ({
-  Button: ({ children, onClick, disabled, ...rest }: any) =>
-    React.createElement('button', { onClick, disabled, ...rest }, children),
-}));
+jest.mock('@grafana/ui', () => {
+  return require('../../test-utils/interactive-section-harness').createGrafanaUiMock();
+});
 
-jest.mock('@grafana/data', () => ({
-  usePluginContext: () => ({ meta: { jsonData: {} } }),
-}));
+jest.mock('@grafana/data', () => {
+  return require('../../test-utils/interactive-section-harness').createGrafanaDataMock();
+});
 
 jest.mock('../../lib/analytics', () => {
   return require('../../test-utils/interactive-section-harness').createAnalyticsMock();
@@ -100,7 +99,12 @@ jest.mock('./interactive-conditional', () => {
 
 import { InteractiveStep } from './interactive-step';
 import { InteractiveSection, resetInteractiveCounters } from './interactive-section';
-import { memoryStore, resetSectionHarness, silenceSectionWarnings } from '../../test-utils/interactive-section-harness';
+import {
+  memoryStore,
+  resetSectionHarness,
+  silenceSectionWarnings,
+  setCheckRequirementsResult,
+} from '../../test-utils/interactive-section-harness';
 
 // ─── Setup ──────────────────────────────────────────────────────────────────
 
@@ -411,6 +415,124 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
 
       // Still done — restore did not re-fire.
       expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument();
+    });
+  });
+});
+
+// ─── Section requirements fix button — issue #476 ───────────────────────────
+
+describe('InteractiveSection — section requirements fix button (#476)', () => {
+  beforeEach(() => {
+    const { NavigationManager } = jest.requireMock('../../interactive-engine');
+    NavigationManager.mockClear();
+  });
+
+  function renderSectionWithRequirements(requirements: string) {
+    return render(
+      <InteractiveSection
+        id="req-section"
+        title="Requirements section"
+        requirements={requirements}
+        autoCollapse={false}
+      >
+        <InteractiveStep targetAction="highlight" refTarget=".a">
+          Step
+        </InteractiveStep>
+      </InteractiveSection>
+    );
+  }
+
+  it('shows "Fix this" button when section requirement is fixable', async () => {
+    setCheckRequirementsResult({
+      pass: false,
+      error: [
+        {
+          requirement: 'on-page:/explore',
+          error: 'Not on the correct page',
+          canFix: true,
+          fixType: 'location',
+          targetHref: '/explore',
+        },
+      ],
+    });
+
+    renderSectionWithRequirements('on-page:/explore');
+
+    await waitFor(() => expect(screen.getByText('Fix this')).toBeInTheDocument());
+  });
+
+  it('does not show "Fix this" button when requirement is not fixable', async () => {
+    setCheckRequirementsResult({
+      pass: false,
+      error: [
+        {
+          requirement: 'has-datasource:loki',
+          error: 'The Loki data source needs to be configured first.',
+          canFix: false,
+        },
+      ],
+    });
+
+    renderSectionWithRequirements('has-datasource:loki');
+
+    // Wait for requirements check to complete: banner shows explanation, no Fix button
+    await waitFor(() => expect(screen.getByText('Requirements not yet met.')).toBeInTheDocument());
+    expect(screen.queryByText('Fix this')).not.toBeInTheDocument();
+  });
+
+  it('shows user-friendly explanation text instead of generic "Requirements not yet met"', async () => {
+    setCheckRequirementsResult({
+      pass: false,
+      error: [
+        {
+          requirement: 'on-page:/explore',
+          error: 'Not on the correct page',
+          canFix: true,
+          fixType: 'location',
+          targetHref: '/explore',
+        },
+      ],
+    });
+
+    renderSectionWithRequirements('on-page:/explore');
+
+    await waitFor(() => expect(screen.getByText('Navigate to the correct page first.')).toBeInTheDocument());
+  });
+
+  it('clicking "Fix this" invokes NavigationManager.fixLocationRequirement for location fixType', async () => {
+    setCheckRequirementsResult({
+      pass: false,
+      error: [
+        {
+          requirement: 'on-page:/explore',
+          error: 'Not on the correct page',
+          canFix: true,
+          fixType: 'location',
+          targetHref: '/explore',
+        },
+      ],
+    });
+
+    renderSectionWithRequirements('on-page:/explore');
+
+    await waitFor(() => expect(screen.getByText('Fix this')).toBeInTheDocument());
+
+    // After click, fix should resolve and requirements recheck → pass
+    setCheckRequirementsResult({ pass: true, error: [] });
+
+    act(() => {
+      screen.getByText('Fix this').click();
+    });
+
+    // mock.results tracks the return value of each new NavigationManager() call
+    // (mock.instances tracks `this`, which is the empty prototype object when
+    // mockImplementation returns a plain object — not what we want here)
+    await waitFor(() => {
+      const { NavigationManager } = jest.requireMock('../../interactive-engine');
+      const results = NavigationManager.mock.results;
+      expect(results.length).toBeGreaterThan(0);
+      const instance = results[results.length - 1].value;
+      expect(instance.fixLocationRequirement).toHaveBeenCalledWith('/explore');
     });
   });
 });
