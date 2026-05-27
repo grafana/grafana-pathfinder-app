@@ -458,6 +458,8 @@ function diffExcludedSets(label: string, docExcluded: Set<string>): string[] {
 
 const ESLINT_CONFIG_PATH = path.join(REPO_ROOT, 'eslint.config.mjs');
 
+// Assumes flat string arrays — `[ 'a', 'b', ...OTHER ]`. Trailing `];` inside a
+// comment or a nested bracket would derail the non-greedy match.
 function parseConstantTokens(text: string, varName: string): string[] {
   const blockRe = new RegExp(`const\\s+${varName}\\s*=\\s*\\[([\\s\\S]*?)\\];`);
   const match = blockRe.exec(text);
@@ -652,25 +654,56 @@ describe('Tier documentation sync', () => {
 // ---------------------------------------------------------------------------
 //
 // The import-graph scanner only resolves relative specifiers. If
-// tsconfig.compilerOptions.paths is ever populated, aliased imports would
-// silently bypass tier enforcement. Fail loudly the moment paths appears
-// so whoever introduces it extends the scanner first.
+// tsconfig.compilerOptions.paths is ever populated — or if baseUrl is
+// widened beyond the scaffolded baseline — aliased / bare-rooted imports
+// would silently bypass tier enforcement. Fail loudly the moment either
+// appears so whoever introduces it extends the scanner first.
+//
+// KNOWN_BASELINE_BASE_URL documents the pre-existing blind spot: the
+// scaffolded `.config/tsconfig.json` sets baseUrl="../src", which lets
+// bare specifiers like `import x from 'lib/foo'` resolve against src/.
+// These are already invisible to extractRelativeImports. Treating the
+// baseline as known (rather than failing now) keeps the tripwire shippable
+// while still catching any further widening.
+
+const KNOWN_BASELINE_BASE_URL: Record<string, string> = {
+  '.config/tsconfig.json': '../src',
+};
 
 describe('TS path-alias tripwire', () => {
   const tsconfigs = [path.join(REPO_ROOT, 'tsconfig.json'), path.join(REPO_ROOT, '.config', 'tsconfig.json')];
 
-  it.each(tsconfigs)('%s declares no compilerOptions.paths', (tsconfigPath) => {
+  it.each(tsconfigs)('%s declares no compilerOptions.paths or new baseUrl', (tsconfigPath) => {
     const text = fs.readFileSync(tsconfigPath, 'utf-8');
     const stripped = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    const parsed = JSON.parse(stripped) as { compilerOptions?: { paths?: Record<string, unknown> } };
+    const parsed = JSON.parse(stripped) as {
+      compilerOptions?: { paths?: Record<string, unknown>; baseUrl?: string };
+    };
+    const relPath = toPosixPath(path.relative(REPO_ROOT, tsconfigPath));
     const paths = parsed.compilerOptions?.paths ?? {};
+    const baseUrl = parsed.compilerOptions?.baseUrl;
 
     if (Object.keys(paths).length > 0) {
       throw new Error(
-        `${path.relative(REPO_ROOT, tsconfigPath)} declares compilerOptions.paths, but the ` +
+        `${relPath} declares compilerOptions.paths, but the ` +
           `import-graph scanner in src/validation/import-graph.ts only resolves relative ` +
           `specifiers. Aliased imports would silently bypass tier enforcement. Extend the ` +
           `scanner to resolve tsconfig.paths before merging this change.`
+      );
+    }
+
+    if (baseUrl !== undefined && baseUrl !== KNOWN_BASELINE_BASE_URL[relPath]) {
+      const baseline = KNOWN_BASELINE_BASE_URL[relPath];
+      const baselineNote = baseline
+        ? `Known baseline for ${relPath} is "${baseline}"; this file declares "${baseUrl}".`
+        : `No baseline is registered for ${relPath}.`;
+      throw new Error(
+        `${relPath} declares compilerOptions.baseUrl="${baseUrl}", which lets bare specifiers ` +
+          `like \`import x from 'lib/foo'\` resolve against the baseUrl root. The import-graph ` +
+          `scanner in src/validation/import-graph.ts only resolves relative specifiers, so these ` +
+          `imports would silently bypass tier enforcement. ${baselineNote} Either extend the ` +
+          `scanner to resolve baseUrl-rooted specifiers, or update KNOWN_BASELINE_BASE_URL in ` +
+          `architecture.test.ts if this change is deliberate.`
       );
     }
   });
