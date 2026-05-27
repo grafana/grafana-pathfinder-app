@@ -571,8 +571,8 @@ export function RecordModeOverlay({
               type="button"
               title={
                 isStrictModeEnabled
-                  ? 'Strict mode is ON. Fragile selectors will be refused. Click to disable.'
-                  : 'Strict mode is OFF. Enable to refuse steps without stable selectors.'
+                  ? 'Strict mode is ON. Fragile selectors are flagged for review when you stop. Click to disable.'
+                  : 'Strict mode is OFF. Enable to review fragile selectors when you stop recording.'
               }
             >
               Strict Mode

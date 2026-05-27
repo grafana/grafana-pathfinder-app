@@ -69,6 +69,8 @@ export interface UseRecordingActionsReturn {
   toggleConditionalRecording: (conditionalId: string, branch: 'whenTrue' | 'whenFalse') => void;
   /** Stop any active recording */
   stopRecording: () => void;
+  /** Stop any active recording and throw away the recorded steps without saving */
+  discardRecording: () => void;
   /** Submit a section block and immediately start recording into it */
   submitAndStartRecording: (block: JsonBlock, insertAtIndex?: number) => void;
   /** Ref for pending section ID (exposed for special cases) */
@@ -226,6 +228,17 @@ export function useRecordingActions(deps: RecordingActionsDependencies): UseReco
     }
   }, [recordingIntoSection, recordingIntoConditionalBranch, stopSectionRecording, stopConditionalRecording]);
 
+  // Stop without saving any recorded steps. Same teardown as stopRecording
+  // minus the processAndAdd* step that converts the buffer into blocks.
+  const discardRecording = useCallback(() => {
+    actionRecorder.stopRecording();
+    actionRecorder.clearRecording();
+    setRecordingIntoSection(null);
+    setRecordingIntoConditionalBranch(null);
+    setRecordingStartUrl(null);
+    onClear();
+  }, [actionRecorder, setRecordingIntoSection, setRecordingIntoConditionalBranch, setRecordingStartUrl, onClear]);
+
   // Submit block and immediately start recording
   const submitAndStartRecording = useCallback(
     (block: JsonBlock, insertAtIndex?: number) => {
@@ -253,6 +266,7 @@ export function useRecordingActions(deps: RecordingActionsDependencies): UseReco
     toggleSectionRecording,
     toggleConditionalRecording,
     stopRecording,
+    discardRecording,
     submitAndStartRecording,
     pendingSectionIdRef,
   };
