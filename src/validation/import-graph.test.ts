@@ -132,11 +132,9 @@ describe('extractBareImports', () => {
   });
 
   it('ignores relative imports', () => {
-    const content = [
-      `import { a } from './local';`,
-      `import { b } from '../parent';`,
-      `import c from 'react';`,
-    ].join('\n');
+    const content = [`import { a } from './local';`, `import { b } from '../parent';`, `import c from 'react';`].join(
+      '\n'
+    );
     expect(extractBareImports(content)).toEqual(['react']);
   });
 
