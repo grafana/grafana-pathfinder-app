@@ -65,8 +65,11 @@ export function useDocumentStepProgress({
         documentStepIndex,
         completedCount: completedDocumentCount,
       });
-    } catch {
-      // no-op
+    } catch (err) {
+      // Surface the failure instead of silently dropping it — the chip
+      // will simply stay stale, but the I/O failure now leaves a
+      // diagnostic breadcrumb in the console.
+      console.warn('[useDocumentStepProgress] failed to publish document progress:', err);
     }
   }, [currentlyExecutingStep, stepComponents, sectionId, completedSteps]);
 }
