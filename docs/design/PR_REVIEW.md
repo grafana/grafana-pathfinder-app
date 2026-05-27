@@ -89,11 +89,24 @@ Scan the diff against the unified detection table below. Security rules (F1-F6) 
 | Use of `any`; missing or unexported types                                      | QC5 | Medium   |
 | Missing tests for new functionality                                            | QC6 | High     |
 | Missing ARIA labels or keyboard navigation on interactive els                  | QC7 | Medium   |
+| Verbose / decorative / stale comments on changed code                          | QC8 | Medium   |
+
+### QC8 — Comment hygiene on changed code
+
+The canonical catalog of bad-shape comments and the keep-list live in `AGENTS.md` §Comments (always loaded in agent context). This section is reviewer-specific scoping only.
+
+**Reviewer scoping rules:**
+
+- **Flag on changed lines only.** If a bad-shape comment appears in a hunk the PR is modifying, flag it. Do not flag bad-shape comments in untouched files or untouched functions — comment cleanup rides along on code changes, never as a standalone sweep.
+- **Also flag stale comments left in place inside functions the PR is modifying.** If the PR renames a symbol, alters a control flow, or changes a behavior, but leaves an adjacent comment describing the prior shape, the comment is now stale and should have been trimmed.
+- **Reference the shape number** (1-8) from the AGENTS.md catalog when reporting. Example: `QC8.2: defensive "Intentionally NOT" block above doWork()`.
+- **Severity is Medium and non-blocking.** A single bad-shape comment does not block merge. A PR running 3:1 comments-to-code that doesn't clear should be flagged for cleanup before merge.
 
 ### Escalation pointers
 
 - **R1-R21 hit**: load `.cursor/rules/react-antipatterns.mdc` for the canonical Do/Don't example and fix pattern.
 - **F1-F6 hit**: load `.cursor/rules/frontend-security.mdc` directly for the canonical rule definition and remediation pattern. (In Cursor, that file's `alwaysApply` frontmatter auto-loads it for matching files; in Claude Code, cite it by path.)
+- **QC8 hit**: cite the specific shape (1-8) from `AGENTS.md` §Comments when reporting.
 
 ## Go backend checks
 
