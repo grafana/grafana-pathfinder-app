@@ -158,7 +158,24 @@ If `coverage_confidence` is not `high`, include a short coverage note such as:
 
 > Coverage note: this PR appears to center on an area that is only lightly modeled by `docs/design/CONCERNS.md`. I reviewed it with general concerns and adjacent subsystem logic, but review confidence is reduced there. If this area is important long-term, consider refining or adding a concern entry.
 
-## 6. Documentation drift check
+## 6. Tech-debt scan
+
+After synthesis, spawn a sub-agent scoped to **only the files changed in this PR** to detect tech-debt patterns. The sub-agent reads `.cursor/skills/techdebt/SKILL.md` and runs all categories (A–E) against the changed file set.
+
+Instructions for the sub-agent:
+
+1. Resolve the target to the PR's changed file list — do not expand scope to the full subsystem.
+2. Run `SKILL.md` workflow steps 1–6 against that file list exactly.
+3. Suppress findings on files that the diff only touches in tests (D2 is still relevant there).
+4. Return only **high-confidence findings**; do not emit suggestive findings unless the overall change classification is `mixed` or `product-runtime` and the router has flagged correctness risk.
+
+Include the tech-debt report in the final review output under a **Tech debt** section. If the sub-agent returns no findings, emit:
+
+> Tech debt: no high-confidence patterns found in the changed files.
+
+The tech-debt scan is **non-blocking** — findings do not block merge, but they are included in the review for the author's awareness. If a finding overlaps with a correctness or architecture finding already raised by another reviewer, prefer the primary concern's finding and add a note that it also represents accrued debt.
+
+## 7. Documentation drift check
 
 After synthesis, invoke `.cursor/skills/prevent-doc-drift/SKILL.md` in **review mode** to detect whether this PR introduces new subsystems, scripts, skills, docs, plugin routes, feature flags, or architecture changes that require updates to agent guidance (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`).
 

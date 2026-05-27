@@ -23,6 +23,7 @@ Reusable agent workflows. Read a skill's `SKILL.md` before invoking it.
 | `release-prep`       | `/release-prep [version]`        | Bump version + draft changelog + run check; user creates the tag                                                                        |
 | `review`             | `/review`                        | Principal-engineer PR review: routes via `CONCERNS.md`, grounds findings in `docs/design/PR_REVIEW.md` catalog, invokes doc-drift check |
 | `secure`             | `/secure`                        | Security audit: F1-F6 frontend + backend allowlists + MCP transport + deps                                                              |
+| `techdebt`           | `/techdebt <subsystem>`          | Confidence-tiered tech-debt audit: smells, duplication, prop drilling, dead code, extraction seams; also runs as sub-agent inside `/review` |
 | `tidy-up`            | `/tidy-up`                       | Pre-commit gate (typecheck + lint + prettier + Go)                                                                                      |
 
 ### Doc-quality skill pairing

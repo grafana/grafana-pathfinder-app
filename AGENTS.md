@@ -226,9 +226,13 @@ Frequently-needed entries:
 
 ## PR reviews
 
-Use `/review`. It invokes `.cursor/skills/review/SKILL.md` (orchestration workflow) which loads `docs/design/CONCERNS.md` (concern routing) and `docs/design/PR_REVIEW.md` (pattern catalog for R1-R21, F1-F6, QC1-QC7, G1-G7); `react-antipatterns.mdc` loads on hit. For Go PRs touching `pkg/**/*.go`, also verify `npm run lint:go`, `npm run test:go`, and `go build ./...` pass.
+Use `/review`. It invokes `.cursor/skills/review/SKILL.md` (orchestration workflow) which loads `docs/design/CONCERNS.md` (concern routing) and `docs/design/PR_REVIEW.md` (pattern catalog for R1-R21, F1-F6, QC1-QC7, G1-G7); `react-antipatterns.mdc` loads on hit. The review skill also spawns a tech-debt sub-agent (`.cursor/skills/techdebt/SKILL.md`) scoped to the PR's changed files. For Go PRs touching `pkg/**/*.go`, also verify `npm run lint:go`, `npm run test:go`, and `go build ./...` pass.
 
 Use `CONCERNS.md` alone for impact analysis, change risk classification, and subsystem-aware debugging.
+
+## Tech-debt audits
+
+Use `/techdebt <subsystem>` to run a confidence-tiered debt audit on a concrete target (directory, glob, or named subsystem). The skill reads `.cursor/skills/techdebt/SKILL.md` and its `PATTERNS.md` catalog (categories A–E: local syntactic, cross-file structural, architectural, process debt, operational seams). Findings are ordered by hotspot score (`churn × severity`) so the highest-risk items surface first. Run with `--suggestive` to include lower-confidence candidates.
 
 ## `npx` examples
 
