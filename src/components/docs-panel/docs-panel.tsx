@@ -103,6 +103,11 @@ import {
 import { getPackageRenderType } from '../../types/package.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
+// Module-level fallback labels so the success-path and catch-path strings
+// in `loadTab` can't drift apart on rename.
+const DOCS_LOAD_FAILURE_FALLBACK = 'Failed to load documentation';
+const JOURNEY_LOAD_FAILURE_FALLBACK = 'Failed to load content';
+
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
   public static Component = CombinedPanelRenderer;
 
@@ -116,17 +121,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   private _hasRestoredTabs = false;
 
   /**
-   * Transient launch-source carrier for the implied-0th-step alignment check.
-   * Only the docs branch of `loadTab` consumes this; the journey branch
-   * leaves it alone so a source survives a milestone reload.
-   *
-   * Two ways to populate:
-   *   1. Preferred: pass `{ source }` to `openDocsPage` / `openLearningJourney`.
-   *   2. Legacy: call `_recordAutoLaunchSource(source)` directly — used by
-   *      callbacks with fixed signatures (`ContextPanel`'s recommender)
-   *      and callers that bypass the open methods (`useContentReset`).
-   *
-   * Mirrors the consume-once pattern in `sidebarState.consumePendingOpenSource`.
+   * Consume-once carrier read by the docs branch of `loadTab` to classify
+   * the implied-0th-step alignment check. Drained on every open so a stash
+   * cannot survive into a later load. See `ALIGNED_BY_CONSTRUCTION_SOURCES`
+   * for the source classification.
    */
   private _pendingLaunchSource: LaunchSource | null = null;
 
@@ -160,11 +158,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     const contextPanel = new ContextPanel(
       (url: string, title: string) => {
-        // Recommender is aligned-by-construction (URL-filtered guide list).
-        // Tag the open so the implied-0th-step alignment evaluator skips
-        // it; without this the source would consume as null and an
-        // unrelated `home_page` source previously stashed could leak
-        // through, prompting on a recommender click.
+        // Tag as aligned-by-construction. See `ALIGNED_BY_CONSTRUCTION_SOURCES`.
         return this.openLearningJourney(url, title, { source: 'recommender' });
       },
       (url: string, title: string, packageInfo?: PackageOpenInfo) => {
@@ -226,9 +220,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
 
     if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
-      // `browser_restore` is aligned-by-construction; without it, a restored
-      // tab whose path no longer matches its guide's `startingLocation`
-      // would prompt mid-tutorial.
+      // Tag as aligned-by-construction. See `ALIGNED_BY_CONSTRUCTION_SOURCES`.
       this._recordAutoLaunchSource('browser_restore');
       this.loadTab(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
     }
@@ -286,10 +278,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       // eslint-disable-next-line @typescript-eslint/no-deprecated -- internal bridge to legacy flag (consume-once carrier)
       this._recordAutoLaunchSource(options.source);
     }
-    // Drain the carrier here because `loadTab`'s journey branch won't.
-    // Without this, the recorded source would leak into the next docs-loader
-    // open (e.g. a later recommender click) and contaminate its alignment
-    // evaluation. Drop until journeys grow their own implied-0th-step logic.
+    // Drain before `loadTab`: the journey branch doesn't consume, and the
+    // stash would otherwise leak to the next docs-loader open. Order-
+    // sensitive; pinned by `docs-panel.alignment.test.ts`.
     this._consumeAutoLaunchSource();
 
     const finalTitle = title || 'Learning path';
@@ -335,14 +326,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   ): Promise<void> {
     const tab = this.state.tabs.find((t) => t.id === tabId);
     const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
-
-    // Silent no-op for journey reloads on tabs whose `currentUrl` is
-    // momentarily empty. The docs branch instead surfaces an error via
-    // `loadTabContentResult` — packageInfo-only opens resolve via
-    // `fetchPackageById`.
-    if (!needsDocsLoader && (!url || url.trim() === '')) {
-      return;
-    }
+    const fallback = needsDocsLoader ? DOCS_LOAD_FAILURE_FALLBACK : JOURNEY_LOAD_FAILURE_FALLBACK;
 
     this.setTabLoading(tabId);
 
@@ -364,7 +348,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       });
 
       if (!result.content) {
-        const fallback = needsDocsLoader ? 'Failed to load documentation' : 'Failed to load content';
         this.applyTabLoadFailure(tabId, result.error || fallback);
         return;
       }
@@ -377,7 +360,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     } catch (error) {
       const label = needsDocsLoader ? 'docs content' : 'journey content';
       console.error(`Failed to load ${label} for tab ${tabId}:`, error);
-      const fallback = needsDocsLoader ? 'Failed to load documentation' : 'Failed to load content';
       this.applyTabLoadFailure(tabId, error instanceof Error ? error.message : fallback);
     }
   }

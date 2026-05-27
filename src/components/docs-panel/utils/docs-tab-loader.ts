@@ -4,12 +4,6 @@ import type { ContentFetchResult } from '../../../types/content.types';
 
 export const UNRESOLVED_PACKAGE_ERROR = 'Package content is not available yet. Please try again later.';
 
-/**
- * - `'docs'`: package + docs-retrieval fetch with URL / package-id / not-found
- *   resolution.
- * - `'journey'`: plain `fetchContent` for non-package milestones; the panel
- *   handles empty-URL early-return and milestone-context enrichment.
- */
 export type LoadTabContentMode = 'docs' | 'journey';
 
 interface LoadTabContentOptions {
@@ -50,9 +44,9 @@ export async function loadTabContentResult(url: string, options: LoadTabContentO
     return fetchContent(normalizedUrl, { skipReadyToBegin });
   }
 
-  // mode === 'journey'. The panel guards empty URLs upstream, so reaching
-  // here with one is a programming error; surface the same controlled
-  // error as the docs branch rather than silently no-op.
+  // mode === 'journey'. Empty URL is treated symmetrically with the docs
+  // branch — both surface the same controlled error rather than diverging
+  // (the panel no longer carries a silent-no-op for this case).
   if (!normalizedUrl) {
     return {
       content: null,

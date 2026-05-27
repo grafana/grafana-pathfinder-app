@@ -138,7 +138,7 @@ describe('loadTabContentResult', () => {
       expect(mockFetchPackageContent).not.toHaveBeenCalled();
     });
 
-    it('returns a controlled error when URL is empty (panel should have caught this)', async () => {
+    it('returns a controlled error when URL is empty (symmetric with the docs branch)', async () => {
       const result = await loadTabContentResult('', { mode: 'journey' });
 
       expect(result).toEqual({
