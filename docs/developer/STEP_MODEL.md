@@ -109,11 +109,11 @@ type ProgressEventDetail =
   | { kind: 'guide'; contentKey; percentage; hasProgress };
 ```
 
-Listeners use `subscribeProgressEvent(detail => ...)`. The store fires `kind: 'step'` from `markStepCompleted` / `resetStep`, `kind: 'guide'` from its `persistSection` writes. `interactive-section.tsx` fires `kind: 'section'` when the section transitions to a terminal state. The four legacy events (`interactive-step-completed`, `section-completed`, `interactive-section-completed`, `interactive-progress-saved`) are gone.
+Listeners use `subscribeProgressEvent(detail => ...)`. The store fires `kind: 'step'` from `markStepCompleted` / `resetStep`, `kind: 'guide'` from its `persistSection` writes. `interactive-section.tsx` fires `kind: 'section'` when the section transitions to a terminal state. The five legacy events (`interactive-step-completed`, `section-completed`, `interactive-section-completed`, `interactive-progress-saved`, `interactive-progress-cleared`) are gone — clears now ride the unified channel as `kind: 'guide'` with `hasProgress: false`.
 
 The orphan `step-auto-skipped` listener at `step-checker.hook.ts:746` was removed in C3 — there were no dispatchers anywhere in the repo.
 
-`interactive-progress-cleared` (dispatched by `handleResetSection` and `useContentReset`) is the one remaining legacy event — it still drives ephemeral preview / alignment UI and will fold into `kind: 'guide'` with `hasProgress: false` once those listeners migrate.
+Per-guide clears use the canonical envelope `{ kind: 'guide', contentKey, percentage: 0, hasProgress: false }`. "Reset all" / per-path resets broadcast with `contentKey: PROGRESS_CONTENT_KEY_WILDCARD` (`'*'`); key-scoped listeners must call `matchesContentKey(detail, expected)` (or the `isGuideClear` type guard) so the wildcard fans out.
 
 ## Tab loader
 

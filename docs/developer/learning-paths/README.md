@@ -165,7 +165,7 @@ If more than one day has elapsed since the last activity, the streak is reported
 
 **Static paths**: For each guide ID in the path, clears the interactive step storage (`bundled:{guideId}`), interactive completion storage, and journey completion storage. Then removes the guide IDs from `completedGuides`.
 
-**URL-based paths**: Clears milestone tracking (`milestoneCompletionStorage`), journey completion, and `completedGuides` for the fetched guide slugs. Also clears interactive steps and completions for any content key that starts with the path's normalized URL. After clearing, dispatches `CustomEvent('interactive-progress-cleared')` so UI components can refresh.
+**URL-based paths**: Clears milestone tracking (`milestoneCompletionStorage`), journey completion, and `completedGuides` for the fetched guide slugs. Also clears interactive steps and completions for any content key that starts with the path's normalized URL. After clearing, dispatches `pathfinder:progress` with `{ kind: 'guide', contentKey: '*', percentage: 0, hasProgress: false }` (broadcast wildcard) so every key-scoped listener clears its in-memory state and the recommendation panel refreshes.
 
 ## Key hooks and exports
 
@@ -241,10 +241,10 @@ The components consume the hooks exported from this module to render learning pa
 
 ### Events
 
-| Event                          | Dispatched by                  | Listened by                   |
-| ------------------------------ | ------------------------------ | ----------------------------- |
-| `learning-progress-updated`    | Storage layer (`user-storage`) | `useLearningPaths()` hook     |
-| `interactive-progress-cleared` | `resetPath()`                  | UI components needing refresh |
+| Event                                                                            | Dispatched by                  | Listened by                                                                                                 |
+| -------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `learning-progress-updated`                                                      | Storage layer (`user-storage`) | `useLearningPaths()` hook                                                                                   |
+| `pathfinder:progress` (`kind: 'guide'`, `contentKey: '*'`, `hasProgress: false`) | `resetPath()`                  | Every per-key progress listener (BlockPreview reset, guide-toolbar progress hooks, context recommendations) |
 
 ## See also
 
