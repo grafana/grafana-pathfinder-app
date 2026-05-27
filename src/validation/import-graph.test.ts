@@ -9,6 +9,7 @@ import * as path from 'path';
 
 import {
   ROOT_LEVEL_ALLOWED_FILES,
+  ROOT_LEVEL_TIER_MAP,
   SRC_DIR,
   TIER_MAP,
   TIER_2_ENGINES,
@@ -18,6 +19,7 @@ import {
   extractRelativeImports,
   resolveImportToRelative,
   getTargetTopLevel,
+  getSourceTier,
   collectSourceFiles,
   getRootLevelSourceFiles,
   toPosixPath,
@@ -206,6 +208,33 @@ describe('getTargetTopLevel', () => {
 });
 
 // ---------------------------------------------------------------------------
+// getSourceTier
+// ---------------------------------------------------------------------------
+
+describe('getSourceTier', () => {
+  it('returns the TIER_MAP tier for a file in a known top-level directory', () => {
+    expect(getSourceTier('lib/foo.ts', 'lib')).toBe(TIER_MAP['lib']);
+  });
+
+  it('returns the TIER_MAP tier regardless of file path depth', () => {
+    expect(getSourceTier('components/nested/deeply/widget.tsx', 'components')).toBe(TIER_MAP['components']);
+  });
+
+  it('returns the ROOT_LEVEL_TIER_MAP tier for a root-level file', () => {
+    expect(getSourceTier('module.tsx', null)).toBe(ROOT_LEVEL_TIER_MAP['module.tsx']);
+    expect(getSourceTier('constants.ts', null)).toBe(ROOT_LEVEL_TIER_MAP['constants.ts']);
+  });
+
+  it('returns undefined for an unknown top-level directory', () => {
+    expect(getSourceTier('phantom/foo.ts', 'phantom')).toBeUndefined();
+  });
+
+  it('returns undefined for an unknown root-level file', () => {
+    expect(getSourceTier('helpers.ts', null)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // TIER_MAP / TIER_2_ENGINES / EXCLUDED_TOP_LEVEL consistency
 // ---------------------------------------------------------------------------
 
@@ -226,6 +255,17 @@ describe('architecture constants', () => {
     const rootLevelSourceFiles = getRootLevelSourceFiles();
     const invalidEntries = [...ROOT_LEVEL_ALLOWED_FILES].filter((file) => !rootLevelSourceFiles.includes(file));
     expect(invalidEntries).toEqual([]);
+  });
+
+  it('ROOT_LEVEL_ALLOWED_FILES is derived from ROOT_LEVEL_TIER_MAP (single source of truth)', () => {
+    expect([...ROOT_LEVEL_ALLOWED_FILES].sort()).toEqual(Object.keys(ROOT_LEVEL_TIER_MAP).sort());
+  });
+
+  it('every ROOT_LEVEL_TIER_MAP tier is a valid tier in TIER_MAP', () => {
+    const validTiers = new Set(Object.values(TIER_MAP));
+    for (const [file, tier] of Object.entries(ROOT_LEVEL_TIER_MAP)) {
+      expect({ file, tier, isValid: validTiers.has(tier) }).toEqual({ file, tier, isValid: true });
+    }
   });
 });
 

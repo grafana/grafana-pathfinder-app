@@ -44,7 +44,27 @@ export const TIER_2_ENGINES = Object.entries(TIER_MAP)
   .map(([dir]) => dir);
 
 export const EXCLUDED_TOP_LEVEL = new Set(['test-utils', 'cli', 'bundled-interactives', 'img', 'locales']);
-export const ROOT_LEVEL_ALLOWED_FILES = new Set(['constants.ts', 'constants.test.ts', 'module.tsx']);
+
+/**
+ * Root-level src/ files with their assigned tiers.
+ *
+ * Files in src root have `topLevelDir === null` and would otherwise bypass
+ * tier enforcement. Assigning each an explicit tier closes that gap (F-6).
+ * Every entry must also appear in ROOT_LEVEL_ALLOWED_FILES — the sync is
+ * locked by a unit test in import-graph.test.ts.
+ *
+ * Tier assignments here follow the same semantics as TIER_MAP: a file may
+ * import from its own tier or lower. `module.tsx` is the plugin entrypoint
+ * and legitimately reaches into pages/integrations (Tier 3/4), so it gets
+ * Tier 4. `constants.ts` is pure data and lives at Tier 0.
+ */
+export const ROOT_LEVEL_TIER_MAP: Record<string, number> = {
+  'constants.ts': 0,
+  'constants.test.ts': 0,
+  'module.tsx': 4,
+};
+
+export const ROOT_LEVEL_ALLOWED_FILES = new Set(Object.keys(ROOT_LEVEL_TIER_MAP));
 
 export function toPosixPath(filePath: string): string {
   return filePath.replace(/\\/g, '/');
@@ -169,6 +189,22 @@ export function getTargetTopLevel(resolvedRelative: string): string | null {
   const segments = toPosixPath(resolvedRelative).split('/');
   // ?? null satisfies noUncheckedIndexedAccess; split() always returns at least one element
   return segments[0] ?? null;
+}
+
+/**
+ * Returns the tier number for an import-graph source file.
+ *
+ * For files inside a top-level directory, looks up TIER_MAP[topLevelDir].
+ * For root-level files (topLevelDir === null), looks up ROOT_LEVEL_TIER_MAP
+ * by the file's basename (e.g. "module.tsx"). Returns undefined when no
+ * tier is assigned — callers should treat that as "skip this file".
+ */
+export function getSourceTier(relPath: string, topLevelDir: string | null): number | undefined {
+  if (topLevelDir !== null) {
+    return TIER_MAP[topLevelDir];
+  }
+  const basename = toPosixPath(relPath);
+  return ROOT_LEVEL_TIER_MAP[basename];
 }
 
 let cachedFileImports: FileImports[] | undefined;

@@ -24,6 +24,7 @@ import {
   assertRatchet,
   getAllFileImports,
   getRootLevelSourceFiles,
+  getSourceTier,
   getTargetTopLevel,
   isTestFile,
   resolveImportToRelative,
@@ -48,13 +49,10 @@ interface ResolvedImportContext {
  * - Imports whose resolved path has no extractable top-level directory
  *
  * Root-level files (e.g. module.tsx) are included but have
- * topLevelDir=null, so callbacks must handle that case.
- *
- * Known limitation: root-level files' imports are invisible to tier
- * enforcement because all three constraint callbacks return null when
- * topLevelDir is null. Today only module.tsx and constants.ts live at
- * root, so the practical risk is low. If root-level files proliferate,
- * consider assigning them explicit tiers via a parallel map.
+ * topLevelDir=null. The vertical-tier callback uses getSourceTier() to
+ * resolve the source tier via ROOT_LEVEL_TIER_MAP for those files; the
+ * lateral and barrel callbacks remain a no-op for root files because
+ * those constraints don't apply to non-engine source files.
  */
 function collectViolations(getViolationKey: (ctx: ResolvedImportContext) => string | null): Set<string> {
   const allFiles = getAllFileImports();
@@ -175,16 +173,18 @@ describe('Tier map completeness', () => {
     if (unaccounted.length > 0) {
       throw new Error(
         `Unaccounted root-level source files in src/: ${unaccounted.join(', ')}\n\n` +
-          `Root-level files are a deliberate exception and must be explicitly reviewed. ` +
-          `Add new root-level files to ROOT_LEVEL_ALLOWED_FILES in src/validation/import-graph.ts ` +
-          `with a comment describing why they are allowed to live at src root.`
+          `Root-level files bypass top-level tier enforcement, so each one must be explicitly ` +
+          `tiered. Add an entry to ROOT_LEVEL_TIER_MAP in src/validation/import-graph.ts mapping ` +
+          `the file to its tier number (matching the TIER_MAP scale: 0 = types/constants, ` +
+          `1 = support, 2 = engines, 3 = integrations, 4 = UI). ROOT_LEVEL_ALLOWED_FILES is ` +
+          `derived from that map, so a single tier assignment covers both checks.`
       );
     }
 
     const staleEntries = [...ROOT_LEVEL_ALLOWED_FILES].filter((entry) => !rootLevelSourceFiles.includes(entry));
     if (staleEntries.length > 0) {
       throw new Error(
-        `Stale entries in ROOT_LEVEL_ALLOWED_FILES (file no longer exists — remove the entry):\n` +
+        `Stale entries in ROOT_LEVEL_TIER_MAP (file no longer exists — remove the entry):\n` +
           staleEntries.map((entry) => `  - ${entry}`).join('\n')
       );
     }
@@ -194,11 +194,7 @@ describe('Tier map completeness', () => {
 describe('Import graph: vertical tier enforcement', () => {
   it('should not contain upward-tier imports beyond the ratchet allowlist', () => {
     const violations = collectViolations(({ relPath, topLevelDir, targetTopLevel }) => {
-      if (!topLevelDir) {
-        return null;
-      }
-
-      const sourceTier = TIER_MAP[topLevelDir];
+      const sourceTier = getSourceTier(relPath, topLevelDir);
       const targetTier = TIER_MAP[targetTopLevel];
       if (sourceTier === undefined || targetTier === undefined || targetTier <= sourceTier) {
         return null;
