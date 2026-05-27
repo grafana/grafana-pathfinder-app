@@ -4,6 +4,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { shouldCaptureElement, getActionDescription } from '../../lib/dom/action-detector';
+import { isHighQualitySelectorMethod } from '../../lib/dom/selector-generator';
 import { generateSelectorFromEvent } from './selector-generator.util';
 import { exportStepsToHTML, type RecordedStep, type ExportOptions } from './tutorial-exporter';
 import { formatStepsToString } from './step-parser.util';
@@ -114,6 +115,21 @@ export interface UseActionRecorderOptions {
   enableInspector?: boolean;
   /** Enable auto-detection of modals/dropdowns for grouping actions into multisteps */
   enableModalDetection?: boolean;
+  /**
+   * When true, refuse to record steps whose selector method falls outside
+   * the high-quality allow-list (see HIGH_QUALITY_SELECTOR_METHODS).
+   */
+  strictMode?: boolean;
+  /** Called when a click is refused because of strict mode. */
+  onSelectorRejected?: (info: SelectorRejection) => void;
+}
+
+export interface SelectorRejection {
+  method: string;
+  selector: string;
+  tag: string;
+  ariaLabel: string | null;
+  text: string;
 }
 
 export interface UseActionRecorderReturn {
@@ -138,6 +154,8 @@ export interface UseActionRecorderReturn {
   pendingGroupSteps: RecordedStep[];
   // Form capture mode (Alt+click target element)
   formCaptureElement: HTMLElement | null;
+  /** Number of clicks refused by strict mode since the last clear/start. */
+  rejectedCount: number;
 }
 
 /**
@@ -180,10 +198,13 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     onActionGroupCompleted,
     enableInspector = true,
     enableModalDetection = false, // Disabled by default to avoid breaking existing behavior
+    strictMode = false,
+    onSelectorRejected,
   } = options;
 
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recordedSteps, setRecordedSteps] = useState<RecordedStep[]>([]);
+  const [rejectedCount, setRejectedCount] = useState(0);
   const recordingElementsRef = useRef<Map<HTMLElement, { value: string; timestamp: number; formCaptured?: boolean }>>(
     new Map()
   );
@@ -201,7 +222,9 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
   // This allows the effect to always use the latest callback without re-attaching listeners
   const onStepRecordedRef = useRef(onStepRecorded);
   const onActionGroupCompletedRef = useRef(onActionGroupCompleted);
+  const onSelectorRejectedRef = useRef(onSelectorRejected);
   const excludeSelectorsRef = useRef(excludeSelectors);
+  const strictModeRef = useRef(strictMode);
 
   // Keep refs updated with latest values
   useEffect(() => {
@@ -213,8 +236,31 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
   }, [onActionGroupCompleted]);
 
   useEffect(() => {
+    onSelectorRejectedRef.current = onSelectorRejected;
+  }, [onSelectorRejected]);
+
+  useEffect(() => {
     excludeSelectorsRef.current = excludeSelectors;
   }, [excludeSelectors]);
+
+  useEffect(() => {
+    strictModeRef.current = strictMode;
+  }, [strictMode]);
+
+  const rejectSelector = useCallback((target: HTMLElement, method: string, selector: string) => {
+    const rejection: SelectorRejection = {
+      method,
+      selector,
+      tag: target.tagName.toLowerCase(),
+      ariaLabel: target.getAttribute('aria-label'),
+      text: (target.textContent || '').trim().slice(0, 80),
+    };
+    console.warn('Strict mode: refused to record step with fragile selector', rejection);
+    setRejectedCount((n) => n + 1);
+    if (onSelectorRejectedRef.current) {
+      onSelectorRejectedRef.current(rejection);
+    }
+  }, []);
 
   // Backward compatibility: isRecording is true when actively recording (not paused)
   const isRecording = recordingState === 'recording';
@@ -236,6 +282,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
   const startRecording = useCallback(() => {
     setRecordingState('recording');
     recordingElementsRef.current.clear();
+    setRejectedCount(0);
   }, []);
 
   const pauseRecording = useCallback(() => {
@@ -270,6 +317,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
       formCaptureCleanupRef.current = null;
     }
     setFormCaptureElement(null);
+    setRejectedCount(0);
     // Also clear modal detection state
     setActiveModal(null);
     setPendingGroupSteps([]);
@@ -464,6 +512,12 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         event.stopPropagation();
 
         const result = generateSelectorFromEvent(target, event, hoveredElementRef.current ?? undefined);
+
+        if (strictModeRef.current && !isHighQualitySelectorMethod(result.selectorInfo.method)) {
+          rejectSelector(target, result.selectorInfo.method, result.selector);
+          return;
+        }
+
         const description = getActionDescription('hover', target);
 
         const newStep: RecordedStep = {
@@ -491,6 +545,14 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
       if (event.altKey) {
         event.preventDefault();
         event.stopPropagation();
+
+        if (strictModeRef.current) {
+          const preview = generateSelectorFromEvent(target, event, hoveredElementRef.current ?? undefined);
+          if (!isHighQualitySelectorMethod(preview.selectorInfo.method)) {
+            rejectSelector(target, preview.selectorInfo.method, preview.selector);
+            return;
+          }
+        }
 
         // Track this element as an Alt+click form-fill target
         recordingElementsRef.current.set(target, {
@@ -567,6 +629,11 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
       // Log validation warnings for debugging
       if (result.warnings.length > 0) {
         console.warn('Selector validation warnings:', result.warnings);
+      }
+
+      if (strictModeRef.current && !isHighQualitySelectorMethod(selectorInfo.method)) {
+        rejectSelector(target, selectorInfo.method, selector);
+        return;
       }
 
       const description = getActionDescription(action, target);
@@ -744,6 +811,12 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           console.warn('Selector validation warnings:', result.warnings);
         }
 
+        if (strictModeRef.current && !isHighQualitySelectorMethod(selectorInfo.method)) {
+          recordingElementsRef.current.delete(target);
+          rejectSelector(target, selectorInfo.method, selector);
+          return;
+        }
+
         const description = getActionDescription(action, target);
         recordingElementsRef.current.delete(target);
 
@@ -807,7 +880,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     };
     // REACT: Removed excludeSelectors and onStepRecorded from deps - now using refs (R3)
     // This prevents excessive effect re-runs when callbacks change on every render
-  }, [recordingState, enableModalDetection, activeModal, pendingGroupSteps]);
+  }, [recordingState, enableModalDetection, activeModal, pendingGroupSteps, rejectSelector]);
 
   return {
     isRecording, // Backward compatibility
@@ -831,5 +904,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     pendingGroupSteps,
     // Form capture mode (Alt+click target element)
     formCaptureElement,
+    rejectedCount,
   };
 }
