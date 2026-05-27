@@ -5,7 +5,7 @@ description: Routed PR review orchestrator. Load for `/review` command or any PR
 
 # PR review orchestrator
 
-Conduct a **Principal Engineer level** review in six phases.
+Conduct a **Principal Engineer level** review in seven phases.
 
 ## 1. Read the concern registry
 
@@ -173,7 +173,7 @@ Include the tech-debt report in the final review output under a **Tech debt** se
 
 > Tech debt: no high-confidence patterns found in the changed files.
 
-The tech-debt scan is **non-blocking** — findings do not block merge, but they are included in the review for the author's awareness. If a finding overlaps with a correctness or architecture finding already raised by another reviewer, prefer the primary concern's finding and add a note that it also represents accrued debt.
+The tech-debt scan is **non-blocking** — findings do not block merge, but they are included in the review for the author's awareness. Dedupe against synthesis findings per §5.
 
 ## 7. Documentation drift check
 

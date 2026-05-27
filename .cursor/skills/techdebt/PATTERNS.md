@@ -245,9 +245,7 @@ The skill MUST check disqualifiers before emitting a finding. See `SKILL.md` for
 
 ## Category E — Operational debt (extraction-seam patterns)
 
-These detect the high-risk seams that resist refactoring: imperative resource managers, ad-hoc async state machines, module-level mutable state, and scattered contract surfaces. Agentic engineering amplifies all of them — agents extend existing files rather than introduce new modules, so these patterns accrete in place.
-
-Each E-pattern is intentionally scoped small so that one finding = one chip-away session.
+E-patterns are extraction seams — high-risk refactor targets. Each is scoped to a single chip-away session.
 
 ### E1 — Imperative Resource Manager Mixed with Logic
 

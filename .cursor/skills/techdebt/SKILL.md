@@ -5,16 +5,11 @@ description: 'Locate technical debt in a subsystem or architectural component of
 
 # techdebt — Locate Technical Debt in a Subsystem
 
-A confidence-tiered audit skill. Every pattern has a high-confidence signature, a suggestive signature, and **disqualifiers that act as hard filters**. The disqualifier protocol is what makes the skill usable rather than noisy.
+Confidence-tiered audit. Disqualifiers are hard filters, not soft considerations — they are what keeps the skill useful rather than noisy.
 
 ## When to Use
 
-- `/techdebt <subsystem>` — explicit invocation, always with a target
-- "find tech debt in X" / "audit Y for smells" / "what's wrong with this module"
-- Pre-refactor due diligence on a single subsystem
-- Sub-agent invocation from `/review` to scan changed files for debt patterns
-
-The skill **requires a concrete target**. If the user gives none, ask for one — do not audit the whole repo.
+Triggered by `/techdebt <subsystem>`, by phrases like "find tech debt in X" / "audit Y for smells", as pre-refactor due diligence, or as a sub-agent from `/review` against a PR's changed files. **Requires a concrete target** — if the user gives none, ask for one; do not audit the whole repo.
 
 ## Invocation
 
@@ -49,16 +44,8 @@ Categories:
    - **Category C**: build a minimal import graph via `grep -rn "from ['\"]" <subsystem>`. Use `git log` for churn (C3).
    - **Category D**: D1 diffs `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/` docs against current code; D2 reads test files and counts meaningful assertions.
    - **Category E**: targeted grep + read. E1 looks for paired resource APIs (`setInterval`/`addEventListener`/`*Observer`) with cleanup distance; E2 looks for `AbortController` + debounce + retry in the same function; E3 looks for `export const … = new X()` then traces importers; E4 looks for top-level `let` / `new Map()` / `new Set()` outside any function; E5 looks for repeated string literals matching CustomEvent / storage / testid / query-param patterns; E6 inspects the project's designated entry-point file(s).
-5. **Check disqualifiers BEFORE emitting**. For every candidate hit, walk the pattern's disqualifier list. If any matches → drop the candidate. If a disqualifier cannot be verified, demote to **suggestive** rather than emit a high-confidence flag. Record what was checked.
-6. **Emit findings** grouped by confidence tier, ordered by hotspot score (`churn_90d × pattern_severity`) within each tier.
-
-## Disqualifier Protocol
-
-Disqualifiers are **hard filters**, not soft considerations.
-
-- Walk the list before flagging.
-- Cannot rule out a disqualifier → demote to suggestive. Never emit high-confidence with an unchecked disqualifier.
-- `Disqualifiers checked` field on each finding is the audit trail.
+5. **Check disqualifiers BEFORE emitting**. For every candidate hit, walk the pattern's disqualifier list. If any matches → drop the candidate. If a disqualifier cannot be verified, demote to **suggestive**. Never emit high-confidence with an unchecked disqualifier. The `Disqualifiers checked` field on each finding is the audit trail.
+6. **Emit findings** grouped by confidence tier, ordered by hotspot score (`churn_90d × pattern_severity`) within each tier. Cap output at **10 high-confidence findings**; if more exist, emit a trailing `## Additional candidates (truncated)` line with counts per pattern ID. Prefer not-flagging when uncertain — false positives erode trust faster than missed findings.
 
 ## Confidence Tiers
 
@@ -102,26 +89,23 @@ Do not spend output explaining what wasn't found.
 
 > No tech debt found above the confidence threshold in `<subsystem>`. Run with `--suggestive` to include lower-confidence candidates.
 
-## Example: `/techdebt src/context-engine`
+## Example header
 
 ```
-Resolved → 14 files, 2,341 LOC
+Resolved → <N> files, <LOC> LOC in <subsystem>
 Inventory:
-  - 38 exported symbols
-  - Hottest files (90d): contextEngine.ts (18 commits), useContextEngine.ts (11)
-  - Deps relevant to B3: lodash, date-fns, zod
+  - <N> exported symbols
+  - Hottest files (90d): <file> (<commits>), …
+  - Deps relevant to B3: <library list from package.json>
 Running A1–E6…
 
-High-confidence findings (3):
-  A2 — ContextProvider.tsx (LOC 412, hooks 11, churn 18)
-  C1 — currentUserId drilled 4 levels (churn 11)
-  B3 — src/context-engine/utils/debounce.ts reimplements lodash/debounce (churn 3)
+High-confidence findings (<N>):
+  <pattern ID> — <path>:<lines> (churn <N>)
+  …
 
-No evidence found: A1, A3, A4, A5 · B1, B2, B4 · C2, C3, C4 · D1, D2
+No evidence found: A1, A3 · B2, B4 · C2, C4 · D1
 ```
 
-## Notes on detection fidelity
+## Shallow-clone fallback
 
-- **No embedding service is assumed.** Category B uses the agent as similarity judge. The skill compensates by demanding explicit reasoning in `Evidence` — every B finding states what the agent compared and what convinced it.
-- **Churn is the only quantitative prioritization signal.** Hotspot = `churn_90d × pattern_severity` (severity in `PATTERNS.md`). No code-complexity metric is computed.
-- **Patterns are intentionally narrow.** When in doubt between flagging and not, prefer not. False positives erode trust faster than missed findings.
+If `git log --since="90 days ago"` returns no history (shallow CI clones), set churn=1 for all files and note `Hotspot scoring degraded: shallow clone, no churn signal` in the output header. Findings remain valid; only the ordering loses fidelity.
