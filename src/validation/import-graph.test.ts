@@ -5,19 +5,15 @@
  * ensuring the boundary enforcement logic itself is correct.
  */
 
-import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 
 import {
-  AliasConfig,
   ROOT_LEVEL_ALLOWED_FILES,
   ROOT_LEVEL_TIER_MAP,
   SRC_DIR,
   TIER_MAP,
   TIER_2_ENGINES,
   EXCLUDED_TOP_LEVEL,
-  extractBareImports,
   extractRelativeImports,
   getNewViolations,
   getRootLevelSourceFiles,
@@ -28,9 +24,6 @@ import {
   isTestFile,
   assertRatchet,
   collectSourceFiles,
-  loadAliasConfig,
-  resetCache,
-  resolveAliasedSpecifierWithConfig,
   resolveImportToRelative,
   toPosixPath,
 } from './import-graph';
@@ -109,172 +102,6 @@ describe('extractRelativeImports', () => {
       `import { real } from './actual';`,
     ].join('\n');
     expect(extractRelativeImports(content)).toEqual(['./actual']);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// extractBareImports
-// ---------------------------------------------------------------------------
-
-describe('extractBareImports', () => {
-  it('extracts node_modules specifiers', () => {
-    const content = `import React from 'react';\nimport { css } from '@emotion/css';`;
-    const result = extractBareImports(content);
-    expect(result).toContain('react');
-    expect(result).toContain('@emotion/css');
-  });
-
-  it('extracts alias-style specifiers', () => {
-    const content = `import x from '@components/foo';\nimport y from '@/lib/bar';`;
-    const result = extractBareImports(content);
-    expect(result).toContain('@components/foo');
-    expect(result).toContain('@/lib/bar');
-  });
-
-  it('ignores relative imports', () => {
-    const content = [`import { a } from './local';`, `import { b } from '../parent';`, `import c from 'react';`].join(
-      '\n'
-    );
-    expect(extractBareImports(content)).toEqual(['react']);
-  });
-
-  it('extracts bare require() and dynamic import() specifiers', () => {
-    const content = [`const x = require('rxjs');`, `const y = await import('lodash');`].join('\n');
-    const result = extractBareImports(content);
-    expect(result).toContain('rxjs');
-    expect(result).toContain('lodash');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// TypeScript path-alias resolution
-// ---------------------------------------------------------------------------
-
-describe('resolveAliasedSpecifierWithConfig', () => {
-  const config: AliasConfig = {
-    baseDir: SRC_DIR,
-    patterns: [
-      {
-        prefix: '@components/',
-        suffix: '',
-        hasWildcard: true,
-        replacements: [{ prefix: 'components/', suffix: '' }],
-      },
-      {
-        prefix: '@lib/',
-        suffix: '',
-        hasWildcard: true,
-        replacements: [{ prefix: 'lib/', suffix: '' }],
-      },
-      {
-        prefix: '@types-root',
-        suffix: '',
-        hasWildcard: false,
-        replacements: [{ prefix: 'types/index', suffix: '' }],
-      },
-    ],
-  };
-
-  it('resolves a wildcard alias to a src-relative path', () => {
-    expect(resolveAliasedSpecifierWithConfig('@components/foo/bar', config)).toBe('components/foo/bar');
-  });
-
-  it('returns posix-separator paths even with nested wildcard values', () => {
-    expect(resolveAliasedSpecifierWithConfig('@lib/analytics/events', config)).toBe('lib/analytics/events');
-  });
-
-  it('resolves an exact (non-wildcard) alias', () => {
-    expect(resolveAliasedSpecifierWithConfig('@types-root', config)).toBe('types/index');
-  });
-
-  it('returns null for specifiers that match no alias pattern', () => {
-    expect(resolveAliasedSpecifierWithConfig('react', config)).toBeNull();
-    expect(resolveAliasedSpecifierWithConfig('@grafana/data', config)).toBeNull();
-  });
-
-  it('returns null when the resolved path escapes SRC_DIR', () => {
-    const escapingConfig: AliasConfig = {
-      baseDir: SRC_DIR,
-      patterns: [
-        {
-          prefix: '@external/',
-          suffix: '',
-          hasWildcard: true,
-          replacements: [{ prefix: '../node_modules/', suffix: '' }],
-        },
-      ],
-    };
-    expect(resolveAliasedSpecifierWithConfig('@external/some-pkg', escapingConfig)).toBeNull();
-  });
-
-  it('requires the wildcard portion to be non-empty', () => {
-    // "@components/" is the prefix; "@components/" alone has nothing in the * slot.
-    expect(resolveAliasedSpecifierWithConfig('@components/', config)).toBeNull();
-  });
-});
-
-describe('loadAliasConfig', () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    resetCache();
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pathfinder-alias-'));
-  });
-
-  afterEach(() => {
-    resetCache();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  function writeTsconfig(contents: object | string): string {
-    const filePath = path.join(tmpDir, 'tsconfig.json');
-    fs.writeFileSync(filePath, typeof contents === 'string' ? contents : JSON.stringify(contents));
-    return filePath;
-  }
-
-  it('returns null when tsconfig has no paths field', () => {
-    const filePath = writeTsconfig({ compilerOptions: { baseUrl: '.' } });
-    expect(loadAliasConfig(filePath)).toBeNull();
-  });
-
-  it('returns null when paths is empty', () => {
-    const filePath = writeTsconfig({ compilerOptions: { baseUrl: '.', paths: {} } });
-    expect(loadAliasConfig(filePath)).toBeNull();
-  });
-
-  it('parses wildcard alias patterns', () => {
-    const filePath = writeTsconfig({
-      compilerOptions: {
-        baseUrl: '../src',
-        paths: { '@components/*': ['components/*'] },
-      },
-    });
-    const config = loadAliasConfig(filePath);
-    expect(config).not.toBeNull();
-    expect(config!.patterns).toHaveLength(1);
-    const pattern = config!.patterns[0]!;
-    expect(pattern.hasWildcard).toBe(true);
-    expect(pattern.prefix).toBe('@components/');
-    expect(pattern.suffix).toBe('');
-    expect(pattern.replacements).toEqual([{ prefix: 'components/', suffix: '' }]);
-  });
-
-  it('tolerates JSONC (comments) in tsconfig files', () => {
-    const filePath = writeTsconfig(`{
-      // a leading line comment
-      "compilerOptions": {
-        /* block comment */
-        "baseUrl": ".",
-        "paths": { "@x/*": ["x/*"] }
-      }
-    }`);
-    const config = loadAliasConfig(filePath);
-    expect(config).not.toBeNull();
-    expect(config!.patterns[0]!.prefix).toBe('@x/');
-  });
-
-  it('returns null when the tsconfig file is missing', () => {
-    expect(loadAliasConfig(path.join(tmpDir, 'missing.json'))).toBeNull();
   });
 });
 

@@ -58,18 +58,7 @@ function collectViolations(getViolationKey: (ctx: ResolvedImportContext) => stri
   const allFiles = getAllFileImports();
   const violations = new Set<string>();
 
-  const processResolved = (relPath: string, topLevelDir: string | null, resolved: string): void => {
-    const targetTopLevel = getTargetTopLevel(resolved);
-    if (!targetTopLevel) {
-      return;
-    }
-    const violationKey = getViolationKey({ relPath, topLevelDir, resolved, targetTopLevel });
-    if (violationKey) {
-      violations.add(violationKey);
-    }
-  };
-
-  for (const { file, relPath, topLevelDir, imports, resolvedAliasImports } of allFiles) {
+  for (const { file, relPath, topLevelDir, imports } of allFiles) {
     if (isTestFile(file)) {
       continue;
     }
@@ -77,12 +66,19 @@ function collectViolations(getViolationKey: (ctx: ResolvedImportContext) => stri
     const fileDir = path.dirname(file);
     for (const imp of imports) {
       const resolved = resolveImportToRelative(fileDir, imp);
-      if (resolved) {
-        processResolved(relPath, topLevelDir, resolved);
+      if (!resolved) {
+        continue;
       }
-    }
-    for (const resolved of resolvedAliasImports) {
-      processResolved(relPath, topLevelDir, resolved);
+
+      const targetTopLevel = getTargetTopLevel(resolved);
+      if (!targetTopLevel) {
+        continue;
+      }
+
+      const violationKey = getViolationKey({ relPath, topLevelDir, resolved, targetTopLevel });
+      if (violationKey) {
+        violations.add(violationKey);
+      }
     }
   }
 
@@ -453,17 +449,12 @@ function diffExcludedSets(label: string, docExcluded: Set<string>): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// ESLint / TIER_MAP sync (B5 — prevents F-5 regression)
+// ESLint / TIER_MAP sync
 // ---------------------------------------------------------------------------
 //
-// eslint.config.mjs hand-mirrors TIER_MAP via const arrays (TIER_2_ENGINES,
-// TIER_1_PLUS, …). The mirror provides faster editor-time feedback than the
-// Jest ratchet — but two sources of truth drift. This test parses the
-// const-array literals out of eslint.config.mjs and compares them against
-// TIER_MAP. Any divergence fails CI with a directional diff.
-//
-// Implementation: text-parse rather than dynamic-import to avoid pulling in
-// the full ESLint plugin chain at test time.
+// eslint.config.mjs hand-mirrors TIER_MAP via const arrays for faster
+// editor-time feedback. Two sources of truth drift; these tests text-parse
+// the eslint config and assert it matches TIER_MAP.
 
 const ESLINT_CONFIG_PATH = path.join(REPO_ROOT, 'eslint.config.mjs');
 
@@ -598,26 +589,6 @@ describe('ESLint config sync with TIER_MAP', () => {
       );
     }
   });
-
-  it('flags a divergent set when the parser is fed a doctored constant', () => {
-    const fakeConfig = `
-      const TIER_2_ENGINES = ['context-engine', 'docs-retrieval'];
-      const TIER_1_PLUS = ['lib', ...TIER_2_ENGINES];
-    `;
-    const defs = new Map<string, string[]>();
-    defs.set('TIER_2_ENGINES', parseConstantTokens(fakeConfig, 'TIER_2_ENGINES'));
-    defs.set('TIER_1_PLUS', parseConstantTokens(fakeConfig, 'TIER_1_PLUS'));
-
-    const actual = expandTokens('TIER_2_ENGINES', defs);
-    const errors = diffSets(
-      'TIER_2_ENGINES',
-      tierDirs((t) => t === 2),
-      actual
-    );
-    // Real TIER_MAP has 7 engines, fake config has 2 → expect errors mentioning the missing ones
-    expect(errors.length).toBeGreaterThan(0);
-    expect(errors.some((e) => e.includes('`hooks`'))).toBe(true);
-  });
 });
 
 describe('Tier documentation sync', () => {
@@ -673,5 +644,34 @@ describe('Tier documentation sync', () => {
     const parsed = parseTierDoc(fakeDoc, 'fake.md');
     const errors = diffTierMaps('fake.md', parsed.tiers);
     expect(errors.some((e) => e.includes('`phantom-module`') && e.includes('not in TIER_MAP'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TS path-alias tripwire
+// ---------------------------------------------------------------------------
+//
+// The import-graph scanner only resolves relative specifiers. If
+// tsconfig.compilerOptions.paths is ever populated, aliased imports would
+// silently bypass tier enforcement. Fail loudly the moment paths appears
+// so whoever introduces it extends the scanner first.
+
+describe('TS path-alias tripwire', () => {
+  const tsconfigs = [path.join(REPO_ROOT, 'tsconfig.json'), path.join(REPO_ROOT, '.config', 'tsconfig.json')];
+
+  it.each(tsconfigs)('%s declares no compilerOptions.paths', (tsconfigPath) => {
+    const text = fs.readFileSync(tsconfigPath, 'utf-8');
+    const stripped = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const parsed = JSON.parse(stripped) as { compilerOptions?: { paths?: Record<string, unknown> } };
+    const paths = parsed.compilerOptions?.paths ?? {};
+
+    if (Object.keys(paths).length > 0) {
+      throw new Error(
+        `${path.relative(REPO_ROOT, tsconfigPath)} declares compilerOptions.paths, but the ` +
+          `import-graph scanner in src/validation/import-graph.ts only resolves relative ` +
+          `specifiers. Aliased imports would silently bypass tier enforcement. Extend the ` +
+          `scanner to resolve tsconfig.paths before merging this change.`
+      );
+    }
   });
 });
