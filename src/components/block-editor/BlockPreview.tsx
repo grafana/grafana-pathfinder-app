@@ -14,7 +14,7 @@ import { journeyContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
-import { matchesContentKey, subscribeProgressEvent } from '../../global-state/progress-events';
+import { isGuideClear, subscribeProgressEvent } from '../../global-state/progress-events';
 import type { JsonGuide } from './types';
 import type { RawContent } from '../../types/content.types';
 import { testIds } from '../../constants/testIds';
@@ -50,7 +50,7 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
   const [resetKey, setResetKey] = useState(0);
   useEffect(() => {
     return subscribeProgressEvent((detail) => {
-      if (detail.kind === 'guide' && !detail.hasProgress && matchesContentKey(detail, progressKey)) {
+      if (isGuideClear(detail, progressKey)) {
         setResetKey((prev) => prev + 1);
       }
     });

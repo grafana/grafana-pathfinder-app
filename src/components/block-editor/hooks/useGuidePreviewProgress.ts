@@ -32,6 +32,13 @@ export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgre
 
   useEffect(() => {
     return subscribeProgressEvent((detail) => {
+      // A `kind: 'guide'` payload for a preview key is authoritative when
+      // it does land. Today the only producer is `reset()` below
+      // (`hasProgress: false`); a `hasProgress: true` arrival would have
+      // to come from a future non-preview producer that already knows
+      // the preview key — in which case skipping the MF-3 fallback is
+      // the correct behaviour, since the guide-level signal supersedes
+      // the per-step inference.
       if (detail.kind === 'guide' && matchesContentKey(detail, progressKey)) {
         setHasProgress(detail.hasProgress);
         return;

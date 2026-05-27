@@ -6,7 +6,7 @@ import { ContextData, Recommendation, UseContextPanelOptions, UseContextPanelRet
 import type { PackageOpenInfo } from '../types/content-panel.types';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { suggestionState, SUGGESTIONS_UPDATED_EVENT } from '../global-state/suggestion';
-import { subscribeProgressEvent } from '../global-state/progress-events';
+import { isGuideClear, subscribeProgressEvent } from '../global-state/progress-events';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
@@ -200,7 +200,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   // Any guide clear → refresh recommendations (percentages may have dropped).
   useEffect(() => {
     return subscribeProgressEvent((detail) => {
-      if (detail.kind === 'guide' && !detail.hasProgress) {
+      if (isGuideClear(detail)) {
         debouncedRefresh();
       }
     });

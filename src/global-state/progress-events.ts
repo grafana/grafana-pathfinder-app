@@ -25,6 +25,16 @@ export type ProgressReason = 'none' | 'objectives' | 'manual' | 'skipped';
 /** Broadcast `contentKey` — every key-scoped listener must accept this. */
 export const PROGRESS_CONTENT_KEY_WILDCARD = '*' as const;
 
+export interface GuideProgressDetail {
+  kind: 'guide';
+  contentKey: string;
+  percentage: number;
+  hasProgress: boolean;
+}
+
+/** Narrowed shape: the canonical "guide cleared" signal. */
+export type GuideClearDetail = GuideProgressDetail & { hasProgress: false };
+
 export type ProgressEventDetail =
   | {
       kind: 'step';
@@ -39,14 +49,9 @@ export type ProgressEventDetail =
       completed: boolean;
       percentage?: number;
     }
-  | {
-      // Guide-level aggregate. `hasProgress: false` is the canonical
-      // clear signal; `contentKey: '*'` broadcasts across every guide.
-      kind: 'guide';
-      contentKey: string;
-      percentage: number;
-      hasProgress: boolean;
-    };
+  // Guide-level aggregate. `hasProgress: false` is the canonical
+  // clear signal; `contentKey: '*'` broadcasts across every guide.
+  | GuideProgressDetail;
 
 export const PROGRESS_EVENT = 'pathfinder:progress' as const;
 
@@ -71,4 +76,20 @@ export function subscribeProgressEvent(listener: (detail: ProgressEventDetail) =
 /** Exact match OR the wildcard sentinel. */
 export function matchesContentKey(detail: { contentKey: string }, expected: string): boolean {
   return detail.contentKey === expected || detail.contentKey === PROGRESS_CONTENT_KEY_WILDCARD;
+}
+
+/**
+ * Type-guard for clear-only listeners: narrows to `GuideClearDetail` and
+ * — when `expectedKey` is supplied — also accepts the wildcard sentinel.
+ *
+ * Collapses the three checks (`kind === 'guide'` + `!hasProgress` +
+ * `matchesContentKey`) every clear-only subscriber must perform into a
+ * single call so a future site can't forget the `!hasProgress` half and
+ * silently treat a fresh-progress event as a clear.
+ */
+export function isGuideClear(detail: ProgressEventDetail, expectedKey?: string): detail is GuideClearDetail {
+  if (detail.kind !== 'guide' || detail.hasProgress) {
+    return false;
+  }
+  return expectedKey === undefined || matchesContentKey(detail, expectedKey);
 }
