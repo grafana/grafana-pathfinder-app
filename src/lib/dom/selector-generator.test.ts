@@ -11,6 +11,8 @@ import {
   getSelectorInfo,
   retargetElement,
   generateFallbackSelectors,
+  isHighQualitySelectorMethod,
+  HIGH_QUALITY_SELECTOR_METHODS,
 } from './selector-generator';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 
@@ -463,6 +465,33 @@ describe('Selector Generator — Pipeline', () => {
       const info = getSelectorInfo(button);
       const matches = querySelectorAllEnhanced(info.selector);
       expect(matches.elements).toContain(button);
+    });
+  });
+
+  // ==========================================================================
+  // isHighQualitySelectorMethod
+  // ==========================================================================
+
+  describe('isHighQualitySelectorMethod', () => {
+    it.each(HIGH_QUALITY_SELECTOR_METHODS)('accepts %s', (method) => {
+      expect(isHighQualitySelectorMethod(method)).toBe(true);
+    });
+
+    it.each([
+      'button-text',
+      'button-css-text',
+      'button-css-contains',
+      'compound',
+      'nth-of-type',
+      'nth-match',
+      'fallback',
+    ])('rejects %s', (method) => {
+      expect(isHighQualitySelectorMethod(method)).toBe(false);
+    });
+
+    it('rejects unknown methods', () => {
+      expect(isHighQualitySelectorMethod('something-else')).toBe(false);
+      expect(isHighQualitySelectorMethod('')).toBe(false);
     });
   });
 
