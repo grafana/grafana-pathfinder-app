@@ -26,7 +26,12 @@ module.exports = {
   ],
 
   // Coverage configuration
-  collectCoverage: true,
+  // Default off: `npm run test:ci` (and focused subsets via `--`) skip coverage
+  // entirely, so agents and developers don't get false-failures from threshold
+  // checks on partial test runs. The full pre-merge gate (`npm run check`) calls
+  // `npm run test:coverage`, which passes `--coverage` on the CLI and overrides
+  // this default — that's where the threshold enforcement lives.
+  collectCoverage: false,
   coverageReporters: ['text', 'html', 'lcov'],
   coverageDirectory: 'coverage',
   collectCoverageFrom: [

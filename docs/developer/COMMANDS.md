@@ -21,13 +21,13 @@ npm run dev
 # Run Grafana locally with Docker
 npm run server
 
-# Run all tests (CI mode - agents should use this)
+# Run all tests, no coverage (CI mode - agents should use this for focused runs)
 npm run test:ci
 
 # Run tests in watch mode (for local development)
 npm test
 
-# Run tests with coverage
+# Run tests with coverage + threshold enforcement (used by `npm run check`)
 npm run test:coverage
 ```
 
@@ -52,7 +52,7 @@ npm run lint:go
 
 ## Pre-merge check
 
-`npm run check` runs typecheck + lint + prettier + lint:go + test:go + test:ci in one command.
+`npm run check` runs typecheck + lint + prettier + lint:go + test:go + test:coverage in one command.
 
 ## Building and testing
 

@@ -23,6 +23,7 @@
     "test": "jest --watch --onlyChanged",
     "test:ci": "jest --passWithNoTests --maxWorkers 4",
     "test:coverage": "jest --coverage",
+    "test:governance": "jest --passWithNoTests src/validation/architecture.test.ts src/validation/import-graph.test.ts",
     "test:coverage:watch": "jest --coverage --watch",
     "test:go": "mage -v test",
     "typecheck": "tsc --noEmit",
@@ -42,7 +43,7 @@
     "repository:build": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o src/bundled-interactives/repository.json",
     "repository:check": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o /tmp/repository-check.json && diff -q src/bundled-interactives/repository.json /tmp/repository-check.json",
     "schema:export": "node dist/cli/cli/index.js schema --all",
-    "check": "npm run typecheck && npm run lint && npm run prettier-test && npm run docs:sync-terms:check && npm run lint:go && npm run test:go && npm run test:ci",
+    "check": "npm run typecheck && npm run lint && npm run prettier-test && npm run docs:sync-terms:check && npm run lint:go && npm run test:go && npm run test:coverage",
     "prepare": "husky"
   },
   "author": "Grafanalabs",

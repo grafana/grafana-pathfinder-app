@@ -165,9 +165,10 @@ Do NOT create summary `.md` files unless explicitly requested by the user. No `I
 npm install              # Install dependencies (requires Node.js 22+)
 npm run dev              # Frontend watch mode
 npm run server           # Run Grafana locally with Docker
-npm run test:ci          # Frontend tests (agents should use this, not `npm test`)
+npm run test:ci          # Frontend tests, no coverage (agents should use this, not `npm test`)
+npm run test:coverage    # Frontend tests with coverage + thresholds (used by `npm run check`)
 npm run lint:fix         # Lint + autofix
-npm run check            # Full pre-merge gate: typecheck + lint + prettier + lint:go + test:go + test:ci
+npm run check            # Full pre-merge gate: typecheck + lint + prettier + lint:go + test:go + test:coverage
 ```
 
 Dev server runs at http://localhost:3000 (admin/admin). For the complete command reference (build targets, mage tasks, validation, i18n, peerjs, etc.), see `docs/developer/COMMANDS.md` or read `package.json#scripts` directly.
