@@ -9,6 +9,7 @@ import * as React from 'react';
 import { act, render } from '@testing-library/react';
 
 import { BlockPreview } from './BlockPreview';
+import { PROGRESS_CONTENT_KEY_WILDCARD } from '../../global-state/progress-events';
 import type { JsonGuide } from './types';
 
 // Substitute a probe for ContentRenderer that surfaces its `key` via the
@@ -95,7 +96,12 @@ describe('BlockPreview — resetKey remount', () => {
     act(() => {
       window.dispatchEvent(
         new CustomEvent('pathfinder:progress', {
-          detail: { kind: 'guide', contentKey: '*', percentage: 0, hasProgress: false },
+          detail: {
+            kind: 'guide',
+            contentKey: PROGRESS_CONTENT_KEY_WILDCARD,
+            percentage: 0,
+            hasProgress: false,
+          },
         })
       );
     });
@@ -132,6 +138,39 @@ describe('BlockPreview — resetKey remount', () => {
       window.dispatchEvent(
         new CustomEvent('pathfinder:progress', {
           detail: { kind: 'guide', contentKey: PROGRESS_KEY, percentage: 50, hasProgress: true },
+        })
+      );
+    });
+
+    expect(getByTestId('content-renderer-probe').getAttribute('data-mount-id')).toBe(initialMountId);
+  });
+
+  // Locks the discriminant guard against future re-shuffling: only
+  // `kind: 'guide'` clears bump the key. Step / section completions
+  // on the unified channel must not trigger the expensive remount.
+  it('does NOT bump resetKey on a kind:step event', () => {
+    const { getByTestId } = render(<BlockPreview guide={guide} />);
+    const initialMountId = getByTestId('content-renderer-probe').getAttribute('data-mount-id');
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'step', stepId: 'step-1', sectionId: 'section-a', completed: true, reason: 'manual' },
+        })
+      );
+    });
+
+    expect(getByTestId('content-renderer-probe').getAttribute('data-mount-id')).toBe(initialMountId);
+  });
+
+  it('does NOT bump resetKey on a kind:section event', () => {
+    const { getByTestId } = render(<BlockPreview guide={guide} />);
+    const initialMountId = getByTestId('content-renderer-probe').getAttribute('data-mount-id');
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'section', sectionId: 'section-a', completed: true, percentage: 100 },
         })
       );
     });

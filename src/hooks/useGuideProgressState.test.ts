@@ -1,5 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
 import { useGuideProgressState } from './useGuideProgressState';
+import { PROGRESS_CONTENT_KEY_WILDCARD } from '../global-state/progress-events';
 
 const mockHasProgress = jest.fn();
 jest.mock('../lib/user-storage', () => ({
@@ -123,7 +124,12 @@ describe('useGuideProgressState', () => {
     act(() => {
       window.dispatchEvent(
         new CustomEvent('pathfinder:progress', {
-          detail: { kind: 'guide', contentKey: '*', percentage: 0, hasProgress: false },
+          detail: {
+            kind: 'guide',
+            contentKey: PROGRESS_CONTENT_KEY_WILDCARD,
+            percentage: 0,
+            hasProgress: false,
+          },
         })
       );
     });

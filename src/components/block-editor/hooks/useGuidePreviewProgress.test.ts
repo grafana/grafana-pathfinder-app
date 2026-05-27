@@ -11,6 +11,7 @@ import { act, renderHook } from '@testing-library/react';
 
 import { useGuidePreviewProgress } from './useGuidePreviewProgress';
 import { resetContentKeyForTests, setActiveTabUrl } from '../../../global-state/content-key';
+import { PROGRESS_CONTENT_KEY_WILDCARD } from '../../../global-state/progress-events';
 
 jest.mock('../../../lib/user-storage', () => ({
   interactiveStepStorage: {
@@ -181,7 +182,12 @@ describe('useGuidePreviewProgress — listener contract', () => {
     act(() => {
       window.dispatchEvent(
         new CustomEvent('pathfinder:progress', {
-          detail: { kind: 'guide', contentKey: '*', percentage: 0, hasProgress: false },
+          detail: {
+            kind: 'guide',
+            contentKey: PROGRESS_CONTENT_KEY_WILDCARD,
+            percentage: 0,
+            hasProgress: false,
+          },
         })
       );
     });
