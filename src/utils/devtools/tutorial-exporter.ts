@@ -11,6 +11,7 @@ export interface RecordedStep {
   isUnique?: boolean;
   matchCount?: number;
   contextStrategy?: string;
+  selectorMethod?: string;
   /** If set, this step is part of a group (e.g., modal interaction) */
   groupId?: string;
 }

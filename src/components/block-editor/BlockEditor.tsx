@@ -9,6 +9,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useStyles2 } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
+import { isHighQualitySelectorMethod } from '../../lib/dom/selector-generator';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
 import { useRecordingPersistence, type PersistedRecordingState } from './hooks/useRecordingPersistence';
@@ -354,6 +355,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     title: string;
     message: string | React.ReactNode;
     variant?: 'primary' | 'destructive';
+    confirmText?: string;
+    cancelText?: string;
     onConfirm: () => void;
     onCancel?: () => void;
   }>({
@@ -376,20 +379,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     []
   );
 
-  const handleSelectorRejected = useCallback(() => {
-    notify(
-      'info',
-      'Selector rejected',
-      'No stable selector — this element needs a data-testid, aria-label, or role. Skipped.'
-    );
-  }, []);
-
   // Action recorder for section recording
   const actionRecorder = useActionRecorder({
     excludeSelectors,
     enableModalDetection: isSectionMultiStepGroupingEnabled,
-    strictMode: isStrictModeEnabled,
-    onSelectorRejected: handleSelectorRejected,
   });
 
   // Callback to restore recording state after page refresh
@@ -722,8 +715,56 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   // Handle form cancel
   const handleBlockFormCancel = formState.closeBlockForm;
 
-  // Recording handlers - delegate to recordingActions hook
-  const handleStopRecording = recordingActions.stopRecording;
+  const handleStopRecording = useCallback(() => {
+    if (!isStrictModeEnabled) {
+      recordingActions.stopRecording();
+      return;
+    }
+
+    const lowQuality = actionRecorder.recordedSteps.filter(
+      (step) => step.selectorMethod !== undefined && !isHighQualitySelectorMethod(step.selectorMethod)
+    );
+    if (lowQuality.length === 0) {
+      recordingActions.stopRecording();
+      return;
+    }
+
+    // Halt event capture for the confirm modal
+    actionRecorder.stopRecording();
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Fragile Selectors Detected',
+      message: (
+        <>
+          <p>
+            {lowQuality.length} of {actionRecorder.recordedSteps.length} recorded step
+            {actionRecorder.recordedSteps.length === 1 ? '' : 's'} target elements without stable hooks (data-testid,
+            aria-label, role). These steps may break when the UI changes upstream.
+          </p>
+          <ul style={{ margin: '12px 0', paddingLeft: '20px', maxHeight: '200px', overflowY: 'auto' }}>
+            {lowQuality.map((step, i) => (
+              <li key={i} style={{ marginBottom: '6px' }}>
+                <div style={{ fontSize: '0.9em' }}>{step.description}</div>
+                <code style={{ fontSize: '0.85em', color: '#888', wordBreak: 'break-all' }}>{step.selector}</code>
+              </li>
+            ))}
+          </ul>
+        </>
+      ),
+      variant: 'destructive',
+      confirmText: 'Save',
+      cancelText: 'Discard',
+      onConfirm: () => {
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        recordingActions.stopRecording();
+      },
+      onCancel: () => {
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        recordingActions.discardRecording();
+      },
+    });
+  }, [isStrictModeEnabled, actionRecorder, recordingActions]);
 
   // Handle "Add and Start Recording" for new sections
   // This combines form closing with recording start
@@ -1168,8 +1209,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         />
       )}
 
-      {/* Record mode overlay for section/conditional recording */}
-      {(recordingIntoSection || recordingIntoConditionalBranch) && (
+      {(recordingIntoSection || recordingIntoConditionalBranch) && !confirmModal.isOpen && (
         <RecordModeOverlay
           isRecording={actionRecorder.isRecording}
           stepCount={actionRecorder.recordedSteps.length}
@@ -1199,6 +1239,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         title={confirmModal.title}
         message={confirmModal.message}
         variant={confirmModal.variant}
+        confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
         onConfirm={confirmModal.onConfirm}
         onCancel={closeConfirmModal}
       />
