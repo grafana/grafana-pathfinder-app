@@ -448,6 +448,170 @@ function diffExcludedSets(label: string, docExcluded: Set<string>): string[] {
   return errors;
 }
 
+// ---------------------------------------------------------------------------
+// ESLint / TIER_MAP sync (B5 — prevents F-5 regression)
+// ---------------------------------------------------------------------------
+//
+// eslint.config.mjs hand-mirrors TIER_MAP via const arrays (TIER_2_ENGINES,
+// TIER_1_PLUS, …). The mirror provides faster editor-time feedback than the
+// Jest ratchet — but two sources of truth drift. This test parses the
+// const-array literals out of eslint.config.mjs and compares them against
+// TIER_MAP. Any divergence fails CI with a directional diff.
+//
+// Implementation: text-parse rather than dynamic-import to avoid pulling in
+// the full ESLint plugin chain at test time.
+
+const ESLINT_CONFIG_PATH = path.join(REPO_ROOT, 'eslint.config.mjs');
+
+function parseConstantTokens(text: string, varName: string): string[] {
+  const blockRe = new RegExp(`const\\s+${varName}\\s*=\\s*\\[([\\s\\S]*?)\\];`);
+  const match = blockRe.exec(text);
+  if (!match) {
+    throw new Error(`Could not find \`const ${varName} = [...]\` in eslint.config.mjs.`);
+  }
+  const body = match[1]!;
+  const tokens: string[] = [];
+  const tokenRe = /(['"])([^'"]+)\1|\.\.\.(\w+)/g;
+  let tokenMatch: RegExpExecArray | null;
+  while ((tokenMatch = tokenRe.exec(body)) !== null) {
+    if (tokenMatch[2] !== undefined) {
+      tokens.push(tokenMatch[2]);
+    } else if (tokenMatch[3] !== undefined) {
+      tokens.push(`...${tokenMatch[3]}`);
+    }
+  }
+  return tokens;
+}
+
+function expandTokens(name: string, defs: Map<string, string[]>, seen = new Set<string>()): string[] {
+  if (seen.has(name)) {
+    throw new Error(`Circular reference detected expanding ${name} in eslint.config.mjs.`);
+  }
+  const tokens = defs.get(name);
+  if (!tokens) {
+    throw new Error(`Unknown constant referenced: ${name}.`);
+  }
+  const nextSeen = new Set(seen).add(name);
+  const expanded: string[] = [];
+  for (const token of tokens) {
+    if (token.startsWith('...')) {
+      expanded.push(...expandTokens(token.slice(3), defs, nextSeen));
+    } else {
+      expanded.push(token);
+    }
+  }
+  return expanded;
+}
+
+function tierDirs(predicate: (tier: number) => boolean): string[] {
+  return Object.entries(TIER_MAP)
+    .filter(([, tier]) => predicate(tier))
+    .map(([dir]) => dir);
+}
+
+function diffSets(label: string, expected: string[], actual: string[]): string[] {
+  const expectedSet = new Set(expected);
+  const actualSet = new Set(actual);
+  const errors: string[] = [];
+  for (const dir of expectedSet) {
+    if (!actualSet.has(dir)) {
+      errors.push(`${label}: TIER_MAP includes \`${dir}\` but eslint.config.mjs does not`);
+    }
+  }
+  for (const dir of actualSet) {
+    if (!expectedSet.has(dir)) {
+      errors.push(`${label}: eslint.config.mjs includes \`${dir}\` but TIER_MAP does not`);
+    }
+  }
+  return errors;
+}
+
+describe('ESLint config sync with TIER_MAP', () => {
+  it('TIER_2_ENGINES, TIER_1_PLUS, TIER_2_PLUS, TIER_3_PLUS, TIER_4 mirror TIER_MAP', () => {
+    const text = fs.readFileSync(ESLINT_CONFIG_PATH, 'utf8');
+    const names = ['TIER_2_ENGINES', 'TIER_1_PLUS', 'TIER_2_PLUS', 'TIER_3_PLUS', 'TIER_4'] as const;
+    const defs = new Map<string, string[]>();
+    for (const name of names) {
+      defs.set(name, parseConstantTokens(text, name));
+    }
+
+    const expectations: Array<[string, string[]]> = [
+      ['TIER_2_ENGINES', tierDirs((t) => t === 2)],
+      ['TIER_1_PLUS', tierDirs((t) => t >= 1)],
+      ['TIER_2_PLUS', tierDirs((t) => t >= 2)],
+      ['TIER_3_PLUS', tierDirs((t) => t >= 3)],
+      ['TIER_4', tierDirs((t) => t === 4)],
+    ];
+
+    const errors: string[] = [];
+    for (const [name, expected] of expectations) {
+      const actual = expandTokens(name, defs);
+      errors.push(...diffSets(name, expected, actual));
+    }
+
+    if (errors.length > 0) {
+      throw new Error(
+        `eslint.config.mjs tier constants are out of sync with TIER_MAP ` +
+          `(defined in src/validation/import-graph.ts):\n\n` +
+          errors.map((e) => `  - ${e}`).join('\n') +
+          `\n\nUpdate eslint.config.mjs to mirror TIER_MAP exactly, or update TIER_MAP if ` +
+          `the architecture intentionally changed. The architecture ratchet is the source of ` +
+          `truth; eslint provides faster editor-time feedback on the same boundaries.`
+      );
+    }
+  });
+
+  it('tierBoundaryConfig source-dir lists collectively cover every TIER_MAP directory', () => {
+    const text = fs.readFileSync(ESLINT_CONFIG_PATH, 'utf8');
+    // Capture the first argument array of each tierBoundaryConfig call.
+    // The TIER_2_ENGINES.map(...) call has `[engine]` (an identifier, no
+    // string literals), so it contributes nothing here — TIER_2_ENGINES
+    // sync is verified separately.
+    const callRe = /tierBoundaryConfig\(\s*\[([^\]]*)\]/g;
+    const directDirs = new Set<string>();
+    let callMatch: RegExpExecArray | null;
+    while ((callMatch = callRe.exec(text)) !== null) {
+      const body = callMatch[1]!;
+      const stringRe = /['"]([^'"]+)['"]/g;
+      let sm: RegExpExecArray | null;
+      while ((sm = stringRe.exec(body)) !== null) {
+        directDirs.add(sm[1]!);
+      }
+    }
+
+    // What we expect those calls to cover, in total: every TIER_MAP dir
+    // that isn't a Tier 2 engine (those are spread in via .map).
+    const expectedDirect = tierDirs((t) => t !== 2);
+    const errors = diffSets('tierBoundaryConfig source dirs', expectedDirect, [...directDirs]);
+
+    if (errors.length > 0) {
+      throw new Error(
+        `eslint.config.mjs tierBoundaryConfig calls do not cover every TIER_MAP directory:\n\n` +
+          errors.map((e) => `  - ${e}`).join('\n') +
+          `\n\nEach directory in TIER_MAP must be the source of a tierBoundaryConfig call at ` +
+          `its tier level (Tier 2 engines come from TIER_2_ENGINES.map). A missing entry means ` +
+          `files in that directory get no ESLint tier enforcement.`
+      );
+    }
+  });
+
+  it('flags a divergent set when the parser is fed a doctored constant', () => {
+    const fakeConfig = `
+      const TIER_2_ENGINES = ['context-engine', 'docs-retrieval'];
+      const TIER_1_PLUS = ['lib', ...TIER_2_ENGINES];
+    `;
+    const defs = new Map<string, string[]>();
+    defs.set('TIER_2_ENGINES', parseConstantTokens(fakeConfig, 'TIER_2_ENGINES'));
+    defs.set('TIER_1_PLUS', parseConstantTokens(fakeConfig, 'TIER_1_PLUS'));
+
+    const actual = expandTokens('TIER_2_ENGINES', defs);
+    const errors = diffSets('TIER_2_ENGINES', tierDirs((t) => t === 2), actual);
+    // Real TIER_MAP has 7 engines, fake config has 2 → expect errors mentioning the missing ones
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.includes('`hooks`'))).toBe(true);
+  });
+});
+
 describe('Tier documentation sync', () => {
   const docs: Array<[string, string]> = [
     ['AGENTS.md', path.join(REPO_ROOT, 'AGENTS.md')],
