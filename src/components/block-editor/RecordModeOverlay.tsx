@@ -5,12 +5,13 @@
  * Unlike ElementPicker, clicks propagate to allow actual interaction recording.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
 import { generateFullDomPath } from '../../utils/devtools';
+import { getSelectorInfo, isHighQualitySelectorMethod } from '../../lib/dom/selector-generator';
 import { DomPathTooltip } from '../DomPathTooltip';
 import { testIds } from '../../constants/testIds';
 
@@ -237,6 +238,24 @@ const getStyles = (theme: GrafanaTheme2) => ({
     pointerEvents: 'none',
     transition: 'all 0.1s ease',
   }),
+  highlightRejected: css({
+    position: 'fixed',
+    zIndex: 99997,
+    border: `2px solid ${theme.colors.error.main}`,
+    backgroundColor: theme.colors.error.transparent,
+    pointerEvents: 'none',
+    transition: 'all 0.1s ease',
+  }),
+  rejectedChip: css({
+    backgroundColor: theme.colors.error.transparent,
+    color: theme.colors.error.text,
+    border: `1px solid ${theme.colors.error.border}`,
+    padding: `1px ${theme.spacing(0.75)}`,
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    whiteSpace: 'nowrap',
+  }),
 });
 
 export interface RecordModeOverlayProps {
@@ -260,6 +279,12 @@ export interface RecordModeOverlayProps {
   onToggleMultiStepGrouping?: () => void;
   /** Element currently being form-captured (Alt+click), null when not active */
   formCaptureElement?: HTMLElement | null;
+  /** Whether strict mode (refuse fragile selectors) is enabled */
+  isStrictModeEnabled?: boolean;
+  /** Called when the user toggles strict mode */
+  onToggleStrictMode?: () => void;
+  /** Number of clicks refused by strict mode this session */
+  rejectedCount?: number;
 }
 
 /**
@@ -276,6 +301,9 @@ export function RecordModeOverlay({
   isMultiStepGroupingEnabled = true,
   onToggleMultiStepGrouping,
   formCaptureElement = null,
+  isStrictModeEnabled = false,
+  onToggleStrictMode,
+  rejectedCount = 0,
 }: RecordModeOverlayProps) {
   const styles = useStyles2(getStyles);
   const [hoveredElement, setHoveredElement] = useState<HTMLElement | null>(null);
@@ -419,6 +447,26 @@ export function RecordModeOverlay({
     [onToggleMultiStepGrouping]
   );
 
+  const handleToggleStrictMode = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      onToggleStrictMode?.();
+    },
+    [onToggleStrictMode]
+  );
+
+  const wouldRejectHovered = useMemo(() => {
+    if (!isStrictModeEnabled || !hoveredElement) {
+      return false;
+    }
+    try {
+      return !isHighQualitySelectorMethod(getSelectorInfo(hoveredElement).method);
+    } catch {
+      return false;
+    }
+  }, [isStrictModeEnabled, hoveredElement]);
+
   // Set up event listeners - NOTE: we do NOT capture clicks, they propagate naturally
   useEffect(() => {
     document.addEventListener('mousemove', handleMouseMove, { passive: true });
@@ -442,15 +490,23 @@ export function RecordModeOverlay({
         ? 'hover'
         : null;
 
+  // Rejected wins over Alt/Shift so the author sees the blocker first.
+  let highlightClassName = styles.highlight;
+  if (wouldRejectHovered) {
+    highlightClassName = styles.highlightRejected;
+  } else if (isFormCaptureMode) {
+    highlightClassName = styles.highlightFormCapture;
+  } else if (isHoverMode) {
+    highlightClassName = styles.highlightHover;
+  }
+
   // Render directly to document.body to bypass any modal overlays
   return createPortal(
     <>
       {/* Element highlight */}
       {highlightRect && (
         <div
-          className={
-            isFormCaptureMode ? styles.highlightFormCapture : isHoverMode ? styles.highlightHover : styles.highlight
-          }
+          className={highlightClassName}
           data-record-overlay="highlight"
           style={{
             left: highlightRect.left,
@@ -471,6 +527,14 @@ export function RecordModeOverlay({
             {stepCount} {sectionName ? 'block' : 'step'}
             {stepCount !== 1 ? 's' : ''}
           </span>
+          {rejectedCount > 0 && (
+            <span
+              className={styles.rejectedChip}
+              title="These elements need stable selectors upstream (data-testid, aria-label, role)."
+            >
+              {rejectedCount} rejected
+            </span>
+          )}
         </div>
 
         {/* Center: mode indicators (only when active) */}
@@ -519,6 +583,20 @@ export function RecordModeOverlay({
               }
             >
               {isMultiStepGroupingEnabled ? 'Auto-group' : 'No grouping'}
+            </button>
+          )}
+          {onToggleStrictMode && (
+            <button
+              className={`${styles.toggleButton} ${isStrictModeEnabled ? styles.toggleButtonEnabled : styles.toggleButtonDisabled}`}
+              onClick={handleToggleStrictMode}
+              type="button"
+              title={
+                isStrictModeEnabled
+                  ? 'Strict mode is ON. Fragile selectors will be refused. Click to disable.'
+                  : 'Strict mode is OFF. Enable to refuse steps without stable selectors.'
+              }
+            >
+              Strict Mode
             </button>
           )}
           {startingUrl && (

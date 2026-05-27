@@ -305,6 +305,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   const { recordingIntoSection, recordingIntoConditionalBranch, recordingStartUrl } = recordingState;
   // Multi-step grouping toggle for section recording
   const [isSectionMultiStepGroupingEnabled, setIsSectionMultiStepGroupingEnabled] = useState(true);
+  const [isStrictModeEnabled, setIsStrictModeEnabled] = useState(false);
 
   // All block previews are pinned independently — opening a new preview never closes another.
   // Click the eye on the same target again to toggle it off.
@@ -375,10 +376,20 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     []
   );
 
+  const handleSelectorRejected = useCallback(() => {
+    notify(
+      'info',
+      'Selector rejected',
+      'No stable selector — this element needs a data-testid, aria-label, or role. Skipped.'
+    );
+  }, []);
+
   // Action recorder for section recording
   const actionRecorder = useActionRecorder({
     excludeSelectors,
     enableModalDetection: isSectionMultiStepGroupingEnabled,
+    strictMode: isStrictModeEnabled,
+    onSelectorRejected: handleSelectorRejected,
   });
 
   // Callback to restore recording state after page refresh
@@ -1177,6 +1188,9 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           isMultiStepGroupingEnabled={isSectionMultiStepGroupingEnabled}
           onToggleMultiStepGrouping={() => setIsSectionMultiStepGroupingEnabled((prev) => !prev)}
           formCaptureElement={actionRecorder.formCaptureElement}
+          isStrictModeEnabled={isStrictModeEnabled}
+          onToggleStrictMode={() => setIsStrictModeEnabled((prev) => !prev)}
+          rejectedCount={actionRecorder.rejectedCount}
         />
       )}
 
