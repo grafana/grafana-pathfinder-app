@@ -28,7 +28,7 @@ The skill MUST check disqualifiers before emitting a finding. See `SKILL.md` for
 - **Disqualifiers**:
   - File is a documented public API surface (exported types in a library package, OpenAPI schemas, generated docs source).
   - Comment references external context: ticket ID, RFC, bug ID, browser/runtime quirk, regulatory requirement.
-  - Comment explains *why* a non-obvious choice was made — test: does it contain "because" or contrast with an alternative?
+  - Comment explains _why_ a non-obvious choice was made — test: does it contain "because" or contrast with an alternative?
 
 ### A2 — God Component / Large Component
 
@@ -177,7 +177,7 @@ The skill MUST check disqualifiers before emitting a finding. See `SKILL.md` for
 - **Suggestive signature**:
   - Class or module whose exported surface is predominantly thin pass-throughs to a single delegate.
 - **Disqualifiers**:
-  - The wrapper is the public API boundary that intentionally hides the inner function. (In that case, the *inner* should be internal — flag the visibility mismatch instead.)
+  - The wrapper is the public API boundary that intentionally hides the inner function. (In that case, the _inner_ should be internal — flag the visibility mismatch instead.)
   - The wrapper exists to apply a type narrowing or generic constraint that adds real safety. Verify by checking the signatures differ in a load-bearing way.
 
 ### C3 — Drift Hub
