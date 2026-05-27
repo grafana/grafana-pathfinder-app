@@ -725,4 +725,45 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
     });
   });
+
+  // Regression / one-way-door: the carrier drain in `openLearningJourney`
+  // is a sequence-order invariant (drain BEFORE `loadTab`). A future
+  // refactor that moves the drain after `loadTab`, or drops it, would
+  // silently reintroduce the leak — the docs branch of `loadTab` would
+  // pick up the stash on the next open and contaminate its alignment
+  // evaluation. This test pins the invariant by asserting the carrier is
+  // null after `openLearningJourney` resolves, even when the caller has
+  // pre-stashed a non-aligned source.
+  describe('openLearningJourney — carrier-drain invariant', () => {
+    it('drains _pendingLaunchSource even when the caller pre-stashed a non-aligned source', async () => {
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult());
+      const panel = new CombinedLearningJourneyPanel();
+
+      // Simulate a legacy caller (e.g. an event listener) stashing a
+      // NEEDS_CHECK source via the deprecated entrypoint before invoking
+      // a journey open.
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: test verifies the drain clears the legacy stash
+      panel._recordAutoLaunchSource('home_page');
+
+      await panel.openLearningJourney('https://learning-journeys.grafana.net/journey/x', 'X');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect((panel as unknown as { _pendingLaunchSource: LaunchSource | null })._pendingLaunchSource).toBeNull();
+    });
+
+    it('drains _pendingLaunchSource when options.source itself is non-aligned', async () => {
+      mockLoadTabContentResult.mockResolvedValue(makeContentResult());
+      const panel = new CombinedLearningJourneyPanel();
+
+      // Even a NEEDS_CHECK options.source must not survive past the
+      // journey open — otherwise a later docs-loader open (recommender,
+      // tab restore, etc.) would inherit it.
+      await panel.openLearningJourney('https://learning-journeys.grafana.net/journey/x', 'X', {
+        source: 'home_page',
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect((panel as unknown as { _pendingLaunchSource: LaunchSource | null })._pendingLaunchSource).toBeNull();
+    });
+  });
 });
