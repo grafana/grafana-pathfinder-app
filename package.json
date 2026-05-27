@@ -154,7 +154,13 @@
     "zod": "^4.1.13"
   },
   "overrides": {
-    "dompurify": "^3.3.2"
+    "dompurify": "^3.3.2",
+    "@grafana/ui": {
+      "uuid": "11.1.1"
+    },
+    "minimatch@9": {
+      "brace-expansion": "2.0.3"
+    }
   },
   "lint-staged": {
     "*.{ts,tsx,js,json,yaml,md}": "prettier --config .prettierrc.js --write"
