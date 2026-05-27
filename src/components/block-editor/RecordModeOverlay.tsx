@@ -246,16 +246,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     pointerEvents: 'none',
     transition: 'all 0.1s ease',
   }),
-  rejectedChip: css({
-    backgroundColor: theme.colors.error.transparent,
-    color: theme.colors.error.text,
-    border: `1px solid ${theme.colors.error.border}`,
-    padding: `1px ${theme.spacing(0.75)}`,
-    borderRadius: theme.shape.radius.default,
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    whiteSpace: 'nowrap',
-  }),
 });
 
 export interface RecordModeOverlayProps {
@@ -283,8 +273,6 @@ export interface RecordModeOverlayProps {
   isStrictModeEnabled?: boolean;
   /** Called when the user toggles strict mode */
   onToggleStrictMode?: () => void;
-  /** Number of clicks refused by strict mode this session */
-  rejectedCount?: number;
 }
 
 /**
@@ -303,7 +291,6 @@ export function RecordModeOverlay({
   formCaptureElement = null,
   isStrictModeEnabled = false,
   onToggleStrictMode,
-  rejectedCount = 0,
 }: RecordModeOverlayProps) {
   const styles = useStyles2(getStyles);
   const [hoveredElement, setHoveredElement] = useState<HTMLElement | null>(null);
@@ -527,14 +514,6 @@ export function RecordModeOverlay({
             {stepCount} {sectionName ? 'block' : 'step'}
             {stepCount !== 1 ? 's' : ''}
           </span>
-          {rejectedCount > 0 && (
-            <span
-              className={styles.rejectedChip}
-              title="These elements need stable selectors upstream (data-testid, aria-label, role)."
-            >
-              {rejectedCount} rejected
-            </span>
-          )}
         </div>
 
         {/* Center: mode indicators (only when active) */}

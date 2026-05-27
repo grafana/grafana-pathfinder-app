@@ -154,8 +154,6 @@ export interface UseActionRecorderReturn {
   pendingGroupSteps: RecordedStep[];
   // Form capture mode (Alt+click target element)
   formCaptureElement: HTMLElement | null;
-  /** Number of clicks refused by strict mode since the last clear/start. */
-  rejectedCount: number;
 }
 
 /**
@@ -204,7 +202,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recordedSteps, setRecordedSteps] = useState<RecordedStep[]>([]);
-  const [rejectedCount, setRejectedCount] = useState(0);
   const recordingElementsRef = useRef<Map<HTMLElement, { value: string; timestamp: number; formCaptured?: boolean }>>(
     new Map()
   );
@@ -256,7 +253,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
       text: (target.textContent || '').trim().slice(0, 80),
     };
     console.warn('Strict mode: refused to record step with fragile selector', rejection);
-    setRejectedCount((n) => n + 1);
     if (onSelectorRejectedRef.current) {
       onSelectorRejectedRef.current(rejection);
     }
@@ -282,7 +278,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
   const startRecording = useCallback(() => {
     setRecordingState('recording');
     recordingElementsRef.current.clear();
-    setRejectedCount(0);
   }, []);
 
   const pauseRecording = useCallback(() => {
@@ -317,7 +312,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
       formCaptureCleanupRef.current = null;
     }
     setFormCaptureElement(null);
-    setRejectedCount(0);
     // Also clear modal detection state
     setActiveModal(null);
     setPendingGroupSteps([]);
@@ -904,6 +898,5 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     pendingGroupSteps,
     // Form capture mode (Alt+click target element)
     formCaptureElement,
-    rejectedCount,
   };
 }
