@@ -229,13 +229,16 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         await waitFor(() => {
           const evt = events.find((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'document');
           expect(evt).toBeDefined();
-          // `documentStepIndex` is optional in the unified schema and is
-          // only present while a step is executing; the post-completion
-          // dispatch can omit it.
-          const keys = Object.keys(evt!.detail);
-          expect(keys).toEqual(
-            expect.arrayContaining(['kind', 'contentKey', 'sectionId', 'totalSteps', 'completedCount'])
-          );
+          // Exact key-set pin: stray keys MUST fail the tripwire. The
+          // schema marks `documentStepIndex` as optional (omitted when
+          // no step is executing), so the only permitted shapes are the
+          // required keys alone or required + that single optional key.
+          const REQUIRED = ['completedCount', 'contentKey', 'kind', 'sectionId', 'totalSteps'];
+          const OPTIONAL = ['documentStepIndex'];
+          const keys = Object.keys(evt!.detail).sort();
+          const requiredOnly = [...REQUIRED].sort();
+          const requiredPlusOptional = [...REQUIRED, ...OPTIONAL].sort();
+          expect([requiredOnly, requiredPlusOptional]).toContainEqual(keys);
           expect(evt!.detail.kind).toBe('document');
           expect(evt!.detail.sectionId).toBe(SECTION_ID);
           expect(typeof evt!.detail.contentKey).toBe('string');
