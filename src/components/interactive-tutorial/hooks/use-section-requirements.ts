@@ -188,7 +188,7 @@ export function useSectionRequirements({
     // Initial check on mount / when requirements change. The setState
     // inside recheck is guarded by `sectionMountedRef` so it cannot
     // run after unmount; the rule's heuristic flags it anyway.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+
     recheck();
 
     const handleDataSourcesChanged = () => recheck();

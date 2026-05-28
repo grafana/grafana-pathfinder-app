@@ -54,14 +54,14 @@ import type { EvaluationDetails, HookContext, JsonValue } from '@openfeature/web
 function freshHook() {
   jest.resetModules();
   // Importing fresh resets the in-memory `reportedFlagsThisPageLoad` Set.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+
   const { TrackingHook } = require('./openfeature-tracking');
   return new TrackingHook();
 }
 
 function freshReportFn() {
   jest.resetModules();
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+
   const { reportFeatureFlagExposure } = require('./openfeature-tracking');
   return reportFeatureFlagExposure as (flagKey: string, value: JsonValue) => void;
 }

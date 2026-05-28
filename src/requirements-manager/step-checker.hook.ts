@@ -737,7 +737,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         50
       );
     },
-    [skippable, updateManager, stepId, timeoutManager, writeStoreReset] // eslint-disable-line react-hooks/exhaustive-deps -- checkStep intentionally excluded to prevent infinite loops
+    [skippable, updateManager, stepId, timeoutManager, writeStoreReset]
   );
 
   /**
