@@ -163,8 +163,10 @@ If the author's answer to question 3 reveals a subtle invariant (e.g., "the retr
 
 - One to three sentences for a typical change.
 - Lead with the user-facing behavior change ("Sidebar tabs survive the toggle"), not the implementation ("Refactored useTabState").
+- **Describe net change, not commit history.** The Summary describes the branch as if it were one atomic edit. Intermediate refactor passes, line counts, and "then we also did X" belong in commit messages, not the PR body.
+- Avoid: _"Four commits net to: full rewrite, --open mode, constraint tightening, and a trim pass."_ → narrates implementation, not behavior.
 - If `detected_skill_lineage` is set, append to Summary: "Implements findings from a [skill] run on [branch/date]." (e.g., "Implements findings from a `/techdebt` audit of `src/context-engine`.")
-- Multi-phase / multi-commit features: use a bullet list, one bullet per logical phase, terse.
+- For changes with multiple distinct user-facing outcomes (e.g., a feature plus an unrelated retirement), use a bullet list — one bullet per outcome, not per commit.
 
 **What to look at**:
 
