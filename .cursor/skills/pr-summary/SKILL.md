@@ -24,8 +24,9 @@ These constraints are absolute and override any other instructions:
 ## Operating modes
 
 - **Draft mode** (default): print the draft body in a fenced block. Author copy-pastes into the PR description manually. No tool side effects.
-- **Apply mode**: if the user invokes `/pr-summary --apply` or replies "apply" after seeing the draft, write the body to a temp file and call `gh pr edit <number> --body-file <tmp>`. Confirm the PR number from `gh pr view --json number`.
-- **Quick mode** (`/pr-summary --quick`): skip Phase 0.5 author interview entirely. Useful for small chores, dependency bumps, or when the commit bodies already contain substantive motivation.
+- **Apply mode** (`--apply`): if the user invokes `/pr-summary --apply` or replies "apply" after seeing the draft, write the body to a temp file and call `gh pr edit <number> --body-file <tmp>`. Confirm the PR number from `gh pr view --json number`. Requires an existing PR.
+- **Open mode** (`--open`): draft as normal, then on confirmation push the branch (if not already pushed) and call `gh pr create` with the title and body. Use when no PR exists yet and you want the skill to open it.
+- **Quick mode** (`--quick`): skip Phase 0.5 author interview entirely. Combinable with `--open` or `--apply`. Useful for small chores, dependency bumps, or when the commit bodies already contain substantive motivation.
 
 ## Canonical structure
 
@@ -252,20 +253,28 @@ Format: one bullet per item, stating what was left out and why (e.g., "Migration
 3. Print the body in a fenced markdown block — agents that consume this skill's output expect a single fenced block, not a free-form report.
 4. After the block, ask: "Apply this to PR #N via `gh pr edit`?" Wait for confirmation before mutating anything.
 
-### Phase 4 — Apply (only on explicit user confirmation)
+### Phase 4 — Mutate (only on explicit user confirmation)
 
-If the user confirms:
+If the user does not confirm, exit cleanly without side effects.
+
+**`--apply` path** (existing PR):
 
 1. Write the body to a temp file: `mktemp` or a known path.
 2. Call:
-
    ```
    gh pr edit <number> --title "<suggested-title>" --body-file <tmp>
    ```
-
 3. Confirm success and print the PR URL.
 
-If the user does not confirm, exit cleanly without side effects.
+**`--open` path** (new PR):
+
+1. Check whether the branch has an upstream: `git rev-parse --abbrev-ref @{u} 2>/dev/null`. If not, push it: `git push --set-upstream origin <branch>`.
+2. Write the body to a temp file.
+3. Call:
+   ```
+   gh pr create --title "<suggested-title>" --body-file <tmp>
+   ```
+4. Confirm success and print the PR URL.
 
 ## Reuses
 
@@ -280,13 +289,14 @@ If the user does not confirm, exit cleanly without side effects.
 - **Pairs with `/review`**: this skill drafts, `/review` reviews. Same concern vocabulary, same CONCERNS.md routing.
 - Authors invoke this skill **after committing** but **before opening / updating** the PR.
 - Can be re-run on an existing PR to refresh the body after new commits land — the apply mode handles this.
-- For non-trivial product changes, the recommended author sequence is: skill-assisted analyses on changed dirs → `/pr-summary` → `gh pr create`.
+- For non-trivial product changes, the recommended author sequence is: skill-assisted analyses on changed dirs → `/pr-summary --open`.
 
 ## When to exit cleanly without making changes
 
 - Diff is empty (no commits ahead of base) — exit with "No changes to summarize."
 - Branch is a Renovate / Dependabot auto-update — output a one-line draft and exit.
-- The user invokes `--apply` but no PR exists for this branch — exit with "No PR found for this branch. Run `gh pr create` first."
+- The user invokes `--apply` but no PR exists for this branch — exit with "No PR found for this branch. Use `--open` to create one."
+- The user invokes `--open` but a PR already exists for this branch — exit with "A PR already exists: <URL>. Use `--apply` to update its description."
 
 ## Context window management
 
@@ -295,15 +305,17 @@ If the user does not confirm, exit cleanly without side effects.
 - Phase 1: read `CONCERNS.md` once; match against diff paths in memory. Read `github.com` issue title if refs present.
 - Phase 2: read the most recent commit body in full; otherwise work from in-memory diff stats.
 - Phase 3: render + print.
-- Phase 4 (apply only): write temp file, run one `gh pr edit`.
+- Phase 4 (apply): write temp file, run one `gh pr edit`.
+- Phase 4 (open): optionally push branch, write temp file, run one `gh pr create`.
 
 Total context per run: well under 30k tokens for a typical PR.
 
 ## Expected invocation patterns
 
-- **Before opening a PR**: author runs `/pr-summary` after commits are in place; answers the three interview questions; copies the draft into `gh pr create`.
-- **Before opening a PR (quick)**: author runs `/pr-summary --quick` to skip the interview when commit bodies are already rich.
-- **After landing new commits on an open PR**: author runs `/pr-summary --apply` to refresh the description.
+- **Open a PR**: author runs `/pr-summary --open` after commits are in place; answers the interview questions; confirms the draft; skill pushes the branch (if needed) and calls `gh pr create`.
+- **Open a PR (quick)**: `/pr-summary --open --quick` — skip the interview when commit bodies are already rich.
+- **Draft only**: `/pr-summary` — print the draft for manual copy-paste into `gh pr create`. Useful when the author wants to edit the body before opening.
+- **Refresh an open PR**: author runs `/pr-summary --apply` after new commits land to update the description.
 - **During code review**: reviewer runs `/pr-summary` against the same branch to compare what was written vs. what the diff actually does — a "did the description match reality" sanity check.
 
 ## Worked example
