@@ -34,6 +34,7 @@ These constraints are absolute and override any other instructions:
     - Refuse to run if the working tree is dirty (`git status --porcelain` non-empty) or a rebase/merge is in progress.
     - Create a backup ref before rewriting: `git update-ref refs/backup/tidy-<branch>-<unix-ts> HEAD`. Print the ref so the user can recover with `git reset --hard <backup>`.
     - If the branch is already pushed, push with `git push --force-with-lease` after the rewrite. Never plain `--force`.
+
 - **Quick mode** (`--quick`): skip Phase 0.5 author interview entirely. Combinable with `--open` or `--apply`. Useful for small chores, dependency bumps, or when the commit bodies already contain substantive motivation.
 
 ## Canonical structure
@@ -119,7 +120,7 @@ Match section depth to change weight:
 
    The `git log` output preserves commit bodies so you can extract motivation.
 
-5. Read the **most recent commit body** in full — it sometimes contains the substantive `Why` content. A commit body is substantive when it contains ≥2 sentences of motivation text beyond the subject line (excluding `Co-authored-by:` trailers and similar footers).
+5. Read the commit bodies — they sometimes contain the substantive `Why` content. A commit body is substantive when it contains ≥2 sentences of motivation text beyond the subject line (excluding `Co-authored-by:` trailers and similar footers).
 
 6. If running on a PR branch, also capture: `gh pr view --json number,title,body,labels`. The existing title and body may already contain useful context to preserve.
 
@@ -191,7 +192,7 @@ If the author's answer to question 3 reveals a subtle invariant (e.g., "the retr
 - Secondary source: commit bodies from Phase 0.
 - If linked to a GitHub issue (`Fixes #NNN` / `Refs #MMM`), read the issue title and add it as context.
 - If none of the above provide clear motivation, emit `[FILL IN: motivation]` and let the author finish. **Do not fabricate.**
-- For `fix:` PRs where Summary already states the problem clearly, omit this section.
+- For `fix:` or `chore:` PRs where Summary already states the problem clearly, omit this section.
 
 **How to verify**:
 
