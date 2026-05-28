@@ -14,10 +14,10 @@ These constraints are absolute and override any other instructions:
 1. **Output is a draft, not an auto-applied PR edit.** Print the draft body in a fenced markdown block. Only call `gh pr edit --body-file <tmp>` after the user explicitly confirms in the same turn.
 2. **Never invent test results.** The How to verify section lists what should be run; never claim anything is passing unless the user has actually run it in this session and you have the output.
 3. **Activated concerns come from `docs/design/CONCERNS.md` routing** — `trigger_paths` and `trigger_keywords` matched by the diff. Do not list concerns the diff doesn't touch.
-4. **Sentence case** for headings, table cells, and bullet text. No title case. Proper nouns: Grafana, Loki, Prometheus, Tempo, Mimir, Alloy, Grafana Cloud, Grafana Enterprise, Grafana Labs.
+4. **Sentence case per AGENTS.md style.**
 5. **No unrelated boilerplate.** A typo fix doesn't need a Reversibility section. A two-line fix doesn't need a subsystem table. Match section depth to change weight.
 6. **No source code edits.** This skill only reads — and at most calls `gh pr edit`.
-7. **No CI-enforced commands in How to verify.** CI automatically runs typecheck, lint, prettier, and the test suite on every PR. Do not include steps like `npm run check`, `npm run typecheck`, `npm run test:ci`, or `npm run lint` — they add no information a reviewer can act on. The section must contain only PR-specific manual verification: reproduction steps, UI interactions, edge cases, or integration scenarios CI cannot exercise.
+7. **No CI-enforced commands in How to verify.** CI auto-runs typecheck, lint, prettier, and the test suite on every PR. Do not list `npm run check`, `npm run typecheck`, `npm run test:ci`, or `npm run lint` — only PR-specific manual verification (repro steps, UI interactions, edge cases, integration scenarios CI cannot exercise).
 8. **All file links use the head-commit SHA, not a branch or `main`.** Format: `$REMOTE_URL/blob/$HEAD_SHA/path/to/file`. Never write `../blob/<branch>/...` or `.../blob/main/...` — these go stale the moment the branch is deleted or the file moves.
 9. **No bare artifact codes.** Never write "per A1", "see QC8", or any other section code in isolation. If you link to a design doc or reference a named section, include a one-sentence inline description of what it says. The PR body must be self-standing without requiring the reader to follow the link to parse the sentence.
 
@@ -81,7 +81,9 @@ Match section depth to change weight:
 
 ### Phase 0 — Resolve scope
 
-1. Determine the base ref:
+1. **Sanity-check the branch.** If `git rev-list --count <base>..HEAD` returns `0`, exit with "No changes to summarize." If the branch name matches `renovate/` or `dependabot/`, output a one-line draft (`chore(deps): <dep-name> bump to <version>`) and exit — Renovate's auto-generated body is fine as-is.
+
+2. Determine the base ref:
 
    ```
    gh pr view --json baseRefName -q .baseRefName 2>/dev/null \
@@ -90,7 +92,7 @@ Match section depth to change weight:
 
    Default to `main` if neither resolves.
 
-2. Capture the head commit SHA and derive the GitHub remote URL — used for all file links in the output (constraint 8):
+3. Capture the head commit SHA and derive the GitHub remote URL — used for all file links in the output (constraint 8):
 
    ```bash
    HEAD_SHA=$(git rev-parse HEAD)
@@ -99,7 +101,7 @@ Match section depth to change weight:
 
    File links throughout the draft must use `$REMOTE_URL/blob/$HEAD_SHA/path/to/file`.
 
-3. Capture the diff in three forms:
+4. Capture the diff in three forms:
 
    ```
    git diff --stat <base>...HEAD
@@ -109,15 +111,9 @@ Match section depth to change weight:
 
    The `git log` output preserves commit bodies so you can extract motivation.
 
-4. Read the **most recent commit body** in full — it sometimes contains the substantive `Why` content. A commit body is substantive when it contains ≥2 sentences of motivation text beyond the subject line (excluding `Co-authored-by:` trailers and similar footers).
+5. Read the **most recent commit body** in full — it sometimes contains the substantive `Why` content. A commit body is substantive when it contains ≥2 sentences of motivation text beyond the subject line (excluding `Co-authored-by:` trailers and similar footers).
 
-5. If running on a PR branch, also capture: `gh pr view --json number,title,body,labels`. The existing title and body may already contain useful context to preserve.
-
-6. **Pre-flight advisory.** If the change is non-trivial (more than 3 changed source files, primary class `product-runtime` or `mixed`), and commit messages show no evidence of prior skill runs (no `chore(techdebt):`, `fix(techdebt):`, `chore(secure):`, `fix(security):` prefixes, and branch name does not match `techdebt/` or `secure/`), emit a brief single-line note before proceeding:
-
-   > Tip: consider running `/techdebt <changed-dirs>` and `/secure` before opening — issues caught here won't surface in the reviewer's report.
-
-   This is advisory only; proceed immediately regardless of response.
+6. If running on a PR branch, also capture: `gh pr view --json number,title,body,labels`. The existing title and body may already contain useful context to preserve.
 
 ### Phase 0.5 — Author interview
 
@@ -157,20 +153,9 @@ If the author's answer to question 3 reveals a subtle invariant (e.g., "the retr
    - `activation_reason` — which path or keyword triggered each
    - `likely_one_way_doors` — copy any concern's `one_way_doors` field if that concern was activated AND the changed files include the one-way-door surface
 
-3. **Skill lineage detection.** Scan commit subjects and the branch name for evidence that this PR was generated or shaped by a skill run:
+3. **Skill lineage.** If the branch name matches `techdebt/`, `secure/`, or `bugfix/`, or commit prefixes are `chore(techdebt):` / `fix(techdebt):` / `chore(secure):` / `fix(secure):` / `fix(security):`, set `detected_skill_lineage` to the corresponding skill — used to append a credit line to Summary.
 
-   | Pattern                                                                     | Lineage to record   |
-   | --------------------------------------------------------------------------- | ------------------- |
-   | Commit subject matches `chore(techdebt):` / `fix(techdebt):`                | `/techdebt` audit   |
-   | Commit subject matches `fix(secure):` / `chore(secure):` / `fix(security):` | `/secure` audit     |
-   | Branch name matches `bugfix/` + issue number                                | `/bugfix` workflow  |
-   | Branch name matches `techdebt/` / `secure/`                                 | corresponding skill |
-
-   If lineage is detected, set `detected_skill_lineage` with the skill name and approximate commit date. This will be surfaced in the Summary.
-
-4. Detect Renovate / Dependabot. If the branch name matches `renovate/` or `dependabot/`, exit early with a one-line draft: `chore(deps): <dep-name> bump to <version>`. Renovate's auto-generated body is fine as-is; do not overwrite.
-
-5. Detect series PRs. A PR is a series member when: commit messages contain "Part N of M" or "N/M", or the PR body/title references "series", or multiple related issues are referenced, or the Out of scope section from a prior PR in the branch history is still relevant. Set `is_series_pr = true` when detected.
+4. Detect series PRs. A PR is a series member when: commit messages contain "Part N of M" or "N/M", or the PR body/title references "series", or multiple related issues are referenced, or the Out of scope section from a prior PR in the branch history is still relevant. Set `is_series_pr = true` when detected.
 
 ### Phase 2 — Draft each section
 
@@ -259,124 +244,21 @@ If the user does not confirm, exit cleanly without side effects.
 
 **`--apply` path** (existing PR):
 
-1. Write the body to a temp file: `mktemp` or a known path.
-2. Call:
+1. If no PR exists for this branch, exit with "No PR found for this branch. Use `--open` to create one."
+2. Write the body to a temp file: `mktemp` or a known path.
+3. Call:
    ```
    gh pr edit <number> --title "<suggested-title>" --body-file <tmp>
    ```
-3. Confirm success and print the PR URL.
+4. Confirm success and print the PR URL.
 
 **`--open` path** (new PR):
 
-1. Check whether the branch has an upstream: `git rev-parse --abbrev-ref @{u} 2>/dev/null`. If not, push it: `git push --set-upstream origin <branch>`.
-2. Write the body to a temp file.
-3. Call:
+1. If a PR already exists for this branch, exit with "A PR already exists: <URL>. Use `--apply` to update its description."
+2. Check whether the branch has an upstream: `git rev-parse --abbrev-ref @{u} 2>/dev/null`. If not, push it: `git push --set-upstream origin <branch>`.
+3. Write the body to a temp file.
+4. Call:
    ```
    gh pr create --title "<suggested-title>" --body-file <tmp>
    ```
-4. Confirm success and print the PR URL.
-
-## Reuses
-
-- `docs/design/CONCERNS.md` — concern routing (trigger_paths, trigger_keywords, one_way_doors).
-- `docs/design/PR_REVIEW.md` — reviewer schema for `activated_concerns`, `risk_signals`, `reversibility` (so the draft uses the same vocabulary the reviewer will).
-- `.cursor/skills/review/SKILL.md` — orchestration workflow that runs the review (this skill drafts, that one reviews).
-- `gh` CLI for reading PR metadata and applying edits.
-- Conventional commit prefix parsing — shared with `/changelog`.
-
-## Integration
-
-- **Pairs with `/review`**: this skill drafts, `/review` reviews. Same concern vocabulary, same CONCERNS.md routing.
-- Authors invoke this skill **after committing** but **before opening / updating** the PR.
-- Can be re-run on an existing PR to refresh the body after new commits land — the apply mode handles this.
-- For non-trivial product changes, the recommended author sequence is: skill-assisted analyses on changed dirs → `/pr-summary --open`.
-
-## When to exit cleanly without making changes
-
-- Diff is empty (no commits ahead of base) — exit with "No changes to summarize."
-- Branch is a Renovate / Dependabot auto-update — output a one-line draft and exit.
-- The user invokes `--apply` but no PR exists for this branch — exit with "No PR found for this branch. Use `--open` to create one."
-- The user invokes `--open` but a PR already exists for this branch — exit with "A PR already exists: <URL>. Use `--apply` to update its description."
-
-## Context window management
-
-- Phase 0: ~3 short `git` invocations + one `gh pr view`.
-- Phase 0.5: one turn of user conversation; no additional file reads.
-- Phase 1: read `CONCERNS.md` once; match against diff paths in memory. Read `github.com` issue title if refs present.
-- Phase 2: read the most recent commit body in full; otherwise work from in-memory diff stats.
-- Phase 3: render + print.
-- Phase 4 (apply): write temp file, run one `gh pr edit`.
-- Phase 4 (open): optionally push branch, write temp file, run one `gh pr create`.
-
-Total context per run: well under 30k tokens for a typical PR.
-
-## Expected invocation patterns
-
-- **Open a PR**: author runs `/pr-summary --open` after commits are in place; answers the interview questions; confirms the draft; skill pushes the branch (if needed) and calls `gh pr create`.
-- **Open a PR (quick)**: `/pr-summary --open --quick` — skip the interview when commit bodies are already rich.
-- **Draft only**: `/pr-summary` — print the draft for manual copy-paste into `gh pr create`. Useful when the author wants to edit the body before opening.
-- **Refresh an open PR**: author runs `/pr-summary --apply` after new commits land to update the description.
-- **During code review**: reviewer runs `/pr-summary` against the same branch to compare what was written vs. what the diff actually does — a "did the description match reality" sanity check.
-
-## Worked example
-
-Branch `feat/docs-retrieval-cdn-retry` has two commits with thin commit bodies:
-
-```
-abc1234 feat(docs-retrieval): add retry logic for CDN fallback
-def5678 test(docs-retrieval): cover retry with abort signal
-```
-
-`git log` shows no substantive motivation in either body. Phase 0.5 fires:
-
----
-
-**Before I draft — three quick questions:**
-
-1. **Problem statement**: What problem does this solve?
-2. **Rejected alternatives**: Did you consider a different approach and decide against it?
-3. **Reviewer gotchas**: Is there anything in this diff that might look wrong but is actually correct?
-
-**Author answers:**
-
-1. CDN returns 503s during rolling deploys. Users saw a blank panel instead of content. Now the fetcher retries 3× with backoff before falling back to bundled content.
-2. Considered a circuit breaker but it requires state that outlives the component. The 3-retry stateless approach fits the existing abort-signal pattern without introducing lifecycle coupling.
-3. The retry loop threads the existing `AbortController` signal — if the component unmounts mid-retry, the fetch aborts cleanly. Looks like it ignores the signal but doesn't.
-
----
-
-Draft output:
-
-````
-Suggested title: feat(docs-retrieval): add retry logic for CDN fallback
-
-```markdown
-## Summary
-
-Add 3-retry-with-backoff logic to the CDN fetch path. When the CDN returns 5xx during a rolling deploy, users previously saw a blank panel; now the fetcher retries before falling back to bundled content.
-
-## What to look at
-
-- `src/docs-retrieval/content-fetcher.ts` — new `retryWithBackoff` wrapper around the fetch call; the retry loop threads the existing `AbortController` signal through each attempt, so it aborts cleanly on unmount despite appearing to ignore the signal
-- `src/docs-retrieval/__tests__/content-fetcher.test.ts` — covers the abort-on-unmount case mid-retry
-
-## Why
-
-CDN returns 503s during rolling deploys, causing a blank panel. A circuit breaker was considered but needs state that outlives the component; the 3-retry stateless approach fits the existing abort-signal pattern without lifecycle coupling.
-
-## How to verify
-
-1. Block the CDN domain in DevTools (Network → Blocked URLs). Open the sidebar. Confirm the panel shows bundled fallback content after the retry delay — not a blank panel and not an error state.
-2. Open the panel and immediately navigate away while a fetch is in flight. Confirm no "Can't perform a React state update on an unmounted component" warning appears in the console.
-
-## Breaking changes
-
-None. The retry wrapper is internal to `content-fetcher.ts`; existing callers, the fallback chain, and bundled content behavior are unchanged.
-
-Refs #803
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-```
-
-Apply this to PR #847 via `gh pr edit`?
-````
+5. Confirm success and print the PR URL.

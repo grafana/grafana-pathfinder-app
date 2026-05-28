@@ -50,7 +50,6 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 - `.cursor/skills/maintain-docs/SKILL.md` — Discovered automatically by IDE via `.cursor/skills/` glob pattern. No AGENTS.md entry needed.
 - `.cursor/skills/design-review/SKILL.md` — Same as above.
 - `.cursor/skills/e2e-guide-analysis/SKILL.md` — Same as above.
-- `.cursor/skills/tidy-up/SKILL.md` — Same as above.
 - `docs/sources/_index.md` — End-user documentation published to Grafana.com. Not agent-relevant for implementation tasks.
 - `docs/sources/getting-started/_index.md` — Same as above.
 - `docs/sources/administrators-reference/_index.md` — Same as above.
