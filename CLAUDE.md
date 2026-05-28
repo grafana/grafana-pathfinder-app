@@ -17,14 +17,13 @@ Reusable agent workflows. Read a skill's `SKILL.md` before invoking it.
 | `i18n-sync`          | `/i18n-sync`                     | Stub missing keys across 21 locales; emit a translation gap report                                                                          |
 | `maintain-docs`      | conversation request, periodic   | Whole-repo doc audit: orphans, drift, staleness — opens a PR                                                                                |
 | `plugin-bundle-size` | conversation request             | Reduce plugin bundle size via React.lazy + webpack code splitting                                                                           |
-| `pr-summary`         | `/pr-summary`                    | Draft structured PR description from the diff via `CONCERNS.md` routing                                                                     |
+| `pr-summary`         | `/pr-summary`                    | Draft structured PR description: interviews author for "why" context, then drafts via `CONCERNS.md` routing; `--quick` skips interview       |
 | `prevent-doc-drift`  | `/review`, pre-merge             | **Per-PR** drift prevention: detects new features / architecture in a PR and updates AGENTS.md, CLAUDE.md, `.cursor/rules/` in same PR      |
 | `refactor`           | `/refactor-investigate <target>` | High-risk refactor with pre / extract / post-test gates                                                                                     |
 | `release-prep`       | `/release-prep [version]`        | Bump version + draft changelog + run check; user creates the tag                                                                            |
 | `review`             | `/review`                        | Principal-engineer PR review: routes via `CONCERNS.md`, grounds findings in `docs/design/PR_REVIEW.md` catalog, invokes doc-drift check     |
 | `secure`             | `/secure`                        | Security audit: F1-F6 frontend + backend allowlists + MCP transport + deps                                                                  |
 | `techdebt`           | `/techdebt <subsystem>`          | Confidence-tiered tech-debt audit: smells, duplication, prop drilling, dead code, extraction seams; also runs as sub-agent inside `/review` |
-| `tidy-up`            | `/tidy-up`                       | Pre-commit gate (typecheck + lint + prettier + Go)                                                                                          |
 
 ### Doc-quality skill pairing
 
