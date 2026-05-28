@@ -26,6 +26,14 @@ These constraints are absolute and override any other instructions:
 - **Draft mode** (default): print the draft body in a fenced block. Author copy-pastes into the PR description manually. No tool side effects.
 - **Apply mode** (`--apply`): if the user invokes `/pr-summary --apply` or replies "apply" after seeing the draft, write the body to a temp file and call `gh pr edit <number> --body-file <tmp>`. Confirm the PR number from `gh pr view --json number`. Requires an existing PR.
 - **Open mode** (`--open`): draft as normal, then on confirmation push the branch (if not already pushed) and call `gh pr create` with the title and body. Use when no PR exists yet and you want the skill to open it.
+  - With `--tidy-history`: before pushing, rewrite commits that lack a conventional-commit prefix. For each commit whose subject does not start with `feat:`/`fix:`/`refactor:`/`chore:`/`docs:`/`test:`/`perf:` (or a scoped variant like `feat(scope):`), infer the prefix from the diff and prepend it to the subject.
+
+    Mechanism: run `git rebase <base> --exec '<amend-script>'` where `<amend-script>` inspects `git log -1 --pretty=%s`, checks for a conventional-commit prefix, and runs `git commit --amend -m "<prefix>: <subject>"` when one is missing. The rebase runs non-interactively; if the exec fails on any commit, the rebase halts and the user can `git rebase --abort` to recover (the backup ref is the deeper safety net).
+
+    Safeguards (non-negotiable):
+    - Refuse to run if the working tree is dirty (`git status --porcelain` non-empty) or a rebase/merge is in progress.
+    - Create a backup ref before rewriting: `git update-ref refs/backup/tidy-<branch>-<unix-ts> HEAD`. Print the ref so the user can recover with `git reset --hard <backup>`.
+    - If the branch is already pushed, push with `git push --force-with-lease` after the rewrite. Never plain `--force`.
 - **Quick mode** (`--quick`): skip Phase 0.5 author interview entirely. Combinable with `--open` or `--apply`. Useful for small chores, dependency bumps, or when the commit bodies already contain substantive motivation.
 
 ## Canonical structure
