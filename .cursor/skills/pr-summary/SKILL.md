@@ -18,6 +18,8 @@ These constraints are absolute and override any other instructions:
 5. **No unrelated boilerplate.** A typo fix doesn't need a Reversibility section. A two-line fix doesn't need a subsystem table. Match section depth to change weight.
 6. **No source code edits.** This skill only reads — and at most calls `gh pr edit`.
 7. **No CI-enforced commands in How to verify.** CI automatically runs typecheck, lint, prettier, and the test suite on every PR. Do not include steps like `npm run check`, `npm run typecheck`, `npm run test:ci`, or `npm run lint` — they add no information a reviewer can act on. The section must contain only PR-specific manual verification: reproduction steps, UI interactions, edge cases, or integration scenarios CI cannot exercise.
+8. **All file links use the head-commit SHA, not a branch or `main`.** Format: `$REMOTE_URL/blob/$HEAD_SHA/path/to/file`. Never write `../blob/<branch>/...` or `.../blob/main/...` — these go stale the moment the branch is deleted or the file moves.
+9. **No bare artifact codes.** Never write "per A1", "see QC8", or any other section code in isolation. If you link to a design doc or reference a named section, include a one-sentence inline description of what it says. The PR body must be self-standing without requiring the reader to follow the link to parse the sentence.
 
 ## Operating modes
 
@@ -66,13 +68,13 @@ None. | <explicit callout if any>
 
 Match section depth to change weight:
 
-| Type           | Required sections                                                             | Optional / typical                                                              |
-| -------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| **feat**       | Summary, What to look at, Why, How to verify, Breaking changes                | Reversibility; Out of scope for series work                                     |
-| **fix**        | Summary (problem + root cause + fix in 3-4 lines), How to verify             | Issue ref. Why is usually implicit in Summary. Breaking changes if applicable.  |
-| **refactor**   | Summary, Why, What to look at, Out of scope, How to verify                   | Breaking changes if behavior-visible; Reversibility if state is touched         |
-| **chore/deps** | Summary, What to look at (brief), How to verify (minimal or omit)            | Skip Why (self-evident). Renovate PRs handle themselves — detect and skip.      |
-| **docs**       | Summary, What to look at (list of docs), How to verify                        | Why (if non-obvious). Link to rendered docs when useful.                        |
+| Type           | Required sections                                                 | Optional / typical                                                             |
+| -------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **feat**       | Summary, What to look at, Why, How to verify, Breaking changes    | Reversibility; Out of scope for series work                                    |
+| **fix**        | Summary (problem + root cause + fix in 3-4 lines), How to verify  | Issue ref. Why is usually implicit in Summary. Breaking changes if applicable. |
+| **refactor**   | Summary, Why, What to look at, Out of scope, How to verify        | Breaking changes if behavior-visible; Reversibility if state is touched        |
+| **chore/deps** | Summary, What to look at (brief), How to verify (minimal or omit) | Skip Why (self-evident). Renovate PRs handle themselves — detect and skip.     |
+| **docs**       | Summary, What to look at (list of docs), How to verify            | Why (if non-obvious). Link to rendered docs when useful.                       |
 
 ## Workflow
 
@@ -87,7 +89,16 @@ Match section depth to change weight:
 
    Default to `main` if neither resolves.
 
-2. Capture the diff in three forms:
+2. Capture the head commit SHA and derive the GitHub remote URL — used for all file links in the output (constraint 8):
+
+   ```bash
+   HEAD_SHA=$(git rev-parse HEAD)
+   REMOTE_URL=$(git remote get-url origin | sed 's/\.git$//' | sed 's/git@github\.com:/https:\/\/github.com\//')
+   ```
+
+   File links throughout the draft must use `$REMOTE_URL/blob/$HEAD_SHA/path/to/file`.
+
+3. Capture the diff in three forms:
 
    ```
    git diff --stat <base>...HEAD
@@ -97,11 +108,11 @@ Match section depth to change weight:
 
    The `git log` output preserves commit bodies so you can extract motivation.
 
-3. Read the **most recent commit body** in full — it sometimes contains the substantive `Why` content. A commit body is substantive when it contains ≥2 sentences of motivation text beyond the subject line (excluding `Co-authored-by:` trailers and similar footers).
+4. Read the **most recent commit body** in full — it sometimes contains the substantive `Why` content. A commit body is substantive when it contains ≥2 sentences of motivation text beyond the subject line (excluding `Co-authored-by:` trailers and similar footers).
 
-4. If running on a PR branch, also capture: `gh pr view --json number,title,body,labels`. The existing title and body may already contain useful context to preserve.
+5. If running on a PR branch, also capture: `gh pr view --json number,title,body,labels`. The existing title and body may already contain useful context to preserve.
 
-5. **Pre-flight advisory.** If the change is non-trivial (more than 3 changed source files, primary class `product-runtime` or `mixed`), and commit messages show no evidence of prior skill runs (no `chore(techdebt):`, `fix(techdebt):`, `chore(secure):`, `fix(security):` prefixes, and branch name does not match `techdebt/` or `secure/`), emit a brief single-line note before proceeding:
+6. **Pre-flight advisory.** If the change is non-trivial (more than 3 changed source files, primary class `product-runtime` or `mixed`), and commit messages show no evidence of prior skill runs (no `chore(techdebt):`, `fix(techdebt):`, `chore(secure):`, `fix(security):` prefixes, and branch name does not match `techdebt/` or `secure/`), emit a brief single-line note before proceeding:
 
    > Tip: consider running `/techdebt <changed-dirs>` and `/secure` before opening — issues caught here won't surface in the reviewer's report.
 
@@ -147,12 +158,12 @@ If the author's answer to question 3 reveals a subtle invariant (e.g., "the retr
 
 3. **Skill lineage detection.** Scan commit subjects and the branch name for evidence that this PR was generated or shaped by a skill run:
 
-   | Pattern                                                        | Lineage to record             |
-   | -------------------------------------------------------------- | ----------------------------- |
-   | Commit subject matches `chore(techdebt):` / `fix(techdebt):`  | `/techdebt` audit             |
-   | Commit subject matches `fix(secure):` / `chore(secure):` / `fix(security):` | `/secure` audit  |
-   | Branch name matches `bugfix/` + issue number                   | `/bugfix` workflow            |
-   | Branch name matches `techdebt/` / `secure/`                   | corresponding skill           |
+   | Pattern                                                                     | Lineage to record   |
+   | --------------------------------------------------------------------------- | ------------------- |
+   | Commit subject matches `chore(techdebt):` / `fix(techdebt):`                | `/techdebt` audit   |
+   | Commit subject matches `fix(secure):` / `chore(secure):` / `fix(security):` | `/secure` audit     |
+   | Branch name matches `bugfix/` + issue number                                | `/bugfix` workflow  |
+   | Branch name matches `techdebt/` / `secure/`                                 | corresponding skill |
 
    If lineage is detected, set `detected_skill_lineage` with the skill name and approximate commit date. This will be surfaced in the Summary.
 
@@ -215,6 +226,7 @@ If the author's answer to question 3 reveals a subtle invariant (e.g., "the retr
 **Out of scope**:
 
 Include this section when any of the following apply:
+
 - The PR is part of a series (`is_series_pr = true`) — name what the subsequent PRs will handle.
 - The commit messages or Phase 0.5 answers mention something deliberately left out.
 - Activated concerns surface an adjacent area the diff intentionally does not address.
