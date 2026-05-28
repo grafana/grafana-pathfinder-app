@@ -830,12 +830,10 @@ export function InteractiveSection({
                     // Fix didn't work - check if step is skippable
                     // Priority 3: Skip if possible
                     if (stepInfo.skippable) {
-                      // Skip this step properly using the step's own markSkipped function
+                      // Skip this step — runner owns the skip decision (issue #893 C4 fix)
                       const stepRef = stepRefs.current.get(stepInfo.stepId);
-                      if (stepRef?.markSkipped) {
-                        stepRef.markSkipped(); // This handles the blue state properly
-                        handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                      }
+                      stepRef?.markSkipped?.(); // UI hint, may be absent
+                      handleStepComplete(stepInfo.stepId, true); // ALWAYS record skip
                       continue; // Continue to next step
                     } else {
                       // Priority 4: Stop execution if not skippable.
@@ -852,12 +850,10 @@ export function InteractiveSection({
 
                   // Fix failed - check if step is skippable
                   if (stepInfo.skippable) {
-                    // Skip this step properly using the step's own markSkipped function
+                    // Skip this step — runner owns the skip decision (issue #893 C4 fix)
                     const stepRef = stepRefs.current.get(stepInfo.stepId);
-                    if (stepRef?.markSkipped) {
-                      stepRef.markSkipped(); // This handles the blue state properly
-                      handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                    }
+                    stepRef?.markSkipped?.(); // UI hint, may be absent
+                    handleStepComplete(stepInfo.stepId, true); // ALWAYS record skip
                     continue;
                   } else {
                     // Stop execution (cursor already at `i`)
@@ -869,12 +865,10 @@ export function InteractiveSection({
                 // No fix available - check if step is skippable
                 // Priority 3: Skip if possible
                 if (stepInfo.skippable) {
-                  // Skip this step properly using the step's own markSkipped function
+                  // Skip this step — runner owns the skip decision (issue #893 C4 fix)
                   const stepRef = stepRefs.current.get(stepInfo.stepId);
-                  if (stepRef?.markSkipped) {
-                    stepRef.markSkipped(); // This handles the blue state properly
-                    handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                  }
+                  stepRef?.markSkipped?.(); // UI hint, may be absent
+                  handleStepComplete(stepInfo.stepId, true); // ALWAYS record skip
                   continue; // Continue to next step
                 } else {
                   // Priority 4: Stop execution if not skippable and no fix available
