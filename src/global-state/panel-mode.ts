@@ -41,8 +41,6 @@ export interface PendingGuide {
  */
 class PanelModeManager {
   private _pendingGuide: PendingGuide | null = null;
-  private _sidebarTabSnapshot: string | null = null;
-  private _sidebarActiveTabSnapshot: string | null = null;
   private _priorPath: string | null = null;
   /**
    * Get the current panel mode from localStorage.
@@ -140,40 +138,12 @@ class PanelModeManager {
   }
 
   /**
-   * Snapshot the current sidebar tab state from localStorage.
-   * Called before switching to floating mode so the floating panel's
-   * model writes (via openDocsPage → saveTabsToStorage) don't
-   * permanently overwrite the sidebar's tab state.
-   */
-  public snapshotSidebarTabs(): void {
-    this._sidebarTabSnapshot = localStorage.getItem(StorageKeys.TABS) ?? null;
-    this._sidebarActiveTabSnapshot = localStorage.getItem(StorageKeys.ACTIVE_TAB) ?? null;
-  }
-
-  /**
-   * Restore the sidebar tab snapshot to localStorage.
-   * Called before switching back to sidebar mode so the sidebar's
-   * model restores the original tabs, not the floating panel's.
-   */
-  public restoreSidebarTabSnapshot(): void {
-    if (this._sidebarTabSnapshot !== null) {
-      localStorage.setItem(StorageKeys.TABS, this._sidebarTabSnapshot);
-    }
-    if (this._sidebarActiveTabSnapshot !== null) {
-      localStorage.setItem(StorageKeys.ACTIVE_TAB, this._sidebarActiveTabSnapshot);
-    }
-    this._sidebarTabSnapshot = null;
-    this._sidebarActiveTabSnapshot = null;
-  }
-
-  /**
    * Capture the Grafana route the user was on right before entering full
    * screen, so the explicit "Return to sidebar" button can land them back
    * where they came from instead of the plugin home (My Learning).
    *
-   * Captured at the same call sites as {@link snapshotSidebarTabs}: the
-   * sidebar / floating "switch to full screen" handlers, immediately
-   * before the route push to `/fullscreen`.
+   * Called from the sidebar / floating "switch to full screen" handlers,
+   * immediately before the route push to `/fullscreen`.
    */
   public capturePriorPath(path: string): void {
     this._priorPath = path;

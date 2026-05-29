@@ -137,7 +137,7 @@ jest.mock('../../global-state/link-interception', () => ({
 }));
 
 jest.mock('../../global-state/panel-mode', () => ({
-  panelModeManager: { getMode: jest.fn(() => 'sidebar'), setMode: jest.fn(), snapshotSidebarTabs: jest.fn() },
+  panelModeManager: { getMode: jest.fn(() => 'sidebar'), setMode: jest.fn() },
 }));
 
 jest.mock('../LearningPaths', () => ({
