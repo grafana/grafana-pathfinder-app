@@ -13,14 +13,9 @@ import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import { enforceMcpSessionPin } from '../lib/session-pin';
 import { normalizeSessionToken } from '../lib/session-token';
 import { SessionStoreUnavailableError, type SessionStore } from '../lib/session-store';
-import {
-  inputModeAmbiguousResult,
-  inputModeMissingResult,
-  invalidSessionTokenResult,
-  sessionNotFoundResult,
-  storeUnavailableResult,
-} from './result';
+import { invalidSessionTokenResult, sessionNotFoundResult, storeUnavailableResult } from './result';
 import { storeUnavailable } from './state-bridge';
+import { classifyTwoModeInput } from './two-mode-input';
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
@@ -76,16 +71,12 @@ export async function resolveReadOnlyInput(
   },
   mcpSessionId?: string
 ): Promise<ReadInputResolution> {
-  const hasArtifact = inputs.artifact !== undefined;
-  const hasToken = typeof inputs.sessionToken === 'string' && inputs.sessionToken.length > 0;
-  if (hasArtifact && hasToken) {
-    return { ok: false, response: inputModeAmbiguousResult() };
+  const classified = classifyTwoModeInput({ artifact: inputs.artifact, sessionToken: inputs.sessionToken });
+  if (classified.kind === 'error') {
+    return { ok: false, response: classified.response };
   }
-  if (!hasArtifact && !hasToken) {
-    return { ok: false, response: inputModeMissingResult() };
-  }
-  if (hasToken) {
-    const resolution = await resolveAndPinToken(store, inputs.sessionToken, mcpSessionId);
+  if (classified.kind === 'session') {
+    const resolution = await resolveAndPinToken(store, classified.token, mcpSessionId);
     if (!resolution.ok) {
       return { ok: false, response: resolution.response };
     }
@@ -109,7 +100,7 @@ export async function resolveReadOnlyInput(
       throw err;
     }
   }
-  const a = inputs.artifact!;
+  const a = classified.artifact;
   return {
     ok: true,
     content: a.content as unknown as ContentJson,

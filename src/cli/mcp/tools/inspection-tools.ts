@@ -23,21 +23,15 @@ import { readOnly } from './annotations';
 import { resolveReadOnlyInput } from './read-input';
 import { outcomeResult } from './result';
 import { withArtifact } from './state-bridge';
+import { ArtifactInputBase, SessionTokenBase } from './two-mode-input';
 
-const ArtifactSchema = z
-  .object({
-    content: z.record(z.string(), z.unknown()),
-    manifest: z.record(z.string(), z.unknown()).optional(),
-  })
-  .optional()
-  .describe('STATELESS MODE. Pass an in-flight artifact directly. Pass EITHER `artifact` OR `sessionToken`, not both.');
+const ArtifactSchema = ArtifactInputBase.describe(
+  'STATELESS MODE. Pass an in-flight artifact directly. Pass EITHER `artifact` OR `sessionToken`, not both.'
+);
 
-const SessionTokenSchema = z
-  .string()
-  .optional()
-  .describe(
-    'SESSION MODE. Token returned by pathfinder_create_package. The server loads the artifact from session storage.'
-  );
+const SessionTokenSchema = SessionTokenBase.describe(
+  'SESSION MODE. Token returned by pathfinder_create_package. The server loads the artifact from session storage.'
+);
 
 export function registerInspectionTools(
   server: McpServer,

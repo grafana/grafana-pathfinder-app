@@ -22,7 +22,12 @@ import type { TreeNode } from '../../utils/package-io';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
 import { SessionStoreUnavailableError } from '../lib/session-store';
-import type { ConcurrentModificationResult, SessionTooLargeResult, StoreUnavailableResult } from './state-bridge';
+import {
+  storeUnavailable,
+  type ConcurrentModificationResult,
+  type SessionTooLargeResult,
+  type StoreUnavailableResult,
+} from './state-bridge';
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
@@ -194,12 +199,7 @@ export async function withToolErrorEnvelope(
     return await fn();
   } catch (err) {
     if (err instanceof SessionStoreUnavailableError) {
-      return storeUnavailableResult(sessionToken, {
-        ok: false,
-        code: 'SESSION_STORE_UNAVAILABLE',
-        reason: err.reason,
-        message: err.message,
-      });
+      return storeUnavailableResult(sessionToken, storeUnavailable(err));
     }
     console.error(`[${toolName}] uncaught error in tool handler:`, err);
     return internalErrorResult(sessionToken);

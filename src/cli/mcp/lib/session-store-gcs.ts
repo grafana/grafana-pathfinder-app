@@ -84,18 +84,22 @@ import {
   SESSION_GENERATION_ABSENT,
   SessionPreconditionFailedError,
   SessionStoreCorruptedError,
-  SessionStoreUnavailableError,
   type LoadedSession,
   type SaveResult,
   type SessionArtifact,
   type SessionStore,
 } from './session-store';
-import { tokenObjectPrefix } from './session-token';
-
-const CONTENT_OBJECT = 'content.json';
-const MANIFEST_OBJECT = 'manifest.json';
-const GENERATION_OBJECT = 'generation';
-const MCP_SESSION_PIN_OBJECT = '.pin';
+import {
+  GENERATION_OBJECT,
+  contentObjectName,
+  generationObjectName,
+  manifestObjectName,
+  pinObjectName,
+  sessionPrefix,
+  stagedPrefix,
+} from './gcs/paths';
+import { isNotFoundError, isPreconditionFailedError, wrapStorageErrors } from './gcs/errors';
+import { type RetryOptions, withRetryOn429 } from './gcs/retry';
 
 interface GenerationPointer {
   generation: number;
@@ -106,163 +110,6 @@ interface PointerSnapshot {
   pointer: GenerationPointer;
   /** GCS object generation backing the pointer (for ifGenerationMatch). */
   gcsGeneration: number;
-}
-
-/**
- * Object-name builder. Every GCS path in this module is built from
- * `tokenObjectPrefix(token)` rather than the token itself — see the
- * file-level doc for the why.
- */
-function sessionPrefix(token: string): string {
-  return tokenObjectPrefix(token);
-}
-
-function stagedPrefix(token: string, stage: string): string {
-  return `${sessionPrefix(token)}/${stage}`;
-}
-
-function contentObjectName(token: string, stage: string): string {
-  return `${stagedPrefix(token, stage)}/${CONTENT_OBJECT}`;
-}
-
-function manifestObjectName(token: string, stage: string): string {
-  return `${stagedPrefix(token, stage)}/${MANIFEST_OBJECT}`;
-}
-
-function generationObjectName(token: string): string {
-  return `${sessionPrefix(token)}/${GENERATION_OBJECT}`;
-}
-
-function pinObjectName(token: string): string {
-  return `${sessionPrefix(token)}/${MCP_SESSION_PIN_OBJECT}`;
-}
-
-interface GcsErrorLike {
-  code?: number | string;
-  errors?: Array<{ reason?: string }>;
-}
-
-function isNotFoundError(err: unknown): boolean {
-  if (!err || typeof err !== 'object') {
-    return false;
-  }
-  const e = err as GcsErrorLike;
-  return e.code === 404 || e.code === '404';
-}
-
-function isPreconditionFailedError(err: unknown): boolean {
-  if (!err || typeof err !== 'object') {
-    return false;
-  }
-  const e = err as GcsErrorLike;
-  if (e.code === 412 || e.code === '412') {
-    return true;
-  }
-  if (Array.isArray(e.errors)) {
-    for (const inner of e.errors) {
-      if (inner?.reason === 'conditionNotMet') {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-/**
- * GCS imposes a per-object write rate limit of ~1 mutation per second
- * (https://cloud.google.com/storage/docs/gcs429). Real agent flows are
- * LLM-paced and never approach this, but bursty smoke tests / racing
- * replicas can. Surface as 429 with reason `rateLimitExceeded`.
- */
-function isRateLimitedError(err: unknown): boolean {
-  if (!err || typeof err !== 'object') {
-    return false;
-  }
-  const e = err as GcsErrorLike;
-  if (e.code === 429 || e.code === '429') {
-    return true;
-  }
-  if (Array.isArray(e.errors)) {
-    for (const inner of e.errors) {
-      if (inner?.reason === 'rateLimitExceeded') {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-/**
- * Run `fn`, retrying on transient 429 (per-object rate limit) with
- * exponential backoff + jitter. Cap chosen so the worst case stays
- * well under the 30s per-call wallclock budget in `transports/http.ts`.
- * Non-429 errors propagate immediately so precondition-failed,
- * not-found, and auth errors still surface fast.
- */
-export interface RetryOptions {
-  maxAttempts?: number;
-  baseDelayMs?: number;
-  maxDelayMs?: number;
-  sleep?: (ms: number) => Promise<void>;
-}
-
-async function withRetryOn429<T>(fn: () => Promise<T>, opts: RetryOptions = {}): Promise<T> {
-  const maxAttempts = opts.maxAttempts ?? 5;
-  const baseDelayMs = opts.baseDelayMs ?? 1100;
-  const maxDelayMs = opts.maxDelayMs ?? 8000;
-  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (!isRateLimitedError(err)) {
-        throw err;
-      }
-      lastErr = err;
-      if (attempt === maxAttempts - 1) {
-        break;
-      }
-      // Exponential backoff with full jitter: random in [baseDelay, min(max, base * 2^attempt)].
-      const exp = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt));
-      const wait = baseDelayMs + Math.random() * (exp - baseDelayMs);
-      await sleep(wait);
-    }
-  }
-  // Exhausted retries on a 429. Wrap so the dispatch layer can surface a
-  // structured CommandOutcome instead of letting the raw GCS error string
-  // (e.g. "The object ... exceeded the rate limit ...") leak to the wire.
-  throw new SessionStoreUnavailableError(
-    'rate_limited',
-    'session storage temporarily rate-limited; retry the request',
-    { cause: lastErr }
-  );
-}
-
-/**
- * Run `fn` and normalize any unknown error into `SessionStoreUnavailableError`.
- * Typed errors (`SessionPreconditionFailedError`, `SessionStoreCorruptedError`,
- * `SessionStoreUnavailableError`) propagate as-is so the dispatch layer can
- * map them to their specific CommandOutcome codes. Everything else (raw GCS
- * errors, auth failures, network blips) gets wrapped so the wire response
- * stays a well-formed CommandOutcome; the original error is preserved via
- * `cause` for server-side logs.
- */
-async function wrapStorageErrors<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    if (
-      err instanceof SessionPreconditionFailedError ||
-      err instanceof SessionStoreCorruptedError ||
-      err instanceof SessionStoreUnavailableError
-    ) {
-      throw err;
-    }
-    throw new SessionStoreUnavailableError('transient', 'session storage temporarily unavailable; retry the request', {
-      cause: err,
-    });
-  }
 }
 
 export interface GcsSessionStoreOptions {

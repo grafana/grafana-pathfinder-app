@@ -21,7 +21,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { buildArtifactSummary, findBlockById } from '../../utils/package-io';
-import type { SessionStore } from '../lib/session-store';
+import type { LoadedSession, SessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveAndPinToken } from './read-input';
 import { sessionNotFoundResult, textResult, withToolErrorEnvelope } from './result';
@@ -30,13 +30,50 @@ const SessionTokenInput = {
   sessionToken: z.string().describe('Session token returned by pathfinder_create_package or a previous mutation ack.'),
 };
 
+type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
+
+/**
+ * Resolve + pin a session token, load the session, then either render the
+ * success payload or short-circuit on absent-session / pin-failure / store
+ * errors. The render callback returns:
+ *   - a plain payload object — wrapped as `textResult(JSON.stringify(...))`.
+ *   - a `ToolResult` directly — passed through verbatim (for in-band error
+ *     branches like "block id not found" in `pathfinder_get_block`).
+ */
+async function withLoadedSession(
+  store: SessionStore,
+  mcpSessionId: string | undefined,
+  rawToken: string,
+  toolName: string,
+  render: (loaded: LoadedSession, token: string) => ToolResult | Record<string, unknown>
+): Promise<ToolResult> {
+  return withToolErrorEnvelope(rawToken, toolName, async () => {
+    const r = await resolveAndPinToken(store, rawToken, mcpSessionId);
+    if (!r.ok) {
+      return r.response;
+    }
+    const { token } = r;
+    const loaded = await store.load(token);
+    if (loaded === null) {
+      return sessionNotFoundResult(token);
+    }
+    const rendered = render(loaded, token);
+    if (isToolResult(rendered)) {
+      return rendered;
+    }
+    return textResult(JSON.stringify(rendered, null, 2));
+  });
+}
+
+function isToolResult(value: ToolResult | Record<string, unknown>): value is ToolResult {
+  return Array.isArray((value as ToolResult).content);
+}
+
 export function registerSessionReadTools(
   server: McpServer,
   options: { sessionStore: SessionStore; mcpSessionId?: string }
 ): void {
   const { sessionStore, mcpSessionId } = options;
-
-  const resolveToken = (sessionToken: string) => resolveAndPinToken(sessionStore, sessionToken, mcpSessionId);
 
   server.registerTool(
     'pathfinder_list_blocks',
@@ -47,30 +84,12 @@ export function registerSessionReadTools(
       inputSchema: { ...SessionTokenInput },
     },
     async ({ sessionToken }) =>
-      withToolErrorEnvelope(sessionToken, 'list_blocks', async () => {
-        const r = await resolveToken(sessionToken);
-        if (!r.ok) {
-          return r.response;
-        }
-        const { token } = r;
-        const loaded = await sessionStore.load(token);
-        if (loaded === null) {
-          return sessionNotFoundResult(token);
-        }
-        const summary = buildArtifactSummary(loaded.artifact.content);
-        return textResult(
-          JSON.stringify(
-            {
-              status: 'ok',
-              sessionToken: token,
-              generation: loaded.generation,
-              blocks: summary,
-            },
-            null,
-            2
-          )
-        );
-      })
+      withLoadedSession(sessionStore, mcpSessionId, sessionToken, 'list_blocks', (loaded, token) => ({
+        status: 'ok',
+        sessionToken: token,
+        generation: loaded.generation,
+        blocks: buildArtifactSummary(loaded.artifact.content),
+      }))
   );
 
   server.registerTool(
@@ -85,16 +104,7 @@ export function registerSessionReadTools(
       },
     },
     async ({ sessionToken, blockId }) =>
-      withToolErrorEnvelope(sessionToken, 'get_block', async () => {
-        const r = await resolveToken(sessionToken);
-        if (!r.ok) {
-          return r.response;
-        }
-        const { token } = r;
-        const loaded = await sessionStore.load(token);
-        if (loaded === null) {
-          return sessionNotFoundResult(token);
-        }
+      withLoadedSession(sessionStore, mcpSessionId, sessionToken, 'get_block', (loaded, token) => {
         const block = findBlockById(loaded.artifact.content, blockId);
         if (!block) {
           return textResult(
@@ -112,18 +122,12 @@ export function registerSessionReadTools(
             /* isError */ true
           );
         }
-        return textResult(
-          JSON.stringify(
-            {
-              status: 'ok',
-              sessionToken: token,
-              generation: loaded.generation,
-              block,
-            },
-            null,
-            2
-          )
-        );
+        return {
+          status: 'ok',
+          sessionToken: token,
+          generation: loaded.generation,
+          block,
+        };
       })
   );
 
@@ -136,28 +140,11 @@ export function registerSessionReadTools(
       inputSchema: { ...SessionTokenInput },
     },
     async ({ sessionToken }) =>
-      withToolErrorEnvelope(sessionToken, 'get_manifest_session', async () => {
-        const r = await resolveToken(sessionToken);
-        if (!r.ok) {
-          return r.response;
-        }
-        const { token } = r;
-        const loaded = await sessionStore.load(token);
-        if (loaded === null) {
-          return sessionNotFoundResult(token);
-        }
-        return textResult(
-          JSON.stringify(
-            {
-              status: 'ok',
-              sessionToken: token,
-              generation: loaded.generation,
-              manifest: loaded.artifact.manifest ?? null,
-            },
-            null,
-            2
-          )
-        );
-      })
+      withLoadedSession(sessionStore, mcpSessionId, sessionToken, 'get_manifest_session', (loaded, token) => ({
+        status: 'ok',
+        sessionToken: token,
+        generation: loaded.generation,
+        manifest: loaded.artifact.manifest ?? null,
+      }))
   );
 }

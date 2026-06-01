@@ -34,26 +34,20 @@ import type { SessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveReadOnlyInput } from './read-input';
 import { textResult, withToolErrorEnvelope } from './result';
+import { ArtifactInputBase, SessionTokenBase } from './two-mode-input';
 
 const APP_PLATFORM_API_VERSION = 'pathfinderbackend.ext.grafana.com/v1alpha1';
 const APP_PLATFORM_KIND = 'InteractiveGuide';
 const APP_PLATFORM_RESOURCE = 'interactiveguides';
 const NAMESPACE_PLACEHOLDER = '{namespace}';
 
-const ArtifactSchema = z
-  .object({
-    content: z.record(z.string(), z.unknown()),
-    manifest: z.record(z.string(), z.unknown()).optional(),
-  })
-  .optional()
-  .describe('STATELESS MODE. Pass an in-flight artifact directly. Pass EITHER `artifact` OR `sessionToken`, not both.');
+const ArtifactSchema = ArtifactInputBase.describe(
+  'STATELESS MODE. Pass an in-flight artifact directly. Pass EITHER `artifact` OR `sessionToken`, not both.'
+);
 
-const SessionTokenSchema = z
-  .string()
-  .optional()
-  .describe(
-    'SESSION MODE. Token returned by pathfinder_create_package or a previous mutation ack. On a successful finalize the session is deleted server-side and the token becomes unusable.'
-  );
+const SessionTokenSchema = SessionTokenBase.describe(
+  'SESSION MODE. Token returned by pathfinder_create_package or a previous mutation ack. On a successful finalize the session is deleted server-side and the token becomes unusable.'
+);
 
 export function registerFinalizeTool(
   server: McpServer,

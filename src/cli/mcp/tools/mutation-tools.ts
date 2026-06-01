@@ -30,8 +30,6 @@ import { writeAppend, writeDestructive } from './annotations';
 import { resolveAndPinToken } from './read-input';
 import {
   concurrentModificationResult,
-  inputModeAmbiguousResult,
-  inputModeMissingResult,
   outcomeResult,
   sessionNotFoundResult,
   sessionOutcomeResult,
@@ -47,45 +45,31 @@ import {
   isStoreUnavailable,
   withArtifact,
 } from './state-bridge';
+import {
+  ArtifactInputWithEtag,
+  ExpectedGenerationBase,
+  SessionTokenBase,
+  classifyTwoModeInput,
+} from './two-mode-input';
 
 /**
  * Input schema for the two-mode dispatch (P7). Mutation tools accept
  * EITHER `artifact` (stateless mode, the historical contract) OR
  * `sessionToken` (session-mode, GCS-backed). Both are optional at the
- * Zod layer; the handler enforces "exactly one of" at runtime — Zod's
- * discriminated unions don't map cleanly to MCP tool inputSchema, so
- * the check is in handler code.
+ * Zod layer; the handler enforces "exactly one of" at runtime via
+ * `classifyTwoModeInput` — Zod's discriminated unions don't map cleanly
+ * to MCP tool inputSchema, so the check is in handler code.
  */
 const ArtifactInputSchema = {
-  artifact: z
-    .object({
-      content: z.record(z.string(), z.unknown()),
-      manifest: z.record(z.string(), z.unknown()).optional(),
-      __etag: z
-        .string()
-        .optional()
-        .describe(
-          'Integrity tag issued on the previous response. Pass back verbatim along with content and manifest; the server verifies it before dispatching.'
-        ),
-    })
-    .optional()
-    .describe(
-      'STATELESS MODE. In-flight authoring artifact returned by the previous authoring tool. Echo it back verbatim — including `__etag`. Do not re-serialize, reformat, re-key, or "fix" any field; even fields that look wrong are valid CLI output. The server hashes content+manifest and checks it against the echoed `__etag`; a mismatch returns ARTIFACT_MUTATED before the schema validator runs. Pass EITHER `artifact` OR `sessionToken`, not both.'
-    ),
-  sessionToken: z
-    .string()
-    .optional()
-    .describe(
-      'SESSION MODE. Opaque token returned by pathfinder_create_package or a previous mutation ack. The server loads the artifact from session storage, runs the mutation, and writes the result back — the full artifact does not return to your context. Use pathfinder_inspect / pathfinder_get_block / pathfinder_list_blocks to read state on demand. Pass EITHER `artifact` OR `sessionToken`, not both.'
-    ),
-  expectedGeneration: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe(
-      'OPTIONAL with sessionToken. The generation you observed on a previous call. When set, the server surfaces CONCURRENT_MODIFICATION immediately on mismatch instead of retrying. Omit this if you do not have specific concurrency expectations — the server will retry-once silently on a race.'
-    ),
+  artifact: ArtifactInputWithEtag.describe(
+    'STATELESS MODE. In-flight authoring artifact returned by the previous authoring tool. Echo it back verbatim — including `__etag`. Do not re-serialize, reformat, re-key, or "fix" any field; even fields that look wrong are valid CLI output. The server hashes content+manifest and checks it against the echoed `__etag`; a mismatch returns ARTIFACT_MUTATED before the schema validator runs. Pass EITHER `artifact` OR `sessionToken`, not both.'
+  ),
+  sessionToken: SessionTokenBase.describe(
+    'SESSION MODE. Opaque token returned by pathfinder_create_package or a previous mutation ack. The server loads the artifact from session storage, runs the mutation, and writes the result back — the full artifact does not return to your context. Use pathfinder_inspect / pathfinder_get_block / pathfinder_list_blocks to read state on demand. Pass EITHER `artifact` OR `sessionToken`, not both.'
+  ),
+  expectedGeneration: ExpectedGenerationBase.describe(
+    'OPTIONAL with sessionToken. The generation you observed on a previous call. When set, the server surfaces CONCURRENT_MODIFICATION immediately on mismatch instead of retrying. Omit this if you do not have specific concurrency expectations — the server will retry-once silently on a race.'
+  ),
 };
 
 /**
@@ -150,22 +134,18 @@ async function dispatchMutation(
   },
   runner: (dir: string) => Promise<CommandOutcome> | CommandOutcome
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  const hasArtifact = inputs.artifact !== undefined;
-  const hasSessionToken = typeof inputs.sessionToken === 'string' && inputs.sessionToken.length > 0;
-  if (hasArtifact && hasSessionToken) {
-    return inputModeAmbiguousResult();
-  }
-  if (!hasArtifact && !hasSessionToken) {
-    return inputModeMissingResult();
+  const classified = classifyTwoModeInput({ artifact: inputs.artifact, sessionToken: inputs.sessionToken });
+  if (classified.kind === 'error') {
+    return classified.response;
   }
 
   // Capture the (possibly invalid) token for error responses before any
   // throw can escape, so the catch-all envelope can echo it back.
-  const rawToken = hasSessionToken ? inputs.sessionToken : undefined;
+  const rawToken = classified.kind === 'session' ? classified.token : undefined;
 
   return withToolErrorEnvelope(rawToken, 'mutation-tools', async () => {
-    if (hasSessionToken) {
-      const resolution = await resolveAndPinToken(store, inputs.sessionToken, mcpSessionId);
+    if (classified.kind === 'session') {
+      const resolution = await resolveAndPinToken(store, classified.token, mcpSessionId);
       if (!resolution.ok) {
         return resolution.response;
       }
@@ -189,7 +169,7 @@ async function dispatchMutation(
     }
 
     // Stateless mode — unchanged behavior from before P7.
-    const artifact = inputs.artifact!;
+    const artifact = classified.artifact;
     const mismatch = verifyArtifactEtag(artifact);
     if (mismatch) {
       return mismatch;
