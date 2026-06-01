@@ -24,16 +24,14 @@ import { registerSessionReadTools } from './session-read-tools';
 export interface RegisterAuthoringToolsOptions {
   /**
    * Session store used by the session-mode branch of every mutation /
-   * inspection / read tool (P7). Stateless `{artifact}` mode does not
-   * consult the store; tools that only support artifact mode ignore this
-   * option.
+   * inspection / read tool. Stateless `{artifact}` mode does not consult
+   * the store; tools that only support artifact mode ignore this option.
    */
   sessionStore: SessionStore;
   /**
-   * P7 task 16. Transport-layer Mcp-Session-Id header value for this
-   * request (HTTP only). Threaded through to session-mode tools so they
-   * can bind the pin on mint and check it on subsequent calls. See
-   * `lib/session-pin.ts`.
+   * Transport-layer Mcp-Session-Id header value for this request (HTTP only).
+   * Threaded through to session-mode tools so they can bind the pin on mint
+   * and check it on subsequent calls. See `lib/session-pin.ts`.
    */
   mcpSessionId?: string;
 }

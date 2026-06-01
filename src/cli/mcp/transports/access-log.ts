@@ -141,10 +141,10 @@ export function extractRpcInfo(body: unknown): RpcInfo {
     if (typeof params.name === 'string') {
       info.rpcToolName = params.name;
     }
-    // P7 task 17 — surface session-token-derived correlators in the
-    // access log so an operator can trace one authoring session across
-    // hops without ever logging the raw token. Best-effort: any shape
-    // we don't recognize is silently skipped.
+    // Surface session-token-derived correlators in the access log so an
+    // operator can trace one authoring session across hops without ever
+    // logging the raw token. Best-effort: any shape we don't recognize is
+    // silently skipped.
     if (params.arguments && typeof params.arguments === 'object') {
       const raw = (params.arguments as { sessionToken?: unknown }).sessionToken;
       if (typeof raw === 'string') {

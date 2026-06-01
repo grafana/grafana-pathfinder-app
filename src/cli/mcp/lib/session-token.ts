@@ -28,32 +28,32 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 /** Crockford base32 alphabet, lowercase. Excludes I, L, O, U. */
-const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
+export const CROCKFORD_LOWERCASE_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 const TOKEN_LENGTH = 22;
 
-/** Mint a fresh, high-entropy session token. */
-export function generateSessionToken(): string {
-  // 22 chars * 5 bits = 110 bits. Generate 14 bytes (112 bits) and take 22 chars worth.
-  const bytes = randomBytes(14);
+/**
+ * Encode CSPRNG bytes as `length` Crockford-base32 chars. Shared by
+ * `generateSessionToken` (110 bits) and the per-attempt stage-id generator
+ * in `session-store-gcs.ts` (80 bits).
+ */
+export function crockfordBase32(bytes: Buffer, length: number): string {
   let bits = 0;
   let bitCount = 0;
   let out = '';
-  for (let i = 0; i < bytes.length && out.length < TOKEN_LENGTH; i++) {
-    const byte = bytes[i] ?? 0;
-    bits = (bits << 8) | byte;
+  for (let i = 0; i < bytes.length && out.length < length; i++) {
+    bits = (bits << 8) | (bytes[i] ?? 0);
     bitCount += 8;
-    while (bitCount >= 5 && out.length < TOKEN_LENGTH) {
+    while (bitCount >= 5 && out.length < length) {
       bitCount -= 5;
-      const idx = (bits >> bitCount) & 0x1f;
-      const ch = ALPHABET[idx];
-      if (ch === undefined) {
-        // Unreachable — idx is masked to 5 bits and ALPHABET has 32 entries.
-        throw new Error('generateSessionToken: index out of range (impossible)');
-      }
-      out += ch;
+      out += CROCKFORD_LOWERCASE_ALPHABET.charAt((bits >> bitCount) & 0x1f);
     }
   }
   return out;
+}
+
+/** Mint a fresh, high-entropy session token. 22 chars × 5 bits = 110 bits. */
+export function generateSessionToken(): string {
+  return crockfordBase32(randomBytes(14), TOKEN_LENGTH);
 }
 
 /**
@@ -67,7 +67,7 @@ export function isValidSessionToken(s: unknown): s is string {
   }
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
-    if (ch === undefined || !ALPHABET.includes(ch)) {
+    if (ch === undefined || !CROCKFORD_LOWERCASE_ALPHABET.includes(ch)) {
       return false;
     }
   }

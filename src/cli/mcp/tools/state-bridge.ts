@@ -26,7 +26,7 @@
  * in-memory state mode so this bridge can collapse to a function call.
  * Tracked in P3 deviations.
  *
- * P7 addition (`dispatchSessionMutation`): session-mode mutations load
+ * Session-mode (`dispatchSessionMutation`): session-mode mutations load
  * the artifact from a `SessionStore` keyed by an opaque session token,
  * run the same tmpdir flow, and write the updated artifact back to the
  * store under an `ifGenerationMatch` precondition. The CLI runner is the
@@ -381,18 +381,14 @@ export async function dispatchSessionMutation(
   }
 }
 
-export function isSessionNotFound(r: unknown): r is SessionNotFound {
-  return typeof r === 'object' && r !== null && (r as SessionNotFound).code === 'SESSION_NOT_FOUND';
+function hasCode<T extends { code: string }>(r: unknown, code: T['code']): r is T {
+  return typeof r === 'object' && r !== null && (r as { code?: unknown }).code === code;
 }
 
-export function isConcurrentModification(r: unknown): r is ConcurrentModificationResult {
-  return typeof r === 'object' && r !== null && (r as ConcurrentModificationResult).code === 'CONCURRENT_MODIFICATION';
-}
-
-export function isStoreUnavailable(r: unknown): r is StoreUnavailableResult {
-  return typeof r === 'object' && r !== null && (r as StoreUnavailableResult).code === 'SESSION_STORE_UNAVAILABLE';
-}
-
-export function isSessionTooLarge(r: unknown): r is SessionTooLargeResult {
-  return typeof r === 'object' && r !== null && (r as SessionTooLargeResult).code === SESSION_TOO_LARGE;
-}
+export const isSessionNotFound = (r: unknown): r is SessionNotFound => hasCode<SessionNotFound>(r, 'SESSION_NOT_FOUND');
+export const isConcurrentModification = (r: unknown): r is ConcurrentModificationResult =>
+  hasCode<ConcurrentModificationResult>(r, 'CONCURRENT_MODIFICATION');
+export const isStoreUnavailable = (r: unknown): r is StoreUnavailableResult =>
+  hasCode<StoreUnavailableResult>(r, 'SESSION_STORE_UNAVAILABLE');
+export const isSessionTooLarge = (r: unknown): r is SessionTooLargeResult =>
+  hasCode<SessionTooLargeResult>(r, SESSION_TOO_LARGE);

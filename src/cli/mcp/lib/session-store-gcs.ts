@@ -1,12 +1,12 @@
 /**
- * GCS-backed implementation of `SessionStore` (P7).
+ * GCS-backed implementation of `SessionStore`.
  *
  * Layout (per session token):
  *
  *   gs://<bucket>/<prefix>/generation              ← canonical pointer (JSON)
  *   gs://<bucket>/<prefix>/<stage>/content.json    ← immutable per save attempt
  *   gs://<bucket>/<prefix>/<stage>/manifest.json   ← optional, immutable per save attempt
- *   gs://<bucket>/<prefix>/.pin                    ← Mcp-Session-Id pin (P7 task 16)
+ *   gs://<bucket>/<prefix>/.pin                    ← Mcp-Session-Id pin
  *
  * `<prefix>` is `tokenObjectPrefix(token)` — sha-256 hex of the token, NOT
  * the token itself. The raw token is a bearer credential; using it as the
@@ -20,13 +20,12 @@
  * stage id is a random per-save-attempt nonce (NOT derived from the
  * generation number).
  *
- * Why per-attempt nonces? (BL-01 / BL-02). Generation-keyed staging
- * (`g-<N>/`) has a collision: two writers targeting the same next
- * generation both write to `g-<N>/`, the second's body overwrites the
- * first's, and a 412 loser's cleanup of `g-<N>/` would wipe the winner.
- * Per-attempt nonces give each writer a private staging area; only the
- * pointer flip is contended, and that's gated by GCS's atomic
- * `ifGenerationMatch` precondition.
+ * Why per-attempt nonces? Generation-keyed staging (`g-<N>/`) has a
+ * collision: two writers targeting the same next generation both write to
+ * `g-<N>/`, the second's body overwrites the first's, and a 412 loser's
+ * cleanup of `g-<N>/` would wipe the winner. Per-attempt nonces give each
+ * writer a private staging area; only the pointer flip is contended, and
+ * that's gated by GCS's atomic `ifGenerationMatch` precondition.
  *
  * Save (atomic, no torn state visible to readers):
  *   1. Mint a fresh `stage` nonce.
@@ -80,6 +79,7 @@ import { randomBytes } from 'node:crypto';
 import type { Bucket, Storage as GcsStorage } from '@google-cloud/storage';
 
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
+import { crockfordBase32 } from './session-token';
 import {
   SESSION_GENERATION_ABSENT,
   SessionPreconditionFailedError,
@@ -470,10 +470,10 @@ export class GcsSessionStore implements SessionStore {
   }
 
   /**
-   * P7 task 16. Persist the MCP transport session id as a sidecar object
-   * at `<prefix>/.pin`. WR-05: written with `ifGenerationMatch=0`, so a
-   * second bind cannot silently overwrite the first. On 412 we read the
-   * existing pin and:
+   * Persist the MCP transport session id as a sidecar object at
+   * `<prefix>/.pin`. Written with `ifGenerationMatch=0`, so a second bind
+   * cannot silently overwrite the first. On 412 we read the existing pin
+   * and:
    *   - if it matches the new value, treat as idempotent no-op (covers
    *     retry-after-network-hiccup on the mint path);
    *   - if it differs, throw `SessionPreconditionFailedError`. No
@@ -597,21 +597,13 @@ export class GcsSessionStore implements SessionStore {
 /**
  * Default stage-id generator: 16 chars of Crockford base32 (~80 bits of
  * entropy). Two concurrent saves on the same token will, in practice,
- * never collide — and even if they did, the only consequence is that
- * one writer's content uploads land in the other writer's staging dir,
- * which is still gated by the pointer-flip precondition (so one of
- * them sees 412 and cleans up).
+ * never collide — and even if they did, the only consequence is that one
+ * writer's content uploads land in the other writer's staging dir, which
+ * is still gated by the pointer-flip precondition (so one of them sees
+ * 412 and cleans up).
  */
 function defaultStageIdGenerator(): string {
-  const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
-  const bytes = randomBytes(10);
-  let out = '';
-  for (let i = 0; i < bytes.length; i++) {
-    const b = bytes[i] as number;
-    out += ALPHABET[b & 0x1f];
-    out += ALPHABET[(b >> 3) & 0x1f];
-  }
-  return out.slice(0, 16);
+  return crockfordBase32(randomBytes(10), 16);
 }
 
 async function loadDefaultStorage(): Promise<GcsStorage> {

@@ -1,5 +1,5 @@
 /**
- * P7 fine-grained read tools — session-scoped, lightweight.
+ * Fine-grained read tools — session-scoped, lightweight.
  *
  * These three tools exist so the agent can read specific facets of a
  * session-stored artifact WITHOUT pulling the full artifact into
@@ -11,10 +11,9 @@
  *   - pathfinder_get_block        — one block by id
  *   - pathfinder_get_manifest_session — the manifest only
  *
- * Naming note: pathfinder_get_manifest is taken by P6 (CDN repository
- * tools), so the session-scoped variant carries an explicit `_session`
- * suffix to avoid the collision. The P6 decision log
- * (ai-authoring-6-cdn-repository-tools.md) called this out.
+ * Naming note: pathfinder_get_manifest is taken by the CDN repository
+ * tools, so the session-scoped variant carries an explicit `_session`
+ * suffix to avoid the collision.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';

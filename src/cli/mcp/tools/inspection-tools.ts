@@ -4,12 +4,12 @@
  * data — no artifact mutation, so they don't need the writeback step in
  * `state-bridge`.
  *
- * P7 (session-mode): each tool also accepts `{sessionToken}` instead of
+ * Session-mode: each tool also accepts `{sessionToken}` instead of
  * `{artifact}`. The session-mode branch loads from the store and runs
  * the same read-only pipeline. `pathfinder_inspect` is the canonical
  * "give me the whole artifact" tool — when called in session-mode, the
- * artifact returns to the agent's context (this is the escape hatch
- * from the P7 design: the agent explicitly chose to pull it).
+ * artifact returns to the agent's context (the explicit escape hatch:
+ * the agent chose to pull it).
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';

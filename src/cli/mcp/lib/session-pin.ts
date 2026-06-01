@@ -1,41 +1,18 @@
 /**
- * P7 task 16 — optional `Mcp-Session-Id` binding for session-mode tools.
+ * Optional `Mcp-Session-Id` binding for session-mode tools. A mismatched
+ * pin surfaces as `SESSION_NOT_FOUND` (404), NOT 403 — the pin is a
+ * confidentiality boundary; we don't leak "this session exists but belongs
+ * to someone else."
  *
- * The HTTP transport extracts the `Mcp-Session-Id` request header (see
- * `transports/http.ts#readSessionId`) and the build chain plumbs it into
- * every per-request `McpServer` via `BuildServerOptions.mcpSessionId`.
- * On session mint, callers persist the value as a pin in the session
- * store; on every subsequent session-mode call the pin is compared
- * against the current request's header.
+ * Skip (proceed): the session was minted without a pin (stdio mint), or
+ * the trimmed pin matches the trimmed header. We do NOT lazily bind on
+ * first-with-header access — that would let a bystander claim a
+ * stdio-minted session.
  *
- * Per the P7 design: a mismatched pin surfaces as `SESSION_NOT_FOUND`
- * (the wire-shape 404), NOT a forbidden 403. The pin is a confidentiality
- * boundary — we don't want to leak "this session exists but belongs to
- * someone else."
- *
- * Skip paths (pin check returns null = proceed):
- *
- *   - the session was minted without a pin (stdio mint, no header at
- *     mint time). Without a pin there is nothing to enforce, and we do
- *     NOT lazily bind on first-with-header access (that would let a
- *     bystander claim a stdio-minted session).
- *   - the trimmed pin matches the trimmed header.
- *
- * Reject paths (return SESSION_NOT_FOUND):
- *
- *   - the session IS pinned and the request omits the header. The
- *     pre-WR-01 implementation skipped this case, which made the pin
- *     trivially bypassable on HTTP — any token-bearer could omit the
- *     header and slip past. Under `--allow-unauthenticated` the token
- *     IS the credential, so an HTTP request against a pinned session
- *     must carry the header it was bound with.
- *   - the session IS pinned and the header is set but doesn't match.
- *
- * stdio compatibility: stdio-minted sessions are minted without a
- * header, so `readMcpSessionPin` returns null and we proceed without
- * enforcement. The skip is driven by "is this session pinned?" rather
- * than "did the request carry a header?" — closing the bypass without
- * threading transport identity through the build chain.
+ * Reject (SESSION_NOT_FOUND): the session IS pinned and the request omits
+ * the header, OR the header is set but doesn't match. Under
+ * `--allow-unauthenticated` the token IS the credential, so an HTTP
+ * request against a pinned session must carry the header it was bound with.
  */
 
 import type { SessionStore } from './session-store';

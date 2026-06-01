@@ -1,5 +1,5 @@
 /**
- * Session store for the P7 GCS-backed authoring sessions.
+ * Session store for the GCS-backed authoring sessions.
  *
  * Each session is a directory under the storage backend keyed by an opaque
  * session token (see `session-token.ts`). The store holds the authoring
@@ -20,8 +20,8 @@
  *   - A mismatch throws `SessionPreconditionFailedError`, carrying the
  *     observed and expected generations so the caller can decide between
  *     retry-with-refetch and surface-to-agent. The structured error is
- *     what wires P7 task 13's "server retries 412 once, then surfaces"
- *     behavior cleanly.
+ *     what wires the "server retries 412 once, then surfaces" behavior
+ *     cleanly.
  *
  * Failure-mode contract:
  *   - `load` returns `null` for an unknown token. It may throw
@@ -151,15 +151,15 @@ export interface SessionStore {
 
   /**
    * Persist a transport-layer `Mcp-Session-Id` pin against this session
-   * token. P7 task 16: called on session mint so subsequent calls from a
-   * different MCP transport session are rejected with `SESSION_NOT_FOUND`
-   * (per design — the pin is a confidentiality boundary, not an auth
-   * surface, so it surfaces as 404, not 403).
+   * token. Called on session mint so subsequent calls from a different MCP
+   * transport session are rejected with `SESSION_NOT_FOUND` — the pin is a
+   * confidentiality boundary, not an auth surface, so it surfaces as 404,
+   * not 403.
    *
-   * Idempotent for the same pin. WR-05: rebinding an existing pin to a
-   * different value throws `SessionPreconditionFailedError`. No
-   * production caller does this; the failure is structured rather than
-   * a silent overwrite of a confidentiality field.
+   * Idempotent for the same pin. Rebinding an existing pin to a different
+   * value throws `SessionPreconditionFailedError`. No production caller does
+   * this; the failure is structured rather than a silent overwrite of a
+   * confidentiality field.
    */
   bindMcpSessionId(token: string, mcpSessionId: string): Promise<void>;
 
@@ -217,8 +217,8 @@ export class InMemorySessionStore implements SessionStore {
   }
 
   async bindMcpSessionId(token: string, mcpSessionId: string): Promise<void> {
-    // WR-05 parity with GCS: refuse to overwrite an existing pin with a
-    // different value; same-value rebinds are idempotent.
+    // Parity with GCS: refuse to overwrite an existing pin with a different
+    // value; same-value rebinds are idempotent.
     const existing = this.pins.get(token);
     if (existing !== undefined && existing !== mcpSessionId) {
       throw new SessionPreconditionFailedError(SESSION_GENERATION_ABSENT, 1);

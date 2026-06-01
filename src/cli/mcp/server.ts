@@ -41,13 +41,12 @@ export interface BuildServerOptions {
    */
   sessionStore?: SessionStore;
   /**
-   * P7 task 16. Transport-layer `Mcp-Session-Id` header value for the
-   * current request. HTTP transport extracts and threads it per request;
-   * stdio omits it (the user's local trust boundary is the process
-   * boundary). On session mint this value is persisted as a pin against
-   * the new session token; on every subsequent session-mode call the
-   * value is compared against the pin — a mismatch surfaces as
-   * SESSION_NOT_FOUND. See `lib/session-pin.ts`.
+   * Transport-layer `Mcp-Session-Id` header value for the current request.
+   * HTTP transport extracts and threads it per request; stdio omits it (the
+   * user's local trust boundary is the process boundary). On session mint
+   * this value is persisted as a pin against the new session token; on every
+   * subsequent session-mode call the value is compared against the pin — a
+   * mismatch surfaces as SESSION_NOT_FOUND. See `lib/session-pin.ts`.
    */
   mcpSessionId?: string;
 }
@@ -62,10 +61,6 @@ export function buildServer(options: BuildServerOptions = {}): McpServer {
       capabilities: {
         tools: {},
       },
-      // M1 layer 3 — server-level instructions surfaced to MCP-aware clients
-      // on `initialize`. Reaches the model before tool selection; covers
-      // routing vocabulary (#7) plus the two highest-cost authoring rules
-      // (#3 selector discipline, #8 multistep / noop composition).
       instructions: SERVER_INSTRUCTIONS,
     }
   );

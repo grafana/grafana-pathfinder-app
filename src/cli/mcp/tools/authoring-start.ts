@@ -6,12 +6,12 @@
  * progress. Sourced from a single typed module here so updates land in one
  * place rather than being copy-pasted into every client's skill file.
  *
- * P7 rewrite: session-token mode is taught as the primary workflow. The
- * agent learns that the first mutation mints a sessionToken, mutation
- * responses are acks (not full artifacts), reads are explicit and
- * on-demand, and the full artifact returns only at finalize. Stateless
- * `{artifact}` mode is mentioned once as a fallback for OSS / airgap
- * environments where no GCS bucket is configured.
+ * Session-token mode is taught as the primary workflow: the first
+ * mutation mints a sessionToken, mutation responses are acks (not full
+ * artifacts), reads are explicit and on-demand, and the full artifact
+ * returns only at finalize. Stateless `{artifact}` mode is mentioned once
+ * as a fallback for OSS / airgap environments where no GCS bucket is
+ * configured.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -25,12 +25,11 @@ const AUTHORING_CONTEXT = {
   version: CURRENT_SCHEMA_VERSION,
   product:
     'Grafana Pathfinder is a Grafana plugin that runs interactive, contextual guides as a sidebar in Grafana. A guide is a tree of "blocks" — markdown, interactive UI actions, sections, conditionals, multistep, quizzes — stored as JSON.',
-  // Routing reaffirmation surface (M1 layer 2). The same constants seed the
-  // server-level `instructions` string in `lib/server-instructions.ts`, so an
-  // agent that reached this tool via layer-3 hints sees consistent vocabulary,
+  // Routing reaffirmation surface. The same constants seed the server-level
+  // `instructions` string in `lib/server-instructions.ts`, so an agent that
+  // reached this tool via the initialize hint sees consistent vocabulary,
   // and clients that don't render `initialize.instructions` still get the
-  // routing signal here. `domains` added in slice 3 (2026-05-12) so the
-  // agent has explicit vocabulary for product-area follow-up prompts.
+  // routing signal here.
   triggers: [...PATHFINDER_TRIGGER_PHRASES],
   notFor: [...PATHFINDER_NOT_FOR],
   domains: [...PATHFINDER_DOMAINS],
@@ -77,7 +76,7 @@ const AUTHORING_CONTEXT = {
   // Distilled from grafana/interactive-tutorials `.cursor/authoring-guide.mdc`.
   // Curate ruthlessly — every connected client pays this length on every
   // `_start` call. If this list grows past ~20 rules, ship a separate
-  // `pathfinder_authoring_best_practices` tool (OQ7) instead of expanding here.
+  // best-practices tool instead of expanding here.
   compositionRules: [
     'Prefer separate sibling blocks over a `multistep` block. Use `multistep` only when the steps must run in order AND are tightly coupled.',
     'Never write a step with `action: noop` as filler. If there is nothing concrete for the user to do, write a `markdown` block describing what they would do instead.',
