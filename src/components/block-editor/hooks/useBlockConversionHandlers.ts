@@ -14,6 +14,7 @@ import { getAppEvents } from '@grafana/runtime';
 import type { BlockType, JsonBlock, EditorBlock } from '../types';
 import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock } from '../../../types/json-guide.types';
 import { convertBlockType } from '../utils/block-conversion';
+import { stepGuidedToMultistep, stepMultistepToGuided } from '../utils/stepFieldMapping';
 import type { NestedBlockEditingState, ConditionalBranchEditingState } from './useBlockFormState';
 
 /**
@@ -168,31 +169,19 @@ export function useBlockConversionHandlers(
       let convertedBlock: JsonMultistepBlock | JsonGuidedBlock;
 
       if (newType === 'guided') {
-        // Convert multistep to guided
         convertedBlock = {
           type: 'guided',
           content: currentBlock.content,
-          steps: currentBlock.steps.map((step) => ({
-            ...step,
-            // Move tooltip to description for guided
-            description: step.tooltip || step.description,
-            tooltip: undefined,
-          })),
+          steps: currentBlock.steps.map(stepMultistepToGuided),
           ...(currentBlock.requirements && { requirements: currentBlock.requirements }),
           ...(currentBlock.objectives && { objectives: currentBlock.objectives }),
           ...(currentBlock.skippable && { skippable: currentBlock.skippable }),
         };
       } else {
-        // Convert guided to multistep
         convertedBlock = {
           type: 'multistep',
           content: currentBlock.content,
-          steps: currentBlock.steps.map((step) => ({
-            ...step,
-            // Move description to tooltip for multistep
-            tooltip: step.description || step.tooltip,
-            description: undefined,
-          })),
+          steps: currentBlock.steps.map(stepGuidedToMultistep),
           ...(currentBlock.requirements && { requirements: currentBlock.requirements }),
           ...(currentBlock.objectives && { objectives: currentBlock.objectives }),
           ...(currentBlock.skippable && { skippable: currentBlock.skippable }),

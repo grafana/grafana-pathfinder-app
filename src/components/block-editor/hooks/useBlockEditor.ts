@@ -1300,11 +1300,13 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     return { isNested: false };
   };
 
-  // Merge interactive/multistep/guided blocks into a Multistep block
-  const mergeBlocksToMultistep = useCallback(
-    (blockIds: string[]) => {
+  const mergeBlocksTo = useCallback(
+    (
+      blockIds: string[],
+      interactiveToStep: (block: JsonInteractiveBlock) => JsonStep,
+      createOutputBlock: (steps: JsonStep[]) => JsonMultistepBlock | JsonGuidedBlock
+    ) => {
       setState((prev) => {
-        // Parse all block IDs and collect mergeable blocks (interactive, multistep, guided)
         const parsedBlocks = blockIds
           .map((id) => ({ id, ...parseBlockId(id, prev.blocks) }))
           .filter(
@@ -1315,9 +1317,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           return prev;
         }
 
-        // Sort by document position: root blocks by index, nested by section position + nested index
         parsedBlocks.sort((a, b) => {
-          // Get effective position for sorting
           const aPos = a.isNested
             ? (a.sectionRootIndex ?? 0) * 10000 + (a.nestedIndex ?? 0)
             : (a.rootIndex ?? 0) * 10000;
@@ -1327,33 +1327,14 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           return aPos - bPos;
         });
 
-        // Convert blocks to steps, extracting steps from multistep/guided blocks
         const steps: JsonStep[] = parsedBlocks.flatMap((p) => {
           if (isInteractiveBlock(p.block!)) {
-            const interactive = p.block as JsonInteractiveBlock;
-            return [
-              {
-                action: interactive.action,
-                reftarget: interactive.reftarget,
-                ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
-                // Use tooltip if available, otherwise use content
-                ...(interactive.tooltip && { tooltip: interactive.tooltip }),
-                ...(!interactive.tooltip && interactive.content && { tooltip: interactive.content }),
-              },
-            ];
+            return [interactiveToStep(p.block as JsonInteractiveBlock)];
           }
-          // For multistep/guided blocks, extract their steps
-          const stepsBlock = p.block as JsonMultistepBlock | JsonGuidedBlock;
-          return stepsBlock.steps;
+          return (p.block as JsonMultistepBlock | JsonGuidedBlock).steps;
         });
 
-        // Create the multistep block
-        const multistepBlock: JsonMultistepBlock = {
-          type: 'multistep',
-          content: 'Complete the following steps:',
-          steps,
-        };
-
+        const outputBlock = createOutputBlock(steps);
         const firstParsed = parsedBlocks[0]!;
         const insertIntoSection = firstParsed.isNested && firstParsed.sectionId;
 
@@ -1382,7 +1363,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
                 const insertIdx = firstParsed.nestedIndex!;
                 const removedBefore = Array.from(indicesToRemove).filter((i) => i < insertIdx).length;
                 const adjustedIdx = insertIdx - removedBefore;
-                newSectionBlocks.splice(adjustedIdx, 0, multistepBlock);
+                newSectionBlocks.splice(adjustedIdx, 0, outputBlock);
               }
 
               return {
@@ -1396,7 +1377,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         if (!insertIntoSection) {
           const newEditorBlock: EditorBlock = {
             id: generateBlockId(),
-            block: multistepBlock,
+            block: outputBlock,
           };
 
           let insertIndex = prev.blocks.findIndex((b) => b.id === firstParsed.id);
@@ -1418,120 +1399,35 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     [notifyChange, setState]
   );
 
-  // Merge interactive/multistep/guided blocks into a Guided block
+  const mergeBlocksToMultistep = useCallback(
+    (blockIds: string[]) =>
+      mergeBlocksTo(
+        blockIds,
+        (interactive) => ({
+          action: interactive.action,
+          reftarget: interactive.reftarget,
+          ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
+          ...(interactive.tooltip && { tooltip: interactive.tooltip }),
+          ...(!interactive.tooltip && interactive.content && { tooltip: interactive.content }),
+        }),
+        (steps) => ({ type: 'multistep', content: 'Complete the following steps:', steps })
+      ),
+    [mergeBlocksTo]
+  );
+
   const mergeBlocksToGuided = useCallback(
-    (blockIds: string[]) => {
-      setState((prev) => {
-        // Parse all block IDs and collect mergeable blocks (interactive, multistep, guided)
-        const parsedBlocks = blockIds
-          .map((id) => ({ id, ...parseBlockId(id, prev.blocks) }))
-          .filter(
-            (p) => p.block && (isInteractiveBlock(p.block) || isMultistepBlock(p.block) || isGuidedBlock(p.block))
-          );
-
-        if (parsedBlocks.length < 2) {
-          return prev;
-        }
-
-        // Sort by document position: root blocks by index, nested by section position + nested index
-        parsedBlocks.sort((a, b) => {
-          // Get effective position for sorting
-          const aPos = a.isNested
-            ? (a.sectionRootIndex ?? 0) * 10000 + (a.nestedIndex ?? 0)
-            : (a.rootIndex ?? 0) * 10000;
-          const bPos = b.isNested
-            ? (b.sectionRootIndex ?? 0) * 10000 + (b.nestedIndex ?? 0)
-            : (b.rootIndex ?? 0) * 10000;
-          return aPos - bPos;
-        });
-
-        // Convert blocks to steps, extracting steps from multistep/guided blocks
-        const steps: JsonStep[] = parsedBlocks.flatMap((p) => {
-          if (isInteractiveBlock(p.block!)) {
-            const interactive = p.block as JsonInteractiveBlock;
-            return [
-              {
-                action: interactive.action,
-                reftarget: interactive.reftarget,
-                ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
-                ...(interactive.content && { description: interactive.content }),
-              },
-            ];
-          }
-          // For multistep/guided blocks, extract their steps
-          const stepsBlock = p.block as JsonMultistepBlock | JsonGuidedBlock;
-          return stepsBlock.steps;
-        });
-
-        // Create the guided block
-        const guidedBlock: JsonGuidedBlock = {
-          type: 'guided',
-          content: 'Follow the steps below:',
-          steps,
-        };
-
-        const firstParsed = parsedBlocks[0]!;
-        const insertIntoSection = firstParsed.isNested && firstParsed.sectionId;
-
-        const rootIdsToRemove = new Set(parsedBlocks.filter((p) => !p.isNested).map((p) => p.id));
-
-        const nestedToRemove = new Map<string, number[]>();
-        parsedBlocks
-          .filter((p) => p.isNested && p.sectionId !== undefined && p.nestedIndex !== undefined)
-          .forEach((p) => {
-            const existing = nestedToRemove.get(p.sectionId!) || [];
-            existing.push(p.nestedIndex!);
-            nestedToRemove.set(p.sectionId!, existing);
-          });
-
-        let newBlocks = prev.blocks
-          .filter((b) => !rootIdsToRemove.has(b.id))
-          .map((b) => {
-            if (
-              isSectionBlock(b.block) &&
-              (nestedToRemove.has(b.id) || (insertIntoSection && b.id === firstParsed.sectionId))
-            ) {
-              const indicesToRemove = new Set(nestedToRemove.get(b.id) || []);
-              let newSectionBlocks = b.block.blocks.filter((_, i) => !indicesToRemove.has(i));
-
-              if (insertIntoSection && b.id === firstParsed.sectionId) {
-                const insertIdx = firstParsed.nestedIndex!;
-                const removedBefore = Array.from(indicesToRemove).filter((i) => i < insertIdx).length;
-                const adjustedIdx = insertIdx - removedBefore;
-                newSectionBlocks.splice(adjustedIdx, 0, guidedBlock);
-              }
-
-              return {
-                ...b,
-                block: { ...b.block, blocks: newSectionBlocks },
-              };
-            }
-            return b;
-          });
-
-        if (!insertIntoSection) {
-          const newEditorBlock: EditorBlock = {
-            id: generateBlockId(),
-            block: guidedBlock,
-          };
-
-          let insertIndex = prev.blocks.findIndex((b) => b.id === firstParsed.id);
-          const removedBeforeInsert = prev.blocks.filter((b, i) => i < insertIndex && rootIdsToRemove.has(b.id)).length;
-          insertIndex -= removedBeforeInsert;
-
-          newBlocks.splice(insertIndex, 0, newEditorBlock);
-        }
-
-        const newState = {
-          ...prev,
-          blocks: newBlocks,
-          isDirty: true,
-        };
-        notifyChange(newState);
-        return newState;
-      });
-    },
-    [notifyChange, setState]
+    (blockIds: string[]) =>
+      mergeBlocksTo(
+        blockIds,
+        (interactive) => ({
+          action: interactive.action,
+          reftarget: interactive.reftarget,
+          ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
+          ...(interactive.content && { description: interactive.content }),
+        }),
+        (steps) => ({ type: 'guided', content: 'Follow the steps below:', steps })
+      ),
+    [mergeBlocksTo]
   );
 
   // Memoize return value
