@@ -245,7 +245,8 @@ export async function initializeOpenFeature(): Promise<void> {
     OPENFEATURE_DOMAIN,
     new OFREPWebProvider({
       baseUrl: `/apis/features.grafana.app/v0alpha1/namespaces/${namespace}`,
-      pollInterval: -1, // Do not poll - flags are fetched once on init
+      disableVisibilityRefresh: true, // Do not refresh
+      cacheMode: 'disabled', // Do not write to localStorage
       timeoutMs: 10_000, // Timeout after 10 seconds
     }),
     {

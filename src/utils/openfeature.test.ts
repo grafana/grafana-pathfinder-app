@@ -144,7 +144,8 @@ describe('openfeature', () => {
             name: 'ofrep',
             config: expect.objectContaining({
               baseUrl: '/apis/features.grafana.app/v0alpha1/namespaces/stacks-12345',
-              pollInterval: -1,
+              disableVisibilityRefresh: true,
+              cacheMode: 'disabled',
               timeoutMs: 10_000,
             }),
           }),
