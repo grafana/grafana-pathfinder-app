@@ -182,6 +182,14 @@ export type FlagTrackingKey = (typeof pathfinderFeatureFlags)[keyof typeof pathf
     : never
   : never;
 
+export interface ExperimentAnalyticsEntry {
+  flag: FeatureFlagName;
+  variant: ExperimentConfig['variant'];
+  pages: string[];
+  resetCache?: boolean;
+  [key: string]: unknown;
+}
+
 /**
  * Map of flag names to their tracking keys (only for flags with trackingKey defined)
  */
@@ -594,6 +602,28 @@ function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig |
     ...(docType ? { docType } : {}),
   };
 }
+
+// ============================================================================
+// EXPERIMENT ANALYTICS
+// ============================================================================
+
+const HIGHLIGHTED_GUIDE_FLAG: FeatureFlagName = 'pathfinder.highlighted-guide-experiment';
+
+const getExperimentFlagNames = (): FeatureFlagName[] =>
+  featureFlagNames.filter((name) => pathfinderFeatureFlags[name].valueType === 'object');
+
+// Enumerated from pathfinderFeatureFlags (single source of truth) so a new experiment
+// is captured automatically. Excluded arms are dropped — 'excluded' means the user
+// isn't enrolled, matching the exposure-event convention (openfeature-tracking.ts).
+export const getActiveExperiments = (): ExperimentAnalyticsEntry[] =>
+  getExperimentFlagNames()
+    .map((flag) =>
+      // highlighted-guide carries extra fields (guideId/docType) that getExperimentConfig strips
+      flag === HIGHLIGHTED_GUIDE_FLAG
+        ? { flag, ...getHighlightedGuideConfig() }
+        : { flag, ...getExperimentConfig(flag) }
+    )
+    .filter((entry) => entry.variant !== 'excluded');
 
 // ============================================================================
 // URL PATTERN MATCHING
