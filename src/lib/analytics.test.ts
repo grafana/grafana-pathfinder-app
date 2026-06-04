@@ -1,4 +1,4 @@
-import { reportAppInteraction, UserInteraction } from './analytics';
+import { reportAppInteraction, UserInteraction, bindExperimentsProvider } from './analytics';
 import { reportInteraction } from '@grafana/runtime';
 
 jest.mock('@grafana/runtime', () => ({
@@ -66,5 +66,70 @@ describe('reportAppInteraction', () => {
     expect(properties.step_id).toBe('step-1');
     expect(properties.content_type).toBe('interactive_guide');
     expect(properties.plugin_version).toBe('1.0.0-test');
+  });
+});
+
+describe('reportAppInteraction experiment enrichment', () => {
+  const HIGHLIGHTED = 'pathfinder.highlighted-guide-experiment';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    delete (window as any).__pathfinderKioskSessionId;
+  });
+
+  // Runs first, while the module-level provider is still unbound (nothing has
+  // called bindExperimentsProvider yet), so it exercises the graceful no-op path.
+  it('reports without variant/experiments when no provider is bound', () => {
+    reportAppInteraction(UserInteraction.SummaryClick, { content_url: 'u' });
+
+    const props = mockReportInteraction.mock.calls[0][1];
+    expect(props).not.toHaveProperty('experiments');
+    expect(props).not.toHaveProperty('variant');
+    expect(props.plugin_version).toBe('1.0.0-test');
+  });
+
+  it('passes the enrolled experiments through and rolls variant up to treatment', () => {
+    bindExperimentsProvider(() => [
+      { flag: 'pathfinder.experiment-variant', variant: 'control', pages: [] },
+      { flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
+    ]);
+
+    reportAppInteraction(UserInteraction.SummaryClick, {});
+
+    const props = mockReportInteraction.mock.calls[0][1];
+    expect(props.variant).toBe('treatment');
+    expect(props.experiments).toEqual([
+      expect.objectContaining({ flag: 'pathfinder.experiment-variant', variant: 'control' }),
+      expect.objectContaining({ flag: HIGHLIGHTED, variant: 'treatment', guideId: 'g', docType: 'learning-journey' }),
+    ]);
+  });
+
+  it('rolls variant up to control when no enrolled experiment is treatment', () => {
+    bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'control', pages: [], guideId: 'g' }]);
+
+    reportAppInteraction(UserInteraction.SummaryClick, {});
+
+    expect(mockReportInteraction.mock.calls[0][1].variant).toBe('control');
+  });
+
+  it('omits variant/experiments when the user is enrolled in nothing', () => {
+    bindExperimentsProvider(() => []);
+
+    reportAppInteraction(UserInteraction.SummaryClick, {});
+
+    const props = mockReportInteraction.mock.calls[0][1];
+    expect(props).not.toHaveProperty('experiments');
+    expect(props).not.toHaveProperty('variant');
+  });
+
+  it('does not enrich FeatureFlagEvaluated events (recursion guard)', () => {
+    bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g' }]);
+
+    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: HIGHLIGHTED });
+
+    const props = mockReportInteraction.mock.calls[0][1];
+    expect(props).not.toHaveProperty('experiments');
+    expect(props).not.toHaveProperty('variant');
+    expect(props.flag_key).toBe(HIGHLIGHTED);
   });
 });
