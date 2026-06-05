@@ -37,12 +37,12 @@ document.addEventListener('pathfinder-suggest', earlySuggestListener);
 // This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
 // Uses dynamic import so the SDK stays out of the entry-point bundle
 try {
-  const { initializeOpenFeature, getExperimentConfig } = await import('./utils/openfeature');
+  const { initializeOpenFeature, getActiveExperiments } = await import('./utils/openfeature');
   await initializeOpenFeature();
 
-  // Late-bind experiment config to analytics (breaks the static import chain)
-  const { bindExperimentConfig } = await import('./lib/analytics');
-  bindExperimentConfig(getExperimentConfig);
+  // Late-bind the active-experiments provider to analytics (breaks the static import chain)
+  const { bindExperimentsProvider } = await import('./lib/analytics');
+  bindExperimentsProvider(getActiveExperiments);
 } catch (e) {
   console.error('[OpenFeature] Error initializing feature flags:', e);
 }
