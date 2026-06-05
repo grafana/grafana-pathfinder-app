@@ -171,7 +171,8 @@ await OpenFeature.setProviderAndWait(
   OPENFEATURE_DOMAIN,
   new OFREPWebProvider({
     baseUrl: `/apis/features.grafana.app/v0alpha1/namespaces/${namespace}`,
-    pollInterval: -1, // Flags fetched once on init, no polling
+    disableVisibilityRefresh: true, // Do not refresh
+    cacheMode: 'disabled', // Do not write to localStorage
     timeoutMs: 10_000,
   }),
   {

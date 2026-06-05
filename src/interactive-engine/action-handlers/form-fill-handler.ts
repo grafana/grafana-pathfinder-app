@@ -87,8 +87,6 @@ export class FormFillHandler {
     }
     if (isCombobox) {
       await this.fillComboboxStaged(refinedElement, remainingValue);
-      // Combobox flow handles its own events/enters; still dispatch final blur/change to settle state
-      await this.dispatchEvents(refinedElement, tagName, false);
       await this.markAsCompleted(data);
       return;
     }
