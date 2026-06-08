@@ -2,10 +2,11 @@
  * JSON Snippet Type Definitions
  *
  * Snippets are reusable fragments of guide schema, authored upstream in
- * `grafana/interactive-tutorials` and published to the CDN at
- * `<cdn>/snippets/<id>/snippet.json`. A guide references a snippet by
- * id via a `snippet-ref` block; the parser resolves the ref and splices
- * the snippet's blocks into the guide at parse time.
+ * `grafana/interactive-tutorials` under `shared/snippets/` and published
+ * to the CDN at `<cdn>/guides/shared/snippets/<id>.json`. A guide
+ * references a snippet by id via a `snippet-ref` block; the parser
+ * resolves the ref and splices the snippet's blocks into the guide at
+ * parse time.
  *
  * In v1 snippets may contain any block type EXCEPT another snippet-ref
  * — i.e. no nesting. The Zod schema enforces this; see
