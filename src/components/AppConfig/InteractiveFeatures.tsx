@@ -11,6 +11,7 @@ import {
   DEFAULT_DISABLE_AUTO_COLLAPSE,
   DEFAULT_ENABLE_KIOSK_MODE,
   DEFAULT_KIOSK_RULES_URL,
+  DEFAULT_ENABLE_AI_AUTO_HEAL,
   getConfigWithDefaults,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
@@ -24,6 +25,7 @@ type State = {
   disableAutoCollapse: boolean;
   enableKioskMode: boolean;
   kioskRulesUrl: string;
+  enableAiAutoHeal: boolean;
 };
 
 export interface InteractiveFeaturesProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -41,6 +43,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     disableAutoCollapse: jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE,
     enableKioskMode: jsonData?.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE,
     kioskRulesUrl: jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL,
+    enableAiAutoHeal: jsonData?.enableAiAutoHeal ?? DEFAULT_ENABLE_AI_AUTO_HEAL,
   }));
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
@@ -93,6 +96,10 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     setState({ ...state, kioskRulesUrl: event.target.value.trim() });
   };
 
+  const onToggleEnableAiAutoHeal = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({ ...state, enableAiAutoHeal: event.target.checked });
+  };
+
   const onResetDefaults = () => {
     setState({
       enableAutoDetection: DEFAULT_ENABLE_AUTO_DETECTION,
@@ -101,6 +108,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
       disableAutoCollapse: DEFAULT_DISABLE_AUTO_COLLAPSE,
       enableKioskMode: DEFAULT_ENABLE_KIOSK_MODE,
       kioskRulesUrl: DEFAULT_KIOSK_RULES_URL,
+      enableAiAutoHeal: DEFAULT_ENABLE_AI_AUTO_HEAL,
     });
     setValidationErrors({});
   };
@@ -127,6 +135,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
         disableAutoCollapse: state.disableAutoCollapse,
         enableKioskMode: state.enableKioskMode,
         kioskRulesUrl: state.kioskRulesUrl,
+        enableAiAutoHeal: state.enableAiAutoHeal,
       };
 
       await updatePluginSettings(plugin.meta.id, {
@@ -158,7 +167,8 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     state.guidedStepTimeout !== (jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT) ||
     state.disableAutoCollapse !== (jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE) ||
     state.enableKioskMode !== (jsonData?.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE) ||
-    state.kioskRulesUrl !== (jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL);
+    state.kioskRulesUrl !== (jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL) ||
+    state.enableAiAutoHeal !== (jsonData?.enableAiAutoHeal ?? DEFAULT_ENABLE_AI_AUTO_HEAL);
 
   return (
     <form onSubmit={onSubmit}>
@@ -314,6 +324,41 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
                 />
               </Field>
             </>
+          )}
+        </div>
+
+        <div className={styles.divider} />
+
+        <div className={styles.section}>
+          <Text variant="h4" weight="medium">
+            AI auto-heal
+          </Text>
+          <div className={styles.toggleSection}>
+            <Switch
+              data-testid={testIds.appConfig.interactiveFeatures.enableAiAutoHeal}
+              id="enable-ai-auto-heal"
+              value={state.enableAiAutoHeal}
+              onChange={onToggleEnableAiAutoHeal}
+            />
+            <div className={styles.toggleLabels}>
+              <Text variant="body" weight="medium">
+                Enable AI-powered &quot;Fix this&quot; on failing steps
+              </Text>
+              <Text variant="body" color="secondary">
+                When a step&apos;s selector can&apos;t be matched and no deterministic recovery is available, show the
+                sparkle &quot;Fix this&quot; button. It asks the Grafana Assistant to propose a patch to the guide.
+                Requires the Grafana Assistant to be available.
+              </Text>
+            </div>
+          </div>
+
+          {state.enableAiAutoHeal && (
+            <Alert severity="warning" title="Write path — opt-in" className={styles.infoAlert}>
+              <Text variant="body">
+                Accepted suggestions mutate the in-memory guide JSON for the user&apos;s session. Disable this toggle to
+                hide the AI-powered button entirely; the deterministic &quot;Fix this&quot; recovery path is unaffected.
+              </Text>
+            </Alert>
           )}
         </div>
 

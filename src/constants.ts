@@ -67,6 +67,9 @@ export const DEFAULT_ENABLE_CODA_TERMINAL = false;
 export const DEFAULT_ENABLE_KIOSK_MODE = false;
 export const DEFAULT_KIOSK_RULES_URL = '';
 
+// AI auto-heal: default OFF — the AI write path requires explicit admin opt-in
+export const DEFAULT_ENABLE_AI_AUTO_HEAL = false;
+
 // PeerJS Server defaults (for live sessions)
 export const DEFAULT_PEERJS_HOST = 'localhost';
 export const DEFAULT_PEERJS_PORT = 9000;
@@ -136,6 +139,8 @@ export interface DocsPluginConfig {
   // Kiosk Mode (dev feature for presenting guide catalogs)
   enableKioskMode?: boolean;
   kioskRulesUrl?: string;
+  // AI auto-heal
+  enableAiAutoHeal?: boolean;
 }
 
 // Helper functions to get configuration values with defaults
@@ -180,6 +185,8 @@ export const getConfigWithDefaults = (
   // Kiosk Mode
   enableKioskMode: config.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE,
   kioskRulesUrl: config.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL,
+  // AI auto-heal
+  enableAiAutoHeal: config.enableAiAutoHeal ?? DEFAULT_ENABLE_AI_AUTO_HEAL,
 });
 
 /**

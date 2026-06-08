@@ -71,3 +71,9 @@ describe('getConfigWithDefaults recommender wiring', () => {
     expect(result.recommenderServiceUrl).toBe('https://recommender.grafana.com');
   });
 });
+
+describe('getConfigWithDefaults feature flags', () => {
+  it('defaults enableAiAutoHeal to false when jsonData is absent', () => {
+    expect(getConfigWithDefaults({}).enableAiAutoHeal).toBe(false);
+  });
+});
