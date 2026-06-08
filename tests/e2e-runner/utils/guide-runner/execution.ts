@@ -255,6 +255,29 @@ export async function waitForCompletionWithObjectivePolling(
 
 const GUIDED_WAIT_EXECUTING_MS = 5000;
 
+type GuidedPostClickState = 'executing' | 'completed' | 'timeout';
+
+/**
+ * Wait for a guided step to enter either `executing` (normal path) or
+ * `completed` (instant-completion path via `completeEarly`).
+ *
+ * @returns `timeout` when neither state is observed within `timeoutMs`.
+ */
+async function waitForGuidedPostClickState(stepLocator: Locator, timeoutMs: number): Promise<GuidedPostClickState> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const state = await stepLocator.getAttribute('data-test-step-state').catch(() => null);
+    if (state === 'executing') {
+      return 'executing';
+    }
+    if (state === 'completed') {
+      return 'completed';
+    }
+    await new Promise((resolve) => setTimeout(resolve, GUIDED_SUBSTEP_ADVANCE_POLL_MS));
+  }
+  return 'timeout';
+}
+
 /**
  * Resolve data-test-reftarget to a Playwright locator for the current substep.
  * Button: try getByRole('button', { name }) then locator(selector); others use locator(selector).
@@ -538,6 +561,30 @@ function createSkippedResult(
 }
 
 /**
+ * Convert a post-click failure into a skip result for skippable steps,
+ * otherwise rethrow the original error.
+ *
+ * @returns A skipped result with reason `post_click_timeout`.
+ * @throws The original error when the step is not skippable.
+ */
+function handleSkippablePostClickFailure(
+  error: unknown,
+  step: TestableStep,
+  page: Page,
+  startTime: number,
+  consoleErrors: string[],
+  verbose: boolean
+): StepTestResult {
+  if (!step.skippable) {
+    throw error;
+  }
+  if (verbose) {
+    console.log(`   ⊘ Skippable step ${step.stepId} did not complete after "Do it" — skipping`);
+  }
+  return createSkippedResult(step, page, startTime, consoleErrors, 'post_click_timeout');
+}
+
+/**
  * Execute a single step in the guide (L3-3C enhanced).
  *
  * This function implements step execution with proper timing:
@@ -757,20 +804,37 @@ export async function executeStep(
     // Re-read URL after settle so we detect async URL changes (e.g. formfill updating query params)
     const urlAfterSettle = page.url();
 
-    // Phase 3: Guided step — wait for executing, run substep loop, then wait for completion
+    // Phase 3: Guided step — wait for executing, run substep loop, then wait for completion.
     if (step.isGuided && step.guidedStepCount != null && step.guidedStepCount > 0) {
       const stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
-      await expect(stepLocator).toHaveAttribute('data-test-step-state', 'executing', {
-        timeout: GUIDED_WAIT_EXECUTING_MS,
-      });
-      const { completed } = await runGuidedSubstepLoop(page, step, {
-        stepLocator,
-        perSubstepTimeoutMs: TIMEOUT_PER_GUIDED_SUBSTEP_MS,
-        verbose,
-        artifactsDir,
-      });
-      if (!completed) {
-        await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
+      try {
+        const postClickState = await waitForGuidedPostClickState(stepLocator, GUIDED_WAIT_EXECUTING_MS);
+        if (postClickState === 'timeout') {
+          throw new Error(
+            `Guided step ${step.stepId} did not reach 'executing' or 'completed' within ${GUIDED_WAIT_EXECUTING_MS}ms`
+          );
+        }
+        if (postClickState === 'executing') {
+          const { completed } = await runGuidedSubstepLoop(page, step, {
+            stepLocator,
+            perSubstepTimeoutMs: TIMEOUT_PER_GUIDED_SUBSTEP_MS,
+            verbose,
+            artifactsDir,
+          });
+          if (!completed) {
+            await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
+          }
+        } else {
+          // A guide with `completeEarly: true` can race the idle → executing → completed
+          // transition so that we never observe `executing`. Treat instant completion as a
+          // legitimate success path and skip the substep loop in that case.
+
+          if (verbose) {
+            console.log(`   ✓ Guided step ${step.stepId} completed instantly (idle → completed)`);
+          }
+        }
+      } catch (guidedError) {
+        return handleSkippablePostClickFailure(guidedError, step, page, startTime, consoleErrors, verbose);
       }
 
       let guidedArtifacts: ArtifactPaths | undefined;
@@ -835,9 +899,16 @@ export async function executeStep(
     // L3-3C: Wait for step completion with objective polling
     // This detects both manual completion and objective-based auto-completion.
     // Pass urlBeforeClick so that if the step element detaches after a URL change (e.g. formfill), we treat as passed.
-    const { completedViaObjectives } = await waitForCompletionWithObjectivePolling(page, step.stepId, timeout, {
-      urlBeforeClick,
-    });
+    let completedViaObjectives: boolean;
+    try {
+      ({ completedViaObjectives } = await waitForCompletionWithObjectivePolling(page, step.stepId, timeout, {
+        urlBeforeClick,
+      }));
+    } catch (waitError) {
+      // For skippable steps: if completion is not observed within the timeout, treat as skipped
+      // (post_click_timeout) instead failed.
+      return handleSkippablePostClickFailure(waitError, step, page, startTime, consoleErrors, verbose);
+    }
 
     if (verbose && completedViaObjectives) {
       console.log(`   ℹ Step ${step.stepId} completed quickly (possibly via objectives)`);

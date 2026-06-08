@@ -186,6 +186,8 @@ function formatSkipReason(skipReason: string, skippable: boolean): string {
       return `step has no "Do it" button${skippableNote}`;
     case 'requirements_unmet':
       return `requirements not met${skippableNote}`;
+    case 'post_click_timeout':
+      return `completion not observed after clicking "Do it"${skippableNote}`;
     default:
       return `${skipReason}${skippableNote}`;
   }

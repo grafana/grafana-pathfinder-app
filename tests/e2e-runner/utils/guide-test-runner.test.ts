@@ -25,6 +25,7 @@ import {
   TIMEOUT_PER_GUIDED_SUBSTEP_MS,
 } from './guide-runner';
 import type { StepTestResult, TestableStep } from './guide-runner';
+import { printStepResult } from './console-reporter';
 
 // ============================================
 // Test Fixtures
@@ -582,5 +583,89 @@ describe('logExecutionSummary', () => {
     logExecutionSummary(results);
 
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('✗ Failed: 0'));
+  });
+});
+
+// ============================================
+// post_click_timeout SkipReason
+// ============================================
+//
+// Tests for the skip reason introduced when skippable steps time out waiting for
+// completion after clicking "Do it" (covers the button-demo-style failure where
+// the action opens a popover and no completion signal fires).
+
+describe('post_click_timeout skip reason', () => {
+  describe('summarizeResults', () => {
+    it('counts post_click_timeout skips alongside other skip reasons', () => {
+      const results = [
+        createStepResult({ stepId: 'step-1', status: 'passed' }),
+        createStepResult({
+          stepId: 'step-2',
+          status: 'skipped',
+          skipReason: 'post_click_timeout',
+          skippable: true,
+        }),
+        createStepResult({
+          stepId: 'step-3',
+          status: 'skipped',
+          skipReason: 'requirements_unmet',
+          skippable: true,
+        }),
+      ];
+
+      const summary = summarizeResults(results);
+
+      expect(summary.skipped).toBe(2);
+      expect(summary.failed).toBe(0);
+      expect(summary.mandatoryFailed).toBe(0);
+      expect(summary.success).toBe(true);
+    });
+  });
+
+  describe('printStepResult', () => {
+    let consoleSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+    });
+
+    afterEach(() => {
+      consoleSpy.mockRestore();
+    });
+
+    it('formats post_click_timeout with a human-readable reason and skippable suffix', () => {
+      const result = createStepResult({
+        stepId: 'button-demo-step',
+        status: 'skipped',
+        skipReason: 'post_click_timeout',
+        skippable: true,
+      });
+
+      printStepResult(result);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('completion not observed after clicking "Do it"')
+      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('(skippable step)'));
+    });
+
+    it('formats post_click_timeout without skippable suffix when skippable is false', () => {
+      // Defensive: the runner only emits post_click_timeout for skippable steps,
+      // but the formatter should still render cleanly if it ever sees skippable=false.
+      const result = createStepResult({
+        stepId: 'mandatory-step',
+        status: 'skipped',
+        skipReason: 'post_click_timeout',
+        skippable: false,
+      });
+
+      printStepResult(result);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('completion not observed after clicking "Do it"')
+      );
+      const allLogs = consoleSpy.mock.calls.map((args) => args.join(' ')).join('\n');
+      expect(allLogs).not.toContain('(skippable step)');
+    });
   });
 });

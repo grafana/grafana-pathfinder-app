@@ -110,7 +110,8 @@ export type StepStatus = 'passed' | 'failed' | 'skipped' | 'not_reached';
 export type SkipReason =
   | 'pre_completed' // Step was already completed before execution
   | 'no_do_it_button' // Step doesn't have a "Do it" button (doIt: false or noop)
-  | 'requirements_unmet'; // Step requirements couldn't be satisfied
+  | 'requirements_unmet' // Step requirements couldn't be satisfied
+  | 'post_click_timeout'; // "Do it" was clicked but completion was not observed within the step timeout (skippable steps only)
 
 // ============================================
 // Requirements Detection Types (L3-4A)
