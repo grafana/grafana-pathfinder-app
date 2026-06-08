@@ -1,15 +1,7 @@
 /**
- * Build Snippets Command
- *
- * Scans a snippets directory for snippet bodies (`<id>.json`), validates
- * each against JsonSnippetSchema, and emits a denormalized `index.json`
- * catalog (the body shape minus `blocks`). The body is the source of
- * truth; `index.json` is always regenerated, never hand-edited.
- *
- * The catalog feeds the editor's Snippet Picker via the snippet engine's
- * online resolver, which fetches `<cdn>/guides/shared/snippets/index.json`.
- * Because the resolver fetches each body at `<cdn>/.../<id>.json`, the
- * file name MUST equal the snippet's `id` — the command enforces this.
+ * `build-snippets` — generates the snippet catalog (`index.json`) from a
+ * directory of snippet bodies. Bodies are the source of truth; the catalog
+ * is always regenerated, never hand-edited.
  */
 
 import { Command } from 'commander';
@@ -19,6 +11,7 @@ import * as path from 'path';
 import { JsonSnippetSchema, SnippetCatalogSchema } from '../../types/json-snippet.schema';
 import type { SnippetCatalog, SnippetCatalogEntry } from '../../types/json-snippet.types';
 import { readJsonFile } from '../../validation/package-io';
+import { formatJsonWithPrettier } from '../utils/output';
 
 const CATALOG_FILENAME = 'index.json';
 
@@ -27,20 +20,6 @@ interface BuildSnippetsOptions {
   check?: boolean;
 }
 
-async function formatJson(json: string): Promise<string> {
-  const prettier = await import('prettier');
-  const config = await prettier.resolveConfig(process.cwd());
-  const formatted = await prettier.format(json, { ...(config ?? {}), parser: 'json' });
-  return formatted.endsWith('\n') ? formatted : `${formatted}\n`;
-}
-
-/**
- * Build a snippet catalog from a directory of snippet bodies.
- *
- * Each `*.json` file in the directory (except `index.json`) is read and
- * validated. The resulting catalog is keyed by snippet id and sorted for
- * deterministic output.
- */
 export function buildSnippetCatalog(dir: string): {
   catalog: SnippetCatalog;
   warnings: string[];
@@ -104,8 +83,7 @@ export function buildSnippetCatalog(dir: string): {
     if (snippet.tags !== undefined) {
       entry.tags = snippet.tags;
     }
-    // Only carry schemaVersion into the catalog when the body set it
-    // explicitly — the schema default would otherwise bloat every entry.
+    // Carry schemaVersion only when set explicitly — the schema default would bloat every entry.
     if (read.parsed && typeof read.parsed === 'object' && 'schemaVersion' in read.parsed) {
       entry.schemaVersion = snippet.schemaVersion;
     }
@@ -141,7 +119,7 @@ export const buildSnippetsCommand = new Command('build-snippets')
       process.exit(1);
     }
 
-    const json = await formatJson(JSON.stringify(catalog, null, 2));
+    const json = await formatJsonWithPrettier(JSON.stringify(catalog, null, 2));
     const outputPath = options.output
       ? path.isAbsolute(options.output)
         ? options.output
