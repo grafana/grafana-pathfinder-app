@@ -72,12 +72,17 @@ export const BLOCK_SCHEMA_MAP = {
  * single-flag-per-field projection. Authors who need a grot-guide should use
  * the block editor; the CLI will reject `add-block grot-guide`.
  *
+ * `snippet-ref` is consumed from the block editor's Snippet Picker (which
+ * resolves the catalog from the upstream snippets repository). Adding a CLI
+ * flow for snippet refs is a follow-up — for v1, authors who want to insert
+ * a snippet should use the editor's Reusable palette group.
+ *
  * The completeness test asserts that this set, unioned with the keys of
  * `BLOCK_SCHEMA_MAP`, exactly matches `VALID_BLOCK_TYPES`. Adding a new block
  * type to `VALID_BLOCK_TYPES` therefore forces a deliberate decision: register
  * it for CLI authoring or document why it's excluded.
  */
-export const CLI_EXCLUDED_BLOCK_TYPES: ReadonlySet<string> = new Set(['grot-guide']);
+export const CLI_EXCLUDED_BLOCK_TYPES: ReadonlySet<string> = new Set(['grot-guide', 'snippet-ref']);
 
 /**
  * Block-type discriminator strings the CLI knows how to create. Sourced
