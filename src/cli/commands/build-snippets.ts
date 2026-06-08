@@ -17,7 +17,6 @@ const CATALOG_FILENAME = 'index.json';
 
 interface BuildSnippetsOptions {
   output?: string;
-  check?: boolean;
 }
 
 export function buildSnippetCatalog(dir: string): {
@@ -83,7 +82,8 @@ export function buildSnippetCatalog(dir: string): {
     if (snippet.tags !== undefined) {
       entry.tags = snippet.tags;
     }
-    // Carry schemaVersion only when set explicitly — the schema default would bloat every entry.
+    // Carry schemaVersion only when the body set it explicitly — the schema
+    // default would otherwise bloat every entry.
     if (read.parsed && typeof read.parsed === 'object' && 'schemaVersion' in read.parsed) {
       entry.schemaVersion = snippet.schemaVersion;
     }
@@ -103,7 +103,6 @@ export const buildSnippetsCommand = new Command('build-snippets')
   .description('Build index.json from a directory of snippet bodies')
   .argument('<dir>', 'Directory containing snippet bodies (<id>.json)')
   .option('-o, --output <file>', 'Output file path (default: <dir>/index.json)')
-  .option('--check', 'Verify the existing index.json is up to date; exit 1 if it would change')
   .action(async (dir: string, options: BuildSnippetsOptions) => {
     const absoluteDir = path.isAbsolute(dir) ? dir : path.resolve(process.cwd(), dir);
     const { catalog, warnings, errors } = buildSnippetCatalog(absoluteDir);
@@ -125,16 +124,6 @@ export const buildSnippetsCommand = new Command('build-snippets')
         ? options.output
         : path.resolve(process.cwd(), options.output)
       : path.join(absoluteDir, CATALOG_FILENAME);
-
-    if (options.check) {
-      const existing = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf-8') : '';
-      if (existing !== json) {
-        console.error(`❌ ${outputPath} is out of date. Run build-snippets to regenerate it.`);
-        process.exit(1);
-      }
-      console.log(`✅ index.json is up to date (${Object.keys(catalog).length} snippets)`);
-      return;
-    }
 
     fs.writeFileSync(outputPath, json, 'utf-8');
     console.log(`✅ Wrote ${outputPath} (${Object.keys(catalog).length} snippets)`);

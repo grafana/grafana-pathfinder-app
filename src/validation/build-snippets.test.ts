@@ -51,12 +51,10 @@ describe('buildSnippetCatalog', () => {
     expect(warnings.length).toBeGreaterThan(0);
   });
 
-  it('builds a catalog entry per valid body (blocks stripped)', () => {
+  it('builds a catalog entry per valid body, with blocks stripped', () => {
     writeJson(path.join(tmpDir, 'time-picker.json'), validBody('time-picker'));
     writeJson(path.join(tmpDir, 'run-query-button.json'), validBody('run-query-button'));
-
     const { catalog, errors } = buildSnippetCatalog(tmpDir);
-
     expect(errors).toHaveLength(0);
     expect(Object.keys(catalog).sort()).toEqual(['run-query-button', 'time-picker']);
     expect(catalog['time-picker']).toEqual({
@@ -64,69 +62,58 @@ describe('buildSnippetCatalog', () => {
       title: 'Title time-picker',
       description: 'Description for time-picker',
     });
-    expect(catalog['time-picker']).not.toHaveProperty('blocks');
   });
 
   it('ignores an existing index.json', () => {
     writeJson(path.join(tmpDir, 'index.json'), { stale: true });
     writeJson(path.join(tmpDir, 'datasource-picker.json'), validBody('datasource-picker'));
-
     const { catalog, errors } = buildSnippetCatalog(tmpDir);
-
     expect(errors).toHaveLength(0);
     expect(Object.keys(catalog)).toEqual(['datasource-picker']);
   });
 
   it('carries optional category and tags but omits an unset schemaVersion', () => {
-    writeJson(
-      path.join(tmpDir, 'tab-button-pattern.json'),
-      validBody('tab-button-pattern', { category: 'nav', tags: ['ui', 'tabs'] })
-    );
-
+    writeJson(path.join(tmpDir, 'tagged.json'), validBody('tagged', { category: 'nav', tags: ['ui'] }));
     const { catalog } = buildSnippetCatalog(tmpDir);
-    const entry = catalog['tab-button-pattern']!;
-
-    expect(entry.category).toBe('nav');
-    expect(entry.tags).toEqual(['ui', 'tabs']);
-    expect(entry).not.toHaveProperty('schemaVersion');
+    expect(catalog['tagged']).toMatchObject({ category: 'nav', tags: ['ui'] });
+    expect(catalog['tagged']).not.toHaveProperty('schemaVersion');
   });
 
   it('carries schemaVersion only when the body sets it explicitly', () => {
     writeJson(path.join(tmpDir, 'pinned.json'), validBody('pinned', { schemaVersion: '1.0.0' }));
-
     const { catalog } = buildSnippetCatalog(tmpDir);
-
     expect(catalog['pinned']!.schemaVersion).toBe('1.0.0');
   });
 
-  it('errors when the file name does not match the snippet id', () => {
-    writeJson(path.join(tmpDir, 'wrong-name.json'), validBody('actual-id'));
-
+  // Each invalid body must be dropped from the catalog and reported as an error.
+  it.each([
+    {
+      when: 'the file name does not match the id',
+      file: 'wrong-name.json',
+      body: validBody('actual-id'),
+      id: 'actual-id',
+      match: /does not match file name/,
+    },
+    {
+      when: 'the description is missing',
+      file: 'no-desc.json',
+      body: validBody('no-desc', { description: undefined }),
+      id: 'no-desc',
+      match: /description/,
+    },
+    {
+      when: 'a block is a nested snippet-ref',
+      file: 'nested.json',
+      body: validBody('nested', { blocks: [{ type: 'snippet-ref', snippetId: 'x' }] }),
+      id: 'nested',
+    },
+  ])('drops the snippet and reports an error when $when', ({ file, body, id, match }) => {
+    writeJson(path.join(tmpDir, file), body);
     const { catalog, errors } = buildSnippetCatalog(tmpDir);
-
-    expect(catalog['actual-id']).toBeUndefined();
-    expect(errors.join(' ')).toMatch(/does not match file name/);
-  });
-
-  it('errors on a body missing the required description', () => {
-    const { description, ...noDescription } = validBody('no-desc');
-    writeJson(path.join(tmpDir, 'no-desc.json'), noDescription);
-
-    const { catalog, errors } = buildSnippetCatalog(tmpDir);
-
-    expect(catalog['no-desc']).toBeUndefined();
-    expect(errors.join(' ')).toMatch(/description/);
-  });
-
-  it('errors on a body containing a nested snippet-ref', () => {
-    writeJson(
-      path.join(tmpDir, 'nested.json'),
-      validBody('nested', { blocks: [{ type: 'snippet-ref', snippetId: 'other' }] })
-    );
-
-    const { catalog, errors } = buildSnippetCatalog(tmpDir);
-
-    expect(catalog['nested']).toBeUndefined();
+    expect(catalog[id]).toBeUndefined();
     expect(errors.length).toBeGreaterThan(0);
+    if (match) {
+      expect(errors.join(' ')).toMatch(match);
+    }
   });
 });
