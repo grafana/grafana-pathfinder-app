@@ -1,10 +1,6 @@
 /**
- * Snippet Reference Block Form
- *
- * Author picks a snippet from the catalog. The resulting block is a thin
- * reference: `{ type: 'snippet-ref', snippetId, authorNote? }`. The actual
- * snippet content is resolved at render time, so the guide always picks
- * up the latest published version.
+ * Snippet reference block form. The author picks a snippet; the block stores
+ * only a reference, resolved to content at render time.
  */
 
 import React, { useCallback, useState } from 'react';

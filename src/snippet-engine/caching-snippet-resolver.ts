@@ -1,14 +1,8 @@
 /**
- * Caching Snippet Resolver
- *
- * Wraps an underlying resolver with a short-lived in-memory cache
- * (TTL ~5 min) and in-flight request dedupe. Used by the parser splice
- * and the editor picker — both can race for the same snippet on first
- * open, and we don't want to hammer the CDN.
- *
- * The CDN is the single source of truth; there is no bundled fallback.
- * A network failure simply returns the failure resolution, which the
- * caller renders as an inert placeholder block.
+ * Wraps a resolver with a short-lived cache (~5 min TTL) and in-flight
+ * dedupe — the parser splice and editor picker can race for the same snippet
+ * on first open. Failures aren't cached; they surface as the caller's
+ * inert placeholder.
  */
 
 import type { SnippetCatalog } from '../types/json-snippet.types';
@@ -42,8 +36,6 @@ export class CachingSnippetResolver implements SnippetResolver, SnippetCatalogPr
       return cached.resolution;
     }
 
-    // Dedupe concurrent resolutions of the same id — picker + card +
-    // parser splice may all race for the same snippet on first open.
     const existing = this.inFlight.get(snippetId);
     if (existing) {
       return existing;
@@ -52,8 +44,8 @@ export class CachingSnippetResolver implements SnippetResolver, SnippetCatalogPr
     const promise = this.inner
       .resolve(snippetId)
       .then((resolution) => {
-        // Only cache successes — a transient network failure shouldn't
-        // pin a guide to an error placeholder for the rest of the session.
+        // Only cache successes — a transient failure shouldn't pin a guide
+        // to an error for the session.
         if (resolution.ok) {
           this.cache.set(snippetId, { resolution, expiresAt: this.now() + this.ttlMs });
         }
@@ -80,11 +72,7 @@ export class CachingSnippetResolver implements SnippetResolver, SnippetCatalogPr
 
 let sharedResolver: CachingSnippetResolver | undefined;
 
-/**
- * Singleton accessor for the standard resolver used by the parser and
- * the editor. Tests should construct their own instance via the
- * constructor and inject a mocked inner resolver.
- */
+/** Shared resolver used by the parser and editor. */
 export function getSnippetResolver(): CachingSnippetResolver {
   if (!sharedResolver) {
     sharedResolver = new CachingSnippetResolver(createOnlineSnippetResolver());

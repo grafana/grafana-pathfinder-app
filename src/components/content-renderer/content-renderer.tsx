@@ -553,11 +553,8 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
     [html]
   );
 
-  // Initial parse is synchronous so HTML and snippet-free JSON guides render
-  // on first paint without a loading flicker. Guides that contain
-  // `snippet-ref` blocks will surface as warnings on the first pass; the
-  // effect below then resolves the refs and replaces parseResult with a
-  // fully-inlined parse.
+  // Parse synchronously for first paint; the effect below re-parses with
+  // snippet refs inlined.
   const initialParseResult: ContentParseResult = useMemo(() => {
     if (isJsonGuideContent(html)) {
       return parseJsonGuide(html, baseUrl);
@@ -567,8 +564,6 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
   const [parseResult, setParseResult] = useState<ContentParseResult>(initialParseResult);
 
   useEffect(() => {
-    // Keep parseResult in sync when html/baseUrl change before async
-    // resolution kicks in.
     setParseResult(initialParseResult);
   }, [initialParseResult]);
 

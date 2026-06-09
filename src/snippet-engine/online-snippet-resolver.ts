@@ -1,19 +1,10 @@
 /**
  * Online Snippet Resolver
  *
- * Fetches the catalog from `<host>/guides/shared/snippets/index.json`
- * and individual snippets from `<host>/guides/shared/snippets/<id>.json`.
- * The `/guides/shared/` prefix reflects the existing CDN deploy in
- * `grafana/interactive-tutorials`: `.github/workflows/deploy.yml` does
- * `cp -r shared guides/` before pushing to GCS, so everything in the
- * upstream repo's `shared/` directory lands under `guides/shared/` on
- * the CDN. The `shared/` segment reserves space for sibling reusable
- * types (e.g. templates).
- *
- * The host is derived from the existing `/package-recommendations`
- * response by stripping the trailing `/packages` segment off its
- * `baseUrl` field. This keeps the upstream content repo as the
- * single source of truth without adding a new backend endpoint.
+ * Fetches the catalog from `<host>/guides/shared/snippets/index.json` and
+ * snippets from `<host>/guides/shared/snippets/<id>.json`. The host is
+ * derived from the package-recommendations `baseUrl` (see
+ * `deriveSnippetsBaseUrl`).
  */
 
 import { fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
@@ -23,26 +14,21 @@ import type { JsonSnippet, SnippetCatalog } from '../types/json-snippet.types';
 import type { SnippetCatalogProvider, SnippetResolution, SnippetResolver } from './types';
 
 /**
- * Derive the snippets directory URL from the package recommendations
- * `baseUrl`. Returns `''` when the input is unusable so callers can
- * short-circuit (a failed lookup renders the inert placeholder).
+ * Snippets directory URL derived from the package-recommendations `baseUrl`.
+ * Returns `''` when unusable so callers can short-circuit.
  */
 export function deriveSnippetsBaseUrl(packagesBaseUrl: string): string {
   const trimmed = packagesBaseUrl.replace(/\/+$/, '');
   if (!trimmed) {
     return '';
   }
-  // The recommendations baseUrl points at the packages directory
-  // (e.g. `https://interactive-learning.grafana.net/packages`). Snippets
-  // are deployed under `/guides/shared/snippets/` because the
-  // interactive-tutorials deploy workflow does `cp -r shared guides/`
-  // before pushing to GCS — drop the `/packages` segment and append
-  // `/guides/shared/snippets`.
+  // Snippets deploy under `/guides/shared/snippets/`: the interactive-tutorials
+  // workflow does `cp -r shared guides/` before pushing to GCS. Swap the
+  // `/packages` segment for it.
   if (trimmed.endsWith('/packages')) {
     return trimmed.slice(0, -'/packages'.length) + '/guides/shared/snippets';
   }
-  // Defensive fallback when upstream changes the convention. A 404 here
-  // is harmless — a failed snippet renders the inert placeholder.
+  // Defensive fallback if upstream changes the convention — a 404 is harmless.
   return `${trimmed}/guides/shared/snippets`;
 }
 

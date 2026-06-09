@@ -1,18 +1,8 @@
 /**
- * Inline Snippet References
- *
- * Walks a JsonGuide, finds every `snippet-ref` block at any depth
- * (top-level, inside sections, conditionals, assistants, multistep
- * containers), resolves each via the snippet resolver, and returns a
- * new guide with refs replaced by the snippet's `blocks` array spliced
- * in at the same position.
- *
- * Refs that fail to resolve are replaced by an inert markdown placeholder
- * block so the rest of the guide still renders. This is the
- * defense-in-depth boundary — by the time the parser sees the guide,
- * no `snippet-ref` blocks should remain.
- *
- * Pure function (apart from the injected resolver). Input is not mutated.
+ * Replaces every `snippet-ref` in a guide (at any depth) with the resolved
+ * snippet's blocks; failed refs become an inert markdown placeholder. This is
+ * the defense-in-depth boundary — no `snippet-ref` should reach the parser.
+ * Pure apart from the injected resolver; input is not mutated.
  */
 
 import type { JsonBlock, JsonGuide, JsonSnippetRefBlock } from '../types/json-guide.types';
@@ -31,11 +21,6 @@ function placeholderForFailure(failure: Extract<SnippetResolution, { ok: false }
   };
 }
 
-/**
- * Walk an array of blocks, replacing every snippet-ref with its
- * resolved body. Resolution is performed in parallel across the whole
- * tree to minimize total latency.
- */
 export async function inlineSnippetRefsInBlocks(
   blocks: JsonBlock[],
   resolver: SnippetResolver = getSnippetResolver()
@@ -58,7 +43,6 @@ export async function inlineSnippetRefsInBlocks(
   return spliceBlocks(blocks, resolutions);
 }
 
-/** Convenience wrapper: inline refs in a full guide. */
 export async function inlineSnippetRefsInGuide(
   guide: JsonGuide,
   resolver: SnippetResolver = getSnippetResolver()
@@ -67,11 +51,7 @@ export async function inlineSnippetRefsInGuide(
   return { ...guide, blocks };
 }
 
-/**
- * True as soon as a `snippet-ref` block appears anywhere in the guide's
- * block tree. Lets callers skip the async resolution pass on guides that
- * reference no snippets — the common case.
- */
+/** True if any block in the guide tree is a `snippet-ref`. */
 export function guideHasSnippetRefs(guide: JsonGuide): boolean {
   return blocksHaveSnippetRef(guide.blocks);
 }
@@ -100,9 +80,7 @@ function collectRefIds(blocks: JsonBlock[], out: Set<string>): void {
       out.add(block.snippetId);
       continue;
     }
-    // Recurse into container blocks. Snippets themselves cannot contain
-    // refs (schema-enforced), but guides can nest refs inside sections,
-    // conditionals, and assistants.
+    // Guides can nest refs inside sections, conditionals, and assistants.
     if (block.type === 'section' || block.type === 'assistant') {
       collectRefIds(block.blocks, out);
     } else if (block.type === 'conditional') {

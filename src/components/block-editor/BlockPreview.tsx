@@ -62,14 +62,11 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
     };
   }, [progressKey]);
 
-  // ContentRenderer resolves snippet refs downstream before it renders, so
-  // validating the raw guide would flag every valid `snippet-ref` as
-  // unresolved. Mirror ContentRenderer: parse synchronously, then re-parse
-  // against the inlined guide when the guide references snippets.
+  // Validate the inlined guide, not the raw one — an un-inlined snippet-ref
+  // parses as an "unresolved" warning the renderer never actually shows.
   const baseValidation = useMemo(() => parseJsonGuide(guide), [guide]);
   const hasSnippetRefs = useMemo(() => guideHasSnippetRefs(guide), [guide]);
-  // Tag the result with the guide it was computed for so a stale result from
-  // a previous guide is ignored during render.
+  // `resolved` is tagged with its guide so a stale async result is ignored.
   const [resolved, setResolved] = useState<{ guide: JsonGuide; result: ContentParseResult } | null>(null);
 
   useEffect(() => {
@@ -90,16 +87,14 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
 
   const resolvedValidation = resolved?.guide === guide ? resolved.result : null;
 
-  // While a snippet-referencing guide is still inlining, fall back to the base
-  // parse for structural errors but withhold its snippet-ref warnings — those
-  // resolve away once inlining completes.
+  // Until inlining finishes, show structural errors but withhold snippet-ref
+  // warnings — they resolve away.
   const resolving = hasSnippetRefs && resolvedValidation === null;
   const validation = resolvedValidation ?? baseValidation;
   const errors = validation.errors || [];
   const warnings = resolving ? [] : validation.warnings || [];
 
-  // Keyed on the guide alone so the async validation update never churns
-  // ContentRenderer's content identity.
+  // Keyed on the guide alone so the async validation update can't remount ContentRenderer.
   const { content, isEmpty } = useMemo(() => {
     if (!guide.blocks || guide.blocks.length === 0) {
       return { content: null, isEmpty: true };

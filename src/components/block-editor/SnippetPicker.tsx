@@ -1,10 +1,4 @@
-/**
- * Snippet Picker
- *
- * Modal-less inline picker rendered inside SnippetRefBlockForm. Lists
- * every snippet in the CDN catalog, supports a search box, and emits the
- * chosen snippet ID upward via `onSelect`.
- */
+/** Inline picker for choosing a snippet from the CDN catalog. */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { css } from '@emotion/css';
@@ -15,9 +9,7 @@ import { getSnippetResolver } from '../../snippet-engine';
 import type { SnippetCatalogEntry } from '../../types/json-snippet.types';
 
 interface SnippetPickerProps {
-  /** Currently-selected snippet ID (highlighted in the list). */
   value?: string;
-  /** Called when the author clicks a row. */
   onSelect: (snippetId: string) => void;
 }
 

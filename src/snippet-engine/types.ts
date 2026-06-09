@@ -1,18 +1,11 @@
-/**
- * Snippet Engine Types
- *
- * Internal shape for the resolver pipeline. The renderer never sees a
- * `SnippetResolution` — the parser splices the resolved blocks in place.
- */
+/** Internal shapes for the resolver pipeline; the renderer never sees these. */
 
 import type { JsonSnippet, SnippetCatalog, SnippetCatalogEntry } from '../types/json-snippet.types';
 
 export interface SnippetResolutionSuccess {
   ok: true;
   id: string;
-  /** The validated snippet body. */
   snippet: JsonSnippet;
-  /** Which tier resolved the snippet. */
   source: 'online-cdn';
 }
 
@@ -26,15 +19,11 @@ export interface SnippetResolutionFailure {
 
 export type SnippetResolution = SnippetResolutionSuccess | SnippetResolutionFailure;
 
-/** A resolver can answer "give me snippet X" from the live CDN. */
 export interface SnippetResolver {
   resolve(snippetId: string): Promise<SnippetResolution>;
 }
 
-/**
- * A catalog provider lists every snippet known to the editor — used to
- * populate the Snippet Picker without fetching every snippet body.
- */
+/** Lists every snippet for the picker without fetching each body. */
 export interface SnippetCatalogProvider {
   list(): Promise<SnippetCatalog>;
 }
