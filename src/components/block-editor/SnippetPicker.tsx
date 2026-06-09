@@ -133,7 +133,6 @@ export function SnippetPicker({ value, onSelect }: SnippetPickerProps) {
                 }}
               >
                 <div className={styles.rowHeader}>
-                  <Icon name="share-alt" />
                   <span>{entry.title}</span>
                 </div>
                 {entry.description && <div className={styles.rowMeta}>{entry.description}</div>}
