@@ -47,9 +47,7 @@ function conditionIssueToWarning(issue: ConditionIssue): ValidationWarning {
 }
 
 export function validateGuide(data: unknown, options: ValidationOptions = {}): ValidationResult {
-  // Accept camelCase field aliases (targetAction/refTarget/targetValue) by
-  // normalizing to canonical lowercase before both the schema and the
-  // unknown-field check see the input.
+  // Normalize camelCase aliases before both the schema and the unknown-field check.
   const normalized = normalizeJsonGuideAliases(data);
 
   // 1. Zod parse - validates structure, types, nesting depth and use a custom error map for better messages

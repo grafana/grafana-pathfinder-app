@@ -1,15 +1,8 @@
 /**
- * Tests for the camelCase ↔ lowercase field aliasing in the JSON parser.
- *
- * `validateGuide` normalizes the camelCase aliases (`targetAction`,
- * `refTarget`, `targetValue`) to their canonical lowercase names before
- * the schema runs, so camelCase-only guides validate. Canonical wins when
- * both are present. The schema itself stays on the canonical names, so the
- * CLI's flag-generation and Commander help-text contracts are unchanged.
- *
- * The parser also plumbs an explicit JSON `id` field into the
- * `ParsedElement.props.stepId` slot so author-stable IDs override the
- * section's positional `${sectionId}-step-N` convention.
+ * camelCase ↔ lowercase field aliasing: `validateGuide` normalizes the
+ * camelCase aliases to canonical lowercase before the schema, so camelCase
+ * guides validate (canonical wins on conflict); the schema and CLI flags stay
+ * canonical. Also covers explicit `id` → `props.stepId` plumbing.
  */
 
 import { parseJsonGuide } from './json-parser';
