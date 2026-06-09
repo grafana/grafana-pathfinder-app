@@ -84,7 +84,9 @@ jest.mock('./interactive-conditional', () => {
 
 import { testIds } from '../../constants/testIds';
 import { InteractiveStep } from './interactive-step';
-import { InteractiveSection, resetInteractiveCounters } from './interactive-section';
+import { InteractiveSection, resetInteractiveCounters, STEP_TYPE_LOOKUP } from './interactive-section';
+import { STEP_TYPE_SCHEMAS } from './step-type-registry';
+import { INTERACTIVE_STEP_COMPONENT_TYPES } from './section-child-classifier';
 import { memoryStore, resetSectionHarness, silenceSectionWarnings } from '../../test-utils/interactive-section-harness';
 
 const NON_PREVIEW_KEY = '/';
@@ -146,6 +148,26 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+});
+
+// Tracked step-type registry parity (B4). Adding a step type to one site but
+// not the others is a silent-drift bug (historically: ChallengeBlock landed in
+// only two of the sites). These pin all three tracked sites against each other.
+// See .cursor/rules/tracked-step-types.mdc.
+describe('step-type registry parity', () => {
+  it('STEP_TYPE_LOOKUP holds exactly the registry schemas (both directions)', () => {
+    expect(new Set(STEP_TYPE_LOOKUP.values())).toEqual(new Set(STEP_TYPE_SCHEMAS));
+    expect(STEP_TYPE_LOOKUP.size).toBe(STEP_TYPE_SCHEMAS.length);
+  });
+
+  it('every tracked step component except InteractiveStep is in the classifier set', () => {
+    for (const component of STEP_TYPE_LOOKUP.keys()) {
+      if (component === InteractiveStep) {
+        continue;
+      }
+      expect(INTERACTIVE_STEP_COMPONENT_TYPES.has(component)).toBe(true);
+    }
+  });
 });
 
 describe('InteractiveSection contracts — Phase 0 tripwire', () => {
