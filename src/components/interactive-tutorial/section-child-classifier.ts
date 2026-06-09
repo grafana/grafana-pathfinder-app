@@ -30,7 +30,7 @@ import type { ChildKind } from './step-section-utils';
  * `classifySectionChild` because its `targetAction` prop subdivides it
  * into interactive vs informational variants.
  */
-const INTERACTIVE_STEP_COMPONENT_TYPES: ReadonlySet<unknown> = new Set<unknown>([
+export const INTERACTIVE_STEP_COMPONENT_TYPES: ReadonlySet<unknown> = new Set<unknown>([
   InteractiveMultiStep,
   InteractiveGuided,
   InteractiveQuiz,
