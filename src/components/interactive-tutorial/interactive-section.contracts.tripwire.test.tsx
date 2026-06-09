@@ -150,10 +150,7 @@ afterEach(() => {
   cleanup();
 });
 
-// Tracked step-type registry parity (B4). Adding a step type to one site but
-// not the others is a silent-drift bug (historically: ChallengeBlock landed in
-// only two of the sites). These pin all three tracked sites against each other.
-// See .cursor/rules/tracked-step-types.mdc.
+// Parity across the three tracked step-type sites; see .cursor/rules/tracked-step-types.mdc.
 describe('step-type registry parity', () => {
   it('STEP_TYPE_LOOKUP holds exactly the registry schemas (both directions)', () => {
     expect(new Set(STEP_TYPE_LOOKUP.values())).toEqual(new Set(STEP_TYPE_SCHEMAS));
