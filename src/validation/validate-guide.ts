@@ -14,6 +14,7 @@ import {
 import { detectUnknownFields } from './unknown-fields';
 import { validateBlockConditions, type ConditionIssue } from './condition-validator';
 import { customErrorMap } from './error-map';
+import { normalizeJsonGuideAliases } from './normalize-guide-aliases';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -46,15 +47,20 @@ function conditionIssueToWarning(issue: ConditionIssue): ValidationWarning {
 }
 
 export function validateGuide(data: unknown, options: ValidationOptions = {}): ValidationResult {
+  // Accept camelCase field aliases (targetAction/refTarget/targetValue) by
+  // normalizing to canonical lowercase before both the schema and the
+  // unknown-field check see the input.
+  const normalized = normalizeJsonGuideAliases(data);
+
   // 1. Zod parse - validates structure, types, nesting depth and use a custom error map for better messages
-  const result = JsonGuideSchema.safeParse(data, { error: customErrorMap });
+  const result = JsonGuideSchema.safeParse(normalized, { error: customErrorMap });
 
   if (!result.success) {
     return { isValid: false, errors: formatZodErrors(result.error.issues), warnings: [], guide: null };
   }
 
   // 2. Unknown fields check (existing) - single traversal
-  const warnings: ValidationWarning[] = options.skipUnknownFieldCheck ? [] : detectUnknownFields(data);
+  const warnings: ValidationWarning[] = options.skipUnknownFieldCheck ? [] : detectUnknownFields(normalized);
 
   // 3. Condition validation (NEW) - only runs after Zod validates structure
   const conditionIssues = validateBlockConditions(result.data as JsonGuide);
