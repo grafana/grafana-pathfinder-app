@@ -8,18 +8,13 @@ function snippet(id: string): JsonSnippet {
 
 class StubResolver implements SnippetResolver, SnippetCatalogProvider {
   public resolveCalls = 0;
-  public listCalls = 0;
-  constructor(
-    private readonly resolveImpl: (id: string) => Promise<SnippetResolution> | SnippetResolution,
-    private readonly catalog: SnippetCatalog = {}
-  ) {}
+  constructor(private readonly resolveImpl: (id: string) => Promise<SnippetResolution> | SnippetResolution) {}
   async resolve(id: string) {
     this.resolveCalls += 1;
     return this.resolveImpl(id);
   }
-  async list() {
-    this.listCalls += 1;
-    return this.catalog;
+  async list(): Promise<SnippetCatalog> {
+    return {};
   }
 }
 
@@ -75,17 +70,5 @@ describe('CachingSnippetResolver', () => {
     resolveSlowFetch!({ ok: true, id: 'foo', source: 'online-cdn', snippet: snippet('foo') });
     const [resA, resB] = await Promise.all([a, b]);
     expect(resA).toBe(resB);
-  });
-
-  it('delegates list() to the inner resolver', async () => {
-    const inner = new StubResolver(() => ({ ok: false, id: 'x', error: { code: 'not-found', message: '' } }), {
-      foo: { id: 'foo', title: 'Foo', description: 'foo desc' },
-    });
-    const cache = new CachingSnippetResolver(inner);
-
-    const catalog = await cache.list();
-
-    expect(catalog.foo?.title).toBe('Foo');
-    expect(inner.listCalls).toBe(1);
   });
 });

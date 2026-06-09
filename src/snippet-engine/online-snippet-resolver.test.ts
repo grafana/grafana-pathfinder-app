@@ -121,21 +121,14 @@ describe('OnlineCdnSnippetResolver.list', () => {
     expect(result).toEqual(catalog);
   });
 
-  it('returns an empty catalog on a non-ok HTTP response', async () => {
+  it('returns an empty catalog on any fetch failure (non-ok, malformed body, or rejection)', async () => {
     mockFetchResolved({ ok: false, status: 500 });
-
     expect(await createOnlineSnippetResolver().list()).toEqual({});
-  });
 
-  it('returns an empty catalog when the remote body fails the schema', async () => {
     mockFetchResolved({ ok: true, json: async () => [{ not: 'a catalog' }] });
-
     expect(await createOnlineSnippetResolver().list()).toEqual({});
-  });
 
-  it('returns an empty catalog when fetch rejects', async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('offline')) as unknown as typeof fetch;
-
     expect(await createOnlineSnippetResolver().list()).toEqual({});
   });
 });
