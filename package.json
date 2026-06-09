@@ -42,6 +42,7 @@
     "validate:packages": "node dist/cli/cli/index.js validate --packages src/bundled-interactives",
     "repository:build": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o src/bundled-interactives/repository.json",
     "repository:check": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o /tmp/repository-check.json && diff -q src/bundled-interactives/repository.json /tmp/repository-check.json",
+    "snippets:build": "node dist/cli/cli/index.js build-snippets",
     "schema:export": "node dist/cli/cli/index.js schema --all",
     "check": "npm run typecheck && npm run lint && npm run prettier-test && npm run docs:sync-terms:check && npm run lint:go && npm run test:go && npm run test:coverage",
     "prepare": "husky"
