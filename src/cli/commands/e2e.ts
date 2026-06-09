@@ -133,18 +133,25 @@ async function checkGrafanaHealth(grafanaUrl: string): Promise<CliPreflightResul
   }
 }
 
+// Isolated docker-compose project vars used by --clean.
+const CLEAN_COMPOSE_PROJECT = 'pathfinder-e2e';
+const CLEAN_COMPOSE_FILES = ['-f', 'docker-compose.yaml', '-f', 'docker-compose.e2e.yaml'];
+const CLEAN_PROJECT_FLAGS = [...CLEAN_COMPOSE_FILES, '-p', CLEAN_COMPOSE_PROJECT];
+const DEFAULT_GRAFANA_URL = 'http://localhost:3000';
+// Must match `docker-compose.e2e.yaml` (services.grafana.ports → '3010:3000').
+const CLEAN_GRAFANA_URL = 'http://localhost:3010';
+
 /**
- * Run a `docker compose` subcommand and resolve when it exits successfully.
- *
- * Stdio is inherited so the user sees pull / build progress in verbose mode
- * and a single "failed" line in quiet mode.
+ * Run a `docker compose` subcommand against the isolated --clean project and
+ * resolve when it exits successfully.
  */
 async function runDockerCompose(args: string[], options: { verbose: boolean }): Promise<void> {
+  const fullArgs = ['compose', ...CLEAN_PROJECT_FLAGS, ...args];
   return new Promise((resolve, reject) => {
     if (options.verbose) {
-      console.log(`   docker ${['compose', ...args].join(' ')}`);
+      console.log(`   docker ${fullArgs.join(' ')}`);
     }
-    const proc = spawn('docker', ['compose', ...args], {
+    const proc = spawn('docker', fullArgs, {
       stdio: options.verbose ? 'inherit' : ['ignore', 'ignore', 'inherit'],
     });
     proc.on('close', (code) => {
@@ -162,9 +169,6 @@ async function runDockerCompose(args: string[], options: { verbose: boolean }): 
 
 /**
  * Poll Grafana health until it succeeds or `timeoutMs` elapses.
- *
- * Used after `docker compose up` to ensure Grafana is fully booted (database
- * migrated, plugin loaded) before kicking off tests.
  */
 async function waitForGrafanaReady(
   grafanaUrl: string,
@@ -196,9 +200,9 @@ async function waitForGrafanaReady(
 }
 
 /**
- * Bring docker compose down with volumes removed, then back up detached, and
- * wait for Grafana to be reachable. Used by `--clean` to wipe the
- * `grafana-data` SQLite DB between guides.
+ *  Bring docker compose down with volumes removed, then up, and wait for Grafana
+ *  to be reachable. Used by `--clean` to wipe the `grafana-data` DB between
+ *  guides.
  */
 async function cleanResetDocker(grafanaUrl: string, options: E2ECommandOptions): Promise<void> {
   console.log('   docker compose down -v');
@@ -218,14 +222,11 @@ async function cleanResetDocker(grafanaUrl: string, options: E2ECommandOptions):
 /**
  * Synchronously tear down docker compose. Safe to call from `process.on('exit')`
  * and signal handlers since execSync blocks until completion.
- *
- * Failures here are logged but not rethrown — teardown is best-effort cleanup
- * and we don't want to mask the real exit code.
  */
 function teardownDockerSync(verbose: boolean): void {
-  console.log('\n🧹 Tearing down docker compose (down -v)...');
+  console.log(`\n🧹 Tearing down docker compose project ${CLEAN_COMPOSE_PROJECT} (down -v)...`);
   try {
-    execSync('docker compose down -v', {
+    execSync(`docker compose ${CLEAN_PROJECT_FLAGS.join(' ')} down -v`, {
       stdio: verbose ? 'inherit' : ['ignore', 'ignore', 'inherit'],
     });
     console.log('   ✓ Teardown complete');
@@ -576,7 +577,11 @@ const defaultArtifactsDir = `/tmp/pathfinder-e2e-${randomUUID().slice(0, 8)}`;
 export const e2eCommand = new Command('e2e')
   .description('Run E2E tests on JSON guide files')
   .arguments('[files...]')
-  .option('--grafana-url <url>', 'Grafana instance URL', 'http://localhost:3000')
+  .option(
+    '--grafana-url <url>',
+    `Grafana instance URL (default ${DEFAULT_GRAFANA_URL}; ${CLEAN_GRAFANA_URL} when --clean is set and this flag is not passed)`,
+    DEFAULT_GRAFANA_URL
+  )
   .option('--output <path>', 'Path for JSON report output')
   .option('--artifacts <dir>', 'Directory for artifacts', defaultArtifactsDir)
   .option('--verbose', 'Enable verbose logging', false)
@@ -588,19 +593,16 @@ export const e2eCommand = new Command('e2e')
   .option('--always-screenshot', 'Capture screenshots on success and failure', false)
   .option(
     '--clean',
-    'Reset docker compose (down -v + up -d) before tests and between guides, and tear down at the end',
+    `Run tests against an isolated docker-compose stack (project "${CLEAN_COMPOSE_PROJECT}", Grafana on ${CLEAN_GRAFANA_URL}). Resets between guides and tears down at the end.`,
     false
   )
   .option(
     '--clean-ready-timeout-ms <ms>',
-    'How long to wait for Grafana to become healthy after a --clean reset',
+    'How long to wait for the isolated Grafana to become healthy after a --clean reset',
     (v) => parseInt(v, 10),
     120000
   )
   .action(async (files: string[], options: E2ECommandOptions) => {
-    // --clean lifecycle: track whether we've brought docker up so the exit /
-    // signal handlers know whether teardown is needed. execSync is used in
-    // teardown so it runs synchronously inside the 'exit' event listener.
     let dockerStartedByUs = false;
     const installCleanTeardownHandlers = () => {
       const exitHandler = () => {
@@ -624,6 +626,10 @@ export const e2eCommand = new Command('e2e')
     };
     if (options.clean) {
       installCleanTeardownHandlers();
+
+      if (options.grafanaUrl === DEFAULT_GRAFANA_URL) {
+        options.grafanaUrl = CLEAN_GRAFANA_URL;
+      }
     }
 
     try {
@@ -693,11 +699,9 @@ export const e2eCommand = new Command('e2e')
         console.log(`   Screenshots: on success and failure`);
       }
       if (options.clean) {
-        console.log(`   Clean:       enabled (docker compose reset before tests and between guides)`);
+        console.log(`   Clean:       enabled (project "${CLEAN_COMPOSE_PROJECT}", isolated from any dev stack)`);
       }
 
-      // --clean: bring docker up with a clean volume before pre-flight, since
-      // pre-flight checks Grafana health and we want a known-clean state.
       if (options.clean) {
         console.log('\n🧹 Clean start — resetting docker compose before tests...');
         try {
@@ -811,8 +815,6 @@ export const e2eCommand = new Command('e2e')
       }> = [];
 
       for (const [i, guide] of valid.entries()) {
-        // --clean: reset between guides so each guide gets a clean dashboard.
-        // We've already reset before the loop, so skip on the first iteration.
         if (options.clean && i > 0) {
           console.log(`\n🧹 Resetting docker compose between guides...`);
           try {
