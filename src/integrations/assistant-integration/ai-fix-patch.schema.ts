@@ -2,16 +2,25 @@ import { z } from 'zod';
 
 import { JsonInteractiveBlockSchema } from '../../types/json-guide.schema';
 
-// Deny-list: reject HTML, template interpolation, and unsafe URL schemes (XSS guard); 512-char cap bounds querySelector cost.
-const DANGEROUS_SELECTOR_PATTERNS = ['<', '>', '`', '${', 'javascript:', 'data:', 'vbscript:'] as const;
+// XSS guard for strings flowing into querySelector: HTML/template chars are blocked
+// anywhere; URL schemes are blocked only as a prefix, so attribute matches like
+// a[href^="javascript:"] pass. 512-char cap bounds querySelector cost.
+const DANGEROUS_URL_SCHEMES = ['javascript:', 'data:', 'vbscript:'] as const;
+const DANGEROUS_SUBSTRINGS = ['<', '>', '`', '${'] as const;
 
 const SafeSelectorSchema = z
   .string()
   .min(1)
   .max(512, 'Selector exceeds 512-character cap')
-  .refine((sel) => !DANGEROUS_SELECTOR_PATTERNS.some((p) => sel.toLowerCase().includes(p)), {
-    error: 'Selector contains a disallowed substring (HTML, template, or unsafe URL scheme)',
-  });
+  .refine(
+    (sel) => {
+      const normalized = sel.trim().toLowerCase();
+      const startsWithUnsafeScheme = DANGEROUS_URL_SCHEMES.some((scheme) => normalized.startsWith(scheme));
+      const containsUnsafeSubstring = DANGEROUS_SUBSTRINGS.some((p) => sel.includes(p));
+      return !startsWithUnsafeScheme && !containsUnsafeSubstring;
+    },
+    { error: 'Selector contains a disallowed substring (HTML, template, or unsafe URL scheme)' }
+  );
 
 const SelectorPatchSchema = z.object({
   type: z.literal('selector-patch'),

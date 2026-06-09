@@ -11,6 +11,15 @@ describe('AiFixPatchSchema', () => {
       expect(result.success).toBe(true);
     });
 
+    it('accepts an attribute selector matching a javascript: href prefix', () => {
+      const result = AiFixPatchSchema.safeParse({
+        type: 'selector-patch',
+        targetStepId: 'step-1',
+        newReftarget: 'a[href^="javascript:"]',
+      });
+      expect(result.success).toBe(true);
+    });
+
     it('rejects an empty targetStepId', () => {
       const result = AiFixPatchSchema.safeParse({
         type: 'selector-patch',
@@ -66,6 +75,56 @@ describe('AiFixPatchSchema', () => {
         newReftarget: '[data-testid="run-query"]',
       });
       expect(result.success).toBe(true);
+    });
+
+    it('rejects a negative subStepIndex', () => {
+      const result = AiFixPatchSchema.safeParse({
+        type: 'substep-selector-patch',
+        containerId: 'multi-1',
+        subStepIndex: -1,
+        newReftarget: '[data-testid="run-query"]',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a null subStepIndex', () => {
+      const result = AiFixPatchSchema.safeParse({
+        type: 'substep-selector-patch',
+        containerId: 'multi-1',
+        subStepIndex: null,
+        newReftarget: '[data-testid="run-query"]',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects an empty containerId', () => {
+      const result = AiFixPatchSchema.safeParse({
+        type: 'substep-selector-patch',
+        containerId: '',
+        subStepIndex: 0,
+        newReftarget: '[data-testid="run-query"]',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a null containerId', () => {
+      const result = AiFixPatchSchema.safeParse({
+        type: 'substep-selector-patch',
+        containerId: null,
+        subStepIndex: 0,
+        newReftarget: '[data-testid="run-query"]',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a dangerous newReftarget (SafeSelectorSchema applies to substeps)', () => {
+      const result = AiFixPatchSchema.safeParse({
+        type: 'substep-selector-patch',
+        containerId: 'multi-1',
+        subStepIndex: 0,
+        newReftarget: 'javascript:alert(1)',
+      });
+      expect(result.success).toBe(false);
     });
   });
 
