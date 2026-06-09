@@ -740,7 +740,6 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
 
       const tabId = await panel.openDocsPage('bundled:connections-guide', 'Test Guide');
 
-      // Dispatched through loadTab, still in flight.
       expect(mockLoadDocsTabContentResult).toHaveBeenCalled();
       const loadingTab = getTab(panel, tabId);
       expect(loadingTab.isLoading).toBe(true);
