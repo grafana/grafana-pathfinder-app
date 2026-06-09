@@ -12,8 +12,8 @@ export interface SnippetResolutionSuccess {
   id: string;
   /** The validated snippet body. */
   snippet: JsonSnippet;
-  /** Which tier resolved the snippet — 'bundled' or 'online-cdn'. */
-  source: 'bundled' | 'online-cdn';
+  /** Which tier resolved the snippet. */
+  source: 'online-cdn';
 }
 
 export type SnippetResolutionErrorCode = 'not-found' | 'network-error' | 'validation-error' | 'parse-error';
@@ -26,10 +26,7 @@ export interface SnippetResolutionFailure {
 
 export type SnippetResolution = SnippetResolutionSuccess | SnippetResolutionFailure;
 
-/**
- * A resolver can answer "give me snippet X" — either from a bundled
- * snapshot or from the live CDN.
- */
+/** A resolver can answer "give me snippet X" from the live CDN. */
 export interface SnippetResolver {
   resolve(snippetId: string): Promise<SnippetResolution>;
 }

@@ -2,12 +2,8 @@
  * Snippet Picker
  *
  * Modal-less inline picker rendered inside SnippetRefBlockForm. Lists
- * every snippet in the catalog (bundled + CDN), supports a search box,
- * and emits the chosen snippet ID upward via `onSelect`.
- *
- * v1 keeps this lean — no live preview pane yet. The author sees the
- * picked snippet's resolved blocks inside SnippetRefCard once the
- * block is inserted into the guide.
+ * every snippet in the CDN catalog, supports a search box, and emits the
+ * chosen snippet ID upward via `onSelect`.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';

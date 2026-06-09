@@ -49,15 +49,19 @@ export class CachingSnippetResolver implements SnippetResolver, SnippetCatalogPr
       return existing;
     }
 
-    const promise = this.inner.resolve(snippetId).then((resolution) => {
-      // Only cache successes — a transient network failure shouldn't
-      // pin a guide to an error placeholder for the rest of the session.
-      if (resolution.ok) {
-        this.cache.set(snippetId, { resolution, expiresAt: this.now() + this.ttlMs });
-      }
-      this.inFlight.delete(snippetId);
-      return resolution;
-    });
+    const promise = this.inner
+      .resolve(snippetId)
+      .then((resolution) => {
+        // Only cache successes — a transient network failure shouldn't
+        // pin a guide to an error placeholder for the rest of the session.
+        if (resolution.ok) {
+          this.cache.set(snippetId, { resolution, expiresAt: this.now() + this.ttlMs });
+        }
+        return resolution;
+      })
+      .finally(() => {
+        this.inFlight.delete(snippetId);
+      });
 
     this.inFlight.set(snippetId, promise);
     return promise;

@@ -25,7 +25,7 @@ import type { SnippetCatalogProvider, SnippetResolution, SnippetResolver } from 
 /**
  * Derive the snippets directory URL from the package recommendations
  * `baseUrl`. Returns `''` when the input is unusable so callers can
- * short-circuit and fall through to the bundled snapshot.
+ * short-circuit (a failed lookup renders the inert placeholder).
  */
 export function deriveSnippetsBaseUrl(packagesBaseUrl: string): string {
   const trimmed = packagesBaseUrl.replace(/\/+$/, '');

@@ -18,7 +18,7 @@ export {
   createOnlineSnippetResolver,
   deriveSnippetsBaseUrl,
 } from './online-snippet-resolver';
-export { inlineSnippetRefsInBlocks, inlineSnippetRefsInGuide } from './inline-refs';
+export { guideHasSnippetRefs, inlineSnippetRefsInBlocks, inlineSnippetRefsInGuide } from './inline-refs';
 export type {
   SnippetCatalogProvider,
   SnippetResolution,

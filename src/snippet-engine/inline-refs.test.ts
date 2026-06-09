@@ -6,7 +6,7 @@ function ok(id: string, blocks: JsonBlock[]): SnippetResolution {
   return {
     ok: true,
     id,
-    source: 'bundled',
+    source: 'online-cdn',
     snippet: {
       id,
       title: id,

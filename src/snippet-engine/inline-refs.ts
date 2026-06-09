@@ -40,9 +40,7 @@ export async function inlineSnippetRefsInBlocks(
   blocks: JsonBlock[],
   resolver: SnippetResolver = getSnippetResolver()
 ): Promise<JsonBlock[]> {
-  // Pre-collect every unique ref id so we can resolve them all in parallel
-  // before doing the splice walk. The resolver's internal cache also
-  // dedupes, but pre-collecting keeps the splice walk synchronous.
+  // Resolve all unique ref ids in parallel before the synchronous splice walk.
   const ids = new Set<string>();
   collectRefIds(blocks, ids);
 
@@ -67,6 +65,33 @@ export async function inlineSnippetRefsInGuide(
 ): Promise<JsonGuide> {
   const blocks = await inlineSnippetRefsInBlocks(guide.blocks, resolver);
   return { ...guide, blocks };
+}
+
+/**
+ * True as soon as a `snippet-ref` block appears anywhere in the guide's
+ * block tree. Lets callers skip the async resolution pass on guides that
+ * reference no snippets — the common case.
+ */
+export function guideHasSnippetRefs(guide: JsonGuide): boolean {
+  return blocksHaveSnippetRef(guide.blocks);
+}
+
+function blocksHaveSnippetRef(blocks: JsonBlock[]): boolean {
+  for (const block of blocks) {
+    if (isSnippetRef(block)) {
+      return true;
+    }
+    if (block.type === 'section' || block.type === 'assistant') {
+      if (blocksHaveSnippetRef(block.blocks)) {
+        return true;
+      }
+    } else if (block.type === 'conditional') {
+      if (blocksHaveSnippetRef(block.whenTrue) || blocksHaveSnippetRef(block.whenFalse)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function collectRefIds(blocks: JsonBlock[], out: Set<string>): void {
@@ -104,8 +129,6 @@ function spliceBlocks(blocks: JsonBlock[], resolutions: Map<string, SnippetResol
         );
         continue;
       }
-      // Spread the snippet's blocks in place. Snippets are no-ref by
-      // schema, so we don't need to recurse into them.
       result.push(...resolution.snippet.blocks);
       continue;
     }
