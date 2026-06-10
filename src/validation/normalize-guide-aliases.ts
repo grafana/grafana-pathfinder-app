@@ -24,7 +24,7 @@ export function normalizeJsonGuideAliases(raw: unknown): unknown {
   const entries = Object.entries(source)
     .filter(([key]) => {
       const canonical = FIELD_ALIASES.get(key);
-      return canonical === undefined || !Object.hasOwn(source, canonical);
+      return canonical === undefined || !Object.prototype.hasOwnProperty.call(source, canonical);
     })
     .map(([key, value]) => [FIELD_ALIASES.get(key) ?? key, normalizeJsonGuideAliases(value)] as const);
 
