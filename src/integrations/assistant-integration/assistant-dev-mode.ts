@@ -12,7 +12,7 @@
  * This allows developers to test the text selection and popover UI locally.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Observable, BehaviorSubject } from 'rxjs';
 import {
   isAssistantAvailable,
@@ -63,6 +63,17 @@ export const getIsAssistantAvailable = (): Observable<boolean> => {
     return getMockIsAssistantAvailable();
   }
   return isAssistantAvailable();
+};
+
+export const useIsAssistantAvailable = (): boolean => {
+  const [isAvailable, setIsAvailable] = useState(false);
+  useEffect(() => {
+    const subscription = getIsAssistantAvailable().subscribe((available: boolean) => {
+      setIsAvailable(available);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+  return isAvailable;
 };
 
 /**
