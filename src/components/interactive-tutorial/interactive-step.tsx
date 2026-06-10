@@ -290,6 +290,12 @@ export const InteractiveStep = forwardRef<
 
     const aiFixEnabled = useAiFixEnabled();
 
+    // Clear stale runtime errors when an AI patch swaps refTarget (step updates in place).
+    useEffect(() => {
+      setLazyScrollError(null);
+      setPostVerifyError(null);
+    }, [refTarget]);
+
     // Combined completion state: store-persisted OR checker-derived (objectives
     // / skipped are render-time signals that may not yet have persisted).
     const isCompletedWithObjectives =

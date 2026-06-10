@@ -537,7 +537,19 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       safeDispatch(actionFromBaseStepState(errorState));
       updateManager(errorState);
     }
-  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skippable, updateManager, safeDispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+    // refTarget/targetAction: rebuild checkStep when an AI patch swaps the selector.
+  }, [
+    objectives,
+    requirements,
+    hints,
+    stepId,
+    isEligibleForChecking,
+    skippable,
+    updateManager,
+    safeDispatch,
+    refTarget,
+    targetAction,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Attempt to automatically fix failed requirements via the fix-handler registry.
