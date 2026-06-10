@@ -19,6 +19,8 @@ const TerminalProviderLazy = lazy(() =>
     default: module.TerminalProvider,
   }))
 );
+// Lazy so @grafana/assistant stays out of the docs-panel init chain (see AiFixOrchestrator).
+const AiFixOrchestrator = lazy(() => import('./AiFixOrchestrator'));
 import { usePluginContext } from '@grafana/data';
 import { DocsPluginConfig, getConfigWithDefaults } from '../../constants';
 
@@ -1198,6 +1200,16 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // scroll container (DOM id pinned by docs-panel.contract.test.tsx).
   useScrollTracking({ activeTab, isRecommendationsTab });
 
+  const handleAiFixPatchApplied = useCallback(
+    (tabId: string, newGuideJson: string) => {
+      const updatedTabs = model.state.tabs.map((t) =>
+        t.id === tabId && t.content ? { ...t, content: { ...t.content, content: newGuideJson } } : t
+      );
+      model.setState({ tabs: updatedTabs });
+    },
+    [model]
+  );
+
   // ContentRenderer renders the content with styling applied via CSS classes
 
   return (
@@ -1207,6 +1219,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       data-pathfinder-content="true"
       data-testid={testIds.docsPanel.container}
     >
+      <Suspense fallback={null}>
+        <AiFixOrchestrator activeTab={activeTab} onPatchApplied={handleAiFixPatchApplied} />
+      </Suspense>
       {/* Live session controls - only render when there's session content.
           The component returns null when both flags are off, preserving the
           original surface gate. */}
