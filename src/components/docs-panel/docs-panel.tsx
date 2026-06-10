@@ -337,15 +337,35 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return tabId;
   }
 
+  private setTabLoading(tabId: string): void {
+    const updatedTabs = this.state.tabs.map((t) => (t.id === tabId ? { ...t, isLoading: true, error: null } : t));
+    this.setState({ tabs: updatedTabs });
+  }
+
+  private finishTabSuccess(
+    tabId: string,
+    buildPatch: (tab: LearningJourneyTab) => Partial<LearningJourneyTab>
+  ): LearningJourneyTab | undefined {
+    const finalUpdatedTabs = this.state.tabs.map((t) =>
+      t.id === tabId ? { ...t, ...buildPatch(t), isLoading: false, error: null } : t
+    );
+    this.setState({ tabs: finalUpdatedTabs });
+    this.saveTabsToStorage();
+    return finalUpdatedTabs.find((t) => t.id === tabId);
+  }
+
+  private failTab(tabId: string, message: string): void {
+    const errorUpdatedTabs = this.state.tabs.map((t) =>
+      t.id === tabId ? { ...t, isLoading: false, error: message } : t
+    );
+    this.setState({ tabs: errorUpdatedTabs });
+    this.saveTabsToStorage();
+  }
+
   /**
-   * Unified tab-loader entry point. Dispatches to the right content
-   * pipeline based on the tab's shape (and the optional `packageInfo`
-   * input).
-   *
-   * Callers should use this instead of branching on `shouldUseDocsLoader`
-   * + the legacy `loadTabContent` / `loadDocsTabContent` pair directly.
-   * The two internal methods remain available as the underlying
-   * implementations; future work can fold them together.
+   * Unified tab-loader entry point. Dispatches to the docs/package pipeline
+   * or the guide pipeline based on the tab's shape and the optional
+   * `packageInfo` input.
    */
   public async loadTab(
     tabId: string,
@@ -355,36 +375,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     const tab = this.state.tabs.find((t) => t.id === tabId);
     const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
     if (needsDocsLoader) {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- delegating to internal implementation
       await this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- delegating to internal implementation
     await this.loadTabContent(tabId, url);
   }
 
-  /**
-   * @deprecated Prefer {@link loadTab}. Internal implementation kept for
-   * the unified dispatcher to route into; will fold into `loadTab` once
-   * the content-fetcher split is removed.
-   */
-  public async loadTabContent(tabId: string, url: string) {
+  private async loadTabContent(tabId: string, url: string) {
     // Skip loading if URL is empty
     if (!url || url.trim() === '') {
       return;
     }
 
-    // Update tab to loading state
-    const updatedTabs = this.state.tabs.map((t) =>
-      t.id === tabId
-        ? {
-            ...t,
-            isLoading: true,
-            error: null,
-          }
-        : t
-    );
-    this.setState({ tabs: updatedTabs });
+    this.setTabLoading(tabId);
 
     try {
       const tab = this.state.tabs.find((t) => t.id === tabId);
@@ -421,65 +424,22 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           };
         }
 
-        // Success: set content and clear error
-        const finalUpdatedTabs = this.state.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                content,
-                isLoading: false,
-                error: null,
-                currentUrl: url,
-              }
-            : t
-        );
-        this.setState({ tabs: finalUpdatedTabs });
+        const updatedTab = this.finishTabSuccess(tabId, () => ({ content, currentUrl: url }));
 
-        // Save tabs to storage after content is loaded
-        this.saveTabsToStorage();
-
-        // Update completion percentage for learning journeys.
         // Use learningJourney.baseUrl (the path's cover page URL) as the storage
         // key so it matches the key used by context.service.ts when reading
         // completion via getJourneyCompletionPercentageAsync(rec.contentUrl).
-        const updatedTab = finalUpdatedTabs.find((t) => t.id === tabId);
         if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
           const progress = getJourneyProgress(updatedTab.content);
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
           setJourneyCompletionPercentage(completionKey, progress);
         }
       } else {
-        // Fetch failed: set error from result
-        const errorUpdatedTabs = this.state.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                isLoading: false,
-                error: result.error || 'Failed to load content',
-              }
-            : t
-        );
-        this.setState({ tabs: errorUpdatedTabs });
-
-        // Save tabs to storage even when there's an error
-        this.saveTabsToStorage();
+        this.failTab(tabId, result.error || 'Failed to load content');
       }
     } catch (error) {
       console.error(`Failed to load journey content for tab ${tabId}:`, error);
-
-      const errorUpdatedTabs = this.state.tabs.map((t) =>
-        t.id === tabId
-          ? {
-              ...t,
-              isLoading: false,
-              error: error instanceof Error ? error.message : 'Failed to load content',
-            }
-          : t
-      );
-      this.setState({ tabs: errorUpdatedTabs });
-
-      // Save tabs to storage even when there's an error
-      this.saveTabsToStorage();
+      this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load content');
     }
   }
 
@@ -733,18 +693,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Save tabs to storage immediately after creating
     this.saveTabsToStorage();
 
-    // Load docs content for the tab
-    this.loadDocsTabContent(tabId, url, skipReadyToBegin, packageInfo);
+    this.loadTab(tabId, url, { skipReadyToBegin, packageInfo });
 
     return tabId;
   }
 
-  /**
-   * @deprecated Prefer {@link loadTab}. Internal implementation kept for
-   * the unified dispatcher to route into; will fold into `loadTab` once
-   * the content-fetcher split is removed.
-   */
-  public async loadDocsTabContent(
+  private async loadDocsTabContent(
     tabId: string,
     url: string,
     skipReadyToBegin?: boolean,
@@ -755,17 +709,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // empty URL without packageInfo returns a visible error). Surfacing errors
     // is preferable to the old silent no-op for corrupted/restored tabs.
 
-    // Update tab to loading state
-    const updatedTabs = this.state.tabs.map((t) =>
-      t.id === tabId
-        ? {
-            ...t,
-            isLoading: true,
-            error: null,
-          }
-        : t
-    );
-    this.setState({ tabs: updatedTabs });
+    this.setTabLoading(tabId);
 
     try {
       const launchSource = this._consumeAutoLaunchSource();
@@ -781,7 +725,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
       // Check if fetch succeeded or failed
       if (result.content) {
-        // Success: set content and clear error
         const fetchedContent = result.content;
 
         const pathContext = fetchedContent.metadata.learningJourney
@@ -808,34 +751,20 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
               }
             : undefined;
 
-        const finalUpdatedTabs = this.state.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                content: fetchedContent,
-                isLoading: false,
-                error: null,
-                baseUrl: t.baseUrl || fetchedContent.url,
-                currentUrl: fetchedContent.url || url,
-                type:
-                  packageInfo != null
-                    ? getPackageRenderType(packageInfo.packageManifest)
-                    : fetchedContent.type === 'interactive'
-                      ? 'interactive'
-                      : t.type,
-                // Persist auto-derived packageInfo so subsequent reloads/restores
-                // skip the manifest fetch and render with the milestone toolbar.
-                packageInfo: packageInfo ?? t.packageInfo,
-                pathContext,
-                pendingAlignment,
-              }
-            : t
-        );
-        // Capture the title from the freshly-built tab BEFORE setState so the
-        // telemetry payload doesn't depend on the post-setState state shape
-        // (defensive against future async/batched setState behaviour).
-        const finalTab = finalUpdatedTabs.find((t) => t.id === tabId);
-        this.setState({ tabs: finalUpdatedTabs });
+        const finalTab = this.finishTabSuccess(tabId, (t) => ({
+          content: fetchedContent,
+          baseUrl: t.baseUrl || fetchedContent.url,
+          currentUrl: fetchedContent.url || url,
+          type:
+            packageInfo != null
+              ? getPackageRenderType(packageInfo.packageManifest)
+              : fetchedContent.type === 'interactive'
+                ? 'interactive'
+                : t.type,
+          packageInfo: packageInfo ?? t.packageInfo,
+          pathContext,
+          pendingAlignment,
+        }));
 
         if (pendingAlignment) {
           reportAppInteraction(UserInteraction.AlignmentPromptShown, {
@@ -846,41 +775,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
             starting_location: pendingAlignment.startingLocation,
           });
         }
-
-        // Save tabs to storage after content is loaded
-        this.saveTabsToStorage();
       } else {
-        // Fetch failed: set error from result
-        const errorUpdatedTabs = this.state.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                isLoading: false,
-                error: result.error || 'Failed to load documentation',
-              }
-            : t
-        );
-        this.setState({ tabs: errorUpdatedTabs });
-
-        // Save tabs to storage even when there's an error
-        this.saveTabsToStorage();
+        this.failTab(tabId, result.error || 'Failed to load documentation');
       }
     } catch (error) {
       console.error(`Failed to load docs content for tab ${tabId}:`, error);
-
-      const errorUpdatedTabs = this.state.tabs.map((t) =>
-        t.id === tabId
-          ? {
-              ...t,
-              isLoading: false,
-              error: error instanceof Error ? error.message : 'Failed to load documentation',
-            }
-          : t
-      );
-      this.setState({ tabs: errorUpdatedTabs });
-
-      // Save tabs to storage even when there's an error
-      this.saveTabsToStorage();
+      this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load documentation');
     }
   }
 }
