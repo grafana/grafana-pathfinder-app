@@ -1,4 +1,19 @@
-import { buildUserPrompt, parseAssistantPatch } from './useAiFixGeneration.hook';
+import { renderHook, act } from '@testing-library/react';
+
+import { buildUserPrompt, parseAssistantPatch, useAiFixGeneration } from './useAiFixGeneration.hook';
+
+const mockRawGenerate = jest.fn();
+
+jest.mock('./useAssistantGeneration.hook', () => {
+  const actual = jest.requireActual('./useAssistantGeneration.hook');
+  return {
+    ...actual,
+    useAssistantGeneration: jest.fn(() => ({
+      isAssistantAvailable: true,
+      generate: mockRawGenerate,
+    })),
+  };
+});
 
 describe('parseAssistantPatch', () => {
   it('accepts a bare selector-patch JSON object', () => {
@@ -91,5 +106,108 @@ describe('buildUserPrompt', () => {
   it('falls back to a placeholder when no DOM hint is collected', () => {
     const prompt = buildUserPrompt({ ...base, domHint: '' });
     expect(prompt).toContain('(none collected)');
+  });
+});
+
+describe('useAiFixGeneration', () => {
+  const input = {
+    guideJson: '{}',
+    failingStepId: 'step-1',
+    failingReftarget: '.old',
+    failingAction: 'button',
+    domHint: 'none',
+  };
+
+  beforeEach(() => {
+    mockRawGenerate.mockReset();
+  });
+
+  it('stores the parsed patch when onComplete delivers a valid patch', async () => {
+    mockRawGenerate.mockImplementation(({ onComplete }) => {
+      onComplete?.(
+        JSON.stringify({ type: 'selector-patch', targetStepId: 'step-1', newReftarget: '[data-testid="x"]' })
+      );
+    });
+
+    const { result } = renderHook(() => useAiFixGeneration('content-key'));
+
+    await act(async () => {
+      await result.current.generate(input);
+    });
+
+    expect(result.current.patch).toEqual({
+      type: 'selector-patch',
+      targetStepId: 'step-1',
+      newReftarget: '[data-testid="x"]',
+    });
+    expect(result.current.error).toBeNull();
+    expect(result.current.isGenerating).toBe(false);
+  });
+
+  it('surfaces a parse error when onComplete delivers an unparseable response', async () => {
+    mockRawGenerate.mockImplementation(({ onComplete }) => {
+      onComplete?.('not json at all');
+    });
+
+    const { result } = renderHook(() => useAiFixGeneration('content-key'));
+
+    await act(async () => {
+      await result.current.generate(input);
+    });
+
+    expect(result.current.patch).toBeNull();
+    expect(result.current.error?.message).toMatch(/not valid JSON/);
+    expect(result.current.isGenerating).toBe(false);
+  });
+
+  it('surfaces the error and clears the loading flag when onError fires', async () => {
+    mockRawGenerate.mockImplementation(({ onError }) => {
+      onError?.(new Error('stream failed'));
+    });
+
+    const { result } = renderHook(() => useAiFixGeneration('content-key'));
+
+    await act(async () => {
+      await result.current.generate(input);
+    });
+
+    expect(result.current.error?.message).toBe('stream failed');
+    expect(result.current.isGenerating).toBe(false);
+  });
+
+  it('clears the loading flag when rawGenerate rejects before any callback fires', async () => {
+    mockRawGenerate.mockRejectedValue(new Error('assistant unavailable'));
+
+    const { result } = renderHook(() => useAiFixGeneration('content-key'));
+
+    await act(async () => {
+      await result.current.generate(input);
+    });
+
+    expect(result.current.isGenerating).toBe(false);
+    expect(result.current.error?.message).toBe('assistant unavailable');
+    expect(result.current.patch).toBeNull();
+  });
+
+  it('reset clears a previously stored patch', async () => {
+    mockRawGenerate.mockImplementation(({ onComplete }) => {
+      onComplete?.(
+        JSON.stringify({ type: 'selector-patch', targetStepId: 'step-1', newReftarget: '[data-testid="x"]' })
+      );
+    });
+
+    const { result } = renderHook(() => useAiFixGeneration('content-key'));
+
+    await act(async () => {
+      await result.current.generate(input);
+    });
+    expect(result.current.patch).not.toBeNull();
+
+    act(() => {
+      result.current.reset();
+    });
+
+    expect(result.current.patch).toBeNull();
+    expect(result.current.error).toBeNull();
   });
 });

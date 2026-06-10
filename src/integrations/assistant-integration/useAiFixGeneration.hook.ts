@@ -157,24 +157,29 @@ export function useAiFixGeneration(contentKey: string): UseAiFixGenerationReturn
       setError(null);
       setIsGenerating(true);
 
-      await rawGenerate({
-        origin: ORIGIN,
-        prompt: buildUserPrompt(input),
-        systemPrompt: SYSTEM_PROMPT,
-        onComplete: (text) => {
-          const result = parseAssistantPatch(text);
-          if (result.ok) {
-            setPatch(result.patch);
-          } else {
-            setError(result.error);
-          }
-          setIsGenerating(false);
-        },
-        onError: (err) => {
-          setError(err);
-          setIsGenerating(false);
-        },
-      });
+      try {
+        await rawGenerate({
+          origin: ORIGIN,
+          prompt: buildUserPrompt(input),
+          systemPrompt: SYSTEM_PROMPT,
+          onComplete: (text) => {
+            const result = parseAssistantPatch(text);
+            if (result.ok) {
+              setPatch(result.patch);
+            } else {
+              setError(result.error);
+            }
+            setIsGenerating(false);
+          },
+          onError: (err) => {
+            setError(err);
+            setIsGenerating(false);
+          },
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error(String(err)));
+        setIsGenerating(false);
+      }
     },
     [rawGenerate]
   );
