@@ -766,5 +766,27 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       expect(tab.isLoading).toBe(false);
       expect(tab.error).toBe('Failed to load documentation');
     });
+
+    it('reaches the docs loader via the packageInfo trigger when shouldUseDocsLoader is false', async () => {
+      // Isolate loadTab's second dispatch arm: with shouldUseDocsLoader false,
+      // reaching the docs loader proves `options.packageInfo != null` alone
+      // routed it — openDocsPage is that arm's primary call site.
+      jest.requireMock('./utils').shouldUseDocsLoader.mockReturnValue(false);
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await panel.openDocsPage('bundled:connections-guide', 'Test Guide', {
+        packageInfo: { packageManifest: { startingLocation: '/connections' } } as any,
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(mockLoadDocsTabContentResult).toHaveBeenCalledWith(
+        'bundled:connections-guide',
+        expect.objectContaining({ packageInfo: { packageManifest: { startingLocation: '/connections' } } })
+      );
+      const tab = getTab(panel, tabId);
+      expect(tab.isLoading).toBe(false);
+      expect(tab.content).toBeDefined();
+    });
   });
 });

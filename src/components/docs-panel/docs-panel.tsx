@@ -363,14 +363,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   /**
-   * Unified tab-loader entry point. Dispatches to the right content
-   * pipeline based on the tab's shape (and the optional `packageInfo`
-   * input).
-   *
-   * Callers should use this instead of branching on `shouldUseDocsLoader`
-   * + the legacy `loadTabContent` / `loadDocsTabContent` pair directly.
-   * The two internal methods remain available as the underlying
-   * implementations; future work can fold them together.
+   * Unified tab-loader entry point. Dispatches to the docs/package pipeline
+   * or the guide pipeline based on the tab's shape and the optional
+   * `packageInfo` input.
    */
   public async loadTab(
     tabId: string,
@@ -380,20 +375,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     const tab = this.state.tabs.find((t) => t.id === tabId);
     const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
     if (needsDocsLoader) {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- delegating to internal implementation
       await this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- delegating to internal implementation
     await this.loadTabContent(tabId, url);
   }
 
-  /**
-   * @deprecated Prefer {@link loadTab}. Internal implementation kept for
-   * the unified dispatcher to route into; will fold into `loadTab` once
-   * the content-fetcher split is removed.
-   */
-  public async loadTabContent(tabId: string, url: string) {
+  private async loadTabContent(tabId: string, url: string) {
     // Skip loading if URL is empty
     if (!url || url.trim() === '') {
       return;
@@ -710,12 +698,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return tabId;
   }
 
-  /**
-   * @deprecated Prefer {@link loadTab}. Internal implementation kept for
-   * the unified dispatcher to route into; will fold into `loadTab` once
-   * the content-fetcher split is removed.
-   */
-  public async loadDocsTabContent(
+  private async loadDocsTabContent(
     tabId: string,
     url: string,
     skipReadyToBegin?: boolean,
@@ -778,8 +761,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
               : fetchedContent.type === 'interactive'
                 ? 'interactive'
                 : t.type,
-          // Persist auto-derived packageInfo so subsequent reloads/restores
-          // skip the manifest fetch and render with the milestone toolbar.
           packageInfo: packageInfo ?? t.packageInfo,
           pathContext,
           pendingAlignment,
