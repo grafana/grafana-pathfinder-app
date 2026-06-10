@@ -26,6 +26,12 @@ jest.mock('@grafana/data', () => ({
   usePluginContext: () => ({ meta: { jsonData: {} } }),
 }));
 
+// ─── Mock useAiFixEnabled (off) — avoids pulling @grafana/assistant, which this
+//     suite's @grafana/ui mock would otherwise leave un-themed and crashing ─────
+jest.mock('../../integrations/assistant-integration/use-ai-fix-enabled', () => ({
+  useAiFixEnabled: jest.fn(() => false),
+}));
+
 // ─── Mock analytics (no-op) ──────────────────────────────────────────────────
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),

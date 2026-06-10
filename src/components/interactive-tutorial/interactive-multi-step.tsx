@@ -13,7 +13,10 @@ import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
 import type { InteractiveElementData } from '../../types/interactive.types';
 import { testIds } from '../../constants/testIds';
+// Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
+import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { STEP_STATES } from './step-states';
+import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import type { ProgressReason } from '../../global-state/progress-events';
 
@@ -249,6 +252,8 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       onStepComplete, // Pass through for objectives auto-completion
       onComplete, // Pass through for objectives auto-completion
     });
+
+    const aiFixEnabled = useAiFixEnabled();
 
     // Combined completion state: objectives always win (clarification 1, 2, 18)
     const isCompletedWithObjectives = storedCompleted || checker.completionReason === 'objectives';
@@ -845,6 +850,25 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               >
                 ↻ Try again
               </Button>
+              {aiFixEnabled &&
+                failedStepIndex >= 0 &&
+                /Element not found|requirements not met/i.test(executionError) && (
+                  <AiFixButton
+                    className="interactive-guided-ai-fix-btn"
+                    testId={testIds.interactive.requirementAiFixButton(renderedStepId)}
+                    detail={{
+                      stepId: stepId ?? renderedStepId,
+                      renderedStepId,
+                      refTarget: internalActions[failedStepIndex]?.refTarget,
+                      action: internalActions[failedStepIndex]?.targetAction,
+                      containerInfo: {
+                        containerId: stepId ?? renderedStepId,
+                        containerKind: 'multistep',
+                        subStepIndex: failedStepIndex,
+                      },
+                    }}
+                  />
+                )}
               {skippable && (
                 <Button
                   onClick={async () => {

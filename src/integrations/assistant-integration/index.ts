@@ -55,6 +55,8 @@ export {
   useIsAssistantAvailable,
 } from './assistant-dev-mode';
 
+export { useAiFixEnabled } from './use-ai-fix-enabled';
+
 // Custom tools for inline assistant
 export {
   // Tools
