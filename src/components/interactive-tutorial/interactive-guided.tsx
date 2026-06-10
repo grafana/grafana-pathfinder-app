@@ -757,7 +757,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               >
                 {checker.canFixRequirement ? 'Fix this' : 'Check again'}
               </button>
-              {aiFixEnabled && checker.requiresDomElement && !checker.canFixRequirement && (
+              {isEligibleForChecking && aiFixEnabled && checker.requiresDomElement && !checker.canFixRequirement && (
                 <AiFixButton
                   className="interactive-guided-ai-fix-btn"
                   testId={testIds.interactive.guidedAiFixButton(renderedStepId)}

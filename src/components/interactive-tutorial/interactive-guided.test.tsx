@@ -11,6 +11,9 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
+import { useStepChecker } from '../../requirements-manager';
+import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
+import { testIds } from '../../constants/testIds';
 
 // ─── Mock @grafana/ui ────────────────────────────────────────────────────────
 jest.mock('@grafana/ui', () => ({
@@ -19,6 +22,7 @@ jest.mock('@grafana/ui', () => ({
       {children}
     </button>
   ),
+  Icon: () => null,
 }));
 
 // ─── Mock @grafana/data ──────────────────────────────────────────────────────
@@ -209,5 +213,51 @@ describe('InteractiveGuided — double skip button (issue #786)', () => {
     const skipButtons = screen.queryAllByTestId(/interactive-skip/);
     expect(skipButtons).toHaveLength(1);
     expect(skipButtons[0]).toHaveTextContent('Skip');
+  });
+});
+
+describe('InteractiveGuided — AI "Fix this" gating vs sequential block', () => {
+  const blockedChecker = {
+    isEnabled: false,
+    isChecking: false,
+    explanation: 'Complete the previous step first',
+    completionReason: 'none',
+    requiresDomElement: true,
+    canFixRequirement: false,
+    markSkipped: jest.fn(),
+    fixRequirement: null,
+    checkStep: jest.fn(),
+    isRetrying: false,
+    retryCount: 0,
+    maxRetries: 3,
+  };
+
+  beforeEach(() => {
+    (useAiFixEnabled as jest.Mock).mockReturnValue(true);
+    (useStepChecker as jest.Mock).mockReturnValue(blockedChecker);
+  });
+
+  it('hides the AI fix button when the step is not eligible (sequential "complete previous step" block)', () => {
+    render(
+      <InteractiveGuided
+        stepId="seq-blocked"
+        isEligibleForChecking={false}
+        requirements="exists-reftarget"
+        internalActions={[{ targetAction: 'highlight', refTarget: '#x' }]}
+      />
+    );
+    expect(screen.queryByTestId(testIds.interactive.guidedAiFixButton('seq-blocked'))).not.toBeInTheDocument();
+  });
+
+  it('shows the AI fix button when eligible and the element requirement fails', () => {
+    render(
+      <InteractiveGuided
+        stepId="elig-failing"
+        isEligibleForChecking={true}
+        requirements="exists-reftarget"
+        internalActions={[{ targetAction: 'highlight', refTarget: '#x' }]}
+      />
+    );
+    expect(screen.getByTestId(testIds.interactive.guidedAiFixButton('elig-failing'))).toBeInTheDocument();
   });
 });

@@ -1147,18 +1147,22 @@ export const InteractiveStep = forwardRef<
                   </button>
                 )}
 
-                {aiFixEnabled && checker.requiresDomElement && !checker.canFixRequirement && !checker.isEnabled && (
-                  <AiFixButton
-                    className="interactive-requirement-ai-fix-btn"
-                    testId={testIds.interactive.requirementAiFixButton(renderedStepId)}
-                    detail={{
-                      stepId: stepId ?? renderedStepId,
-                      renderedStepId,
-                      refTarget,
-                      action: targetAction,
-                    }}
-                  />
-                )}
+                {isEligibleForChecking &&
+                  aiFixEnabled &&
+                  checker.requiresDomElement &&
+                  !checker.canFixRequirement &&
+                  !checker.isEnabled && (
+                    <AiFixButton
+                      className="interactive-requirement-ai-fix-btn"
+                      testId={testIds.interactive.requirementAiFixButton(renderedStepId)}
+                      detail={{
+                        stepId: stepId ?? renderedStepId,
+                        renderedStepId,
+                        refTarget,
+                        action: targetAction,
+                      }}
+                    />
+                  )}
 
                 {/* Skip button only for eligible steps with failed requirements */}
                 {isEligibleForChecking && checker.canSkip && checker.markSkipped && !checker.isEnabled && (

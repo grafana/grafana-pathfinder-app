@@ -537,7 +537,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       safeDispatch(actionFromBaseStepState(errorState));
       updateManager(errorState);
     }
-    // refTarget/targetAction: rebuild checkStep when an AI patch swaps the selector.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refTarget/targetAction rebuild checkStep when an AI patch swaps the selector; remaining deps intentionally omitted to avoid loops
   }, [
     objectives,
     requirements,
@@ -549,7 +549,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     safeDispatch,
     refTarget,
     targetAction,
-  ]); // eslint-disable-line react-hooks/exhaustive-deps
+  ]);
 
   /**
    * Attempt to automatically fix failed requirements via the fix-handler registry.
