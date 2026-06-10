@@ -6,11 +6,11 @@
  * idempotent; runs immediately before the schema in `validateGuide`.
  */
 
-const FIELD_ALIASES: ReadonlyArray<readonly [alias: string, canonical: string]> = [
+const FIELD_ALIASES: ReadonlyMap<string, string> = new Map([
   ['targetAction', 'action'],
   ['refTarget', 'reftarget'],
   ['targetValue', 'targetvalue'],
-];
+]);
 
 export function normalizeJsonGuideAliases(raw: unknown): unknown {
   if (Array.isArray(raw)) {
@@ -20,17 +20,13 @@ export function normalizeJsonGuideAliases(raw: unknown): unknown {
     return raw;
   }
 
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    out[key] = normalizeJsonGuideAliases(value);
-  }
-  for (const [alias, canonical] of FIELD_ALIASES) {
-    if (alias in out) {
-      if (!(canonical in out)) {
-        out[canonical] = out[alias];
-      }
-      delete out[alias];
-    }
-  }
-  return out;
+  const source = raw as Record<string, unknown>;
+  const entries = Object.entries(source)
+    .filter(([key]) => {
+      const canonical = FIELD_ALIASES.get(key);
+      return canonical === undefined || !Object.hasOwn(source, canonical);
+    })
+    .map(([key, value]) => [FIELD_ALIASES.get(key) ?? key, normalizeJsonGuideAliases(value)] as const);
+
+  return Object.fromEntries(entries);
 }
