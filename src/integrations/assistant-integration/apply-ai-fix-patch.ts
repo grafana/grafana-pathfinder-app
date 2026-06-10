@@ -1,4 +1,4 @@
-import type { AiFixPatch } from './ai-fix-patch.schema';
+import { AiFixPatchSchema, type AiFixPatch } from './ai-fix-patch.schema';
 import { materializeStepIds } from './ai-fix-step-id';
 import { JsonGuideSchema } from '../../types/json-guide.schema';
 import {
@@ -90,6 +90,10 @@ function mutateSubstepReftarget(
 }
 
 export function applyPatchToGuide(guideJson: string, patch: AiFixPatch): ApplyResult {
+  if (!AiFixPatchSchema.safeParse(patch).success) {
+    return { ok: false, error: 'AI fix patch failed schema validation; cannot safely patch' };
+  }
+
   let parsed: unknown;
   try {
     parsed = JSON.parse(guideJson);

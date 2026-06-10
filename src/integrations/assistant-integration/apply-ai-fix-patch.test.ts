@@ -111,6 +111,19 @@ describe('applyPatchToGuide', () => {
       }
     });
 
+    it('rejects an unsafe selector patch even when called directly with a typed patch', () => {
+      const result = applyPatchToGuide(makeGuide([validStep]), {
+        type: 'selector-patch',
+        targetStepId: 'step-1',
+        newReftarget: '<script>alert(1)</script>',
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toMatch(/patch/i);
+      }
+    });
+
     it('does not crash when a sibling conditional has no matching step', () => {
       const conditional = {
         type: 'conditional',
@@ -363,18 +376,17 @@ describe('applyPatchToGuide', () => {
       }
     });
 
-    it('discards a mutation that produces a schema-invalid guide (post-validation)', () => {
+    it('rejects a structurally-invalid patch that bypassed schema validation at the call site', () => {
       const guideJson = makeGuide([validStep]);
-      // Bypass the patch schema to inject a newStep missing required `content`.
       const badPatch = {
         type: 'prepend-step',
         beforeStepId: 'step-1',
-        newStep: { type: 'interactive', action: 'button', reftarget: '[data-testid="x"]' },
+        newStep: { type: 'interactive', action: 'button', reftarget: '[data-testid="x"]' }, // missing required content
       } as unknown as AiFixPatch;
       const result = applyPatchToGuide(guideJson, badPatch);
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error).toMatch(/failed schema check/);
+        expect(result.error).toMatch(/patch failed schema validation/);
       }
       // Caller's input string is untouched.
       expect(JSON.parse(guideJson).blocks).toHaveLength(1);
