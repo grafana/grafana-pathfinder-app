@@ -1,18 +1,8 @@
 /**
- * Tests for the camelCase ↔ lowercase field aliasing in the JSON parser.
- *
- * The Zod schema (validate-guide) still requires the canonical
- * lowercase form (`action`, `reftarget`, `targetvalue`) so the CLI's
- * flag-generation and Commander help-text contracts stay stable.
- *
- * The runtime parser is a step more lenient: when an authored block
- * contains BOTH the lowercase canonical and a camelCase alias, canonical
- * wins; missing-lowercase + present-camelCase is still rejected at
- * validation time (intentional — schema-level acceptance is a follow-up).
- *
- * The parser also plumbs an explicit JSON `id` field into the
- * `ParsedElement.props.stepId` slot so author-stable IDs override the
- * section's positional `${sectionId}-step-N` convention.
+ * camelCase ↔ lowercase field aliasing: `validateGuide` normalizes the
+ * camelCase aliases to canonical lowercase before the schema, so camelCase
+ * guides validate (canonical wins on conflict); the schema and CLI flags stay
+ * canonical. Also covers explicit `id` → `props.stepId` plumbing.
  */
 
 import { parseJsonGuide } from './json-parser';
@@ -48,7 +38,7 @@ describe('json-parser — field-name alias acceptance', () => {
     expect(interactive!.props.refTarget).toBe('Save');
   });
 
-  it('interactive block: camelCase-alias-only input is rejected by the schema (canonical required)', () => {
+  it('interactive block: camelCase-alias-only input is accepted and read', () => {
     const guide = makeGuide({
       targetAction: 'highlight',
       refTarget: '.my-element',
@@ -56,11 +46,10 @@ describe('json-parser — field-name alias acceptance', () => {
     });
 
     const result = parseJsonGuide(guide);
-    // Schema-level acceptance of camelCase aliases is a follow-up — for
-    // now the validator rejects guides that omit the lowercase canonical
-    // form. The parser's `?? camelCase` fallback only fires when both
-    // are present (defensive coexistence).
-    expect(result.isValid).toBe(false);
+    expect(result.isValid).toBe(true);
+    const interactive = result.data!.elements.find((el) => el.type === 'interactive-step');
+    expect(interactive!.props.targetAction).toBe('highlight');
+    expect(interactive!.props.refTarget).toBe('.my-element');
   });
 
   it('interactive block: canonical wins when both are present', () => {
