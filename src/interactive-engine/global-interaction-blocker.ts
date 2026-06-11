@@ -2,6 +2,7 @@ import { InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { INTERACTIVE_Z_INDEX } from '../constants/interactive-z-index';
 import { TimeoutManager } from '../utils/timeout-manager';
+import { detectModalActive } from './modal-watcher';
 
 /**
  * Global interaction blocking state (singleton pattern)
@@ -662,34 +663,7 @@ class GlobalInteractionBlocker {
    * Simple modal detection - if any modal/dialog is active, use full-screen blocking
    */
   private isModalActive(): boolean {
-    // 1. Detect our own image modal (we control this)
-    const ourModal = document.querySelector('.journey-image-modal');
-    if (ourModal) {
-      const style = window.getComputedStyle(ourModal);
-      if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0) {
-        return true;
-      }
-    }
-
-    // 2. Detect any ARIA dialogs (role="dialog" OR aria-modal="true")
-    const ariaDialogs = document.querySelectorAll('[role="dialog"], [aria-modal="true"]');
-    for (const dialog of ariaDialogs) {
-      const style = window.getComputedStyle(dialog);
-      if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0) {
-        return true;
-      }
-    }
-
-    // 3. Check for overlay containers (common modal pattern)
-    const overlayContainers = document.querySelectorAll('[data-overlay-container="true"]');
-    for (const container of overlayContainers) {
-      const style = window.getComputedStyle(container);
-      if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0) {
-        return true;
-      }
-    }
-
-    return false;
+    return detectModalActive();
   }
 
   /**
