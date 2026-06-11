@@ -187,38 +187,31 @@ export async function checkObjectiveCompletion(page: Page, stepId: string): Prom
 }
 
 /**
- * Wait for completion with periodic polling for objective-based auto-completion (L3-3C).
+ * Wait for a step to complete after it has been interacted with.
  *
- * Polls the step element's data-test-step-state; when 'completed', returns.
- * Final fallback asserts step has data-test-step-state="completed" with a short timeout.
+ * Callers reach this only after the step was alive and acted on (its "Do it"
+ * button was clicked, or the guided loop was running). A detached step element
+ * therefore means the step completed and its section auto-collapsed — or
+ * navigation unmounted it. Either way, detachment is a completion signal.
+ *
+ * Otherwise it polls data-test-step-state until 'completed', then asserts
+ * completion so a genuinely stuck step fails with a clear error.
  *
  * @param page - Playwright Page object
  * @param stepId - The step identifier
  * @param timeout - Maximum time to wait (ms)
- * @returns Object indicating if completion was via objectives
+ * @returns Object indicating if completion was likely via objectives
  */
 export async function waitForCompletionWithObjectivePolling(
   page: Page,
   stepId: string,
-  timeout: number,
-  options?: { urlBeforeClick?: string }
+  timeout: number
 ): Promise<{ completedViaObjectives: boolean }> {
   const startTime = Date.now();
   const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
-  const urlBeforeClick = options?.urlBeforeClick;
-  let seenAlive = false;
 
   while (Date.now() - startTime < timeout) {
-    const count = await stepLocator.count();
-    if (count > 0) {
-      seenAlive = true;
-    }
-
-    // Unmount after the element was observed alive is a completion signal
-    if (count === 0 && seenAlive) {
-      return { completedViaObjectives: false };
-    }
-    if (count === 0 && urlBeforeClick != null && page.url() !== urlBeforeClick) {
+    if ((await stepLocator.count()) === 0) {
       return { completedViaObjectives: false };
     }
 
@@ -226,7 +219,7 @@ export async function waitForCompletionWithObjectivePolling(
     try {
       state = await stepLocator.getAttribute('data-test-step-state', { timeout: 2000 });
     } catch {
-      if (urlBeforeClick != null && page.url() !== urlBeforeClick) {
+      if ((await stepLocator.count()) === 0) {
         return { completedViaObjectives: false };
       }
     }
@@ -236,13 +229,6 @@ export async function waitForCompletionWithObjectivePolling(
       return { completedViaObjectives: likelyObjectiveCompletion };
     }
     await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
-  }
-
-  if (urlBeforeClick != null) {
-    const count = await stepLocator.count();
-    if (count === 0 && page.url() !== urlBeforeClick) {
-      return { completedViaObjectives: false };
-    }
   }
 
   await expect(stepLocator).toHaveAttribute('data-test-step-state', 'completed', { timeout: 1000 });
@@ -771,19 +757,14 @@ export async function executeStep(
 
     // Click "Do it" button
     const doItButton = page.getByTestId(testIds.interactive.doItButton(step.stepId));
-    const urlBeforeClick = page.url();
     await doItButton.click();
 
     if (verbose) {
       console.log(`   → Clicked "Do it" for step ${step.stepId}`);
     }
 
-    // L3-3C: Allow reactive system to settle after click
-    // Per design doc: debounced rechecks (500ms context, 1200ms DOM)
+    // Allow the reactive system to settle after click (debounced rechecks).
     await page.waitForTimeout(POST_CLICK_SETTLE_DELAY_MS);
-
-    // Re-read URL after settle so we detect async URL changes (e.g. formfill updating query params)
-    const urlAfterSettle = page.url();
 
     // Phase 3: Guided step — wait for executing, run substep loop, then wait for completion
     if (step.isGuided && step.guidedStepCount != null && step.guidedStepCount > 0) {
@@ -825,47 +806,10 @@ export async function executeStep(
       };
     }
 
-    // FIX: Handle case where navigation (or formfill-driven URL change) causes step element to unmount
-    // For highlight actions on nav links, clicking "Do it" navigates the page.
-    // For formfill (e.g. command palette), URL may update after settle; step can unmount before completion indicator.
-    // If URL changed AND step element no longer exists, the action succeeded - treat as passed.
-    const urlChanged = urlBeforeClick !== urlAfterSettle;
-    if (urlChanged) {
-      const stepElementExists = (await page.locator(`[data-testid="interactive-step-${step.stepId}"]`).count()) > 0;
-      if (!stepElementExists) {
-        if (verbose) {
-          console.log(`   ✓ Step ${step.stepId} completed via navigation (element unmounted)`);
-        }
-
-        // Capture success screenshot if alwaysScreenshot is enabled
-        let navSuccessArtifacts: ArtifactPaths | undefined;
-        if (artifactsDir && alwaysScreenshot) {
-          navSuccessArtifacts = await captureSuccessArtifacts(page, step.stepId, artifactsDir);
-          if (navSuccessArtifacts && preScreenshotPath) {
-            navSuccessArtifacts.screenshotPre = preScreenshotPath;
-          } else if (preScreenshotPath) {
-            navSuccessArtifacts = { screenshotPre: preScreenshotPath };
-          }
-        }
-
-        return {
-          stepId: step.stepId,
-          status: 'passed',
-          durationMs: Date.now() - startTime,
-          currentUrl: page.url(),
-          consoleErrors,
-          skippable: step.skippable,
-          artifacts: navSuccessArtifacts,
-        };
-      }
-    }
-
-    // L3-3C: Wait for step completion with objective polling
-    // This detects both manual completion and objective-based auto-completion.
-    // Pass urlBeforeClick so that if the step element detaches after a URL change (e.g. formfill), we treat as passed.
-    const { completedViaObjectives } = await waitForCompletionWithObjectivePolling(page, step.stepId, timeout, {
-      urlBeforeClick,
-    });
+    // Wait for step completion. A detached element here means the step
+    // completed (section auto-collapsed) or navigation unmounted it; otherwise
+    // poll data-test-step-state. Detects manual and objective-based completion.
+    const { completedViaObjectives } = await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
 
     if (verbose && completedViaObjectives) {
       console.log(`   ℹ Step ${step.stepId} completed quickly (possibly via objectives)`);
