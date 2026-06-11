@@ -49,6 +49,7 @@ import { TerminalConnectBlockForm } from './forms/TerminalConnectBlockForm';
 import { ChallengeBlockForm } from './forms/ChallengeBlockForm';
 import { CodeBlockForm } from './forms/CodeBlockForm';
 import { GrotGuideBlockForm } from './forms/GrotGuideBlockForm';
+import { SnippetRefBlockForm } from './forms/SnippetRefBlockForm';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   modal: css({
@@ -125,6 +126,7 @@ const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = 
   challenge: ChallengeBlockForm,
   'code-block': CodeBlockForm,
   'grot-guide': GrotGuideBlockForm,
+  'snippet-ref': SnippetRefBlockForm,
 };
 
 /**

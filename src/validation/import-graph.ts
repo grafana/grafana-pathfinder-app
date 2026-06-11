@@ -33,6 +33,7 @@ export const TIER_MAP: Record<string, number> = {
   'requirements-manager': 2,
   'learning-paths': 2,
   'package-engine': 2,
+  'snippet-engine': 2,
   hooks: 2,
   integrations: 3,
   components: 4,

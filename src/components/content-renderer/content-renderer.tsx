@@ -1,7 +1,7 @@
-import React, { useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
+import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
 
 import { RawContent, ContentParseResult } from '../../types/content.types';
 import {
@@ -19,6 +19,8 @@ import {
   GuideResponseProvider,
   useGuideResponses,
 } from '../../docs-retrieval';
+import { guideHasSnippetRefs, inlineSnippetRefsInGuide } from '../../snippet-engine';
+import type { JsonGuide } from '../../types/json-guide.types';
 import {
   InteractiveSection,
   InteractiveStep,
@@ -551,14 +553,53 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
     [html]
   );
 
-  // Parse content with fail-fast error handling (memoized to avoid re-parsing on every render)
-  // Detect JSON vs HTML content and use appropriate parser
-  const parseResult: ContentParseResult = useMemo(() => {
+  // Synchronous parse for first paint. Always derived from the inputs, so a
+  // prop change is reflected immediately with no intermediate stale render.
+  const baseParseResult: ContentParseResult = useMemo(() => {
     if (isJsonGuideContent(html)) {
       return parseJsonGuide(html, baseUrl);
     }
     return parseHTMLToComponents(html, baseUrl);
   }, [html, baseUrl]);
+
+  // A guide may reference snippets that resolve asynchronously from the CDN.
+  const guideWithSnippetRefs = useMemo<JsonGuide | null>(() => {
+    if (!isJsonGuideContent(html)) {
+      return null;
+    }
+    try {
+      const guide = JSON.parse(html) as JsonGuide;
+      return guideHasSnippetRefs(guide) ? guide : null;
+    } catch {
+      return null;
+    }
+  }, [html]);
+
+  // The resolved overlay is keyed to the inputs it was computed from, so an
+  // overlay from a previous guide never paints after html/baseUrl change.
+  const overlayKey = `${html} ${baseUrl}`;
+  const [snippetOverlay, setSnippetOverlay] = useState<{ key: string; result: ContentParseResult } | null>(null);
+
+  useEffect(() => {
+    if (!guideWithSnippetRefs) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const resolved = await inlineSnippetRefsInGuide(guideWithSnippetRefs);
+      if (cancelled) {
+        return;
+      }
+      setSnippetOverlay({ key: overlayKey, result: parseJsonGuide(resolved, baseUrl) });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [guideWithSnippetRefs, baseUrl, overlayKey]);
+
+  const overlayMatchesCurrent = snippetOverlay?.key === overlayKey;
+  const parseResult = overlayMatchesCurrent && snippetOverlay ? snippetOverlay.result : baseParseResult;
+  const isResolvingSnippets = guideWithSnippetRefs !== null && !overlayMatchesCurrent;
 
   // Start DOM monitoring if interactive elements are present
   useEffect(() => {
@@ -670,6 +711,16 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
           warnings={parseResult.warnings}
           fallbackHtml={html}
         />
+      </div>
+    );
+  }
+
+  // A guide composed entirely of snippet refs has no renderable elements until
+  // those refs resolve; show a loading state rather than the empty-content splash.
+  if (parsedContent.elements.length === 0 && isResolvingSnippets) {
+    return (
+      <div ref={ref}>
+        <LoadingPlaceholder text="Loading snippets" />
       </div>
     );
   }
