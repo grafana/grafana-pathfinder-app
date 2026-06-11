@@ -265,7 +265,7 @@ async function finalizeImpl(args: {
       console.warn(
         `pathfinder_finalize_for_app_platform: session delete failed for ${tokenLogPrefix(
           resolved.sessionToken
-        )}; 7-day lifecycle rule will collect it`,
+        )}; the idle session will be evicted by the sliding TTL`,
         err instanceof Error ? err.message : String(err)
       );
     }

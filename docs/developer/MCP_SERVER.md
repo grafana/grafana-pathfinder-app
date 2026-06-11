@@ -178,6 +178,10 @@ Picking a mode is per-call; never mix on a single call (returns `INPUT_MODE_AMBI
 | ------------------------------ | ------- | --------------------------------------------------------------- |
 | `PATHFINDER_SESSION_TTL_HOURS` | `24`    | Sliding-window lifetime; an idle session is evicted after this. |
 
+> **The single-instance pin is a correctness contract, not a tuning knob.** Sessions are process-local, so raising `--max-instances` (e.g. via `gcloud run services update`) scatters them across replicas — a follow-up call load-balanced to a different instance gets `SESSION_NOT_FOUND` mid-authoring, with no error at deploy time. `scripts/deploy-mcp.sh` is the only sanctioned deploy path; it pins `--min/--max-instances=1`. Operator drift on this knob breaks the contract silently.
+
+**Observability.** On every `tools/call`, the HTTP access log emits `liveSessions` (current in-memory session count) and `evictions` (cumulative, since process start). A `liveSessions` line climbing with flat `evictions` is the early signal of a session leak on the single instance — watch it before memory pressure.
+
 **Concurrency.** Mutations use optimistic concurrency via a per-session `generation`. The server retries-once on a 412 race; agents can opt into immediate `CONCURRENT_MODIFICATION` surfacing by passing `expectedGeneration` on a mutation. Failed mutations never bump the generation — session state is invariant under errors.
 
 **`Mcp-Session-Id` binding** (P7 task 16). When the HTTP request carries an `Mcp-Session-Id` header on session mint, the value is persisted as a pin against the new session token. Subsequent calls with a mismatched header surface as `SESSION_NOT_FOUND` (404, not 403 — the pin is a confidentiality boundary). Absence of the header on a subsequent call skips the check; this is the stdio fallback. Sessions minted without a header (stdio) have no pin and are never lazily bound on first-with-header access.

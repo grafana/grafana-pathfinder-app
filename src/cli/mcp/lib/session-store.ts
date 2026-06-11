@@ -6,12 +6,9 @@
  * monotonic `generation` number used for `ifGenerationMatch` optimistic
  * concurrency.
  *
- * `InMemorySessionStore` is the only implementation. The deployed MCP runs
- * as a single Cloud Run instance (see `scripts/deploy-mcp.sh`), so one
- * process-local map holds every session. Sessions are ephemeral: a redeploy
- * or instance recycle drops in-flight sessions, which is acceptable for the
- * short-lived authoring loop. A sliding TTL evicts abandoned sessions so the
- * map can't grow unbounded.
+ * `InMemorySessionStore` is the only implementation: the deployed MCP runs
+ * as a single instance (see `docs/developer/MCP_SERVER.md`), so a
+ * process-local map holds every session and a sliding TTL bounds growth.
  *
  * Concurrency model:
  *   - Every `save` requires an `ifGenerationMatch` value.
@@ -68,6 +65,24 @@ export class SessionPreconditionFailedError extends Error {
   }
 }
 
+/**
+ * Thrown by `bindMcpSessionId` when an existing pin would be overwritten with
+ * a different value. A create-time race on session mint, not a generation
+ * precondition failure — it carries its own code rather than borrowing
+ * synthetic generation numbers. The raw token stays off `.message` (it's a
+ * bearer credential); callers that log it use `tokenLogPrefix`.
+ */
+export class SessionPinConflictError extends Error {
+  readonly code = 'SESSION_PIN_CONFLICT' as const;
+  readonly token: string;
+
+  constructor(token: string) {
+    super('Mcp-Session-Id pin is already bound to a different value for this session');
+    this.name = 'SessionPinConflictError';
+    this.token = token;
+  }
+}
+
 export interface SessionStore {
   /**
    * Returns the current artifact and generation for `token`, or `null` if
@@ -102,8 +117,8 @@ export interface SessionStore {
    * not 403.
    *
    * Idempotent for the same pin. Rebinding an existing pin to a different
-   * value throws `SessionPreconditionFailedError`. No production caller does
-   * this; the failure is structured rather than a silent overwrite of a
+   * value throws `SessionPinConflictError`. No production caller does this;
+   * the failure is structured rather than a silent overwrite of a
    * confidentiality field.
    */
   bindMcpSessionId(token: string, mcpSessionId: string): Promise<void>;
@@ -116,8 +131,11 @@ export interface SessionStore {
   readMcpSessionPin(token: string): Promise<string | null>;
 }
 
-/** Default sliding-window session lifetime: 24h of inactivity before eviction. */
-export const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+export const MS_PER_HOUR = 60 * 60 * 1000;
+
+/** Default sliding-window session lifetime: hours of inactivity before eviction. */
+export const DEFAULT_SESSION_TTL_HOURS = 24;
+export const DEFAULT_SESSION_TTL_MS = DEFAULT_SESSION_TTL_HOURS * MS_PER_HOUR;
 
 interface ExpiringSession extends LoadedSession {
   expiresAt: number;
@@ -148,6 +166,8 @@ export class InMemorySessionStore implements SessionStore {
   private readonly pins = new Map<string, string>();
   private readonly ttlMs: number;
   private readonly now: () => number;
+  /** Cumulative sessions evicted by the sliding TTL since process start. */
+  private evictions = 0;
 
   constructor(options?: { ttlMs?: number; now?: () => number }) {
     this.ttlMs = options?.ttlMs ?? DEFAULT_SESSION_TTL_MS;
@@ -163,6 +183,7 @@ export class InMemorySessionStore implements SessionStore {
     if (entry.expiresAt <= this.now()) {
       this.entries.delete(token);
       this.pins.delete(token);
+      this.evictions += 1;
       return null;
     }
     return entry;
@@ -175,6 +196,7 @@ export class InMemorySessionStore implements SessionStore {
       if (entry.expiresAt <= now) {
         this.entries.delete(token);
         this.pins.delete(token);
+        this.evictions += 1;
       }
     }
   }
@@ -210,13 +232,24 @@ export class InMemorySessionStore implements SessionStore {
     // same-value rebinds are idempotent.
     const existing = this.pins.get(token);
     if (existing !== undefined && existing !== mcpSessionId) {
-      throw new SessionPreconditionFailedError(SESSION_GENERATION_ABSENT, 1);
+      throw new SessionPinConflictError(token);
     }
     this.pins.set(token, mcpSessionId);
   }
 
   async readMcpSessionPin(token: string): Promise<string | null> {
     return this.pins.get(token) ?? null;
+  }
+
+  /**
+   * Snapshot of store cardinality and cumulative evictions, for the HTTP
+   * access log. Sweeps first so `liveSessions` excludes already-expired
+   * entries (the sweep itself may bump `evictions`). Concrete-only —
+   * observability is an in-memory-backend concern, not a SessionStore contract.
+   */
+  stats(): { liveSessions: number; evictions: number } {
+    this.sweepExpired();
+    return { liveSessions: this.entries.size, evictions: this.evictions };
   }
 
   /** Test helper — number of live (unexpired) sessions. Not part of the public interface. */

@@ -108,7 +108,7 @@ export function sessionOutcomeResult(
 export function sessionNotFoundResult(sessionToken: string): ToolResult {
   return errorResult(
     'SESSION_NOT_FOUND',
-    'No session exists for the provided token. Either the token is wrong, the session expired (7-day TTL), or the session was deleted on finalize. Call pathfinder_create_package to start a new session.',
+    'No session exists for the provided token. Either the token is wrong, the session expired after a period of inactivity, or it was deleted on finalize. Call pathfinder_create_package to start a new session.',
     { sessionToken }
   );
 }

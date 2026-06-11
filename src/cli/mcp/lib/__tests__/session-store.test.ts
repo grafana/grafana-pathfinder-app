@@ -11,6 +11,7 @@ import type { ContentJson } from '../../../../types/package.types';
 import {
   InMemorySessionStore,
   SESSION_GENERATION_ABSENT,
+  SessionPinConflictError,
   SessionPreconditionFailedError,
   type SessionArtifact,
 } from '../session-store';
@@ -201,6 +202,63 @@ describe('InMemorySessionStore', () => {
       now += 101;
       await store.load(TOKEN_A); // eviction also clears the pin
       expect(await store.readMcpSessionPin(TOKEN_A)).toBeNull();
+    });
+  });
+
+  describe('Mcp-Session-Id pinning', () => {
+    it('rebinding to the same value is idempotent', async () => {
+      const store = new InMemorySessionStore();
+      await store.save(TOKEN_A, makeArtifact('a'), SESSION_GENERATION_ABSENT);
+      await store.bindMcpSessionId(TOKEN_A, 'mcp-session-1');
+      await store.bindMcpSessionId(TOKEN_A, 'mcp-session-1');
+      expect(await store.readMcpSessionPin(TOKEN_A)).toBe('mcp-session-1');
+    });
+
+    it('rebinding to a different value throws SessionPinConflictError', async () => {
+      const store = new InMemorySessionStore();
+      await store.save(TOKEN_A, makeArtifact('a'), SESSION_GENERATION_ABSENT);
+      await store.bindMcpSessionId(TOKEN_A, 'mcp-session-1');
+      try {
+        await store.bindMcpSessionId(TOKEN_A, 'mcp-session-2');
+        fail('expected SessionPinConflictError');
+      } catch (e) {
+        if (!(e instanceof SessionPinConflictError)) {
+          throw e;
+        }
+        expect(e.code).toBe('SESSION_PIN_CONFLICT');
+        expect(e.token).toBe(TOKEN_A);
+        // The raw token is a bearer credential — it must not leak into the message.
+        expect(e.message).not.toContain(TOKEN_A);
+      }
+    });
+  });
+
+  describe('stats', () => {
+    it('reports the live (unexpired) session count', async () => {
+      const store = new InMemorySessionStore();
+      await store.save(TOKEN_A, makeArtifact('a'), SESSION_GENERATION_ABSENT);
+      await store.save(TOKEN_B, makeArtifact('b'), SESSION_GENERATION_ABSENT);
+      expect(store.stats().liveSessions).toBe(2);
+    });
+
+    it('counts cumulative evictions when a sweep drops expired sessions', async () => {
+      let now = 1_000;
+      const store = new InMemorySessionStore({ ttlMs: 100, now: () => now });
+      await store.save(TOKEN_A, makeArtifact('a'), SESSION_GENERATION_ABSENT);
+      await store.save(TOKEN_B, makeArtifact('b'), SESSION_GENERATION_ABSENT);
+      now += 101; // both past their window
+      const stats = store.stats(); // sweeps, evicting both
+      expect(stats.liveSessions).toBe(0);
+      expect(stats.evictions).toBe(2);
+    });
+
+    it('counts a lazy eviction on load', async () => {
+      let now = 1_000;
+      const store = new InMemorySessionStore({ ttlMs: 100, now: () => now });
+      await store.save(TOKEN_A, makeArtifact('a'), SESSION_GENERATION_ABSENT);
+      now += 101;
+      expect(await store.load(TOKEN_A)).toBeNull(); // lazy eviction in liveEntry
+      expect(store.stats().evictions).toBe(1);
     });
   });
 });

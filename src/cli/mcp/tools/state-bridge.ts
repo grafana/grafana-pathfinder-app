@@ -22,10 +22,6 @@
  *   3. Per-call cost is bounded — two small JSON file writes and reads
  *      against a tmpfs/ramdisk-backed `os.tmpdir()` on Linux.
  *
- * Follow-up: refactor `mutateAndValidate` and each `runX` to accept an
- * in-memory state mode so this bridge can collapse to a function call.
- * Tracked in P3 deviations.
- *
  * Session-mode (`dispatchSessionMutation`): session-mode mutations load
  * the artifact from a `SessionStore` keyed by an opaque session token,
  * run the same tmpdir flow, and write the updated artifact back to the

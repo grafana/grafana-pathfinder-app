@@ -50,10 +50,9 @@ describe('getDefaultSessionStore', () => {
 
   it('applies PATHFINDER_SESSION_TTL_HOURS to the eviction window', async () => {
     let nowMs = 1_000_000;
-    jest.spyOn(Date, 'now').mockImplementation(() => nowMs);
     process.env.PATHFINDER_SESSION_TTL_HOURS = '1';
 
-    const store = await getDefaultSessionStore();
+    const store = await getDefaultSessionStore({ now: () => nowMs });
     await store.save(TOKEN, ARTIFACT, SESSION_GENERATION_ABSENT);
 
     nowMs += HOUR_MS + 60_000; // past the configured 1h window (and far short of the 24h default)
@@ -62,9 +61,8 @@ describe('getDefaultSessionStore', () => {
 
   it('falls back to the 24h default when the override is absent', async () => {
     let nowMs = 1_000_000;
-    jest.spyOn(Date, 'now').mockImplementation(() => nowMs);
 
-    const store = await getDefaultSessionStore();
+    const store = await getDefaultSessionStore({ now: () => nowMs });
     await store.save(TOKEN, ARTIFACT, SESSION_GENERATION_ABSENT);
 
     nowMs += 2 * HOUR_MS; // past a 1h window but within the 24h default — still live
@@ -73,10 +71,9 @@ describe('getDefaultSessionStore', () => {
 
   it('ignores a non-numeric override and uses the default', async () => {
     let nowMs = 1_000_000;
-    jest.spyOn(Date, 'now').mockImplementation(() => nowMs);
     process.env.PATHFINDER_SESSION_TTL_HOURS = 'not-a-number';
 
-    const store = await getDefaultSessionStore();
+    const store = await getDefaultSessionStore({ now: () => nowMs });
     await store.save(TOKEN, ARTIFACT, SESSION_GENERATION_ABSENT);
 
     nowMs += 2 * HOUR_MS; // a bogus override must not evict early — the 24h default applies
