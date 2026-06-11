@@ -45,7 +45,8 @@ export type JsonBlock =
   | JsonTerminalConnectBlock
   | JsonChallengeBlock
   | JsonCodeBlockBlock
-  | JsonGrotGuideBlock;
+  | JsonGrotGuideBlock
+  | JsonSnippetRefBlock;
 
 // ============ ASSISTANT CUSTOMIZATION PROPS ============
 
@@ -766,6 +767,29 @@ export interface JsonGrotGuideBlock extends AuthorAnnotated {
   screens: GrotGuideScreen[];
 }
 
+// ============ SNIPPET REFERENCE BLOCK ============
+
+/**
+ * Reference to a reusable snippet. The block resolves at parse time:
+ * the parser fetches the snippet by id (CDN-first, bundled fallback),
+ * validates its content, and splices the snippet's blocks into this
+ * block's position. The renderer never sees a snippet-ref.
+ *
+ * Snippets are authored upstream in `grafana/interactive-tutorials` and
+ * are immutable from the consumer's perspective. To customize an
+ * inserted snippet, use the editor's "Detach" action to convert the ref
+ * into the inlined block contents (one-way).
+ *
+ * @coupling Zod schema: JsonSnippetRefBlockSchema in json-guide.schema.ts
+ */
+export interface JsonSnippetRefBlock extends AuthorAnnotated {
+  type: 'snippet-ref';
+  /** Stable identifier for this ref instance (auto-assigned when omitted) */
+  id?: string;
+  /** Upstream snippet ID — kebab-case, matches the package-ID regex */
+  snippetId: string;
+}
+
 // ============ TYPE GUARDS ============
 
 /**
@@ -885,6 +909,13 @@ export function isCodeBlockBlock(block: JsonBlock): block is JsonCodeBlockBlock 
  */
 export function isGrotGuideBlock(block: JsonBlock): block is JsonGrotGuideBlock {
   return block.type === 'grot-guide';
+}
+
+/**
+ * Type guard for JsonSnippetRefBlock
+ */
+export function isSnippetRefBlock(block: JsonBlock): block is JsonSnippetRefBlock {
+  return block.type === 'snippet-ref';
 }
 
 /**

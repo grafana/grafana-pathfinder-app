@@ -292,6 +292,8 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetLocation.mockReturnValue({ pathname: '/explore', search: '' });
+    // openDocsPage routes through loadTab → shouldUseDocsLoader; force the docs loader.
+    jest.requireMock('./utils').shouldUseDocsLoader.mockReturnValue(true);
   });
 
   describe('loadDocsTabContent — pendingAlignment decision', () => {
@@ -723,6 +725,68 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       await new Promise((r) => setTimeout(r, 0));
 
       expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+    });
+  });
+
+  describe('openDocsPage — routes the content load through loadTab', () => {
+    it('reaches the docs loader and transitions loading → success', async () => {
+      let resolveLoad: (value: unknown) => void = () => {};
+      mockLoadDocsTabContentResult.mockReturnValue(
+        new Promise((resolve) => {
+          resolveLoad = resolve;
+        })
+      );
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await panel.openDocsPage('bundled:connections-guide', 'Test Guide');
+
+      expect(mockLoadDocsTabContentResult).toHaveBeenCalled();
+      const loadingTab = getTab(panel, tabId);
+      expect(loadingTab.isLoading).toBe(true);
+      expect(loadingTab.error).toBe(null);
+      expect(loadingTab.content).toBe(null);
+
+      resolveLoad(makeContentResult());
+      await new Promise((r) => setTimeout(r, 0));
+
+      const loadedTab = getTab(panel, tabId);
+      expect(loadedTab.isLoading).toBe(false);
+      expect(loadedTab.error).toBe(null);
+      expect(loadedTab.content).toBeDefined();
+    });
+
+    it('transitions loading → error when the docs loader returns an error', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue({ content: null, error: 'Failed to load documentation' });
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await panel.openDocsPage('bundled:connections-guide', 'Test Guide');
+      await new Promise((r) => setTimeout(r, 0));
+
+      const tab = getTab(panel, tabId);
+      expect(tab.isLoading).toBe(false);
+      expect(tab.error).toBe('Failed to load documentation');
+    });
+
+    it('reaches the docs loader via the packageInfo trigger when shouldUseDocsLoader is false', async () => {
+      // Isolate loadTab's second dispatch arm: with shouldUseDocsLoader false,
+      // reaching the docs loader proves `options.packageInfo != null` alone
+      // routed it — openDocsPage is that arm's primary call site.
+      jest.requireMock('./utils').shouldUseDocsLoader.mockReturnValue(false);
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await panel.openDocsPage('bundled:connections-guide', 'Test Guide', {
+        packageInfo: { packageManifest: { startingLocation: '/connections' } } as any,
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(mockLoadDocsTabContentResult).toHaveBeenCalledWith(
+        'bundled:connections-guide',
+        expect.objectContaining({ packageInfo: { packageManifest: { startingLocation: '/connections' } } })
+      );
+      const tab = getTab(panel, tabId);
+      expect(tab.isLoading).toBe(false);
+      expect(tab.content).toBeDefined();
     });
   });
 });

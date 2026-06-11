@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "2.12.0",
+  "version": "2.12.1",
   "bin": {
     "pathfinder-cli": "./dist/cli/cli/index.js"
   },
@@ -42,6 +42,7 @@
     "validate:packages": "node dist/cli/cli/index.js validate --packages src/bundled-interactives",
     "repository:build": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o src/bundled-interactives/repository.json",
     "repository:check": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o /tmp/repository-check.json && diff -q src/bundled-interactives/repository.json /tmp/repository-check.json",
+    "snippets:build": "node dist/cli/cli/index.js build-snippets",
     "schema:export": "node dist/cli/cli/index.js schema --all",
     "check": "npm run typecheck && npm run lint && npm run prettier-test && npm run docs:sync-terms:check && npm run lint:go && npm run test:go && npm run test:coverage",
     "prepare": "husky"
@@ -92,7 +93,7 @@
     "peer": "^1.0.2",
     "prettier": "3.8.3",
     "replace-in-file-webpack-plugin": "^1.0.6",
-    "sass": "1.99.0",
+    "sass": "1.100.0",
     "sass-loader": "16.0.7",
     "semver": "^7.7.3",
     "style-loader": "4.0.0",
@@ -125,7 +126,7 @@
     "@grafana/schema": "^13.0.0",
     "@grafana/ui": "^13.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@openfeature/ofrep-web-provider": "^0.3.5",
+    "@openfeature/ofrep-web-provider": "^0.4.1",
     "@openfeature/react-sdk": "^1.0.0",
     "@openfeature/web-sdk": "^1.7.2",
     "@tiptap/extension-link": "^3.10.4",
@@ -165,5 +166,5 @@
   "lint-staged": {
     "*.{ts,tsx,js,json,yaml,md}": "prettier --config .prettierrc.js --write"
   },
-  "packageManager": "npm@11.14.0"
+  "packageManager": "npm@11.16.0"
 }

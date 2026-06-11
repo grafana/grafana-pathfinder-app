@@ -24,7 +24,6 @@ describe('useLinkClickHandler', () => {
   // Mock model with all required functions
   const mockModel = {
     loadTab: jest.fn().mockResolvedValue(undefined),
-    loadTabContent: jest.fn(),
     openLearningJourney: jest.fn(),
     openDocsPage: jest.fn(),
     getActiveTab: jest.fn(),

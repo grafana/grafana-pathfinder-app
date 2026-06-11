@@ -4,6 +4,8 @@ description: Guidance for keeping TypeScript types and Zod schemas synchronized
 globs:
   - "src/types/json-guide.types.ts"
   - "src/types/json-guide.schema.ts"
+  - "src/types/json-snippet.types.ts"
+  - "src/types/json-snippet.schema.ts"
   - "src/types/package.types.ts"
   - "src/types/package.schema.ts"
 alwaysApply: false

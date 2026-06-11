@@ -206,22 +206,26 @@ export async function waitForCompletionWithObjectivePolling(
   const startTime = Date.now();
   const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
   const urlBeforeClick = options?.urlBeforeClick;
+  let seenAlive = false;
 
   while (Date.now() - startTime < timeout) {
-    // If step element was detached (e.g. after formfill that changed URL), treat as completed
     const count = await stepLocator.count();
-    if (count === 0 && urlBeforeClick != null) {
-      const currentUrl = page.url();
-      if (currentUrl !== urlBeforeClick) {
-        return { completedViaObjectives: false };
-      }
+    if (count > 0) {
+      seenAlive = true;
+    }
+
+    // Unmount after the element was observed alive is a completion signal
+    if (count === 0 && seenAlive) {
+      return { completedViaObjectives: false };
+    }
+    if (count === 0 && urlBeforeClick != null && page.url() !== urlBeforeClick) {
+      return { completedViaObjectives: false };
     }
 
     let state: string | null = null;
     try {
       state = await stepLocator.getAttribute('data-test-step-state', { timeout: 2000 });
     } catch {
-      // Element may have detached (e.g. formfill closed overlay); check URL change
       if (urlBeforeClick != null && page.url() !== urlBeforeClick) {
         return { completedViaObjectives: false };
       }
@@ -234,7 +238,6 @@ export async function waitForCompletionWithObjectivePolling(
     await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
   }
 
-  // Final check: step may have detached after URL change (e.g. formfill into command palette)
   if (urlBeforeClick != null) {
     const count = await stepLocator.count();
     if (count === 0 && page.url() !== urlBeforeClick) {
@@ -242,7 +245,6 @@ export async function waitForCompletionWithObjectivePolling(
     }
   }
 
-  // Final fallback: assert contract completion with short timeout
   await expect(stepLocator).toHaveAttribute('data-test-step-state', 'completed', { timeout: 1000 });
   return { completedViaObjectives: false };
 }
@@ -302,8 +304,22 @@ async function waitForSubstepAdvance(
   let lastIndex: string | null = null;
 
   while (Date.now() < deadline) {
-    lastState = await stepLocator.getAttribute('data-test-step-state');
-    lastIndex = await stepLocator.getAttribute('data-test-substep-index');
+    // Unmount mid-wait is a completion signal (section auto-collapse on final substep);
+    // a bare getAttribute on a detached locator blocks until the global test timeout.
+    if ((await stepLocator.count()) === 0) {
+      return;
+    }
+
+    try {
+      lastState = await stepLocator.getAttribute('data-test-step-state', { timeout: 2000 });
+      lastIndex = await stepLocator.getAttribute('data-test-substep-index', { timeout: 2000 });
+    } catch {
+      if ((await stepLocator.count()) === 0) {
+        return;
+      }
+      lastState = null;
+      lastIndex = null;
+    }
 
     if (lastState === 'error') {
       throw new Error('Guided step entered error state');
@@ -350,8 +366,22 @@ async function waitForFormfillSettle(
   const validDeadline = Date.now() + GUIDED_FORMFILL_VALID_TIMEOUT_MS;
   let invalidSince: number | null = null;
 
+  const readFormState = async (): Promise<string | null> => {
+    if ((await stepLocator.count()) === 0) {
+      return null;
+    }
+    try {
+      return await stepLocator.getAttribute('data-test-form-state', { timeout: 2000 });
+    } catch {
+      return null;
+    }
+  };
+
   while (Date.now() < validDeadline) {
-    const formState = await stepLocator.getAttribute('data-test-form-state');
+    if ((await stepLocator.count()) === 0) {
+      return;
+    }
+    const formState = await readFormState();
     if (formState === 'valid') {
       return;
     }
@@ -362,7 +392,7 @@ async function waitForFormfillSettle(
       if (Date.now() - invalidSince >= GUIDED_FORMFILL_INVALID_PERSIST_MS) {
         await target.fill(targetValue);
         await page.waitForTimeout(GUIDED_FORMFILL_DEBOUNCE_MS);
-        const afterRetry = await stepLocator.getAttribute('data-test-form-state');
+        const afterRetry = await readFormState();
         if (afterRetry === 'invalid') {
           throw new Error(
             `Guided step: formfill validation failed (data-test-form-state="invalid" persisted after retry with value "${targetValue}")`
@@ -394,7 +424,7 @@ async function runGuidedSubstepLoop(
     verbose?: boolean;
     artifactsDir?: string;
   }
-): Promise<void> {
+): Promise<{ completed: boolean }> {
   let stepLocator = options.stepLocator;
   const { perSubstepTimeoutMs, verbose = false, artifactsDir } = options;
   const guidedStepCount = step.guidedStepCount ?? 1;
@@ -405,10 +435,20 @@ async function runGuidedSubstepLoop(
     }
   };
 
+  // Step unmount mid-loop is a completion signal
+  const stepDetached = async (): Promise<boolean> => {
+    stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
+    return (await stepLocator.count()) === 0;
+  };
+
   while (true) {
+    if (await stepDetached()) {
+      return { completed: true };
+    }
+
     const state = await stepLocator.getAttribute('data-test-step-state');
     if (state === 'completed') {
-      break;
+      return { completed: true };
     }
     if (state === 'error') {
       await captureLoopArtifacts('error-state');
@@ -427,7 +467,7 @@ async function runGuidedSubstepLoop(
     const currentIndex = indexStr != null ? parseInt(indexStr, 10) : 0;
     const safeIndex = Number.isNaN(currentIndex) ? 0 : currentIndex;
     if (safeIndex >= guidedStepCount) {
-      break;
+      return { completed: false };
     }
 
     const commentBox = page.locator('.interactive-comment-box').first();
@@ -457,18 +497,8 @@ async function runGuidedSubstepLoop(
         await target.scrollIntoViewIfNeeded();
         await target.click();
         await page.waitForTimeout(100);
-        const urlAfter = page.url();
-        if (urlBefore !== urlAfter) {
+        if (urlBefore !== page.url()) {
           await page.waitForLoadState('domcontentloaded');
-          stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
-          const count = await stepLocator.count();
-          if (count === 0) {
-            break;
-          }
-          const newState = await stepLocator.getAttribute('data-test-step-state');
-          if (newState === 'completed') {
-            break;
-          }
         }
       } else if (action === 'hover') {
         if (!reftarget) {
@@ -492,6 +522,10 @@ async function runGuidedSubstepLoop(
     } catch (err) {
       await captureLoopArtifacts(`substep-${safeIndex}-${action}`);
       throw err;
+    }
+
+    if (await stepDetached()) {
+      return { completed: true };
     }
 
     await waitForSubstepAdvance(page, stepLocator, safeIndex, perSubstepTimeoutMs, { commentBox });
@@ -739,7 +773,6 @@ export async function executeStep(
     const doItButton = page.getByTestId(testIds.interactive.doItButton(step.stepId));
     const urlBeforeClick = page.url();
     await doItButton.click();
-    const urlAfterClick = page.url();
 
     if (verbose) {
       console.log(`   → Clicked "Do it" for step ${step.stepId}`);
@@ -758,13 +791,15 @@ export async function executeStep(
       await expect(stepLocator).toHaveAttribute('data-test-step-state', 'executing', {
         timeout: GUIDED_WAIT_EXECUTING_MS,
       });
-      await runGuidedSubstepLoop(page, step, {
+      const { completed } = await runGuidedSubstepLoop(page, step, {
         stepLocator,
         perSubstepTimeoutMs: TIMEOUT_PER_GUIDED_SUBSTEP_MS,
         verbose,
         artifactsDir,
       });
-      await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
+      if (!completed) {
+        await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
+      }
 
       let guidedArtifacts: ArtifactPaths | undefined;
       if (artifactsDir && alwaysScreenshot) {

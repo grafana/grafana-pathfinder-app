@@ -23,6 +23,7 @@ class GlobalInteractionBlocker {
   private headerOverlay: HTMLElement | null = null;
   private fullScreenOverlay: HTMLElement | null = null;
   private statusIndicator: HTMLElement | null = null;
+  private statusMessage = 'Interactive step running...'; // overridden by startAdHocBlocking
 
   static getInstance(): GlobalInteractionBlocker {
     if (!GlobalInteractionBlocker.instance) {
@@ -316,7 +317,7 @@ class GlobalInteractionBlocker {
         border-radius: 50%;
         animation: spin 1s linear infinite;
       "></div>
-      Interactive step running...
+      <span data-pathfinder-status-text></span>
       <button id="cancel-section-btn" style="
         background: var(--grafana-background-secondary, #2d2d31);
         border: 1px solid var(--grafana-border-medium, #404040);
@@ -339,6 +340,12 @@ class GlobalInteractionBlocker {
 
     // Append directly to body, not to blocking overlay
     document.body.appendChild(this.statusIndicator);
+
+    // textContent (not innerHTML): render caller-supplied status as plain text
+    const statusTextEl = this.statusIndicator.querySelector('[data-pathfinder-status-text]');
+    if (statusTextEl) {
+      statusTextEl.textContent = this.statusMessage;
+    }
 
     // Add cancel button click handler
     const cancelButton = this.statusIndicator.querySelector('#cancel-section-btn');
@@ -555,6 +562,31 @@ class GlobalInteractionBlocker {
     this.sectionBlockingActive = false;
     this.cancelCallback = null;
     this.removeBlockingOverlay();
+    this.statusMessage = 'Interactive step running...';
+  }
+
+  // Reuses the section-blocking overlay for an arbitrary async action; refuses if blocking is already active.
+  startAdHocBlocking(message: string, cancelCallback?: () => void): void {
+    if (this.sectionBlockingActive) {
+      return;
+    }
+    this.statusMessage = message;
+    this.sectionBlockingActive = true;
+    this.cancelCallback = cancelCallback || null;
+    const stubData: InteractiveElementData = { refTarget: '', targetAction: '', tagName: 'div' };
+    this.createBlockingOverlay(stubData);
+    this.lastKnownModalState = this.isModalActive();
+  }
+
+  // Idempotent — safe to call from a finally even if startAdHocBlocking refused the lock.
+  stopAdHocBlocking(): void {
+    if (!this.sectionBlockingActive) {
+      return;
+    }
+    this.sectionBlockingActive = false;
+    this.cancelCallback = null;
+    this.removeBlockingOverlay();
+    this.statusMessage = 'Interactive step running...';
   }
 
   /**
