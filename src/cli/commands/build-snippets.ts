@@ -11,6 +11,7 @@ import * as path from 'path';
 import { JsonSnippetSchema, SnippetCatalogSchema } from '../../types/json-snippet.schema';
 import type { SnippetCatalog, SnippetCatalogEntry } from '../../types/json-snippet.types';
 import { readJsonFile } from '../../validation/package-io';
+import { resolveCliPath } from '../utils/file-loader';
 import { formatJsonWithPrettier } from '../utils/output';
 
 const CATALOG_FILENAME = 'index.json';
@@ -104,7 +105,7 @@ export const buildSnippetsCommand = new Command('build-snippets')
   .argument('<dir>', 'Directory containing snippet bodies (<id>.json)')
   .option('-o, --output <file>', 'Output file path (default: <dir>/index.json)')
   .action(async (dir: string, options: BuildSnippetsOptions) => {
-    const absoluteDir = path.isAbsolute(dir) ? dir : path.resolve(process.cwd(), dir);
+    const absoluteDir = resolveCliPath(dir);
     const { catalog, warnings, errors } = buildSnippetCatalog(absoluteDir);
 
     for (const warning of warnings) {
@@ -119,11 +120,7 @@ export const buildSnippetsCommand = new Command('build-snippets')
     }
 
     const json = await formatJsonWithPrettier(JSON.stringify(catalog, null, 2));
-    const outputPath = options.output
-      ? path.isAbsolute(options.output)
-        ? options.output
-        : path.resolve(process.cwd(), options.output)
-      : path.join(absoluteDir, CATALOG_FILENAME);
+    const outputPath = options.output ? resolveCliPath(options.output) : path.join(absoluteDir, CATALOG_FILENAME);
 
     fs.writeFileSync(outputPath, json, 'utf-8');
     console.log(`✅ Wrote ${outputPath} (${Object.keys(catalog).length} snippets)`);

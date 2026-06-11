@@ -17,6 +17,7 @@ import type { RepositoryEntry, RepositoryJson } from '../../types/package.types'
 // refinement (ManifestJsonSchema) for strict correctness checking.
 import { ContentJsonSchema, ManifestJsonObjectSchema, RepositoryJsonSchema } from '../../types/package.schema';
 import { readJsonFile } from '../../validation/package-io';
+import { resolveCliPath } from '../utils/file-loader';
 import { formatJsonWithPrettier } from '../utils/output';
 
 interface BuildRepositoryOptions {
@@ -215,7 +216,7 @@ export const buildRepositoryCommand = new Command('build-repository')
     'Path(s) to exclude from scan (relative to root); excluded trees are not descended into'
   )
   .action(async (root: string, options: BuildRepositoryOptions) => {
-    const absoluteRoot = path.isAbsolute(root) ? root : path.resolve(process.cwd(), root);
+    const absoluteRoot = resolveCliPath(root);
 
     if (!fs.existsSync(absoluteRoot)) {
       console.error(`Directory not found: ${absoluteRoot}`);
@@ -241,7 +242,7 @@ export const buildRepositoryCommand = new Command('build-repository')
     const json = await formatJsonWithPrettier(JSON.stringify(repository, null, 2));
 
     if (options.output) {
-      const outputPath = path.isAbsolute(options.output) ? options.output : path.resolve(process.cwd(), options.output);
+      const outputPath = resolveCliPath(options.output);
       fs.writeFileSync(outputPath, json, 'utf-8');
       console.log(`✅ Wrote repository.json to ${outputPath} (${Object.keys(repository).length} packages)`);
     } else {

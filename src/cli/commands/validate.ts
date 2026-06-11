@@ -11,7 +11,7 @@ import * as path from 'path';
 import type { ContentJson, ManifestJson } from '../../types/package.types';
 import { validateGuideFromString, toLegacyResult } from '../../validation';
 import { validatePackage, validatePackageTree, type PackageValidationResult } from '../../validation/validate-package';
-import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/file-loader';
+import { loadGuideFiles, loadBundledGuides, resolveCliPath, type LoadedGuide } from '../utils/file-loader';
 import { validatePackageState } from '../utils/package-io';
 import { manyIssuesOutcome, readOutputOptions, type CommandOutcome } from '../utils/output';
 
@@ -167,7 +167,7 @@ function formatPackageResult(dirName: string, result: PackageValidationResult, s
 }
 
 function runPackageValidation(packageDir: string, options: ValidateOptions): void {
-  const absoluteDir = path.isAbsolute(packageDir) ? packageDir : path.resolve(process.cwd(), packageDir);
+  const absoluteDir = resolveCliPath(packageDir);
   const result = validatePackage(absoluteDir, { strict: options.strict });
 
   if (options.format === 'json') {
@@ -182,7 +182,7 @@ function runPackageValidation(packageDir: string, options: ValidateOptions): voi
 }
 
 function runPackagesValidation(rootDir: string, options: ValidateOptions): void {
-  const absoluteRoot = path.isAbsolute(rootDir) ? rootDir : path.resolve(process.cwd(), rootDir);
+  const absoluteRoot = resolveCliPath(rootDir);
   const results = validatePackageTree(absoluteRoot, { strict: options.strict });
 
   if (results.size === 0) {
