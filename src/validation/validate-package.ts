@@ -45,7 +45,7 @@ export interface PackageValidationMessage {
  */
 export type PackageValidationMessageCode =
   /** A dependency-list field (depends/recommends/etc) on the manifest is unset and defaulted to []. */
-  | 'manifest_dep_field_defaulted';
+  'manifest_dep_field_defaulted';
 
 export interface PackageValidationResult {
   isValid: boolean;

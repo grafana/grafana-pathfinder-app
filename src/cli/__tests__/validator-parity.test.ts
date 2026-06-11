@@ -29,7 +29,9 @@ function listPackages(): Array<{ name: string; dir: string }> {
     .readdirSync(BUNDLED_DIR, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => ({ name: entry.name, dir: path.join(BUNDLED_DIR, entry.name) }))
-    .filter(({ dir }) => fs.existsSync(path.join(dir, 'content.json')) && fs.existsSync(path.join(dir, 'manifest.json')));
+    .filter(
+      ({ dir }) => fs.existsSync(path.join(dir, 'content.json')) && fs.existsSync(path.join(dir, 'manifest.json'))
+    );
 }
 
 describe('validator parity on bundled corpus', () => {
