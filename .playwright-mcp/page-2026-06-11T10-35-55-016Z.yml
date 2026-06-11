@@ -1,0 +1,410 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e4]:
+    - link "Skip to main content" [ref=e5] [cursor=pointer]:
+      - /url: "#pageContent"
+      - generic [ref=e6]: Skip to main content
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e9]:
+          - link "Grafana" [ref=e10] [cursor=pointer]:
+            - /url: /
+            - img "Grafana" [ref=e11]
+          - generic [ref=e12]: Grafana
+        - button "Undock menu" [ref=e13] [cursor=pointer]:
+          - img [ref=e14]
+        - button "Close menu" [ref=e16] [cursor=pointer]:
+          - img [ref=e17]
+      - navigation [ref=e19]:
+        - list "Navigation" [ref=e23]:
+          - listitem [ref=e24]:
+            - link "Home" [ref=e28] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e30]:
+                - img [ref=e31]
+                - paragraph [ref=e33]: Home
+          - listitem [ref=e34]:
+            - generic [ref=e35]:
+              - link "Bookmarks" [ref=e38] [cursor=pointer]:
+                - /url: /bookmarks
+                - generic [ref=e40]:
+                  - img [ref=e41]
+                  - paragraph [ref=e43]: Bookmarks
+              - 'button "Expand section: Bookmarks" [ref=e45] [cursor=pointer]':
+                - img [ref=e46]
+          - listitem [ref=e48]:
+            - generic [ref=e49]:
+              - link "Starred" [ref=e52] [cursor=pointer]:
+                - /url: /dashboards?starred
+                - generic [ref=e54]:
+                  - img [ref=e55]
+                  - paragraph [ref=e57]: Starred
+              - 'button "Expand section: Starred" [ref=e59] [cursor=pointer]':
+                - img [ref=e60]
+          - listitem [ref=e62]:
+            - generic [ref=e63]:
+              - link "Dashboards" [ref=e66] [cursor=pointer]:
+                - /url: /dashboards
+                - generic [ref=e68]:
+                  - img [ref=e69]
+                  - paragraph [ref=e71]: Dashboards
+              - 'button "Expand section: Dashboards" [ref=e73] [cursor=pointer]':
+                - img [ref=e74]
+          - listitem [ref=e76]:
+            - link "Explore" [ref=e80] [cursor=pointer]:
+              - /url: /explore
+              - generic [ref=e82]:
+                - img [ref=e83]
+                - paragraph [ref=e85]: Explore
+          - listitem [ref=e86]:
+            - generic [ref=e87]:
+              - link "Drilldown" [ref=e90] [cursor=pointer]:
+                - /url: /drilldown
+                - generic [ref=e92]:
+                  - img [ref=e93]
+                  - paragraph [ref=e98]: Drilldown
+              - 'button "Expand section: Drilldown" [ref=e100] [cursor=pointer]':
+                - img [ref=e101]
+          - listitem [ref=e103]:
+            - generic [ref=e104]:
+              - link "Alerting" [ref=e107] [cursor=pointer]:
+                - /url: /alerting
+                - generic [ref=e109]:
+                  - img [ref=e110]
+                  - paragraph [ref=e112]: Alerting
+              - 'button "Expand section: Alerting" [ref=e114] [cursor=pointer]':
+                - img [ref=e115]
+          - listitem [ref=e117]:
+            - generic [ref=e118]:
+              - link "Connections" [ref=e121] [cursor=pointer]:
+                - /url: /connections
+                - generic [ref=e123]:
+                  - img [ref=e124]
+                  - paragraph [ref=e126]: Connections
+              - 'button "Expand section: Connections" [ref=e128] [cursor=pointer]':
+                - img [ref=e129]
+          - listitem [ref=e131]:
+            - generic [ref=e132]:
+              - link "Administration" [ref=e135] [cursor=pointer]:
+                - /url: /admin
+                - generic [ref=e137]:
+                  - img [ref=e138]
+                  - paragraph [ref=e140]: Administration
+              - 'button "Expand section: Administration" [ref=e142] [cursor=pointer]':
+                - img [ref=e143]
+    - banner [ref=e145]:
+      - generic [ref=e146]:
+        - navigation "Breadcrumbs" [ref=e148]:
+          - list [ref=e149]:
+            - listitem [ref=e150]:
+              - link "Dashboards" [ref=e151] [cursor=pointer]:
+                - /url: /dashboards
+              - img [ref=e153]
+            - listitem [ref=e155]:
+              - generic "Home" [ref=e156]
+        - generic [ref=e157]:
+          - generic [ref=e159]:
+            - img [ref=e161]
+            - button "Search..." [ref=e163] [cursor=pointer]
+            - generic [ref=e165]: ⌘+k
+          - button "New" [ref=e166] [cursor=pointer]:
+            - img [ref=e167]
+            - img [ref=e169]
+          - button "Help" [ref=e172] [cursor=pointer]:
+            - img [ref=e173]
+          - button "Profile" [ref=e176] [cursor=pointer]:
+            - img "User avatar" [ref=e177]
+    - main [ref=e180]:
+      - log [ref=e181]
+      - generic [ref=e187]:
+        - generic [ref=e192]:
+          - generic [ref=e200]:
+            - heading "Welcome to Grafana" [level=1] [ref=e201]
+            - generic [ref=e202]:
+              - heading "Need help?" [level=2] [ref=e203]
+              - generic [ref=e204]:
+                - link "Documentation" [ref=e205] [cursor=pointer]:
+                  - /url: https://grafana.com/docs/grafana/latest?utm_source=grafana_gettingstarted
+                  - text: Documentation
+                  - img [ref=e206]
+                - link "Tutorials" [ref=e208] [cursor=pointer]:
+                  - /url: https://grafana.com/tutorials?utm_source=grafana_gettingstarted
+                  - text: Tutorials
+                  - img [ref=e209]
+                - link "Community" [ref=e211] [cursor=pointer]:
+                  - /url: https://community.grafana.com?utm_source=grafana_gettingstarted
+                  - text: Community
+                  - img [ref=e212]
+                - link "Public Slack" [ref=e214] [cursor=pointer]:
+                  - /url: http://slack.grafana.com?utm_source=grafana_gettingstarted
+                  - text: Public Slack
+                  - img [ref=e215]
+          - generic [ref=e224]:
+            - button "Remove this panel" [ref=e225] [cursor=pointer]:
+              - generic [ref=e226]: Remove this panel
+            - generic [ref=e228]:
+              - generic [ref=e229]:
+                - heading "Basic" [level=2] [ref=e230]
+                - paragraph [ref=e231]: The steps below will guide you to quickly finish setting up your Grafana installation.
+              - generic [ref=e232]:
+                - link "tutorial Data source and dashboards Grafana fundamentals Set up and understand Grafana if you have no prior experience. This tutorial guides you through the entire process and covers the “Data source” and “Dashboards” steps to the right." [ref=e233] [cursor=pointer]:
+                  - /url: https://grafana.com/tutorials/grafana-fundamentals?utm_source=grafana_gettingstarted
+                  - generic [ref=e234]:
+                    - generic [ref=e235]: tutorial
+                    - generic [ref=e236]: Data source and dashboards
+                    - heading "Grafana fundamentals" [level=3] [ref=e238]
+                    - generic [ref=e239]: Set up and understand Grafana if you have no prior experience. This tutorial guides you through the entire process and covers the “Data source” and “Dashboards” steps to the right.
+                - generic [ref=e240]:
+                  - link "complete Add your first data source" [ref=e242] [cursor=pointer]:
+                    - /url: datasources/new?utm_source=grafana_gettingstarted
+                    - generic [ref=e243]: complete
+                    - heading "Add your first data source" [level=3] [ref=e245]
+                  - link "Learn how in the docs" [ref=e247] [cursor=pointer]:
+                    - /url: https://grafana.com/docs/grafana/latest/features/datasources/add-a-data-source?utm_source=grafana_gettingstarted
+                    - text: Learn how in the docs
+                    - img [ref=e248]
+                - generic [ref=e250]:
+                  - link "dashboards Create your first dashboard" [ref=e252] [cursor=pointer]:
+                    - /url: dashboard/new?utm_source=grafana_gettingstarted
+                    - generic [ref=e253]: dashboards
+                    - heading "Create your first dashboard" [level=3] [ref=e255]
+                  - link "Learn how in the docs" [ref=e257] [cursor=pointer]:
+                    - /url: https://grafana.com/docs/grafana/latest/guides/getting_started/#create-a-dashboard?utm_source=grafana_gettingstarted
+                    - text: Learn how in the docs
+                    - img [ref=e258]
+            - button "To advanced tutorials" [ref=e260] [cursor=pointer]:
+              - img [ref=e261]
+          - region "Dashboards" [ref=e268]:
+            - generic [ref=e269]:
+              - heading "Dashboards" [level=2] [ref=e271]
+              - button "Menu for panel Dashboards" [ref=e272] [cursor=pointer]:
+                - img [ref=e273]
+            - generic [ref=e277]:
+              - generic [ref=e278]:
+                - generic [ref=e279]: Starred dashboards
+                - list
+              - generic [ref=e280]:
+                - generic [ref=e281]: Recently viewed dashboards
+                - list
+          - region "Latest from the blog" [ref=e287]:
+            - heading "Latest from the blog" [level=2] [ref=e290]
+            - generic [ref=e293]:
+              - 'article "AI-assisted testing, extensions updates, and more: k6 2.0 is here" [ref=e294]':
+                - link [ref=e295] [cursor=pointer]:
+                  - /url: https://grafana.com/blog/k6-2-0-release/
+                  - img [ref=e296]
+                - generic [ref=e297]:
+                  - time [ref=e298]: May 12
+                  - 'heading "AI-assisted testing, extensions updates, and more: k6 2.0 is here" [level=1] [ref=e299]':
+                    - 'link "AI-assisted testing, extensions updates, and more: k6 2.0 is here" [ref=e300] [cursor=pointer]':
+                      - /url: https://grafana.com/blog/k6-2-0-release/
+                      - text: "AI-assisted testing, extensions updates, and more: k6 2.0 is here"
+                      - img [ref=e301]
+                  - generic [ref=e303]: For years, teams have relied on k6 to take a more proactive approach to performance testing, ensuring they can catch issues early and deliver more reliable user experiences. That approach has helped make k6 one of the most widely used performance testing tools in the open source community today, with more than 30k stars on GitHub.
+              - article "Eliminate noisy log lines with Adaptive Logs drop rules" [ref=e304]:
+                - link [ref=e305] [cursor=pointer]:
+                  - /url: https://grafana.com/blog/eliminate-noisy-log-lines-with-adaptive-logs-drop-rules/
+                  - img [ref=e306]
+                - generic [ref=e307]:
+                  - time [ref=e308]: May 07
+                  - heading "Eliminate noisy log lines with Adaptive Logs drop rules" [level=1] [ref=e309]:
+                    - link "Eliminate noisy log lines with Adaptive Logs drop rules" [ref=e310] [cursor=pointer]:
+                      - /url: https://grafana.com/blog/eliminate-noisy-log-lines-with-adaptive-logs-drop-rules/
+                      - text: Eliminate noisy log lines with Adaptive Logs drop rules
+                      - img [ref=e311]
+                  - generic [ref=e313]: Most platform and observability teams have logs they know are noise. These could be throwaway health check logs, forgotten DEBUG logs, or verbose INFO logs from little used services that only serve to inflate your bill.
+              - article "Troubleshoot performance issues faster with the new Grafana Assistant integration for Database Observability" [ref=e314]:
+                - link [ref=e315] [cursor=pointer]:
+                  - /url: https://grafana.com/blog/troubleshoot-performance-issues-faster-with-the-new-grafana-assistant-integration-for-database-observability/
+                  - img [ref=e316]
+                - generic [ref=e317]:
+                  - time [ref=e318]: May 06
+                  - heading "Troubleshoot performance issues faster with the new Grafana Assistant integration for Database Observability" [level=1] [ref=e319]:
+                    - link "Troubleshoot performance issues faster with the new Grafana Assistant integration for Database Observability" [ref=e320] [cursor=pointer]:
+                      - /url: https://grafana.com/blog/troubleshoot-performance-issues-faster-with-the-new-grafana-assistant-integration-for-database-observability/
+                      - text: Troubleshoot performance issues faster with the new Grafana Assistant integration for Database Observability
+                      - img [ref=e321]
+                  - generic [ref=e323]: So your database is slow. Now what?Grafana Cloud Database Observability already gives you visibility into your SQL queries with RED metrics, individual execution samples, wait event breakdowns, table schemas, and visual explain plans. But visibility is just the starting point.
+              - 'article "Faster fixes, less context sharing: how Grafana Assistant learns your infrastructure before you even ask" [ref=e324]':
+                - link [ref=e325] [cursor=pointer]:
+                  - /url: https://grafana.com/blog/how-grafana-assistant-learns-your-infrastructure-before-you-even-ask/
+                  - img [ref=e326]
+                - generic [ref=e327]:
+                  - time [ref=e328]: Apr 30
+                  - 'heading "Faster fixes, less context sharing: how Grafana Assistant learns your infrastructure before you even ask" [level=1] [ref=e329]':
+                    - 'link "Faster fixes, less context sharing: how Grafana Assistant learns your infrastructure before you even ask" [ref=e330] [cursor=pointer]':
+                      - /url: https://grafana.com/blog/how-grafana-assistant-learns-your-infrastructure-before-you-even-ask/
+                      - text: "Faster fixes, less context sharing: how Grafana Assistant learns your infrastructure before you even ask"
+                      - img [ref=e331]
+                  - generic [ref=e333]: When an unexpected alert fires these days, most engineers' first move is to ask their AI assistant for help.You ask why your checkout service is slow and the assistant gets to work, but it can't get any meaningful insights—at least not quickly—without the proper guidance. So, the next thing you know you're sharing deals about your existing data sources, the services you have running, how they connect, which labels and metrics matter, and on and on.
+              - article "Get observability in the terminal, for you and your agents, with the gcx CLI tool" [ref=e334]:
+                - link [ref=e335] [cursor=pointer]:
+                  - /url: https://grafana.com/blog/get-observability-in-the-terminal-for-you-and-your-agents-with-the-gcx-cli-tool/
+                  - img [ref=e336]
+                - generic [ref=e337]:
+                  - time [ref=e338]: Apr 28
+                  - heading "Get observability in the terminal, for you and your agents, with the gcx CLI tool" [level=1] [ref=e339]:
+                    - link "Get observability in the terminal, for you and your agents, with the gcx CLI tool" [ref=e340] [cursor=pointer]:
+                      - /url: https://grafana.com/blog/get-observability-in-the-terminal-for-you-and-your-agents-with-the-gcx-cli-tool/
+                      - text: Get observability in the terminal, for you and your agents, with the gcx CLI tool
+                      - img [ref=e341]
+                  - generic [ref=e343]: The way you write code is changing, which means the way you observe your systems and respond to issues needs to change, too.Engineers today spend much of their day working via command line, as agentic tools like Cursor and Claude Code have become highly effective at handling many day-to-day engineering tasks. This greatly accelerates code generation, but it doesn't solve for the context switching that comes when you have to jump into another tool that's not part of this new, faster workflow.
+              - 'article "Secure performance testing at scale: Introducing secrets management for Grafana Cloud k6" [ref=e344]':
+                - link [ref=e345] [cursor=pointer]:
+                  - /url: https://grafana.com/blog/introducing-secrets-management-for-grafana-cloud-k6/
+                  - img [ref=e346]
+                - generic [ref=e347]:
+                  - time [ref=e348]: Apr 28
+                  - 'heading "Secure performance testing at scale: Introducing secrets management for Grafana Cloud k6" [level=1] [ref=e349]':
+                    - 'link "Secure performance testing at scale: Introducing secrets management for Grafana Cloud k6" [ref=e350] [cursor=pointer]':
+                      - /url: https://grafana.com/blog/introducing-secrets-management-for-grafana-cloud-k6/
+                      - text: "Secure performance testing at scale: Introducing secrets management for Grafana Cloud k6"
+                      - img [ref=e351]
+                  - generic [ref=e353]: To simulate real user behavior, performance tests often rely on API keys, tokens, or credentials to interact with real systems. But as your testing suite grows, this sensitive data can start to sprawl across scripts, configs, and environments, increasing the risk of exposure and making tests harder to manage and maintain.
+              - article "Customize preconfigured views for AWS, Azure, and Google Cloud with Cloud Provider Observability in Grafana Cloud" [ref=e354]:
+                - link [ref=e355] [cursor=pointer]:
+                  - /url: https://grafana.com/blog/customize-preconfigured-views-for-aws-azure-and-google-cloud-with-cloud-provider-observability-in-grafana-cloud/
+                  - img [ref=e356]
+                - generic [ref=e357]:
+                  - time [ref=e358]: Apr 27
+                  - heading "Customize preconfigured views for AWS, Azure, and Google Cloud with Cloud Provider Observability in Grafana Cloud" [level=1] [ref=e359]:
+                    - link "Customize preconfigured views for AWS, Azure, and Google Cloud with Cloud Provider Observability in Grafana Cloud" [ref=e360] [cursor=pointer]:
+                      - /url: https://grafana.com/blog/customize-preconfigured-views-for-aws-azure-and-google-cloud-with-cloud-provider-observability-in-grafana-cloud/
+                      - text: Customize preconfigured views for AWS, Azure, and Google Cloud with Cloud Provider Observability in Grafana Cloud
+                      - img [ref=e361]
+                  - generic [ref=e363]: Part of what makes Cloud Provider Observability in Grafana Cloud really useful is that it gives you prebuilt dashboards and drill-downs for AWS, Azure, and Google Cloud. Out of the box you get service overviews, instance-level views, and quick links to explore your data.
+              - 'article "Introducing Pyroscope 2.0: faster, more cost-effective continuous profiling at scale" [ref=e364]':
+                - link [ref=e365] [cursor=pointer]:
+                  - /url: https://grafana.com/blog/pyroscope-2-0-release/
+                  - img [ref=e366]
+                - generic [ref=e367]:
+                  - time [ref=e368]: Apr 21
+                  - 'heading "Introducing Pyroscope 2.0: faster, more cost-effective continuous profiling at scale" [level=1] [ref=e369]':
+                    - 'link "Introducing Pyroscope 2.0: faster, more cost-effective continuous profiling at scale" [ref=e370] [cursor=pointer]':
+                      - /url: https://grafana.com/blog/pyroscope-2-0-release/
+                      - text: "Introducing Pyroscope 2.0: faster, more cost-effective continuous profiling at scale"
+                      - img [ref=e371]
+                  - generic [ref=e373]: Continuous profiling is becoming a standard part of the observability stack, and for good reason. It's the only signal that tells you why your code is slow or expensive, not just that it is. Metrics tell you CPU usage is high. Logs tell you a request was slow. Traces tell you which service is the bottleneck. But only a profile tells you which function, on which line, is burning the cycles.
+              - 'article "Introducing o11y-bench: an open benchmark for AI agents running observability workflows" [ref=e374]':
+                - link [ref=e375] [cursor=pointer]:
+                  - /url: https://grafana.com/blog/o11y-bench-open-benchmark-for-observability-agents/
+                  - img [ref=e376]
+                - generic [ref=e377]:
+                  - time [ref=e378]: Apr 21
+                  - 'heading "Introducing o11y-bench: an open benchmark for AI agents running observability workflows" [level=1] [ref=e379]':
+                    - 'link "Introducing o11y-bench: an open benchmark for AI agents running observability workflows" [ref=e380] [cursor=pointer]':
+                      - /url: https://grafana.com/blog/o11y-bench-open-benchmark-for-observability-agents/
+                      - text: "Introducing o11y-bench: an open benchmark for AI agents running observability workflows"
+                      - img [ref=e381]
+                  - generic [ref=e383]: Evaluating agents is hard. Verifying observability tasks is harder.Yes, AI agents have gotten dramatically and quantifiably better at coding and tool use, but observability presents a different kind of challenge. In a real incident, the hard part is rarely just writing a query. It's deciding which signal matters, figuring out whether a spike is noise or symptom, correlating metrics with logs and traces, and sometimes making a change in Grafana without breaking the dashboard another engineer depends on.
+              - 'article "AI Observability in Grafana Cloud: A complete solution for monitoring your agentic workloads" [ref=e384]':
+                - link [ref=e385] [cursor=pointer]:
+                  - /url: https://grafana.com/blog/ai-observability-for-agents-in-grafana-cloud/
+                  - img [ref=e386]
+                - generic [ref=e387]:
+                  - time [ref=e388]: Apr 21
+                  - 'heading "AI Observability in Grafana Cloud: A complete solution for monitoring your agentic workloads" [level=1] [ref=e389]':
+                    - 'link "AI Observability in Grafana Cloud: A complete solution for monitoring your agentic workloads" [ref=e390] [cursor=pointer]':
+                      - /url: https://grafana.com/blog/ai-observability-for-agents-in-grafana-cloud/
+                      - text: "AI Observability in Grafana Cloud: A complete solution for monitoring your agentic workloads"
+                      - img [ref=e391]
+                  - generic [ref=e393]: The observability industry has developed great tools for using metrics, logs, traces, and profiles to monitor the cloud native applications that have dominated the last decade of software development.
+        - generic [ref=e397]:
+          - button "Outline" [ref=e398] [cursor=pointer]:
+            - img [ref=e400]
+          - button "Hide" [ref=e403] [cursor=pointer]:
+            - img [ref=e405]
+  - dialog "Pathfinder floating panel" [ref=e407]:
+    - generic [ref=e408]:
+      - generic "Welcome to Grafana" [ref=e409]
+      - generic [ref=e410]: 0/7
+      - generic [ref=e411]:
+        - button "Copy workshop link" [ref=e412] [cursor=pointer]:
+          - img [ref=e413]
+        - button "Dock to sidebar" [ref=e414] [cursor=pointer]:
+          - img [ref=e415]
+        - button "Open in full screen" [ref=e416] [cursor=pointer]:
+          - img [ref=e417]
+        - button "Minimize" [ref=e418] [cursor=pointer]:
+          - img [ref=e419]
+        - button "Close" [ref=e420] [cursor=pointer]:
+          - img [ref=e421]
+    - generic [ref=e426]:
+      - generic [ref=e427]:
+        - heading "Welcome to Grafana!" [level=1] [ref=e428]
+        - paragraph [ref=e429]: "Welcome to your Grafana journey! In this interactive guide, we'll take you on a tour of key locations in Grafana. By the end, you'll be familiar with:"
+        - list [ref=e430]:
+          - listitem [ref=e431]: Navigating Grafana's main sections
+          - listitem [ref=e432]: "Understanding the key areas: Dashboards, Data Sources, Explore, and Alerting"
+          - listitem [ref=e433]: Finding your way around the interface
+      - generic [ref=e434]:
+        - heading "Tour of Grafana" [level=2] [ref=e435]
+        - paragraph [ref=e436]: Let's start by exploring the main areas of Grafana. We'll visit each key section so you know where everything is located.
+      - generic [ref=e437]:
+        - generic [ref=e440]: Tour of Grafana
+        - list [ref=e441]:
+          - listitem [ref=e442]:
+            - generic [ref=e443]:
+              - paragraph [ref=e445]:
+                - text: First, let's visit the
+                - strong [ref=e446]: Home
+                - text: page - your starting point in Grafana.
+              - generic [ref=e448]:
+                - button "Show me" [ref=e449] [cursor=pointer]:
+                  - generic [ref=e450]: Show me
+                - button "Do it" [ref=e451] [cursor=pointer]:
+                  - generic [ref=e452]: Do it
+          - listitem [ref=e453]:
+            - generic [ref=e454]:
+              - paragraph [ref=e456]:
+                - text: Next,
+                - strong [ref=e457]: Dashboards
+                - text: "- where you'll create and manage your visualizations."
+              - generic [ref=e458]: 👣Complete previous step
+          - listitem [ref=e459]:
+            - generic [ref=e460]:
+              - paragraph [ref=e462]:
+                - text: Then
+                - strong [ref=e463]: Explore
+                - text: "- perfect for ad-hoc queries and data exploration."
+              - button "Skip" [ref=e466] [cursor=pointer]:
+                - generic [ref=e467]: Skip
+              - generic [ref=e468]: 👣Complete previous step
+          - listitem [ref=e469]:
+            - generic [ref=e470]:
+              - paragraph [ref=e472]:
+                - strong [ref=e473]: Alerting
+                - text: "- where you'll set up notifications when things go wrong."
+              - generic [ref=e474]: 👣Complete previous step
+          - listitem [ref=e475]:
+            - generic [ref=e476]:
+              - paragraph [ref=e478]: You need the Admin role to connect data sources. You can skip this step if you don't have permissions.
+              - button "Skip" [ref=e481] [cursor=pointer]:
+                - generic [ref=e482]: Skip
+              - generic [ref=e483]: 👣Complete previous step
+          - listitem [ref=e484]:
+            - generic [ref=e485]:
+              - paragraph [ref=e487]:
+                - text: Finally,
+                - strong [ref=e488]: Administration
+                - text: "- for managing users, plugins, and system settings."
+              - button "Skip" [ref=e491] [cursor=pointer]:
+                - generic [ref=e492]: Skip
+              - generic [ref=e493]: 👣Complete previous step
+          - listitem [ref=e494]:
+            - generic [ref=e495]:
+              - paragraph [ref=e497]: Plugins extend Grafana by adding capabilities that are not available by default. For example, you can install plugins that add the ability to import data from diverse sources, that bundle data sources and panels, or that provide new visualization types for use in dashboards.
+              - button "Skip" [ref=e500] [cursor=pointer]:
+                - generic [ref=e501]: Skip
+              - generic [ref=e502]: 👣Complete previous step
+        - button "▶ Do Section (7 steps)" [ref=e504] [cursor=pointer]:
+          - generic [ref=e505]: ▶ Do Section (7 steps)
+      - generic [ref=e506]:
+        - heading "🎉 Congratulations!" [level=2] [ref=e507]
+        - paragraph [ref=e508]: "Amazing work! You've completed your welcome tour of Grafana. You now know:"
+        - list [ref=e509]:
+          - listitem [ref=e510]: ✅ Where to find Dashboards, Explore, Alerting, Connections, and Administration
+          - listitem [ref=e511]: ✅ How to navigate around Grafana's main interface
+          - listitem [ref=e512]: ✅ The key areas you'll be working with
+        - paragraph [ref=e513]:
+          - strong [ref=e514]: You're now ready to explore Grafana!
+          - text: Try visiting each section to get familiar with the different features available.

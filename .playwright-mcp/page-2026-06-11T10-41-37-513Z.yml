@@ -1,0 +1,433 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - link "Skip to main content" [ref=e1894] [cursor=pointer]:
+      - /url: "#pageContent"
+      - generic [ref=e6]: Skip to main content
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e9]:
+          - link "Grafana" [ref=e1895] [cursor=pointer]:
+            - /url: /
+            - img "Grafana" [ref=e1896]
+          - generic [ref=e12]: Grafana
+        - button "Undock menu" [ref=e1897] [cursor=pointer]:
+          - img [ref=e160]
+        - button "Close menu" [ref=e1898] [cursor=pointer]:
+          - img [ref=e162]
+      - navigation [ref=e17]:
+        - list "Navigation" [ref=e1899]:
+          - listitem [ref=e22]:
+            - link "Home" [ref=e1900] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e28]:
+                - img [ref=e164]
+                - paragraph [ref=e30]: Home
+          - listitem [ref=e31]:
+            - generic [ref=e32]:
+              - link "Bookmarks" [ref=e1901] [cursor=pointer]:
+                - /url: /bookmarks
+                - generic [ref=e37]:
+                  - img [ref=e166]
+                  - paragraph [ref=e39]: Bookmarks
+              - 'button "Expand section: Bookmarks" [ref=e1902] [cursor=pointer]':
+                - img [ref=e168]
+          - listitem [ref=e43]:
+            - generic [ref=e44]:
+              - link "Starred" [ref=e1903] [cursor=pointer]:
+                - /url: /dashboards?starred
+                - generic [ref=e49]:
+                  - img [ref=e170]
+                  - paragraph [ref=e51]: Starred
+              - 'button "Expand section: Starred" [ref=e1904] [cursor=pointer]':
+                - img [ref=e172]
+          - listitem [ref=e55]:
+            - generic [ref=e56]:
+              - link "Dashboards" [ref=e1905] [cursor=pointer]:
+                - /url: /dashboards
+                - generic [ref=e61]:
+                  - img [ref=e174]
+                  - paragraph [ref=e63]: Dashboards
+              - 'button "Expand section: Dashboards" [ref=e1906] [cursor=pointer]':
+                - img [ref=e176]
+          - listitem [ref=e67]:
+            - link "Explore" [ref=e1907] [cursor=pointer]:
+              - /url: /explore
+              - generic [ref=e73]:
+                - img [ref=e178]
+                - paragraph [ref=e75]: Explore
+          - listitem [ref=e76]:
+            - generic [ref=e77]:
+              - link "Drilldown" [ref=e1908] [cursor=pointer]:
+                - /url: /drilldown
+                - generic [ref=e82]:
+                  - img [ref=e180]
+                  - paragraph [ref=e84]: Drilldown
+              - 'button "Expand section: Drilldown" [ref=e1909] [cursor=pointer]':
+                - img [ref=e185]
+          - listitem [ref=e88]:
+            - generic [ref=e89]:
+              - link "Alerting" [ref=e1910] [cursor=pointer]:
+                - /url: /alerting
+                - generic [ref=e94]:
+                  - img [ref=e187]
+                  - paragraph [ref=e96]: Alerting
+              - 'button "Expand section: Alerting" [ref=e1911] [cursor=pointer]':
+                - img [ref=e189]
+          - listitem [ref=e100]:
+            - generic [ref=e101]:
+              - link "Connections" [ref=e1912] [cursor=pointer]:
+                - /url: /connections
+                - generic [ref=e106]:
+                  - img [ref=e191]
+                  - paragraph [ref=e108]: Connections
+              - 'button "Expand section: Connections" [ref=e1913] [cursor=pointer]':
+                - img [ref=e193]
+          - listitem [ref=e112]:
+            - generic [ref=e113]:
+              - link "Administration" [ref=e1914] [cursor=pointer]:
+                - /url: /admin
+                - generic [ref=e118]:
+                  - img [ref=e195]
+                  - paragraph [ref=e120]: Administration
+              - 'button "Expand section: Administration" [ref=e1915] [cursor=pointer]':
+                - img [ref=e197]
+    - banner [ref=e124]:
+      - generic [ref=e125]:
+        - navigation "Breadcrumbs" [ref=e1916]:
+          - list [ref=e128]:
+            - listitem [ref=e129]:
+              - link "Dashboards" [ref=e1917] [cursor=pointer]:
+                - /url: /dashboards
+              - img [ref=e201]
+            - listitem [ref=e203]:
+              - link "New dashboard" [ref=e1918] [cursor=pointer]:
+                - /url: /dashboard/new?orgId=1&from=now-6h&to=now&timezone=browser
+              - img [ref=e750]
+            - listitem [ref=e752]:
+              - generic "Edit panel" [ref=e1919]
+        - generic [ref=e131]:
+          - generic [ref=e133]:
+            - img [ref=e205]
+            - button "Search..." [ref=e1920] [cursor=pointer]
+            - generic [ref=e138]: ⌘+k
+          - button "New" [ref=e1921] [cursor=pointer]:
+            - img [ref=e207]
+            - img [ref=e209]
+          - button "Help" [expanded] [ref=e1922] [cursor=pointer]:
+            - img [ref=e212]
+          - button "Profile" [ref=e1923] [cursor=pointer]:
+            - img "User avatar" [ref=e1924]
+      - generic [ref=e758]:
+        - button "Back to dashboard" [ref=e1925] [cursor=pointer]:
+          - img [ref=e761]
+          - generic [ref=e763]: Back to dashboard
+        - button "Discard panel" [ref=e1926] [cursor=pointer]:
+          - generic [ref=e766]: Discard panel
+        - button "Save" [ref=e1927] [cursor=pointer]:
+          - generic [ref=e769]: Save
+    - generic [ref=e149]:
+      - main [ref=e150]:
+        - log [ref=e151]
+        - generic [ref=e770]:
+          - generic [ref=e772]:
+            - generic [ref=e774]:
+              - generic [ref=e776]:
+                - generic [ref=e777]:
+                  - button "Move 3h backward" [ref=e1928] [cursor=pointer]:
+                    - img [ref=e779]
+                  - 'button "Time range selected: Last 6 hours" [ref=e781] [cursor=pointer]':
+                    - img [ref=e782]
+                    - generic [ref=e786]: Last 6 hours
+                    - img [ref=e787]
+                  - button "Move time range forwards" [ref=e1929] [cursor=pointer]:
+                    - img [ref=e790]
+                  - button "Zoom out time range" [ref=e1930] [cursor=pointer]:
+                    - img [ref=e793]
+                - generic [ref=e795]:
+                  - button "Refresh" [ref=e1931] [cursor=pointer]:
+                    - img [ref=e797]
+                    - generic [ref=e801]: Refresh
+                  - button "Auto refresh turned off. Choose refresh time interval" [ref=e1932] [cursor=pointer]:
+                    - img [ref=e803]
+              - generic [ref=e806]:
+                - generic [ref=e807] [cursor=pointer]: Table view
+                - generic [ref=e808]:
+                  - switch "Toggle table view" [ref=e1933]
+                  - img
+            - generic [ref=e811]:
+              - region "New panel" [ref=e1934]:
+                - heading "New panel" [level=2] [ref=e1935]
+                - list [ref=e837]:
+                  - listitem [ref=e838]:
+                    - generic [ref=e840]:
+                      - button "Edit color for A-series" [ref=e1936] [cursor=pointer]
+                      - button "All series selected" [ref=e1937] [cursor=pointer]: A-series
+              - separator "Pane resize widget" [ref=e1938]
+              - generic [ref=e845]:
+                - tablist [ref=e847]:
+                  - tab "Queries1" [selected] [ref=e1939] [cursor=pointer]:
+                    - img [ref=e850]
+                    - text: Queries1
+                  - tab "Transformations0" [ref=e1940] [cursor=pointer]:
+                    - img [ref=e854]
+                    - text: Transformations0
+                - generic [ref=e861]:
+                  - generic [ref=e863]:
+                    - generic [ref=e864]: Data source
+                    - generic [ref=e869] [cursor=pointer]:
+                      - img "-- Grafana -- logo" [ref=e1941]
+                      - textbox "Select a data source" [ref=e1942]:
+                        - /placeholder: "-- Grafana --"
+                      - img [ref=e1726]
+                    - button "Open data source help" [ref=e1943] [cursor=pointer]:
+                      - img [ref=e878]
+                    - generic [ref=e883]:
+                      - button "Expand query row" [ref=e1944] [cursor=pointer]:
+                        - img [ref=e885]
+                      - generic:
+                        - generic: Query options
+                      - generic [ref=e887]: MD = auto = 500
+                      - generic [ref=e888]: Interval = 30s
+                    - button "Query inspector" [ref=e1945] [cursor=pointer]:
+                      - generic [ref=e891]: Query inspector
+                  - generic [ref=e894]:
+                    - generic [ref=e896]:
+                      - generic [ref=e897]:
+                        - button "Collapse query row" [expanded] [ref=e1946] [cursor=pointer]:
+                          - img [ref=e899]
+                        - generic [ref=e901]:
+                          - button "A" [ref=e1947] [cursor=pointer]:
+                            - generic [ref=e903]: A
+                          - emphasis [ref=e904]: (-- Grafana --)
+                      - generic [ref=e905]:
+                        - button "Duplicate query" [ref=e1948] [cursor=pointer]:
+                          - img [ref=e908]
+                        - button "Hide response" [ref=e1949] [cursor=pointer]:
+                          - img [ref=e912]
+                        - button "Remove query" [ref=e1950] [cursor=pointer]:
+                          - img [ref=e916]
+                        - button "Drag and drop to reorder" [ref=e1951]:
+                          - img "Drag and drop to reorder" [ref=e1952]
+                    - generic [ref=e924]:
+                      - generic [ref=e925]: Query type
+                      - generic [ref=e927] [cursor=pointer]:
+                        - log [ref=e929]
+                        - generic [ref=e930]:
+                          - generic [ref=e931]:
+                            - generic [ref=e932]: Random Walk
+                            - combobox "Query type" [ref=e1953]
+                          - img [ref=e936]
+                  - generic [ref=e938]:
+                    - button "Add query" [ref=e1954] [cursor=pointer]:
+                      - img [ref=e940]
+                      - generic [ref=e942]: Add query
+                    - button "Expression" [ref=e1955] [cursor=pointer]:
+                      - img [ref=e944]
+                      - generic [ref=e946]: Expression
+          - separator "Pane resize widget" [ref=e1956]
+          - generic [ref=e949]:
+            - tablist [ref=e951]:
+              - tab "Suggestions" [selected] [ref=e1957] [cursor=pointer]
+              - tab "All visualizations" [ref=e1958] [cursor=pointer]
+            - generic "Search for..." [ref=e1959]:
+              - generic [ref=e962]:
+                - img [ref=e964]
+                - textbox "Search for..." [ref=e1960]
+            - generic [ref=e972]:
+              - generic [ref=e974]: Time series
+              - button "Line chart" [ref=e1961] [cursor=pointer]:
+                - generic "Line chart" [ref=e1962]
+              - button "Area chart" [ref=e1963] [cursor=pointer]:
+                - generic "Area chart" [ref=e1964]
+              - generic [ref=e1002]: Stat
+              - button "Stat" [ref=e1965] [cursor=pointer]:
+                - generic "Stat" [ref=e1966]:
+                  - generic [ref=e1009]:
+                    - generic [ref=e1010]: A-series
+                    - generic [ref=e1012]: "89.2"
+              - button "Stat - color background" [ref=e1967] [cursor=pointer]:
+                - generic "Stat - color background" [ref=e1968]:
+                  - generic [ref=e1027]:
+                    - generic [ref=e1028]: A-series
+                    - generic [ref=e1030]: "89.2"
+              - generic [ref=e1032]: Gauge
+              - button "Gauge" [ref=e1969] [cursor=pointer]:
+                - generic "Gauge" [ref=e1970]:
+                  - img "Gauge" [ref=e1971]:
+                    - generic [ref=e1045]: "89.2"
+              - button "Circular gauge" [ref=e1972] [cursor=pointer]:
+                - generic "Circular gauge" [ref=e1973]:
+                  - img "Gauge" [ref=e1974]:
+                    - generic [ref=e1066]: "89.2"
+              - generic [ref=e1076]: Bar gauge
+              - button "Bar gauge" [ref=e1975] [cursor=pointer]:
+                - generic "Bar gauge" [ref=e1976]:
+                  - generic [ref=e1086]: "89.2"
+              - button "Bar gauge - LCD" [ref=e1977] [cursor=pointer]:
+                - generic "Bar gauge - LCD" [ref=e1978]:
+                  - generic [ref=e1122]: "89.2"
+              - generic [ref=e1124]: Table
+              - button "Table" [ref=e1979] [cursor=pointer]:
+                - generic "Table" [ref=e1980]:
+                  - grid [ref=e1128]:
+                    - row "2026-06-11 05:36:05 97.7" [ref=e1981]:
+                      - gridcell "2026-06-11 05:36:05" [ref=e1982]
+                      - gridcell "97.7" [ref=e1983]
+                    - row "2026-06-11 05:36:35 97.6" [ref=e1984]:
+                      - gridcell "2026-06-11 05:36:35" [ref=e1985]
+                      - gridcell "97.6" [ref=e1986]
+                    - row "2026-06-11 05:37:05 97.7" [ref=e1987]:
+                      - gridcell "2026-06-11 05:37:05" [ref=e1988]
+                      - gridcell "97.7" [ref=e1989]
+                    - row "2026-06-11 05:37:35 98.0" [ref=e1990]:
+                      - gridcell "2026-06-11 05:37:35" [ref=e1991]
+                      - gridcell "98.0" [ref=e1992]
+                    - row "2026-06-11 05:38:05 98.5" [ref=e1993]:
+                      - gridcell "2026-06-11 05:38:05" [ref=e1994]
+                      - gridcell "98.5" [ref=e1995]
+                    - row "2026-06-11 05:38:35 98.7" [ref=e1996]:
+                      - gridcell "2026-06-11 05:38:35" [ref=e1997]
+                      - gridcell "98.7" [ref=e1998]
+                    - row "2026-06-11 05:39:05 98.3" [ref=e1999]:
+                      - gridcell "2026-06-11 05:39:05" [ref=e2000]
+                      - gridcell "98.3" [ref=e2001]
+                    - row "2026-06-11 05:39:35 98.8" [ref=e2002]:
+                      - gridcell "2026-06-11 05:39:35" [ref=e2003]
+                      - gridcell "98.8" [ref=e2004]
+                    - row "2026-06-11 05:40:05 99.2" [ref=e2005]:
+                      - gridcell "2026-06-11 05:40:05" [ref=e2006]
+                      - gridcell "99.2" [ref=e2007]
+                    - row "2026-06-11 05:40:35 99.0" [ref=e2008]:
+                      - gridcell "2026-06-11 05:40:35" [ref=e2009]
+                      - gridcell "99.0" [ref=e2010]
+                    - row "2026-06-11 05:41:05 98.7" [ref=e2011]:
+                      - gridcell "2026-06-11 05:41:05" [ref=e2012]
+                      - gridcell "98.7" [ref=e2013]
+              - generic [ref=e1163]: State timeline
+              - button "State timeline" [ref=e2014] [cursor=pointer]:
+                - generic "State timeline" [ref=e2015]
+              - generic [ref=e1179]: Heatmap
+              - button "Heatmap" [ref=e2016] [cursor=pointer]:
+                - generic "Heatmap" [ref=e2017]
+              - generic [ref=e1194]: Histogram
+              - button "Histogram" [ref=e2018] [cursor=pointer]:
+                - generic "Histogram" [ref=e2019]
+      - generic [ref=e483]:
+        - generic [ref=e484]:
+          - generic [ref=e485]:
+            - button "Recommendations" [ref=e2020] [cursor=pointer]:
+              - img [ref=e487]
+            - button "Guide editor" [ref=e2021] [cursor=pointer]:
+              - img [ref=e490]
+          - button "Welcome to Grafana Close Welcome to Grafana" [ref=e2022] [cursor=pointer]:
+            - generic [ref=e495]:
+              - generic [ref=e496]: Welcome to Grafana
+              - button "Close Welcome to Grafana" [ref=e2023]:
+                - img [ref=e498]
+          - button "Show 1 more tab" [ref=e2024] [cursor=pointer]:
+            - img [ref=e502]
+            - generic [ref=e504]: "+1"
+          - generic [ref=e505]:
+            - button "My learning" [ref=e2025] [cursor=pointer]:
+              - img [ref=e507]
+            - button "More options" [ref=e2026] [cursor=pointer]:
+              - img [ref=e510]
+            - button "Close sidebar" [ref=e2027] [cursor=pointer]:
+              - img [ref=e513]
+        - generic [ref=e516]:
+          - generic [ref=e517]:
+            - generic [ref=e519]: Interactive guide
+            - generic [ref=e520]:
+              - button "Reset guide" [ref=e2028] [cursor=pointer]:
+                - img [ref=e522]
+              - button "Pop out to floating panel" [ref=e2029] [cursor=pointer]:
+                - img [ref=e525]
+              - button "Open in full screen" [ref=e2030] [cursor=pointer]:
+                - img [ref=e528]
+              - button "More options" [ref=e2031] [cursor=pointer]:
+                - img [ref=e531]
+          - generic [ref=e533]:
+            - generic [ref=e535]:
+              - generic [ref=e536]:
+                - heading "Welcome to Grafana!" [level=1] [ref=e2032]
+                - paragraph [ref=e538]: "Welcome to your Grafana journey! In this interactive guide, we'll take you on a tour of key locations in Grafana. By the end, you'll be familiar with:"
+                - list [ref=e539]:
+                  - listitem [ref=e540]: Navigating Grafana's main sections
+                  - listitem [ref=e541]: "Understanding the key areas: Dashboards, Data Sources, Explore, and Alerting"
+                  - listitem [ref=e542]: Finding your way around the interface
+              - generic [ref=e543]:
+                - heading "Tour of Grafana" [level=2] [ref=e2033]
+                - paragraph [ref=e545]: Let's start by exploring the main areas of Grafana. We'll visit each key section so you know where everything is located.
+              - generic [ref=e546]:
+                - generic [ref=e549]: Tour of Grafana
+                - list [ref=e550]:
+                  - listitem [ref=e551]:
+                    - generic [ref=e552]:
+                      - paragraph [ref=e554]:
+                        - text: First, let's visit the
+                        - strong [ref=e555]: Home
+                        - text: page - your starting point in Grafana.
+                      - generic [ref=e557]:
+                        - button "Show me" [ref=e2034] [cursor=pointer]:
+                          - generic [ref=e559]: Show me
+                        - button "Do it" [ref=e2035] [cursor=pointer]:
+                          - generic [ref=e561]: Do it
+                  - listitem [ref=e562]:
+                    - generic [ref=e563]:
+                      - paragraph [ref=e565]:
+                        - text: Next,
+                        - strong [ref=e566]: Dashboards
+                        - text: "- where you'll create and manage your visualizations."
+                      - generic [ref=e567]: 👣Complete previous step
+                  - listitem [ref=e568]:
+                    - generic [ref=e569]:
+                      - paragraph [ref=e571]:
+                        - text: Then
+                        - strong [ref=e572]: Explore
+                        - text: "- perfect for ad-hoc queries and data exploration."
+                      - button "Skip" [ref=e2036] [cursor=pointer]:
+                        - generic [ref=e576]: Skip
+                      - generic [ref=e577]: 👣Complete previous step
+                  - listitem [ref=e578]:
+                    - generic [ref=e579]:
+                      - paragraph [ref=e581]:
+                        - strong [ref=e582]: Alerting
+                        - text: "- where you'll set up notifications when things go wrong."
+                      - generic [ref=e583]: 👣Complete previous step
+                  - listitem [ref=e584]:
+                    - generic [ref=e585]:
+                      - paragraph [ref=e587]: You need the Admin role to connect data sources. You can skip this step if you don't have permissions.
+                      - button "Skip" [ref=e2037] [cursor=pointer]:
+                        - generic [ref=e591]: Skip
+                      - generic [ref=e592]: 👣Complete previous step
+                  - listitem [ref=e593]:
+                    - generic [ref=e594]:
+                      - paragraph [ref=e596]:
+                        - text: Finally,
+                        - strong [ref=e597]: Administration
+                        - text: "- for managing users, plugins, and system settings."
+                      - button "Skip" [ref=e2038] [cursor=pointer]:
+                        - generic [ref=e601]: Skip
+                      - generic [ref=e602]: 👣Complete previous step
+                  - listitem [ref=e603]:
+                    - generic [ref=e604]:
+                      - paragraph [ref=e606]: Plugins extend Grafana by adding capabilities that are not available by default. For example, you can install plugins that add the ability to import data from diverse sources, that bundle data sources and panels, or that provide new visualization types for use in dashboards.
+                      - button "Skip" [ref=e2039] [cursor=pointer]:
+                        - generic [ref=e610]: Skip
+                      - generic [ref=e611]: 👣Complete previous step
+                - button "▶ Do Section (7 steps)" [ref=e2040] [cursor=pointer]:
+                  - generic [ref=e614]: ▶ Do Section (7 steps)
+              - generic [ref=e615]:
+                - heading "🎉 Congratulations!" [level=2] [ref=e2041]
+                - paragraph [ref=e617]: "Amazing work! You've completed your welcome tour of Grafana. You now know:"
+                - list [ref=e618]:
+                  - listitem [ref=e619]: ✅ Where to find Dashboards, Explore, Alerting, Connections, and Administration
+                  - listitem [ref=e620]: ✅ How to navigate around Grafana's main interface
+                  - listitem [ref=e621]: ✅ The key areas you'll be working with
+                - paragraph [ref=e622]:
+                  - strong [ref=e623]: You're now ready to explore Grafana!
+                  - text: Try visiting each section to get familiar with the different features available.
+            - button "Return to my learning" [ref=e2042] [cursor=pointer]:
+              - img [ref=e626]
+              - generic [ref=e628]: Return to my learning
+  - button "guarded" [active] [ref=e1628] [cursor=pointer]

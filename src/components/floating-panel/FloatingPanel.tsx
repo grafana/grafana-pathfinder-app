@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { IconButton, useStyles2 } from '@grafana/ui';
+import { IconButton, useStyles2, getPortalContainer } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { buildPathfinderShareUrl } from '../../utils/pathfinder-search-params';
 import { getFloatingPanelStyles } from './floating-panel.styles';
@@ -265,5 +265,5 @@ export function FloatingPanel({
     </>
   );
 
-  return createPortal(panelContent, document.body);
+  return createPortal(panelContent, getPortalContainer());
 }
