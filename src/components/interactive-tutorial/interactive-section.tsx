@@ -62,6 +62,7 @@ import {
 import { classifySectionChild } from './section-child-classifier';
 import { useDocumentStepProgress } from './hooks/use-document-step-progress';
 import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
+import { useCompanionMode } from './hooks/use-companion-mode';
 import { useSectionPersistence } from './hooks/use-section-persistence';
 import { useSectionRequirements } from './hooks/use-section-requirements';
 import { useSectionScroll } from './hooks/use-section-scroll';
@@ -140,6 +141,7 @@ export function InteractiveSection({
   className,
   id, // HTML id attribute from parsed content
   autoCollapse, // Author control for auto-collapse behavior
+  companion,
 }: InteractiveSectionProps) {
   // Use provided HTML id or generate sequential fallback
   const sectionId = useMemo(() => {
@@ -416,6 +418,13 @@ export function InteractiveSection({
     isPreviewMode,
     autoCollapse,
     disableAutoCollapse: pluginConfig.disableAutoCollapse,
+  });
+
+  useCompanionMode({
+    companion,
+    isActive: !isPreviewMode && !isCollapsed && !isCompleted,
+    isCompleted,
+    isPreviewMode,
   });
 
   // Enable action monitor when component mounts (if feature is enabled in config)
