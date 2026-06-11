@@ -1,9 +1,16 @@
 jest.mock('../../lib/dom', () => ({
   resolveSelector: (selector: string) => selector,
-  querySelectorAllEnhanced: (selector: string) => ({
-    elements: Array.from(document.querySelectorAll(selector)),
-    usedFallback: false,
-  }),
+  querySelectorAllEnhanced: (selector: string) => {
+    try {
+      return {
+        elements: Array.from(document.querySelectorAll(selector)),
+        usedFallback: false,
+        originalSelector: selector,
+      };
+    } catch {
+      return { elements: [], usedFallback: true, originalSelector: selector, effectiveSelector: 'ERROR' };
+    }
+  },
 }));
 
 import { evaluatePatchConfidence } from './ai-fix-confidence';
@@ -49,12 +56,12 @@ describe('evaluatePatchConfidence', () => {
     expect(evaluatePatchConfidence(patch)).toEqual({ ok: true });
   });
 
-  it('rejects an invalid CSS selector', () => {
+  it('rejects an invalid CSS selector (it resolves to no live element)', () => {
     const patch: AiFixPatch = { type: 'selector-patch', targetStepId: 's1', newReftarget: '[[[not-valid' };
     const result = evaluatePatchConfidence(patch);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toMatch(/not valid CSS/);
+      expect(result.reason).toMatch(/does not match any element/);
     }
   });
 

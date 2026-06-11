@@ -27,16 +27,7 @@ export function evaluatePatchConfidence(patch: AiFixPatch): ConfidenceResult {
   }
 
   const resolved = resolveSelector(proposedSelector);
-  let matchCount = 0;
-  let cssError: string | null = null;
-  try {
-    matchCount = querySelectorAllEnhanced(resolved).elements.length;
-  } catch (e) {
-    cssError = e instanceof Error ? e.message.slice(0, 200) : 'unknown';
-  }
-  if (cssError) {
-    return { ok: false, reason: 'proposed selector is not valid CSS' };
-  }
+  const matchCount = querySelectorAllEnhanced(resolved).elements.length;
   if (matchCount === 0) {
     return { ok: false, reason: 'proposed selector does not match any element on the current page' };
   }
