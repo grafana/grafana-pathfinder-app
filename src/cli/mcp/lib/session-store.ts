@@ -1,16 +1,17 @@
 /**
- * Session store for the GCS-backed authoring sessions.
+ * Session store for the authoring sessions.
  *
- * Each session is a directory under the storage backend keyed by an opaque
- * session token (see `session-token.ts`). The store holds the authoring
- * artifact (`content` + optional `manifest`) and a monotonic `generation`
- * number used for `ifGenerationMatch` optimistic concurrency.
+ * Each session is keyed by an opaque session token (see `session-token.ts`)
+ * and holds the authoring artifact (`content` + optional `manifest`) and a
+ * monotonic `generation` number used for `ifGenerationMatch` optimistic
+ * concurrency.
  *
- * The interface intentionally mirrors the subset of the Google Cloud
- * Storage object API we need. The GCS-backed implementation lands in
- * `session-store-gcs.ts`; the in-memory implementation here is the default
- * for local dev and unit tests, and is the fallback when
- * `PATHFINDER_SESSION_STORE` is unset or set to `memory`.
+ * `InMemorySessionStore` is the only implementation. The deployed MCP runs
+ * as a single Cloud Run instance (see `scripts/deploy-mcp.sh`), so one
+ * process-local map holds every session. Sessions are ephemeral: a redeploy
+ * or instance recycle drops in-flight sessions, which is acceptable for the
+ * short-lived authoring loop. A sliding TTL evicts abandoned sessions so the
+ * map can't grow unbounded.
  *
  * Concurrency model:
  *   - Every `save` requires an `ifGenerationMatch` value.
@@ -171,10 +172,17 @@ export interface SessionStore {
   readMcpSessionPin(token: string): Promise<string | null>;
 }
 
+/** Default sliding-window session lifetime: 24h of inactivity before eviction. */
+export const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface ExpiringSession extends LoadedSession {
+  expiresAt: number;
+}
+
 /**
  * In-memory `SessionStore` implementation. The map is per-instance, so
- * tests get isolation by constructing a fresh store; the production
- * default for local stdio MCP is a process-singleton via `getDefaultStore`.
+ * tests get isolation by constructing a fresh store; the production default
+ * is a process-singleton via `getDefaultSessionStore`.
  *
  * Concurrency: a single read-modify-write cycle is non-atomic at the
  * JavaScript level, but the `ifGenerationMatch` check inside `save`
@@ -183,31 +191,68 @@ export interface SessionStore {
  * with the same precondition will see the same generation; whichever
  * runs first wins, the loser throws `PRECONDITION_FAILED`.
  *
+ * Retention: each access (`load`/`save`) refreshes a sliding TTL, and a
+ * full sweep on `save` evicts sessions idle past the window.
+ *
  * The artifact is stored by reference. Callers that need defensive
  * copying should clone before passing in or after pulling out — the
- * mutation flow used by P7 always writes fresh objects from the CLI
- * runner so this has not been needed.
+ * mutation flow always writes fresh objects from the CLI runner so this
+ * has not been needed.
  */
 export class InMemorySessionStore implements SessionStore {
-  private readonly entries = new Map<string, LoadedSession>();
+  private readonly entries = new Map<string, ExpiringSession>();
   private readonly pins = new Map<string, string>();
+  private readonly ttlMs: number;
+  private readonly now: () => number;
 
-  async load(token: string): Promise<LoadedSession | null> {
+  constructor(options?: { ttlMs?: number; now?: () => number }) {
+    this.ttlMs = options?.ttlMs ?? DEFAULT_SESSION_TTL_MS;
+    this.now = options?.now ?? (() => Date.now());
+  }
+
+  /** Return the entry for `token` if present and unexpired; evict and return null otherwise. */
+  private liveEntry(token: string): ExpiringSession | null {
     const entry = this.entries.get(token);
     if (!entry) {
+      return null;
+    }
+    if (entry.expiresAt <= this.now()) {
+      this.entries.delete(token);
+      this.pins.delete(token);
       return null;
     }
     return entry;
   }
 
+  /** Drop every session idle past its TTL. Bounds map growth on write activity. */
+  private sweepExpired(): void {
+    const now = this.now();
+    for (const [token, entry] of this.entries) {
+      if (entry.expiresAt <= now) {
+        this.entries.delete(token);
+        this.pins.delete(token);
+      }
+    }
+  }
+
+  async load(token: string): Promise<LoadedSession | null> {
+    const entry = this.liveEntry(token);
+    if (!entry) {
+      return null;
+    }
+    entry.expiresAt = this.now() + this.ttlMs;
+    return { artifact: entry.artifact, generation: entry.generation };
+  }
+
   async save(token: string, artifact: SessionArtifact, ifGenerationMatch: number): Promise<SaveResult> {
-    const current = this.entries.get(token);
+    this.sweepExpired();
+    const current = this.liveEntry(token);
     const actual = current ? current.generation : SESSION_GENERATION_ABSENT;
     if (actual !== ifGenerationMatch) {
       throw new SessionPreconditionFailedError(ifGenerationMatch, actual);
     }
     const nextGeneration = actual + 1;
-    this.entries.set(token, { artifact, generation: nextGeneration });
+    this.entries.set(token, { artifact, generation: nextGeneration, expiresAt: this.now() + this.ttlMs });
     return { generation: nextGeneration };
   }
 
@@ -230,8 +275,9 @@ export class InMemorySessionStore implements SessionStore {
     return this.pins.get(token) ?? null;
   }
 
-  /** Test helper — number of live sessions. Not part of the public interface. */
+  /** Test helper — number of live (unexpired) sessions. Not part of the public interface. */
   size(): number {
+    this.sweepExpired();
     return this.entries.size;
   }
 }

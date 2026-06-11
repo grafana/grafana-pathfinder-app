@@ -32,9 +32,8 @@ export const CROCKFORD_LOWERCASE_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 const TOKEN_LENGTH = 22;
 
 /**
- * Encode CSPRNG bytes as `length` Crockford-base32 chars. Shared by
- * `generateSessionToken` (110 bits) and the per-attempt stage-id generator
- * in `session-store-gcs.ts` (80 bits).
+ * Encode CSPRNG bytes as `length` Crockford-base32 chars. Used by
+ * `generateSessionToken` (110 bits).
  */
 export function crockfordBase32(bytes: Buffer, length: number): string {
   let bits = 0;

@@ -91,7 +91,7 @@ The first version prefers tools over optional MCP features because tool support 
 All authoring tools support two input modes (see [P7 — GCS-backed authoring sessions](./phases/ai-authoring-7-gcs-sessions.md)):
 
 1. **Stateless `{artifact}`** — the original [stateless model](./AUTHORING-SESSION-ARTIFACTS.md#stateless-model): the in-flight artifact is passed in and returned out on every call. No server-side state. This remains the OSS / airgap fallback.
-2. **Session-mode `{sessionToken}`** — `pathfinder_create_package` mints an opaque token; every subsequent call passes only the token and receives back an ack (no artifact body). The artifact lives in the session bucket and returns only at finalize, which then deletes the session. Recommended for hosted deployments where `PATHFINDER_SESSION_STORE=gcs` is set.
+2. **Session-mode `{sessionToken}`** — `pathfinder_create_package` mints an opaque token; every subsequent call passes only the token and receives back an ack (no artifact body). The artifact lives in the server's in-memory session store and returns only at finalize, which then deletes the session. Recommended for the hosted deployment, which runs as a single always-on Cloud Run instance (see [MCP_SERVER.md](../developer/MCP_SERVER.md)).
 
 The two modes are mutually exclusive per call (mixing returns `INPUT_MODE_AMBIGUOUS`). There is no `sessionId` in the historical sense — the session token is in tool args, not transport metadata.
 

@@ -106,8 +106,7 @@ export type SessionNotFound = typeof SESSION_NOT_FOUND;
  * NOT the cumulative artifact — block append/update tools can grow
  * `content.blocks[]` indefinitely. Without this cap, an attacker can
  * inflate one session's stored artifact unboundedly, which in turn
- * multiplies the cost of every previous-stage retention (see
- * `session-store-gcs.ts`).
+ * multiplies the in-memory footprint of every retained session.
  *
  * 4 MB is ~10× a realistic large guide and ~4× the per-request inbound
  * cap; a single mutation can never blow through it from a clean start

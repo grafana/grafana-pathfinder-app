@@ -1,14 +1,13 @@
 /**
  * @jest-environment node
  *
- * Tests for the env-driven `SessionStore` factory.
+ * Tests for the default `SessionStore` factory.
  */
 
 import { __resetSessionStoreFactoryForTests, getDefaultSessionStore } from '../session-store-factory';
 import { InMemorySessionStore } from '../session-store';
-import { GcsSessionStore } from '../session-store-gcs';
 
-const ENV_KEYS = ['PATHFINDER_SESSION_STORE', 'PATHFINDER_SESSION_BUCKET'] as const;
+const ENV_KEYS = ['PATHFINDER_SESSION_TTL_HOURS'] as const;
 const SAVED: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
 
 beforeEach(() => {
@@ -31,13 +30,7 @@ afterEach(() => {
 });
 
 describe('getDefaultSessionStore', () => {
-  it('returns an in-memory store by default', async () => {
-    const store = await getDefaultSessionStore();
-    expect(store).toBeInstanceOf(InMemorySessionStore);
-  });
-
-  it('returns an in-memory store when PATHFINDER_SESSION_STORE=memory', async () => {
-    process.env.PATHFINDER_SESSION_STORE = 'memory';
+  it('returns an in-memory store', async () => {
     const store = await getDefaultSessionStore();
     expect(store).toBeInstanceOf(InMemorySessionStore);
   });
@@ -48,18 +41,15 @@ describe('getDefaultSessionStore', () => {
     expect(a).toBe(b);
   });
 
-  it('throws when PATHFINDER_SESSION_STORE=gcs but PATHFINDER_SESSION_BUCKET is unset', async () => {
-    process.env.PATHFINDER_SESSION_STORE = 'gcs';
-    await expect(getDefaultSessionStore()).rejects.toThrow(/PATHFINDER_SESSION_BUCKET/);
+  it('honours a positive PATHFINDER_SESSION_TTL_HOURS override', async () => {
+    process.env.PATHFINDER_SESSION_TTL_HOURS = '1';
+    const store = await getDefaultSessionStore();
+    expect(store).toBeInstanceOf(InMemorySessionStore);
   });
 
-  it('builds a GcsSessionStore when both env vars are set', async () => {
-    // The Storage client constructed via Application Default Credentials
-    // is lazy — it doesn't actually authenticate until a request is made,
-    // so this test runs without real GCP creds.
-    process.env.PATHFINDER_SESSION_STORE = 'gcs';
-    process.env.PATHFINDER_SESSION_BUCKET = 'test-bucket';
+  it('ignores a non-numeric TTL override (falls back to default)', async () => {
+    process.env.PATHFINDER_SESSION_TTL_HOURS = 'not-a-number';
     const store = await getDefaultSessionStore();
-    expect(store).toBeInstanceOf(GcsSessionStore);
+    expect(store).toBeInstanceOf(InMemorySessionStore);
   });
 });

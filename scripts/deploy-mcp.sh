@@ -12,12 +12,12 @@
 #   PATHFINDER_GCP_REGION             Cloud Run region (e.g. us-central1).
 #   PATHFINDER_GCP_AR_REPO            Artifact Registry repo name.
 #   PATHFINDER_GCP_SERVICE_NAME       Cloud Run service name.
-#   PATHFINDER_GCP_RESOURCE_PREFIX    Prefix for bucket + service-account ids.
 #
 # Optional env:
-#   PATHFINDER_DEPLOY_ENV             Env scope name (default: dev). Used in
-#                                     bucket + SA names; must be lowercase
-#                                     alnum/hyphen, 3–20 chars.
+#   PATHFINDER_DEPLOY_ENV             Env scope label (default: dev). Cosmetic
+#                                     only; must be lowercase alnum/hyphen,
+#                                     3–20 chars.
+#   PATHFINDER_SESSION_TTL_HOURS      Sliding session TTL (default: 24).
 #
 # Usage:
 #   scripts/deploy-mcp.sh                       # build + push + deploy at HEAD's short sha
@@ -73,14 +73,19 @@ require_env PATHFINDER_GCP_PROJECT_ID
 require_env PATHFINDER_GCP_REGION
 require_env PATHFINDER_GCP_AR_REPO
 require_env PATHFINDER_GCP_SERVICE_NAME
-require_env PATHFINDER_GCP_RESOURCE_PREFIX
 
 PROJECT_ID="${PATHFINDER_GCP_PROJECT_ID}"
 REGION="${PATHFINDER_GCP_REGION}"
 REPO="${PATHFINDER_GCP_AR_REPO}"
 SERVICE="${PATHFINDER_GCP_SERVICE_NAME}"
-RESOURCE_PREFIX="${PATHFINDER_GCP_RESOURCE_PREFIX}"
 IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${SERVICE}"
+
+# Dedicated runtime identity with zero role bindings. The MCP touches no GCP
+# resource, so it needs no permissions — but a public, unauthenticated service
+# must not run as the default compute SA, whose project-wide roles would be the
+# blast radius of any compromise. SA id must fit GCP's 6–30 char limit.
+SERVICE_ACCOUNT_ID="${SERVICE}"
+SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_ID}@${PROJECT_ID}.iam.gserviceaccount.com"
 
 ENV_NAME="${PATHFINDER_DEPLOY_ENV:-dev}"
 
@@ -98,16 +103,12 @@ for arg in "$@"; do
   esac
 done
 
-# Validate env name early — used in resource names; must be safe for GCS bucket
-# names and IAM service account ids. Lowercase, alphanumeric, hyphens, 3–20 chars.
+# Validate env name early — cosmetic label only. Lowercase, alphanumeric,
+# hyphens, 3–20 chars.
 if ! [[ "${ENV_NAME}" =~ ^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$ ]]; then
   echo "error: --env must match ^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$ (got: ${ENV_NAME})" >&2
   exit 1
 fi
-
-BUCKET="${RESOURCE_PREFIX}-${ENV_NAME}"
-SERVICE_ACCOUNT_ID="${RESOURCE_PREFIX}-${ENV_NAME}"
-SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_ID}@${PROJECT_ID}.iam.gserviceaccount.com"
 
 if [ -z "$TAG" ]; then
   TAG="$(git rev-parse --short HEAD)"
@@ -121,8 +122,7 @@ echo "==> project   : ${PROJECT_ID}"
 echo "==> region    : ${REGION}"
 echo "==> env       : ${ENV_NAME}"
 echo "==> service   : ${SERVICE}"
-echo "==> bucket    : gs://${BUCKET}"
-echo "==> sa        : ${SERVICE_ACCOUNT_EMAIL}"
+echo "==> sa        : ${SERVICE_ACCOUNT_EMAIL} (no roles)"
 echo "==> image     : ${IMAGE}"
 echo
 
@@ -137,7 +137,6 @@ echo "==> ensuring required APIs are enabled..."
 gcloud services enable \
   run.googleapis.com \
   artifactregistry.googleapis.com \
-  storage.googleapis.com \
   iam.googleapis.com \
   --quiet >/dev/null
 
@@ -151,63 +150,18 @@ if ! gcloud artifacts repositories describe "${REPO}" --location="${REGION}" >/d
 fi
 
 # ---------------------------------------------------------------------------
-# Idempotent preflight: GCS session bucket + 7-day lifecycle rule + SA + IAM.
-#
-# The bucket holds ephemeral authoring sessions written by the deployed
-# service under `<session-token>/{content,manifest,generation,.pin}`. Per
-# P7 design:
-#   - uniform bucket-level access (no per-object ACLs)
-#   - public-access-prevention (no public access, ever)
-#   - 7-day lifecycle delete (debug-only retention; happy-path drafts evict
-#     explicitly on finalize)
-#   - dedicated SA per env, scoped to this bucket only — never project-wide
+# Create the runtime SA if absent (rationale at its definition above).
 # ---------------------------------------------------------------------------
 
-if ! gcloud storage buckets describe "gs://${BUCKET}" >/dev/null 2>&1; then
-  echo "==> creating GCS bucket 'gs://${BUCKET}' in ${REGION}..."
-  gcloud storage buckets create "gs://${BUCKET}" \
-    --location="${REGION}" \
-    --uniform-bucket-level-access \
-    --public-access-prevention \
-    --quiet
-fi
-
-echo "==> applying 7-day lifecycle rule to gs://${BUCKET}..."
-LIFECYCLE_FILE="$(mktemp -t pathfinder-lifecycle.XXXXXX.json)"
-trap 'rm -f "${LIFECYCLE_FILE}"' EXIT
-cat >"${LIFECYCLE_FILE}" <<'JSON'
-{
-  "lifecycle": {
-    "rule": [
-      {
-        "action": { "type": "Delete" },
-        "condition": { "age": 7 }
-      }
-    ]
-  }
-}
-JSON
-gcloud storage buckets update "gs://${BUCKET}" \
-  --lifecycle-file="${LIFECYCLE_FILE}" \
-  --quiet >/dev/null
-
 if ! gcloud iam service-accounts describe "${SERVICE_ACCOUNT_EMAIL}" >/dev/null 2>&1; then
-  echo "==> creating service account '${SERVICE_ACCOUNT_EMAIL}'..."
+  echo "==> creating runtime service account '${SERVICE_ACCOUNT_EMAIL}' (no roles)..."
   gcloud iam service-accounts create "${SERVICE_ACCOUNT_ID}" \
-    --display-name="Pathfinder MCP (${ENV_NAME})" \
-    --description="Cloud Run identity for ${SERVICE} in env=${ENV_NAME}; scoped to gs://${BUCKET}" \
+    --display-name="Pathfinder MCP runtime (no roles)" \
     --quiet
-
-  # IAM propagation is eventually consistent — a freshly-created SA is not
-  # immediately visible to the IAM policy binding API. Poll until describe
-  # succeeds against the SA before issuing any binding that references it.
-  # Without this, the next `add-iam-policy-binding` call fails with a 400
-  # "Service account does not exist" on a cold project.
-  echo "==> waiting for service account to propagate..."
+  # SA creation is eventually consistent; wait until describe resolves so the
+  # `gcloud run deploy --service-account` reference doesn't 400 on a cold project.
   for attempt in $(seq 1 30); do
-    if gcloud iam service-accounts describe "${SERVICE_ACCOUNT_EMAIL}" >/dev/null 2>&1; then
-      break
-    fi
+    gcloud iam service-accounts describe "${SERVICE_ACCOUNT_EMAIL}" >/dev/null 2>&1 && break
     if [ "${attempt}" -eq 30 ]; then
       echo "error: service account ${SERVICE_ACCOUNT_EMAIL} did not become visible after 60s" >&2
       exit 1
@@ -215,30 +169,6 @@ if ! gcloud iam service-accounts describe "${SERVICE_ACCOUNT_EMAIL}" >/dev/null 
     sleep 2
   done
 fi
-
-echo "==> granting roles/storage.objectAdmin on gs://${BUCKET} to ${SERVICE_ACCOUNT_EMAIL}..."
-# Even after `describe` succeeds, the binding API sometimes lags by a few
-# seconds. Retry the binding itself on transient "does not exist" 400s.
-for attempt in $(seq 1 10); do
-  if gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
-      --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
-      --role="roles/storage.objectAdmin" \
-      --condition=None \
-      --quiet >/dev/null 2>&1; then
-    break
-  fi
-  if [ "${attempt}" -eq 10 ]; then
-    echo "error: IAM binding for ${SERVICE_ACCOUNT_EMAIL} on gs://${BUCKET} failed after 10 retries" >&2
-    # Surface the actual error on the last try (without 2>/dev/null) so the operator sees the cause.
-    gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
-      --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
-      --role="roles/storage.objectAdmin" \
-      --condition=None \
-      --quiet
-    exit 1
-  fi
-  sleep 3
-done
 
 # ---------------------------------------------------------------------------
 # Build (linux/amd64 — matches Cloud Run regardless of host arch) and push.
@@ -263,9 +193,11 @@ fi
 # (open + edge mitigations); flip to --no-allow-unauthenticated for
 # IAM-gated testing.
 #
-# PATHFINDER_SESSION_STORE=gcs activates the GCS-backed session store wired
-# in P7 phase A. The in-memory default is used everywhere except this
-# deployed service (and any other --set-env-vars caller).
+# Sessions live in the process's memory (see `src/cli/mcp/lib/session-store.ts`),
+# so the service MUST run as a single always-on instance: --min/--max-instances=1
+# keeps every session on one process and avoids cold-start eviction. Authoring is
+# low-QPS and human-paced, so one instance at concurrency 80 is ample. A redeploy
+# or instance recycle drops in-flight sessions — acceptable for short-lived drafts.
 # ---------------------------------------------------------------------------
 
 echo "==> deploying ${SERVICE} to Cloud Run..."
@@ -276,12 +208,12 @@ gcloud run deploy "${SERVICE}" \
   --service-account="${SERVICE_ACCOUNT_EMAIL}" \
   --port=8080 \
   --args=mcp,--transport,http,--host,0.0.0.0,--port,8080 \
-  --set-env-vars="PATHFINDER_SESSION_STORE=gcs,PATHFINDER_SESSION_BUCKET=${BUCKET}" \
   --allow-unauthenticated \
   --memory=1Gi \
   --cpu=1 \
   --concurrency=80 \
-  --max-instances=10 \
+  --min-instances=1 \
+  --max-instances=1 \
   --timeout=60s \
   --quiet
 
@@ -290,16 +222,14 @@ URL="$(gcloud run services describe "${SERVICE}" --region="${REGION}" --format='
 echo
 echo "✓ deployed: ${URL}"
 echo "  endpoint: ${URL}/mcp"
-echo "  bucket:   gs://${BUCKET}  (env=${ENV_NAME}, 7-day TTL)"
+echo "  runtime : ${SERVICE_ACCOUNT_EMAIL} (no roles)"
+echo "  sessions: in-memory — ⚠ DO NOT raise --max-instances above 1; sessions are process-local and >1 instance scatters them (SESSION_NOT_FOUND mid-authoring)"
 echo
 echo "Smoke test:"
 echo "  curl -sX POST '${URL}/mcp' \\"
 echo "    -H 'content-type: application/json' \\"
 echo "    -H 'accept: application/json, text/event-stream' \\"
 echo "    -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"smoke\",\"version\":\"0\"}}}'"
-echo
-echo "End-to-end session-mode smoke:"
-echo "  npx tsx scripts/smoke-gcs-sessions.ts --url=${URL}/mcp --hops=25"
 echo
 echo "Wire an agent:"
 echo "  claude mcp add --transport http pathfinder ${URL}/mcp"

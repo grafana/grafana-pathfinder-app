@@ -35,7 +35,7 @@ const AUTHORING_CONTEXT = {
   domains: [...PATHFINDER_DOMAINS],
   workflow: [
     '1. Call pathfinder_create_package with a title. The response carries BOTH a sessionToken (use this for subsequent calls) AND a seed artifact (ignore unless you are running in stateless fallback mode).',
-    '2. Add blocks via pathfinder_add_block (and pathfinder_add_step / pathfinder_add_choice for container children) passing {sessionToken}. Each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact. The artifact lives in the session bucket.',
+    '2. Add blocks via pathfinder_add_block (and pathfinder_add_step / pathfinder_add_choice for container children) passing {sessionToken}. Each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact. The artifact lives in the server-side session store.',
     '3. Navigate by id using the `summary` tree returned on every ack. For deeper reads, call pathfinder_list_blocks, pathfinder_get_block, or pathfinder_get_manifest_session with {sessionToken}. They are cheap; use them freely instead of re-reading the full artifact.',
     '4. When you need the full artifact body in your context (rare — e.g. for a wholesale review before finalize), call pathfinder_inspect with {sessionToken}. This is the explicit "pull the artifact" escape hatch.',
     '5. Call pathfinder_validate with {sessionToken} before finalize.',
@@ -56,13 +56,13 @@ const AUTHORING_CONTEXT = {
       'Echo `sessionToken` on every subsequent call. Do NOT echo back the artifact body — it is not in the ack and the server already has it.',
       'Use `summary` for navigation. Do not call pathfinder_inspect after every mutation; the summary already tells you what changed.',
       '`expectedGeneration` is optional. Omit it for the common single-agent case (the server retries once on 412 internally). Pass it only if you specifically want to fail-fast on a concurrent edit.',
-      'A failed mutation does NOT bump the generation — the bucket state is unchanged. Re-read with the same generation if you need to recover.',
+      'A failed mutation does NOT bump the generation — the session state is unchanged. Re-read with the same generation if you need to recover.',
       'On SESSION_NOT_FOUND (expired or finalized session), start over: call pathfinder_create_package for a fresh token.',
     ],
   },
   statelessModeFallback: {
     appliesWhen:
-      'You are running against an MCP server with no session bucket configured (OSS deployments, airgapped environments, or any host with PATHFINDER_SESSION_STORE=memory across multiple processes). Every mutation tool also accepts `{artifact}` in place of `{sessionToken}` and returns the full artifact for you to thread to the next call.',
+      'You are running against an MCP server where server-side sessions are unavailable or not durable — stdio transport, OSS / self-hosted deployments, or any host not pinned to a single instance. Every mutation tool also accepts `{artifact}` in place of `{sessionToken}` and returns the full artifact for you to thread to the next call.',
     rules: [
       'Pass {content, manifest} in. Use the {content, manifest} returned in the response for the next call.',
       'Never mix modes — pass EITHER `artifact` OR `sessionToken`, never both. Mixing returns INPUT_MODE_AMBIGUOUS.',

@@ -1,5 +1,16 @@
 # P7 — GCS-backed authoring sessions
 
+> **Superseded (2026-06-11).** The GCS backend was removed in favour of a single
+> in-memory store with a sliding TTL: the deployed MCP runs as one always-on
+> Cloud Run instance, so a process-local map holds every session and a redeploy
+> drops in-flight drafts (acceptable for the short-lived authoring loop). The
+> session model documented below — token format, `Mcp-Session-Id` pinning,
+> `generation` optimistic concurrency, two-mode tool input, the read tools — is
+> unchanged and still current; only the storage backend and the GCS deploy
+> machinery are gone. See [MCP_SERVER.md](../../developer/MCP_SERVER.md) for the
+> current storage/retention contract. This record is retained as the history of
+> what was built.
+
 > Implementation plan for phase 7 of [Pathfinder AI authoring](../PATHFINDER-AI-AUTHORING.md).
 > Phase entry and exit criteria graduate the deferred [P5 — GCS-backed authoring sessions](../AI-AUTHORING-IMPLEMENTATION.md#p5--deferred-follow-ups) bullet into its own phase. The design is fully specified in that bullet (storage layout, token format, tool-surface shape, concurrency, retention, confidentiality); this plan phases the implementation.
 > Tracking issue: _epic issue TBD_.
