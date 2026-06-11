@@ -21,13 +21,7 @@
 import type { TreeNode } from '../../utils/package-io';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
-import { SessionStoreUnavailableError } from '../lib/session-store';
-import {
-  storeUnavailable,
-  type ConcurrentModificationResult,
-  type SessionTooLargeResult,
-  type StoreUnavailableResult,
-} from './state-bridge';
+import { type ConcurrentModificationResult, type SessionTooLargeResult } from './state-bridge';
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
@@ -91,8 +85,8 @@ export function outcomeResult(
 }
 
 /**
- * Session-mode mutation ack. The full artifact stays in the bucket; the
- * agent receives only the outcome, sessionToken, generation, and a compact
+ * Session-mode mutation ack. The full artifact stays in the session store;
+ * the agent receives only the outcome, sessionToken, generation, and a compact
  * navigation summary. Agents that need the full artifact call
  * `pathfinder_inspect({ sessionToken })`.
  */
@@ -155,17 +149,6 @@ export function inputModeMissingResult(): ToolResult {
 }
 
 /**
- * Wire shape for `SESSION_STORE_UNAVAILABLE` — the backing store rejected
- * the operation for a transient reason (exhausted 429 retries, network
- * blip, auth failure). Returned as a well-formed CommandOutcome so clients
- * never see a raw GCS error string leak through; the original provider
- * error is preserved in server logs via the `cause` chain.
- */
-export function storeUnavailableResult(sessionToken: string | undefined, result: StoreUnavailableResult): ToolResult {
-  return errorResult(result.code, result.message, { sessionToken, data: { reason: result.reason } });
-}
-
-/**
  * Last-line-of-defense envelope for an uncaught throw inside a tool
  * handler. Keeps the wire response a well-formed CommandOutcome so
  * clients can JSON.parse unconditionally; the original error is logged
@@ -181,14 +164,10 @@ export function internalErrorResult(sessionToken: string | undefined): ToolResul
 
 /**
  * Defense-in-depth envelope for tool handlers. Runs `fn` and converts any
- * thrown error into a well-formed CommandOutcome:
- *   - `SessionStoreUnavailableError` → `SESSION_STORE_UNAVAILABLE`
- *   - anything else → `INTERNAL_ERROR` (logged to stderr)
- *
- * Use this at every tool's handler boundary so clients see structured JSON
- * even when something the dispatch layer missed throws. Pass the inbound
- * `sessionToken` so the envelope can echo it back; pass `undefined` for
- * stateless tools.
+ * thrown error into a well-formed `INTERNAL_ERROR` CommandOutcome (logged to
+ * stderr), so clients see structured JSON even when something the dispatch
+ * layer missed throws. Pass the inbound `sessionToken` so the envelope can
+ * echo it back; pass `undefined` for stateless tools.
  */
 export async function withToolErrorEnvelope(
   sessionToken: string | undefined,
@@ -198,9 +177,6 @@ export async function withToolErrorEnvelope(
   try {
     return await fn();
   } catch (err) {
-    if (err instanceof SessionStoreUnavailableError) {
-      return storeUnavailableResult(sessionToken, storeUnavailable(err));
-    }
     console.error(`[${toolName}] uncaught error in tool handler:`, err);
     return internalErrorResult(sessionToken);
   }

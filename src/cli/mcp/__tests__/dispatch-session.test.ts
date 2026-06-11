@@ -9,19 +9,12 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import type { ContentJson } from '../../../types/package.types';
-import {
-  InMemorySessionStore,
-  SESSION_GENERATION_ABSENT,
-  SessionStoreUnavailableError,
-  type LoadedSession,
-  type SessionStore,
-} from '../lib/session-store';
+import { InMemorySessionStore, SESSION_GENERATION_ABSENT, type SessionStore } from '../lib/session-store';
 import {
   dispatchSessionMutation,
   isConcurrentModification,
   isSessionNotFound,
   isSessionTooLarge,
-  isStoreUnavailable,
   type DispatchSessionResult,
   type SessionOutcome,
 } from '../tools/state-bridge';
@@ -84,7 +77,7 @@ function makeRacingStore(real: SessionStore): SessionStore {
  * rather than open-coding the narrowing in every case.
  */
 function expectOutcome(r: DispatchSessionResult): SessionOutcome {
-  if (isSessionNotFound(r) || isConcurrentModification(r) || isSessionTooLarge(r) || isStoreUnavailable(r)) {
+  if (isSessionNotFound(r) || isConcurrentModification(r) || isSessionTooLarge(r)) {
     throw new Error(`expected SessionOutcome, got ${r.code}`);
   }
   return r;
@@ -232,62 +225,6 @@ describe('dispatchSessionMutation', () => {
       // The racing writer landed; our mutation did not. Title remains
       // whatever the racing writer set.
       expect((await inner.load(TOKEN))?.artifact.content.title).toBe('RACED');
-    });
-  });
-
-  describe('store-unavailable mapping', () => {
-    // The storage layer normalizes raw GCS errors into
-    // `SessionStoreUnavailableError`. The dispatcher must map that into a
-    // structured `SESSION_STORE_UNAVAILABLE` result so the tool layer can
-    // emit a well-formed CommandOutcome instead of letting the throw
-    // crash through to the HTTP transport as a non-JSON 500.
-
-    function unavailableOnSave(real: SessionStore, reason: 'rate_limited' | 'transient'): SessionStore {
-      return {
-        load: (t) => real.load(t),
-        save: async () => {
-          throw new SessionStoreUnavailableError(reason, `simulated ${reason}`);
-        },
-        delete: (t) => real.delete(t),
-        bindMcpSessionId: (t, id) => real.bindMcpSessionId(t, id),
-        readMcpSessionPin: (t) => real.readMcpSessionPin(t),
-      };
-    }
-
-    function unavailableOnLoad(reason: 'rate_limited' | 'transient'): SessionStore {
-      return {
-        load: async (): Promise<LoadedSession | null> => {
-          throw new SessionStoreUnavailableError(reason, `simulated ${reason}`);
-        },
-        save: async () => {
-          throw new Error('save should not be reached');
-        },
-        delete: async () => undefined,
-        bindMcpSessionId: async () => undefined,
-        readMcpSessionPin: async () => null,
-      };
-    }
-
-    it('maps a save-time SessionStoreUnavailableError to SESSION_STORE_UNAVAILABLE', async () => {
-      const inner = new InMemorySessionStore();
-      await inner.save(TOKEN, seed('v1'), SESSION_GENERATION_ABSENT);
-      const store = unavailableOnSave(inner, 'rate_limited');
-
-      const r = await dispatchSessionMutation(TOKEN, store, setTitleRunner('v2'));
-      if (!isStoreUnavailable(r)) {
-        throw new Error(`expected SESSION_STORE_UNAVAILABLE, got ${(r as { code?: string }).code}`);
-      }
-      expect(r.reason).toBe('rate_limited');
-      expect(r.message).toContain('rate_limited');
-    });
-
-    it('maps a load-time SessionStoreUnavailableError to SESSION_STORE_UNAVAILABLE', async () => {
-      const store = unavailableOnLoad('transient');
-      const r = await dispatchSessionMutation(TOKEN, store, setTitleRunner('v2'));
-      if (!isStoreUnavailable(r)) {
-        throw new Error(`expected SESSION_STORE_UNAVAILABLE, got ${(r as { code?: string }).code}`);
-      }
-      expect(r.reason).toBe('transient');
     });
   });
 });

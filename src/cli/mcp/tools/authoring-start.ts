@@ -10,8 +10,7 @@
  * mutation mints a sessionToken, mutation responses are acks (not full
  * artifacts), reads are explicit and on-demand, and the full artifact
  * returns only at finalize. Stateless `{artifact}` mode is mentioned once
- * as a fallback for OSS / airgap environments where no GCS bucket is
- * configured.
+ * as a fallback for OSS / airgap or multi-instance deployments.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';

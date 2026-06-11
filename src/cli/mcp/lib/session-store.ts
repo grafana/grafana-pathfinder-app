@@ -25,13 +25,8 @@
  *     cleanly.
  *
  * Failure-mode contract:
- *   - `load` returns `null` for an unknown token. It may throw
- *     `SessionStoreCorruptedError` when the backing store holds a
- *     malformed artifact (unparseable JSON, missing-generation, etc),
- *     and transport errors from the backing store. It never throws
- *     for the absent-session case.
- *   - `save` throws `SessionPreconditionFailedError` on generation
- *     mismatch and may throw transport errors from the backing store.
+ *   - `load` returns `null` for an unknown token; it never throws.
+ *   - `save` throws `SessionPreconditionFailedError` on generation mismatch.
  *   - `delete` is idempotent: deleting an unknown token resolves
  *     successfully.
  */
@@ -55,9 +50,8 @@ export interface SaveResult {
 }
 
 /**
- * Sentinel `ifGenerationMatch` value meaning "create only if absent".
- * Mirrors GCS semantics where `ifGenerationMatch=0` rejects updates to
- * an existing object.
+ * Sentinel `ifGenerationMatch` value meaning "create only if absent": a
+ * save with this precondition rejects if a session already exists.
  */
 export const SESSION_GENERATION_ABSENT = 0;
 
@@ -71,56 +65,6 @@ export class SessionPreconditionFailedError extends Error {
     this.name = 'SessionPreconditionFailedError';
     this.expected = expected;
     this.actual = actual;
-  }
-}
-
-/**
- * Raised by `load` when the backing store contains a session whose
- * artifacts are unreadable as JSON or otherwise malformed. The HTTP
- * transport surfaces this as a structured 500 so an operator can
- * inspect the bucket; agents see an INTERNAL-class error rather than
- * a silent SESSION_NOT_FOUND (which would mask the corruption).
- */
-export class SessionStoreCorruptedError extends Error {
-  readonly code = 'SESSION_CORRUPTED' as const;
-
-  constructor(message: string) {
-    super(message);
-    this.name = 'SessionStoreCorruptedError';
-  }
-}
-
-/**
- * Raised when the backing store rejected the operation for a reason that
- * isn't precondition-failure or corruption — typically a GCS 429 that
- * exhausted retries, a transient network blip, or an auth/permission
- * failure. The HTTP transport must surface this as a structured
- * CommandOutcome (code `SESSION_STORE_UNAVAILABLE`) rather than a raw
- * 500, so well-behaved clients see well-formed JSON and can retry.
- *
- * `reason` lets the dispatch layer choose a more specific client-facing
- * message ("rate-limited; retry" vs "session storage temporarily
- * unavailable"). The original error is preserved via `cause` so the
- * unsanitized provider message stays out of the wire response but
- * remains in server logs.
- */
-export class SessionStoreUnavailableError extends Error {
-  readonly code = 'SESSION_STORE_UNAVAILABLE' as const;
-  readonly reason: 'rate_limited' | 'transient';
-  readonly cause?: unknown;
-
-  constructor(reason: 'rate_limited' | 'transient', message: string, options?: { cause?: unknown }) {
-    // Assigning `cause` manually instead of passing it through `Error()`'s
-    // ES2022 options bag — the CLI tsconfig targets ES2020 so the typed
-    // 2-arg constructor isn't visible to the type checker. The runtime
-    // (node ≥ 16.9) supports the property either way; this assignment
-    // keeps it accessible to consumers without bumping the build target.
-    super(message);
-    this.name = 'SessionStoreUnavailableError';
-    this.reason = reason;
-    if (options?.cause !== undefined) {
-      this.cause = options.cause;
-    }
   }
 }
 
@@ -262,8 +206,8 @@ export class InMemorySessionStore implements SessionStore {
   }
 
   async bindMcpSessionId(token: string, mcpSessionId: string): Promise<void> {
-    // Parity with GCS: refuse to overwrite an existing pin with a different
-    // value; same-value rebinds are idempotent.
+    // Refuse to overwrite an existing pin with a different value;
+    // same-value rebinds are idempotent.
     const existing = this.pins.get(token);
     if (existing !== undefined && existing !== mcpSessionId) {
       throw new SessionPreconditionFailedError(SESSION_GENERATION_ABSENT, 1);

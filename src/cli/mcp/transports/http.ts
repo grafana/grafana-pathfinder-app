@@ -123,9 +123,8 @@ export async function runHttp(options: RunHttpOptions): Promise<HttpHandle> {
   const sessionHopCounter = options.sessionHopCounter ?? defaultSessionHopCounter;
   const wallclockMs = options.wallclockMs ?? PER_CALL_WALLCLOCK_MS;
   // Resolve the session store once at startup so every per-request McpServer
-  // shares one backend (the in-memory store is process-local; the GCS store
-  // is the authoritative cross-replica backend). Tests that override
-  // `options.buildServer` bypass this path.
+  // shares one backend (the in-memory store is process-local — run a single
+  // instance). Tests that override `options.buildServer` bypass this path.
   const sessionStore = options.buildServer ? undefined : await getDefaultSessionStore();
   const factory =
     options.buildServer ??

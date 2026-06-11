@@ -5,7 +5,7 @@
  * Three tool surfaces speak this contract — read-only (inspect / validate),
  * mutation (add_block / edit_block / …), and finalize. Each accepts EITHER
  * `artifact` (stateless, the historical contract) OR `sessionToken` (P7
- * session-mode, GCS-backed). This module centralizes the Zod shape and the
+ * session-mode). This module centralizes the Zod shape and the
  * runtime XOR check so the three surfaces cannot drift on either.
  *
  * Per-tool `.describe()` text is layered on at the call site — the
