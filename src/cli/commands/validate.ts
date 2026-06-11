@@ -26,12 +26,12 @@ interface ValidateOptions {
 }
 
 /**
- * Stable regexes for default-array INFO messages emitted by
- * `validatePackage`. Used to collapse the six "depends/recommends/.../replaces
- * defaulting to []" lines that fire on every fresh package into a single
- * summary line, freeing screen budget for real WARN/ERROR signals.
+ * Stable message code (defined in `validate-package.ts`) for the six
+ * "depends/recommends/.../replaces defaulting to []" INFO lines that fire on
+ * every fresh package. The collapse below folds them into a single summary
+ * line so real WARN/ERROR signals stay scannable.
  */
-const DEFAULT_ARRAY_INFO_REGEX = /^manifest\.json: "([a-zA-Z]+)" not specified, defaulting to \[\]/;
+const DEFAULT_DEP_FIELD_INFO_CODE = 'manifest_dep_field_defaulted';
 
 interface ValidationSummary {
   totalFiles: number;
@@ -134,15 +134,17 @@ function formatPackageResult(dirName: string, result: PackageValidationResult, s
   // Collapse the default-array INFO messages into a single summary line
   // unless --verbose. Six identical-shape "defaulting to []" lines on every
   // fresh package drown out real warnings; one summary keeps validate output
-  // scannable without losing information for authors who want it.
+  // scannable without losing information for authors who want it. The
+  // producer tags each line with a stable `code` so we match on that rather
+  // than the message text.
   const defaultArrayFields: string[] = [];
   for (const msg of result.messages) {
-    if (msg.severity === 'info' && !verbose) {
-      const m = DEFAULT_ARRAY_INFO_REGEX.exec(msg.message);
-      if (m) {
-        defaultArrayFields.push(m[1]!);
-        continue;
-      }
+    if (msg.code === DEFAULT_DEP_FIELD_INFO_CODE && !verbose) {
+      // The field name is the last path segment (e.g. ['manifest.json',
+      // 'depends'] → 'depends'). Producer always sets the 2-segment path;
+      // fall back to '?' if a future variant doesn't, to avoid a crash.
+      defaultArrayFields.push(msg.path?.[msg.path.length - 1] ?? '?');
+      continue;
     }
     const icon = msg.severity === 'error' ? '❌' : msg.severity === 'warn' ? '⚠️ ' : 'ℹ️ ';
     console.log(`  ${icon} ${msg.severity.toUpperCase()}: ${msg.message}`);
