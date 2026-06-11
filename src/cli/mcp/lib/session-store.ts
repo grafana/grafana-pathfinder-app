@@ -1,16 +1,14 @@
 /**
- * Session store for the GCS-backed authoring sessions.
+ * Session store for the authoring sessions.
  *
- * Each session is a directory under the storage backend keyed by an opaque
- * session token (see `session-token.ts`). The store holds the authoring
- * artifact (`content` + optional `manifest`) and a monotonic `generation`
- * number used for `ifGenerationMatch` optimistic concurrency.
+ * Each session is keyed by an opaque session token (see `session-token.ts`)
+ * and holds the authoring artifact (`content` + optional `manifest`) and a
+ * monotonic `generation` number used for `ifGenerationMatch` optimistic
+ * concurrency.
  *
- * The interface intentionally mirrors the subset of the Google Cloud
- * Storage object API we need. The GCS-backed implementation lands in
- * `session-store-gcs.ts`; the in-memory implementation here is the default
- * for local dev and unit tests, and is the fallback when
- * `PATHFINDER_SESSION_STORE` is unset or set to `memory`.
+ * `InMemorySessionStore` is the only implementation: the deployed MCP runs
+ * as a single instance (see `docs/developer/MCP_SERVER.md`), so a
+ * process-local map holds every session and a sliding TTL bounds growth.
  *
  * Concurrency model:
  *   - Every `save` requires an `ifGenerationMatch` value.
@@ -24,13 +22,8 @@
  *     cleanly.
  *
  * Failure-mode contract:
- *   - `load` returns `null` for an unknown token. It may throw
- *     `SessionStoreCorruptedError` when the backing store holds a
- *     malformed artifact (unparseable JSON, missing-generation, etc),
- *     and transport errors from the backing store. It never throws
- *     for the absent-session case.
- *   - `save` throws `SessionPreconditionFailedError` on generation
- *     mismatch and may throw transport errors from the backing store.
+ *   - `load` returns `null` for an unknown token; it never throws.
+ *   - `save` throws `SessionPreconditionFailedError` on generation mismatch.
  *   - `delete` is idempotent: deleting an unknown token resolves
  *     successfully.
  */
@@ -54,9 +47,8 @@ export interface SaveResult {
 }
 
 /**
- * Sentinel `ifGenerationMatch` value meaning "create only if absent".
- * Mirrors GCS semantics where `ifGenerationMatch=0` rejects updates to
- * an existing object.
+ * Sentinel `ifGenerationMatch` value meaning "create only if absent": a
+ * save with this precondition rejects if a session already exists.
  */
 export const SESSION_GENERATION_ABSENT = 0;
 
@@ -74,52 +66,20 @@ export class SessionPreconditionFailedError extends Error {
 }
 
 /**
- * Raised by `load` when the backing store contains a session whose
- * artifacts are unreadable as JSON or otherwise malformed. The HTTP
- * transport surfaces this as a structured 500 so an operator can
- * inspect the bucket; agents see an INTERNAL-class error rather than
- * a silent SESSION_NOT_FOUND (which would mask the corruption).
+ * Thrown by `bindMcpSessionId` when an existing pin would be overwritten with
+ * a different value. A create-time race on session mint, not a generation
+ * precondition failure — it carries its own code rather than borrowing
+ * synthetic generation numbers. The raw token stays off `.message` (it's a
+ * bearer credential); callers that log it use `tokenLogPrefix`.
  */
-export class SessionStoreCorruptedError extends Error {
-  readonly code = 'SESSION_CORRUPTED' as const;
+export class SessionPinConflictError extends Error {
+  readonly code = 'SESSION_PIN_CONFLICT' as const;
+  readonly token: string;
 
-  constructor(message: string) {
-    super(message);
-    this.name = 'SessionStoreCorruptedError';
-  }
-}
-
-/**
- * Raised when the backing store rejected the operation for a reason that
- * isn't precondition-failure or corruption — typically a GCS 429 that
- * exhausted retries, a transient network blip, or an auth/permission
- * failure. The HTTP transport must surface this as a structured
- * CommandOutcome (code `SESSION_STORE_UNAVAILABLE`) rather than a raw
- * 500, so well-behaved clients see well-formed JSON and can retry.
- *
- * `reason` lets the dispatch layer choose a more specific client-facing
- * message ("rate-limited; retry" vs "session storage temporarily
- * unavailable"). The original error is preserved via `cause` so the
- * unsanitized provider message stays out of the wire response but
- * remains in server logs.
- */
-export class SessionStoreUnavailableError extends Error {
-  readonly code = 'SESSION_STORE_UNAVAILABLE' as const;
-  readonly reason: 'rate_limited' | 'transient';
-  readonly cause?: unknown;
-
-  constructor(reason: 'rate_limited' | 'transient', message: string, options?: { cause?: unknown }) {
-    // Assigning `cause` manually instead of passing it through `Error()`'s
-    // ES2022 options bag — the CLI tsconfig targets ES2020 so the typed
-    // 2-arg constructor isn't visible to the type checker. The runtime
-    // (node ≥ 16.9) supports the property either way; this assignment
-    // keeps it accessible to consumers without bumping the build target.
-    super(message);
-    this.name = 'SessionStoreUnavailableError';
-    this.reason = reason;
-    if (options?.cause !== undefined) {
-      this.cause = options.cause;
-    }
+  constructor(token: string) {
+    super('Mcp-Session-Id pin is already bound to a different value for this session');
+    this.name = 'SessionPinConflictError';
+    this.token = token;
   }
 }
 
@@ -157,8 +117,8 @@ export interface SessionStore {
    * not 403.
    *
    * Idempotent for the same pin. Rebinding an existing pin to a different
-   * value throws `SessionPreconditionFailedError`. No production caller does
-   * this; the failure is structured rather than a silent overwrite of a
+   * value throws `SessionPinConflictError`. No production caller does this;
+   * the failure is structured rather than a silent overwrite of a
    * confidentiality field.
    */
   bindMcpSessionId(token: string, mcpSessionId: string): Promise<void>;
@@ -171,10 +131,20 @@ export interface SessionStore {
   readMcpSessionPin(token: string): Promise<string | null>;
 }
 
+export const MS_PER_HOUR = 60 * 60 * 1000;
+
+/** Default sliding-window session lifetime: hours of inactivity before eviction. */
+export const DEFAULT_SESSION_TTL_HOURS = 24;
+export const DEFAULT_SESSION_TTL_MS = DEFAULT_SESSION_TTL_HOURS * MS_PER_HOUR;
+
+interface ExpiringSession extends LoadedSession {
+  expiresAt: number;
+}
+
 /**
  * In-memory `SessionStore` implementation. The map is per-instance, so
- * tests get isolation by constructing a fresh store; the production
- * default for local stdio MCP is a process-singleton via `getDefaultStore`.
+ * tests get isolation by constructing a fresh store; the production default
+ * is a process-singleton via `getDefaultSessionStore`.
  *
  * Concurrency: a single read-modify-write cycle is non-atomic at the
  * JavaScript level, but the `ifGenerationMatch` check inside `save`
@@ -183,31 +153,72 @@ export interface SessionStore {
  * with the same precondition will see the same generation; whichever
  * runs first wins, the loser throws `PRECONDITION_FAILED`.
  *
+ * Retention: each access (`load`/`save`) refreshes a sliding TTL, and a
+ * full sweep on `save` evicts sessions idle past the window.
+ *
  * The artifact is stored by reference. Callers that need defensive
  * copying should clone before passing in or after pulling out — the
- * mutation flow used by P7 always writes fresh objects from the CLI
- * runner so this has not been needed.
+ * mutation flow always writes fresh objects from the CLI runner so this
+ * has not been needed.
  */
 export class InMemorySessionStore implements SessionStore {
-  private readonly entries = new Map<string, LoadedSession>();
+  private readonly entries = new Map<string, ExpiringSession>();
   private readonly pins = new Map<string, string>();
+  private readonly ttlMs: number;
+  private readonly now: () => number;
+  /** Cumulative sessions evicted by the sliding TTL since process start. */
+  private evictions = 0;
 
-  async load(token: string): Promise<LoadedSession | null> {
+  constructor(options?: { ttlMs?: number; now?: () => number }) {
+    this.ttlMs = options?.ttlMs ?? DEFAULT_SESSION_TTL_MS;
+    this.now = options?.now ?? (() => Date.now());
+  }
+
+  /** Return the entry for `token` if present and unexpired; evict and return null otherwise. */
+  private liveEntry(token: string): ExpiringSession | null {
     const entry = this.entries.get(token);
     if (!entry) {
+      return null;
+    }
+    if (entry.expiresAt <= this.now()) {
+      this.entries.delete(token);
+      this.pins.delete(token);
+      this.evictions += 1;
       return null;
     }
     return entry;
   }
 
+  /** Drop every session idle past its TTL. Bounds map growth on write activity. */
+  private sweepExpired(): void {
+    const now = this.now();
+    for (const [token, entry] of this.entries) {
+      if (entry.expiresAt <= now) {
+        this.entries.delete(token);
+        this.pins.delete(token);
+        this.evictions += 1;
+      }
+    }
+  }
+
+  async load(token: string): Promise<LoadedSession | null> {
+    const entry = this.liveEntry(token);
+    if (!entry) {
+      return null;
+    }
+    entry.expiresAt = this.now() + this.ttlMs;
+    return { artifact: entry.artifact, generation: entry.generation };
+  }
+
   async save(token: string, artifact: SessionArtifact, ifGenerationMatch: number): Promise<SaveResult> {
-    const current = this.entries.get(token);
+    this.sweepExpired();
+    const current = this.liveEntry(token);
     const actual = current ? current.generation : SESSION_GENERATION_ABSENT;
     if (actual !== ifGenerationMatch) {
       throw new SessionPreconditionFailedError(ifGenerationMatch, actual);
     }
     const nextGeneration = actual + 1;
-    this.entries.set(token, { artifact, generation: nextGeneration });
+    this.entries.set(token, { artifact, generation: nextGeneration, expiresAt: this.now() + this.ttlMs });
     return { generation: nextGeneration };
   }
 
@@ -217,11 +228,11 @@ export class InMemorySessionStore implements SessionStore {
   }
 
   async bindMcpSessionId(token: string, mcpSessionId: string): Promise<void> {
-    // Parity with GCS: refuse to overwrite an existing pin with a different
-    // value; same-value rebinds are idempotent.
+    // Refuse to overwrite an existing pin with a different value;
+    // same-value rebinds are idempotent.
     const existing = this.pins.get(token);
     if (existing !== undefined && existing !== mcpSessionId) {
-      throw new SessionPreconditionFailedError(SESSION_GENERATION_ABSENT, 1);
+      throw new SessionPinConflictError(token);
     }
     this.pins.set(token, mcpSessionId);
   }
@@ -230,8 +241,20 @@ export class InMemorySessionStore implements SessionStore {
     return this.pins.get(token) ?? null;
   }
 
-  /** Test helper — number of live sessions. Not part of the public interface. */
+  /**
+   * Snapshot of store cardinality and cumulative evictions, for the HTTP
+   * access log. Sweeps first so `liveSessions` excludes already-expired
+   * entries (the sweep itself may bump `evictions`). Concrete-only —
+   * observability is an in-memory-backend concern, not a SessionStore contract.
+   */
+  stats(): { liveSessions: number; evictions: number } {
+    this.sweepExpired();
+    return { liveSessions: this.entries.size, evictions: this.evictions };
+  }
+
+  /** Test helper — number of live (unexpired) sessions. Not part of the public interface. */
   size(): number {
+    this.sweepExpired();
     return this.entries.size;
   }
 }

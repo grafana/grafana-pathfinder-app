@@ -20,8 +20,8 @@
  * P7 session-mode: accepts `{sessionToken}` in place of `{artifact}` using
  * the shared `resolveReadOnlyInput` helper. On a successful finalize the
  * server deletes the session — the token is single-use through here. A
- * failed delete logs but does not fail the response: the 7-day lifecycle
- * rule on the bucket is the safety net so we cannot strand a session.
+ * failed delete logs but does not fail the response: the sliding session
+ * TTL is the safety net so we cannot strand a session.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -255,8 +255,8 @@ async function finalizeImpl(args: {
 
   // Session-mode only: evict the session on success. The handoff
   // already shipped to the agent, so a delete failure is not a
-  // user-visible failure — the 7-day lifecycle rule on the bucket
-  // catches stranded sessions. Log so it's diagnosable, then return.
+  // user-visible failure — the sliding session TTL catches stranded
+  // sessions. Log so it's diagnosable, then return.
   if (resolved.sessionToken !== undefined) {
     try {
       await sessionStore.delete(resolved.sessionToken);
@@ -265,7 +265,7 @@ async function finalizeImpl(args: {
       console.warn(
         `pathfinder_finalize_for_app_platform: session delete failed for ${tokenLogPrefix(
           resolved.sessionToken
-        )}; 7-day lifecycle rule will collect it`,
+        )}; the idle session will be evicted by the sliding TTL`,
         err instanceof Error ? err.message : String(err)
       );
     }

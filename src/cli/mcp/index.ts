@@ -43,6 +43,7 @@ export const mcpCommand = new Command('mcp')
 
     const handle = await runHttp({ port: opts.port, host: opts.host });
     process.stderr.write(`pathfinder-cli mcp listening on http://${opts.host}:${handle.port}/mcp\n`);
+    process.stderr.write('sessions: in-memory, process-local — run a single instance (Cloud Run --max-instances=1)\n');
 
     let shuttingDown = false;
     const shutdown = (): void => {

@@ -34,7 +34,6 @@ import {
   sessionNotFoundResult,
   sessionOutcomeResult,
   sessionTooLargeResult,
-  storeUnavailableResult,
   withToolErrorEnvelope,
 } from './result';
 import {
@@ -42,7 +41,6 @@ import {
   isConcurrentModification,
   isSessionNotFound,
   isSessionTooLarge,
-  isStoreUnavailable,
   withArtifact,
 } from './state-bridge';
 import {
@@ -55,7 +53,7 @@ import {
 /**
  * Input schema for the two-mode dispatch (P7). Mutation tools accept
  * EITHER `artifact` (stateless mode, the historical contract) OR
- * `sessionToken` (session-mode, GCS-backed). Both are optional at the
+ * `sessionToken` (session-mode). Both are optional at the
  * Zod layer; the handler enforces "exactly one of" at runtime via
  * `classifyTwoModeInput` — Zod's discriminated unions don't map cleanly
  * to MCP tool inputSchema, so the check is in handler code.
@@ -158,9 +156,6 @@ async function dispatchMutation(
       }
       if (isConcurrentModification(r)) {
         return concurrentModificationResult(token, r);
-      }
-      if (isStoreUnavailable(r)) {
-        return storeUnavailableResult(token, r);
       }
       if (isSessionTooLarge(r)) {
         return sessionTooLargeResult(token, r);

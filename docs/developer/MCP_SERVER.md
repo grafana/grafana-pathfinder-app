@@ -157,7 +157,7 @@ The four `repository-tools.ts` tools are read-only against a public package CDN.
 - **`pathfinder_launch_package`** returns a relative `launchPath` always; an absolute `launchUrl` when `instanceUrl` is provided. Pass `panelMode: "floating"` to append `&panelMode=floating`. The link is consumed by the existing `?doc=<interactive-learning.grafana.net URL>` path in `src/utils/find-doc-page.ts:60-86` (`isInteractiveLearningUrl` allowlist).
 - **`pathfinder_launch_package` ships PARTIAL** — see [#855][p6-launch-bug]. The URL it builds resolves to the Pathfinder plugin but does not currently load the targeted CDN guide as an interactive tutorial; it opens to a generic docs view instead. Every successful response carries a `warning: { status: "partial", message, tracking }` field so agents and clients see the limitation at runtime. The bug is in the app-side `auto-launch-tutorial` handler (`src/components/docs-panel/docs-panel.tsx`), which calls `openDocsPage(url, title)` without the `packageInfo` argument the recommendations panel passes — so the package-aware content pipeline never engages. The MCP tool will keep working as-is once the app-side fix lands.
 
-> Naming note: P7 ships a session-scoped manifest read as `pathfinder_get_manifest_session` (not `pathfinder_get_manifest`), per the resolved [P7 decision log entry](../design/phases/ai-authoring-7-gcs-sessions.md#2026-05-20--pathfinder_get_manifest_session-keeps-the-_session-suffix). The two tools read different data sources (public CDN vs. session bucket) and serve different mental models.
+> Naming note: P7 ships a session-scoped manifest read as `pathfinder_get_manifest_session` (not `pathfinder_get_manifest`), per the resolved [P7 decision log entry](../design/phases/ai-authoring-7-gcs-sessions.md#2026-05-20--pathfinder_get_manifest_session-keeps-the-_session-suffix). The two tools read different data sources (public CDN vs. session store) and serve different mental models.
 
 ### Go MCP endpoint
 
@@ -172,16 +172,17 @@ P7 layered server-side authoring sessions on top of the stateless transport. Eve
 
 Picking a mode is per-call; never mix on a single call (returns `INPUT_MODE_AMBIGUOUS`).
 
-**Storage and retention.** The session store is keyed off `PATHFINDER_SESSION_STORE`:
+**Storage and retention.** Sessions live in the server process's memory (`InMemorySessionStore`). There is no external store, so the deployed service runs as a **single always-on Cloud Run instance** (`scripts/deploy-mcp.sh` pins `--min/--max-instances=1`) — every session stays on one process. A redeploy or instance recycle drops in-flight sessions; this is acceptable for the short-lived authoring loop ("start over"). Happy-path drafts evict immediately on finalize; abandoned ones expire via a **sliding TTL** (default 24h of inactivity).
 
-| Env var                     | Default   | Effect                                                                                                           |
-| --------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------- |
-| `PATHFINDER_SESSION_STORE`  | `memory`  | `memory` keeps sessions in-process (lost on restart; fine for stdio and tests). `gcs` uses the GCS-backed store. |
-| `PATHFINDER_SESSION_BUCKET` | _(unset)_ | Required when `STORE=gcs`. Bucket name without `gs://` prefix.                                                   |
+| Env var                        | Default | Effect                                                          |
+| ------------------------------ | ------- | --------------------------------------------------------------- |
+| `PATHFINDER_SESSION_TTL_HOURS` | `24`    | Sliding-window lifetime; an idle session is evicted after this. |
 
-`scripts/deploy-mcp.sh dev` sets `STORE=gcs` and provisions the bucket with a **7-day lifecycle delete rule** as the safety net for abandoned sessions. Happy-path drafts evict immediately on finalize; abandoned ones expire via the lifecycle rule.
+> **The single-instance pin is a correctness contract, not a tuning knob.** Sessions are process-local, so raising `--max-instances` (e.g. via `gcloud run services update`) scatters them across replicas — a follow-up call load-balanced to a different instance gets `SESSION_NOT_FOUND` mid-authoring, with no error at deploy time. `scripts/deploy-mcp.sh` is the only sanctioned deploy path; it pins `--min/--max-instances=1`. Operator drift on this knob breaks the contract silently.
 
-**Concurrency.** Mutations use optimistic concurrency via a per-session `generation`. The server retries-once on a 412 race; agents can opt into immediate `CONCURRENT_MODIFICATION` surfacing by passing `expectedGeneration` on a mutation. Failed mutations never bump the generation — the bucket state is invariant under errors.
+**Observability.** On every `tools/call`, the HTTP access log emits `liveSessions` (current in-memory session count) and `evictions` (cumulative, since process start). A `liveSessions` line climbing with flat `evictions` is the early signal of a session leak on the single instance — watch it before memory pressure.
+
+**Concurrency.** Mutations use optimistic concurrency via a per-session `generation`. The server retries-once on a 412 race; agents can opt into immediate `CONCURRENT_MODIFICATION` surfacing by passing `expectedGeneration` on a mutation. Failed mutations never bump the generation — session state is invariant under errors.
 
 **`Mcp-Session-Id` binding** (P7 task 16). When the HTTP request carries an `Mcp-Session-Id` header on session mint, the value is persisted as a pin against the new session token. Subsequent calls with a mismatched header surface as `SESSION_NOT_FOUND` (404, not 403 — the pin is a confidentiality boundary). Absence of the header on a subsequent call skips the check; this is the stdio fallback. Sessions minted without a header (stdio) have no pin and are never lazily bound on first-with-header access.
 

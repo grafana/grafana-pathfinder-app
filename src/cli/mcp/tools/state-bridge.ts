@@ -22,10 +22,6 @@
  *   3. Per-call cost is bounded — two small JSON file writes and reads
  *      against a tmpfs/ramdisk-backed `os.tmpdir()` on Linux.
  *
- * Follow-up: refactor `mutateAndValidate` and each `runX` to accept an
- * in-memory state mode so this bridge can collapse to a function call.
- * Tracked in P3 deviations.
- *
  * Session-mode (`dispatchSessionMutation`): session-mode mutations load
  * the artifact from a `SessionStore` keyed by an opaque session token,
  * run the same tmpdir flow, and write the updated artifact back to the
@@ -48,12 +44,7 @@ import {
 } from '../../utils/package-io';
 import type { CommandOutcome } from '../../utils/output';
 import { MCP_TMPDIR_PREFIX } from '../lib/constants';
-import {
-  SessionPreconditionFailedError,
-  SessionStoreUnavailableError,
-  type LoadedSession,
-  type SessionStore,
-} from '../lib/session-store';
+import { SessionPreconditionFailedError, type LoadedSession, type SessionStore } from '../lib/session-store';
 
 export interface ArtifactInput {
   content: ContentJson;
@@ -106,8 +97,7 @@ export type SessionNotFound = typeof SESSION_NOT_FOUND;
  * NOT the cumulative artifact — block append/update tools can grow
  * `content.blocks[]` indefinitely. Without this cap, an attacker can
  * inflate one session's stored artifact unboundedly, which in turn
- * multiplies the cost of every previous-stage retention (see
- * `session-store-gcs.ts`).
+ * multiplies the in-memory footprint of every retained session.
  *
  * 4 MB is ~10× a realistic large guide and ~4× the per-request inbound
  * cap; a single mutation can never blow through it from a clean start
@@ -126,13 +116,11 @@ export interface SessionTooLargeResult {
 
 /**
  * Measure the JSON-serialized byte length of an artifact. Used to enforce
- * `MAX_SESSION_ARTIFACT_BYTES` before save. Mirrors the encoding the
- * GCS store will write so the cap is meaningful against actual storage.
+ * `MAX_SESSION_ARTIFACT_BYTES` before save.
  */
 export function measureArtifactBytes(artifact: ArtifactInput): number {
   // content and manifest are stored as separate objects; the cap covers
-  // their combined serialized size to match what the GCS layout actually
-  // persists (and what an attacker would actually inflate).
+  // their combined serialized size (what an attacker would actually inflate).
   const contentBytes = Buffer.byteLength(JSON.stringify(artifact.content));
   const manifestBytes = artifact.manifest !== undefined ? Buffer.byteLength(JSON.stringify(artifact.manifest)) : 0;
   return contentBytes + manifestBytes;
@@ -239,28 +227,11 @@ export function concurrentModification(expected: number, actual: number): Concur
   };
 }
 
-export interface StoreUnavailableResult {
-  ok: false;
-  code: 'SESSION_STORE_UNAVAILABLE';
-  reason: 'rate_limited' | 'transient';
-  message: string;
-}
-
-export function storeUnavailable(err: SessionStoreUnavailableError): StoreUnavailableResult {
-  return {
-    ok: false,
-    code: 'SESSION_STORE_UNAVAILABLE',
-    reason: err.reason,
-    message: err.message,
-  };
-}
-
 export type DispatchSessionResult =
   | SessionOutcome
   | SessionNotFound
   | ConcurrentModificationResult
-  | SessionTooLargeResult
-  | StoreUnavailableResult;
+  | SessionTooLargeResult;
 
 /**
  * Pre-save size gate. Returns a structured SESSION_TOO_LARGE when the
@@ -275,35 +246,19 @@ function checkSessionQuota(artifact: ArtifactInput): SessionTooLargeResult | nul
   return null;
 }
 
-type LoadResult =
-  | { kind: 'session'; session: LoadedSession }
-  | { kind: 'absent' }
-  | { kind: 'unavailable'; response: StoreUnavailableResult };
+type LoadResult = { kind: 'session'; session: LoadedSession } | { kind: 'absent' };
 
-/**
- * Wrap `store.load` with the load-time `SessionStoreUnavailableError`
- * mapping shared by every dispatch entry point. Returns a discriminated
- * union so the caller can distinguish the three terminal states (live
- * session, absent session, store unavailable) without nesting try/catch.
- */
+/** Map `store.load` to a discriminated union so callers don't repeat the null check. */
 async function safeLoad(store: SessionStore, token: string): Promise<LoadResult> {
-  try {
-    const loaded = await store.load(token);
-    return loaded === null ? { kind: 'absent' } : { kind: 'session', session: loaded };
-  } catch (err) {
-    if (err instanceof SessionStoreUnavailableError) {
-      return { kind: 'unavailable', response: storeUnavailable(err) };
-    }
-    throw err;
-  }
+  const loaded = await store.load(token);
+  return loaded === null ? { kind: 'absent' } : { kind: 'session', session: loaded };
 }
 
 /**
  * Policy-free single mutation attempt against a loaded session. Runs the
  * runner through the tmpdir bridge, gates on the post-mutation quota, and
- * persists. Lets `SessionPreconditionFailedError` and
- * `SessionStoreUnavailableError` propagate — retry / store-unavailable
- * policy lives in `dispatchSessionMutation`.
+ * persists. Lets `SessionPreconditionFailedError` propagate — retry policy
+ * lives in `dispatchSessionMutation`.
  */
 async function attemptMutation(
   session: LoadedSession,
@@ -331,9 +286,6 @@ export async function dispatchSessionMutation(
 ): Promise<DispatchSessionResult> {
   // First load — check the optional optimistic-concurrency claim.
   const first = await safeLoad(store, token);
-  if (first.kind === 'unavailable') {
-    return first.response;
-  }
   if (first.kind === 'absent') {
     return SESSION_NOT_FOUND;
   }
@@ -345,9 +297,6 @@ export async function dispatchSessionMutation(
   try {
     return await attemptMutation(loaded, token, store, runner);
   } catch (err) {
-    if (err instanceof SessionStoreUnavailableError) {
-      return storeUnavailable(err);
-    }
     if (!(err instanceof SessionPreconditionFailedError)) {
       throw err;
     }
@@ -358,9 +307,6 @@ export async function dispatchSessionMutation(
     }
     // Default policy: retry once against the refetched state.
     const second = await safeLoad(store, token);
-    if (second.kind === 'unavailable') {
-      return second.response;
-    }
     if (second.kind === 'absent') {
       // Another writer deleted the session between our save attempt and
       // this reload. Treat as not-found rather than concurrent-mod.
@@ -370,9 +316,6 @@ export async function dispatchSessionMutation(
     try {
       return await attemptMutation(reloaded, token, store, runner);
     } catch (err2) {
-      if (err2 instanceof SessionStoreUnavailableError) {
-        return storeUnavailable(err2);
-      }
       if (err2 instanceof SessionPreconditionFailedError) {
         return concurrentModification(err2.expected, err2.actual);
       }
@@ -388,7 +331,5 @@ function hasCode<T extends { code: string }>(r: unknown, code: T['code']): r is 
 export const isSessionNotFound = (r: unknown): r is SessionNotFound => hasCode<SessionNotFound>(r, 'SESSION_NOT_FOUND');
 export const isConcurrentModification = (r: unknown): r is ConcurrentModificationResult =>
   hasCode<ConcurrentModificationResult>(r, 'CONCURRENT_MODIFICATION');
-export const isStoreUnavailable = (r: unknown): r is StoreUnavailableResult =>
-  hasCode<StoreUnavailableResult>(r, 'SESSION_STORE_UNAVAILABLE');
 export const isSessionTooLarge = (r: unknown): r is SessionTooLargeResult =>
   hasCode<SessionTooLargeResult>(r, SESSION_TOO_LARGE);

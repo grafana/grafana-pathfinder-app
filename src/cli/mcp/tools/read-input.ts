@@ -12,9 +12,8 @@
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import { enforceMcpSessionPin } from '../lib/session-pin';
 import { normalizeSessionToken } from '../lib/session-token';
-import { SessionStoreUnavailableError, type SessionStore } from '../lib/session-store';
-import { invalidSessionTokenResult, sessionNotFoundResult, storeUnavailableResult } from './result';
-import { storeUnavailable } from './state-bridge';
+import { type SessionStore } from '../lib/session-store';
+import { invalidSessionTokenResult, sessionNotFoundResult } from './result';
 import { classifyTwoModeInput } from './two-mode-input';
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
@@ -81,24 +80,17 @@ export async function resolveReadOnlyInput(
       return { ok: false, response: resolution.response };
     }
     const { token } = resolution;
-    try {
-      const loaded = await store.load(token);
-      if (loaded === null) {
-        return { ok: false, response: sessionNotFoundResult(token) };
-      }
-      return {
-        ok: true,
-        content: loaded.artifact.content,
-        manifest: loaded.artifact.manifest,
-        manifestAuthored: loaded.artifact.manifest !== undefined,
-        sessionToken: token,
-      };
-    } catch (err) {
-      if (err instanceof SessionStoreUnavailableError) {
-        return { ok: false, response: storeUnavailableResult(token, storeUnavailable(err)) };
-      }
-      throw err;
+    const loaded = await store.load(token);
+    if (loaded === null) {
+      return { ok: false, response: sessionNotFoundResult(token) };
     }
+    return {
+      ok: true,
+      content: loaded.artifact.content,
+      manifest: loaded.artifact.manifest,
+      manifestAuthored: loaded.artifact.manifest !== undefined,
+      sessionToken: token,
+    };
   }
   const a = classified.artifact;
   return {
