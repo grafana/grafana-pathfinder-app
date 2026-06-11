@@ -143,6 +143,18 @@ describe('validate --stdin', () => {
       expect(Object.keys(parsed).sort()).toEqual(['errors', 'isValid', 'warnings']);
     });
 
+    it('honors --format json placed before the subcommand (global position)', () => {
+      const input = JSON.stringify({
+        id: 'json-guide',
+        title: 'JSON guide',
+        blocks: [{ type: 'markdown', content: '# Hello' }],
+      });
+      const stdout = runCli(['--format', 'json', 'validate', '--stdin'], input);
+      const parsed = JSON.parse(stdout);
+      expect(parsed.isValid).toBe(true);
+      expect(Object.keys(parsed).sort()).toEqual(['errors', 'isValid', 'warnings']);
+    });
+
     it('emits JSON for an auto-detected package directory', () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-json-package-'));
       try {

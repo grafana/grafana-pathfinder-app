@@ -13,7 +13,7 @@ import { validateGuideFromString, toLegacyResult } from '../../validation';
 import { validatePackage, validatePackageTree, type PackageValidationResult } from '../../validation/validate-package';
 import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/file-loader';
 import { validatePackageState } from '../utils/package-io';
-import { manyIssuesOutcome, type CommandOutcome } from '../utils/output';
+import { manyIssuesOutcome, readOutputOptions, type CommandOutcome } from '../utils/output';
 
 interface ValidateOptions {
   bundled?: boolean;
@@ -354,12 +354,25 @@ export const validateCommand = new Command('validate')
   .option('--bundled', 'Validate all bundled guides in src/bundled-interactives/')
   .option('--stdin', 'Read a single JSON guide from stdin instead of files')
   .option('--strict', 'Treat warnings as errors')
-  .option('--format <format>', 'Output format: text or json', 'text')
+  // No `.default('text')` here — the action falls back to the root program's
+  // --format via `readOutputOptions` when the local flag isn't set. A local
+  // default would shadow the global because Commander's `optsWithGlobals`
+  // gives child opts precedence over parent opts when both define the same
+  // flag name.
+  .option('--format <format>', 'Output format: text or json')
   .option('--package <dir>', 'Validate a single package directory (expects content.json)')
   .option('--packages <dir>', 'Validate a tree of package directories')
   .option('--verbose', 'Show every INFO message individually (default: collapse default-array INFOs)')
   .action(async function (this: Command, files: string[]) {
     const options = this.optsWithGlobals<ValidateOptions>();
+    // Fall back to the root program's --format when the local flag wasn't
+    // passed. Without this, a root-level `pathfinder-cli --format json
+    // validate ...` would be silently dropped by Commander's child-precedence
+    // merge. `readOutputOptions` is what every other CLI command uses to read
+    // the global output contract.
+    if (!options.format) {
+      options.format = readOutputOptions(this).format;
+    }
     try {
       if (options.stdin) {
         if (files.length > 0 || options.bundled || options.package || options.packages) {
