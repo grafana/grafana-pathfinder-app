@@ -63,13 +63,25 @@ Do not suppress `testing-and-verification` for executable changes, including CI 
 
 Run additional reviewers when activated by the routing table in `docs/design/CONCERNS.md`.
 
-Prefer a small reviewer set over speculative breadth.
+**Posture: breadth over economy.** This review is the automated safety net under human review. Run all always-on concerns as independent parallel reviewers, plus every conditional concern the router activates. Do not throttle fan-out to save cost — the goal is to raise the bar on what is caught automatically so human review can focus on novel findings.
 
-- Always-on concerns must always be considered
-- Conditional concerns should only run when activated
-- If many conditional concerns activate, prioritize the highest-signal concerns first and keep the initial reviewer set small
-- Add more conditional reviewers only when the router has strong evidence they are needed
-- If classification suggests a narrow non-runtime class, reduce fan-out conservatively and fail open when uncertain
+- Always-on concerns must always run as dedicated reviewers, not folded into the synthesizer
+- Conditional concerns run whenever activated by the routing table — do not suppress them on classification heuristics alone
+- Dispatch reviewers in parallel where possible
+- The only acceptable reason to skip a routed reviewer is a hard incompatibility with the change class (e.g., `docs-only` PR has no Go backend surface to review)
+- When in doubt, run the reviewer
+
+### Standalone deep-security lens
+
+In addition to the `security` concern reviewer, when the PR touches any of:
+
+- auth, tokens, secrets, or credential refresh paths
+- URL construction, redirect handling, or trust boundaries
+- workflows, publish steps, release tooling, or CI permissions
+- MCP transport, peerjs, or any cross-origin surface
+- dependency manifests (`package.json`, `go.mod`, lockfiles)
+
+…also invoke `.cursor/skills/secure/SKILL.md` as a dedicated lens running alongside the `security` concern. The concern-level reviewer applies the F1–F6 / G1–G7 catalog against the diff; the standalone `secure` skill runs the full audit (frontend F1–F6 + backend allowlists + MCP transport + deps) with deeper context. Both report findings under the `security` concern; the synthesizer dedupes per §5.
 
 ### Reviewer context discipline
 
@@ -118,6 +130,18 @@ Additional instructions for subsystem reviewers:
 ### Shared reviewer output schema
 
 Every reviewer emits the schema defined in `docs/design/PR_REVIEW.md` (Reviewer output schema), including the severity, confidence, and reversibility values.
+
+## 4b. Adversarial verification
+
+Before synthesis, run an adversarial verification pass on the reviewer output:
+
+1. Collect every finding with severity `medium` or higher across all reviewers.
+2. For each such finding, spawn **three independent skeptic sub-agents**, each prompted to **refute** the finding — defaulting to `refuted=true` when uncertain. Skeptics receive only the finding, the relevant diff hunks, and the concern entry — not the original reviewer's reasoning.
+3. Each skeptic returns a structured verdict: `{ refuted: boolean, reason: string }`.
+4. Drop any finding that ≥2 of 3 skeptics mark as refuted. Record dropped findings in a `verification_dropped` list with the skeptics' reasoning, so the synthesizer can surface them if a human wants to inspect.
+5. Findings rated `low` severity or below are passed through without verification — the cost of verifying low-severity items exceeds the value.
+
+This pass exists to kill plausible-but-wrong findings before they reach the human reviewer. False positives erode trust in the automated safety net; spending tokens to suppress them is the right trade.
 
 ## 5. Synthesize and report
 
