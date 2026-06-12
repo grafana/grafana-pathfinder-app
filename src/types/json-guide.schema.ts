@@ -776,6 +776,10 @@ const SectionProps = {
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(z.string()).optional().describe('Learning objectives this section addresses'),
   autoCollapse: z.boolean().optional().describe('Collapse the section after the user completes its contents'),
+  companion: z
+    .boolean()
+    .optional()
+    .describe('Pop the panel out beside a native Grafana modal while this section is active; docks back on completion'),
 };
 
 const AssistantProps = {
@@ -1040,7 +1044,17 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'completeEarly',
     'authorNote',
   ]),
-  section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives', 'autoCollapse', 'authorNote']),
+  section: new Set([
+    'type',
+    'id',
+    'title',
+    'blocks',
+    'requirements',
+    'objectives',
+    'autoCollapse',
+    'companion',
+    'authorNote',
+  ]),
   conditional: new Set([
     'type',
     'id',

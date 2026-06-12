@@ -66,6 +66,7 @@ export function SectionBlockForm({
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
   const [objectives, setObjectives] = useState(initial?.objectives?.join(', ') ?? '');
   const [autoCollapse, setAutoCollapse] = useState(initial?.autoCollapse ?? true);
+  const [companion, setCompanion] = useState(initial?.companion ?? false);
 
   // Preserve nested blocks when editing (but don't display them in the form)
   const nestedBlocks = useRef<JsonBlock[]>(initial?.blocks ?? []);
@@ -90,8 +91,9 @@ export function SectionBlockForm({
       ...(reqArray.length > 0 && { requirements: reqArray }),
       ...(objArray.length > 0 && { objectives: objArray }),
       ...(autoCollapse === false && { autoCollapse: false }),
+      ...(companion === true && { companion: true }),
     };
-  }, [sectionId, title, requirements, objectives, autoCollapse]);
+  }, [sectionId, title, requirements, objectives, autoCollapse, companion]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -216,6 +218,18 @@ export function SectionBlockForm({
           value={autoCollapse}
           onChange={(e) => setAutoCollapse(e.currentTarget.checked)}
           data-testid={testIds.blockEditor.sectionAutoCollapseToggle}
+        />
+      </Field>
+
+      {/* Companion mode */}
+      <Field
+        label="Companion mode"
+        description="When the user reaches this section, pop the panel out beside a native Grafana modal so they can operate the dialog while reading the guide. Docks back when the section completes."
+      >
+        <Switch
+          value={companion}
+          onChange={(e) => setCompanion(e.currentTarget.checked)}
+          data-testid={testIds.blockEditor.sectionCompanionToggle}
         />
       </Field>
 

@@ -157,4 +157,61 @@ describe('json-parser terminal block', () => {
     expect(sectionEl).toBeDefined();
     expect(sectionEl!.props.autoCollapse).toBeUndefined();
   });
+
+  it('passes companion property to section block', () => {
+    const guide = JSON.stringify({
+      id: 'test-section-companion',
+      title: 'Section with companion',
+      blocks: [
+        {
+          type: 'section',
+          id: 'companion-section',
+          title: 'Beside the modal',
+          companion: true,
+          blocks: [
+            {
+              type: 'terminal',
+              command: 'echo test',
+              content: 'Test command',
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = parseJsonGuide(guide);
+    expect(result.isValid).toBe(true);
+
+    const sectionEl = result.data!.elements.find((el) => el.type === 'interactive-section');
+    expect(sectionEl).toBeDefined();
+    expect(sectionEl!.props.companion).toBe(true);
+  });
+
+  it('defaults companion to undefined when not specified', () => {
+    const guide = JSON.stringify({
+      id: 'test-section-companion-default',
+      title: 'Section without companion',
+      blocks: [
+        {
+          type: 'section',
+          id: 'default-companion-section',
+          title: 'Default behavior',
+          blocks: [
+            {
+              type: 'terminal',
+              command: 'echo test',
+              content: 'Test command',
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = parseJsonGuide(guide);
+    expect(result.isValid).toBe(true);
+
+    const sectionEl = result.data!.elements.find((el) => el.type === 'interactive-section');
+    expect(sectionEl).toBeDefined();
+    expect(sectionEl!.props.companion).toBeUndefined();
+  });
 });
