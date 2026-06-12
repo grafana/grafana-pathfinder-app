@@ -15,8 +15,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
-import { runHttp, MAX_REQUEST_BYTES, type AccessLogEntry, type HttpHandle } from '../transports/http';
+import { type AccessLogEntry } from '../transports/access-log';
+import { runHttp, MAX_REQUEST_BYTES, type HttpHandle } from '../transports/http';
 import { SessionHopCounter } from '../transports/instrumentation';
+import { mcpSessionIdLogHash } from '../lib/session-token';
 
 interface Harness {
   handle: HttpHandle;
@@ -281,6 +283,54 @@ describe('HTTP transport', () => {
     }
   });
 
+  it('emits sessionTokenPrefix and sessionTokenHash on tools/call args that carry a sessionToken (P7 task 17)', async () => {
+    const h = await start();
+    try {
+      // 22-char Crockford base32 token shape (no i/l/o/u) — the access
+      // log derives the prefix/hash without ever logging the raw value.
+      const token = 'abcdefghjkmnpqrstvwxyz';
+      await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'call',
+          method: 'tools/call',
+          params: { name: 'pathfinder_list_blocks', arguments: { sessionToken: token } },
+        }),
+      });
+      const entry = h.logs.at(-1)!;
+      expect(entry.rpcToolName).toBe('pathfinder_list_blocks');
+      expect(entry.sessionTokenPrefix).toBe('abcdefghjkmn');
+      expect(typeof entry.sessionTokenHash).toBe('string');
+      // Raw token never appears anywhere in the log entry.
+      expect(JSON.stringify(entry)).not.toContain(token);
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('omits sessionToken fields when the call has no sessionToken arg', async () => {
+    const h = await start();
+    try {
+      await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'call',
+          method: 'tools/call',
+          params: { name: 'pathfinder_authoring_start', arguments: {} },
+        }),
+      });
+      const entry = h.logs.at(-1)!;
+      expect(entry.sessionTokenPrefix).toBeUndefined();
+      expect(entry.sessionTokenHash).toBeUndefined();
+    } finally {
+      await h.close();
+    }
+  });
+
   it('omits rpc fields entirely on non-RPC requests', async () => {
     const h = await start();
     try {
@@ -295,20 +345,25 @@ describe('HTTP transport', () => {
     }
   });
 
-  it('records sessionId from the mcp-session-id header', async () => {
+  it('records a hash of the mcp-session-id header (never the raw value)', async () => {
     const h = await start();
     try {
+      const RAW = 'sess-123';
       await fetch(`${h.base}/mcp`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           accept: 'application/json, text/event-stream',
-          'mcp-session-id': 'sess-123',
+          'mcp-session-id': RAW,
         },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
       });
       const entry = h.logs.at(-1)!;
-      expect(entry.sessionId).toBe('sess-123');
+      // The raw header is the session pin (lib/session-pin.ts) and must
+      // not appear in access logs. Confirm both: the structured field
+      // carries the hash, and the raw value never lands on the log entry.
+      expect(entry.sessionIdHash).toBe(mcpSessionIdLogHash(RAW));
+      expect(JSON.stringify(entry)).not.toContain(RAW);
       // tools/list does not bump the hop counter.
       expect(entry.sessionHopCount).toBeUndefined();
     } finally {
@@ -316,7 +371,7 @@ describe('HTTP transport', () => {
     }
   });
 
-  it('omits sessionId when the client sends no header', async () => {
+  it('omits sessionIdHash when the client sends no header', async () => {
     const h = await start();
     try {
       await fetch(`${h.base}/mcp`, {
@@ -325,7 +380,7 @@ describe('HTTP transport', () => {
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
       });
       const entry = h.logs.at(-1)!;
-      expect(entry.sessionId).toBeUndefined();
+      expect(entry.sessionIdHash).toBeUndefined();
       expect(entry.sessionHopCount).toBeUndefined();
     } finally {
       await h.close();
@@ -356,7 +411,7 @@ describe('HTTP transport', () => {
       const first = h.logs.at(-1)!;
       expect(first.rpcMethod).toBe('tools/call');
       expect(first.rpcToolName).toBe('pathfinder_authoring_start');
-      expect(first.sessionId).toBe('sess-hop');
+      expect(first.sessionIdHash).toBe(mcpSessionIdLogHash('sess-hop'));
       expect(first.sessionHopCount).toBe(1);
       expect(first.toolError).toBe(false);
 

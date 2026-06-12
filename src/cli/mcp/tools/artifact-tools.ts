@@ -18,17 +18,26 @@ import { z } from 'zod';
 import { runCreate } from '../../commands/create';
 import { runValidate } from '../../commands/validate';
 import { defaultPackageId } from '../../utils/auto-id';
-import { newPackageState, buildArtifactSummary, readPackage } from '../../utils/package-io';
+import { newPackageState, buildArtifactSummary, readPackage, type TreeNode } from '../../utils/package-io';
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
+import { MCP_TMPDIR_PREFIX } from '../lib/constants';
+import { generateSessionToken } from '../lib/session-token';
+import { SESSION_GENERATION_ABSENT, type SessionArtifact, type SessionStore } from '../lib/session-store';
+import type { CommandOutcome } from '../../utils/output';
+import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import { writeAppend } from './annotations';
-import { outcomeResult } from './result';
+import { outcomeResult, textResult, withToolErrorEnvelope } from './result';
 
-export function registerArtifactTools(server: McpServer): void {
+export function registerArtifactTools(
+  server: McpServer,
+  options: { sessionStore: SessionStore; mcpSessionId?: string }
+): void {
+  const { sessionStore, mcpSessionId } = options;
   server.registerTool(
     'pathfinder_create_package',
     {
       description:
-        'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Returns a fresh authoring artifact ({ content, manifest }) for use as input to subsequent Pathfinder authoring tools.',
+        'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Returns a sessionToken (for session-mode authoring) AND the seed artifact (for stateless-mode authoring) — clients pick the mode that suits them on subsequent mutation calls.',
       annotations: writeAppend('Create Pathfinder package'),
       inputSchema: {
         title: z.string().describe('Guide title shown to learners.'),
@@ -40,37 +49,47 @@ export function registerArtifactTools(server: McpServer): void {
         description: z.string().optional().describe('Short description shown in catalogs.'),
       },
     },
-    async ({ title, id, type, description }) => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pathfinder-cli-mcp-create-'));
-      try {
-        const pkgDir = path.join(dir, 'pkg');
-        const finalId = id ?? deriveId(title);
-        if (!finalId) {
-          return outcomeResult({
-            status: 'error',
-            code: 'INVALID_TITLE',
-            message:
-              'Title must contain at least one alphanumeric character so an id can be generated. Pass id explicitly to override.',
-          });
-        }
-        const outcome = await runCreate({ dir: pkgDir, id: finalId, title, type, description });
-        if (outcome.status !== 'ok') {
-          return outcomeResult(outcome);
-        }
-        const state = readPackage(pkgDir);
-        return outcomeResult(
-          outcome,
-          { content: state.content, manifest: state.manifest },
-          buildArtifactSummary(state.content)
-        );
-      } finally {
+    async ({ title, id, type, description }) =>
+      withToolErrorEnvelope(undefined, 'create_package', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), `${MCP_TMPDIR_PREFIX}create-`));
         try {
-          fs.rmSync(dir, { recursive: true, force: true });
-        } catch {
-          // Best-effort cleanup.
+          const pkgDir = path.join(dir, 'pkg');
+          const finalId = id ?? deriveId(title);
+          if (!finalId) {
+            return outcomeResult({
+              status: 'error',
+              code: 'INVALID_TITLE',
+              message:
+                'Title must contain at least one alphanumeric character so an id can be generated. Pass id explicitly to override.',
+            });
+          }
+          const outcome = await runCreate({ dir: pkgDir, id: finalId, title, type, description });
+          if (outcome.status !== 'ok') {
+            return outcomeResult(outcome);
+          }
+          const state = readPackage(pkgDir);
+          const artifact = { content: state.content, manifest: state.manifest };
+          const summary = buildArtifactSummary(state.content);
+
+          // P7: mint a fresh session and persist the seed artifact. The
+          // session token returned alongside the artifact is the agent's
+          // handle for subsequent session-mode mutation calls. Token
+          // generation collisions are vanishingly rare (~110 bits of
+          // entropy) but we retry-on-conflict a few times just in case.
+          const sessionToken = await mintSession(sessionStore, artifact);
+          if (mcpSessionId !== undefined) {
+            await sessionStore.bindMcpSessionId(sessionToken, mcpSessionId);
+          }
+
+          return sessionCreateResult(sessionToken, outcome, artifact, summary);
+        } finally {
+          try {
+            fs.rmSync(dir, { recursive: true, force: true });
+          } catch {
+            // Best-effort cleanup.
+          }
         }
-      }
-    }
+      })
   );
 
   server.registerTool(
@@ -91,65 +110,73 @@ export function registerArtifactTools(server: McpServer): void {
         category: z.string().optional().describe('Manifest category. Defaults to "getting-started" when omitted.'),
       },
     },
-    async ({ id, title, description, category }) => {
-      const resolvedDescription = description ?? title;
-      const resolvedCategory = category ?? 'getting-started';
+    async ({ id, title, description, category }) =>
+      withToolErrorEnvelope(undefined, 'create_guide_template', async () => {
+        const resolvedDescription = description ?? title;
+        const resolvedCategory = category ?? 'getting-started';
 
-      let state;
-      try {
-        state = newPackageState({ id, title, type: 'guide', description: resolvedDescription });
-      } catch (err) {
-        return outcomeResult({
-          status: 'error',
-          code: 'SCHEMA_VALIDATION',
-          message: err instanceof Error ? err.message : String(err),
+        let state;
+        try {
+          state = newPackageState({ id, title, type: 'guide', description: resolvedDescription });
+        } catch (err) {
+          return outcomeResult({
+            status: 'error',
+            code: 'SCHEMA_VALIDATION',
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+
+        const content = state.content as ContentJson & { blocks: unknown[] };
+        content.blocks = [
+          {
+            type: 'markdown',
+            id: 'markdown-1',
+            content: `# ${title}\n\n${resolvedDescription}\n\nThis guide will walk you through the steps below.`,
+          },
+          {
+            type: 'section',
+            id: 'step-1',
+            title: 'Step 1',
+            blocks: [
+              {
+                type: 'markdown',
+                id: 'markdown-2',
+                content: 'Describe what to do in step 1.',
+              },
+            ],
+          },
+        ];
+
+        const manifest = state.manifest as ManifestJson & Record<string, unknown>;
+        manifest.title = title;
+        manifest.category = resolvedCategory;
+        manifest.path = `${id}/`;
+        manifest.startingLocation = '/';
+        manifest.author = { name: 'Your Name', team: 'Your Team' };
+        manifest.testEnvironment = { tier: 'local', minVersion: '12.2.0' };
+
+        const validation = runValidate({
+          content,
+          manifest,
+          manifestSchemaVersionAuthored: true,
         });
-      }
+        if (validation.status !== 'ok') {
+          return outcomeResult(validation, { content, manifest }, buildArtifactSummary(content));
+        }
 
-      const content = state.content as ContentJson & { blocks: unknown[] };
-      content.blocks = [
-        {
-          type: 'markdown',
-          id: 'markdown-1',
-          content: `# ${title}\n\n${resolvedDescription}\n\nThis guide will walk you through the steps below.`,
-        },
-        {
-          type: 'section',
-          id: 'step-1',
-          title: 'Step 1',
-          blocks: [
-            {
-              type: 'markdown',
-              id: 'markdown-2',
-              content: 'Describe what to do in step 1.',
-            },
-          ],
-        },
-      ];
-
-      const manifest = state.manifest as ManifestJson & Record<string, unknown>;
-      manifest.title = title;
-      manifest.category = resolvedCategory;
-      manifest.path = `${id}/`;
-      manifest.startingLocation = '/';
-      manifest.author = { name: 'Your Name', team: 'Your Team' };
-      manifest.testEnvironment = { tier: 'local', minVersion: '12.2.0' };
-
-      const validation = runValidate({
-        content,
-        manifest,
-        manifestSchemaVersionAuthored: true,
-      });
-      if (validation.status !== 'ok') {
-        return outcomeResult(validation, { content, manifest }, buildArtifactSummary(content));
-      }
-
-      return outcomeResult(
-        { status: 'ok', summary: 'Pre-populated guide template ready' },
-        { content, manifest },
-        buildArtifactSummary(content)
-      );
-    }
+        const artifact = { content, manifest };
+        const summary = buildArtifactSummary(content);
+        const sessionToken = await mintSession(sessionStore, artifact);
+        if (mcpSessionId !== undefined) {
+          await sessionStore.bindMcpSessionId(sessionToken, mcpSessionId);
+        }
+        return sessionCreateResult(
+          sessionToken,
+          { status: 'ok', summary: 'Pre-populated guide template ready' },
+          artifact,
+          summary
+        );
+      })
   );
 }
 
@@ -159,4 +186,46 @@ function deriveId(title: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Mint a fresh session token and persist `artifact` under it at
+ * generation 1. The token is 110 bits of CSPRNG entropy; a collision
+ * with an existing session is below cosmic-ray probability, so the
+ * `ifGenerationMatch=ABSENT` save is treated as infallible from a
+ * collision standpoint. Any error here (auth, storage outage) is
+ * routed through `withToolErrorEnvelope` by the caller.
+ */
+async function mintSession(store: SessionStore, artifact: SessionArtifact): Promise<string> {
+  const token = generateSessionToken();
+  await store.save(token, artifact, SESSION_GENERATION_ABSENT);
+  return token;
+}
+
+/**
+ * Wire shape for the create-session output. Returns BOTH:
+ *   - sessionToken + generation — for session-mode mutation flows.
+ *   - artifact (with __etag) + summary — for stateless mutation flows.
+ *
+ * The agent picks the mode by what it passes on the next call. This is
+ * the only create-time call that returns the full artifact; later
+ * mutations under session-mode only return the ack.
+ */
+function sessionCreateResult(
+  sessionToken: string,
+  outcome: CommandOutcome,
+  artifact: { content: unknown; manifest?: unknown },
+  summary: TreeNode[]
+): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
+  const payload: Record<string, unknown> = {
+    ...outcome,
+    sessionToken,
+    generation: 1,
+    artifact: {
+      ...artifact,
+      [ARTIFACT_ETAG_FIELD]: computeArtifactEtag(artifact),
+    },
+    summary,
+  };
+  return textResult(JSON.stringify(payload, null, 2), outcome.status === 'error');
 }
