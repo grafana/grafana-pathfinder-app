@@ -12,7 +12,6 @@
 
 import { Command } from 'commander';
 import * as fs from 'fs';
-import * as path from 'path';
 
 import type {
   DependencyGraph,
@@ -25,6 +24,7 @@ import type {
 } from '../../types/package.types';
 import { RepositoryJsonSchema } from '../../types/package.schema';
 import { readJsonFile } from '../../validation/package-io';
+import { resolveCliPath } from '../utils/file-loader';
 
 interface BuildGraphOptions {
   output?: string;
@@ -372,8 +372,7 @@ export const buildGraphCommand = new Command('build-graph')
       }
       const name = entry.slice(0, colonIndex);
       const repoPath = entry.slice(colonIndex + 1);
-      const absolutePath = path.isAbsolute(repoPath) ? repoPath : path.resolve(process.cwd(), repoPath);
-      return { name, path: absolutePath };
+      return { name, path: resolveCliPath(repoPath) };
     });
 
     const { graph, lintMessages, errors } = buildGraph(repoPaths);
@@ -398,7 +397,7 @@ export const buildGraphCommand = new Command('build-graph')
     const json = JSON.stringify(graph, null, 2);
 
     if (options.output) {
-      const outputPath = path.isAbsolute(options.output) ? options.output : path.resolve(process.cwd(), options.output);
+      const outputPath = resolveCliPath(options.output);
       fs.writeFileSync(outputPath, json + '\n', 'utf-8');
       console.error(
         `✅ Wrote graph to ${outputPath} (${graph.metadata.nodeCount} nodes, ${graph.metadata.edgeCount} edges)`
