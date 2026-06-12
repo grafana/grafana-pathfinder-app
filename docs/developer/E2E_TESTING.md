@@ -37,18 +37,19 @@ npx pathfinder-cli e2e [options] [files...]
 
 ### Options
 
-| Option                          | Description                                                                                                                                   | Default                      |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| `--grafana-url <url>`           | Grafana instance URL. Auto-switches to `http://localhost:3010` when `--clean` is set and this flag is not passed.                             | `http://localhost:3000`      |
-| `--output <path>`               | Path for JSON report output                                                                                                                   | None                         |
-| `--artifacts <dir>`             | Directory for failure artifacts (screenshots, DOM snapshots)                                                                                  | `/tmp/pathfinder-e2e-{uuid}` |
-| `--verbose`                     | Enable detailed logging                                                                                                                       | `false`                      |
-| `--bundled`                     | Test all bundled guides                                                                                                                       | `false`                      |
-| `--trace`                       | Generate Playwright trace files for debugging                                                                                                 | `false`                      |
-| `--headed`                      | Run browser visibly (not headless)                                                                                                            | `false`                      |
-| `--always-screenshot`           | Capture screenshots on success and failure                                                                                                    | `false`                      |
-| `--clean`                       | Run against an isolated docker-compose stack (project `pathfinder-e2e`, Grafana on `:3010`). Resets between guides and tears down at the end. | `false`                      |
-| `--clean-ready-timeout-ms <ms>` | How long to wait for the isolated Grafana to become healthy after a `--clean` reset                                                           | `120000`                     |
+| Option                          | Description                                                                                                                                              | Default                      |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `--grafana-url <url>`           | Grafana instance URL. Auto-switches to `http://localhost:3010` when `--clean` is set and this flag is not passed.                                        | `http://localhost:3000`      |
+| `--output <path>`               | Path for JSON report output                                                                                                                              | None                         |
+| `--artifacts <dir>`             | Directory for failure artifacts (screenshots, DOM snapshots)                                                                                             | `/tmp/pathfinder-e2e-{uuid}` |
+| `--verbose`                     | Enable detailed logging                                                                                                                                  | `false`                      |
+| `--bundled`                     | Test all bundled guides                                                                                                                                  | `false`                      |
+| `--trace`                       | Generate Playwright trace files for debugging                                                                                                            | `false`                      |
+| `--headed`                      | Run browser visibly (not headless)                                                                                                                       | `false`                      |
+| `--always-screenshot`           | Capture screenshots on success and failure                                                                                                               | `false`                      |
+| `--clean`                       | Run against an isolated docker-compose stack (project `pathfinder-e2e`, Grafana on `:3010`). Resets between dependency chains and tears down at the end. | `false`                      |
+| `--clean-ready-timeout-ms <ms>` | How long to wait for the isolated Grafana to become healthy after a `--clean` reset                                                                      | `120000`                     |
+| `--repository <path>`           | Path to a `repository.json` used for dependency-aware ordering                                                                                           | Bundled index when present   |
 
 ### Input formats
 
@@ -214,9 +215,22 @@ Run it to verify your setup:
 npx pathfinder-cli e2e bundled:e2e-framework-test
 ```
 
+## Dependency-aware ordering
+
+Before running, the CLI builds an execution plan from a `repository.json` index (the bundled `src/bundled-interactives/repository.json` by default, or `--repository <path>`). Guides linked by a hard `depends` prerequisite are run in dependency order and grouped into **chains**; unrelated guides form independent single-guide chains.
+
+- **Auto-included prerequisites**: if you test a guide whose prerequisite is not in the selection (for example `bundled:loki-grafana-101` alone), the missing prerequisite (`prometheus-grafana-101`) is pulled in from the repository and run first.
+- **Virtual capabilities**: a `depends` target may be a capability name; it resolves to whichever guide `provides` it.
+- **Failure propagation**: if a prerequisite fails, its dependents in the same chain are marked skipped (`prerequisite failed`) and not run; the runner continues with the next chain.
+- Only `depends` forms a chain. `recommends` and `suggests` are advisory and do not affect ordering. A `depends` cycle is a configuration error.
+
+This ordering applies to every run. `--clean` additionally isolates each chain in its own environment (see below).
+
 ## Clean-slate runs (`--clean`)
 
-The `--clean` flag boots a dedicated, isolated docker-compose stack (project `pathfinder-e2e`, Grafana on `:3010`) for the test run, resets it between guides, and tears it down at the end — the normal local dev stack on `:3000` is never touched. Use it when residual state from prior runs is making failures hard to attribute, or when you want clean-slate guarantees across a `--bundled` sweep.
+The `--clean` flag boots a dedicated, isolated docker-compose stack (project `pathfinder-e2e`, Grafana on `:3010`) for the test run and tears it down at the end — the normal local dev stack on `:3000` is never touched. Use it when residual state from prior runs is making failures hard to attribute, or when you want clean-slate guarantees across a `--bundled` sweep.
+
+The environment is reset **between dependency chains**, not between every guide. Guides within a chain share one environment so a prerequisite's state survives for its dependents. For example, the bundled `prometheus-grafana-101 → loki-grafana-101` chain runs as `docker up → prometheus-grafana-101 → loki-grafana-101 → docker down`, with no reset between the two guides.
 
 ## Timing and timeouts
 
