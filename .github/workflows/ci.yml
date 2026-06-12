@@ -20,30 +20,9 @@ env:
   NODE_VERSION: '22'
 
 jobs:
-  # Setup job installs dependencies and caches node_modules for parallel jobs
-  setup:
-    name: Setup
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm' # Cross-run npm cache (speeds up npm ci)
-      - run: npm ci
-      - uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: node_modules
-          key: node-modules-${{ github.run_id }} # Intra-run sharing
-
   # Parallel quality check jobs
   lint:
     name: Lint
-    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -55,16 +34,18 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+          cache: 'npm'
+      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        id: node-modules
         with:
           path: node_modules
-          key: node-modules-${{ github.run_id }}
-          fail-on-cache-miss: true
+          key: node-modules-${{ runner.os }}-${{ env.NODE_VERSION }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci
       - run: npm run lint
 
   typecheck:
     name: Typecheck
-    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -76,16 +57,18 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+          cache: 'npm'
+      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        id: node-modules
         with:
           path: node_modules
-          key: node-modules-${{ github.run_id }}
-          fail-on-cache-miss: true
+          key: node-modules-${{ runner.os }}-${{ env.NODE_VERSION }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci
       - run: npm run typecheck
 
   prettier:
     name: Prettier
-    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -97,16 +80,18 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+          cache: 'npm'
+      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        id: node-modules
         with:
           path: node_modules
-          key: node-modules-${{ github.run_id }}
-          fail-on-cache-miss: true
+          key: node-modules-${{ runner.os }}-${{ env.NODE_VERSION }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci
       - run: npm run prettier-test
 
   test:
     name: Test
-    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -118,11 +103,14 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+          cache: 'npm'
+      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        id: node-modules
         with:
           path: node_modules
-          key: node-modules-${{ github.run_id }}
-          fail-on-cache-miss: true
+          key: node-modules-${{ runner.os }}-${{ env.NODE_VERSION }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci
       - run: npm run test:ci
       - name: Upload coverage reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -133,7 +121,6 @@ jobs:
 
   validate-packages:
     name: Validate packages
-    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -145,11 +132,14 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+          cache: 'npm'
+      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        id: node-modules
         with:
           path: node_modules
-          key: node-modules-${{ github.run_id }}
-          fail-on-cache-miss: true
+          key: node-modules-${{ runner.os }}-${{ env.NODE_VERSION }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci
       - name: Build CLI
         run: npm run build:cli
       - name: Validate bundled packages
@@ -193,7 +183,6 @@ jobs:
   # Build job runs in parallel with quality checks
   build:
     name: Build
-    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -211,11 +200,14 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+          cache: 'npm'
+      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        id: node-modules
         with:
           path: node_modules
-          key: node-modules-${{ github.run_id }}
-          fail-on-cache-miss: true
+          key: node-modules-${{ runner.os }}-${{ env.NODE_VERSION }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci
 
       - name: Build frontend
         run: npm run build
