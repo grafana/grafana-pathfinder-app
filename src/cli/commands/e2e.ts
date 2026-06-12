@@ -7,13 +7,20 @@
 
 import { execSync, spawn } from 'child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { dirname, isAbsolute, join, resolve } from 'path';
 import { tmpdir } from 'os';
 
 import { Command, Option } from 'commander';
 
 import { validateGuideFromString, toLegacyResult } from '../../validation';
-import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/file-loader';
+import {
+  loadGuideFiles,
+  loadBundledGuides,
+  loadRepositoryIndex,
+  bundledRepositoryPath,
+  type LoadedGuide,
+} from '../utils/file-loader';
+import { planGuideExecution } from '../utils/guide-chains';
 import {
   generateReport,
   writeReport,
@@ -29,7 +36,7 @@ import {
   type PreflightOutcome,
   type CurrentTier,
 } from '../utils/manifest-preflight';
-import type { ManifestJson } from '../../types/package.types';
+import type { ManifestJson, RepositoryEntry, RepositoryJson } from '../../types/package.types';
 
 import { randomUUID } from 'crypto';
 
@@ -49,6 +56,7 @@ interface E2ECommandOptions {
   alwaysScreenshot: boolean;
   clean: boolean;
   cleanReadyTimeoutMs: number;
+  repository?: string;
 }
 
 /**
@@ -202,7 +210,7 @@ async function waitForGrafanaReady(
 /**
  *  Bring docker compose down with volumes removed, then up, and wait for Grafana
  *  to be reachable. Used by `--clean` to wipe the `grafana-data` DB between
- *  guides.
+ *  dependency chains.
  */
 async function cleanResetDocker(grafanaUrl: string, options: E2ECommandOptions): Promise<void> {
   console.log('   docker compose down -v');
@@ -262,6 +270,21 @@ interface PlaywrightResult {
   abortMessage?: string;
   /** Test results data for JSON report generation (L3-5B) */
   resultsData?: TestResultsData;
+}
+
+type GuideStatus = 'passed' | 'failed' | 'auth_expired' | 'skipped_prereq';
+
+interface GuideRunResult {
+  guide: string;
+  id: string;
+  status: GuideStatus;
+  exitCode: number;
+  traceFile?: string;
+  abortReason?: AbortReason;
+  abortMessage?: string;
+  resultsData?: TestResultsData;
+  autoIncluded: boolean;
+  failedPrerequisite?: string;
 }
 
 /**
@@ -593,7 +616,7 @@ export const e2eCommand = new Command('e2e')
   .option('--always-screenshot', 'Capture screenshots on success and failure', false)
   .option(
     '--clean',
-    `Run tests against an isolated docker-compose stack (project "${CLEAN_COMPOSE_PROJECT}", Grafana on ${CLEAN_GRAFANA_URL}). Resets between guides and tears down at the end.`,
+    `Run tests against an isolated docker-compose stack (project "${CLEAN_COMPOSE_PROJECT}", Grafana on ${CLEAN_GRAFANA_URL}). Resets between dependency chains (not between guides in the same chain) and tears down at the end.`,
     false
   )
   .option(
@@ -601,6 +624,10 @@ export const e2eCommand = new Command('e2e')
     'How long to wait for the isolated Grafana to become healthy after a --clean reset',
     (v) => parseInt(v, 10),
     120000
+  )
+  .option(
+    '--repository <path>',
+    'Path to a repository.json used for dependency-aware ordering (default: the bundled index when present)'
   )
   .action(async (files: string[], options: E2ECommandOptions) => {
     let dockerStartedByUs = false;
@@ -702,6 +729,82 @@ export const e2eCommand = new Command('e2e')
         console.log(`   Clean:       enabled (project "${CLEAN_COMPOSE_PROJECT}", isolated from any dev stack)`);
       }
 
+      // Build a dependency-aware execution plan. Guides linked by `depends` run
+      // in dependency order; under --clean each chain gets a fresh environment.
+      const repositoryPath = options.repository
+        ? isAbsolute(options.repository)
+          ? options.repository
+          : resolve(process.cwd(), options.repository)
+        : bundledRepositoryPath();
+
+      if (options.repository && !existsSync(repositoryPath)) {
+        console.error(`\n❌ Repository index not found: ${repositoryPath}`);
+        process.exit(ExitCode.CONFIGURATION_ERROR);
+      }
+
+      let repository: RepositoryJson = {};
+      if (existsSync(repositoryPath)) {
+        const loaded = loadRepositoryIndex(repositoryPath);
+        if (loaded.error) {
+          // An explicitly requested index that fails to load is a configuration
+          // error; a malformed default (bundled) index degrades to no planning.
+          if (options.repository) {
+            console.error(`\n❌ Failed to load repository index (${repositoryPath}): ${loaded.error}`);
+            process.exit(ExitCode.CONFIGURATION_ERROR);
+          }
+          console.warn(`⚠️  Ignoring default repository index (${repositoryPath}): ${loaded.error}`);
+        }
+        repository = loaded.repository ?? {};
+      }
+
+      const repoBaseDir = dirname(repositoryPath);
+      const loadGuideById = (id: string, entry: RepositoryEntry): LoadedGuide | null => {
+        const rel = entry.path || `${id}/`;
+        const contentPath = rel.endsWith('.json') ? join(repoBaseDir, rel) : join(repoBaseDir, rel, 'content.json');
+        return loadGuideFiles([contentPath])[0] ?? null;
+      };
+
+      const plan = planGuideExecution({ guides: valid, repository, loadGuideById });
+
+      if (plan.errors.length > 0) {
+        console.error('\n❌ Failed to plan guide execution:');
+        for (const planError of plan.errors) {
+          console.error(`   • ${planError}`);
+        }
+        process.exit(ExitCode.CONFIGURATION_ERROR);
+      }
+
+      // Validate prerequisites that were auto-included to satisfy dependencies.
+      const autoIncludedGuides = plan.chains
+        .flat()
+        .filter((p) => p.autoIncluded)
+        .map((p) => p.guide);
+      if (autoIncludedGuides.length > 0) {
+        const { errors: autoErrors } = validateAllGuides(autoIncludedGuides, options);
+        if (autoErrors.length > 0) {
+          console.error('\n❌ Auto-included prerequisite validation failed:\n');
+          for (const { file, errors: fileErrors } of autoErrors) {
+            console.error(`  ${file}:`);
+            for (const error of fileErrors) {
+              console.error(`    - ${error}`);
+            }
+            console.error();
+          }
+          process.exit(ExitCode.CONFIGURATION_ERROR);
+        }
+        console.log(
+          `\n➕ Auto-included ${autoIncludedGuides.length} prerequisite guide(s): ${plan.autoIncludedIds.join(', ')}`
+        );
+      }
+
+      if (options.verbose) {
+        console.log(`\n🔗 Execution plan: ${plan.chains.length} chain(s)`);
+        plan.chains.forEach((chain, idx) => {
+          const names = chain.map((p) => `${p.id}${p.autoIncluded ? ' (auto)' : ''}`).join(' → ');
+          console.log(`   Chain ${idx + 1}: ${names}`);
+        });
+      }
+
       if (options.clean) {
         console.log('\n🧹 Clean start — resetting docker compose before tests...');
         try {
@@ -799,71 +902,104 @@ export const e2eCommand = new Command('e2e')
         console.log('   → Auth and plugin checks will run in Playwright context');
       }
 
-      // Run Playwright tests for each guide
+      // Run Playwright tests chain by chain.
       console.log('\n🎭 Running Playwright tests...\n');
 
       let allPassed = true;
       let hasAuthExpiry = false;
-      const results: Array<{
-        guide: string;
-        success: boolean;
-        exitCode: number;
-        traceFile?: string;
-        abortReason?: AbortReason;
-        abortMessage?: string;
-        resultsData?: TestResultsData;
-      }> = [];
+      const results: GuideRunResult[] = [];
 
-      for (const [i, guide] of valid.entries()) {
-        if (options.clean && i > 0) {
-          console.log(`\n🧹 Resetting docker compose between guides...`);
+      for (const [chainIndex, chain] of plan.chains.entries()) {
+        if (options.clean && chainIndex > 0) {
+          console.log(`\n🧹 Resetting docker compose between chains...`);
           try {
             await cleanResetDocker(options.grafanaUrl, options);
             dockerStartedByUs = true;
           } catch (err) {
             console.error(
-              `\n❌ Failed to reset docker compose between guides: ${err instanceof Error ? err.message : 'Unknown error'}`
+              `\n❌ Failed to reset docker compose between chains: ${err instanceof Error ? err.message : 'Unknown error'}`
             );
             allPassed = false;
             break;
           }
         }
 
-        console.log(`\n📚 Testing: ${guide.path}`);
+        // IDs in this chain that failed or were skipped; their dependents skip.
+        const blocked = new Set<string>();
 
-        const result = await runPlaywrightTests(guide, options);
-        results.push({
-          guide: guide.path,
-          success: result.success,
-          exitCode: result.exitCode,
-          traceFile: result.traceFile,
-          abortReason: result.abortReason,
-          abortMessage: result.abortMessage,
-          resultsData: result.resultsData,
-        });
-
-        if (!result.success) {
-          allPassed = false;
-
-          // L3-3D: Check for auth expiry
-          if (result.abortReason === 'AUTH_EXPIRED') {
-            hasAuthExpiry = true;
-            console.log(`   ❌ Session expired: ${result.abortMessage}`);
-          } else {
-            console.log(`   ❌ Test failed (exit code: ${result.exitCode})`);
+        for (const planned of chain) {
+          const blockingDep = planned.dependencies.find((dep) => blocked.has(dep));
+          if (blockingDep) {
+            blocked.add(planned.id);
+            console.log(`\n📚 ${planned.guide.path}`);
+            console.log(`   ⊘ Skipped: prerequisite "${blockingDep}" did not pass`);
+            results.push({
+              guide: planned.guide.path,
+              id: planned.id,
+              status: 'skipped_prereq',
+              exitCode: ExitCode.SUCCESS,
+              autoIncluded: planned.autoIncluded,
+              failedPrerequisite: blockingDep,
+              // Include a result so the skipped guide is represented in the JSON report
+              resultsData: {
+                guide: { id: planned.id, title: planned.id, path: planned.guide.path },
+                grafanaUrl: options.grafanaUrl,
+                timestamp: new Date().toISOString(),
+                results: [],
+                aborted: true,
+                abortReason: 'SKIPPED_PREREQ',
+                abortMessage: `Prerequisite "${blockingDep}" did not pass`,
+              },
+            });
+            continue;
           }
-        } else {
-          console.log(`   ✅ Test passed`);
-        }
 
-        if (result.traceFile && options.trace) {
-          console.log(`   📊 Trace file: ${result.traceFile}`);
+          const suffix = planned.autoIncluded ? ' (auto-included prerequisite)' : '';
+          console.log(`\n📚 Testing: ${planned.guide.path}${suffix}`);
+
+          const result = await runPlaywrightTests(planned.guide, options);
+          const status: GuideStatus = result.success
+            ? 'passed'
+            : result.abortReason === 'AUTH_EXPIRED'
+              ? 'auth_expired'
+              : 'failed';
+
+          results.push({
+            guide: planned.guide.path,
+            id: planned.id,
+            status,
+            exitCode: result.exitCode,
+            traceFile: result.traceFile,
+            abortReason: result.abortReason,
+            abortMessage: result.abortMessage,
+            resultsData: result.resultsData,
+            autoIncluded: planned.autoIncluded,
+          });
+
+          if (!result.success) {
+            allPassed = false;
+            blocked.add(planned.id);
+
+            // L3-3D: Check for auth expiry
+            if (result.abortReason === 'AUTH_EXPIRED') {
+              hasAuthExpiry = true;
+              console.log(`   ❌ Session expired: ${result.abortMessage}`);
+            } else {
+              console.log(`   ❌ Test failed (exit code: ${result.exitCode})`);
+            }
+          } else {
+            console.log(`   ✅ Test passed`);
+          }
+
+          if (result.traceFile && options.trace) {
+            console.log(`   📊 Trace file: ${result.traceFile}`);
+          }
         }
       }
 
       // Collect results data for reporting
       const resultsWithData = results.filter((r) => r.resultsData).map((r) => r.resultsData!);
-      const isMultiGuide = valid.length > 1;
+      const isMultiGuide = results.length > 1;
 
       // Print summary
       console.log('\n' + '─'.repeat(68));
@@ -872,16 +1008,20 @@ export const e2eCommand = new Command('e2e')
 
       if (isMultiGuide) {
         // Multi-guide summary (L3-7B)
-        const passedGuides = results.filter((r) => r.success).length;
-        const failedGuides = results.filter((r) => !r.success && r.abortReason !== 'AUTH_EXPIRED').length;
-        const authExpired = results.filter((r) => r.abortReason === 'AUTH_EXPIRED').length;
+        const passedGuides = results.filter((r) => r.status === 'passed').length;
+        const failedGuides = results.filter((r) => r.status === 'failed').length;
+        const authExpired = results.filter((r) => r.status === 'auth_expired').length;
+        const skippedPrereq = results.filter((r) => r.status === 'skipped_prereq').length;
 
-        console.log(`\n   Guides: ${passedGuides}/${valid.length} passed`);
+        console.log(`\n   Guides: ${passedGuides}/${results.length} passed`);
         if (failedGuides > 0) {
           console.log(`   ├─ ❌ Failed: ${failedGuides}`);
         }
         if (authExpired > 0) {
-          console.log(`   └─ 🔐 Auth expired: ${authExpired}`);
+          console.log(`   ├─ 🔐 Auth expired: ${authExpired}`);
+        }
+        if (skippedPrereq > 0) {
+          console.log(`   └─ ⊘ Skipped (prerequisite failed): ${skippedPrereq}`);
         }
 
         // Aggregate step statistics across all guides
@@ -920,16 +1060,30 @@ export const e2eCommand = new Command('e2e')
         // List individual guide results
         console.log(`\n   Guide results:`);
         for (const result of results) {
-          const status = result.success ? '✅' : result.abortReason === 'AUTH_EXPIRED' ? '🔐' : '❌';
-          const guideName = result.guide.split('/').pop()?.replace('.json', '') ?? result.guide;
-          const reason = result.abortReason === 'AUTH_EXPIRED' ? ' (auth expired)' : '';
-          console.log(`   ${status} ${guideName}${reason}`);
+          const icon =
+            result.status === 'passed'
+              ? '✅'
+              : result.status === 'auth_expired'
+                ? '🔐'
+                : result.status === 'skipped_prereq'
+                  ? '⊘'
+                  : '❌';
+          const guideName = result.id;
+          const suffix = result.autoIncluded ? ' (auto-included)' : '';
+          const reason =
+            result.status === 'auth_expired'
+              ? ' (auth expired)'
+              : result.status === 'skipped_prereq'
+                ? ` (prerequisite "${result.failedPrerequisite}" failed)`
+                : '';
+          console.log(`   ${icon} ${guideName}${suffix}${reason}`);
         }
       } else {
         // Single guide summary
-        const passed = results.filter((r) => r.success).length;
-        const failed = results.filter((r) => !r.success).length;
-        const authExpired = results.filter((r) => r.abortReason === 'AUTH_EXPIRED').length;
+        const passed = results.filter((r) => r.status === 'passed').length;
+        const failed = results.filter((r) => r.status === 'failed').length;
+        const authExpired = results.filter((r) => r.status === 'auth_expired').length;
+        const skippedPrereq = results.filter((r) => r.status === 'skipped_prereq').length;
 
         if (passed > 0) {
           console.log(`   ✅ Passed: ${passed}`);
@@ -939,6 +1093,9 @@ export const e2eCommand = new Command('e2e')
         }
         if (authExpired > 0) {
           console.log(`   🔐 Auth expired: ${authExpired}`);
+        }
+        if (skippedPrereq > 0) {
+          console.log(`   ⊘ Skipped (prerequisite failed): ${skippedPrereq}`);
         }
       }
 

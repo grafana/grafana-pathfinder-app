@@ -146,7 +146,7 @@ export interface E2ETestReport {
   /** Whether test was aborted (L3-3D) */
   aborted?: boolean;
   /** Reason for abort if aborted is true */
-  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE';
+  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ';
   /** Human-readable abort message */
   abortMessage?: string;
 }
@@ -194,7 +194,7 @@ export interface TestResultsData {
   /** Whether execution was aborted */
   aborted: boolean;
   /** Reason for abort if aborted */
-  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE';
+  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ';
   /** Abort message */
   abortMessage?: string;
 }
@@ -405,6 +405,8 @@ export interface MultiGuideSummary {
   failedGuides: number;
   /** Number of guides where auth expired during testing */
   authExpiredGuides: number;
+  /** Number of guides skipped because a dependency-chain prerequisite failed */
+  skippedGuides: number;
   /** Aggregated step counts across all guides */
   steps: {
     total: number;
@@ -432,7 +434,7 @@ export interface GuideResult {
   /** Whether this guide passed (no mandatory failures) */
   success: boolean;
   /** Reason for failure/abort if any */
-  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE';
+  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ';
   /** Summary statistics for this guide */
   summary: ReportSummary;
   /** Duration in milliseconds */
@@ -469,7 +471,8 @@ export interface MultiGuideReport {
  * @returns Aggregated summary statistics
  */
 export function generateMultiGuideSummary(reports: E2ETestReport[]): MultiGuideSummary {
-  const passedGuides = reports.filter((r) => isReportSuccess(r)).length;
+  const skippedGuides = reports.filter((r) => r.abortReason === 'SKIPPED_PREREQ').length;
+  const passedGuides = reports.filter((r) => isReportSuccess(r) && r.abortReason !== 'SKIPPED_PREREQ').length;
   const failedGuides = reports.filter((r) => !isReportSuccess(r) && r.abortReason !== 'AUTH_EXPIRED').length;
   const authExpiredGuides = reports.filter((r) => r.abortReason === 'AUTH_EXPIRED').length;
 
@@ -502,6 +505,7 @@ export function generateMultiGuideSummary(reports: E2ETestReport[]): MultiGuideS
     passedGuides,
     failedGuides,
     authExpiredGuides,
+    skippedGuides,
     steps,
     totalDuration,
   };
@@ -518,7 +522,7 @@ export function toGuideResult(report: E2ETestReport): GuideResult {
     id: report.guide.id,
     title: report.guide.title,
     path: report.guide.path,
-    success: isReportSuccess(report),
+    success: isReportSuccess(report) && report.abortReason !== 'SKIPPED_PREREQ',
     summary: report.summary,
     duration: report.summary.duration,
   };
@@ -607,7 +611,10 @@ export function isMultiGuideReportSuccess(report: MultiGuideReport): boolean {
  */
 export function formatMultiGuideSummary(report: MultiGuideReport): string {
   const { summary } = report;
-  const guideStatus = `${summary.passedGuides}/${summary.totalGuides} guides passed`;
+  let guideStatus = `${summary.passedGuides}/${summary.totalGuides} guides passed`;
+  if (summary.skippedGuides > 0) {
+    guideStatus += `, ${summary.skippedGuides} skipped`;
+  }
 
   const stepParts: string[] = [`${summary.steps.passed} passed`];
   if (summary.steps.failed > 0) {
