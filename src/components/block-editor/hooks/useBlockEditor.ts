@@ -7,25 +7,12 @@
 
 import { useCallback, useMemo } from 'react';
 import type { EditorBlock, BlockEditorState, JsonBlock, JsonGuide, ViewMode } from '../types';
-import type {
-  JsonConditionalBlock,
-  JsonInteractiveBlock,
-  JsonMultistepBlock,
-  JsonGuidedBlock,
-  JsonStep,
-} from '../../../types/json-guide.types';
+import type { JsonConditionalBlock } from '../../../types/json-guide.types';
 import { DEFAULT_GUIDE_METADATA } from '../constants';
 import { copyNestedInstanceId } from '../nestedBlockInstanceId';
 import { useGuideHistory } from './useGuideHistory';
-import {
-  generateBlockId,
-  isConditionalBlock,
-  isGuidedBlock,
-  isInteractiveBlock,
-  isMultistepBlock,
-  isSectionBlock,
-  parseBlockId,
-} from './useBlockEditor.helpers';
+import { generateBlockId, isConditionalBlock, isSectionBlock } from './useBlockEditor.helpers';
+import { mergeBlocks } from './useBlockEditor.merge';
 
 /**
  * Hook options
@@ -1219,117 +1206,14 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     );
   }, [setState]);
 
-  // Merge interactive/multistep/guided blocks into a Multistep block
   const mergeBlocksToMultistep = useCallback(
     (blockIds: string[]) => {
       setState((prev) => {
-        // Parse all block IDs and collect mergeable blocks (interactive, multistep, guided)
-        const parsedBlocks = blockIds
-          .map((id) => ({ id, ...parseBlockId(id, prev.blocks) }))
-          .filter(
-            (p) => p.block && (isInteractiveBlock(p.block) || isMultistepBlock(p.block) || isGuidedBlock(p.block))
-          );
-
-        if (parsedBlocks.length < 2) {
+        const newBlocks = mergeBlocks(prev.blocks, blockIds, 'multistep');
+        if (!newBlocks) {
           return prev;
         }
-
-        // Sort by document position: root blocks by index, nested by section position + nested index
-        parsedBlocks.sort((a, b) => {
-          // Get effective position for sorting
-          const aPos = a.isNested
-            ? (a.sectionRootIndex ?? 0) * 10000 + (a.nestedIndex ?? 0)
-            : (a.rootIndex ?? 0) * 10000;
-          const bPos = b.isNested
-            ? (b.sectionRootIndex ?? 0) * 10000 + (b.nestedIndex ?? 0)
-            : (b.rootIndex ?? 0) * 10000;
-          return aPos - bPos;
-        });
-
-        // Convert blocks to steps, extracting steps from multistep/guided blocks
-        const steps: JsonStep[] = parsedBlocks.flatMap((p) => {
-          if (isInteractiveBlock(p.block!)) {
-            const interactive = p.block as JsonInteractiveBlock;
-            return [
-              {
-                action: interactive.action,
-                reftarget: interactive.reftarget,
-                ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
-                // Use tooltip if available, otherwise use content
-                ...(interactive.tooltip && { tooltip: interactive.tooltip }),
-                ...(!interactive.tooltip && interactive.content && { tooltip: interactive.content }),
-              },
-            ];
-          }
-          // For multistep/guided blocks, extract their steps
-          const stepsBlock = p.block as JsonMultistepBlock | JsonGuidedBlock;
-          return stepsBlock.steps;
-        });
-
-        // Create the multistep block
-        const multistepBlock: JsonMultistepBlock = {
-          type: 'multistep',
-          content: 'Complete the following steps:',
-          steps,
-        };
-
-        const firstParsed = parsedBlocks[0]!;
-        const insertIntoSection = firstParsed.isNested && firstParsed.sectionId;
-
-        const rootIdsToRemove = new Set(parsedBlocks.filter((p) => !p.isNested).map((p) => p.id));
-
-        const nestedToRemove = new Map<string, number[]>();
-        parsedBlocks
-          .filter((p) => p.isNested && p.sectionId !== undefined && p.nestedIndex !== undefined)
-          .forEach((p) => {
-            const existing = nestedToRemove.get(p.sectionId!) || [];
-            existing.push(p.nestedIndex!);
-            nestedToRemove.set(p.sectionId!, existing);
-          });
-
-        let newBlocks = prev.blocks
-          .filter((b) => !rootIdsToRemove.has(b.id))
-          .map((b) => {
-            if (
-              isSectionBlock(b.block) &&
-              (nestedToRemove.has(b.id) || (insertIntoSection && b.id === firstParsed.sectionId))
-            ) {
-              const indicesToRemove = new Set(nestedToRemove.get(b.id) || []);
-              let newSectionBlocks = b.block.blocks.filter((_, i) => !indicesToRemove.has(i));
-
-              if (insertIntoSection && b.id === firstParsed.sectionId) {
-                const insertIdx = firstParsed.nestedIndex!;
-                const removedBefore = Array.from(indicesToRemove).filter((i) => i < insertIdx).length;
-                const adjustedIdx = insertIdx - removedBefore;
-                newSectionBlocks.splice(adjustedIdx, 0, multistepBlock);
-              }
-
-              return {
-                ...b,
-                block: { ...b.block, blocks: newSectionBlocks },
-              };
-            }
-            return b;
-          });
-
-        if (!insertIntoSection) {
-          const newEditorBlock: EditorBlock = {
-            id: generateBlockId(),
-            block: multistepBlock,
-          };
-
-          let insertIndex = prev.blocks.findIndex((b) => b.id === firstParsed.id);
-          const removedBeforeInsert = prev.blocks.filter((b, i) => i < insertIndex && rootIdsToRemove.has(b.id)).length;
-          insertIndex -= removedBeforeInsert;
-
-          newBlocks.splice(insertIndex, 0, newEditorBlock);
-        }
-
-        const newState = {
-          ...prev,
-          blocks: newBlocks,
-          isDirty: true,
-        };
+        const newState = { ...prev, blocks: newBlocks, isDirty: true };
         notifyChange(newState);
         return newState;
       });
@@ -1337,115 +1221,14 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     [notifyChange, setState]
   );
 
-  // Merge interactive/multistep/guided blocks into a Guided block
   const mergeBlocksToGuided = useCallback(
     (blockIds: string[]) => {
       setState((prev) => {
-        // Parse all block IDs and collect mergeable blocks (interactive, multistep, guided)
-        const parsedBlocks = blockIds
-          .map((id) => ({ id, ...parseBlockId(id, prev.blocks) }))
-          .filter(
-            (p) => p.block && (isInteractiveBlock(p.block) || isMultistepBlock(p.block) || isGuidedBlock(p.block))
-          );
-
-        if (parsedBlocks.length < 2) {
+        const newBlocks = mergeBlocks(prev.blocks, blockIds, 'guided');
+        if (!newBlocks) {
           return prev;
         }
-
-        // Sort by document position: root blocks by index, nested by section position + nested index
-        parsedBlocks.sort((a, b) => {
-          // Get effective position for sorting
-          const aPos = a.isNested
-            ? (a.sectionRootIndex ?? 0) * 10000 + (a.nestedIndex ?? 0)
-            : (a.rootIndex ?? 0) * 10000;
-          const bPos = b.isNested
-            ? (b.sectionRootIndex ?? 0) * 10000 + (b.nestedIndex ?? 0)
-            : (b.rootIndex ?? 0) * 10000;
-          return aPos - bPos;
-        });
-
-        // Convert blocks to steps, extracting steps from multistep/guided blocks
-        const steps: JsonStep[] = parsedBlocks.flatMap((p) => {
-          if (isInteractiveBlock(p.block!)) {
-            const interactive = p.block as JsonInteractiveBlock;
-            return [
-              {
-                action: interactive.action,
-                reftarget: interactive.reftarget,
-                ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
-                ...(interactive.content && { description: interactive.content }),
-              },
-            ];
-          }
-          // For multistep/guided blocks, extract their steps
-          const stepsBlock = p.block as JsonMultistepBlock | JsonGuidedBlock;
-          return stepsBlock.steps;
-        });
-
-        // Create the guided block
-        const guidedBlock: JsonGuidedBlock = {
-          type: 'guided',
-          content: 'Follow the steps below:',
-          steps,
-        };
-
-        const firstParsed = parsedBlocks[0]!;
-        const insertIntoSection = firstParsed.isNested && firstParsed.sectionId;
-
-        const rootIdsToRemove = new Set(parsedBlocks.filter((p) => !p.isNested).map((p) => p.id));
-
-        const nestedToRemove = new Map<string, number[]>();
-        parsedBlocks
-          .filter((p) => p.isNested && p.sectionId !== undefined && p.nestedIndex !== undefined)
-          .forEach((p) => {
-            const existing = nestedToRemove.get(p.sectionId!) || [];
-            existing.push(p.nestedIndex!);
-            nestedToRemove.set(p.sectionId!, existing);
-          });
-
-        let newBlocks = prev.blocks
-          .filter((b) => !rootIdsToRemove.has(b.id))
-          .map((b) => {
-            if (
-              isSectionBlock(b.block) &&
-              (nestedToRemove.has(b.id) || (insertIntoSection && b.id === firstParsed.sectionId))
-            ) {
-              const indicesToRemove = new Set(nestedToRemove.get(b.id) || []);
-              let newSectionBlocks = b.block.blocks.filter((_, i) => !indicesToRemove.has(i));
-
-              if (insertIntoSection && b.id === firstParsed.sectionId) {
-                const insertIdx = firstParsed.nestedIndex!;
-                const removedBefore = Array.from(indicesToRemove).filter((i) => i < insertIdx).length;
-                const adjustedIdx = insertIdx - removedBefore;
-                newSectionBlocks.splice(adjustedIdx, 0, guidedBlock);
-              }
-
-              return {
-                ...b,
-                block: { ...b.block, blocks: newSectionBlocks },
-              };
-            }
-            return b;
-          });
-
-        if (!insertIntoSection) {
-          const newEditorBlock: EditorBlock = {
-            id: generateBlockId(),
-            block: guidedBlock,
-          };
-
-          let insertIndex = prev.blocks.findIndex((b) => b.id === firstParsed.id);
-          const removedBeforeInsert = prev.blocks.filter((b, i) => i < insertIndex && rootIdsToRemove.has(b.id)).length;
-          insertIndex -= removedBeforeInsert;
-
-          newBlocks.splice(insertIndex, 0, newEditorBlock);
-        }
-
-        const newState = {
-          ...prev,
-          blocks: newBlocks,
-          isDirty: true,
-        };
+        const newState = { ...prev, blocks: newBlocks, isDirty: true };
         notifyChange(newState);
         return newState;
       });
