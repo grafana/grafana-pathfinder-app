@@ -20,6 +20,22 @@ function isImageBlock(block: JsonBlock): block is JsonImageBlock {
   return block.type === 'image';
 }
 
+function getImageUrlError(value: string): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return 'Enter an absolute http or https image URL';
+    }
+    return undefined;
+  } catch {
+    return 'Enter an absolute http or https image URL';
+  }
+}
+
 /**
  * Image block form component
  */
@@ -41,23 +57,34 @@ export function ImageBlockForm({
   const [alt, setAlt] = useState(initial?.alt ?? '');
   const [width, setWidth] = useState(initial?.width?.toString() ?? '');
   const [height, setHeight] = useState(initial?.height?.toString() ?? '');
+  const [imageLoadError, setImageLoadError] = useState(false);
+
+  const trimmedSrc = src.trim();
+  const imageUrlError = getImageUrlError(trimmedSrc);
+  const imageFieldError =
+    imageUrlError ??
+    (imageLoadError ? 'Unable to load image preview. Check that the URL points to an image.' : undefined);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
+      if (!trimmedSrc || imageFieldError) {
+        return;
+      }
+
       const block: JsonImageBlock = {
         type: 'image',
-        src: src.trim(),
+        src: trimmedSrc,
         ...(alt.trim() && { alt: alt.trim() }),
         ...(width && { width: parseInt(width, 10) }),
         ...(height && { height: parseInt(height, 10) }),
       };
       onSubmit(block);
     },
-    [src, alt, width, height, onSubmit]
+    [trimmedSrc, imageFieldError, alt, width, height, onSubmit]
   );
 
-  const isValid = src.trim().length > 0;
+  const isValid = trimmedSrc.length > 0 && !imageFieldError;
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
@@ -67,10 +94,19 @@ export function ImageBlockForm({
         </Alert>
       )}
 
-      <Field label="Image URL" description="Full URL to the image" required>
+      <Field
+        label="Image URL"
+        description="Full URL to the image"
+        required
+        invalid={!!imageFieldError}
+        error={imageFieldError}
+      >
         <Input
           value={src}
-          onChange={(e) => setSrc(e.currentTarget.value)}
+          onChange={(e) => {
+            setSrc(e.currentTarget.value);
+            setImageLoadError(false);
+          }}
           placeholder="https://example.com/image.png"
           autoFocus
         />
@@ -103,7 +139,7 @@ export function ImageBlockForm({
       </div>
 
       {/* Preview */}
-      {src && (
+      {trimmedSrc && !imageUrlError && (
         <Field label="Preview">
           <div
             style={{
@@ -115,15 +151,16 @@ export function ImageBlockForm({
             }}
           >
             <img
-              src={src}
+              src={trimmedSrc}
               alt={alt || 'Preview'}
               style={{
                 width: '100%',
                 height: 'auto',
                 display: 'block',
               }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
+              onLoad={() => setImageLoadError(false)}
+              onError={() => {
+                setImageLoadError(true);
               }}
             />
           </div>
