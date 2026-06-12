@@ -5,10 +5,11 @@
  * it. Transport binding is the caller's job — `stdio.ts` and `http.ts` import
  * `buildServer` and connect their respective transports.
  *
- * The server holds no state of its own. Every tool is a stateless function
- * call against an in-flight artifact passed in by the client (see
- * AUTHORING-SESSION-ARTIFACTS.md). Schema validation is delegated to the CLI
- * `runX` functions; this layer never imports a Zod schema for a guide block.
+ * Tools accept two input modes: a stateless `{artifact}` passed in by the
+ * client, or a `{sessionToken}` addressing a server-side session held in the
+ * injected `SessionStore` (see AUTHORING-SESSION-ARTIFACTS.md). Schema
+ * validation is delegated to the CLI `runX` functions; this layer never
+ * imports a Zod schema for a guide block.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
