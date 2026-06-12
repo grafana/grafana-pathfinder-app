@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **AI auto-heal ("Fix this") for failing interactive steps**: when a step's selector can't be matched and no deterministic recovery applies, an opt-in "Fix this ✨" button asks the Grafana Assistant to propose a patch to the guide, which is validated against the live DOM before it is applied. Gated behind a new `enableAiAutoHeal` admin setting (default off) **and** Grafana Assistant availability — fully inert until a tenant opts in. See `docs/developer/AI_FIX.md`. (#980, #983, #984, #993, #995, #996, #997)
+
 ## 2.12.0
 
 ### Added
