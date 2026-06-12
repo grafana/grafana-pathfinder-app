@@ -30,6 +30,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
 import { getDefaultSessionStore } from '../lib/session-store-factory';
+import type { InMemorySessionStore } from '../lib/session-store';
 import { mcpSessionIdLogHash } from '../lib/session-token';
 import { buildServer } from '../server';
 import { defaultLog, estimateTokens, extractRpcInfo, type AccessLogEntry, type RpcInfo } from './access-log';
@@ -126,6 +127,12 @@ export async function runHttp(options: RunHttpOptions): Promise<HttpHandle> {
   // shares one backend (the in-memory store is process-local — run a single
   // instance). Tests that override `options.buildServer` bypass this path.
   const sessionStore = options.buildServer ? undefined : await getDefaultSessionStore();
+  // Stats reader for the access log, only when the concrete in-memory store is
+  // in use (the test `buildServer` path has no store to introspect).
+  const sessionStats =
+    sessionStore && typeof (sessionStore as InMemorySessionStore).stats === 'function'
+      ? () => (sessionStore as InMemorySessionStore).stats()
+      : undefined;
   const factory =
     options.buildServer ??
     ((instrumentation: (obs: ToolCallObservation) => void, mcpSessionId: string | undefined) =>
@@ -134,7 +141,7 @@ export async function runHttp(options: RunHttpOptions): Promise<HttpHandle> {
   const state = { inFlight: 0 };
 
   const server = createServer((req, res) => {
-    void handleRequest(req, res, path, healthPath, state, log, sessionHopCounter, wallclockMs, factory);
+    void handleRequest(req, res, path, healthPath, state, log, sessionHopCounter, wallclockMs, factory, sessionStats);
   });
 
   server.keepAliveTimeout = KEEPALIVE_TIMEOUT_MS;
@@ -184,7 +191,8 @@ async function handleRequest(
   log: (entry: AccessLogEntry) => void,
   sessionHopCounter: SessionHopCounter,
   wallclockMs: number,
-  factory: (instrumentation: (obs: ToolCallObservation) => void, mcpSessionId: string | undefined) => McpServer
+  factory: (instrumentation: (obs: ToolCallObservation) => void, mcpSessionId: string | undefined) => McpServer,
+  sessionStats?: () => { liveSessions: number; evictions: number }
 ): Promise<void> {
   const start = Date.now();
   const remote = req.socket.remoteAddress ?? 'unknown';
@@ -246,6 +254,9 @@ async function handleRequest(
       ...(observation?.artifactBytesOut !== undefined ? { artifactBytesOut: observation.artifactBytesOut } : {}),
       ...(observation ? { toolError: observation.isError } : {}),
       ...(observation?.toolStatus !== undefined ? { toolStatus: observation.toolStatus } : {}),
+      // Store cardinality/eviction stats, only on tools/call to keep them off
+      // high-frequency health and tools/list lines.
+      ...(rpc.rpcMethod === 'tools/call' && sessionStats ? sessionStats() : {}),
       // sessionTokenPrefix / sessionTokenHash flow through via `...rpc`
       // above when the tools/call args carry a sessionToken.
     });

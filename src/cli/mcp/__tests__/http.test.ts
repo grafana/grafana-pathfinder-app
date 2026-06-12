@@ -263,6 +263,39 @@ describe('HTTP transport', () => {
     }
   });
 
+  it('emits liveSessions and evictions on tools/call, and omits them on tools/list', async () => {
+    const h = await start();
+    try {
+      await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'stats',
+          method: 'tools/call',
+          params: { name: 'pathfinder_authoring_start', arguments: {} },
+        }),
+      });
+      const toolCall = h.logs.at(-1)!;
+      expect(toolCall.rpcMethod).toBe('tools/call');
+      expect(typeof toolCall.liveSessions).toBe('number');
+      expect(typeof toolCall.evictions).toBe('number');
+      expect(toolCall.liveSessions).toBeGreaterThanOrEqual(0);
+
+      await fetch(`${h.base}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 'list', method: 'tools/list' }),
+      });
+      const toolList = h.logs.at(-1)!;
+      expect(toolList.rpcMethod).toBe('tools/list');
+      expect(toolList.liveSessions).toBeUndefined();
+      expect(toolList.evictions).toBeUndefined();
+    } finally {
+      await h.close();
+    }
+  });
+
   it('marks JSON-RPC batches with rpcMethod=batch and a size', async () => {
     const h = await start();
     try {

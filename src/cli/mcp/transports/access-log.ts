@@ -101,6 +101,17 @@ export interface AccessLogEntry {
    * prefix. See `lib/session-token.ts#tokenLogHash`.
    */
   sessionTokenHash?: string;
+  /**
+   * Live (unexpired) session count in the in-memory store at request end.
+   * Emitted only on `tools/call`. A monotonically climbing value with low
+   * `evictions` flags a session leak before the single instance OOMs.
+   */
+  liveSessions?: number;
+  /**
+   * Cumulative sessions evicted by the sliding TTL since process start.
+   * Paired with `liveSessions` to tell "busy" from "nothing reclaimed".
+   */
+  evictions?: number;
 }
 
 export interface RpcInfo {
