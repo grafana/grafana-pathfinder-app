@@ -78,3 +78,19 @@ export function materializeStepIds(guide: JsonGuide): JsonGuide {
   walk(guide.blocks, STANDALONE_PARENT_ID, 'blocks');
   return guide;
 }
+
+// String entry point for callers holding raw guide JSON (the orchestrator feeds the
+// id-augmented form to the assistant + content extraction). Returns the input unchanged
+// when it is not parseable guide-shaped JSON.
+export function materializeStepIdsInJson(guideJson: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(guideJson);
+  } catch {
+    return guideJson;
+  }
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as Partial<JsonGuide>).blocks)) {
+    return guideJson;
+  }
+  return JSON.stringify(materializeStepIds(parsed as JsonGuide));
+}
