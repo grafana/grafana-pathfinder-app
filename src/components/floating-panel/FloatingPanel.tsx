@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useFloating, autoUpdate } from '@floating-ui/react';
 import { IconButton, useStyles2, getPortalContainer } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { buildPathfinderShareUrl } from '../../utils/pathfinder-search-params';
@@ -62,6 +63,39 @@ export function FloatingPanel({
   const [isDodging, setIsDodging] = useState(false);
   const { geometry, setPosition, drag, resize } = useDragResize();
 
+  // ALT TEST (Change B): position the panel with floating-ui's useFloating —
+  // the same primitives grafana-ui Combobox uses (useFloating + autoUpdate).
+  // Hypothesis under test: positioning with floating-ui makes the open modal
+  // treat the panel as "inside" and stop dismissing on press.
+  // Expectation: NO effect. useFloating only computes coordinates; it does not
+  // register the panel with the modal's useDismiss. There is no shared
+  // FloatingTree, and the panel lives in a separate React root, so the modal's
+  // inside-press detection can never see it. Combobox survives in modals
+  // because its owner is in the modal's React subtree — not because of this.
+  const { refs, floatingStyles, update } = useFloating({
+    placement: 'bottom-start',
+    strategy: 'fixed',
+    whileElementsMounted: autoUpdate,
+  });
+
+  // Virtual reference: a zero-size point at the panel's drag coordinates, so
+  // floating-ui places the panel's top-left there. Re-run when geometry moves.
+  useEffect(() => {
+    refs.setPositionReference({
+      getBoundingClientRect: () => ({
+        x: geometry.x,
+        y: geometry.y,
+        top: geometry.y,
+        left: geometry.x,
+        right: geometry.x,
+        bottom: geometry.y,
+        width: 0,
+        height: 0,
+      }),
+    });
+    update();
+  }, [geometry.x, geometry.y, refs, update]);
+
   // Auto-reposition to dodge interactive highlights and any open native modal
   useHighlightDodge(geometry, panelState === 'minimized', true);
 
@@ -110,7 +144,7 @@ export function FloatingPanel({
   // Keyboard: Escape minimizes — only when the panel itself or document.body
   // has focus. Skip if another component already handled the event (modals,
   // dropdowns, select menus) or if focus is inside an unrelated overlay.
-  const panelRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || panelState === 'minimized' || e.defaultPrevented) {
@@ -191,11 +225,14 @@ export function FloatingPanel({
         <MinimizedPill hasActiveGuide={hasActiveGuide} stepProgress={stepProgress} onRestore={handleRestore} />
       )}
       <div
-        ref={panelRef}
+        ref={(node) => {
+          panelRef.current = node;
+          refs.setFloating(node);
+        }}
         className={`${styles.panel} ${isDodging ? styles.panelDodging : ''}`}
         style={{
-          left: geometry.x,
-          top: geometry.y,
+          // floating-ui drives position (was inline left/top from geometry)
+          ...floatingStyles,
           width: geometry.width,
           height: panelState === 'compact' ? 'auto' : geometry.height,
           // Keep mounted but hidden when minimized so ContentRenderer
