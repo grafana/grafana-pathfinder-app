@@ -30,7 +30,7 @@ import { z } from 'zod';
 import { runValidate } from '../../commands/validate';
 import { PLUGIN_VIEWER_BASE } from '../lib/constants';
 import { tokenLogPrefix } from '../lib/session-token';
-import type { SessionStore } from '../lib/session-store';
+import type { AuthoringSessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveReadOnlyInput } from './read-input';
 import { textResult, withToolErrorEnvelope } from './result';
@@ -51,7 +51,7 @@ const SessionTokenSchema = SessionTokenBase.describe(
 
 export function registerFinalizeTool(
   server: McpServer,
-  options: { sessionStore: SessionStore; mcpSessionId?: string }
+  options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
 ): void {
   const { sessionStore, mcpSessionId } = options;
   server.registerTool(
@@ -82,7 +82,7 @@ async function finalizeImpl(args: {
   artifact?: { content: Record<string, unknown>; manifest?: Record<string, unknown> };
   sessionToken?: string;
   status: 'draft' | 'published';
-  sessionStore: SessionStore;
+  sessionStore: AuthoringSessionStore;
   mcpSessionId: string | undefined;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   const { artifact, sessionToken, status, sessionStore, mcpSessionId } = args;
