@@ -182,9 +182,6 @@ let hasWarnedAboutQuota = false;
  *
  * Wrapped in try/catch because `getAppEvents()` can throw in environments
  * where `@grafana/runtime` isn't fully initialized (notably some tests).
- *
- * Exported so storage helpers extracted to sibling modules (e.g.
- * `lib/storage/bounded-record-storage.ts`) share the once-per-lifecycle flag.
  */
 export function warnQuotaExceededOnce(): void {
   if (hasWarnedAboutQuota) {

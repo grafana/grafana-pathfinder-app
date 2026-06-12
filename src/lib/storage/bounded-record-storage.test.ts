@@ -107,6 +107,27 @@ describe('createBoundedRecordStorage', () => {
     }
   });
 
+  it('does not loop forever when QuotaExceededError persists after cleanup', async () => {
+    const store = createBoundedRecordStorage({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+
+    const setItemSpy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      const err = new Error('Quota exceeded');
+      err.name = 'QuotaExceededError';
+      throw err;
+    });
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      await store.set('stuck-key', 80);
+      // Bounded: a handful of warns across the user-storage error path, factory error path,
+      // and the post-cleanup retry-failure log. Unbounded recursion would produce orders of magnitude more.
+      expect(warnSpy.mock.calls.length).toBeLessThanOrEqual(6);
+    } finally {
+      setItemSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
   it('isolates state between two instances with different storage keys', async () => {
     const journeys = createBoundedRecordStorage({ storageKey: 'pathfinder.journeys-test', limit: 100, label: 'j' });
     const interactives = createBoundedRecordStorage({
