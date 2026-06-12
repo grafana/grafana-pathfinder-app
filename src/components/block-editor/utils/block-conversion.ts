@@ -39,6 +39,16 @@ const CONVERTIBLE_TYPES: readonly BlockType[] = [
 ];
 
 /**
+ * Target types that must not use the generic conversion path.
+ *
+ * These pairs have field-aware conversion handlers elsewhere in the editor.
+ */
+const EXCLUDED_GENERIC_CONVERSIONS: Partial<Record<BlockType, ReadonlySet<BlockType>>> = {
+  multistep: new Set(['guided']),
+  guided: new Set(['multistep']),
+};
+
+/**
  * Fields shared across many block types - always copy if present.
  */
 const COMMON_FIELDS = ['requirements', 'objectives', 'skippable'] as const;
@@ -103,7 +113,7 @@ export interface ConversionWarning {
 
 /**
  * Get available target types for a given source type.
- * Returns all non-container types except the source type itself.
+ * Returns supported generic conversion targets except the source type itself.
  */
 export function getAvailableConversions(sourceType: BlockType): BlockType[] {
   // Container types cannot be converted
@@ -111,8 +121,10 @@ export function getAvailableConversions(sourceType: BlockType): BlockType[] {
     return [];
   }
 
-  // Return all non-container types except the source type
-  return CONVERTIBLE_TYPES.filter((t) => t !== sourceType);
+  const excludedTargets = EXCLUDED_GENERIC_CONVERSIONS[sourceType];
+
+  // Return supported generic conversion targets except the source type
+  return CONVERTIBLE_TYPES.filter((t) => t !== sourceType && !excludedTargets?.has(t));
 }
 
 /**
