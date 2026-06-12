@@ -4,6 +4,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import type { RepositoryJson } from '../../types/package.types';
+import { RepositoryJsonSchema } from '../../types/package.schema';
+import { readJsonFile } from '../../validation/package-io';
 
 /**
  * Resolve a user-supplied CLI path to an absolute path. Pass `base` to resolve
@@ -121,4 +124,26 @@ export function loadBundledGuides(): LoadedGuide[] {
   }
 
   return guides;
+}
+
+export function bundledRepositoryPath(): string {
+  return path.resolve(process.cwd(), 'src/bundled-interactives/repository.json');
+}
+
+/**
+ * Load and validate a repository.json index from disk.
+ *
+ * Returns the parsed index on success, or `null` when the file does not
+ * exist or fails schema validation.
+ */
+export function loadRepositoryIndex(filePath: string): { repository: RepositoryJson | null; error?: string } {
+  const result = readJsonFile(filePath, RepositoryJsonSchema);
+  if (!result.ok) {
+    const error =
+      result.code === 'schema_validation'
+        ? `repository.json validation failed: ${result.issues?.map((i) => i.message).join('; ')}`
+        : result.message;
+    return { repository: null, error };
+  }
+  return { repository: result.data };
 }
