@@ -106,9 +106,21 @@ export interface SessionStore {
   /**
    * Removes the session under `token`. Idempotent — resolves successfully
    * even if no session is stored under that token.
+   *
+   * `ifGenerationMatch` is accepted for forward-compatibility with a backend
+   * that gates deletes on the observed generation; the in-memory store
+   * ignores it (delete is unconditional).
    */
-  delete(token: string): Promise<void>;
+  delete(token: string, ifGenerationMatch?: number): Promise<void>;
+}
 
+/**
+ * Transport-layer `Mcp-Session-Id` pinning, kept separate from artifact
+ * storage so an artifact-only backend need not implement confidentiality
+ * pinning. `InMemorySessionStore` implements both; `AuthoringSessionStore`
+ * is the combined contract the MCP wires through.
+ */
+export interface SessionPinStore {
   /**
    * Persist a transport-layer `Mcp-Session-Id` pin against this session
    * token. Called on session mint so subsequent calls from a different MCP
@@ -130,6 +142,9 @@ export interface SessionStore {
    */
   readMcpSessionPin(token: string): Promise<string | null>;
 }
+
+/** The full session-store contract the MCP authoring tools wire through. */
+export type AuthoringSessionStore = SessionStore & SessionPinStore;
 
 export const MS_PER_HOUR = 60 * 60 * 1000;
 
@@ -161,7 +176,7 @@ interface ExpiringSession extends LoadedSession {
  * mutation flow always writes fresh objects from the CLI runner so this
  * has not been needed.
  */
-export class InMemorySessionStore implements SessionStore {
+export class InMemorySessionStore implements SessionStore, SessionPinStore {
   private readonly entries = new Map<string, ExpiringSession>();
   private readonly pins = new Map<string, string>();
   private readonly ttlMs: number;
@@ -222,7 +237,9 @@ export class InMemorySessionStore implements SessionStore {
     return { generation: nextGeneration };
   }
 
-  async delete(token: string): Promise<void> {
+  async delete(token: string, _ifGenerationMatch?: number): Promise<void> {
+    // _ifGenerationMatch is part of the interface for forward-compat; the
+    // in-memory store deletes unconditionally.
     this.entries.delete(token);
     this.pins.delete(token);
   }

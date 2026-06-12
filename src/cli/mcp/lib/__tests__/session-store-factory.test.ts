@@ -1,45 +1,36 @@
 /**
  * @jest-environment node
  *
- * Tests for the default `SessionStore` factory — including that
- * PATHFINDER_SESSION_TTL_HOURS is actually wired into the store's
- * eviction window, not just parsed.
+ * Tests for the default session-store factory. Clock-driven eviction is
+ * covered at the store level (session-store.test.ts); here we cover the
+ * factory's memoization and the env→ms parsing (`readTtlMs`) in isolation —
+ * no factory clock seam, no global `Date` mock.
  */
 
-import { __resetSessionStoreFactoryForTests, getDefaultSessionStore } from '../session-store-factory';
-import { InMemorySessionStore, SESSION_GENERATION_ABSENT, type SessionArtifact } from '../session-store';
+import { __resetSessionStoreFactoryForTests, getDefaultSessionStore, readTtlMs } from '../session-store-factory';
+import { InMemorySessionStore, MS_PER_HOUR } from '../session-store';
 
-const ENV_KEYS = ['PATHFINDER_SESSION_TTL_HOURS'] as const;
-const SAVED: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
-
-const TOKEN = 'aaaaaaaaaaaaaaaaaaaaaa';
-const ARTIFACT: SessionArtifact = { content: { id: 'fixture', title: 'fixture', blocks: [] } };
-const HOUR_MS = 60 * 60 * 1000;
+const ENV_KEY = 'PATHFINDER_SESSION_TTL_HOURS';
+let saved: string | undefined;
 
 beforeEach(() => {
-  for (const k of ENV_KEYS) {
-    SAVED[k] = process.env[k];
-    delete process.env[k];
-  }
+  saved = process.env[ENV_KEY];
+  delete process.env[ENV_KEY];
   __resetSessionStoreFactoryForTests();
 });
 
 afterEach(() => {
-  for (const k of ENV_KEYS) {
-    if (SAVED[k] === undefined) {
-      delete process.env[k];
-    } else {
-      process.env[k] = SAVED[k];
-    }
+  if (saved === undefined) {
+    delete process.env[ENV_KEY];
+  } else {
+    process.env[ENV_KEY] = saved;
   }
   __resetSessionStoreFactoryForTests();
-  jest.restoreAllMocks();
 });
 
 describe('getDefaultSessionStore', () => {
   it('returns an in-memory store', async () => {
-    const store = await getDefaultSessionStore();
-    expect(store).toBeInstanceOf(InMemorySessionStore);
+    expect(await getDefaultSessionStore()).toBeInstanceOf(InMemorySessionStore);
   });
 
   it('returns the same instance on repeated calls (memoized)', async () => {
@@ -47,36 +38,24 @@ describe('getDefaultSessionStore', () => {
     const b = await getDefaultSessionStore();
     expect(a).toBe(b);
   });
+});
 
-  it('applies PATHFINDER_SESSION_TTL_HOURS to the eviction window', async () => {
-    let nowMs = 1_000_000;
-    process.env.PATHFINDER_SESSION_TTL_HOURS = '1';
-
-    const store = await getDefaultSessionStore({ now: () => nowMs });
-    await store.save(TOKEN, ARTIFACT, SESSION_GENERATION_ABSENT);
-
-    nowMs += HOUR_MS + 60_000; // past the configured 1h window (and far short of the 24h default)
-    expect(await store.load(TOKEN)).toBeNull();
+describe('readTtlMs', () => {
+  it('returns undefined when the env var is unset (store uses its default)', () => {
+    expect(readTtlMs()).toBeUndefined();
   });
 
-  it('falls back to the 24h default when the override is absent', async () => {
-    let nowMs = 1_000_000;
-
-    const store = await getDefaultSessionStore({ now: () => nowMs });
-    await store.save(TOKEN, ARTIFACT, SESSION_GENERATION_ABSENT);
-
-    nowMs += 2 * HOUR_MS; // past a 1h window but within the 24h default — still live
-    expect(await store.load(TOKEN)).not.toBeNull();
+  it('parses a positive hour count into milliseconds', () => {
+    process.env[ENV_KEY] = '1';
+    expect(readTtlMs()).toBe(MS_PER_HOUR);
+    process.env[ENV_KEY] = '48';
+    expect(readTtlMs()).toBe(48 * MS_PER_HOUR);
   });
 
-  it('ignores a non-numeric override and uses the default', async () => {
-    let nowMs = 1_000_000;
-    process.env.PATHFINDER_SESSION_TTL_HOURS = 'not-a-number';
-
-    const store = await getDefaultSessionStore({ now: () => nowMs });
-    await store.save(TOKEN, ARTIFACT, SESSION_GENERATION_ABSENT);
-
-    nowMs += 2 * HOUR_MS; // a bogus override must not evict early — the 24h default applies
-    expect(await store.load(TOKEN)).not.toBeNull();
+  it('returns undefined for non-numeric, zero, or negative values (falls back to default)', () => {
+    for (const bad of ['not-a-number', '0', '-3', '   ']) {
+      process.env[ENV_KEY] = bad;
+      expect(readTtlMs()).toBeUndefined();
+    }
   });
 });
