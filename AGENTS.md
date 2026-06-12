@@ -181,7 +181,7 @@ Imports flow **downward only** to avoid cycles. Cross-tier rules are enforced by
 
 - **Tier 0 — Types & constants**: `types/`, `constants/`
 - **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`
-- **Tier 2 — Engines & hooks**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `hooks/`
+- **Tier 2 — Engines & hooks**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `snippet-engine/`, `hooks/`
 - **Tier 3 — Integrations**: `integrations/`
 - **Tier 4 — UI**: `components/`, `pages/`
 
@@ -194,6 +194,7 @@ Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-intera
 | `context-engine` → `docs-retrieval`            | Fetches content for the recommendations it surfaces            |
 | `docs-retrieval` → `bundled-interactives`      | Fallback when the online CDN is unavailable                    |
 | `docs-retrieval` → `package-engine`            | Resolves package manifests + content                           |
+| `docs-retrieval` → `snippet-engine`            | Inlines `snippet-ref` blocks against the CDN at parse time     |
 | `components/docs-panel` → `interactive-engine` | Executes step actions when the user clicks "Show me" / "Do it" |
 | `interactive-engine` → `requirements-manager`  | Checks prereqs before enabling / executing a step              |
 | `interactive-engine` → `lib/dom`               | Selector resolution + element detection                        |

@@ -8,18 +8,18 @@
 import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security/url-validator';
-import type { ExperimentConfig } from '../utils/openfeature';
+import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
 
-type GetExperimentConfigFn = (flag: string) => ExperimentConfig;
-let _getExperimentConfig: GetExperimentConfigFn | null = null;
+type GetActiveExperimentsFn = () => ExperimentAnalyticsEntry[];
+let _getActiveExperiments: GetActiveExperimentsFn | null = null;
 
 /**
- * Late-binds the getExperimentConfig function after OpenFeature initializes.
+ * Late-binds the active-experiments provider after OpenFeature initializes.
  * Called from module.tsx to break the static import chain that would otherwise
  * pull the entire OpenFeature SDK into the entry-point bundle.
  */
-export function bindExperimentConfig(fn: GetExperimentConfigFn): void {
-  _getExperimentConfig = fn;
+export function bindExperimentsProvider(fn: GetActiveExperimentsFn): void {
+  _getActiveExperiments = fn;
 }
 
 // ============================================================================
@@ -100,6 +100,12 @@ export enum UserInteraction {
   AlignmentPromptShown = 'alignment_prompt_shown',
   AlignmentPromptConfirmed = 'alignment_prompt_confirmed',
   AlignmentPromptDismissed = 'alignment_prompt_dismissed',
+
+  // AI auto-heal
+  AiFixOffered = 'ai_fix_offered',
+  AiFixAccepted = 'ai_fix_accepted',
+  AiFixApplied = 'ai_fix_applied',
+  AiFixFailed = 'ai_fix_failed',
 }
 
 // ============================================================================
@@ -113,76 +119,25 @@ const createInteractionName = (type: UserInteraction): string => {
   return `pathfinder_${type}`;
 };
 
-/**
- * Experiment entry for analytics enrichment
- * Each experiment includes its flag name and the raw config from GOFF
- */
-interface ExperimentAnalyticsEntry {
-  flag: string;
-  [key: string]: unknown; // Allow any additional properties from GOFF
-}
-
-/**
- * Gets the current experiment variant for analytics enrichment.
- *
- * Returns 'treatment' if the user is in treatment for any experiment,
- * 'control' if in control for any (and not treatment for another),
- * otherwise 'excluded'.
- */
-function getExperimentVariant(): ExperimentConfig['variant'] | null {
-  if (!_getExperimentConfig) {
+function getExperimentsForAnalytics(): ExperimentAnalyticsEntry[] | null {
+  if (!_getActiveExperiments) {
     return null;
   }
   try {
-    const mainVariant = _getExperimentConfig('pathfinder.experiment-variant').variant;
-    const after24hVariant = _getExperimentConfig('pathfinder.after-24h-experiment').variant;
-
-    if (mainVariant === 'treatment' || after24hVariant === 'treatment') {
-      return 'treatment';
-    }
-    if (mainVariant === 'control' || after24hVariant === 'control') {
-      return 'control';
-    }
-    return 'excluded';
+    return _getActiveExperiments();
   } catch {
     return null;
   }
 }
 
-/**
- * Gets the current experiments state as an array for analytics enrichment
- *
- * This captures all active experiments at the time of the analytics event,
- * enabling analysis of experiment impact on user behavior.
- *
- * Each experiment config is included as-is from GOFF, allowing flexibility for any
- * experiment structure without requiring code changes.
- *
- * @returns Array of experiment configs, or null if experiments cannot be retrieved
- */
-function getExperimentsForAnalytics(): ExperimentAnalyticsEntry[] | null {
-  if (!_getExperimentConfig) {
-    return null;
+function rollUpVariant(experiments: ExperimentAnalyticsEntry[]): ExperimentConfig['variant'] {
+  if (experiments.some((experiment) => experiment.variant === 'treatment')) {
+    return 'treatment';
   }
-  try {
-    const experiments: ExperimentAnalyticsEntry[] = [];
-
-    const experimentVariantConfig = _getExperimentConfig('pathfinder.experiment-variant');
-    experiments.push({
-      flag: 'pathfinder.experiment-variant',
-      ...experimentVariantConfig,
-    });
-
-    const after24hConfig = _getExperimentConfig('pathfinder.after-24h-experiment');
-    experiments.push({
-      flag: 'pathfinder.after-24h-experiment',
-      ...after24hConfig,
-    });
-
-    return experiments;
-  } catch (error) {
-    return null;
+  if (experiments.some((experiment) => experiment.variant === 'control')) {
+    return 'control';
   }
+  return 'excluded';
 }
 
 /**
@@ -232,18 +187,16 @@ export function reportAppInteraction(
     // Skip experiment enrichment for FeatureFlagEvaluated events to avoid recursion
     // (those events already contain the flag info in their properties)
     const shouldEnrichWithExperiments = type !== UserInteraction.FeatureFlagEvaluated;
-    const experiments = shouldEnrichWithExperiments ? getExperimentsForAnalytics() : null;
-    const variant = shouldEnrichWithExperiments ? getExperimentVariant() : null;
+    const activeExperiments = shouldEnrichWithExperiments ? getExperimentsForAnalytics() : null;
+    const experiments = activeExperiments && activeExperiments.length > 0 ? activeExperiments : null;
+    const variant = experiments ? rollUpVariant(experiments) : null;
 
     const kioskSessionId = (window as any).__pathfinderKioskSessionId as string | undefined;
 
-    // Add global attributes to all events
     const enrichedProperties: Record<string, unknown> = {
       plugin_version: packageJson.version,
       ...properties,
-      // Include variant for easy filtering/segmentation in analytics
       ...(variant && { variant }),
-      // Include experiments array if available (null check for graceful degradation)
       ...(experiments && { experiments }),
       ...(kioskSessionId && { kiosk_session_id: kioskSessionId }),
     };

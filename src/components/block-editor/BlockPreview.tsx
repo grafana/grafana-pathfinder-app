@@ -9,13 +9,14 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useStyles2, Alert, Icon } from '@grafana/ui';
 import { getBlockPreviewStyles } from './block-editor.styles';
 import { parseJsonGuide } from '../../docs-retrieval';
+import { guideHasSnippetRefs, inlineSnippetRefsInGuide } from '../../snippet-engine';
 import { ContentRenderer } from '../content-renderer/content-renderer';
 import { journeyContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import type { JsonGuide } from './types';
-import type { RawContent } from '../../types/content.types';
+import type { ContentParseResult, RawContent } from '../../types/content.types';
 import { testIds } from '../../constants/testIds';
 
 export interface BlockPreviewProps {
@@ -61,32 +62,45 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
     };
   }, [progressKey]);
 
-  // Validate the guide and prepare for rendering
-  const { content, errors, warnings, isEmpty } = useMemo(() => {
-    // First validate the guide
-    const parseResult = parseJsonGuide(guide);
+  // Validate the inlined guide, not the raw one — an un-inlined snippet-ref
+  // parses as an "unresolved" warning the renderer never actually shows.
+  const baseValidation = useMemo(() => parseJsonGuide(guide), [guide]);
+  const hasSnippetRefs = useMemo(() => guideHasSnippetRefs(guide), [guide]);
+  // `resolved` is tagged with its guide so a stale async result is ignored.
+  const [resolved, setResolved] = useState<{ guide: JsonGuide; result: ContentParseResult } | null>(null);
 
-    if (!parseResult.isValid) {
-      return {
-        content: null,
-        errors: parseResult.errors || [],
-        warnings: parseResult.warnings || [],
-        isEmpty: false,
-      };
+  useEffect(() => {
+    if (!hasSnippetRefs) {
+      return;
     }
+    let cancelled = false;
+    void (async () => {
+      const inlined = await inlineSnippetRefsInGuide(guide);
+      if (!cancelled) {
+        setResolved({ guide, result: parseJsonGuide(inlined) });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [guide, hasSnippetRefs]);
 
-    // Check if guide has no blocks
+  const resolvedValidation = resolved?.guide === guide ? resolved.result : null;
+
+  // Until inlining finishes, show structural errors but withhold snippet-ref
+  // warnings — they resolve away.
+  const resolving = hasSnippetRefs && resolvedValidation === null;
+  const validation = resolvedValidation ?? baseValidation;
+  const errors = validation.errors || [];
+  const warnings = resolving ? [] : validation.warnings || [];
+
+  // Keyed on the guide alone so the async validation update can't remount ContentRenderer.
+  const { content, isEmpty } = useMemo(() => {
     if (!guide.blocks || guide.blocks.length === 0) {
-      return {
-        content: null,
-        errors: [],
-        warnings: [],
-        isEmpty: true,
-      };
+      return { content: null, isEmpty: true };
     }
 
-    // Create RawContent structure expected by ContentRenderer
-    // ContentRenderer expects the raw JSON string as content
+    // ContentRenderer expects the raw JSON string as content.
     const rawContent: RawContent = {
       content: JSON.stringify(guide),
       metadata: {
@@ -98,12 +112,7 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
       isNativeJson: true,
     };
 
-    return {
-      content: rawContent,
-      errors: [],
-      warnings: parseResult.warnings || [],
-      isEmpty: false,
-    };
+    return { content: rawContent, isEmpty: false };
   }, [guide, showTitle]);
 
   // Show error state if parsing failed

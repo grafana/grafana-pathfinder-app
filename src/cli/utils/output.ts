@@ -53,6 +53,17 @@ export function readOutputOptions(cmd: Command): OutputOptions {
   return { format, quiet };
 }
 
+/**
+ * Prettier-format a JSON string with the repo config, ensuring a trailing
+ * newline. Shared by the build-* commands that write generated JSON to disk.
+ */
+export async function formatJsonWithPrettier(json: string): Promise<string> {
+  const prettier = await import('prettier');
+  const config = await prettier.resolveConfig(process.cwd());
+  const formatted = await prettier.format(json, { ...(config ?? {}), parser: 'json' });
+  return formatted.endsWith('\n') ? formatted : `${formatted}\n`;
+}
+
 // ---------------------------------------------------------------------------
 // Outcomes
 // ---------------------------------------------------------------------------

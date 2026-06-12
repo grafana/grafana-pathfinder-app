@@ -17,21 +17,12 @@ import type { RepositoryEntry, RepositoryJson } from '../../types/package.types'
 // refinement (ManifestJsonSchema) for strict correctness checking.
 import { ContentJsonSchema, ManifestJsonObjectSchema, RepositoryJsonSchema } from '../../types/package.schema';
 import { readJsonFile } from '../../validation/package-io';
+import { resolveCliPath } from '../utils/file-loader';
+import { formatJsonWithPrettier } from '../utils/output';
 
 interface BuildRepositoryOptions {
   output?: string;
   exclude?: string[];
-}
-
-async function formatRepositoryJson(json: string): Promise<string> {
-  const prettier = await import('prettier');
-  const config = await prettier.resolveConfig(process.cwd());
-  const formatted = await prettier.format(json, {
-    ...(config ?? {}),
-    parser: 'json',
-  });
-
-  return formatted.endsWith('\n') ? formatted : `${formatted}\n`;
 }
 
 /**
@@ -225,7 +216,7 @@ export const buildRepositoryCommand = new Command('build-repository')
     'Path(s) to exclude from scan (relative to root); excluded trees are not descended into'
   )
   .action(async (root: string, options: BuildRepositoryOptions) => {
-    const absoluteRoot = path.isAbsolute(root) ? root : path.resolve(process.cwd(), root);
+    const absoluteRoot = resolveCliPath(root);
 
     if (!fs.existsSync(absoluteRoot)) {
       console.error(`Directory not found: ${absoluteRoot}`);
@@ -248,11 +239,10 @@ export const buildRepositoryCommand = new Command('build-repository')
       process.exit(1);
     }
 
-    const unformattedJson = JSON.stringify(repository, null, 2);
-    const json = await formatRepositoryJson(unformattedJson);
+    const json = await formatJsonWithPrettier(JSON.stringify(repository, null, 2));
 
     if (options.output) {
-      const outputPath = path.isAbsolute(options.output) ? options.output : path.resolve(process.cwd(), options.output);
+      const outputPath = resolveCliPath(options.output);
       fs.writeFileSync(outputPath, json, 'utf-8');
       console.log(`✅ Wrote repository.json to ${outputPath} (${Object.keys(repository).length} packages)`);
     } else {

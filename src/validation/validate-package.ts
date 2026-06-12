@@ -29,7 +29,23 @@ export interface PackageValidationMessage {
    * renderer prints this as a `Fix:` line under the message.
    */
   remediation?: string;
+  /**
+   * Optional stable code identifying the class of message. Consumers (e.g.
+   * the `validate` CLI command's INFO-collapse pass) match on this rather
+   * than on `message` text to avoid coupling to wording. See
+   * `PackageValidationMessageCode` for the registered codes.
+   */
+  code?: PackageValidationMessageCode;
 }
+
+/**
+ * Stable codes for `PackageValidationMessage.code`. Added as we identify
+ * messages that downstream consumers need to match on programmatically.
+ * Codes are stable strings — rename here means a wire break.
+ */
+export type PackageValidationMessageCode =
+  /** A dependency-list field (depends/recommends/etc) on the manifest is unset and defaulted to []. */
+  'manifest_dep_field_defaulted';
 
 export interface PackageValidationResult {
   isValid: boolean;
@@ -281,6 +297,7 @@ function emitManifestMessages(
         message: `manifest.json: "${field}" not specified, defaulting to []`,
         path: ['manifest.json', field],
         remediation: `pathfinder-cli set-manifest <dir> --${field} <package-id> [--${field} <package-id> ...]`,
+        code: 'manifest_dep_field_defaulted',
       });
     }
   }

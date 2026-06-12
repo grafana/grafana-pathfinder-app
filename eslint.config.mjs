@@ -15,6 +15,7 @@ const TIER_2_ENGINES = [
   'requirements-manager',
   'learning-paths',
   'package-engine',
+  'snippet-engine',
   'hooks',
 ];
 const TIER_1_PLUS = [

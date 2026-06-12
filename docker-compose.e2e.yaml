@@ -1,0 +1,20 @@
+# Compose overlay used by `pathfinder-cli e2e --clean` to run the e2e stack
+# in isolation from any local dev `docker compose up` stack on the same machine.
+#
+# Used as:
+#   docker compose -f docker-compose.yaml -f docker-compose.e2e.yaml \
+#                  -p pathfinder-e2e up -d
+services:
+  grafana:
+    container_name: grafana-pathfinder-app-e2e
+    ports: !override
+      - '3010:3000'
+  prometheus:
+    ports: !override
+      - '9091:9090'
+  loki:
+    ports: !override
+      - '3101:3100'
+  alloy:
+    ports: !override
+      - '12346:12345'
