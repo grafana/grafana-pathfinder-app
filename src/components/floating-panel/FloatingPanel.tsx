@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import { IconButton, useStyles2, getPortalContainer } from '@grafana/ui';
+import { IconButton, useStyles2, Portal } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { buildPathfinderShareUrl } from '../../utils/pathfinder-search-params';
 import { startModalWatch, stopModalWatch } from '../../interactive-engine';
@@ -271,5 +270,9 @@ export function FloatingPanel({
     </>
   );
 
-  return createPortal(panelContent, getPortalContainer());
+  // ALT TEST (Change A): render via grafana-ui <Portal> instead of createPortal
+  // into getPortalContainer() directly. Same DOM destination — Portal also
+  // mounts into getPortalContainer() — and same React-tree owner (this plugin),
+  // so this is expected to behave identically to baseline.
+  return <Portal>{panelContent}</Portal>;
 }
