@@ -65,7 +65,7 @@ The service does not own:
 - Final user confirmation.
 - Direct writes to private Grafana App Platform endpoints.
 - Any schema knowledge of its own (see [Validation strategy](#validation-strategy) below).
-- Server-side session state — _historical_. The MVP authoring surface shipped stateless (see [Authoring artifacts — Stateless model](./AUTHORING-SESSION-ARTIFACTS.md#stateless-model)). **Updated 2026-05-20 (P7):** server-side authoring sessions now layer on top via an opaque `sessionToken`, backed by GCS. Stateless `{artifact}` mode remains available on every mutation tool as an OSS / airgap fallback. See [P7 — GCS-backed authoring sessions](./phases/ai-authoring-7-gcs-sessions.md) for the contract and [`docs/developer/MCP_SERVER.md` — Sessions](../developer/MCP_SERVER.md#sessions) for the operator-facing summary.
+- Server-side session state. The MVP authoring surface is stateless; see [Authoring artifacts — Stateless model](./AUTHORING-SESSION-ARTIFACTS.md#stateless-model).
 
 ## Validation strategy
 
@@ -88,12 +88,7 @@ If batching multiple mutations into a single tool call ever becomes useful for c
 
 The first version prefers tools over optional MCP features because tool support is the most broadly available across clients. Prompts and resources can be added as progressive enhancement.
 
-All authoring tools support two input modes (see [P7 — GCS-backed authoring sessions](./phases/ai-authoring-7-gcs-sessions.md)):
-
-1. **Stateless `{artifact}`** — the original [stateless model](./AUTHORING-SESSION-ARTIFACTS.md#stateless-model): the in-flight artifact is passed in and returned out on every call. No server-side state. This remains the OSS / airgap fallback.
-2. **Session-mode `{sessionToken}`** — `pathfinder_create_package` mints an opaque token; every subsequent call passes only the token and receives back an ack (no artifact body). The artifact lives in the server's in-memory session store and returns only at finalize, which then deletes the session. Recommended for the hosted deployment, which runs as a single always-on Cloud Run instance (see [MCP_SERVER.md](../developer/MCP_SERVER.md)).
-
-The two modes are mutually exclusive per call (mixing returns `INPUT_MODE_AMBIGUOUS`). There is no `sessionId` in the historical sense — the session token is in tool args, not transport metadata.
+All authoring tools follow the [stateless model](./AUTHORING-SESSION-ARTIFACTS.md#stateless-model): the in-flight artifact is passed in and returned out on every call. There is no `sessionId`.
 
 ### Core tools
 
