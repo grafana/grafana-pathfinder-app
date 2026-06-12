@@ -19,10 +19,13 @@ import {
 } from '../../interactive-engine';
 import { testIds } from '../../constants/testIds';
 import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../integrations/assistant-integration';
+// Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
+import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { CodeBlock } from '../../docs-retrieval';
 import { scrollUntilElementFound } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { STEP_STATES } from './step-states';
+import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 
 /**
@@ -284,6 +287,14 @@ export const InteractiveStep = forwardRef<
       onStepComplete, // Pass through for objectives auto-completion
       onComplete, // Pass through for objectives auto-completion
     });
+
+    const aiFixEnabled = useAiFixEnabled();
+
+    // Clear stale runtime errors when an AI patch swaps refTarget (step updates in place).
+    useEffect(() => {
+      setLazyScrollError(null);
+      setPostVerifyError(null);
+    }, [refTarget]);
 
     // Combined completion state: store-persisted OR checker-derived (objectives
     // / skipped are render-time signals that may not yet have persisted).
@@ -1053,6 +1064,19 @@ export const InteractiveStep = forwardRef<
             >
               Retry
             </button>
+            {aiFixEnabled && /^Element not found/i.test(lazyScrollError) && (
+              <AiFixButton
+                className="interactive-requirement-ai-fix-btn"
+                testId={testIds.interactive.requirementAiFixButton(`${renderedStepId}-lazy`)}
+                disabled={isShowRunning || isDoRunning}
+                detail={{
+                  stepId: stepId ?? renderedStepId,
+                  renderedStepId,
+                  refTarget,
+                  action: targetAction,
+                }}
+              />
+            )}
           </div>
         )}
 
@@ -1122,6 +1146,23 @@ export const InteractiveStep = forwardRef<
                     {checker.canFixRequirement ? 'Fix this' : 'Retry'}
                   </button>
                 )}
+
+                {isEligibleForChecking &&
+                  aiFixEnabled &&
+                  checker.requiresDomElement &&
+                  !checker.canFixRequirement &&
+                  !checker.isEnabled && (
+                    <AiFixButton
+                      className="interactive-requirement-ai-fix-btn"
+                      testId={testIds.interactive.requirementAiFixButton(renderedStepId)}
+                      detail={{
+                        stepId: stepId ?? renderedStepId,
+                        renderedStepId,
+                        refTarget,
+                        action: targetAction,
+                      }}
+                    />
+                  )}
 
                 {/* Skip button only for eligible steps with failed requirements */}
                 {isEligibleForChecking && checker.canSkip && checker.markSkipped && !checker.isEnabled && (
