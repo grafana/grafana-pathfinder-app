@@ -1109,6 +1109,33 @@ export function clearSelectorCache(): void {
   // No-op
 }
 
+/**
+ * Selector methods considered stable enough to record without flagging in
+ * strict mode. Anything outside this list (compound CSS, positional
+ * fallbacks, plain button text, etc.) is treated as fragile.
+ */
+export const HIGH_QUALITY_SELECTOR_METHODS = [
+  'data-testid',
+  'scoped-testid',
+  'testid-href',
+  'id',
+  'role-text',
+  'role-contains',
+  'role',
+  'aria-label',
+  'placeholder',
+  'title',
+  'label-text',
+  'name',
+  'href',
+] as const;
+
+export type HighQualitySelectorMethod = (typeof HIGH_QUALITY_SELECTOR_METHODS)[number];
+
+export function isHighQualitySelectorMethod(method: string): boolean {
+  return (HIGH_QUALITY_SELECTOR_METHODS as readonly string[]).includes(method);
+}
+
 // ============================================================================
 // Stability Analysis (internal)
 // ============================================================================
