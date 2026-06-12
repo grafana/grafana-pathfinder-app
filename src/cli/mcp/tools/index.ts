@@ -10,7 +10,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import type { SessionStore } from '../lib/session-store';
+import type { AuthoringSessionStore } from '../lib/session-store';
 import { registerArtifactTools } from './artifact-tools';
 import { registerAuthoringStart } from './authoring-start';
 import { registerFinalizeTool } from './finalize';
@@ -27,7 +27,7 @@ export interface RegisterAuthoringToolsOptions {
    * inspection / read tool. Stateless `{artifact}` mode does not consult
    * the store; tools that only support artifact mode ignore this option.
    */
-  sessionStore: SessionStore;
+  sessionStore: AuthoringSessionStore;
   /**
    * Transport-layer Mcp-Session-Id header value for this request (HTTP only).
    * Threaded through to session-mode tools so they can bind the pin on mint

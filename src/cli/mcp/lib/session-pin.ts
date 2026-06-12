@@ -15,11 +15,11 @@
  * request against a pinned session must carry the header it was bound with.
  */
 
-import type { SessionStore } from './session-store';
+import type { SessionPinStore } from './session-store';
 import { sessionNotFoundResult } from '../tools/result';
 
 export interface PinEnforcement {
-  store: SessionStore;
+  store: SessionPinStore;
   /**
    * Transport-layer Mcp-Session-Id for the current request, if any.
    * Stdio passes undefined; HTTP passes the request header value or

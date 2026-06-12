@@ -25,7 +25,7 @@ import { runSetManifest } from '../../commands/set-manifest';
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../../utils/block-registry';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
-import type { SessionStore } from '../lib/session-store';
+import type { AuthoringSessionStore } from '../lib/session-store';
 import { writeAppend, writeDestructive } from './annotations';
 import { resolveAndPinToken } from './read-input';
 import {
@@ -119,7 +119,7 @@ const BlockTypeEnum = Object.keys(BLOCK_SCHEMA_MAP) as BlockType[];
  * dispatch logic.
  */
 async function dispatchMutation(
-  store: SessionStore,
+  store: AuthoringSessionStore,
   mcpSessionId: string | undefined,
   inputs: {
     artifact?: {
@@ -176,7 +176,7 @@ async function dispatchMutation(
 
 export function registerMutationTools(
   server: McpServer,
-  options: { sessionStore: SessionStore; mcpSessionId?: string }
+  options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
 ): void {
   const { sessionStore, mcpSessionId } = options;
   server.registerTool(

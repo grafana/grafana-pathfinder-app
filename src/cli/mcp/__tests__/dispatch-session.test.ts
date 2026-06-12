@@ -65,8 +65,6 @@ function makeRacingStore(real: SessionStore): SessionStore {
       return real.save(token, artifact, ifGen);
     },
     delete: (token) => real.delete(token),
-    bindMcpSessionId: (t, id) => real.bindMcpSessionId(t, id),
-    readMcpSessionPin: (t) => real.readMcpSessionPin(t),
   };
 }
 
@@ -143,8 +141,6 @@ describe('dispatchSessionMutation', () => {
           return inner.save(t, art, ifGen);
         },
         delete: (t) => inner.delete(t),
-        bindMcpSessionId: (t, id) => inner.bindMcpSessionId(t, id),
-        readMcpSessionPin: (t) => inner.readMcpSessionPin(t),
       };
 
       const r = await dispatchSessionMutation(TOKEN, persistentlyRacing, setTitleRunner('never-lands'));
@@ -170,8 +166,6 @@ describe('dispatchSessionMutation', () => {
           return inner.save(t, art, ifGen);
         },
         delete: (t) => inner.delete(t),
-        bindMcpSessionId: (t, id) => inner.bindMcpSessionId(t, id),
-        readMcpSessionPin: (t) => inner.readMcpSessionPin(t),
       };
 
       const r = await dispatchSessionMutation(TOKEN, racingThenDeleting, setTitleRunner('x'));

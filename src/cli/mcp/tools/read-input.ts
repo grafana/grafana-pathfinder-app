@@ -12,7 +12,7 @@
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import { enforceMcpSessionPin } from '../lib/session-pin';
 import { normalizeSessionToken } from '../lib/session-token';
-import { type SessionStore } from '../lib/session-store';
+import { type AuthoringSessionStore } from '../lib/session-store';
 import { invalidSessionTokenResult, sessionNotFoundResult } from './result';
 import { classifyTwoModeInput } from './two-mode-input';
 
@@ -47,7 +47,7 @@ export type TokenResolution = { ok: true; token: string } | { ok: false; respons
  * stay in lockstep on validation order and error shapes.
  */
 export async function resolveAndPinToken(
-  store: SessionStore,
+  store: AuthoringSessionStore,
   rawToken: unknown,
   mcpSessionId: string | undefined
 ): Promise<TokenResolution> {
@@ -63,7 +63,7 @@ export async function resolveAndPinToken(
 }
 
 export async function resolveReadOnlyInput(
-  store: SessionStore,
+  store: AuthoringSessionStore,
   inputs: {
     artifact?: { content: Record<string, unknown>; manifest?: Record<string, unknown> };
     sessionToken?: string;

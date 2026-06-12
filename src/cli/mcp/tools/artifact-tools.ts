@@ -22,7 +22,7 @@ import { newPackageState, buildArtifactSummary, readPackage, type TreeNode } fro
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import { MCP_TMPDIR_PREFIX } from '../lib/constants';
 import { generateSessionToken } from '../lib/session-token';
-import { SESSION_GENERATION_ABSENT, type SessionArtifact, type SessionStore } from '../lib/session-store';
+import { SESSION_GENERATION_ABSENT, type SessionArtifact, type AuthoringSessionStore } from '../lib/session-store';
 import type { CommandOutcome } from '../../utils/output';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import { writeAppend } from './annotations';
@@ -30,7 +30,7 @@ import { outcomeResult, textResult, withToolErrorEnvelope } from './result';
 
 export function registerArtifactTools(
   server: McpServer,
-  options: { sessionStore: SessionStore; mcpSessionId?: string }
+  options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
 ): void {
   const { sessionStore, mcpSessionId } = options;
   server.registerTool(
@@ -196,7 +196,7 @@ function deriveId(title: string): string | null {
  * collision standpoint. Any error here (auth, storage outage) is
  * routed through `withToolErrorEnvelope` by the caller.
  */
-async function mintSession(store: SessionStore, artifact: SessionArtifact): Promise<string> {
+async function mintSession(store: AuthoringSessionStore, artifact: SessionArtifact): Promise<string> {
   const token = generateSessionToken();
   await store.save(token, artifact, SESSION_GENERATION_ABSENT);
   return token;

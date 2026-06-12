@@ -20,7 +20,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { buildArtifactSummary, findBlockById } from '../../utils/package-io';
-import type { LoadedSession, SessionStore } from '../lib/session-store';
+import type { LoadedSession, AuthoringSessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveAndPinToken } from './read-input';
 import { sessionNotFoundResult, textResult, withToolErrorEnvelope } from './result';
@@ -40,7 +40,7 @@ type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: bo
  *     branches like "block id not found" in `pathfinder_get_block`).
  */
 async function withLoadedSession(
-  store: SessionStore,
+  store: AuthoringSessionStore,
   mcpSessionId: string | undefined,
   rawToken: string,
   toolName: string,
@@ -70,7 +70,7 @@ function isToolResult(value: ToolResult | Record<string, unknown>): value is Too
 
 export function registerSessionReadTools(
   server: McpServer,
-  options: { sessionStore: SessionStore; mcpSessionId?: string }
+  options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
 ): void {
   const { sessionStore, mcpSessionId } = options;
 
