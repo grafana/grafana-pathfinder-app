@@ -940,6 +940,16 @@ export const e2eCommand = new Command('e2e')
               exitCode: ExitCode.SUCCESS,
               autoIncluded: planned.autoIncluded,
               failedPrerequisite: blockingDep,
+              // Include a result so the skipped guide is represented in the JSON report
+              resultsData: {
+                guide: { id: planned.id, title: planned.id, path: planned.guide.path },
+                grafanaUrl: options.grafanaUrl,
+                timestamp: new Date().toISOString(),
+                results: [],
+                aborted: true,
+                abortReason: 'SKIPPED_PREREQ',
+                abortMessage: `Prerequisite "${blockingDep}" did not pass`,
+              },
             });
             continue;
           }

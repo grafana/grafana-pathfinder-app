@@ -1,0 +1,69 @@
+/**
+ * Reporter tests for dependency-aware execution outcomes.
+ *
+ * A guide skipped because its prerequisite failed produces no step data, so it
+ * must still be represented in the multi-guide JSON report or the report would
+ * undercount and lose the skip reason relative to the console summary.
+ */
+
+import { generateMultiGuideReport, type TestResultsData } from './e2e-reporter';
+
+function ranGuide(id: string, opts: { failed?: boolean } = {}): TestResultsData {
+  return {
+    guide: { id, title: id, path: `${id}/content.json` },
+    grafanaUrl: 'http://localhost:3000',
+    timestamp: '2026-01-01T00:00:00.000Z',
+    results: [
+      {
+        stepId: 'step-1',
+        status: opts.failed ? 'failed' : 'passed',
+        durationMs: 10,
+        currentUrl: '/',
+        consoleErrors: [],
+        skippable: false,
+      },
+    ],
+    aborted: false,
+  };
+}
+
+/** A guide skipped before execution because its prerequisite failed. */
+function skippedGuide(id: string, failedPrerequisite: string): TestResultsData {
+  return {
+    guide: { id, title: id, path: `${id}/content.json` },
+    grafanaUrl: 'http://localhost:3000',
+    timestamp: '2026-01-01T00:00:00.000Z',
+    results: [],
+    aborted: true,
+    abortReason: 'SKIPPED_PREREQ',
+    abortMessage: `Prerequisite "${failedPrerequisite}" did not pass`,
+  };
+}
+
+describe('generateMultiGuideReport — dependency-skipped guides', () => {
+  it('counts a skipped dependent without treating it as passed', () => {
+    const report = generateMultiGuideReport(
+      [
+        ranGuide('prometheus-grafana-101', { failed: true }),
+        skippedGuide('loki-grafana-101', 'prometheus-grafana-101'),
+      ],
+      'http://localhost:3000'
+    );
+
+    // Both the failed prerequisite and the skipped dependent are represented.
+    expect(report.summary.totalGuides).toBe(2);
+    expect(report.summary.skippedGuides).toBe(1);
+    expect(report.summary.passedGuides).toBe(0);
+
+    const skippedResult = report.guides.find((g) => g.id === 'loki-grafana-101');
+    expect(skippedResult).toMatchObject({ abortReason: 'SKIPPED_PREREQ', success: false });
+  });
+
+  it('reports zero skipped guides when none are skipped', () => {
+    const report = generateMultiGuideReport([ranGuide('a'), ranGuide('b')], 'http://localhost:3000');
+
+    expect(report.summary.totalGuides).toBe(2);
+    expect(report.summary.skippedGuides).toBe(0);
+    expect(report.guides.every((g) => g.abortReason === undefined)).toBe(true);
+  });
+});
