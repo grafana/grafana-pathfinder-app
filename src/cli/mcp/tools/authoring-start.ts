@@ -5,6 +5,12 @@
  * the authoring contract looks like, and which other tools to call to make
  * progress. Sourced from a single typed module here so updates land in one
  * place rather than being copy-pasted into every client's skill file.
+ *
+ * Session-token mode is taught as the primary workflow: the first
+ * mutation mints a sessionToken, mutation responses are acks (not full
+ * artifacts), reads are explicit and on-demand, and the full artifact
+ * returns only at finalize. Stateless `{artifact}` mode is mentioned once
+ * as a fallback for OSS / airgap or multi-instance deployments.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -18,32 +24,58 @@ const AUTHORING_CONTEXT = {
   version: CURRENT_SCHEMA_VERSION,
   product:
     'Grafana Pathfinder is a Grafana plugin that runs interactive, contextual guides as a sidebar in Grafana. A guide is a tree of "blocks" — markdown, interactive UI actions, sections, conditionals, multistep, quizzes — stored as JSON.',
-  // Routing reaffirmation surface (M1 layer 2). The same constants seed the
-  // server-level `instructions` string in `lib/server-instructions.ts`, so an
-  // agent that reached this tool via layer-3 hints sees consistent vocabulary,
+  // Routing reaffirmation surface. The same constants seed the server-level
+  // `instructions` string in `lib/server-instructions.ts`, so an agent that
+  // reached this tool via the initialize hint sees consistent vocabulary,
   // and clients that don't render `initialize.instructions` still get the
-  // routing signal here. `domains` added in slice 3 (2026-05-12) so the
-  // agent has explicit vocabulary for product-area follow-up prompts.
+  // routing signal here.
   triggers: [...PATHFINDER_TRIGGER_PHRASES],
   notFor: [...PATHFINDER_NOT_FOR],
   domains: [...PATHFINDER_DOMAINS],
   workflow: [
-    '1. Call pathfinder_create_package with a title to get a fresh artifact ({ content, manifest }).',
-    '2. Add blocks via pathfinder_add_block (and pathfinder_add_step / pathfinder_add_choice for container children). Pass the artifact in and use the artifact returned in the response for the next call.',
-    '3. Inspect with pathfinder_inspect at any time (no mutation).',
-    '4. Validate with pathfinder_validate before finalize.',
-    '5. Call pathfinder_finalize_for_app_platform to receive a publish handoff with App Platform path templates and a localExport fallback.',
+    '1. Call pathfinder_create_package with a title. The response carries BOTH a sessionToken (use this for subsequent calls) AND a seed artifact (ignore unless you are running in stateless fallback mode).',
+    '2. Add blocks via pathfinder_add_block (and pathfinder_add_step / pathfinder_add_choice for container children) passing {sessionToken}. Each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact. The artifact lives in the server-side session store.',
+    '3. Navigate by id using the `summary` tree returned on every ack. For deeper reads, call pathfinder_list_blocks, pathfinder_get_block, or pathfinder_get_manifest_session with {sessionToken}. They are cheap; use them freely instead of re-reading the full artifact.',
+    '4. When you need the full artifact body in your context (rare — e.g. for a wholesale review before finalize), call pathfinder_inspect with {sessionToken}. This is the explicit "pull the artifact" escape hatch.',
+    '5. Call pathfinder_validate with {sessionToken} before finalize.',
+    '6. Call pathfinder_finalize_for_app_platform with {sessionToken} to receive the publish handoff (path templates, viewer link, localExport fallback). The full artifact returns here. The server deletes the session on success — the sessionToken is single-use through finalize.',
   ],
+  sessionMode: {
+    summary:
+      'Primary contract. Mint a sessionToken on first mutation, echo it back on every subsequent call. Mutation responses are acks (no artifact body). Reads are explicit. Finalize returns the artifact and deletes the session.',
+    ackShape: {
+      status: 'ok | error',
+      sessionToken: 'string — echo verbatim on the next call',
+      generation:
+        'number — monotonic; optional `expectedGeneration` on the next call surfaces a CONCURRENT_MODIFICATION error if the session moved underneath you',
+      summary: 'compact tree of {path, id, type, hint?, children?} for navigation',
+      outcome: 'CommandOutcome shape (status + any code/message/data on error)',
+    },
+    rules: [
+      'Echo `sessionToken` on every subsequent call. Do NOT echo back the artifact body — it is not in the ack and the server already has it.',
+      'Use `summary` for navigation. Do not call pathfinder_inspect after every mutation; the summary already tells you what changed.',
+      '`expectedGeneration` is optional. Omit it for the common single-agent case (the server retries once on 412 internally). Pass it only if you specifically want to fail-fast on a concurrent edit.',
+      'A failed mutation does NOT bump the generation — the session state is unchanged. Re-read with the same generation if you need to recover.',
+      'On SESSION_NOT_FOUND (expired or finalized session), start over: call pathfinder_create_package for a fresh token.',
+    ],
+  },
+  statelessModeFallback: {
+    appliesWhen:
+      'You are running against an MCP server where server-side sessions are unavailable or not durable — stdio transport, OSS / self-hosted deployments, or any host not pinned to a single instance. Every mutation tool also accepts `{artifact}` in place of `{sessionToken}` and returns the full artifact for you to thread to the next call.',
+    rules: [
+      'Pass {content, manifest} in. Use the {content, manifest} returned in the response for the next call.',
+      'Never mix modes — pass EITHER `artifact` OR `sessionToken`, never both. Mixing returns INPUT_MODE_AMBIGUOUS.',
+    ],
+  },
   rules: [
-    'Every authoring tool is stateless — pass {content, manifest} in, use the returned {content, manifest} for the next call. There is no sessionId.',
     'The CLI runners are the sole validator. If a tool returns status "error" with code "SCHEMA_VALIDATION", the message lists every issue at once — fix all of them before retrying.',
     'Block ids: leaf blocks auto-id as <type>-<n> if you do not pass an id. Container blocks (section, multistep, guided, conditional, assistant, quiz) require an explicit id.',
-    'Mutation responses include a `summary` field — a compact tree of every block ({path, id, type, hint?, children?}). Use the summary for navigation and to reference block ids; you do not need to re-read `artifact.content` after every mutation.',
+    'Mutation acks include a `summary` field — a compact tree of every block ({path, id, type, hint?, children?}). Use the summary for navigation and to reference block ids.',
   ],
   // Distilled from grafana/interactive-tutorials `.cursor/authoring-guide.mdc`.
   // Curate ruthlessly — every connected client pays this length on every
   // `_start` call. If this list grows past ~20 rules, ship a separate
-  // `pathfinder_authoring_best_practices` tool (OQ7) instead of expanding here.
+  // best-practices tool instead of expanding here.
   compositionRules: [
     'Prefer separate sibling blocks over a `multistep` block. Use `multistep` only when the steps must run in order AND are tightly coupled.',
     'Never write a step with `action: noop` as filler. If there is nothing concrete for the user to do, write a `markdown` block describing what they would do instead.',
@@ -59,7 +91,10 @@ const AUTHORING_CONTEXT = {
   ],
   discovery: [
     'pathfinder_help — returns the structured CLI help surface, equivalent to `pathfinder-cli <cmd> --help --format json`. Use this when you need exact flag names or block-type field schemas.',
-    'pathfinder_inspect — given an artifact, returns a tree summary so you can address blocks by id or JSONPath without re-reading the artifact yourself.',
+    'pathfinder_list_blocks — given a sessionToken, returns the tree summary without the block bodies. Cheap; use freely.',
+    'pathfinder_get_block — given a sessionToken and block id, returns one block. Cheap targeted read.',
+    'pathfinder_get_manifest_session — given a sessionToken, returns the session-stored manifest. Distinct from pathfinder_get_manifest (which reads from the CDN repository).',
+    'pathfinder_inspect — escape hatch. Given a sessionToken (or artifact), returns the full artifact plus a tree summary.',
   ],
 };
 

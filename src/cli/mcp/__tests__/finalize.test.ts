@@ -11,6 +11,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
+import { InMemorySessionStore, SESSION_GENERATION_ABSENT } from '../lib/session-store';
+import { generateSessionToken } from '../lib/session-token';
 import { buildServer } from '../server';
 
 interface ToolPayload {
@@ -46,6 +48,43 @@ async function callFinalize(): Promise<ToolPayload> {
     const result = await client.callTool({
       name: 'pathfinder_finalize_for_app_platform',
       arguments: { artifact, status: 'draft' },
+    });
+    const blocks = result.content as Array<{ type: string; text: string }>;
+    const text = blocks.find((b) => b.type === 'text')?.text;
+    if (!text) {
+      throw new Error('finalize returned no text');
+    }
+    return JSON.parse(text) as ToolPayload;
+  } finally {
+    await client.close();
+    await server.close();
+  }
+}
+
+const fixtureContent = {
+  id: 'session-fixture',
+  schemaVersion: CURRENT_SCHEMA_VERSION,
+  title: 'Session Fixture',
+  type: 'guide' as const,
+  blocks: [{ type: 'markdown' as const, id: 'm-1', content: 'hello' }],
+};
+const fixtureManifest = {
+  id: 'session-fixture',
+  schemaVersion: CURRENT_SCHEMA_VERSION,
+  type: 'guide' as const,
+  repository: 'interactive-tutorials',
+};
+
+async function callFinalizeWithStore(store: InMemorySessionStore, args: Record<string, unknown>): Promise<ToolPayload> {
+  const server = buildServer({ sessionStore: store });
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  const client = new Client({ name: 'finalize-session-test', version: '0' }, { capabilities: {} });
+  await client.connect(clientTransport);
+  try {
+    const result = await client.callTool({
+      name: 'pathfinder_finalize_for_app_platform',
+      arguments: args,
     });
     const blocks = result.content as Array<{ type: string; text: string }>;
     const text = blocks.find((b) => b.type === 'text')?.text;
@@ -223,5 +262,83 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
         },
       }
     `);
+  });
+});
+
+describe('pathfinder_finalize_for_app_platform — session mode', () => {
+  it('loads the artifact from the session store and returns the same shape as stateless mode', async () => {
+    const store = new InMemorySessionStore();
+    const token = generateSessionToken();
+    await store.save(token, { content: fixtureContent, manifest: fixtureManifest }, SESSION_GENERATION_ABSENT);
+
+    const payload = await callFinalizeWithStore(store, { sessionToken: token, status: 'draft' });
+
+    expect(payload.status).toBe('ready');
+    expect(payload.id).toBe('session-fixture');
+    expect(payload.artifact?.content.id).toBe('session-fixture');
+  });
+
+  it('deletes the session on a successful finalize so the token becomes unusable', async () => {
+    const store = new InMemorySessionStore();
+    const token = generateSessionToken();
+    await store.save(token, { content: fixtureContent, manifest: fixtureManifest }, SESSION_GENERATION_ABSENT);
+    expect(await store.load(token)).not.toBeNull();
+
+    const payload = await callFinalizeWithStore(store, { sessionToken: token, status: 'draft' });
+    expect(payload.status).toBe('ready');
+
+    // Load-bearing invariant: the session is gone after a successful
+    // finalize. Subsequent calls with the same token will surface
+    // SESSION_NOT_FOUND, which is the agent's signal to start over.
+    expect(await store.load(token)).toBeNull();
+  });
+
+  it('does NOT delete the session when validation fails (token stays usable for retry)', async () => {
+    const store = new InMemorySessionStore();
+    const token = generateSessionToken();
+    // Invalid: a markdown block without `content` fails schema validation.
+    await store.save(
+      token,
+      {
+        content: {
+          ...fixtureContent,
+          blocks: [{ type: 'markdown', id: 'm-bad' } as unknown as (typeof fixtureContent.blocks)[number]],
+        },
+        manifest: fixtureManifest,
+      },
+      SESSION_GENERATION_ABSENT
+    );
+
+    const payload = await callFinalizeWithStore(store, { sessionToken: token, status: 'draft' });
+    expect(payload.status).toBe('invalid');
+
+    // Caller still has a usable session to fix and re-finalize.
+    expect(await store.load(token)).not.toBeNull();
+  });
+
+  it('rejects ambiguous input (both artifact and sessionToken)', async () => {
+    const store = new InMemorySessionStore();
+    const token = generateSessionToken();
+    await store.save(token, { content: fixtureContent, manifest: fixtureManifest }, SESSION_GENERATION_ABSENT);
+
+    const payload = await callFinalizeWithStore(store, {
+      sessionToken: token,
+      artifact: { content: fixtureContent, manifest: fixtureManifest },
+      status: 'draft',
+    });
+    expect(payload.code).toBe('INPUT_MODE_AMBIGUOUS');
+  });
+
+  it('rejects missing input (neither artifact nor sessionToken)', async () => {
+    const store = new InMemorySessionStore();
+    const payload = await callFinalizeWithStore(store, { status: 'draft' });
+    expect(payload.code).toBe('INPUT_MODE_MISSING');
+  });
+
+  it('returns SESSION_NOT_FOUND for an unknown token', async () => {
+    const store = new InMemorySessionStore();
+    const token = generateSessionToken();
+    const payload = await callFinalizeWithStore(store, { sessionToken: token, status: 'draft' });
+    expect(payload.code).toBe('SESSION_NOT_FOUND');
   });
 });
