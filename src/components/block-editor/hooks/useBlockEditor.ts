@@ -8,7 +8,6 @@
 import { useCallback, useMemo } from 'react';
 import type { EditorBlock, BlockEditorState, JsonBlock, JsonGuide, ViewMode } from '../types';
 import type {
-  JsonSectionBlock,
   JsonConditionalBlock,
   JsonInteractiveBlock,
   JsonMultistepBlock,
@@ -18,48 +17,15 @@ import type {
 import { DEFAULT_GUIDE_METADATA } from '../constants';
 import { copyNestedInstanceId } from '../nestedBlockInstanceId';
 import { useGuideHistory } from './useGuideHistory';
-
-/**
- * Type guard for section blocks
- */
-const isSectionBlock = (block: JsonBlock): block is JsonSectionBlock => {
-  return block.type === 'section';
-};
-
-/**
- * Type guard for conditional blocks
- */
-const isConditionalBlock = (block: JsonBlock): block is JsonConditionalBlock => {
-  return block.type === 'conditional';
-};
-
-/**
- * Type guard for interactive blocks
- */
-const isInteractiveBlock = (block: JsonBlock): block is JsonInteractiveBlock => {
-  return block.type === 'interactive';
-};
-
-/**
- * Type guard for multistep blocks
- */
-const isMultistepBlock = (block: JsonBlock): block is JsonMultistepBlock => {
-  return block.type === 'multistep';
-};
-
-/**
- * Type guard for guided blocks
- */
-const isGuidedBlock = (block: JsonBlock): block is JsonGuidedBlock => {
-  return block.type === 'guided';
-};
-
-/**
- * Generate a unique ID for a block
- */
-const generateBlockId = (): string => {
-  return `block-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-};
+import {
+  generateBlockId,
+  isConditionalBlock,
+  isGuidedBlock,
+  isInteractiveBlock,
+  isMultistepBlock,
+  isSectionBlock,
+  parseBlockId,
+} from './useBlockEditor.helpers';
 
 /**
  * Hook options
@@ -1252,53 +1218,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       { skipHistory: true }
     );
   }, [setState]);
-
-  /**
-   * Parse a block ID to determine if it's a nested block.
-   * Nested block IDs have format: `${sectionId}-nested-${nestedIndex}`.
-   * Uses string operations instead of regex for better performance and clarity.
-   */
-  const parseBlockId = (
-    id: string,
-    blocks: EditorBlock[]
-  ): {
-    isNested: boolean;
-    sectionId?: string;
-    nestedIndex?: number;
-    block?: JsonBlock;
-    rootIndex?: number;
-    sectionRootIndex?: number;
-  } => {
-    const NESTED_MARKER = '-nested-';
-    const markerIndex = id.lastIndexOf(NESTED_MARKER);
-
-    // Check if it's a nested block ID
-    if (markerIndex !== -1) {
-      const sectionId = id.slice(0, markerIndex);
-      const nestedIndexStr = id.slice(markerIndex + NESTED_MARKER.length);
-      const nestedIndex = parseInt(nestedIndexStr, 10);
-
-      // Validate the index is a valid number
-      if (!isNaN(nestedIndex) && nestedIndexStr === String(nestedIndex)) {
-        const sectionRootIndex = blocks.findIndex((b) => b.id === sectionId);
-        const section = sectionRootIndex >= 0 ? blocks[sectionRootIndex] : undefined;
-        if (section && isSectionBlock(section.block)) {
-          const nestedBlock = section.block.blocks[nestedIndex];
-          if (nestedBlock) {
-            return { isNested: true, sectionId, nestedIndex, block: nestedBlock, sectionRootIndex };
-          }
-        }
-        return { isNested: true, sectionRootIndex: sectionRootIndex >= 0 ? sectionRootIndex : undefined };
-      }
-    }
-
-    // It's a root-level block
-    const rootIndex = blocks.findIndex((b) => b.id === id);
-    if (rootIndex >= 0) {
-      return { isNested: false, block: blocks[rootIndex]!.block, rootIndex };
-    }
-    return { isNested: false };
-  };
 
   // Merge interactive/multistep/guided blocks into a Multistep block
   const mergeBlocksToMultistep = useCallback(
