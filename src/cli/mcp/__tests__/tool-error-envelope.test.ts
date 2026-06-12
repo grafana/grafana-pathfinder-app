@@ -13,7 +13,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { runCreate } from '../../commands/create';
 import { readPackage } from '../../utils/package-io';
-import { InMemorySessionStore, SESSION_GENERATION_ABSENT, type SessionStore } from '../lib/session-store';
+import { InMemorySessionStore, SESSION_GENERATION_ABSENT, type AuthoringSessionStore } from '../lib/session-store';
 import { buildServer } from '../server';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -34,7 +34,7 @@ interface RawResult {
   payload: ToolPayload;
 }
 
-async function newHarness(store: SessionStore): Promise<{
+async function newHarness(store: AuthoringSessionStore): Promise<{
   call: (name: string, args: Record<string, unknown>) => Promise<RawResult>;
   close: () => Promise<void>;
 }> {
@@ -60,7 +60,7 @@ async function newHarness(store: SessionStore): Promise<{
   };
 }
 
-async function seed(store: SessionStore, token: string): Promise<void> {
+async function seed(store: AuthoringSessionStore, token: string): Promise<void> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pathfinder-envelope-seed-'));
   try {
     const pkgDir = path.join(dir, 'pkg');
@@ -76,7 +76,7 @@ async function seed(store: SessionStore, token: string): Promise<void> {
 }
 
 /** Wraps an InMemorySessionStore so the next `save` throws the given error. */
-function makeThrowingStore(inner: InMemorySessionStore, err: () => Error): SessionStore {
+function makeThrowingStore(inner: InMemorySessionStore, err: () => Error): AuthoringSessionStore {
   let armed = true;
   return {
     load: (t) => inner.load(t),
