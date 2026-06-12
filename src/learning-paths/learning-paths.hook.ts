@@ -17,6 +17,7 @@ import type {
   GuideMetadataEntry,
 } from '../types/learning-paths.types';
 
+import { StorageEvents } from '../lib/event-names';
 import {
   learningProgressStorage,
   interactiveStepStorage,
@@ -219,11 +220,11 @@ export function useLearningPaths(): UseLearningPathsReturn {
       }
     };
 
-    window.addEventListener('learning-progress-updated', handleProgressUpdate);
+    window.addEventListener(StorageEvents.LearningProgressUpdated, handleProgressUpdate);
 
     return () => {
       mounted.current = false;
-      window.removeEventListener('learning-progress-updated', handleProgressUpdate);
+      window.removeEventListener(StorageEvents.LearningProgressUpdated, handleProgressUpdate);
     };
   }, [loadProgress]);
 

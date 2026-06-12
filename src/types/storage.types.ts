@@ -19,3 +19,14 @@ export interface UserStorage {
  * Indicates which storage mechanism is being used
  */
 export type StorageBackend = 'user-storage' | 'local-storage';
+
+/**
+ * Narrow shape of the storage object returned by `usePluginUserStorage()` from
+ * `@grafana/runtime`. Values are written and read as JSON strings — the
+ * hybrid-storage layer wraps them in `StorageEnvelope` form for timestamp-based
+ * conflict resolution.
+ */
+export interface GrafanaUserStorage {
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<void>;
+}

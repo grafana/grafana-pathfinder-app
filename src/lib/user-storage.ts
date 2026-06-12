@@ -42,6 +42,8 @@ import { z } from 'zod';
 
 import type { LearningProgress, EarnedBadgeRecord } from '../types/learning-paths.types';
 import { reportAppInteraction, UserInteraction } from './analytics';
+import { StorageEvents } from './event-names';
+import { createBoundedRecordStorage } from './storage/bounded-record-storage';
 import { StorageKeys } from './storage-keys';
 
 // ============================================================================
@@ -180,8 +182,11 @@ let hasWarnedAboutQuota = false;
  *
  * Wrapped in try/catch because `getAppEvents()` can throw in environments
  * where `@grafana/runtime` isn't fully initialized (notably some tests).
+ *
+ * Exported so storage helpers extracted to sibling modules (e.g.
+ * `lib/storage/bounded-record-storage.ts`) share the once-per-lifecycle flag.
  */
-function warnQuotaExceededOnce(): void {
+export function warnQuotaExceededOnce(): void {
   if (hasWarnedAboutQuota) {
     return;
   }
@@ -214,10 +219,10 @@ export function __resetQuotaWarningForTests(): void {
 // TYPE DEFINITIONS
 // ============================================================================
 
-import type { UserStorage, StorageBackend } from '../types/storage.types';
+import type { UserStorage, StorageBackend, GrafanaUserStorage } from '../types/storage.types';
 
 // Re-export for backward compatibility with existing imports
-export type { UserStorage, StorageBackend };
+export type { UserStorage, StorageBackend, GrafanaUserStorage };
 
 // ============================================================================
 // STORAGE IMPLEMENTATION
@@ -336,7 +341,7 @@ function createLocalStorage(): UserStorage {
  * 3. Reads come from localStorage (fast, always available)
  * 4. On init, sync from Grafana storage to localStorage (Grafana is source of truth)
  */
-function createHybridStorage(grafanaStorage: any): UserStorage {
+function createHybridStorage(grafanaStorage: GrafanaUserStorage): UserStorage {
   const localStorage = createLocalStorage();
 
   // Queue for async writes to Grafana storage.
@@ -473,7 +478,7 @@ let hasSynced = false;
  * from both Grafana storage and localStorage.
  */
 async function readGrafanaKeyWithMigration(
-  grafanaStorage: any,
+  grafanaStorage: GrafanaUserStorage,
   key: string
 ): Promise<{ value: string | null; timestamp: number; migrated: boolean }> {
   const rawValue = await grafanaStorage.getItem(key);
@@ -535,7 +540,7 @@ async function readGrafanaKeyWithMigration(
  * - If a deletion timestamp is newer than existing data, the deletion is applied
  * - This ensures deletions propagate correctly across devices/sessions
  */
-async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
+async function syncFromGrafanaStorage(grafanaStorage: GrafanaUserStorage): Promise<void> {
   // Guard: only sync once per page lifecycle
   if (hasSynced) {
     return;
@@ -725,104 +730,16 @@ export function useUserStorage(): UserStorage {
 // ============================================================================
 
 /**
- * Journey completion storage operations
+ * Journey completion storage operations.
  *
- * These functions manage learning journey progress with built-in cleanup
- * to prevent storage quota exhaustion.
+ * Manages learning journey progress with built-in cleanup to prevent storage
+ * quota exhaustion. Backed by `createBoundedRecordStorage`.
  */
-export const journeyCompletionStorage = {
-  /**
-   * Gets the completion percentage for a learning journey
-   */
-  async get(journeyBaseUrl: string): Promise<number> {
-    try {
-      const storage = createUserStorage();
-      const completionData = await storage.getItem<Record<string, number>>(StorageKeys.JOURNEY_COMPLETION);
-      return completionData?.[journeyBaseUrl] || 0;
-    } catch {
-      return 0;
-    }
-  },
-
-  /**
-   * Sets the completion percentage for a learning journey
-   *
-   * SECURITY: Automatically cleans up old completions to prevent quota exhaustion
-   */
-  async set(journeyBaseUrl: string, percentage: number): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.JOURNEY_COMPLETION)) || {};
-
-      // Clamp percentage between 0 and 100
-      completionData[journeyBaseUrl] = Math.max(0, Math.min(100, percentage));
-
-      // SECURITY: Cleanup old completions if too many
-      const entries = Object.entries(completionData);
-      if (entries.length > LIMITS.MAX_JOURNEY_COMPLETIONS) {
-        const reduced = Object.fromEntries(entries.slice(-LIMITS.MAX_JOURNEY_COMPLETIONS));
-        await storage.setItem(StorageKeys.JOURNEY_COMPLETION, reduced);
-      } else {
-        await storage.setItem(StorageKeys.JOURNEY_COMPLETION, completionData);
-      }
-    } catch (error) {
-      // SECURITY: Handle QuotaExceededError gracefully
-      if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('Storage quota exceeded, clearing old journey data');
-        warnQuotaExceededOnce();
-        await journeyCompletionStorage.cleanup();
-        // Retry after cleanup
-        await journeyCompletionStorage.set(journeyBaseUrl, percentage);
-      } else {
-        console.warn('Failed to save journey completion percentage:', error);
-      }
-    }
-  },
-
-  /**
-   * Clears the completion data for a specific journey
-   */
-  async clear(journeyBaseUrl: string): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.JOURNEY_COMPLETION)) || {};
-      delete completionData[journeyBaseUrl];
-      await storage.setItem(StorageKeys.JOURNEY_COMPLETION, completionData);
-    } catch (error) {
-      console.warn('Failed to clear journey completion:', error);
-    }
-  },
-
-  /**
-   * Gets all journey completions
-   */
-  async getAll(): Promise<Record<string, number>> {
-    try {
-      const storage = createUserStorage();
-      return (await storage.getItem<Record<string, number>>(StorageKeys.JOURNEY_COMPLETION)) || {};
-    } catch {
-      return {};
-    }
-  },
-
-  /**
-   * Cleans up old completions to prevent quota exhaustion
-   */
-  async cleanup(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.JOURNEY_COMPLETION)) || {};
-      const entries = Object.entries(completionData);
-
-      if (entries.length > LIMITS.MAX_JOURNEY_COMPLETIONS) {
-        const reduced = Object.fromEntries(entries.slice(-LIMITS.MAX_JOURNEY_COMPLETIONS));
-        await storage.setItem(StorageKeys.JOURNEY_COMPLETION, reduced);
-      }
-    } catch (error) {
-      console.warn('Failed to cleanup journey completions:', error);
-    }
-  },
-};
+export const journeyCompletionStorage = createBoundedRecordStorage({
+  storageKey: StorageKeys.JOURNEY_COMPLETION,
+  limit: LIMITS.MAX_JOURNEY_COMPLETIONS,
+  label: 'journey completion',
+});
 
 /**
  * Milestone completion storage operations
@@ -873,117 +790,16 @@ export const milestoneCompletionStorage = {
 };
 
 /**
- * Interactive guide completion storage operations
+ * Interactive guide completion storage operations.
  *
  * Stores completion percentage for interactive guides (bundled and external).
- * Similar to journeyCompletionStorage but for step-based interactive content.
+ * Same shape as `journeyCompletionStorage`, scoped to a different storage key.
  */
-export const interactiveCompletionStorage = {
-  /**
-   * Gets the completion percentage for an interactive guide
-   */
-  async get(contentKey: string): Promise<number> {
-    try {
-      const storage = createUserStorage();
-      const completionData = await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION);
-      return completionData?.[contentKey] || 0;
-    } catch {
-      return 0;
-    }
-  },
-
-  /**
-   * Sets the completion percentage for an interactive guide
-   *
-   * SECURITY: Automatically cleans up old completions to prevent quota exhaustion
-   */
-  async set(contentKey: string, percentage: number): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION)) || {};
-
-      // Clamp percentage between 0 and 100
-      completionData[contentKey] = Math.max(0, Math.min(100, percentage));
-
-      // SECURITY: Cleanup old completions if too many
-      const entries = Object.entries(completionData);
-      if (entries.length > LIMITS.MAX_INTERACTIVE_COMPLETIONS) {
-        const reduced = Object.fromEntries(entries.slice(-LIMITS.MAX_INTERACTIVE_COMPLETIONS));
-        await storage.setItem(StorageKeys.INTERACTIVE_COMPLETION, reduced);
-      } else {
-        await storage.setItem(StorageKeys.INTERACTIVE_COMPLETION, completionData);
-      }
-    } catch (error) {
-      // SECURITY: Handle QuotaExceededError gracefully
-      if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('Storage quota exceeded, clearing old interactive completion data');
-        warnQuotaExceededOnce();
-        await interactiveCompletionStorage.cleanup();
-        // Retry after cleanup
-        await interactiveCompletionStorage.set(contentKey, percentage);
-      } else {
-        console.warn('Failed to save interactive completion percentage:', error);
-      }
-    }
-  },
-
-  /**
-   * Clears the completion data for a specific interactive guide
-   */
-  async clear(contentKey: string): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION)) || {};
-      delete completionData[contentKey];
-      await storage.setItem(StorageKeys.INTERACTIVE_COMPLETION, completionData);
-    } catch (error) {
-      console.warn('Failed to clear interactive completion:', error);
-    }
-  },
-
-  /**
-   * Gets all interactive guide completions
-   */
-  async getAll(): Promise<Record<string, number>> {
-    try {
-      const storage = createUserStorage();
-      return (await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION)) || {};
-    } catch {
-      return {};
-    }
-  },
-
-  /**
-   * Cleans up old completions to prevent quota exhaustion
-   */
-  async cleanup(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION)) || {};
-      const entries = Object.entries(completionData);
-
-      if (entries.length > LIMITS.MAX_INTERACTIVE_COMPLETIONS) {
-        const reduced = Object.fromEntries(entries.slice(-LIMITS.MAX_INTERACTIVE_COMPLETIONS));
-        await storage.setItem(StorageKeys.INTERACTIVE_COMPLETION, reduced);
-      }
-    } catch (error) {
-      console.warn('Failed to cleanup interactive completions:', error);
-    }
-  },
-
-  /**
-   * Clears ALL interactive completion data.
-   * Used by the "Reset progress" action to wipe completion percentages for every guide.
-   */
-  async clearAll(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      await storage.removeItem(StorageKeys.INTERACTIVE_COMPLETION);
-    } catch (error) {
-      console.warn('Failed to clear all interactive completions:', error);
-    }
-  },
-};
+export const interactiveCompletionStorage = createBoundedRecordStorage({
+  storageKey: StorageKeys.INTERACTIVE_COMPLETION,
+  limit: LIMITS.MAX_INTERACTIVE_COMPLETIONS,
+  label: 'interactive completion',
+});
 
 /**
  * Tab persistence storage operations
@@ -1721,7 +1537,7 @@ export const learningProgressStorage = {
         // Notify listeners that progress has changed
         // Only include badges awarded in THIS call, not all pending celebrations
         window.dispatchEvent(
-          new CustomEvent('learning-progress-updated', {
+          new CustomEvent(StorageEvents.LearningProgressUpdated, {
             detail: {
               type: 'guide-completed',
               guideId,
@@ -1735,7 +1551,7 @@ export const learningProgressStorage = {
       console.error('Failed to mark guide as completed:', error);
       // Still dispatch event so UI doesn't hang waiting for completion
       window.dispatchEvent(
-        new CustomEvent('learning-progress-updated', {
+        new CustomEvent(StorageEvents.LearningProgressUpdated, {
           detail: {
             type: 'guide-completed',
             guideId,
@@ -1833,7 +1649,7 @@ export const learningProgressStorage = {
 
       // Notify listeners that progress has changed
       window.dispatchEvent(
-        new CustomEvent('learning-progress-updated', {
+        new CustomEvent(StorageEvents.LearningProgressUpdated, {
           detail: { type: 'guides-removed', guideIds },
         })
       );
@@ -1852,7 +1668,7 @@ export const learningProgressStorage = {
 
       // Notify listeners that progress has been reset
       window.dispatchEvent(
-        new CustomEvent('learning-progress-updated', {
+        new CustomEvent(StorageEvents.LearningProgressUpdated, {
           detail: { type: 'reset' },
         })
       );
@@ -1947,7 +1763,7 @@ export const guideResponseStorage = {
 
       // Dispatch event to notify listeners (for requirements re-evaluation)
       window.dispatchEvent(
-        new CustomEvent('guide-response-changed', {
+        new CustomEvent(StorageEvents.GuideResponseChanged, {
           detail: { guideId, variableName, value },
         })
       );
@@ -1977,7 +1793,7 @@ export const guideResponseStorage = {
 
       // Dispatch event to notify listeners
       window.dispatchEvent(
-        new CustomEvent('guide-response-changed', {
+        new CustomEvent(StorageEvents.GuideResponseChanged, {
           detail: { guideId, variableName, value: undefined },
         })
       );
@@ -1999,7 +1815,7 @@ export const guideResponseStorage = {
 
       // Dispatch event to notify listeners
       window.dispatchEvent(
-        new CustomEvent('guide-response-changed', {
+        new CustomEvent(StorageEvents.GuideResponseChanged, {
           detail: { guideId, variableName: '*', value: undefined },
         })
       );
@@ -2017,7 +1833,7 @@ export const guideResponseStorage = {
       await storage.removeItem(StorageKeys.GUIDE_RESPONSES);
 
       window.dispatchEvent(
-        new CustomEvent('guide-response-changed', {
+        new CustomEvent(StorageEvents.GuideResponseChanged, {
           detail: { guideId: '*', variableName: '*', value: undefined },
         })
       );
