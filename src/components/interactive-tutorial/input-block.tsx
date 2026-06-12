@@ -12,6 +12,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { getDataSourceSrv } from '@grafana/runtime';
 import { useGuideResponsesOptional } from '../../docs-retrieval';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { StorageEvents } from '../../lib/event-names';
 import { testIds } from '../../constants/testIds';
 
 /** Props for the InputBlock component */
@@ -368,7 +369,7 @@ export function InputBlock({
       }
     };
 
-    window.addEventListener('guide-response-changed', handleResponseChange);
+    window.addEventListener(StorageEvents.GuideResponseChanged, handleResponseChange);
 
     // If context is already loaded, trigger a sync now
     // This handles the case where the input mounts after context has finished loading
@@ -377,14 +378,14 @@ export function InputBlock({
       if (savedValue !== undefined) {
         // Dispatch a synthetic event to trigger the handler
         window.dispatchEvent(
-          new CustomEvent('guide-response-changed', {
+          new CustomEvent(StorageEvents.GuideResponseChanged, {
             detail: { type: 'initial-load', variableName, value: savedValue },
           })
         );
       }
     }
 
-    return () => window.removeEventListener('guide-response-changed', handleResponseChange);
+    return () => window.removeEventListener(StorageEvents.GuideResponseChanged, handleResponseChange);
   }, [responseContext, responseContext?.isLoading, variableName, inputType, defaultValue]);
 
   // If no context provider, show error
