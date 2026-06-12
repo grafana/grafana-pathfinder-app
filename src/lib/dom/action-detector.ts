@@ -162,8 +162,12 @@ export function getActionDescription(action: DetectedAction, element: HTMLElemen
  * ```
  */
 export function shouldCaptureElement(element: HTMLElement): boolean {
-  // ONLY filter out clicks within the debug panel itself
-  if (element.closest('[class*="debug"]') || element.closest('#CombinedLearningJourney')) {
+  // ONLY filter out clicks within the debug panel or Pathfinder's own panels
+  if (
+    element.closest('[class*="debug"]') ||
+    element.closest('#CombinedLearningJourney') ||
+    element.closest('[data-pathfinder-content="true"]')
+  ) {
     return false;
   }
 

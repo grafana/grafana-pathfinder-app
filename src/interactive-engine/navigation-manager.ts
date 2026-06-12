@@ -453,9 +453,11 @@ export class NavigationManager {
       // - The comment box
       // - The close buttons
       // - Inside the highlighted element
+      // - The Pathfinder floating panel
       if (
         target.closest('.interactive-highlight-outline') ||
         target.closest('.interactive-comment-box') ||
+        target.closest('[data-pathfinder-content="true"]') ||
         target === element ||
         element.contains(target)
       ) {
