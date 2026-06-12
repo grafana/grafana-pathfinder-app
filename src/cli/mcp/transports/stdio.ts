@@ -8,10 +8,12 @@
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
+import { getDefaultSessionStore } from '../lib/session-store-factory';
 import { buildServer } from '../server';
 
 export async function runStdio(): Promise<void> {
-  const server = buildServer();
+  const sessionStore = await getDefaultSessionStore();
+  const server = buildServer({ sessionStore });
   const transport = new StdioServerTransport();
   await server.connect(transport);
 

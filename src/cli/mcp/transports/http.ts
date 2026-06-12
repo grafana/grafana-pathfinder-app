@@ -29,7 +29,10 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
+import { getDefaultSessionStore } from '../lib/session-store-factory';
+import { mcpSessionIdLogHash } from '../lib/session-token';
 import { buildServer } from '../server';
+import { defaultLog, estimateTokens, extractRpcInfo, type AccessLogEntry, type RpcInfo } from './access-log';
 import { defaultSessionHopCounter, type SessionHopCounter, type ToolCallObservation } from './instrumentation';
 
 /**
@@ -97,11 +100,13 @@ export interface RunHttpOptions {
   wallclockMs?: number;
   /**
    * Override the server factory. Default constructs the production
-   * `buildServer({ instrumentation })`. Tests override this to register a
-   * deliberately-slow tool that exercises the wallclock timeout path
-   * without racing against real authoring tools.
+   * `buildServer({ instrumentation, sessionStore, mcpSessionId })`. The
+   * factory is called once per request so it can capture per-request
+   * fields (the Mcp-Session-Id header in particular). Tests override
+   * this to register a deliberately-slow tool that exercises the
+   * wallclock timeout path without racing against real authoring tools.
    */
-  buildServer?: (instrumentation: (obs: ToolCallObservation) => void) => McpServer;
+  buildServer?: (instrumentation: (obs: ToolCallObservation) => void, mcpSessionId: string | undefined) => McpServer;
 }
 
 export interface HttpHandle {
@@ -110,131 +115,6 @@ export interface HttpHandle {
   close(): Promise<void>;
 }
 
-export interface AccessLogEntry {
-  ts: string;
-  remote: string;
-  method: string;
-  path: string;
-  status: number;
-  durationMs: number;
-  bytesIn: number;
-  bytesOut: number;
-  /**
-   * Heuristic token estimate: ceil(bytes / 4). Rough lower bound for
-   * English/JSON tokens under common BPE tokenizers; over-estimates for
-   * CJK / base64 / random binary. Useful for spotting outliers; not
-   * authoritative for billing.
-   */
-  tokensInEstimate: number;
-  tokensOutEstimate: number;
-  outcome: 'ok' | 'too_large' | 'bad_json' | 'overloaded' | 'timeout' | 'not_found' | 'error';
-  /**
-   * JSON-RPC method from the parsed request body (e.g. "tools/call",
-   * "tools/list", "initialize"). Absent for non-RPC requests (healthcheck,
-   * 404s, malformed bodies). For batch requests the value is "batch".
-   */
-  rpcMethod?: string;
-  /**
-   * For `tools/call` requests, the `params.name` value (e.g.
-   * "pathfinder_add_block"). Lets us break token spend down by tool, which
-   * the HTTP-level `path` field cannot — every tool call hits `/mcp`.
-   */
-  rpcToolName?: string;
-  /**
-   * Echoed JSON-RPC id, for cross-correlating client logs with server logs.
-   * Strings, numbers, and null are preserved as-is; objects/arrays are
-   * dropped to keep the log line tidy.
-   */
-  rpcId?: string | number | null;
-  /** Number of envelopes in a batch request. Absent for single requests. */
-  batchSize?: number;
-  /**
-   * MCP session id from the client's `mcp-session-id` header, when
-   * supplied. Lets us reconstruct an authoring run end-to-end; clustering
-   * by remote IP fails as soon as two clients share egress NAT.
-   */
-  sessionId?: string;
-  /**
-   * Hop count within this MCP session. Increments only on `tools/call`,
-   * so `initialize`, `tools/list`, and SSE polls do not bump it. Lets us
-   * plot tokens-per-hop curves directly per session.
-   */
-  sessionHopCount?: number;
-  /**
-   * Byte length of the JSON-stringified `args.artifact` on tools/call
-   * requests that carry an artifact. The artifact-only number is the
-   * apples-to-apples signal for O(N²) reasoning; `bytesIn` includes the
-   * full JSON-RPC envelope and tool-args wrapper.
-   */
-  artifactBytesIn?: number;
-  /**
-   * Byte length of the JSON-stringified artifact echoed back in the tool
-   * result. Absent for tools that don't return an artifact.
-   */
-  artifactBytesOut?: number;
-  /**
-   * True when the resolved tool result had `isError: true`. The HTTP
-   * envelope is still 200 in that case (and `outcome` stays `ok`), so
-   * without this field the log can't surface tool-level rejection.
-   */
-  toolError?: boolean;
-  /**
-   * `CommandOutcome.status` from the structured tool result, when
-   * recognizable (most authoring tools wrap the CLI's CommandOutcome
-   * verbatim via `outcomeResult`). Best-effort.
-   */
-  toolStatus?: string;
-}
-
-interface RpcInfo {
-  rpcMethod?: string;
-  rpcToolName?: string;
-  rpcId?: string | number | null;
-  batchSize?: number;
-}
-
-/**
- * Extract JSON-RPC method, tool name, and id from a parsed request body.
- *
- * Defensive: the body is `unknown` here (it has only been JSON.parsed, not
- * validated). Any shape we don't recognize returns an empty object so the
- * log line still emits with the standard fields.
- */
-function extractRpcInfo(body: unknown): RpcInfo {
-  if (Array.isArray(body)) {
-    // JSON-RPC batch. Surface the size; individual methods would clutter
-    // the log line and batches are rare in practice for this server.
-    return { rpcMethod: 'batch', batchSize: body.length };
-  }
-  if (!body || typeof body !== 'object') {
-    return {};
-  }
-  const obj = body as { method?: unknown; id?: unknown; params?: unknown };
-  const info: RpcInfo = {};
-  if (typeof obj.method === 'string') {
-    info.rpcMethod = obj.method;
-  }
-  if (typeof obj.id === 'string' || typeof obj.id === 'number' || obj.id === null) {
-    info.rpcId = obj.id;
-  }
-  if (info.rpcMethod === 'tools/call' && obj.params && typeof obj.params === 'object') {
-    const name = (obj.params as { name?: unknown }).name;
-    if (typeof name === 'string') {
-      info.rpcToolName = name;
-    }
-  }
-  return info;
-}
-
-/** Heuristic char-to-token estimate. See AccessLogEntry doc. */
-function estimateTokens(bytes: number): number {
-  return Math.ceil(bytes / 4);
-}
-
-const defaultLog = (entry: AccessLogEntry): void => {
-  process.stderr.write(JSON.stringify(entry) + '\n');
-};
-
 export async function runHttp(options: RunHttpOptions): Promise<HttpHandle> {
   const path = options.path ?? '/mcp';
   const healthPath = options.healthPath ?? '/healthz';
@@ -242,8 +122,14 @@ export async function runHttp(options: RunHttpOptions): Promise<HttpHandle> {
   const log = options.log ?? defaultLog;
   const sessionHopCounter = options.sessionHopCounter ?? defaultSessionHopCounter;
   const wallclockMs = options.wallclockMs ?? PER_CALL_WALLCLOCK_MS;
+  // Resolve the session store once at startup so every per-request McpServer
+  // shares one backend (the in-memory store is process-local — run a single
+  // instance). Tests that override `options.buildServer` bypass this path.
+  const sessionStore = options.buildServer ? undefined : await getDefaultSessionStore();
   const factory =
-    options.buildServer ?? ((instrumentation: (obs: ToolCallObservation) => void) => buildServer({ instrumentation }));
+    options.buildServer ??
+    ((instrumentation: (obs: ToolCallObservation) => void, mcpSessionId: string | undefined) =>
+      buildServer({ instrumentation, sessionStore, mcpSessionId }));
 
   const state = { inFlight: 0 };
 
@@ -298,13 +184,19 @@ async function handleRequest(
   log: (entry: AccessLogEntry) => void,
   sessionHopCounter: SessionHopCounter,
   wallclockMs: number,
-  factory: (instrumentation: (obs: ToolCallObservation) => void) => McpServer
+  factory: (instrumentation: (obs: ToolCallObservation) => void, mcpSessionId: string | undefined) => McpServer
 ): Promise<void> {
   const start = Date.now();
   const remote = req.socket.remoteAddress ?? 'unknown';
   const method = req.method ?? 'GET';
   const reqPath = parsePath(req.url);
   const sessionId = readSessionId(req);
+  // Log-side and hop-counter-side correlator. We hash once at request
+  // entry so all per-request bookkeeping shares the same opaque key —
+  // the raw `sessionId` flows on to `factory(...)` for pin enforcement
+  // (`lib/session-pin.ts`) where the verbatim value is needed; nothing
+  // observability-facing sees it.
+  const sessionIdHash = sessionId !== undefined ? mcpSessionIdLogHash(sessionId) : undefined;
   let bytesIn = 0;
   let bytesOut = 0;
   let rpc: RpcInfo = {};
@@ -348,12 +240,14 @@ async function handleRequest(
       tokensOutEstimate: estimateTokens(bytesOut),
       outcome,
       ...rpc,
-      ...(sessionId !== undefined ? { sessionId } : {}),
+      ...(sessionIdHash !== undefined ? { sessionIdHash } : {}),
       ...(sessionHopCount !== undefined ? { sessionHopCount } : {}),
       ...(observation?.artifactBytesIn !== undefined ? { artifactBytesIn: observation.artifactBytesIn } : {}),
       ...(observation?.artifactBytesOut !== undefined ? { artifactBytesOut: observation.artifactBytesOut } : {}),
       ...(observation ? { toolError: observation.isError } : {}),
       ...(observation?.toolStatus !== undefined ? { toolStatus: observation.toolStatus } : {}),
+      // sessionTokenPrefix / sessionTokenHash flow through via `...rpc`
+      // above when the tools/call args carry a sessionToken.
     });
   };
 
@@ -396,8 +290,12 @@ async function handleRequest(
       body = read.body;
       bytesIn = read.bytes;
       rpc = extractRpcInfo(body);
-      if (rpc.rpcMethod === 'tools/call' && sessionId !== undefined) {
-        sessionHopCount = sessionHopCounter.bump(sessionId);
+      if (rpc.rpcMethod === 'tools/call' && sessionIdHash !== undefined) {
+        // Key the hop counter by the hash, not the raw header. The
+        // counter is purely observability state and never needs the
+        // verbatim value, so the same confidentiality reasoning that
+        // gates `sessionIdHash` in the access log applies here too.
+        sessionHopCount = sessionHopCounter.bump(sessionIdHash);
       }
     } catch (err) {
       if (err instanceof RequestTooLarge) {
@@ -418,7 +316,7 @@ async function handleRequest(
     // undefined and the log line elides the tool fields.
     const mcp = factory((obs) => {
       observation = obs;
-    });
+    }, sessionId);
     const transport = new StreamableHTTPServerTransport({});
 
     let timedOut = false;

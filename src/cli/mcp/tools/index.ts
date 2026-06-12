@@ -10,6 +10,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import type { AuthoringSessionStore } from '../lib/session-store';
 import { registerArtifactTools } from './artifact-tools';
 import { registerAuthoringStart } from './authoring-start';
 import { registerFinalizeTool } from './finalize';
@@ -18,13 +19,30 @@ import { registerInspectionTools } from './inspection-tools';
 import { registerMutationTools } from './mutation-tools';
 import { registerRepositoryTools } from './repository-tools';
 import { registerSchemaTools } from './schema-tools';
+import { registerSessionReadTools } from './session-read-tools';
 
-export function registerAuthoringTools(server: McpServer): void {
+export interface RegisterAuthoringToolsOptions {
+  /**
+   * Session store used by the session-mode branch of every mutation /
+   * inspection / read tool. Stateless `{artifact}` mode does not consult
+   * the store; tools that only support artifact mode ignore this option.
+   */
+  sessionStore: AuthoringSessionStore;
+  /**
+   * Transport-layer Mcp-Session-Id header value for this request (HTTP only).
+   * Threaded through to session-mode tools so they can bind the pin on mint
+   * and check it on subsequent calls. See `lib/session-pin.ts`.
+   */
+  mcpSessionId?: string;
+}
+
+export function registerAuthoringTools(server: McpServer, options: RegisterAuthoringToolsOptions): void {
   registerAuthoringStart(server);
   registerHelpTool(server);
-  registerArtifactTools(server);
-  registerMutationTools(server);
-  registerInspectionTools(server);
+  registerArtifactTools(server, options);
+  registerMutationTools(server, options);
+  registerInspectionTools(server, options);
+  registerSessionReadTools(server, options);
   registerFinalizeTool(server);
   registerRepositoryTools(server);
   registerSchemaTools(server);
