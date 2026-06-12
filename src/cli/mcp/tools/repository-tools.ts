@@ -25,10 +25,9 @@ import {
   type RepositoryClientError,
   type RepositoryPackage,
 } from '../lib/repository-client';
+import { PLUGIN_VIEWER_BASE } from '../lib/constants';
 import { readOnly } from './annotations';
 import { textResult } from './result';
-
-const PLUGIN_VIEWER_BASE = '/a/grafana-pathfinder-app';
 
 export function registerRepositoryTools(server: McpServer): void {
   registerListPackages(server);
