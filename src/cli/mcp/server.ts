@@ -7,7 +7,7 @@
  *
  * Tools accept two input modes: a stateless `{artifact}` passed in by the
  * client, or a `{sessionToken}` addressing a server-side session held in the
- * injected `SessionStore` (see AUTHORING-SESSION-ARTIFACTS.md). Schema
+ * injected `AuthoringSessionStore` (see AUTHORING-SESSION-ARTIFACTS.md). Schema
  * validation is delegated to the CLI `runX` functions; this layer never
  * imports a Zod schema for a guide block.
  */
@@ -15,7 +15,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { CURRENT_SCHEMA_VERSION } from '../../types/json-guide.schema';
-import { InMemorySessionStore, type SessionStore } from './lib/session-store';
+import { InMemorySessionStore, type AuthoringSessionStore } from './lib/session-store';
 import { SERVER_INSTRUCTIONS } from './lib/server-instructions';
 import { registerAuthoringTools } from './tools';
 import { instrumentServer, type ToolCallInstrumentation } from './transports/instrumentation';
@@ -40,7 +40,7 @@ export interface BuildServerOptions {
    * request handler shares one backend. Tests pass a dedicated store for
    * isolation.
    */
-  sessionStore?: SessionStore;
+  sessionStore?: AuthoringSessionStore;
   /**
    * Transport-layer `Mcp-Session-Id` header value for the current request.
    * HTTP transport extracts and threads it per request; stdio omits it (the

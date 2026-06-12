@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { runInspect } from '../../commands/inspect';
 import { runValidate } from '../../commands/validate';
 import { buildArtifactSummary } from '../../utils/package-io';
-import type { SessionStore } from '../lib/session-store';
+import type { AuthoringSessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveReadOnlyInput } from './read-input';
 import { outcomeResult } from './result';
@@ -35,7 +35,7 @@ const SessionTokenSchema = SessionTokenBase.describe(
 
 export function registerInspectionTools(
   server: McpServer,
-  options: { sessionStore: SessionStore; mcpSessionId?: string }
+  options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
 ): void {
   const { sessionStore, mcpSessionId } = options;
 
