@@ -50,7 +50,7 @@
   "author": "Grafanalabs",
   "license": "AGPL-3.0",
   "devDependencies": {
-    "@grafana/eslint-config": "^9.0.0",
+    "@grafana/eslint-config": "^10.0.0",
     "@grafana/faro-webpack-plugin": "^0.11.1",
     "@grafana/plugin-e2e": "^3.8.0",
     "@grafana/tsconfig": "^2.1.0",
