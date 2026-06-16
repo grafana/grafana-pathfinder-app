@@ -20,3 +20,12 @@ export { useContextPanel } from './context.hook';
 
 // Re-export initialization functions
 export { initializeContextServices, onPluginStart } from './context.init';
+
+// Re-export the context event bus
+export {
+  getDetectedDatasourceType,
+  getDetectedVisualizationType,
+  onContextChange,
+  initializeEchoLogging,
+  initializeFromRecentEvents,
+} from './context-event-bus';

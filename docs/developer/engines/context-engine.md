@@ -10,8 +10,8 @@ The Context Engine (`src/context-engine/`) analyzes the user's current Grafana s
 
 **Constraints**:
 
-- Debouncing is handled at the hook level (`useContextPanel`), not the service level, to provide a single unified control point for all refresh triggers (from code comment in `context.service.ts`: "Debouncing removed from service level — now handled at hook level for unified control")
-- State that must persist across React component lifecycles (event buffer, EchoSrv initialization flag, detected types) uses static class properties on `ContextService` (from `context.service.ts` implementation)
+- Debouncing is handled at the hook level (`useContextPanel`), not the service level, to provide a single unified control point for all refresh triggers
+- State that must persist across React component lifecycles (event buffer, EchoSrv initialization flag, inferred datasource/visualization types, change listeners) lives as module-scoped state in `context-event-bus.ts` — `ContextService` itself is intentionally stateless for these concerns, owning only the external-recommender error cache
 - External recommender communication requires HTTPS and domain allowlist validation; dev mode is the only exception (from Security Measures section below)
 - User identifiers are always hashed (SHA-256 for Cloud, generic placeholders for OSS) — no PII leaves the plugin (from Privacy Protection section below)
 
@@ -37,10 +37,12 @@ The Context Engine monitors user activity in Grafana by tracking location change
 
 ### Core Components
 
-- **`context.service.ts`** - Main service for context data collection, tag generation, and recommendation fetching
+- **`context.service.ts`** - Orchestrator for context data collection, tag generation, and recommendation fetching
+- **`context-event-bus.ts`** - Module-singleton owning the EchoSrv subscription, inferred datasource/visualization state, and change-listener set
 - **`context.hook.ts`** - React hook providing context state management and debouncing
-- **`context.init.ts`** - Plugin lifecycle initialization for EchoSrv event logging
+- **`context.init.ts`** - Plugin lifecycle initialization for the event bus
 - **`index.ts`** - Public API exports for the context engine
+- **`context-event-bus.test.ts`** - Unit tests for the event bus (idempotent backend registration, event routing, listener wiring, buffer replay)
 - **`context-security.test.ts`** - Security test suite (URL validation, sanitization, fallback behavior)
 - **`context.service.completion.test.ts`** - Completion percentage storage selection tests (verifies learning paths use journeyCompletionStorage, interactives use interactiveCompletionStorage)
 
@@ -70,12 +72,25 @@ The Context Engine monitors user activity in Grafana by tracking location change
 - `fetchDataSources()` - Fetches all configured datasources via `/api/datasources`
 - `fetchPlugins()` - Fetches all installed plugins via `/api/plugins` (used by requirements manager for `has-plugin:` checks)
 - `fetchDashboardsByName(name)` - Searches dashboards by title via `/api/search` (used by requirements manager for `has-dashboard-named:` and `dashboard-exists` checks)
-- `onContextChange(listener)` - Subscribes to context changes; returns unsubscribe function (used by `SequentialRequirementsManager` for reactive rechecking)
-- `initializeFromRecentEvents()` - Restores datasource/visualization state from event buffer on plugin startup
-- `initializeEchoLogging()` - Registers EchoSrv backend for analytics event capture
+- `getLastRecommenderError()` - Returns last external recommender error state (type, timestamp, message) for debugging
+
+The EchoSrv subscription, inferred datasource/visualization values, and change-listener subscription API used to live as static methods on `ContextService`. They were extracted into `context-event-bus.ts` (see below) and are now imported directly by consumers.
+
+### `context-event-bus`
+
+**Location**: `src/context-engine/context-event-bus.ts`
+
+**Purpose**: Owns the EchoSrv subscription that watches Grafana's user-interaction stream for "what's the user currently working with?" signals (datasource selection, panel/visualization picker, query execution) and exposes the inferred values plus a change-listener API. Module-scoped state ensures the EchoSrv backend is registered exactly once per page load and every caller (UI hook, requirements checker, assistant tool) observes the same values.
+
+**Exported Functions**:
+
+- `onContextChange(listener)` - Subscribes to context changes; returns unsubscribe function (used by `SequentialRequirementsManager` for reactive rechecking and `useContextPanel` for refresh on datasource/viz changes)
+- `initializeFromRecentEvents()` - Restores datasource/visualization state from the event buffer on plugin startup
+- `initializeEchoLogging()` - Registers EchoSrv backend for analytics event capture; idempotent so it can be called from both `onPluginStart` and the lazy fallback in `ContextService.getContextData()`
 - `getDetectedDatasourceType()` - Returns the current EchoSrv-detected datasource type
 - `getDetectedVisualizationType()` - Returns the current EchoSrv-detected visualization type
-- `getLastRecommenderError()` - Returns last external recommender error state (type, timestamp, message) for debugging
+
+**Test-only helpers** (exported with `__` prefix; not re-exported through `index.ts`): `__resetContextEventBusForTests`, `__clearCurrentValuesForTests`, `__notifyContextChangeForTests`.
 
 **Context Data Collected**:
 
@@ -226,7 +241,7 @@ The service maintains an in-memory event buffer to preserve context across plugi
 - Missed events during plugin downtime - recovers from recent events
 - Initialization on plugin startup - calls `initializeFromRecentEvents()` to restore state
 
-**Implementation**: Static properties on `ContextService` class maintain state across React component lifecycles.
+**Implementation**: Module-scoped state in `context-event-bus.ts` persists across React component lifecycles. The bus is a module-singleton — there is no per-instance state.
 
 ## Integration Points
 
@@ -250,8 +265,9 @@ The Context Engine integrates with multiple systems:
 
 **Initialization**:
 
-- Called via `onPluginStart()` in `App.tsx` during plugin mount
-- Registers EchoSrv backend immediately to capture events even when plugin UI is closed
+- `onPluginStart()` in `App.tsx` calls `initializeContextServices()` during plugin mount
+- `initializeContextServices()` invokes the event bus's `initializeEchoLogging()` (registers the EchoSrv backend) and `initializeFromRecentEvents()` (replays buffered context)
+- Registering the EchoSrv backend immediately ensures events are captured even when the plugin UI is closed
 
 ## Security Measures
 
@@ -388,9 +404,11 @@ Configuration is managed through plugin settings (`DocsPluginConfig`):
 
 **Core Implementation**:
 
-- `src/context-engine/context.service.ts` - Main service class with all context logic
+- `src/context-engine/context.service.ts` - Orchestrator class with recommendation, tag generation, and context-data collection logic
+- `src/context-engine/context-event-bus.ts` - Module-singleton owning EchoSrv subscription and inferred datasource/visualization state
 - `src/context-engine/context.hook.ts` - React hook for UI integration
 - `src/context-engine/context.init.ts` - Plugin lifecycle initialization
+- `src/context-engine/context-event-bus.test.ts` - Event bus unit tests
 - `src/context-engine/context-security.test.ts` - Security test suite
 - `src/context-engine/context.service.completion.test.ts` - Completion storage selection tests
 - `src/types/context.types.ts` - TypeScript type definitions

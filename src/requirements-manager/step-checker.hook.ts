@@ -895,11 +895,11 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       }
     };
 
-    import('../context-engine').then(({ ContextService }) => {
+    import('../context-engine').then(({ onContextChange }) => {
       if (!isSubscribed) {
         return; // Component unmounted or state changed before import resolved
       }
-      contextUnsubscribe = ContextService.onContextChange(() => triggerRecheckIfBlocked());
+      contextUnsubscribe = onContextChange(() => triggerRecheckIfBlocked());
     });
 
     // Also subscribe to URL changes (navigation) since EchoSrv doesn't capture menu clicks
