@@ -4,20 +4,26 @@
  *
  * Sibling of `pickGrafanaDocsOpenAction`: that one handles public Grafana docs
  * URLs (directly browser-openable); this one handles the complementary case —
- * custom/private guides on the internal `backend-guide:` / `api:` schemes,
- * which are not addressable HTTP resources. The URL is a same-origin (so
- * authenticated) root link carrying `?doc=&readonly=1`; on the new tab,
- * `module.tsx` mounts a full-screen read-only overlay over Grafana instead of
- * opening the sidebar.
+ * interactive guides with no public doc page: custom/private guides on the
+ * internal `backend-guide:` / `api:` schemes, and interactive-learning packages.
+ * The URL is a same-origin (so authenticated) root link carrying
+ * `?doc=&readonly=1`; on the new tab, `module.tsx` mounts a full-screen
+ * read-only overlay over Grafana instead of opening the sidebar.
  */
+
+import { isInteractiveLearningUrl } from '../../../security';
 
 export interface ReadonlyTabOpenAction {
   shouldShow: boolean;
   readonlyUrl?: string;
 }
 
+function hasNoPublicDoc(url: string): boolean {
+  return url.startsWith('backend-guide:') || url.startsWith('api:') || isInteractiveLearningUrl(url);
+}
+
 export function pickReadonlyTabOpenAction(url: string | undefined): ReadonlyTabOpenAction {
-  if (!url || (!url.startsWith('backend-guide:') && !url.startsWith('api:'))) {
+  if (!url || !hasNoPublicDoc(url)) {
     return { shouldShow: false };
   }
   const params = new URLSearchParams();
