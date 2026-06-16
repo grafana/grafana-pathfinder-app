@@ -1,6 +1,7 @@
 import {
   checkRequirements,
   checkPostconditions,
+  CHECK_HANDLERS,
   RequirementsCheckOptions,
   validateInteractiveRequirements,
 } from './requirements-checker.utils';
@@ -1023,5 +1024,52 @@ describe('requirements-checker.utils', () => {
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('[InteractiveMultiStep]'));
     });
+  });
+});
+
+describe('CHECK_HANDLERS routing parity', () => {
+  // [token, expected handler id] — one exact token or prefix-instance per handler.
+  const ROUTING: Array<[string, string]> = [
+    ['exists-reftarget', 'exists-reftarget'],
+    ['navmenu-open', 'navmenu-open'],
+    ['has-datasources', 'has-datasources'],
+    ['is-admin', 'is-admin'],
+    ['is-logged-in', 'is-logged-in'],
+    ['is-editor', 'is-editor'],
+    ['has-permission:datasources.read', 'has-permission:'],
+    ['has-role:Admin', 'has-role:'],
+    ['has-datasource:prometheus', 'has-datasource:'],
+    ['datasource-configured:prometheus', 'datasource-configured:'],
+    ['has-plugin:my-app', 'has-plugin:'],
+    ['plugin-enabled:my-app', 'plugin-enabled:'],
+    ['has-dashboard-named:My Dashboard', 'has-dashboard-named:'],
+    ['dashboard-exists', 'dashboard-exists'],
+    ['on-page:/explore', 'on-page:'],
+    ['has-feature:my-toggle', 'has-feature:'],
+    ['in-environment:cloud', 'in-environment:'],
+    ['min-version:10.0.0', 'min-version:'],
+    ['section-completed:setup', 'section-completed:'],
+    ['form-valid', 'form-valid'],
+    ['is-terminal-active', 'is-terminal-active'],
+    ['coda-exit-zero:echo hi', 'coda-exit-zero:'],
+    ['var-policyAccepted:true', 'var-'],
+    ['renderer:pathfinder', 'renderer:'],
+  ];
+
+  it.each(ROUTING)('routes %s to handler %s', (token, expectedId) => {
+    expect(CHECK_HANDLERS.find((h) => h.match(token))?.id).toBe(expectedId);
+  });
+
+  it('parity table covers every handler exactly once (stays exhaustive as handlers change)', () => {
+    expect(new Set(ROUTING.map(([, id]) => id))).toEqual(new Set(CHECK_HANDLERS.map((h) => h.id)));
+  });
+
+  it('has no duplicate handler ids', () => {
+    const ids = CHECK_HANDLERS.map((h) => h.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('matches no handler for an unknown token (fallback path)', () => {
+    expect(CHECK_HANDLERS.find((h) => h.match('not-a-real-check'))).toBeUndefined();
   });
 });

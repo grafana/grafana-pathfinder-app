@@ -79,6 +79,7 @@ export interface UseStepCheckerReturn {
   canFixRequirement?: boolean; // Whether the requirement can be automatically fixed
   canSkip?: boolean; // Whether this step can be skipped
   fixType?: string; // Type of fix available (e.g., 'lazy-scroll', 'navigation', 'location')
+  requiresDomElement?: boolean; // failure is a missing DOM element; gates the AI "Fix this" variant
 
   // Actions
   checkStep: () => Promise<void>;

@@ -26,8 +26,6 @@ interface UseLinkClickHandlerProps {
   theme: GrafanaTheme2;
   model: {
     loadTab: (tabId: string, url: string) => Promise<void>;
-    /** @deprecated Internal; routed via `loadTab`. Retained for older callers. */
-    loadTabContent: (tabId: string, url: string) => void;
     openLearningJourney: (url: string, title: string, options?: OpenLearningJourneyOptions) => void;
     openDocsPage?: (url: string, title: string, options?: OpenDocsOptions) => void;
     getActiveTab: () => LearningJourneyTab | null;

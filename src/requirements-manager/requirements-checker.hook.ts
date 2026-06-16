@@ -1,3 +1,4 @@
+import { StorageEvents } from '../lib/event-names';
 import { TimeoutManager } from '../utils/timeout-manager';
 
 /**
@@ -448,10 +449,10 @@ export class SequentialRequirementsManager {
       );
     };
 
-    window.addEventListener('guide-response-changed', handleResponseChange);
+    window.addEventListener(StorageEvents.GuideResponseChanged, handleResponseChange);
 
     this.guideResponseUnlisten = () => {
-      window.removeEventListener('guide-response-changed', handleResponseChange);
+      window.removeEventListener(StorageEvents.GuideResponseChanged, handleResponseChange);
     };
   }
 

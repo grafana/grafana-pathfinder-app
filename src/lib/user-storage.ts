@@ -42,6 +42,8 @@ import { z } from 'zod';
 
 import type { LearningProgress, EarnedBadgeRecord } from '../types/learning-paths.types';
 import { reportAppInteraction, UserInteraction } from './analytics';
+import { StorageEvents } from './event-names';
+import { createBoundedRecordStorage } from './storage/bounded-record-storage';
 import { StorageKeys } from './storage-keys';
 
 // ============================================================================
@@ -181,7 +183,7 @@ let hasWarnedAboutQuota = false;
  * Wrapped in try/catch because `getAppEvents()` can throw in environments
  * where `@grafana/runtime` isn't fully initialized (notably some tests).
  */
-function warnQuotaExceededOnce(): void {
+export function warnQuotaExceededOnce(): void {
   if (hasWarnedAboutQuota) {
     return;
   }
@@ -214,10 +216,10 @@ export function __resetQuotaWarningForTests(): void {
 // TYPE DEFINITIONS
 // ============================================================================
 
-import type { UserStorage, StorageBackend } from '../types/storage.types';
+import type { UserStorage, StorageBackend, GrafanaUserStorage } from '../types/storage.types';
 
 // Re-export for backward compatibility with existing imports
-export type { UserStorage, StorageBackend };
+export type { UserStorage, StorageBackend, GrafanaUserStorage };
 
 // ============================================================================
 // STORAGE IMPLEMENTATION
@@ -252,7 +254,7 @@ export function setGlobalStorage(storage: UserStorage): void {
  *
  * @returns UserStorage - Storage interface with async operations
  */
-function createUserStorage(): UserStorage {
+export function createUserStorage(): UserStorage {
   return globalStorageInstance || createLocalStorage();
 }
 
@@ -336,7 +338,7 @@ function createLocalStorage(): UserStorage {
  * 3. Reads come from localStorage (fast, always available)
  * 4. On init, sync from Grafana storage to localStorage (Grafana is source of truth)
  */
-function createHybridStorage(grafanaStorage: any): UserStorage {
+function createHybridStorage(grafanaStorage: GrafanaUserStorage): UserStorage {
   const localStorage = createLocalStorage();
 
   // Queue for async writes to Grafana storage.
@@ -473,7 +475,7 @@ let hasSynced = false;
  * from both Grafana storage and localStorage.
  */
 async function readGrafanaKeyWithMigration(
-  grafanaStorage: any,
+  grafanaStorage: GrafanaUserStorage,
   key: string
 ): Promise<{ value: string | null; timestamp: number; migrated: boolean }> {
   const rawValue = await grafanaStorage.getItem(key);
@@ -535,7 +537,7 @@ async function readGrafanaKeyWithMigration(
  * - If a deletion timestamp is newer than existing data, the deletion is applied
  * - This ensures deletions propagate correctly across devices/sessions
  */
-async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
+async function syncFromGrafanaStorage(grafanaStorage: GrafanaUserStorage): Promise<void> {
   // Guard: only sync once per page lifecycle
   if (hasSynced) {
     return;
@@ -725,104 +727,16 @@ export function useUserStorage(): UserStorage {
 // ============================================================================
 
 /**
- * Journey completion storage operations
+ * Journey completion storage operations.
  *
- * These functions manage learning journey progress with built-in cleanup
- * to prevent storage quota exhaustion.
+ * Manages learning journey progress with built-in cleanup to prevent storage
+ * quota exhaustion. Backed by `createBoundedRecordStorage`.
  */
-export const journeyCompletionStorage = {
-  /**
-   * Gets the completion percentage for a learning journey
-   */
-  async get(journeyBaseUrl: string): Promise<number> {
-    try {
-      const storage = createUserStorage();
-      const completionData = await storage.getItem<Record<string, number>>(StorageKeys.JOURNEY_COMPLETION);
-      return completionData?.[journeyBaseUrl] || 0;
-    } catch {
-      return 0;
-    }
-  },
-
-  /**
-   * Sets the completion percentage for a learning journey
-   *
-   * SECURITY: Automatically cleans up old completions to prevent quota exhaustion
-   */
-  async set(journeyBaseUrl: string, percentage: number): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.JOURNEY_COMPLETION)) || {};
-
-      // Clamp percentage between 0 and 100
-      completionData[journeyBaseUrl] = Math.max(0, Math.min(100, percentage));
-
-      // SECURITY: Cleanup old completions if too many
-      const entries = Object.entries(completionData);
-      if (entries.length > LIMITS.MAX_JOURNEY_COMPLETIONS) {
-        const reduced = Object.fromEntries(entries.slice(-LIMITS.MAX_JOURNEY_COMPLETIONS));
-        await storage.setItem(StorageKeys.JOURNEY_COMPLETION, reduced);
-      } else {
-        await storage.setItem(StorageKeys.JOURNEY_COMPLETION, completionData);
-      }
-    } catch (error) {
-      // SECURITY: Handle QuotaExceededError gracefully
-      if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('Storage quota exceeded, clearing old journey data');
-        warnQuotaExceededOnce();
-        await journeyCompletionStorage.cleanup();
-        // Retry after cleanup
-        await journeyCompletionStorage.set(journeyBaseUrl, percentage);
-      } else {
-        console.warn('Failed to save journey completion percentage:', error);
-      }
-    }
-  },
-
-  /**
-   * Clears the completion data for a specific journey
-   */
-  async clear(journeyBaseUrl: string): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.JOURNEY_COMPLETION)) || {};
-      delete completionData[journeyBaseUrl];
-      await storage.setItem(StorageKeys.JOURNEY_COMPLETION, completionData);
-    } catch (error) {
-      console.warn('Failed to clear journey completion:', error);
-    }
-  },
-
-  /**
-   * Gets all journey completions
-   */
-  async getAll(): Promise<Record<string, number>> {
-    try {
-      const storage = createUserStorage();
-      return (await storage.getItem<Record<string, number>>(StorageKeys.JOURNEY_COMPLETION)) || {};
-    } catch {
-      return {};
-    }
-  },
-
-  /**
-   * Cleans up old completions to prevent quota exhaustion
-   */
-  async cleanup(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.JOURNEY_COMPLETION)) || {};
-      const entries = Object.entries(completionData);
-
-      if (entries.length > LIMITS.MAX_JOURNEY_COMPLETIONS) {
-        const reduced = Object.fromEntries(entries.slice(-LIMITS.MAX_JOURNEY_COMPLETIONS));
-        await storage.setItem(StorageKeys.JOURNEY_COMPLETION, reduced);
-      }
-    } catch (error) {
-      console.warn('Failed to cleanup journey completions:', error);
-    }
-  },
-};
+export const journeyCompletionStorage = createBoundedRecordStorage({
+  storageKey: StorageKeys.JOURNEY_COMPLETION,
+  limit: LIMITS.MAX_JOURNEY_COMPLETIONS,
+  label: 'journey completion',
+});
 
 /**
  * Milestone completion storage operations
@@ -873,117 +787,16 @@ export const milestoneCompletionStorage = {
 };
 
 /**
- * Interactive guide completion storage operations
+ * Interactive guide completion storage operations.
  *
  * Stores completion percentage for interactive guides (bundled and external).
- * Similar to journeyCompletionStorage but for step-based interactive content.
+ * Same shape as `journeyCompletionStorage`, scoped to a different storage key.
  */
-export const interactiveCompletionStorage = {
-  /**
-   * Gets the completion percentage for an interactive guide
-   */
-  async get(contentKey: string): Promise<number> {
-    try {
-      const storage = createUserStorage();
-      const completionData = await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION);
-      return completionData?.[contentKey] || 0;
-    } catch {
-      return 0;
-    }
-  },
-
-  /**
-   * Sets the completion percentage for an interactive guide
-   *
-   * SECURITY: Automatically cleans up old completions to prevent quota exhaustion
-   */
-  async set(contentKey: string, percentage: number): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION)) || {};
-
-      // Clamp percentage between 0 and 100
-      completionData[contentKey] = Math.max(0, Math.min(100, percentage));
-
-      // SECURITY: Cleanup old completions if too many
-      const entries = Object.entries(completionData);
-      if (entries.length > LIMITS.MAX_INTERACTIVE_COMPLETIONS) {
-        const reduced = Object.fromEntries(entries.slice(-LIMITS.MAX_INTERACTIVE_COMPLETIONS));
-        await storage.setItem(StorageKeys.INTERACTIVE_COMPLETION, reduced);
-      } else {
-        await storage.setItem(StorageKeys.INTERACTIVE_COMPLETION, completionData);
-      }
-    } catch (error) {
-      // SECURITY: Handle QuotaExceededError gracefully
-      if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('Storage quota exceeded, clearing old interactive completion data');
-        warnQuotaExceededOnce();
-        await interactiveCompletionStorage.cleanup();
-        // Retry after cleanup
-        await interactiveCompletionStorage.set(contentKey, percentage);
-      } else {
-        console.warn('Failed to save interactive completion percentage:', error);
-      }
-    }
-  },
-
-  /**
-   * Clears the completion data for a specific interactive guide
-   */
-  async clear(contentKey: string): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION)) || {};
-      delete completionData[contentKey];
-      await storage.setItem(StorageKeys.INTERACTIVE_COMPLETION, completionData);
-    } catch (error) {
-      console.warn('Failed to clear interactive completion:', error);
-    }
-  },
-
-  /**
-   * Gets all interactive guide completions
-   */
-  async getAll(): Promise<Record<string, number>> {
-    try {
-      const storage = createUserStorage();
-      return (await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION)) || {};
-    } catch {
-      return {};
-    }
-  },
-
-  /**
-   * Cleans up old completions to prevent quota exhaustion
-   */
-  async cleanup(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.INTERACTIVE_COMPLETION)) || {};
-      const entries = Object.entries(completionData);
-
-      if (entries.length > LIMITS.MAX_INTERACTIVE_COMPLETIONS) {
-        const reduced = Object.fromEntries(entries.slice(-LIMITS.MAX_INTERACTIVE_COMPLETIONS));
-        await storage.setItem(StorageKeys.INTERACTIVE_COMPLETION, reduced);
-      }
-    } catch (error) {
-      console.warn('Failed to cleanup interactive completions:', error);
-    }
-  },
-
-  /**
-   * Clears ALL interactive completion data.
-   * Used by the "Reset progress" action to wipe completion percentages for every guide.
-   */
-  async clearAll(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      await storage.removeItem(StorageKeys.INTERACTIVE_COMPLETION);
-    } catch (error) {
-      console.warn('Failed to clear all interactive completions:', error);
-    }
-  },
-};
+export const interactiveCompletionStorage = createBoundedRecordStorage({
+  storageKey: StorageKeys.INTERACTIVE_COMPLETION,
+  limit: LIMITS.MAX_INTERACTIVE_COMPLETIONS,
+  label: 'interactive completion',
+});
 
 /**
  * Tab persistence storage operations
@@ -1721,7 +1534,7 @@ export const learningProgressStorage = {
         // Notify listeners that progress has changed
         // Only include badges awarded in THIS call, not all pending celebrations
         window.dispatchEvent(
-          new CustomEvent('learning-progress-updated', {
+          new CustomEvent(StorageEvents.LearningProgressUpdated, {
             detail: {
               type: 'guide-completed',
               guideId,
@@ -1735,7 +1548,7 @@ export const learningProgressStorage = {
       console.error('Failed to mark guide as completed:', error);
       // Still dispatch event so UI doesn't hang waiting for completion
       window.dispatchEvent(
-        new CustomEvent('learning-progress-updated', {
+        new CustomEvent(StorageEvents.LearningProgressUpdated, {
           detail: {
             type: 'guide-completed',
             guideId,
@@ -1833,7 +1646,7 @@ export const learningProgressStorage = {
 
       // Notify listeners that progress has changed
       window.dispatchEvent(
-        new CustomEvent('learning-progress-updated', {
+        new CustomEvent(StorageEvents.LearningProgressUpdated, {
           detail: { type: 'guides-removed', guideIds },
         })
       );
@@ -1852,7 +1665,7 @@ export const learningProgressStorage = {
 
       // Notify listeners that progress has been reset
       window.dispatchEvent(
-        new CustomEvent('learning-progress-updated', {
+        new CustomEvent(StorageEvents.LearningProgressUpdated, {
           detail: { type: 'reset' },
         })
       );
@@ -1947,7 +1760,7 @@ export const guideResponseStorage = {
 
       // Dispatch event to notify listeners (for requirements re-evaluation)
       window.dispatchEvent(
-        new CustomEvent('guide-response-changed', {
+        new CustomEvent(StorageEvents.GuideResponseChanged, {
           detail: { guideId, variableName, value },
         })
       );
@@ -1977,7 +1790,7 @@ export const guideResponseStorage = {
 
       // Dispatch event to notify listeners
       window.dispatchEvent(
-        new CustomEvent('guide-response-changed', {
+        new CustomEvent(StorageEvents.GuideResponseChanged, {
           detail: { guideId, variableName, value: undefined },
         })
       );
@@ -1999,7 +1812,7 @@ export const guideResponseStorage = {
 
       // Dispatch event to notify listeners
       window.dispatchEvent(
-        new CustomEvent('guide-response-changed', {
+        new CustomEvent(StorageEvents.GuideResponseChanged, {
           detail: { guideId, variableName: '*', value: undefined },
         })
       );
@@ -2017,7 +1830,7 @@ export const guideResponseStorage = {
       await storage.removeItem(StorageKeys.GUIDE_RESPONSES);
 
       window.dispatchEvent(
-        new CustomEvent('guide-response-changed', {
+        new CustomEvent(StorageEvents.GuideResponseChanged, {
           detail: { guideId: '*', variableName: '*', value: undefined },
         })
       );
@@ -2029,136 +1842,7 @@ export const guideResponseStorage = {
 
 // ============================================================================
 // EXPERIMENT AUTO-OPEN STORAGE
+// Re-exported from ./storage/experiment-auto-open-storage for backward compatibility.
 // ============================================================================
 
-/**
- * Data structure for experiment auto-open tracking
- *
- * - pagesAutoOpened: Array of page path patterns that have triggered auto-open (treatment variant)
- * - globalAutoOpened: Whether global auto-open has occurred (excluded variant)
- */
-export interface ExperimentAutoOpenState {
-  pagesAutoOpened: string[];
-  globalAutoOpened: boolean;
-}
-
-const DEFAULT_EXPERIMENT_STATE: ExperimentAutoOpenState = {
-  pagesAutoOpened: [],
-  globalAutoOpened: false,
-};
-
-/** Schema for experiment auto-open state validation */
-const ExperimentAutoOpenStateSchema = z.object({
-  pagesAutoOpened: z.array(z.string()),
-  globalAutoOpened: z.boolean(),
-});
-
-/**
- * Experiment auto-open storage operations
- *
- * Tracks whether the sidebar has been auto-opened for the experiment.
- * Persists across browsers via Grafana user storage (when available).
- *
- * This replaces sessionStorage-based tracking to ensure:
- * - State persists across browser sessions
- * - State syncs across devices (via Grafana user storage)
- * - State survives cookie/storage clears (if Grafana storage available)
- */
-export const experimentAutoOpenStorage = {
-  /**
-   * Gets the current experiment auto-open state with Zod validation
-   */
-  async get(): Promise<ExperimentAutoOpenState> {
-    try {
-      const storage = createUserStorage();
-      const stored = await storage.getItem<unknown>(StorageKeys.EXPERIMENT_AUTO_OPEN);
-
-      if (!stored) {
-        return DEFAULT_EXPERIMENT_STATE;
-      }
-
-      // Validate stored data against schema to protect against corruption
-      const parsed = ExperimentAutoOpenStateSchema.safeParse(stored);
-      if (parsed.success) {
-        return parsed.data;
-      }
-
-      console.warn('Experiment auto-open state validation failed, using defaults:', parsed.error.issues);
-      return DEFAULT_EXPERIMENT_STATE;
-    } catch {
-      return DEFAULT_EXPERIMENT_STATE;
-    }
-  },
-
-  /**
-   * Checks if a specific page pattern has been auto-opened (treatment variant)
-   */
-  async hasPageAutoOpened(pagePattern: string): Promise<boolean> {
-    const state = await experimentAutoOpenStorage.get();
-    return state.pagesAutoOpened.includes(pagePattern);
-  },
-
-  /**
-   * Marks a page pattern as auto-opened (treatment variant)
-   * Does not add duplicates
-   */
-  async markPageAutoOpened(pagePattern: string): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const state = await experimentAutoOpenStorage.get();
-
-      if (!state.pagesAutoOpened.includes(pagePattern)) {
-        state.pagesAutoOpened.push(pagePattern);
-        await storage.setItem(StorageKeys.EXPERIMENT_AUTO_OPEN, state);
-      }
-    } catch (error) {
-      console.warn('Failed to mark page as auto-opened:', error);
-    }
-  },
-
-  /**
-   * Checks if global auto-open has occurred (excluded variant)
-   */
-  async hasGlobalAutoOpened(): Promise<boolean> {
-    const state = await experimentAutoOpenStorage.get();
-    return state.globalAutoOpened;
-  },
-
-  /**
-   * Marks global auto-open as occurred (excluded variant)
-   */
-  async markGlobalAutoOpened(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const state = await experimentAutoOpenStorage.get();
-      state.globalAutoOpened = true;
-      await storage.setItem(StorageKeys.EXPERIMENT_AUTO_OPEN, state);
-    } catch (error) {
-      console.warn('Failed to mark global auto-open:', error);
-    }
-  },
-
-  /**
-   * Resets auto-open state (called when resetCache flag is toggled in GOFF)
-   */
-  async reset(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      await storage.setItem(StorageKeys.EXPERIMENT_AUTO_OPEN, DEFAULT_EXPERIMENT_STATE);
-    } catch (error) {
-      console.warn('Failed to reset experiment auto-open state:', error);
-    }
-  },
-
-  /**
-   * Clears all experiment auto-open state
-   */
-  async clear(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      await storage.removeItem(StorageKeys.EXPERIMENT_AUTO_OPEN);
-    } catch (error) {
-      console.warn('Failed to clear experiment auto-open state:', error);
-    }
-  },
-};
+export { experimentAutoOpenStorage, type ExperimentAutoOpenState } from './storage/experiment-auto-open-storage';

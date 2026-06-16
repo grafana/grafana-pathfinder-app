@@ -88,7 +88,7 @@ Imports flow **downward only** through these tiers. Cross-tier rules are enforce
 
 - **Tier 0 — Types & constants**: `types/`, `constants/`. Pure type definitions and configuration constants; no runtime behavior; safe to import from anywhere.
 - **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`. Auxiliary utilities, shared state, theme-aware styles, and validation helpers; importable by higher tiers.
-- **Tier 2 — Engines & hooks**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `hooks/`. Hold the business logic. Each engine exposes a barrel `index.ts`; consumers import only the public surface. Engines are laterally isolated — they cannot import from sibling Tier 2 engines.
+- **Tier 2 — Engines & hooks**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `snippet-engine/`, `hooks/`. Hold the business logic. Each engine exposes a barrel `index.ts`; consumers import only the public surface. Engines are laterally isolated — they cannot import from sibling Tier 2 engines.
 - **Tier 3 — Integrations**: `integrations/`. Optional integrations (assistant, coda, workshop). May import from Tiers 0–2.
 - **Tier 4 — UI**: `components/`, `pages/`. Compose engines and integrations into rendered surfaces.
 
@@ -121,6 +121,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 - `requirements-manager/` — Prereqs + postconditions for steps. Entry: `requirements-checker.hook.ts` (`useStepChecker`). State machine in `step-state.ts`. See `docs/developer/engines/requirements-manager.md`.
 - `learning-paths/` — Progress / badges / streaks / next-action. Entry: `learning-paths.hook.ts`. Badge definitions in `badges.ts`. See `docs/developer/learning-paths/README.md`.
 - `package-engine/` — Package resolution + loading. Entry: `composite-resolver.ts` (`createCompositeResolver`). Resolver chain: bundled → online CDN → recommender API.
+- `snippet-engine/` — Resolves `snippet-ref` blocks to their content. Entry: `caching-snippet-resolver.ts` (`getSnippetResolver`). Fetches from CDN at `<host>/guides/shared/snippets/<id>.json` (the `/guides/` prefix reflects the existing interactive-tutorials deploy convention); no bundled fallback. `inline-refs.ts` splices resolved snippets into a guide before parsing.
 - `hooks/` — Cross-cutting hooks: `useGuideProgressState`, `useAutoLaunchTutorial`, `useStepProgressFromEvents`.
 
 **Tier 3 — integrations:**

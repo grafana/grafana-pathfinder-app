@@ -52,25 +52,13 @@ export interface DocsPanelModelOperations {
   openDocsPage(url: string, title?: string, options?: OpenDocsOptions): Promise<string>;
 
   /**
-   * Unified tab loader. Dispatches to the right content pipeline based on
-   * the tab's shape (and the optional `packageInfo` input). Prefer this
-   * over the legacy `loadTabContent` / `loadDocsTabContent` pair.
+   * Unified tab loader. Dispatches to the docs/package pipeline or the guide
+   * pipeline based on the tab's shape and the optional `packageInfo` input.
    */
   loadTab(
     tabId: string,
     url: string,
     options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo }
-  ): Promise<void>;
-
-  /** @deprecated Internal implementation routed via `loadTab`. */
-  loadTabContent(tabId: string, url: string): Promise<void>;
-
-  /** @deprecated Internal implementation routed via `loadTab`. */
-  loadDocsTabContent(
-    tabId: string,
-    url: string,
-    skipReadyToBegin?: boolean,
-    packageInfo?: PackageOpenInfo
   ): Promise<void>;
 
   /** Close a tab by ID */

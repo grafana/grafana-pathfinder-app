@@ -24,7 +24,7 @@ export { shouldNumberSectionChild, wrapSectionChildrenForNumbering } from './sec
 // of 2). The other site that must be edited when adding a step type is
 // `section-child-classifier.ts` `INTERACTIVE_STEP_COMPONENT_TYPES`.
 // See .cursor/rules/tracked-step-types.mdc for the full checklist.
-const STEP_TYPE_LOOKUP: ReadonlyMap<React.ComponentType<any>, StepTypeSchema> = new Map<
+export const STEP_TYPE_LOOKUP: ReadonlyMap<React.ComponentType<any>, StepTypeSchema> = new Map<
   React.ComponentType<any>,
   StepTypeSchema
 >([

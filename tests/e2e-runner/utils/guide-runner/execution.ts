@@ -187,42 +187,39 @@ export async function checkObjectiveCompletion(page: Page, stepId: string): Prom
 }
 
 /**
- * Wait for completion with periodic polling for objective-based auto-completion (L3-3C).
+ * Wait for a step to complete after it has been interacted with.
  *
- * Polls the step element's data-test-step-state; when 'completed', returns.
- * Final fallback asserts step has data-test-step-state="completed" with a short timeout.
+ * Callers reach this only after the step was alive and acted on (its "Do it"
+ * button was clicked, or the guided loop was running). A detached step element
+ * therefore means the step completed and its section auto-collapsed — or
+ * navigation unmounted it. Either way, detachment is a completion signal.
+ *
+ * Otherwise it polls data-test-step-state until 'completed', then asserts
+ * completion so a genuinely stuck step fails with a clear error.
  *
  * @param page - Playwright Page object
  * @param stepId - The step identifier
  * @param timeout - Maximum time to wait (ms)
- * @returns Object indicating if completion was via objectives
+ * @returns Object indicating if completion was likely via objectives
  */
 export async function waitForCompletionWithObjectivePolling(
   page: Page,
   stepId: string,
-  timeout: number,
-  options?: { urlBeforeClick?: string }
+  timeout: number
 ): Promise<{ completedViaObjectives: boolean }> {
   const startTime = Date.now();
   const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
-  const urlBeforeClick = options?.urlBeforeClick;
 
   while (Date.now() - startTime < timeout) {
-    // If step element was detached (e.g. after formfill that changed URL), treat as completed
-    const count = await stepLocator.count();
-    if (count === 0 && urlBeforeClick != null) {
-      const currentUrl = page.url();
-      if (currentUrl !== urlBeforeClick) {
-        return { completedViaObjectives: false };
-      }
+    if ((await stepLocator.count()) === 0) {
+      return { completedViaObjectives: false };
     }
 
     let state: string | null = null;
     try {
       state = await stepLocator.getAttribute('data-test-step-state', { timeout: 2000 });
     } catch {
-      // Element may have detached (e.g. formfill closed overlay); check URL change
-      if (urlBeforeClick != null && page.url() !== urlBeforeClick) {
+      if ((await stepLocator.count()) === 0) {
         return { completedViaObjectives: false };
       }
     }
@@ -234,15 +231,6 @@ export async function waitForCompletionWithObjectivePolling(
     await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
   }
 
-  // Final check: step may have detached after URL change (e.g. formfill into command palette)
-  if (urlBeforeClick != null) {
-    const count = await stepLocator.count();
-    if (count === 0 && page.url() !== urlBeforeClick) {
-      return { completedViaObjectives: false };
-    }
-  }
-
-  // Final fallback: assert contract completion with short timeout
   await expect(stepLocator).toHaveAttribute('data-test-step-state', 'completed', { timeout: 1000 });
   return { completedViaObjectives: false };
 }
@@ -302,8 +290,22 @@ async function waitForSubstepAdvance(
   let lastIndex: string | null = null;
 
   while (Date.now() < deadline) {
-    lastState = await stepLocator.getAttribute('data-test-step-state');
-    lastIndex = await stepLocator.getAttribute('data-test-substep-index');
+    // Unmount mid-wait is a completion signal (section auto-collapse on final substep);
+    // a bare getAttribute on a detached locator blocks until the global test timeout.
+    if ((await stepLocator.count()) === 0) {
+      return;
+    }
+
+    try {
+      lastState = await stepLocator.getAttribute('data-test-step-state', { timeout: 2000 });
+      lastIndex = await stepLocator.getAttribute('data-test-substep-index', { timeout: 2000 });
+    } catch {
+      if ((await stepLocator.count()) === 0) {
+        return;
+      }
+      lastState = null;
+      lastIndex = null;
+    }
 
     if (lastState === 'error') {
       throw new Error('Guided step entered error state');
@@ -350,8 +352,22 @@ async function waitForFormfillSettle(
   const validDeadline = Date.now() + GUIDED_FORMFILL_VALID_TIMEOUT_MS;
   let invalidSince: number | null = null;
 
+  const readFormState = async (): Promise<string | null> => {
+    if ((await stepLocator.count()) === 0) {
+      return null;
+    }
+    try {
+      return await stepLocator.getAttribute('data-test-form-state', { timeout: 2000 });
+    } catch {
+      return null;
+    }
+  };
+
   while (Date.now() < validDeadline) {
-    const formState = await stepLocator.getAttribute('data-test-form-state');
+    if ((await stepLocator.count()) === 0) {
+      return;
+    }
+    const formState = await readFormState();
     if (formState === 'valid') {
       return;
     }
@@ -362,7 +378,7 @@ async function waitForFormfillSettle(
       if (Date.now() - invalidSince >= GUIDED_FORMFILL_INVALID_PERSIST_MS) {
         await target.fill(targetValue);
         await page.waitForTimeout(GUIDED_FORMFILL_DEBOUNCE_MS);
-        const afterRetry = await stepLocator.getAttribute('data-test-form-state');
+        const afterRetry = await readFormState();
         if (afterRetry === 'invalid') {
           throw new Error(
             `Guided step: formfill validation failed (data-test-form-state="invalid" persisted after retry with value "${targetValue}")`
@@ -394,7 +410,7 @@ async function runGuidedSubstepLoop(
     verbose?: boolean;
     artifactsDir?: string;
   }
-): Promise<void> {
+): Promise<{ completed: boolean }> {
   let stepLocator = options.stepLocator;
   const { perSubstepTimeoutMs, verbose = false, artifactsDir } = options;
   const guidedStepCount = step.guidedStepCount ?? 1;
@@ -405,10 +421,20 @@ async function runGuidedSubstepLoop(
     }
   };
 
+  // Step unmount mid-loop is a completion signal
+  const stepDetached = async (): Promise<boolean> => {
+    stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
+    return (await stepLocator.count()) === 0;
+  };
+
   while (true) {
+    if (await stepDetached()) {
+      return { completed: true };
+    }
+
     const state = await stepLocator.getAttribute('data-test-step-state');
     if (state === 'completed') {
-      break;
+      return { completed: true };
     }
     if (state === 'error') {
       await captureLoopArtifacts('error-state');
@@ -427,7 +453,7 @@ async function runGuidedSubstepLoop(
     const currentIndex = indexStr != null ? parseInt(indexStr, 10) : 0;
     const safeIndex = Number.isNaN(currentIndex) ? 0 : currentIndex;
     if (safeIndex >= guidedStepCount) {
-      break;
+      return { completed: false };
     }
 
     const commentBox = page.locator('.interactive-comment-box').first();
@@ -457,18 +483,8 @@ async function runGuidedSubstepLoop(
         await target.scrollIntoViewIfNeeded();
         await target.click();
         await page.waitForTimeout(100);
-        const urlAfter = page.url();
-        if (urlBefore !== urlAfter) {
+        if (urlBefore !== page.url()) {
           await page.waitForLoadState('domcontentloaded');
-          stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
-          const count = await stepLocator.count();
-          if (count === 0) {
-            break;
-          }
-          const newState = await stepLocator.getAttribute('data-test-step-state');
-          if (newState === 'completed') {
-            break;
-          }
         }
       } else if (action === 'hover') {
         if (!reftarget) {
@@ -492,6 +508,10 @@ async function runGuidedSubstepLoop(
     } catch (err) {
       await captureLoopArtifacts(`substep-${safeIndex}-${action}`);
       throw err;
+    }
+
+    if (await stepDetached()) {
+      return { completed: true };
     }
 
     await waitForSubstepAdvance(page, stepLocator, safeIndex, perSubstepTimeoutMs, { commentBox });
@@ -737,20 +757,14 @@ export async function executeStep(
 
     // Click "Do it" button
     const doItButton = page.getByTestId(testIds.interactive.doItButton(step.stepId));
-    const urlBeforeClick = page.url();
     await doItButton.click();
-    const urlAfterClick = page.url();
 
     if (verbose) {
       console.log(`   → Clicked "Do it" for step ${step.stepId}`);
     }
 
-    // L3-3C: Allow reactive system to settle after click
-    // Per design doc: debounced rechecks (500ms context, 1200ms DOM)
+    // Allow the reactive system to settle after click (debounced rechecks).
     await page.waitForTimeout(POST_CLICK_SETTLE_DELAY_MS);
-
-    // Re-read URL after settle so we detect async URL changes (e.g. formfill updating query params)
-    const urlAfterSettle = page.url();
 
     // Phase 3: Guided step — wait for executing, run substep loop, then wait for completion
     if (step.isGuided && step.guidedStepCount != null && step.guidedStepCount > 0) {
@@ -758,13 +772,15 @@ export async function executeStep(
       await expect(stepLocator).toHaveAttribute('data-test-step-state', 'executing', {
         timeout: GUIDED_WAIT_EXECUTING_MS,
       });
-      await runGuidedSubstepLoop(page, step, {
+      const { completed } = await runGuidedSubstepLoop(page, step, {
         stepLocator,
         perSubstepTimeoutMs: TIMEOUT_PER_GUIDED_SUBSTEP_MS,
         verbose,
         artifactsDir,
       });
-      await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
+      if (!completed) {
+        await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
+      }
 
       let guidedArtifacts: ArtifactPaths | undefined;
       if (artifactsDir && alwaysScreenshot) {
@@ -790,47 +806,10 @@ export async function executeStep(
       };
     }
 
-    // FIX: Handle case where navigation (or formfill-driven URL change) causes step element to unmount
-    // For highlight actions on nav links, clicking "Do it" navigates the page.
-    // For formfill (e.g. command palette), URL may update after settle; step can unmount before completion indicator.
-    // If URL changed AND step element no longer exists, the action succeeded - treat as passed.
-    const urlChanged = urlBeforeClick !== urlAfterSettle;
-    if (urlChanged) {
-      const stepElementExists = (await page.locator(`[data-testid="interactive-step-${step.stepId}"]`).count()) > 0;
-      if (!stepElementExists) {
-        if (verbose) {
-          console.log(`   ✓ Step ${step.stepId} completed via navigation (element unmounted)`);
-        }
-
-        // Capture success screenshot if alwaysScreenshot is enabled
-        let navSuccessArtifacts: ArtifactPaths | undefined;
-        if (artifactsDir && alwaysScreenshot) {
-          navSuccessArtifacts = await captureSuccessArtifacts(page, step.stepId, artifactsDir);
-          if (navSuccessArtifacts && preScreenshotPath) {
-            navSuccessArtifacts.screenshotPre = preScreenshotPath;
-          } else if (preScreenshotPath) {
-            navSuccessArtifacts = { screenshotPre: preScreenshotPath };
-          }
-        }
-
-        return {
-          stepId: step.stepId,
-          status: 'passed',
-          durationMs: Date.now() - startTime,
-          currentUrl: page.url(),
-          consoleErrors,
-          skippable: step.skippable,
-          artifacts: navSuccessArtifacts,
-        };
-      }
-    }
-
-    // L3-3C: Wait for step completion with objective polling
-    // This detects both manual completion and objective-based auto-completion.
-    // Pass urlBeforeClick so that if the step element detaches after a URL change (e.g. formfill), we treat as passed.
-    const { completedViaObjectives } = await waitForCompletionWithObjectivePolling(page, step.stepId, timeout, {
-      urlBeforeClick,
-    });
+    // Wait for step completion. A detached element here means the step
+    // completed (section auto-collapsed) or navigation unmounted it; otherwise
+    // poll data-test-step-state. Detects manual and objective-based completion.
+    const { completedViaObjectives } = await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
 
     if (verbose && completedViaObjectives) {
       console.log(`   ℹ Step ${step.stepId} completed quickly (possibly via objectives)`);

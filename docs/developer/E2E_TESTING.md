@@ -24,6 +24,9 @@ npx pathfinder-cli e2e --bundled
 
 # Test a specific bundled guide by name
 npx pathfinder-cli e2e bundled:welcome-to-grafana
+
+# Run against an isolated, clean-slate docker-compose stack (see below)
+npx pathfinder-cli e2e --bundled --clean
 ```
 
 ## CLI reference
@@ -34,16 +37,18 @@ npx pathfinder-cli e2e [options] [files...]
 
 ### Options
 
-| Option                | Description                                                  | Default                      |
-| --------------------- | ------------------------------------------------------------ | ---------------------------- |
-| `--grafana-url <url>` | Grafana instance URL                                         | `http://localhost:3000`      |
-| `--output <path>`     | Path for JSON report output                                  | None                         |
-| `--artifacts <dir>`   | Directory for failure artifacts (screenshots, DOM snapshots) | `/tmp/pathfinder-e2e-{uuid}` |
-| `--verbose`           | Enable detailed logging                                      | `false`                      |
-| `--bundled`           | Test all bundled guides                                      | `false`                      |
-| `--trace`             | Generate Playwright trace files for debugging                | `false`                      |
-| `--headed`            | Run browser visibly (not headless)                           | `false`                      |
-| `--always-screenshot` | Capture screenshots on success and failure                   | `false`                      |
+| Option                          | Description                                                                                                                                   | Default                      |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `--grafana-url <url>`           | Grafana instance URL. Auto-switches to `http://localhost:3010` when `--clean` is set and this flag is not passed.                             | `http://localhost:3000`      |
+| `--output <path>`               | Path for JSON report output                                                                                                                   | None                         |
+| `--artifacts <dir>`             | Directory for failure artifacts (screenshots, DOM snapshots)                                                                                  | `/tmp/pathfinder-e2e-{uuid}` |
+| `--verbose`                     | Enable detailed logging                                                                                                                       | `false`                      |
+| `--bundled`                     | Test all bundled guides                                                                                                                       | `false`                      |
+| `--trace`                       | Generate Playwright trace files for debugging                                                                                                 | `false`                      |
+| `--headed`                      | Run browser visibly (not headless)                                                                                                            | `false`                      |
+| `--always-screenshot`           | Capture screenshots on success and failure                                                                                                    | `false`                      |
+| `--clean`                       | Run against an isolated docker-compose stack (project `pathfinder-e2e`, Grafana on `:3010`). Resets between guides and tears down at the end. | `false`                      |
+| `--clean-ready-timeout-ms <ms>` | How long to wait for the isolated Grafana to become healthy after a `--clean` reset                                                           | `120000`                     |
 
 ### Input formats
 
@@ -208,6 +213,10 @@ Run it to verify your setup:
 ```bash
 npx pathfinder-cli e2e bundled:e2e-framework-test
 ```
+
+## Clean-slate runs (`--clean`)
+
+The `--clean` flag boots a dedicated, isolated docker-compose stack (project `pathfinder-e2e`, Grafana on `:3010`) for the test run, resets it between guides, and tears it down at the end — the normal local dev stack on `:3000` is never touched. Use it when residual state from prior runs is making failures hard to attribute, or when you want clean-slate guarantees across a `--bundled` sweep.
 
 ## Timing and timeouts
 

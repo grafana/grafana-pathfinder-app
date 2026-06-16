@@ -7,59 +7,12 @@
 
 import { useCallback, useMemo } from 'react';
 import type { EditorBlock, BlockEditorState, JsonBlock, JsonGuide, ViewMode } from '../types';
-import type {
-  JsonSectionBlock,
-  JsonConditionalBlock,
-  JsonInteractiveBlock,
-  JsonMultistepBlock,
-  JsonGuidedBlock,
-  JsonStep,
-} from '../../../types/json-guide.types';
+import type { JsonConditionalBlock } from '../../../types/json-guide.types';
 import { DEFAULT_GUIDE_METADATA } from '../constants';
 import { copyNestedInstanceId } from '../nestedBlockInstanceId';
 import { useGuideHistory } from './useGuideHistory';
-
-/**
- * Type guard for section blocks
- */
-const isSectionBlock = (block: JsonBlock): block is JsonSectionBlock => {
-  return block.type === 'section';
-};
-
-/**
- * Type guard for conditional blocks
- */
-const isConditionalBlock = (block: JsonBlock): block is JsonConditionalBlock => {
-  return block.type === 'conditional';
-};
-
-/**
- * Type guard for interactive blocks
- */
-const isInteractiveBlock = (block: JsonBlock): block is JsonInteractiveBlock => {
-  return block.type === 'interactive';
-};
-
-/**
- * Type guard for multistep blocks
- */
-const isMultistepBlock = (block: JsonBlock): block is JsonMultistepBlock => {
-  return block.type === 'multistep';
-};
-
-/**
- * Type guard for guided blocks
- */
-const isGuidedBlock = (block: JsonBlock): block is JsonGuidedBlock => {
-  return block.type === 'guided';
-};
-
-/**
- * Generate a unique ID for a block
- */
-const generateBlockId = (): string => {
-  return `block-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-};
+import { generateBlockId, isConditionalBlock, isSectionBlock } from './useBlockEditor.helpers';
+import { mergeBlocks } from './useBlockEditor.merge';
 
 /**
  * Hook options
@@ -1253,145 +1206,14 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     );
   }, [setState]);
 
-  /**
-   * Parse a block ID to determine if it's a nested block.
-   * Nested block IDs have format: `${sectionId}-nested-${nestedIndex}`.
-   * Uses string operations instead of regex for better performance and clarity.
-   */
-  const parseBlockId = (
-    id: string,
-    blocks: EditorBlock[]
-  ): {
-    isNested: boolean;
-    sectionId?: string;
-    nestedIndex?: number;
-    block?: JsonBlock;
-    rootIndex?: number;
-    sectionRootIndex?: number;
-  } => {
-    const NESTED_MARKER = '-nested-';
-    const markerIndex = id.lastIndexOf(NESTED_MARKER);
-
-    // Check if it's a nested block ID
-    if (markerIndex !== -1) {
-      const sectionId = id.slice(0, markerIndex);
-      const nestedIndexStr = id.slice(markerIndex + NESTED_MARKER.length);
-      const nestedIndex = parseInt(nestedIndexStr, 10);
-
-      // Validate the index is a valid number
-      if (!isNaN(nestedIndex) && nestedIndexStr === String(nestedIndex)) {
-        const sectionRootIndex = blocks.findIndex((b) => b.id === sectionId);
-        const section = sectionRootIndex >= 0 ? blocks[sectionRootIndex] : undefined;
-        if (section && isSectionBlock(section.block)) {
-          const nestedBlock = section.block.blocks[nestedIndex];
-          if (nestedBlock) {
-            return { isNested: true, sectionId, nestedIndex, block: nestedBlock, sectionRootIndex };
-          }
-        }
-        return { isNested: true, sectionRootIndex: sectionRootIndex >= 0 ? sectionRootIndex : undefined };
-      }
-    }
-
-    // It's a root-level block
-    const rootIndex = blocks.findIndex((b) => b.id === id);
-    if (rootIndex >= 0) {
-      return { isNested: false, block: blocks[rootIndex]!.block, rootIndex };
-    }
-    return { isNested: false };
-  };
-
-  const mergeBlocksTo = useCallback(
-    (
-      blockIds: string[],
-      interactiveToStep: (block: JsonInteractiveBlock) => JsonStep,
-      createOutputBlock: (steps: JsonStep[]) => JsonMultistepBlock | JsonGuidedBlock
-    ) => {
+  const mergeBlocksToMultistep = useCallback(
+    (blockIds: string[]) => {
       setState((prev) => {
-        const parsedBlocks = blockIds
-          .map((id) => ({ id, ...parseBlockId(id, prev.blocks) }))
-          .filter(
-            (p) => p.block && (isInteractiveBlock(p.block) || isMultistepBlock(p.block) || isGuidedBlock(p.block))
-          );
-
-        if (parsedBlocks.length < 2) {
+        const newBlocks = mergeBlocks(prev.blocks, blockIds, 'multistep');
+        if (!newBlocks) {
           return prev;
         }
-
-        parsedBlocks.sort((a, b) => {
-          const aPos = a.isNested
-            ? (a.sectionRootIndex ?? 0) * 10000 + (a.nestedIndex ?? 0)
-            : (a.rootIndex ?? 0) * 10000;
-          const bPos = b.isNested
-            ? (b.sectionRootIndex ?? 0) * 10000 + (b.nestedIndex ?? 0)
-            : (b.rootIndex ?? 0) * 10000;
-          return aPos - bPos;
-        });
-
-        const steps: JsonStep[] = parsedBlocks.flatMap((p) => {
-          if (isInteractiveBlock(p.block!)) {
-            return [interactiveToStep(p.block as JsonInteractiveBlock)];
-          }
-          return (p.block as JsonMultistepBlock | JsonGuidedBlock).steps;
-        });
-
-        const outputBlock = createOutputBlock(steps);
-        const firstParsed = parsedBlocks[0]!;
-        const insertIntoSection = firstParsed.isNested && firstParsed.sectionId;
-
-        const rootIdsToRemove = new Set(parsedBlocks.filter((p) => !p.isNested).map((p) => p.id));
-
-        const nestedToRemove = new Map<string, number[]>();
-        parsedBlocks
-          .filter((p) => p.isNested && p.sectionId !== undefined && p.nestedIndex !== undefined)
-          .forEach((p) => {
-            const existing = nestedToRemove.get(p.sectionId!) || [];
-            existing.push(p.nestedIndex!);
-            nestedToRemove.set(p.sectionId!, existing);
-          });
-
-        let newBlocks = prev.blocks
-          .filter((b) => !rootIdsToRemove.has(b.id))
-          .map((b) => {
-            if (
-              isSectionBlock(b.block) &&
-              (nestedToRemove.has(b.id) || (insertIntoSection && b.id === firstParsed.sectionId))
-            ) {
-              const indicesToRemove = new Set(nestedToRemove.get(b.id) || []);
-              let newSectionBlocks = b.block.blocks.filter((_, i) => !indicesToRemove.has(i));
-
-              if (insertIntoSection && b.id === firstParsed.sectionId) {
-                const insertIdx = firstParsed.nestedIndex!;
-                const removedBefore = Array.from(indicesToRemove).filter((i) => i < insertIdx).length;
-                const adjustedIdx = insertIdx - removedBefore;
-                newSectionBlocks.splice(adjustedIdx, 0, outputBlock);
-              }
-
-              return {
-                ...b,
-                block: { ...b.block, blocks: newSectionBlocks },
-              };
-            }
-            return b;
-          });
-
-        if (!insertIntoSection) {
-          const newEditorBlock: EditorBlock = {
-            id: generateBlockId(),
-            block: outputBlock,
-          };
-
-          let insertIndex = prev.blocks.findIndex((b) => b.id === firstParsed.id);
-          const removedBeforeInsert = prev.blocks.filter((b, i) => i < insertIndex && rootIdsToRemove.has(b.id)).length;
-          insertIndex -= removedBeforeInsert;
-
-          newBlocks.splice(insertIndex, 0, newEditorBlock);
-        }
-
-        const newState = {
-          ...prev,
-          blocks: newBlocks,
-          isDirty: true,
-        };
+        const newState = { ...prev, blocks: newBlocks, isDirty: true };
         notifyChange(newState);
         return newState;
       });
@@ -1399,35 +1221,19 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     [notifyChange, setState]
   );
 
-  const mergeBlocksToMultistep = useCallback(
-    (blockIds: string[]) =>
-      mergeBlocksTo(
-        blockIds,
-        (interactive) => ({
-          action: interactive.action,
-          reftarget: interactive.reftarget,
-          ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
-          ...(interactive.tooltip && { tooltip: interactive.tooltip }),
-          ...(!interactive.tooltip && interactive.content && { tooltip: interactive.content }),
-        }),
-        (steps) => ({ type: 'multistep', content: 'Complete the following steps:', steps })
-      ),
-    [mergeBlocksTo]
-  );
-
   const mergeBlocksToGuided = useCallback(
-    (blockIds: string[]) =>
-      mergeBlocksTo(
-        blockIds,
-        (interactive) => ({
-          action: interactive.action,
-          reftarget: interactive.reftarget,
-          ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
-          ...(interactive.content && { description: interactive.content }),
-        }),
-        (steps) => ({ type: 'guided', content: 'Follow the steps below:', steps })
-      ),
-    [mergeBlocksTo]
+    (blockIds: string[]) => {
+      setState((prev) => {
+        const newBlocks = mergeBlocks(prev.blocks, blockIds, 'guided');
+        if (!newBlocks) {
+          return prev;
+        }
+        const newState = { ...prev, blocks: newBlocks, isDirty: true };
+        notifyChange(newState);
+        return newState;
+      });
+    },
+    [notifyChange, setState]
   );
 
   // Memoize return value

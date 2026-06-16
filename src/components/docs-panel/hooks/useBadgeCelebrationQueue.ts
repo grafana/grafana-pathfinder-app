@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { StorageEvents } from '../../../lib/event-names';
 import { learningProgressStorage } from '../../../lib/user-storage';
 
 export interface UseBadgeCelebrationQueueResult {
@@ -48,10 +49,10 @@ export function useBadgeCelebrationQueue(): UseBadgeCelebrationQueueResult {
       }
     };
 
-    window.addEventListener('learning-progress-updated', handleProgressUpdate);
+    window.addEventListener(StorageEvents.LearningProgressUpdated, handleProgressUpdate);
 
     return () => {
-      window.removeEventListener('learning-progress-updated', handleProgressUpdate);
+      window.removeEventListener(StorageEvents.LearningProgressUpdated, handleProgressUpdate);
     };
   }, []);
 

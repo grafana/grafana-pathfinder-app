@@ -86,9 +86,61 @@ interface CheckContext {
   scrollContainer?: string;
 }
 
-async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<CheckResultError> {
-  const { targetAction = 'button', refTarget = '', lazyRender, scrollContainer } = ctx;
+interface CheckHandler {
+  /** Stable tag for tracing + parity tests; not used by dispatch (mirrors FixHandler.fixType). */
+  id: string;
+  match: (check: string) => boolean;
+  run: (check: string, ctx: CheckContext) => Promise<CheckResultError>;
+}
 
+// Order matters: dispatch takes the first handler whose `match` returns true,
+// mirroring the original if/else chain (first-match-wins).
+const CHECK_HANDLERS: readonly CheckHandler[] = [
+  {
+    id: 'exists-reftarget',
+    match: (c) => c === 'exists-reftarget',
+    run: (_c, ctx) =>
+      reftargetExistsCheck(ctx.refTarget ?? '', ctx.targetAction ?? 'button', {
+        lazyRender: ctx.lazyRender,
+        scrollContainer: ctx.scrollContainer,
+      }),
+  },
+  { id: 'navmenu-open', match: (c) => c === 'navmenu-open', run: () => navmenuOpenCheck() },
+  { id: 'has-datasources', match: (c) => c === 'has-datasources', run: (c) => hasDatasourcesCheck(c) },
+  { id: 'is-admin', match: (c) => c === 'is-admin', run: (c) => isAdminCheck(c) },
+  { id: 'is-logged-in', match: (c) => c === 'is-logged-in', run: (c) => isLoggedInCheck(c) },
+  { id: 'is-editor', match: (c) => c === 'is-editor', run: (c) => isEditorCheck(c) },
+  { id: 'has-permission:', match: (c) => c.startsWith('has-permission:'), run: (c) => hasPermissionCheck(c) },
+  { id: 'has-role:', match: (c) => c.startsWith('has-role:'), run: (c) => hasRoleCheck(c) },
+  { id: 'has-datasource:', match: (c) => c.startsWith('has-datasource:'), run: (c) => hasDataSourceCheck(c) },
+  {
+    id: 'datasource-configured:',
+    match: (c) => c.startsWith('datasource-configured:'),
+    run: (c) => datasourceConfiguredCheck(c),
+  },
+  { id: 'has-plugin:', match: (c) => c.startsWith('has-plugin:'), run: (c) => hasPluginCheck(c) },
+  { id: 'plugin-enabled:', match: (c) => c.startsWith('plugin-enabled:'), run: (c) => pluginEnabledCheck(c) },
+  {
+    id: 'has-dashboard-named:',
+    match: (c) => c.startsWith('has-dashboard-named:'),
+    run: (c) => hasDashboardNamedCheck(c),
+  },
+  { id: 'dashboard-exists', match: (c) => c === 'dashboard-exists', run: (c) => dashboardExistsCheck(c) },
+  { id: 'on-page:', match: (c) => c.startsWith('on-page:'), run: (c) => onPageCheck(c) },
+  { id: 'has-feature:', match: (c) => c.startsWith('has-feature:'), run: (c) => hasFeatureCheck(c) },
+  { id: 'in-environment:', match: (c) => c.startsWith('in-environment:'), run: (c) => inEnvironmentCheck(c) },
+  { id: 'min-version:', match: (c) => c.startsWith('min-version:'), run: (c) => minVersionCheck(c) },
+  { id: 'section-completed:', match: (c) => c.startsWith('section-completed:'), run: (c) => sectionCompletedCheck(c) },
+  { id: 'form-valid', match: (c) => c === 'form-valid', run: (c) => formValidCheck(c) },
+  { id: 'is-terminal-active', match: (c) => c === 'is-terminal-active', run: (c) => terminalActiveCheck(c) },
+  { id: 'coda-exit-zero:', match: (c) => c.startsWith('coda-exit-zero:'), run: (c) => codaExitZeroCheck(c) },
+  { id: 'var-', match: (c) => c.startsWith('var-'), run: (c) => guideVariableCheck(c) },
+  { id: 'renderer:', match: (c) => c.startsWith('renderer:'), run: (c) => rendererCheck(c) },
+];
+
+export { CHECK_HANDLERS };
+
+async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<CheckResultError> {
   // Type-safe validation with helpful developer feedback
   if (!isValidRequirement(check)) {
     console.warn(
@@ -103,101 +155,12 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
     };
   }
 
-  // DOM-dependent checks
-  if (check === 'exists-reftarget') {
-    return reftargetExistsCheck(refTarget, targetAction, { lazyRender, scrollContainer });
-  }
-  if (check === 'navmenu-open') {
-    return navmenuOpenCheck();
+  const handler = CHECK_HANDLERS.find((h) => h.match(check));
+  if (handler) {
+    return handler.run(check, ctx);
   }
 
-  // Pure requirement checks
-  if (check === 'has-datasources') {
-    return hasDatasourcesCheck(check);
-  }
-  if (check === 'is-admin') {
-    return isAdminCheck(check);
-  }
-  if (check === 'is-logged-in') {
-    return isLoggedInCheck(check);
-  }
-  if (check === 'is-editor') {
-    return isEditorCheck(check);
-  }
-  if (check.startsWith('has-permission:')) {
-    return hasPermissionCheck(check);
-  }
-  if (check.startsWith('has-role:')) {
-    return hasRoleCheck(check);
-  }
-
-  // Data source and plugin checks
-  if (check.startsWith('has-datasource:')) {
-    return hasDataSourceCheck(check);
-  }
-  if (check.startsWith('datasource-configured:')) {
-    return datasourceConfiguredCheck(check);
-  }
-  if (check.startsWith('has-plugin:')) {
-    return hasPluginCheck(check);
-  }
-  if (check.startsWith('plugin-enabled:')) {
-    return pluginEnabledCheck(check);
-  }
-  if (check.startsWith('has-dashboard-named:')) {
-    return hasDashboardNamedCheck(check);
-  }
-  if (check === 'dashboard-exists') {
-    return dashboardExistsCheck(check);
-  }
-
-  // Location and navigation checks
-  if (check.startsWith('on-page:')) {
-    return onPageCheck(check);
-  }
-
-  // Feature and environment checks
-  if (check.startsWith('has-feature:')) {
-    return hasFeatureCheck(check);
-  }
-  if (check.startsWith('in-environment:')) {
-    return inEnvironmentCheck(check);
-  }
-  if (check.startsWith('min-version:')) {
-    return minVersionCheck(check);
-  }
-
-  // Section dependency checks
-  if (check.startsWith('section-completed:')) {
-    return sectionCompletedCheck(check);
-  }
-
-  // UI state checks
-  if (check === 'form-valid') {
-    return formValidCheck(check);
-  }
-
-  // Terminal connection check
-  if (check === 'is-terminal-active') {
-    return terminalActiveCheck(check);
-  }
-
-  // Coda VM exec-based challenge check
-  if (check.startsWith('coda-exit-zero:')) {
-    return codaExitZeroCheck(check);
-  }
-
-  // Guide response variable checks (e.g., var-policyAccepted:true)
-  if (check.startsWith('var-')) {
-    return guideVariableCheck(check);
-  }
-
-  // Renderer context checks (e.g., renderer:pathfinder, renderer:website)
-  if (check.startsWith('renderer:')) {
-    return rendererCheck(check);
-  }
-
-  // This should never be reached due to type validation above, but keeping as fallback
+  // Should never be reached due to the validation above, but keep as a fallback.
   console.error(
     `Unexpected requirement type reached end of router: '${check}'. This indicates a bug in the type validation.`
   );

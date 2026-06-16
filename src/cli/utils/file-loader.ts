@@ -5,6 +5,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+/**
+ * Resolve a user-supplied CLI path to an absolute path. Pass `base` to resolve
+ * against something other than `process.cwd()` (e.g., a configured project
+ * root). The base only kicks in for relative inputs — absolute paths pass
+ * through unchanged.
+ */
+export function resolveCliPath(input: string, base: string = process.cwd()): string {
+  return path.isAbsolute(input) ? input : path.resolve(base, input);
+}
+
 export interface LoadedGuide {
   path: string;
   content: string;
@@ -31,7 +41,7 @@ export function loadGuideFiles(filePaths: string[]): LoadedGuide[] {
  */
 function loadGuideFile(filePath: string): LoadedGuide | null {
   try {
-    const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
+    const absolutePath = resolveCliPath(filePath);
 
     if (!fs.existsSync(absolutePath)) {
       console.warn(`File not found: ${filePath}`);

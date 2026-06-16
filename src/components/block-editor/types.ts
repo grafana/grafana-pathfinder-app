@@ -31,7 +31,8 @@ export type BlockType =
   | 'terminal-connect'
   | 'challenge'
   | 'code-block'
-  | 'grot-guide';
+  | 'grot-guide'
+  | 'snippet-ref';
 
 /**
  * Block metadata for the palette

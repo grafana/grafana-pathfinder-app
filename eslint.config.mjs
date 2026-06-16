@@ -15,6 +15,8 @@ const TIER_2_ENGINES = [
   'requirements-manager',
   'learning-paths',
   'package-engine',
+  'snippet-engine',
+  'hooks',
 ];
 const TIER_1_PLUS = [
   'lib',
@@ -23,6 +25,7 @@ const TIER_1_PLUS = [
   'global-state',
   'utils',
   'validation',
+  'recovery',
   ...TIER_2_ENGINES,
   'integrations',
   'components',
@@ -186,14 +189,14 @@ export default defineConfig([
     ]
   ),
 
-  // Tier 1 (lib/, security/, styles/, global-state/, utils/, validation/) — no imports from Tier 2+
+  // Tier 1 (lib/, security/, styles/, global-state/, utils/, validation/, recovery/) — no imports from Tier 2+
   tierBoundaryConfig(
-    ['lib', 'security', 'styles', 'global-state', 'utils', 'validation'],
+    ['lib', 'security', 'styles', 'global-state', 'utils', 'validation', 'recovery'],
     [
       {
         regex: bannedDirRegex(TIER_2_PLUS),
         message:
-          'Tier 1 (lib/, security/, styles/, utils/) must not import from Tier 2+ modules. ' +
+          'Tier 1 (lib/, security/, styles/, global-state/, utils/, validation/, recovery/) must not import from Tier 2+ modules. ' +
           'Move shared logic to types/ or lib/. See TIER_MAP in src/validation/import-graph.ts.',
       },
     ]

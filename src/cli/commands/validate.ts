@@ -11,9 +11,9 @@ import * as path from 'path';
 import type { ContentJson, ManifestJson } from '../../types/package.types';
 import { validateGuideFromString, toLegacyResult } from '../../validation';
 import { validatePackage, validatePackageTree, type PackageValidationResult } from '../../validation/validate-package';
-import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/file-loader';
+import { loadGuideFiles, loadBundledGuides, resolveCliPath, type LoadedGuide } from '../utils/file-loader';
 import { validatePackageState } from '../utils/package-io';
-import { manyIssuesOutcome, type CommandOutcome } from '../utils/output';
+import { manyIssuesOutcome, readOutputOptions, type CommandOutcome } from '../utils/output';
 
 interface ValidateOptions {
   bundled?: boolean;
@@ -26,12 +26,12 @@ interface ValidateOptions {
 }
 
 /**
- * Stable regexes for default-array INFO messages emitted by
- * `validatePackage`. Used to collapse the six "depends/recommends/.../replaces
- * defaulting to []" lines that fire on every fresh package into a single
- * summary line, freeing screen budget for real WARN/ERROR signals.
+ * Stable message code (defined in `validate-package.ts`) for the six
+ * "depends/recommends/.../replaces defaulting to []" INFO lines that fire on
+ * every fresh package. The collapse below folds them into a single summary
+ * line so real WARN/ERROR signals stay scannable.
  */
-const DEFAULT_ARRAY_INFO_REGEX = /^manifest\.json: "([a-zA-Z]+)" not specified, defaulting to \[\]/;
+const DEFAULT_DEP_FIELD_INFO_CODE = 'manifest_dep_field_defaulted';
 
 interface ValidationSummary {
   totalFiles: number;
@@ -134,15 +134,17 @@ function formatPackageResult(dirName: string, result: PackageValidationResult, s
   // Collapse the default-array INFO messages into a single summary line
   // unless --verbose. Six identical-shape "defaulting to []" lines on every
   // fresh package drown out real warnings; one summary keeps validate output
-  // scannable without losing information for authors who want it.
+  // scannable without losing information for authors who want it. The
+  // producer tags each line with a stable `code` so we match on that rather
+  // than the message text.
   const defaultArrayFields: string[] = [];
   for (const msg of result.messages) {
-    if (msg.severity === 'info' && !verbose) {
-      const m = DEFAULT_ARRAY_INFO_REGEX.exec(msg.message);
-      if (m) {
-        defaultArrayFields.push(m[1]!);
-        continue;
-      }
+    if (msg.code === DEFAULT_DEP_FIELD_INFO_CODE && !verbose) {
+      // The field name is the last path segment (e.g. ['manifest.json',
+      // 'depends'] → 'depends'). Producer always sets the 2-segment path;
+      // fall back to '?' if a future variant doesn't, to avoid a crash.
+      defaultArrayFields.push(msg.path?.[msg.path.length - 1] ?? '?');
+      continue;
     }
     const icon = msg.severity === 'error' ? '❌' : msg.severity === 'warn' ? '⚠️ ' : 'ℹ️ ';
     console.log(`  ${icon} ${msg.severity.toUpperCase()}: ${msg.message}`);
@@ -167,7 +169,7 @@ function formatPackageResult(dirName: string, result: PackageValidationResult, s
 }
 
 function runPackageValidation(packageDir: string, options: ValidateOptions): void {
-  const absoluteDir = path.isAbsolute(packageDir) ? packageDir : path.resolve(process.cwd(), packageDir);
+  const absoluteDir = resolveCliPath(packageDir);
   const result = validatePackage(absoluteDir, { strict: options.strict });
 
   if (options.format === 'json') {
@@ -182,7 +184,7 @@ function runPackageValidation(packageDir: string, options: ValidateOptions): voi
 }
 
 function runPackagesValidation(rootDir: string, options: ValidateOptions): void {
-  const absoluteRoot = path.isAbsolute(rootDir) ? rootDir : path.resolve(process.cwd(), rootDir);
+  const absoluteRoot = resolveCliPath(rootDir);
   const results = validatePackageTree(absoluteRoot, { strict: options.strict });
 
   if (results.size === 0) {
@@ -238,6 +240,18 @@ export function readStdin(): Promise<string> {
     process.stdin.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
     process.stdin.on('error', reject);
   });
+}
+
+function runFileValidation(guides: LoadedGuide[], options: ValidateOptions): void {
+  const summary = validateGuides(guides, options);
+  if (options.format === 'json') {
+    formatJsonOutput(summary);
+  } else {
+    formatTextOutput(summary, options);
+  }
+  if (summary.invalidFiles > 0) {
+    process.exit(1);
+  }
 }
 
 function runStdinValidation(input: string, options: ValidateOptions): void {
@@ -314,6 +328,56 @@ function autoDetectPositionals(files: string[]): { kind: 'package' | 'packages';
   return null;
 }
 
+/**
+ * Tagged dispatch result for the `validate` command. Each variant maps to
+ * exactly one runner. `error` carries a user-facing message for invalid flag
+ * combinations the action prints to stderr before exiting non-zero.
+ */
+type ValidateMode =
+  | { kind: 'stdin' }
+  | { kind: 'package'; path: string }
+  | { kind: 'packages'; path: string }
+  | { kind: 'bundled' }
+  | { kind: 'files'; paths: string[] }
+  | { kind: 'error'; message: string };
+
+function resolveMode(options: ValidateOptions, files: string[]): ValidateMode {
+  if (options.stdin) {
+    if (files.length > 0 || options.bundled || options.package || options.packages) {
+      return {
+        kind: 'error',
+        message: '--stdin is mutually exclusive with file arguments, --bundled, --package, and --packages',
+      };
+    }
+    return { kind: 'stdin' };
+  }
+  if (options.package) {
+    return { kind: 'package', path: options.package };
+  }
+  if (options.packages) {
+    return { kind: 'packages', path: options.packages };
+  }
+  // Auto-detect: a single positional directory argument is interpreted as a
+  // package (if it has content.json) or a tree (if its children do). The
+  // top-level command description promises "JSON guide files or package
+  // directories" so a bare positional dir should Just Work without forcing
+  // the user to discover --package via help text.
+  const autoDetected = autoDetectPositionals(files);
+  if (autoDetected) {
+    return autoDetected;
+  }
+  if (options.bundled) {
+    return { kind: 'bundled' };
+  }
+  if (files.length > 0) {
+    return { kind: 'files', paths: files };
+  }
+  return {
+    kind: 'error',
+    message: 'Please specify files to validate, use --bundled, --package, or --packages flag',
+  };
+}
+
 export interface ValidateArgs {
   content: ContentJson;
   manifest?: ManifestJson;
@@ -354,73 +418,53 @@ export const validateCommand = new Command('validate')
   .option('--bundled', 'Validate all bundled guides in src/bundled-interactives/')
   .option('--stdin', 'Read a single JSON guide from stdin instead of files')
   .option('--strict', 'Treat warnings as errors')
-  .option('--format <format>', 'Output format: text or json', 'text')
+  // No `.default('text')` here — the action falls back to the root program's
+  // --format via `readOutputOptions` when the local flag isn't set. A local
+  // default would shadow the global because Commander's `optsWithGlobals`
+  // gives child opts precedence over parent opts when both define the same
+  // flag name.
+  .option('--format <format>', 'Output format: text or json')
   .option('--package <dir>', 'Validate a single package directory (expects content.json)')
   .option('--packages <dir>', 'Validate a tree of package directories')
   .option('--verbose', 'Show every INFO message individually (default: collapse default-array INFOs)')
   .action(async function (this: Command, files: string[]) {
     const options = this.optsWithGlobals<ValidateOptions>();
+    // Fall back to the root program's --format when the local flag wasn't
+    // passed. Without this, a root-level `pathfinder-cli --format json
+    // validate ...` would be silently dropped by Commander's child-precedence
+    // merge. `readOutputOptions` is what every other CLI command uses to read
+    // the global output contract.
+    if (!options.format) {
+      options.format = readOutputOptions(this).format;
+    }
     try {
-      if (options.stdin) {
-        if (files.length > 0 || options.bundled || options.package || options.packages) {
-          console.error('--stdin is mutually exclusive with file arguments, --bundled, --package, and --packages');
+      const mode = resolveMode(options, files);
+      switch (mode.kind) {
+        case 'error':
+          console.error(mode.message);
           process.exit(1);
+          return;
+        case 'stdin': {
+          const input = await readStdin();
+          return runStdinValidation(input, options);
         }
-        const input = await readStdin();
-        return runStdinValidation(input, options);
-      }
-
-      if (options.package) {
-        return runPackageValidation(options.package, options);
-      }
-
-      if (options.packages) {
-        return runPackagesValidation(options.packages, options);
-      }
-
-      // Auto-detect when a positional path is a directory: the top-level
-      // command description promises "JSON guide files or package
-      // directories", so a bare positional dir should Just Work without
-      // forcing the user to discover --package via help text.
-      const autoDetected = autoDetectPositionals(files);
-      if (autoDetected) {
-        if (autoDetected.kind === 'package') {
-          return runPackageValidation(autoDetected.path, options);
+        case 'package':
+          return runPackageValidation(mode.path, options);
+        case 'packages':
+          return runPackagesValidation(mode.path, options);
+        case 'bundled':
+        case 'files': {
+          const guides = mode.kind === 'bundled' ? loadBundledGuides() : loadGuideFiles(mode.paths);
+          if (guides.length === 0) {
+            console.error(
+              mode.kind === 'bundled'
+                ? 'No bundled guides found in src/bundled-interactives/'
+                : 'No valid JSON guide files found in the specified paths'
+            );
+            process.exit(1);
+          }
+          return runFileValidation(guides, options);
         }
-        if (autoDetected.kind === 'packages') {
-          return runPackagesValidation(autoDetected.path, options);
-        }
-      }
-
-      let guides: LoadedGuide[] = [];
-
-      if (options.bundled) {
-        guides = loadBundledGuides();
-        if (guides.length === 0) {
-          console.error('No bundled guides found in src/bundled-interactives/');
-          process.exit(1);
-        }
-      } else if (files.length > 0) {
-        guides = loadGuideFiles(files);
-        if (guides.length === 0) {
-          console.error('No valid JSON guide files found in the specified paths');
-          process.exit(1);
-        }
-      } else {
-        console.error('Please specify files to validate, use --bundled, --package, or --packages flag');
-        process.exit(1);
-      }
-
-      const summary = validateGuides(guides, options);
-
-      if (options.format === 'json') {
-        formatJsonOutput(summary);
-      } else {
-        formatTextOutput(summary, options);
-      }
-
-      if (summary.invalidFiles > 0) {
-        process.exit(1);
       }
     } catch (error) {
       console.error('Error:', error instanceof Error ? error.message : 'Unknown error');

@@ -48,7 +48,14 @@ export type {
   DatasourceContext,
 } from './useAssistantGeneration.hook';
 
-export { getIsAssistantAvailable, getOpenAssistant, useMockInlineAssistant } from './assistant-dev-mode';
+export {
+  getIsAssistantAvailable,
+  getOpenAssistant,
+  useMockInlineAssistant,
+  useIsAssistantAvailable,
+} from './assistant-dev-mode';
+
+export { useAiFixEnabled } from './use-ai-fix-enabled';
 
 // Custom tools for inline assistant
 export {

@@ -485,3 +485,41 @@ describe('validatePackageTree', () => {
     expect(bad?.isValid).toBe(false);
   });
 });
+
+// Stable-code contract: the `validate` CLI command's INFO collapse pass
+// matches on `msg.code === 'manifest_dep_field_defaulted'`. If that code
+// ever changes here, this test breaks and the consumer needs updating in
+// the same change. Keeps producer and consumer pinned to the same string.
+describe('validatePackage — stable message codes', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = createTmpDir();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('tags every defaulted dependency-list field with manifest_dep_field_defaulted', () => {
+    const pkgDir = path.join(tmpDir, 'bare-package');
+    writeJson(path.join(pkgDir, 'content.json'), {
+      id: 'bare-package',
+      title: 'Bare',
+      blocks: [{ type: 'markdown', content: '# Hello' }],
+    });
+    // Manifest with no dep-list fields set — all six should be tagged.
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'bare-package',
+      type: 'guide',
+      description: 'Bare manifest to trigger every defaulted-dep INFO',
+      category: 'test',
+      targeting: { match: { urlPrefix: '/' } },
+    });
+
+    const result = validatePackage(pkgDir);
+    const tagged = result.messages.filter((m) => m.code === 'manifest_dep_field_defaulted');
+    const taggedFields = tagged.map((m) => m.path?.[m.path.length - 1]).sort();
+    expect(taggedFields).toEqual(['conflicts', 'depends', 'provides', 'recommends', 'replaces', 'suggests']);
+  });
+});

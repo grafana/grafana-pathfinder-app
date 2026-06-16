@@ -5,7 +5,7 @@ description: Routed PR review orchestrator. Load for `/review` command or any PR
 
 # PR review orchestrator
 
-Conduct a **Principal Engineer level** review in six phases.
+Conduct a **Principal Engineer level** review in seven phases.
 
 ## 1. Read the concern registry
 
@@ -63,13 +63,25 @@ Do not suppress `testing-and-verification` for executable changes, including CI 
 
 Run additional reviewers when activated by the routing table in `docs/design/CONCERNS.md`.
 
-Prefer a small reviewer set over speculative breadth.
+**Posture: breadth over economy.** This review is the automated safety net under human review. Run all always-on concerns as independent parallel reviewers, plus every conditional concern the router activates. Do not throttle fan-out to save cost — the goal is to raise the bar on what is caught automatically so human review can focus on novel findings.
 
-- Always-on concerns must always be considered
-- Conditional concerns should only run when activated
-- If many conditional concerns activate, prioritize the highest-signal concerns first and keep the initial reviewer set small
-- Add more conditional reviewers only when the router has strong evidence they are needed
-- If classification suggests a narrow non-runtime class, reduce fan-out conservatively and fail open when uncertain
+- Always-on concerns must always run as dedicated reviewers, not folded into the synthesizer
+- Conditional concerns run whenever activated by the routing table — do not suppress them on classification heuristics alone
+- Dispatch reviewers in parallel where possible
+- The only acceptable reason to skip a routed reviewer is a hard incompatibility with the change class (e.g., `docs-only` PR has no Go backend surface to review)
+- When in doubt, run the reviewer
+
+### Standalone deep-security lens
+
+In addition to the `security` concern reviewer, when the PR touches any of:
+
+- auth, tokens, secrets, or credential refresh paths
+- URL construction, redirect handling, or trust boundaries
+- workflows, publish steps, release tooling, or CI permissions
+- MCP transport, peerjs, or any cross-origin surface
+- dependency manifests (`package.json`, `go.mod`, lockfiles)
+
+…also invoke `.cursor/skills/secure/SKILL.md` as a dedicated lens running alongside the `security` concern. The concern-level reviewer applies the F1–F6 / G1–G7 catalog against the diff; the standalone `secure` skill runs the full audit (frontend F1–F6 + backend allowlists + MCP transport + deps) with deeper context. Both report findings under the `security` concern; the synthesizer dedupes per §5.
 
 ### Reviewer context discipline
 
@@ -119,6 +131,18 @@ Additional instructions for subsystem reviewers:
 
 Every reviewer emits the schema defined in `docs/design/PR_REVIEW.md` (Reviewer output schema), including the severity, confidence, and reversibility values.
 
+## 4b. Adversarial verification
+
+Before synthesis, run an adversarial verification pass on the reviewer output:
+
+1. Collect every finding with severity `medium` or higher across all reviewers.
+2. For each such finding, spawn **three independent skeptic sub-agents**, each prompted to **refute** the finding — defaulting to `refuted=true` when uncertain. Skeptics receive only the finding, the relevant diff hunks, and the concern entry — not the original reviewer's reasoning.
+3. Each skeptic returns a structured verdict: `{ refuted: boolean, reason: string }`.
+4. Drop any finding that ≥2 of 3 skeptics mark as refuted. Record dropped findings in a `verification_dropped` list with the skeptics' reasoning, so the synthesizer can surface them if a human wants to inspect.
+5. Findings rated `low` severity or below are passed through without verification — the cost of verifying low-severity items exceeds the value.
+
+This pass exists to kill plausible-but-wrong findings before they reach the human reviewer. False positives erode trust in the automated safety net; spending tokens to suppress them is the right trade.
+
 ## 5. Synthesize and report
 
 After concern-specific reviewers finish, run one final cross-cutting reviewer that:
@@ -158,7 +182,24 @@ If `coverage_confidence` is not `high`, include a short coverage note such as:
 
 > Coverage note: this PR appears to center on an area that is only lightly modeled by `docs/design/CONCERNS.md`. I reviewed it with general concerns and adjacent subsystem logic, but review confidence is reduced there. If this area is important long-term, consider refining or adding a concern entry.
 
-## 6. Documentation drift check
+## 6. Tech-debt scan
+
+After synthesis, spawn a sub-agent scoped to **only the files changed in this PR** to detect tech-debt patterns. The sub-agent reads `.cursor/skills/techdebt/SKILL.md` and runs all categories (A–E) against the changed file set.
+
+Instructions for the sub-agent:
+
+1. Resolve the target to the PR's changed file list — do not expand scope to the full subsystem.
+2. Run `SKILL.md` workflow steps 1–6 against that file list exactly.
+3. Suppress findings on files that the diff only touches in tests (D2 is still relevant there).
+4. Return only **high-confidence findings**; do not emit suggestive findings unless the overall change classification is `mixed` or `product-runtime` and the router has flagged correctness risk.
+
+Include the tech-debt report in the final review output under a **Tech debt** section. If the sub-agent returns no findings, emit:
+
+> Tech debt: no high-confidence patterns found in the changed files.
+
+The tech-debt scan is **non-blocking** — findings do not block merge, but they are included in the review for the author's awareness. Dedupe against synthesis findings per §5.
+
+## 7. Documentation drift check
 
 After synthesis, invoke `.cursor/skills/prevent-doc-drift/SKILL.md` in **review mode** to detect whether this PR introduces new subsystems, scripts, skills, docs, plugin routes, feature flags, or architecture changes that require updates to agent guidance (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`).
 

@@ -165,9 +165,10 @@ Do NOT create summary `.md` files unless explicitly requested by the user. No `I
 npm install              # Install dependencies (requires Node.js 22+)
 npm run dev              # Frontend watch mode
 npm run server           # Run Grafana locally with Docker
-npm run test:ci          # Frontend tests (agents should use this, not `npm test`)
+npm run test:ci          # Frontend tests, no coverage (agents should use this, not `npm test`)
+npm run test:coverage    # Frontend tests with coverage + thresholds (used by `npm run check`)
 npm run lint:fix         # Lint + autofix
-npm run check            # Full pre-merge gate: typecheck + lint + prettier + lint:go + test:go + test:ci
+npm run check            # Full pre-merge gate: typecheck + lint + prettier + lint:go + test:go + test:coverage
 ```
 
 Dev server runs at http://localhost:3000 (admin/admin). For the complete command reference (build targets, mage tasks, validation, i18n, peerjs, etc.), see `docs/developer/COMMANDS.md` or read `package.json#scripts` directly.
@@ -180,7 +181,7 @@ Imports flow **downward only** to avoid cycles. Cross-tier rules are enforced by
 
 - **Tier 0 — Types & constants**: `types/`, `constants/`
 - **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`
-- **Tier 2 — Engines & hooks**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `hooks/`
+- **Tier 2 — Engines & hooks**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `snippet-engine/`, `hooks/`
 - **Tier 3 — Integrations**: `integrations/`
 - **Tier 4 — UI**: `components/`, `pages/`
 
@@ -193,6 +194,7 @@ Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-intera
 | `context-engine` → `docs-retrieval`            | Fetches content for the recommendations it surfaces            |
 | `docs-retrieval` → `bundled-interactives`      | Fallback when the online CDN is unavailable                    |
 | `docs-retrieval` → `package-engine`            | Resolves package manifests + content                           |
+| `docs-retrieval` → `snippet-engine`            | Inlines `snippet-ref` blocks against the CDN at parse time     |
 | `components/docs-panel` → `interactive-engine` | Executes step actions when the user clicks "Show me" / "Do it" |
 | `interactive-engine` → `requirements-manager`  | Checks prereqs before enabling / executing a step              |
 | `interactive-engine` → `lib/dom`               | Selector resolution + element detection                        |
@@ -225,9 +227,13 @@ Frequently-needed entries:
 
 ## PR reviews
 
-Use `/review`. It invokes `.cursor/skills/review/SKILL.md` (orchestration workflow) which loads `docs/design/CONCERNS.md` (concern routing) and `docs/design/PR_REVIEW.md` (pattern catalog for R1-R21, F1-F6, QC1-QC7, G1-G7); `react-antipatterns.mdc` loads on hit. For Go PRs touching `pkg/**/*.go`, also verify `npm run lint:go`, `npm run test:go`, and `go build ./...` pass.
+Use `/review`. It invokes `.cursor/skills/review/SKILL.md` (orchestration workflow) which loads `docs/design/CONCERNS.md` (concern routing) and `docs/design/PR_REVIEW.md` (pattern catalog for R1-R21, F1-F6, QC1-QC7, G1-G7); `react-antipatterns.mdc` loads on hit. The review skill also spawns a tech-debt sub-agent (`.cursor/skills/techdebt/SKILL.md`) scoped to the PR's changed files. For Go PRs touching `pkg/**/*.go`, also verify `npm run lint:go`, `npm run test:go`, and `go build ./...` pass.
 
 Use `CONCERNS.md` alone for impact analysis, change risk classification, and subsystem-aware debugging.
+
+## Tech-debt audits
+
+Use `/techdebt <subsystem>` to run a confidence-tiered debt audit on a concrete target (directory, glob, or named subsystem). The skill reads `.cursor/skills/techdebt/SKILL.md` and its `PATTERNS.md` catalog (categories A–E: local syntactic, cross-file structural, architectural, process debt, operational seams). Findings are ordered by hotspot score (`churn × severity`) so the highest-risk items surface first. Run with `--suggestive` to include lower-confidence candidates.
 
 ## `npx` examples
 
