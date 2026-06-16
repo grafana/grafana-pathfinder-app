@@ -756,7 +756,10 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
    * Stable reference to checkStep function for event-driven triggers
    */
   const checkStepRef = useRef(checkStep);
-  checkStepRef.current = checkStep;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability -- latest-callback ref: event-driven triggers invoke the current checkStep without re-subscribing on its identity change
+    checkStepRef.current = checkStep;
+  });
 
   // Initial requirements check for first steps when component mounts
   useEffect(() => {

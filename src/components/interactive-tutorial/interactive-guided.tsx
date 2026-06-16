@@ -1,4 +1,4 @@
-import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useCallback, forwardRef, useId, useImperativeHandle, useEffect, useMemo } from 'react';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
@@ -80,13 +80,6 @@ function SafeHTML({ html, className }: { html: string; className?: string }) {
   return <span className={className}>{elements}</span>;
 }
 
-let anonymousGuidedCounter = 0;
-
-/** Reset the anonymous guided step counter (called by resetInteractiveCounters). */
-export function resetGuidedCounter(): void {
-  anonymousGuidedCounter = 0;
-}
-
 interface InteractiveGuidedProps {
   internalActions: GuidedAction[];
 
@@ -148,12 +141,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     },
     ref
   ) => {
-    const generatedStepIdRef = useRef<string | undefined>(undefined);
-    if (!generatedStepIdRef.current) {
-      anonymousGuidedCounter += 1;
-      generatedStepIdRef.current = `guided-step-${anonymousGuidedCounter}`;
-    }
-    const renderedStepId = stepId ?? generatedStepIdRef.current;
+    const generatedStepId = `guided-step-${useId().replace(/:/g, '')}`;
+    const renderedStepId = stepId ?? generatedStepId;
     const analyticsStepMeta = useMemo(
       () => ({
         stepId: stepId ?? renderedStepId,

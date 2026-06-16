@@ -10,7 +10,7 @@
 
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
+import { InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { testIds } from '../../constants/testIds';
@@ -135,7 +135,6 @@ describe('InteractiveGuided — double skip button (issue #786)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     callOrder = [];
-    resetGuidedCounter();
 
     // Default: executeGuidedStep hangs (simulates waiting for user interaction)
     mockExecuteGuidedStep.mockImplementation(() => {

@@ -117,13 +117,11 @@ export default defineConfig([
   ...baseConfig,
 
   // eslint-config v10 turns on react-hooks v7's React Compiler ruleset. These
-  // four flag pre-existing call sites; deferred to a follow-up. Other new rules stay on.
+  // two flag pre-existing call sites; migrated progressively in the rest of this stack.
   {
     rules: {
       'react-hooks/refs': 'off',
       'react-hooks/set-state-in-effect': 'off',
-      'react-hooks/immutability': 'off',
-      'react-hooks/globals': 'off',
     },
   },
 
