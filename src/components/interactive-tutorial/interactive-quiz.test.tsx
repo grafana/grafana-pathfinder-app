@@ -11,6 +11,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { InteractiveQuiz, resetQuizCounter, shuffleQuizChoices, type QuizChoice } from './interactive-quiz';
+import { InteractiveReadonlyContext } from '../../global-state/interactive-readonly-context';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -493,3 +494,34 @@ function mulberry32(seed: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+describe('InteractiveQuiz read-only mode', () => {
+  const choices: QuizChoice[] = [
+    { id: 'a', text: 'Alpha', correct: false },
+    { id: 'b', text: 'Bravo', correct: true },
+  ];
+
+  function renderQuiz(readonly: boolean) {
+    return render(
+      <InteractiveReadonlyContext.Provider value={readonly}>
+        <InteractiveQuiz question="Pick one" choices={choices} shuffle={false} stepId="quiz-readonly">
+          Pick one
+        </InteractiveQuiz>
+      </InteractiveReadonlyContext.Provider>
+    );
+  }
+
+  it('disables answer choices and hides the actions row when read-only', () => {
+    renderQuiz(true);
+    // Choice text still renders — the read-only view is readable — but no choice
+    // can be selected and there is no Check Answer action.
+    expect(screen.getByText('Alpha').closest('button')).toBeDisabled();
+    expect(screen.getByText('Bravo').closest('button')).toBeDisabled();
+    expect(screen.queryByText('Check Answer')).not.toBeInTheDocument();
+  });
+
+  it('leaves answer choices interactive when not read-only', () => {
+    renderQuiz(false);
+    expect(screen.getByText('Alpha').closest('button')).not.toBeDisabled();
+  });
+});

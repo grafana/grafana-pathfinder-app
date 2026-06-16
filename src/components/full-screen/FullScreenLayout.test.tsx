@@ -194,4 +194,26 @@ describe('FullScreenLayout', () => {
 
     expect(screen.queryByTestId('custom-sub-header')).not.toBeInTheDocument();
   });
+
+  describe('read-only mode', () => {
+    it('hides the back-to-sidebar and copy-link chrome but keeps the title and step counter', () => {
+      render(
+        <FullScreenLayout
+          title="My guide"
+          hasActiveGuide={true}
+          guideUrl="backend-guide:my-guide"
+          stepProgress="2/5"
+          readonly={true}
+          onExit={() => {}}
+        >
+          <div>body</div>
+        </FullScreenLayout>
+      );
+
+      expect(screen.queryByTestId(testIds.fullScreenMode.exitButton)).not.toBeInTheDocument();
+      expect(screen.queryByTestId(testIds.fullScreenMode.copyLinkButton)).not.toBeInTheDocument();
+      expect(screen.getByText('My guide')).toBeInTheDocument();
+      expect(screen.getByText('Step 2 of 5')).toBeInTheDocument();
+    });
+  });
 });

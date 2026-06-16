@@ -14,6 +14,7 @@ import { css } from '@emotion/css';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { useIsInteractiveReadonly } from '../../global-state/interactive-readonly-context';
 
 export interface TerminalConnectStepProps {
   buttonText?: string;
@@ -107,6 +108,7 @@ export const TerminalConnectStep = forwardRef<
     ref
   ) => {
     const styles = useStyles2(getStyles);
+    const isReadonly = useIsInteractiveReadonly();
     const terminalCtx = useTerminalContext();
 
     const generatedStepIdRef = useRef<string | undefined>(undefined);
@@ -212,7 +214,7 @@ export const TerminalConnectStep = forwardRef<
       >
         {children && <div className={styles.content}>{children}</div>}
 
-        {isEnabled && !isCompleted && (
+        {!isReadonly && isEnabled && !isCompleted && (
           <div className={styles.actions}>
             {isTerminalConnected ? (
               <>

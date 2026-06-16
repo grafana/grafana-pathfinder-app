@@ -22,6 +22,7 @@ import { css } from '@emotion/css';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { checkPostconditions } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { useIsInteractiveReadonly } from '../../global-state/interactive-readonly-context';
 
 const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
 // /tmp/pathfinder-ready matches codaSentinelPath in the Go backend. The
@@ -198,6 +199,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   sectionId,
 }) => {
   const styles = useStyles2(getStyles);
+  const isReadonly = useIsInteractiveReadonly();
   const terminalCtx = useTerminalContext();
 
   const [generatedStepId] = useState(() => {
@@ -502,33 +504,35 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         </div>
       )}
 
-      <div className={styles.actions}>
-        {state === 'idle' && (
-          <Button variant="primary" icon="play" onClick={handleStart}>
-            Start challenge
-          </Button>
-        )}
-        {state === 'ready' && (
-          <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
-            Check my work
-          </Button>
-        )}
-        {state === 'failed-check' && (
-          <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
-            Check again
-          </Button>
-        )}
-        {state === 'setup-failed' && (
-          <Button variant="secondary" icon="sync" onClick={handleStart}>
-            Try again
-          </Button>
-        )}
-        {(state === 'connecting' || state === 'preparing') && (
-          <Button variant="secondary" icon="times" onClick={handleCancel}>
-            Cancel
-          </Button>
-        )}
-      </div>
+      {!isReadonly && (
+        <div className={styles.actions}>
+          {state === 'idle' && (
+            <Button variant="primary" icon="play" onClick={handleStart}>
+              Start challenge
+            </Button>
+          )}
+          {state === 'ready' && (
+            <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
+              Check my work
+            </Button>
+          )}
+          {state === 'failed-check' && (
+            <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
+              Check again
+            </Button>
+          )}
+          {state === 'setup-failed' && (
+            <Button variant="secondary" icon="sync" onClick={handleStart}>
+              Try again
+            </Button>
+          )}
+          {(state === 'connecting' || state === 'preparing') && (
+            <Button variant="secondary" icon="times" onClick={handleCancel}>
+              Cancel
+            </Button>
+          )}
+        </div>
+      )}
 
       {hintLevels.length > 0 && (state === 'ready' || state === 'failed-check') && (
         <div className={styles.hints}>

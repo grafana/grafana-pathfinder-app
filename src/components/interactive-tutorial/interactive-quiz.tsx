@@ -7,6 +7,7 @@ import { useStepChecker } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { useIsInteractiveReadonly } from '../../global-state/interactive-readonly-context';
 import type { ProgressReason } from '../../global-state/progress-events';
 
 // ============ Types ============
@@ -129,6 +130,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   sectionTitle,
 }) => {
   const styles = useStyles2(getQuizStyles);
+  const isReadonly = useIsInteractiveReadonly();
 
   // Generate stable step ID using useState lazy initialization (runs once on mount)
   const [generatedStepId] = useState(() => {
@@ -489,7 +491,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
               type="button"
               className={cx(styles.choice, getChoiceClassName(state))}
               onClick={() => handleChoiceClick(choice.id)}
-              disabled={isCompleted || isRevealed || isBlocked}
+              disabled={isCompleted || isRevealed || isBlocked || isReadonly}
               aria-pressed={isSelected}
               data-testid={testIds.interactive.quizChoice(stepId, choice.id)}
             >
@@ -536,31 +538,33 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       )}
 
       {/* Actions */}
-      <div className={styles.actions}>
-        {showCheckButton && (
-          <Button onClick={handleCheckAnswer} disabled={disabled || isBlocked}>
-            Check Answer
-          </Button>
-        )}
+      {!isReadonly && (
+        <div className={styles.actions}>
+          {showCheckButton && (
+            <Button onClick={handleCheckAnswer} disabled={disabled || isBlocked}>
+              Check Answer
+            </Button>
+          )}
 
-        {attemptsRemaining !== null && !isCompleted && !isRevealed && (
-          <span className={styles.attempts}>
-            {attemptsRemaining} attempt{attemptsRemaining !== 1 ? 's' : ''} remaining
-          </span>
-        )}
+          {attemptsRemaining !== null && !isCompleted && !isRevealed && (
+            <span className={styles.attempts}>
+              {attemptsRemaining} attempt{attemptsRemaining !== 1 ? 's' : ''} remaining
+            </span>
+          )}
 
-        {canSkip && !isCompleted && (
-          <Button
-            variant="secondary"
-            fill="text"
-            onClick={handleSkip}
-            disabled={disabled}
-            data-testid={testIds.interactive.quizSkipButton(stepId)}
-          >
-            Skip
-          </Button>
-        )}
-      </div>
+          {canSkip && !isCompleted && (
+            <Button
+              variant="secondary"
+              fill="text"
+              onClick={handleSkip}
+              disabled={disabled}
+              data-testid={testIds.interactive.quizSkipButton(stepId)}
+            >
+              Skip
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

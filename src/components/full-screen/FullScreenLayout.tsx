@@ -21,6 +21,8 @@ export interface FullScreenLayoutProps {
   guideType?: 'learning-journey' | 'docs';
   /** Whether the active tab represents a guide (vs editor / empty state) */
   hasActiveGuide: boolean;
+  /** Read-only viewer mode — hides the exit and copy-link chrome. */
+  readonly?: boolean;
   /** Click handler for the back-to-sidebar button */
   onExit: () => void;
   /** Click handler for the go-floating button (omit to hide it) */
@@ -40,6 +42,7 @@ export function FullScreenLayout({
   guideUrl,
   guideType,
   hasActiveGuide,
+  readonly,
   onExit,
   onGoFloating,
   subHeader,
@@ -84,14 +87,16 @@ export function FullScreenLayout({
     >
       <div className={styles.stickyTopBar}>
         <div className={styles.header}>
-          <IconButton
-            name="angle-left"
-            size="md"
-            tooltip="Back to sidebar"
-            onClick={onExit}
-            data-testid={testIds.fullScreenMode.exitButton}
-            aria-label="Back to sidebar"
-          />
+          {!readonly && (
+            <IconButton
+              name="angle-left"
+              size="md"
+              tooltip="Back to sidebar"
+              onClick={onExit}
+              data-testid={testIds.fullScreenMode.exitButton}
+              aria-label="Back to sidebar"
+            />
+          )}
           <span className={styles.headerTitle} title={title}>
             {title}
           </span>
@@ -107,7 +112,7 @@ export function FullScreenLayout({
             </span>
           )}
           <div className={styles.headerActions}>
-            {hasActiveGuide && guideUrl && (
+            {!readonly && hasActiveGuide && guideUrl && (
               <IconButton
                 name={linkCopied ? 'check' : 'link'}
                 size="sm"
