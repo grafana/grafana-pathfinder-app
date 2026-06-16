@@ -389,4 +389,11 @@ export const testIds = {
     loading: 'kiosk-mode-loading',
     warning: 'kiosk-mode-warning',
   },
+
+  guideReader: {
+    overlay: 'guide-reader-overlay',
+    closeButton: 'guide-reader-close',
+    loading: 'guide-reader-loading',
+    error: 'guide-reader-error',
+  },
 };

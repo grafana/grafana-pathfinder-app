@@ -152,7 +152,6 @@ export interface FullScreenRouteOpts {
   doc: string;
   /** Tab kind. Encoded so refresh / share rehydrates as the right surface. */
   guideType: 'learning-journey' | 'docs';
-  readonly?: boolean;
 }
 
 /**
@@ -166,9 +165,6 @@ export function buildFullScreenRouteUrl(opts: FullScreenRouteOpts): string {
   const params = new URLSearchParams();
   params.set('doc', opts.doc);
   params.set('type', opts.guideType);
-  if (opts.readonly) {
-    params.set('readonly', '1');
-  }
   return `${opts.pluginBaseUrl}/${opts.fullScreenRoute}?${params.toString()}`;
 }
 
