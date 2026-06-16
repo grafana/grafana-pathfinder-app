@@ -166,5 +166,5 @@
   "lint-staged": {
     "*.{ts,tsx,js,json,yaml,md}": "prettier --config .prettierrc.js --write"
   },
-  "packageManager": "npm@11.16.0"
+  "packageManager": "npm@11.17.0"
 }
