@@ -23,6 +23,7 @@ import { sanitizeDocumentationHTML } from '../../security';
 import { STEP_STATES } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { useIsInteractiveReadonly } from '../../global-state/interactive-readonly-context';
 import type { ProgressReason } from '../../global-state/progress-events';
 
 /**
@@ -166,6 +167,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     );
 
     // Local UI state
+    const isReadonly = useIsInteractiveReadonly();
     const [isExecuting, setIsExecuting] = useState(false);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
@@ -662,7 +664,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         {/* ═══════════════════════════════════════════════════════════════════
             STATE: IDLE - Ready to start
         ═══════════════════════════════════════════════════════════════════ */}
-        {uiState === 'idle' && (
+        {!isReadonly && uiState === 'idle' && (
           <div className="interactive-guided-idle">
             <div className="interactive-guided-actions">
               <Button
@@ -933,15 +935,17 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               </span>
               <span className="interactive-guided-completed-text">Completed</span>
             </div>
-            <button
-              className="interactive-guided-redo-btn"
-              onClick={handleStepRedo}
-              disabled={disabled || isAnyActionRunning}
-              data-testid={testIds.interactive.redoButton(renderedStepId)}
-              title="Redo this guided tour"
-            >
-              ↻ Redo
-            </button>
+            {!isReadonly && (
+              <button
+                className="interactive-guided-redo-btn"
+                onClick={handleStepRedo}
+                disabled={disabled || isAnyActionRunning}
+                data-testid={testIds.interactive.redoButton(renderedStepId)}
+                title="Redo this guided tour"
+              >
+                ↻ Redo
+              </button>
+            )}
           </div>
         )}
       </div>

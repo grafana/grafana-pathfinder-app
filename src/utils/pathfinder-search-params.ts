@@ -19,7 +19,7 @@
  * `searchParams.set` — no user-controlled keys are ever set.
  */
 
-export const PATHFINDER_PARAMS = ['doc', 'type', 'source', 'page', 'kiosk_session', 'panelMode'] as const;
+export const PATHFINDER_PARAMS = ['doc', 'type', 'source', 'page', 'kiosk_session', 'panelMode', 'readonly'] as const;
 export type PathfinderParam = (typeof PATHFINDER_PARAMS)[number];
 
 // Subset of PATHFINDER_PARAMS that activate the deep-link handler
@@ -55,6 +55,7 @@ export interface DeepLinkParams {
   kioskSession?: string;
   /** Surface mode from `?panelMode=`. Strict whitelist; unknowns drop to undefined. */
   panelMode?: PathfinderDeepLinkPanelMode;
+  readonly?: boolean;
 }
 
 const ALLOWED_TYPES: ReadonlySet<PathfinderDeepLinkType> = new Set(['learning-journey', 'docs', 'interactive']);
@@ -81,6 +82,7 @@ export function parsePathfinderDeepLink(search: string): DeepLinkParams {
     page: params.get('page') ?? undefined,
     kioskSession: params.get('kiosk_session') ?? undefined,
     panelMode,
+    readonly: params.get('readonly') === '1',
   };
 }
 
@@ -150,6 +152,7 @@ export interface FullScreenRouteOpts {
   doc: string;
   /** Tab kind. Encoded so refresh / share rehydrates as the right surface. */
   guideType: 'learning-journey' | 'docs';
+  readonly?: boolean;
 }
 
 /**
@@ -163,6 +166,9 @@ export function buildFullScreenRouteUrl(opts: FullScreenRouteOpts): string {
   const params = new URLSearchParams();
   params.set('doc', opts.doc);
   params.set('type', opts.guideType);
+  if (opts.readonly) {
+    params.set('readonly', '1');
+  }
   return `${opts.pluginBaseUrl}/${opts.fullScreenRoute}?${params.toString()}`;
 }
 

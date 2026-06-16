@@ -18,9 +18,9 @@ import {
 } from './pathfinder-search-params';
 
 describe('PATHFINDER_PARAMS', () => {
-  it('contains the documented six params (kept in lock-step with parse + strip)', () => {
+  it('contains the documented seven params (kept in lock-step with parse + strip)', () => {
     expect([...PATHFINDER_PARAMS].sort()).toEqual(
-      ['doc', 'kiosk_session', 'page', 'panelMode', 'source', 'type'].sort()
+      ['doc', 'kiosk_session', 'page', 'panelMode', 'readonly', 'source', 'type'].sort()
     );
   });
 });
@@ -34,12 +34,13 @@ describe('parsePathfinderDeepLink', () => {
       page: undefined,
       kioskSession: undefined,
       panelMode: undefined,
+      readonly: false,
     });
   });
 
   it('parses every supported param, including the renamed kiosk_session → kioskSession', () => {
     const search =
-      '?doc=https%3A%2F%2Fgrafana.com%2Fdocs%2Ffoo&type=learning-journey&source=learning-hub&page=%2Fexplore&kiosk_session=abc123&panelMode=fullscreen';
+      '?doc=https%3A%2F%2Fgrafana.com%2Fdocs%2Ffoo&type=learning-journey&source=learning-hub&page=%2Fexplore&kiosk_session=abc123&panelMode=fullscreen&readonly=1';
     expect(parsePathfinderDeepLink(search)).toEqual({
       doc: 'https://grafana.com/docs/foo',
       type: 'learning-journey',
@@ -47,7 +48,15 @@ describe('parsePathfinderDeepLink', () => {
       page: '/explore',
       kioskSession: 'abc123',
       panelMode: 'fullscreen',
+      readonly: true,
     });
+  });
+
+  it('parses readonly=1 as true and anything else as false', () => {
+    expect(parsePathfinderDeepLink('?readonly=1').readonly).toBe(true);
+    expect(parsePathfinderDeepLink('?readonly=0').readonly).toBe(false);
+    expect(parsePathfinderDeepLink('?readonly=true').readonly).toBe(false);
+    expect(parsePathfinderDeepLink('').readonly).toBe(false);
   });
 
   it('rejects unknown `type` values (typos drop to undefined rather than poisoning consumers)', () => {
@@ -77,7 +86,7 @@ describe('parsePathfinderDeepLink', () => {
 describe('stripPathfinderParams', () => {
   it('removes every Pathfinder-controlled param while preserving foreign params', () => {
     const url = new URL(
-      'https://example.com/foo?doc=bar&type=learning-journey&source=hub&page=/explore&kiosk_session=xyz&panelMode=floating&keep=this'
+      'https://example.com/foo?doc=bar&type=learning-journey&source=hub&page=/explore&kiosk_session=xyz&panelMode=floating&readonly=1&keep=this'
     );
 
     stripPathfinderParams(url);
@@ -88,6 +97,7 @@ describe('stripPathfinderParams', () => {
     expect(url.searchParams.get('page')).toBeNull();
     expect(url.searchParams.get('kiosk_session')).toBeNull();
     expect(url.searchParams.get('panelMode')).toBeNull();
+    expect(url.searchParams.get('readonly')).toBeNull();
     expect(url.searchParams.get('keep')).toBe('this');
   });
 
@@ -172,6 +182,31 @@ describe('buildFullScreenRouteUrl', () => {
 
     const url = new URL(out, 'http://localhost');
     expect(url.searchParams.get('type')).toBe('docs');
+  });
+
+  it('sets readonly=1 only when readonly is requested', () => {
+    const withReadonly = new URL(
+      buildFullScreenRouteUrl({
+        pluginBaseUrl: '/a/grafana-pathfinder-app',
+        fullScreenRoute: 'fullscreen',
+        doc: 'backend-guide:my-guide',
+        guideType: 'docs',
+        readonly: true,
+      }),
+      'http://localhost'
+    );
+    expect(withReadonly.searchParams.get('readonly')).toBe('1');
+
+    const withoutReadonly = new URL(
+      buildFullScreenRouteUrl({
+        pluginBaseUrl: '/a/grafana-pathfinder-app',
+        fullScreenRoute: 'fullscreen',
+        doc: 'backend-guide:my-guide',
+        guideType: 'docs',
+      }),
+      'http://localhost'
+    );
+    expect(withoutReadonly.searchParams.get('readonly')).toBeNull();
   });
 });
 

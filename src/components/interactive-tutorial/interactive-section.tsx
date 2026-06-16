@@ -5,6 +5,7 @@ import { usePluginContext } from '@grafana/data';
 import { useInteractiveElements, ActionMonitor } from '../../interactive-engine';
 import { useStepChecker } from '../../requirements-manager';
 import { useIsAlignmentPaused, useAlignmentStartingLocation } from '../../global-state/alignment-pending-context';
+import { useIsInteractiveReadonly } from '../../global-state/interactive-readonly-context';
 import { InteractiveStep, resetStepCounter } from './interactive-step';
 import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
 import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
@@ -160,6 +161,7 @@ export function InteractiveSection({
   // `useSectionCompletion`); the cursor is a pure derivation of the
   // step roster + the completed set.
   const [sectionState, dispatch] = useReducer(sectionReducer, initialSectionState);
+  const isReadonly = useIsInteractiveReadonly();
   const [currentlyExecutingStep, setCurrentlyExecutingStep] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [executingStepNumber, setExecutingStepNumber] = useState(0); // Track which step is being executed (1-indexed for display)
@@ -1328,120 +1330,122 @@ export function InteractiveSection({
         <ol className="interactive-section-content">{wrapSectionChildrenForNumbering(enhancedChildren)}</ol>
       )}
 
-      <div className={`interactive-section-actions${isCollapsed ? ' collapsed' : ''}`}>
-        {isCollapsed ? (
-          <Button
-            onClick={handleResetSection}
-            disabled={disabled || isRunning || isCompletedByObjectives}
-            size="sm"
-            variant="secondary"
-            className="interactive-section-reset-button"
-            data-testid={testIds.interactive.resetSectionButton(sectionId)}
-            title="Reset section and clear all step completion"
-          >
-            Reset Section
-          </Button>
-        ) : isRunning ? (
-          /* Running state - show progress bar and status */
-          <div className="interactive-guided-executing">
-            <div className="interactive-guided-step-indicator">
-              <span className="interactive-guided-step-badge">
-                Step {executingStepNumber || 1} of {stepComponents.length}
-              </span>
-            </div>
-            <div className="interactive-guided-instruction">
-              <span className="interactive-guided-instruction-icon">⚡</span>
-              <span className="interactive-guided-instruction-text">Running step {executingStepNumber || 1}...</span>
-            </div>
-            <div className="interactive-guided-progress">
-              <div
-                className="interactive-guided-progress-fill"
-                style={{ width: `${((executingStepNumber - 1) / stepComponents.length) * 100}%` }}
-              />
-              <div
-                className="interactive-guided-progress-active"
-                style={{
-                  left: `${((executingStepNumber - 1) / stepComponents.length) * 100}%`,
-                  width: `${(1 / stepComponents.length) * 100}%`,
-                }}
-              />
-            </div>
+      {!isReadonly && (
+        <div className={`interactive-section-actions${isCollapsed ? ' collapsed' : ''}`}>
+          {isCollapsed ? (
             <Button
-              onClick={handleSectionCancel}
-              disabled={disabled}
+              onClick={handleResetSection}
+              disabled={disabled || isRunning || isCompletedByObjectives}
               size="sm"
               variant="secondary"
-              className="interactive-guided-cancel-btn"
-              title="Cancel section execution"
+              className="interactive-section-reset-button"
+              data-testid={testIds.interactive.resetSectionButton(sectionId)}
+              title="Reset section and clear all step completion"
             >
-              Cancel
+              Reset Section
             </Button>
-          </div>
-        ) : sectionKind === 'awaiting-ack' ? (
-          /* Acknowledgement gate (issue #842) — surfaces only when every
+          ) : isRunning ? (
+            /* Running state - show progress bar and status */
+            <div className="interactive-guided-executing">
+              <div className="interactive-guided-step-indicator">
+                <span className="interactive-guided-step-badge">
+                  Step {executingStepNumber || 1} of {stepComponents.length}
+                </span>
+              </div>
+              <div className="interactive-guided-instruction">
+                <span className="interactive-guided-instruction-icon">⚡</span>
+                <span className="interactive-guided-instruction-text">Running step {executingStepNumber || 1}...</span>
+              </div>
+              <div className="interactive-guided-progress">
+                <div
+                  className="interactive-guided-progress-fill"
+                  style={{ width: `${((executingStepNumber - 1) / stepComponents.length) * 100}%` }}
+                />
+                <div
+                  className="interactive-guided-progress-active"
+                  style={{
+                    left: `${((executingStepNumber - 1) / stepComponents.length) * 100}%`,
+                    width: `${(1 / stepComponents.length) * 100}%`,
+                  }}
+                />
+              </div>
+              <Button
+                onClick={handleSectionCancel}
+                disabled={disabled}
+                size="sm"
+                variant="secondary"
+                className="interactive-guided-cancel-btn"
+                title="Cancel section execution"
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : sectionKind === 'awaiting-ack' ? (
+            /* Acknowledgement gate (issue #842) — surfaces only when every
              interactive step is done (or the section is 100% passive) AND
              the user hasn't yet clicked Mark. */
-          <Button
-            onClick={handleMarkSectionComplete}
-            disabled={disabled}
-            size="md"
-            variant="primary"
-            className="interactive-section-do-button"
-            data-testid={testIds.interactive.markSectionCompleteButton(sectionId)}
-            title="Mark section as complete and continue"
-          >
-            Mark section as complete
-          </Button>
-        ) : (
-          // Catch-all action button. The disabled clause's
-          // `stepComponents.length === 0` guard only applies to the Do-
-          // Section path — an all-passive section has zero interactive
-          // children but reaches `done(ack)` via the Mark gate and must
-          // still be Reset-able afterwards.
-          <Button
-            onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
-            disabled={
-              disabled ||
-              !sectionRequirementsStatus.passed ||
-              isCompletedByObjectives ||
-              (!(stepsCompleted && !isCompletedByObjectives) && stepComponents.length === 0)
-            }
-            size="md"
-            variant={isCompleted ? 'secondary' : 'primary'}
-            className="interactive-section-do-button"
-            data-testid={
-              stepsCompleted && !isCompletedByObjectives
-                ? testIds.interactive.resetSectionButton(sectionId)
-                : testIds.interactive.doSectionButton(sectionId)
-            }
-            title={(() => {
-              if (isCompletedByObjectives) {
-                return 'Already done!';
+            <Button
+              onClick={handleMarkSectionComplete}
+              disabled={disabled}
+              size="md"
+              variant="primary"
+              className="interactive-section-do-button"
+              data-testid={testIds.interactive.markSectionCompleteButton(sectionId)}
+              title="Mark section as complete and continue"
+            >
+              Mark section as complete
+            </Button>
+          ) : (
+            // Catch-all action button. The disabled clause's
+            // `stepComponents.length === 0` guard only applies to the Do-
+            // Section path — an all-passive section has zero interactive
+            // children but reaches `done(ack)` via the Mark gate and must
+            // still be Reset-able afterwards.
+            <Button
+              onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
+              disabled={
+                disabled ||
+                !sectionRequirementsStatus.passed ||
+                isCompletedByObjectives ||
+                (!(stepsCompleted && !isCompletedByObjectives) && stepComponents.length === 0)
               }
-              if (stepsCompleted && !isCompletedByObjectives) {
-                return 'Reset section and clear all step completion to allow manual re-interaction';
+              size="md"
+              variant={isCompleted ? 'secondary' : 'primary'}
+              className="interactive-section-do-button"
+              data-testid={
+                stepsCompleted && !isCompletedByObjectives
+                  ? testIds.interactive.resetSectionButton(sectionId)
+                  : testIds.interactive.doSectionButton(sectionId)
               }
-              if (resumeInfo.isResume) {
-                return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
-              }
-              return hints || `Run through all ${nonNoopSteps.length} steps in sequence`;
-            })()}
-          >
-            {(() => {
-              if (isCompletedByObjectives) {
-                return 'Already done!';
-              }
-              if (stepsCompleted && !isCompletedByObjectives) {
-                return 'Reset section';
-              }
-              if (resumeInfo.isResume) {
-                return `▶ Resume (${resumeInfo.remainingSteps} steps)`;
-              }
-              return `▶ Do Section (${nonNoopSteps.length} steps)`;
-            })()}
-          </Button>
-        )}
-      </div>
+              title={(() => {
+                if (isCompletedByObjectives) {
+                  return 'Already done!';
+                }
+                if (stepsCompleted && !isCompletedByObjectives) {
+                  return 'Reset section and clear all step completion to allow manual re-interaction';
+                }
+                if (resumeInfo.isResume) {
+                  return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
+                }
+                return hints || `Run through all ${nonNoopSteps.length} steps in sequence`;
+              })()}
+            >
+              {(() => {
+                if (isCompletedByObjectives) {
+                  return 'Already done!';
+                }
+                if (stepsCompleted && !isCompletedByObjectives) {
+                  return 'Reset section';
+                }
+                if (resumeInfo.isResume) {
+                  return `▶ Resume (${resumeInfo.remainingSteps} steps)`;
+                }
+                return `▶ Do Section (${nonNoopSteps.length} steps)`;
+              })()}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

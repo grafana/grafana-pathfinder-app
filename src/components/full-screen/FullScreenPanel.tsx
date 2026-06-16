@@ -13,6 +13,7 @@ import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager } from '../../global-state/panel-mode';
+import { InteractiveReadonlyContext } from '../../global-state/interactive-readonly-context';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
@@ -49,6 +50,10 @@ export class FullScreenPanel extends SceneObjectBase<FullScreenPanelState> {
 
 function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const fullScreenStyles = useStyles2(getFullScreenStyles);
+
+  // Captured at first render before the deep-link handler asynchronously
+  // strips `?readonly=` from the URL (it strips inside an async import).
+  const [isReadonly] = useState(() => !!parsePathfinderDeepLink(window.location.search).readonly);
 
   const panel = useMemo(() => {
     const globalConfig = (window as any).__pathfinderPluginConfig;
@@ -394,34 +399,37 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     : undefined;
 
   return (
-    <FullScreenLayout
-      title={title}
-      stepProgress={stepProgress}
-      guideUrl={guideUrl}
-      guideType={guideType}
-      hasActiveGuide={hasActiveGuide}
-      onExit={handleExitToSidebar}
-      // Show the pop-out button for both guides AND the editor — the editor
-      // is poppable to floating via the same event/handler, and hiding the
-      // button would create an inconsistency with the BlockEditor toolbar's
-      // own "Pop out" button which dispatches the equivalent event.
-      onGoFloating={hasActiveGuide || isEditorTab ? handleSwitchToFloating : undefined}
-      subHeader={journeyToolbar}
-    >
-      {isEditorTab ? (
-        <Suspense fallback={<SkeletonLoader type="documentation" />}>
-          <BlockEditor />
-        </Suspense>
-      ) : (
-        <FloatingPanelContent
-          content={content}
-          pendingAlignment={activeTab?.pendingAlignment}
-          onAlignmentConfirm={activeTab ? () => void panel.confirmAlignment(activeTab.id) : undefined}
-          onAlignmentCancel={activeTab ? () => panel.dismissAlignment(activeTab.id) : undefined}
-          activeTab={activeTab ?? null}
-          model={panel}
-        />
-      )}
-    </FullScreenLayout>
+    <InteractiveReadonlyContext.Provider value={isReadonly}>
+      <FullScreenLayout
+        title={title}
+        stepProgress={stepProgress}
+        guideUrl={guideUrl}
+        guideType={guideType}
+        hasActiveGuide={hasActiveGuide}
+        readonly={isReadonly}
+        onExit={handleExitToSidebar}
+        // Show the pop-out button for both guides AND the editor — the editor
+        // is poppable to floating via the same event/handler, and hiding the
+        // button would create an inconsistency with the BlockEditor toolbar's
+        // own "Pop out" button which dispatches the equivalent event.
+        onGoFloating={!isReadonly && (hasActiveGuide || isEditorTab) ? handleSwitchToFloating : undefined}
+        subHeader={journeyToolbar}
+      >
+        {isEditorTab ? (
+          <Suspense fallback={<SkeletonLoader type="documentation" />}>
+            <BlockEditor />
+          </Suspense>
+        ) : (
+          <FloatingPanelContent
+            content={content}
+            pendingAlignment={activeTab?.pendingAlignment}
+            onAlignmentConfirm={activeTab ? () => void panel.confirmAlignment(activeTab.id) : undefined}
+            onAlignmentCancel={activeTab ? () => panel.dismissAlignment(activeTab.id) : undefined}
+            activeTab={activeTab ?? null}
+            model={panel}
+          />
+        )}
+      </FullScreenLayout>
+    </InteractiveReadonlyContext.Provider>
   );
 }
