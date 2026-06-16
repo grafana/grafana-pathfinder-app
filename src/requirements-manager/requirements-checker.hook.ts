@@ -343,12 +343,12 @@ export class SequentialRequirementsManager {
 
     // Import dynamically to avoid circular deps
     import('../context-engine')
-      .then(({ ContextService }) => {
+      .then(({ onContextChange }) => {
         // Check if monitoring was cancelled during the async import
         if (this.contextMonitoringCancelled) {
           return; // Don't subscribe if stop was called during import
         }
-        this.contextChangeUnsubscribe = ContextService.onContextChange(() => {
+        this.contextChangeUnsubscribe = onContextChange(() => {
           this.recheckNextSteps();
         });
       })

@@ -9,7 +9,7 @@ import { createTool, type InlineToolRunnable, type ToolInvokeOptions, type ToolO
 import { config, locationService, getBackendSrv, getDataSourceSrv } from '@grafana/runtime';
 
 import type { GrafanaContextArtifact, DatasourceInfo } from './types';
-import { ContextService } from '../../../context-engine';
+import { getDetectedDatasourceType, getDetectedVisualizationType } from '../../../context-engine';
 
 /**
  * Tool input schema - no input required
@@ -208,9 +208,9 @@ export const createGrafanaContextTool = (
       // Fetch dashboard info if on dashboard page
       const dashboard = await fetchDashboardInfo(currentPath);
 
-      // Get detected context from ContextService (uses EchoSrv events)
-      const activeDatasourceType = ContextService.getDetectedDatasourceType() || undefined;
-      const activeVisualizationType = ContextService.getDetectedVisualizationType() || undefined;
+      // Get detected context from the context event bus (uses EchoSrv events)
+      const activeDatasourceType = getDetectedDatasourceType() || undefined;
+      const activeVisualizationType = getDetectedVisualizationType() || undefined;
 
       // Build the artifact
       const artifact: GrafanaContextArtifact = {

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { locationService } from '@grafana/runtime';
 import { usePluginContext } from '@grafana/data';
 import { ContextService } from './context.service';
+import { getDetectedDatasourceType, getDetectedVisualizationType, onContextChange } from './context-event-bus';
 import { ContextData, Recommendation, UseContextPanelOptions, UseContextPanelReturn } from '../types/context.types';
 import type { PackageOpenInfo } from '../types/content-panel.types';
 import { useTimeoutManager } from '../utils/timeout-manager';
@@ -137,8 +138,8 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
       if (hasLocationChanged) {
         // Get current EchoSrv state for tracking (but don't trigger on changes)
-        const currentVizType = ContextService.getDetectedVisualizationType();
-        const currentSelectedDatasource = ContextService.getDetectedDatasourceType();
+        const currentVizType = getDetectedVisualizationType();
+        const currentSelectedDatasource = getDetectedDatasourceType();
 
         lastLocationRef.current = {
           path: currentPath,
@@ -189,7 +190,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
   // Listen for EchoSrv-triggered context changes (datasource/viz changes)
   useEffect(() => {
-    const unsubscribe = ContextService.onContextChange(() => {
+    const unsubscribe = onContextChange(() => {
       debouncedRefresh();
     });
 

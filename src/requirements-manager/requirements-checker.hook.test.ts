@@ -1,5 +1,6 @@
 import { SequentialRequirementsManager } from './index';
-import { ContextService } from '../context-engine';
+import { onContextChange } from '../context-engine';
+import { __notifyContextChangeForTests } from '../context-engine/context-event-bus';
 
 describe('SequentialRequirementsManager DOM monitoring (nav)', () => {
   it('no longer triggers recheck on nav mutations (uses context monitoring instead)', async () => {
@@ -154,11 +155,9 @@ describe('SequentialRequirementsManager context integration', () => {
 
   it('notifies listeners when context changes', () => {
     const listener = jest.fn();
-    const unsubscribe = ContextService.onContextChange(listener);
+    const unsubscribe = onContextChange(listener);
 
-    // Simulate EchoSrv event triggering context change
-    // Access private method for testing
-    (ContextService as any).notifyContextChange();
+    __notifyContextChangeForTests();
 
     expect(listener).toHaveBeenCalled();
 
@@ -181,7 +180,7 @@ describe('SequentialRequirementsManager context integration', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Trigger context change
-    (ContextService as any).notifyContextChange();
+    __notifyContextChangeForTests();
 
     // Wait for debounce and execution
     await new Promise((resolve) => setTimeout(resolve, 300));
