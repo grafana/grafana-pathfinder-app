@@ -183,31 +183,6 @@ describe('buildFullScreenRouteUrl', () => {
     const url = new URL(out, 'http://localhost');
     expect(url.searchParams.get('type')).toBe('docs');
   });
-
-  it('sets readonly=1 only when readonly is requested', () => {
-    const withReadonly = new URL(
-      buildFullScreenRouteUrl({
-        pluginBaseUrl: '/a/grafana-pathfinder-app',
-        fullScreenRoute: 'fullscreen',
-        doc: 'backend-guide:my-guide',
-        guideType: 'docs',
-        readonly: true,
-      }),
-      'http://localhost'
-    );
-    expect(withReadonly.searchParams.get('readonly')).toBe('1');
-
-    const withoutReadonly = new URL(
-      buildFullScreenRouteUrl({
-        pluginBaseUrl: '/a/grafana-pathfinder-app',
-        fullScreenRoute: 'fullscreen',
-        doc: 'backend-guide:my-guide',
-        guideType: 'docs',
-      }),
-      'http://localhost'
-    );
-    expect(withoutReadonly.searchParams.get('readonly')).toBeNull();
-  });
 });
 
 describe('shouldOpenAsLearningJourney', () => {

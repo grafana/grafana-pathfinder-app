@@ -141,7 +141,31 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   (window as any).__pathfinderPluginConfig = config;
 
   // Snapshotted before handlePathfinderDeepLink strips it from the URL.
-  const docsParam = parsePathfinderDeepLink(window.location.search).doc;
+  const { doc: docsParam, readonly: readonlyParam } = parsePathfinderDeepLink(window.location.search);
+
+  // Read-only guide reader: a new tab opened via the "Open" button carries
+  // ?doc=<guide>&readonly=1. Mount a full-screen overlay over Grafana and skip
+  // the sidebar / deep-link auto-open so this tab is a dedicated reader.
+  if (docsParam && readonlyParam) {
+    if (!document.getElementById('pathfinder-guide-reader-root')) {
+      import('./components/guide-reader/GuideReaderOverlay')
+        .then(async ({ GuideReaderOverlay }) => {
+          if (document.getElementById('pathfinder-guide-reader-root')) {
+            return;
+          }
+          const { createCompatRoot } = await import('./lib/create-root-compat');
+          const container = document.createElement('div');
+          container.id = 'pathfinder-guide-reader-root';
+          document.body.appendChild(container);
+          const root = await createCompatRoot(container);
+          root.render(React.createElement(GuideReaderOverlay, { doc: docsParam }));
+        })
+        .catch((err) => {
+          console.error('[Pathfinder] Failed to load guide reader:', err);
+        });
+    }
+    return;
+  }
 
   const sidebarMountable = shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant);
   const deepLinkDeps = {
