@@ -12,6 +12,12 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 <!-- Docs checked against source and found accurate. Format: date, doc path. Update date on re-validation. -->
 
+- **2026-06-16**: `docs/developer/CLI_TOOLS.md` — Added a `build-snippets` command section and updated the intro command list/coverage line. Validated against `src/cli/commands/build-snippets.ts` and the `snippets:build` npm script. Supersedes the 2026-03-20 entry.
+- **2026-06-16**: `docs/developer/CODA.md` — Added a Command execution section documenting `POST /coda/exec` (raw/gated modes, active-session auth, 5s default / 120s max timeout, 32 KB output cap, per-user token-bucket rate limit, error statuses). Validated against `pkg/plugin/coda_exec.go`, `coda_exec_ratelimit.go`, and `resources.go`. Supersedes the 2026-03-20 entry.
+- **2026-06-16**: `docs/developer/MCP_SERVER.md` — Confirmed current: no structural changes in `src/cli/mcp/` since the doc's last commit (2026-05-19); already documents the Go MCP retirement (MH5).
+- **2026-06-16**: `docs/developer/package-authoring.md` — Confirmed current: documents the two-file authoring format, not package-engine resolver internals, so the resolver restructure (`dependency-resolver` → `composite-resolver`/`online-cdn-resolver`/`recommender-resolver`) does not affect it.
+- **2026-06-16**: `.cursor/rules/systemPatterns.mdc` — Confirmed current: package-engine entry references `composite-resolver.ts`/`createCompositeResolver` and the bundled → online-CDN → recommender chain; `snippet-engine` is listed in the tier model and subsystem reference. Supersedes the 2026-03-20 entry.
+- **2026-06-16**: Structural scan, no drift since each doc's last commit: `docs/developer/AI_FIX.md`, `docs/developer/STEP_MODEL.md`, `docs/developer/engines/interactive-engine.md`, `docs/developer/engines/requirements-manager.md`, `docs/developer/engines/context-engine.md`, `docs/developer/FEATURE_FLAGS.md`, `docs/developer/EXPERIMENT_TESTING.md`, `docs/developer/LIVE_SESSIONS.md`, `docs/developer/integrations/workshop.md`.
 - **2026-04-27**: `docs/sources/_index.md` — Added Block editor card; refreshed feature bullets for v2.9 (custom guides, floating panel mode).
 - **2026-04-27**: `docs/sources/getting-started/_index.md` — Modernized for v2.9.x: added hover/popout actions, floating panel section, link to block editor doc.
 - **2026-04-27**: `docs/sources/architecture/_index.md` — Rebuilt against current architecture (was 5+ months stale). Added package engine, custom guides backend, floating panel, selector resilience, live sessions, Coda subsystems.
@@ -71,3 +77,7 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 - `docs/developer/pages/README.md` — Pages directory README. Very narrow scope (single page definition).
 - `docs/developer/styles/README.md` — Styles directory README. Useful for style work but no agent-level constraints.
 - `.cursor/skills/plugin-bundle-size/SKILL.md` — Discovered automatically by IDE via `.cursor/skills/` glob pattern. No AGENTS.md entry needed.
+- `.cursor/skills/bugfix/SKILL.md` — Workflow skill invoked via `/bugfix`; auto-discovered by the IDE via the `.cursor/skills/` glob. Consistent with the other workflow-skill exclusions; no AGENTS.md entry needed. (Its companion reference `docs/developer/bugfix-patterns.md` is already indexed.)
+- `.cursor/skills/refactor/SKILL.md` — Workflow skill invoked via `/refactor-investigate` / `/refactor-plan` / `/refactor-execute`; auto-discovered by the IDE. No AGENTS.md entry needed.
+- `docs/sources/block-editor/_index.md` — End-user documentation published to Grafana.com. Not agent-relevant for implementation tasks.
+- `docs/sources/terms-and-conditions/_index.md` — End-user data-usage notice published to Grafana.com; auto-generated from `src/components/AppConfig/terms-content.ts` via `npm run docs:sync-terms` (do not hand-edit). Not agent-relevant for implementation tasks.
