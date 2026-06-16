@@ -5,10 +5,11 @@ The `pathfinder-cli` is a command-line interface for working with interactive JS
 - **validate** — Validates guide definitions and package directories against schemas and best practices
 - **build-repository** — Generates `repository.json` from a package tree
 - **build-graph** — Generates a D3-compatible dependency graph from repository indexes
+- **build-snippets** — Generates a snippet catalog (`index.json`) from a directory of snippet bodies
 - **schema** — Exports Zod validation schemas as JSON Schema for cross-language consumers
 - **e2e** — Runs end-to-end tests on guides in a live Grafana instance (see [E2E testing](./E2E_TESTING.md))
 
-This document covers the `validate`, `build-repository`, `build-graph`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
+This document covers the `validate`, `build-repository`, `build-graph`, `build-snippets`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
 
 ---
 
@@ -331,6 +332,36 @@ The output is a D3-compatible JSON object with `nodes`, `edges`, and `metadata`:
 - **Nodes** contain full manifest metadata plus `id`, `repository`, and an optional `virtual: true` flag for capability nodes
 - **Edges** have `source`, `target`, and `type` (`depends`, `recommends`, `suggests`, `provides`, `conflicts`, `replaces`, `steps`)
 - **Metadata** includes `generatedAt` timestamp, repository names, and node/edge counts
+
+---
+
+## Build-snippets command
+
+Generates a snippet catalog (`index.json`) from a directory of snippet bodies. Snippet bodies (`<id>.json`) are the source of truth; the catalog is always regenerated, never hand-edited. The catalog is consumed by the snippet engine, which resolves `snippet-ref` blocks by fetching `<id>.json` at parse time.
+
+### Basic syntax
+
+```bash
+node dist/cli/cli/index.js build-snippets <dir> [options]
+```
+
+### Arguments
+
+- `<dir>` (required): Directory containing snippet bodies, one JSON file per snippet named `<id>.json`.
+
+### Options
+
+- `-o, --output <file>`: Output file path. Defaults to `<dir>/index.json`.
+
+### How it works
+
+The command reads every `*.json` file in `<dir>` except `index.json`, validates each against the snippet schema, and builds a catalog mapping each snippet `id` to its `id`, `title`, `description`, and optional `category`, `tags`, and `schemaVersion`. It enforces two rules: each file name must equal the `id` inside it (the resolver fetches `<id>.json`), and ids must be unique. If any body fails validation, a file name does not match its id, or an id is duplicated, no output is written and the command exits non-zero.
+
+Snippet bodies live in the content repository alongside package content, not in this plugin repo. A convenience npm script wraps the command — append the snippet directory:
+
+```bash
+npm run snippets:build -- <dir>
+```
 
 ---
 

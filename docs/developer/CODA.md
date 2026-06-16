@@ -149,7 +149,24 @@ All routes are prefixed by Grafana as `/api/plugins/grafana-pathfinder-app/resou
 | `/vms/{id}`        | DELETE | `handleDeleteVM`       | Destroy VM                                |
 | `/sample-apps`     | GET    | `handleSampleApps`     | Proxy to Coda's sample-apps endpoint      |
 | `/alloy-scenarios` | GET    | `handleAlloyScenarios` | Proxy to Coda's alloy-scenarios endpoint  |
+| `/coda/exec`       | POST   | `handleCodaExec`       | Run one command on the caller's active VM |
 | `/health`          | GET    | `handleHealth`         | Plugin health (includes `codaRegistered`) |
+
+### Command execution (`pkg/plugin/coda_exec.go`)
+
+`POST /coda/exec` runs a single non-interactive shell command against the caller's **active** VM — the one already driving their terminal stream — and returns stdout, stderr, exit code, and duration. Challenge blocks use it to run setup commands and to verify success criteria.
+
+**Auth**: the caller must already own an active streaming session; the endpoint reuses that session's SSH client and never opens a new connection. User identity is taken only from the plugin SDK context (`PluginContext.User`), never the `X-Grafana-User` header (which an unproxied client could spoof to target another user's VM).
+
+**Request** (`CodaExecRequest`): `{ command, timeoutMs?, mode? }`. `timeoutMs` defaults to 5000 and is capped at 120000 (the cap accommodates `setupScript` runs such as `apt-get install`). `mode` is `"raw"` (default) or `"gated"`.
+
+**Gated mode** wraps the command with a `/tmp/pathfinder-ready` sentinel-file precondition so a "Check my work" click cannot evaluate the success criterion before the challenge's setup phase has finished. This is a UI-race guard, **not** a security boundary — the learner has full shell access to the same VM.
+
+**Response** (`CodaExecResponse`): `{ stdout, stderr, exitCode, durationMs, truncated? }`. Output is capped at 32 KB; `truncated` is set when it exceeds the cap.
+
+**Rate limiting** (`pkg/plugin/coda_exec_ratelimit.go`): a per-user token bucket — 10-request burst, 5 req/s sustained refill. On breach the endpoint returns `429` with a `Retry-After` header.
+
+**Error statuses**: `400` (missing command or invalid mode), `401` (no authenticated user), `409` (no active terminal session), `502` (command failed), `503` (session no longer connected — reconnect and retry), `429` (rate limited).
 
 ### Grafana Live streaming (`pkg/plugin/stream.go`)
 
