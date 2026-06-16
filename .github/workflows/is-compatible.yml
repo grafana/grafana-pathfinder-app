@@ -7,7 +7,7 @@ jobs:
     permissions:
       contents: read # Read repository contents for compatibility check
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
       - name: Setup Node.js environment
@@ -27,7 +27,7 @@ jobs:
 
           echo "modulets=${MODULETS}" >> $GITHUB_OUTPUT
       - name: Compatibility check
-        uses: grafana/plugin-actions/is-compatible@33a8775f5df798793034b5e84a3f3214fe88c12f # main
+        uses: grafana/plugin-actions/is-compatible@8a426248c1477e82122ed56a34d786211c7be334 # main
         with:
           module: ${{ steps.find-module-ts.outputs.modulets }}
           comment-pr: no

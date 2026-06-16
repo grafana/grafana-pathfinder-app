@@ -17,8 +17,11 @@ import { getConfigWithDefaults } from '../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
 import { GuidedAction } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
+// Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
+import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { sanitizeDocumentationHTML } from '../../security';
 import { STEP_STATES } from './step-states';
+import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import type { ProgressReason } from '../../global-state/progress-events';
 
@@ -165,6 +168,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Local UI state
     const [isExecuting, setIsExecuting] = useState(false);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
+    const [failedStepIndex, setFailedStepIndex] = useState(-1);
     const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
     const [executionError, setExecutionError] = useState<string | null>(null);
     const [wasCancelled, setWasCancelled] = useState(false);
@@ -265,6 +269,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       onComplete, // Pass through for objectives auto-completion
     });
 
+    const aiFixEnabled = useAiFixEnabled();
+
     // Combined completion state: objectives always win
     const isCompletedWithObjectives = storedCompleted || checker.completionReason === 'objectives';
 
@@ -303,6 +309,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setIsExecuting(true);
       setExecutionError(null);
       setCurrentStepIndex(0);
+      setFailedStepIndex(-1);
       setCurrentStepStatus('waiting');
       setWasCancelled(false);
 
@@ -328,6 +335,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             await new Promise((resolve) => setTimeout(resolve, 500));
           } else if (result === 'timeout') {
             setCurrentStepStatus('timeout');
+            setFailedStepIndex(i);
             setExecutionError(`Step ${i + 1} timed out. Click "Skip" to continue or "Retry" to try again.`);
             return false;
           } else if (result === 'cancelled') {
@@ -752,6 +760,18 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               >
                 {checker.canFixRequirement ? 'Fix this' : 'Check again'}
               </button>
+              {isEligibleForChecking && aiFixEnabled && checker.requiresDomElement && !checker.canFixRequirement && (
+                <AiFixButton
+                  className="interactive-guided-ai-fix-btn"
+                  testId={testIds.interactive.guidedAiFixButton(renderedStepId)}
+                  detail={{
+                    stepId: stepId ?? renderedStepId,
+                    renderedStepId,
+                    refTarget: firstActionRefTarget,
+                    action: firstActionTargetAction,
+                  }}
+                />
+              )}
             </div>
           )}
 
@@ -821,7 +841,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             <div className="interactive-guided-error-box">
               <span className="interactive-guided-error-icon">✕</span>
               <div className="interactive-guided-error-content">
-                <span className="interactive-guided-error-title">Step {currentStepIndex + 1} didn&apos;t complete</span>
+                <span className="interactive-guided-error-title">Step {failedStepIndex + 1} didn&apos;t complete</span>
                 <span className="interactive-guided-error-detail">
                   {currentStepStatus === 'timeout' ? 'Timed out waiting for action' : 'Something went wrong'}
                 </span>
@@ -837,6 +857,23 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               >
                 ↻ Try again
               </Button>
+              {aiFixEnabled && failedStepIndex >= 0 && (
+                <AiFixButton
+                  className="interactive-guided-ai-fix-btn"
+                  testId={testIds.interactive.guidedAiFixButton(`${renderedStepId}-runtime`)}
+                  detail={{
+                    stepId: stepId ?? renderedStepId,
+                    renderedStepId,
+                    refTarget: internalActions[failedStepIndex]?.refTarget,
+                    action: internalActions[failedStepIndex]?.targetAction,
+                    containerInfo: {
+                      containerId: stepId ?? renderedStepId,
+                      containerKind: 'guided',
+                      subStepIndex: failedStepIndex,
+                    },
+                  }}
+                />
+              )}
               {skippable && (
                 <Button
                   onClick={handleSkipStep}

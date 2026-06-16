@@ -844,3 +844,25 @@ describe('useStepChecker — AlignmentPendingContext gate', () => {
   // suite. The two unit tests above cover the gate's pause/unpause
   // semantics deterministically; an E2E covers the full UX flow.
 });
+
+describe('requiresDomElement', () => {
+  it('is true when requirements include exists-reftarget', async () => {
+    const { result } = await renderStepChecker({ requirements: 'exists-reftarget' });
+    expect(result.current.requiresDomElement).toBe(true);
+  });
+
+  it('is true when exists-reftarget is one of several requirements', async () => {
+    const { result } = await renderStepChecker({ requirements: 'is-admin,exists-reftarget' });
+    expect(result.current.requiresDomElement).toBe(true);
+  });
+
+  it('is false for other requirements', async () => {
+    const { result } = await renderStepChecker({ requirements: 'is-admin' });
+    expect(result.current.requiresDomElement).toBe(false);
+  });
+
+  it('is false when no requirements are set', async () => {
+    const { result } = await renderStepChecker({});
+    expect(result.current.requiresDomElement).toBe(false);
+  });
+});
