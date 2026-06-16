@@ -210,3 +210,15 @@ export function __resetContextEventBusForTests(): void {
 export function __notifyContextChangeForTests(): void {
   notifyContextChange();
 }
+
+/**
+ * Test-only clear of the inferred `current*` values while leaving the buffer
+ * and listener set intact. Exists so tests can stage buffered events, wipe
+ * the "live" cache, and then assert that `initializeFromRecentEvents` replays
+ * the most-recent entry — the only path through which that function does any
+ * observable work.
+ */
+export function __clearCurrentValuesForTests(): void {
+  currentDatasourceType = null;
+  currentVisualizationType = null;
+}

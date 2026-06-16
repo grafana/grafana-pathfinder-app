@@ -39,6 +39,7 @@ import {
   initializeEchoLogging,
   initializeFromRecentEvents,
   onContextChange,
+  __clearCurrentValuesForTests,
   __notifyContextChangeForTests,
   __resetContextEventBusForTests,
 } from './context-event-bus';
@@ -202,8 +203,17 @@ describe('listeners', () => {
 describe('initializeFromRecentEvents', () => {
   beforeEach(() => initializeEchoLogging());
 
-  it('replays the most recent buffered datasource and visualization', () => {
-    // Older datasource event
+  it('replays the most recent buffered datasource and visualization after current values are cleared', () => {
+    // Date.now() can return the same value across rapid synchronous calls,
+    // which would make the buffer's sort-by-timestamp pick the wrong entry.
+    // Stub it so each dispatch lands at a strictly later timestamp — that
+    // mirrors the real-world case (events spaced over user-interaction time)
+    // while keeping the test deterministic.
+    const baseNow = 1_700_000_000_000;
+    let nowOffset = 0;
+    jest.spyOn(Date, 'now').mockImplementation(() => baseNow + nowOffset);
+
+    nowOffset = 1000;
     dispatch({
       type: 'interaction',
       payload: {
@@ -211,8 +221,7 @@ describe('initializeFromRecentEvents', () => {
         properties: { plugin_id: 'old-ds' },
       },
     });
-    // Newer datasource event (timestamps come from Date.now in the bus, which
-    // moves forward between dispatches in normal test runs)
+    nowOffset = 2000;
     dispatch({
       type: 'interaction',
       payload: {
@@ -220,6 +229,7 @@ describe('initializeFromRecentEvents', () => {
         properties: { ds_type: 'new-ds' },
       },
     });
+    nowOffset = 3000;
     dispatch({
       type: 'interaction',
       payload: {
@@ -228,15 +238,52 @@ describe('initializeFromRecentEvents', () => {
       },
     });
 
-    // Wipe the "current" cache but keep the buffer intact by hand-resetting
-    // (the production reset clears the buffer too, so we don't use it here).
-    // Instead: prove that initializeFromRecentEvents holds the latest values
-    // we set directly via the EchoSrv-derived path.
+    // Simulate the "plugin reopened" scenario: the inferred values were lost
+    // (e.g. ContextService was re-imported or the cache went stale) but the
+    // event buffer survived. This is the only path through which
+    // initializeFromRecentEvents does anything observable.
+    __clearCurrentValuesForTests();
+    expect(getDetectedDatasourceType()).toBeNull();
+    expect(getDetectedVisualizationType()).toBeNull();
+
+    nowOffset = 4000;
+    initializeFromRecentEvents();
+
+    // The replay must pick the MOST RECENT entry per dimension, not the first.
     expect(getDetectedDatasourceType()).toBe('new-ds');
     expect(getDetectedVisualizationType()).toBe('gauge');
 
-    // Calling initializeFromRecentEvents after the values are already set is
-    // a no-op for current values but exercises the buffer scan path.
-    expect(() => initializeFromRecentEvents()).not.toThrow();
+    (Date.now as jest.Mock).mockRestore();
+  });
+
+  it('leaves current values untouched when no matching buffered events exist', () => {
+    __clearCurrentValuesForTests();
+    initializeFromRecentEvents();
+    expect(getDetectedDatasourceType()).toBeNull();
+    expect(getDetectedVisualizationType()).toBeNull();
+  });
+
+  it('ignores buffered events older than BUFFER_TTL', () => {
+    dispatch({
+      type: 'interaction',
+      payload: {
+        interactionName: 'grafana_ds_add_datasource_clicked',
+        properties: { plugin_id: 'fresh-ds' },
+      },
+    });
+
+    __clearCurrentValuesForTests();
+
+    // Advance "now" past the 5-minute TTL. The buffer entry's timestamp was
+    // captured at dispatch time; jumping Date.now forward makes it expire.
+    const realNow = Date.now;
+    const futureNow = realNow() + 6 * 60 * 1000;
+    jest.spyOn(Date, 'now').mockImplementation(() => futureNow);
+
+    initializeFromRecentEvents();
+
+    expect(getDetectedDatasourceType()).toBeNull();
+
+    (Date.now as jest.Mock).mockRestore();
   });
 });
