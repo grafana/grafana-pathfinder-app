@@ -76,6 +76,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   // show the expanded terminal.
   useEffect(() => {
     if (terminalCtx?.isExpanded && !isExpanded) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mirror the shared terminal context's expanded flag into local state and notify the parent
       setIsExpanded(true);
       setTerminalOpen(true);
     }

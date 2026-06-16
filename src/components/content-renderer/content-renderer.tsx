@@ -821,13 +821,8 @@ function TabsWrapper({ element }: { element: ParsedElement }) {
     label: tabEl.props?.['data-label'] || '',
   }));
 
-  const [activeTab, setActiveTab] = React.useState(tabsData[0]?.key || '');
-
-  React.useEffect(() => {
-    if (tabsData.length > 0 && !activeTab) {
-      setActiveTab(tabsData[0]!.key);
-    }
-  }, [tabsData, activeTab]);
+  const [selectedTab, setSelectedTab] = React.useState('');
+  const activeTab = selectedTab || tabsData[0]?.key || '';
 
   if (!tabsBarElement || !tabContentElement) {
     console.warn('Missing required tabs elements');
@@ -846,7 +841,7 @@ function TabsWrapper({ element }: { element: ParsedElement }) {
             key={tab.key}
             label={tab.label}
             active={activeTab === tab.key}
-            onChangeTab={() => setActiveTab(tab.key)}
+            onChangeTab={() => setSelectedTab(tab.key)}
           />
         ))}
       </TabsBar>

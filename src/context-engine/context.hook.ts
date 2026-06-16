@@ -229,6 +229,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
   // Apply suggestions on mount and when they change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- apply persisted suggestions on mount; re-applied on the SUGGESTIONS_UPDATED event subscribed below
     applySuggestions();
 
     const handler = () => applySuggestions();
@@ -240,6 +241,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   const tagsString = contextData.tags?.join(',') || '';
   useEffect(() => {
     if (!contextData.isLoading && contextData.currentPath) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch when the active context changes
       fetchRecommendations(contextData);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- contextData would cause infinite loop

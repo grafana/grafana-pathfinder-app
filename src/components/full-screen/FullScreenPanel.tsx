@@ -128,11 +128,8 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     // when "the panel is empty".
     const liveTabs = panel.state.tabs;
     const hasOnlyDefaultTabs = liveTabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
-    if (hasOnlyDefaultTabs) {
-      panel.restoreTabsAsync().then(() => setRestorationDone(true));
-    } else {
-      setRestorationDone(true);
-    }
+    const restore = hasOnlyDefaultTabs ? panel.restoreTabsAsync() : Promise.resolve();
+    restore.then(() => setRestorationDone(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

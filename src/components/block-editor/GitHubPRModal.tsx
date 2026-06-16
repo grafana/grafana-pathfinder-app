@@ -194,6 +194,7 @@ export function GitHubPRModal({ isOpen, guide, onClose }: GitHubPRModalProps) {
     }
 
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset to preparing each time the modal (re)opens, before the async prepare resolves
     setState({ status: 'preparing' });
 
     prepareGitHubPR(guide)

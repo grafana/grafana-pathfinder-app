@@ -122,6 +122,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
   useEffect(() => {
     if (!isOpen) {
       // Reset all state when modal is closed
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- modal lifecycle: clear fields when the modal is dismissed
       setJoinCode('');
       setSessionOffer(null);
       setError(null);
@@ -137,6 +138,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
       try {
         const offerFromUrl = parseSessionFromUrl();
         if (offerFromUrl) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect -- modal lifecycle: hydrate from the join URL when the modal opens
           setSessionOffer(offerFromUrl);
         } else {
           // No session in URL - ensure we're at the join code input screen
