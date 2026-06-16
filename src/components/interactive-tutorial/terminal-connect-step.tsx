@@ -111,7 +111,6 @@ export const TerminalConnectStep = forwardRef<
 
     const generatedStepIdRef = useRef<string | undefined>(undefined);
     if (!generatedStepIdRef.current) {
-      // eslint-disable-next-line react-hooks/globals -- counter pattern used across all step components
       terminalConnectStepCounter += 1;
       generatedStepIdRef.current = `terminal-connect-step-${terminalConnectStepCounter}`;
     }

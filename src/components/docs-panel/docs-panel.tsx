@@ -811,7 +811,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const logSession = useDevModeLogger(isDevMode);
 
   // Set global config for utility functions that can't access React context
-  (window as any).__pathfinderPluginConfig = pluginConfig;
+  React.useEffect(() => {
+    (window as any).__pathfinderPluginConfig = pluginConfig;
+  }, [pluginConfig]);
 
   const { tabs, activeTabId, contextPanel } = model.useState();
   React.useEffect(() => {

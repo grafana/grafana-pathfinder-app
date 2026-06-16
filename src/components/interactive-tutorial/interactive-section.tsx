@@ -7,7 +7,7 @@ import { useStepChecker } from '../../requirements-manager';
 import { useIsAlignmentPaused, useAlignmentStartingLocation } from '../../global-state/alignment-pending-context';
 import { InteractiveStep, resetStepCounter } from './interactive-step';
 import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
-import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
+import { InteractiveGuided } from './interactive-guided';
 import { InteractiveQuiz, resetQuizCounter } from './interactive-quiz';
 import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
@@ -119,7 +119,6 @@ export function resetInteractiveCounters() {
   // Reset anonymous step ID counters across all step types
   resetStepCounter();
   resetMultiStepCounter();
-  resetGuidedCounter();
   resetQuizCounter();
   resetTerminalStepCounter();
   resetTerminalConnectStepCounter();
