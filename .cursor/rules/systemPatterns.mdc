@@ -126,7 +126,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 
 **Tier 3 — integrations:**
 
-- `integrations/` — Optional integrations: `assistant-integration/` (`<assistant>` tags), `coda/` (terminal), `workshop/` (action capture + replay). See `.cursor/rules/coda.mdc`, `docs/developer/ASSISTANT_INTEGRATION.md`, `docs/developer/integrations/workshop.md`.
+- `integrations/` — Optional integrations: `assistant-integration/` (`<assistant>` tags + the `ai-fix-*` AI auto-heal flow), `coda/` (terminal), `workshop/` (action capture + replay). See `.cursor/rules/coda.mdc`, `docs/developer/ASSISTANT_INTEGRATION.md`, `docs/developer/AI_FIX.md`, `docs/developer/integrations/workshop.md`.
 
 **Tier 4 — UI:**
 
