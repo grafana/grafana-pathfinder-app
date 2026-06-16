@@ -148,6 +148,55 @@ export default defineConfig([
             'Use textContent for plain text, or sanitizeDocumentationHTML() if HTML structure is required.',
         },
         {
+          selector: "AssignmentExpression[left.property.value='innerHTML']",
+          message:
+            'Avoid .innerHTML assignment — it bypasses React and risks XSS (F5). ' +
+            'Use textContent for plain text, or sanitizeDocumentationHTML() if HTML structure is required.',
+        },
+        {
+          selector: "AssignmentExpression[left.property.name='outerHTML']",
+          message:
+            'Avoid .outerHTML assignment — it replaces DOM using parsed HTML and risks XSS (F5). ' +
+            'Use DOM methods for structure, or sanitizeDocumentationHTML() if HTML structure is required.',
+        },
+        {
+          selector: "AssignmentExpression[left.property.value='outerHTML']",
+          message:
+            'Avoid .outerHTML assignment — it replaces DOM using parsed HTML and risks XSS (F5). ' +
+            'Use DOM methods for structure, or sanitizeDocumentationHTML() if HTML structure is required.',
+        },
+        {
+          selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
+          message:
+            'Avoid insertAdjacentHTML() — it parses strings as HTML and risks XSS (F5). ' +
+            'Use DOM methods for structure, or sanitizeDocumentationHTML() if HTML structure is required.',
+        },
+        {
+          selector: "CallExpression[callee.property.value='insertAdjacentHTML']",
+          message:
+            'Avoid insertAdjacentHTML() — it parses strings as HTML and risks XSS (F5). ' +
+            'Use DOM methods for structure, or sanitizeDocumentationHTML() if HTML structure is required.',
+        },
+        {
+          selector: "AssignmentExpression[left.object.name='script'][left.property.name='src'][right.type!='Literal']",
+          message:
+            'Avoid dynamic script.src assignment — it can load attacker-controlled code (F5). ' +
+            'Use an approved fixed script URL or a narrowly reviewed loader.',
+        },
+        {
+          selector: "AssignmentExpression[left.object.name='script'][left.property.value='src'][right.type!='Literal']",
+          message:
+            'Avoid dynamic script.src assignment — it can load attacker-controlled code (F5). ' +
+            'Use an approved fixed script URL or a narrowly reviewed loader.',
+        },
+        {
+          selector:
+            "CallExpression[callee.object.name='document'][callee.property.name='createElement'][arguments.0.value='script']",
+          message:
+            'Avoid direct script element creation — script loading is an F5 sink and needs a fixed URL or reviewed loader. ' +
+            'If this is an approved static loader, add a narrow eslint-disable with justification.',
+        },
+        {
           selector: "ClassDeclaration[superClass.name='Component']",
           message:
             'Use function components with hooks instead of class components. ' +

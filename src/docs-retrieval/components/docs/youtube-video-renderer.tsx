@@ -115,7 +115,6 @@ export function YouTubeVideoRenderer({
     }
   }, [getDocumentInfo, getVideoId, src]);
 
-  // Load YouTube iframe API
   const loadYouTubeAPI = useCallback(() => {
     if (apiLoaded || apiLoading) {
       return Promise.resolve();
@@ -124,14 +123,13 @@ export function YouTubeVideoRenderer({
     return new Promise<void>((resolve) => {
       apiLoading = true;
 
-      // Set up the global callback
       window.onYouTubeIframeAPIReady = () => {
         apiLoaded = true;
         apiLoading = false;
         resolve();
       };
 
-      // Load the API script
+      // eslint-disable-next-line no-restricted-syntax -- Fixed YouTube iframe API URL required by the player SDK.
       const script = document.createElement('script');
       script.src = 'https://www.youtube.com/iframe_api';
       script.async = true;
@@ -139,7 +137,6 @@ export function YouTubeVideoRenderer({
     });
   }, []);
 
-  // Initialize YouTube player with analytics
   const initializePlayer = useCallback(async () => {
     const videoId = getVideoId(src);
     if (!videoId || !window.YT || !iframeRef.current) {
@@ -147,7 +144,6 @@ export function YouTubeVideoRenderer({
     }
 
     try {
-      // Create a unique iframe ID
       const iframeId = `youtube-player-${videoId}-${Date.now()}`;
       iframeRef.current.id = iframeId;
 

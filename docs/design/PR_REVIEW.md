@@ -80,7 +80,7 @@ Scan the diff against the unified detection table below. Security rules (F1-F6) 
 | `dangerouslySetInnerHTML` where `{}` auto-escape would do                      | F2  | High     |
 | URL built via string concat instead of `new URL()` + searchParams              | F3  | High     |
 | `dangerouslySetInnerHTML` without `textUtil.sanitize()`                        | F4  | Critical |
-| Use of `.innerHTML`, `.outerHTML`, `.insertAdjacentHTML`, dynamic `script.src` | F5  | Critical |
+| F5 DOM sink lint failure, bypass, or equivalent raw DOM/script sink            | F5  | Critical |
 | URL in `href`/`src` without `textUtil.sanitizeUrl()` or scheme-allowlist check | F6  | High     |
 | New component > 400 lines or > 5 responsibilities                              | QC1 | Medium   |
 | New God object / state bag with > 10 unrelated props                           | QC2 | Medium   |
@@ -105,7 +105,7 @@ The canonical catalog of bad-shape comments and the keep-list live in `AGENTS.md
 ### Escalation pointers
 
 - **R1-R21 hit**: load `.cursor/rules/react-antipatterns.mdc` for the canonical Do/Don't example and fix pattern.
-- **F1-F6 hit**: load `.cursor/rules/frontend-security.mdc` directly for the canonical rule definition and remediation pattern. (In Cursor, that file's `alwaysApply` frontmatter auto-loads it for matching files; in Claude Code, cite it by path.)
+- **F1-F6 hit**: load `.cursor/rules/frontend-security.mdc` for intent and remediation. For direct F5 sinks, `eslint.config.mjs` owns the mechanical catalog.
 - **QC8 hit**: cite the specific shape (1-8) from `AGENTS.md` §Comments when reporting.
 
 ## Go backend checks
