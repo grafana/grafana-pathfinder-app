@@ -181,6 +181,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // The async checkStep function can be mid-execution when eligibility changes, causing it to
   // use a stale captured value. This ref always has the current value.
   const isEligibleRef = useRef(isEligibleForChecking);
+  // eslint-disable-next-line react-hooks/refs -- intentional latest-value ref read by async checkStep to avoid stale closures
   isEligibleRef.current = isEligibleForChecking;
 
   // Same stale-closure rationale as `isEligibleRef`. Tracked separately so the
@@ -188,6 +189,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // eligibility gate alone only blocks Phase 2/3, which lets a coincidentally
   // satisfied objective auto-complete the step out from under the prompt.
   const isAlignmentPausedRef = useRef(isAlignmentPaused);
+  // eslint-disable-next-line react-hooks/refs -- intentional latest-value ref; same stale-closure rationale as isEligibleRef
   isAlignmentPausedRef.current = isAlignmentPaused;
 
   const timeoutManager = useTimeoutManager();
@@ -359,12 +361,14 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
   // Import NavigationManager for parent expansion functionality
   const navigationManagerRef = useRef<any>(null);
-  if (!navigationManagerRef.current) {
-    // Lazy import to avoid circular dependencies
-    import('../interactive-engine').then(({ NavigationManager }) => {
-      navigationManagerRef.current = new NavigationManager();
-    });
-  }
+  useEffect(() => {
+    if (!navigationManagerRef.current) {
+      // Lazy import to avoid circular dependencies
+      import('../interactive-engine').then(({ NavigationManager }) => {
+        navigationManagerRef.current = new NavigationManager();
+      });
+    }
+  }, []);
 
   /**
    * Check step conditions with priority logic:
@@ -841,7 +845,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     return unsubscribe;
   }, [checkStep, state.isCompleted, requirements]);
 
-  // Track state values in refs to avoid re-subscribing when they change during checks
+  // Track state values in refs to avoid re-subscribing when they change during checks.
+  /* eslint-disable react-hooks/refs -- intentional latest-value refs; read asynchronously by checkStep and event callbacks to avoid stale closures */
   const isCheckingRef = useRef(state.isChecking);
   isCheckingRef.current = state.isChecking;
 
@@ -854,6 +859,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // Track objectives in ref to avoid stale closure issues
   const objectivesRef = useRef(objectives);
   objectivesRef.current = objectives;
+  /* eslint-enable react-hooks/refs */
 
   // Subscribe to context changes (EchoSrv events) AND URL changes for blocked steps
   // This ensures steps in "requirements not met" state get rechecked when user performs actions

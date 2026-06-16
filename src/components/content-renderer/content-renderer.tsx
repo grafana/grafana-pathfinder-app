@@ -149,6 +149,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   // Ref to track the current content URL - updated synchronously before effects run
   // This allows handlers to detect if they're stale (created for different content)
   const currentContentUrlRef = useRef<string | undefined>(content?.url);
+  // eslint-disable-next-line react-hooks/refs -- intentional: updated synchronously so handlers can detect stale content (see comment above)
   currentContentUrlRef.current = content?.url;
 
   // Track interactive section completions for guide-level completion

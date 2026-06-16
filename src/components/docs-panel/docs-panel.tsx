@@ -864,16 +864,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   });
 
   // Action replay system for attendees
-  const navigationManagerRef = useRef<NavigationManager | null>(null);
+  const [navigationManager] = React.useState(() => new NavigationManager());
   const actionReplayRef = useRef<ActionReplaySystem | null>(null);
 
   // Action capture system for presenters
   const actionCaptureRef = useRef<ActionCaptureSystem | null>(null);
-
-  // Initialize navigation manager once
-  if (!navigationManagerRef.current) {
-    navigationManagerRef.current = new NavigationManager();
-  }
 
   // Hand raise handler for attendees
   const handleHandRaiseToggle = useCallback(
@@ -1086,9 +1081,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   // Initialize ActionReplaySystem when joining as attendee
   useEffect(() => {
-    if (sessionRole === 'attendee' && navigationManagerRef.current && attendeeMode && !actionReplayRef.current) {
+    if (sessionRole === 'attendee' && navigationManager && attendeeMode && !actionReplayRef.current) {
       logSession(`[DocsPanel] Initializing ActionReplaySystem for attendee in ${attendeeMode} mode`);
-      actionReplayRef.current = new ActionReplaySystem(attendeeMode, navigationManagerRef.current);
+      actionReplayRef.current = new ActionReplaySystem(attendeeMode, navigationManager);
     }
 
     // Update mode if it changes
@@ -1102,7 +1097,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       logSession('[DocsPanel] Cleaning up ActionReplaySystem');
       actionReplayRef.current = null;
     }
-  }, [sessionRole, attendeeMode, logSession]);
+  }, [sessionRole, attendeeMode, logSession, navigationManager]);
 
   // Listen for session events and replay them (attendee only)
   useEffect(() => {
