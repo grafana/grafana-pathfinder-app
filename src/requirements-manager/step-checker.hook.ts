@@ -537,7 +537,19 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       safeDispatch(actionFromBaseStepState(errorState));
       updateManager(errorState);
     }
-  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skippable, updateManager, safeDispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refTarget/targetAction rebuild checkStep when an AI patch swaps the selector; remaining deps intentionally omitted to avoid loops
+  }, [
+    objectives,
+    requirements,
+    hints,
+    stepId,
+    isEligibleForChecking,
+    skippable,
+    updateManager,
+    safeDispatch,
+    refTarget,
+    targetAction,
+  ]);
 
   /**
    * Attempt to automatically fix failed requirements via the fix-handler registry.
@@ -796,7 +808,9 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     return undefined;
   }, [stepId]);
 
-  // Check requirements when step eligibility changes (both true and false)
+  // Check requirements when step eligibility OR refTarget changes (both true and false).
+  // refTarget is included so a runtime selector swap (the orchestrator rewriting the guide)
+  // re-runs the check against the new target instead of leaving the step blocked.
   // Note: We removed managerStepState from deps to prevent infinite loops
   // The manager state changes are handled by the registered step checker callback instead
   useEffect(() => {
@@ -805,7 +819,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       // This ensures steps show the correct "blocked" state when they become ineligible
       checkStepRef.current();
     }
-  }, [isEligibleForChecking]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isEligibleForChecking, refTarget]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for section completion events (for `section-completed:` requirements).
   // `step-auto-skipped` was a listener with no dispatcher anywhere in the
@@ -968,6 +982,10 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     };
   }, [requirements, state.isEnabled, state.isCompleted]);
 
+  // A missing DOM element is the only failure the AI "Fix this" affordance can address;
+  // the UI tier ANDs this with assistant availability to decide whether to surface it.
+  const requiresDomElement = (requirements ?? '').includes('exists-reftarget');
+
   return {
     ...state,
     checkStep,
@@ -977,5 +995,6 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     canFixRequirement: state.canFixRequirement,
     fixType: state.fixType,
     fixRequirement: state.canFixRequirement ? fixRequirement : undefined,
+    requiresDomElement,
   };
 }
