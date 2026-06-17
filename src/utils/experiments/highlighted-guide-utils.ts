@@ -17,6 +17,7 @@
  * context-engine's featured-injection seam.
  */
 
+import { clearKeysByPrefix } from '../../lib/storage/key-utils';
 import { StorageKeys } from '../../lib/storage-keys';
 import type { Recommendation } from '../../types/context.types';
 import { findDocPage } from '../find-doc-page';
@@ -53,19 +54,8 @@ export function markHighlightedGuideAutoOpened(hostname: string, guideId: string
 }
 
 export function clearHighlightedGuideMarkers(hostname: string): void {
-  try {
-    const prefix = `${StorageKeys.HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX}${hostname}:`;
-    const toRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(prefix)) {
-        toRemove.push(key);
-      }
-    }
-    toRemove.forEach((key) => localStorage.removeItem(key));
-  } catch {
-    // localStorage unavailable
-  }
+  const prefix = `${StorageKeys.HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX}${hostname}:`;
+  clearKeysByPrefix(localStorage, prefix);
 }
 
 // ============================================================================

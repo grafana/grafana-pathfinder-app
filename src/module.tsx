@@ -14,6 +14,11 @@ import { panelModeManager } from './global-state/panel-mode';
 import { suggestionState } from './global-state/suggestion';
 import { handlePathfinderDeepLink, installDeepLinkNavListener } from './utils/pathfinder-deep-link-handler';
 import { parsePathfinderDeepLink } from './utils/pathfinder-search-params';
+import {
+  clearExtensionSidebarDocked,
+  isExtensionSidebarOwnedByPathfinder,
+  parseExtensionSidebarDocked,
+} from './lib/storage/extension-sidebar';
 
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
@@ -72,30 +77,14 @@ const highlightedGuideConfig = initializeHighlightedGuideExperiment(hostname);
 // Check if Pathfinder was already docked (browser restore scenario).
 // If floating mode is active, clear the docked state so Grafana doesn't
 // auto-open the sidebar on page load — the floating panel handles display.
-try {
-  const dockedValue = localStorage.getItem('grafana.navigation.extensionSidebarDocked');
-  if (dockedValue) {
-    let isPathfinderDocked = false;
-    try {
-      const parsedValue = JSON.parse(dockedValue);
-      isPathfinderDocked =
-        parsedValue.pluginId === pluginJson.id || parsedValue.componentTitle === 'Interactive learning';
-    } catch {
-      // Fallback for older Grafana versions that might store a simple string
-      isPathfinderDocked = dockedValue === pluginJson.id || dockedValue === 'Interactive learning';
-    }
-    if (isPathfinderDocked) {
-      const persistedMode = panelModeManager.getMode();
-      if (persistedMode === 'floating' || persistedMode === 'fullscreen') {
-        // Don't restore sidebar — another presentation surface owns the panel
-        localStorage.removeItem('grafana.navigation.extensionSidebarDocked');
-      } else {
-        sidebarState.setPendingOpenSource('browser_restore', 'restore');
-      }
-    }
+if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, 'Interactive learning')) {
+  const persistedMode = panelModeManager.getMode();
+  if (persistedMode === 'floating' || persistedMode === 'fullscreen') {
+    // Don't restore sidebar — another presentation surface owns the panel
+    clearExtensionSidebarDocked();
+  } else {
+    sidebarState.setPendingOpenSource('browser_restore', 'restore');
   }
-} catch {
-  // localStorage might be unavailable
 }
 
 // Initialize translations
@@ -428,25 +417,12 @@ function handlePathfinderSuggest(event: CustomEvent, experimentVariant: string):
   }
 
   // Check if another plugin is occupying the sidebar
-  try {
-    const dockedValue = localStorage.getItem('grafana.navigation.extensionSidebarDocked');
-    if (dockedValue) {
-      let dockedPluginId: string | undefined;
-      try {
-        dockedPluginId = JSON.parse(dockedValue)?.pluginId;
-      } catch {
-        // Older Grafana versions may store a plain string
-      }
-
-      if (dockedPluginId && dockedPluginId !== pluginJson.id) {
-        console.warn('[Pathfinder] pathfinder-suggest rejected: sidebar occupied by', dockedPluginId);
-        detail.status = 'rejected';
-        detail.reason = 'sidebar_in_use';
-        return;
-      }
-    }
-  } catch {
-    // localStorage unavailable -- proceed optimistically
+  const docked = parseExtensionSidebarDocked();
+  if (docked?.pluginId && docked.pluginId !== pluginJson.id) {
+    console.warn('[Pathfinder] pathfinder-suggest rejected: sidebar occupied by', docked.pluginId);
+    detail.status = 'rejected';
+    detail.reason = 'sidebar_in_use';
+    return;
   }
 
   const buffered = detail._buffered === true;

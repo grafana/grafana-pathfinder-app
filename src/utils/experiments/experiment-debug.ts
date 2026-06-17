@@ -11,6 +11,7 @@
  */
 
 import { experimentAutoOpenStorage } from '../../lib/user-storage';
+import { collectKeysByPrefix } from '../../lib/storage/key-utils';
 import { StorageKeys } from '../../lib/storage-keys';
 import {
   getExperimentConfig,
@@ -31,24 +32,15 @@ interface ExposureMarker {
 
 function listExposureMarkers(hostname: string): ExposureMarker[] {
   const prefix = `${StorageKeys.EXPERIMENT_EXPOSURE_REPORTED_PREFIX}${hostname}:`;
-  const markers: ExposureMarker[] = [];
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(prefix)) {
-        // Marker shape: `{prefix}{hostname}:{flagKey}:{variant}`
-        // flagKey contains a dot but never a colon, so split on the last colon.
-        const suffix = key.slice(prefix.length);
-        const lastColon = suffix.lastIndexOf(':');
-        const flag = lastColon >= 0 ? suffix.slice(0, lastColon) : suffix;
-        const variant = lastColon >= 0 ? suffix.slice(lastColon + 1) : '';
-        markers.push({ key, flag, variant });
-      }
-    }
-  } catch {
-    // localStorage unavailable — return empty
-  }
-  return markers;
+  return collectKeysByPrefix(localStorage, prefix).map((key) => {
+    // Marker shape: `{prefix}{hostname}:{flagKey}:{variant}`
+    // flagKey contains a dot but never a colon, so split on the last colon.
+    const suffix = key.slice(prefix.length);
+    const lastColon = suffix.lastIndexOf(':');
+    const flag = lastColon >= 0 ? suffix.slice(0, lastColon) : suffix;
+    const variant = lastColon >= 0 ? suffix.slice(lastColon + 1) : '';
+    return { key, flag, variant };
+  });
 }
 
 // Rate limiting for refetch
@@ -101,13 +93,7 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
       console.log('[Pathfinder] Clearing all storage...');
 
       // Find all per-page treatment keys
-      const perPageKeys: string[] = [];
-      for (let i = 0; i < sessionStorage.length; i++) {
-        const key = sessionStorage.key(i);
-        if (key && key.startsWith(storageKeys.treatmentPagePrefix)) {
-          perPageKeys.push(key);
-        }
-      }
+      const perPageKeys = collectKeysByPrefix(sessionStorage, storageKeys.treatmentPagePrefix);
 
       // Show current state before clearing
       const perPageState: Record<string, string | null> = {};
@@ -168,11 +154,8 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
     showCache: async () => {
       // Find all per-page treatment keys
       const perPageKeys: Record<string, string | null> = {};
-      for (let i = 0; i < sessionStorage.length; i++) {
-        const key = sessionStorage.key(i);
-        if (key && key.startsWith(storageKeys.treatmentPagePrefix)) {
-          perPageKeys[key] = sessionStorage.getItem(key);
-        }
+      for (const key of collectKeysByPrefix(sessionStorage, storageKeys.treatmentPagePrefix)) {
+        perPageKeys[key] = sessionStorage.getItem(key);
       }
 
       // Get Grafana user storage state

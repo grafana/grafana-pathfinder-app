@@ -7,6 +7,11 @@
 
 import { matchPathPattern } from '../openfeature';
 import { experimentAutoOpenStorage, StorageKeys } from '../../lib/user-storage';
+import { clearKeysByPrefix } from '../../lib/storage/key-utils';
+import {
+  isExtensionSidebarInUse,
+  isExtensionSidebarOwnedByOther as parsedIsOwnedByOther,
+} from '../../lib/storage/extension-sidebar';
 
 // ============================================================================
 // STORAGE KEY HELPERS
@@ -164,12 +169,7 @@ export async function resetExperimentState(hostname: string): Promise<void> {
   sessionStorage.removeItem(keys.treatmentOpened);
 
   // Clear per-page keys from sessionStorage
-  for (let i = sessionStorage.length - 1; i >= 0; i--) {
-    const key = sessionStorage.key(i);
-    if (key && key.startsWith(keys.treatmentPagePrefix)) {
-      sessionStorage.removeItem(key);
-    }
-  }
+  clearKeysByPrefix(sessionStorage, keys.treatmentPagePrefix);
 
   // Reset Grafana user storage
   await experimentAutoOpenStorage.reset();
@@ -211,12 +211,7 @@ export function shouldAutoOpenForPath(hostname: string, targetPages: string[], c
  * @returns true if a sidebar is already docked/open, false otherwise
  */
 export function isSidebarAlreadyInUse(): boolean {
-  try {
-    return localStorage.getItem('grafana.navigation.extensionSidebarDocked') !== null;
-  } catch {
-    // localStorage might be unavailable in some contexts
-    return false;
-  }
+  return isExtensionSidebarInUse();
 }
 
 /**
@@ -234,22 +229,7 @@ export function isSidebarAlreadyInUse(): boolean {
  * the docked plugin id as a bare string instead of `{ pluginId: ... }`.
  */
 export function isExtensionSidebarOwnedByOther(myPluginId: string): boolean {
-  try {
-    const raw = localStorage.getItem('grafana.navigation.extensionSidebarDocked');
-    if (!raw) {
-      return false;
-    }
-    let dockedPluginId: string | undefined;
-    try {
-      const parsed = JSON.parse(raw) as { pluginId?: unknown };
-      dockedPluginId = typeof parsed.pluginId === 'string' ? parsed.pluginId : undefined;
-    } catch {
-      dockedPluginId = raw;
-    }
-    return Boolean(dockedPluginId) && dockedPluginId !== myPluginId;
-  } catch {
-    return false;
-  }
+  return parsedIsOwnedByOther(myPluginId);
 }
 
 /**
