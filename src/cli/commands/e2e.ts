@@ -5,7 +5,7 @@
  * into localStorage and verify they load correctly in the docs panel.
  */
 
-import { execSync, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { dirname, isAbsolute, join, resolve } from 'path';
 import { tmpdir } from 'os';
@@ -36,6 +36,8 @@ import {
   type PreflightOutcome,
   type CurrentTier,
 } from '../utils/manifest-preflight';
+import { checkGrafanaHealth } from '../utils/grafana-health';
+import { CleanEnvironment, CLEAN_COMPOSE_PROJECT, CLEAN_GRAFANA_URL } from '../utils/clean-environment';
 import type { ManifestJson, RepositoryEntry, RepositoryJson } from '../../types/package.types';
 
 import { randomUUID } from 'crypto';
@@ -70,178 +72,7 @@ export const ExitCode = {
   AUTH_FAILURE: 4,
 } as const;
 
-/**
- * Result of CLI-level pre-flight check (Grafana health)
- */
-interface CliPreflightResult {
-  passed: boolean;
-  error?: string;
-  durationMs: number;
-  /** Grafana version from /api/health — passed to manifest pre-flight to avoid a duplicate fetch. */
-  version?: string;
-}
-
-/**
- * Check if Grafana is reachable and healthy.
- *
- * This is a public endpoint that doesn't require authentication,
- * so it can be called from the CLI before spawning Playwright.
- */
-async function checkGrafanaHealth(grafanaUrl: string): Promise<CliPreflightResult> {
-  const startTime = Date.now();
-
-  try {
-    const healthUrl = new URL('/api/health', grafanaUrl).toString();
-    const response = await fetch(healthUrl, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-      },
-      // Short timeout for health check
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (!response.ok) {
-      return {
-        passed: false,
-        error: `Grafana health check failed: HTTP ${response.status} ${response.statusText}`,
-        durationMs: Date.now() - startTime,
-      };
-    }
-
-    const data = (await response.json()) as { database?: string; version?: string };
-
-    // Verify database is healthy
-    if (data.database !== 'ok') {
-      return {
-        passed: false,
-        error: `Grafana database not healthy: ${data.database ?? 'unknown'}`,
-        durationMs: Date.now() - startTime,
-      };
-    }
-
-    return {
-      passed: true,
-      durationMs: Date.now() - startTime,
-      version: data.version,
-    };
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error
-        ? error.name === 'TimeoutError'
-          ? `Connection timeout after 10s`
-          : error.message
-        : 'Unknown error';
-
-    return {
-      passed: false,
-      error: `Grafana not reachable at ${grafanaUrl}: ${errorMessage}`,
-      durationMs: Date.now() - startTime,
-    };
-  }
-}
-
-// Isolated docker-compose project vars used by --clean.
-const CLEAN_COMPOSE_PROJECT = 'pathfinder-e2e';
-const CLEAN_COMPOSE_FILES = ['-f', 'docker-compose.yaml', '-f', 'docker-compose.e2e.yaml'];
-const CLEAN_PROJECT_FLAGS = [...CLEAN_COMPOSE_FILES, '-p', CLEAN_COMPOSE_PROJECT];
 const DEFAULT_GRAFANA_URL = 'http://localhost:3000';
-// Must match `docker-compose.e2e.yaml` (services.grafana.ports → '3010:3000').
-const CLEAN_GRAFANA_URL = 'http://localhost:3010';
-
-/**
- * Run a `docker compose` subcommand against the isolated --clean project and
- * resolve when it exits successfully.
- */
-async function runDockerCompose(args: string[], options: { verbose: boolean }): Promise<void> {
-  const fullArgs = ['compose', ...CLEAN_PROJECT_FLAGS, ...args];
-  return new Promise((resolve, reject) => {
-    if (options.verbose) {
-      console.log(`   docker ${fullArgs.join(' ')}`);
-    }
-    const proc = spawn('docker', fullArgs, {
-      stdio: options.verbose ? 'inherit' : ['ignore', 'ignore', 'inherit'],
-    });
-    proc.on('close', (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`docker compose ${args.join(' ')} exited with code ${code}`));
-      }
-    });
-    proc.on('error', (err) => {
-      reject(new Error(`Failed to run docker compose: ${err.message}`));
-    });
-  });
-}
-
-/**
- * Poll Grafana health until it succeeds or `timeoutMs` elapses.
- */
-async function waitForGrafanaReady(
-  grafanaUrl: string,
-  options: { verbose: boolean; timeoutMs: number }
-): Promise<void> {
-  const pollIntervalMs = 2000;
-  const startTime = Date.now();
-  let attempts = 0;
-  let lastError = 'unknown error';
-
-  while (Date.now() - startTime < options.timeoutMs) {
-    attempts += 1;
-    const health = await checkGrafanaHealth(grafanaUrl);
-    if (health.passed) {
-      if (options.verbose) {
-        const elapsed = Date.now() - startTime;
-        console.log(
-          `   ✓ Grafana ready after ${attempts} attempt(s) in ${elapsed}ms (version ${health.version ?? 'unknown'})`
-        );
-      }
-      return;
-    }
-    lastError = health.error ?? 'unknown error';
-    await new Promise((r) => setTimeout(r, pollIntervalMs));
-  }
-
-  const seconds = Math.round(options.timeoutMs / 1000);
-  throw new Error(`Grafana did not become ready within ${seconds}s: ${lastError}`);
-}
-
-/**
- *  Bring docker compose down with volumes removed, then up, and wait for Grafana
- *  to be reachable. Used by `--clean` to wipe the `grafana-data` DB between
- *  dependency chains.
- */
-async function cleanResetDocker(grafanaUrl: string, options: E2ECommandOptions): Promise<void> {
-  console.log('   docker compose down -v');
-  await runDockerCompose(['down', '-v'], options);
-
-  console.log('   docker compose up -d');
-  await runDockerCompose(['up', '-d'], options);
-
-  console.log('   Waiting for Grafana to become healthy...');
-  await waitForGrafanaReady(grafanaUrl, {
-    verbose: options.verbose,
-    timeoutMs: options.cleanReadyTimeoutMs,
-  });
-  console.log('   ✓ Grafana ready');
-}
-
-/**
- * Synchronously tear down docker compose. Safe to call from `process.on('exit')`
- * and signal handlers since execSync blocks until completion.
- */
-function teardownDockerSync(verbose: boolean): void {
-  console.log(`\n🧹 Tearing down docker compose project ${CLEAN_COMPOSE_PROJECT} (down -v)...`);
-  try {
-    execSync(`docker compose ${CLEAN_PROJECT_FLAGS.join(' ')} down -v`, {
-      stdio: verbose ? 'inherit' : ['ignore', 'ignore', 'inherit'],
-    });
-    console.log('   ✓ Teardown complete');
-  } catch (err) {
-    console.error(`   ⚠ Failed to tear down docker compose: ${err instanceof Error ? err.message : 'Unknown error'}`);
-  }
-}
 
 /**
  * Abort reason from test execution (L3-3D).
@@ -603,11 +434,6 @@ function printPreflightOutcome(outcome: PreflightOutcome, verbose: boolean): voi
   }
 }
 
-/** Tracks whether this process started the isolated --clean docker stack. */
-interface DockerState {
-  startedByUs: boolean;
-}
-
 /** The dependency-aware execution plan produced by planGuideExecution. */
 type ExecutionPlan = ReturnType<typeof planGuideExecution>;
 
@@ -622,18 +448,10 @@ interface ChainRunOutcome {
  * Install exit/signal handlers that tear down the isolated --clean docker stack
  * exactly once. On SIGINT/SIGTERM, re-raise with the conventional 128+signal code.
  */
-function installCleanTeardownHandlers(options: E2ECommandOptions, dockerState: DockerState): void {
-  const exitHandler = () => {
-    if (dockerState.startedByUs) {
-      dockerState.startedByUs = false;
-      teardownDockerSync(options.verbose);
-    }
-  };
+function installCleanTeardownHandlers(cleanEnv: CleanEnvironment): void {
+  const exitHandler = () => cleanEnv.teardownIfOwned();
   const signalHandler = (signal: NodeJS.Signals) => {
-    if (dockerState.startedByUs) {
-      dockerState.startedByUs = false;
-      teardownDockerSync(options.verbose);
-    }
+    cleanEnv.teardownIfOwned();
     // Re-raise the signal with the conventional 128 + signal-number exit code
     const code = signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 1;
     process.exit(code);
@@ -793,17 +611,16 @@ function buildExecutionPlan(valid: LoadedGuide[], options: E2ECommandOptions): E
 }
 
 /**
- * Under --clean, reset the isolated docker stack before any tests run and record
- * that we own it so teardown runs on exit. Exits on failure. No-op otherwise.
+ * Under --clean, reset the isolated docker stack before any tests run.
+ * Exits on failure. No-op otherwise.
  */
-async function maybeCleanStart(options: E2ECommandOptions, dockerState: DockerState): Promise<void> {
+async function maybeCleanStart(cleanEnv: CleanEnvironment, options: E2ECommandOptions): Promise<void> {
   if (!options.clean) {
     return;
   }
   console.log('\n🧹 Clean start — resetting docker compose before tests...');
   try {
-    await cleanResetDocker(options.grafanaUrl, options);
-    dockerState.startedByUs = true;
+    await cleanEnv.reset(options.grafanaUrl, options.cleanReadyTimeoutMs);
   } catch (err) {
     console.error(`\n❌ Failed to reset docker compose: ${err instanceof Error ? err.message : 'Unknown error'}`);
     process.exit(ExitCode.CONFIGURATION_ERROR);
@@ -911,7 +728,7 @@ async function runPreflightChecks(options: E2ECommandOptions): Promise<void> {
 async function runChains(
   plan: ExecutionPlan,
   options: E2ECommandOptions,
-  dockerState: DockerState
+  cleanEnv: CleanEnvironment
 ): Promise<ChainRunOutcome> {
   console.log('\n🎭 Running Playwright tests...\n');
 
@@ -923,8 +740,7 @@ async function runChains(
     if (options.clean && chainIndex > 0) {
       console.log(`\n🧹 Resetting docker compose between chains...`);
       try {
-        await cleanResetDocker(options.grafanaUrl, options);
-        dockerState.startedByUs = true;
+        await cleanEnv.reset(options.grafanaUrl, options.cleanReadyTimeoutMs);
       } catch (err) {
         console.error(
           `\n❌ Failed to reset docker compose between chains: ${err instanceof Error ? err.message : 'Unknown error'}`
@@ -1202,9 +1018,9 @@ export const e2eCommand = new Command('e2e')
     'Path to a repository.json used for dependency-aware ordering (default: the bundled index when present)'
   )
   .action(async (files: string[], options: E2ECommandOptions) => {
-    const dockerState: DockerState = { startedByUs: false };
+    const cleanEnv = new CleanEnvironment(options.verbose);
     if (options.clean) {
-      installCleanTeardownHandlers(options, dockerState);
+      installCleanTeardownHandlers(cleanEnv);
 
       if (options.grafanaUrl === DEFAULT_GRAFANA_URL) {
         options.grafanaUrl = CLEAN_GRAFANA_URL;
@@ -1218,11 +1034,11 @@ export const e2eCommand = new Command('e2e')
 
       const plan = buildExecutionPlan(valid, options);
 
-      await maybeCleanStart(options, dockerState);
+      await maybeCleanStart(cleanEnv, options);
 
       await runPreflightChecks(options);
 
-      const outcome = await runChains(plan, options, dockerState);
+      const outcome = await runChains(plan, options, cleanEnv);
 
       printSummary(outcome.results);
 
