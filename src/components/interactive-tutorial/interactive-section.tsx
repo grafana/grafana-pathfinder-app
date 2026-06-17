@@ -1169,6 +1169,7 @@ export function InteractiveSection({
         }
       };
 
+    // eslint-disable-next-line react-hooks/refs -- the stepRefs/multiStepRefs Maps are read inside the ref callback, which runs at commit time, not during render
     return React.Children.map(children, (child) => {
       const schema = lookupStepSchema(child);
       if (!schema) {

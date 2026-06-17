@@ -204,6 +204,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // every milestone navigation, which churns the history subscription and
   // risks dropping the very location event that triggered the navigation.
   const dockInputsRef = useRef({ guideUrl, title });
+  // eslint-disable-next-line react-hooks/refs -- intentional latest-value ref so the history listener subscribes once on mount (see comment above)
   dockInputsRef.current = { guideUrl, title };
   useEffect(() => {
     const fullScreenPathname = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
@@ -307,6 +308,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // swapped in), the effect would spuriously fire and kick the user out
   // of full screen.
   const handleExitToSidebarRef = useRef(handleExitToSidebar);
+  // eslint-disable-next-line react-hooks/refs -- intentional latest-callback ref so the empty-state effect's deps stay limited to trigger booleans (see comment above)
   handleExitToSidebarRef.current = handleExitToSidebar;
 
   // Empty-state fallback: if restoration completes with nothing to show

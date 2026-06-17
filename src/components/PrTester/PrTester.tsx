@@ -203,6 +203,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
    * up-to-date file list when it does run.
    */
   const manifestFilesRef = useRef(manifestFiles);
+  // eslint-disable-next-line react-hooks/refs -- intentional latest-value ref read inside the preload effect (see comment above)
   manifestFilesRef.current = manifestFiles;
 
   /**

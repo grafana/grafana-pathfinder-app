@@ -116,14 +116,6 @@ export default defineConfig([
   },
   ...baseConfig,
 
-  // eslint-config v10 turns on react-hooks v7's React Compiler ruleset.
-  // react-hooks/refs flags pre-existing call sites; migrated in the top of this stack.
-  {
-    rules: {
-      'react-hooks/refs': 'off',
-    },
-  },
-
   // Phase 6: Security and architecture lint rules (Epic #603)
   // Mechanically enforce security patterns (F1, F5) and architecture patterns.
   // Test files are excluded — they legitimately use innerHTML for DOM setup/teardown.
