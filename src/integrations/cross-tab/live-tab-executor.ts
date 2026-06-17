@@ -71,40 +71,57 @@ export function installLiveTabExecutor(
   // and race on shared highlight state (F-1069-1).
   let queue: Promise<void> = Promise.resolve();
 
+  const runAction = async (
+    action: { targetAction: string; refTarget?: string; targetValue?: string; targetComment?: string },
+    isShow: boolean
+  ): Promise<void> => {
+    const data: InteractiveElementData = {
+      refTarget: action.refTarget ?? '',
+      targetAction: action.targetAction,
+      targetValue: action.targetValue,
+      targetComment: action.targetComment,
+      tagName: 'button',
+      textContent: `${isShow ? 'Show me' : 'Do'}: ${action.refTarget ?? ''}`,
+      timestamp: Date.now(),
+    };
+
+    switch (action.targetAction) {
+      case 'highlight':
+        await focusHandler.execute(data, !isShow);
+        break;
+      case 'button':
+        await buttonHandler.execute(data, !isShow);
+        break;
+      case 'formfill':
+        await formFillHandler.execute(data, !isShow);
+        break;
+      case 'navigate':
+        await navigateHandler.execute(data, !isShow);
+        break;
+      case 'hover':
+        await hoverHandler.execute(data, !isShow);
+        break;
+      case 'noop':
+        break;
+      default:
+        console.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
+    }
+  };
+
   const runStepCommand = async (command: StepCommandMessage): Promise<void> => {
     if (cancelled) {
       return;
     }
     const isShow = command.phase === 'show';
-    const data: InteractiveElementData = {
-      refTarget: command.action.refTarget,
-      targetAction: command.action.targetAction,
-      targetValue: command.action.targetValue,
-      targetComment: command.action.targetComment,
-      tagName: 'button',
-      textContent: `${isShow ? 'Show me' : 'Do'}: ${command.action.refTarget}`,
-      timestamp: Date.now(),
-    };
-
+    // multi-step / guided carry an ordered internalActions sequence; a plain step
+    // carries a single action. Replay sequentially so ordering is preserved.
+    const actions = command.action.internalActions?.length ? command.action.internalActions : [command.action];
     try {
-      switch (command.action.targetAction) {
-        case 'highlight':
-          await focusHandler.execute(data, !isShow);
-          break;
-        case 'button':
-          await buttonHandler.execute(data, !isShow);
-          break;
-        case 'formfill':
-          await formFillHandler.execute(data, !isShow);
-          break;
-        case 'navigate':
-          await navigateHandler.execute(data, !isShow);
-          break;
-        case 'hover':
-          await hoverHandler.execute(data, !isShow);
-          break;
-        default:
-          console.warn(`[Pathfinder] cross-tab executor: unsupported action "${command.action.targetAction}"`);
+      for (const action of actions) {
+        if (cancelled) {
+          return;
+        }
+        await runAction(action, isShow);
       }
     } catch (error) {
       // TODO(#1073): post a step-complete{ok:false} back so the controller can

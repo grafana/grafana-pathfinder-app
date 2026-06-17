@@ -18,6 +18,8 @@ import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai
 import { STEP_STATES } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { useInteractiveMode } from '../../global-state/interactive-mode-context';
+import { useControllerChannel } from '../../global-state/controller-channel';
 import type { ProgressReason } from '../../global-state/progress-events';
 
 let anonymousMultiStepCounter = 0;
@@ -163,6 +165,8 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     );
 
     // Local UI state (similar to InteractiveStep)
+    const mode = useInteractiveMode();
+    const controllerChannel = useControllerChannel();
     const [isExecuting, setIsExecuting] = useState(false);
 
     // Completion lives in the store.
@@ -597,6 +601,32 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         )
       );
 
+      if (mode === 'controller') {
+        controllerChannel?.post({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: renderedStepId,
+          action: {
+            targetAction: 'multistep',
+            refTarget: '',
+            internalActions: internalActions.map((a) => ({
+              targetAction: a.targetAction,
+              refTarget: a.refTarget,
+              targetValue: a.targetValue,
+              targetComment: a.targetComment,
+            })),
+          },
+        });
+        persistCompletion();
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
+        if (onComplete) {
+          onComplete();
+        }
+        return;
+      }
+
       await executeStep();
     }, [
       disabled,
@@ -604,9 +634,15 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       isCompletedWithObjectives,
       checker.isEnabled,
       executeStep,
-      internalActions.length,
+      internalActions,
       renderedStepId,
       analyticsStepMeta,
+      mode,
+      controllerChannel,
+      persistCompletion,
+      onStepComplete,
+      onComplete,
+      stepId,
     ]);
 
     // Handle individual step reset (redo functionality)

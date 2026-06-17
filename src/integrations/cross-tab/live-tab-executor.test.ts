@@ -143,6 +143,32 @@ describe('installLiveTabExecutor', () => {
     uninstall();
   });
 
+  it('replays a multi-step internalActions sequence in order', async () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport);
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'ms1',
+      action: {
+        targetAction: 'multistep',
+        refTarget: '',
+        internalActions: [
+          { targetAction: 'highlight', refTarget: '#a' },
+          { targetAction: 'button', refTarget: '#b' },
+        ],
+      },
+    });
+
+    await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalled());
+    await waitFor(() => expect(executeOf(ButtonHandler)).toHaveBeenCalled());
+    uninstall();
+  });
+
   it('ignores unsupported actions without throwing or routing', () => {
     const transport = new FakeTransport();
     const uninstall = installLiveTabExecutor(transport);

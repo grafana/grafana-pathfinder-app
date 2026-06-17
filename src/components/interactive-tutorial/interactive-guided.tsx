@@ -23,6 +23,8 @@ import { sanitizeDocumentationHTML } from '../../security';
 import { STEP_STATES } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { useInteractiveMode } from '../../global-state/interactive-mode-context';
+import { useControllerChannel } from '../../global-state/controller-channel';
 import type { ProgressReason } from '../../global-state/progress-events';
 
 /**
@@ -165,6 +167,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     );
 
     // Local UI state
+    const mode = useInteractiveMode();
+    const controllerChannel = useControllerChannel();
     const [isExecuting, setIsExecuting] = useState(false);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [failedStepIndex, setFailedStepIndex] = useState(-1);
@@ -550,6 +554,32 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         )
       );
 
+      if (mode === 'controller') {
+        controllerChannel?.post({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: renderedStepId,
+          action: {
+            targetAction: 'guided',
+            refTarget: '',
+            internalActions: internalActions.map((a) => ({
+              targetAction: a.targetAction,
+              refTarget: a.refTarget,
+              targetValue: a.targetValue,
+              targetComment: a.targetComment,
+            })),
+          },
+        });
+        persistCompletion();
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
+        if (onComplete) {
+          onComplete();
+        }
+        return;
+      }
+
       await executeStep();
     }, [
       disabled,
@@ -557,9 +587,15 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       isCompletedWithObjectives,
       checker.isEnabled,
       executeStep,
-      internalActions.length,
+      internalActions,
       renderedStepId,
       analyticsStepMeta,
+      mode,
+      controllerChannel,
+      persistCompletion,
+      onStepComplete,
+      onComplete,
+      stepId,
     ]);
 
     // Handle step reset (redo functionality)

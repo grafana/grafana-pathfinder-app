@@ -7,6 +7,8 @@ export interface CrossTabAction {
   refTarget: string;
   targetValue?: string;
   targetComment?: string;
+  // Multi-step / guided steps carry their ordered sub-actions here.
+  internalActions?: Array<{ targetAction: string; refTarget?: string; targetValue?: string; targetComment?: string }>;
 }
 
 interface CrossTabEnvelope {
