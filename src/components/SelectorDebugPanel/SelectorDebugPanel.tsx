@@ -21,12 +21,8 @@ export interface SelectorDebugPanelProps {
 export function SelectorDebugPanel({ onOpenDocsPage, onOpenLearningJourney }: SelectorDebugPanelProps = {}) {
   const styles = useStyles2(getDebugPanelStyles);
 
-  const [prTesterExpanded, setPrTesterExpanded] = usePersistedBoolean(
-    StorageKeys.DEVTOOLS_PR_TESTER_EXPANDED
-  );
-  const [UrlTesterExpanded, setUrlTesterExpanded] = usePersistedBoolean(
-    StorageKeys.DEVTOOLS_URL_TESTER_EXPANDED
-  );
+  const [prTesterExpanded, setPrTesterExpanded] = usePersistedBoolean(StorageKeys.DEVTOOLS_PR_TESTER_EXPANDED);
+  const [UrlTesterExpanded, setUrlTesterExpanded] = usePersistedBoolean(StorageKeys.DEVTOOLS_URL_TESTER_EXPANDED);
 
   // Handle leaving dev mode
   const handleLeaveDevMode = useCallback(async () => {

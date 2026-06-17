@@ -83,10 +83,7 @@ export function usePersistedLocalState<T>({
 /**
  * String-valued persisted state. The default is `''` unless overridden.
  */
-export function usePersistedString(
-  key: string,
-  defaultValue = ''
-): [string, Dispatch<SetStateAction<string>>] {
+export function usePersistedString(key: string, defaultValue = ''): [string, Dispatch<SetStateAction<string>>] {
   const deserialize = useCallback((raw: string) => raw, []);
   const serialize = useCallback((value: string) => value, []);
   return usePersistedLocalState({
@@ -103,10 +100,7 @@ export function usePersistedString(
  * `true` on read — any other value defaults to `false` (or `defaultValue`
  * when the key is absent).
  */
-export function usePersistedBoolean(
-  key: string,
-  defaultValue = false
-): [boolean, Dispatch<SetStateAction<boolean>>] {
+export function usePersistedBoolean(key: string, defaultValue = false): [boolean, Dispatch<SetStateAction<boolean>>] {
   const deserialize = useCallback((raw: string) => raw === 'true', []);
   const serialize = useCallback((value: boolean) => String(value), []);
   return usePersistedLocalState({
