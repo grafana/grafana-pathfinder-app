@@ -267,6 +267,13 @@ export function BlockEditorHeader({
 
   // Inline title editing
   const [titleDraft, setTitleDraft] = useState(guideTitle);
+  // Keep the draft in sync when the title changes externally (e.g. guide loaded
+  // from library) — the "adjust state during render" pattern, no effect needed.
+  const [lastSyncedTitle, setLastSyncedTitle] = useState(guideTitle);
+  if (guideTitle !== lastSyncedTitle) {
+    setLastSyncedTitle(guideTitle);
+    setTitleDraft(guideTitle);
+  }
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   // Track the current panel mode so the Pop out button can swap between
@@ -298,11 +305,6 @@ export function BlockEditorHeader({
   const handleGoFullScreen = useCallback(() => {
     document.dispatchEvent(new CustomEvent('pathfinder-request-full-screen'));
   }, []);
-
-  // Keep draft in sync when title changes externally (e.g. guide loaded from library)
-  useEffect(() => {
-    setTitleDraft(guideTitle);
-  }, [guideTitle]);
 
   const commitTitle = () => {
     const trimmed = titleDraft.trim();

@@ -46,6 +46,7 @@ export function usePanelMode(): UsePanelModeResult {
     const onFullScreenRoute = window.location.pathname.startsWith(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
     if (!onFullScreenRoute) {
       panelModeManager.setMode('sidebar');
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- self-heal: correct stale persisted fullscreen mode when not on the fullscreen route
       setPanelMode('sidebar');
     }
   }, [panelMode]);

@@ -63,7 +63,6 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     }
   });
 
-  const [fetchState, setFetchState] = useState<FetchState>('idle');
   const [files, setFiles] = useState<PrJsonFile[]>(() => {
     try {
       const storedFiles = localStorage.getItem(FETCHED_FILES_STORAGE_KEY);
@@ -77,6 +76,9 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     }
     return [];
   });
+
+  // Initial fetch state reflects whether files were restored from storage.
+  const [fetchState, setFetchState] = useState<FetchState>(() => (files.length > 0 ? 'fetched' : 'idle'));
 
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -162,16 +164,6 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       // Ignore localStorage errors
     }
   }, [userSelectedPath]);
-
-  // Set initial fetch state based on restored files
-  const initialFetchState = useMemo(() => (files.length > 0 ? 'fetched' : 'idle') as FetchState, [files.length]);
-
-  useEffect(() => {
-    if (fetchState === 'idle' && initialFetchState === 'fetched') {
-      setFetchState('fetched');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once on mount
 
   useEffect(() => {
     try {

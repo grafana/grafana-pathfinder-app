@@ -214,6 +214,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
         persistReset();
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- reset local UI state when the parent bumps resetTrigger, alongside the persistReset store write
         setExecutionError(null);
         setCurrentStepIndex(0);
         setCurrentStepStatus('waiting');

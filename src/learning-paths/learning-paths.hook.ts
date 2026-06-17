@@ -85,7 +85,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
 
   // Dynamic guide data fetched from index.json for URL-based paths
   const [dynamicGuideData, setDynamicGuideData] = useState<Record<string, FetchedPathGuides>>({});
-  const [isDynamicLoading, setIsDynamicLoading] = useState(false);
+  const [isDynamicLoading, setIsDynamicLoading] = useState<boolean>(() => getPathsData().paths.some((p) => p.url));
 
   // Get raw paths for the current platform (OSS or Cloud)
   const rawPaths = useMemo(() => {
@@ -100,7 +100,6 @@ export function useLearningPaths(): UseLearningPathsReturn {
     }
 
     const abortController = new AbortController();
-    setIsDynamicLoading(true);
 
     void (async () => {
       const results: Record<string, FetchedPathGuides> = {};
