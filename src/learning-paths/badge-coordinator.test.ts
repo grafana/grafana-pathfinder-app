@@ -158,9 +158,7 @@ describe('markGuideCompleted', () => {
   });
 
   it('streak uses the previous lastActivityDate, not today', async () => {
-    learningProgressGetMock.mockResolvedValue(
-      emptyProgress({ streakDays: 4, lastActivityDate: '2025-01-01' })
-    );
+    learningProgressGetMock.mockResolvedValue(emptyProgress({ streakDays: 4, lastActivityDate: '2025-01-01' }));
     calculateUpdatedStreakMock.mockReturnValue(5);
 
     await markGuideCompleted('guide-a');
