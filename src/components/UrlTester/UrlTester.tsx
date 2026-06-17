@@ -1,5 +1,5 @@
 import { Box, Button, Icon, Input, useStyles2 } from '@grafana/ui';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { getUrlTesterStyles } from './url-tester.styles';
 import {
   isGitHubRawUrl,
@@ -10,8 +10,7 @@ import {
 } from '../../security';
 import { testIds } from '../../constants/testIds';
 import { StorageKeys } from '../../lib/storage-keys';
-
-const STORAGE_KEY = StorageKeys.DEVTOOLS_URL_TESTER_URL;
+import { usePersistedString } from '../../hooks';
 
 export interface UrlTesterProps {
   onOpenDocsPage: (url: string, title: string) => void;
@@ -72,21 +71,9 @@ function validateContentUrl(url: string): UrlValidation {
 
 export const UrlTester = ({ onOpenDocsPage, onOpenLearningJourney }: UrlTesterProps) => {
   const styles = useStyles2(getUrlTesterStyles);
-  const [testUrl, setTestUrl] = useState(() => {
-    try {
-      return localStorage.getItem(STORAGE_KEY) || '';
-    } catch {
-      return '';
-    }
-  });
+  const [testUrl, setTestUrl] = usePersistedString(StorageKeys.DEVTOOLS_URL_TESTER_URL);
   const [testError, setTestError] = useState<string | null>(null);
   const [testSuccess, setTestSuccess] = useState(false);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, testUrl);
-    } catch {}
-  }, [testUrl]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {

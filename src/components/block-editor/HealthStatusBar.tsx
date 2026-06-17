@@ -12,7 +12,8 @@
  * address the diagnostic, not hide it.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo } from 'react';
+import { usePersistedBoolean } from '../../hooks';
 import { Icon, IconButton, Tooltip, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -224,25 +225,11 @@ export function HealthStatusBar({ blocks }: HealthStatusBarProps) {
   const styles = useStyles2(getStyles);
   const lint = useGuideLintResult();
 
-  const [isExpanded, setIsExpanded] = useState<boolean>(() => {
-    try {
-      return window.localStorage.getItem(STORAGE_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [isExpanded, setIsExpanded] = usePersistedBoolean(STORAGE_KEY);
 
   const toggleExpanded = useCallback(() => {
-    setIsExpanded((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem(STORAGE_KEY, String(next));
-      } catch {
-        // localStorage unavailable; in-memory is fine.
-      }
-      return next;
-    });
-  }, []);
+    setIsExpanded((prev) => !prev);
+  }, [setIsExpanded]);
 
   const grouped = useMemo(() => {
     const out: Record<DiagnosticSeverity, Diagnostic[]> = { error: [], warning: [], info: [] };

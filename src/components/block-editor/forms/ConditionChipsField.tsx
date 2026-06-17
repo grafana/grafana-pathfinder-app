@@ -29,6 +29,7 @@ import {
 } from '../../../types/requirements.types';
 import { isAutoRecoverableRequirement } from '../../../recovery';
 import { StorageKeys } from '../../../lib/storage-keys';
+import { usePersistedBoolean } from '../../../hooks';
 import { HELPER_BY_PREFIX } from './condition-helpers';
 
 const RAW_MODE_PREFERENCE_KEY = StorageKeys.BLOCK_EDITOR_CONDITION_RAW_MODE;
@@ -83,22 +84,6 @@ function tokensToString(tokens: string[]): string {
   return tokens.join(', ');
 }
 
-function readRawModePreference(): boolean {
-  try {
-    return window.localStorage.getItem(RAW_MODE_PREFERENCE_KEY) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-function writeRawModePreference(value: boolean): void {
-  try {
-    window.localStorage.setItem(RAW_MODE_PREFERENCE_KEY, String(value));
-  } catch {
-    // localStorage unavailable — preference falls back to default each session.
-  }
-}
-
 function getPlaceholder(mode: ConditionFieldMode): string {
   switch (mode) {
     case 'requirements':
@@ -121,7 +106,7 @@ export function ConditionChipsField({
 }: ConditionChipsFieldProps) {
   const styles = useStyles2(getStyles);
   const tokens = useMemo(() => tokensFromString(value), [value]);
-  const [isRawMode, setIsRawMode] = useState<boolean>(() => readRawModePreference());
+  const [isRawMode, setIsRawMode] = usePersistedBoolean(RAW_MODE_PREFERENCE_KEY);
   const [isAdding, setIsAdding] = useState(false);
   const [pickedOption, setPickedOption] = useState<PickerOption | null>(null);
   const [argValue, setArgValue] = useState('');
@@ -131,13 +116,9 @@ export function ConditionChipsField({
   const [helperValid, setHelperValid] = useState(true);
 
   const toggleRawMode = useCallback(() => {
-    setIsRawMode((prev) => {
-      const next = !prev;
-      writeRawModePreference(next);
-      return next;
-    });
+    setIsRawMode((prev) => !prev);
     setIsAdding(false);
-  }, []);
+  }, [setIsRawMode]);
 
   const removeChip = useCallback(
     (token: string) => {

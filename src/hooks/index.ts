@@ -5,3 +5,8 @@ export {
   type UseAutoLaunchTutorialOptions,
 } from './useAutoLaunchTutorial';
 export { useStepProgressFromEvents } from './useStepProgressFromEvents';
+export {
+  usePersistedBoolean,
+  usePersistedLocalState,
+  usePersistedString,
+} from './usePersistedLocalState';

@@ -1,29 +1,11 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useCallback } from 'react';
 import { Button, Badge, Icon, useStyles2, Stack } from '@grafana/ui';
 import { getDebugPanelStyles } from './debug-panel.styles';
 import { UrlTester } from 'components/UrlTester';
 import { PrTester } from 'components/PrTester';
 import type { PackageOpenInfo } from 'types/content-panel.types';
 import { StorageKeys } from 'lib/storage-keys';
-
-// localStorage keys for section expansion state
-const STORAGE_KEY_PR_TESTER = StorageKeys.DEVTOOLS_PR_TESTER_EXPANDED;
-const STORAGE_KEY_URL_TESTER = StorageKeys.DEVTOOLS_URL_TESTER_EXPANDED;
-
-/**
- * Get initial expansion state from localStorage with fallback
- */
-function getInitialExpanded(storageKey: string, defaultValue: boolean): boolean {
-  try {
-    const stored = localStorage.getItem(storageKey);
-    if (stored !== null) {
-      return stored === 'true';
-    }
-  } catch {
-    // Ignore localStorage errors
-  }
-  return defaultValue;
-}
+import { usePersistedBoolean } from '../../hooks';
 
 export interface SelectorDebugPanelProps {
   /**
@@ -39,27 +21,12 @@ export interface SelectorDebugPanelProps {
 export function SelectorDebugPanel({ onOpenDocsPage, onOpenLearningJourney }: SelectorDebugPanelProps = {}) {
   const styles = useStyles2(getDebugPanelStyles);
 
-  // Section expansion state - initialize from localStorage
-  const [prTesterExpanded, setPrTesterExpanded] = useState(() => getInitialExpanded(STORAGE_KEY_PR_TESTER, false));
-  const [UrlTesterExpanded, setUrlTesterExpanded] = useState(() => getInitialExpanded(STORAGE_KEY_URL_TESTER, false));
-
-  // Persist PR tester expansion state
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_PR_TESTER, String(prTesterExpanded));
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, [prTesterExpanded]);
-
-  // Persist URL tester expansion state
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_URL_TESTER, String(UrlTesterExpanded));
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, [UrlTesterExpanded]);
+  const [prTesterExpanded, setPrTesterExpanded] = usePersistedBoolean(
+    StorageKeys.DEVTOOLS_PR_TESTER_EXPANDED
+  );
+  const [UrlTesterExpanded, setUrlTesterExpanded] = usePersistedBoolean(
+    StorageKeys.DEVTOOLS_URL_TESTER_EXPANDED
+  );
 
   // Handle leaving dev mode
   const handleLeaveDevMode = useCallback(async () => {
