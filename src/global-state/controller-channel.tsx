@@ -8,14 +8,10 @@ import type {
   RemoteRequirementResult,
 } from '../types/cross-tab.types';
 
-type RequestPayload =
-  | Omit<CheckRequirementsMessage, 'source' | 'senderId' | 'timestamp' | 'requestId'>
-  | Omit<FixRequirementMessage, 'source' | 'senderId' | 'timestamp' | 'requestId'>;
-
 const HEARTBEAT_INTERVAL_MS = 2000;
 const HEARTBEAT_STALE_MS = 5000;
-// A live tab that never answers must not strand a step's spinner; fall back once
-// the round-trip exceeds this budget.
+// Requirement/fix round-trips fall back after this; step-run completion is
+// unbounded (guided is human-paced) and fails only when the paired tab goes stale.
 const REQUEST_TIMEOUT_MS = 4000;
 
 interface ChannelTransport {
@@ -30,6 +26,10 @@ interface FixOutcome {
   error?: string;
 }
 
+type RequestPayload =
+  | Omit<CheckRequirementsMessage, 'source' | 'senderId' | 'timestamp' | 'requestId'>
+  | Omit<FixRequirementMessage, 'source' | 'senderId' | 'timestamp' | 'requestId'>;
+
 interface ControllerChannel {
   post: (payload: CrossTabPayload) => void;
   /** Ask the live tab to evaluate a step's requirements; resolves null on timeout. */
@@ -38,11 +38,11 @@ interface ControllerChannel {
     requirements: string,
     opts?: { targetAction?: string; refTarget?: string; targetValue?: string }
   ) => Promise<RemoteRequirementResult | null>;
-  /** Ask the live tab to run a requirement fix against its own DOM. */
   requestFix: (
     stepId: string,
     opts: { requirements: string; fixType?: string; targetHref?: string; scrollContainer?: string }
   ) => Promise<FixOutcome>;
+  awaitStepComplete: (stepId: string) => Promise<boolean>;
 }
 
 interface PendingRequest {
@@ -76,7 +76,13 @@ export function ControllerChannelProvider({
   const [connected, setConnected] = useState(false);
   const lastLiveSeenRef = useRef(0);
   const reassertedCloseRef = useRef(false);
+  // The one live tab this controller is bound to (first to send a `live`
+  // heartbeat); replies from any other tab are ignored.
+  const pairedLiveIdRef = useRef<string | null>(null);
   const pendingRef = useRef<Map<string, PendingRequest>>(new Map());
+  const stepCompletionRef = useRef<Map<string, (ok: boolean) => void>>(new Map());
+
+  const post = useCallback((payload: CrossTabPayload) => active.post(payload), [active]);
 
   useEffect(() => {
     active.start();
@@ -84,6 +90,7 @@ export function ControllerChannelProvider({
     active.post({ kind: 'sidebar-handoff', action: 'close' });
 
     const pending = pendingRef.current;
+    const stepDone = stepCompletionRef.current;
     const settle = (requestId: string, value: RemoteRequirementResult | FixOutcome | null) => {
       const entry = pending.get(requestId);
       if (!entry) {
@@ -93,9 +100,27 @@ export function ControllerChannelProvider({
       pending.delete(requestId);
       entry.resolve(value);
     };
+    const failAllPending = () => {
+      pending.forEach((entry) => {
+        clearTimeout(entry.timer);
+        entry.resolve(null);
+      });
+      pending.clear();
+      stepDone.forEach((resolve) => resolve(false));
+      stepDone.clear();
+    };
 
     const unsubscribe = active.onMessage((message) => {
-      if (message.kind === 'heartbeat' && message.role === 'live') {
+      if (message.kind === 'heartbeat') {
+        if (message.role !== 'live') {
+          return;
+        }
+        if (pairedLiveIdRef.current === null) {
+          pairedLiveIdRef.current = message.senderId;
+        }
+        if (message.senderId !== pairedLiveIdRef.current) {
+          return;
+        }
         lastLiveSeenRef.current = Date.now();
         setConnected(true);
         if (!reassertedCloseRef.current) {
@@ -107,10 +132,26 @@ export function ControllerChannelProvider({
           reassertedCloseRef.current = true;
           active.post({ kind: 'sidebar-handoff', action: 'close' });
         }
-      } else if (message.kind === 'requirement-result') {
+        return;
+      }
+      if (message.kind !== 'requirement-result' && message.kind !== 'fix-result' && message.kind !== 'step-complete') {
+        return;
+      }
+      if (pairedLiveIdRef.current === null) {
+        pairedLiveIdRef.current = message.senderId;
+      } else if (message.senderId !== pairedLiveIdRef.current) {
+        return;
+      }
+      if (message.kind === 'requirement-result') {
         settle(message.requestId, message.result);
       } else if (message.kind === 'fix-result') {
         settle(message.requestId, { ok: message.ok, error: message.error });
+      } else {
+        const resolve = stepDone.get(message.stepId);
+        if (resolve) {
+          stepDone.delete(message.stepId);
+          resolve(message.ok);
+        }
       }
     });
 
@@ -118,6 +159,9 @@ export function ControllerChannelProvider({
       active.post({ kind: 'heartbeat', role: 'controller' });
       if (lastLiveSeenRef.current > 0 && Date.now() - lastLiveSeenRef.current > HEARTBEAT_STALE_MS) {
         setConnected(false);
+        // Paired tab gone: drop the binding to allow re-pairing and fail waiters.
+        pairedLiveIdRef.current = null;
+        failAllPending();
       }
     };
     tick();
@@ -133,11 +177,7 @@ export function ControllerChannelProvider({
       clearInterval(intervalId);
       unsubscribe();
       active.stop();
-      pending.forEach((entry) => {
-        clearTimeout(entry.timer);
-        entry.resolve(null);
-      });
-      pending.clear();
+      failAllPending();
     };
   }, [active]);
 
@@ -154,10 +194,10 @@ export function ControllerChannelProvider({
           resolve(fallback);
         }, REQUEST_TIMEOUT_MS);
         pendingRef.current.set(requestId, { resolve: resolve as PendingRequest['resolve'], timer });
-        active.post({ ...payload, requestId });
+        post({ ...payload, requestId });
       });
     },
-    [active]
+    [post]
   );
 
   const requestRequirementCheck = useCallback<ControllerChannel['requestRequirementCheck']>(
@@ -192,13 +232,23 @@ export function ControllerChannelProvider({
     [request]
   );
 
+  const awaitStepComplete = useCallback<ControllerChannel['awaitStepComplete']>(
+    (stepId) =>
+      new Promise<boolean>((resolve) => {
+        // A re-run for the same step supersedes any earlier waiter.
+        stepCompletionRef.current.get(stepId)?.(false);
+        stepCompletionRef.current.set(stepId, resolve);
+      }),
+    []
+  );
+
   // The channel value omits `connected` (it lives in ControllerConnectionContext)
-  // and depends only on `active` plus the useCallback-stable round-trip helpers,
-  // so it stays referentially stable across heartbeat ticks — step consumers
-  // don't re-render (NEW-1065-1).
+  // and depends only on the useCallback-stable post + round-trip helpers, so it
+  // stays referentially stable across heartbeat ticks — step consumers don't
+  // re-render (NEW-1065-1).
   const channel = useMemo<ControllerChannel>(
-    () => ({ post: (payload) => active.post(payload), requestRequirementCheck, requestFix }),
-    [active, requestRequirementCheck, requestFix]
+    () => ({ post, requestRequirementCheck, requestFix, awaitStepComplete }),
+    [post, requestRequirementCheck, requestFix, awaitStepComplete]
   );
 
   return (

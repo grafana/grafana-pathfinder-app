@@ -578,12 +578,22 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             ),
           },
         });
-        persistCompletion();
-        if (onStepComplete && stepId) {
-          onStepComplete(stepId);
-        }
-        if (onComplete) {
-          onComplete();
+        // Wait for the user to walk through every guided step on the live tab
+        // before marking complete, rather than completing optimistically.
+        setIsExecuting(true);
+        try {
+          const finished = (await controllerChannel?.awaitStepComplete(renderedStepId)) ?? false;
+          if (finished) {
+            persistCompletion();
+            if (onStepComplete && stepId) {
+              onStepComplete(stepId);
+            }
+            if (onComplete) {
+              onComplete();
+            }
+          }
+        } finally {
+          setIsExecuting(false);
         }
         return;
       }

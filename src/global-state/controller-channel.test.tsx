@@ -255,6 +255,84 @@ describe('ControllerChannelProvider', () => {
     }
   });
 
+  it('binds to the first live tab and ignores replies from others', async () => {
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <RequestProbe />
+      </ControllerChannelProvider>
+    );
+
+    // Pair with live tab A via its heartbeat.
+    act(() =>
+      transport.emit({ source: 'pathfinder', senderId: 'live-A', timestamp: 0, kind: 'heartbeat', role: 'live' })
+    );
+
+    fireEvent.click(screen.getByText('check'));
+    const request = postedOfKind(transport, 'check-requirements');
+
+    // A different tab answering the same requestId must be ignored.
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live-B',
+        timestamp: 0,
+        kind: 'requirement-result',
+        requestId: request.requestId,
+        stepId: 's1',
+        result: { requirements: 'navmenu-open', pass: false, error: [] },
+      })
+    );
+    expect(screen.getByTestId('check')).toHaveTextContent('pending');
+
+    // The paired tab's reply is honored.
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live-A',
+        timestamp: 0,
+        kind: 'requirement-result',
+        requestId: request.requestId,
+        stepId: 's1',
+        result: { requirements: 'navmenu-open', pass: true, error: [] },
+      })
+    );
+    await waitFor(() => expect(screen.getByTestId('check')).toHaveTextContent('pass:true'));
+  });
+
+  it('resolves awaitStepComplete when the live tab reports completion', async () => {
+    function CompleteProbe() {
+      const channel = useControllerChannel();
+      const [done, setDone] = React.useState('pending');
+      return (
+        <div>
+          <button onClick={() => channel?.awaitStepComplete('s9').then((ok) => setDone(`ok:${ok}`))}>await</button>
+          <span data-testid="done">{done}</span>
+        </div>
+      );
+    }
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <CompleteProbe />
+      </ControllerChannelProvider>
+    );
+
+    fireEvent.click(screen.getByText('await'));
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live-A',
+        timestamp: 0,
+        kind: 'step-complete',
+        stepId: 's9',
+        ok: true,
+      })
+    );
+
+    await waitFor(() => expect(screen.getByTestId('done')).toHaveTextContent('ok:true'));
+  });
+
   it('returns null outside a provider', () => {
     function Peek() {
       const channel = useControllerChannel();
