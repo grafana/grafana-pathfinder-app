@@ -141,7 +141,30 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   (window as any).__pathfinderPluginConfig = config;
 
   // Snapshotted before handlePathfinderDeepLink strips it from the URL.
-  const docsParam = parsePathfinderDeepLink(window.location.search).doc;
+  const { doc: docsParam, controller: controllerParam } = parsePathfinderDeepLink(window.location.search);
+
+  // Interactive controller (?doc=<guide>&controller=1): the same overlay, but
+  // step actions stay visible so this tab can drive the originating Grafana tab.
+  if (docsParam && controllerParam) {
+    if (!document.getElementById('pathfinder-controller-root')) {
+      import('./components/guide-reader/GuideReaderOverlay')
+        .then(async ({ GuideReaderOverlay }) => {
+          if (document.getElementById('pathfinder-controller-root')) {
+            return;
+          }
+          const { createCompatRoot } = await import('./lib/create-root-compat');
+          const container = document.createElement('div');
+          container.id = 'pathfinder-controller-root';
+          document.body.appendChild(container);
+          const root = await createCompatRoot(container);
+          root.render(React.createElement(GuideReaderOverlay, { doc: docsParam, mode: 'controller' }));
+        })
+        .catch((err) => {
+          console.error('[Pathfinder] Failed to load interactive controller:', err);
+        });
+    }
+    return;
+  }
 
   const sidebarMountable = shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant);
   const deepLinkDeps = {

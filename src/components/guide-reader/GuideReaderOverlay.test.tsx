@@ -17,7 +17,10 @@ jest.mock('../OpenFeatureProvider', () => ({
 // responsibilities (fetch → render, close, error) rather than ContentRenderer
 // internals (covered by its own suite).
 jest.mock('../content-renderer/content-renderer', () => ({
-  ContentRenderer: () => <div data-testid="mock-content">content</div>,
+  ContentRenderer: () => {
+    const { useInteractiveMode } = require('../../global-state/interactive-readonly-context');
+    return <div data-testid="mock-content">mode:{useInteractiveMode()}</div>;
+  },
 }));
 
 const mockFetchContent = fetchUnifiedContent as jest.MockedFunction<typeof fetchUnifiedContent>;
@@ -42,6 +45,15 @@ describe('GuideReaderOverlay', () => {
     expect(mockFetchContent).toHaveBeenCalledWith('backend-guide:x');
     expect(screen.getByTestId(testIds.guideReader.overlay)).toBeInTheDocument();
     expect(await screen.findByTestId('mock-content')).toBeInTheDocument();
+  });
+
+  it('provides controller mode to the rendered content', async () => {
+    mockFetchContent.mockResolvedValue({ content: { url: 'backend-guide:x', type: 'interactive' } } as any);
+
+    render(<GuideReaderOverlay doc="backend-guide:x" mode="controller" />);
+
+    const content = await screen.findByTestId('mock-content');
+    expect(content).toHaveTextContent('mode:controller');
   });
 
   it('closes the tab when the close button is clicked', async () => {

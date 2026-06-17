@@ -9,6 +9,7 @@ import { fetchUnifiedContent } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
+import { InteractiveModeContext, type InteractiveMode } from '../../global-state/interactive-readonly-context';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { testIds } from '../../constants/testIds';
 import type { RawContent } from '../../types/content.types';
@@ -17,6 +18,7 @@ import { getGuideReaderStyles } from './guide-reader.styles';
 interface GuideReaderOverlayProps {
   /** The `?doc=` value to render (e.g. `backend-guide:<id>`). */
   doc: string;
+  mode?: InteractiveMode;
 }
 
 // Mirrors FloatingPanelManager: this tree is mounted in a standalone root
@@ -43,21 +45,22 @@ function useGrafanaTheme() {
 
 /**
  * Full-screen viewer for a single guide, mounted in a new tab as a portal over
- * `document.body` at a high z-index so it covers all of Grafana's chrome — the
- * tab is a dedicated reader, not a second live Grafana to wander into.
+ * `document.body` at a high z-index so it covers all of Grafana's chrome — a
+ * dedicated viewer. `mode` drives InteractiveModeContext: 'controller' keeps
+ * step actions visible so this tab can drive the originating Grafana tab.
  */
-export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({ doc }) => {
+export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({ doc, mode = 'controller' }) => {
   const theme = useGrafanaTheme();
   return (
     <ThemeContext.Provider value={theme}>
       <PathfinderFeatureProvider>
-        <GuideReaderInner doc={doc} />
+        <GuideReaderInner doc={doc} mode={mode} />
       </PathfinderFeatureProvider>
     </ThemeContext.Provider>
   );
 };
 
-function GuideReaderInner({ doc }: GuideReaderOverlayProps) {
+function GuideReaderInner({ doc, mode = 'controller' }: GuideReaderOverlayProps) {
   const styles = useStyles2(getGuideReaderStyles);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
@@ -157,9 +160,11 @@ function GuideReaderInner({ doc }: GuideReaderOverlayProps) {
           </div>
         )}
         {content && (
-          <div ref={contentRef}>
-            <ContentRenderer content={content} containerRef={contentRef} className={contentClassName} />
-          </div>
+          <InteractiveModeContext.Provider value={mode}>
+            <div ref={contentRef}>
+              <ContentRenderer content={content} containerRef={contentRef} className={contentClassName} />
+            </div>
+          </InteractiveModeContext.Provider>
         )}
       </div>
     </div>,
