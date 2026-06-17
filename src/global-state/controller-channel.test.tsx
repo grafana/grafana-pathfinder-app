@@ -386,6 +386,34 @@ describe('ControllerChannelProvider', () => {
     await waitFor(() => expect(screen.getByTestId('done')).toHaveTextContent('ok:true'));
   });
 
+  it('forwards step-progress to an onStepProgress subscriber', () => {
+    function ProgressProbe() {
+      const channel = useControllerChannel();
+      const [p, setP] = React.useState('none');
+      React.useEffect(() => channel?.onStepProgress('s9', (index, total) => setP(`${index}/${total}`)), [channel]);
+      return <span data-testid="progress">{p}</span>;
+    }
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <ProgressProbe />
+      </ControllerChannelProvider>
+    );
+
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live-A',
+        timestamp: 0,
+        kind: 'step-progress',
+        stepId: 's9',
+        index: 1,
+        total: 3,
+      })
+    );
+    expect(screen.getByTestId('progress')).toHaveTextContent('1/3');
+  });
+
   it('returns null outside a provider', () => {
     function Peek() {
       const channel = useControllerChannel();

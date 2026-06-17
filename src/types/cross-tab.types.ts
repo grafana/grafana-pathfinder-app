@@ -14,7 +14,6 @@ export interface CrossTabAction {
   refTarget: string;
   targetValue?: string;
   targetComment?: string;
-  // Multi-step / guided steps carry their ordered sub-actions here.
   internalActions?: CrossTabInternalAction[];
 }
 
@@ -98,12 +97,20 @@ export interface FixResultMessage extends CrossTabEnvelope {
   error?: string;
 }
 
-// Live → controller: a composite step finished running, so the controller can
-// mark completion only once the live tab actually walked through it.
+// Live → controller: a composite finished; the controller marks completion only then.
 export interface StepCompleteMessage extends CrossTabEnvelope {
   kind: 'step-complete';
   stepId: string;
   ok: boolean;
+}
+
+// Live → controller: which internal action a composite is on, so the controller
+// can animate per-step progress while the replay runs on the live tab.
+export interface StepProgressMessage extends CrossTabEnvelope {
+  kind: 'step-progress';
+  stepId: string;
+  index: number;
+  total: number;
 }
 
 export type CrossTabMessage =
@@ -114,7 +121,8 @@ export type CrossTabMessage =
   | RequirementResultMessage
   | FixRequirementMessage
   | FixResultMessage
-  | StepCompleteMessage;
+  | StepCompleteMessage
+  | StepProgressMessage;
 
 // Distributively strip the envelope from every message kind, so the
 // post() payload type stays derived from CrossTabMessage instead of a
@@ -253,6 +261,16 @@ function isValidStepComplete(message: Record<string, unknown>): boolean {
   return typeof message.stepId === 'string' && typeof message.ok === 'boolean';
 }
 
+// step-progress is a live → controller reply: the live tab reports which internal
+// action a composite is on so the controller can animate progress. It triggers no
+// DOM action, but it drives a UI callback keyed by stepId, so validate the shape
+// to keep a malformed reply from advancing the wrong step's progress.
+function isValidStepProgress(message: Record<string, unknown>): boolean {
+  return (
+    typeof message.stepId === 'string' && typeof message.index === 'number' && typeof message.total === 'number'
+  );
+}
+
 // Per-kind validators — the single source of truth shared by the transport
 // receive gate and the live-tab executor. Same-origin traffic is forgeable
 // (the envelope alone proves nothing), so every side-effecting command is
@@ -268,6 +286,7 @@ const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, 
   'fix-requirement': isValidFixRequirement,
   'fix-result': isValidFixResult,
   'step-complete': isValidStepComplete,
+  'step-progress': isValidStepProgress,
 };
 
 /**

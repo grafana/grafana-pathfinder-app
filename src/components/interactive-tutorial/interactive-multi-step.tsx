@@ -644,8 +644,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             ),
           },
         });
-        // Wait for the replay to finish on the live tab before marking complete.
+        // Animate per-step progress from the live tab, and wait for it to finish
+        // before marking complete (the actual execution happens over there).
         setIsExecuting(true);
+        const stopProgress = controllerChannel?.onStepProgress(renderedStepId, (index) => setCurrentActionIndex(index));
         try {
           const finished = await controllerChannel.awaitStepComplete(renderedStepId);
           if (finished) {
@@ -666,6 +668,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             });
           }
         } finally {
+          stopProgress?.();
           setIsExecuting(false);
         }
         return;

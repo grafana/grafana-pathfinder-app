@@ -595,6 +595,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         // Wait for the user to walk through every guided step on the live tab
         // before marking complete, rather than completing optimistically.
         setIsExecuting(true);
+        const stopProgress = controllerChannel?.onStepProgress(renderedStepId, (index) => {
+          setCurrentStepIndex(index);
+          setCurrentStepStatus('waiting');
+        });
         try {
           const finished = await controllerChannel.awaitStepComplete(renderedStepId);
           if (finished) {
@@ -615,6 +619,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             });
           }
         } finally {
+          stopProgress?.();
           setIsExecuting(false);
         }
         return;

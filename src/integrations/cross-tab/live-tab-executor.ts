@@ -162,18 +162,22 @@ export function installLiveTabExecutor(
     }
   };
 
+  type ActionList = NonNullable<StepCommandMessage['action']['internalActions']>;
+  type OnProgress = (index: number) => void;
+
   // multi-step / guided replay each internal action the way a live tab paces a
   // normal multi-step: highlight (show) → pause → perform (do) → settle → pause,
   // so the user watches the same staged sequence rather than an instant burst.
   // Composites always run the full show→do sequence; the command's wire `phase`
   // is not consulted (controllers only ever post composites as a 'do').
-  const runComposite = async (actions: NonNullable<StepCommandMessage['action']['internalActions']>): Promise<void> => {
+  const runComposite = async (actions: ActionList, onProgress: OnProgress): Promise<void> => {
     for (let i = 0; i < actions.length; i++) {
       // Paced replay holds the loop open for seconds; bail between actions if a
       // teardown set cancelled so we never touch the DOM post-uninstall (NEW-1064-2).
       if (cancelled) {
         return;
       }
+      onProgress(i);
       const action = actions[i]!;
       await runAction(action, true);
       await sleep(pacing.showToDoMs);
@@ -187,10 +191,11 @@ export function installLiveTabExecutor(
   };
 
   // Guided is human-driven: highlight each target and wait for the user to perform
-  // it on the live tab, rather than the auto show→do replay a multi-step uses.
-  const runGuided = async (actions: NonNullable<StepCommandMessage['action']['internalActions']>): Promise<boolean> => {
+  // it on the live tab, rather than the auto replay a multi-step uses.
+  const runGuided = async (actions: ActionList, onProgress: OnProgress): Promise<boolean> => {
     guidedHandler.resetProgress();
     for (let i = 0; i < actions.length; i++) {
+      onProgress(i);
       const action = actions[i]!;
       // The receive gate accepts any KNOWN_TARGET_ACTIONS verb, which is wider than
       // the guided verb set — guard the cast so a non-guided verb (e.g. navigate)
@@ -221,13 +226,15 @@ export function installLiveTabExecutor(
       return;
     }
     const internalActions = command.action.internalActions;
+    const postProgress = (index: number) =>
+      transport.post({ kind: 'step-progress', stepId: command.stepId, index, total: internalActions?.length ?? 0 });
     let ok = false;
     try {
       if (internalActions?.length) {
         if (command.action.targetAction === 'guided') {
-          ok = await runGuided(internalActions);
+          ok = await runGuided(internalActions, postProgress);
         } else {
-          await runComposite(internalActions);
+          await runComposite(internalActions, postProgress);
           ok = true;
         }
       } else {
