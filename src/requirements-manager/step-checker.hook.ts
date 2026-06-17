@@ -35,6 +35,8 @@ import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
 import { checkRequirements } from './requirements-checker.utils';
+import { stripTabLocalRequirements } from './controller-requirements';
+import { useInteractiveMode } from '../global-state/interactive-readonly-context';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 
 // Re-export for convenience
@@ -88,7 +90,7 @@ function actionFromBaseStepState(s: LegacyStateShape): StepAction {
  */
 export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn {
   const {
-    requirements,
+    requirements: rawRequirements,
     objectives,
     hints,
     stepId,
@@ -104,6 +106,16 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     onStepComplete,
     onComplete,
   } = props;
+
+  const mode = useInteractiveMode();
+  // A controller tab drives a *different* Grafana tab, so requirements that probe
+  // this tab's DOM/URL (exists-reftarget, on-page, ...) can't be evaluated here.
+  // Strip them and let the live tab enforce them; session/permission requirements
+  // still run so genuine failures surface.
+  const requirements = useMemo(
+    () => (mode === 'controller' ? stripTabLocalRequirements(rawRequirements) : rawRequirements),
+    [mode, rawRequirements]
+  );
 
   /**
    * Resolve the store-write target for this checker.
@@ -753,7 +765,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         50
       );
     },
-    [skippable, updateManager, stepId, timeoutManager, writeStoreReset] // eslint-disable-line react-hooks/exhaustive-deps -- checkStep intentionally excluded to prevent infinite loops
+    [skippable, updateManager, stepId, timeoutManager, writeStoreReset] // checkStep intentionally excluded (called via ref) to prevent infinite loops
   );
 
   /**

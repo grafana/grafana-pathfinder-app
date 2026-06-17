@@ -1,8 +1,13 @@
-import type { InteractiveAction } from './collaboration.types';
-
 export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
 
 export type CrossTabRole = 'controller' | 'live';
+
+export interface CrossTabAction {
+  targetAction: string;
+  refTarget: string;
+  targetValue?: string;
+  targetComment?: string;
+}
 
 interface CrossTabEnvelope {
   source: 'pathfinder';
@@ -14,7 +19,7 @@ export interface StepCommandMessage extends CrossTabEnvelope {
   kind: 'step-command';
   phase: 'show' | 'do';
   stepId: string;
-  action: InteractiveAction;
+  action: CrossTabAction;
 }
 
 export interface HeartbeatMessage extends CrossTabEnvelope {

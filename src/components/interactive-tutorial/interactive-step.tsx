@@ -27,6 +27,8 @@ import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { STEP_STATES } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { useInteractiveMode } from '../../global-state/interactive-readonly-context';
+import { useControllerChannel } from '../../global-state/controller-channel';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -202,6 +204,8 @@ export const InteractiveStep = forwardRef<
     );
 
     // Local UI state
+    const mode = useInteractiveMode();
+    const controllerChannel = useControllerChannel();
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isDoRunning, setIsDoRunning] = useState(false);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
@@ -660,6 +664,25 @@ export const InteractiveStep = forwardRef<
         )
       );
 
+      if (mode === 'controller') {
+        controllerChannel?.post({
+          kind: 'step-command',
+          phase: 'show',
+          stepId: renderedStepId,
+          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+        });
+        if (!doIt) {
+          persistCompletion();
+          if (onStepComplete && stepId) {
+            onStepComplete(stepId);
+          }
+          if (onComplete) {
+            onComplete();
+          }
+        }
+        return;
+      }
+
       setIsShowRunning(true);
       try {
         // Use lazy scroll wrapper to ensure element is found before executing
@@ -717,6 +740,9 @@ export const InteractiveStep = forwardRef<
       stepId,
       analyticsStepMeta,
       persistCompletion,
+      mode,
+      controllerChannel,
+      renderedStepId,
     ]);
 
     // Handle individual "Do it" action (delegates to executeStep)
@@ -742,6 +768,23 @@ export const InteractiveStep = forwardRef<
           analyticsStepMeta
         )
       );
+
+      if (mode === 'controller') {
+        controllerChannel?.post({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: renderedStepId,
+          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+        });
+        persistCompletion();
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
+        if (onComplete) {
+          onComplete();
+        }
+        return;
+      }
 
       setIsDoRunning(true);
       try {
@@ -778,6 +821,14 @@ export const InteractiveStep = forwardRef<
       targetAction,
       currentTargetValue,
       analyticsStepMeta,
+      mode,
+      controllerChannel,
+      renderedStepId,
+      persistCompletion,
+      onStepComplete,
+      onComplete,
+      stepId,
+      targetComment,
     ]);
 
     // Handle individual step reset (redo functionality)

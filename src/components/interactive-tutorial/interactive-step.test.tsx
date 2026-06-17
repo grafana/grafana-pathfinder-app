@@ -1,6 +1,8 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { InteractiveStep } from './interactive-step';
+import { InteractiveModeContext } from '../../global-state/interactive-readonly-context';
+import { ControllerChannelProvider } from '../../global-state/controller-channel';
 
 describe('InteractiveStep: showMeText label override', () => {
   it('renders custom Show me label when showMeText is provided', () => {
@@ -165,5 +167,86 @@ describe('InteractiveStep: popout action type', () => {
     } finally {
       dispatchSpy.mockRestore();
     }
+  });
+});
+
+describe('InteractiveStep: controller mode emits over the channel instead of executing', () => {
+  function makeTransport() {
+    return { start: jest.fn(), stop: jest.fn(), post: jest.fn() };
+  }
+
+  it('emits a "show" step-command when Show me is clicked', async () => {
+    const transport = makeTransport();
+    render(
+      <InteractiveModeContext.Provider value="controller">
+        <ControllerChannelProvider transport={transport}>
+          <InteractiveStep targetAction="highlight" refTarget="#panel-add" stepId="ctrl-show" showMe doIt={false}>
+            Step
+          </InteractiveStep>
+        </ControllerChannelProvider>
+      </InteractiveModeContext.Provider>
+    );
+
+    const button = await screen.findByRole('button', { name: /show me/i });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+
+    await waitFor(() =>
+      expect(transport.post).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'step-command',
+          phase: 'show',
+          stepId: 'ctrl-show',
+          action: expect.objectContaining({ targetAction: 'highlight', refTarget: '#panel-add' }),
+        })
+      )
+    );
+  });
+
+  it('emits a "do" step-command when Do it is clicked', async () => {
+    const transport = makeTransport();
+    render(
+      <InteractiveModeContext.Provider value="controller">
+        <ControllerChannelProvider transport={transport}>
+          <InteractiveStep targetAction="button" refTarget="button[type='submit']" stepId="ctrl-do">
+            Step
+          </InteractiveStep>
+        </ControllerChannelProvider>
+      </InteractiveModeContext.Provider>
+    );
+
+    const button = await screen.findByRole('button', { name: /do it/i });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+
+    await waitFor(() =>
+      expect(transport.post).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'step-command', phase: 'do', stepId: 'ctrl-do' })
+      )
+    );
+  });
+
+  it('keeps a step enabled in controller mode even when its requirements would fail', async () => {
+    const transport = makeTransport();
+    render(
+      <InteractiveModeContext.Provider value="controller">
+        <ControllerChannelProvider transport={transport}>
+          <InteractiveStep
+            targetAction="button"
+            refTarget="#not-on-this-tab"
+            requirements="exists-reftarget"
+            stepId="ctrl-req"
+          >
+            Step
+          </InteractiveStep>
+        </ControllerChannelProvider>
+      </InteractiveModeContext.Provider>
+    );
+
+    const button = await screen.findByRole('button', { name: /do it/i });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+
+    await waitFor(() => expect(transport.post).toHaveBeenCalled());
   });
 });

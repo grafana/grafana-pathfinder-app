@@ -10,6 +10,7 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { InteractiveModeContext, type InteractiveMode } from '../../global-state/interactive-mode-context';
+import { ControllerChannelProvider } from '../../global-state/controller-channel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { testIds } from '../../constants/testIds';
 import type { RawContent } from '../../types/content.types';
@@ -127,6 +128,12 @@ function GuideReaderInner({ doc, mode }: { doc: string; mode: InteractiveMode })
     ? `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`
     : '';
 
+  const body = content ? (
+    <div ref={contentRef}>
+      <ContentRenderer content={content} containerRef={contentRef} className={contentClassName} />
+    </div>
+  ) : null;
+
   return createPortal(
     <div
       className={styles.backdrop}
@@ -159,11 +166,9 @@ function GuideReaderInner({ doc, mode }: { doc: string; mode: InteractiveMode })
             Loading guide...
           </div>
         )}
-        {content && (
+        {body && (
           <InteractiveModeContext.Provider value={mode}>
-            <div ref={contentRef}>
-              <ContentRenderer content={content} containerRef={contentRef} className={contentClassName} />
-            </div>
+            {mode === 'controller' ? <ControllerChannelProvider>{body}</ControllerChannelProvider> : body}
           </InteractiveModeContext.Provider>
         )}
       </div>

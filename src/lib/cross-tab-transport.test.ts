@@ -221,6 +221,13 @@ describe('CrossTabTransport', () => {
     controller.post({ kind: 'heartbeat', role: 'controller' });
     expect(received).toHaveLength(0);
   });
+
+  it('stays inactive (no throw) when no channel is available', () => {
+    const transport = new CrossTabTransport('id', () => null);
+    transport.start();
+    expect(transport.isActive()).toBe(false);
+    expect(() => transport.post({ kind: 'heartbeat', role: 'controller' })).not.toThrow();
+  });
 });
 
 describe('createSenderId', () => {
