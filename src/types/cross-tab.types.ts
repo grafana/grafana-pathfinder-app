@@ -27,7 +27,12 @@ export interface HeartbeatMessage extends CrossTabEnvelope {
   role: CrossTabRole;
 }
 
-export type CrossTabMessage = StepCommandMessage | HeartbeatMessage;
+export interface SidebarHandoffMessage extends CrossTabEnvelope {
+  kind: 'sidebar-handoff';
+  action: 'close' | 'reopen';
+}
+
+export type CrossTabMessage = StepCommandMessage | HeartbeatMessage | SidebarHandoffMessage;
 
 // Distributively strip the envelope from every message kind, so the
 // post() payload type stays derived from CrossTabMessage instead of a
@@ -90,6 +95,10 @@ function isValidHeartbeat(message: Record<string, unknown>): boolean {
   return message.role === 'controller' || message.role === 'live';
 }
 
+function isValidSidebarHandoff(message: Record<string, unknown>): boolean {
+  return message.action === 'close' || message.action === 'reopen';
+}
+
 // Per-kind validators — the single source of truth shared by the transport
 // receive gate and the live-tab executor. Same-origin traffic is forgeable
 // (the envelope alone proves nothing), so every side-effecting command is
@@ -99,6 +108,7 @@ function isValidHeartbeat(message: Record<string, unknown>): boolean {
 const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, unknown>) => boolean> = {
   'step-command': isValidStepCommand,
   heartbeat: isValidHeartbeat,
+  'sidebar-handoff': isValidSidebarHandoff,
 };
 
 /**

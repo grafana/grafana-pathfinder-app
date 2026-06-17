@@ -44,6 +44,8 @@ export function ControllerChannelProvider({
 
   useEffect(() => {
     active.start();
+    // Hand the main window's sidebar off to this controller tab while it drives.
+    active.post({ kind: 'sidebar-handoff', action: 'close' });
 
     const unsubscribe = active.onMessage((message) => {
       if (message.kind === 'heartbeat' && message.role === 'live') {
@@ -61,7 +63,13 @@ export function ControllerChannelProvider({
     tick();
     const intervalId = setInterval(tick, HEARTBEAT_INTERVAL_MS);
 
+    // Closing the controller tab (or unmounting) hands the sidebar back.
+    const handBack = () => active.post({ kind: 'sidebar-handoff', action: 'reopen' });
+    window.addEventListener('pagehide', handBack);
+
     return () => {
+      window.removeEventListener('pagehide', handBack);
+      handBack();
       clearInterval(intervalId);
       unsubscribe();
       active.stop();

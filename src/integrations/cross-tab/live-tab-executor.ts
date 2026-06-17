@@ -1,4 +1,4 @@
-import { config } from '@grafana/runtime';
+import { config, getAppEvents } from '@grafana/runtime';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../../styles/interactive.styles';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import type { InteractiveElementData } from '../../types/interactive.types';
@@ -18,6 +18,9 @@ import {
   type CrossTabPayload,
   type StepCommandMessage,
 } from '../../types/cross-tab.types';
+import { sidebarState } from '../../global-state/sidebar';
+import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
+import pluginJson from '../../plugin.json';
 
 interface ExecutorTransport {
   start(): void;
@@ -111,6 +114,9 @@ export function installLiveTabExecutor(
     }
   };
 
+  // Only restore a sidebar this tab actually gave up to a controller.
+  let handedOffSidebar = false;
+
   const unsubscribe = transport.onMessage((message) => {
     // Defense in depth: re-validate at the DOM sink before dispatch, so the
     // executor never trusts a message that bypassed the transport gate (T1).
@@ -122,6 +128,18 @@ export function installLiveTabExecutor(
       queue = queue.then(() => runStepCommand(validated));
     } else if (validated.kind === 'heartbeat' && validated.role === 'controller') {
       transport.post({ kind: 'heartbeat', role: 'live' });
+    } else if (validated.kind === 'sidebar-handoff') {
+      if (validated.action === 'close') {
+        if (sidebarState.getIsSidebarMounted()) {
+          getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
+          handedOffSidebar = true;
+        }
+      } else if (validated.action === 'reopen') {
+        if (handedOffSidebar && !isExtensionSidebarOwnedByOther(pluginJson.id)) {
+          sidebarState.openSidebar('Interactive learning');
+        }
+        handedOffSidebar = false;
+      }
     }
   });
   transport.start();

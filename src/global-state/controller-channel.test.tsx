@@ -86,6 +86,17 @@ describe('ControllerChannelProvider', () => {
     expect(transport.postedMessages).toContainEqual({ kind: 'heartbeat', role: 'controller' });
   });
 
+  it('hands the sidebar off (close) on mount', () => {
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <Probe />
+      </ControllerChannelProvider>
+    );
+
+    expect(transport.postedMessages).toContainEqual({ kind: 'sidebar-handoff', action: 'close' });
+  });
+
   it('forwards channel.post to the transport', () => {
     const transport = new FakeTransport();
     render(

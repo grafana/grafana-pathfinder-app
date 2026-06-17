@@ -1,6 +1,9 @@
 import { waitFor } from '@testing-library/react';
+import { getAppEvents } from '@grafana/runtime';
 import { installLiveTabExecutor, resetLiveTabExecutorForTests } from './live-tab-executor';
 import { FocusHandler, ButtonHandler, NavigateHandler } from '../../interactive-engine/action-handlers';
+import { sidebarState } from '../../global-state/sidebar';
+import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
 import type { CrossTabMessage } from '../../types/cross-tab.types';
 
 jest.mock('../../interactive-engine/action-handlers', () => {
@@ -12,6 +15,21 @@ jest.mock('../../interactive-engine/action-handlers', () => {
     HoverHandler: jest.fn(makeHandler),
     NavigateHandler: jest.fn(makeHandler),
   };
+});
+
+jest.mock('@grafana/runtime', () => {
+  const actual = jest.requireActual('@grafana/runtime');
+  const publish = jest.fn();
+  return { ...actual, getAppEvents: jest.fn(() => ({ publish })) };
+});
+
+jest.mock('../../global-state/sidebar', () => ({
+  sidebarState: { getIsSidebarMounted: jest.fn(() => true), openSidebar: jest.fn() },
+}));
+
+jest.mock('../../utils/experiments/experiment-utils', () => {
+  const actual = jest.requireActual('../../utils/experiments/experiment-utils');
+  return { ...actual, isExtensionSidebarOwnedByOther: jest.fn(() => false) };
 });
 
 class FakeTransport {
@@ -60,6 +78,10 @@ function stampStepCommand(phase: 'show' | 'do', targetAction: string, refTarget:
   };
 }
 
+function stampSidebarHandoff(action: 'close' | 'reopen'): CrossTabMessage {
+  return { source: 'pathfinder', senderId: 'controller', timestamp: 0, kind: 'sidebar-handoff', action };
+}
+
 function executeOf(handler: unknown): jest.Mock {
   const ctor = handler as jest.Mock;
   return (ctor.mock.results[0]?.value as { execute: jest.Mock }).execute;
@@ -69,6 +91,8 @@ describe('installLiveTabExecutor', () => {
   beforeEach(() => {
     resetLiveTabExecutorForTests();
     jest.clearAllMocks();
+    (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(true);
+    (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
   });
 
   it('starts the transport on install and stops it on uninstall', () => {
@@ -136,6 +160,39 @@ describe('installLiveTabExecutor', () => {
     transport.emit(controllerHeartbeat());
 
     expect(transport.postedMessages).toContainEqual({ kind: 'heartbeat', role: 'live' });
+    uninstall();
+  });
+
+  it('closes the live-tab sidebar when a controller takes over', () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport);
+
+    transport.emit(stampSidebarHandoff('close'));
+
+    expect(getAppEvents().publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'close-extension-sidebar' }));
+    uninstall();
+  });
+
+  it('reopens the sidebar when the controller leaves and the slot is free', () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport);
+
+    transport.emit(stampSidebarHandoff('close'));
+    transport.emit(stampSidebarHandoff('reopen'));
+
+    expect(sidebarState.openSidebar).toHaveBeenCalled();
+    uninstall();
+  });
+
+  it('does not reopen when another plugin occupies the sidebar', () => {
+    (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(true);
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport);
+
+    transport.emit(stampSidebarHandoff('close'));
+    transport.emit(stampSidebarHandoff('reopen'));
+
+    expect(sidebarState.openSidebar).not.toHaveBeenCalled();
     uninstall();
   });
 
