@@ -14,13 +14,13 @@ import type { LoadedGuide } from './file-loader';
 import type { TestResultsData } from './e2e-reporter';
 
 /**
- * Abort reason from test execution (L3-3D).
+ * Abort reason from test execution.
  * Written to abort file by test, read by CLI to determine exit code.
  */
 export type AbortReason = 'AUTH_EXPIRED' | 'MANDATORY_FAILURE';
 
 /**
- * Abort file content structure (L3-3D).
+ * Abort file content structure.
  */
 interface AbortFileContent {
   abortReason: AbortReason;
@@ -34,11 +34,11 @@ export interface PlaywrightResult {
   success: boolean;
   exitCode: number;
   traceFile?: string;
-  /** Abort reason if test was aborted (L3-3D) */
+  /** Abort reason if test was aborted */
   abortReason?: AbortReason;
-  /** Abort message if test was aborted (L3-3D) */
+  /** Abort message if test was aborted */
   abortMessage?: string;
-  /** Test results data for JSON report generation (L3-5B) */
+  /** Test results data for JSON report generation */
   resultsData?: TestResultsData;
 }
 
@@ -105,10 +105,9 @@ function processPlaywrightResults(
   // CLI never hardcodes Playwright's per-test output-dir naming.
   const traceFile = options.trace ? readFileIfExists(filePaths.traceOutputFilePath)?.trim() || undefined : undefined;
 
-  // L3-5B: Read results file for JSON reporting
   const resultsData = readJsonIfExists<TestResultsData>(filePaths.resultsFilePath);
 
-  // L3-3D: Check abort file for session expiry
+  // An abort file means the runner stopped early (e.g. session expiry).
   const abortContent = readJsonIfExists<AbortFileContent>(filePaths.abortFilePath);
   if (abortContent) {
     // Determine exit code based on abort reason
@@ -137,12 +136,12 @@ function processPlaywrightResults(
  * Writes guide JSON to temp file, spawns Playwright with environment variables,
  * and cleans up temp file after completion.
  *
- * Session validation (L3-3D):
+ * Session validation:
  * - Creates abort file path for test to write abort reason
  * - Reads abort file after test completes to determine exit code
  * - Returns AUTH_EXPIRED abort reason if session expired
  *
- * JSON reporting (L3-5B):
+ * JSON reporting:
  * - Creates results file path for test to write step results
  * - Reads results file after test completes
  * - Returns results data for JSON report generation
@@ -151,9 +150,9 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
   // Write guide to temp file
   const tempDir = mkdtempSync(join(tmpdir(), 'pathfinder-e2e-'));
   const guidePath = join(tempDir, 'guide.json');
-  // L3-3D: Create abort file path for session validation
+  // Abort file path for session validation
   const abortFilePath = join(tempDir, 'abort.json');
-  // L3-5B: Create results file path for JSON reporting
+  // Results file path for JSON reporting
   const resultsFilePath = join(tempDir, 'results.json');
   // Path the runner records the produced trace location to (see e2e-runner-contract).
   const traceOutputFilePath = join(tempDir, 'trace-path.txt');

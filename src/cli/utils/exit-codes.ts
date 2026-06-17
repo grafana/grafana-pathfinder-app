@@ -1,5 +1,5 @@
 /**
- * Exit codes per design spec
+ * Process exit codes returned by the e2e command.
  */
 export const ExitCode = {
   SUCCESS: 0,

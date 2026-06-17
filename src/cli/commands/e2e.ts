@@ -581,7 +581,6 @@ async function runChains(
         allPassed = false;
         blocked.add(planned.id);
 
-        // L3-3D: Check for auth expiry
         if (result.abortReason === 'AUTH_EXPIRED') {
           hasAuthExpiry = true;
           console.log(`   ❌ Session expired: ${result.abortMessage}`);
@@ -635,7 +634,7 @@ function printSummary(results: GuideRunResult[]): void {
   console.log('─'.repeat(68));
 
   if (isMultiGuide) {
-    // Multi-guide summary (L3-7B)
+    // Multi-guide summary
     console.log(`\n   Guides: ${counts.passed}/${results.length} passed`);
     if (counts.failed > 0) {
       console.log(`   ├─ ❌ Failed: ${counts.failed}`);
@@ -760,7 +759,6 @@ function writeJsonReport(results: GuideRunResult[], options: E2ECommandOptions):
  */
 function exitFromOutcome(outcome: ChainRunOutcome): void {
   if (!outcome.allPassed) {
-    // L3-3D: Use exit code 4 for auth expiry
     if (outcome.hasAuthExpiry) {
       process.exit(ExitCode.AUTH_FAILURE);
     }
