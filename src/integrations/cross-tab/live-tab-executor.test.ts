@@ -145,7 +145,7 @@ describe('installLiveTabExecutor', () => {
 
   it('replays a multi-step internalActions sequence in order', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 });
 
     transport.emit({
       source: 'pathfinder',
@@ -166,6 +166,30 @@ describe('installLiveTabExecutor', () => {
 
     await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalled());
     await waitFor(() => expect(executeOf(ButtonHandler)).toHaveBeenCalled());
+    uninstall();
+  });
+
+  it('paces each composite action through show then do', async () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 });
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'ms1',
+      action: {
+        targetAction: 'multistep',
+        refTarget: '',
+        internalActions: [{ targetAction: 'highlight', refTarget: '#a' }],
+      },
+    });
+
+    await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalledTimes(2));
+    expect(executeOf(FocusHandler)).toHaveBeenNthCalledWith(1, expect.objectContaining({ refTarget: '#a' }), false);
+    expect(executeOf(FocusHandler)).toHaveBeenNthCalledWith(2, expect.objectContaining({ refTarget: '#a' }), true);
     uninstall();
   });
 

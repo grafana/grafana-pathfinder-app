@@ -1,6 +1,7 @@
 import { config, getAppEvents } from '@grafana/runtime';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../../styles/interactive.styles';
 import { waitForReactUpdates } from '../../lib/async-utils';
+import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import type { InteractiveElementData } from '../../types/interactive.types';
 import {
   ButtonHandler,
@@ -30,6 +31,23 @@ interface ExecutorTransport {
   onMessage(listener: (message: CrossTabMessage) => void): () => void;
 }
 
+interface ExecutorPacing {
+  showToDoMs: number;
+  settleMs: number;
+  interStepMs: number;
+}
+
+const DEFAULT_PACING: ExecutorPacing = {
+  showToDoMs: INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations * INTERACTIVE_CONFIG.delays.multiStep.baseInterval,
+  settleMs: 200,
+  interStepMs: INTERACTIVE_CONFIG.delays.multiStep.defaultStepDelay,
+};
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+const settleDom = (): Promise<void> =>
+  new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+
 let installed = false;
 
 /** @internal Test-only reset of the install-once guard. */
@@ -38,7 +56,8 @@ export function resetLiveTabExecutorForTests(): void {
 }
 
 export function installLiveTabExecutor(
-  transport: ExecutorTransport = new CrossTabTransport(createSenderId())
+  transport: ExecutorTransport = new CrossTabTransport(createSenderId()),
+  pacing: ExecutorPacing = DEFAULT_PACING
 ): () => void {
   if (installed || typeof window === 'undefined') {
     return () => undefined;
@@ -115,20 +134,40 @@ export function installLiveTabExecutor(
     }
   };
 
+  // multi-step / guided replay each internal action the way a live tab paces a
+  // normal multi-step: highlight (show) → pause → perform (do) → settle → pause,
+  // so the user watches the same staged sequence rather than an instant burst.
+  const runComposite = async (
+    actions: NonNullable<StepCommandMessage['action']['internalActions']>
+  ): Promise<void> => {
+    for (let i = 0; i < actions.length; i++) {
+      // Paced replay holds the loop open for seconds; bail between actions if a
+      // teardown set cancelled so we never touch the DOM post-uninstall (NEW-1064-2).
+      if (cancelled) {
+        return;
+      }
+      const action = actions[i]!;
+      await runAction(action, true);
+      await sleep(pacing.showToDoMs);
+      await runAction(action, false);
+      await settleDom();
+      await sleep(pacing.settleMs);
+      if (i < actions.length - 1) {
+        await sleep(pacing.interStepMs);
+      }
+    }
+  };
+
   const runStepCommand = async (command: StepCommandMessage): Promise<void> => {
     if (cancelled) {
       return;
     }
-    const isShow = command.phase === 'show';
-    // multi-step / guided carry an ordered internalActions sequence; a plain step
-    // carries a single action. Replay sequentially so ordering is preserved.
-    const actions = command.action.internalActions?.length ? command.action.internalActions : [command.action];
+    const internalActions = command.action.internalActions;
     try {
-      for (const action of actions) {
-        if (cancelled) {
-          return;
-        }
-        await runAction(action, isShow);
+      if (internalActions?.length) {
+        await runComposite(internalActions);
+      } else {
+        await runAction(command.action, command.phase === 'show');
       }
     } catch (error) {
       // TODO(#1073): post a step-complete{ok:false} back so the controller can
