@@ -24,6 +24,26 @@ interface CrossTabEnvelope {
   timestamp: number;
 }
 
+// Mirrors `CheckResultError` / `RequirementsCheckResult` (requirements-manager,
+// tier 2) structurally so a live-tab result can flow through the controller's
+// existing requirements-state path. Kept here (tier 0) to avoid an upward import.
+export interface RemoteRequirementError {
+  requirement: string;
+  pass: boolean;
+  error?: string;
+  context?: Record<string, unknown> | null;
+  canFix?: boolean;
+  fixType?: string;
+  targetHref?: string;
+  scrollContainer?: string;
+}
+
+export interface RemoteRequirementResult {
+  requirements: string;
+  pass: boolean;
+  error: RemoteRequirementError[];
+}
+
 export interface StepCommandMessage extends CrossTabEnvelope {
   kind: 'step-command';
   phase: 'show' | 'do';
@@ -41,7 +61,54 @@ export interface SidebarHandoffMessage extends CrossTabEnvelope {
   action: 'close' | 'reopen';
 }
 
-export type CrossTabMessage = StepCommandMessage | HeartbeatMessage | SidebarHandoffMessage;
+// Requirement round-trip: a controller tab can't probe the live tab's DOM, so it
+// asks the live tab to evaluate (and fix) tab-local requirements and reply. The
+// `requestId` correlates each reply to its request — multiple steps may be in
+// flight at once, and the transport's self-echo filter means a reply only ever
+// reaches the *other* tab.
+export interface CheckRequirementsMessage extends CrossTabEnvelope {
+  kind: 'check-requirements';
+  requestId: string;
+  stepId: string;
+  requirements: string;
+  targetAction?: string;
+  refTarget?: string;
+  targetValue?: string;
+}
+
+export interface RequirementResultMessage extends CrossTabEnvelope {
+  kind: 'requirement-result';
+  requestId: string;
+  stepId: string;
+  result: RemoteRequirementResult;
+}
+
+export interface FixRequirementMessage extends CrossTabEnvelope {
+  kind: 'fix-requirement';
+  requestId: string;
+  stepId: string;
+  requirements: string;
+  fixType?: string;
+  targetHref?: string;
+  scrollContainer?: string;
+}
+
+export interface FixResultMessage extends CrossTabEnvelope {
+  kind: 'fix-result';
+  requestId: string;
+  stepId: string;
+  ok: boolean;
+  error?: string;
+}
+
+export type CrossTabMessage =
+  | StepCommandMessage
+  | HeartbeatMessage
+  | SidebarHandoffMessage
+  | CheckRequirementsMessage
+  | RequirementResultMessage
+  | FixRequirementMessage
+  | FixResultMessage;
 
 // Distributively strip the envelope from every message kind, so the
 // post() payload type stays derived from CrossTabMessage instead of a
@@ -124,6 +191,54 @@ function isValidSidebarHandoff(message: Record<string, unknown>): boolean {
   return message.action === 'close' || message.action === 'reopen';
 }
 
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string';
+}
+
+// check-requirements / fix-requirement are SIDE-EFFECTING on the live tab —
+// the executor runs checkRequirements (DOM/URL probes) and dispatchFix
+// (navigation / DOM mutation) against the authenticated document. They are the
+// highest-risk surface in the protocol, so the controller-supplied fields that
+// flow into those calls are validated field-by-field before dispatch.
+function isValidCheckRequirements(message: Record<string, unknown>): boolean {
+  return (
+    typeof message.requestId === 'string' &&
+    typeof message.stepId === 'string' &&
+    typeof message.requirements === 'string' &&
+    isOptionalString(message.targetAction) &&
+    isOptionalString(message.refTarget) &&
+    isOptionalString(message.targetValue)
+  );
+}
+
+function isValidFixRequirement(message: Record<string, unknown>): boolean {
+  return (
+    typeof message.requestId === 'string' &&
+    typeof message.stepId === 'string' &&
+    typeof message.requirements === 'string' &&
+    isOptionalString(message.fixType) &&
+    isOptionalString(message.targetHref) &&
+    isOptionalString(message.scrollContainer)
+  );
+}
+
+// requirement-result / fix-result are replies the controller feeds into its
+// requirements-state path; validate the reply shape so a malformed result can't
+// resolve a pending request with garbage.
+function isValidRequirementResult(message: Record<string, unknown>): boolean {
+  if (typeof message.requestId !== 'string' || typeof message.stepId !== 'string' || !isRecord(message.result)) {
+    return false;
+  }
+  const result = message.result;
+  return typeof result.requirements === 'string' && typeof result.pass === 'boolean' && Array.isArray(result.error);
+}
+
+function isValidFixResult(message: Record<string, unknown>): boolean {
+  return (
+    typeof message.requestId === 'string' && typeof message.stepId === 'string' && typeof message.ok === 'boolean'
+  );
+}
+
 // Per-kind validators — the single source of truth shared by the transport
 // receive gate and the live-tab executor. Same-origin traffic is forgeable
 // (the envelope alone proves nothing), so every side-effecting command is
@@ -134,6 +249,10 @@ const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, 
   'step-command': isValidStepCommand,
   heartbeat: isValidHeartbeat,
   'sidebar-handoff': isValidSidebarHandoff,
+  'check-requirements': isValidCheckRequirements,
+  'requirement-result': isValidRequirementResult,
+  'fix-requirement': isValidFixRequirement,
+  'fix-result': isValidFixResult,
 };
 
 /**

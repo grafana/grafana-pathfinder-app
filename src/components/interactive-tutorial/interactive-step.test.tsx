@@ -172,7 +172,43 @@ describe('InteractiveStep: popout action type', () => {
 
 describe('InteractiveStep: controller mode emits over the channel instead of executing', () => {
   function makeTransport() {
-    return { start: jest.fn(), stop: jest.fn(), post: jest.fn(), onMessage: jest.fn(() => jest.fn()) };
+    let listener: ((message: any) => void) | null = null;
+    return {
+      start: jest.fn(),
+      stop: jest.fn(),
+      post: jest.fn(),
+      onMessage: jest.fn((l: (message: any) => void) => {
+        listener = l;
+        return () => {
+          listener = null;
+        };
+      }),
+      emit: (message: any) => listener?.(message),
+    };
+  }
+
+  // The controller posts a `check-requirements` request with a generated
+  // requestId; reply with a matching `requirement-result` so the awaiting
+  // step resolves instead of waiting out the round-trip timeout.
+  function replyToRequirementCheck(transport: ReturnType<typeof makeTransport>, pass: boolean, extra = {}) {
+    const request = transport.post.mock.calls.map((c) => c[0]).find((p: any) => p.kind === 'check-requirements');
+    if (!request) {
+      return false;
+    }
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'live',
+      timestamp: 0,
+      kind: 'requirement-result',
+      requestId: request.requestId,
+      stepId: request.stepId,
+      result: {
+        requirements: request.requirements,
+        pass,
+        error: pass ? [] : [{ requirement: request.requirements, pass: false, ...extra }],
+      },
+    });
+    return true;
   }
 
   it('emits a "show" step-command when Show me is clicked', async () => {
@@ -226,7 +262,7 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     );
   });
 
-  it('keeps a step enabled in controller mode even when its requirements would fail', async () => {
+  it('round-trips tab-local requirements to the live tab instead of stripping them', async () => {
     const transport = makeTransport();
     render(
       <InteractiveModeContext.Provider value="controller">
@@ -243,11 +279,56 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
       </InteractiveModeContext.Provider>
     );
 
+    await waitFor(() =>
+      expect(transport.post).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'check-requirements', stepId: 'ctrl-req', requirements: 'exists-reftarget' })
+      )
+    );
+  });
+
+  it('enables a step once the live tab reports its requirements pass', async () => {
+    const transport = makeTransport();
+    render(
+      <InteractiveModeContext.Provider value="controller">
+        <ControllerChannelProvider transport={transport}>
+          <InteractiveStep targetAction="button" refTarget="#ok" requirements="exists-reftarget" stepId="ctrl-pass">
+            Step
+          </InteractiveStep>
+        </ControllerChannelProvider>
+      </InteractiveModeContext.Provider>
+    );
+
+    await waitFor(() => expect(replyToRequirementCheck(transport, true)).toBe(true));
+
     const button = await screen.findByRole('button', { name: /do it/i });
     await waitFor(() => expect(button).not.toBeDisabled());
     fireEvent.click(button);
 
-    await waitFor(() => expect(transport.post).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(transport.post).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'step-command', phase: 'do', stepId: 'ctrl-pass' })
+      )
+    );
+  });
+
+  it('surfaces a failing requirement and a fix affordance reported by the live tab', async () => {
+    const transport = makeTransport();
+    render(
+      <InteractiveModeContext.Provider value="controller">
+        <ControllerChannelProvider transport={transport}>
+          <InteractiveStep targetAction="button" refTarget="#nav" requirements="navmenu-open" stepId="ctrl-fail">
+            Step
+          </InteractiveStep>
+        </ControllerChannelProvider>
+      </InteractiveModeContext.Provider>
+    );
+
+    await waitFor(() =>
+      expect(replyToRequirementCheck(transport, false, { canFix: true, fixType: 'navigation' })).toBe(true)
+    );
+
+    expect(await screen.findByRole('button', { name: /fix this/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /do it/i })).not.toBeInTheDocument();
   });
 
   it('fails loud instead of dispatching a controller step with no stepId (F-1063-3)', async () => {

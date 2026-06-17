@@ -1,9 +1,22 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CrossTabTransport, createSenderId } from '../lib/cross-tab-transport';
-import type { CrossTabMessage, CrossTabPayload } from '../types/cross-tab.types';
+import type {
+  CheckRequirementsMessage,
+  CrossTabMessage,
+  CrossTabPayload,
+  FixRequirementMessage,
+  RemoteRequirementResult,
+} from '../types/cross-tab.types';
+
+type RequestPayload =
+  | Omit<CheckRequirementsMessage, 'source' | 'senderId' | 'timestamp' | 'requestId'>
+  | Omit<FixRequirementMessage, 'source' | 'senderId' | 'timestamp' | 'requestId'>;
 
 const HEARTBEAT_INTERVAL_MS = 2000;
 const HEARTBEAT_STALE_MS = 5000;
+// A live tab that never answers must not strand a step's spinner; fall back once
+// the round-trip exceeds this budget.
+const REQUEST_TIMEOUT_MS = 4000;
 
 interface ChannelTransport {
   start(): void;
@@ -12,8 +25,29 @@ interface ChannelTransport {
   onMessage(listener: (message: CrossTabMessage) => void): () => void;
 }
 
+interface FixOutcome {
+  ok: boolean;
+  error?: string;
+}
+
 interface ControllerChannel {
   post: (payload: CrossTabPayload) => void;
+  /** Ask the live tab to evaluate a step's requirements; resolves null on timeout. */
+  requestRequirementCheck: (
+    stepId: string,
+    requirements: string,
+    opts?: { targetAction?: string; refTarget?: string; targetValue?: string }
+  ) => Promise<RemoteRequirementResult | null>;
+  /** Ask the live tab to run a requirement fix against its own DOM. */
+  requestFix: (
+    stepId: string,
+    opts: { requirements: string; fixType?: string; targetHref?: string; scrollContainer?: string }
+  ) => Promise<FixOutcome>;
+}
+
+interface PendingRequest {
+  resolve: (value: RemoteRequirementResult | FixOutcome | null) => void;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 const ControllerChannelContext = createContext<ControllerChannel | null>(null);
@@ -42,11 +76,24 @@ export function ControllerChannelProvider({
   const [connected, setConnected] = useState(false);
   const lastLiveSeenRef = useRef(0);
   const reassertedCloseRef = useRef(false);
+  const pendingRef = useRef<Map<string, PendingRequest>>(new Map());
+  const requestSeqRef = useRef(0);
 
   useEffect(() => {
     active.start();
     // Hand the main window's sidebar off to this controller tab while it drives.
     active.post({ kind: 'sidebar-handoff', action: 'close' });
+
+    const pending = pendingRef.current;
+    const settle = (requestId: string, value: RemoteRequirementResult | FixOutcome | null) => {
+      const entry = pending.get(requestId);
+      if (!entry) {
+        return;
+      }
+      clearTimeout(entry.timer);
+      pending.delete(requestId);
+      entry.resolve(value);
+    };
 
     const unsubscribe = active.onMessage((message) => {
       if (message.kind === 'heartbeat' && message.role === 'live') {
@@ -61,6 +108,10 @@ export function ControllerChannelProvider({
           reassertedCloseRef.current = true;
           active.post({ kind: 'sidebar-handoff', action: 'close' });
         }
+      } else if (message.kind === 'requirement-result') {
+        settle(message.requestId, message.result);
+      } else if (message.kind === 'fix-result') {
+        settle(message.requestId, { ok: message.ok, error: message.error });
       }
     });
 
@@ -83,12 +134,69 @@ export function ControllerChannelProvider({
       clearInterval(intervalId);
       unsubscribe();
       active.stop();
+      pending.forEach((entry) => {
+        clearTimeout(entry.timer);
+        entry.resolve(null);
+      });
+      pending.clear();
     };
   }, [active]);
 
-  // Depends only on `active`, so the channel value stays referentially stable
-  // across heartbeat ticks — step consumers don't re-render (NEW-1065-1).
-  const channel = useMemo<ControllerChannel>(() => ({ post: (payload) => active.post(payload) }), [active]);
+  const request = useCallback(
+    <T extends RemoteRequirementResult | FixOutcome | null>(payload: RequestPayload, fallback: T): Promise<T> => {
+      const requestId = `req-${(requestSeqRef.current += 1)}`;
+      return new Promise<T>((resolve) => {
+        const timer = setTimeout(() => {
+          pendingRef.current.delete(requestId);
+          resolve(fallback);
+        }, REQUEST_TIMEOUT_MS);
+        pendingRef.current.set(requestId, { resolve: resolve as PendingRequest['resolve'], timer });
+        active.post({ ...payload, requestId });
+      });
+    },
+    [active]
+  );
+
+  const requestRequirementCheck = useCallback<ControllerChannel['requestRequirementCheck']>(
+    (stepId, requirements, opts) =>
+      request(
+        {
+          kind: 'check-requirements',
+          stepId,
+          requirements,
+          targetAction: opts?.targetAction,
+          refTarget: opts?.refTarget,
+          targetValue: opts?.targetValue,
+        },
+        null
+      ),
+    [request]
+  );
+
+  const requestFix = useCallback<ControllerChannel['requestFix']>(
+    (stepId, opts) =>
+      request(
+        {
+          kind: 'fix-requirement',
+          stepId,
+          requirements: opts.requirements,
+          fixType: opts.fixType,
+          targetHref: opts.targetHref,
+          scrollContainer: opts.scrollContainer,
+        },
+        { ok: false, error: 'No live tab responded' }
+      ),
+    [request]
+  );
+
+  // The channel value omits `connected` (it lives in ControllerConnectionContext)
+  // and depends only on `active` plus the useCallback-stable round-trip helpers,
+  // so it stays referentially stable across heartbeat ticks — step consumers
+  // don't re-render (NEW-1065-1).
+  const channel = useMemo<ControllerChannel>(
+    () => ({ post: (payload) => active.post(payload), requestRequirementCheck, requestFix }),
+    [active, requestRequirementCheck, requestFix]
+  );
 
   return (
     <ControllerChannelContext.Provider value={channel}>

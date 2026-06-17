@@ -13,11 +13,14 @@ import {
   NavigationManager,
 } from '../../interactive-engine';
 import { CrossTabTransport, createSenderId } from '../../lib/cross-tab-transport';
+import { checkRequirements, dispatchFix } from '../../requirements-manager';
 import {
   validateCrossTabMessage,
+  type CheckRequirementsMessage,
   type CrossTabInternalAction,
   type CrossTabMessage,
   type CrossTabPayload,
+  type FixRequirementMessage,
   type StepCommandMessage,
 } from '../../types/cross-tab.types';
 import { sidebarState } from '../../global-state/sidebar';
@@ -181,18 +184,75 @@ export function installLiveTabExecutor(
     }
   };
 
+  // A controller tab can't probe this tab's DOM, so it asks us to evaluate its
+  // tab-local requirements here and reply with the same result shape its local
+  // checker would have produced.
+  const evaluateRequirements = async (message: CheckRequirementsMessage): Promise<void> => {
+    try {
+      const result = await checkRequirements({
+        requirements: message.requirements,
+        targetAction: message.targetAction ?? 'button',
+        refTarget: message.refTarget ?? '',
+        targetValue: message.targetValue,
+        stepId: message.stepId,
+      });
+      transport.post({ kind: 'requirement-result', requestId: message.requestId, stepId: message.stepId, result });
+    } catch (error) {
+      transport.post({
+        kind: 'requirement-result',
+        requestId: message.requestId,
+        stepId: message.stepId,
+        result: {
+          requirements: message.requirements,
+          pass: false,
+          error: [{ requirement: message.requirements, pass: false, error: `${error}` }],
+        },
+      });
+    }
+  };
+
+  // A controller's "Fix this" must act on this tab's DOM, not the controller's,
+  // so the registry fix runs here against the live navigationManager.
+  const runRemoteFix = async (message: FixRequirementMessage): Promise<void> => {
+    let ok = false;
+    let error: string | undefined;
+    try {
+      const result = await dispatchFix({
+        fixType: message.fixType,
+        targetHref: message.targetHref,
+        scrollContainer: message.scrollContainer,
+        requirements: message.requirements,
+        stepId: message.stepId,
+        navigationManager,
+        fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(),
+      });
+      ok = result.ok;
+      error = result.ok ? undefined : result.error;
+    } catch (caught) {
+      error = `${caught}`;
+    }
+    transport.post({ kind: 'fix-result', requestId: message.requestId, stepId: message.stepId, ok, error });
+  };
+
   // Only restore a sidebar this tab actually gave up to a controller.
   let handedOffSidebar = false;
 
   const unsubscribe = transport.onMessage((message) => {
     // Defense in depth: re-validate at the DOM sink before dispatch, so the
     // executor never trusts a message that bypassed the transport gate (T1).
+    // check-requirements and fix-requirement are the highest-risk kinds here —
+    // they drive DOM probes and navigation/DOM mutation — so they MUST dispatch
+    // off `validated`, never the raw message.
     const validated = validateCrossTabMessage(message);
     if (!validated) {
       return;
     }
     if (validated.kind === 'step-command') {
       queue = queue.then(() => runStepCommand(validated));
+    } else if (validated.kind === 'check-requirements') {
+      void evaluateRequirements(validated);
+    } else if (validated.kind === 'fix-requirement') {
+      void runRemoteFix(validated);
     } else if (validated.kind === 'heartbeat' && validated.role === 'controller') {
       transport.post({ kind: 'heartbeat', role: 'live' });
     } else if (validated.kind === 'sidebar-handoff') {

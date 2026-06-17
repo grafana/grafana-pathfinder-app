@@ -2,9 +2,15 @@ import { waitFor } from '@testing-library/react';
 import { getAppEvents } from '@grafana/runtime';
 import { installLiveTabExecutor, resetLiveTabExecutorForTests } from './live-tab-executor';
 import { FocusHandler, ButtonHandler, NavigateHandler } from '../../interactive-engine/action-handlers';
+import { checkRequirements, dispatchFix } from '../../requirements-manager';
 import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
 import type { CrossTabMessage } from '../../types/cross-tab.types';
+
+jest.mock('../../requirements-manager', () => {
+  const actual = jest.requireActual('../../requirements-manager');
+  return { ...actual, checkRequirements: jest.fn(), dispatchFix: jest.fn() };
+});
 
 jest.mock('../../interactive-engine/action-handlers', () => {
   const makeHandler = () => ({ execute: jest.fn().mockResolvedValue(undefined) });
@@ -93,6 +99,8 @@ describe('installLiveTabExecutor', () => {
     jest.clearAllMocks();
     (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(true);
     (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
+    (checkRequirements as jest.Mock).mockResolvedValue({ requirements: '', pass: true, error: [] });
+    (dispatchFix as jest.Mock).mockResolvedValue({ ok: true });
   });
 
   it('starts the transport on install and stops it on uninstall', () => {
@@ -243,6 +251,94 @@ describe('installLiveTabExecutor', () => {
     transport.emit(stampSidebarHandoff('reopen'));
 
     expect(sidebarState.openSidebar).not.toHaveBeenCalled();
+    uninstall();
+  });
+
+  it('evaluates a check-requirements request against the live tab and replies', async () => {
+    (checkRequirements as jest.Mock).mockResolvedValue({
+      requirements: 'navmenu-open',
+      pass: false,
+      error: [{ requirement: 'navmenu-open', pass: false, canFix: true, fixType: 'navigation' }],
+    });
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport);
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'check-requirements',
+      requestId: 'r1',
+      stepId: 's1',
+      requirements: 'navmenu-open',
+    });
+
+    await waitFor(() =>
+      expect(checkRequirements).toHaveBeenCalledWith(expect.objectContaining({ requirements: 'navmenu-open' }))
+    );
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({
+          kind: 'requirement-result',
+          requestId: 'r1',
+          stepId: 's1',
+          result: expect.objectContaining({ pass: false }),
+        })
+      )
+    );
+    uninstall();
+  });
+
+  it('runs a fix-requirement against the live tab and replies with the outcome', async () => {
+    (dispatchFix as jest.Mock).mockResolvedValue({ ok: true });
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport);
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'fix-requirement',
+      requestId: 'f1',
+      stepId: 's1',
+      requirements: 'navmenu-open',
+      fixType: 'navigation',
+    });
+
+    await waitFor(() =>
+      expect(dispatchFix).toHaveBeenCalledWith(
+        expect.objectContaining({ fixType: 'navigation', requirements: 'navmenu-open' })
+      )
+    );
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'fix-result', requestId: 'f1', stepId: 's1', ok: true })
+      )
+    );
+    uninstall();
+  });
+
+  it('replies with a failed fix-result when the live-tab fix throws', async () => {
+    (dispatchFix as jest.Mock).mockRejectedValue(new Error('boom'));
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport);
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'fix-requirement',
+      requestId: 'f2',
+      stepId: 's1',
+      requirements: 'navmenu-open',
+      fixType: 'navigation',
+    });
+
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'fix-result', requestId: 'f2', ok: false })
+      )
+    );
     uninstall();
   });
 
