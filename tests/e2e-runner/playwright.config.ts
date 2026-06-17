@@ -12,6 +12,8 @@ import type { PluginOptions } from '@grafana/plugin-e2e';
 import { defineConfig, devices } from '@playwright/test';
 import { dirname, join } from 'node:path';
 
+import { E2E_ENV, isEnvFlagEnabled } from '../../src/cli/utils/e2e-runner-contract';
+
 const pluginE2eAuth = `${dirname(require.resolve('@grafana/plugin-e2e'))}/auth`;
 
 // Resolve paths relative to project root (two levels up from this file)
@@ -26,10 +28,10 @@ export default defineConfig<PluginOptions>({
   fullyParallel: false, // Sequential execution for guide tests
   forbidOnly: !!process.env.CI,
   retries: 0, // No retries - failures should be investigated
-  reporter: process.env.E2E_VERBOSE === 'true' ? 'list' : 'line',
+  reporter: isEnvFlagEnabled(process.env[E2E_ENV.VERBOSE]) ? 'list' : 'line',
   use: {
-    baseURL: process.env.GRAFANA_URL || 'http://localhost:3000',
-    trace: process.env.E2E_TRACE === 'true' ? 'on' : 'off',
+    baseURL: process.env[E2E_ENV.GRAFANA_URL] || 'http://localhost:3000',
+    trace: isEnvFlagEnabled(process.env[E2E_ENV.TRACE]) ? 'on' : 'off',
   },
   projects: [
     // 1. Login to Grafana and store the cookie on disk for use in other tests.
