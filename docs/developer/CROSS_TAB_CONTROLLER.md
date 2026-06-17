@@ -60,9 +60,12 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
 `timestamp`):
 
 - `step-command` — `{ phase: 'show' | 'do', stepId, action: { targetAction, refTarget, targetValue?, targetComment?, internalActions? } }`.
-  Composite steps (multi-step / guided) carry their ordered sub-actions in
-  `internalActions`; the executor replays those with the same staged pacing a
-  normal multi-step uses (see [Replay pacing](#replay-pacing)).
+  Composite steps carry their ordered sub-actions in `internalActions`. A
+  `multistep` replays with staged pacing (see [Replay pacing](#replay-pacing));
+  a `guided` step runs through the live tab's `GuidedHandler` instead — it
+  highlights each target and waits for the user.
+- `step-complete` — `{ stepId, ok }`, live → controller, signals a composite
+  actually finished so the controller marks completion only then.
 - `heartbeat` — `{ role: 'controller' | 'live' }`
 - `check-requirements` / `requirement-result` — the requirement round-trip
   (controller → live → controller), correlated by `requestId`.
@@ -98,14 +101,28 @@ authenticated Grafana, so the channel is treated as untrusted input:
 This is a same-origin trust posture, not authentication: validation constrains
 _what_ a forged message can ask for, and gating limits _when_ the sink exists.
 
+## Tab pairing
+
+A controller binds to the **first live tab that answers** its heartbeat and
+records that tab's `senderId` (`controller-channel.tsx`). It then ignores
+replies — `requirement-result`, `fix-result`, `step-complete` — from any other
+tab, so a second Grafana tab can't answer a requirement check with a different
+DOM state. It re-pairs if the bound tab goes stale. Commands themselves are still
+broadcast (every live tab executes them); only the replies the controller trusts
+are scoped to the paired tab.
+
 ## Replay pacing
 
-A composite step posts a single `step-command` (`phase: 'do'`) carrying its
+A `multistep` posts a single `step-command` (`phase: 'do'`) carrying its
 `internalActions`. The live-tab executor replays each action the way a normal
 multi-step paces itself — highlight (show) → pause → perform (do) → settle →
 inter-step pause — so the user watches the same staged sequence in the live tab
 rather than an instant burst. Pacing constants come from
-`INTERACTIVE_CONFIG.delays.multiStep` and are injectable for tests.
+`INTERACTIVE_CONFIG.delays.multiStep` and are injectable for tests. A `guided`
+step is **not** auto-replayed: the executor runs each action through
+`GuidedHandler` so the user performs it on the live tab. Either way the executor
+posts `step-complete` when the sequence finishes, and the controller waits for
+that before marking the step done (so a guided step isn't completed on click).
 
 ## Requirement evaluation (round-trip)
 
@@ -150,14 +167,18 @@ badge.
 
 ## Scope and limitations
 
-- **Routed:** `interactive-step` (Show me / Do it), and multi-step / guided steps
-  (their internal actions replay with staged pacing). Requirements — including
-  tab-local ones — are evaluated and fixed on the live tab via the round-trip.
+- **Routed:** `interactive-step` (Show me / Do it), multi-step (staged replay),
+  and guided (runs through `GuidedHandler` on the live tab). Requirements —
+  including tab-local ones — are evaluated and fixed on the live tab, re-checked
+  at click time so a regressed prerequisite gates, and composites complete only
+  once the live tab reports `step-complete`.
+- **Replies scoped to one live tab:** a controller trusts requirement/fix/
+  completion replies from a single paired tab; see [Tab pairing](#tab-pairing).
+  Commands are still broadcast, so multiple live tabs all execute them.
 - **Not yet routed:** a section's aggregate "Do section" runs its child steps
   directly rather than emitting one command; quiz grading is local (so it still
   works in the controller); terminal / challenge need a shared VM session and are
   out of scope.
-- **Multiple live tabs** all execute a command (no targeting). Acceptable for now.
 - Completion sync rides the existing `completion-store` cross-tab storage event
   when the same guide is open in the live tab; otherwise it is not yet propagated.
 
