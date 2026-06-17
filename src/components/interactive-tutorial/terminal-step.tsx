@@ -16,7 +16,6 @@ import { useStepChecker, validateInteractiveRequirements } from '../../requireme
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
-import { useIsInteractiveReadonly } from '../../global-state/interactive-readonly-context';
 
 export interface TerminalStepProps {
   command: string;
@@ -130,7 +129,6 @@ export const TerminalStep = forwardRef<
     ref
   ) => {
     const styles = useStyles2(getStyles);
-    const isReadonly = useIsInteractiveReadonly();
     const terminalCtx = useTerminalContext();
 
     const generatedStepIdRef = useRef<string | undefined>(undefined);
@@ -272,7 +270,7 @@ export const TerminalStep = forwardRef<
         {!isEnabled && !isCompleted && checker.explanation && (
           <div className={styles.requirementMessage}>
             {checker.explanation}
-            {!isReadonly && skippable && (
+            {skippable && (
               <Button
                 size="sm"
                 variant="secondary"
@@ -287,7 +285,7 @@ export const TerminalStep = forwardRef<
         )}
 
         {/* Actions */}
-        {!isReadonly && isEnabled && !isCompleted && (
+        {isEnabled && !isCompleted && (
           <div className={styles.actions}>
             <Button
               size="sm"

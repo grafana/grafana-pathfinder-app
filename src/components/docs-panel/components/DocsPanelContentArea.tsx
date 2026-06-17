@@ -28,7 +28,7 @@ import { PLUGIN_BASE_URL } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
-import { isDocsLikeTab, pickGrafanaDocsOpenAction, pickReadonlyTabOpenAction } from '../utils';
+import { isDocsLikeTab, pickGrafanaDocsOpenAction } from '../utils';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../../lib/analytics';
 import { getMilestoneSlug, markMilestoneDone, setJourneyCompletionPercentage } from '../../../docs-retrieval';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
@@ -307,36 +307,6 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                             setTimeout(() => {
                               window.open(cleanUrl, '_blank', 'noopener,noreferrer');
                             }, 100);
-                          }}
-                        >
-                          <Icon name="external-link-alt" size="sm" />
-                          <span>{t('docsPanel.open', 'Open')}</span>
-                        </button>
-                      );
-                    })()}
-                    {(() => {
-                      const guideUrl = activeTab.content?.url || activeTab.baseUrl;
-                      const action = pickReadonlyTabOpenAction(guideUrl);
-                      if (!action.shouldShow || !action.readonlyUrl) {
-                        return null;
-                      }
-                      const readonlyUrl = action.readonlyUrl;
-                      return (
-                        <button
-                          className={styles.secondaryActionButton}
-                          aria-label={t('docsPanel.openReadonlyInNewTab', 'Open read-only in new tab')}
-                          title={t('docsPanel.openReadonlyInNewTab', 'Open read-only in new tab')}
-                          data-testid={testIds.docsPanel.openReadonlyTabButton}
-                          onClick={() => {
-                            reportAppInteraction(UserInteraction.OpenExtraResource, {
-                              content_url: guideUrl || 'unknown',
-                              content_type: getContentTypeForAnalytics(guideUrl, activeTab.type || 'interactive'),
-                              link_text: activeTab.title,
-                              source_page: 'docs_content_meta_right',
-                              link_type: 'external_browser',
-                              interaction_location: 'docs_content_meta_right',
-                            });
-                            window.open(readonlyUrl, '_blank', 'noopener,noreferrer');
                           }}
                         >
                           <Icon name="external-link-alt" size="sm" />

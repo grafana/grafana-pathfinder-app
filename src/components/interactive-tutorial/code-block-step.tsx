@@ -15,7 +15,6 @@ import { useStepChecker, validateInteractiveRequirements } from '../../requireme
 import { clearAndInsertCode, useInteractiveElements } from '../../interactive-engine';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
-import { useIsInteractiveReadonly } from '../../global-state/interactive-readonly-context';
 import { CodeBlock } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 
@@ -128,7 +127,6 @@ export const CodeBlockStep = forwardRef<
     ref
   ) => {
     const styles = useStyles2(getStyles);
-    const isReadonly = useIsInteractiveReadonly();
 
     const generatedStepIdRef = useRef<string | undefined>(undefined);
     if (!generatedStepIdRef.current) {
@@ -268,7 +266,7 @@ export const CodeBlockStep = forwardRef<
         {!isEnabled && !isCompleted && checker.explanation && (
           <div className={styles.requirementMessage}>
             {checker.explanation}
-            {!isReadonly && skippable && (
+            {skippable && (
               <Button
                 size="sm"
                 variant="secondary"
@@ -282,7 +280,7 @@ export const CodeBlockStep = forwardRef<
           </div>
         )}
 
-        {!isReadonly && isEnabled && !isCompleted && (
+        {isEnabled && !isCompleted && (
           <div className={styles.actions}>
             <Button
               size="sm"

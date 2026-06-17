@@ -22,7 +22,6 @@ import { css } from '@emotion/css';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { checkPostconditions } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
-import { useIsInteractiveReadonly } from '../../global-state/interactive-readonly-context';
 
 const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
 // /tmp/pathfinder-ready matches codaSentinelPath in the Go backend. The
@@ -199,7 +198,6 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   sectionId,
 }) => {
   const styles = useStyles2(getStyles);
-  const isReadonly = useIsInteractiveReadonly();
   const terminalCtx = useTerminalContext();
 
   const [generatedStepId] = useState(() => {
@@ -504,7 +502,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         </div>
       )}
 
-      {!isReadonly && (
+      {
         <div className={styles.actions}>
           {state === 'idle' && (
             <Button variant="primary" icon="play" onClick={handleStart}>
@@ -532,7 +530,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
             </Button>
           )}
         </div>
-      )}
+      }
 
       {hintLevels.length > 0 && (state === 'ready' || state === 'failed-check') && (
         <div className={styles.hints}>

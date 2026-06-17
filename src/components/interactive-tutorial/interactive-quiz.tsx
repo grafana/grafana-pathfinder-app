@@ -7,7 +7,6 @@ import { useStepChecker } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
-import { useIsInteractiveReadonly } from '../../global-state/interactive-readonly-context';
 import type { ProgressReason } from '../../global-state/progress-events';
 
 // ============ Types ============
@@ -130,7 +129,6 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   sectionTitle,
 }) => {
   const styles = useStyles2(getQuizStyles);
-  const isReadonly = useIsInteractiveReadonly();
 
   // Generate stable step ID using useState lazy initialization (runs once on mount)
   const [generatedStepId] = useState(() => {
@@ -491,7 +489,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
               type="button"
               className={cx(styles.choice, getChoiceClassName(state))}
               onClick={() => handleChoiceClick(choice.id)}
-              disabled={isCompleted || isRevealed || isBlocked || isReadonly}
+              disabled={isCompleted || isRevealed || isBlocked}
               aria-pressed={isSelected}
               data-testid={testIds.interactive.quizChoice(stepId, choice.id)}
             >
@@ -538,7 +536,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       )}
 
       {/* Actions */}
-      {!isReadonly && (
+      {
         <div className={styles.actions}>
           {showCheckButton && (
             <Button onClick={handleCheckAnswer} disabled={disabled || isBlocked}>
@@ -564,7 +562,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
             </Button>
           )}
         </div>
-      )}
+      }
     </div>
   );
 };

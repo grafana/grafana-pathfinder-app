@@ -5,7 +5,6 @@ import { usePluginContext } from '@grafana/data';
 import { useInteractiveElements, ActionMonitor } from '../../interactive-engine';
 import { useStepChecker } from '../../requirements-manager';
 import { useIsAlignmentPaused, useAlignmentStartingLocation } from '../../global-state/alignment-pending-context';
-import { useIsInteractiveReadonly } from '../../global-state/interactive-readonly-context';
 import { InteractiveStep, resetStepCounter } from './interactive-step';
 import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
@@ -160,7 +159,6 @@ export function InteractiveSection({
   // `useSectionCompletion`); the cursor is a pure derivation of the
   // step roster + the completed set.
   const [sectionState, dispatch] = useReducer(sectionReducer, initialSectionState);
-  const isReadonly = useIsInteractiveReadonly();
   const [currentlyExecutingStep, setCurrentlyExecutingStep] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [executingStepNumber, setExecutingStepNumber] = useState(0); // Track which step is being executed (1-indexed for display)
@@ -1330,7 +1328,7 @@ export function InteractiveSection({
         <ol className="interactive-section-content">{wrapSectionChildrenForNumbering(enhancedChildren)}</ol>
       )}
 
-      {!isReadonly && (
+      {
         <div className={`interactive-section-actions${isCollapsed ? ' collapsed' : ''}`}>
           {isCollapsed ? (
             <Button
@@ -1445,7 +1443,7 @@ export function InteractiveSection({
             </Button>
           )}
         </div>
-      )}
+      }
     </div>
   );
 }

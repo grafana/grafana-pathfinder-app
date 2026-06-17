@@ -23,7 +23,6 @@ import { sanitizeDocumentationHTML } from '../../security';
 import { STEP_STATES } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
-import { useIsInteractiveReadonly } from '../../global-state/interactive-readonly-context';
 import type { ProgressReason } from '../../global-state/progress-events';
 
 /**
@@ -156,7 +155,6 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     );
 
     // Local UI state
-    const isReadonly = useIsInteractiveReadonly();
     const [isExecuting, setIsExecuting] = useState(false);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [failedStepIndex, setFailedStepIndex] = useState(-1);
@@ -657,7 +655,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         {/* ═══════════════════════════════════════════════════════════════════
             STATE: IDLE - Ready to start
         ═══════════════════════════════════════════════════════════════════ */}
-        {!isReadonly && uiState === 'idle' && (
+        {uiState === 'idle' && (
           <div className="interactive-guided-idle">
             <div className="interactive-guided-actions">
               <Button
@@ -928,7 +926,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               </span>
               <span className="interactive-guided-completed-text">Completed</span>
             </div>
-            {!isReadonly && (
+            {
               <button
                 className="interactive-guided-redo-btn"
                 onClick={handleStepRedo}
@@ -938,7 +936,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               >
                 ↻ Redo
               </button>
-            )}
+            }
           </div>
         )}
       </div>

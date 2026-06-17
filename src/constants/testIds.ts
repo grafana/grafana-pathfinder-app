@@ -41,7 +41,6 @@ export const testIds = {
     retryButton: 'docs-panel-retry-button',
     popOutButton: 'docs-panel-pop-out-button',
     fullScreenButton: 'docs-panel-full-screen-button',
-    openReadonlyTabButton: 'docs-panel-open-readonly-tab-button',
   },
 
   // Full screen mode page (sibling of the sidebar / floating panel)

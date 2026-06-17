@@ -18,7 +18,6 @@ import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai
 import { STEP_STATES } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
-import { useIsInteractiveReadonly } from '../../global-state/interactive-readonly-context';
 import type { ProgressReason } from '../../global-state/progress-events';
 
 let anonymousMultiStepCounter = 0;
@@ -164,7 +163,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     );
 
     // Local UI state (similar to InteractiveStep)
-    const isReadonly = useIsInteractiveReadonly();
     const [isExecuting, setIsExecuting] = useState(false);
 
     // Completion lives in the store.
@@ -696,7 +694,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         {/* ═══════════════════════════════════════════════════════════════════
             IDLE STATE - Ready to start
         ═══════════════════════════════════════════════════════════════════ */}
-        {!isReadonly && !isExecuting && !isCompletedWithObjectives && checker.isEnabled && !executionError && (
+        {!isExecuting && !isCompletedWithObjectives && checker.isEnabled && !executionError && (
           <div className="interactive-guided-idle">
             <div className="interactive-guided-actions">
               <Button
@@ -798,7 +796,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               </span>
               <span className="interactive-guided-completed-text">Completed</span>
             </div>
-            {!isReadonly && (
+            {
               <button
                 className="interactive-guided-redo-btn"
                 onClick={handleStepRedo}
@@ -808,7 +806,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               >
                 ↻ Redo
               </button>
-            )}
+            }
           </div>
         )}
 

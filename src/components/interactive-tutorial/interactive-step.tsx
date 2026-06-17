@@ -27,7 +27,6 @@ import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { STEP_STATES } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
-import { useIsInteractiveReadonly } from '../../global-state/interactive-readonly-context';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -203,7 +202,6 @@ export const InteractiveStep = forwardRef<
     );
 
     // Local UI state
-    const isReadonly = useIsInteractiveReadonly();
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isDoRunning, setIsDoRunning] = useState(false);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
@@ -918,7 +916,7 @@ export const InteractiveStep = forwardRef<
         </div>
 
         <div className="interactive-step-actions">
-          {!isReadonly && (
+          {
             <div className="interactive-step-action-buttons">
               {/* Only show "Show me" button when showMe prop is true AND step is enabled AND not a navigate/noop/popout action */}
               {/* Navigate actions don't have a sensible "show me" behavior - it's "go there" or nothing */}
@@ -1013,7 +1011,7 @@ export const InteractiveStep = forwardRef<
                 </Button>
               )}
             </div>
-          )}
+          }
 
           {/* Hide completed badge and redo button for noop actions - they're informational only */}
           {isCompletedWithObjectives && !isNoopAction && (
@@ -1029,7 +1027,7 @@ export const InteractiveStep = forwardRef<
                   {checker.completionReason === 'skipped' ? 'Skipped' : 'Completed'}
                 </span>
               </div>
-              {!isReadonly && (
+              {
                 <button
                   className="interactive-guided-redo-btn"
                   onClick={handleStepRedo}
@@ -1043,7 +1041,7 @@ export const InteractiveStep = forwardRef<
                 >
                   ↻ Redo
                 </button>
-              )}
+              }
             </div>
           )}
         </div>

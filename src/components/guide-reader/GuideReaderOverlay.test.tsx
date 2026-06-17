@@ -14,13 +14,10 @@ jest.mock('../OpenFeatureProvider', () => ({
 }));
 
 // Stand in for the real renderer so the test asserts the overlay's own
-// responsibilities (fetch → render, readonly context, close) rather than
-// ContentRenderer internals (covered by its own suite).
+// responsibilities (fetch → render, close, error) rather than ContentRenderer
+// internals (covered by its own suite).
 jest.mock('../content-renderer/content-renderer', () => ({
-  ContentRenderer: () => {
-    const { useIsInteractiveReadonly } = require('../../global-state/interactive-readonly-context');
-    return <div data-testid="mock-content">readonly:{String(useIsInteractiveReadonly())}</div>;
-  },
+  ContentRenderer: () => <div data-testid="mock-content">content</div>,
 }));
 
 const mockFetchContent = fetchUnifiedContent as jest.MockedFunction<typeof fetchUnifiedContent>;
@@ -37,17 +34,14 @@ describe('GuideReaderOverlay', () => {
     closeSpy.mockRestore();
   });
 
-  it('fetches the guide and renders it read-only inside the overlay portal', async () => {
+  it('fetches the guide and renders it inside the overlay portal', async () => {
     mockFetchContent.mockResolvedValue({ content: { url: 'backend-guide:x', type: 'interactive' } } as any);
 
     render(<GuideReaderOverlay doc="backend-guide:x" />);
 
     expect(mockFetchContent).toHaveBeenCalledWith('backend-guide:x');
     expect(screen.getByTestId(testIds.guideReader.overlay)).toBeInTheDocument();
-
-    const content = await screen.findByTestId('mock-content');
-    // The overlay provides InteractiveReadonlyContext=true to all content.
-    expect(content).toHaveTextContent('readonly:true');
+    expect(await screen.findByTestId('mock-content')).toBeInTheDocument();
   });
 
   it('closes the tab when the close button is clicked', async () => {

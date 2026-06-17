@@ -9,14 +9,13 @@ import { fetchUnifiedContent } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
-import { InteractiveReadonlyContext } from '../../global-state/interactive-readonly-context';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { testIds } from '../../constants/testIds';
 import type { RawContent } from '../../types/content.types';
 import { getGuideReaderStyles } from './guide-reader.styles';
 
 interface GuideReaderOverlayProps {
-  /** The `?doc=` value to render read-only (e.g. `backend-guide:<id>`). */
+  /** The `?doc=` value to render (e.g. `backend-guide:<id>`). */
   doc: string;
 }
 
@@ -45,12 +44,9 @@ function useGrafanaTheme() {
 }
 
 /**
- * Full-screen, read-only viewer for a single guide, mounted in a new tab.
- *
- * Renders as a portal over `document.body` at a high z-index so it covers all
- * of Grafana's chrome — the tab is a dedicated reader, not a second live
- * Grafana to wander into. All step interactivity is suppressed via
- * `InteractiveReadonlyContext`.
+ * Full-screen viewer for a single guide, mounted in a new tab as a portal over
+ * `document.body` at a high z-index so it covers all of Grafana's chrome — the
+ * tab is a dedicated reader, not a second live Grafana to wander into.
  */
 export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({ doc }) => {
   const theme = useGrafanaTheme();
@@ -144,11 +140,9 @@ function GuideReaderInner({ doc }: GuideReaderOverlayProps) {
           </div>
         )}
         {content && (
-          <InteractiveReadonlyContext.Provider value={true}>
-            <div ref={contentRef}>
-              <ContentRenderer content={content} containerRef={contentRef} className={contentClassName} />
-            </div>
-          </InteractiveReadonlyContext.Provider>
+          <div ref={contentRef}>
+            <ContentRenderer content={content} containerRef={contentRef} className={contentClassName} />
+          </div>
         )}
       </div>
     </div>,
