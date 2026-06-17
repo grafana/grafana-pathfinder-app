@@ -33,6 +33,7 @@ import {
   interactiveStepStorage,
   sectionAcknowledgementStorage,
 } from '../lib/user-storage';
+import { StorageEvents } from '../lib/event-names';
 import { StorageKeys } from '../lib/storage-keys';
 
 import { getContentKey } from './content-key';
@@ -280,7 +281,7 @@ function persistSection(contentKey: string, sectionId: string): void {
     // in a mixed guide must not fire "cleared" while acks remain.
     const ackTotal = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
     if (guideTotal === 0 && ackTotal === 0) {
-      window.dispatchEvent(new CustomEvent('interactive-progress-cleared', { detail: { contentKey } }));
+      window.dispatchEvent(new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey } }));
     }
   }
 }

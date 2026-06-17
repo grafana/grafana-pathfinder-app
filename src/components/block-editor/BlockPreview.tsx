@@ -18,6 +18,7 @@ import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import type { JsonGuide } from './types';
 import type { ContentParseResult, RawContent } from '../../types/content.types';
 import { testIds } from '../../constants/testIds';
+import { StorageEvents } from '../../lib/event-names';
 
 export interface BlockPreviewProps {
   /** The guide to preview */
@@ -56,9 +57,9 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
         setResetKey((prev) => prev + 1);
       }
     };
-    window.addEventListener('interactive-progress-cleared', handleCleared);
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
     return () => {
-      window.removeEventListener('interactive-progress-cleared', handleCleared);
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
     };
   }, [progressKey]);
 

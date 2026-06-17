@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { StorageEvents } from '../lib/event-names';
 import { interactiveStepStorage } from '../lib/user-storage';
 import { subscribeProgressEvent } from '../global-state/progress-events';
 
@@ -39,10 +40,10 @@ export function useGuideProgressState(activeTab: ActiveTabSummary | null | undef
         setHasInteractiveProgress(false);
       }
     };
-    window.addEventListener('interactive-progress-cleared', handleProgressCleared);
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
     return () => {
       unsubscribeProgress();
-      window.removeEventListener('interactive-progress-cleared', handleProgressCleared);
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
     };
   }, [progressKey]);
 

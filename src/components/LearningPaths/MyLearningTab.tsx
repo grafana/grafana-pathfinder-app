@@ -16,6 +16,7 @@ import { BadgeIcon } from './BadgeIcon';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { StorageEvents } from '../../lib/event-names';
 import {
   learningProgressStorage,
   journeyCompletionStorage,
@@ -372,7 +373,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
       // Notify the context engine to refresh recommendations.
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
+        new CustomEvent(StorageEvents.InteractiveProgressCleared, {
           detail: { contentKey: '*' },
         })
       );

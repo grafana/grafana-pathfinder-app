@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
+import { StorageEvents } from '../../../lib/event-names';
 import { evictContentCache } from '../../../global-state/completion-store';
 import { getContentKey } from '../../../global-state/content-key';
 import { subscribeProgressEvent } from '../../../global-state/progress-events';
@@ -60,10 +61,10 @@ export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgre
         setHasProgress(false);
       }
     };
-    window.addEventListener('interactive-progress-cleared', handleCleared);
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
     return () => {
       unsubscribeProgress();
-      window.removeEventListener('interactive-progress-cleared', handleCleared);
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
     };
   }, [progressKey]);
 
@@ -77,7 +78,7 @@ export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgre
       evictContentCache(progressKey);
       setHasProgress(false);
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
+        new CustomEvent(StorageEvents.InteractiveProgressCleared, {
           detail: { contentKey: progressKey },
         })
       );
