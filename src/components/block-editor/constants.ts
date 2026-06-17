@@ -4,6 +4,8 @@
  * Block type metadata and configuration for the block-based editor.
  */
 
+import { StorageKeys } from '../../lib/storage-keys';
+
 import type { BlockType, BlockTypeMetadata } from './types';
 
 /**
@@ -192,21 +194,22 @@ export const BLOCK_TYPE_GROUPS: ReadonlyArray<{
 ] as const;
 
 /**
- * Local storage key for persisting editor state
+ * Local storage key for persisting editor state.
+ * Canonical value lives in the centralized `StorageKeys` registry.
  */
-export const BLOCK_EDITOR_STORAGE_KEY = 'pathfinder-block-editor-state';
+export const BLOCK_EDITOR_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_STATE;
 
 /**
  * Local storage key for persisting recording mode state
  * Allows recording to survive page refreshes (e.g., when saving a dashboard)
  */
-export const RECORDING_STATE_STORAGE_KEY = 'pathfinder-block-editor-recording-state';
+export const RECORDING_STATE_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_RECORDING_STATE;
 
 /**
  * Local storage key for persisting backend tracking state (resource name, status).
  * Ensures the correct save/update button is shown after a page refresh.
  */
-export const BACKEND_TRACKING_STORAGE_KEY = 'pathfinder-block-editor-backend-tracking';
+export const BACKEND_TRACKING_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_BACKEND_TRACKING;
 
 /**
  * Default guide metadata for new guides

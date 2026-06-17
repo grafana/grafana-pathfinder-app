@@ -11,6 +11,7 @@
 import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { HealthStatusBar } from './HealthStatusBar';
+import { StorageKeys } from '../../lib/storage-keys';
 import type { Diagnostic, GuideLintResult } from './lint';
 import type { EditorBlock } from './types';
 
@@ -21,7 +22,7 @@ jest.mock('./BlockEditorContext', () => ({
   useGuideLintResult: () => mockLint(),
 }));
 
-const STORAGE_KEY = 'pathfinder.blockEditor.healthPanel.open';
+const STORAGE_KEY = StorageKeys.BLOCK_EDITOR_HEALTH_PANEL_OPEN;
 
 function makeLint(diagnostics: Diagnostic[]): GuideLintResult {
   return {

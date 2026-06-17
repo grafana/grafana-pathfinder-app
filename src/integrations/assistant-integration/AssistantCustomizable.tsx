@@ -13,6 +13,7 @@ import { getIsAssistantAvailable, useMockInlineAssistant } from './assistant-dev
 import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { useAssistantCustomizableContext } from './AssistantCustomizableContext';
 import { reportAppInteraction, UserInteraction, buildAssistantCustomizableProperties } from '../../lib/analytics';
+import { buildAssistantStorageKey } from '../../lib/storage-keys';
 import { createDatasourceMetadataTool, type DatasourceMetadataArtifact, isSupportedDatasourceType } from './tools';
 
 export interface AssistantCustomizableProps {
@@ -146,13 +147,13 @@ export function AssistantCustomizable({
 
   // Generate localStorage key
   const getStorageKey = useCallback((): string => {
-    return `pathfinder-assistant-${contentKey}-${assistantId}`;
+    return buildAssistantStorageKey(contentKey, assistantId);
   }, [contentKey, assistantId]);
 
   // Load initial value from localStorage using lazy initialization
   const getInitialValue = useCallback(() => {
     try {
-      const storageKey = `pathfinder-assistant-${contentKey}-${assistantId}`;
+      const storageKey = buildAssistantStorageKey(contentKey, assistantId);
       const storedValue = localStorage.getItem(storageKey);
       return storedValue || defaultValue;
     } catch (error) {
@@ -163,7 +164,7 @@ export function AssistantCustomizable({
 
   const getInitialCustomizedState = useCallback(() => {
     try {
-      const storageKey = `pathfinder-assistant-${contentKey}-${assistantId}`;
+      const storageKey = buildAssistantStorageKey(contentKey, assistantId);
       const storedValue = localStorage.getItem(storageKey);
       return storedValue !== null;
     } catch (error) {

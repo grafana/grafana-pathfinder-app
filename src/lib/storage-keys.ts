@@ -47,13 +47,65 @@ export const StorageKeys = {
   // not session — auto-open fires once per browser, not once per session.
   HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX: 'grafana-pathfinder-highlighted-guide-auto-open-',
   HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',
+  // Legacy global treatment auto-open key (kept for backwards compatibility).
+  // Used with a `{hostname}` suffix. Not migrated — see G5/G10 notes.
+  EXPERIMENT_TREATMENT_OPENED_LEGACY_PREFIX: 'grafana-pathfinder-experiment-treatment-opened-',
+  // Dev/debug feature-flag overrides (localStorage). Read before the MTFF client.
+  FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',
   // External app suggestions for the featured zone (sessionStorage)
   SUGGESTIONS: 'grafana-pathfinder-app-suggestions',
   // Floating panel mode preference (sidebar vs floating)
   PANEL_MODE: 'grafana-pathfinder-app-panel-mode',
   // Floating panel position and size
   FLOATING_PANEL_GEOMETRY: 'grafana-pathfinder-app-floating-panel-geometry',
+
+  // ==========================================================================
+  // Block editor (centralized here from block-editor/constants.ts and the
+  // block-editor UI components, which re-export / reference these values).
+  // ==========================================================================
+  BLOCK_EDITOR_STATE: 'pathfinder-block-editor-state',
+  BLOCK_EDITOR_RECORDING_STATE: 'pathfinder-block-editor-recording-state',
+  BLOCK_EDITOR_BACKEND_TRACKING: 'pathfinder-block-editor-backend-tracking',
+  BLOCK_EDITOR_HEALTH_PANEL_OPEN: 'pathfinder.blockEditor.healthPanel.open',
+  BLOCK_EDITOR_CONDITION_RAW_MODE: 'pathfinder.blockEditor.conditionField.rawMode',
+
+  // ==========================================================================
+  // Coda terminal (centralized from integrations/coda/terminal-storage.ts).
+  // is-open / height are localStorage; the rest are sessionStorage.
+  // ==========================================================================
+  CODA_TERMINAL_IS_OPEN: 'pathfinder-coda-terminal-is-open',
+  CODA_TERMINAL_HEIGHT: 'pathfinder-coda-terminal-height',
+  CODA_TERMINAL_WAS_CONNECTED: 'pathfinder-coda-terminal-was-connected',
+  CODA_TERMINAL_SCROLLBACK: 'pathfinder-coda-terminal-scrollback',
+  CODA_TERMINAL_LAST_VM_OPTS: 'pathfinder-coda-terminal-last-vm-opts',
+
+  // ==========================================================================
+  // Assistant customization. Dynamic key: `{PREFIX}{contentKey}-{assistantId}`.
+  // Use `buildAssistantStorageKey()` rather than concatenating inline.
+  // ==========================================================================
+  ASSISTANT_CUSTOMIZATION_PREFIX: 'pathfinder-assistant-',
+
+  // ==========================================================================
+  // Devtools (dev-only panels: PR tester, URL tester, debug panel expansion).
+  // ==========================================================================
+  DEVTOOLS_PR_TESTER_URL: 'pathfinder-pr-tester-url',
+  DEVTOOLS_PR_TESTER_SELECTED_FILE: 'pathfinder-pr-tester-selected',
+  DEVTOOLS_PR_TESTER_SELECTED_PATH: 'pathfinder-pr-tester-selected-path',
+  DEVTOOLS_PR_TESTER_MODE: 'pathfinder-pr-tester-mode',
+  DEVTOOLS_PR_TESTER_FETCHED_FILES: 'pathfinder-pr-tester-files',
+  DEVTOOLS_PR_TESTER_FETCHED_URL: 'pathfinder-pr-tester-fetched-url',
+  DEVTOOLS_URL_TESTER_URL: 'pathfinder-url-tester-url',
+  DEVTOOLS_PR_TESTER_EXPANDED: 'pathfinder-devtools-pr-tester-expanded',
+  DEVTOOLS_URL_TESTER_EXPANDED: 'pathfinder-devtools-url-tester-expanded',
 } as const;
 
 export type StorageKeyName = keyof typeof StorageKeys;
 export type StorageKeyValue = (typeof StorageKeys)[StorageKeyName];
+
+/**
+ * Builds the dynamic localStorage key used to persist a user's assistant-block
+ * customization. Centralized so the key shape lives in exactly one place.
+ */
+export function buildAssistantStorageKey(contentKey: string, assistantId: string): string {
+  return `${StorageKeys.ASSISTANT_CUSTOMIZATION_PREFIX}${contentKey}-${assistantId}`;
+}

@@ -28,9 +28,10 @@ import {
   isValidRequirement,
 } from '../../../types/requirements.types';
 import { isAutoRecoverableRequirement } from '../../../recovery';
+import { StorageKeys } from '../../../lib/storage-keys';
 import { HELPER_BY_PREFIX } from './condition-helpers';
 
-const RAW_MODE_PREFERENCE_KEY = 'pathfinder.blockEditor.conditionField.rawMode';
+const RAW_MODE_PREFERENCE_KEY = StorageKeys.BLOCK_EDITOR_CONDITION_RAW_MODE;
 
 export type ConditionFieldMode = 'requirements' | 'objectives' | 'conditions' | 'verify';
 

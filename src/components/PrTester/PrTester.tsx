@@ -12,13 +12,14 @@ import {
 import type { ManifestJson } from '../../types/package.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
+import { StorageKeys } from '../../lib/storage-keys';
 
-const PR_URL_STORAGE_KEY = 'pathfinder-pr-tester-url';
-const SELECTED_FILE_STORAGE_KEY = 'pathfinder-pr-tester-selected';
-const SELECTED_PATH_STORAGE_KEY = 'pathfinder-pr-tester-selected-path';
-const TEST_MODE_STORAGE_KEY = 'pathfinder-pr-tester-mode';
-const FETCHED_FILES_STORAGE_KEY = 'pathfinder-pr-tester-files';
-const FETCHED_URL_STORAGE_KEY = 'pathfinder-pr-tester-fetched-url';
+const PR_URL_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_URL;
+const SELECTED_FILE_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_SELECTED_FILE;
+const SELECTED_PATH_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_SELECTED_PATH;
+const TEST_MODE_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_MODE;
+const FETCHED_FILES_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_FETCHED_FILES;
+const FETCHED_URL_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_FETCHED_URL;
 
 export interface PrTesterProps {
   /**

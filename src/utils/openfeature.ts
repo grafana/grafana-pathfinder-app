@@ -4,6 +4,7 @@ import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
 import { config } from '@grafana/runtime';
 
 import { TrackingHook, reportFeatureFlagExposure } from './openfeature-tracking';
+import { StorageKeys } from '../lib/storage-keys';
 
 // ============================================================================
 // TYPES
@@ -357,7 +358,7 @@ export async function evaluateFeatureFlag<T extends FeatureFlagName>(flagName: T
 // LOCAL OVERRIDES (for browser console testing)
 // ============================================================================
 
-const FLAG_OVERRIDE_STORAGE_KEY = 'grafana-pathfinder-flag-overrides';
+const FLAG_OVERRIDE_STORAGE_KEY = StorageKeys.FLAG_OVERRIDES;
 
 /**
  * Read all flag overrides from localStorage.

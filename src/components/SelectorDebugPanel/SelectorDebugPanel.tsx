@@ -4,10 +4,11 @@ import { getDebugPanelStyles } from './debug-panel.styles';
 import { UrlTester } from 'components/UrlTester';
 import { PrTester } from 'components/PrTester';
 import type { PackageOpenInfo } from 'types/content-panel.types';
+import { StorageKeys } from 'lib/storage-keys';
 
 // localStorage keys for section expansion state
-const STORAGE_KEY_PR_TESTER = 'pathfinder-devtools-pr-tester-expanded';
-const STORAGE_KEY_URL_TESTER = 'pathfinder-devtools-url-tester-expanded';
+const STORAGE_KEY_PR_TESTER = StorageKeys.DEVTOOLS_PR_TESTER_EXPANDED;
+const STORAGE_KEY_URL_TESTER = StorageKeys.DEVTOOLS_URL_TESTER_EXPANDED;
 
 /**
  * Get initial expansion state from localStorage with fallback

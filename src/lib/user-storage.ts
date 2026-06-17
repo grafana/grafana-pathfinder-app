@@ -262,8 +262,11 @@ export function createUserStorage(): UserStorage {
  * Creates a storage implementation using browser localStorage
  *
  * This is the fallback for when Grafana user storage is unavailable.
+ *
+ * Exported for characterization tests of the storage plumbing; production
+ * callers should use `createUserStorage()` or `useUserStorage()`.
  */
-function createLocalStorage(): UserStorage {
+export function createLocalStorage(): UserStorage {
   return {
     async getItem<T>(key: string): Promise<T | null> {
       try {
@@ -337,8 +340,11 @@ function createLocalStorage(): UserStorage {
  * 2. Then queued to Grafana storage (async, eventual consistency)
  * 3. Reads come from localStorage (fast, always available)
  * 4. On init, sync from Grafana storage to localStorage (Grafana is source of truth)
+ *
+ * Exported for characterization tests of the debounced write queue; production
+ * callers reach this through `useUserStorage()`.
  */
-function createHybridStorage(grafanaStorage: GrafanaUserStorage): UserStorage {
+export function createHybridStorage(grafanaStorage: GrafanaUserStorage): UserStorage {
   const localStorage = createLocalStorage();
 
   // Queue for async writes to Grafana storage.
@@ -467,6 +473,14 @@ function createHybridStorage(grafanaStorage: GrafanaUserStorage): UserStorage {
 let hasSynced = false;
 
 /**
+ * Test-only reset of the module-level `hasSynced` flag so suites can
+ * exercise the once-per-lifecycle sync contract deterministically.
+ */
+export function __resetSyncedForTests(): void {
+  hasSynced = false;
+}
+
+/**
  * Reads a key from Grafana storage and returns its value and timestamp,
  * handling both the new envelope format and the old separate-timestamp format.
  *
@@ -536,8 +550,11 @@ async function readGrafanaKeyWithMigration(
  * - Deletions are represented by a timestamp without data (value is empty/null)
  * - If a deletion timestamp is newer than existing data, the deletion is applied
  * - This ensures deletions propagate correctly across devices/sessions
+ *
+ * Exported for characterization tests of the once-per-lifecycle sync and
+ * timestamp conflict resolution; production code calls this from `useUserStorage()`.
  */
-async function syncFromGrafanaStorage(grafanaStorage: GrafanaUserStorage): Promise<void> {
+export async function syncFromGrafanaStorage(grafanaStorage: GrafanaUserStorage): Promise<void> {
   // Guard: only sync once per page lifecycle
   if (hasSynced) {
     return;

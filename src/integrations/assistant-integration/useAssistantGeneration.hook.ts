@@ -20,6 +20,7 @@ import {
 import { getDataSourceSrv, locationService } from '@grafana/runtime';
 import { getIsAssistantAvailable, useMockInlineAssistant } from './assistant-dev-mode';
 import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
+import { buildAssistantStorageKey } from '../../lib/storage-keys';
 import { createDatasourceMetadataTool, type DatasourceMetadataArtifact, isSupportedDatasourceType } from './tools';
 
 // REACT: Stable array reference to prevent context thrashing (R3)
@@ -96,7 +97,7 @@ export function useAssistantGeneration(options: UseAssistantGenerationOptions): 
 
   // Generate localStorage key
   const getStorageKey = useCallback((): string => {
-    return `pathfinder-assistant-${contentKey}-${assistantId}`;
+    return buildAssistantStorageKey(contentKey, assistantId);
   }, [contentKey, assistantId]);
 
   // Check if assistant is available
