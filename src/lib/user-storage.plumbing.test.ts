@@ -266,14 +266,22 @@ describe('createLocalStorage', () => {
     expect(await storage.getItem('absent')).toBeNull();
   });
 
-  it('clear() only removes plugin-prefixed keys', async () => {
+  it('clear() only removes `grafana-pathfinder-app-` keys, leaving other plugin keys behind', async () => {
     const storage = createLocalStorage();
     localStorage.setItem(StorageKeys.TABS, '[]');
     localStorage.setItem('unrelated-key', 'keep-me');
+    // `clear()` filters on the literal `grafana-pathfinder-app-` prefix, so the
+    // centralized keys that use the bare `pathfinder-*` / dotted `pathfinder.*`
+    // shapes are NOT cleared. Pin that seam rather than implying clear() is
+    // registry-wide.
+    localStorage.setItem(StorageKeys.CODA_TERMINAL_IS_OPEN, '1');
+    localStorage.setItem(StorageKeys.BLOCK_EDITOR_HEALTH_PANEL_OPEN, 'true');
 
     await storage.clear();
 
     expect(localStorage.getItem(StorageKeys.TABS)).toBeNull();
     expect(localStorage.getItem('unrelated-key')).toBe('keep-me');
+    expect(localStorage.getItem(StorageKeys.CODA_TERMINAL_IS_OPEN)).toBe('1');
+    expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_HEALTH_PANEL_OPEN)).toBe('true');
   });
 });

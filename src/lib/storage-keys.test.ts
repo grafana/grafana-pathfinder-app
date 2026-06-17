@@ -10,7 +10,7 @@
  * When ADDING a new key, add it here too. When CHANGING an existing value, stop
  * and consider the migration implications before updating this test.
  */
-import { StorageKeys } from './storage-keys';
+import { StorageKeys, buildAssistantStorageKey } from './storage-keys';
 
 describe('StorageKeys — stable string contract', () => {
   it('matches the locked key values exactly', () => {
@@ -82,8 +82,6 @@ describe('StorageKeys — stable string contract', () => {
   });
 
   it('builds the assistant customization key from the prefix', () => {
-    expect(`${StorageKeys.ASSISTANT_CUSTOMIZATION_PREFIX}my-content-asst-1`).toBe(
-      'pathfinder-assistant-my-content-asst-1'
-    );
+    expect(buildAssistantStorageKey('my-content', 'asst-1')).toBe('pathfinder-assistant-my-content-asst-1');
   });
 });
