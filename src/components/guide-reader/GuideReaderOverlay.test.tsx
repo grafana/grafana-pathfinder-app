@@ -46,7 +46,7 @@ describe('GuideReaderOverlay', () => {
     expect(screen.getByTestId(testIds.guideReader.overlay)).toBeInTheDocument();
 
     const content = await screen.findByTestId('mock-content');
-    // The overlay provides InteractiveReadonlyContext=true to all content.
+    // The overlay provides InteractiveModeContext='readonly' to all content.
     expect(content).toHaveTextContent('readonly:true');
   });
 

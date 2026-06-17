@@ -11,7 +11,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { InteractiveQuiz, resetQuizCounter, shuffleQuizChoices, type QuizChoice } from './interactive-quiz';
-import { InteractiveReadonlyContext } from '../../global-state/interactive-readonly-context';
+import { InteractiveModeContext } from '../../global-state/interactive-readonly-context';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -503,11 +503,11 @@ describe('InteractiveQuiz read-only mode', () => {
 
   function renderQuiz(readonly: boolean) {
     return render(
-      <InteractiveReadonlyContext.Provider value={readonly}>
+      <InteractiveModeContext.Provider value={readonly ? 'readonly' : 'interactive'}>
         <InteractiveQuiz question="Pick one" choices={choices} shuffle={false} stepId="quiz-readonly">
           Pick one
         </InteractiveQuiz>
-      </InteractiveReadonlyContext.Provider>
+      </InteractiveModeContext.Provider>
     );
   }
 
