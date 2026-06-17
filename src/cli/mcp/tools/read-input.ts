@@ -2,8 +2,9 @@
  * Shared "exactly one of {artifact} | {sessionToken}" resolver for the
  * read-only / read-then-load tool surface (P7).
  *
- * Used by `inspection-tools.ts` (inspect / validate) and by `finalize.ts`.
- * Mutation tools use a parallel resolver in `mutation-tools.ts` that also
+ * Used by `inspection-tools.ts` (inspect / validate); `finalize.ts` adopts
+ * it in the next stack layer (session-mode finalize). Mutation tools use a
+ * parallel resolver in `mutation-tools.ts` that also
  * threads `expectedGeneration` and the post-mutation writeback — the
  * read-side shape is simpler and worth factoring out so the two callers
  * stay in lockstep on error wire shapes.
@@ -25,8 +26,9 @@ export type ReadInputResolution =
       manifest: ManifestJson | undefined;
       manifestAuthored: boolean;
       /**
-       * Present in session-mode only. Callers that need to delete or
-       * reference the session after the read (e.g. finalize) use this.
+       * Present in session-mode only. Surfaced for callers that need to
+       * delete or reference the session after the read — finalize becomes
+       * the first such caller in the next stack layer.
        */
       sessionToken: string | undefined;
     }

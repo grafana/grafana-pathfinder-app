@@ -21,7 +21,7 @@ import { buildArtifactSummary } from '../../utils/package-io';
 import type { AuthoringSessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveReadOnlyInput } from './read-input';
-import { outcomeResult } from './result';
+import { outcomeResult, withToolErrorEnvelope } from './result';
 import { withArtifact } from './state-bridge';
 import { ArtifactInputBase, SessionTokenBase } from './two-mode-input';
 
@@ -57,16 +57,17 @@ export function registerInspectionTools(
           ),
       },
     },
-    async ({ artifact, sessionToken, blockId, at }) => {
-      const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken }, mcpSessionId);
-      if (!resolved.ok) {
-        return resolved.response;
-      }
-      const result = await withArtifact({ content: resolved.content, manifest: resolved.manifest }, (dir) =>
-        runInspect({ dir, blockId, at })
-      );
-      return outcomeResult(result.outcome, result.artifact, result.summary);
-    }
+    async ({ artifact, sessionToken, blockId, at }) =>
+      withToolErrorEnvelope(sessionToken, 'inspect', async () => {
+        const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken }, mcpSessionId);
+        if (!resolved.ok) {
+          return resolved.response;
+        }
+        const result = await withArtifact({ content: resolved.content, manifest: resolved.manifest }, (dir) =>
+          runInspect({ dir, blockId, at })
+        );
+        return outcomeResult(result.outcome, result.artifact, result.summary);
+      })
   );
 
   server.registerTool(
@@ -80,21 +81,22 @@ export function registerInspectionTools(
         sessionToken: SessionTokenSchema,
       },
     },
-    async ({ artifact, sessionToken }) => {
-      const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken }, mcpSessionId);
-      if (!resolved.ok) {
-        return resolved.response;
-      }
-      const outcome = runValidate({
-        content: resolved.content,
-        manifest: resolved.manifest,
-        manifestSchemaVersionAuthored: resolved.manifestAuthored,
-      });
-      return outcomeResult(
-        outcome,
-        { content: resolved.content, manifest: resolved.manifest },
-        buildArtifactSummary(resolved.content)
-      );
-    }
+    async ({ artifact, sessionToken }) =>
+      withToolErrorEnvelope(sessionToken, 'validate', async () => {
+        const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken }, mcpSessionId);
+        if (!resolved.ok) {
+          return resolved.response;
+        }
+        const outcome = runValidate({
+          content: resolved.content,
+          manifest: resolved.manifest,
+          manifestSchemaVersionAuthored: resolved.manifestAuthored,
+        });
+        return outcomeResult(
+          outcome,
+          { content: resolved.content, manifest: resolved.manifest },
+          buildArtifactSummary(resolved.content)
+        );
+      })
   );
 }
