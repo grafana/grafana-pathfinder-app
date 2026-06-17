@@ -851,7 +851,7 @@ npx pathfinder-cli e2e --repository --tier cloud \
 The E2E runner ignores the following manifest fields. They exist for other consumers (recommender, learning path engine) but are not relevant to test execution:
 
 - `startingLocation` — the runner does not navigate to a starting page before testing
-- `depends` — every guide is tested standalone, pass/fail, with no dependency chains
+- `depends` — not consulted during a single guide's step execution; cross-guide ordering and chaining is handled separately by the repository-index planner (see [Dependency-aware chaining](#dependency-aware-chaining))
 - `targeting` — recommendation rules are irrelevant to test execution
 - `provides`, `conflicts`, `replaces` — dependency graph metadata, not test metadata
 
@@ -1133,19 +1133,19 @@ For multi-guide reports (batch or path), each guide entry includes these package
 
 ### Design decisions (package-aware)
 
-| Decision                        | Value                                                                   | Rationale                                                                             |
-| ------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Resolution mechanism            | Recommender service for `--package`; repository.json for `--repository` | Resolution service is canonical for bare IDs; repository index is efficient for batch |
-| Auth state                      | Ephemeral per-guide, deleted after test                                 | Repeatability and isolation over performance                                          |
-| Path milestone execution        | Sequential, stop on failure                                             | Later milestones may depend on earlier ones                                           |
-| Missing milestones              | Fail entire path                                                        | Incomplete paths cannot be meaningfully tested                                        |
-| Content fetch failure           | Skip guide, log as `fetch_failed`                                       | Does not count as test failure; CDN issue, not content issue                          |
-| Manifest authority              | Manifest `testEnvironment` is authoritative                             | Guides speak for themselves; CLI respects the manifest                                |
-| CLI target vs manifest conflict | Skip guide with `skipped_tier_mismatch`                                 | Prevents testing a guide against an incompatible environment                          |
-| Credential env vars             | `GRAFANA_USER` / `GRAFANA_PASSWORD`                                     | Standard practice for CI where secrets should not appear in command lines             |
-| `startingLocation`              | Ignored by E2E runner                                                   | The plugin may use it at runtime; the runner tests wherever it lands                  |
-| `depends` chains                | Ignored; every guide is standalone                                      | Simplicity; no topological ordering needed                                            |
-| Repository caching              | None; always fetch fresh                                                | Repository index is on CDN; no benefit to local caching                               |
+| Decision                        | Value                                                                           | Rationale                                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Resolution mechanism            | Recommender service for `--package`; repository.json for `--repository`         | Resolution service is canonical for bare IDs; repository index is efficient for batch                           |
+| Auth state                      | Ephemeral per-guide, deleted after test                                         | Repeatability and isolation over performance                                                                    |
+| Path milestone execution        | Sequential, stop on failure                                                     | Later milestones may depend on earlier ones                                                                     |
+| Missing milestones              | Fail entire path                                                                | Incomplete paths cannot be meaningfully tested                                                                  |
+| Content fetch failure           | Skip guide, log as `fetch_failed`                                               | Does not count as test failure; CDN issue, not content issue                                                    |
+| Manifest authority              | Manifest `testEnvironment` is authoritative                                     | Guides speak for themselves; CLI respects the manifest                                                          |
+| CLI target vs manifest conflict | Skip guide with `skipped_tier_mismatch`                                         | Prevents testing a guide against an incompatible environment                                                    |
+| Credential env vars             | `GRAFANA_USER` / `GRAFANA_PASSWORD`                                             | Standard practice for CI where secrets should not appear in command lines                                       |
+| `startingLocation`              | Ignored by E2E runner                                                           | The plugin may use it at runtime; the runner tests wherever it lands                                            |
+| `depends` chains                | Honored: guides are ordered so prerequisites run first, and grouped into chains | A dependent guide (e.g. `loki-grafana-101`) needs state produced by its prerequisite (`prometheus-grafana-101`) |
+| Repository caching              | None; always fetch fresh                                                        | Repository index is on CDN; no benefit to local caching                                                         |
 
 ### Risks and dependencies (package-aware)
 
@@ -1169,6 +1169,17 @@ For multi-guide reports (batch or path), each guide entry includes these package
 | P6  | **`--repository` CLI path**   | Fetch `repository.json`, filter by `--tier`, expand paths/journeys from index, construct content URLs, batch execute.                                      | P4, P5       |
 | P7  | **Reporting**                 | Extended `GuideMetadata` with package fields. New outcome types. Multi-target and path summary in console output.                                          | P4, P5, P6   |
 | P8  | **CLI polish**                | `--grafana-server` alias for `--grafana-url`. Env var fallbacks (`GRAFANA_SERVER`, `GRAFANA_USER`, `GRAFANA_PASSWORD`). Help text updates.                 | P4           |
+
+### Dependency-aware chaining
+
+The runner builds a dependency-aware execution plan from a `repository.json` index before running any guide (`src/cli/utils/guide-chains.ts`). For `--bundled` runs it defaults to `src/bundled-interactives/repository.json`; an optional `--repository <path>` flag points at a custom index.
+Only the hard `depends` relation participates (`recommends`/`suggests` are advisory and ignored). Dependency targets may be real package IDs or virtual capabilities resolved through `provides`. The planner:
+
+- Maps each selected guide to its `content.json` id (path-derived fallback for legacy files). Guides absent from the repository become dependency-free singletons.
+- Recursively auto-includes missing prerequisites so a partial selection (e.g. only `loki-grafana-101`) still runs its prerequisite (`prometheus-grafana-101`) first. For an OR-group it prefers an already-selected alternative, otherwise the first resolvable one.
+- Rejects `depends` cycles as a configuration error.
+- Groups guides into weakly connected components (chains) over `depends` edges and topologically sorts each so prerequisites precede dependents. Chains are ordered deterministically.
+  Dependency-aware ordering applies to every run. Under `--clean`, each chain runs in its own freshly reset environment, while guides within a chain share one environment so prerequisite state survives — for example `docker up → prometheus-grafana-101 → loki-grafana-101 → docker down`. If a prerequisite fails, its dependents in the same chain are marked `skipped_prereq` and the runner continues with the next chain.
 
 ### Future: pool executor (deferred)
 
