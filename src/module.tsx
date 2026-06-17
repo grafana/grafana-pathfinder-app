@@ -168,6 +168,13 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     return;
   }
 
+  // Live tab only (controller / read-only tabs returned early above): load the
+  // cross-tab executor so a controller tab can drive this Grafana DOM. Lazy
+  // import keeps the interactive engine out of the entry bundle.
+  import('./integrations/cross-tab/live-tab-executor')
+    .then(({ installLiveTabExecutor }) => installLiveTabExecutor())
+    .catch((err) => console.error('[Pathfinder] Failed to load cross-tab executor:', err));
+
   const sidebarMountable = shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant);
   const deepLinkDeps = {
     shouldMountSidebar: sidebarMountable,
