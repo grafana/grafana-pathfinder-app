@@ -601,6 +601,26 @@ async function runChains(
   return { results, allPassed, hasAuthExpiry };
 }
 
+interface GuideStatusCounts {
+  passed: number;
+  failed: number;
+  authExpired: number;
+  skippedPrereq: number;
+}
+
+/**
+ * Count guides by terminal status. Computed once and shared by both summary
+ * presentations.
+ */
+function countGuideStatuses(results: GuideRunResult[]): GuideStatusCounts {
+  return {
+    passed: results.filter((r) => r.status === 'passed').length,
+    failed: results.filter((r) => r.status === 'failed').length,
+    authExpired: results.filter((r) => r.status === 'auth_expired').length,
+    skippedPrereq: results.filter((r) => r.status === 'skipped_prereq').length,
+  };
+}
+
 /**
  * Print the run summary: aggregate guide/step counts for multi-guide runs, or a
  * compact pass/fail breakdown for a single guide.
@@ -608,6 +628,7 @@ async function runChains(
 function printSummary(results: GuideRunResult[]): void {
   const resultsWithData = results.filter((r) => r.resultsData).map((r) => r.resultsData!);
   const isMultiGuide = results.length > 1;
+  const counts = countGuideStatuses(results);
 
   console.log('\n' + '─'.repeat(68));
   console.log('📊 Summary');
@@ -615,20 +636,15 @@ function printSummary(results: GuideRunResult[]): void {
 
   if (isMultiGuide) {
     // Multi-guide summary (L3-7B)
-    const passedGuides = results.filter((r) => r.status === 'passed').length;
-    const failedGuides = results.filter((r) => r.status === 'failed').length;
-    const authExpired = results.filter((r) => r.status === 'auth_expired').length;
-    const skippedPrereq = results.filter((r) => r.status === 'skipped_prereq').length;
-
-    console.log(`\n   Guides: ${passedGuides}/${results.length} passed`);
-    if (failedGuides > 0) {
-      console.log(`   ├─ ❌ Failed: ${failedGuides}`);
+    console.log(`\n   Guides: ${counts.passed}/${results.length} passed`);
+    if (counts.failed > 0) {
+      console.log(`   ├─ ❌ Failed: ${counts.failed}`);
     }
-    if (authExpired > 0) {
-      console.log(`   ├─ 🔐 Auth expired: ${authExpired}`);
+    if (counts.authExpired > 0) {
+      console.log(`   ├─ 🔐 Auth expired: ${counts.authExpired}`);
     }
-    if (skippedPrereq > 0) {
-      console.log(`   └─ ⊘ Skipped (prerequisite failed): ${skippedPrereq}`);
+    if (counts.skippedPrereq > 0) {
+      console.log(`   └─ ⊘ Skipped (prerequisite failed): ${counts.skippedPrereq}`);
     }
 
     // Aggregate step statistics across all guides
@@ -687,22 +703,17 @@ function printSummary(results: GuideRunResult[]): void {
     }
   } else {
     // Single guide summary
-    const passed = results.filter((r) => r.status === 'passed').length;
-    const failed = results.filter((r) => r.status === 'failed').length;
-    const authExpired = results.filter((r) => r.status === 'auth_expired').length;
-    const skippedPrereq = results.filter((r) => r.status === 'skipped_prereq').length;
-
-    if (passed > 0) {
-      console.log(`   ✅ Passed: ${passed}`);
+    if (counts.passed > 0) {
+      console.log(`   ✅ Passed: ${counts.passed}`);
     }
-    if (failed > 0) {
-      console.log(`   ❌ Failed: ${failed}`);
+    if (counts.failed > 0) {
+      console.log(`   ❌ Failed: ${counts.failed}`);
     }
-    if (authExpired > 0) {
-      console.log(`   🔐 Auth expired: ${authExpired}`);
+    if (counts.authExpired > 0) {
+      console.log(`   🔐 Auth expired: ${counts.authExpired}`);
     }
-    if (skippedPrereq > 0) {
-      console.log(`   ⊘ Skipped (prerequisite failed): ${skippedPrereq}`);
+    if (counts.skippedPrereq > 0) {
+      console.log(`   ⊘ Skipped (prerequisite failed): ${counts.skippedPrereq}`);
     }
   }
 

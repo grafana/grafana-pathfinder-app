@@ -56,48 +56,29 @@ export interface RunGuideOptions {
 }
 
 /**
- * Read abort file content if it exists (L3-3D).
- * Returns undefined if file doesn't exist or is invalid.
+ * Read a file's text if it exists and is readable; undefined otherwise.
  */
-function readAbortFile(abortFilePath: string): AbortFileContent | undefined {
+function readFileIfExists(filePath: string): string | undefined {
   try {
-    if (!existsSync(abortFilePath)) {
+    if (!existsSync(filePath)) {
       return undefined;
     }
-    const content = readFileSync(abortFilePath, 'utf-8');
-    return JSON.parse(content) as AbortFileContent;
+    return readFileSync(filePath, 'utf-8');
   } catch {
     return undefined;
   }
 }
 
 /**
- * Read test results file if it exists (L3-5B).
- * Returns undefined if file doesn't exist or is invalid.
+ * Parse a JSON file's contents if it exists and is valid JSON; undefined otherwise.
  */
-function readResultsFile(resultsFilePath: string): TestResultsData | undefined {
-  try {
-    if (!existsSync(resultsFilePath)) {
-      return undefined;
-    }
-    const content = readFileSync(resultsFilePath, 'utf-8');
-    return JSON.parse(content) as TestResultsData;
-  } catch {
+function readJsonIfExists<T>(filePath: string): T | undefined {
+  const content = readFileIfExists(filePath);
+  if (content === undefined) {
     return undefined;
   }
-}
-
-/**
- * Read the trace file path the runner recorded (see e2e-runner-contract).
- * Returns undefined if the file is missing or empty.
- */
-function readTraceOutputFile(traceOutputFilePath: string): string | undefined {
   try {
-    if (!existsSync(traceOutputFilePath)) {
-      return undefined;
-    }
-    const content = readFileSync(traceOutputFilePath, 'utf-8').trim();
-    return content.length > 0 ? content : undefined;
+    return JSON.parse(content) as T;
   } catch {
     return undefined;
   }
@@ -122,13 +103,13 @@ function processPlaywrightResults(
 
   // Trace location is reported by the runner (see e2e-runner-contract) so the
   // CLI never hardcodes Playwright's per-test output-dir naming.
-  const traceFile = options.trace ? readTraceOutputFile(filePaths.traceOutputFilePath) : undefined;
+  const traceFile = options.trace ? readFileIfExists(filePaths.traceOutputFilePath)?.trim() || undefined : undefined;
 
   // L3-5B: Read results file for JSON reporting
-  const resultsData = readResultsFile(filePaths.resultsFilePath);
+  const resultsData = readJsonIfExists<TestResultsData>(filePaths.resultsFilePath);
 
   // L3-3D: Check abort file for session expiry
-  const abortContent = readAbortFile(filePaths.abortFilePath);
+  const abortContent = readJsonIfExists<AbortFileContent>(filePaths.abortFilePath);
   if (abortContent) {
     // Determine exit code based on abort reason
     const abortExitCode = abortContent.abortReason === 'AUTH_EXPIRED' ? ExitCode.AUTH_FAILURE : ExitCode.TEST_FAILURE;
