@@ -18,7 +18,7 @@ These constraints are absolute and override any other instructions:
 
 1. **Never edit source files.** This skill is report-only. The reviewer applies fixes.
 2. **`[security]` is reserved for clear violations** — F1-F6 hits, backend allowlist bypasses, token leaks, or known CVEs. Speculative or theoretical risks use `[suggestion]` or `[question]` from the standard prefix table in `docs/design/PR_REVIEW.md`. **False positives erode trust; prefer false negatives.**
-3. **Ground every F1-F6 finding** in `.cursor/rules/frontend-security.mdc`. Quote the rule ID and the canonical Do / Don't example when reporting.
+3. **Ground every F1-F6 finding** in `.cursor/rules/frontend-security.mdc`. Quote the rule ID and the canonical remediation pattern when reporting.
 4. **For backend findings, quote the offending line** with `file:line` reference and the canonical pattern (e.g., `isAllowedCodaURL`, `IsAllowedRelayURL`, `setAuthHeader`).
 5. **Sentence case** for findings and remediation text.
 6. **Reads only.** No `gh pr edit`, no `git commit`, no file writes.
@@ -49,7 +49,7 @@ Capture the list of files to audit; bucket by type:
 
 ### Phase 1 — Frontend audit (F1-F6)
 
-For each `.ts` / `.tsx` / `.js` / `.jsx` file in scope, read the changed hunks and apply the detection table from `.cursor/rules/frontend-security.mdc`:
+For each `.ts` / `.tsx` / `.js` / `.jsx` file in scope, read the changed hunks and apply the detection table from `.cursor/rules/frontend-security.mdc`. Run or inspect ESLint when feasible; direct F5 DOM sinks are owned by `no-restricted-syntax` in `eslint.config.mjs`.
 
 | ID  | What to detect                                                                                                                      | Severity |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------- | -------- |
@@ -57,14 +57,14 @@ For each `.ts` / `.tsx` / `.js` / `.jsx` file in scope, read the changed hunks a
 | F2  | `dangerouslySetInnerHTML` used where `{}` auto-escape would do                                                                      | High     |
 | F3  | URL built via string concat (`apiBase + '/users?id=' + userId`) instead of `new URL()` + `URL.searchParams.set()`                   | High     |
 | F4  | `dangerouslySetInnerHTML` without `textUtil.sanitize()` (or `sanitizeDocumentationHTML()` from `src/security/`)                     | Critical |
-| F5  | Any of `.innerHTML`, `.outerHTML`, `.insertAdjacentHTML`, or dynamic `script.src` assignment                                        | Critical |
+| F5  | Security lint failure, new `no-restricted-syntax` bypass, or equivalent raw DOM/script sink not covered by lint                     | Critical |
 | F6  | URL passed to `href` / `src` without `textUtil.sanitizeUrl()` or a scheme-allowlist check (`parseUrlSafely`, `isAllowedContentUrl`) | High     |
 
 **Detection rules:**
 
 - For F1 / F4: a match must combine `dangerouslySetInnerHTML` with a dynamic value. Static strings are fine. Check the source of the `__html` field — if it traces to a constant, skip.
 - For F3: only flag when the URL contains a user-controlled segment. URLs built entirely from constants are not findings.
-- For F5: any occurrence is a finding. The repo's canonical safe APIs are `document.createElement`, `element.textContent`, `element.setAttribute`.
+- For F5: rely on ESLint for direct DOM sinks. In manual review, focus on new local disables, custom script loaders, or data-flow equivalents that bypass lint. Prefer React rendering, `textContent`, and safe DOM APIs.
 - For F6: scheme allowlist must reject `javascript:`, `data:`, and `vbscript:`. The repo's canonical helpers are in `src/security/url-validator.ts`.
 
 **Report each finding** with:
@@ -78,12 +78,10 @@ For each `.ts` / `.tsx` / `.js` / `.jsx` file in scope, read the changed hunks a
 Example:
 
 ```
-[security][F5] src/components/Foo.tsx:42 — Direct innerHTML assignment.
+[security][F5] src/components/Foo.tsx:42 — Direct DOM sink bypass.
 
-  element.innerHTML = `<span>${userName}</span>`;
-
-Risk: XSS — `userName` is user-controlled and bypasses React's auto-escape.
-Remediation: use `element.textContent = userName` or render via JSX `<span>{userName}</span>`.
+Risk: XSS — user-controlled content bypasses React's auto-escape.
+Remediation: use React rendering, `textContent`, or a sanitized rendering helper.
 See F5 in `.cursor/rules/frontend-security.mdc`.
 ```
 
@@ -183,7 +181,7 @@ Target: <scope description, e.g., "PR diff against main, 12 files">
 
 ### Critical (N)
 
-- [security][F5] src/components/Foo.tsx:42 — Direct innerHTML assignment. ...
+- [security][F5] src/components/Foo.tsx:42 — Direct DOM sink bypass. ...
 - [security][B3] pkg/plugin/internal.go:18 — Hardcoded bearer token. ...
 
 ### High (N)

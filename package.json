@@ -23,7 +23,7 @@
     "test": "jest --watch --onlyChanged",
     "test:ci": "jest --passWithNoTests --maxWorkers 4",
     "test:coverage": "jest --coverage",
-    "test:governance": "jest --passWithNoTests src/validation/architecture.test.ts src/validation/import-graph.test.ts",
+    "test:governance": "jest --passWithNoTests src/validation/architecture.test.ts src/validation/import-graph.test.ts src/validation/security-lint-config.test.ts",
     "test:coverage:watch": "jest --coverage --watch",
     "test:go": "mage -v test",
     "typecheck": "tsc --noEmit",

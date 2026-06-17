@@ -33,7 +33,7 @@ Flag unmapped clusters, disclose reduced confidence, and suggest new concerns wh
 
 ## Canonical rule sources
 
-F1–F6 security rules are defined in `.cursor/rules/frontend-security.mdc`. Other files (`docs/design/PR_REVIEW.md`, `.cursor/skills/secure/SKILL.md`) reference these IDs without redefining them — if the summaries diverge, `frontend-security.mdc` wins.
+F1–F6 security rules are defined in `.cursor/rules/frontend-security.mdc`. Direct F5 DOM-sink syntax is mechanically cataloged in `eslint.config.mjs`. Other files (`docs/design/PR_REVIEW.md`, `.cursor/skills/secure/SKILL.md`) reference these IDs without redefining them — if the summaries diverge, `frontend-security.mdc` wins for intent and ESLint wins for enforced F5 syntax.
 
 ---
 
