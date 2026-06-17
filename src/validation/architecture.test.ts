@@ -97,8 +97,6 @@ function collectViolations(getViolationKey: (ctx: ResolvedImportContext) => stri
  * Adding new entries means the architecture is degrading.
  */
 const ALLOWED_VERTICAL_VIOLATIONS = new Set([
-  // Existing cross-domain persistence dependency (legacy coupling)
-  'lib/user-storage.ts -> learning-paths',
   // Terminal requirement check needs to query terminal connection status from the integrations layer.
   // The dynamic import minimizes coupling and makes terminal code tree-shakeable when disabled.
   'requirements-manager/checks/terminal.ts -> integrations',

@@ -30,6 +30,7 @@ import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
 import { fetchPathGuides, type FetchedPathGuides } from './fetch-path-guides';
+import { markGuideCompleted as coordinatorMarkGuideCompleted } from './badge-coordinator';
 
 // ============================================================================
 // CONSTANTS
@@ -328,17 +329,16 @@ export function useLearningPaths(): UseLearningPathsReturn {
     [getPathProgress]
   );
 
-  // Mark a guide as completed
-  // Badge awarding is handled in user-storage.ts, state is updated via event listener
+  // Mark a guide as completed.
+  // Badge awarding + analytics + the LearningProgressUpdated dispatch are
+  // owned by the Tier 2 coordinator; storage just persists.
   const markGuideCompleted = useCallback(
     async (guideId: string): Promise<void> => {
       // Skip if already completed
       if (progress.completedGuides.includes(guideId)) {
         return;
       }
-
-      // Delegate to storage - it handles badge awarding and dispatches events
-      await learningProgressStorage.markGuideCompleted(guideId);
+      await coordinatorMarkGuideCompleted(guideId);
     },
     [progress.completedGuides]
   );
