@@ -1,10 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 
-import {
-  usePersistedBoolean,
-  usePersistedLocalState,
-  usePersistedString,
-} from './usePersistedLocalState';
+import { usePersistedBoolean, usePersistedLocalState, usePersistedString } from './usePersistedLocalState';
 
 beforeEach(() => {
   localStorage.clear();

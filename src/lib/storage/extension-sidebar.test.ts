@@ -38,10 +38,7 @@ describe('parseExtensionSidebarDocked', () => {
   });
 
   it('returns undefined for non-string fields in JSON', () => {
-    localStorage.setItem(
-      EXTENSION_SIDEBAR_DOCKED_KEY,
-      JSON.stringify({ pluginId: 42, componentTitle: null })
-    );
+    localStorage.setItem(EXTENSION_SIDEBAR_DOCKED_KEY, JSON.stringify({ pluginId: 42, componentTitle: null }));
 
     expect(parseExtensionSidebarDocked()).toEqual({
       pluginId: undefined,
@@ -68,10 +65,7 @@ describe('isExtensionSidebarOwnedByOther', () => {
   });
 
   it('false when the docked surface is us (object shape)', () => {
-    localStorage.setItem(
-      EXTENSION_SIDEBAR_DOCKED_KEY,
-      JSON.stringify({ pluginId: MY_PLUGIN_ID })
-    );
+    localStorage.setItem(EXTENSION_SIDEBAR_DOCKED_KEY, JSON.stringify({ pluginId: MY_PLUGIN_ID }));
     expect(isExtensionSidebarOwnedByOther(MY_PLUGIN_ID)).toBe(false);
   });
 
@@ -81,10 +75,7 @@ describe('isExtensionSidebarOwnedByOther', () => {
   });
 
   it('true when another plugin is docked (object shape)', () => {
-    localStorage.setItem(
-      EXTENSION_SIDEBAR_DOCKED_KEY,
-      JSON.stringify({ pluginId: 'other-plugin' })
-    );
+    localStorage.setItem(EXTENSION_SIDEBAR_DOCKED_KEY, JSON.stringify({ pluginId: 'other-plugin' }));
     expect(isExtensionSidebarOwnedByOther(MY_PLUGIN_ID)).toBe(true);
   });
 
@@ -101,10 +92,7 @@ describe('isExtensionSidebarOwnedByOther', () => {
 
 describe('isExtensionSidebarOwnedByPathfinder', () => {
   it('matches by pluginId', () => {
-    localStorage.setItem(
-      EXTENSION_SIDEBAR_DOCKED_KEY,
-      JSON.stringify({ pluginId: MY_PLUGIN_ID })
-    );
+    localStorage.setItem(EXTENSION_SIDEBAR_DOCKED_KEY, JSON.stringify({ pluginId: MY_PLUGIN_ID }));
     expect(isExtensionSidebarOwnedByPathfinder(MY_PLUGIN_ID, TITLE_MATCH)).toBe(true);
   });
 

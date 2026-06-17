@@ -93,10 +93,7 @@ export function isExtensionSidebarInUse(): boolean {
  * componentTitle match for older Grafana versions where pluginId was not
  * yet recorded.
  */
-export function isExtensionSidebarOwnedByPathfinder(
-  myPluginId: string,
-  componentTitleMatch: string
-): boolean {
+export function isExtensionSidebarOwnedByPathfinder(myPluginId: string, componentTitleMatch: string): boolean {
   const docked = parseExtensionSidebarDocked();
   if (!docked) {
     return false;
