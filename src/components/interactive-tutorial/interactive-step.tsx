@@ -672,6 +672,12 @@ export const InteractiveStep = forwardRef<
           console.warn('[Pathfinder] controller "show" skipped: step has no stepId');
           return;
         }
+        // Cross-tab state can be stale; re-verify against the live tab and gate.
+        // revalidate() fails OPEN when no live tab answers (§6.5), so a
+        // disconnected controller proceeds rather than being silently blocked.
+        if (!(await checker.revalidate())) {
+          return;
+        }
         controllerChannel?.post({
           kind: 'step-command',
           phase: 'show',
@@ -752,6 +758,7 @@ export const InteractiveStep = forwardRef<
       persistCompletion,
       mode,
       controllerChannel,
+      checker.revalidate,
     ]);
 
     // Handle individual "Do it" action (delegates to executeStep)
@@ -784,6 +791,12 @@ export const InteractiveStep = forwardRef<
           // stepId. The anonymous fallback is mount-instance-derived and would
           // mis-address the live tab, so fail loud rather than dispatch a guess.
           console.warn('[Pathfinder] controller "do" skipped: step has no stepId');
+          return;
+        }
+        // Cross-tab state can be stale; re-verify against the live tab and gate.
+        // revalidate() fails OPEN when no live tab answers (§6.5), so a
+        // disconnected controller proceeds rather than being silently blocked.
+        if (!(await checker.revalidate())) {
           return;
         }
         controllerChannel?.post({
@@ -847,6 +860,7 @@ export const InteractiveStep = forwardRef<
       onComplete,
       stepId,
       targetComment,
+      checker.revalidate,
     ]);
 
     // Handle individual step reset (redo functionality)
