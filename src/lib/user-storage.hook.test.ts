@@ -137,7 +137,6 @@ describe('useUserStorage — global-storage bridge', () => {
       await Promise.resolve();
     });
 
-    // Defer the import so the mocked module is fresh per test.
     const { createUserStorage } = await import('./user-storage');
     const standalone = createUserStorage();
     await standalone.setItem('standalone-key', { from: 'non-react' });

@@ -88,6 +88,25 @@ describe('useBlockPersistence — debounced auto-save', () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
+  it('fires onSave on the no-change branch when the serialized guide is unchanged', () => {
+    const onSave = jest.fn();
+    const { rerender } = renderHook(({ g }) => useBlockPersistence({ guide: g, onSave }), {
+      initialProps: { g: guide('a') },
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+    // First save() flush calls onSave once and pins lastGuideRef to the serialized guide.
+    expect(onSave).toHaveBeenCalledTimes(1);
+
+    // New object identity, identical content — the effect re-runs, hits the
+    // no-change branch, and must still notify onSave so callers can clear isDirty.
+    rerender({ g: guide('a') });
+
+    expect(onSave).toHaveBeenCalledTimes(2);
+  });
+
   it('stores blockIds alongside guide when provided', () => {
     const { rerender } = renderHook(
       ({ g, ids }: { g: JsonGuide; ids: string[] }) => useBlockPersistence({ guide: g, blockIds: ids }),

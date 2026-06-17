@@ -9,6 +9,7 @@
  *   - clear() removes the key
  *   - load() handles malformed JSON without throwing
  */
+import React, { StrictMode } from 'react';
 import { renderHook, act } from '@testing-library/react';
 
 import { StorageKeys } from '../../../lib/storage-keys';
@@ -123,7 +124,7 @@ describe('useRecordingPersistence — restore on mount', () => {
     expect(onRestore).not.toHaveBeenCalled();
   });
 
-  it('hasRestoredRef gate prevents double restore on rerender', () => {
+  it('hasRestoredRef gate prevents double restore under React StrictMode', () => {
     const persisted: PersistedRecordingState = {
       recordingIntoSection: 'section-2',
       recordingIntoConditionalBranch: null,
@@ -134,12 +135,9 @@ describe('useRecordingPersistence — restore on mount', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
 
     const onRestore = jest.fn();
-    const { rerender } = renderHook((props) => useRecordingPersistence(props), {
-      initialProps: defaultOpts({ onRestore }),
+    renderHook(() => useRecordingPersistence(defaultOpts({ onRestore })), {
+      wrapper: ({ children }) => React.createElement(StrictMode, null, children),
     });
-
-    rerender(defaultOpts({ onRestore, recordingIntoSection: 'section-2' }));
-    rerender(defaultOpts({ onRestore, recordingIntoSection: 'section-3' }));
 
     expect(onRestore).toHaveBeenCalledTimes(1);
   });
