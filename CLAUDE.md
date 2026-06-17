@@ -24,6 +24,7 @@ Reusable agent workflows. Read a skill's `SKILL.md` before invoking it.
 | `review`             | `/review`                        | Principal-engineer PR review: routes via `CONCERNS.md`, grounds findings in `docs/design/PR_REVIEW.md` catalog, invokes doc-drift check     |
 | `secure`             | `/secure`                        | Security audit: F1-F6 frontend + backend allowlists + MCP transport + deps                                                                  |
 | `techdebt`           | `/techdebt <subsystem>`          | Confidence-tiered tech-debt audit: smells, duplication, prop drilling, dead code, extraction seams; also runs as sub-agent inside `/review` |
+| `test-drift`         | `/test-drift <target>`           | Report-only audit for stale tests: outdated mocks, contract literal drift, mock-only verification, and dead API coverage                    |
 
 ### Doc-quality skill pairing
 
