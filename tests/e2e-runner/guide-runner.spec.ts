@@ -19,6 +19,7 @@
  */
 
 import { readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 
 import { test, expect } from '../fixtures';
 import { testIds } from '../../src/constants/testIds';
@@ -41,6 +42,7 @@ import {
   printDiscoveryResults,
 } from './utils/console-reporter';
 import type { TestResultsData } from '../../src/cli/utils/e2e-reporter';
+import { E2E_ENV, isEnvFlagEnabled } from '../../src/cli/utils/e2e-runner-contract';
 
 /**
  * Write abort reason to file for CLI to read and determine exit code.
@@ -50,7 +52,7 @@ import type { TestResultsData } from '../../src/cli/utils/e2e-reporter';
  * @param message - Human-readable message
  */
 function writeAbortFile(abortReason: AbortReason, message: string): void {
-  const abortFilePath = process.env.ABORT_FILE_PATH;
+  const abortFilePath = process.env[E2E_ENV.ABORT_FILE_PATH];
   if (abortFilePath) {
     const abortData = JSON.stringify({ abortReason, message });
     writeFileSync(abortFilePath, abortData, 'utf-8');
@@ -73,7 +75,7 @@ function writeResultsFile(
   timestamp: string,
   allStepsResult: AllStepsResult
 ): void {
-  const resultsFilePath = process.env.RESULTS_FILE_PATH;
+  const resultsFilePath = process.env[E2E_ENV.RESULTS_FILE_PATH];
   if (!resultsFilePath) {
     return;
   }
@@ -104,8 +106,21 @@ function writeResultsFile(
   writeFileSync(resultsFilePath, JSON.stringify(data), 'utf-8');
 }
 
+/**
+ * Record the produced trace's location for the CLI to surface (see
+ * e2e-runner-contract). Playwright writes the per-test trace to
+ * `<outputDir>/trace.zip` when tracing is on.
+ */
+function writeTracePathFile(outputDir: string): void {
+  const tracePathFile = process.env[E2E_ENV.TRACE_OUTPUT_FILE];
+  if (!tracePathFile || !isEnvFlagEnabled(process.env[E2E_ENV.TRACE])) {
+    return;
+  }
+  writeFileSync(tracePathFile, join(outputDir, 'trace.zip'), 'utf-8');
+}
+
 test.describe('Guide Runner', () => {
-  test('loads and displays guide from JSON', async ({ page }) => {
+  test('loads and displays guide from JSON', async ({ page }, testInfo) => {
     // Guide tests may take longer due to fix button attempts and multi-step execution.
     // Per L3-3C timing design: 30s base + 5s per internal action for multisteps,
     // plus additional time for fix attempts (up to 3 × 10s each).
@@ -116,16 +131,20 @@ test.describe('Guide Runner', () => {
     const testStartTimestamp = new Date().toISOString();
 
     // Read guide JSON from environment variable path
-    const guidePath = process.env.GUIDE_JSON_PATH;
-    const grafanaUrl = process.env.GRAFANA_URL ?? 'http://localhost:3000';
-    const isVerbose = process.env.E2E_VERBOSE === 'true';
+    const guidePath = process.env[E2E_ENV.GUIDE_JSON_PATH];
+    const grafanaUrl = process.env[E2E_ENV.GRAFANA_URL] ?? 'http://localhost:3000';
+    const isVerbose = isEnvFlagEnabled(process.env[E2E_ENV.VERBOSE]);
     // L3-5D: Artifacts directory for artifact collection
-    const artifactsDir = process.env.ARTIFACTS_DIR;
+    const artifactsDir = process.env[E2E_ENV.ARTIFACTS_DIR];
     // Capture screenshots on success and failure
-    const alwaysScreenshot = process.env.ALWAYS_SCREENSHOT === 'true';
+    const alwaysScreenshot = isEnvFlagEnabled(process.env[E2E_ENV.ALWAYS_SCREENSHOT]);
+
+    // Record the trace location up front so the CLI can surface it even when the
+    // test fails (Playwright produces the trace regardless of pass/fail).
+    writeTracePathFile(testInfo.outputDir);
 
     if (!guidePath) {
-      throw new Error('GUIDE_JSON_PATH environment variable is required');
+      throw new Error(`${E2E_ENV.GUIDE_JSON_PATH} environment variable is required`);
     }
 
     const guideJson = readFileSync(guidePath, 'utf-8');

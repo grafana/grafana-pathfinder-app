@@ -9,6 +9,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 
 import { ExitCode } from './exit-codes';
+import { E2E_ENV, encodeEnvFlag } from './e2e-runner-contract';
 import type { LoadedGuide } from './file-loader';
 import type { TestResultsData } from './e2e-reporter';
 
@@ -87,6 +88,22 @@ function readResultsFile(resultsFilePath: string): TestResultsData | undefined {
 }
 
 /**
+ * Read the trace file path the runner recorded (see e2e-runner-contract).
+ * Returns undefined if the file is missing or empty.
+ */
+function readTraceOutputFile(traceOutputFilePath: string): string | undefined {
+  try {
+    if (!existsSync(traceOutputFilePath)) {
+      return undefined;
+    }
+    const content = readFileSync(traceOutputFilePath, 'utf-8').trim();
+    return content.length > 0 ? content : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Process Playwright test results from temp files.
  * Reads abort file and results file to determine final outcome.
  *
@@ -98,17 +115,14 @@ function readResultsFile(resultsFilePath: string): TestResultsData | undefined {
 function processPlaywrightResults(
   exitCode: number,
   options: { trace: boolean },
-  filePaths: { abortFilePath: string; resultsFilePath: string }
+  filePaths: { abortFilePath: string; resultsFilePath: string; traceOutputFilePath: string }
 ): PlaywrightResult {
   const playwrightExitCode = exitCode;
   const success = playwrightExitCode === 0;
 
-  // Build trace file path if tracing enabled
-  let traceFile: string | undefined;
-  if (options.trace) {
-    // Playwright stores traces in test-results/ directory
-    traceFile = 'test-results/guide-runner-loads-and-displays-guide-from-JSON-chromium/trace.zip';
-  }
+  // Trace location is reported by the runner (see e2e-runner-contract) so the
+  // CLI never hardcodes Playwright's per-test output-dir naming.
+  const traceFile = options.trace ? readTraceOutputFile(filePaths.traceOutputFilePath) : undefined;
 
   // L3-5B: Read results file for JSON reporting
   const resultsData = readResultsFile(filePaths.resultsFilePath);
@@ -160,6 +174,8 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
   const abortFilePath = join(tempDir, 'abort.json');
   // L3-5B: Create results file path for JSON reporting
   const resultsFilePath = join(tempDir, 'results.json');
+  // Path the runner records the produced trace location to (see e2e-runner-contract).
+  const traceOutputFilePath = join(tempDir, 'trace-path.txt');
 
   try {
     writeFileSync(guidePath, guide.content);
@@ -192,18 +208,15 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
       const proc = spawn('npx', playwrightArgs, {
         env: {
           ...process.env,
-          GUIDE_JSON_PATH: guidePath,
-          GRAFANA_URL: options.grafanaUrl,
-          E2E_TRACE: options.trace ? 'true' : 'false',
-          E2E_VERBOSE: options.verbose ? 'true' : 'false',
-          // L3-3D: Pass abort file path for session validation
-          ABORT_FILE_PATH: abortFilePath,
-          // L3-5B: Pass results file path for JSON reporting
-          RESULTS_FILE_PATH: resultsFilePath,
-          // L3-5D: Pass artifacts directory for artifact collection
-          ARTIFACTS_DIR: options.artifacts,
-          // Capture screenshots on success and failure
-          ALWAYS_SCREENSHOT: options.alwaysScreenshot ? 'true' : 'false',
+          [E2E_ENV.GUIDE_JSON_PATH]: guidePath,
+          [E2E_ENV.GRAFANA_URL]: options.grafanaUrl,
+          [E2E_ENV.TRACE]: encodeEnvFlag(options.trace),
+          [E2E_ENV.VERBOSE]: encodeEnvFlag(options.verbose),
+          [E2E_ENV.ABORT_FILE_PATH]: abortFilePath,
+          [E2E_ENV.RESULTS_FILE_PATH]: resultsFilePath,
+          [E2E_ENV.ARTIFACTS_DIR]: options.artifacts,
+          [E2E_ENV.ALWAYS_SCREENSHOT]: encodeEnvFlag(options.alwaysScreenshot),
+          [E2E_ENV.TRACE_OUTPUT_FILE]: traceOutputFilePath,
           // Prevent Playwright from auto-opening HTML report server in CLI mode
           PLAYWRIGHT_HTML_OPEN: 'never',
         },
@@ -214,7 +227,11 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
         const result = processPlaywrightResults(
           code ?? 1,
           { trace: options.trace },
-          { abortFilePath, resultsFilePath }
+          {
+            abortFilePath,
+            resultsFilePath,
+            traceOutputFilePath,
+          }
         );
         resolve(result);
       });
