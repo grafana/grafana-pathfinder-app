@@ -10,7 +10,7 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { InteractiveModeContext, type InteractiveMode } from '../../global-state/interactive-mode-context';
-import { ControllerChannelProvider } from '../../global-state/controller-channel';
+import { ControllerChannelProvider, useControllerChannel } from '../../global-state/controller-channel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { testIds } from '../../constants/testIds';
 import type { RawContent } from '../../types/content.types';
@@ -42,6 +42,22 @@ function useGrafanaTheme() {
   }, []);
 
   return theme;
+}
+
+function ControllerStatusBadge() {
+  const styles = useStyles2(getGuideReaderStyles);
+  const channel = useControllerChannel();
+  const connected = channel?.connected ?? false;
+  return (
+    <div className={styles.controllerStatus} data-testid={testIds.guideReader.controllerStatus}>
+      <span
+        className={`${styles.controllerStatusDot} ${
+          connected ? styles.controllerStatusConnected : styles.controllerStatusWaiting
+        }`}
+      />
+      {connected ? 'Connected to your Grafana tab' : 'Waiting for your Grafana tab…'}
+    </div>
+  );
 }
 
 /**
@@ -168,7 +184,14 @@ function GuideReaderInner({ doc, mode }: { doc: string; mode: InteractiveMode })
         )}
         {body && (
           <InteractiveModeContext.Provider value={mode}>
-            {mode === 'controller' ? <ControllerChannelProvider>{body}</ControllerChannelProvider> : body}
+            {mode === 'controller' ? (
+              <ControllerChannelProvider>
+                <ControllerStatusBadge />
+                {body}
+              </ControllerChannelProvider>
+            ) : (
+              body
+            )}
           </InteractiveModeContext.Provider>
         )}
       </div>

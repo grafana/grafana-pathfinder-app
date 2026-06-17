@@ -396,5 +396,6 @@ export const testIds = {
     loading: 'guide-reader-loading',
     error: 'guide-reader-error',
     closeHint: 'guide-reader-close-hint',
+    controllerStatus: 'guide-reader-controller-status',
   },
 };

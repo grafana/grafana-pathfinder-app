@@ -17,6 +17,7 @@ jest.mock('../../interactive-engine/action-handlers', () => {
 class FakeTransport {
   started = false;
   stopped = false;
+  postedMessages: unknown[] = [];
   private listener: ((message: CrossTabMessage) => void) | null = null;
 
   start(): void {
@@ -25,6 +26,10 @@ class FakeTransport {
 
   stop(): void {
     this.stopped = true;
+  }
+
+  post(payload: unknown): void {
+    this.postedMessages.push(payload);
   }
 
   onMessage(listener: (message: CrossTabMessage) => void): () => void {
@@ -37,6 +42,10 @@ class FakeTransport {
   emit(message: CrossTabMessage): void {
     this.listener?.(message);
   }
+}
+
+function controllerHeartbeat(): CrossTabMessage {
+  return { source: 'pathfinder', senderId: 'controller', timestamp: 0, kind: 'heartbeat', role: 'controller' };
 }
 
 function stampStepCommand(phase: 'show' | 'do', targetAction: string, refTarget: string): CrossTabMessage {
@@ -117,6 +126,16 @@ describe('installLiveTabExecutor', () => {
     expect(() => transport.emit(stampStepCommand('do', 'multistep', '#x'))).not.toThrow();
     expect(executeOf(FocusHandler)).not.toHaveBeenCalled();
     expect(executeOf(ButtonHandler)).not.toHaveBeenCalled();
+    uninstall();
+  });
+
+  it('responds to a controller heartbeat with a live heartbeat', () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport);
+
+    transport.emit(controllerHeartbeat());
+
+    expect(transport.postedMessages).toContainEqual({ kind: 'heartbeat', role: 'live' });
     uninstall();
   });
 

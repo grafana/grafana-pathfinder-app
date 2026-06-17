@@ -12,11 +12,17 @@ import {
   NavigationManager,
 } from '../../interactive-engine';
 import { CrossTabTransport, createSenderId } from '../../lib/cross-tab-transport';
-import { validateCrossTabMessage, type CrossTabMessage, type StepCommandMessage } from '../../types/cross-tab.types';
+import {
+  validateCrossTabMessage,
+  type CrossTabMessage,
+  type CrossTabPayload,
+  type StepCommandMessage,
+} from '../../types/cross-tab.types';
 
 interface ExecutorTransport {
   start(): void;
   stop(): void;
+  post(payload: CrossTabPayload): void;
   onMessage(listener: (message: CrossTabMessage) => void): () => void;
 }
 
@@ -109,10 +115,14 @@ export function installLiveTabExecutor(
     // Defense in depth: re-validate at the DOM sink before dispatch, so the
     // executor never trusts a message that bypassed the transport gate (T1).
     const validated = validateCrossTabMessage(message);
-    if (!validated || validated.kind !== 'step-command') {
+    if (!validated) {
       return;
     }
-    queue = queue.then(() => runStepCommand(validated));
+    if (validated.kind === 'step-command') {
+      queue = queue.then(() => runStepCommand(validated));
+    } else if (validated.kind === 'heartbeat' && validated.role === 'controller') {
+      transport.post({ kind: 'heartbeat', role: 'live' });
+    }
   });
   transport.start();
 

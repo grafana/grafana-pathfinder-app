@@ -172,7 +172,7 @@ describe('InteractiveStep: popout action type', () => {
 
 describe('InteractiveStep: controller mode emits over the channel instead of executing', () => {
   function makeTransport() {
-    return { start: jest.fn(), stop: jest.fn(), post: jest.fn() };
+    return { start: jest.fn(), stop: jest.fn(), post: jest.fn(), onMessage: jest.fn(() => jest.fn()) };
   }
 
   it('emits a "show" step-command when Show me is clicked', async () => {
