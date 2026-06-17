@@ -60,10 +60,9 @@ describe('useBlockPersistence — debounced auto-save', () => {
   });
 
   it('does not write when autoSavePaused is true', () => {
-    const { rerender } = renderHook(
-      ({ g, paused }) => useBlockPersistence({ guide: g, autoSavePaused: paused }),
-      { initialProps: { g: guide('a'), paused: true } }
-    );
+    const { rerender } = renderHook(({ g, paused }) => useBlockPersistence({ guide: g, autoSavePaused: paused }), {
+      initialProps: { g: guide('a'), paused: true },
+    });
 
     rerender({ g: guide('b'), paused: true });
 
@@ -156,9 +155,7 @@ describe('useBlockPersistence — mount-time restore via onLoad', () => {
     const onLoad = jest.fn();
     const errSpy = jest.spyOn(console, 'error').mockImplementation();
 
-    expect(() =>
-      renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }))
-    ).not.toThrow();
+    expect(() => renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }))).not.toThrow();
 
     expect(onLoad).not.toHaveBeenCalled();
     errSpy.mockRestore();
@@ -212,10 +209,7 @@ describe('useBlockPersistence — load() / clear() / hasSavedGuide / getLastSave
     expect(result.current.getLastSaveTime()).toBeNull();
 
     const ts = '2024-01-02T03:04:05.000Z';
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ guide: guide('a'), savedAt: ts, version: 2 })
-    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ guide: guide('a'), savedAt: ts, version: 2 }));
 
     const t = result.current.getLastSaveTime();
     expect(t).toBeInstanceOf(Date);
@@ -227,10 +221,9 @@ describe('useBlockPersistence — custom storageKey', () => {
   it('honors a custom storageKey for save / load', () => {
     const customKey = 'custom-block-editor-state';
 
-    const { result, rerender } = renderHook(
-      ({ g }) => useBlockPersistence({ guide: g, storageKey: customKey }),
-      { initialProps: { g: guide('a') } }
-    );
+    const { result, rerender } = renderHook(({ g }) => useBlockPersistence({ guide: g, storageKey: customKey }), {
+      initialProps: { g: guide('a') },
+    });
 
     rerender({ g: guide('b') });
 

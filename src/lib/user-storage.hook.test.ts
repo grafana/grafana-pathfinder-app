@@ -24,12 +24,7 @@ import { renderHook, act } from '@testing-library/react';
 
 import type { GrafanaUserStorage } from '../types/storage.types';
 
-import {
-  __resetSyncedForTests,
-  createLocalStorage,
-  setGlobalStorage,
-  useUserStorage,
-} from './user-storage';
+import { __resetSyncedForTests, createLocalStorage, setGlobalStorage, useUserStorage } from './user-storage';
 
 const usePluginUserStorageMock = jest.fn();
 

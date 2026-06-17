@@ -19,10 +19,7 @@ beforeEach(() => {
 
 describe('bundled:wysiwyg-preview', () => {
   it('returns content with the stored JSON title on success', async () => {
-    localStorage.setItem(
-      StorageKeys.WYSIWYG_PREVIEW_JSON,
-      JSON.stringify({ title: 'My Preview Guide', sections: [] })
-    );
+    localStorage.setItem(StorageKeys.WYSIWYG_PREVIEW_JSON, JSON.stringify({ title: 'My Preview Guide', sections: [] }));
 
     const result = await fetchContent('bundled:wysiwyg-preview');
 
@@ -61,10 +58,7 @@ describe('bundled:wysiwyg-preview', () => {
 
 describe('bundled:e2e-test', () => {
   it('returns content with the stored JSON title on success', async () => {
-    localStorage.setItem(
-      StorageKeys.E2E_TEST_GUIDE,
-      JSON.stringify({ title: 'E2E Scenario Alpha', sections: [] })
-    );
+    localStorage.setItem(StorageKeys.E2E_TEST_GUIDE, JSON.stringify({ title: 'E2E Scenario Alpha', sections: [] }));
 
     const result = await fetchContent('bundled:e2e-test');
 
@@ -91,10 +85,7 @@ describe('bundled:e2e-test', () => {
   });
 
   it('reads the e2e-test key independently of wysiwyg-preview', async () => {
-    localStorage.setItem(
-      StorageKeys.WYSIWYG_PREVIEW_JSON,
-      JSON.stringify({ title: 'Preview Title' })
-    );
+    localStorage.setItem(StorageKeys.WYSIWYG_PREVIEW_JSON, JSON.stringify({ title: 'Preview Title' }));
     localStorage.setItem(StorageKeys.E2E_TEST_GUIDE, JSON.stringify({ title: 'E2E Title' }));
 
     const preview = await fetchContent('bundled:wysiwyg-preview');
