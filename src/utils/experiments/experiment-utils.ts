@@ -23,7 +23,7 @@ export const getStorageKeys = (hostname: string) => ({
   // sessionStorage - cleared when browser closes
   autoOpened: `${StorageKeys.EXPERIMENT_SESSION_AUTO_OPENED_PREFIX}${hostname}`,
   // Legacy global treatment key (kept for backwards compatibility)
-  treatmentOpened: `grafana-pathfinder-experiment-treatment-opened-${hostname}`,
+  treatmentOpened: `${StorageKeys.EXPERIMENT_TREATMENT_OPENED_LEGACY_PREFIX}${hostname}`,
   // Per-page treatment prefix
   treatmentPagePrefix: `${StorageKeys.EXPERIMENT_TREATMENT_PAGE_PREFIX}${hostname}-`,
 });

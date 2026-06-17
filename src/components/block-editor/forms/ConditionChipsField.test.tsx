@@ -10,6 +10,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ConditionChipsField } from './ConditionChipsField';
+import { StorageKeys } from '../../../lib/storage-keys';
 
 // `Combobox` from @grafana/ui uses a virtualized listbox that's awkward to
 // drive from RTL fireEvent. Replace it with a plain <select> for the
@@ -193,15 +194,15 @@ describe('ConditionChipsField — raw mode toggle', () => {
   it('persists the raw-mode preference to localStorage', () => {
     render(<ConditionChipsField value="" onChange={jest.fn()} mode="requirements" />);
 
-    expect(window.localStorage.getItem('pathfinder.blockEditor.conditionField.rawMode')).toBe(null);
+    expect(window.localStorage.getItem(StorageKeys.BLOCK_EDITOR_CONDITION_RAW_MODE)).toBe(null);
     fireEvent.click(screen.getByRole('button', { name: /View raw/i }));
-    expect(window.localStorage.getItem('pathfinder.blockEditor.conditionField.rawMode')).toBe('true');
+    expect(window.localStorage.getItem(StorageKeys.BLOCK_EDITOR_CONDITION_RAW_MODE)).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: /Use chip editor/i }));
-    expect(window.localStorage.getItem('pathfinder.blockEditor.conditionField.rawMode')).toBe('false');
+    expect(window.localStorage.getItem(StorageKeys.BLOCK_EDITOR_CONDITION_RAW_MODE)).toBe('false');
   });
 
   it('initializes raw mode from a previously stored preference', () => {
-    window.localStorage.setItem('pathfinder.blockEditor.conditionField.rawMode', 'true');
+    window.localStorage.setItem(StorageKeys.BLOCK_EDITOR_CONDITION_RAW_MODE, 'true');
     render(<ConditionChipsField value="exists-reftarget" onChange={jest.fn()} mode="requirements" />);
     expect(screen.getByDisplayValue('exists-reftarget')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Use chip editor/i })).toBeInTheDocument();

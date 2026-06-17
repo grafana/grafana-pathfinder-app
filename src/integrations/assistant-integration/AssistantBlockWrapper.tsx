@@ -11,6 +11,7 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { useStyles2, Button } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction, buildAssistantCustomizableProperties } from '../../lib/analytics';
+import { buildAssistantStorageKey } from '../../lib/storage-keys';
 import { type DatasourceMetadataArtifact } from './tools';
 import { AssistantBlockValueProvider } from './AssistantBlockValueContext';
 import { parseMarkdownToElements, CodeBlock } from '../../docs-retrieval';
@@ -132,7 +133,7 @@ export function AssistantBlockWrapper({
   // Get initial customized value from localStorage
   const getInitialCustomizedValue = useCallback((): string | null => {
     try {
-      const storageKey = `pathfinder-assistant-${contentKey}-${assistantId}`;
+      const storageKey = buildAssistantStorageKey(contentKey, assistantId);
       return localStorage.getItem(storageKey);
     } catch (error) {
       return null;

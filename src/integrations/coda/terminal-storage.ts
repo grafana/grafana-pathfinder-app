@@ -5,17 +5,17 @@
  * sessionStorage: Connection state and scrollback - tab-scoped, cleared on close
  */
 
-const STORAGE_PREFIX = 'pathfinder-coda-terminal';
+import { StorageKeys } from '../../lib/storage-keys';
 
 const KEYS = {
-  isOpen: `${STORAGE_PREFIX}-is-open`,
-  height: `${STORAGE_PREFIX}-height`,
+  isOpen: StorageKeys.CODA_TERMINAL_IS_OPEN,
+  height: StorageKeys.CODA_TERMINAL_HEIGHT,
 } as const;
 
 const SESSION_KEYS = {
-  wasConnected: `${STORAGE_PREFIX}-was-connected`,
-  scrollback: `${STORAGE_PREFIX}-scrollback`,
-  lastVmOpts: `${STORAGE_PREFIX}-last-vm-opts`,
+  wasConnected: StorageKeys.CODA_TERMINAL_WAS_CONNECTED,
+  scrollback: StorageKeys.CODA_TERMINAL_SCROLLBACK,
+  lastVmOpts: StorageKeys.CODA_TERMINAL_LAST_VM_OPTS,
 } as const;
 
 const MAX_SCROLLBACK_SIZE = 100_000; // ~100KB limit for sessionStorage

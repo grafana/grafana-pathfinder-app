@@ -9,8 +9,9 @@ import {
   type UrlValidation,
 } from '../../security';
 import { testIds } from '../../constants/testIds';
+import { StorageKeys } from '../../lib/storage-keys';
 
-const STORAGE_KEY = 'pathfinder-url-tester-url';
+const STORAGE_KEY = StorageKeys.DEVTOOLS_URL_TESTER_URL;
 
 export interface UrlTesterProps {
   onOpenDocsPage: (url: string, title: string) => void;

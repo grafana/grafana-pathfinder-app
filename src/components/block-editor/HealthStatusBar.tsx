@@ -16,6 +16,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Icon, IconButton, Tooltip, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
+import { StorageKeys } from '../../lib/storage-keys';
 import { useGuideLintResult } from './BlockEditorContext';
 import type { Diagnostic, DiagnosticSeverity } from './lint';
 import type { EditorBlock } from './types';
@@ -26,7 +27,7 @@ export interface HealthStatusBarProps {
   blocks: EditorBlock[];
 }
 
-const STORAGE_KEY = 'pathfinder.blockEditor.healthPanel.open';
+const STORAGE_KEY = StorageKeys.BLOCK_EDITOR_HEALTH_PANEL_OPEN;
 
 const SEVERITY_ORDER: DiagnosticSeverity[] = ['error', 'warning', 'info'];
 
