@@ -24,6 +24,16 @@ export interface GuideMetadata {
   title: string;
   /** Path to the guide file (relative or absolute) */
   path: string;
+  /** Bare package ID, when the guide was resolved from a package. */
+  packageId?: string;
+  /** Declared test-environment tier (e.g. "local", "cloud"). */
+  tier?: string;
+  /** Specific Grafana instance the guide targets, if any. */
+  instance?: string;
+  /** Grafana URL the guide was tested against. */
+  targetUrl?: string;
+  /** Source content.json URL for remotely-resolved guides. */
+  sourceUrl?: string;
 }
 
 /**
@@ -130,6 +140,23 @@ export interface ReportStepResult {
 }
 
 /**
+ * A package skipped before execution (not fetched/run), with a structured
+ * reason. Surfaced in JSON reports so batch runs record why guides were not run.
+ */
+export interface PreRunSkip {
+  /** Package ID (or source URL when no ID is known). */
+  id: string;
+  /** Structured skip reason (e.g. "skipped_no_auth", "fetch_failed"). */
+  reason: string;
+  /** Human-readable explanation. */
+  message: string;
+  /** Declared tier, when known. */
+  tier?: string;
+  /** Source content.json URL, when known. */
+  sourceUrl?: string;
+}
+
+/**
  * Complete JSON report structure per design doc.
  *
  * @see docs/design/e2e-test-runner-design.md#json-output
@@ -149,6 +176,8 @@ export interface E2ETestReport {
   abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ';
   /** Human-readable abort message */
   abortMessage?: string;
+  /** Packages skipped before execution (remote modes). */
+  preRunSkipped?: PreRunSkip[];
 }
 
 // ============================================
@@ -180,11 +209,7 @@ export interface TestStepResult {
  */
 export interface TestResultsData {
   /** Guide metadata */
-  guide: {
-    id: string;
-    title: string;
-    path: string;
-  };
+  guide: GuideMetadata;
   /** Grafana URL used for testing */
   grafanaUrl: string;
   /** ISO timestamp when test started */
@@ -458,6 +483,8 @@ export interface MultiGuideReport {
   guides: GuideResult[];
   /** Full reports for each guide (includes step details) */
   reports: E2ETestReport[];
+  /** Packages skipped before execution (remote modes). */
+  preRunSkipped?: PreRunSkip[];
 }
 
 // ============================================
