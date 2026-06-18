@@ -37,27 +37,34 @@ npx pathfinder-cli e2e [options] [files...]
 
 ### Options
 
-| Option                          | Description                                                                                                                                              | Default                      |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| `--grafana-url <url>`           | Grafana instance URL. Auto-switches to `http://localhost:3010` when `--clean` is set and this flag is not passed.                                        | `http://localhost:3000`      |
-| `--output <path>`               | Path for JSON report output                                                                                                                              | None                         |
-| `--artifacts <dir>`             | Directory for failure artifacts (screenshots, DOM snapshots)                                                                                             | `/tmp/pathfinder-e2e-{uuid}` |
-| `--verbose`                     | Enable detailed logging                                                                                                                                  | `false`                      |
-| `--bundled`                     | Test all bundled guides                                                                                                                                  | `false`                      |
-| `--trace`                       | Generate Playwright trace files for debugging                                                                                                            | `false`                      |
-| `--headed`                      | Run browser visibly (not headless)                                                                                                                       | `false`                      |
-| `--always-screenshot`           | Capture screenshots on success and failure                                                                                                               | `false`                      |
-| `--clean`                       | Run against an isolated docker-compose stack (project `pathfinder-e2e`, Grafana on `:3010`). Resets between dependency chains and tears down at the end. | `false`                      |
-| `--clean-ready-timeout-ms <ms>` | How long to wait for the isolated Grafana to become healthy after a `--clean` reset                                                                      | `120000`                     |
-| `--repository <path>`           | Path to a `repository.json` used for dependency-aware ordering                                                                                           | Bundled index when present   |
+| Option                          | Description                                                                                                                                   | Default                           |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `--grafana-url <url>`           | Grafana instance URL. Auto-switches to `http://localhost:3010` when `--clean` is set and this flag is not passed.                             | `http://localhost:3000`           |
+| `--output <path>`               | Path for JSON report output                                                                                                                   | None                              |
+| `--artifacts <dir>`             | Directory for failure artifacts (screenshots, DOM snapshots)                                                                                  | `/tmp/pathfinder-e2e-{uuid}`      |
+| `--verbose`                     | Enable detailed logging                                                                                                                       | `false`                           |
+| `--bundled`                     | Test all bundled guides                                                                                                                       | `false`                           |
+| `--trace`                       | Generate Playwright trace files for debugging                                                                                                 | `false`                           |
+| `--headed`                      | Run browser visibly (not headless)                                                                                                            | `false`                           |
+| `--always-screenshot`           | Capture screenshots on success and failure                                                                                                    | `false`                           |
+| `--clean`                       | Run against an isolated docker-compose stack (project `pathfinder-e2e`, Grafana on `:3010`). Resets between guides and tears down at the end. | `false`                           |
+| `--clean-ready-timeout-ms <ms>` | How long to wait for the isolated Grafana to become healthy after a `--clean` reset                                                           | `120000`                          |
+| `--package <dirOrId>`           | Test a local package directory, or — when not an existing directory — a bare package ID resolved remotely via the recommender                 | None                              |
+| `--tier <tier>`                 | Current environment tier (`local` or `cloud`); `cloud` guides are skipped on a `local` environment                                            | `local`                           |
+| `--remote`                      | Resolve and test every package from the CDN repository index                                                                                  | `false`                           |
+| `--repo-url <url>`              | CDN base URL for `--remote`                                                                                                                   | Public package repository         |
+| `--resolver-url <url>`          | Recommender base URL for `--package <id>` resolution                                                                                          | `https://recommender.grafana.com` |
 
 ### Input formats
 
-The CLI accepts three input formats:
+The CLI accepts these input formats:
 
 1. **File paths**: `npx pathfinder-cli e2e ./my-guide.json ./another.json`
 2. **Bundled flag**: `npx pathfinder-cli e2e --bundled` (tests all guides in `src/bundled-interactives/`)
 3. **Bundled by name**: `npx pathfinder-cli e2e bundled:welcome-to-grafana`
+4. **Local package directory**: `npx pathfinder-cli e2e --package ./my-package/` (reads `content.json` + `manifest.json`)
+5. **Remote package ID**: `npx pathfinder-cli e2e --package alerting-101` (resolved via the recommender; see [Remote package-aware testing](#remote-package-aware-testing))
+6. **Remote repository**: `npx pathfinder-cli e2e --remote` (every package in the CDN index)
 
 ## Exit codes
 
@@ -383,9 +390,43 @@ Only `infrastructure` failures are auto-classified. `SELECTOR_NOT_FOUND`, `ACTIO
 
 For the full rationale and validation plan behind this classification approach, see [Error Classification](../design/e2e-test-runner-design.md#error-classification) in the design doc.
 
-## Package-aware testing (upcoming)
+## Remote package-aware testing
 
-A future `--package <id>` and `--repository` mode will allow the CLI to resolve guides from the package repository, route them to the correct Grafana instance based on `manifest.json` metadata, and authenticate independently per guide. This is currently in design. See [Package-Aware Testing](../design/e2e-test-runner-design.md#package-aware-testing) in the design doc for the full specification.
+The CLI can resolve published guides instead of reading local files, then test them against the configured Grafana instance.
+
+- **By ID** (`--package <id>`): when the `--package` value is not an existing local directory, it is treated as a bare package ID and resolved through the recommender (`--resolver-url`, default `https://recommender.grafana.com`). The runner fetches the package's `content.json` and `manifest.json`, validates the content, and runs it.
+- **Whole repository** (`--remote`): fetches the CDN `repository.json` (`--repo-url`, default the public package repository) and tests every package in the index. Dependency-aware chaining still applies, driven by the remote index.
+
+Guides are routed by their manifest's `testEnvironment.tier`:
+
+- `local` (or no tier) guides run against `--grafana-url`.
+- `cloud` guides are **skipped** — cloud authentication is not yet supported, so they are logged and do not fail the run.
+
+This is the local-tier slice of the [Package-Aware Testing](../design/e2e-test-runner-design.md#package-aware-testing) design. Cloud credentials / auth isolation and path/journey (`milestones`) expansion are not yet implemented; `path` and `journey` packages are skipped as an unsupported type.
+
+### Package outcomes
+
+In remote modes a package can end in one of these states. Only `validation_failed` counts as a test failure; the rest are logged and the batch continues:
+
+| Outcome                 | Meaning                                                    | Test failure? |
+| ----------------------- | ---------------------------------------------------------- | ------------- |
+| `passed` / `failed`     | The guide ran (see step results)                           | `failed` only |
+| `skipped_tier_mismatch` | `cloud` guide on a `local` environment                     | No            |
+| `skipped_no_auth`       | `cloud` guide with no credentials (cloud auth deferred)    | No            |
+| `resolution_failed`     | Recommender returned 404 or a network error                | No            |
+| `fetch_failed`          | Could not fetch `content.json` from the CDN                | No            |
+| `unsupported_type`      | Package is a `path` / `journey` (milestone expansion TODO) | No            |
+| `validation_failed`     | Fetched `content.json` failed guide schema validation      | **Yes**       |
+
+With `--output`, pre-run skips are recorded under a `preRunSkipped` array, and each tested guide's report carries package metadata (`packageId`, `tier`, `instance`, `targetUrl`, `sourceUrl`).
+
+```bash
+# Resolve and test a single published guide against local Grafana
+npx pathfinder-cli e2e --package alerting-101
+
+# Test the whole published repository (local-tier guides run, cloud guides skip)
+npx pathfinder-cli e2e --remote --output results.json
+```
 
 ## Related documentation
 
