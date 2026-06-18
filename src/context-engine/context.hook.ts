@@ -6,6 +6,7 @@ import { getDetectedDatasourceType, getDetectedVisualizationType, onContextChang
 import { ContextData, Recommendation, UseContextPanelOptions, UseContextPanelReturn } from '../types/context.types';
 import type { PackageOpenInfo } from '../types/content-panel.types';
 import { useTimeoutManager } from '../utils/timeout-manager';
+import { StorageEvents } from '../lib/event-names';
 import { suggestionState, SUGGESTIONS_UPDATED_EVENT } from '../global-state/suggestion';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
@@ -204,9 +205,9 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       debouncedRefresh();
     };
 
-    window.addEventListener('interactive-progress-cleared', handleProgressCleared);
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
     return () => {
-      window.removeEventListener('interactive-progress-cleared', handleProgressCleared);
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
     };
   }, [debouncedRefresh]);
 

@@ -17,6 +17,7 @@ import {
   enrichWithStepContext,
 } from '../../../lib/analytics';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
+import { StorageEvents } from '../../../lib/event-names';
 import { evictContentCache } from '../../../global-state/completion-store';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
@@ -67,7 +68,7 @@ export function useContentReset({ model }: UseContentResetOptions) {
         // Notifies the recommendations panel to refresh and `useGuideProgressState`
         // to clear its `hasInteractiveProgress` flag for this contentKey.
         window.dispatchEvent(
-          new CustomEvent('interactive-progress-cleared', {
+          new CustomEvent(StorageEvents.InteractiveProgressCleared, {
             detail: { contentKey: progressKey },
           })
         );

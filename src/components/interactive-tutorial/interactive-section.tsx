@@ -47,6 +47,7 @@ function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
   return STEP_TYPE_LOOKUP.get(child.type as React.ComponentType<any>);
 }
 import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
+import { StorageEvents } from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
@@ -1073,7 +1074,7 @@ export function InteractiveSection({
     if (typeof window !== 'undefined') {
       const contentKey = getContentKey();
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
+        new CustomEvent(StorageEvents.InteractiveProgressCleared, {
           detail: { contentKey },
         })
       );

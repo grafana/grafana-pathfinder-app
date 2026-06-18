@@ -421,7 +421,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
 
       // Dispatch event to notify UI components to refresh
       window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
+        new CustomEvent(StorageEvents.InteractiveProgressCleared, {
           detail: { contentKey: '*', pathId },
         })
       );
