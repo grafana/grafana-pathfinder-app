@@ -35,6 +35,20 @@ function isValidVariableName(name: string): boolean {
   return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
 }
 
+export function getPatternValidationError(pattern: string): string | undefined {
+  const trimmedPattern = pattern.trim();
+  if (!trimmedPattern) {
+    return undefined;
+  }
+
+  try {
+    new RegExp(trimmedPattern);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : 'Invalid regex pattern';
+  }
+}
+
 /**
  * Input block form component
  */
@@ -62,6 +76,7 @@ export function InputBlockForm({
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
   const [skippable, setSkippable] = useState(initial?.skippable ?? false);
   const [datasourceFilter, setDatasourceFilter] = useState(initial?.datasourceFilter ?? '');
+  const patternError = inputType === 'text' ? getPatternValidationError(pattern) : undefined;
 
   // Handle requirement quick-add
   const handleRequirementClick = useCallback((req: string) => {
@@ -77,6 +92,10 @@ export function InputBlockForm({
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
+
+      if (patternError) {
+        return;
+      }
 
       // Parse requirements
       const reqArray = requirements
@@ -126,7 +145,7 @@ export function InputBlockForm({
   // Validation
   const hasPrompt = prompt.trim().length > 0;
   const hasValidVariableName = variableName.trim().length > 0 && isValidVariableName(variableName.trim());
-  const isValid = hasPrompt && hasValidVariableName;
+  const isValid = hasPrompt && hasValidVariableName && !patternError;
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
@@ -195,7 +214,12 @@ export function InputBlockForm({
             />
           </Field>
 
-          <Field label="Validation pattern" description="Regex pattern for validating input (optional)">
+          <Field
+            label="Validation pattern"
+            description="Regex pattern for validating input (optional)"
+            invalid={Boolean(patternError)}
+            error={patternError ? `Invalid regex: ${patternError}` : undefined}
+          >
             <Input
               value={pattern}
               onChange={(e) => setPattern(e.currentTarget.value)}

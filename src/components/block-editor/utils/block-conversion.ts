@@ -111,8 +111,17 @@ export function getAvailableConversions(sourceType: BlockType): BlockType[] {
     return [];
   }
 
-  // Return all non-container types except the source type
-  return CONVERTIBLE_TYPES.filter((t) => t !== sourceType);
+  const excludedTargets = new Set<BlockType>([sourceType]);
+
+  // Guided <-> multistep has a dedicated conversion path that preserves
+  // description/tooltip semantics. Keep it out of the generic dropdown.
+  if (sourceType === 'guided') {
+    excludedTargets.add('multistep');
+  } else if (sourceType === 'multistep') {
+    excludedTargets.add('guided');
+  }
+
+  return CONVERTIBLE_TYPES.filter((t) => !excludedTargets.has(t));
 }
 
 /**

@@ -22,6 +22,7 @@
  * commit.
  */
 import React, { Suspense, lazy } from 'react';
+import { locationService } from '@grafana/runtime';
 import { Button, Icon, IconButton } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { PLUGIN_BASE_URL } from '../../../constants';
@@ -420,7 +421,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                     icon="book-open"
                     size="md"
                     onClick={() => {
-                      window.location.assign(PLUGIN_BASE_URL);
+                      locationService.push(PLUGIN_BASE_URL);
                     }}
                   >
                     {t('docsPanel.returnToMyLearning', 'Return to my learning')}

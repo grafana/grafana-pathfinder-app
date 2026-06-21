@@ -91,6 +91,28 @@ export function useSectionPersistence({
     }
   }, [sectionId, isPreviewMode]);
 
+  useEffect(() => {
+    if (isPreviewMode) {
+      return;
+    }
+
+    const handleProgressCleared = (event: Event) => {
+      const customEvent = event as CustomEvent<{ contentKey?: string }>;
+      const activeContentKey = getContentKey();
+      if (customEvent.detail?.contentKey !== activeContentKey) {
+        return;
+      }
+
+      dispatch({ type: 'CLEAR_ACK' });
+      void clearAckAndCollapseStorage();
+    };
+
+    window.addEventListener('interactive-progress-cleared', handleProgressCleared);
+    return () => {
+      window.removeEventListener('interactive-progress-cleared', handleProgressCleared);
+    };
+  }, [clearAckAndCollapseStorage, dispatch, isPreviewMode]);
+
   // Mount-only restore (#842, Bug 4 fix).
   //
   // The previous version re-fired whenever `stepComponents` changed
