@@ -446,6 +446,96 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
   return { html: null, error: lastError || { message: 'No content found', errorType: 'not-found' } };
 }
 
+/**
+ * The content.json → unstyled.html fallback ladder for a trusted Grafana docs
+ * URL. Tries content.json first (only for URL types that support it, and unless
+ * the server returns the `null` signal), then unstyled.html. Returns the first
+ * usable result, a structured error when the HTML fallback fails, or `null` to
+ * signal the caller should fall through to the already-fetched page content.
+ *
+ * Behavior-preserving extraction of the ladder previously inlined in
+ * `fetchRawHtml`. Keeps the candidate order and the null-signal fallthrough;
+ * the `unstyled.html` rung is intentionally retained (primary for regular docs).
+ */
+async function tryGrafanaDocsContentLadder(
+  finalUrl: string,
+  baseFetchOptions: RequestInit,
+  timeout: number
+): Promise<FetchRawResult | null> {
+  const { jsonUrl, htmlUrl } = getContentUrls(finalUrl);
+
+  // Determine if this URL type supports content.json
+  // Learning paths and interactive learning URLs have content.json
+  // Regular docs pages only have unstyled.html
+  const urlPath = new URL(finalUrl).pathname;
+  const hasContentJson =
+    urlPath.includes('/learning-journeys/') ||
+    urlPath.includes('/learning-paths/') ||
+    isInteractiveLearningUrl(finalUrl);
+
+  // Try content.json first only for URLs that support it
+  if (hasContentJson && jsonUrl !== finalUrl) {
+    try {
+      const jsonResponse = await fetch(jsonUrl, { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) });
+      if (jsonResponse.ok) {
+        const jsonContent = await jsonResponse.text();
+        if (jsonContent && jsonContent.trim()) {
+          // Check if server returned null as a signal to try unstyled.html
+          if (jsonContent.trim() !== 'null') {
+            return {
+              html: jsonContent,
+              finalUrl: jsonResponse.url || jsonUrl,
+              isNativeJson: true,
+            };
+          }
+          // Fall through to try the HTML fallback
+        }
+      }
+    } catch {
+      // JSON fetch failed - fall through to HTML fallback
+    }
+  }
+
+  // Fetch unstyled.html (fallback for learning journeys, primary for regular docs)
+  if (htmlUrl !== finalUrl) {
+    try {
+      const htmlResponse = await fetch(htmlUrl, { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) });
+      if (htmlResponse.ok) {
+        const htmlContent = await htmlResponse.text();
+        if (htmlContent && htmlContent.trim()) {
+          return {
+            html: htmlContent,
+            finalUrl: htmlResponse.url || htmlUrl,
+            isNativeJson: false,
+          };
+        }
+      }
+      return {
+        html: null,
+        error: {
+          message: hasContentJson
+            ? `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${finalUrl}`
+            : `Cannot load Grafana content. unstyled.html not found at: ${finalUrl}`,
+          errorType: htmlResponse.status === 404 ? 'not-found' : 'other',
+          statusCode: htmlResponse.status,
+        },
+      };
+    } catch (htmlError) {
+      return {
+        html: null,
+        error: {
+          message: `Cannot load Grafana content. Content fetch failed: ${
+            htmlError instanceof Error ? htmlError.message : 'Unknown error'
+          }`,
+          errorType: 'other',
+        },
+      };
+    }
+  }
+
+  return null;
+}
+
 async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<FetchRawResult> {
   const { headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
 
@@ -518,71 +608,9 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         const shouldFetchContent = isGrafanaDocsUrl(finalUrl) || (isDevModeEnabledGlobal() && isLocalhostUrl(finalUrl));
 
         if (shouldFetchContent) {
-          const { jsonUrl, htmlUrl } = getContentUrls(finalUrl);
-
-          // Determine if this URL type supports content.json
-          // Learning paths and interactive learning URLs have content.json
-          // Regular docs pages only have unstyled.html
-          const urlPath = new URL(finalUrl).pathname;
-          const hasContentJson =
-            urlPath.includes('/learning-journeys/') ||
-            urlPath.includes('/learning-paths/') ||
-            isInteractiveLearningUrl(finalUrl);
-
-          // Try content.json first only for URLs that support it
-          if (hasContentJson && jsonUrl !== finalUrl) {
-            try {
-              const jsonResponse = await fetch(jsonUrl, { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) });
-              if (jsonResponse.ok) {
-                const jsonContent = await jsonResponse.text();
-                if (jsonContent && jsonContent.trim()) {
-                  // Check if server returned null as a signal to try unstyled.html
-                  if (jsonContent.trim() !== 'null') {
-                    return {
-                      html: jsonContent,
-                      finalUrl: jsonResponse.url || jsonUrl,
-                      isNativeJson: true,
-                    };
-                  }
-                  // Fall through to try the HTML fallback
-                }
-              }
-            } catch {
-              // JSON fetch failed - fall through to HTML fallback
-            }
-          }
-
-          // Fetch unstyled.html (fallback for learning journeys, primary for regular docs)
-          if (htmlUrl !== finalUrl) {
-            try {
-              const htmlResponse = await fetch(htmlUrl, { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) });
-              if (htmlResponse.ok) {
-                const htmlContent = await htmlResponse.text();
-                if (htmlContent && htmlContent.trim()) {
-                  return {
-                    html: htmlContent,
-                    finalUrl: htmlResponse.url || htmlUrl,
-                    isNativeJson: false,
-                  };
-                }
-              }
-              lastError = {
-                message: hasContentJson
-                  ? `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${finalUrl}`
-                  : `Cannot load Grafana content. unstyled.html not found at: ${finalUrl}`,
-                errorType: htmlResponse.status === 404 ? 'not-found' : 'other',
-                statusCode: htmlResponse.status,
-              };
-              return { html: null, error: lastError };
-            } catch (htmlError) {
-              lastError = {
-                message: `Cannot load Grafana content. Content fetch failed: ${
-                  htmlError instanceof Error ? htmlError.message : 'Unknown error'
-                }`,
-                errorType: 'other',
-              };
-              return { html: null, error: lastError };
-            }
+          const ladderResult = await tryGrafanaDocsContentLadder(finalUrl, baseFetchOptions, timeout);
+          if (ladderResult) {
+            return ladderResult;
           }
         }
 
