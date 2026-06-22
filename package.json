@@ -55,7 +55,7 @@
     "@grafana/plugin-e2e": "^3.8.0",
     "@grafana/tsconfig": "^2.1.0",
     "@jest/test-sequencer": "^30.2.0",
-    "@playwright/test": "^1.56.1",
+    "@playwright/test": "^1.60.1",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@swc/core": "^1.15.1",
     "@swc/helpers": "^0.5.23",
