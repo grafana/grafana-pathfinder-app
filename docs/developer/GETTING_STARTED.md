@@ -7,7 +7,7 @@ Welcome to Grafana Pathfinder. This is the first doc to read on day one — it g
 ```bash
 git clone git@github.com:grafana/grafana-pathfinder-app.git
 cd grafana-pathfinder-app
-nvm use   # or install Node 22+ separately
+nvm use   # or install Node 24+ separately
 npm install
 npm run dev
 ```
@@ -22,7 +22,7 @@ Use this when you actually want to run the plugin against Grafana.
 
 | Tool    | Version                                          | Why                                                                                     |
 | ------- | ------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| Node.js | `>=22` (see `package.json` engines and `.nvmrc`) | Frontend build, tests, CLI tools.                                                       |
+| Node.js | `>=24` (see `package.json` engines and `.nvmrc`) | Frontend build, tests, CLI tools.                                                       |
 | npm     | `11+` (we ship `npm@11.12.1`)                    | Package manager.                                                                        |
 | Go      | matches `go.mod` (currently 1.25.7)              | Backend build.                                                                          |
 | Docker  | recent                                           | Bundled Grafana + ancillary containers (Prometheus, Loki, Alloy).                       |
