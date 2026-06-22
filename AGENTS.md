@@ -162,7 +162,7 @@ Do NOT create summary `.md` files unless explicitly requested by the user. No `I
 ## Essential commands
 
 ```bash
-npm install              # Install dependencies (requires Node.js 22+)
+npm install              # Install dependencies (requires Node.js 24+)
 npm run dev              # Frontend watch mode
 npm run server           # Run Grafana locally with Docker
 npm run test:ci          # Frontend tests, no coverage (agents should use this, not `npm test`)
