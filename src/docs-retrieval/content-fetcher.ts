@@ -31,21 +31,20 @@ import { StorageKeys } from '../lib/user-storage';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 import { resolveRelativeUrls } from './resolve-relative-urls';
 import { validateGuide } from '../validation';
+import {
+  generateUrlId,
+  isJsonContentUrl,
+  generateInteractiveLearningVariations,
+  getContentUrls,
+  getLearningJourneyBaseUrl,
+  urlsMatch,
+} from './content-fetcher/url-utils';
 
 // Internal error structure for detailed error handling
 interface FetchError {
   message: string;
   errorType: 'not-found' | 'timeout' | 'network' | 'server-error' | 'other';
   statusCode?: number;
-}
-
-/**
- * Generate a simple ID from a URL for use in wrapped JSON guides.
- */
-function generateUrlId(url: string): string {
-  // Create a simple hash-like ID from the URL
-  const cleanUrl = url.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '-');
-  return cleanUrl.slice(0, 50);
 }
 
 /**
@@ -640,15 +639,6 @@ interface FetchRawResult {
 }
 
 /**
- * Check if a URL points to a JSON file (content.json)
- */
-function isJsonContentUrl(url: string): boolean {
-  // Check the URL path, ignoring query params and fragments
-  const urlPath = url.split('?')[0]!.split('#')[0]!;
-  return urlPath.endsWith('.json') || urlPath.endsWith('/content.json');
-}
-
-/**
  * Try multiple URL variations in order, returning the first successful result.
  * This is used for content URLs where we want to try content.json first, then unstyled.html.
  */
@@ -957,57 +947,6 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
 }
 
 /**
- * Generate URL variations for interactive learning content
- * Tries content.json first (preferred JSON format), then unstyled.html (fallback)
- *
- * @param url - The interactive learning URL
- * @returns Array of URLs to try in order: [content.json, unstyled.html]
- */
-function generateInteractiveLearningVariations(url: string): string[] {
-  const variations: string[] = [];
-
-  // Only generate variations for interactive learning URLs
-  if (!isInteractiveLearningUrl(url)) {
-    return variations;
-  }
-
-  // Clean the URL path (remove trailing slash)
-  const baseUrl = url.split('?')[0]!.split('#')[0]!.replace(/\/$/, '');
-
-  // If URL already points to content.json or unstyled.html, return as-is
-  if (baseUrl.endsWith('/content.json') || baseUrl.endsWith('/unstyled.html')) {
-    return [url];
-  }
-
-  // Try content.json first (preferred), then unstyled.html as fallback
-  variations.push(`${baseUrl}/content.json`);
-  variations.push(`${baseUrl}/unstyled.html`);
-
-  return variations;
-}
-
-/**
- * Get content URLs for both JSON and HTML formats
- * Returns URLs to try in order of preference: JSON first, then HTML
- */
-function getContentUrls(url: string): { jsonUrl: string; htmlUrl: string } {
-  const baseUrl = url.split('?')[0]!.split('#')[0]!.replace(/\/$/, '');
-
-  // If URL already points to a specific file, return it as-is for JSON detection
-  if (url.includes('/content.json')) {
-    return { jsonUrl: url, htmlUrl: baseUrl.replace('/content.json', '/unstyled.html') };
-  }
-  if (url.includes('/unstyled.html')) {
-    return { jsonUrl: baseUrl.replace('/unstyled.html', '/content.json'), htmlUrl: url };
-  }
-
-  return {
-    jsonUrl: `${baseUrl}/content.json`,
-    htmlUrl: `${baseUrl}/unstyled.html`,
-  };
-}
-
-/**
  * Extract metadata from HTML without DOM processing
  * Uses simple string parsing instead of DOM manipulation
  */
@@ -1131,35 +1070,6 @@ function extractDocSummary(html: string): string {
   return '';
 }
 
-/**
- * Learning journey specific functions
- * These are simplified versions that focus on data extraction only
- */
-function getLearningJourneyBaseUrl(url: string): string {
-  // Handle cases like:
-  // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs (legacy)
-  // https://grafana.com/docs/learning-paths/drilldown-logs/ -> https://grafana.com/docs/learning-paths/drilldown-logs (new)
-  // https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-1/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
-  // https://grafana.com/tutorials/alerting-get-started/ -> https://grafana.com/tutorials/alerting-get-started
-
-  const learningJourneyMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-journeys\/[^\/]+)/);
-  if (learningJourneyMatch) {
-    return learningJourneyMatch[1]!;
-  }
-
-  const learningPathMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-paths\/[^\/]+)/);
-  if (learningPathMatch) {
-    return learningPathMatch[1]!;
-  }
-
-  const tutorialMatch = url.match(/^(https?:\/\/[^\/]+\/tutorials\/[^\/]+)/);
-  if (tutorialMatch) {
-    return tutorialMatch[1]!;
-  }
-
-  return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
-}
-
 async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Milestone[]> {
   try {
     const indexJsonUrl = `${baseUrl}/index.json`;
@@ -1249,14 +1159,6 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
   }
 
   return 0; // Default to cover page
-}
-
-/**
- * Check if two URLs match, handling trailing slashes
- */
-function urlsMatch(url1: string, url2: string): boolean {
-  const normalize = (u: string) => u.replace(/\/$/, '').toLowerCase();
-  return normalize(url1) === normalize(url2);
 }
 
 // ---------------------------------------------------------------------------
