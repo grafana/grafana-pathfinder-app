@@ -112,4 +112,63 @@ describe('resolvePackageById', () => {
     expect(res).toMatchObject({ ok: true, id: 'g' });
     expect(res.ok && res.manifest).toBeUndefined();
   });
+
+  it('fails on a 200 with a missing contentUrl', async () => {
+    mockFetch(() => ({ ok: true, body: JSON.stringify({ id: 'g' }) }));
+
+    const res = await resolvePackageById('https://recommender.test', 'g');
+
+    expect(res.ok).toBe(false);
+  });
+
+  it('fails when contentUrl is not an http(s) URL', async () => {
+    mockFetch(() => ({ ok: true, body: JSON.stringify({ id: 'g', contentUrl: 'file:///etc/passwd' }) }));
+
+    const res = await resolvePackageById('https://recommender.test', 'g');
+
+    expect(res.ok).toBe(false);
+  });
+
+  it('preserves a path prefix on the resolver URL', async () => {
+    const calls: string[] = [];
+    global.fetch = jest.fn(async (input: unknown) => {
+      calls.push(String(input));
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({ id: 'alerting-101', contentUrl: 'https://cdn.test/c.json', manifestUrl: '' }),
+        text: async () => '',
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    await resolvePackageById('https://host/api-prefix', 'alerting-101');
+
+    expect(calls[0]).toBe('https://host/api-prefix/api/v1/packages/alerting-101');
+  });
+
+  it('does not fetch a manifest at a non-http URL', async () => {
+    const calls: string[] = [];
+    global.fetch = jest.fn(async (input: unknown) => {
+      calls.push(String(input));
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
+          id: 'g',
+          contentUrl: 'https://cdn.test/g/content.json',
+          manifestUrl: 'file:///etc/passwd',
+        }),
+        text: async () => '',
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    const res = await resolvePackageById('https://recommender.test', 'g');
+
+    expect(res).toMatchObject({ ok: true, id: 'g' });
+    expect(res.ok && res.manifest).toBeUndefined();
+    // The file: manifest URL must never be requested.
+    expect(calls.some((u) => u.startsWith('file:'))).toBe(false);
+  });
 });

@@ -33,7 +33,8 @@ export async function resolvePackageById(resolverUrl: string, id: string): Promi
   let response: Response;
   try {
     // SECURITY: build the URL via the URL API and encode the id (F3).
-    const endpoint = new URL(`/api/v1/packages/${encodeURIComponent(id)}`, resolverUrl);
+    const base = resolverUrl.endsWith('/') ? resolverUrl : `${resolverUrl}/`;
+    const endpoint = new URL(`api/v1/packages/${encodeURIComponent(id)}`, base);
     response = await fetch(endpoint.toString(), {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       headers: { Accept: 'application/json' },
@@ -46,14 +47,31 @@ export async function resolvePackageById(resolverUrl: string, id: string): Promi
     return { ok: false, message: `HTTP ${response.status} ${response.statusText}` };
   }
 
-  let data: PackageResolutionResponse;
+  let data: Partial<PackageResolutionResponse>;
   try {
-    data = (await response.json()) as PackageResolutionResponse;
+    data = (await response.json()) as Partial<PackageResolutionResponse>;
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : 'Invalid resolution response' };
   }
 
-  return { ok: true, id: data.id, contentUrl: data.contentUrl, manifest: await fetchManifest(data.manifestUrl) };
+  // contentUrl must be be a valid http(s) URL
+  if (typeof data.contentUrl !== 'string' || !isHttpUrl(data.contentUrl)) {
+    return { ok: false, message: 'resolution response did not include a valid contentUrl' };
+  }
+
+  const resolvedId = typeof data.id === 'string' && data.id !== '' ? data.id : id;
+  const manifest = typeof data.manifestUrl === 'string' ? await fetchManifest(data.manifestUrl) : undefined;
+  return { ok: true, id: resolvedId, contentUrl: data.contentUrl, manifest };
+}
+
+/** True only for absolute http(s) URLs; guards against non-http schemes (file:, data:, etc.). */
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -62,7 +80,7 @@ export async function resolvePackageById(resolverUrl: string, id: string): Promi
  * so the guide can still run under default targeting.
  */
 async function fetchManifest(manifestUrl: string): Promise<ManifestJson | undefined> {
-  if (!manifestUrl) {
+  if (!manifestUrl || !isHttpUrl(manifestUrl)) {
     return undefined;
   }
   let raw: unknown;
