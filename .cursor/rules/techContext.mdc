@@ -17,7 +17,7 @@ globs:
 - **State Management**: Grafana Scenes for complex scene-based state
 - **Bundling**: Webpack 5.102.1 with custom configuration
 - **Testing**: Jest 30.2.0 + React Testing Library + Playwright 1.56.1 for E2E, Go testing for backend
-- **Runtime**: Node.js 22+ with npm 11.6.2 package management
+- **Runtime**: Node.js 24+ with npm 11+ package management
 
 ## Development Setup
 
