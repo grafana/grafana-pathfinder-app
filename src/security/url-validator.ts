@@ -333,6 +333,21 @@ export function isGitHubRawUrl(urlString: string): boolean {
 }
 
 /**
+ * Single source of truth for the content-fetch trust gate: a URL is trusted if
+ * it is an allowed content URL, or — in dev mode only — a localhost or GitHub
+ * raw URL. Used by the fetcher before fetching and after every redirect.
+ */
+export function isTrustedFinalUrl(urlString: string): boolean {
+  if (isAllowedContentUrl(urlString)) {
+    return true;
+  }
+  if (isDevModeEnabledGlobal()) {
+    return isLocalhostUrl(urlString) || isGitHubRawUrl(urlString);
+  }
+  return false;
+}
+
+/**
  * Default redirect path used when validation fails or input is missing.
  * Always redirects to Grafana home page as a safe fallback.
  */

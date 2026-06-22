@@ -10,6 +10,7 @@ import {
   validateTutorialUrl,
   validateRedirectPath,
   isGitHubRawUrl,
+  isTrustedFinalUrl,
 } from './url-validator';
 
 // Mock the dev-mode module
@@ -457,6 +458,39 @@ describe('GitHub URL validators', () => {
     it('should reject invalid URLs', () => {
       expect(isGitHubRawUrl('not a url')).toBe(false);
       expect(isGitHubRawUrl('')).toBe(false);
+    });
+  });
+
+  describe('isTrustedFinalUrl', () => {
+    beforeEach(() => {
+      jest.mocked(isDevModeEnabledGlobal).mockReturnValue(false);
+    });
+
+    afterEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should trust allowed content URLs regardless of dev mode', () => {
+      expect(isTrustedFinalUrl('https://grafana.com/docs/grafana/latest/')).toBe(true);
+      expect(isTrustedFinalUrl('https://interactive-learning.grafana.net/guide/')).toBe(true);
+      expect(isTrustedFinalUrl('bundled:welcome-to-grafana')).toBe(true);
+    });
+
+    it('should reject localhost and GitHub raw URLs in production mode', () => {
+      expect(isTrustedFinalUrl('http://localhost:3000/docs')).toBe(false);
+      expect(isTrustedFinalUrl('https://raw.githubusercontent.com/grafana/repo/main/file.json')).toBe(false);
+    });
+
+    it('should trust localhost and GitHub raw URLs only in dev mode', () => {
+      jest.mocked(isDevModeEnabledGlobal).mockReturnValue(true);
+      expect(isTrustedFinalUrl('http://localhost:3000/anything')).toBe(true);
+      expect(isTrustedFinalUrl('https://raw.githubusercontent.com/grafana/repo/main/file.json')).toBe(true);
+    });
+
+    it('should reject untrusted domains even in dev mode', () => {
+      jest.mocked(isDevModeEnabledGlobal).mockReturnValue(true);
+      expect(isTrustedFinalUrl('https://evil.com/fake-docs')).toBe(false);
+      expect(isTrustedFinalUrl('https://grafana.com.evil.com/docs')).toBe(false);
     });
   });
 });
