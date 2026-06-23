@@ -2,13 +2,20 @@ export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
 
 export type CrossTabRole = 'controller' | 'live';
 
+export interface CrossTabInternalAction {
+  targetAction: string;
+  refTarget?: string;
+  targetValue?: string;
+  targetComment?: string;
+}
+
 export interface CrossTabAction {
   targetAction: string;
   refTarget: string;
   targetValue?: string;
   targetComment?: string;
   // Multi-step / guided steps carry their ordered sub-actions here.
-  internalActions?: Array<{ targetAction: string; refTarget?: string; targetValue?: string; targetComment?: string }>;
+  internalActions?: CrossTabInternalAction[];
 }
 
 interface CrossTabEnvelope {
@@ -59,6 +66,7 @@ const KNOWN_TARGET_ACTIONS: ReadonlySet<string> = new Set([
   'formfill',
   'navigate',
   'hover',
+  'guided',
   'multistep',
 ]);
 
@@ -86,11 +94,26 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
     return false;
   }
   const action = message.action;
-  return (
-    typeof action.refTarget === 'string' &&
-    typeof action.targetAction === 'string' &&
-    KNOWN_TARGET_ACTIONS.has(action.targetAction)
-  );
+  if (
+    typeof action.refTarget !== 'string' ||
+    typeof action.targetAction !== 'string' ||
+    !KNOWN_TARGET_ACTIONS.has(action.targetAction)
+  ) {
+    return false;
+  }
+  // Composite (guided/multistep) steps carry an ordered internalActions
+  // sequence; every element is replayed as a DOM action on the live tab, so
+  // each must itself carry a recognized verb — validate the whole array, not
+  // just the composite envelope (T1 / #1068).
+  if (action.internalActions !== undefined) {
+    return (
+      Array.isArray(action.internalActions) &&
+      action.internalActions.every(
+        (sub) => isRecord(sub) && typeof sub.targetAction === 'string' && KNOWN_TARGET_ACTIONS.has(sub.targetAction)
+      )
+    );
+  }
+  return true;
 }
 
 function isValidHeartbeat(message: Record<string, unknown>): boolean {

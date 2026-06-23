@@ -20,6 +20,7 @@ import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
+import type { CrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
 
 let anonymousMultiStepCounter = 0;
@@ -609,12 +610,14 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           action: {
             targetAction: 'multistep',
             refTarget: '',
-            internalActions: internalActions.map((a) => ({
-              targetAction: a.targetAction,
-              refTarget: a.refTarget,
-              targetValue: a.targetValue,
-              targetComment: a.targetComment,
-            })),
+            internalActions: internalActions.map(
+              (a): CrossTabInternalAction => ({
+                targetAction: a.targetAction,
+                refTarget: a.refTarget,
+                targetValue: a.targetValue,
+                targetComment: a.targetComment,
+              })
+            ),
           },
         });
         persistCompletion();

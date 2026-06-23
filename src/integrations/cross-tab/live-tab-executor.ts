@@ -14,6 +14,7 @@ import {
 import { CrossTabTransport, createSenderId } from '../../lib/cross-tab-transport';
 import {
   validateCrossTabMessage,
+  type CrossTabInternalAction,
   type CrossTabMessage,
   type CrossTabPayload,
   type StepCommandMessage,
@@ -71,10 +72,7 @@ export function installLiveTabExecutor(
   // and race on shared highlight state (F-1069-1).
   let queue: Promise<void> = Promise.resolve();
 
-  const runAction = async (
-    action: { targetAction: string; refTarget?: string; targetValue?: string; targetComment?: string },
-    isShow: boolean
-  ): Promise<void> => {
+  const runAction = async (action: CrossTabInternalAction, isShow: boolean): Promise<void> => {
     const data: InteractiveElementData = {
       refTarget: action.refTarget ?? '',
       targetAction: action.targetAction,
@@ -102,6 +100,15 @@ export function installLiveTabExecutor(
         await hoverHandler.execute(data, !isShow);
         break;
       case 'noop':
+        break;
+      case 'guided':
+      case 'multistep':
+        // A composite verb reaching runAction means its internalActions were
+        // empty/absent — runStepCommand expands them before dispatch, so this
+        // is a malformed command, not a directly-executable action.
+        console.warn(
+          `[Pathfinder] cross-tab executor: composite action "${action.targetAction}" carried no internalActions to replay`
+        );
         break;
       default:
         console.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
