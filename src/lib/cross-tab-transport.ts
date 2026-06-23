@@ -1,4 +1,9 @@
-import { CROSS_TAB_CHANNEL, type CrossTabMessage, type CrossTabPayload } from '../types/cross-tab.types';
+import {
+  CROSS_TAB_CHANNEL,
+  type CrossTabMessage,
+  type CrossTabPayload,
+  validateCrossTabMessage,
+} from '../types/cross-tab.types';
 
 export interface BroadcastChannelLike {
   postMessage(message: unknown): void;
@@ -8,9 +13,10 @@ export interface BroadcastChannelLike {
 
 export type CrossTabListener = (message: CrossTabMessage) => void;
 
-type ChannelFactory = (name: string) => BroadcastChannelLike;
+type ChannelFactory = (name: string) => BroadcastChannelLike | null;
 
-const defaultChannelFactory: ChannelFactory = (name) => new BroadcastChannel(name);
+const defaultChannelFactory: ChannelFactory = (name) =>
+  typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(name);
 
 export function createSenderId(): string {
   const cryptoObj = globalThis.crypto;
@@ -34,7 +40,9 @@ export class CrossTabTransport {
       return;
     }
     this.channel = this.channelFactory(CROSS_TAB_CHANNEL);
-    this.channel.onmessage = this.handleMessage;
+    if (this.channel) {
+      this.channel.onmessage = this.handleMessage;
+    }
   }
 
   stop(): void {
@@ -72,19 +80,17 @@ export class CrossTabTransport {
   }
 
   private readonly handleMessage = (event: MessageEvent): void => {
-    const message = event.data;
-    if (!isPathfinderMessage(message) || message.senderId === this.senderId) {
+    const message = validateCrossTabMessage(event.data);
+    if (!message || message.senderId === this.senderId) {
       return;
     }
-    this.listeners.forEach((listener) => listener(message));
+    this.listeners.forEach((listener) => {
+      try {
+        listener(message);
+      } catch (err) {
+        // One throwing listener must not starve the rest (F-1056-5).
+        console.error('cross-tab listener threw', err);
+      }
+    });
   };
-}
-
-function isPathfinderMessage(message: unknown): message is CrossTabMessage {
-  return (
-    typeof message === 'object' &&
-    message !== null &&
-    (message as { source?: unknown }).source === 'pathfinder' &&
-    typeof (message as { senderId?: unknown }).senderId === 'string'
-  );
 }

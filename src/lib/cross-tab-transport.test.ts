@@ -113,6 +113,50 @@ describe('CrossTabTransport', () => {
     expect(received).toHaveLength(0);
   });
 
+  it('drops a forged same-origin message that fails per-kind validation', () => {
+    const bus = new FakeBus();
+    const intruder = new FakeChannel('pathfinder-cross-tab', bus);
+    const live = new CrossTabTransport('live-id', busFactory(bus));
+    live.start();
+
+    const received: CrossTabMessage[] = [];
+    live.onMessage((m) => received.push(m));
+
+    // Well-formed envelope, but the step-command body is forged with an
+    // action verb the executor must never run.
+    intruder.postMessage({
+      source: 'pathfinder',
+      senderId: 'attacker',
+      timestamp: Date.now(),
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 's1',
+      action: { targetAction: 'exec-shell', refTarget: 'rm -rf /' },
+    });
+
+    expect(received).toHaveLength(0);
+  });
+
+  it('isolates a throwing listener so others still receive the message', () => {
+    const bus = new FakeBus();
+    const controller = new CrossTabTransport('controller-id', busFactory(bus));
+    const live = new CrossTabTransport('live-id', busFactory(bus));
+    controller.start();
+    live.start();
+
+    const received: CrossTabMessage[] = [];
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    live.onMessage(() => {
+      throw new Error('boom');
+    });
+    live.onMessage((m) => received.push(m));
+
+    controller.post({ kind: 'heartbeat', role: 'controller' });
+
+    expect(received).toHaveLength(1);
+    errorSpy.mockRestore();
+  });
+
   it('routes heartbeats in both directions', () => {
     const bus = new FakeBus();
     const controller = new CrossTabTransport('controller-id', busFactory(bus));
