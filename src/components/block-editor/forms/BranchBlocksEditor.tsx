@@ -47,6 +47,7 @@ import {
   isVideoBlock,
   isInputBlock,
 } from '../../../types/json-guide.types';
+import { primaryRefTarget } from '../../../lib/dom';
 import { getBlockPreview } from '../utils';
 
 // ============================================================================
@@ -396,7 +397,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
       } else if (isInteractiveBlock(block)) {
         setFormContent(block.content);
         setFormAction(block.action ?? block.targetAction ?? 'highlight');
-        setFormReftarget(block.reftarget ?? block.refTarget ?? '');
+        setFormReftarget(primaryRefTarget(block.reftarget ?? block.refTarget ?? ''));
         setFormTargetvalue(block.targetvalue ?? block.targetValue ?? '');
         setFormRequirements(block.requirements?.join(', ') || '');
       } else if (isImageBlock(block)) {

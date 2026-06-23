@@ -82,6 +82,26 @@ export const JsonInteractiveActionSchema = z.enum([
 ]);
 
 /**
+ * Schema for a reftarget value: a single selector or an ordered array of
+ * fallback selectors (strongest first). Every entry must be non-empty; an empty
+ * array is rejected. The `navigate` action is restricted to a single string by a
+ * per-block refinement (its value is a URL, not a selector chain).
+ * @coupling Type: `string | string[]` on reftarget fields in json-guide.types.ts
+ */
+const ReftargetSchema = z.union([
+  z.string().min(1),
+  z.array(z.string().min(1)).min(1, 'reftarget array must contain at least one selector'),
+]);
+
+/** True when a reftarget value is present and non-empty (string or array). */
+function hasReftarget(value: string | string[] | undefined): boolean {
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  return value !== undefined && value.trim() !== '';
+}
+
+/**
  * Allowed targetvalue values for the `popout` action.
  * - 'sidebar' docks the panel back into the Grafana sidebar.
  * - 'floating' undocks the panel into a floating window.
@@ -129,12 +149,9 @@ export const JsonStepSchema = z
     id: z.string().optional().describe('Stable identifier for this step (used for cross-step references)'),
     action: JsonInteractiveActionSchema.describe('Action to perform on target element'),
     // reftarget is optional for noop actions (informational steps)
-    reftarget: z
-      .string()
-      .optional()
-      .describe(
-        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
-      ),
+    reftarget: ReftargetSchema.optional().describe(
+      'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this. May be an ordered array of fallback selectors (strongest first); navigate must be a single string.'
+    ),
 
     targetvalue: z
       .string()
@@ -155,10 +172,13 @@ export const JsonStepSchema = z
       if (step.action === 'noop' || step.action === 'popout') {
         return true;
       }
-      return step.reftarget !== undefined && step.reftarget.trim() !== '';
+      return hasReftarget(step.reftarget);
     },
     { error: "Non-noop actions require 'reftarget'" }
   )
+  .refine((step) => step.action !== 'navigate' || !Array.isArray(step.reftarget), {
+    error: 'navigate actions require a single string reftarget (a URL), not an array',
+  })
   .refine(
     (step) => {
       if (step.action === 'formfill' && step.validateInput === true) {
@@ -275,12 +295,9 @@ export const JsonInteractiveBlockSchema = z
     id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
     action: JsonInteractiveActionSchema.describe('Action to perform on target element'),
     // reftarget is optional for noop actions (informational steps)
-    reftarget: z
-      .string()
-      .optional()
-      .describe(
-        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
-      ),
+    reftarget: ReftargetSchema.optional().describe(
+      'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this. May be an ordered array of fallback selectors (strongest first); navigate must be a single string.'
+    ),
 
     targetvalue: z
       .string()
@@ -317,10 +334,13 @@ export const JsonInteractiveBlockSchema = z
       if (block.action === 'noop' || block.action === 'popout') {
         return true;
       }
-      return block.reftarget !== undefined && block.reftarget.trim() !== '';
+      return hasReftarget(block.reftarget);
     },
     { error: "Non-noop actions require 'reftarget'" }
   )
+  .refine((block) => block.action !== 'navigate' || !Array.isArray(block.reftarget), {
+    error: 'navigate actions require a single string reftarget (a URL), not an array',
+  })
   .refine(
     (block) => {
       if (block.action === 'formfill' && block.validateInput === true) {
@@ -569,12 +589,9 @@ export const JsonChallengeBlockSchema = z.object({
 export const JsonCodeBlockBlockSchema = z.object({
   type: z.literal('code-block'),
   id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
-  reftarget: z
-    .string()
-    .min(1, 'Code block reftarget is required')
-    .describe(
-      'Verified Grafana DOM selector for the target Monaco editor. Do NOT invent or guess. Confirm against the live Grafana DOM or ask the user for the selector — Monaco editors have stable data-testid attributes in Grafana. A wrong selector silently breaks the guide at runtime; the validator cannot catch this.'
-    ),
+  reftarget: ReftargetSchema.describe(
+    'Verified Grafana DOM selector for the target Monaco editor. Do NOT invent or guess. Confirm against the live Grafana DOM or ask the user for the selector — Monaco editors have stable data-testid attributes in Grafana. A wrong selector silently breaks the guide at runtime; the validator cannot catch this. May be an ordered array of fallback selectors (strongest first).'
+  ),
   language: z.string().optional().describe('Source language hint (e.g., promql, logql, sql)'),
   code: z.string().min(1, 'Code is required').describe('Code to insert into the editor'),
   content: z.string().optional().describe('Optional instructional text shown above the code'),
@@ -817,12 +834,9 @@ const ConditionalProps = {
     .enum(['inline', 'section'])
     .optional()
     .describe('Render the conditional inline or as a collapsible section'),
-  reftarget: z
-    .string()
-    .optional()
-    .describe(
-      'Verified Grafana DOM selector consumed by certain conditional styles. Do NOT invent or guess; confirm against the live Grafana DOM. A wrong selector silently fails at runtime — the validator cannot catch this.'
-    ),
+  reftarget: ReftargetSchema.optional().describe(
+    'Verified Grafana DOM selector consumed by certain conditional styles. Do NOT invent or guess; confirm against the live Grafana DOM. A wrong selector silently fails at runtime — the validator cannot catch this. May be an ordered array of fallback selectors (strongest first).'
+  ),
   whenTrueSectionConfig: ConditionalSectionConfigSchema.optional().describe(
     'Section config applied to the whenTrue branch'
   ),

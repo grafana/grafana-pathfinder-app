@@ -40,6 +40,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
 import { useActionRecorder } from '../../../utils/devtools';
+import { primaryRefTarget } from '../../../lib/dom';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
 import { ConditionChipsField } from './ConditionChipsField';
 import {
@@ -421,7 +422,7 @@ export function StepEditor({
       }
       setEditingStepIndex(index);
       setEditAction(step.action ?? step.targetAction ?? 'highlight');
-      setEditReftarget(step.reftarget ?? step.refTarget ?? '');
+      setEditReftarget(primaryRefTarget(step.reftarget ?? step.refTarget ?? ''));
       setEditTargetvalue(step.targetvalue ?? step.targetValue ?? '');
       setEditFormHint(step.formHint ?? '');
       setEditValidateInput(step.validateInput ?? false);
@@ -938,7 +939,7 @@ export function StepEditor({
                           )}
                         </div>
                         {/* Show description/tooltip if available, otherwise show selector (or "Info step" for noop, "Dock"/"Undock" for popout) */}
-                        <div className={styles.stepSelector} title={step.reftarget}>
+                        <div className={styles.stepSelector} title={step.reftarget ? primaryRefTarget(step.reftarget) : undefined}>
                           {step.action === 'noop'
                             ? isGuided
                               ? step.description || 'Informational step'

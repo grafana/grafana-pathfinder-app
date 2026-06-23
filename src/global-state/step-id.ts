@@ -43,8 +43,8 @@ export interface DeriveStepIdInput {
   index: number;
   /** The `targetAction` value when present. */
   action?: string;
-  /** The `refTarget` value when present. */
-  refTarget?: string;
+  /** The `refTarget` value when present (the strongest selector is used for a fallback array). */
+  refTarget?: string | string[];
   /** Optional discriminant for sub-step blocks (e.g. multistep children). */
   variant?: string;
 }
@@ -59,7 +59,7 @@ export function deriveStepId(input: DeriveStepIdInput): string {
     input.sectionId,
     String(input.index),
     input.action ?? '',
-    input.refTarget ?? '',
+    (Array.isArray(input.refTarget) ? input.refTarget[0] : input.refTarget) ?? '',
     input.variant ?? '',
   ].join('|');
   const hash = djb2Hash(seed).toString(36);
