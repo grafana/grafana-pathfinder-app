@@ -247,8 +247,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     // For exists-reftarget requirement, use the first internal action's target
     // This ensures the requirement checker knows which element to look for
-    const firstActionRefTarget =
-      internalActions[0]?.refTarget === undefined ? undefined : primaryRefTarget(internalActions[0].refTarget);
+    const firstActionRefTarget = internalActions[0]?.refTarget;
     const firstActionTargetAction = internalActions.length > 0 ? internalActions[0]!.targetAction : undefined;
 
     // Runtime validation: check for impossible requirement configurations
@@ -856,7 +855,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   detail={{
                     stepId: stepId ?? renderedStepId,
                     renderedStepId,
-                    refTarget: firstActionRefTarget,
+                    refTarget: firstActionRefTarget === undefined ? undefined : primaryRefTarget(firstActionRefTarget),
                     action: firstActionTargetAction,
                   }}
                 />

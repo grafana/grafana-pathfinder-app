@@ -215,7 +215,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       const options: RequirementsCheckOptions = {
         requirements: data.requirements || '',
         targetAction: data.targetAction,
-        refTarget: primaryRefTarget(data.refTarget),
+        refTarget: data.refTarget,
         targetValue: data.targetValue,
         stepId: data.textContent || 'unknown',
       };
@@ -255,7 +255,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       const options: RequirementsCheckOptions = {
         requirements: verifyString || '',
         targetAction,
-        refTarget: refTarget === undefined ? undefined : primaryRefTarget(refTarget),
+        refTarget,
         targetValue,
         stepId,
       };

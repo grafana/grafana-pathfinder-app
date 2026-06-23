@@ -17,7 +17,7 @@ export interface UseStepCheckerProps {
   hints?: string;
   stepId: string;
   targetAction?: string; // Pass through to requirements checking
-  refTarget?: string; // Pass through to requirements checking
+  refTarget?: string | string[]; // Pass through to requirements checking (single selector or fallback chain)
   isEligibleForChecking: boolean;
   skippable?: boolean; // Whether this step can be skipped if requirements fail
   stepIndex?: number; // Document-wide step index for sequence awareness
