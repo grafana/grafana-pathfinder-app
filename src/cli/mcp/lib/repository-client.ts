@@ -79,12 +79,12 @@ let indexCache: IndexCacheEntry | null = null;
 let indexInFlight: Promise<RepositoryIndexResult> | null = null;
 
 /**
- * Read the configured repository base URL. Always trailing-slash terminated
- * so callers can append `repository.json` directly.
+ * Resolve the repository base URL, always trailing-slash terminated so callers
+ * can append `repository.json` directly. Precedence: explicit `override`, then
+ * the `PATHFINDER_REPOSITORY_URL` env var, then the default CDN.
  */
-export function getRepositoryBaseUrl(): string {
-  const fromEnv = process.env[REPOSITORY_URL_ENV_VAR];
-  const raw = fromEnv && fromEnv.trim() !== '' ? fromEnv.trim() : DEFAULT_REPOSITORY_URL;
+export function getRepositoryBaseUrl(override?: string): string {
+  const raw = override?.trim() || process.env[REPOSITORY_URL_ENV_VAR]?.trim() || DEFAULT_REPOSITORY_URL;
   return raw.endsWith('/') ? raw : `${raw}/`;
 }
 
@@ -109,12 +109,15 @@ export function buildPackageFileUrl(baseUrl: string, entryPath: string, fileName
 /**
  * Fetch and validate `repository.json`. Cached for 60 s by base URL.
  *
+ * Pass `baseUrlOverride` to target a specific repository (e.g. a CLI
+ * `--repo-url`); it falls back to the env var / default CDN when omitted.
+ *
  * Errors are returned, never thrown. Schema drift on the index does not
  * hard-fail — `validation.issues` is populated and `packages` is built
  * best-effort from whatever entries did parse.
  */
-export async function fetchRepositoryIndex(): Promise<RepositoryIndexResult> {
-  const baseUrl = getRepositoryBaseUrl();
+export async function fetchRepositoryIndex(baseUrlOverride?: string): Promise<RepositoryIndexResult> {
+  const baseUrl = getRepositoryBaseUrl(baseUrlOverride);
   const now = Date.now();
   if (indexCache && indexCache.baseUrl === baseUrl && now - indexCache.at < REPOSITORY_INDEX_TTL_MS) {
     return indexCache.result;

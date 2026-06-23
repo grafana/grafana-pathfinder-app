@@ -55,7 +55,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: '22'
+  NODE_VERSION: '24'
   IMAGE_NAME_GHCR: ghcr.io/grafana/pathfinder-cli
 
 jobs:
@@ -67,7 +67,7 @@ jobs:
     outputs:
       schema-version: ${{ steps.version.outputs.schema-version }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
 
@@ -130,7 +130,7 @@ jobs:
       # Required for keyless cosign signing (sigstore OIDC).
       id-token: write
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
 

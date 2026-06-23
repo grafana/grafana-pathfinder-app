@@ -5,7 +5,7 @@ Reference index for npm scripts and mage tasks. The essentials live in `AGENTS.m
 ## Initial setup
 
 ```bash
-# Install dependencies (requires Node.js 22+)
+# Install dependencies (requires Node.js 24+)
 npm install
 
 # Type check
