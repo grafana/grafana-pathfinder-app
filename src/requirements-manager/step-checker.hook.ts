@@ -208,7 +208,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       options: {
         requirements: string;
         targetAction?: string;
-        refTarget?: string;
+        refTarget?: string | string[];
         stepId?: string;
         /** Force a specific retry count (0 disables retries entirely). */
         maxRetriesOverride?: number;

@@ -257,7 +257,7 @@ export const InteractiveStep = forwardRef<
       validateInteractiveRequirements(
         {
           requirements,
-          refTarget: primaryRefTarget(refTarget),
+          refTarget,
           stepId: renderedStepId,
         },
         'InteractiveStep'
@@ -275,7 +275,7 @@ export const InteractiveStep = forwardRef<
       requirements,
       hints,
       targetAction,
-      refTarget: primaryRefTarget(refTarget),
+      refTarget,
       stepId: stepId || renderedStepId, // Fallback if no stepId provided
       isEligibleForChecking: isPartOfSection ? isEligibleForChecking : isEligibleForChecking && !isCompleted,
       skippable,
@@ -542,7 +542,7 @@ export const InteractiveStep = forwardRef<
             const result = await checkPostconditions({
               requirements: postVerify,
               targetAction,
-              refTarget: primaryRefTarget(refTarget),
+              refTarget,
               targetValue: currentTargetValue,
               stepId: stepId || renderedStepId,
             });

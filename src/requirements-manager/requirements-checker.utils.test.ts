@@ -111,6 +111,22 @@ describe('requirements-checker.utils', () => {
         scrollContainer: undefined,
       });
     });
+
+    it('passes a refTarget fallback array through to the existence check intact', async () => {
+      const options: RequirementsCheckOptions = {
+        requirements: 'exists-reftarget',
+        refTarget: ['button[data-testid="save"]', 'Save dashboard'],
+        targetAction: 'button',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(true);
+      expect(mockReftargetExistsCheck).toHaveBeenCalledWith(
+        ['button[data-testid="save"]', 'Save dashboard'],
+        'button',
+        { lazyRender: undefined, scrollContainer: undefined }
+      );
+    });
   });
 
   describe('hasPermissionCHECK', () => {
