@@ -60,6 +60,11 @@ describe('describeField', () => {
     });
   });
 
+  it('detects a string | string[] union as string-or-array-string', () => {
+    const field = z.union([z.string(), z.array(z.string())]).optional();
+    expect(describeField(field)).toMatchObject({ kind: 'string-or-array-string', optional: true });
+  });
+
   it('detects literal as literal', () => {
     expect(describeField(z.literal('markdown'))).toMatchObject({ kind: 'literal', optional: false });
   });
@@ -241,6 +246,29 @@ describe('parseOptionValues', () => {
   });
 });
 
+describe('parseOptionValues — reftarget fallback arrays', () => {
+  const Schema = z.object({
+    type: z.literal('interactive'),
+    action: z.enum(['button', 'navigate']),
+    reftarget: z.union([z.string(), z.array(z.string())]).optional(),
+  });
+
+  it('collapses a single repeated --reftarget to a plain string', () => {
+    const result = parseOptionValues(Schema, { action: 'button', reftarget: ['#only'] });
+    expect(result).toEqual({ action: 'button', reftarget: '#only' });
+  });
+
+  it('keeps multiple repeated --reftarget as an ordered array', () => {
+    const result = parseOptionValues(Schema, { action: 'button', reftarget: ['#a', '#b'] });
+    expect(result).toEqual({ action: 'button', reftarget: ['#a', '#b'] });
+  });
+
+  it('omits an unset reftarget (empty repeatable default)', () => {
+    const result = parseOptionValues(Schema, { action: 'button', reftarget: [] });
+    expect(result).toEqual({ action: 'button' });
+  });
+});
+
 describe('integration with the live JsonInteractiveBlockSchema', () => {
   it('registers exactly the production interactive-block flags', () => {
     const cmd = new Command('interactive');
@@ -250,7 +278,7 @@ describe('integration with the live JsonInteractiveBlockSchema', () => {
       [
         '--id <string>',
         '--action <highlight|button|formfill|navigate|hover|noop|popout>',
-        '--reftarget <string>',
+        '--reftarget <selector>',
         '--targetvalue <string>',
         '--content <string>',
         '--tooltip <string>',
