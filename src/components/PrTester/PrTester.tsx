@@ -9,6 +9,7 @@ import {
   indexPrFiles,
   type PathPackageBuildResult,
 } from './pr-path-package';
+import { resolveEffectiveTestMode, type TestMode } from './pr-tester-mode';
 import type { ManifestJson } from '../../types/package.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
@@ -32,7 +33,6 @@ export interface PrTesterProps {
 }
 
 type FetchState = 'idle' | 'fetching' | 'fetched' | 'error';
-type TestMode = 'single' | 'all' | 'path';
 
 /**
  * PR Tester — load JSON files from a GitHub PR and test them locally.
@@ -370,6 +370,18 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     });
   }, [contentByDir, pathManifests, selectedPath, contentByPackageId]);
 
+  // testMode is restored from localStorage and can outlive the PR it was
+  // chosen for. A single-guide PR hides the mode selector, so a stale 'path'
+  // would strand the panel with no way back to 'single'.
+  const effectiveTestMode: TestMode = useMemo(
+    () =>
+      resolveEffectiveTestMode(testMode, {
+        manifestsLoading,
+        hasAnyPathPackage: pathManifestEntries.length > 0,
+      }),
+    [manifestsLoading, testMode, pathManifestEntries.length]
+  );
+
   const handleFetchPr = useCallback(async () => {
     const cleanedUrl = prUrl.trim();
 
@@ -405,18 +417,18 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   }, [prUrl]);
 
   const handleTestGuide = useCallback(() => {
-    if (testMode === 'single') {
+    if (effectiveTestMode === 'single') {
       if (!currentFile) {
         return;
       }
       onOpenDocsPage(currentFile.rawUrl, currentFile.directoryName);
       setTestSuccess(true);
-    } else if (testMode === 'all') {
+    } else if (effectiveTestMode === 'all') {
       contentFiles.forEach((file) => {
         onOpenDocsPage(file.rawUrl, file.directoryName);
       });
       setTestSuccess(true);
-    } else if (testMode === 'path') {
+    } else if (effectiveTestMode === 'path') {
       if (!pathBuild || !pathBuild.ok) {
         return;
       }
@@ -425,7 +437,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     }
 
     successTimeoutRef.current = setTimeout(() => setTestSuccess(false), 2000);
-  }, [contentFiles, currentFile, onOpenDocsPage, pathBuild, testMode]);
+  }, [contentFiles, currentFile, onOpenDocsPage, pathBuild, effectiveTestMode]);
 
   const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newUrl = e.currentTarget.value;
@@ -493,9 +505,9 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   ];
 
   const getActionButtonText = () => {
-    if (testMode === 'single') {
+    if (effectiveTestMode === 'single') {
       return 'Test guide';
-    } else if (testMode === 'all') {
+    } else if (effectiveTestMode === 'all') {
       return `Open all ${contentFiles.length} guides`;
     } else {
       return 'Test as learning path';
@@ -503,10 +515,10 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   };
 
   const isActionDisabled = (() => {
-    if (testMode === 'single') {
+    if (effectiveTestMode === 'single') {
       return !currentFile;
     }
-    if (testMode === 'all') {
+    if (effectiveTestMode === 'all') {
       return contentFiles.length === 0;
     }
     return !pathBuild || !pathBuild.ok;
@@ -517,7 +529,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
    * warning box so the author knows why "Test as learning path" is disabled.
    */
   const pathErrorMessage = useMemo(() => {
-    if (!hasFetched || testMode !== 'path') {
+    if (!hasFetched || effectiveTestMode !== 'path') {
       return null;
     }
     if (manifestsLoading) {
@@ -542,7 +554,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       return `Missing milestone content in this PR: ${pathBuild.missingMilestones.join(', ')}. Include each milestone's content.json in the PR.`;
     }
     return null;
-  }, [hasFetched, testMode, manifestsLoading, hasAnyPathPackage, pathBuild]);
+  }, [hasFetched, effectiveTestMode, manifestsLoading, hasAnyPathPackage, pathBuild]);
 
   return (
     <div className={styles.formGroup} data-testid={testIds.prTester.form}>
@@ -578,11 +590,11 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       {hasFetched && (hasMultipleContentFiles || hasAnyPathPackage) && (
         <div className={styles.modeContainer}>
           <label className={styles.label}>Test mode</label>
-          <RadioButtonGroup options={modeOptions} value={testMode} onChange={handleTestModeChange} fullWidth />
+          <RadioButtonGroup options={modeOptions} value={effectiveTestMode} onChange={handleTestModeChange} fullWidth />
         </div>
       )}
 
-      {hasFetched && hasMultipleContentFiles && testMode === 'single' && (
+      {hasFetched && hasMultipleContentFiles && effectiveTestMode === 'single' && (
         <div className={styles.selectContainer}>
           <label className={styles.label}>Guide to test</label>
           <Combobox
@@ -595,7 +607,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       )}
 
       {/* Path mode: pick a manifest + show its milestones in manifest order */}
-      {hasFetched && testMode === 'path' && (
+      {hasFetched && effectiveTestMode === 'path' && (
         <div className={styles.pathOrderContainer}>
           {manifestsLoading && (
             <p className={styles.helpText}>
@@ -649,7 +661,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         </div>
       )}
 
-      {hasFetched && testMode === 'all' && (
+      {hasFetched && effectiveTestMode === 'all' && (
         <div className={styles.allGuidesPreview}>
           <label className={styles.label}>Will open {contentFiles.length} guides:</label>
           <ul className={styles.guidesList}>
@@ -664,7 +676,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         </div>
       )}
 
-      {hasFetched && hasSingleContentFile && testMode === 'single' && currentFile && (
+      {hasFetched && hasSingleContentFile && effectiveTestMode === 'single' && currentFile && (
         <div className={styles.readyText}>
           <Icon name="check" />
           Ready: {currentFile.directoryName}
