@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { InteractiveStep } from './interactive-step';
 import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
 import { ControllerChannelProvider } from '../../global-state/controller-channel';
@@ -329,6 +329,40 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
 
     expect(await screen.findByRole('button', { name: /fix this/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /do it/i })).not.toBeInTheDocument();
+  });
+
+  it('fails open to a stripped local check when the live tab never answers (§6.5)', async () => {
+    jest.useFakeTimers();
+    try {
+      const transport = makeTransport();
+      render(
+        <InteractiveModeContext.Provider value="controller">
+          <ControllerChannelProvider transport={transport}>
+            <InteractiveStep targetAction="button" refTarget="#ok" requirements="exists-reftarget" stepId="ctrl-timeout">
+              Step
+            </InteractiveStep>
+          </ControllerChannelProvider>
+        </InteractiveModeContext.Provider>
+      );
+
+      // The controller posts the check, but no live tab ever replies. After the
+      // round-trip timeout the step must fail OPEN: strip the tab-local
+      // `exists-reftarget` token and evaluate the (now empty) remainder locally,
+      // which passes — so a disconnected driver stays usable instead of blocked
+      // forever on a silent live tab.
+      await waitFor(() =>
+        expect(transport.post).toHaveBeenCalledWith(expect.objectContaining({ kind: 'check-requirements' }))
+      );
+
+      await act(async () => {
+        jest.advanceTimersByTime(5000);
+      });
+
+      const button = await screen.findByRole('button', { name: /do it/i });
+      await waitFor(() => expect(button).not.toBeDisabled());
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('fails loud instead of dispatching a controller step with no stepId (F-1063-3)', async () => {

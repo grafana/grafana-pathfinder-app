@@ -394,4 +394,49 @@ describe('installLiveTabExecutor', () => {
     expect(executeOf(FocusHandler)).not.toHaveBeenCalled();
     uninstall();
   });
+
+  it('drops a forged fix-requirement missing required fields without dispatching a fix (T1 / security gate)', async () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport);
+
+    // fix-requirement is the highest-risk kind — runRemoteFix → dispatchFix
+    // performs navigation / DOM mutation on the authenticated live tab. A message
+    // missing the required `requirements` string must be dropped at the gate, so
+    // dispatchFix is never reached and no fix-result is posted back.
+    const forged = {
+      source: 'pathfinder',
+      senderId: 'attacker',
+      timestamp: 0,
+      kind: 'fix-requirement',
+      requestId: 'x1',
+      stepId: 's1',
+      fixType: 'navigation',
+    } as unknown as CrossTabMessage;
+    transport.emit(forged);
+    await Promise.resolve();
+
+    expect(dispatchFix).not.toHaveBeenCalled();
+    expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'fix-result' }));
+    uninstall();
+  });
+
+  it('drops a forged check-requirements missing required fields without probing the DOM (T1 / security gate)', async () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport);
+
+    const forged = {
+      source: 'pathfinder',
+      senderId: 'attacker',
+      timestamp: 0,
+      kind: 'check-requirements',
+      requestId: 'x2',
+      stepId: 's1',
+    } as unknown as CrossTabMessage;
+    transport.emit(forged);
+    await Promise.resolve();
+
+    expect(checkRequirements).not.toHaveBeenCalled();
+    expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'requirement-result' }));
+    uninstall();
+  });
 });
