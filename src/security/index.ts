@@ -17,6 +17,7 @@ export {
   isGitHubRawUrl,
   isLocalhostUrl,
   isAllowedContentUrl,
+  isTrustedFinalUrl,
   validateTutorialUrl,
   validateRedirectPath,
   isYouTubeDomain,

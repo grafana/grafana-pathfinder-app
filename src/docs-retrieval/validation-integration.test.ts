@@ -11,6 +11,7 @@ global.fetch = jest.fn();
 jest.mock('../security', () => ({
   ...jest.requireActual('../security'),
   isAllowedContentUrl: jest.fn().mockReturnValue(true),
+  isTrustedFinalUrl: jest.fn().mockReturnValue(true),
   isInteractiveLearningUrl: jest.fn().mockReturnValue(false),
   isGrafanaDocsUrl: jest.fn().mockReturnValue(false),
   isLocalhostUrl: jest.fn().mockReturnValue(false),

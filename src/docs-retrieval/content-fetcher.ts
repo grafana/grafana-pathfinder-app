@@ -23,7 +23,7 @@ import {
   isGrafanaDocsUrl,
   isLocalhostUrl,
   isInteractiveLearningUrl,
-  isGitHubRawUrl,
+  isTrustedFinalUrl,
   sanitizeHtmlUrl,
 } from '../security';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
@@ -130,7 +130,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // In production: Only Grafana docs, interactive learning domains, and bundled content
     // In dev mode: Also allows localhost and GitHub raw URLs for testing
     const isDevMode = isDevModeEnabledGlobal();
-    const isTrustedSource = isAllowedContentUrl(url) || (isDevMode && (isLocalhostUrl(url) || isGitHubRawUrl(url)));
+    const isTrustedSource = isTrustedFinalUrl(url);
 
     if (!isTrustedSource) {
       const errorMessage = isDevMode
@@ -673,11 +673,7 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
           // (e.g., Grafana Cloud). Fall back to the requested URL which was
           // already validated before entering this function.
           const finalUrl = response.url || urlVariation;
-          const isDevMode = isDevModeEnabledGlobal();
-          const isFinalUrlTrusted =
-            isAllowedContentUrl(finalUrl) ||
-            (isDevMode && isLocalhostUrl(finalUrl)) ||
-            (isDevMode && isGitHubRawUrl(finalUrl));
+          const isFinalUrlTrusted = isTrustedFinalUrl(finalUrl);
 
           if (!isFinalUrlTrusted) {
             console.warn(`URL variation ${urlVariation} redirected to untrusted URL: ${finalUrl}`);
@@ -761,11 +757,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         // When empty, fall back to the original request URL which was already
         // validated at the initial trust gate in fetchContent().
         const finalUrl = response.url || url;
-        const isDevMode = isDevModeEnabledGlobal();
-        const isFinalUrlTrusted =
-          isAllowedContentUrl(finalUrl) ||
-          (isDevMode && isLocalhostUrl(finalUrl)) ||
-          (isDevMode && isGitHubRawUrl(finalUrl));
+        const isFinalUrlTrusted = isTrustedFinalUrl(finalUrl);
 
         if (!isFinalUrlTrusted) {
           console.warn(
@@ -895,11 +887,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
                 errorType: 'other',
               };
             } else {
-              const isDevMode = isDevModeEnabledGlobal();
-              const isRedirectTrusted =
-                isAllowedContentUrl(redirectUrl.href) ||
-                (isDevMode && isLocalhostUrl(redirectUrl.href)) ||
-                (isDevMode && isGitHubRawUrl(redirectUrl.href));
+              const isRedirectTrusted = isTrustedFinalUrl(redirectUrl.href);
 
               if (!isRedirectTrusted) {
                 console.warn(`Redirect target not in trusted domain list: ${redirectUrl.href}`);
