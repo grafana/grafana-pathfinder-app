@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { ControllerChannelProvider, useControllerChannel } from './controller-channel';
+import { ControllerChannelProvider, useControllerChannel, useControllerConnected } from './controller-channel';
 import type { CrossTabMessage } from '../types/cross-tab.types';
 
 class FakeTransport {
@@ -39,6 +39,7 @@ function liveHeartbeat(): CrossTabMessage {
 
 function Probe() {
   const channel = useControllerChannel();
+  const connected = useControllerConnected();
   return (
     <div>
       <button
@@ -53,7 +54,7 @@ function Probe() {
       >
         post
       </button>
-      <span data-testid="connected">{String(channel?.connected)}</span>
+      <span data-testid="connected">{String(connected)}</span>
     </div>
   );
 }

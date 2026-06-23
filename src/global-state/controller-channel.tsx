@@ -14,13 +14,21 @@ interface ChannelTransport {
 
 interface ControllerChannel {
   post: (payload: CrossTabPayload) => void;
-  connected: boolean;
 }
 
 const ControllerChannelContext = createContext<ControllerChannel | null>(null);
+// Connection state lives in its own context: the heartbeat flips `connected`
+// every few seconds, and folding it into the channel value would re-render
+// every InteractiveStep that only needs `post`. The status badge is the sole
+// consumer of this context (NEW-1065-1).
+const ControllerConnectionContext = createContext<boolean>(false);
 
 export function useControllerChannel(): ControllerChannel | null {
   return useContext(ControllerChannelContext);
+}
+
+export function useControllerConnected(): boolean {
+  return useContext(ControllerConnectionContext);
 }
 
 export function ControllerChannelProvider({
@@ -60,10 +68,13 @@ export function ControllerChannelProvider({
     };
   }, [active]);
 
-  const channel = useMemo<ControllerChannel>(
-    () => ({ post: (payload) => active.post(payload), connected }),
-    [active, connected]
-  );
+  // Depends only on `active`, so the channel value stays referentially stable
+  // across heartbeat ticks — step consumers don't re-render (NEW-1065-1).
+  const channel = useMemo<ControllerChannel>(() => ({ post: (payload) => active.post(payload) }), [active]);
 
-  return <ControllerChannelContext.Provider value={channel}>{children}</ControllerChannelContext.Provider>;
+  return (
+    <ControllerChannelContext.Provider value={channel}>
+      <ControllerConnectionContext.Provider value={connected}>{children}</ControllerConnectionContext.Provider>
+    </ControllerChannelContext.Provider>
+  );
 }

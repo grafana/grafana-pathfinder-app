@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { cx } from '@emotion/css';
 import { ThemeContext } from '@grafana/data';
 import { config } from '@grafana/runtime';
 import { Icon, useStyles2 } from '@grafana/ui';
@@ -10,7 +11,7 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { InteractiveModeContext, type InteractiveMode } from '../../global-state/interactive-mode-context';
-import { ControllerChannelProvider, useControllerChannel } from '../../global-state/controller-channel';
+import { ControllerChannelProvider, useControllerConnected } from '../../global-state/controller-channel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { testIds } from '../../constants/testIds';
 import type { RawContent } from '../../types/content.types';
@@ -46,14 +47,14 @@ function useGrafanaTheme() {
 
 function ControllerStatusBadge() {
   const styles = useStyles2(getGuideReaderStyles);
-  const channel = useControllerChannel();
-  const connected = channel?.connected ?? false;
+  const connected = useControllerConnected();
   return (
     <div className={styles.controllerStatus} data-testid={testIds.guideReader.controllerStatus}>
       <span
-        className={`${styles.controllerStatusDot} ${
+        className={cx(
+          styles.controllerStatusDot,
           connected ? styles.controllerStatusConnected : styles.controllerStatusWaiting
-        }`}
+        )}
       />
       {connected ? 'Connected to your Grafana tab' : 'Waiting for your Grafana tab…'}
     </div>

@@ -268,7 +268,8 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     fireEvent.click(button);
 
     await waitFor(() => expect(warn).toHaveBeenCalled());
-    expect(transport.post).not.toHaveBeenCalled();
+    // The provider still posts heartbeats; assert no step-command was dispatched.
+    expect(transport.post).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'step-command' }));
     warn.mockRestore();
   });
 });
