@@ -18,12 +18,7 @@ describe('InputBlockForm', () => {
   it('blocks submit and shows an inline error for invalid regex patterns', () => {
     const onSubmit = jest.fn();
 
-    render(
-      <InputBlockForm
-        onSubmit={onSubmit}
-        onCancel={jest.fn()}
-      />
-    );
+    render(<InputBlockForm onSubmit={onSubmit} onCancel={jest.fn()} />);
 
     fireEvent.change(screen.getByPlaceholderText(/what is the name of your prometheus data source/i), {
       target: { value: 'Enter a datasource name' },
