@@ -29,6 +29,7 @@ import {
   sectionCollapseStorage,
   sectionDoneStorage,
 } from '../../../lib/user-storage';
+import { StorageEvents } from '../../../lib/event-names';
 import type { StepInfo } from '../../../types/component-props.types';
 import type { AcknowledgementAnalysis } from '../step-section-utils';
 import { getContentKey } from '../get-content-key';
@@ -107,9 +108,9 @@ export function useSectionPersistence({
       void clearAckAndCollapseStorage();
     };
 
-    window.addEventListener('interactive-progress-cleared', handleProgressCleared);
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
     return () => {
-      window.removeEventListener('interactive-progress-cleared', handleProgressCleared);
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
     };
   }, [clearAckAndCollapseStorage, dispatch, isPreviewMode]);
 
