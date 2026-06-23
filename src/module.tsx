@@ -145,22 +145,24 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   // Interactive controller (?doc=<guide>&controller=1): the same overlay, but
   // step actions stay visible so this tab can drive the originating Grafana tab.
-  if (docsParam && controllerParam) {
+  // Gated on pathfinderEnabled — the controller drives the user's authenticated
+  // Grafana, so it must not mount when the plugin is disabled (F-1062-1).
+  if (docsParam && controllerParam && pathfinderEnabled) {
     if (!document.getElementById('pathfinder-controller-root')) {
+      // Claim the id synchronously, before the dynamic import, so a second
+      // plugin.init can't race past the guard and double-mount (F-1062-2).
+      const container = document.createElement('div');
+      container.id = 'pathfinder-controller-root';
+      document.body.appendChild(container);
       import('./components/guide-reader/GuideReaderOverlay')
         .then(async ({ GuideReaderOverlay }) => {
-          if (document.getElementById('pathfinder-controller-root')) {
-            return;
-          }
           const { createCompatRoot } = await import('./lib/create-root-compat');
-          const container = document.createElement('div');
-          container.id = 'pathfinder-controller-root';
-          document.body.appendChild(container);
           const root = await createCompatRoot(container);
           root.render(React.createElement(GuideReaderOverlay, { doc: docsParam, mode: 'controller' }));
         })
         .catch((err) => {
           console.error('[Pathfinder] Failed to load interactive controller:', err);
+          container.remove();
         });
     }
     return;
