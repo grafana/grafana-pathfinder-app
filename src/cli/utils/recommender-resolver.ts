@@ -4,6 +4,12 @@
  * Resolves a bare package id to its CDN content/manifest URLs via the
  * recommender's `GET /api/v1/packages/{id}` endpoint, returning the parsed
  * manifest metadata (type, testEnvironment) the e2e runner routes on.
+ *
+ * @coupling Depends on the recommender's `GET /api/v1/packages/{id}` resolution
+ * endpoint (grafana-recommender; documented in its API docs / openapi.yaml).
+ * This endpoint deliberately separates "what package" from "where it lives" on
+ * the network, so the dependency is intentional, but it is an external API
+ * contract, and changes to its response shape must be reflected here.
  */
 
 import { ManifestJsonObjectSchema } from '../../types/package.schema';
