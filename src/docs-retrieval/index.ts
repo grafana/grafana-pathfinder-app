@@ -33,7 +33,7 @@ export {
   resolvePackageMilestones,
   resolvePackageNavLinks,
   derivePathSlug,
-} from './content-fetcher';
+} from './content-fetcher/package-content';
 
 export { fetchPackageInfoFromUrl, isPackageContentUrl } from './package-info-from-url';
 
