@@ -12,65 +12,101 @@ if (!AbortSignal.timeout) {
   });
 }
 
-// JSON-first content fetching tests
-// These tests document the expected behavior of the JSON-first fetching strategy
-describe('JSON-first content fetching behavior', () => {
-  describe('URL generation priority', () => {
-    it('should document that content.json is preferred over unstyled.html', () => {
-      // This test documents the expected URL priority order:
-      // 1. content.json (new JSON format - preferred)
-      // 2. unstyled.html (legacy HTML format - fallback)
-      //
-      // The generateInteractiveLearningVariations function in content-fetcher.ts generates URLs
-      // in this order for interactive learning URLs. When fetching, the first successful
-      // response is used.
-      //
-      // Example for URL: https://interactive-learning.grafana.net/test-guide
-      // Generated variations (in order):
-      // 1. https://interactive-learning.grafana.net/test-guide/content.json
-      // 2. https://interactive-learning.grafana.net/test-guide/unstyled.html
-
-      expect(true).toBe(true); // Documentation test
-    });
-
-    it('should document isNativeJson flag behavior', () => {
-      // When content is fetched from a .json URL (content.json), the isNativeJson
-      // flag is set to true on the RawContent object. This indicates that the
-      // content is already in JSON guide format and doesn't need to be wrapped.
-      //
-      // When content is fetched from an HTML URL (unstyled.html), the isNativeJson
-      // flag is set to false, and the HTML content is wrapped in a JSON guide
-      // structure with a single html block.
-      //
-      // The isNativeJson flag is stored in RawContent.isNativeJson and can be used
-      // by consumers to know the original format of the content.
-
-      expect(true).toBe(true); // Documentation test
-    });
+// JSON-first content fetching — tripwire for the content.json → unstyled.html
+// fallback ladder. These pin the candidate ORDER and the null-signal fallthrough
+// so the PR 7 consolidation (isolating the ladder into one strategy fn) is proven
+// behavior-preserving. Replaces the prior `expect(true).toBe(true)` doc-tests.
+describe('content.json → unstyled.html ladder', () => {
+  beforeEach(() => {
+    global.fetch = jest.fn();
   });
 
-  describe('content wrapping logic', () => {
-    it('should document native JSON content handling', () => {
-      // When native JSON content (from content.json) is fetched:
-      // 1. The JSON is parsed and validated as a proper guide structure
-      //    (must have id, title, and blocks array)
-      // 2. If valid, it's used directly without wrapping
-      // 3. If invalid, it's wrapped as if it were HTML
-      //
-      // This allows the same rendering pipeline to handle both formats.
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
 
-      expect(true).toBe(true); // Documentation test
+  const journeyUrl = 'https://grafana.com/docs/learning-paths/drilldown-logs/milestone-1/';
+  const validGuide = {
+    id: 'drilldown-logs-milestone-1',
+    title: 'Milestone 1',
+    blocks: [{ type: 'markdown', content: 'Hello' }],
+  };
+
+  // Records the order in which content URLs are requested.
+  const installFetch = (handlers: Record<'page' | 'json' | 'html', () => unknown>): string[] => {
+    const order: string[] = [];
+    const htmlHeaders = new Headers();
+    htmlHeaders.set('Content-Type', 'text/html; charset=utf-8');
+    const jsonHeaders = new Headers();
+    jsonHeaders.set('Content-Type', 'application/json');
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.endsWith('content.json')) {
+        order.push('content.json');
+        return Promise.resolve({ ok: true, text: async () => handlers.json(), url, headers: jsonHeaders });
+      }
+      if (url.endsWith('unstyled.html')) {
+        order.push('unstyled.html');
+        return Promise.resolve({ ok: true, text: async () => handlers.html(), url, headers: htmlHeaders });
+      }
+      order.push('page');
+      return Promise.resolve({ ok: true, text: async () => handlers.page(), url, headers: htmlHeaders });
+    });
+    return order;
+  };
+
+  it('requests content.json before unstyled.html for learning-path URLs', async () => {
+    const order = installFetch({
+      page: () => '<html><body>styled</body></html>',
+      json: () => 'null',
+      html: () => '<html><head><title>M1</title></head><body>unstyled</body></html>',
     });
 
-    it('should document HTML content wrapping', () => {
-      // When HTML content (from unstyled.html) is fetched:
-      // 1. Learning journey extras are applied (Ready to Begin button, etc.)
-      // 2. The HTML is wrapped in a JSON guide with a single html block:
-      //    { id: "external-...", title: "...", blocks: [{ type: "html", content: "..." }] }
-      // 3. This wrapped JSON goes through the same rendering pipeline as native JSON
+    await fetchContent(journeyUrl);
 
-      expect(true).toBe(true); // Documentation test
+    const jsonIdx = order.indexOf('content.json');
+    const htmlIdx = order.indexOf('unstyled.html');
+    expect(jsonIdx).toBeGreaterThanOrEqual(0);
+    expect(htmlIdx).toBeGreaterThanOrEqual(0);
+    expect(jsonIdx).toBeLessThan(htmlIdx);
+  });
+
+  it('uses content.json directly and never fetches unstyled.html when it returns a valid guide', async () => {
+    const order = installFetch({
+      page: () => '<html><body></body></html>',
+      json: () => JSON.stringify(validGuide),
+      html: () => '<html><body>should not be used</body></html>',
     });
+
+    const result = await fetchContent(journeyUrl);
+
+    expect(result.content?.isNativeJson).toBe(true);
+    expect(order).not.toContain('unstyled.html');
+  });
+
+  it('falls through to unstyled.html when content.json returns the null signal', async () => {
+    installFetch({
+      page: () => '<html><body>styled</body></html>',
+      json: () => 'null',
+      html: () => '<html><head><title>M1</title></head><body>unstyled</body></html>',
+    });
+
+    const result = await fetchContent(journeyUrl);
+
+    expect(result.content).not.toBeNull();
+    expect(result.content?.isNativeJson).toBe(false);
+  });
+
+  it('skips content.json for regular docs pages that do not support it', async () => {
+    const order = installFetch({
+      page: () => '<html><body>styled</body></html>',
+      json: () => 'null',
+      html: () => '<html><head><title>Docs</title></head><body>unstyled</body></html>',
+    });
+
+    await fetchContent('https://grafana.com/docs/grafana/latest/panels/');
+
+    expect(order).not.toContain('content.json');
+    expect(order).toContain('unstyled.html');
   });
 });
 
