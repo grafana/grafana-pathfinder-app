@@ -13,9 +13,10 @@ import {
   fetchPackageContent,
   fetchPackageById,
   setPackageResolver,
-  fetchContent,
   resolvePackageMilestones,
-} from './content-fetcher';
+  resolvePackageNavLinks,
+} from './content-fetcher/package-content';
+import { fetchContent } from './content-fetcher';
 import type { PackageResolver, PackageResolution } from '../types';
 
 // Mock AbortSignal.timeout for Node environments
@@ -611,5 +612,140 @@ describe('static docs path is unchanged', () => {
     );
     // Either content returned (unlikely in unit tests without mocks) or a fetch error
     expect(result).toHaveProperty('content');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolvePackageNavLinks — bare package IDs to ResolvedNavLink objects
+// (PR 9: previously had no direct coverage)
+// ---------------------------------------------------------------------------
+
+describe('resolvePackageNavLinks', () => {
+  afterEach(() => {
+    setPackageResolver(
+      makeResolver({
+        ok: false,
+        id: 'reset',
+        error: { code: 'not-found', message: 'reset' },
+      })
+    );
+  });
+
+  it('returns empty array when no resolver is configured', async () => {
+    const result = await resolvePackageNavLinks(['pkg-a']);
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty array for an empty package list', async () => {
+    setPackageResolver(makeResolver(makeSuccessResolution()));
+    const result = await resolvePackageNavLinks([]);
+    expect(result).toEqual([]);
+  });
+
+  it('resolves IDs to nav links with title, contentUrl, and manifest', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Title for ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageNavLinks(['alpha', 'beta']);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({
+      packageId: 'alpha',
+      title: 'Title for alpha',
+      contentUrl: 'bundled:alpha/content.json',
+      manifest: { id: 'alpha', type: 'guide' },
+    });
+    expect(result[1]!.packageId).toBe('beta');
+  });
+
+  it('falls back to description then ID for the title, and skips unresolvable IDs', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) => {
+        if (id === 'gone') {
+          return Promise.resolve({ ok: false, id, error: { code: 'not-found' as const, message: 'nope' } });
+        }
+        return Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          manifest: { id, description: `Desc ${id}`, type: 'guide' },
+        });
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageNavLinks(['keep', 'gone']);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.title).toBe('Desc keep');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolvePackageMilestones — website URL derivation (buildMilestoneWebsiteUrl)
+// (PR 9: the pathSlug-driven URL builder previously had no direct coverage)
+// ---------------------------------------------------------------------------
+
+describe('resolvePackageMilestones — website URL derivation', () => {
+  afterEach(() => {
+    setPackageResolver(
+      makeResolver({
+        ok: false,
+        id: 'reset',
+        error: { code: 'not-found', message: 'reset' },
+      })
+    );
+  });
+
+  const milestoneResolver = (): PackageResolver => ({
+    resolve: jest.fn().mockImplementation((id: string) =>
+      Promise.resolve({
+        ok: true,
+        id,
+        contentUrl: `bundled:${id}/content.json`,
+        manifestUrl: `bundled:${id}/manifest.json`,
+        repository: 'bundled',
+        content: { id, title: `Title ${id}`, blocks: [] },
+        manifest: { id, type: 'guide' },
+      })
+    ),
+  });
+
+  it('builds the learning-paths website URL when the milestone ID shares the path-slug prefix', async () => {
+    setPackageResolver(milestoneResolver());
+
+    const result = await resolvePackageMilestones(['grafana-cloud-tour-business-value'], 'grafana-cloud-tour');
+
+    expect(result[0]!.websiteUrl).toBe('https://grafana.com/docs/learning-paths/grafana-cloud-tour/business-value/');
+  });
+
+  it('leaves websiteUrl undefined when the milestone ID does not match the path-slug prefix', async () => {
+    setPackageResolver(milestoneResolver());
+
+    const result = await resolvePackageMilestones(['unrelated-id'], 'grafana-cloud-tour');
+
+    expect(result[0]!.websiteUrl).toBeUndefined();
+  });
+
+  it('omits websiteUrl entirely when no path slug is provided', async () => {
+    setPackageResolver(milestoneResolver());
+
+    const result = await resolvePackageMilestones(['any-id']);
+
+    expect(result[0]).not.toHaveProperty('websiteUrl');
   });
 });
