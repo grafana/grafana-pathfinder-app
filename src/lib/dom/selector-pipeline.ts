@@ -17,7 +17,7 @@ import { findButtonByText } from './dom-utils';
 import { isCssSelector } from './selector-detector';
 
 export interface PipelineConfig {
-  reftarget: string;
+  reftarget: string | string[];
   action?: string;
   delays?: number[];
   relaxOnRetry?: boolean;
@@ -30,22 +30,56 @@ export interface PipelineResult {
   strategy: 'exact' | 'retry';
   confidence: number;
   retryCount: number;
+  /** Index of the candidate that resolved; 0 is the primary (strongest) selector. */
+  selectedIndex: number;
 }
 
 /**
- * Unified selector resolution pipeline with strategy escalation.
+ * Unified selector resolution pipeline with strategy escalation and an ordered
+ * fallback chain.
  *
- * Stage 1: Exact match (confidence 1.0)
- * Stage 2: Wait + retry with exponential backoff (confidence 0.95)
+ * `reftarget` may be a single selector or an ordered array (strongest first).
+ * Resolution is selector-major: each candidate runs the complete exact + retry
+ * pipeline (its full retry budget) before the next candidate is tried, so the
+ * primary is never skipped in favor of a weaker selector.
  *
- * Note: prefix matching and combinator relaxation are already handled internally
- * by querySelectorAllEnhanced/handleTestIdSelector, so they fire automatically
- * during Stage 1 and Stage 2.
+ * Per candidate — Stage 1: exact match (confidence 1.0); Stage 2: wait + retry
+ * with exponential backoff (confidence 0.95). Prefix matching and combinator
+ * relaxation are handled internally by querySelectorAllEnhanced, so they fire
+ * automatically during both stages.
  */
 export async function resolveSelectorPipeline(config: PipelineConfig): Promise<PipelineResult | null> {
   const { reftarget, action, delays = [200, 600, 1800], relaxOnRetry = true } = config;
+  const candidates = (Array.isArray(reftarget) ? reftarget : [reftarget]).map((s) => s.trim()).filter(Boolean);
+  if (candidates.length === 0) {
+    return null;
+  }
+
   const effectiveAction = action ?? 'highlight';
 
+  for (let index = 0; index < candidates.length; index++) {
+    const result = await resolveSingleCandidate(candidates[index]!, effectiveAction, delays, relaxOnRetry);
+    if (result) {
+      if (index > 0) {
+        console.log(`[SelectorFallback] resolved via fallback selector #${index}: ${candidates[index]}`);
+      }
+      return { ...result, selectedIndex: index };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Resolve a single selector through the full exact + retry pipeline.
+ * Returns the result without a `selectedIndex` (the caller stamps it).
+ */
+async function resolveSingleCandidate(
+  reftarget: string,
+  effectiveAction: string,
+  delays: number[],
+  relaxOnRetry: boolean
+): Promise<Omit<PipelineResult, 'selectedIndex'> | null> {
   // Resolve any prefixes (grafana:, panel:, etc.)
   const resolvedSelector = resolveSelector(reftarget);
 
@@ -106,7 +140,7 @@ export async function resolveSelectorPipeline(config: PipelineConfig): Promise<P
     }
   }
 
-  // All strategies exhausted
+  // All strategies exhausted for this candidate
   return null;
 }
 
