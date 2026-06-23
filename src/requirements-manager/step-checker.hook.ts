@@ -34,7 +34,7 @@ import { useInteractiveElements, useSequentialStepState } from '../interactive-e
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
-import { checkRequirements } from './requirements-checker.utils';
+import { checkRequirements, type RequirementsCheckResult } from './requirements-checker.utils';
 import { stripTabLocalRequirements } from './controller-requirements';
 import { useInteractiveMode } from '../global-state/interactive-mode-context';
 import { useControllerChannel } from '../global-state/controller-channel';
@@ -252,7 +252,11 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         ? 0
         : (maxRetriesOverride ?? (lazyRender ? 0 : INTERACTIVE_CONFIG.delays.requirements.maxRetries));
 
-      const attemptCheck = async (retryCount: number): Promise<any> => {
+      // Typed (not `any`) so the live-tab RemoteRequirementResult and the local
+      // RequirementsCheckResult must stay structurally interchangeable — a future
+      // drift between the wire mirror and the real type becomes a compile error
+      // here rather than a silent runtime mismatch (NEW-1070-1).
+      const attemptCheck = async (retryCount: number): Promise<RequirementsCheckResult> => {
         // REACT: Check mounted before state updates to prevent updates after unmount (R4)
         if (!isMountedRef.current) {
           return { requirements: requirements || '', pass: false, error: [] };
@@ -263,8 +267,12 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
         try {
           // In controller mode the live tab is the source of truth for DOM/URL
-          // requirements; round-trip the check there and fall back to a stripped
-          // local check only when no live tab answers, so the step never hangs.
+          // requirements; round-trip the check there. When no live tab answers
+          // within the timeout we deliberately fail OPEN, not closed: strip the
+          // tab-local DOM/URL tokens and evaluate the rest locally (§6.5). A
+          // fail-closed block would strand the two-monitor driver whenever the
+          // live tab briefly disconnects; session/permission/role requirements
+          // are NOT stripped, so genuine authorization failures still gate.
           const result = isRemote
             ? ((await controllerChannel?.requestRequirementCheck(optionsStepId ?? stepId, requirements, {
                 targetAction,

@@ -164,6 +164,12 @@ export function InteractiveSection({
   const mode = useInteractiveMode();
   // In controller mode, drop requirements that probe this tab (nav menu, current
   // page, ...) — the live tab enforces them; session requirements still gate.
+  // Deliberately strip-only, NOT round-tripped (NEW-1068-1): this is the coarse
+  // section-level "can this section run" gate, and each step still round-trips
+  // its own tab-local requirements to the live tab when it executes
+  // (see `attemptCheck` in step-checker.hook.ts). Round-tripping the whole
+  // section here would add per-section latency for a gate the per-step checks
+  // already enforce precisely.
   const controllerRequirements = useMemo(
     () => (mode === 'controller' ? stripTabLocalRequirements(requirements) : requirements),
     [mode, requirements]

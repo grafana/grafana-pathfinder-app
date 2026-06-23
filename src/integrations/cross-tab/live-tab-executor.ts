@@ -13,7 +13,7 @@ import {
   NavigationManager,
 } from '../../interactive-engine';
 import { CrossTabTransport, createSenderId } from '../../lib/cross-tab-transport';
-import { checkRequirements, dispatchFix } from '../../requirements-manager';
+import { checkRequirements, dispatchFix, type RequirementsCheckResult } from '../../requirements-manager';
 import {
   validateCrossTabMessage,
   type CheckRequirementsMessage,
@@ -21,6 +21,7 @@ import {
   type CrossTabMessage,
   type CrossTabPayload,
   type FixRequirementMessage,
+  type RemoteRequirementResult,
   type StepCommandMessage,
 } from '../../types/cross-tab.types';
 import { sidebarState } from '../../global-state/sidebar';
@@ -45,6 +46,15 @@ const DEFAULT_PACING: ExecutorPacing = {
   settleMs: INTERACTIVE_CONFIG.delays.multiStep.settleAfterActionMs,
   interStepMs: INTERACTIVE_CONFIG.delays.multiStep.defaultStepDelay,
 };
+
+// F-1056-4: the tier-0 wire mirror (RemoteRequirementResult) and the tier-2 real
+// result (RequirementsCheckResult) must stay structurally interchangeable in BOTH
+// directions — evaluateRequirements posts the real type as the mirror, and the
+// controller reads the mirror back as the real type. Drift in either type makes
+// this assignment fail to compile.
+type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+const _resultMirrorIsExact: MutuallyAssignable<RemoteRequirementResult, RequirementsCheckResult> = true;
+void _resultMirrorIsExact;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 

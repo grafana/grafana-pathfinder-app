@@ -77,7 +77,6 @@ export function ControllerChannelProvider({
   const lastLiveSeenRef = useRef(0);
   const reassertedCloseRef = useRef(false);
   const pendingRef = useRef<Map<string, PendingRequest>>(new Map());
-  const requestSeqRef = useRef(0);
 
   useEffect(() => {
     active.start();
@@ -144,7 +143,11 @@ export function ControllerChannelProvider({
 
   const request = useCallback(
     <T extends RemoteRequirementResult | FixOutcome | null>(payload: RequestPayload, fallback: T): Promise<T> => {
-      const requestId = `req-${(requestSeqRef.current += 1)}`;
+      // Globally unique so a reply can never settle the wrong pending request:
+      // a per-instance sequence (`req-1`, `req-2`, …) collides across two
+      // controller tabs sharing the channel, and a stray reply would resolve the
+      // other controller's same-numbered request (F-1070-1).
+      const requestId = crypto.randomUUID();
       return new Promise<T>((resolve) => {
         const timer = setTimeout(() => {
           pendingRef.current.delete(requestId);
