@@ -394,5 +394,6 @@ export const testIds = {
     closeButton: 'guide-reader-close',
     loading: 'guide-reader-loading',
     error: 'guide-reader-error',
+    closeHint: 'guide-reader-close-hint',
   },
 };

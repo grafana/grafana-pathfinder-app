@@ -29,16 +29,14 @@ function useGrafanaTheme() {
     const observer = new MutationObserver((mutations) => {
       for (const m of mutations) {
         if (m.attributeName === 'class') {
-          if (config.theme2 !== theme) {
-            setTheme(config.theme2);
-          }
+          setTheme(config.theme2);
           break;
         }
       }
     });
     observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
     return () => observer.disconnect();
-  }, [theme]);
+  }, []);
 
   return theme;
 }
@@ -68,8 +66,22 @@ function GuideReaderInner({ doc }: GuideReaderOverlayProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [content, setContent] = useState<RawContent | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [closeBlocked, setCloseBlocked] = useState(false);
+  const closeTimerRef = useRef<number | undefined>(undefined);
 
-  const handleClose = useCallback(() => window.close(), []);
+  const handleClose = useCallback(() => {
+    window.close();
+    // window.close() only closes tabs the script itself opened; for a bookmarked
+    // or directly-navigated ?doc= URL it is a silent no-op. If the tab is still
+    // here a moment later, surface an in-overlay hint instead of failing silently.
+    closeTimerRef.current = window.setTimeout(() => {
+      if (!window.closed) {
+        setCloseBlocked(true);
+      }
+    }, 100);
+  }, []);
+
+  useEffect(() => () => window.clearTimeout(closeTimerRef.current), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,6 +140,11 @@ function GuideReaderInner({ doc }: GuideReaderOverlayProps) {
       >
         <Icon name="times" />
       </button>
+      {closeBlocked && (
+        <div className={styles.message} data-testid={testIds.guideReader.closeHint}>
+          You can close this browser tab to return to Grafana.
+        </div>
+      )}
       <div className={styles.container}>
         {error && (
           <div className={styles.message} data-testid={testIds.guideReader.error}>

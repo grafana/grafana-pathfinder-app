@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { GuideReaderOverlay } from './GuideReaderOverlay';
 import { testIds } from '../../constants/testIds';
 import { fetchUnifiedContent } from '../../docs-retrieval';
@@ -51,6 +51,34 @@ describe('GuideReaderOverlay', () => {
 
     fireEvent.click(screen.getByTestId(testIds.guideReader.closeButton));
     expect(closeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the tab when Escape is pressed', async () => {
+    mockFetchContent.mockResolvedValue({ content: { url: 'backend-guide:x', type: 'interactive' } } as any);
+
+    render(<GuideReaderOverlay doc="backend-guide:x" />);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a close hint when window.close() is a no-op (bookmarked tab)', async () => {
+    jest.useFakeTimers();
+    try {
+      mockFetchContent.mockResolvedValue({ content: { url: 'backend-guide:x', type: 'interactive' } } as any);
+
+      render(<GuideReaderOverlay doc="backend-guide:x" />);
+
+      fireEvent.click(screen.getByTestId(testIds.guideReader.closeButton));
+      expect(screen.queryByTestId(testIds.guideReader.closeHint)).not.toBeInTheDocument();
+
+      act(() => {
+        jest.advanceTimersByTime(100);
+      });
+      expect(screen.getByTestId(testIds.guideReader.closeHint)).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('surfaces an error when the guide cannot be loaded', async () => {
