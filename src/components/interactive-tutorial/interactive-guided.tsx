@@ -1,4 +1,4 @@
-import React, { useState, useCallback, forwardRef, useId, useImperativeHandle, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo } from 'react';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
@@ -113,6 +113,13 @@ interface InteractiveGuidedProps {
   resetTrigger?: number;
 }
 
+let anonymousGuidedCounter = 0;
+
+/** Reset the anonymous guided counter (called by resetInteractiveCounters). */
+export function resetGuidedCounter(): void {
+  anonymousGuidedCounter = 0;
+}
+
 export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean> }, InteractiveGuidedProps>(
   (
     {
@@ -141,7 +148,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     },
     ref
   ) => {
-    const generatedStepId = `guided-step-${useId().replace(/:/g, '')}`;
+    const [generatedStepId] = useState(() => {
+      anonymousGuidedCounter += 1;
+      return `guided-step-${anonymousGuidedCounter}`;
+    });
     const renderedStepId = stepId ?? generatedStepId;
     const analyticsStepMeta = useMemo(
       () => ({
