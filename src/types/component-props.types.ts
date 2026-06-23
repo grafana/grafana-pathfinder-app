@@ -27,7 +27,7 @@ export interface BaseInteractiveProps {
  */
 export interface InteractiveStepProps extends BaseInteractiveProps {
   targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover' | 'noop' | 'popout';
-  refTarget: string;
+  refTarget: string | string[]; // Single selector or ordered fallback chain (strongest first)
   targetValue?: string;
   postVerify?: string;
   targetComment?: string;
@@ -83,7 +83,7 @@ export interface StepInfo {
   element: React.ReactElement<InteractiveStepProps> | React.ReactElement<any>;
   index: number;
   targetAction?: string; // Optional for multi-step and guided
-  refTarget?: string; // Optional for multi-step and guided
+  refTarget?: string | string[]; // Optional for multi-step and guided; single selector or fallback chain
   targetValue?: string;
   targetComment?: string; // Optional comment to show during execution
   requirements?: string;

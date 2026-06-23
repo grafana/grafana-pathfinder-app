@@ -4,7 +4,7 @@ import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../sty
 import { waitForReactUpdates } from '../lib/async-utils';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
 import { checkRequirements, checkPostconditions, RequirementsCheckOptions } from '../requirements-manager';
-import { extractInteractiveDataFromElement } from '../lib/dom';
+import { extractInteractiveDataFromElement, primaryRefTarget } from '../lib/dom';
 import { InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { InteractiveStateManager } from './interactive-state-manager';
@@ -215,7 +215,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       const options: RequirementsCheckOptions = {
         requirements: data.requirements || '',
         targetAction: data.targetAction,
-        refTarget: data.refTarget,
+        refTarget: primaryRefTarget(data.refTarget),
         targetValue: data.targetValue,
         stepId: data.textContent || 'unknown',
       };
@@ -248,14 +248,14 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     async (
       verifyString: string,
       targetAction?: string,
-      refTarget?: string,
+      refTarget?: string | string[],
       targetValue?: string,
       stepId?: string
     ): Promise<InteractiveRequirementsCheck> => {
       const options: RequirementsCheckOptions = {
         requirements: verifyString || '',
         targetAction,
-        refTarget,
+        refTarget: refTarget === undefined ? undefined : primaryRefTarget(refTarget),
         targetValue,
         stepId,
       };
@@ -295,9 +295,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
   const interactiveSequence = useCallback(
     async (data: InteractiveElementData, showOnly: boolean): Promise<string> => {
+      // Sequence containers are addressed by a single selector (the legacy path
+      // does not support fallback chains); narrow the union to that string.
+      const refTarget = primaryRefTarget(data.refTarget);
+
       // This is here so recursion cannot happen
-      if (activeRefsRef.current.has(data.refTarget)) {
-        return data.refTarget;
+      if (activeRefsRef.current.has(refTarget)) {
+        return refTarget;
       }
 
       stateManager.setState(data, 'running');
@@ -305,7 +309,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       try {
         // Resolve grafana: prefix if present
         const { resolveSelector } = await import('../lib/dom');
-        const resolvedSelector = resolveSelector(data.refTarget);
+        const resolvedSelector = resolveSelector(refTarget);
 
         const searchContainer = containerRef?.current || document;
         const targetElements = searchContainer.querySelectorAll(resolvedSelector);
@@ -320,7 +324,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           stateManager.handleError(msg, 'interactiveSequence', data, true);
         }
 
-        activeRefsRef.current.add(data.refTarget);
+        activeRefsRef.current.add(refTarget);
 
         // Find all interactive elements within the sequence container
         const interactiveElements = Array.from(
@@ -328,7 +332,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         );
 
         if (interactiveElements.length === 0) {
-          const msg = `No interactive elements found within sequence container: ${data.refTarget}`;
+          const msg = `No interactive elements found within sequence container: ${refTarget}`;
           stateManager.handleError(msg, 'interactiveSequence', data, true);
         }
 
@@ -343,14 +347,14 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         // Mark as completed after successful execution
         stateManager.setState(data, 'completed');
 
-        activeRefsRef.current.delete(data.refTarget);
-        return data.refTarget;
+        activeRefsRef.current.delete(refTarget);
+        return refTarget;
       } catch (error) {
         stateManager.handleError(error as Error, 'interactiveSequence', data, false);
-        activeRefsRef.current.delete(data.refTarget);
+        activeRefsRef.current.delete(refTarget);
       }
 
-      return data.refTarget;
+      return refTarget;
     },
     [containerRef, activeRefsRef, sequenceManager, stateManager]
   );
@@ -375,7 +379,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   const executeInteractiveAction = useCallback(
     async (
       targetAction: string,
-      refTarget: string,
+      refTarget: string | string[],
       targetValue?: string,
       buttonType: 'show' | 'do' = 'do',
       targetComment?: string
@@ -388,7 +392,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         targetComment: targetComment,
         requirements: undefined,
         tagName: 'button', // Simulated for React components
-        textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${refTarget}`,
+        textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${primaryRefTarget(refTarget)}`,
         timestamp: Date.now(),
       };
 

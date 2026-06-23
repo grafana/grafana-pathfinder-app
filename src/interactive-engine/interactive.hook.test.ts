@@ -82,6 +82,7 @@ jest.mock('../lib/dom', () => ({
   findButtonByText: jest.fn().mockReturnValue([]),
   querySelectorAllEnhanced: jest.fn().mockReturnValue({ elements: [], usedFallback: false, originalSelector: '' }),
   resolveSelector: jest.fn((selector: string) => selector), // Pass through selector as-is for tests
+  primaryRefTarget: (rt: string | string[]) => (Array.isArray(rt) ? (rt[0] ?? '') : rt),
 }));
 
 describe('useInteractiveElements', () => {
