@@ -128,6 +128,26 @@ describe('ControllerChannelProvider', () => {
     expect(screen.getByTestId('connected')).toHaveTextContent('true');
   });
 
+  it('re-asserts sidebar-handoff:close once the first live heartbeat arrives (F-1067-1)', () => {
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <Probe />
+      </ControllerChannelProvider>
+    );
+
+    const closes = () =>
+      transport.postedMessages.filter((m) => (m as any)?.kind === 'sidebar-handoff' && (m as any)?.action === 'close');
+    expect(closes()).toHaveLength(1); // initial close at mount
+
+    act(() => transport.emit(liveHeartbeat()));
+    expect(closes()).toHaveLength(2); // re-asserted now a live tab is present
+
+    // A second/third live heartbeat must not keep re-posting.
+    act(() => transport.emit(liveHeartbeat()));
+    expect(closes()).toHaveLength(2);
+  });
+
   it('returns null outside a provider', () => {
     function Peek() {
       const channel = useControllerChannel();

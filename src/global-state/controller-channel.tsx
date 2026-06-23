@@ -41,6 +41,7 @@ export function ControllerChannelProvider({
   const [active] = useState<ChannelTransport>(() => transport ?? new CrossTabTransport(createSenderId()));
   const [connected, setConnected] = useState(false);
   const lastLiveSeenRef = useRef(0);
+  const reassertedCloseRef = useRef(false);
 
   useEffect(() => {
     active.start();
@@ -51,6 +52,15 @@ export function ControllerChannelProvider({
       if (message.kind === 'heartbeat' && message.role === 'live') {
         lastLiveSeenRef.current = Date.now();
         setConnected(true);
+        if (!reassertedCloseRef.current) {
+          // The initial close above may have been posted before any live tab
+          // was listening (controller opened first, or the live tab mounted
+          // late). Re-assert it once the first live heartbeat proves a live tab
+          // exists, so the sidebar still hands off (F-1067-1). The flag stops
+          // later reconnects from re-posting on every tick.
+          reassertedCloseRef.current = true;
+          active.post({ kind: 'sidebar-handoff', action: 'close' });
+        }
       }
     });
 

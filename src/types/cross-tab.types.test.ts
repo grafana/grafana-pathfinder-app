@@ -57,4 +57,11 @@ describe('validateCrossTabMessage', () => {
   it('rejects a heartbeat with an invalid role', () => {
     expect(validateCrossTabMessage(envelope({ kind: 'heartbeat', role: 'admin' }))).toBeNull();
   });
+
+  it('accepts a sidebar-handoff with a known action and rejects others', () => {
+    expect(validateCrossTabMessage(envelope({ kind: 'sidebar-handoff', action: 'close' }))).not.toBeNull();
+    expect(validateCrossTabMessage(envelope({ kind: 'sidebar-handoff', action: 'reopen' }))).not.toBeNull();
+    expect(validateCrossTabMessage(envelope({ kind: 'sidebar-handoff', action: 'detonate' }))).toBeNull();
+    expect(validateCrossTabMessage(envelope({ kind: 'sidebar-handoff' }))).toBeNull();
+  });
 });
