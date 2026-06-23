@@ -217,7 +217,11 @@ export function destructiveActionWithoutObjective(guide: JsonGuide): Diagnostic[
     let actionLabel = '';
 
     if (isInteractiveBlock(block)) {
-      if (block.action === 'button' && block.reftarget && DESTRUCTIVE_REFTARGET_PATTERN.test(primaryRefTarget(block.reftarget))) {
+      if (
+        block.action === 'button' &&
+        block.reftarget &&
+        DESTRUCTIVE_REFTARGET_PATTERN.test(primaryRefTarget(block.reftarget))
+      ) {
         isDestructive = true;
         actionLabel = `button "${primaryRefTarget(block.reftarget)}"`;
       }
@@ -347,11 +351,15 @@ export function requirementsImpliedByActionButNotDeclared(guide: JsonGuide): Dia
       continue;
     }
 
-    const expected = suggestRequirementsFromContext(action, primaryRefTarget(block.reftarget ?? block.refTarget ?? ''), {
-      isFirstStepInGuide: isFirstStep,
-      isInsideMultistep: false,
-      currentPath: typeof window !== 'undefined' ? window.location.pathname : undefined,
-    });
+    const expected = suggestRequirementsFromContext(
+      action,
+      primaryRefTarget(block.reftarget ?? block.refTarget ?? ''),
+      {
+        isFirstStepInGuide: isFirstStep,
+        isInsideMultistep: false,
+        currentPath: typeof window !== 'undefined' ? window.location.pathname : undefined,
+      }
+    );
     if (expected.length === 0) {
       continue;
     }
