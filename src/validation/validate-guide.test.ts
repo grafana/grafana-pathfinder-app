@@ -712,8 +712,7 @@ describe('JsonGuideSchema', () => {
   });
 
   describe('reftarget fallback arrays', () => {
-    const guideWith = (block: Record<string, unknown>) =>
-      JSON.stringify({ id: 'g', title: 'T', blocks: [block] });
+    const guideWith = (block: Record<string, unknown>) => JSON.stringify({ id: 'g', title: 'T', blocks: [block] });
 
     it('accepts an interactive block with an ordered reftarget array', () => {
       const result = validateGuideFromString(

@@ -31,7 +31,12 @@ import {
   removeTokenFromConditionField,
 } from '../lint';
 import { testIds } from '../../../constants/testIds';
-import { generateFallbackSelectors, querySelectorAllEnhanced, resolveSelector, primaryRefTarget } from '../../../lib/dom';
+import {
+  generateFallbackSelectors,
+  querySelectorAllEnhanced,
+  resolveSelector,
+  primaryRefTarget,
+} from '../../../lib/dom';
 import { SelectorHealthBadge } from '../SelectorHealthBadge';
 import { SelectorTestOverlay } from '../SelectorTestOverlay';
 import { useSelectorTest } from '../useSelectorTest';
@@ -135,10 +140,7 @@ export function InteractiveBlockForm({
   }, [onPickerModeChange, action]);
 
   const addFallback = useCallback(() => setFallbacks((prev) => [...prev, '']), []);
-  const removeFallback = useCallback(
-    (index: number) => setFallbacks((prev) => prev.filter((_, i) => i !== index)),
-    []
-  );
+  const removeFallback = useCallback((index: number) => setFallbacks((prev) => prev.filter((_, i) => i !== index)), []);
   const updateFallback = useCallback(
     (index: number, value: string) => setFallbacks((prev) => prev.map((fb, i) => (i === index ? value : fb))),
     []
@@ -477,7 +479,12 @@ export function InteractiveBlockForm({
                       placeholder="e.g., button[data-testid='save-dashboard']"
                       className={styles.selectorInput}
                     />
-                    <IconButton name="arrow-up" tooltip="Move up" disabled={i === 0} onClick={() => moveFallback(i, -1)} />
+                    <IconButton
+                      name="arrow-up"
+                      tooltip="Move up"
+                      disabled={i === 0}
+                      onClick={() => moveFallback(i, -1)}
+                    />
                     <IconButton
                       name="arrow-down"
                       tooltip="Move down"

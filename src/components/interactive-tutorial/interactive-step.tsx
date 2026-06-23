@@ -364,7 +364,11 @@ export const InteractiveStep = forwardRef<
       if (targetAction !== 'formfill' || !refTarget) {
         return null;
       }
-      return resolveTargetElement({ targetAction, refTarget: primaryRefTarget(refTarget), targetValue: currentTargetValue });
+      return resolveTargetElement({
+        targetAction,
+        refTarget: primaryRefTarget(refTarget),
+        targetValue: currentTargetValue,
+      });
     }, [targetAction, refTarget, currentTargetValue]);
 
     // Handle form validation completion

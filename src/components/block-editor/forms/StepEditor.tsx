@@ -939,7 +939,10 @@ export function StepEditor({
                           )}
                         </div>
                         {/* Show description/tooltip if available, otherwise show selector (or "Info step" for noop, "Dock"/"Undock" for popout) */}
-                        <div className={styles.stepSelector} title={step.reftarget ? primaryRefTarget(step.reftarget) : undefined}>
+                        <div
+                          className={styles.stepSelector}
+                          title={step.reftarget ? primaryRefTarget(step.reftarget) : undefined}
+                        >
                           {step.action === 'noop'
                             ? isGuided
                               ? step.description || 'Informational step'
