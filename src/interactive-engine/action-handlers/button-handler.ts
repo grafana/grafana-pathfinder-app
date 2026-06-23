@@ -32,10 +32,26 @@ export class ButtonHandler {
   }
 
   /**
-   * Find buttons using intelligent selector/text detection with retry support
-   * Uses resolveWithRetry for resilience against timing issues
+   * Find buttons using intelligent selector/text detection with retry support.
+   * Accepts an ordered fallback chain; each candidate runs its full resolution
+   * before the next is tried (selector-major).
    */
-  private async findButtons(refTarget: string): Promise<HTMLElement[]> {
+  private async findButtons(refTarget: string | string[]): Promise<HTMLElement[]> {
+    const candidates = Array.isArray(refTarget) ? refTarget : [refTarget];
+    for (const candidate of candidates) {
+      const buttons = await this.findButtonsForSelector(candidate);
+      if (buttons.length > 0) {
+        return buttons;
+      }
+    }
+    return [];
+  }
+
+  /**
+   * Resolve a single selector or button-text value to button elements.
+   * Uses resolveWithRetry for resilience against timing issues.
+   */
+  private async findButtonsForSelector(refTarget: string): Promise<HTMLElement[]> {
     // For CSS selectors, use resolveWithRetry then filter to buttons
     if (isCssSelector(refTarget)) {
       const resolved = await resolveWithRetry(refTarget, 'button');

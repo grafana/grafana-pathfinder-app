@@ -60,6 +60,7 @@ jest.mock('../../constants/interactive-config', () => ({
 jest.mock('../../lib/dom', () => ({
   findButtonByText: jest.fn().mockReturnValue([]),
   querySelectorAllEnhanced: jest.fn().mockReturnValue({ elements: [], usedFallback: false }),
+  primaryRefTarget: (rt: string | string[]) => (Array.isArray(rt) ? (rt[0] ?? '') : rt),
 }));
 
 // ─── Mock security ───────────────────────────────────────────────────────────

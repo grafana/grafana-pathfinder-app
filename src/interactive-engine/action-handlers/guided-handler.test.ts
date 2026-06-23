@@ -11,6 +11,7 @@ jest.mock('../../lib/dom', () => ({
   findButtonByText: jest.fn().mockReturnValue([]),
   isElementVisible: jest.fn().mockReturnValue(true),
   resolveSelector: jest.fn((selector: string) => selector),
+  primaryRefTarget: (rt: string | string[]) => (Array.isArray(rt) ? (rt[0] ?? '') : rt),
 }));
 jest.mock('../../lib/dom/selector-detector', () => ({
   isCssSelector: jest.fn().mockReturnValue(false),

@@ -12,6 +12,7 @@ import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties }
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
 import type { InteractiveElementData } from '../../types/interactive.types';
+import { primaryRefTarget } from '../../lib/dom/dom-utils';
 import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
@@ -213,7 +214,8 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
     // For exists-reftarget requirement, use the first internal action's target
     // This ensures the requirement checker knows which element to look for
-    const firstActionRefTarget = internalActions.length > 0 ? internalActions[0]!.refTarget : undefined;
+    const firstActionRefTarget =
+      internalActions[0]?.refTarget === undefined ? undefined : primaryRefTarget(internalActions[0].refTarget);
     const firstActionTargetAction = internalActions.length > 0 ? internalActions[0]!.targetAction : undefined;
 
     // Get the interactive functions from the hook
@@ -484,7 +486,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       () =>
         internalActions.map((action) => ({
           targetAction: action.targetAction,
-          refTarget: action.refTarget || '',
+          refTarget: action.refTarget === undefined ? '' : primaryRefTarget(action.refTarget),
           targetValue: action.targetValue,
         })),
       [internalActions]
@@ -859,7 +861,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                     detail={{
                       stepId: stepId ?? renderedStepId,
                       renderedStepId,
-                      refTarget: internalActions[failedStepIndex]?.refTarget,
+                      refTarget:
+                        internalActions[failedStepIndex]?.refTarget === undefined
+                          ? undefined
+                          : primaryRefTarget(internalActions[failedStepIndex]!.refTarget),
                       action: internalActions[failedStepIndex]?.targetAction,
                       containerInfo: {
                         containerId: stepId ?? renderedStepId,

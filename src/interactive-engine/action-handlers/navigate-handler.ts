@@ -3,6 +3,7 @@ import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { config, locationService } from '@grafana/runtime';
 import { parseUrlSafely, validateRedirectPath } from '../../security/url-validator';
+import { primaryRefTarget } from '../../lib/dom';
 
 export class NavigateHandler {
   constructor(
@@ -40,42 +41,46 @@ export class NavigateHandler {
     // Note: No need to clear highlights for navigate - user is leaving the page
     // The page navigation will naturally clean up all DOM elements
 
+    // navigate targets are always a single URL/route (the schema rejects arrays
+    // for the navigate action); primaryRefTarget narrows the union to that string.
+    const refTarget = primaryRefTarget(data.refTarget);
+
     // Do mode: actually navigate to the target URL
     // Use Grafana's idiomatic navigation pattern via locationService
     // This handles both internal Grafana routes and external URLs appropriately
-    if (data.refTarget.startsWith('http://') || data.refTarget.startsWith('https://')) {
+    if (refTarget.startsWith('http://') || refTarget.startsWith('https://')) {
       // SECURITY: Validate external URL scheme to prevent javascript:/data: injection
-      const parsed = parseUrlSafely(data.refTarget);
+      const parsed = parseUrlSafely(refTarget);
       if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) {
-        console.warn(`[NavigateHandler] Blocked navigation to invalid URL: ${data.refTarget.slice(0, 100)}`);
+        console.warn(`[NavigateHandler] Blocked navigation to invalid URL: ${refTarget.slice(0, 100)}`);
         return;
       }
       // External URL - open in new tab to preserve current Grafana session
-      window.open(data.refTarget, '_blank', 'noopener,noreferrer');
+      window.open(refTarget, '_blank', 'noopener,noreferrer');
     } else {
       // SECURITY: Reject protocol-relative URLs before URL parsing.
       // '//evil.com' parses via new URL() as cross-origin with pathname '/', which
       // collides with validateRedirectPath's rejection sentinel and bypasses the check.
-      if (!data.refTarget.startsWith('/') || data.refTarget.startsWith('//')) {
-        console.warn(`[NavigateHandler] Blocked navigation to invalid path: ${data.refTarget.slice(0, 100)}`);
+      if (!refTarget.startsWith('/') || refTarget.startsWith('//')) {
+        console.warn(`[NavigateHandler] Blocked navigation to invalid path: ${refTarget.slice(0, 100)}`);
         return;
       }
 
       // SECURITY: Validate internal path against denied routes (F-1 / ASE26016)
       const user = config.bootData?.user;
       const isAdmin = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
-      const safePath = validateRedirectPath(data.refTarget, isAdmin);
+      const safePath = validateRedirectPath(refTarget, isAdmin);
 
       let parsed: URL;
       try {
-        parsed = new URL(data.refTarget, window.location.origin);
+        parsed = new URL(refTarget, window.location.origin);
       } catch {
-        console.warn(`[NavigateHandler] Blocked navigation to unparseable path: ${data.refTarget.slice(0, 100)}`);
+        console.warn(`[NavigateHandler] Blocked navigation to unparseable path: ${refTarget.slice(0, 100)}`);
         return;
       }
 
       if (safePath !== parsed.pathname) {
-        console.warn(`[NavigateHandler] Blocked navigation to restricted path: ${data.refTarget.slice(0, 100)}`);
+        console.warn(`[NavigateHandler] Blocked navigation to restricted path: ${refTarget.slice(0, 100)}`);
         return;
       }
 
