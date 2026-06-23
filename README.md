@@ -88,7 +88,7 @@ If you're new to the codebase, start at **[`docs/developer/GETTING_STARTED.md`](
 
 ## Contributing
 
-We welcome feedback, issues, and contributions. Visit our [GitHub repository](https://github.com/grafana/grafana-pathfinder-app) to get involved.
+We welcome feedback, issues, and contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get set up, what we look for in a pull request, and how to keep changes easy to review.
 
 ## License
 
