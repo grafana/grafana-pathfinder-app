@@ -39,12 +39,14 @@ interface ExecutorPacing {
 
 const DEFAULT_PACING: ExecutorPacing = {
   showToDoMs: INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations * INTERACTIVE_CONFIG.delays.multiStep.baseInterval,
-  settleMs: 200,
+  settleMs: INTERACTIVE_CONFIG.delays.multiStep.settleAfterActionMs,
   interStepMs: INTERACTIVE_CONFIG.delays.multiStep.defaultStepDelay,
 };
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Double rAF: one frame to flush the action's state update, a second to let the
+// browser paint it, so the next internal action sees a settled DOM.
 const settleDom = (): Promise<void> =>
   new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 
@@ -137,6 +139,8 @@ export function installLiveTabExecutor(
   // multi-step / guided replay each internal action the way a live tab paces a
   // normal multi-step: highlight (show) → pause → perform (do) → settle → pause,
   // so the user watches the same staged sequence rather than an instant burst.
+  // Composites always run the full show→do sequence; the command's wire `phase`
+  // is not consulted (controllers only ever post composites as a 'do').
   const runComposite = async (
     actions: NonNullable<StepCommandMessage['action']['internalActions']>
   ): Promise<void> => {

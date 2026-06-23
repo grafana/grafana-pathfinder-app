@@ -45,6 +45,7 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
       defaultStepDelay: 1800, // Default delay between internal actions in multi-step
       showToDoIterations: 18, // 18 * 100ms = 1800ms delay between show and do
       baseInterval: 100, // Base 100ms interval for cancellation-safe delays
+      settleAfterActionMs: 200, // Pause after a 'do' action settles the DOM before the next internal action
     },
     // Navigation manager timing
     navigation: {
