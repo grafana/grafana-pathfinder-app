@@ -138,6 +138,7 @@ export function InputBlockForm({
       requirements,
       skippable,
       datasourceFilter,
+      patternError,
       onSubmit,
     ]
   );
