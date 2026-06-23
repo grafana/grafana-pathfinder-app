@@ -69,10 +69,14 @@ export function unverifiedSelectorWarning(path: string): OutcomeWarning {
 
 /**
  * Internal predicate: a value is a "non-empty selector" when it is a string
- * with at least one non-whitespace character. Centralized so the three
- * `runX` consumers all decide the same way.
+ * with a non-whitespace character, or a non-empty array containing such a
+ * string (a reftarget fallback chain). Centralized so the three `runX`
+ * consumers all decide the same way.
  */
-export function isNonEmptySelector(value: unknown): value is string {
+export function isNonEmptySelector(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some((entry) => typeof entry === 'string' && entry.trim().length > 0);
+  }
   return typeof value === 'string' && value.trim().length > 0;
 }
 

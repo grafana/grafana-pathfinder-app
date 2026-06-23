@@ -142,6 +142,21 @@ export function assertCssSelector(value: unknown, fieldPath: string): void {
   }
 }
 
+/**
+ * A reftarget: a single selector or an ordered fallback array (strongest first).
+ * Every entry is validated as a CSS selector; an empty array is rejected.
+ */
+export function assertCssSelectorOrArray(value: unknown, fieldPath: string): void {
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      fail(fieldPath, 'reftarget array must contain at least one selector');
+    }
+    value.forEach((element, index) => assertCssSelector(element, `${fieldPath}[${index}]`));
+    return;
+  }
+  assertCssSelector(value, fieldPath);
+}
+
 export function assertPackageIdRef(value: unknown, fieldPath: string): void {
   if (typeof value !== 'string') {
     fail(fieldPath, 'must be a package id string');
@@ -243,7 +258,7 @@ export const BLOCK_FIELD_VALIDATORS: Record<string, Record<string, FieldValidato
     end: [assertNonNegativeInt],
   },
   interactive: {
-    reftarget: [assertCssSelector],
+    reftarget: [assertCssSelectorOrArray],
     verify: [assertCssSelector],
     scrollContainer: [assertCssSelector],
   },
@@ -259,7 +274,7 @@ export const BLOCK_FIELD_VALIDATORS: Record<string, Record<string, FieldValidato
 };
 
 export const STEP_FIELD_VALIDATORS: Record<string, FieldValidator[]> = {
-  reftarget: [assertCssSelector],
+  reftarget: [assertCssSelectorOrArray],
   scrollContainer: [assertCssSelector],
 };
 
