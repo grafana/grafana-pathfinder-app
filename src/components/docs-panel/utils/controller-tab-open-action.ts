@@ -1,3 +1,5 @@
+import type { LearningJourneyTab } from '../../../types/content-panel.types';
+
 export interface ControllerTabOpenAction {
   shouldShow: boolean;
   controllerUrl?: string;
@@ -5,7 +7,7 @@ export interface ControllerTabOpenAction {
 
 export function pickControllerTabOpenAction(
   url: string | undefined,
-  tabType: string | undefined
+  tabType: LearningJourneyTab['type']
 ): ControllerTabOpenAction {
   if (!url || tabType !== 'interactive') {
     return { shouldShow: false };

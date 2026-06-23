@@ -9,7 +9,7 @@ import { fetchUnifiedContent } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
-import { InteractiveModeContext, type InteractiveMode } from '../../global-state/interactive-readonly-context';
+import { InteractiveModeContext, type InteractiveMode } from '../../global-state/interactive-mode-context';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { testIds } from '../../constants/testIds';
 import type { RawContent } from '../../types/content.types';
@@ -49,7 +49,7 @@ function useGrafanaTheme() {
  * dedicated viewer. `mode` drives InteractiveModeContext: 'controller' keeps
  * step actions visible so this tab can drive the originating Grafana tab.
  */
-export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({ doc, mode = 'controller' }) => {
+export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({ doc, mode = 'interactive' }) => {
   const theme = useGrafanaTheme();
   return (
     <ThemeContext.Provider value={theme}>
@@ -60,7 +60,7 @@ export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({ doc, mod
   );
 };
 
-function GuideReaderInner({ doc, mode = 'controller' }: GuideReaderOverlayProps) {
+function GuideReaderInner({ doc, mode }: { doc: string; mode: InteractiveMode }) {
   const styles = useStyles2(getGuideReaderStyles);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);

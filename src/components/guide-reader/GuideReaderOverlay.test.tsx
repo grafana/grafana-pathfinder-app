@@ -18,7 +18,7 @@ jest.mock('../OpenFeatureProvider', () => ({
 // internals (covered by its own suite).
 jest.mock('../content-renderer/content-renderer', () => ({
   ContentRenderer: () => {
-    const { useInteractiveMode } = require('../../global-state/interactive-readonly-context');
+    const { useInteractiveMode } = require('../../global-state/interactive-mode-context');
     return <div data-testid="mock-content">mode:{useInteractiveMode()}</div>;
   },
 }));
@@ -54,6 +54,15 @@ describe('GuideReaderOverlay', () => {
 
     const content = await screen.findByTestId('mock-content');
     expect(content).toHaveTextContent('mode:controller');
+  });
+
+  it('defaults to interactive mode (not the privileged controller) when none is passed', async () => {
+    mockFetchContent.mockResolvedValue({ content: { url: 'backend-guide:x', type: 'interactive' } } as any);
+
+    render(<GuideReaderOverlay doc="backend-guide:x" />);
+
+    const content = await screen.findByTestId('mock-content');
+    expect(content).toHaveTextContent('mode:interactive');
   });
 
   it('closes the tab when the close button is clicked', async () => {
