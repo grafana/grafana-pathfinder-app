@@ -36,7 +36,7 @@ import { useTimeoutManager } from '../utils/timeout-manager';
 import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
 import { checkRequirements } from './requirements-checker.utils';
 import { stripTabLocalRequirements } from './controller-requirements';
-import { useInteractiveMode } from '../global-state/interactive-readonly-context';
+import { useInteractiveMode } from '../global-state/interactive-mode-context';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 
 // Re-export for convenience

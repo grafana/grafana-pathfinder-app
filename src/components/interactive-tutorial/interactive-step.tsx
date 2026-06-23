@@ -27,7 +27,7 @@ import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { STEP_STATES } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
-import { useInteractiveMode } from '../../global-state/interactive-readonly-context';
+import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
 
 /**
@@ -665,15 +665,25 @@ export const InteractiveStep = forwardRef<
       );
 
       if (mode === 'controller') {
+        if (!stepId) {
+          // F-1063-3: a controller-mode step must carry an author/parser-assigned
+          // stepId. The anonymous fallback is mount-instance-derived and would
+          // mis-address the live tab, so fail loud rather than dispatch a guess.
+          console.warn('[Pathfinder] controller "show" skipped: step has no stepId');
+          return;
+        }
         controllerChannel?.post({
           kind: 'step-command',
           phase: 'show',
-          stepId: renderedStepId,
+          stepId,
           action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
         });
         if (!doIt) {
+          // F-1063-1 (fix-plan §6.2): simple steps complete optimistically — no
+          // live ack, and they complete even with no live tab connected. Accepted
+          // by design; composite steps are ack-gated separately (#1073).
           persistCompletion();
-          if (onStepComplete && stepId) {
+          if (onStepComplete) {
             onStepComplete(stepId);
           }
           if (onComplete) {
@@ -742,7 +752,6 @@ export const InteractiveStep = forwardRef<
       persistCompletion,
       mode,
       controllerChannel,
-      renderedStepId,
     ]);
 
     // Handle individual "Do it" action (delegates to executeStep)
@@ -770,14 +779,24 @@ export const InteractiveStep = forwardRef<
       );
 
       if (mode === 'controller') {
+        if (!stepId) {
+          // F-1063-3: a controller-mode step must carry an author/parser-assigned
+          // stepId. The anonymous fallback is mount-instance-derived and would
+          // mis-address the live tab, so fail loud rather than dispatch a guess.
+          console.warn('[Pathfinder] controller "do" skipped: step has no stepId');
+          return;
+        }
         controllerChannel?.post({
           kind: 'step-command',
           phase: 'do',
-          stepId: renderedStepId,
+          stepId,
           action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
         });
+        // F-1063-1 (fix-plan §6.2): simple steps complete optimistically — no live
+        // ack, and they complete even with no live tab connected. Accepted by
+        // design; composite steps are ack-gated separately (#1073).
         persistCompletion();
-        if (onStepComplete && stepId) {
+        if (onStepComplete) {
           onStepComplete(stepId);
         }
         if (onComplete) {
@@ -823,7 +842,6 @@ export const InteractiveStep = forwardRef<
       analyticsStepMeta,
       mode,
       controllerChannel,
-      renderedStepId,
       persistCompletion,
       onStepComplete,
       onComplete,

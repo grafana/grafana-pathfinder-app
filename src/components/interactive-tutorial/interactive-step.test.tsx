@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { InteractiveStep } from './interactive-step';
-import { InteractiveModeContext } from '../../global-state/interactive-readonly-context';
+import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
 import { ControllerChannelProvider } from '../../global-state/controller-channel';
 
 describe('InteractiveStep: showMeText label override', () => {
@@ -248,5 +248,27 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     fireEvent.click(button);
 
     await waitFor(() => expect(transport.post).toHaveBeenCalled());
+  });
+
+  it('fails loud instead of dispatching a controller step with no stepId (F-1063-3)', async () => {
+    const transport = makeTransport();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    render(
+      <InteractiveModeContext.Provider value="controller">
+        <ControllerChannelProvider transport={transport}>
+          <InteractiveStep targetAction="highlight" refTarget="#panel-add" showMe doIt={false}>
+            Step
+          </InteractiveStep>
+        </ControllerChannelProvider>
+      </InteractiveModeContext.Provider>
+    );
+
+    const button = await screen.findByRole('button', { name: /show me/i });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+
+    await waitFor(() => expect(warn).toHaveBeenCalled());
+    expect(transport.post).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
