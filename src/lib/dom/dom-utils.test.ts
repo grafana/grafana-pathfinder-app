@@ -4,6 +4,7 @@ import {
   findButtonByText,
   resetValueTracker,
   reftargetExistsCheck,
+  primaryRefTarget,
   navmenuOpenCheck,
   getVisibleHighlightTarget,
 } from './dom-utils';
@@ -325,6 +326,65 @@ describe('reftargetExistsCheck', () => {
       requirement: 'exists-reftarget',
       pass: true,
     });
+  });
+});
+
+describe('reftargetExistsCheck with selector arrays', () => {
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body = document.createElement('body');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    if (document.body) {
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('passes when any candidate exists', async () => {
+    const div = document.createElement('div');
+    div.id = 'present';
+    container.appendChild(div);
+
+    const result = await reftargetExistsCheck(['#missing', '#present'], 'highlight');
+
+    expect(result.pass).toBe(true);
+  });
+
+  it('fails when no candidate exists', async () => {
+    const result = await reftargetExistsCheck(['#missing-a', '#missing-b'], 'highlight');
+
+    expect(result.pass).toBe(false);
+  });
+
+  it('returns a fixable failure when all candidates fail but a fix is available', async () => {
+    const toggle = document.createElement('button');
+    toggle.setAttribute('data-testid', 'data-testid Options group X toggle');
+    toggle.setAttribute('aria-expanded', 'false');
+    container.appendChild(toggle);
+
+    const result = await reftargetExistsCheck(['#missing-a', '#missing-b'], 'highlight');
+
+    expect(result.pass).toBe(false);
+    expect(result.canFix).toBe(true);
+    expect(result.fixType).toBe('expand-options-group');
+  });
+});
+
+describe('primaryRefTarget', () => {
+  it('returns a string unchanged', () => {
+    expect(primaryRefTarget('#a')).toBe('#a');
+  });
+
+  it('returns the first element of an array', () => {
+    expect(primaryRefTarget(['#a', '#b'])).toBe('#a');
+  });
+
+  it('returns an empty string for an empty array', () => {
+    expect(primaryRefTarget([])).toBe('');
   });
 });
 

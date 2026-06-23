@@ -20,6 +20,7 @@ const makeResolved = (el: HTMLElement, extras?: { elements?: HTMLElement[] }) =>
   resolvedSelector: '#mock',
   usedFallback: false,
   retryCount: 0,
+  selectedIndex: 0,
 });
 
 describe('HoverHandler', () => {
