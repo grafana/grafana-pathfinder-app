@@ -15,6 +15,7 @@ import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonCodeBlockBlock } from '../../../types/json-guide.types';
+import { primaryRefTarget } from '../../../lib/dom';
 
 function isCodeBlockBlock(block: JsonBlock): block is JsonCodeBlockBlock {
   return block.type === 'code-block';
@@ -60,7 +61,9 @@ export function CodeBlockForm({
 
   const [code, setCode] = useState(initial?.code ?? '');
   const [language, setLanguage] = useState(initial?.language ?? 'javascript');
-  const [reftarget, setReftarget] = useState(initial?.reftarget ?? DEFAULT_REFTARGET);
+  // Visual editor edits a single primary selector; fallback arrays are authored
+  // via JSON/CLI. Collapse to the primary here so the field stays a string.
+  const [reftarget, setReftarget] = useState(primaryRefTarget(initial?.reftarget ?? DEFAULT_REFTARGET));
   const [content, setContent] = useState(initial?.content ?? '');
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
   const [skippable, setSkippable] = useState(initial?.skippable ?? false);

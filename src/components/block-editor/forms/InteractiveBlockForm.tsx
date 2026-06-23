@@ -30,7 +30,7 @@ import {
   removeTokenFromConditionField,
 } from '../lint';
 import { testIds } from '../../../constants/testIds';
-import { generateFallbackSelectors, querySelectorAllEnhanced, resolveSelector } from '../../../lib/dom';
+import { generateFallbackSelectors, querySelectorAllEnhanced, resolveSelector, primaryRefTarget } from '../../../lib/dom';
 import { SelectorHealthBadge } from '../SelectorHealthBadge';
 import { SelectorTestOverlay } from '../SelectorTestOverlay';
 import { useSelectorTest } from '../useSelectorTest';
@@ -85,7 +85,7 @@ export function InteractiveBlockForm({
   // Initialize from existing data or defaults
   const initial = initialData && isInteractiveBlock(initialData) ? initialData : null;
   const [action, setAction] = useState<JsonInteractiveAction>(initial?.action ?? 'highlight');
-  const [reftarget, setReftarget] = useState(initial?.reftarget ?? '');
+  const [reftarget, setReftarget] = useState(primaryRefTarget(initial?.reftarget ?? ''));
   const [targetvalue, setTargetvalue] = useState(initial?.targetvalue ?? '');
   const [content, setContent] = useState(initial?.content ?? '');
   const [tooltip, setTooltip] = useState(initial?.tooltip ?? '');

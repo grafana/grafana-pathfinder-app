@@ -26,6 +26,7 @@ import type {
   ConditionalDisplayMode,
   ConditionalSectionConfig,
 } from '../../../types/json-guide.types';
+import { primaryRefTarget } from '../../../lib/dom';
 
 /** Options for display mode radio buttons */
 const DISPLAY_MODE_OPTIONS = [
@@ -110,7 +111,7 @@ export function ConditionalBlockForm({
   const [conditions, setConditions] = useState(initial?.conditions?.join(', ') ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [displayMode, setDisplayMode] = useState<ConditionalDisplayMode>(initial?.display ?? 'inline');
-  const [reftarget, setReftarget] = useState(initial?.reftarget ?? '');
+  const [reftarget, setReftarget] = useState(primaryRefTarget(initial?.reftarget ?? ''));
 
   // Per-branch section config state
   const [whenTrueTitle, setWhenTrueTitle] = useState(initial?.whenTrueSectionConfig?.title ?? '');

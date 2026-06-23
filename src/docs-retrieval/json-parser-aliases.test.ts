@@ -22,6 +22,38 @@ function makeGuide(blockOverrides: Record<string, unknown>): JsonGuide {
   };
 }
 
+describe('json-parser — reftarget fallback arrays', () => {
+  function refTargetOf(guide: JsonGuide) {
+    const result = parseJsonGuide(guide);
+    return result.data!.elements.find((el) => el.type === 'interactive-step')!.props.refTarget;
+  }
+
+  it('passes a multi-selector array through as an ordered array', () => {
+    const guide = makeGuide({ action: 'button', reftarget: ['Save dashboard', "button[data-testid='save']"] });
+    expect(refTargetOf(guide)).toEqual(['Save dashboard', "button[data-testid='save']"]);
+  });
+
+  it('collapses a single-element array to a plain string', () => {
+    const guide = makeGuide({ action: 'highlight', reftarget: ['#only'] });
+    expect(refTargetOf(guide)).toBe('#only');
+  });
+
+  it('trims entries and drops whitespace-only ones', () => {
+    const guide = makeGuide({ action: 'highlight', reftarget: ['  #a  ', '   ', '#b'] });
+    expect(refTargetOf(guide)).toEqual(['#a', '#b']);
+  });
+
+  it('leaves a single string unchanged', () => {
+    const guide = makeGuide({ action: 'button', reftarget: 'Save' });
+    expect(refTargetOf(guide)).toBe('Save');
+  });
+
+  it('normalizes the camelCase alias array', () => {
+    const guide = makeGuide({ targetAction: 'highlight', refTarget: ['#a', '#b'] });
+    expect(refTargetOf(guide)).toEqual(['#a', '#b']);
+  });
+});
+
 describe('json-parser — field-name alias acceptance', () => {
   it('interactive block: reads canonical lowercase fields', () => {
     const guide = makeGuide({

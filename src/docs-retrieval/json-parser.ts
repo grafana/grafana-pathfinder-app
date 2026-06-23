@@ -244,7 +244,7 @@ function resolveStepId(
   authorId: string | undefined,
   stepContext: StepContext | undefined,
   action: string | undefined,
-  refTarget: string | undefined,
+  refTarget: string | string[] | undefined,
   variant?: string
 ): string | undefined {
   if (authorId) {
@@ -257,7 +257,8 @@ function resolveStepId(
     sectionId: stepContext.parentSectionId,
     index: stepContext.index,
     action,
-    refTarget,
+    // The id is derived from the strongest selector; fallbacks don't change identity.
+    refTarget: Array.isArray(refTarget) ? refTarget[0] : refTarget,
     variant,
   });
 }
@@ -580,7 +581,7 @@ function convertConditionalBlock(block: JsonConditionalBlock, path: string, base
         conditions: block.conditions,
         description: block.description,
         display: block.display ?? 'inline',
-        refTarget: block.reftarget,
+        refTarget: normalizeRefTarget(block.reftarget),
         // Per-branch section configs (each branch has its own title, requirements, objectives)
         whenTrueSectionConfig: block.whenTrueSectionConfig,
         whenFalseSectionConfig: block.whenFalseSectionConfig,
@@ -594,6 +595,23 @@ function convertConditionalBlock(block: JsonConditionalBlock, path: string, base
   };
 }
 
+/**
+ * Normalize an authored reftarget. Arrays are trimmed, empty entries dropped,
+ * and a single-entry array collapsed to a plain string so the common case
+ * serializes identically to a single-selector guide. Single strings pass
+ * through unchanged.
+ */
+function normalizeRefTarget(value: string | string[] | undefined): string | string[] | undefined {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+  const cleaned = value.map((selector) => selector.trim()).filter(Boolean);
+  if (cleaned.length === 0) {
+    return undefined;
+  }
+  return cleaned.length === 1 ? cleaned[0] : cleaned;
+}
+
 function convertInteractiveBlock(
   block: JsonInteractiveBlock,
   path: string,
@@ -604,7 +622,7 @@ function convertInteractiveBlock(
   // form. Prefer the lowercase slot when present (canonical wins) and
   // fall back to the camelCase alias.
   const targetAction = block.action ?? block.targetAction;
-  const refTargetValue = block.reftarget ?? block.refTarget;
+  const refTargetValue = normalizeRefTarget(block.reftarget ?? block.refTarget);
   const targetValue = block.targetvalue ?? block.targetValue;
   const stepId = resolveStepId(block.id, stepContext, targetAction, refTargetValue);
 
@@ -666,7 +684,7 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string, stepCont
   // Accept either the lowercase canonical or the camelCase alias on each step.
   const internalActions = block.steps.map((step: JsonStep) => ({
     targetAction: step.action ?? step.targetAction,
-    refTarget: step.reftarget ?? step.refTarget,
+    refTarget: normalizeRefTarget(step.reftarget ?? step.refTarget),
     targetValue: step.targetvalue ?? step.targetValue,
     requirements: step.requirements?.join(','),
     targetComment: step.tooltip ? markdownToHtml(step.tooltip) : undefined,
@@ -710,7 +728,7 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: 
   // Accept either the lowercase canonical or the camelCase alias on each step.
   const internalActions = block.steps.map((step: JsonStep) => ({
     targetAction: step.action ?? step.targetAction,
-    refTarget: step.reftarget ?? step.refTarget,
+    refTarget: normalizeRefTarget(step.reftarget ?? step.refTarget),
     targetValue: step.targetvalue ?? step.targetValue,
     requirements: step.requirements?.join(','),
     // For guided blocks, prefer description (shown in steps panel), fall back to tooltip for backward compatibility
