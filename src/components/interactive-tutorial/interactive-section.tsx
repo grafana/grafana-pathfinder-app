@@ -1328,122 +1328,120 @@ export function InteractiveSection({
         <ol className="interactive-section-content">{wrapSectionChildrenForNumbering(enhancedChildren)}</ol>
       )}
 
-      {
-        <div className={`interactive-section-actions${isCollapsed ? ' collapsed' : ''}`}>
-          {isCollapsed ? (
+      <div className={`interactive-section-actions${isCollapsed ? ' collapsed' : ''}`}>
+        {isCollapsed ? (
+          <Button
+            onClick={handleResetSection}
+            disabled={disabled || isRunning || isCompletedByObjectives}
+            size="sm"
+            variant="secondary"
+            className="interactive-section-reset-button"
+            data-testid={testIds.interactive.resetSectionButton(sectionId)}
+            title="Reset section and clear all step completion"
+          >
+            Reset Section
+          </Button>
+        ) : isRunning ? (
+          /* Running state - show progress bar and status */
+          <div className="interactive-guided-executing">
+            <div className="interactive-guided-step-indicator">
+              <span className="interactive-guided-step-badge">
+                Step {executingStepNumber || 1} of {stepComponents.length}
+              </span>
+            </div>
+            <div className="interactive-guided-instruction">
+              <span className="interactive-guided-instruction-icon">⚡</span>
+              <span className="interactive-guided-instruction-text">Running step {executingStepNumber || 1}...</span>
+            </div>
+            <div className="interactive-guided-progress">
+              <div
+                className="interactive-guided-progress-fill"
+                style={{ width: `${((executingStepNumber - 1) / stepComponents.length) * 100}%` }}
+              />
+              <div
+                className="interactive-guided-progress-active"
+                style={{
+                  left: `${((executingStepNumber - 1) / stepComponents.length) * 100}%`,
+                  width: `${(1 / stepComponents.length) * 100}%`,
+                }}
+              />
+            </div>
             <Button
-              onClick={handleResetSection}
-              disabled={disabled || isRunning || isCompletedByObjectives}
+              onClick={handleSectionCancel}
+              disabled={disabled}
               size="sm"
               variant="secondary"
-              className="interactive-section-reset-button"
-              data-testid={testIds.interactive.resetSectionButton(sectionId)}
-              title="Reset section and clear all step completion"
+              className="interactive-guided-cancel-btn"
+              title="Cancel section execution"
             >
-              Reset Section
+              Cancel
             </Button>
-          ) : isRunning ? (
-            /* Running state - show progress bar and status */
-            <div className="interactive-guided-executing">
-              <div className="interactive-guided-step-indicator">
-                <span className="interactive-guided-step-badge">
-                  Step {executingStepNumber || 1} of {stepComponents.length}
-                </span>
-              </div>
-              <div className="interactive-guided-instruction">
-                <span className="interactive-guided-instruction-icon">⚡</span>
-                <span className="interactive-guided-instruction-text">Running step {executingStepNumber || 1}...</span>
-              </div>
-              <div className="interactive-guided-progress">
-                <div
-                  className="interactive-guided-progress-fill"
-                  style={{ width: `${((executingStepNumber - 1) / stepComponents.length) * 100}%` }}
-                />
-                <div
-                  className="interactive-guided-progress-active"
-                  style={{
-                    left: `${((executingStepNumber - 1) / stepComponents.length) * 100}%`,
-                    width: `${(1 / stepComponents.length) * 100}%`,
-                  }}
-                />
-              </div>
-              <Button
-                onClick={handleSectionCancel}
-                disabled={disabled}
-                size="sm"
-                variant="secondary"
-                className="interactive-guided-cancel-btn"
-                title="Cancel section execution"
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : sectionKind === 'awaiting-ack' ? (
-            /* Acknowledgement gate (issue #842) — surfaces only when every
+          </div>
+        ) : sectionKind === 'awaiting-ack' ? (
+          /* Acknowledgement gate (issue #842) — surfaces only when every
              interactive step is done (or the section is 100% passive) AND
              the user hasn't yet clicked Mark. */
-            <Button
-              onClick={handleMarkSectionComplete}
-              disabled={disabled}
-              size="md"
-              variant="primary"
-              className="interactive-section-do-button"
-              data-testid={testIds.interactive.markSectionCompleteButton(sectionId)}
-              title="Mark section as complete and continue"
-            >
-              Mark section as complete
-            </Button>
-          ) : (
-            // Catch-all action button. The disabled clause's
-            // `stepComponents.length === 0` guard only applies to the Do-
-            // Section path — an all-passive section has zero interactive
-            // children but reaches `done(ack)` via the Mark gate and must
-            // still be Reset-able afterwards.
-            <Button
-              onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
-              disabled={
-                disabled ||
-                !sectionRequirementsStatus.passed ||
-                isCompletedByObjectives ||
-                (!(stepsCompleted && !isCompletedByObjectives) && stepComponents.length === 0)
+          <Button
+            onClick={handleMarkSectionComplete}
+            disabled={disabled}
+            size="md"
+            variant="primary"
+            className="interactive-section-do-button"
+            data-testid={testIds.interactive.markSectionCompleteButton(sectionId)}
+            title="Mark section as complete and continue"
+          >
+            Mark section as complete
+          </Button>
+        ) : (
+          // Catch-all action button. The disabled clause's
+          // `stepComponents.length === 0` guard only applies to the Do-
+          // Section path — an all-passive section has zero interactive
+          // children but reaches `done(ack)` via the Mark gate and must
+          // still be Reset-able afterwards.
+          <Button
+            onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
+            disabled={
+              disabled ||
+              !sectionRequirementsStatus.passed ||
+              isCompletedByObjectives ||
+              (!(stepsCompleted && !isCompletedByObjectives) && stepComponents.length === 0)
+            }
+            size="md"
+            variant={isCompleted ? 'secondary' : 'primary'}
+            className="interactive-section-do-button"
+            data-testid={
+              stepsCompleted && !isCompletedByObjectives
+                ? testIds.interactive.resetSectionButton(sectionId)
+                : testIds.interactive.doSectionButton(sectionId)
+            }
+            title={(() => {
+              if (isCompletedByObjectives) {
+                return 'Already done!';
               }
-              size="md"
-              variant={isCompleted ? 'secondary' : 'primary'}
-              className="interactive-section-do-button"
-              data-testid={
-                stepsCompleted && !isCompletedByObjectives
-                  ? testIds.interactive.resetSectionButton(sectionId)
-                  : testIds.interactive.doSectionButton(sectionId)
+              if (stepsCompleted && !isCompletedByObjectives) {
+                return 'Reset section and clear all step completion to allow manual re-interaction';
               }
-              title={(() => {
-                if (isCompletedByObjectives) {
-                  return 'Already done!';
-                }
-                if (stepsCompleted && !isCompletedByObjectives) {
-                  return 'Reset section and clear all step completion to allow manual re-interaction';
-                }
-                if (resumeInfo.isResume) {
-                  return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
-                }
-                return hints || `Run through all ${nonNoopSteps.length} steps in sequence`;
-              })()}
-            >
-              {(() => {
-                if (isCompletedByObjectives) {
-                  return 'Already done!';
-                }
-                if (stepsCompleted && !isCompletedByObjectives) {
-                  return 'Reset section';
-                }
-                if (resumeInfo.isResume) {
-                  return `▶ Resume (${resumeInfo.remainingSteps} steps)`;
-                }
-                return `▶ Do Section (${nonNoopSteps.length} steps)`;
-              })()}
-            </Button>
-          )}
-        </div>
-      }
+              if (resumeInfo.isResume) {
+                return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
+              }
+              return hints || `Run through all ${nonNoopSteps.length} steps in sequence`;
+            })()}
+          >
+            {(() => {
+              if (isCompletedByObjectives) {
+                return 'Already done!';
+              }
+              if (stepsCompleted && !isCompletedByObjectives) {
+                return 'Reset section';
+              }
+              if (resumeInfo.isResume) {
+                return `▶ Resume (${resumeInfo.remainingSteps} steps)`;
+              }
+              return `▶ Do Section (${nonNoopSteps.length} steps)`;
+            })()}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

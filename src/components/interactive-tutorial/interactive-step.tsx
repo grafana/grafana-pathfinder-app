@@ -916,102 +916,100 @@ export const InteractiveStep = forwardRef<
         </div>
 
         <div className="interactive-step-actions">
-          {
-            <div className="interactive-step-action-buttons">
-              {/* Only show "Show me" button when showMe prop is true AND step is enabled AND not a navigate/noop/popout action */}
-              {/* Navigate actions don't have a sensible "show me" behavior - it's "go there" or nothing */}
-              {/* Popout actions are single-press toggles ("Dock"/"Undock") with no preview */}
-              {/* Noop actions are informational only - no buttons needed */}
-              {showMe &&
-                !isNoopAction &&
-                targetAction !== 'navigate' &&
-                !isPopoutAction &&
-                !isCompletedWithObjectives &&
-                finalIsEnabled && (
-                  <Button
-                    onClick={handleShowAction}
-                    disabled={disabled || isAnyActionRunning || (checker.isChecking && !lazyScrollAvailable)}
-                    size="sm"
-                    variant="secondary"
-                    className="interactive-step-show-btn"
-                    data-testid={testIds.interactive.showMeButton(renderedStepId)}
-                    title={hints || `${showMeText ? `${showMeText}:` : 'Show me:'} ${getActionDescription()}`}
-                  >
-                    {isShowRunning ? 'Showing...' : showMeText || 'Show me'}
-                  </Button>
-                )}
-
-              {/* Only show "Do it" button when doIt prop is true AND not a noop action */}
-              {/* Noop actions are informational only - no buttons needed */}
-              {doIt &&
-                !isNoopAction &&
-                !isCompletedWithObjectives &&
-                (finalIsEnabled || checker.completionReason === 'objectives') && (
-                  <Button
-                    onClick={handleDoAction}
-                    disabled={
-                      disabled ||
-                      isAnyActionRunning ||
-                      (checker.isChecking && !lazyScrollAvailable) ||
-                      (!finalIsEnabled && checker.completionReason !== 'objectives')
-                    }
-                    size="sm"
-                    variant="primary"
-                    className="interactive-step-do-btn"
-                    data-testid={testIds.interactive.doItButton(renderedStepId)}
-                    title={
-                      hints ||
-                      (targetAction === 'navigate'
-                        ? `Go there: ${getActionDescription()}`
-                        : isPopoutAction
-                          ? `${popoutButtonLabel}: ${getActionDescription()}`
-                          : `Do it: ${getActionDescription()}`)
-                    }
-                  >
-                    {isDoRunning || isCurrentlyExecuting
-                      ? targetAction === 'navigate'
-                        ? 'Going...'
-                        : isPopoutAction
-                          ? popoutButtonRunningLabel
-                          : 'Executing...'
-                      : targetAction === 'navigate'
-                        ? 'Go there'
-                        : isPopoutAction
-                          ? popoutButtonLabel
-                          : 'Do it'}
-                  </Button>
-                )}
-
-              {/* Show "Skip" button when step is skippable (always available, not just on error) */}
-              {/* Noop actions don't need skip - they're just informational */}
-              {skippable && !isNoopAction && !isCompletedWithObjectives && (
+          <div className="interactive-step-action-buttons">
+            {/* Only show "Show me" button when showMe prop is true AND step is enabled AND not a navigate/noop/popout action */}
+            {/* Navigate actions don't have a sensible "show me" behavior - it's "go there" or nothing */}
+            {/* Popout actions are single-press toggles ("Dock"/"Undock") with no preview */}
+            {/* Noop actions are informational only - no buttons needed */}
+            {showMe &&
+              !isNoopAction &&
+              targetAction !== 'navigate' &&
+              !isPopoutAction &&
+              !isCompletedWithObjectives &&
+              finalIsEnabled && (
                 <Button
-                  onClick={async () => {
-                    if (checker.markSkipped) {
-                      await checker.markSkipped();
-
-                      // Notify parent section of step completion (skipped counts as completed)
-                      if (onStepComplete && stepId) {
-                        onStepComplete(stepId);
-                      }
-
-                      if (onComplete) {
-                        onComplete();
-                      }
-                    }
-                  }}
-                  disabled={disabled || isAnyActionRunning}
+                  onClick={handleShowAction}
+                  disabled={disabled || isAnyActionRunning || (checker.isChecking && !lazyScrollAvailable)}
                   size="sm"
                   variant="secondary"
-                  className="interactive-step-skip-btn"
-                  data-testid={testIds.interactive.skipButton(renderedStepId)}
-                  title="Skip this step without executing"
+                  className="interactive-step-show-btn"
+                  data-testid={testIds.interactive.showMeButton(renderedStepId)}
+                  title={hints || `${showMeText ? `${showMeText}:` : 'Show me:'} ${getActionDescription()}`}
                 >
-                  Skip
+                  {isShowRunning ? 'Showing...' : showMeText || 'Show me'}
                 </Button>
               )}
-            </div>
-          }
+
+            {/* Only show "Do it" button when doIt prop is true AND not a noop action */}
+            {/* Noop actions are informational only - no buttons needed */}
+            {doIt &&
+              !isNoopAction &&
+              !isCompletedWithObjectives &&
+              (finalIsEnabled || checker.completionReason === 'objectives') && (
+                <Button
+                  onClick={handleDoAction}
+                  disabled={
+                    disabled ||
+                    isAnyActionRunning ||
+                    (checker.isChecking && !lazyScrollAvailable) ||
+                    (!finalIsEnabled && checker.completionReason !== 'objectives')
+                  }
+                  size="sm"
+                  variant="primary"
+                  className="interactive-step-do-btn"
+                  data-testid={testIds.interactive.doItButton(renderedStepId)}
+                  title={
+                    hints ||
+                    (targetAction === 'navigate'
+                      ? `Go there: ${getActionDescription()}`
+                      : isPopoutAction
+                        ? `${popoutButtonLabel}: ${getActionDescription()}`
+                        : `Do it: ${getActionDescription()}`)
+                  }
+                >
+                  {isDoRunning || isCurrentlyExecuting
+                    ? targetAction === 'navigate'
+                      ? 'Going...'
+                      : isPopoutAction
+                        ? popoutButtonRunningLabel
+                        : 'Executing...'
+                    : targetAction === 'navigate'
+                      ? 'Go there'
+                      : isPopoutAction
+                        ? popoutButtonLabel
+                        : 'Do it'}
+                </Button>
+              )}
+
+            {/* Show "Skip" button when step is skippable (always available, not just on error) */}
+            {/* Noop actions don't need skip - they're just informational */}
+            {skippable && !isNoopAction && !isCompletedWithObjectives && (
+              <Button
+                onClick={async () => {
+                  if (checker.markSkipped) {
+                    await checker.markSkipped();
+
+                    // Notify parent section of step completion (skipped counts as completed)
+                    if (onStepComplete && stepId) {
+                      onStepComplete(stepId);
+                    }
+
+                    if (onComplete) {
+                      onComplete();
+                    }
+                  }
+                }}
+                disabled={disabled || isAnyActionRunning}
+                size="sm"
+                variant="secondary"
+                className="interactive-step-skip-btn"
+                data-testid={testIds.interactive.skipButton(renderedStepId)}
+                title="Skip this step without executing"
+              >
+                Skip
+              </Button>
+            )}
+          </div>
 
           {/* Hide completed badge and redo button for noop actions - they're informational only */}
           {isCompletedWithObjectives && !isNoopAction && (
@@ -1027,21 +1025,19 @@ export const InteractiveStep = forwardRef<
                   {checker.completionReason === 'skipped' ? 'Skipped' : 'Completed'}
                 </span>
               </div>
-              {
-                <button
-                  className="interactive-guided-redo-btn"
-                  onClick={handleStepRedo}
-                  disabled={disabled || isAnyActionRunning}
-                  data-testid={testIds.interactive.redoButton(renderedStepId)}
-                  title={
-                    checker.completionReason === 'skipped'
-                      ? 'Redo this step (try again)'
-                      : 'Redo this step (execute again)'
-                  }
-                >
-                  ↻ Redo
-                </button>
-              }
+              <button
+                className="interactive-guided-redo-btn"
+                onClick={handleStepRedo}
+                disabled={disabled || isAnyActionRunning}
+                data-testid={testIds.interactive.redoButton(renderedStepId)}
+                title={
+                  checker.completionReason === 'skipped'
+                    ? 'Redo this step (try again)'
+                    : 'Redo this step (execute again)'
+                }
+              >
+                ↻ Redo
+              </button>
             </div>
           )}
         </div>

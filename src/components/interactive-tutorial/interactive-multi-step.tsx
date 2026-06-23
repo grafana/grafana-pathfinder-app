@@ -796,17 +796,15 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               </span>
               <span className="interactive-guided-completed-text">Completed</span>
             </div>
-            {
-              <button
-                className="interactive-guided-redo-btn"
-                onClick={handleStepRedo}
-                disabled={disabled || isAnyActionRunning}
-                data-testid={testIds.interactive.redoButton(renderedStepId)}
-                title="Redo this multi-step"
-              >
-                ↻ Redo
-              </button>
-            }
+            <button
+              className="interactive-guided-redo-btn"
+              onClick={handleStepRedo}
+              disabled={disabled || isAnyActionRunning}
+              data-testid={testIds.interactive.redoButton(renderedStepId)}
+              title="Redo this multi-step"
+            >
+              ↻ Redo
+            </button>
           </div>
         )}
 

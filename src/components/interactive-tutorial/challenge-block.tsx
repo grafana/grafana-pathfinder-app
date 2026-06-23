@@ -502,35 +502,33 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         </div>
       )}
 
-      {
-        <div className={styles.actions}>
-          {state === 'idle' && (
-            <Button variant="primary" icon="play" onClick={handleStart}>
-              Start challenge
-            </Button>
-          )}
-          {state === 'ready' && (
-            <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
-              Check my work
-            </Button>
-          )}
-          {state === 'failed-check' && (
-            <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
-              Check again
-            </Button>
-          )}
-          {state === 'setup-failed' && (
-            <Button variant="secondary" icon="sync" onClick={handleStart}>
-              Try again
-            </Button>
-          )}
-          {(state === 'connecting' || state === 'preparing') && (
-            <Button variant="secondary" icon="times" onClick={handleCancel}>
-              Cancel
-            </Button>
-          )}
-        </div>
-      }
+      <div className={styles.actions}>
+        {state === 'idle' && (
+          <Button variant="primary" icon="play" onClick={handleStart}>
+            Start challenge
+          </Button>
+        )}
+        {state === 'ready' && (
+          <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
+            Check my work
+          </Button>
+        )}
+        {state === 'failed-check' && (
+          <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
+            Check again
+          </Button>
+        )}
+        {state === 'setup-failed' && (
+          <Button variant="secondary" icon="sync" onClick={handleStart}>
+            Try again
+          </Button>
+        )}
+        {(state === 'connecting' || state === 'preparing') && (
+          <Button variant="secondary" icon="times" onClick={handleCancel}>
+            Cancel
+          </Button>
+        )}
+      </div>
 
       {hintLevels.length > 0 && (state === 'ready' || state === 'failed-check') && (
         <div className={styles.hints}>

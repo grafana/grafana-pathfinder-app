@@ -536,33 +536,31 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       )}
 
       {/* Actions */}
-      {
-        <div className={styles.actions}>
-          {showCheckButton && (
-            <Button onClick={handleCheckAnswer} disabled={disabled || isBlocked}>
-              Check Answer
-            </Button>
-          )}
+      <div className={styles.actions}>
+        {showCheckButton && (
+          <Button onClick={handleCheckAnswer} disabled={disabled || isBlocked}>
+            Check Answer
+          </Button>
+        )}
 
-          {attemptsRemaining !== null && !isCompleted && !isRevealed && (
-            <span className={styles.attempts}>
-              {attemptsRemaining} attempt{attemptsRemaining !== 1 ? 's' : ''} remaining
-            </span>
-          )}
+        {attemptsRemaining !== null && !isCompleted && !isRevealed && (
+          <span className={styles.attempts}>
+            {attemptsRemaining} attempt{attemptsRemaining !== 1 ? 's' : ''} remaining
+          </span>
+        )}
 
-          {canSkip && !isCompleted && (
-            <Button
-              variant="secondary"
-              fill="text"
-              onClick={handleSkip}
-              disabled={disabled}
-              data-testid={testIds.interactive.quizSkipButton(stepId)}
-            >
-              Skip
-            </Button>
-          )}
-        </div>
-      }
+        {canSkip && !isCompleted && (
+          <Button
+            variant="secondary"
+            fill="text"
+            onClick={handleSkip}
+            disabled={disabled}
+            data-testid={testIds.interactive.quizSkipButton(stepId)}
+          >
+            Skip
+          </Button>
+        )}
+      </div>
     </div>
   );
 };
