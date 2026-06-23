@@ -12,7 +12,7 @@ import {
   NavigationManager,
 } from '../../interactive-engine';
 import { CrossTabTransport, createSenderId } from '../../lib/cross-tab-transport';
-import type { CrossTabMessage, StepCommandMessage } from '../../types/cross-tab.types';
+import { validateCrossTabMessage, type CrossTabMessage, type StepCommandMessage } from '../../types/cross-tab.types';
 
 interface ExecutorTransport {
   start(): void;
@@ -22,6 +22,7 @@ interface ExecutorTransport {
 
 let installed = false;
 
+/** @internal Test-only reset of the install-once guard. */
 export function resetLiveTabExecutorForTests(): void {
   installed = false;
 }
@@ -32,7 +33,6 @@ export function installLiveTabExecutor(
   if (installed || typeof window === 'undefined') {
     return () => undefined;
   }
-  installed = true;
 
   try {
     addGlobalInteractiveStyles();
@@ -49,7 +49,23 @@ export function installLiveTabExecutor(
   const navigateHandler = new NavigateHandler(stateManager, waitForReactUpdates);
   const hoverHandler = new HoverHandler(stateManager, navigationManager, waitForReactUpdates);
 
+  // Claim the install slot only after every handler is constructed, so a
+  // throwing constructor leaves installed=false and a later init can retry
+  // instead of permanently bricking the executor for the session (NEW-1064-1).
+  installed = true;
+
+  // Teardown flag: a replay in flight (or queued) must not touch the DOM after
+  // uninstall (NEW-1064-2).
+  let cancelled = false;
+  // Serialize replays onto a single chain so a slow paced replay finishes (or
+  // is cancelled) before the next command starts — commands cannot interleave
+  // and race on shared highlight state (F-1069-1).
+  let queue: Promise<void> = Promise.resolve();
+
   const runStepCommand = async (command: StepCommandMessage): Promise<void> => {
+    if (cancelled) {
+      return;
+    }
     const isShow = command.phase === 'show';
     const data: InteractiveElementData = {
       refTarget: command.action.refTarget,
@@ -82,18 +98,26 @@ export function installLiveTabExecutor(
           console.warn(`[Pathfinder] cross-tab executor: unsupported action "${command.action.targetAction}"`);
       }
     } catch (error) {
+      // TODO(#1073): post a step-complete{ok:false} back so the controller can
+      // surface the failure instead of completing optimistically (F-1064-1).
+      // The reverse-channel kind does not exist until the round-trip lands.
       console.error('[Pathfinder] cross-tab executor: failed to run remote step', error);
     }
   };
 
   const unsubscribe = transport.onMessage((message) => {
-    if (message.kind === 'step-command') {
-      void runStepCommand(message);
+    // Defense in depth: re-validate at the DOM sink before dispatch, so the
+    // executor never trusts a message that bypassed the transport gate (T1).
+    const validated = validateCrossTabMessage(message);
+    if (!validated || validated.kind !== 'step-command') {
+      return;
     }
+    queue = queue.then(() => runStepCommand(validated));
   });
   transport.start();
 
   return () => {
+    cancelled = true;
     unsubscribe();
     transport.stop();
     navigationManager.clearAllHighlights();

@@ -130,4 +130,46 @@ describe('installLiveTabExecutor', () => {
     expect(second.started).toBe(false);
     uninstall();
   });
+
+  it('does not brick the executor if a handler constructor throws (NEW-1064-1)', () => {
+    (ButtonHandler as unknown as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('constructor boom');
+    });
+    const first = new FakeTransport();
+    expect(() => installLiveTabExecutor(first)).toThrow('constructor boom');
+    expect(first.started).toBe(false);
+
+    // installed stayed false, so a later init installs cleanly rather than
+    // being permanently blocked by the failed attempt.
+    const second = new FakeTransport();
+    const uninstall = installLiveTabExecutor(second);
+    expect(second.started).toBe(true);
+    uninstall();
+  });
+
+  it('does not execute commands delivered after uninstall (NEW-1064-2)', async () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport);
+    uninstall();
+
+    transport.emit(stampStepCommand('do', 'highlight', '#target'));
+    await Promise.resolve();
+
+    expect(executeOf(FocusHandler)).not.toHaveBeenCalled();
+  });
+
+  it('drops a command with an unrecognized action at the sink (T1 defense in depth)', async () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport);
+
+    const forged = {
+      ...stampStepCommand('do', 'highlight', '#t'),
+      action: { targetAction: 'exec', refTarget: '#t' },
+    } as CrossTabMessage;
+    transport.emit(forged);
+    await Promise.resolve();
+
+    expect(executeOf(FocusHandler)).not.toHaveBeenCalled();
+    uninstall();
+  });
 });
