@@ -54,6 +54,41 @@ describe('validateCrossTabMessage', () => {
     expect(validateCrossTabMessage(envelope(partial))).toBeNull();
   });
 
+  it('accepts a composite step-command whose internalActions are all recognized', () => {
+    const message = envelope({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 's1',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        internalActions: [
+          { targetAction: 'highlight', refTarget: '#a' },
+          { targetAction: 'button', refTarget: 'Save' },
+        ],
+      },
+    });
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it.each([
+    [
+      'an internal action with an unrecognized verb',
+      {
+        targetAction: 'multistep',
+        refTarget: '',
+        internalActions: [
+          { targetAction: 'highlight', refTarget: '#a' },
+          { targetAction: 'exec', refTarget: '#x' },
+        ],
+      },
+    ],
+    ['a non-array internalActions', { targetAction: 'guided', refTarget: '', internalActions: 'highlight' }],
+    ['a non-object internal action', { targetAction: 'guided', refTarget: '', internalActions: ['highlight'] }],
+  ])('rejects a composite step-command with %s', (_label, action) => {
+    expect(validateCrossTabMessage(envelope({ kind: 'step-command', phase: 'do', stepId: 's1', action }))).toBeNull();
+  });
+
   it('rejects a heartbeat with an invalid role', () => {
     expect(validateCrossTabMessage(envelope({ kind: 'heartbeat', role: 'admin' }))).toBeNull();
   });
