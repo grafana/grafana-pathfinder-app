@@ -13,10 +13,6 @@ function isTabLocal(token: string): boolean {
   return TAB_LOCAL_REQUIREMENTS.some((id) => token === id || token.startsWith(`${id}:`));
 }
 
-/**
- * Drop tab-local requirements from a comma-separated requirements string.
- * Used in controller mode, where this tab is not the Grafana the step targets.
- */
 export function stripTabLocalRequirements(requirements: string | undefined): string | undefined {
   if (!requirements) {
     return requirements;

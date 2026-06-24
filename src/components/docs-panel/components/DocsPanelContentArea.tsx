@@ -26,6 +26,7 @@ import { Button, Icon, IconButton } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { PLUGIN_BASE_URL } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
+import { TWOTAB_CONTROLLER_ENABLED } from '../../../constants/interactive-config';
 import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
 import { isDocsLikeTab, pickGrafanaDocsOpenAction, pickControllerTabOpenAction } from '../utils';
@@ -315,6 +316,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       );
                     })()}
                     {(() => {
+                      if (!TWOTAB_CONTROLLER_ENABLED) {
+                        return null;
+                      }
                       const guideUrl = activeTab.content?.url || activeTab.baseUrl;
                       const action = pickControllerTabOpenAction(guideUrl, activeTab.type);
                       if (!action.shouldShow || !action.controllerUrl) {

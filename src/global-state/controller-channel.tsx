@@ -45,6 +45,8 @@ interface ControllerChannel {
   awaitStepComplete: (stepId: string) => Promise<boolean>;
   /** Abandon a pending awaitStepComplete waiter (user cancelled); resolves it false. */
   cancelStepComplete: (stepId: string) => void;
+  /** Subscribe to a composite step's per-action progress; returns an unsubscribe. */
+  onStepProgress: (stepId: string, cb: (index: number, total: number) => void) => () => void;
 }
 
 interface PendingRequest {
@@ -83,6 +85,7 @@ export function ControllerChannelProvider({
   const pairedLiveIdRef = useRef<string | null>(null);
   const pendingRef = useRef<Map<string, PendingRequest>>(new Map());
   const stepCompletionRef = useRef<Map<string, (ok: boolean) => void>>(new Map());
+  const stepProgressRef = useRef<Map<string, (index: number, total: number) => void>>(new Map());
 
   const post = useCallback((payload: CrossTabPayload) => active.post(payload), [active]);
 
@@ -145,7 +148,12 @@ export function ControllerChannelProvider({
         }
         return;
       }
-      if (message.kind !== 'requirement-result' && message.kind !== 'fix-result' && message.kind !== 'step-complete') {
+      if (
+        message.kind !== 'requirement-result' &&
+        message.kind !== 'fix-result' &&
+        message.kind !== 'step-complete' &&
+        message.kind !== 'step-progress'
+      ) {
         return;
       }
       // T1 PART C: pairing happens on a heartbeat ONLY (above) — never adopt a
@@ -159,6 +167,8 @@ export function ControllerChannelProvider({
         settle(message.requestId, message.result);
       } else if (message.kind === 'fix-result') {
         settle(message.requestId, { ok: message.ok, error: message.error });
+      } else if (message.kind === 'step-progress') {
+        stepProgressRef.current.get(message.stepId)?.(message.index, message.total);
       } else {
         const resolve = stepDone.get(message.stepId);
         if (resolve) {
@@ -263,13 +273,25 @@ export function ControllerChannelProvider({
     }
   }, []);
 
+  // One subscriber per stepId (last writer wins). The unsubscribe only deletes
+  // if its own callback is still registered, so a superseding subscriber for the
+  // same step isn't evicted by the previous one's cleanup.
+  const onStepProgress = useCallback<ControllerChannel['onStepProgress']>((stepId, cb) => {
+    stepProgressRef.current.set(stepId, cb);
+    return () => {
+      if (stepProgressRef.current.get(stepId) === cb) {
+        stepProgressRef.current.delete(stepId);
+      }
+    };
+  }, []);
+
   // The channel value omits `connected` (it lives in ControllerConnectionContext)
   // and depends only on the useCallback-stable post + round-trip helpers, so it
   // stays referentially stable across heartbeat ticks — step consumers don't
   // re-render (NEW-1065-1).
   const channel = useMemo<ControllerChannel>(
-    () => ({ post, requestRequirementCheck, requestFix, awaitStepComplete, cancelStepComplete }),
-    [post, requestRequirementCheck, requestFix, awaitStepComplete, cancelStepComplete]
+    () => ({ post, requestRequirementCheck, requestFix, awaitStepComplete, cancelStepComplete, onStepProgress }),
+    [post, requestRequirementCheck, requestFix, awaitStepComplete, cancelStepComplete, onStepProgress]
   );
 
   return (
