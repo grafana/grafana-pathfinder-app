@@ -70,6 +70,7 @@ describe('resolveRemotePackage (single, recommender)', () => {
       repository: 'r',
       manifest: { id: 'alerting-101', type: 'guide', testEnvironment: { tier: 'local' } },
     });
+    mockIndex([{ id: 'alerting-101', path: 'alerting-101/', type: 'guide', testEnvironment: { tier: 'local' } }]);
     mockFetch({ ok: true, text: '{"id":"alerting-101"}' });
 
     const result = await resolveRemotePackage('alerting-101', OPTIONS);
@@ -168,6 +169,7 @@ describe('resolveRemotePackage (single, recommender)', () => {
       repository: 'r',
       manifest: undefined,
     });
+    mockIndex([{ id: 'g', path: 'g/', type: 'guide', testEnvironment: { tier: 'local' } }]);
     mockFetch({ ok: true, text: '{"id":"g"}' });
 
     const result = await resolveRemotePackage('g', OPTIONS);
@@ -272,18 +274,21 @@ describe('resolveRemotePackage (dependency resolution)', () => {
     expect(result.prerequisites.map((g) => g.id)).toEqual(['provider']);
   });
 
-  it('runs the target alone when it is absent from the index', async () => {
+  it('skips the target when it is absent from the repository index', async () => {
     mockTargetResolve('orphan');
     mockIndex([{ id: 'other', path: 'other/', type: 'guide', testEnvironment: { tier: 'local' } }]);
     mockFetch({ ok: true, text: '{"id":"orphan"}' });
 
     const result = await resolveRemotePackage('orphan', OPTIONS);
 
-    expect(result.runnable.map((g) => g.id)).toEqual(['orphan']);
+    expect(result.runnable).toHaveLength(0);
     expect(result.prerequisites).toHaveLength(0);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]).toMatchObject({ id: 'orphan', reason: 'resolution_failed' });
+    expect(result.skipped[0]!.message).toMatch(/not present in the repository index/i);
   });
 
-  it('runs the target alone when the index is unreachable', async () => {
+  it('runs the target alone when the index is unreachable and no prerequisites are declared', async () => {
     mockTargetResolve('loki-101');
     (fetchRepositoryIndex as jest.Mock).mockResolvedValue({ ok: false, code: 'NETWORK_ERROR', message: 'offline' });
     mockFetch({ ok: true, text: '{"id":"loki-101"}' });
@@ -295,7 +300,28 @@ describe('resolveRemotePackage (dependency resolution)', () => {
     expect(result.repository).toEqual({});
   });
 
-  it('reports a prerequisite whose content cannot be fetched', async () => {
+  it('skips the target when the index is unreachable and the manifest declares prerequisites', async () => {
+    mockResolve({
+      ok: true,
+      id: 'loki-101',
+      contentUrl: 'https://cdn.test/loki-101/content.json',
+      manifestUrl: 'https://cdn.test/loki-101/manifest.json',
+      repository: 'r',
+      manifest: { id: 'loki-101', type: 'guide', depends: ['prom-101'], testEnvironment: { tier: 'local' } },
+    });
+    (fetchRepositoryIndex as jest.Mock).mockResolvedValue({ ok: false, code: 'NETWORK_ERROR', message: 'offline' });
+    mockFetch({ ok: true, text: '{"id":"loki-101"}' });
+
+    const result = await resolveRemotePackage('loki-101', OPTIONS);
+
+    expect(result.runnable).toHaveLength(0);
+    expect(result.prerequisites).toHaveLength(0);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]).toMatchObject({ id: 'loki-101', reason: 'resolution_failed' });
+    expect(result.skipped[0]!.message).toMatch(/unreachable/i);
+  });
+
+  it('cascades the skip to the target when a prerequisite cannot be fetched', async () => {
     mockTargetResolve('loki-101');
     mockIndex([
       { id: 'loki-101', path: 'loki-101/', type: 'guide', depends: ['prom-101'], testEnvironment: { tier: 'local' } },
@@ -312,8 +338,45 @@ describe('resolveRemotePackage (dependency resolution)', () => {
 
     const result = await resolveRemotePackage('loki-101', OPTIONS);
 
-    expect(result.runnable.map((g) => g.id)).toEqual(['loki-101']);
+    expect(result.runnable).toHaveLength(0);
     expect(result.prerequisites).toHaveLength(0);
-    expect(result.skipped[0]).toMatchObject({ id: 'prom-101', reason: 'fetch_failed' });
+    const reasons = Object.fromEntries(result.skipped.map((s) => [s.id, s.reason]));
+    expect(reasons).toEqual({ 'prom-101': 'fetch_failed', 'loki-101': 'prerequisite_failed' });
+    const targetSkip = result.skipped.find((s) => s.id === 'loki-101')!;
+    expect(targetSkip.message).toMatch(/prom-101/);
+  });
+
+  it('cascades the skip to the target when a depends clause cannot be resolved', async () => {
+    mockTargetResolve('loki-101');
+    // "ghost" is neither a known package id nor a known provides capability.
+    mockIndex([
+      { id: 'loki-101', path: 'loki-101/', type: 'guide', depends: ['ghost'], testEnvironment: { tier: 'local' } },
+    ]);
+    mockFetch({ ok: true, text: '{"id":"loki-101"}' });
+
+    const result = await resolveRemotePackage('loki-101', OPTIONS);
+
+    expect(result.runnable).toHaveLength(0);
+    expect(result.prerequisites).toHaveLength(0);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]).toMatchObject({ id: 'loki-101', reason: 'prerequisite_failed' });
+    expect(result.skipped[0]!.message).toMatch(/ghost/);
+  });
+
+  it('cascades the skip to the target when prerequisites form a cycle', async () => {
+    mockTargetResolve('loki-101');
+    mockIndex([
+      { id: 'loki-101', path: 'loki-101/', type: 'guide', depends: ['prom-101'], testEnvironment: { tier: 'local' } },
+      { id: 'prom-101', path: 'prom-101/', type: 'guide', depends: ['loki-101'], testEnvironment: { tier: 'local' } },
+    ]);
+    mockFetch({ ok: true, text: '{"id":"loki-101"}' });
+
+    const result = await resolveRemotePackage('loki-101', OPTIONS);
+
+    expect(result.runnable).toHaveLength(0);
+    expect(result.prerequisites).toHaveLength(0);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]).toMatchObject({ id: 'loki-101', reason: 'prerequisite_failed' });
+    expect(result.skipped[0]!.message).toMatch(/[Cc]ycle/);
   });
 });

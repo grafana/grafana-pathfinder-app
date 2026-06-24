@@ -36,6 +36,7 @@ export const REMOTE_SKIP_REASONS = [
   'resolution_failed',
   'validation_failed',
   'unsupported_type',
+  'prerequisite_failed',
 ] as const;
 
 /** Why a remote package was skipped instead of run. */
@@ -216,11 +217,74 @@ async function resolveIndexEntry(
  * Enumerate the target's transitive `depends` prerequisites by running the
  * planner as a pure oracle: a throwaway stub loader lets it report
  * `autoIncludedIds` without re-implementing OR-group / `provides` resolution.
- * The stub content is never read, only the discovered ids.
+ * Planner errors (cycles, unresolvable clauses) are surfaced alongside the ids
+ * so callers can cascade them; the stub content is never read.
  */
-function discoverPrerequisiteIds(targetGuide: LoadedGuide, repository: RepositoryJson): string[] {
+function discoverPrerequisites(
+  targetGuide: LoadedGuide,
+  repository: RepositoryJson
+): { ids: string[]; errors: string[] } {
   const stubLoader = (stubId: string): LoadedGuide => ({ path: stubId, content: '{}' });
-  return planGuideExecution({ guides: [targetGuide], repository, loadGuideById: stubLoader }).autoIncludedIds;
+  const plan = planGuideExecution({ guides: [targetGuide], repository, loadGuideById: stubLoader });
+  return { ids: plan.autoIncludedIds, errors: plan.errors };
+}
+
+function prerequisiteFailedSkip(target: ResolvedRemoteGuide, detail: string): SkippedPackage {
+  return {
+    id: target.id,
+    reason: 'prerequisite_failed',
+    message: `Prerequisite(s) did not resolve: ${detail}`,
+    sourceUrl: target.sourceUrl,
+    tier: target.tier,
+  };
+}
+
+function resolutionFailedSkip(target: ResolvedRemoteGuide, message: string): SkippedPackage {
+  return {
+    id: target.id,
+    reason: 'resolution_failed',
+    message,
+    sourceUrl: target.sourceUrl,
+    tier: target.tier,
+  };
+}
+
+function skippedResolution(skipped: SkippedPackage[], repository: RepositoryJson = {}): RemoteResolution {
+  return { runnable: [], prerequisites: [], skipped, repository };
+}
+
+/**
+ * Fetch and classify each discovered prerequisite id against the repository
+ * index, collecting runnable guides and structured skips. A planner-included
+ * id that's missing from the repository becomes a `resolution_failed` skip.
+ */
+async function resolvePrerequisites(
+  ids: string[],
+  repository: RepositoryJson,
+  baseUrl: string,
+  options: RemoteResolveOptions
+): Promise<{ prerequisites: ResolvedRemoteGuide[]; skipped: SkippedPackage[] }> {
+  const prerequisites: ResolvedRemoteGuide[] = [];
+  const skipped: SkippedPackage[] = [];
+  for (const prerequisiteId of ids) {
+    const entry = repository[prerequisiteId];
+    if (!entry) {
+      skipped.push({
+        id: prerequisiteId,
+        reason: 'resolution_failed',
+        message: 'Prerequisite missing from repository index',
+      });
+      continue;
+    }
+    const built = await resolveIndexEntry(prerequisiteId, entry, baseUrl, options);
+    if (built.runnable) {
+      prerequisites.push(built.runnable);
+    }
+    if (built.skipped) {
+      skipped.push(built.skipped);
+    }
+  }
+  return { prerequisites, skipped };
 }
 
 /**
@@ -234,14 +298,8 @@ export async function resolveRemotePackage(id: string, options: RemoteResolveOpt
   // Resolve metadata (URLs + manifest) only; the raw content is fetched in
   // buildGuideOrSkip so the injected guide stays byte-faithful.
   const resolution = await resolvePackageById(options.resolverUrl, id);
-
   if (!resolution.ok) {
-    return {
-      runnable: [],
-      prerequisites: [],
-      skipped: [{ id, reason: 'resolution_failed', message: resolution.message }],
-      repository: {},
-    };
+    return skippedResolution([{ id, reason: 'resolution_failed', message: resolution.message }]);
   }
 
   const built = await buildGuideOrSkip(
@@ -251,30 +309,54 @@ export async function resolveRemotePackage(id: string, options: RemoteResolveOpt
     resolution.contentUrl,
     options
   );
-
-  // Target itself skipped (tier mismatch, unsupported type, fetch/validation): no chain.
   if (!built.runnable) {
-    return { runnable: [], prerequisites: [], skipped: built.skipped ? [built.skipped] : [], repository: {} };
+    return skippedResolution(built.skipped ? [built.skipped] : []);
   }
   const target = built.runnable;
 
-  // Resolve dependencies from the CDN index. Without it fall back to running the target alone.
   const index = await fetchRepositoryIndex(options.repoUrl);
   if (!index.ok) {
+    // Without an index we can only run safely if the manifest declares no prereqs.
+    const declaredDepends = resolution.manifest?.depends ?? [];
+    if (declaredDepends.length > 0) {
+      return skippedResolution([
+        resolutionFailedSkip(
+          target,
+          `Repository index unreachable (${index.message}); target declares prerequisites that cannot be verified`
+        ),
+      ]);
+    }
     return { runnable: [target], prerequisites: [], skipped: [], repository: {} };
   }
 
   const repository = indexToRepository(index.packages);
-  const prerequisites: ResolvedRemoteGuide[] = [];
-  const skipped: SkippedPackage[] = [];
-  for (const prerequisiteId of discoverPrerequisiteIds(target.guide, repository)) {
-    const builtPrereq = await resolveIndexEntry(prerequisiteId, repository[prerequisiteId]!, index.baseUrl, options);
-    if (builtPrereq.runnable) {
-      prerequisites.push(builtPrereq.runnable);
-    }
-    if (builtPrereq.skipped) {
-      skipped.push(builtPrereq.skipped);
-    }
+
+  // The recommender resolves across repos but this CLI checks deps against
+  // one index. If the target's home repo isn't the one we fetched, its
+  // `depends` would be invisible to our planner.
+  if (!repository[target.id]) {
+    return skippedResolution(
+      [
+        resolutionFailedSkip(
+          target,
+          `Target "${target.id}" was resolved via the recommender but is not present in the repository index used for dependency lookup`
+        ),
+      ],
+      repository
+    );
+  }
+
+  // Skip the target when any hard `depends` prereq fails to resolve — the
+  // dependent can't run without its prerequisite state.
+  const discovered = discoverPrerequisites(target.guide, repository);
+  if (discovered.errors.length > 0) {
+    return skippedResolution([prerequisiteFailedSkip(target, discovered.errors.join('; '))], repository);
+  }
+
+  const { prerequisites, skipped } = await resolvePrerequisites(discovered.ids, repository, index.baseUrl, options);
+  if (skipped.length > 0) {
+    const brokenIds = skipped.map((s) => s.id).join(', ');
+    return skippedResolution([...skipped, prerequisiteFailedSkip(target, brokenIds)], repository);
   }
 
   return { runnable: [target], prerequisites, skipped, repository };
