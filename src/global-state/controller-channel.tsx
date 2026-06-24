@@ -43,6 +43,8 @@ interface ControllerChannel {
     opts: { requirements: string; fixType?: string; targetHref?: string; scrollContainer?: string }
   ) => Promise<FixOutcome>;
   awaitStepComplete: (stepId: string) => Promise<boolean>;
+  /** Abandon a pending awaitStepComplete waiter (user cancelled); resolves it false. */
+  cancelStepComplete: (stepId: string) => void;
 }
 
 interface PendingRequest {
@@ -253,13 +255,21 @@ export function ControllerChannelProvider({
     []
   );
 
+  const cancelStepComplete = useCallback<ControllerChannel['cancelStepComplete']>((stepId) => {
+    const resolve = stepCompletionRef.current.get(stepId);
+    if (resolve) {
+      stepCompletionRef.current.delete(stepId);
+      resolve(false);
+    }
+  }, []);
+
   // The channel value omits `connected` (it lives in ControllerConnectionContext)
   // and depends only on the useCallback-stable post + round-trip helpers, so it
   // stays referentially stable across heartbeat ticks — step consumers don't
   // re-render (NEW-1065-1).
   const channel = useMemo<ControllerChannel>(
-    () => ({ post, requestRequirementCheck, requestFix, awaitStepComplete }),
-    [post, requestRequirementCheck, requestFix, awaitStepComplete]
+    () => ({ post, requestRequirementCheck, requestFix, awaitStepComplete, cancelStepComplete }),
+    [post, requestRequirementCheck, requestFix, awaitStepComplete, cancelStepComplete]
   );
 
   return (

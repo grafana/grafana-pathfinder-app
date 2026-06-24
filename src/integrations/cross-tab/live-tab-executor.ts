@@ -30,6 +30,16 @@ import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
 import pluginJson from '../../plugin.json';
 
+// The verbs the guided handler can actually drive — narrower than the receive
+// gate's KNOWN_TARGET_ACTIONS, so runGuided checks against this before casting.
+const GUIDED_VERBS: ReadonlySet<GuidedAction['targetAction']> = new Set([
+  'hover',
+  'button',
+  'highlight',
+  'noop',
+  'formfill',
+]);
+
 interface ExecutorTransport {
   start(): void;
   stop(): void;
@@ -157,9 +167,7 @@ export function installLiveTabExecutor(
   // so the user watches the same staged sequence rather than an instant burst.
   // Composites always run the full show→do sequence; the command's wire `phase`
   // is not consulted (controllers only ever post composites as a 'do').
-  const runComposite = async (
-    actions: NonNullable<StepCommandMessage['action']['internalActions']>
-  ): Promise<void> => {
+  const runComposite = async (actions: NonNullable<StepCommandMessage['action']['internalActions']>): Promise<void> => {
     for (let i = 0; i < actions.length; i++) {
       // Paced replay holds the loop open for seconds; bail between actions if a
       // teardown set cancelled so we never touch the DOM post-uninstall (NEW-1064-2).
@@ -184,6 +192,13 @@ export function installLiveTabExecutor(
     guidedHandler.resetProgress();
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i]!;
+      // The receive gate accepts any KNOWN_TARGET_ACTIONS verb, which is wider than
+      // the guided verb set — guard the cast so a non-guided verb (e.g. navigate)
+      // fails loud instead of being mistyped into the guided handler (F-1073-nit-cast).
+      if (!GUIDED_VERBS.has(action.targetAction as GuidedAction['targetAction'])) {
+        console.warn(`[Pathfinder] cross-tab executor: guided step has non-guided verb "${action.targetAction}"`);
+        return false;
+      }
       const result = await guidedHandler.executeGuidedStep(
         {
           targetAction: action.targetAction as GuidedAction['targetAction'],
