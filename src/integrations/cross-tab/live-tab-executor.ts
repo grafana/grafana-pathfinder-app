@@ -225,9 +225,10 @@ export function installLiveTabExecutor(
     if (cancelled) {
       return;
     }
+    const { stepId, runId } = command;
     const internalActions = command.action.internalActions;
     const postProgress = (index: number) =>
-      transport.post({ kind: 'step-progress', stepId: command.stepId, index, total: internalActions?.length ?? 0 });
+      transport.post({ kind: 'step-progress', stepId, runId, index, total: internalActions?.length ?? 0 });
     let ok = false;
     try {
       if (internalActions?.length) {
@@ -245,12 +246,11 @@ export function installLiveTabExecutor(
       console.error('[Pathfinder] cross-tab executor: failed to run remote step', error);
       ok = false;
     }
-    // Reverse error channel (F-1064-1): tell the controller whether a composite
-    // actually finished, so it surfaces failure instead of completing early
-    // (guided waits for the user to click through). Simple steps stay optimistic
-    // by design (F-1063-1) and report nothing back.
+    // Tell the controller whether a composite actually finished, so it surfaces
+    // failure instead of completing early. Simple steps stay optimistic by design
+    // and report nothing back.
     if (internalActions?.length) {
-      transport.post({ kind: 'step-complete', stepId: command.stepId, ok });
+      transport.post({ kind: 'step-complete', stepId, runId, ok });
     }
   };
 

@@ -10,6 +10,7 @@ describe('validateCrossTabMessage', () => {
       kind: 'step-command',
       phase: 'do',
       stepId: 's1',
+      runId: 'run-1',
       action: { targetAction: 'button', refTarget: 'Save' },
     });
     expect(validateCrossTabMessage(message)).toBe(message);
@@ -37,6 +38,7 @@ describe('validateCrossTabMessage', () => {
       kind: 'step-command',
       phase: 'do',
       stepId: 's1',
+      runId: 'run-1',
       action: { targetAction: 'exec', refTarget: '#x' },
     });
     expect(validateCrossTabMessage(message)).toBeNull();
@@ -45,11 +47,12 @@ describe('validateCrossTabMessage', () => {
   it.each([
     [
       'bad phase',
-      { kind: 'step-command', phase: 'destroy', stepId: 's1', action: { targetAction: 'button', refTarget: 'x' } },
+      { kind: 'step-command', phase: 'destroy', stepId: 's1', runId: 'r1', action: { targetAction: 'button', refTarget: 'x' } },
     ],
-    ['missing stepId', { kind: 'step-command', phase: 'do', action: { targetAction: 'button', refTarget: 'x' } }],
-    ['non-object action', { kind: 'step-command', phase: 'do', stepId: 's1', action: 'button' }],
-    ['missing refTarget', { kind: 'step-command', phase: 'do', stepId: 's1', action: { targetAction: 'button' } }],
+    ['missing stepId', { kind: 'step-command', phase: 'do', runId: 'r1', action: { targetAction: 'button', refTarget: 'x' } }],
+    ['missing runId', { kind: 'step-command', phase: 'do', stepId: 's1', action: { targetAction: 'button', refTarget: 'x' } }],
+    ['non-object action', { kind: 'step-command', phase: 'do', stepId: 's1', runId: 'r1', action: 'button' }],
+    ['missing refTarget', { kind: 'step-command', phase: 'do', stepId: 's1', runId: 'r1', action: { targetAction: 'button' } }],
   ])('rejects a malformed step-command (%s)', (_label, partial) => {
     expect(validateCrossTabMessage(envelope(partial))).toBeNull();
   });
@@ -59,6 +62,7 @@ describe('validateCrossTabMessage', () => {
       kind: 'step-command',
       phase: 'do',
       stepId: 's1',
+      runId: 'run-1',
       action: {
         targetAction: 'guided',
         refTarget: '',
@@ -86,7 +90,9 @@ describe('validateCrossTabMessage', () => {
     ['a non-array internalActions', { targetAction: 'guided', refTarget: '', internalActions: 'highlight' }],
     ['a non-object internal action', { targetAction: 'guided', refTarget: '', internalActions: ['highlight'] }],
   ])('rejects a composite step-command with %s', (_label, action) => {
-    expect(validateCrossTabMessage(envelope({ kind: 'step-command', phase: 'do', stepId: 's1', action }))).toBeNull();
+    expect(
+      validateCrossTabMessage(envelope({ kind: 'step-command', phase: 'do', stepId: 's1', runId: 'run-1', action }))
+    ).toBeNull();
   });
 
   it('rejects a heartbeat with an invalid role', () => {
@@ -98,5 +104,23 @@ describe('validateCrossTabMessage', () => {
     expect(validateCrossTabMessage(envelope({ kind: 'sidebar-handoff', action: 'reopen' }))).not.toBeNull();
     expect(validateCrossTabMessage(envelope({ kind: 'sidebar-handoff', action: 'detonate' }))).toBeNull();
     expect(validateCrossTabMessage(envelope({ kind: 'sidebar-handoff' }))).toBeNull();
+  });
+
+  it('accepts a well-formed step-complete', () => {
+    const message = envelope({ kind: 'step-complete', stepId: 's1', runId: 'run-1', ok: true });
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it('rejects a step-complete missing runId', () => {
+    expect(validateCrossTabMessage(envelope({ kind: 'step-complete', stepId: 's1', ok: true }))).toBeNull();
+  });
+
+  it('accepts a well-formed step-progress', () => {
+    const message = envelope({ kind: 'step-progress', stepId: 's1', runId: 'run-1', index: 0, total: 3 });
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it('rejects a step-progress missing runId', () => {
+    expect(validateCrossTabMessage(envelope({ kind: 'step-progress', stepId: 's1', index: 0, total: 3 }))).toBeNull();
   });
 });

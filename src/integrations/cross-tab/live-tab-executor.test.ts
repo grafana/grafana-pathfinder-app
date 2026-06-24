@@ -78,7 +78,7 @@ function controllerHeartbeat(): CrossTabMessage {
   return { source: 'pathfinder', senderId: 'controller', timestamp: 0, kind: 'heartbeat', role: 'controller' };
 }
 
-function stampStepCommand(phase: 'show' | 'do', targetAction: string, refTarget: string): CrossTabMessage {
+function stampStepCommand(phase: 'show' | 'do', targetAction: string, refTarget: string, runId = 'run-1'): CrossTabMessage {
   return {
     source: 'pathfinder',
     senderId: 'controller',
@@ -86,6 +86,7 @@ function stampStepCommand(phase: 'show' | 'do', targetAction: string, refTarget:
     kind: 'step-command',
     phase,
     stepId: 's1',
+    runId,
     action: { targetAction, refTarget },
   };
 }
@@ -168,6 +169,7 @@ describe('installLiveTabExecutor', () => {
       kind: 'step-command',
       phase: 'do',
       stepId: 'ms1',
+      runId: 'run-1',
       action: {
         targetAction: 'multistep',
         refTarget: '',
@@ -194,6 +196,7 @@ describe('installLiveTabExecutor', () => {
       kind: 'step-command',
       phase: 'do',
       stepId: 'ms1',
+      runId: 'run-1',
       action: {
         targetAction: 'multistep',
         refTarget: '',
@@ -218,6 +221,7 @@ describe('installLiveTabExecutor', () => {
       kind: 'step-command',
       phase: 'do',
       stepId: 'g1',
+      runId: 'run-g1',
       action: {
         targetAction: 'guided',
         refTarget: '',
@@ -236,7 +240,7 @@ describe('installLiveTabExecutor', () => {
     // And it reports completion so the controller doesn't mark the step done early.
     await waitFor(() =>
       expect(transport.postedMessages).toContainEqual(
-        expect.objectContaining({ kind: 'step-complete', stepId: 'g1', ok: true })
+        expect.objectContaining({ kind: 'step-complete', stepId: 'g1', runId: 'run-g1', ok: true })
       )
     );
     uninstall();
@@ -253,6 +257,7 @@ describe('installLiveTabExecutor', () => {
       kind: 'step-command',
       phase: 'do',
       stepId: 'ms3',
+      runId: 'run-ms3',
       action: {
         targetAction: 'multistep',
         refTarget: '',
@@ -265,12 +270,44 @@ describe('installLiveTabExecutor', () => {
 
     await waitFor(() =>
       expect(transport.postedMessages).toContainEqual(
-        expect.objectContaining({ kind: 'step-progress', stepId: 'ms3', index: 0, total: 2 })
+        expect.objectContaining({ kind: 'step-progress', stepId: 'ms3', runId: 'run-ms3', index: 0, total: 2 })
       )
     );
     await waitFor(() =>
       expect(transport.postedMessages).toContainEqual(
-        expect.objectContaining({ kind: 'step-progress', stepId: 'ms3', index: 1, total: 2 })
+        expect.objectContaining({ kind: 'step-progress', stepId: 'ms3', runId: 'run-ms3', index: 1, total: 2 })
+      )
+    );
+    uninstall();
+  });
+
+  it('echoes the runId from step-command in step-complete and step-progress replies', async () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 });
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'echo-step',
+      runId: 'echo-run-42',
+      action: {
+        targetAction: 'multistep',
+        refTarget: '',
+        internalActions: [{ targetAction: 'highlight', refTarget: '#a' }],
+      },
+    });
+
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-progress', stepId: 'echo-step', runId: 'echo-run-42' })
+      )
+    );
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-complete', stepId: 'echo-step', runId: 'echo-run-42', ok: true })
       )
     );
     uninstall();
@@ -287,6 +324,7 @@ describe('installLiveTabExecutor', () => {
       kind: 'step-command',
       phase: 'do',
       stepId: 'ms2',
+      runId: 'run-ms2',
       action: {
         targetAction: 'multistep',
         refTarget: '',
@@ -296,7 +334,7 @@ describe('installLiveTabExecutor', () => {
 
     await waitFor(() =>
       expect(transport.postedMessages).toContainEqual(
-        expect.objectContaining({ kind: 'step-complete', stepId: 'ms2', ok: true })
+        expect.objectContaining({ kind: 'step-complete', stepId: 'ms2', runId: 'run-ms2', ok: true })
       )
     );
     uninstall();

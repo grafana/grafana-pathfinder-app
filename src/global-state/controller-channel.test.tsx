@@ -48,6 +48,7 @@ function Probe() {
             kind: 'step-command',
             phase: 'do',
             stepId: 's1',
+            runId: 'test-run-id',
             action: { targetAction: 'button', refTarget: '#x' },
           })
         }
@@ -143,6 +144,7 @@ describe('ControllerChannelProvider', () => {
       kind: 'step-command',
       phase: 'do',
       stepId: 's1',
+      runId: 'test-run-id',
       action: { targetAction: 'button', refTarget: '#x' },
     });
   });
@@ -354,7 +356,9 @@ describe('ControllerChannelProvider', () => {
       const [done, setDone] = React.useState('pending');
       return (
         <div>
-          <button onClick={() => channel?.awaitStepComplete('s9').then((ok) => setDone(`ok:${ok}`))}>await</button>
+          <button onClick={() => channel?.awaitStepComplete('s9', 'run-9').then((ok) => setDone(`ok:${ok}`))}>
+            await
+          </button>
           <span data-testid="done">{done}</span>
         </div>
       );
@@ -379,6 +383,7 @@ describe('ControllerChannelProvider', () => {
         timestamp: 0,
         kind: 'step-complete',
         stepId: 's9',
+        runId: 'run-9',
         ok: true,
       })
     );
@@ -386,11 +391,68 @@ describe('ControllerChannelProvider', () => {
     await waitFor(() => expect(screen.getByTestId('done')).toHaveTextContent('ok:true'));
   });
 
+  it('drops a step-complete with a stale runId and does not settle the waiter', async () => {
+    function CompleteProbe() {
+      const channel = useControllerChannel();
+      const [done, setDone] = React.useState('pending');
+      return (
+        <div>
+          <button onClick={() => channel?.awaitStepComplete('s10', 'run-new').then((ok) => setDone(`ok:${ok}`))}>
+            await
+          </button>
+          <span data-testid="done2">{done}</span>
+        </div>
+      );
+    }
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <CompleteProbe />
+      </ControllerChannelProvider>
+    );
+
+    act(() =>
+      transport.emit({ source: 'pathfinder', senderId: 'live-A', timestamp: 0, kind: 'heartbeat', role: 'live' })
+    );
+    fireEvent.click(screen.getByText('await'));
+
+    // A step-complete with the wrong runId (stale from a cancelled run) must not settle.
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live-A',
+        timestamp: 0,
+        kind: 'step-complete',
+        stepId: 's10',
+        runId: 'run-old',
+        ok: true,
+      })
+    );
+    expect(screen.getByTestId('done2')).toHaveTextContent('pending');
+
+    // The correct runId settles normally.
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live-A',
+        timestamp: 0,
+        kind: 'step-complete',
+        stepId: 's10',
+        runId: 'run-new',
+        ok: true,
+      })
+    );
+    await waitFor(() => expect(screen.getByTestId('done2')).toHaveTextContent('ok:true'));
+  });
+
   it('forwards step-progress to an onStepProgress subscriber', () => {
     function ProgressProbe() {
       const channel = useControllerChannel();
       const [p, setP] = React.useState('none');
-      React.useEffect(() => channel?.onStepProgress('s9', (index, total) => setP(`${index}/${total}`)), [channel]);
+      React.useEffect(
+        () => channel?.onStepProgress('s9', 'run-9', (index, total) => setP(`${index}/${total}`)),
+        [channel]
+      );
       return <span data-testid="progress">{p}</span>;
     }
     const transport = new FakeTransport();
@@ -401,8 +463,7 @@ describe('ControllerChannelProvider', () => {
     );
 
     // A forged step-progress before any live heartbeat must be dropped — pairing
-    // happens on a heartbeat only, so an unpaired sender can't drive the bar
-    // (F-1084 step-progress spoof, T1 PART C).
+    // happens on a heartbeat only, so an unpaired sender can't drive the bar.
     act(() =>
       transport.emit({
         source: 'pathfinder',
@@ -410,6 +471,7 @@ describe('ControllerChannelProvider', () => {
         timestamp: 0,
         kind: 'step-progress',
         stepId: 's9',
+        runId: 'run-9',
         index: 2,
         total: 3,
       })
@@ -427,6 +489,7 @@ describe('ControllerChannelProvider', () => {
         timestamp: 0,
         kind: 'step-progress',
         stepId: 's9',
+        runId: 'run-9',
         index: 1,
         total: 3,
       })

@@ -687,6 +687,7 @@ export const InteractiveStep = forwardRef<
           kind: 'step-command',
           phase: 'show',
           stepId,
+          runId: crypto.randomUUID(),
           action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
         });
         if (!doIt) {
@@ -808,6 +809,7 @@ export const InteractiveStep = forwardRef<
           kind: 'step-command',
           phase: 'do',
           stepId,
+          runId: crypto.randomUUID(),
           action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
         });
         // F-1063-1 (fix-plan §6.2): simple steps complete optimistically — no live

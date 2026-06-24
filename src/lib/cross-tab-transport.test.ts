@@ -58,7 +58,7 @@ describe('CrossTabTransport', () => {
     const received: CrossTabMessage[] = [];
     live.onMessage((m) => received.push(m));
 
-    controller.post({ kind: 'step-command', phase: 'show', stepId: 's1', action });
+    controller.post({ kind: 'step-command', phase: 'show', stepId: 's1', runId: 'run-1', action });
 
     expect(received).toHaveLength(1);
     expect(received[0]).toMatchObject({

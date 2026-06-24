@@ -42,11 +42,11 @@ interface ControllerChannel {
     stepId: string,
     opts: { requirements: string; fixType?: string; targetHref?: string; scrollContainer?: string }
   ) => Promise<FixOutcome>;
-  awaitStepComplete: (stepId: string) => Promise<boolean>;
+  awaitStepComplete: (stepId: string, runId: string) => Promise<boolean>;
   /** Abandon a pending awaitStepComplete waiter (user cancelled); resolves it false. */
-  cancelStepComplete: (stepId: string) => void;
+  cancelStepComplete: (stepId: string, runId: string) => void;
   /** Subscribe to a composite step's per-action progress; returns an unsubscribe. */
-  onStepProgress: (stepId: string, cb: (index: number, total: number) => void) => () => void;
+  onStepProgress: (stepId: string, runId: string, cb: (index: number, total: number) => void) => () => void;
 }
 
 interface PendingRequest {
@@ -113,6 +113,7 @@ export function ControllerChannelProvider({
       pending.clear();
       stepDone.forEach((resolve) => resolve(false));
       stepDone.clear();
+      stepProgressRef.current.clear();
     };
 
     const unsubscribe = active.onMessage((message) => {
@@ -141,8 +142,8 @@ export function ControllerChannelProvider({
           // The initial close above may have been posted before any live tab
           // was listening (controller opened first, or the live tab mounted
           // late). Re-assert it once the first live heartbeat proves a live tab
-          // exists, so the sidebar still hands off (F-1067-1). The flag stops
-          // later reconnects from re-posting on every tick.
+          // exists, so the sidebar still hands off. The flag stops later
+          // reconnects from re-posting on every tick.
           reassertedCloseRef.current = true;
           active.post({ kind: 'sidebar-handoff', action: 'close' });
         }
@@ -158,8 +159,7 @@ export function ControllerChannelProvider({
       }
       // T1 PART C: pairing happens on a heartbeat ONLY (above) — never adopt a
       // sender from a reply, or a forged first reply could claim the pairing slot
-      // before any live tab heartbeats (first-responder spoof, F-1073 / F-1084).
-      // An unpaired or mismatched sender is dropped.
+      // before any live tab heartbeats. An unpaired or mismatched sender is dropped.
       if (pairedLiveIdRef.current === null || message.senderId !== pairedLiveIdRef.current) {
         return;
       }
@@ -168,11 +168,13 @@ export function ControllerChannelProvider({
       } else if (message.kind === 'fix-result') {
         settle(message.requestId, { ok: message.ok, error: message.error });
       } else if (message.kind === 'step-progress') {
-        stepProgressRef.current.get(message.stepId)?.(message.index, message.total);
+        const key = `${message.stepId}:${message.runId}`;
+        stepProgressRef.current.get(key)?.(message.index, message.total);
       } else {
-        const resolve = stepDone.get(message.stepId);
+        const key = `${message.stepId}:${message.runId}`;
+        const resolve = stepDone.get(key);
         if (resolve) {
-          stepDone.delete(message.stepId);
+          stepDone.delete(key);
           resolve(message.ok);
         }
       }
@@ -209,7 +211,7 @@ export function ControllerChannelProvider({
       // Globally unique so a reply can never settle the wrong pending request:
       // a per-instance sequence (`req-1`, `req-2`, …) collides across two
       // controller tabs sharing the channel, and a stray reply would resolve the
-      // other controller's same-numbered request (F-1070-1).
+      // other controller's same-numbered request.
       const requestId = crypto.randomUUID();
       return new Promise<T>((resolve) => {
         const timer = setTimeout(() => {
@@ -256,31 +258,28 @@ export function ControllerChannelProvider({
   );
 
   const awaitStepComplete = useCallback<ControllerChannel['awaitStepComplete']>(
-    (stepId) =>
+    (stepId, runId) =>
       new Promise<boolean>((resolve) => {
-        // A re-run for the same step supersedes any earlier waiter.
-        stepCompletionRef.current.get(stepId)?.(false);
-        stepCompletionRef.current.set(stepId, resolve);
+        stepCompletionRef.current.set(`${stepId}:${runId}`, resolve);
       }),
     []
   );
 
-  const cancelStepComplete = useCallback<ControllerChannel['cancelStepComplete']>((stepId) => {
-    const resolve = stepCompletionRef.current.get(stepId);
+  const cancelStepComplete = useCallback<ControllerChannel['cancelStepComplete']>((stepId, runId) => {
+    const key = `${stepId}:${runId}`;
+    const resolve = stepCompletionRef.current.get(key);
     if (resolve) {
-      stepCompletionRef.current.delete(stepId);
+      stepCompletionRef.current.delete(key);
       resolve(false);
     }
   }, []);
 
-  // One subscriber per stepId (last writer wins). The unsubscribe only deletes
-  // if its own callback is still registered, so a superseding subscriber for the
-  // same step isn't evicted by the previous one's cleanup.
-  const onStepProgress = useCallback<ControllerChannel['onStepProgress']>((stepId, cb) => {
-    stepProgressRef.current.set(stepId, cb);
+  const onStepProgress = useCallback<ControllerChannel['onStepProgress']>((stepId, runId, cb) => {
+    const key = `${stepId}:${runId}`;
+    stepProgressRef.current.set(key, cb);
     return () => {
-      if (stepProgressRef.current.get(stepId) === cb) {
-        stepProgressRef.current.delete(stepId);
+      if (stepProgressRef.current.get(key) === cb) {
+        stepProgressRef.current.delete(key);
       }
     };
   }, []);
