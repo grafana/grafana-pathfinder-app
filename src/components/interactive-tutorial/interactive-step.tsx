@@ -292,6 +292,11 @@ export const InteractiveStep = forwardRef<
       onComplete, // Pass through for objectives auto-completion
     });
 
+    // `checker` is a fresh object every render, but `revalidate` is a stable
+    // useCallback — pull it out so the click handlers can depend on it without
+    // rebuilding every render (which depending on the whole `checker` would force).
+    const { revalidate } = checker;
+
     const aiFixEnabled = useAiFixEnabled();
 
     // Clear stale runtime errors when an AI patch swaps refTarget (step updates in place).
@@ -675,7 +680,7 @@ export const InteractiveStep = forwardRef<
         // Cross-tab state can be stale; re-verify against the live tab and gate.
         // revalidate() fails OPEN when no live tab answers (§6.5), so a
         // disconnected controller proceeds rather than being silently blocked.
-        if (!(await checker.revalidate())) {
+        if (!(await revalidate())) {
           return;
         }
         controllerChannel?.post({
@@ -758,7 +763,7 @@ export const InteractiveStep = forwardRef<
       persistCompletion,
       mode,
       controllerChannel,
-      checker.revalidate,
+      revalidate,
     ]);
 
     // Handle individual "Do it" action (delegates to executeStep)
@@ -796,7 +801,7 @@ export const InteractiveStep = forwardRef<
         // Cross-tab state can be stale; re-verify against the live tab and gate.
         // revalidate() fails OPEN when no live tab answers (§6.5), so a
         // disconnected controller proceeds rather than being silently blocked.
-        if (!(await checker.revalidate())) {
+        if (!(await revalidate())) {
           return;
         }
         controllerChannel?.post({
@@ -860,7 +865,7 @@ export const InteractiveStep = forwardRef<
       onComplete,
       stepId,
       targetComment,
-      checker.revalidate,
+      revalidate,
     ]);
 
     // Handle individual step reset (redo functionality)

@@ -603,6 +603,11 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       );
 
       if (mode === 'controller') {
+        // §6.4 (entry-only): composites are NOT re-gated at click time the way a
+        // simple step is (which calls checker.revalidate() before posting). A
+        // requirement round-trip can cost up to ~4s, and a composite would pay
+        // that per click on top of its staged replay, so we keep the entry gate
+        // only and let each sub-action fail on the live tab if a prereq regressed.
         controllerChannel?.post({
           kind: 'step-command',
           phase: 'do',
