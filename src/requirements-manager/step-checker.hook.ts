@@ -110,12 +110,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
   const mode = useInteractiveMode();
   const controllerChannel = useControllerChannel();
-  // A controller tab drives a *different* Grafana tab, so requirements that probe
-  // this tab's DOM/URL (exists-reftarget, navmenu-open, ...) are evaluated on the
-  // live tab via a round-trip (see the controller branch in `attemptCheck`). Keep
-  // the full string here so the warning, the "Fix this" affordance, and the
-  // heartbeat all see the real requirements; the round-trip falls back to
-  // stripping only when no live tab answers.
+  // Keep the full requirements string in controller mode; tab-local ones are
+  // evaluated on the live tab via the round-trip in `attemptCheck`.
   const requirements = rawRequirements;
 
   /**
@@ -241,10 +237,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         timeoutMs,
         remote,
       } = options;
-      // Controller-mode checks are evaluated on the live tab, which runs its own
-      // retry loop before replying — so the harness here must NOT retry, or each
-      // attempt would post a fresh round-trip and the warning would stall for
-      // seconds behind repeated timeouts.
+      // The live tab runs its own retry loop, so a remote check must not retry
+      // here — each attempt would post a fresh round-trip and stall the warning.
       const isRemote = remote === true && mode === 'controller' && controllerChannel != null;
       // When lazyRender is enabled, don't do automatic retries - let the button handle lazy scroll.
       // The explicit override (passed by the objectives path) takes precedence.
@@ -605,6 +599,48 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     targetAction,
   ]);
 
+  // Re-check requirements at click time (cross-tab state can be stale), fold the
+  // result into the FSM so a regressed prerequisite re-surfaces, and return
+  // whether the action may proceed.
+  const revalidate = useCallback(async (): Promise<boolean> => {
+    if (!requirements || requirements.trim() === '') {
+      return true;
+    }
+    const result = await checkRequirementsWithStateUpdates(
+      {
+        requirements,
+        targetAction: targetAction || 'button',
+        refTarget: refTarget || stepId,
+        stepId,
+        remote: true,
+      },
+      (retryCount, _maxRetries, isRetrying) => {
+        safeDispatch({ type: 'UPDATE_RETRY', retryCount, isRetrying });
+      }
+    );
+    if (!isMountedRef.current) {
+      return result.pass;
+    }
+    const requirementsState = createRequirementsState(result, requirements, hints, skippable);
+    safeDispatch(actionFromBaseStepState(requirementsState));
+    updateManager(requirementsState);
+    prevIsEnabledRef.current = result.pass;
+    if (result.pass) {
+      enabledTimestampRef.current = Date.now();
+    }
+    return result.pass;
+  }, [
+    requirements,
+    targetAction,
+    refTarget,
+    stepId,
+    hints,
+    skippable,
+    checkRequirementsWithStateUpdates,
+    safeDispatch,
+    updateManager,
+  ]);
+
   /**
    * Attempt to automatically fix failed requirements via the fix-handler registry.
    * Wraps `dispatchFix` with mount-safety, the post-fix recheck, and error reporting.
@@ -633,9 +669,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     try {
       safeDispatch({ type: 'START_CHECK' });
 
-      // A controller's fix must act on the live tab's DOM, not this tab's, so
-      // route it across the channel; the live-tab executor runs the same
-      // registry fix against the correct document.
+      // A controller's fix must run on the live tab's DOM, not this tab's.
       const result =
         mode === 'controller' && controllerChannel != null
           ? await controllerChannel.requestFix(stepId, {
@@ -1020,10 +1054,9 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       ? req.includes('navmenu-open') || req.includes('exists-reftarget') || req.includes('on-page:')
       : !!req;
 
-    // In a controller tab a fragile step usually starts BLOCKED (the live tab's
-    // nav menu is closed), and this poll is what re-checks it against the live
-    // tab so the warning + "Fix this" surface and later clear. So watch while
-    // blocked too; in-tab mode keeps the original enabled-only watchdog.
+    // A controller's fragile step often starts blocked; poll the live tab while
+    // blocked too so the warning surfaces and later clears. In-tab keeps the
+    // original enabled-only watchdog.
     const watchWhileBlocked = mode === 'controller';
     if (!isFragile || state.isCompleted || (!state.isEnabled && !watchWhileBlocked)) {
       return;
@@ -1066,6 +1099,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   return {
     ...state,
     checkStep,
+    revalidate,
     markCompleted,
     markSkipped: skippable ? markSkipped : undefined,
     resetStep,

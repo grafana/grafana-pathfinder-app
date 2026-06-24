@@ -7,11 +7,13 @@ import {
   ButtonHandler,
   FocusHandler,
   FormFillHandler,
+  GuidedHandler,
   HoverHandler,
   InteractiveStateManager,
   NavigateHandler,
   NavigationManager,
 } from '../../interactive-engine';
+import type { GuidedAction } from '../../types/interactive-actions.types';
 import { CrossTabTransport, createSenderId } from '../../lib/cross-tab-transport';
 import { checkRequirements, dispatchFix, type RequirementsCheckResult } from '../../requirements-manager';
 import {
@@ -27,6 +29,16 @@ import {
 import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
 import pluginJson from '../../plugin.json';
+
+// The verbs the guided handler can actually drive — narrower than the receive
+// gate's KNOWN_TARGET_ACTIONS, so runGuided checks against this before casting.
+const GUIDED_VERBS: ReadonlySet<GuidedAction['targetAction']> = new Set([
+  'hover',
+  'button',
+  'highlight',
+  'noop',
+  'formfill',
+]);
 
 interface ExecutorTransport {
   start(): void;
@@ -92,6 +104,7 @@ export function installLiveTabExecutor(
   const formFillHandler = new FormFillHandler(stateManager, navigationManager, waitForReactUpdates);
   const navigateHandler = new NavigateHandler(stateManager, waitForReactUpdates);
   const hoverHandler = new HoverHandler(stateManager, navigationManager, waitForReactUpdates);
+  const guidedHandler = new GuidedHandler(stateManager, navigationManager, waitForReactUpdates);
 
   // Claim the install slot only after every handler is constructed, so a
   // throwing constructor leaves installed=false and a later init can retry
@@ -149,20 +162,22 @@ export function installLiveTabExecutor(
     }
   };
 
+  type ActionList = NonNullable<StepCommandMessage['action']['internalActions']>;
+  type OnProgress = (index: number) => void;
+
   // multi-step / guided replay each internal action the way a live tab paces a
   // normal multi-step: highlight (show) → pause → perform (do) → settle → pause,
   // so the user watches the same staged sequence rather than an instant burst.
   // Composites always run the full show→do sequence; the command's wire `phase`
   // is not consulted (controllers only ever post composites as a 'do').
-  const runComposite = async (
-    actions: NonNullable<StepCommandMessage['action']['internalActions']>
-  ): Promise<void> => {
+  const runComposite = async (actions: ActionList, onProgress: OnProgress): Promise<void> => {
     for (let i = 0; i < actions.length; i++) {
       // Paced replay holds the loop open for seconds; bail between actions if a
       // teardown set cancelled so we never touch the DOM post-uninstall (NEW-1064-2).
       if (cancelled) {
         return;
       }
+      onProgress(i);
       const action = actions[i]!;
       await runAction(action, true);
       await sleep(pacing.showToDoMs);
@@ -175,28 +190,71 @@ export function installLiveTabExecutor(
     }
   };
 
+  // Guided is human-driven: highlight each target and wait for the user to perform
+  // it on the live tab, rather than the auto replay a multi-step uses.
+  const runGuided = async (actions: ActionList, onProgress: OnProgress): Promise<boolean> => {
+    guidedHandler.resetProgress();
+    for (let i = 0; i < actions.length; i++) {
+      onProgress(i);
+      const action = actions[i]!;
+      // The receive gate accepts any KNOWN_TARGET_ACTIONS verb, which is wider than
+      // the guided verb set — guard the cast so a non-guided verb (e.g. navigate)
+      // fails loud instead of being mistyped into the guided handler (F-1073-nit-cast).
+      if (!GUIDED_VERBS.has(action.targetAction as GuidedAction['targetAction'])) {
+        console.warn(`[Pathfinder] cross-tab executor: guided step has non-guided verb "${action.targetAction}"`);
+        return false;
+      }
+      const result = await guidedHandler.executeGuidedStep(
+        {
+          targetAction: action.targetAction as GuidedAction['targetAction'],
+          refTarget: action.refTarget,
+          targetValue: action.targetValue,
+          targetComment: action.targetComment,
+        },
+        i,
+        actions.length
+      );
+      if (result !== 'completed' && result !== 'skipped') {
+        return false;
+      }
+    }
+    return true;
+  };
+
   const runStepCommand = async (command: StepCommandMessage): Promise<void> => {
     if (cancelled) {
       return;
     }
     const internalActions = command.action.internalActions;
+    const postProgress = (index: number) =>
+      transport.post({ kind: 'step-progress', stepId: command.stepId, index, total: internalActions?.length ?? 0 });
+    let ok = false;
     try {
       if (internalActions?.length) {
-        await runComposite(internalActions);
+        if (command.action.targetAction === 'guided') {
+          ok = await runGuided(internalActions, postProgress);
+        } else {
+          await runComposite(internalActions, postProgress);
+          ok = true;
+        }
       } else {
         await runAction(command.action, command.phase === 'show');
+        ok = true;
       }
     } catch (error) {
-      // TODO(#1073): post a step-complete{ok:false} back so the controller can
-      // surface the failure instead of completing optimistically (F-1064-1).
-      // The reverse-channel kind does not exist until the round-trip lands.
       console.error('[Pathfinder] cross-tab executor: failed to run remote step', error);
+      ok = false;
+    }
+    // Reverse error channel (F-1064-1): tell the controller whether a composite
+    // actually finished, so it surfaces failure instead of completing early
+    // (guided waits for the user to click through). Simple steps stay optimistic
+    // by design (F-1063-1) and report nothing back.
+    if (internalActions?.length) {
+      transport.post({ kind: 'step-complete', stepId: command.stepId, ok });
     }
   };
 
-  // A controller tab can't probe this tab's DOM, so it asks us to evaluate its
-  // tab-local requirements here and reply with the same result shape its local
-  // checker would have produced.
+  // Evaluate the controller's tab-local requirements against this tab's DOM.
   const evaluateRequirements = async (message: CheckRequirementsMessage): Promise<void> => {
     try {
       const result = await checkRequirements({
@@ -221,8 +279,7 @@ export function installLiveTabExecutor(
     }
   };
 
-  // A controller's "Fix this" must act on this tab's DOM, not the controller's,
-  // so the registry fix runs here against the live navigationManager.
+  // Run the controller's "Fix this" against this tab's DOM, not the controller's.
   const runRemoteFix = async (message: FixRequirementMessage): Promise<void> => {
     let ok = false;
     let error: string | undefined;
