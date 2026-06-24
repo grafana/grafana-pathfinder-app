@@ -18,7 +18,6 @@ import type { RawContent } from '../../types/content.types';
 import { getGuideReaderStyles } from './guide-reader.styles';
 
 interface GuideReaderOverlayProps {
-  /** The `?doc=` value to render (e.g. `backend-guide:<id>`). */
   doc: string;
   mode?: InteractiveMode;
 }

@@ -83,6 +83,7 @@ export interface UseStepCheckerReturn {
 
   // Actions
   checkStep: () => Promise<void>;
+  revalidate: () => Promise<boolean>; // re-checks at action time; true = the step may proceed
   markCompleted: () => void;
   markSkipped?: () => void; // Function to skip this step
   // Reset all step state including skipped. Pass `{ skipStoreWrite: true }`
