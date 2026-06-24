@@ -47,12 +47,27 @@ describe('validateCrossTabMessage', () => {
   it.each([
     [
       'bad phase',
-      { kind: 'step-command', phase: 'destroy', stepId: 's1', runId: 'r1', action: { targetAction: 'button', refTarget: 'x' } },
+      {
+        kind: 'step-command',
+        phase: 'destroy',
+        stepId: 's1',
+        runId: 'r1',
+        action: { targetAction: 'button', refTarget: 'x' },
+      },
     ],
-    ['missing stepId', { kind: 'step-command', phase: 'do', runId: 'r1', action: { targetAction: 'button', refTarget: 'x' } }],
-    ['missing runId', { kind: 'step-command', phase: 'do', stepId: 's1', action: { targetAction: 'button', refTarget: 'x' } }],
+    [
+      'missing stepId',
+      { kind: 'step-command', phase: 'do', runId: 'r1', action: { targetAction: 'button', refTarget: 'x' } },
+    ],
+    [
+      'missing runId',
+      { kind: 'step-command', phase: 'do', stepId: 's1', action: { targetAction: 'button', refTarget: 'x' } },
+    ],
     ['non-object action', { kind: 'step-command', phase: 'do', stepId: 's1', runId: 'r1', action: 'button' }],
-    ['missing refTarget', { kind: 'step-command', phase: 'do', stepId: 's1', runId: 'r1', action: { targetAction: 'button' } }],
+    [
+      'missing refTarget',
+      { kind: 'step-command', phase: 'do', stepId: 's1', runId: 'r1', action: { targetAction: 'button' } },
+    ],
   ])('rejects a malformed step-command (%s)', (_label, partial) => {
     expect(validateCrossTabMessage(envelope(partial))).toBeNull();
   });

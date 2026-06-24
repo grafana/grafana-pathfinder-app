@@ -78,7 +78,12 @@ function controllerHeartbeat(): CrossTabMessage {
   return { source: 'pathfinder', senderId: 'controller', timestamp: 0, kind: 'heartbeat', role: 'controller' };
 }
 
-function stampStepCommand(phase: 'show' | 'do', targetAction: string, refTarget: string, runId = 'run-1'): CrossTabMessage {
+function stampStepCommand(
+  phase: 'show' | 'do',
+  targetAction: string,
+  refTarget: string,
+  runId = 'run-1'
+): CrossTabMessage {
   return {
     source: 'pathfinder',
     senderId: 'controller',
