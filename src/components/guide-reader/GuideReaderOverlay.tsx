@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { cx } from '@emotion/css';
 import { ThemeContext } from '@grafana/data';
 import { config } from '@grafana/runtime';
 import { Icon, useStyles2 } from '@grafana/ui';
@@ -9,14 +10,16 @@ import { fetchUnifiedContent } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
+import { InteractiveModeContext, type InteractiveMode } from '../../global-state/interactive-mode-context';
+import { ControllerChannelProvider, useControllerConnected } from '../../global-state/controller-channel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { testIds } from '../../constants/testIds';
 import type { RawContent } from '../../types/content.types';
 import { getGuideReaderStyles } from './guide-reader.styles';
 
 interface GuideReaderOverlayProps {
-  /** The `?doc=` value to render (e.g. `backend-guide:<id>`). */
   doc: string;
+  mode?: InteractiveMode;
 }
 
 // Mirrors FloatingPanelManager: this tree is mounted in a standalone root
@@ -41,23 +44,40 @@ function useGrafanaTheme() {
   return theme;
 }
 
+function ControllerStatusBadge() {
+  const styles = useStyles2(getGuideReaderStyles);
+  const connected = useControllerConnected();
+  return (
+    <div className={styles.controllerStatus} data-testid={testIds.guideReader.controllerStatus}>
+      <span
+        className={cx(
+          styles.controllerStatusDot,
+          connected ? styles.controllerStatusConnected : styles.controllerStatusWaiting
+        )}
+      />
+      {connected ? 'Connected to your Grafana tab' : 'Waiting for your Grafana tab…'}
+    </div>
+  );
+}
+
 /**
  * Full-screen viewer for a single guide, mounted in a new tab as a portal over
- * `document.body` at a high z-index so it covers all of Grafana's chrome — the
- * tab is a dedicated reader, not a second live Grafana to wander into.
+ * `document.body` at a high z-index so it covers all of Grafana's chrome — a
+ * dedicated viewer. `mode` drives InteractiveModeContext: 'controller' keeps
+ * step actions visible so this tab can drive the originating Grafana tab.
  */
-export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({ doc }) => {
+export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({ doc, mode = 'interactive' }) => {
   const theme = useGrafanaTheme();
   return (
     <ThemeContext.Provider value={theme}>
       <PathfinderFeatureProvider>
-        <GuideReaderInner doc={doc} />
+        <GuideReaderInner doc={doc} mode={mode} />
       </PathfinderFeatureProvider>
     </ThemeContext.Provider>
   );
 };
 
-function GuideReaderInner({ doc }: GuideReaderOverlayProps) {
+function GuideReaderInner({ doc, mode }: { doc: string; mode: InteractiveMode }) {
   const styles = useStyles2(getGuideReaderStyles);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
@@ -124,6 +144,12 @@ function GuideReaderInner({ doc }: GuideReaderOverlayProps) {
     ? `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`
     : '';
 
+  const body = content ? (
+    <div ref={contentRef}>
+      <ContentRenderer content={content} containerRef={contentRef} className={contentClassName} />
+    </div>
+  ) : null;
+
   return createPortal(
     <div
       className={styles.backdrop}
@@ -156,10 +182,17 @@ function GuideReaderInner({ doc }: GuideReaderOverlayProps) {
             Loading guide...
           </div>
         )}
-        {content && (
-          <div ref={contentRef}>
-            <ContentRenderer content={content} containerRef={contentRef} className={contentClassName} />
-          </div>
+        {body && (
+          <InteractiveModeContext.Provider value={mode}>
+            {mode === 'controller' ? (
+              <ControllerChannelProvider>
+                <ControllerStatusBadge />
+                {body}
+              </ControllerChannelProvider>
+            ) : (
+              body
+            )}
+          </InteractiveModeContext.Provider>
         )}
       </div>
     </div>,

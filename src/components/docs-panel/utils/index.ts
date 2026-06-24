@@ -13,3 +13,5 @@ export { loadDocsTabContentResult, UNRESOLVED_PACKAGE_ERROR } from './docs-tab-l
 export { findCurrentMilestoneIndex } from './milestone-index';
 export { pickGrafanaDocsOpenAction } from './grafana-docs-open-action';
 export type { GrafanaDocsOpenAction } from './grafana-docs-open-action';
+export { pickControllerTabOpenAction } from './controller-tab-open-action';
+export type { ControllerTabOpenAction } from './controller-tab-open-action';

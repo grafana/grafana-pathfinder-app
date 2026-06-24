@@ -27,6 +27,8 @@ import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { STEP_STATES } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { useInteractiveMode } from '../../global-state/interactive-mode-context';
+import { useControllerChannel } from '../../global-state/controller-channel';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -202,6 +204,8 @@ export const InteractiveStep = forwardRef<
     );
 
     // Local UI state
+    const mode = useInteractiveMode();
+    const controllerChannel = useControllerChannel();
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isDoRunning, setIsDoRunning] = useState(false);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
@@ -287,6 +291,11 @@ export const InteractiveStep = forwardRef<
       onStepComplete, // Pass through for objectives auto-completion
       onComplete, // Pass through for objectives auto-completion
     });
+
+    // `checker` is a fresh object every render, but `revalidate` is a stable
+    // useCallback — pull it out so the click handlers can depend on it without
+    // rebuilding every render (which depending on the whole `checker` would force).
+    const { revalidate } = checker;
 
     const aiFixEnabled = useAiFixEnabled();
 
@@ -660,6 +669,41 @@ export const InteractiveStep = forwardRef<
         )
       );
 
+      if (mode === 'controller') {
+        if (!stepId) {
+          // F-1063-3: a controller-mode step must carry an author/parser-assigned
+          // stepId. The anonymous fallback is mount-instance-derived and would
+          // mis-address the live tab, so fail loud rather than dispatch a guess.
+          console.warn('[Pathfinder] controller "show" skipped: step has no stepId');
+          return;
+        }
+        // Cross-tab state can be stale; re-verify against the live tab and gate.
+        // revalidate() fails OPEN when no live tab answers (§6.5), so a
+        // disconnected controller proceeds rather than being silently blocked.
+        if (!(await revalidate())) {
+          return;
+        }
+        controllerChannel?.post({
+          kind: 'step-command',
+          phase: 'show',
+          stepId,
+          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+        });
+        if (!doIt) {
+          // F-1063-1 (fix-plan §6.2): simple steps complete optimistically — no
+          // live ack, and they complete even with no live tab connected. Accepted
+          // by design; composite steps are ack-gated separately (#1073).
+          persistCompletion();
+          if (onStepComplete) {
+            onStepComplete(stepId);
+          }
+          if (onComplete) {
+            onComplete();
+          }
+        }
+        return;
+      }
+
       setIsShowRunning(true);
       try {
         // Use lazy scroll wrapper to ensure element is found before executing
@@ -717,6 +761,9 @@ export const InteractiveStep = forwardRef<
       stepId,
       analyticsStepMeta,
       persistCompletion,
+      mode,
+      controllerChannel,
+      revalidate,
     ]);
 
     // Handle individual "Do it" action (delegates to executeStep)
@@ -742,6 +789,39 @@ export const InteractiveStep = forwardRef<
           analyticsStepMeta
         )
       );
+
+      if (mode === 'controller') {
+        if (!stepId) {
+          // F-1063-3: a controller-mode step must carry an author/parser-assigned
+          // stepId. The anonymous fallback is mount-instance-derived and would
+          // mis-address the live tab, so fail loud rather than dispatch a guess.
+          console.warn('[Pathfinder] controller "do" skipped: step has no stepId');
+          return;
+        }
+        // Cross-tab state can be stale; re-verify against the live tab and gate.
+        // revalidate() fails OPEN when no live tab answers (§6.5), so a
+        // disconnected controller proceeds rather than being silently blocked.
+        if (!(await revalidate())) {
+          return;
+        }
+        controllerChannel?.post({
+          kind: 'step-command',
+          phase: 'do',
+          stepId,
+          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+        });
+        // F-1063-1 (fix-plan §6.2): simple steps complete optimistically — no live
+        // ack, and they complete even with no live tab connected. Accepted by
+        // design; composite steps are ack-gated separately (#1073).
+        persistCompletion();
+        if (onStepComplete) {
+          onStepComplete(stepId);
+        }
+        if (onComplete) {
+          onComplete();
+        }
+        return;
+      }
 
       setIsDoRunning(true);
       try {
@@ -778,6 +858,14 @@ export const InteractiveStep = forwardRef<
       targetAction,
       currentTargetValue,
       analyticsStepMeta,
+      mode,
+      controllerChannel,
+      persistCompletion,
+      onStepComplete,
+      onComplete,
+      stepId,
+      targetComment,
+      revalidate,
     ]);
 
     // Handle individual step reset (redo functionality)

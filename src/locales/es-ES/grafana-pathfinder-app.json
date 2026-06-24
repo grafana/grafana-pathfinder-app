@@ -38,6 +38,7 @@
     "nextMilestone": "Siguiente hito",
     "nextMilestoneTooltip": "Siguiente hito (Alt + →)",
     "open": "Abrir",
+    "openControllerInNewTab": "",
     "openInNewTab": "Abrir esta página en nueva pestaña",
     "previousMilestone": "Hito anterior",
     "previousMilestoneTooltip": "Hito anterior (Alt + ←)",

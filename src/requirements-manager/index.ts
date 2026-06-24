@@ -21,6 +21,7 @@ export {
 
 // Step checker hook (unified requirements + objectives)
 export { useStepChecker } from './step-checker.hook';
+export { stripTabLocalRequirements } from './controller-requirements';
 
 export type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 

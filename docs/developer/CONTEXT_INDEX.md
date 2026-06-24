@@ -56,14 +56,15 @@ Load these files **only when working in the relevant domain**.
 
 ## Dev mode, local dev, live sessions
 
-| File                       | When to load                                            | Auto-triggered by globs        |
-| -------------------------- | ------------------------------------------------------- | ------------------------------ |
-| `DEV_MODE.md`              | Dev mode configuration and debugging tools              | `src/utils/dev-mode.ts`        |
-| `LOCAL_DEV.md`             | Local development setup, prerequisites, Docker workflow | --                             |
-| `LIVE_SESSIONS.md`         | Live sessions feature (WebRTC, PeerJS)                  | `src/components/LiveSession/*` |
-| `KNOWN_ISSUES.md`          | Known bugs and workarounds                              | --                             |
-| `integrations/workshop.md` | Workshop mode, action capture and replay                | `src/integrations/workshop/*`  |
-| `SCALE_TESTING.md`         | Live session scale testing procedures                   | --                             |
+| File                       | When to load                                                                                          | Auto-triggered by globs                                                   |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `DEV_MODE.md`              | Dev mode configuration and debugging tools                                                            | `src/utils/dev-mode.ts`                                                   |
+| `LOCAL_DEV.md`             | Local development setup, prerequisites, Docker workflow                                               | --                                                                        |
+| `LIVE_SESSIONS.md`         | Live sessions feature (WebRTC, PeerJS)                                                                | `src/components/LiveSession/*`                                            |
+| `KNOWN_ISSUES.md`          | Known bugs and workarounds                                                                            | --                                                                        |
+| `integrations/workshop.md` | Workshop mode, action capture and replay                                                              | `src/integrations/workshop/*`                                             |
+| `CROSS_TAB_CONTROLLER.md`  | Two-tab interactive controller — a popped-out guide drives the live Grafana tab over BroadcastChannel | `src/integrations/cross-tab/*`, `src/global-state/controller-channel.tsx` |
+| `SCALE_TESTING.md`         | Live session scale testing procedures                                                                 | --                                                                        |
 
 ## Subsystem references
 
