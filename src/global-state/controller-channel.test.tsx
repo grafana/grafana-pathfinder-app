@@ -400,6 +400,26 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
+    // A forged step-progress before any live heartbeat must be dropped — pairing
+    // happens on a heartbeat only, so an unpaired sender can't drive the bar
+    // (F-1084 step-progress spoof, T1 PART C).
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'attacker',
+        timestamp: 0,
+        kind: 'step-progress',
+        stepId: 's9',
+        index: 2,
+        total: 3,
+      })
+    );
+    expect(screen.getByTestId('progress')).toHaveTextContent('none');
+
+    // Pair with live-A via a heartbeat; its step-progress is then honored.
+    act(() =>
+      transport.emit({ source: 'pathfinder', senderId: 'live-A', timestamp: 0, kind: 'heartbeat', role: 'live' })
+    );
     act(() =>
       transport.emit({
         source: 'pathfinder',

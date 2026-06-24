@@ -273,6 +273,9 @@ export function ControllerChannelProvider({
     }
   }, []);
 
+  // One subscriber per stepId (last writer wins). The unsubscribe only deletes
+  // if its own callback is still registered, so a superseding subscriber for the
+  // same step isn't evicted by the previous one's cleanup.
   const onStepProgress = useCallback<ControllerChannel['onStepProgress']>((stepId, cb) => {
     stepProgressRef.current.set(stepId, cb);
     return () => {

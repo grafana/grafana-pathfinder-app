@@ -627,6 +627,12 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         // that per click on top of its staged replay, so we keep the entry gate
         // only and let each sub-action fail on the live tab if a prereq regressed.
         controllerCancelledRef.current = false;
+        // Animate per-step progress from the live tab, and wait for it to finish
+        // before marking complete (the actual execution happens over there).
+        setIsExecuting(true);
+        // Subscribe before posting so the first progress tick the live tab emits
+        // can't arrive before we're listening.
+        const stopProgress = controllerChannel.onStepProgress(renderedStepId, (index) => setCurrentActionIndex(index));
         controllerChannel.post({
           kind: 'step-command',
           phase: 'do',
@@ -644,10 +650,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             ),
           },
         });
-        // Animate per-step progress from the live tab, and wait for it to finish
-        // before marking complete (the actual execution happens over there).
-        setIsExecuting(true);
-        const stopProgress = controllerChannel?.onStepProgress(renderedStepId, (index) => setCurrentActionIndex(index));
         try {
           const finished = await controllerChannel.awaitStepComplete(renderedStepId);
           if (finished) {
