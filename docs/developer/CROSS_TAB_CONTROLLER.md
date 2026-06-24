@@ -38,19 +38,19 @@ GuideReaderOverlay mode="controller"          module.tsx normal path
 
 ## Key files by layer
 
-| Concern                        | File                                                                                                                       |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| Deep-link param `controller=1` | `src/utils/pathfinder-search-params.ts`                                                                                    |
-| Mount the controller overlay   | `src/module.tsx` (`?controller=1` short-circuit)                                                                           |
-| Overlay + status badge         | `src/components/guide-reader/GuideReaderOverlay.tsx`                                                                       |
+| Concern                        | File                                                                                                                        |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Deep-link param `controller=1` | `src/utils/pathfinder-search-params.ts`                                                                                     |
+| Mount the controller overlay   | `src/module.tsx` (`?controller=1` short-circuit)                                                                            |
+| Overlay + status badge         | `src/components/guide-reader/GuideReaderOverlay.tsx`                                                                        |
 | "Interactive" affordance       | `src/components/docs-panel/utils/controller-tab-open-action.ts` (`pickControllerTabOpenAction`), `DocsPanelContentArea.tsx` |
-| Interactive mode enum          | `src/global-state/interactive-mode-context.ts` (`InteractiveMode`, `useInteractiveMode`)                                   |
-| Transport                      | `src/lib/cross-tab-transport.ts` (`CrossTabTransport`)                                                                     |
-| Message protocol               | `src/types/cross-tab.types.ts`                                                                                             |
-| Controller emit + presence     | `src/global-state/controller-channel.tsx` (`ControllerChannelProvider`, `useControllerChannel`)                            |
-| Per-step emit                  | `interactive-step.tsx`, `interactive-multi-step.tsx`, `interactive-guided.tsx` (handlers branch on `useInteractiveMode()`) |
-| Requirement round-trip         | `src/requirements-manager/step-checker.hook.ts` (controller branch), `controller-requirements.ts` (tab-local set)          |
-| Live-tab executor              | `src/integrations/cross-tab/live-tab-executor.ts` (`installLiveTabExecutor`: replay, requirement eval, remote fix)         |
+| Interactive mode enum          | `src/global-state/interactive-mode-context.ts` (`InteractiveMode`, `useInteractiveMode`)                                    |
+| Transport                      | `src/lib/cross-tab-transport.ts` (`CrossTabTransport`)                                                                      |
+| Message protocol               | `src/types/cross-tab.types.ts`                                                                                              |
+| Controller emit + presence     | `src/global-state/controller-channel.tsx` (`ControllerChannelProvider`, `useControllerChannel`)                             |
+| Per-step emit                  | `interactive-step.tsx`, `interactive-multi-step.tsx`, `interactive-guided.tsx` (handlers branch on `useInteractiveMode()`)  |
+| Requirement round-trip         | `src/requirements-manager/step-checker.hook.ts` (controller branch), `controller-requirements.ts` (tab-local set)           |
+| Live-tab executor              | `src/integrations/cross-tab/live-tab-executor.ts` (`installLiveTabExecutor`: replay, requirement eval, remote fix)          |
 
 ## Message protocol
 
@@ -132,8 +132,13 @@ Controller (useStepChecker, controller mode)        Live tab (installLiveTabExec
 - A controller-mode heartbeat polls while a fragile step is **blocked** (the
   in-tab watchdog only polls while enabled), so the warning clears once the
   prerequisite is met on the live tab.
+- The round-trip does not depend on the `connected` heartbeat badge:
+  `requestRequirementCheck` posts regardless of connection state (the channel
+  value omits `connected`), so the check fires the moment a step renders;
+  `connected` only drives the presence badge.
 - If no live tab answers within the timeout, the check falls back to stripping
-  the tab-local tokens and passing — a disconnected controller never hangs.
+  the tab-local tokens and evaluating the rest locally — session/permission
+  requirements still gate, and a disconnected controller never hangs.
 
 ## Presence
 
