@@ -48,4 +48,31 @@ export const getGuideReaderStyles = (theme: GrafanaTheme2) => ({
     textAlign: 'center',
     color: theme.colors.text.secondary,
   }),
+  controllerStatus: css({
+    position: 'fixed',
+    top: theme.spacing(2),
+    left: theme.spacing(2),
+    zIndex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(0.5, 1.5),
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: '999px',
+    background: theme.colors.background.secondary,
+    color: theme.colors.text.secondary,
+    fontSize: theme.typography.bodySmall.fontSize,
+  }),
+  controllerStatusDot: css({
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    flexShrink: 0,
+  }),
+  controllerStatusConnected: css({
+    background: theme.colors.success.text,
+  }),
+  controllerStatusWaiting: css({
+    background: theme.colors.warning.text,
+  }),
 });
