@@ -137,7 +137,12 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // step actions stay visible so this tab can drive the originating Grafana tab.
   // Gated on shouldMountSidebar — the controller drives the user's authenticated
   // Grafana, so it must not mount when the plugin is disabled.
-  if (TWOTAB_CONTROLLER_ENABLED && docsParam && controllerParam && shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
+  if (
+    TWOTAB_CONTROLLER_ENABLED &&
+    docsParam &&
+    controllerParam &&
+    shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)
+  ) {
     if (!document.getElementById('pathfinder-controller-root')) {
       // Claim the id synchronously, before the dynamic import, so a second
       // plugin.init can't race past the guard and double-mount.
