@@ -200,6 +200,10 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     if (!request) {
       return false;
     }
+    // Pairing happens on a heartbeat (T1 PART C); a reply is only honored from
+    // the paired tab. Emit one from the same sender so the result is accepted
+    // (binds once, harmless to repeat).
+    transport.emit({ source: 'pathfinder', senderId: 'live', timestamp: 0, kind: 'heartbeat', role: 'live' });
     transport.emit({
       source: 'pathfinder',
       senderId: 'live',
@@ -377,7 +381,12 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
       render(
         <InteractiveModeContext.Provider value="controller">
           <ControllerChannelProvider transport={transport}>
-            <InteractiveStep targetAction="button" refTarget="#ok" requirements="exists-reftarget" stepId="ctrl-timeout">
+            <InteractiveStep
+              targetAction="button"
+              refTarget="#ok"
+              requirements="exists-reftarget"
+              stepId="ctrl-timeout"
+            >
               Step
             </InteractiveStep>
           </ControllerChannelProvider>

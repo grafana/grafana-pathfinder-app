@@ -1,6 +1,7 @@
-import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
+import { getAppEvents } from '@grafana/runtime';
 
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import {
@@ -171,6 +172,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     const mode = useInteractiveMode();
     const controllerChannel = useControllerChannel();
     const [isExecuting, setIsExecuting] = useState(false);
+    // Set when the user cancels a controller-mode run, so the awaiting branch
+    // distinguishes a deliberate cancel from a disconnect/failure (skips the toast).
+    const controllerCancelledRef = useRef(false);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [failedStepIndex, setFailedStepIndex] = useState(-1);
     const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
@@ -556,12 +560,31 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       );
 
       if (mode === 'controller') {
+        if (!controllerChannel) {
+          // No live tab connected (NEW-1073-1): tell the user instead of toggling
+          // a spinner that resolves to nothing.
+          getAppEvents().publish({
+            type: 'alert-info',
+            payload: ['No live tab connected', 'Open a live Grafana tab to run this step there.'],
+          });
+          return;
+        }
         // §6.4 (entry-only): composites are NOT re-gated at click time the way a
         // simple step is (which calls checker.revalidate() before posting). A
         // requirement round-trip can cost up to ~4s, and a composite would pay
         // that per click on top of its staged replay, so we keep the entry gate
         // only and let each sub-action fail on the live tab if a prereq regressed.
-        controllerChannel?.post({
+        controllerCancelledRef.current = false;
+        // Wait for the user to walk through every guided step on the live tab
+        // before marking complete, rather than completing optimistically.
+        setIsExecuting(true);
+        // Subscribe before posting so the first progress tick the live tab emits
+        // can't arrive before we're listening.
+        const stopProgress = controllerChannel.onStepProgress(renderedStepId, (index) => {
+          setCurrentStepIndex(index);
+          setCurrentStepStatus('waiting');
+        });
+        controllerChannel.post({
           kind: 'step-command',
           phase: 'do',
           stepId: renderedStepId,
@@ -578,12 +601,28 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             ),
           },
         });
-        persistCompletion();
-        if (onStepComplete && stepId) {
-          onStepComplete(stepId);
-        }
-        if (onComplete) {
-          onComplete();
+        try {
+          const finished = await controllerChannel.awaitStepComplete(renderedStepId);
+          if (finished) {
+            persistCompletion();
+            if (onStepComplete && stepId) {
+              onStepComplete(stepId);
+            }
+            if (onComplete) {
+              onComplete();
+            }
+          } else if (!controllerCancelledRef.current) {
+            // NEW-1073-3: the live tab didn't finish (it disconnected or the step
+            // failed there) and the user didn't cancel — surface a retry hint
+            // rather than silently leaving the step incomplete.
+            getAppEvents().publish({
+              type: 'alert-warning',
+              payload: ['Step not completed', 'The live tab did not finish this step — please retry.'],
+            });
+          }
+        } finally {
+          stopProgress?.();
+          setIsExecuting(false);
         }
         return;
       }
@@ -646,6 +685,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     // Handle cancel during guided execution
     const handleCancel = useCallback(async () => {
+      // In controller mode the run is remote: release the awaitStepComplete waiter
+      // (F-1073-1) so the await resolves and the spinner clears, and flag the
+      // cancel so the awaiting branch skips its "not completed" toast.
+      controllerCancelledRef.current = true;
+      controllerChannel?.cancelStepComplete(renderedStepId);
       // Cancel the current guided step
       // guidedHandler.cancel() already clears highlights via its own navigationManager
       guidedHandler.cancel();
@@ -656,7 +700,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setCurrentStepIndex(0);
       setCurrentStepStatus('waiting');
       setWasCancelled(false); // Don't show error state - just return to start
-    }, [guidedHandler]);
+    }, [guidedHandler, controllerChannel, renderedStepId]);
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
 

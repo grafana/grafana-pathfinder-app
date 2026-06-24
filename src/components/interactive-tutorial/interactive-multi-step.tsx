@@ -1,5 +1,6 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
+import { getAppEvents } from '@grafana/runtime';
 
 import {
   useInteractiveElements,
@@ -201,6 +202,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
     // Use ref for cancellation to avoid closure issues
     const isCancelledRef = React.useRef(false);
+    // Set when the user cancels a controller-mode run, so the awaiting branch
+    // distinguishes a deliberate cancel from a disconnect/failure (skips the toast).
+    const controllerCancelledRef = React.useRef(false);
 
     // Handle reset trigger from parent section
     useEffect(() => {
@@ -267,7 +271,12 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     const handleMultiStepCancel = useCallback(() => {
       isCancelledRef.current = true; // Set ref for immediate access
       // The running loop will detect this and break
-    }, []);
+      // In controller mode the run is remote: release the awaitStepComplete waiter
+      // (F-1073-1) so the spinner clears, and flag the cancel so the awaiting
+      // branch skips its "not completed" toast.
+      controllerCancelledRef.current = true;
+      controllerChannel?.cancelStepComplete(renderedStepId);
+    }, [controllerChannel, renderedStepId]);
 
     // Main execution logic (similar to InteractiveSection's sequence execution)
     const executeStep = useCallback(async (): Promise<boolean> => {
@@ -603,12 +612,28 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       );
 
       if (mode === 'controller') {
+        if (!controllerChannel) {
+          // No live tab connected (NEW-1073-1): tell the user instead of toggling
+          // a spinner that resolves to nothing.
+          getAppEvents().publish({
+            type: 'alert-info',
+            payload: ['No live tab connected', 'Open a live Grafana tab to run this step there.'],
+          });
+          return;
+        }
         // §6.4 (entry-only): composites are NOT re-gated at click time the way a
         // simple step is (which calls checker.revalidate() before posting). A
         // requirement round-trip can cost up to ~4s, and a composite would pay
         // that per click on top of its staged replay, so we keep the entry gate
         // only and let each sub-action fail on the live tab if a prereq regressed.
-        controllerChannel?.post({
+        controllerCancelledRef.current = false;
+        // Animate per-step progress from the live tab, and wait for it to finish
+        // before marking complete (the actual execution happens over there).
+        setIsExecuting(true);
+        // Subscribe before posting so the first progress tick the live tab emits
+        // can't arrive before we're listening.
+        const stopProgress = controllerChannel.onStepProgress(renderedStepId, (index) => setCurrentActionIndex(index));
+        controllerChannel.post({
           kind: 'step-command',
           phase: 'do',
           stepId: renderedStepId,
@@ -625,12 +650,28 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             ),
           },
         });
-        persistCompletion();
-        if (onStepComplete && stepId) {
-          onStepComplete(stepId);
-        }
-        if (onComplete) {
-          onComplete();
+        try {
+          const finished = await controllerChannel.awaitStepComplete(renderedStepId);
+          if (finished) {
+            persistCompletion();
+            if (onStepComplete && stepId) {
+              onStepComplete(stepId);
+            }
+            if (onComplete) {
+              onComplete();
+            }
+          } else if (!controllerCancelledRef.current) {
+            // NEW-1073-3: the live tab didn't finish (it disconnected or the
+            // replay failed there) and the user didn't cancel — surface a retry
+            // hint rather than silently leaving the step incomplete.
+            getAppEvents().publish({
+              type: 'alert-warning',
+              payload: ['Step not completed', 'The live tab did not finish this step — please retry.'],
+            });
+          }
+        } finally {
+          stopProgress?.();
+          setIsExecuting(false);
         }
         return;
       }

@@ -14,7 +14,6 @@ export interface CrossTabAction {
   refTarget: string;
   targetValue?: string;
   targetComment?: string;
-  // Multi-step / guided steps carry their ordered sub-actions here.
   internalActions?: CrossTabInternalAction[];
 }
 
@@ -24,9 +23,9 @@ interface CrossTabEnvelope {
   timestamp: number;
 }
 
-// Mirrors `CheckResultError` / `RequirementsCheckResult` (requirements-manager,
-// tier 2) structurally so a live-tab result can flow through the controller's
-// existing requirements-state path. Kept here (tier 0) to avoid an upward import.
+// Tier-0 structural mirror of requirements-manager's CheckResultError /
+// RequirementsCheckResult, so a live-tab result crosses the channel without an
+// upward import.
 export interface RemoteRequirementError {
   requirement: string;
   pass: boolean;
@@ -61,11 +60,8 @@ export interface SidebarHandoffMessage extends CrossTabEnvelope {
   action: 'close' | 'reopen';
 }
 
-// Requirement round-trip: a controller tab can't probe the live tab's DOM, so it
-// asks the live tab to evaluate (and fix) tab-local requirements and reply. The
-// `requestId` correlates each reply to its request — multiple steps may be in
-// flight at once, and the transport's self-echo filter means a reply only ever
-// reaches the *other* tab.
+// Requirement round-trip (controller → live → controller); requestId correlates
+// each reply to its request since several steps may be in flight.
 export interface CheckRequirementsMessage extends CrossTabEnvelope {
   kind: 'check-requirements';
   requestId: string;
@@ -101,6 +97,22 @@ export interface FixResultMessage extends CrossTabEnvelope {
   error?: string;
 }
 
+// Live → controller: a composite finished; the controller marks completion only then.
+export interface StepCompleteMessage extends CrossTabEnvelope {
+  kind: 'step-complete';
+  stepId: string;
+  ok: boolean;
+}
+
+// Live → controller: which internal action a composite is on, so the controller
+// can animate per-step progress while the replay runs on the live tab.
+export interface StepProgressMessage extends CrossTabEnvelope {
+  kind: 'step-progress';
+  stepId: string;
+  index: number;
+  total: number;
+}
+
 export type CrossTabMessage =
   | StepCommandMessage
   | HeartbeatMessage
@@ -108,7 +120,9 @@ export type CrossTabMessage =
   | CheckRequirementsMessage
   | RequirementResultMessage
   | FixRequirementMessage
-  | FixResultMessage;
+  | FixResultMessage
+  | StepCompleteMessage
+  | StepProgressMessage;
 
 // Distributively strip the envelope from every message kind, so the
 // post() payload type stays derived from CrossTabMessage instead of a
@@ -234,9 +248,23 @@ function isValidRequirementResult(message: Record<string, unknown>): boolean {
 }
 
 function isValidFixResult(message: Record<string, unknown>): boolean {
-  return (
-    typeof message.requestId === 'string' && typeof message.stepId === 'string' && typeof message.ok === 'boolean'
-  );
+  return typeof message.requestId === 'string' && typeof message.stepId === 'string' && typeof message.ok === 'boolean';
+}
+
+// step-complete is a live → controller reply: the live tab reports a composite
+// finished so the controller can mark completion only when it actually ran. It
+// triggers no DOM action, but it resolves a pending awaitStepComplete waiter, so
+// validate the shape to keep a malformed reply from completing the wrong step.
+function isValidStepComplete(message: Record<string, unknown>): boolean {
+  return typeof message.stepId === 'string' && typeof message.ok === 'boolean';
+}
+
+// step-progress is a live → controller reply: the live tab reports which internal
+// action a composite is on so the controller can animate progress. It triggers no
+// DOM action, but it drives a UI callback keyed by stepId, so validate the shape
+// to keep a malformed reply from advancing the wrong step's progress.
+function isValidStepProgress(message: Record<string, unknown>): boolean {
+  return typeof message.stepId === 'string' && typeof message.index === 'number' && typeof message.total === 'number';
 }
 
 // Per-kind validators — the single source of truth shared by the transport
@@ -253,6 +281,8 @@ const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, 
   'requirement-result': isValidRequirementResult,
   'fix-requirement': isValidFixRequirement,
   'fix-result': isValidFixResult,
+  'step-complete': isValidStepComplete,
+  'step-progress': isValidStepProgress,
 };
 
 /**
