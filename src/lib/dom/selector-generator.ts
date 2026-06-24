@@ -1102,6 +1102,103 @@ export function generateFallbackSelectors(element: HTMLElement, primarySelector:
   return result;
 }
 
+const MAX_CHAIN = 3;
+
+const TESTID_METHODS: ReadonlySet<string> = new Set(['data-testid', 'scoped-testid', 'testid-href']);
+const TEXT_METHODS: ReadonlySet<string> = new Set([
+  'role',
+  'role-text',
+  'role-contains',
+  'aria-label',
+  'button-text',
+  'button-css-text',
+  'button-css-contains',
+  'label-text',
+]);
+const STRUCTURAL_METHODS: ReadonlySet<string> = new Set(['compound', 'nth-of-type', 'nth-match', 'fallback']);
+
+/**
+ * Group a candidate's method into a stability family. Diversity across families is
+ * what makes a fallback chain resilient: a single DOM change rarely breaks two
+ * different families at once (e.g. a testid rename does not also change the
+ * visible text). Everything that is neither testid, text/aria nor structural
+ * (id, name, placeholder, title, href) is a stable non-text attribute: 'attr'.
+ */
+function strategyFamily(method: string): string {
+  if (TESTID_METHODS.has(method)) {
+    return 'testid';
+  }
+  if (TEXT_METHODS.has(method)) {
+    return 'text';
+  }
+  if (STRUCTURAL_METHODS.has(method)) {
+    return 'structural';
+  }
+  return 'attr';
+}
+
+/**
+ * Build an ordered, strategy-diverse fallback chain for an element.
+ *
+ * The primary is the single best selector (same as `generateBestSelector`). The
+ * fallbacks are the best-scoring candidate from each *different* family, so the
+ * chain degrades across independent failure modes rather than stacking variants
+ * of the same fragile idea. Fragile structural selectors (`nth-*`/compound) are
+ * excluded unless they are the only survivor. Capped at `MAX_CHAIN`.
+ */
+export function generateSelectorChain(element: HTMLElement): string[] {
+  const target = retargetElement(element);
+  const candidates = generateCandidates(target);
+  const primary = rankAndSelect(candidates, target);
+
+  const ancestorScopes = findAllAncestorScopes(target);
+  const inOverlay = findOverlayContext(target) !== null;
+  const scored: ScoredCandidate[] = [];
+  for (const candidate of candidates) {
+    const { matchCount, containsTarget } = testUniqueness(candidate.selector, target, candidate.method, inOverlay);
+    if (matchCount === 0 || !containsTarget) {
+      continue;
+    }
+    if (matchCount === 1) {
+      scored.push({ ...candidate, matchCount });
+      continue;
+    }
+    if (candidate.method === 'button-text') {
+      continue;
+    }
+    for (const d of disambiguate(candidate, target, ancestorScopes, inOverlay)) {
+      scored.push({ ...d, matchCount: 1 });
+    }
+  }
+  scored.sort((a, b) => a.score - b.score);
+
+  const chain: string[] = [primary.selector];
+  const seen = new Set<string>([primary.selector]);
+  const usedFamilies = new Set<string>([strategyFamily(primary.method)]);
+
+  for (const candidate of scored) {
+    if (chain.length >= MAX_CHAIN) {
+      break;
+    }
+    const family = strategyFamily(candidate.method);
+    if (family === 'structural' || usedFamilies.has(family) || seen.has(candidate.selector)) {
+      continue;
+    }
+    chain.push(candidate.selector);
+    seen.add(candidate.selector);
+    usedFamilies.add(family);
+  }
+
+  if (chain.length === 1) {
+    const structural = scored.find((c) => strategyFamily(c.method) === 'structural' && !seen.has(c.selector));
+    if (structural) {
+      chain.push(structural.selector);
+    }
+  }
+
+  return chain.slice(0, MAX_CHAIN);
+}
+
 /**
  * @deprecated Caching has been removed — this is a no-op for backward compatibility.
  */
