@@ -188,6 +188,9 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
+    // Pair with the live tab first — replies are only honored from the paired
+    // tab, and pairing happens on a heartbeat (T1 PART C).
+    act(() => transport.emit(liveHeartbeat()));
     fireEvent.click(screen.getByText('check'));
     const request = postedOfKind(transport, 'check-requirements');
     expect(request.requestId).toBeTruthy();
@@ -215,6 +218,8 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
+    // Pair with the live tab first (T1 PART C: replies need an established pair).
+    act(() => transport.emit(liveHeartbeat()));
     fireEvent.click(screen.getByText('fix'));
     const request = postedOfKind(transport, 'fix-requirement');
     expect(request.requestId).toBeTruthy();
@@ -253,6 +258,49 @@ describe('ControllerChannelProvider', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('drops a reply from an unpaired tab and never lets it claim the pairing slot (T1 PART C)', async () => {
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <RequestProbe />
+      </ControllerChannelProvider>
+    );
+
+    fireEvent.click(screen.getByText('check'));
+    const request = postedOfKind(transport, 'check-requirements');
+
+    // A forged reply arrives before any live heartbeat. It must be ignored AND
+    // must not bind the pairing slot — pairing happens on a heartbeat only.
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'attacker',
+        timestamp: 0,
+        kind: 'requirement-result',
+        requestId: request.requestId,
+        stepId: 's1',
+        result: { requirements: 'navmenu-open', pass: true, error: [] },
+      })
+    );
+    expect(screen.getByTestId('check')).toHaveTextContent('pending');
+
+    // The real live tab heartbeats and pairs; its reply is then honored — proving
+    // the attacker never claimed the slot.
+    act(() => transport.emit(liveHeartbeat()));
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live',
+        timestamp: 0,
+        kind: 'requirement-result',
+        requestId: request.requestId,
+        stepId: 's1',
+        result: { requirements: 'navmenu-open', pass: false, error: [] },
+      })
+    );
+    await waitFor(() => expect(screen.getByTestId('check')).toHaveTextContent('pass:false'));
   });
 
   it('binds to the first live tab and ignores replies from others', async () => {
@@ -318,6 +366,11 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
+    // Pair with live-A first; a step-complete is only honored from the paired
+    // tab (T1 PART C), and pairing happens on a heartbeat.
+    act(() =>
+      transport.emit({ source: 'pathfinder', senderId: 'live-A', timestamp: 0, kind: 'heartbeat', role: 'live' })
+    );
     fireEvent.click(screen.getByText('await'));
     act(() =>
       transport.emit({

@@ -115,6 +115,15 @@ export function ControllerChannelProvider({
         if (message.role !== 'live') {
           return;
         }
+        // PAIRING SITE. TODO(twotab): v1 ships without a sender handshake — the
+        // controller binds to the first live tab that sends a `live` heartbeat,
+        // so any same-origin script that learns the channel name can claim this
+        // slot with a forged heartbeat. Once paired it can drive check-requirements
+        // / fix-requirement, which run navigation + DOM mutation against the
+        // authenticated live tab (the highest-risk surface, #1070). Per-kind
+        // validation gates message SHAPE, not AUTHORIZATION. Future work: a
+        // gesture-to-accept on the live tab or an out-of-band nonce at controller
+        // open. See CROSS_TAB_CONTROLLER.md "Known limitations".
         if (pairedLiveIdRef.current === null) {
           pairedLiveIdRef.current = message.senderId;
         }
@@ -137,9 +146,11 @@ export function ControllerChannelProvider({
       if (message.kind !== 'requirement-result' && message.kind !== 'fix-result' && message.kind !== 'step-complete') {
         return;
       }
-      if (pairedLiveIdRef.current === null) {
-        pairedLiveIdRef.current = message.senderId;
-      } else if (message.senderId !== pairedLiveIdRef.current) {
+      // T1 PART C: pairing happens on a heartbeat ONLY (above) — never adopt a
+      // sender from a reply, or a forged first reply could claim the pairing slot
+      // before any live tab heartbeats (first-responder spoof, F-1073 / F-1084).
+      // An unpaired or mismatched sender is dropped.
+      if (pairedLiveIdRef.current === null || message.senderId !== pairedLiveIdRef.current) {
         return;
       }
       if (message.kind === 'requirement-result') {
