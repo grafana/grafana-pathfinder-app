@@ -129,8 +129,9 @@ export function InteractiveBlockForm({
 
   // Start element picker - pass callback to receive selected element
   const startPicker = useCallback(() => {
-    onPickerModeChange?.(true, (selector: string) => {
+    onPickerModeChange?.(true, (selector: string, pickedFallbacks: string[] = []) => {
       setReftarget(selector);
+      setFallbacks(pickedFallbacks);
       // Auto-add default requirements based on selector pattern
       const suggestions = suggestDefaultRequirements(action, selector);
       if (suggestions.length > 0) {

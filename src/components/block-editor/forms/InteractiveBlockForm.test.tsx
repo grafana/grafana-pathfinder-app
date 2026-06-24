@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import { InteractiveBlockForm } from './InteractiveBlockForm';
 import type { JsonBlock } from '../types';
@@ -25,6 +25,35 @@ const primaryInput = () => screen.getByPlaceholderText("e.g., button[data-testid
 const fallbackInputs = () => screen.getAllByPlaceholderText(FALLBACK_PLACEHOLDER);
 const descriptionInput = () => screen.getByPlaceholderText('Click the **Save** button to save your changes.');
 const submitButton = () => screen.getByRole('button', { name: 'Add block' });
+
+describe('InteractiveBlockForm — element picker', () => {
+  it('populates the primary and fallback chain from the picker selection', () => {
+    let captured: ((selector: string, fallbacks?: string[]) => void) | undefined;
+    const onPickerModeChange = jest.fn(
+      (_active: boolean, onSelect?: (selector: string, fallbacks?: string[]) => void) => {
+        captured = onSelect;
+      }
+    );
+    const onSubmit = jest.fn();
+    render(<InteractiveBlockForm onSubmit={onSubmit} onCancel={jest.fn()} onPickerModeChange={onPickerModeChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pick element' }));
+    expect(captured).toBeDefined();
+
+    act(() => {
+      captured!("button[data-testid='save']", ["button:contains('Save')"]);
+    });
+
+    fireEvent.change(descriptionInput(), { target: { value: 'Save your work' } });
+    fireEvent.click(submitButton());
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reftarget: ["button[data-testid='save']", "button:contains('Save')"],
+      })
+    );
+  });
+});
 
 describe('InteractiveBlockForm — fallback selectors', () => {
   it('serializes the primary plus fallbacks as an ordered array', () => {
