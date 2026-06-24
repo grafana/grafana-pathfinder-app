@@ -101,6 +101,20 @@ authenticated Grafana, so the channel is treated as untrusted input:
 This is a same-origin trust posture, not authentication: validation constrains
 _what_ a forged message can ask for, and gating limits _when_ the sink exists.
 
+### Known limitations / future work
+
+**No sender authentication (v1).** The controller binds to the first live tab
+that answers its heartbeat (see [Tab pairing](#tab-pairing)) — there is no
+handshake proving the responder is a genuine Pathfinder live tab. Any same-origin
+script that learns the channel name can claim the pairing slot with a forged
+`live` heartbeat; once paired it can drive `check-requirements` /
+`fix-requirement`, which run navigation and DOM mutation against the
+authenticated live tab — the highest-risk surface. Per-kind validation constrains
+message _shape_, not _authorization_. Candidate mitigations for a future version:
+a gesture-to-accept on the live tab, or an out-of-band nonce exchanged when the
+controller opens the tab. (Mirrored by the `TODO(twotab)` at the pairing site in
+`controller-channel.tsx`.)
+
 ## Tab pairing
 
 A controller binds to the **first live tab that answers** its heartbeat and
