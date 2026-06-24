@@ -77,14 +77,14 @@ describe('validateCrossTabMessage', () => {
       {
         targetAction: 'multistep',
         refTarget: '',
-        internalActions: [{ targetAction: 'highlight', refTarget: '#a' }, { targetAction: 'exec', refTarget: '#x' }],
+        internalActions: [
+          { targetAction: 'highlight', refTarget: '#a' },
+          { targetAction: 'exec', refTarget: '#x' },
+        ],
       },
     ],
     ['a non-array internalActions', { targetAction: 'guided', refTarget: '', internalActions: 'highlight' }],
-    [
-      'a non-object internal action',
-      { targetAction: 'guided', refTarget: '', internalActions: ['highlight'] },
-    ],
+    ['a non-object internal action', { targetAction: 'guided', refTarget: '', internalActions: ['highlight'] }],
   ])('rejects a composite step-command with %s', (_label, action) => {
     expect(validateCrossTabMessage(envelope({ kind: 'step-command', phase: 'do', stepId: 's1', action }))).toBeNull();
   });
