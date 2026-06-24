@@ -242,6 +242,40 @@ describe('installLiveTabExecutor', () => {
     uninstall();
   });
 
+  it('posts step-progress for each action during a multi-step replay', async () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 });
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'ms3',
+      action: {
+        targetAction: 'multistep',
+        refTarget: '',
+        internalActions: [
+          { targetAction: 'highlight', refTarget: '#a' },
+          { targetAction: 'button', refTarget: '#b' },
+        ],
+      },
+    });
+
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-progress', stepId: 'ms3', index: 0, total: 2 })
+      )
+    );
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-progress', stepId: 'ms3', index: 1, total: 2 })
+      )
+    );
+    uninstall();
+  });
+
   it('posts step-complete after a multi-step replay finishes', async () => {
     const transport = new FakeTransport();
     const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 });

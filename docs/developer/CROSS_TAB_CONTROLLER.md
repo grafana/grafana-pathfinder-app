@@ -66,6 +66,9 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
   highlights each target and waits for the user.
 - `step-complete` — `{ stepId, ok }`, live → controller, signals a composite
   actually finished so the controller marks completion only then.
+- `step-progress` — `{ stepId, index, total }`, live → controller, reports which
+  internal action a composite is replaying so the controller can animate per-step
+  progress while it runs on the live tab.
 - `heartbeat` — `{ role: 'controller' | 'live' }`
 - `check-requirements` / `requirement-result` — the requirement round-trip
   (controller → live → controller), correlated by `requestId`.

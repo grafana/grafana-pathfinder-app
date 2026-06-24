@@ -575,6 +575,15 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         // that per click on top of its staged replay, so we keep the entry gate
         // only and let each sub-action fail on the live tab if a prereq regressed.
         controllerCancelledRef.current = false;
+        // Wait for the user to walk through every guided step on the live tab
+        // before marking complete, rather than completing optimistically.
+        setIsExecuting(true);
+        // Subscribe before posting so the first progress tick the live tab emits
+        // can't arrive before we're listening.
+        const stopProgress = controllerChannel.onStepProgress(renderedStepId, (index) => {
+          setCurrentStepIndex(index);
+          setCurrentStepStatus('waiting');
+        });
         controllerChannel.post({
           kind: 'step-command',
           phase: 'do',
@@ -592,9 +601,6 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             ),
           },
         });
-        // Wait for the user to walk through every guided step on the live tab
-        // before marking complete, rather than completing optimistically.
-        setIsExecuting(true);
         try {
           const finished = await controllerChannel.awaitStepComplete(renderedStepId);
           if (finished) {
@@ -615,6 +621,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             });
           }
         } finally {
+          stopProgress?.();
           setIsExecuting(false);
         }
         return;
