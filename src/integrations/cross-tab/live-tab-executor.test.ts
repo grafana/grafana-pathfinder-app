@@ -1,7 +1,7 @@
 import { waitFor } from '@testing-library/react';
 import { getAppEvents } from '@grafana/runtime';
 import { installLiveTabExecutor, resetLiveTabExecutorForTests } from './live-tab-executor';
-import { FocusHandler, ButtonHandler, NavigateHandler } from '../../interactive-engine/action-handlers';
+import { FocusHandler, ButtonHandler, NavigateHandler, GuidedHandler } from '../../interactive-engine/action-handlers';
 import { checkRequirements, dispatchFix } from '../../requirements-manager';
 import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
@@ -14,12 +14,17 @@ jest.mock('../../requirements-manager', () => {
 
 jest.mock('../../interactive-engine/action-handlers', () => {
   const makeHandler = () => ({ execute: jest.fn().mockResolvedValue(undefined) });
+  const makeGuided = () => ({
+    resetProgress: jest.fn(),
+    executeGuidedStep: jest.fn().mockResolvedValue('completed'),
+  });
   return {
     FocusHandler: jest.fn(makeHandler),
     ButtonHandler: jest.fn(makeHandler),
     FormFillHandler: jest.fn(makeHandler),
     HoverHandler: jest.fn(makeHandler),
     NavigateHandler: jest.fn(makeHandler),
+    GuidedHandler: jest.fn(makeGuided),
   };
 });
 
@@ -41,6 +46,7 @@ jest.mock('../../utils/experiments/experiment-utils', () => {
 class FakeTransport {
   started = false;
   stopped = false;
+  senderId = 'live-self';
   postedMessages: unknown[] = [];
   private listener: ((message: CrossTabMessage) => void) | null = null;
 
@@ -198,6 +204,101 @@ describe('installLiveTabExecutor', () => {
     await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalledTimes(2));
     expect(executeOf(FocusHandler)).toHaveBeenNthCalledWith(1, expect.objectContaining({ refTarget: '#a' }), false);
     expect(executeOf(FocusHandler)).toHaveBeenNthCalledWith(2, expect.objectContaining({ refTarget: '#a' }), true);
+    uninstall();
+  });
+
+  it('runs a guided command through the guided handler, not the auto replay', async () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport);
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'g1',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        internalActions: [
+          { targetAction: 'highlight', refTarget: '#a' },
+          { targetAction: 'button', refTarget: '#b' },
+        ],
+      },
+    });
+
+    const executeGuidedStep = (GuidedHandler as jest.Mock).mock.results[0]?.value.executeGuidedStep as jest.Mock;
+    await waitFor(() => expect(executeGuidedStep).toHaveBeenCalledTimes(2));
+    // Guided waits for the user — it must NOT auto-perform via the action handlers.
+    expect(executeOf(FocusHandler)).not.toHaveBeenCalled();
+    expect(executeOf(ButtonHandler)).not.toHaveBeenCalled();
+    // And it reports completion so the controller doesn't mark the step done early.
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-complete', stepId: 'g1', ok: true })
+      )
+    );
+    uninstall();
+  });
+
+  it('posts step-progress for each action during a multi-step replay', async () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 });
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'ms3',
+      action: {
+        targetAction: 'multistep',
+        refTarget: '',
+        internalActions: [
+          { targetAction: 'highlight', refTarget: '#a' },
+          { targetAction: 'button', refTarget: '#b' },
+        ],
+      },
+    });
+
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-progress', stepId: 'ms3', index: 0, total: 2 })
+      )
+    );
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-progress', stepId: 'ms3', index: 1, total: 2 })
+      )
+    );
+    uninstall();
+  });
+
+  it('posts step-complete after a multi-step replay finishes', async () => {
+    const transport = new FakeTransport();
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 });
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'ms2',
+      action: {
+        targetAction: 'multistep',
+        refTarget: '',
+        internalActions: [{ targetAction: 'highlight', refTarget: '#a' }],
+      },
+    });
+
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-complete', stepId: 'ms2', ok: true })
+      )
+    );
     uninstall();
   });
 

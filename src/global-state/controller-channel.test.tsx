@@ -188,6 +188,9 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
+    // Pair with the live tab first — replies are only honored from the paired
+    // tab, and pairing happens on a heartbeat (T1 PART C).
+    act(() => transport.emit(liveHeartbeat()));
     fireEvent.click(screen.getByText('check'));
     const request = postedOfKind(transport, 'check-requirements');
     expect(request.requestId).toBeTruthy();
@@ -215,6 +218,8 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
+    // Pair with the live tab first (T1 PART C: replies need an established pair).
+    act(() => transport.emit(liveHeartbeat()));
     fireEvent.click(screen.getByText('fix'));
     const request = postedOfKind(transport, 'fix-requirement');
     expect(request.requestId).toBeTruthy();
@@ -253,6 +258,180 @@ describe('ControllerChannelProvider', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('drops a reply from an unpaired tab and never lets it claim the pairing slot (T1 PART C)', async () => {
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <RequestProbe />
+      </ControllerChannelProvider>
+    );
+
+    fireEvent.click(screen.getByText('check'));
+    const request = postedOfKind(transport, 'check-requirements');
+
+    // A forged reply arrives before any live heartbeat. It must be ignored AND
+    // must not bind the pairing slot — pairing happens on a heartbeat only.
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'attacker',
+        timestamp: 0,
+        kind: 'requirement-result',
+        requestId: request.requestId,
+        stepId: 's1',
+        result: { requirements: 'navmenu-open', pass: true, error: [] },
+      })
+    );
+    expect(screen.getByTestId('check')).toHaveTextContent('pending');
+
+    // The real live tab heartbeats and pairs; its reply is then honored — proving
+    // the attacker never claimed the slot.
+    act(() => transport.emit(liveHeartbeat()));
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live',
+        timestamp: 0,
+        kind: 'requirement-result',
+        requestId: request.requestId,
+        stepId: 's1',
+        result: { requirements: 'navmenu-open', pass: false, error: [] },
+      })
+    );
+    await waitFor(() => expect(screen.getByTestId('check')).toHaveTextContent('pass:false'));
+  });
+
+  it('binds to the first live tab and ignores replies from others', async () => {
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <RequestProbe />
+      </ControllerChannelProvider>
+    );
+
+    // Pair with live tab A via its heartbeat.
+    act(() =>
+      transport.emit({ source: 'pathfinder', senderId: 'live-A', timestamp: 0, kind: 'heartbeat', role: 'live' })
+    );
+
+    fireEvent.click(screen.getByText('check'));
+    const request = postedOfKind(transport, 'check-requirements');
+
+    // A different tab answering the same requestId must be ignored.
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live-B',
+        timestamp: 0,
+        kind: 'requirement-result',
+        requestId: request.requestId,
+        stepId: 's1',
+        result: { requirements: 'navmenu-open', pass: false, error: [] },
+      })
+    );
+    expect(screen.getByTestId('check')).toHaveTextContent('pending');
+
+    // The paired tab's reply is honored.
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live-A',
+        timestamp: 0,
+        kind: 'requirement-result',
+        requestId: request.requestId,
+        stepId: 's1',
+        result: { requirements: 'navmenu-open', pass: true, error: [] },
+      })
+    );
+    await waitFor(() => expect(screen.getByTestId('check')).toHaveTextContent('pass:true'));
+  });
+
+  it('resolves awaitStepComplete when the live tab reports completion', async () => {
+    function CompleteProbe() {
+      const channel = useControllerChannel();
+      const [done, setDone] = React.useState('pending');
+      return (
+        <div>
+          <button onClick={() => channel?.awaitStepComplete('s9').then((ok) => setDone(`ok:${ok}`))}>await</button>
+          <span data-testid="done">{done}</span>
+        </div>
+      );
+    }
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <CompleteProbe />
+      </ControllerChannelProvider>
+    );
+
+    // Pair with live-A first; a step-complete is only honored from the paired
+    // tab (T1 PART C), and pairing happens on a heartbeat.
+    act(() =>
+      transport.emit({ source: 'pathfinder', senderId: 'live-A', timestamp: 0, kind: 'heartbeat', role: 'live' })
+    );
+    fireEvent.click(screen.getByText('await'));
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live-A',
+        timestamp: 0,
+        kind: 'step-complete',
+        stepId: 's9',
+        ok: true,
+      })
+    );
+
+    await waitFor(() => expect(screen.getByTestId('done')).toHaveTextContent('ok:true'));
+  });
+
+  it('forwards step-progress to an onStepProgress subscriber', () => {
+    function ProgressProbe() {
+      const channel = useControllerChannel();
+      const [p, setP] = React.useState('none');
+      React.useEffect(() => channel?.onStepProgress('s9', (index, total) => setP(`${index}/${total}`)), [channel]);
+      return <span data-testid="progress">{p}</span>;
+    }
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <ProgressProbe />
+      </ControllerChannelProvider>
+    );
+
+    // A forged step-progress before any live heartbeat must be dropped — pairing
+    // happens on a heartbeat only, so an unpaired sender can't drive the bar
+    // (F-1084 step-progress spoof, T1 PART C).
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'attacker',
+        timestamp: 0,
+        kind: 'step-progress',
+        stepId: 's9',
+        index: 2,
+        total: 3,
+      })
+    );
+    expect(screen.getByTestId('progress')).toHaveTextContent('none');
+
+    // Pair with live-A via a heartbeat; its step-progress is then honored.
+    act(() =>
+      transport.emit({ source: 'pathfinder', senderId: 'live-A', timestamp: 0, kind: 'heartbeat', role: 'live' })
+    );
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live-A',
+        timestamp: 0,
+        kind: 'step-progress',
+        stepId: 's9',
+        index: 1,
+        total: 3,
+      })
+    );
+    expect(screen.getByTestId('progress')).toHaveTextContent('1/3');
   });
 
   it('returns null outside a provider', () => {

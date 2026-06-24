@@ -187,14 +187,23 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     };
   }
 
+  function countRequirementChecks(transport: ReturnType<typeof makeTransport>): number {
+    return transport.post.mock.calls.map((c) => c[0]).filter((p: any) => p.kind === 'check-requirements').length;
+  }
+
   // The controller posts a `check-requirements` request with a generated
-  // requestId; reply with a matching `requirement-result` so the awaiting
-  // step resolves instead of waiting out the round-trip timeout.
+  // requestId; reply to the latest one with a matching `requirement-result` so
+  // the awaiting step resolves instead of waiting out the round-trip timeout.
   function replyToRequirementCheck(transport: ReturnType<typeof makeTransport>, pass: boolean, extra = {}) {
-    const request = transport.post.mock.calls.map((c) => c[0]).find((p: any) => p.kind === 'check-requirements');
+    const requests = transport.post.mock.calls.map((c) => c[0]).filter((p: any) => p.kind === 'check-requirements');
+    const request = requests[requests.length - 1];
     if (!request) {
       return false;
     }
+    // Pairing happens on a heartbeat (T1 PART C); a reply is only honored from
+    // the paired tab. Emit one from the same sender so the result is accepted
+    // (binds once, harmless to repeat).
+    transport.emit({ source: 'pathfinder', senderId: 'live', timestamp: 0, kind: 'heartbeat', role: 'live' });
     transport.emit({
       source: 'pathfinder',
       senderId: 'live',
@@ -302,13 +311,47 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
 
     const button = await screen.findByRole('button', { name: /do it/i });
     await waitFor(() => expect(button).not.toBeDisabled());
+
+    // Clicking re-verifies against the live tab before acting; answer that
+    // second round-trip with a pass so the command is emitted.
+    const before = countRequirementChecks(transport);
     fireEvent.click(button);
+    await waitFor(() => expect(countRequirementChecks(transport)).toBeGreaterThan(before));
+    replyToRequirementCheck(transport, true);
 
     await waitFor(() =>
       expect(transport.post).toHaveBeenCalledWith(
         expect.objectContaining({ kind: 'step-command', phase: 'do', stepId: 'ctrl-pass' })
       )
     );
+  });
+
+  it('gates the action when a re-check at click time reports the requirement failed', async () => {
+    const transport = makeTransport();
+    render(
+      <InteractiveModeContext.Provider value="controller">
+        <ControllerChannelProvider transport={transport}>
+          <InteractiveStep targetAction="button" refTarget="#ok" requirements="navmenu-open" stepId="ctrl-regress">
+            Step
+          </InteractiveStep>
+        </ControllerChannelProvider>
+      </InteractiveModeContext.Provider>
+    );
+
+    // Step starts satisfied, so it enables and Do it is clickable.
+    await waitFor(() => expect(replyToRequirementCheck(transport, true)).toBe(true));
+    const button = await screen.findByRole('button', { name: /do it/i });
+    await waitFor(() => expect(button).not.toBeDisabled());
+
+    // The prerequisite regressed by click time: the re-check fails, so no
+    // command is emitted and the fix affordance surfaces instead.
+    const before = countRequirementChecks(transport);
+    fireEvent.click(button);
+    await waitFor(() => expect(countRequirementChecks(transport)).toBeGreaterThan(before));
+    replyToRequirementCheck(transport, false, { canFix: true, fixType: 'navigation' });
+
+    expect(await screen.findByRole('button', { name: /fix this/i })).toBeInTheDocument();
+    expect(transport.post).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'step-command' }));
   });
 
   it('surfaces a failing requirement and a fix affordance reported by the live tab', async () => {
@@ -338,7 +381,12 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
       render(
         <InteractiveModeContext.Provider value="controller">
           <ControllerChannelProvider transport={transport}>
-            <InteractiveStep targetAction="button" refTarget="#ok" requirements="exists-reftarget" stepId="ctrl-timeout">
+            <InteractiveStep
+              targetAction="button"
+              refTarget="#ok"
+              requirements="exists-reftarget"
+              stepId="ctrl-timeout"
+            >
               Step
             </InteractiveStep>
           </ControllerChannelProvider>
