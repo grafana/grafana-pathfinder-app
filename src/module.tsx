@@ -8,6 +8,7 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
+import { TWOTAB_CONTROLLER_ENABLED } from './constants/interactive-config';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { panelModeManager } from './global-state/panel-mode';
@@ -141,7 +142,43 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   (window as any).__pathfinderPluginConfig = config;
 
   // Snapshotted before handlePathfinderDeepLink strips it from the URL.
-  const docsParam = parsePathfinderDeepLink(window.location.search).doc;
+  const { doc: docsParam, controller: controllerParam } = parsePathfinderDeepLink(window.location.search);
+
+  // Interactive controller (?doc=<guide>&controller=1): the same overlay, but
+  // step actions stay visible so this tab can drive the originating Grafana tab.
+  // Gated on pathfinderEnabled — the controller drives the user's authenticated
+  // Grafana, so it must not mount when the plugin is disabled (F-1062-1).
+  if (TWOTAB_CONTROLLER_ENABLED && docsParam && controllerParam && pathfinderEnabled) {
+    if (!document.getElementById('pathfinder-controller-root')) {
+      // Claim the id synchronously, before the dynamic import, so a second
+      // plugin.init can't race past the guard and double-mount (F-1062-2).
+      const container = document.createElement('div');
+      container.id = 'pathfinder-controller-root';
+      document.body.appendChild(container);
+      import('./components/guide-reader/GuideReaderOverlay')
+        .then(async ({ GuideReaderOverlay }) => {
+          const { createCompatRoot } = await import('./lib/create-root-compat');
+          const root = await createCompatRoot(container);
+          root.render(React.createElement(GuideReaderOverlay, { doc: docsParam, mode: 'controller' }));
+        })
+        .catch((err) => {
+          console.error('[Pathfinder] Failed to load interactive controller:', err);
+          container.remove();
+        });
+    }
+    return;
+  }
+
+  // Live tab only (the controller tab returned early above): load the cross-tab
+  // executor so a controller tab can drive this Grafana DOM. Gated on
+  // pathfinderEnabled (T1 PART B) — the executor is a same-origin DOM sink and
+  // must not be installed for disabled users. Lazy import keeps the interactive
+  // engine out of the entry bundle.
+  if (TWOTAB_CONTROLLER_ENABLED && pathfinderEnabled) {
+    import('./integrations/cross-tab/live-tab-executor')
+      .then(({ installLiveTabExecutor }) => installLiveTabExecutor())
+      .catch((err) => console.error('[Pathfinder] Failed to load cross-tab executor:', err));
+  }
 
   const sidebarMountable = shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant);
   const deepLinkDeps = {

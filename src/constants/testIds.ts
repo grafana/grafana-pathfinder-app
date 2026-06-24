@@ -41,6 +41,7 @@ export const testIds = {
     retryButton: 'docs-panel-retry-button',
     popOutButton: 'docs-panel-pop-out-button',
     fullScreenButton: 'docs-panel-full-screen-button',
+    openControllerTabButton: 'docs-panel-open-controller-tab-button',
   },
 
   // Full screen mode page (sibling of the sidebar / floating panel)
@@ -395,5 +396,6 @@ export const testIds = {
     loading: 'guide-reader-loading',
     error: 'guide-reader-error',
     closeHint: 'guide-reader-close-hint',
+    controllerStatus: 'guide-reader-controller-status',
   },
 };
