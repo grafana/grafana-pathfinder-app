@@ -8,7 +8,6 @@ import React, { useState, useCallback } from 'react';
 import {
   Button,
   Field,
-  IconButton,
   Input,
   TextArea,
   Combobox,
@@ -139,24 +138,6 @@ export function InteractiveBlockForm({
       }
     });
   }, [onPickerModeChange, action]);
-
-  const addFallback = useCallback(() => setFallbacks((prev) => [...prev, '']), []);
-  const removeFallback = useCallback((index: number) => setFallbacks((prev) => prev.filter((_, i) => i !== index)), []);
-  const updateFallback = useCallback(
-    (index: number, value: string) => setFallbacks((prev) => prev.map((fb, i) => (i === index ? value : fb))),
-    []
-  );
-  const moveFallback = useCallback((index: number, direction: -1 | 1) => {
-    setFallbacks((prev) => {
-      const target = index + direction;
-      if (target < 0 || target >= prev.length) {
-        return prev;
-      }
-      const next = [...prev];
-      [next[index], next[target]] = [next[target]!, next[index]!];
-      return next;
-    });
-  }, []);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -464,44 +445,6 @@ export function InteractiveBlockForm({
           {showAlternatives && alternatives.length === 0 && (
             <span style={{ fontSize: 12, color: '#8e8e8e' }}>No alternative selectors found for this element.</span>
           )}
-
-          {/* Fallback selectors — tried in order (strongest first) if the target selector above isn't found */}
-          <Field
-            label="Fallback selectors"
-            description="Optional. Tried in order if the target selector above can't be found — e.g. a stable data-testid to fall back to when matching by visible text fails in another language."
-          >
-            <Stack direction="column" gap={1}>
-              {fallbacks.map((fb, i) => (
-                <div key={i}>
-                  <div className={styles.selectorField}>
-                    <Input
-                      value={fb}
-                      onChange={(e) => updateFallback(i, e.currentTarget.value)}
-                      placeholder="e.g., button[data-testid='save-dashboard']"
-                      className={styles.selectorInput}
-                    />
-                    <IconButton
-                      name="arrow-up"
-                      tooltip="Move up"
-                      disabled={i === 0}
-                      onClick={() => moveFallback(i, -1)}
-                    />
-                    <IconButton
-                      name="arrow-down"
-                      tooltip="Move down"
-                      disabled={i === fallbacks.length - 1}
-                      onClick={() => moveFallback(i, 1)}
-                    />
-                    <IconButton name="trash-alt" tooltip="Remove fallback" onClick={() => removeFallback(i)} />
-                  </div>
-                  {fb.trim() && <SelectorHealthBadge reftarget={fb} />}
-                </div>
-              ))}
-              <Button size="sm" variant="secondary" icon="plus" type="button" onClick={addFallback}>
-                Add fallback selector
-              </Button>
-            </Stack>
-          </Field>
         </>
       )}
 
