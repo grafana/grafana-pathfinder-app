@@ -11,6 +11,8 @@
 
 import { findButtonByText } from './dom-utils';
 import { querySelectorAllEnhanced, querySelectorAllEnhancedVisible } from './enhanced-selector';
+import { findGrafanaSelectorPath } from './grafana-selector';
+import { resolveSelector } from './selector-resolver';
 
 // ============================================================================
 // Types
@@ -86,6 +88,7 @@ const SELECTOR_CONFIG = {
 } as const;
 
 const CANDIDATE_SCORES = {
+  grafana: 5,
   testId: 10,
   scopedTestId: 15,
   cssId: 50,
@@ -442,6 +445,14 @@ export function retargetElement(element: HTMLElement): HTMLElement {
 // Phase 2: Candidate Generators
 // ============================================================================
 
+function candidateGrafanaSelector(element: HTMLElement): Candidate | null {
+  const path = findGrafanaSelectorPath(element);
+  if (!path) {
+    return null;
+  }
+  return { selector: path, score: CANDIDATE_SCORES.grafana, method: 'grafana' };
+}
+
 function candidateTestId(element: HTMLElement): Candidate | null {
   const testId = getAnyTestId(element);
   if (!testId) {
@@ -700,6 +711,7 @@ function generateCandidates(element: HTMLElement): Candidate[] {
     }
   };
 
+  push(candidateGrafanaSelector(element));
   push(candidateTestId(element));
   push(candidateScopedTestId(element));
   push(candidateTestIdPlusHref(element));
@@ -734,7 +746,8 @@ function testUniqueness(
       return { matchCount: buttons.length, containsTarget: buttons.includes(element as HTMLButtonElement) };
     }
     const matchFn = inOverlay ? querySelectorAllEnhancedVisible : querySelectorAllEnhanced;
-    const matches = matchFn(selector);
+    // Resolve grafana:/panel: prefixes to CSS; plain CSS passes through unchanged.
+    const matches = matchFn(resolveSelector(selector));
     return { matchCount: matches.elements.length, containsTarget: matches.elements.includes(element) };
   } catch {
     return { matchCount: 0, containsTarget: false };
@@ -900,7 +913,11 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
     }
 
     if (matchCount === 1) {
-      if (candidate.method !== 'button-text' && candidate.method !== 'scoped-testid') {
+      if (
+        candidate.method !== 'button-text' &&
+        candidate.method !== 'scoped-testid' &&
+        candidate.method !== 'grafana'
+      ) {
         let foundScope = false;
         for (const scope of ancestorScopes) {
           const scoped = `${scope.selector} ${candidate.selector}`;
@@ -925,7 +942,7 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
       continue;
     }
 
-    if (candidate.method === 'button-text') {
+    if (candidate.method === 'button-text' || candidate.method === 'grafana') {
       continue;
     }
 
@@ -1125,6 +1142,9 @@ const STRUCTURAL_METHODS: ReadonlySet<string> = new Set(['compound', 'nth-of-typ
  * (id, name, placeholder, title, href) is a stable non-text attribute: 'attr'.
  */
 function strategyFamily(method: string): string {
+  if (method === 'grafana') {
+    return 'grafana';
+  }
   if (TESTID_METHODS.has(method)) {
     return 'testid';
   }
@@ -1163,7 +1183,7 @@ export function generateSelectorChain(element: HTMLElement): string[] {
       scored.push({ ...candidate, matchCount });
       continue;
     }
-    if (candidate.method === 'button-text') {
+    if (candidate.method === 'button-text' || candidate.method === 'grafana') {
       continue;
     }
     for (const d of disambiguate(candidate, target, ancestorScopes, inOverlay)) {
