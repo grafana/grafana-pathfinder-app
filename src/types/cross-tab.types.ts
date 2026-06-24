@@ -248,9 +248,7 @@ function isValidRequirementResult(message: Record<string, unknown>): boolean {
 }
 
 function isValidFixResult(message: Record<string, unknown>): boolean {
-  return (
-    typeof message.requestId === 'string' && typeof message.stepId === 'string' && typeof message.ok === 'boolean'
-  );
+  return typeof message.requestId === 'string' && typeof message.stepId === 'string' && typeof message.ok === 'boolean';
 }
 
 // step-complete is a live → controller reply: the live tab reports a composite
@@ -266,9 +264,7 @@ function isValidStepComplete(message: Record<string, unknown>): boolean {
 // DOM action, but it drives a UI callback keyed by stepId, so validate the shape
 // to keep a malformed reply from advancing the wrong step's progress.
 function isValidStepProgress(message: Record<string, unknown>): boolean {
-  return (
-    typeof message.stepId === 'string' && typeof message.index === 'number' && typeof message.total === 'number'
-  );
+  return typeof message.stepId === 'string' && typeof message.index === 'number' && typeof message.total === 'number';
 }
 
 // Per-kind validators — the single source of truth shared by the transport
