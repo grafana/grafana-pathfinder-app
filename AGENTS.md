@@ -189,19 +189,21 @@ Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-intera
 
 **Key dependency edges** (where the load-bearing wiring lives):
 
-| Edge                                           | Why                                                            |
-| ---------------------------------------------- | -------------------------------------------------------------- |
-| `context-engine` → `docs-retrieval`            | Fetches content for the recommendations it surfaces            |
-| `docs-retrieval` → `bundled-interactives`      | Fallback when the online CDN is unavailable                    |
-| `docs-retrieval` → `package-engine`            | Resolves package manifests + content                           |
-| `docs-retrieval` → `snippet-engine`            | Inlines `snippet-ref` blocks against the CDN at parse time     |
-| `components/docs-panel` → `interactive-engine` | Executes step actions when the user clicks "Show me" / "Do it" |
-| `interactive-engine` → `requirements-manager`  | Checks prereqs before enabling / executing a step              |
-| `interactive-engine` → `lib/dom`               | Selector resolution + element detection                        |
-| `components/docs-panel` → `context-engine`     | Reads and renders recommendations                              |
-| `components/docs-panel` → `global-state`       | Sidebar, panel-mode, tab persistence                           |
-| `learning-paths` → `lib/user-storage`          | Persists progress + streak data                                |
-| `recovery` → `requirements-manager`            | Decides whether a failed requirement is auto-recoverable       |
+| Edge                                                          | Why                                                                                |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `context-engine` → `docs-retrieval`                           | Fetches content for the recommendations it surfaces                                |
+| `docs-retrieval` → `bundled-interactives`                     | Fallback when the online CDN is unavailable                                        |
+| `docs-retrieval` → `package-engine`                           | Resolves package manifests + content                                               |
+| `docs-retrieval` → `snippet-engine`                           | Inlines `snippet-ref` blocks against the CDN at parse time                         |
+| `components/docs-panel` → `interactive-engine`                | Executes step actions when the user clicks "Show me" / "Do it"                     |
+| `interactive-engine` → `requirements-manager`                 | Checks prereqs before enabling / executing a step                                  |
+| `interactive-engine` → `lib/dom`                              | Selector resolution + element detection                                            |
+| `components/docs-panel` → `context-engine`                    | Reads and renders recommendations                                                  |
+| `components/docs-panel` → `global-state`                      | Sidebar, panel-mode, tab persistence                                               |
+| `learning-paths` → `lib/user-storage`                         | Persists progress + streak data                                                    |
+| `recovery` → `requirements-manager`                           | Decides whether a failed requirement is auto-recoverable                           |
+| `global-state/controller-channel` → `lib/cross-tab-transport` | BroadcastChannel link between a popped-out controller tab and the live Grafana tab |
+| `integrations/cross-tab` → `interactive-engine`               | Live tab replays a controller tab's step commands against its own DOM              |
 
 For per-subsystem entry points, public surfaces, and key files, load `.cursor/rules/systemPatterns.mdc`.
 

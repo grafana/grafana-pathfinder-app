@@ -34,9 +34,10 @@ import { useInteractiveElements, useSequentialStepState } from '../interactive-e
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
-import { checkRequirements } from './requirements-checker.utils';
+import { checkRequirements, type RequirementsCheckResult } from './requirements-checker.utils';
 import { stripTabLocalRequirements } from './controller-requirements';
 import { useInteractiveMode } from '../global-state/interactive-mode-context';
+import { useControllerChannel } from '../global-state/controller-channel';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 
 // Re-export for convenience
@@ -108,14 +109,10 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   } = props;
 
   const mode = useInteractiveMode();
-  // A controller tab drives a *different* Grafana tab, so requirements that probe
-  // this tab's DOM/URL (exists-reftarget, on-page, ...) can't be evaluated here.
-  // Strip them and let the live tab enforce them; session/permission requirements
-  // still run so genuine failures surface.
-  const requirements = useMemo(
-    () => (mode === 'controller' ? stripTabLocalRequirements(rawRequirements) : rawRequirements),
-    [mode, rawRequirements]
-  );
+  const controllerChannel = useControllerChannel();
+  // Keep the full requirements string in controller mode; tab-local ones are
+  // evaluated on the live tab via the round-trip in `attemptCheck`.
+  const requirements = rawRequirements;
 
   /**
    * Resolve the store-write target for this checker.
@@ -226,6 +223,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         maxRetriesOverride?: number;
         /** Wrap the entire call in Promise.race with this timeout. Reject propagates to caller. */
         timeoutMs?: number;
+        /** In controller mode, evaluate against the live tab instead of this tab's DOM. */
+        remote?: boolean;
       },
       onStateUpdate: (retryCount: number, maxRetries: number, isRetrying: boolean) => void
     ) => {
@@ -236,12 +235,22 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         stepId: optionsStepId,
         maxRetriesOverride,
         timeoutMs,
+        remote,
       } = options;
+      // The live tab runs its own retry loop, so a remote check must not retry
+      // here — each attempt would post a fresh round-trip and stall the warning.
+      const isRemote = remote === true && mode === 'controller' && controllerChannel != null;
       // When lazyRender is enabled, don't do automatic retries - let the button handle lazy scroll.
       // The explicit override (passed by the objectives path) takes precedence.
-      const maxRetries = maxRetriesOverride ?? (lazyRender ? 0 : INTERACTIVE_CONFIG.delays.requirements.maxRetries);
+      const maxRetries = isRemote
+        ? 0
+        : (maxRetriesOverride ?? (lazyRender ? 0 : INTERACTIVE_CONFIG.delays.requirements.maxRetries));
 
-      const attemptCheck = async (retryCount: number): Promise<any> => {
+      // Typed (not `any`) so the live-tab RemoteRequirementResult and the local
+      // RequirementsCheckResult must stay structurally interchangeable — a future
+      // drift between the wire mirror and the real type becomes a compile error
+      // here rather than a silent runtime mismatch (NEW-1070-1).
+      const attemptCheck = async (retryCount: number): Promise<RequirementsCheckResult> => {
         // REACT: Check mounted before state updates to prevent updates after unmount (R4)
         if (!isMountedRef.current) {
           return { requirements: requirements || '', pass: false, error: [] };
@@ -251,16 +260,38 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         onStateUpdate(retryCount, maxRetries, retryCount > 0);
 
         try {
-          const result = await checkRequirements({
-            requirements,
-            targetAction,
-            refTarget,
-            stepId: optionsStepId,
-            retryCount: 0, // Disable internal retry since we're handling it here
-            maxRetries: 0,
-            lazyRender,
-            scrollContainer,
-          });
+          // In controller mode the live tab is the source of truth for DOM/URL
+          // requirements; round-trip the check there. When no live tab answers
+          // within the timeout we deliberately fail OPEN, not closed: strip the
+          // tab-local DOM/URL tokens and evaluate the rest locally (§6.5). A
+          // fail-closed block would strand the two-monitor driver whenever the
+          // live tab briefly disconnects; session/permission/role requirements
+          // are NOT stripped, so genuine authorization failures still gate.
+          const result = isRemote
+            ? ((await controllerChannel?.requestRequirementCheck(optionsStepId ?? stepId, requirements, {
+                targetAction,
+                refTarget,
+              })) ??
+              (await checkRequirements({
+                requirements: stripTabLocalRequirements(requirements) ?? '',
+                targetAction,
+                refTarget,
+                stepId: optionsStepId,
+                retryCount: 0,
+                maxRetries: 0,
+                lazyRender,
+                scrollContainer,
+              })))
+            : await checkRequirements({
+                requirements,
+                targetAction,
+                refTarget,
+                stepId: optionsStepId,
+                retryCount: 0, // Disable internal retry since we're handling it here
+                maxRetries: 0,
+                lazyRender,
+                scrollContainer,
+              });
 
           // REACT: Check mounted before continuing recursive calls (R4)
           if (!isMountedRef.current) {
@@ -332,7 +363,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         }
       });
     },
-    [lazyRender, scrollContainer] // checkRequirements is an imported function but lazyRender/scrollContainer are props
+    [lazyRender, scrollContainer, mode, controllerChannel, stepId] // checkRequirements is imported; the rest gate the controller round-trip
   );
 
   // Manager integration for state propagation
@@ -498,6 +529,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
             targetAction: targetAction || 'button',
             refTarget: refTarget || stepId,
             stepId,
+            remote: true,
           },
           (retryCount, _maxRetries, isRetrying) => {
             safeDispatch({ type: 'UPDATE_RETRY', retryCount, isRetrying });
@@ -567,6 +599,48 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     targetAction,
   ]);
 
+  // Re-check requirements at click time (cross-tab state can be stale), fold the
+  // result into the FSM so a regressed prerequisite re-surfaces, and return
+  // whether the action may proceed.
+  const revalidate = useCallback(async (): Promise<boolean> => {
+    if (!requirements || requirements.trim() === '') {
+      return true;
+    }
+    const result = await checkRequirementsWithStateUpdates(
+      {
+        requirements,
+        targetAction: targetAction || 'button',
+        refTarget: refTarget || stepId,
+        stepId,
+        remote: true,
+      },
+      (retryCount, _maxRetries, isRetrying) => {
+        safeDispatch({ type: 'UPDATE_RETRY', retryCount, isRetrying });
+      }
+    );
+    if (!isMountedRef.current) {
+      return result.pass;
+    }
+    const requirementsState = createRequirementsState(result, requirements, hints, skippable);
+    safeDispatch(actionFromBaseStepState(requirementsState));
+    updateManager(requirementsState);
+    prevIsEnabledRef.current = result.pass;
+    if (result.pass) {
+      enabledTimestampRef.current = Date.now();
+    }
+    return result.pass;
+  }, [
+    requirements,
+    targetAction,
+    refTarget,
+    stepId,
+    hints,
+    skippable,
+    checkRequirementsWithStateUpdates,
+    safeDispatch,
+    updateManager,
+  ]);
+
   /**
    * Attempt to automatically fix failed requirements via the fix-handler registry.
    * Wraps `dispatchFix` with mount-safety, the post-fix recheck, and error reporting.
@@ -595,15 +669,24 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     try {
       safeDispatch({ type: 'START_CHECK' });
 
-      const result = await dispatchFix({
-        fixType: state.fixType,
-        targetHref: state.targetHref,
-        scrollContainer: state.scrollContainer,
-        requirements,
-        stepId,
-        navigationManager: navigationManagerRef.current,
-        fixNavigationRequirements,
-      });
+      // A controller's fix must run on the live tab's DOM, not this tab's.
+      const result =
+        mode === 'controller' && controllerChannel != null
+          ? await controllerChannel.requestFix(stepId, {
+              requirements: requirements ?? '',
+              fixType: state.fixType,
+              targetHref: state.targetHref,
+              scrollContainer: state.scrollContainer,
+            })
+          : await dispatchFix({
+              fixType: state.fixType,
+              targetHref: state.targetHref,
+              scrollContainer: state.scrollContainer,
+              requirements,
+              stepId,
+              navigationManager: navigationManagerRef.current,
+              fixNavigationRequirements,
+            });
 
       if (!result.ok) {
         console.warn('Fix failed:', result.error);
@@ -616,7 +699,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           // these fields via spread.)
           safeDispatch({
             type: 'SET_ERROR',
-            error: result.error,
+            error: result.error ?? 'Failed to fix requirements',
             canFix: state.canFixRequirement,
             fixType: state.fixType,
             targetHref: state.targetHref,
@@ -663,6 +746,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     stepId,
     timeoutManager,
     safeDispatch,
+    mode,
+    controllerChannel,
   ]);
 
   /**
@@ -963,13 +1048,17 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       return;
     }
 
-    // Only run when step is enabled, not completed, and requirements are fragile
+    // Only run when not completed and requirements are fragile.
     const req = requirements || '';
     const isFragile = INTERACTIVE_CONFIG.requirements.heartbeat.onlyForFragile
       ? req.includes('navmenu-open') || req.includes('exists-reftarget') || req.includes('on-page:')
       : !!req;
 
-    if (!isFragile || state.isCompleted || !state.isEnabled) {
+    // A controller's fragile step often starts blocked; poll the live tab while
+    // blocked too so the warning surfaces and later clears. In-tab keeps the
+    // original enabled-only watchdog.
+    const watchWhileBlocked = mode === 'controller';
+    if (!isFragile || state.isCompleted || (!state.isEnabled && !watchWhileBlocked)) {
       return;
     }
 
@@ -1001,7 +1090,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       stopped = true;
       clearTimeout(timeoutId);
     };
-  }, [requirements, state.isEnabled, state.isCompleted]);
+  }, [requirements, state.isEnabled, state.isCompleted, mode]);
 
   // A missing DOM element is the only failure the AI "Fix this" affordance can address;
   // the UI tier ANDs this with assistant availability to decide whether to surface it.
@@ -1010,6 +1099,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   return {
     ...state,
     checkStep,
+    revalidate,
     markCompleted,
     markSkipped: skippable ? markSkipped : undefined,
     resetStep,
