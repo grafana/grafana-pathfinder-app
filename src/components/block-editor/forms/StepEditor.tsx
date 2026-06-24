@@ -229,7 +229,7 @@ export interface StepEditorProps {
   /** Whether this is for a guided block (uses description instead of tooltip) */
   isGuided?: boolean;
   /** Called to start/stop the element picker with a callback for receiving the selector */
-  onPickerModeChange?: (isActive: boolean, onSelect?: (selector: string) => void) => void;
+  onPickerModeChange?: (isActive: boolean, onSelect?: (selector: string, fallbacks?: string[]) => void) => void;
   /**
    * Called when record mode starts/stops.
    * When starting (isActive=true), provides callbacks so parent can control the overlay.

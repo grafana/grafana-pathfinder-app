@@ -74,7 +74,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
 
 export interface ElementPickerProps {
   /** Called when an element is selected */
-  onSelect: (selector: string) => void;
+  onSelect: (selector: string, fallbacks?: string[]) => void;
   /** Called when picker is cancelled */
   onCancel: () => void;
 }
@@ -175,7 +175,7 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
         console.warn('[ElementPicker] Selector warnings:', result.warnings);
       }
 
-      onSelect(result.selector);
+      onSelect(result.selector, result.fallbacks);
     },
     [onSelect, getElementUnderCursor]
   );
