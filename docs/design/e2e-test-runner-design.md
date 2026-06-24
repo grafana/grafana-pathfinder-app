@@ -656,6 +656,8 @@ The sections above describe the core E2E runner: loading a `content.json` from d
 
 This extension can be framed as either "Layer 3 becomes package-aware" or as a new Layer 4 in the [testing strategy](./TESTING_STRATEGY.md) pyramid. If framed as Layer 4, the current "Live Environment Validation" vision (nightly runs, managed environment pools, observability dashboards) would become Layer 5.
 
+> **Implementation status — local-tier slice shipped.** Remote resolution by bare ID and whole-repository batch testing are implemented for `local`-tier guides, which run against the configured Grafana URL. What differs from the design below: batch mode uses a `--remote` flag (not a boolean `--repository`, since `--repository <path>` already denotes the local dependency-ordering index); `cloud`-tier guides are resolved but **skipped** (`skipped_no_auth` / `skipped_tier_mismatch`) because cloud credentials and ephemeral per-guide auth isolation are **not yet implemented**; and path/journey (`milestones`) expansion is **not yet implemented** — `path`/`journey` packages are skipped as `unsupported_type`. The rest of this section describes the full target design. See [`docs/developer/E2E_TESTING.md`](../developer/E2E_TESTING.md#remote-package-aware-testing) for the shipped behavior.
+
 ### Design goals
 
 - **Package-first**: The CLI can test any package by bare ID, resolving content and metadata from the repository ecosystem.
