@@ -32,6 +32,7 @@
     "nextMilestone": "下一个里程碑",
     "nextMilestoneTooltip": "下一个里程碑 (Alt + →)",
     "open": "打开",
+    "openControllerInNewTab": "",
     "openInNewTab": "在新标签页中打开此页面",
     "previousMilestone": "上一个里程碑",
     "previousMilestoneTooltip": "上一个里程碑 (Alt + ←)",

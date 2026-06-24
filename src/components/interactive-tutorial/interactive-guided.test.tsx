@@ -30,6 +30,14 @@ jest.mock('@grafana/data', () => ({
   usePluginContext: () => ({ meta: { jsonData: {} } }),
 }));
 
+// ─── Mock @grafana/runtime ───────────────────────────────────────────────────
+// The component publishes app-event toasts via getAppEvents(); importing the
+// real module pulls in config/LocationService, which needs @grafana/data's
+// getThemeById (not provided by the mock above).
+jest.mock('@grafana/runtime', () => ({
+  getAppEvents: () => ({ publish: jest.fn() }),
+}));
+
 // ─── Mock useAiFixEnabled (off) — avoids pulling @grafana/assistant, which this
 //     suite's @grafana/ui mock would otherwise leave un-themed and crashing ─────
 jest.mock('../../integrations/assistant-integration/use-ai-fix-enabled', () => ({

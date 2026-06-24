@@ -119,6 +119,7 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
     file: 'components/DocsPanelContentArea.tsx',
     references: [
       'testIds.docsPanel.content',
+      'testIds.docsPanel.openControllerTabButton',
       'testIds.devTools.previewBanner',
       'testIds.devTools.previewModeIndicator',
       'testIds.devTools.returnToEditorButton',

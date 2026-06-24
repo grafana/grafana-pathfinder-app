@@ -3,11 +3,12 @@ import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
 import { useInteractiveElements, ActionMonitor } from '../../interactive-engine';
-import { useStepChecker } from '../../requirements-manager';
+import { useStepChecker, stripTabLocalRequirements } from '../../requirements-manager';
 import { useIsAlignmentPaused, useAlignmentStartingLocation } from '../../global-state/alignment-pending-context';
+import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { InteractiveStep, resetStepCounter } from './interactive-step';
 import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
-import { InteractiveGuided } from './interactive-guided';
+import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
 import { InteractiveQuiz, resetQuizCounter } from './interactive-quiz';
 import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
@@ -120,6 +121,7 @@ export function resetInteractiveCounters() {
   // Reset anonymous step ID counters across all step types
   resetStepCounter();
   resetMultiStepCounter();
+  resetGuidedCounter();
   resetQuizCounter();
   resetTerminalStepCounter();
   resetTerminalConnectStepCounter();
@@ -160,6 +162,19 @@ export function InteractiveSection({
   // `useSectionCompletion`); the cursor is a pure derivation of the
   // step roster + the completed set.
   const [sectionState, dispatch] = useReducer(sectionReducer, initialSectionState);
+  const mode = useInteractiveMode();
+  // In controller mode, drop requirements that probe this tab (nav menu, current
+  // page, ...) — the live tab enforces them; session requirements still gate.
+  // Deliberately strip-only, NOT round-tripped (NEW-1068-1): this is the coarse
+  // section-level "can this section run" gate, and each step still round-trips
+  // its own tab-local requirements to the live tab when it executes
+  // (see `attemptCheck` in step-checker.hook.ts). Round-tripping the whole
+  // section here would add per-section latency for a gate the per-step checks
+  // already enforce precisely.
+  const controllerRequirements = useMemo(
+    () => (mode === 'controller' ? stripTabLocalRequirements(requirements) : requirements),
+    [mode, requirements]
+  );
   const [currentlyExecutingStep, setCurrentlyExecutingStep] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [executingStepNumber, setExecutingStepNumber] = useState(0); // Track which step is being executed (1-indexed for display)
@@ -203,7 +218,7 @@ export function InteractiveSection({
   // timing contract — the 5s cadence is load-bearing for "auto-pickup of
   // out-of-band state changes that don't fire one of the 4 events".
   const { status: sectionRequirementsStatus, fix: fixSectionRequirements } = useSectionRequirements({
-    requirements,
+    requirements: controllerRequirements,
     sectionId,
     title,
     hints,
@@ -674,9 +689,9 @@ export function InteractiveSection({
     }
 
     // Check section-level requirements first and apply same priority logic
-    if (requirements) {
+    if (controllerRequirements) {
       const sectionRequirementsData = {
-        requirements: requirements,
+        requirements: controllerRequirements,
         targetAction: 'section',
         refTarget: `section-${sectionId}`,
         targetValue: undefined,
@@ -700,7 +715,7 @@ export function InteractiveSection({
                 await navigationManager.expandParentNavigationSection(fixableError.targetHref);
               } else if (fixableError?.fixType === 'location' && fixableError.targetHref) {
                 await navigationManager.fixLocationRequirement(fixableError.targetHref);
-              } else if (requirements.includes('navmenu-open')) {
+              } else if (controllerRequirements.includes('navmenu-open')) {
                 await navigationManager.fixNavigationRequirements();
               }
 
@@ -1031,7 +1046,7 @@ export function InteractiveSection({
     title,
     handleSectionCancel,
     currentStepIndex,
-    requirements,
+    controllerRequirements,
     checkRequirementsFromData,
     scrollToStep,
     beginProgrammaticScroll,
