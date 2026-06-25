@@ -90,12 +90,13 @@ export function ControllerChannelProvider({
   const post = useCallback(
     (payload: CrossTabPayload) => {
       if (
-        (payload.kind === 'step-command' ||
-          payload.kind === 'check-requirements' ||
-          payload.kind === 'fix-requirement') &&
-        pairedLiveIdRef.current !== null
+        payload.kind === 'step-command' ||
+        payload.kind === 'check-requirements' ||
+        payload.kind === 'fix-requirement'
       ) {
-        active.post({ ...payload, targetTabId: pairedLiveIdRef.current });
+        if (pairedLiveIdRef.current !== null) {
+          active.post({ ...payload, targetTabId: pairedLiveIdRef.current });
+        }
       } else {
         active.post(payload);
       }

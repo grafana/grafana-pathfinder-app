@@ -320,7 +320,6 @@ export function installLiveTabExecutor(
       (validated.kind === 'step-command' ||
         validated.kind === 'check-requirements' ||
         validated.kind === 'fix-requirement') &&
-      validated.targetTabId !== undefined &&
       validated.targetTabId !== myTabId
     ) {
       return;

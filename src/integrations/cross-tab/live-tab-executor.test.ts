@@ -99,6 +99,7 @@ function stampStepCommand(
     stepId: 's1',
     runId,
     action: { targetAction, refTarget },
+    targetTabId: MY_SENDER_ID,
   };
 }
 
@@ -189,6 +190,7 @@ describe('installLiveTabExecutor', () => {
           { targetAction: 'button', refTarget: '#b' },
         ],
       },
+      targetTabId: MY_SENDER_ID,
     });
 
     await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalled());
@@ -213,6 +215,7 @@ describe('installLiveTabExecutor', () => {
         refTarget: '',
         internalActions: [{ targetAction: 'highlight', refTarget: '#a' }],
       },
+      targetTabId: MY_SENDER_ID,
     });
 
     await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalledTimes(2));
@@ -241,6 +244,7 @@ describe('installLiveTabExecutor', () => {
           { targetAction: 'button', refTarget: '#b' },
         ],
       },
+      targetTabId: MY_SENDER_ID,
     });
 
     const executeGuidedStep = (GuidedHandler as jest.Mock).mock.results[0]?.value.executeGuidedStep as jest.Mock;
@@ -277,6 +281,7 @@ describe('installLiveTabExecutor', () => {
           { targetAction: 'button', refTarget: '#b' },
         ],
       },
+      targetTabId: MY_SENDER_ID,
     });
 
     await waitFor(() =>
@@ -309,6 +314,7 @@ describe('installLiveTabExecutor', () => {
         refTarget: '',
         internalActions: [{ targetAction: 'highlight', refTarget: '#a' }],
       },
+      targetTabId: MY_SENDER_ID,
     });
 
     await waitFor(() =>
@@ -341,6 +347,7 @@ describe('installLiveTabExecutor', () => {
         refTarget: '',
         internalActions: [{ targetAction: 'highlight', refTarget: '#a' }],
       },
+      targetTabId: MY_SENDER_ID,
     });
 
     await waitFor(() =>
@@ -421,6 +428,7 @@ describe('installLiveTabExecutor', () => {
       requestId: 'r1',
       stepId: 's1',
       requirements: 'navmenu-open',
+      targetTabId: MY_SENDER_ID,
     });
 
     await waitFor(() =>
@@ -453,6 +461,7 @@ describe('installLiveTabExecutor', () => {
       stepId: 's1',
       requirements: 'navmenu-open',
       fixType: 'navigation',
+      targetTabId: MY_SENDER_ID,
     });
 
     await waitFor(() =>
@@ -482,6 +491,7 @@ describe('installLiveTabExecutor', () => {
       stepId: 's1',
       requirements: 'navmenu-open',
       fixType: 'navigation',
+      targetTabId: MY_SENDER_ID,
     });
 
     await waitFor(() =>
@@ -618,13 +628,23 @@ describe('installLiveTabExecutor', () => {
       uninstall();
     });
 
-    it('executes a step-command with no targetTabId (broadcast, backward compat)', async () => {
+    it('drops a step-command with no targetTabId', async () => {
       const transport = new FakeTransport();
       const uninstall = installLiveTabExecutor(transport);
 
-      transport.emit(stampStepCommand('do', 'highlight', '#target'));
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'step-command',
+        phase: 'do',
+        stepId: 's1',
+        runId: 'run-1',
+        action: { targetAction: 'highlight', refTarget: '#target' },
+      } as CrossTabMessage);
+      await Promise.resolve();
 
-      await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalled());
+      expect(executeOf(FocusHandler)).not.toHaveBeenCalled();
       uninstall();
     });
 
@@ -691,7 +711,7 @@ describe('installLiveTabExecutor', () => {
       uninstall();
     });
 
-    it('executes a check-requirements with no targetTabId (broadcast, backward compat)', async () => {
+    it('drops a check-requirements with no targetTabId', async () => {
       const transport = new FakeTransport();
       const uninstall = installLiveTabExecutor(transport);
 
@@ -706,7 +726,7 @@ describe('installLiveTabExecutor', () => {
       } as CrossTabMessage);
       await Promise.resolve();
 
-      expect(checkRequirements).toHaveBeenCalled();
+      expect(checkRequirements).not.toHaveBeenCalled();
       uninstall();
     });
 
@@ -731,7 +751,7 @@ describe('installLiveTabExecutor', () => {
       uninstall();
     });
 
-    it('executes a fix-requirement with no targetTabId (broadcast, backward compat)', async () => {
+    it('drops a fix-requirement with no targetTabId', async () => {
       const transport = new FakeTransport();
       const uninstall = installLiveTabExecutor(transport);
 
@@ -747,7 +767,7 @@ describe('installLiveTabExecutor', () => {
       } as CrossTabMessage);
       await Promise.resolve();
 
-      expect(dispatchFix).toHaveBeenCalled();
+      expect(dispatchFix).not.toHaveBeenCalled();
       uninstall();
     });
   });

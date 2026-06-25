@@ -138,6 +138,7 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
+    act(() => transport.emit(liveHeartbeat()));
     fireEvent.click(screen.getByText('post'));
 
     expect(transport.postedMessages).toContainEqual(
@@ -167,7 +168,7 @@ describe('ControllerChannelProvider', () => {
     );
   });
 
-  it('does not inject targetTabId into step-command before pairing', () => {
+  it('drops a step-command when unpaired', () => {
     const transport = new FakeTransport();
     render(
       <ControllerChannelProvider transport={transport}>
@@ -178,8 +179,7 @@ describe('ControllerChannelProvider', () => {
     fireEvent.click(screen.getByText('post'));
 
     const posted = (transport.postedMessages as any[]).find((m) => m.kind === 'step-command');
-    expect(posted).toBeDefined();
-    expect(posted.targetTabId).toBeUndefined();
+    expect(posted).toBeUndefined();
   });
 
   it('injects targetTabId into check-requirements after pairing', () => {
@@ -341,7 +341,7 @@ describe('ControllerChannelProvider', () => {
     }
   });
 
-  it('drops a reply from an unpaired tab and never lets it claim the pairing slot (T1 PART C)', async () => {
+  it('drops a reply from a non-paired tab and never lets it claim the pairing slot (T1 PART C)', async () => {
     const transport = new FakeTransport();
     render(
       <ControllerChannelProvider transport={transport}>
@@ -349,11 +349,13 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
+    // Pair with the real live tab first — pairing happens on a heartbeat only.
+    act(() => transport.emit(liveHeartbeat()));
     fireEvent.click(screen.getByText('check'));
     const request = postedOfKind(transport, 'check-requirements');
 
-    // A forged reply arrives before any live heartbeat. It must be ignored AND
-    // must not bind the pairing slot — pairing happens on a heartbeat only.
+    // A forged reply from a different sender arrives. It must be ignored — the
+    // attacker can't claim the already-bound pairing slot via a reply.
     act(() =>
       transport.emit({
         source: 'pathfinder',
@@ -367,9 +369,7 @@ describe('ControllerChannelProvider', () => {
     );
     expect(screen.getByTestId('check')).toHaveTextContent('pending');
 
-    // The real live tab heartbeats and pairs; its reply is then honored — proving
-    // the attacker never claimed the slot.
-    act(() => transport.emit(liveHeartbeat()));
+    // The paired tab's reply is honored.
     act(() =>
       transport.emit({
         source: 'pathfinder',
