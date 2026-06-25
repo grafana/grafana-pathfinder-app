@@ -4,7 +4,16 @@ import {
   findByGrafanaSelector,
   findOneByGrafanaSelector,
   existsByGrafanaSelector,
+  findGrafanaSelectorPath,
 } from './grafana-selector';
+
+function elementWith(attrs: Record<string, string>): HTMLElement {
+  const el = document.createElement('button');
+  for (const [name, value] of Object.entries(attrs)) {
+    el.setAttribute(name, value);
+  }
+  return el;
+}
 
 describe('grafana-selector', () => {
   beforeEach(() => {
@@ -91,6 +100,52 @@ describe('grafana-selector', () => {
 
     it('should return false if element does not exist', () => {
       expect(existsByGrafanaSelector('components.RefreshPicker.runButtonV2')).toBe(false);
+    });
+  });
+
+  describe('findGrafanaSelectorPath (reverse lookup)', () => {
+    it('maps a component data-testid back to its grafana: components path', () => {
+      const el = elementWith({ 'data-testid': 'data-testid RefreshPicker run button' });
+      const path = findGrafanaSelectorPath(el);
+
+      expect(path).not.toBeNull();
+      expect(path!.startsWith('grafana:components.')).toBe(true);
+      // Round-trips: resolving the returned path yields the element's value.
+      expect(toGrafanaSelector(path!.replace('grafana:', ''))).toContain('data-testid RefreshPicker run button');
+    });
+
+    it('maps a page-level data-testid back to its grafana: pages path', () => {
+      const el = elementWith({ 'data-testid': 'data-testid Username input field' });
+      const path = findGrafanaSelectorPath(el);
+
+      expect(path).not.toBeNull();
+      expect(path!.startsWith('grafana:pages.')).toBe(true);
+      expect(toGrafanaSelector(path!.replace('grafana:', ''))).toContain('data-testid Username input field');
+    });
+
+    it('falls back to aria-label when there is no data-testid', () => {
+      const el = elementWith({ 'aria-label': 'data-testid RefreshPicker run button' });
+      const path = findGrafanaSelectorPath(el);
+
+      expect(path).not.toBeNull();
+      expect(toGrafanaSelector(path!.replace('grafana:', ''))).toContain('data-testid RefreshPicker run button');
+    });
+
+    it('reverses a parameterized selector and extracts the parameter', () => {
+      const el = elementWith({ 'data-testid': 'data-testid Home breadcrumb' });
+      const path = findGrafanaSelectorPath(el);
+
+      expect(path).toBe('grafana:components.Breadcrumbs.breadcrumb:Home');
+    });
+
+    it('returns null for an unknown selector value', () => {
+      const el = elementWith({ 'data-testid': 'totally-not-a-grafana-selector-xyz' });
+      expect(findGrafanaSelectorPath(el)).toBeNull();
+    });
+
+    it('returns null when the element has no testid or aria-label', () => {
+      const el = elementWith({ class: 'plain' });
+      expect(findGrafanaSelectorPath(el)).toBeNull();
     });
   });
 });
