@@ -128,9 +128,13 @@ A controller binds to the **first live tab that answers** its heartbeat and
 records that tab's `senderId` (`controller-channel.tsx`). It then ignores
 replies — `requirement-result`, `fix-result`, `step-complete` — from any other
 tab, so a second Grafana tab can't answer a requirement check with a different
-DOM state. It re-pairs if the bound tab goes stale. Commands themselves are still
-broadcast (every live tab executes them); only the replies the controller trusts
-are scoped to the paired tab.
+DOM state. It re-pairs if the bound tab goes stale. When paired, the controller injects
+the live tab's sender ID as `targetTabId` on executable commands
+(`step-command`, `check-requirements`, `fix-requirement`), so only the paired
+executor acts on them; all other live executors silently discard the message.
+Messages without `targetTabId` are still accepted as broadcast for backward
+compatibility with older builds. Replies (`requirement-result`, `fix-result`,
+`step-complete`) are also filtered to the paired tab's sender ID.
 
 ## Replay pacing
 

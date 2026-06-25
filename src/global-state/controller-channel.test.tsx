@@ -198,6 +198,36 @@ describe('ControllerChannelProvider', () => {
     expect(posted.targetTabId).toBe('live');
   });
 
+  it('injects targetTabId into fix-requirement after pairing', () => {
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <RequestProbe />
+      </ControllerChannelProvider>
+    );
+
+    act(() => transport.emit(liveHeartbeat()));
+    fireEvent.click(screen.getByText('fix'));
+
+    const posted = postedOfKind(transport, 'fix-requirement');
+    expect(posted).toBeDefined();
+    expect(posted.targetTabId).toBe('live');
+
+    // Settle the pending promise so it doesn't resolve to null on unmount and
+    // contaminate the next test via the failAllPending → .then(r => r.ok) path.
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live',
+        timestamp: 0,
+        kind: 'fix-result',
+        requestId: posted.requestId,
+        stepId: 's1',
+        ok: true,
+      })
+    );
+  });
+
   it('reports connected once a live heartbeat arrives', () => {
     const transport = new FakeTransport();
     render(

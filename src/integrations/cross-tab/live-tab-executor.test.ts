@@ -43,10 +43,12 @@ jest.mock('../../utils/experiments/experiment-utils', () => {
   return { ...actual, isExtensionSidebarOwnedByOther: jest.fn(() => false) };
 });
 
+const MY_SENDER_ID = 'live-self';
+
 class FakeTransport {
   started = false;
   stopped = false;
-  senderId = 'live-self';
+  senderId = MY_SENDER_ID;
   postedMessages: unknown[] = [];
   private listener: ((message: CrossTabMessage) => void) | null = null;
 
@@ -595,7 +597,7 @@ describe('installLiveTabExecutor', () => {
 
       transport.emit({
         ...stampStepCommand('do', 'highlight', '#target'),
-        targetTabId: 'live-self',
+        targetTabId: MY_SENDER_ID,
       } as CrossTabMessage);
 
       await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalled());
@@ -666,6 +668,86 @@ describe('installLiveTabExecutor', () => {
 
       expect(dispatchFix).not.toHaveBeenCalled();
       expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'fix-result' }));
+      uninstall();
+    });
+
+    it('executes a check-requirements addressed to this tab', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'check-requirements',
+        requestId: 'r1',
+        stepId: 's1',
+        requirements: 'navmenu-open',
+        targetTabId: MY_SENDER_ID,
+      } as CrossTabMessage);
+      await Promise.resolve();
+
+      expect(checkRequirements).toHaveBeenCalled();
+      uninstall();
+    });
+
+    it('executes a check-requirements with no targetTabId (broadcast, backward compat)', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'check-requirements',
+        requestId: 'r1',
+        stepId: 's1',
+        requirements: 'navmenu-open',
+      } as CrossTabMessage);
+      await Promise.resolve();
+
+      expect(checkRequirements).toHaveBeenCalled();
+      uninstall();
+    });
+
+    it('executes a fix-requirement addressed to this tab', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'fix-requirement',
+        requestId: 'f1',
+        stepId: 's1',
+        requirements: 'navmenu-open',
+        fixType: 'navigation',
+        targetTabId: MY_SENDER_ID,
+      } as CrossTabMessage);
+      await Promise.resolve();
+
+      expect(dispatchFix).toHaveBeenCalled();
+      uninstall();
+    });
+
+    it('executes a fix-requirement with no targetTabId (broadcast, backward compat)', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'fix-requirement',
+        requestId: 'f1',
+        stepId: 's1',
+        requirements: 'navmenu-open',
+        fixType: 'navigation',
+      } as CrossTabMessage);
+      await Promise.resolve();
+
+      expect(dispatchFix).toHaveBeenCalled();
       uninstall();
     });
   });
