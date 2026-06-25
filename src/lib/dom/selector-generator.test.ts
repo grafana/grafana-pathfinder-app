@@ -561,6 +561,36 @@ describe('Selector Generator — Pipeline', () => {
   });
 
   // ==========================================================================
+  // Automatic stable-ancestor anchoring
+  // ==========================================================================
+
+  describe('ancestor anchoring', () => {
+    it('anchors a structureless element on its nearest stable ancestor instead of a global positional selector', () => {
+      document.body.innerHTML = `
+        <section data-testid="data-source-card">
+          <header>Cards</header>
+          <div><span>one</span><span>two</span></div>
+        </section>
+        <span>outside</span>
+      `;
+      const target = document.querySelectorAll('section[data-testid="data-source-card"] span')[1] as HTMLElement;
+
+      const selector = generateBestSelector(target);
+
+      expect(selector).toContain("data-testid='data-source-card'");
+      expect(selector.startsWith('span:nth-of-type')).toBe(false);
+      expect(querySelectorAllEnhanced(selector).elements).toContain(target);
+    });
+
+    it('does not anchor when the element has a stable intrinsic selector', () => {
+      document.body.innerHTML = `<div><button data-testid="save">Save</button></div>`;
+      const button = document.querySelector("button[data-testid='save']") as HTMLElement;
+
+      expect(generateBestSelector(button)).toBe("button[data-testid='save']");
+    });
+  });
+
+  // ==========================================================================
   // Integration
   // ==========================================================================
 
