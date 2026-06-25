@@ -10,7 +10,7 @@ import { tmpdir } from 'os';
 
 import { ExitCode } from './exit-codes';
 import { E2E_ENV, encodeEnvFlag } from './e2e-runner-contract';
-import type { LoadedGuide } from './file-loader';
+import type { LoadedGuide } from '../utils/file-loader';
 import type { TestResultsData } from './e2e-reporter';
 
 /**

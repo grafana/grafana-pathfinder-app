@@ -12,7 +12,7 @@ import type { PluginOptions } from '@grafana/plugin-e2e';
 import { defineConfig, devices } from '@playwright/test';
 import { dirname, join } from 'node:path';
 
-import { E2E_ENV, isEnvFlagEnabled } from '../../src/cli/utils/e2e-runner-contract';
+import { E2E_ENV, isEnvFlagEnabled } from '../../src/cli/e2e/e2e-runner-contract';
 
 const pluginE2eAuth = `${dirname(require.resolve('@grafana/plugin-e2e'))}/auth`;
 

@@ -5,7 +5,7 @@
  * into localStorage and verify they load correctly in the docs panel.
  */
 
-import { existsSync, statSync } from 'fs';
+import { existsSync } from 'fs';
 import { dirname, isAbsolute, join, resolve } from 'path';
 
 import { Command, Option } from 'commander';
@@ -18,36 +18,32 @@ import {
   bundledRepositoryPath,
   type LoadedGuide,
 } from '../utils/file-loader';
-import { planGuideExecution } from '../utils/guide-chains';
+import { planGuideExecution } from '../e2e/guide-chains';
+import type { TestResultsData } from '../e2e/e2e-reporter';
+import { checkTier, loadManifestFromDir, runManifestPreflight, type CurrentTier } from '../e2e/manifest-preflight';
+import { resolveRemotePackage, resolveRemoteRepository, type ResolvedRemoteGuide } from '../e2e/e2e-package';
+import { checkGrafanaHealth } from '../e2e/grafana-health';
+import { CleanEnvironment, CLEAN_COMPOSE_PROJECT, CLEAN_GRAFANA_URL } from '../e2e/clean-environment';
+import { ExitCode } from '../e2e/exit-codes';
+import { runPlaywrightTests, type RunGuideOptions } from '../e2e/playwright-runner';
 import {
-  generateReport,
-  writeReport,
-  generateMultiGuideReport,
-  writeMultiGuideReport,
-  formatMultiGuideSummary,
-  type TestResultsData,
-  type PreRunSkip,
-} from '../utils/e2e-reporter';
+  applyPackageMeta,
+  buildPackageMetaMap,
+  exitCodeFromResults,
+  resolveRunMode,
+  skipToResult,
+  type GuideRunResult,
+  type GuideStatus,
+  type PackageMeta,
+  type RunMode,
+} from '../e2e/e2e-results';
 import {
-  checkTier,
-  loadManifestFromDir,
-  runManifestPreflight,
-  type PreflightOutcome,
-  type CurrentTier,
-} from '../utils/manifest-preflight';
-import {
-  resolveRemotePackage,
-  resolveRemoteRepository,
-  REMOTE_SKIP_REASONS,
-  type RemoteResolution,
-  type RemoteSkipReason,
-  type ResolvedRemoteGuide,
-  type SkippedPackage,
-} from '../utils/e2e-package';
-import { checkGrafanaHealth } from '../utils/grafana-health';
-import { CleanEnvironment, CLEAN_COMPOSE_PROJECT, CLEAN_GRAFANA_URL } from '../utils/clean-environment';
-import { ExitCode } from '../utils/exit-codes';
-import { runPlaywrightTests, type AbortReason, type RunGuideOptions } from '../utils/playwright-runner';
+  printPreflightOutcome,
+  printRemoteResolution,
+  printRunConfiguration,
+  printSummary,
+  writeJsonReport,
+} from '../e2e/e2e-console-reporter';
 import type { ManifestJson, RepositoryEntry, RepositoryJson } from '../../types/package.types';
 
 import { randomUUID } from 'crypto';
@@ -79,77 +75,6 @@ interface E2ECommandOptions {
 
 const DEFAULT_GRAFANA_URL = 'http://localhost:3000';
 const DEFAULT_RESOLVER_URL = 'https://recommender.grafana.com';
-
-/** How guide inputs are resolved for a run. */
-type RunMode = 'local' | 'remote-package' | 'remote-repository';
-
-/** Package metadata attached to a remotely-resolved guide's report. */
-interface PackageMeta {
-  packageId: string;
-  tier?: string;
-  instance?: string;
-  targetUrl?: string;
-  sourceUrl?: string;
-}
-
-/**
- * A guide's terminal status: either a run outcome (the runner executed or aborted
- * it) or a remote skip reason (the resolver skipped it before execution). The
- * skip half is derived from the resolver's `RemoteSkipReason` so the two
- * vocabularies cannot drift.
- */
-type GuideStatus = 'passed' | 'failed' | 'auth_expired' | 'skipped_prereq' | RemoteSkipReason;
-
-/** Statuses that count as a test failure (non-zero exit). */
-const FAILURE_STATUSES: ReadonlySet<GuideStatus> = new Set<GuideStatus>(['failed', 'validation_failed']);
-
-/** Pre-run skips (the resolver's skip reasons) recorded in the JSON report; excludes skipped_prereq, which carries step data. */
-const PRE_RUN_SKIP_STATUSES: ReadonlySet<GuideStatus> = new Set<GuideStatus>(REMOTE_SKIP_REASONS);
-
-/** Summary line labels in display order. */
-const GUIDE_STATUS_LABELS: ReadonlyArray<readonly [GuideStatus, string]> = [
-  ['passed', '✅ Passed'],
-  ['failed', '❌ Failed'],
-  ['validation_failed', '❌ Validation failed'],
-  ['auth_expired', '🔐 Auth expired'],
-  ['skipped_prereq', '⊘ Skipped (prerequisite failed)'],
-  ['prerequisite_failed', '⊘ Skipped (prerequisite failed)'],
-  ['skipped_tier_mismatch', '⊘ Skipped (tier mismatch)'],
-  ['skipped_no_auth', '⊘ Skipped (no cloud auth)'],
-  ['unsupported_type', '⊘ Skipped (unsupported type)'],
-  ['fetch_failed', '⊘ Skipped (fetch failed)'],
-  ['resolution_failed', '⊘ Skipped (resolution failed)'],
-];
-
-/** Per-guide listing icons. */
-const GUIDE_STATUS_ICONS: Record<GuideStatus, string> = {
-  passed: '✅',
-  failed: '❌',
-  validation_failed: '❌',
-  auth_expired: '🔐',
-  skipped_prereq: '⊘',
-  prerequisite_failed: '⊘',
-  skipped_tier_mismatch: '⊘',
-  skipped_no_auth: '⊘',
-  unsupported_type: '⊘',
-  fetch_failed: '⊘',
-  resolution_failed: '⊘',
-};
-
-interface GuideRunResult {
-  guide: string;
-  id: string;
-  status: GuideStatus;
-  exitCode: number;
-  traceFile?: string;
-  abortReason?: AbortReason;
-  abortMessage?: string;
-  resultsData?: TestResultsData;
-  autoIncluded: boolean;
-  failedPrerequisite?: string;
-  /** Declared tier for pre-run skips (for reporting). */
-  tier?: string;
-}
 
 /** Repository source for dependency-aware planning (local index or remote CDN index). */
 interface RepoSource {
@@ -289,25 +214,6 @@ function resolveGuides(files: string[], options: E2ECommandOptions): LoadedGuide
   return guides;
 }
 
-/**
- * Print the results of a manifest pre-flight check to the console.
- */
-function printPreflightOutcome(outcome: PreflightOutcome, verbose: boolean): void {
-  for (const result of outcome.results) {
-    if (result.status === 'pass') {
-      if (verbose) {
-        console.log(`   ✓ ${result.check}`);
-      }
-    } else if (result.status === 'skip') {
-      if (verbose) {
-        console.log(`   ⊘ ${result.check}: ${result.reason}`);
-      }
-    } else {
-      console.error(`   ✗ ${result.check}: ${result.message}`);
-    }
-  }
-}
-
 /** The dependency-aware execution plan produced by planGuideExecution. */
 type ExecutionPlan = ReturnType<typeof planGuideExecution>;
 
@@ -375,39 +281,6 @@ function resolveValidGuides(files: string[], options: E2ECommandOptions): Loaded
   }
 
   return valid;
-}
-
-/**
- * Print the validation-passed banner and the resolved run configuration.
- */
-function printRunConfiguration(valid: LoadedGuide[], options: E2ECommandOptions, mode: RunMode): void {
-  console.log(`\n✅ Guide validation passed for ${valid.length} guide(s).`);
-  console.log('\n📋 E2E test configuration:');
-  console.log(`   Grafana URL: ${options.grafanaUrl}`);
-  console.log(`   Tier:        ${options.tier}`);
-  console.log(`   Artifacts:   ${options.artifacts}`);
-  if (mode === 'remote-package') {
-    console.log(`   Package:     ${options.package} (remote)`);
-  } else if (mode === 'remote-repository') {
-    console.log(`   Source:      remote repository index`);
-  } else if (options.package) {
-    console.log(`   Package:     ${options.package}`);
-  }
-  if (options.output) {
-    console.log(`   Output:      ${options.output}`);
-  }
-  if (options.trace) {
-    console.log(`   Trace:       enabled`);
-  }
-  if (options.headed) {
-    console.log(`   Headed:      enabled (browser visible)`);
-  }
-  if (options.alwaysScreenshot) {
-    console.log(`   Screenshots: on success and failure`);
-  }
-  if (options.clean) {
-    console.log(`   Clean:       enabled (project "${CLEAN_COMPOSE_PROJECT}", isolated from any dev stack)`);
-  }
 }
 
 /**
@@ -611,23 +484,6 @@ async function runPreflightChecks(options: E2ECommandOptions, packageDir?: strin
 }
 
 /**
- * Merge package metadata into a guide's report data (no-op for local guides,
- * which have no package metadata).
- */
-function applyPackageMeta(data: TestResultsData | undefined, meta: PackageMeta | undefined): void {
-  if (!data || !meta) {
-    return;
-  }
-  data.guide = {
-    ...data.guide,
-    packageId: meta.packageId,
-    tier: meta.tier,
-    instance: meta.instance,
-    sourceUrl: meta.sourceUrl,
-  };
-}
-
-/**
  * Execute the planned chains guide-by-guide. Under --clean the environment is
  * reset between chains (not between guides in a chain). Guides whose prerequisite
  * failed within a chain are skipped. Returns per-guide results plus whether
@@ -752,172 +608,13 @@ async function runChains(
 }
 
 /**
- * Count guides by terminal status. Computed once and shared by both summary
- * presentations.
- */
-function countGuideStatuses(results: GuideRunResult[]): Record<GuideStatus, number> {
-  const counts = Object.fromEntries(GUIDE_STATUS_LABELS.map(([status]) => [status, 0])) as Record<GuideStatus, number>;
-  for (const result of results) {
-    counts[result.status] += 1;
-  }
-  return counts;
-}
-
-/** Short parenthetical reason for a guide's per-line listing, if any. */
-function guideResultReason(result: GuideRunResult): string {
-  if (result.status === 'skipped_prereq' && result.failedPrerequisite) {
-    return ` (prerequisite "${result.failedPrerequisite}" failed)`;
-  }
-  if (result.status === 'auth_expired') {
-    return ' (auth expired)';
-  }
-  if (result.abortMessage && result.status !== 'passed' && result.status !== 'failed') {
-    return ` (${result.abortMessage})`;
-  }
-  return '';
-}
-
-/**
- * Print the run summary: aggregate guide/step counts for multi-guide runs, or a
- * compact pass/fail breakdown for a single guide.
- */
-function printSummary(results: GuideRunResult[]): void {
-  const resultsWithData = results.filter((r) => r.resultsData).map((r) => r.resultsData!);
-  const isMultiGuide = results.length > 1;
-  const counts = countGuideStatuses(results);
-
-  console.log('\n' + '─'.repeat(68));
-  console.log('📊 Summary');
-  console.log('─'.repeat(68));
-
-  if (isMultiGuide) {
-    // Multi-guide summary: passed headline + one line per non-zero status.
-    console.log(`\n   Guides: ${counts.passed}/${results.length} passed`);
-    for (const [status, label] of GUIDE_STATUS_LABELS) {
-      if (status !== 'passed' && counts[status] > 0) {
-        console.log(`   ├─ ${label}: ${counts[status]}`);
-      }
-    }
-
-    // Aggregate step statistics across all guides
-    if (resultsWithData.length > 0) {
-      const totalSteps = resultsWithData.reduce((sum, r) => sum + r.results.length, 0);
-      const passedSteps = resultsWithData.reduce(
-        (sum, r) => sum + r.results.filter((s) => s.status === 'passed').length,
-        0
-      );
-      const failedSteps = resultsWithData.reduce(
-        (sum, r) => sum + r.results.filter((s) => s.status === 'failed').length,
-        0
-      );
-      const skippedSteps = resultsWithData.reduce(
-        (sum, r) => sum + r.results.filter((s) => s.status === 'skipped').length,
-        0
-      );
-      const notReachedSteps = resultsWithData.reduce(
-        (sum, r) => sum + r.results.filter((s) => s.status === 'not_reached').length,
-        0
-      );
-
-      console.log(`\n   Steps: ${totalSteps} total`);
-      console.log(`   ├─ ✅ Passed: ${passedSteps}`);
-      if (failedSteps > 0) {
-        console.log(`   ├─ ❌ Failed: ${failedSteps}`);
-      }
-      if (skippedSteps > 0) {
-        console.log(`   ├─ ⊘ Skipped: ${skippedSteps}`);
-      }
-      if (notReachedSteps > 0) {
-        console.log(`   └─ ○ Not reached: ${notReachedSteps}`);
-      }
-    }
-
-    // List individual guide results
-    console.log(`\n   Guide results:`);
-    for (const result of results) {
-      const icon = GUIDE_STATUS_ICONS[result.status];
-      const suffix = result.autoIncluded ? ' (auto-included)' : '';
-      console.log(`   ${icon} ${result.id}${suffix}${guideResultReason(result)}`);
-    }
-  } else {
-    // Single guide summary: one line per non-zero status.
-    for (const [status, label] of GUIDE_STATUS_LABELS) {
-      if (counts[status] > 0) {
-        console.log(`   ${label}: ${counts[status]}`);
-      }
-    }
-  }
-
-  console.log('\n' + '─'.repeat(68));
-}
-
-/**
- * Extract pre-run skip outcomes (remote modes) for inclusion in the JSON report.
- */
-function preRunSkipsFromResults(results: GuideRunResult[]): PreRunSkip[] {
-  return results
-    .filter((r) => PRE_RUN_SKIP_STATUSES.has(r.status))
-    .map((r) => ({
-      id: r.id,
-      reason: r.status,
-      message: r.abortMessage ?? '',
-      failed: FAILURE_STATUSES.has(r.status),
-      tier: r.tier,
-      sourceUrl: r.guide,
-    }));
-}
-
-/**
- * Write the JSON report when --output is set: an aggregated multi-guide report
- * or a single detailed report. A failure to write is a warning, not an error.
- */
-function writeJsonReport(results: GuideRunResult[], options: E2ECommandOptions): void {
-  if (!options.output) {
-    return;
-  }
-
-  const resultsWithData = results.filter((r) => r.resultsData).map((r) => r.resultsData!);
-  const isMultiGuide = results.length > 1;
-  const preRunSkipped = preRunSkipsFromResults(results);
-
-  if (resultsWithData.length === 0) {
-    console.warn(`   ⚠ No test results available for JSON report`);
-  } else if (isMultiGuide) {
-    try {
-      const report = generateMultiGuideReport(resultsWithData);
-      if (preRunSkipped.length > 0) {
-        report.preRunSkipped = preRunSkipped;
-      }
-      writeMultiGuideReport(report, options.output);
-      console.log(`\n📄 Multi-guide JSON report written to: ${options.output}`);
-      console.log(`   ${formatMultiGuideSummary(report)}`);
-    } catch (err) {
-      console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  } else {
-    try {
-      const report = generateReport(resultsWithData[0]!);
-      if (preRunSkipped.length > 0) {
-        report.preRunSkipped = preRunSkipped;
-      }
-      writeReport(report, options.output);
-      console.log(`\n📄 JSON report written to: ${options.output}`);
-    } catch (err) {
-      console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  }
-}
-
-/**
- * Exit with the code implied by the final results: auth failure takes precedence
- * over a generic/validation test failure; a fully passing run returns to the caller.
+ * Exit with the code implied by the final results. A fully passing run returns
+ * to the caller without exiting; any other outcome exits the process.
  */
 function exitFromResults(results: GuideRunResult[]): void {
-  if (results.some((r) => r.status === 'auth_expired')) {
-    process.exit(ExitCode.AUTH_FAILURE);
-  }
-  if (results.some((r) => FAILURE_STATUSES.has(r.status))) {
-    process.exit(ExitCode.TEST_FAILURE);
+  const code = exitCodeFromResults(results);
+  if (code !== ExitCode.SUCCESS) {
+    process.exit(code);
   }
 }
 
@@ -928,51 +625,8 @@ function exitFromResults(results: GuideRunResult[]): void {
  */
 function reportResults(results: GuideRunResult[], options: E2ECommandOptions): void {
   printSummary(results);
-  writeJsonReport(results, options);
+  writeJsonReport(results, options.output);
   exitFromResults(results);
-}
-
-/** True when the value points at an existing local directory (vs. a bare package ID). */
-function isExistingDir(value: string): boolean {
-  try {
-    return existsSync(value) && statSync(value).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-/** Determine how guide inputs should be resolved for this run. */
-function resolveRunMode(options: E2ECommandOptions): RunMode {
-  if (options.remote) {
-    return 'remote-repository';
-  }
-  if (options.package && !isExistingDir(options.package)) {
-    return 'remote-package';
-  }
-  return 'local';
-}
-
-/** Convert a pre-run skipped package into a guide run result. */
-function skipToResult(skip: SkippedPackage): GuideRunResult {
-  return {
-    guide: skip.sourceUrl ?? skip.id,
-    id: skip.id,
-    status: skip.reason,
-    exitCode: skip.reason === 'validation_failed' ? ExitCode.TEST_FAILURE : ExitCode.SUCCESS,
-    autoIncluded: false,
-    abortMessage: skip.message,
-    tier: skip.tier,
-  };
-}
-
-/** Index resolved remote guides by ID for report enrichment. */
-function buildPackageMetaMap(runnable: ResolvedRemoteGuide[]): Map<string, PackageMeta> {
-  return new Map(
-    runnable.map((g) => [
-      g.id,
-      { packageId: g.id, tier: g.tier, instance: g.instance, targetUrl: g.targetUrl, sourceUrl: g.sourceUrl },
-    ])
-  );
 }
 
 /**
@@ -985,20 +639,6 @@ function remoteLoadGuideById(
 ): (id: string, entry: RepositoryEntry) => LoadedGuide | null {
   const byId = new Map(runnable.map((g) => [g.id, g.guide]));
   return (id: string) => byId.get(id) ?? null;
-}
-
-/** Print a one-line (or verbose) summary of what remote resolution produced. */
-function printRemoteResolution(resolution: RemoteResolution, mode: RunMode, options: E2ECommandOptions): void {
-  const source = mode === 'remote-package' ? `package "${options.package}"` : 'repository index';
-  console.log(`\n📦 Resolved ${source}: ${resolution.runnable.length} runnable, ${resolution.skipped.length} skipped`);
-  if (options.verbose) {
-    for (const g of resolution.runnable) {
-      console.log(`   ✓ ${g.id} (${g.tier}) → ${g.sourceUrl}`);
-    }
-    for (const s of resolution.skipped) {
-      console.log(`   ⊘ ${s.id}: ${s.reason} — ${s.message}`);
-    }
-  }
 }
 
 /**
@@ -1036,7 +676,7 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     process.exit(ExitCode.CONFIGURATION_ERROR);
   }
 
-  printRemoteResolution(resolution, mode, options);
+  printRemoteResolution(resolution, mode, options.package, options.verbose);
 
   // Only `runnable` guides are selected to run; `prerequisites` are made
   // available to the planner (loader + metadata) so it auto-includes them the
