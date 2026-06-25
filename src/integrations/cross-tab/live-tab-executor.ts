@@ -111,13 +111,9 @@ export function installLiveTabExecutor(
   // instead of permanently bricking the executor for the session (NEW-1064-1).
   installed = true;
 
-  // Teardown flag: a replay in flight (or queued) must not touch the DOM after
-  // uninstall (NEW-1064-2).
   let cancelled = false;
-  // Serialize replays onto a single chain so a slow paced replay finishes (or
-  // is cancelled) before the next command starts — commands cannot interleave
-  // and race on shared highlight state (F-1069-1).
   let queue: Promise<void> = Promise.resolve();
+  const acceptedSenderIds = new Set<string>();
 
   const runAction = async (action: CrossTabInternalAction, isShow: boolean): Promise<void> => {
     const data: InteractiveElementData = {
@@ -301,7 +297,13 @@ export function installLiveTabExecutor(
     transport.post({ kind: 'fix-result', requestId: message.requestId, stepId: message.stepId, ok, error });
   };
 
-  // Only restore a sidebar this tab actually gave up to a controller.
+  const handlePairingAccepted = (e: Event) => {
+    const { senderId } = (e as CustomEvent<{ senderId: string }>).detail;
+    acceptedSenderIds.add(senderId);
+    transport.post({ kind: 'heartbeat', role: 'live' });
+  };
+  window.addEventListener('pathfinder-pairing-accepted', handlePairingAccepted);
+
   let handedOffSidebar = false;
 
   const unsubscribe = transport.onMessage((message) => {
@@ -321,7 +323,13 @@ export function installLiveTabExecutor(
     } else if (validated.kind === 'fix-requirement') {
       void runRemoteFix(validated);
     } else if (validated.kind === 'heartbeat' && validated.role === 'controller') {
-      transport.post({ kind: 'heartbeat', role: 'live' });
+      if (acceptedSenderIds.has(validated.senderId)) {
+        transport.post({ kind: 'heartbeat', role: 'live' });
+      } else {
+        window.dispatchEvent(
+          new CustomEvent('pathfinder-pairing-request', { detail: { senderId: validated.senderId } })
+        );
+      }
     } else if (validated.kind === 'sidebar-handoff') {
       if (validated.action === 'close') {
         if (sidebarState.getIsSidebarMounted()) {
@@ -339,6 +347,7 @@ export function installLiveTabExecutor(
   transport.start();
 
   return () => {
+    window.removeEventListener('pathfinder-pairing-accepted', handlePairingAccepted);
     cancelled = true;
     unsubscribe();
     transport.stop();

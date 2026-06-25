@@ -398,4 +398,10 @@ export const testIds = {
     closeHint: 'guide-reader-close-hint',
     controllerStatus: 'guide-reader-controller-status',
   },
+
+  pairingBanner: {
+    banner: 'pathfinder-pairing-banner',
+    acceptButton: 'pathfinder-pairing-accept',
+    rejectButton: 'pathfinder-pairing-reject',
+  },
 };

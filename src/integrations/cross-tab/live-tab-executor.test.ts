@@ -355,11 +355,16 @@ describe('installLiveTabExecutor', () => {
     uninstall();
   });
 
-  it('responds to a controller heartbeat with a live heartbeat', () => {
+  it('responds to a controller heartbeat with a live heartbeat after gesture-to-accept', () => {
     const transport = new FakeTransport();
     const uninstall = installLiveTabExecutor(transport);
 
     transport.emit(controllerHeartbeat());
+
+    // Heartbeat alone must NOT trigger a live reply — user gesture required first.
+    expect(transport.postedMessages).not.toContainEqual({ kind: 'heartbeat', role: 'live' });
+
+    window.dispatchEvent(new CustomEvent('pathfinder-pairing-accepted', { detail: { senderId: 'controller' } }));
 
     expect(transport.postedMessages).toContainEqual({ kind: 'heartbeat', role: 'live' });
     uninstall();
@@ -582,5 +587,110 @@ describe('installLiveTabExecutor', () => {
     expect(checkRequirements).not.toHaveBeenCalled();
     expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'requirement-result' }));
     uninstall();
+  });
+
+  describe('gesture-to-accept pairing', () => {
+    it('unknown sender fires pairing-request event and withholds live heartbeat', () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+
+      const requestEvents: CustomEvent[] = [];
+      const requestListener = (e: Event) => requestEvents.push(e as CustomEvent);
+      window.addEventListener('pathfinder-pairing-request', requestListener);
+
+      transport.emit(controllerHeartbeat());
+
+      expect(requestEvents).toHaveLength(1);
+      expect(requestEvents[0]!.detail.senderId).toBe('controller');
+      expect(transport.postedMessages).not.toContainEqual({ kind: 'heartbeat', role: 'live' });
+
+      window.removeEventListener('pathfinder-pairing-request', requestListener);
+      uninstall();
+    });
+
+    it('pathfinder-pairing-accepted causes live heartbeat to be posted', () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+
+      transport.emit(controllerHeartbeat());
+      expect(transport.postedMessages).not.toContainEqual({ kind: 'heartbeat', role: 'live' });
+
+      window.dispatchEvent(new CustomEvent('pathfinder-pairing-accepted', { detail: { senderId: 'controller' } }));
+
+      expect(transport.postedMessages).toContainEqual({ kind: 'heartbeat', role: 'live' });
+      uninstall();
+    });
+
+    it('already-accepted sender auto-responds to subsequent heartbeats without re-prompting', () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+
+      const requestEvents: CustomEvent[] = [];
+      const requestListener = (e: Event) => requestEvents.push(e as CustomEvent);
+      window.addEventListener('pathfinder-pairing-request', requestListener);
+
+      transport.emit(controllerHeartbeat());
+      window.dispatchEvent(new CustomEvent('pathfinder-pairing-accepted', { detail: { senderId: 'controller' } }));
+
+      transport.postedMessages.length = 0;
+      requestEvents.length = 0;
+
+      transport.emit(controllerHeartbeat());
+
+      expect(transport.postedMessages).toContainEqual({ kind: 'heartbeat', role: 'live' });
+      expect(requestEvents).toHaveLength(0);
+
+      window.removeEventListener('pathfinder-pairing-request', requestListener);
+      uninstall();
+    });
+
+    it('different senderId than accepted sender prompts again without auto-responding', () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+
+      const requestEvents: CustomEvent[] = [];
+      const requestListener = (e: Event) => requestEvents.push(e as CustomEvent);
+      window.addEventListener('pathfinder-pairing-request', requestListener);
+
+      // Accept ctrl-A
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'ctrl-A',
+        timestamp: 0,
+        kind: 'heartbeat',
+        role: 'controller',
+      });
+      window.dispatchEvent(new CustomEvent('pathfinder-pairing-accepted', { detail: { senderId: 'ctrl-A' } }));
+
+      transport.postedMessages.length = 0;
+      requestEvents.length = 0;
+
+      // Now ctrl-B heartbeats
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'ctrl-B',
+        timestamp: 0,
+        kind: 'heartbeat',
+        role: 'controller',
+      });
+
+      expect(requestEvents).toHaveLength(1);
+      expect(requestEvents[0]!.detail.senderId).toBe('ctrl-B');
+      expect(transport.postedMessages).not.toContainEqual({ kind: 'heartbeat', role: 'live' });
+
+      window.removeEventListener('pathfinder-pairing-request', requestListener);
+      uninstall();
+    });
+
+    it('removes pathfinder-pairing-accepted listener on teardown', () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+      uninstall();
+
+      transport.postedMessages.length = 0;
+      window.dispatchEvent(new CustomEvent('pathfinder-pairing-accepted', { detail: { senderId: 'controller' } }));
+
+      expect(transport.postedMessages).not.toContainEqual({ kind: 'heartbeat', role: 'live' });
+    });
   });
 });

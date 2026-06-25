@@ -121,15 +121,12 @@ export function ControllerChannelProvider({
         if (message.role !== 'live') {
           return;
         }
-        // PAIRING SITE. TODO(twotab): v1 ships without a sender handshake — the
-        // controller binds to the first live tab that sends a `live` heartbeat,
-        // so any same-origin script that learns the channel name can claim this
-        // slot with a forged heartbeat. Once paired it can drive check-requirements
-        // / fix-requirement, which run navigation + DOM mutation against the
-        // authenticated live tab (the highest-risk surface, #1070). Per-kind
-        // validation gates message SHAPE, not AUTHORIZATION. Future work: a
-        // gesture-to-accept on the live tab or an out-of-band nonce at controller
-        // open. See CROSS_TAB_CONTROLLER.md "Known limitations".
+        // PAIRING SITE. The live tab now gates this via gesture-to-accept:
+        // an unknown sender's heartbeat dispatches `pathfinder-pairing-request`
+        // on the live tab's window; PairingRequestBanner presents an Accept/Reject
+        // prompt; the live tab only posts its heartbeat reply after the user accepts
+        // (via `pathfinder-pairing-accepted`). Per-kind validation gates message
+        // SHAPE, not AUTHORIZATION — that gate is unchanged (T1 PART C below).
         if (pairedLiveIdRef.current === null) {
           pairedLiveIdRef.current = message.senderId;
         }
