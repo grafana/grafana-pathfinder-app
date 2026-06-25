@@ -8,13 +8,15 @@ jest.mock('@grafana/ui', () => ({
   Button: ({
     children,
     onClick,
+    autoFocus,
     'data-testid': testId,
   }: {
     children: React.ReactNode;
     onClick: () => void;
+    autoFocus?: boolean;
     'data-testid'?: string;
   }) => (
-    <button onClick={onClick} data-testid={testId}>
+    <button onClick={onClick} autoFocus={autoFocus} data-testid={testId}>
       {children}
     </button>
   ),
@@ -114,6 +116,23 @@ describe('PairingRequestBanner', () => {
 
     expect(rejected).toHaveLength(1);
     expect(rejected[0]!.detail.senderId).toBe('ctrl-3');
+    expect(screen.queryByTestId(testIds.pairingBanner.banner)).not.toBeInTheDocument();
+  });
+
+  it('pressing Escape dispatches pathfinder-pairing-rejected and hides banner', () => {
+    render(<PairingRequestBanner />);
+    firePairingRequest('ctrl-esc');
+
+    const rejected: CustomEvent[] = [];
+    const listener = (e: Event) => rejected.push(e as CustomEvent);
+    window.addEventListener('pathfinder-pairing-rejected', listener);
+
+    fireEvent.keyDown(screen.getByTestId(testIds.pairingBanner.banner), { key: 'Escape' });
+
+    window.removeEventListener('pathfinder-pairing-rejected', listener);
+
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]!.detail.senderId).toBe('ctrl-esc');
     expect(screen.queryByTestId(testIds.pairingBanner.banner)).not.toBeInTheDocument();
   });
 

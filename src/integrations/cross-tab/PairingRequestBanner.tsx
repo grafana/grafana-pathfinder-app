@@ -84,11 +84,21 @@ function BannerInner({ senderId, onAccept, onReject }: BannerInnerProps) {
       aria-label="Pairing request"
       data-testid={testIds.pairingBanner.banner}
       className={styles.banner}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          handleReject();
+        }
+      }}
     >
       <p className={styles.heading}>Allow Pathfinder to control this tab?</p>
       <p className={styles.body}>A Pathfinder controller tab is requesting to guide you through interactive steps.</p>
       <div className={styles.actions}>
-        <Button variant="primary" onClick={handleAccept} data-testid={testIds.pairingBanner.acceptButton}>
+        <Button
+          variant="primary"
+          onClick={handleAccept}
+          autoFocus
+          data-testid={testIds.pairingBanner.acceptButton}
+        >
           Accept
         </Button>
         <Button variant="secondary" onClick={handleReject} data-testid={testIds.pairingBanner.rejectButton}>

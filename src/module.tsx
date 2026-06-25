@@ -171,7 +171,6 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   if (TWOTAB_CONTROLLER_ENABLED && shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
     import('./integrations/cross-tab/live-tab-executor')
       .then(async ({ installLiveTabExecutor }) => {
-        installLiveTabExecutor();
         if (!document.getElementById('pathfinder-pairing-banner-root')) {
           const [{ createCompatRoot }, { PairingRequestBanner }] = await Promise.all([
             import('./lib/create-root-compat'),
@@ -183,6 +182,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           const root = await createCompatRoot(container);
           root.render(React.createElement(PairingRequestBanner));
         }
+        installLiveTabExecutor();
       })
       .catch((err) => console.error('[Pathfinder] Failed to load cross-tab executor:', err));
   }

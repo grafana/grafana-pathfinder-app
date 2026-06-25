@@ -112,6 +112,7 @@ export function installLiveTabExecutor(
   installed = true;
 
   let cancelled = false;
+  // Serialized: concurrent replays race on shared highlight state.
   let queue: Promise<void> = Promise.resolve();
   const acceptedSenderIds = new Set<string>();
 
