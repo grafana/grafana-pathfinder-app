@@ -79,6 +79,10 @@ The transport degrades to a no-op where `BroadcastChannel` is unavailable. The
 provider is inert until a tab actually drives one; the executor, however, is a
 DOM sink and is **not** unconditionally safe to install — see the trust model.
 
+## Entry gate and mount policy
+
+Both the controller overlay (`?controller=1` path) and the live-tab executor install are gated on `shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)` — the same policy that controls whether the main Pathfinder sidebar mounts. Using only `pathfinderEnabled` would allow the controller and executor to appear for users in the experiment control group, where no Pathfinder surface exists. Because the executor drives the user's authenticated Grafana DOM, it must follow the same exclusion logic as the rest of the plugin.
+
 ## Security / trust model
 
 `BroadcastChannel` is shared by every script running on the same origin, so a

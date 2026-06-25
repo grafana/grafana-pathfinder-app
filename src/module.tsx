@@ -135,12 +135,17 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   // Interactive controller (?doc=<guide>&controller=1): the same overlay, but
   // step actions stay visible so this tab can drive the originating Grafana tab.
-  // Gated on pathfinderEnabled — the controller drives the user's authenticated
-  // Grafana, so it must not mount when the plugin is disabled (F-1062-1).
-  if (TWOTAB_CONTROLLER_ENABLED && docsParam && controllerParam && pathfinderEnabled) {
+  // Gated on shouldMountSidebar — the controller drives the user's authenticated
+  // Grafana, so it must not mount when the plugin is disabled.
+  if (
+    TWOTAB_CONTROLLER_ENABLED &&
+    docsParam &&
+    controllerParam &&
+    shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)
+  ) {
     if (!document.getElementById('pathfinder-controller-root')) {
       // Claim the id synchronously, before the dynamic import, so a second
-      // plugin.init can't race past the guard and double-mount (F-1062-2).
+      // plugin.init can't race past the guard and double-mount.
       const container = document.createElement('div');
       container.id = 'pathfinder-controller-root';
       document.body.appendChild(container);
@@ -160,10 +165,10 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   // Live tab only (the controller tab returned early above): load the cross-tab
   // executor so a controller tab can drive this Grafana DOM. Gated on
-  // pathfinderEnabled (T1 PART B) — the executor is a same-origin DOM sink and
-  // must not be installed for disabled users. Lazy import keeps the interactive
-  // engine out of the entry bundle.
-  if (TWOTAB_CONTROLLER_ENABLED && pathfinderEnabled) {
+  // shouldMountSidebar — the executor is a same-origin DOM sink and must not be
+  // installed for users the experiment has excluded. Lazy import keeps the
+  // interactive engine out of the entry bundle.
+  if (TWOTAB_CONTROLLER_ENABLED && shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
     import('./integrations/cross-tab/live-tab-executor')
       .then(({ installLiveTabExecutor }) => installLiveTabExecutor())
       .catch((err) => console.error('[Pathfinder] Failed to load cross-tab executor:', err));
