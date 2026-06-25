@@ -19,10 +19,13 @@ import { existsSync, statSync } from 'fs';
 import {
   applyPackageMeta,
   buildPackageMetaMap,
+  countGuideStatuses,
   exitCodeFromResults,
+  guideResultReason,
   preRunSkipsFromResults,
   resolveRunMode,
   skipToResult,
+  summarizeSteps,
   GUIDE_STATUS_ICONS,
   GUIDE_STATUS_LABELS,
   type GuideRunResult,
@@ -264,5 +267,94 @@ describe('status label / icon tables', () => {
 
     expect(label).toBe('❌ Validation failed');
     expect(GUIDE_STATUS_ICONS.validation_failed).toBe('❌');
+  });
+});
+
+describe('countGuideStatuses', () => {
+  const result = (status: GuideRunResult['status']): GuideRunResult => ({
+    guide: status,
+    id: status,
+    status,
+    exitCode: 0,
+    autoIncluded: false,
+  });
+
+  it('tallies results by status', () => {
+    const counts = countGuideStatuses([result('passed'), result('passed'), result('validation_failed')]);
+
+    expect(counts.passed).toBe(2);
+    expect(counts.validation_failed).toBe(1);
+    // Unseen statuses are still present and zero, so callers can index any status safely.
+    expect(counts.failed).toBe(0);
+    expect(counts.skipped_tier_mismatch).toBe(0);
+  });
+
+  it('has a zero entry for every labelled status when there are no results', () => {
+    const counts = countGuideStatuses([]);
+
+    for (const [status] of GUIDE_STATUS_LABELS) {
+      expect(counts[status]).toBe(0);
+    }
+  });
+});
+
+describe('guideResultReason', () => {
+  const base: GuideRunResult = { guide: 'g', id: 'g', status: 'passed', exitCode: 0, autoIncluded: false };
+
+  it('names the failed prerequisite for a skipped_prereq guide', () => {
+    expect(guideResultReason({ ...base, status: 'skipped_prereq', failedPrerequisite: 'prom-101' })).toBe(
+      ' (prerequisite "prom-101" failed)'
+    );
+  });
+
+  it('reports auth expiry', () => {
+    expect(guideResultReason({ ...base, status: 'auth_expired' })).toBe(' (auth expired)');
+  });
+
+  it('surfaces an abortMessage for a skip status', () => {
+    expect(guideResultReason({ ...base, status: 'fetch_failed', abortMessage: 'HTTP 503' })).toBe(' (HTTP 503)');
+  });
+
+  it('suppresses the abortMessage for passed and failed statuses', () => {
+    expect(guideResultReason({ ...base, status: 'passed', abortMessage: 'noise' })).toBe('');
+    expect(guideResultReason({ ...base, status: 'failed', abortMessage: 'noise' })).toBe('');
+  });
+
+  it('returns an empty string when there is no reason to show', () => {
+    expect(guideResultReason({ ...base, status: 'skipped_prereq' })).toBe('');
+  });
+});
+
+describe('summarizeSteps', () => {
+  type StepStatus = 'passed' | 'failed' | 'skipped' | 'not_reached';
+
+  function guideData(...statuses: StepStatus[]): TestResultsData {
+    return {
+      guide: { id: 'g', title: 'g', path: 'g/content.json', targetUrl: 'http://localhost:3000' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      results: statuses.map((status) => ({
+        stepId: status,
+        status,
+        durationMs: 0,
+        currentUrl: '/',
+        consoleErrors: [],
+        skippable: false,
+      })),
+      aborted: false,
+    };
+  }
+
+  it('tallies step statuses across every guide into a single total', () => {
+    const summary = summarizeSteps([
+      guideData('passed', 'passed', 'failed'),
+      guideData('skipped', 'not_reached', 'passed'),
+    ]);
+
+    expect(summary).toEqual({ total: 6, passed: 3, failed: 1, skipped: 1, notReached: 1 });
+  });
+
+  it('returns an all-zero summary for no guides or empty guides', () => {
+    expect(summarizeSteps([])).toEqual({ total: 0, passed: 0, failed: 0, skipped: 0, notReached: 0 });
+    expect(summarizeSteps([guideData()])).toEqual({ total: 0, passed: 0, failed: 0, skipped: 0, notReached: 0 });
   });
 });

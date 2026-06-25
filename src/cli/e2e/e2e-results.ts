@@ -189,3 +189,63 @@ export function exitCodeFromResults(results: GuideRunResult[]): number {
   }
   return ExitCode.SUCCESS;
 }
+
+/**
+ * Count guides by terminal status. Every status in the vocabulary is
+ * represented (initialized to zero) so callers can index any status safely.
+ */
+export function countGuideStatuses(results: GuideRunResult[]): Record<GuideStatus, number> {
+  const counts = Object.fromEntries(GUIDE_STATUS_LABELS.map(([status]) => [status, 0])) as Record<GuideStatus, number>;
+  for (const result of results) {
+    counts[result.status] += 1;
+  }
+  return counts;
+}
+
+/** Short parenthetical reason for a guide's per-line listing, if any. */
+export function guideResultReason(result: GuideRunResult): string {
+  if (result.status === 'skipped_prereq' && result.failedPrerequisite) {
+    return ` (prerequisite "${result.failedPrerequisite}" failed)`;
+  }
+  if (result.status === 'auth_expired') {
+    return ' (auth expired)';
+  }
+  if (result.abortMessage && result.status !== 'passed' && result.status !== 'failed') {
+    return ` (${result.abortMessage})`;
+  }
+  return '';
+}
+
+/** Aggregate step counts across guides, for the run summary. */
+export interface StepSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  notReached: number;
+}
+
+/** Tally step statuses across every guide's results in a single pass. */
+export function summarizeSteps(resultsData: TestResultsData[]): StepSummary {
+  const summary: StepSummary = { total: 0, passed: 0, failed: 0, skipped: 0, notReached: 0 };
+  for (const data of resultsData) {
+    for (const step of data.results) {
+      summary.total += 1;
+      switch (step.status) {
+        case 'passed':
+          summary.passed += 1;
+          break;
+        case 'failed':
+          summary.failed += 1;
+          break;
+        case 'skipped':
+          summary.skipped += 1;
+          break;
+        case 'not_reached':
+          summary.notReached += 1;
+          break;
+      }
+    }
+  }
+  return summary;
+}
