@@ -11,59 +11,25 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { querySelectorAllEnhanced } from '../../lib/dom/enhanced-selector';
 import { resolveSelector } from '../../lib/dom/selector-resolver';
+import { analyzeSelectorString } from '../../lib/dom/selector-generator';
 import { useDebouncedValue } from './useDebouncedValue';
 
 interface SelectorHealthBadgeProps {
   reftarget: string;
 }
 
-interface SelectorInfo {
+const QUALITY_COLORS: Record<string, string> = {
+  good: '#73BF69',
+  medium: '#FF9830',
+  poor: '#F2495C',
+};
+
+interface BadgeInfo {
   method: string;
-  score: number;
+  stabilityScore: number;
+  quality: string;
   matchCount: number;
   warnings: string[];
-}
-
-function analyzeSelectorPattern(reftarget: string): Omit<SelectorInfo, 'matchCount'> {
-  const warnings: string[] = [];
-  let method = 'compound';
-  let score = 40;
-
-  if (reftarget.includes('data-testid')) {
-    method = 'data-testid';
-    score = 100;
-  } else if (reftarget.includes('aria-label')) {
-    method = 'aria-label';
-    score = 85;
-  } else if (reftarget.includes('#')) {
-    method = 'id';
-    score = 90;
-  } else if (reftarget.includes(':text(') || reftarget.includes(':contains(')) {
-    method = 'text';
-    score = reftarget.includes(':text(') ? 65 : 55;
-    warnings.push('Text-based selectors are fragile and may break if the UI text changes');
-  } else if (reftarget.includes(':nth-match') || reftarget.includes(':nth-of-type')) {
-    method = 'positional';
-    score = reftarget.includes(':nth-match') ? 15 : 25;
-    warnings.push('Positional selectors are fragile and may break if the page layout changes');
-  }
-
-  if (reftarget.includes(' > ') && reftarget.split(' > ').length > 3) {
-    warnings.push('Deep nesting makes the selector fragile');
-    score = Math.max(10, score - 15);
-  }
-
-  return { method, score, warnings };
-}
-
-function getQuality(score: number): { label: string; color: string } {
-  if (score >= 80) {
-    return { label: 'good', color: '#73BF69' };
-  }
-  if (score >= 40) {
-    return { label: 'medium', color: '#FF9830' };
-  }
-  return { label: 'poor', color: '#F2495C' };
 }
 
 export function SelectorHealthBadge({ reftarget }: SelectorHealthBadgeProps) {
@@ -72,12 +38,14 @@ export function SelectorHealthBadge({ reftarget }: SelectorHealthBadgeProps) {
   // Debounce the reftarget so DOM queries don't fire on every keystroke
   const debouncedTarget = useDebouncedValue(reftarget, 500);
 
-  const info = useMemo<SelectorInfo | null>(() => {
+  const info = useMemo<BadgeInfo | null>(() => {
     if (!debouncedTarget.trim()) {
       return null;
     }
 
-    const analysis = analyzeSelectorPattern(debouncedTarget);
+    // Quality/flags/score come from the generator's model so the badge agrees
+    // with what the picker would have produced.
+    const analysis = analyzeSelectorString(debouncedTarget);
     const allWarnings = [...analysis.warnings];
 
     let matchCount = 0;
@@ -95,21 +63,27 @@ export function SelectorHealthBadge({ reftarget }: SelectorHealthBadgeProps) {
       allWarnings.push(`Selector matches ${matchCount} elements; consider making it more specific`);
     }
 
-    return { method: analysis.method, score: analysis.score, matchCount, warnings: allWarnings };
+    return {
+      method: analysis.method,
+      stabilityScore: analysis.stabilityScore,
+      quality: analysis.quality,
+      matchCount,
+      warnings: allWarnings,
+    };
   }, [debouncedTarget]);
 
   if (!info) {
     return null;
   }
 
-  const quality = getQuality(info.score);
+  const dotColor = QUALITY_COLORS[info.quality] ?? QUALITY_COLORS.medium;
   const matchColor = info.matchCount === 1 ? '#73BF69' : info.matchCount === 0 ? '#F2495C' : '#FF9830';
 
   return (
     <div className={styles.container}>
-      <span className={styles.dot} style={{ backgroundColor: quality.color }} />
+      <span className={styles.dot} style={{ backgroundColor: dotColor }} />
       <span className={styles.method}>{info.method}</span>
-      <span className={styles.score}>{info.score}</span>
+      <span className={styles.score}>{info.stabilityScore}</span>
       <span className={styles.matches} style={{ color: matchColor }}>
         {info.matchCount === 1 ? '1 match' : `${info.matchCount} matches`}
       </span>
