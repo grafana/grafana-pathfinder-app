@@ -92,6 +92,34 @@ function postedOfKind(transport: FakeTransport, kind: string): any {
   return (transport.postedMessages as any[]).find((m) => m.kind === kind);
 }
 
+async function waitForPostedOfKind(transport: FakeTransport, kind: string): Promise<any> {
+  await waitFor(() => expect(postedOfKind(transport, kind)).toBeTruthy());
+  return postedOfKind(transport, kind);
+}
+
+async function pairWithLive(transport: FakeTransport, liveId = 'live'): Promise<void> {
+  const challenge = await waitForPostedOfKind(transport, 'pairing-challenge');
+  act(() =>
+    transport.emit({
+      source: 'pathfinder',
+      senderId: liveId,
+      timestamp: 0,
+      kind: 'pairing-accept',
+      sessionId: challenge.sessionId,
+    })
+  );
+}
+
+function signedFieldsFor(liveId: string) {
+  return {
+    sig: expect.any(String),
+    sessionId: expect.any(String),
+    liveTabId: liveId,
+    sigTs: expect.any(Number),
+    sigNonce: expect.any(String),
+  };
+}
+
 describe('ControllerChannelProvider', () => {
   it('starts the transport on mount and stops it on unmount', () => {
     const transport = new FakeTransport();
@@ -119,7 +147,7 @@ describe('ControllerChannelProvider', () => {
     expect(transport.postedMessages).toContainEqual({ kind: 'heartbeat', role: 'controller' });
   });
 
-  it('hands the sidebar off (close) on mount', () => {
+  it('hands the sidebar off after pairing is accepted', async () => {
     const transport = new FakeTransport();
     render(
       <ControllerChannelProvider transport={transport}>
@@ -127,10 +155,17 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
-    expect(transport.postedMessages).toContainEqual({ kind: 'sidebar-handoff', action: 'close' });
+    expect(postedOfKind(transport, 'sidebar-handoff')).toBeUndefined();
+    await pairWithLive(transport);
+
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'sidebar-handoff', action: 'close', ...signedFieldsFor('live') })
+      )
+    );
   });
 
-  it('forwards channel.post to the transport', () => {
+  it('forwards signed channel.post messages after pairing', async () => {
     const transport = new FakeTransport();
     render(
       <ControllerChannelProvider transport={transport}>
@@ -138,18 +173,24 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
+    await pairWithLive(transport);
     fireEvent.click(screen.getByText('post'));
 
-    expect(transport.postedMessages).toContainEqual({
-      kind: 'step-command',
-      phase: 'do',
-      stepId: 's1',
-      runId: 'test-run-id',
-      action: { targetAction: 'button', refTarget: '#x' },
-    });
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({
+          ...signedFieldsFor('live'),
+          kind: 'step-command',
+          phase: 'do',
+          stepId: 's1',
+          runId: 'test-run-id',
+          action: { targetAction: 'button', refTarget: '#x' },
+        })
+      )
+    );
   });
 
-  it('reports connected once a live heartbeat arrives', () => {
+  it('reports connected once a paired live tab heartbeats', async () => {
     const transport = new FakeTransport();
     render(
       <ControllerChannelProvider transport={transport}>
@@ -159,10 +200,14 @@ describe('ControllerChannelProvider', () => {
 
     expect(screen.getByTestId('connected')).toHaveTextContent('false');
     act(() => transport.emit(liveHeartbeat()));
+    expect(screen.getByTestId('connected')).toHaveTextContent('false');
+
+    await pairWithLive(transport);
+    act(() => transport.emit(liveHeartbeat()));
     expect(screen.getByTestId('connected')).toHaveTextContent('true');
   });
 
-  it('re-asserts sidebar-handoff:close once the first live heartbeat arrives (F-1067-1)', () => {
+  it('sends sidebar-handoff:close once for the accepted pairing', async () => {
     const transport = new FakeTransport();
     render(
       <ControllerChannelProvider transport={transport}>
@@ -170,16 +215,35 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
-    const closes = () =>
-      transport.postedMessages.filter((m) => (m as any)?.kind === 'sidebar-handoff' && (m as any)?.action === 'close');
-    expect(closes()).toHaveLength(1); // initial close at mount
+    await pairWithLive(transport);
+    await waitFor(() =>
+      expect(
+        transport.postedMessages.filter((m) => (m as any)?.kind === 'sidebar-handoff' && (m as any)?.action === 'close')
+      ).toHaveLength(1)
+    );
+
+    act(() =>
+      transport.emit({ source: 'pathfinder', senderId: 'live', timestamp: 0, kind: 'pairing-accept', sessionId: 'x' })
+    );
+    act(() => transport.emit(liveHeartbeat()));
+
+    expect(
+      transport.postedMessages.filter((m) => (m as any)?.kind === 'sidebar-handoff' && (m as any)?.action === 'close')
+    ).toHaveLength(1);
+  });
+
+  it('drops heartbeat-only pairing attempts', () => {
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <Probe />
+      </ControllerChannelProvider>
+    );
 
     act(() => transport.emit(liveHeartbeat()));
-    expect(closes()).toHaveLength(2); // re-asserted now a live tab is present
+    fireEvent.click(screen.getByText('post'));
 
-    // A second/third live heartbeat must not keep re-posting.
-    act(() => transport.emit(liveHeartbeat()));
-    expect(closes()).toHaveLength(2);
+    expect(postedOfKind(transport, 'step-command')).toBeUndefined();
   });
 
   it('resolves requestRequirementCheck with the live tab reply', async () => {
@@ -190,12 +254,15 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
-    // Pair with the live tab first — replies are only honored from the paired
-    // tab, and pairing happens on a heartbeat (T1 PART C).
-    act(() => transport.emit(liveHeartbeat()));
+    await pairWithLive(transport);
     fireEvent.click(screen.getByText('check'));
-    const request = postedOfKind(transport, 'check-requirements');
-    expect(request.requestId).toBeTruthy();
+    const request = await waitForPostedOfKind(transport, 'check-requirements');
+    expect(request).toEqual(
+      expect.objectContaining({
+        ...signedFieldsFor('live'),
+        requestId: expect.any(String),
+      })
+    );
 
     act(() =>
       transport.emit({
@@ -220,11 +287,15 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
-    // Pair with the live tab first (T1 PART C: replies need an established pair).
-    act(() => transport.emit(liveHeartbeat()));
+    await pairWithLive(transport);
     fireEvent.click(screen.getByText('fix'));
-    const request = postedOfKind(transport, 'fix-requirement');
-    expect(request.requestId).toBeTruthy();
+    const request = await waitForPostedOfKind(transport, 'fix-requirement');
+    expect(request).toEqual(
+      expect.objectContaining({
+        ...signedFieldsFor('live'),
+        requestId: expect.any(String),
+      })
+    );
 
     act(() =>
       transport.emit({
@@ -262,7 +333,7 @@ describe('ControllerChannelProvider', () => {
     }
   });
 
-  it('drops a reply from an unpaired tab and never lets it claim the pairing slot (T1 PART C)', async () => {
+  it('drops a reply from an unpaired tab and never lets it claim the pairing slot', async () => {
     const transport = new FakeTransport();
     render(
       <ControllerChannelProvider transport={transport}>
@@ -270,42 +341,45 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
-    fireEvent.click(screen.getByText('check'));
-    const request = postedOfKind(transport, 'check-requirements');
+    await waitForPostedOfKind(transport, 'pairing-challenge');
+    const originalRandomUUID = crypto.randomUUID.bind(crypto);
+    const randomUUIDSpy = jest.spyOn(crypto, 'randomUUID').mockImplementation(() => originalRandomUUID());
+    randomUUIDSpy.mockReturnValueOnce('00000000-0000-4000-8000-000000000001');
+    try {
+      fireEvent.click(screen.getByText('check'));
 
-    // A forged reply arrives before any live heartbeat. It must be ignored AND
-    // must not bind the pairing slot — pairing happens on a heartbeat only.
-    act(() =>
-      transport.emit({
-        source: 'pathfinder',
-        senderId: 'attacker',
-        timestamp: 0,
-        kind: 'requirement-result',
-        requestId: request.requestId,
-        stepId: 's1',
-        result: { requirements: 'navmenu-open', pass: true, error: [] },
-      })
-    );
-    expect(screen.getByTestId('check')).toHaveTextContent('pending');
+      act(() =>
+        transport.emit({
+          source: 'pathfinder',
+          senderId: 'attacker',
+          timestamp: 0,
+          kind: 'requirement-result',
+          requestId: '00000000-0000-4000-8000-000000000001',
+          stepId: 's1',
+          result: { requirements: 'navmenu-open', pass: true, error: [] },
+        })
+      );
+      expect(screen.getByTestId('check')).toHaveTextContent('pending');
 
-    // The real live tab heartbeats and pairs; its reply is then honored — proving
-    // the attacker never claimed the slot.
-    act(() => transport.emit(liveHeartbeat()));
-    act(() =>
-      transport.emit({
-        source: 'pathfinder',
-        senderId: 'live',
-        timestamp: 0,
-        kind: 'requirement-result',
-        requestId: request.requestId,
-        stepId: 's1',
-        result: { requirements: 'navmenu-open', pass: false, error: [] },
-      })
-    );
-    await waitFor(() => expect(screen.getByTestId('check')).toHaveTextContent('pass:false'));
+      await pairWithLive(transport);
+      act(() =>
+        transport.emit({
+          source: 'pathfinder',
+          senderId: 'live',
+          timestamp: 0,
+          kind: 'requirement-result',
+          requestId: '00000000-0000-4000-8000-000000000001',
+          stepId: 's1',
+          result: { requirements: 'navmenu-open', pass: false, error: [] },
+        })
+      );
+      await waitFor(() => expect(screen.getByTestId('check')).toHaveTextContent('pass:false'));
+    } finally {
+      randomUUIDSpy.mockRestore();
+    }
   });
 
-  it('binds to the first live tab and ignores replies from others', async () => {
+  it('binds to the first accepted live tab and ignores replies from others', async () => {
     const transport = new FakeTransport();
     render(
       <ControllerChannelProvider transport={transport}>
@@ -313,15 +387,11 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
-    // Pair with live tab A via its heartbeat.
-    act(() =>
-      transport.emit({ source: 'pathfinder', senderId: 'live-A', timestamp: 0, kind: 'heartbeat', role: 'live' })
-    );
+    await pairWithLive(transport, 'live-A');
 
     fireEvent.click(screen.getByText('check'));
-    const request = postedOfKind(transport, 'check-requirements');
+    const request = await waitForPostedOfKind(transport, 'check-requirements');
 
-    // A different tab answering the same requestId must be ignored.
     act(() =>
       transport.emit({
         source: 'pathfinder',
@@ -335,7 +405,6 @@ describe('ControllerChannelProvider', () => {
     );
     expect(screen.getByTestId('check')).toHaveTextContent('pending');
 
-    // The paired tab's reply is honored.
     act(() =>
       transport.emit({
         source: 'pathfinder',
@@ -370,11 +439,7 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
-    // Pair with live-A first; a step-complete is only honored from the paired
-    // tab (T1 PART C), and pairing happens on a heartbeat.
-    act(() =>
-      transport.emit({ source: 'pathfinder', senderId: 'live-A', timestamp: 0, kind: 'heartbeat', role: 'live' })
-    );
+    await pairWithLive(transport, 'live-A');
     fireEvent.click(screen.getByText('await'));
     act(() =>
       transport.emit({
@@ -411,12 +476,9 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
-    act(() =>
-      transport.emit({ source: 'pathfinder', senderId: 'live-A', timestamp: 0, kind: 'heartbeat', role: 'live' })
-    );
+    await pairWithLive(transport, 'live-A');
     fireEvent.click(screen.getByText('await'));
 
-    // A step-complete with the wrong runId (stale from a cancelled run) must not settle.
     act(() =>
       transport.emit({
         source: 'pathfinder',
@@ -430,7 +492,6 @@ describe('ControllerChannelProvider', () => {
     );
     expect(screen.getByTestId('done2')).toHaveTextContent('pending');
 
-    // The correct runId settles normally.
     act(() =>
       transport.emit({
         source: 'pathfinder',
@@ -445,7 +506,7 @@ describe('ControllerChannelProvider', () => {
     await waitFor(() => expect(screen.getByTestId('done2')).toHaveTextContent('ok:true'));
   });
 
-  it('forwards step-progress to an onStepProgress subscriber', () => {
+  it('forwards step-progress to an onStepProgress subscriber', async () => {
     function ProgressProbe() {
       const channel = useControllerChannel();
       const [p, setP] = React.useState('none');
@@ -462,8 +523,6 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
-    // A forged step-progress before any live heartbeat must be dropped — pairing
-    // happens on a heartbeat only, so an unpaired sender can't drive the bar.
     act(() =>
       transport.emit({
         source: 'pathfinder',
@@ -478,10 +537,7 @@ describe('ControllerChannelProvider', () => {
     );
     expect(screen.getByTestId('progress')).toHaveTextContent('none');
 
-    // Pair with live-A via a heartbeat; its step-progress is then honored.
-    act(() =>
-      transport.emit({ source: 'pathfinder', senderId: 'live-A', timestamp: 0, kind: 'heartbeat', role: 'live' })
-    );
+    await pairWithLive(transport, 'live-A');
     act(() =>
       transport.emit({
         source: 'pathfinder',
@@ -495,6 +551,25 @@ describe('ControllerChannelProvider', () => {
       })
     );
     expect(screen.getByTestId('progress')).toHaveTextContent('1/3');
+  });
+
+  it('posts a signed sidebar hand-back on unmount after pairing', async () => {
+    const transport = new FakeTransport();
+    const { unmount } = render(
+      <ControllerChannelProvider transport={transport}>
+        <Probe />
+      </ControllerChannelProvider>
+    );
+
+    await pairWithLive(transport);
+    await waitForPostedOfKind(transport, 'sidebar-handoff');
+    unmount();
+
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'sidebar-handoff', action: 'reopen', ...signedFieldsFor('live') })
+      )
+    );
   });
 
   it('returns null outside a provider', () => {

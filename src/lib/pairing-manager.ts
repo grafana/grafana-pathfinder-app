@@ -1,4 +1,4 @@
-import { verifyPayload } from '../security/cross-tab-crypto';
+import { signPayload, verifyPayload } from '../security/cross-tab-crypto';
 
 export interface PendingChallenge {
   sessionId: string;
@@ -18,17 +18,59 @@ export interface SignedMessageFields {
   sessionId?: string;
   liveTabId?: string;
   sigTs?: number;
+  sigNonce?: string;
 }
 
 const STALE_THRESHOLD_MS = 30_000;
+const UNSIGNED_FIELDS = new Set(['source', 'senderId', 'timestamp', 'sig']);
 
-function canonicalPayload(sessionId: string, liveTabId: string, kind: string, sigTs: number): string {
-  return `${sessionId}|${liveTabId}|${kind}|${sigTs}`;
+function stableJson(value: unknown): string {
+  if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => (item === undefined ? 'null' : stableJson(item))).join(',')}]`;
+  }
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return `{${Object.keys(obj)
+      .filter((key) => obj[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(obj[key])}`)
+      .join(',')}}`;
+  }
+  return 'null';
+}
+
+function signedPayloadFields(message: SignedMessageFields): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+  Object.entries(message as unknown as Record<string, unknown>).forEach(([key, value]) => {
+    if (!UNSIGNED_FIELDS.has(key) && value !== undefined) {
+      fields[key] = value;
+    }
+  });
+  return fields;
+}
+
+export function canonicalSignedPayload(message: SignedMessageFields): string {
+  return stableJson(signedPayloadFields(message));
+}
+
+export function createSignatureNonce(): string {
+  if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `sig-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+export async function signSignedMessage(privateKey: CryptoKey, message: SignedMessageFields): Promise<string> {
+  return signPayload(privateKey, canonicalSignedPayload(message));
 }
 
 let pendingChallenge: PendingChallenge | null = null;
 let acceptedSession: AcceptedSession | null = null;
 let ownLiveTabId: string | null = null;
+let seenSignedMessages = new Map<string, number>();
 
 const challengeListeners = new Set<(challenge: PendingChallenge | null) => void>();
 const acceptedListeners = new Set<(liveTabId: string) => void>();
@@ -67,6 +109,7 @@ export function acceptSession(): void {
     publicKeyB64: pendingChallenge.publicKeyB64,
     liveTabId: liveId,
   };
+  seenSignedMessages.clear();
   pendingChallenge = null;
   challengeListeners.forEach((l) => l(null));
   acceptedListeners.forEach((l) => l(liveId));
@@ -86,13 +129,21 @@ export function onSessionAccepted(listener: (liveTabId: string) => void): () => 
   return () => acceptedListeners.delete(listener);
 }
 
+function pruneSeenMessages(now: number): void {
+  seenSignedMessages.forEach((seenAt, key) => {
+    if (now - seenAt > STALE_THRESHOLD_MS) {
+      seenSignedMessages.delete(key);
+    }
+  });
+}
+
 export async function verifySignedMessage(message: SignedMessageFields, ownTabId: string): Promise<boolean> {
   const session = acceptedSession;
   if (!session) {
     return false;
   }
-  const { sig, sessionId, liveTabId, sigTs } = message;
-  if (!sig || !sessionId || !liveTabId || sigTs === undefined) {
+  const { sig, sessionId, liveTabId, sigTs, sigNonce } = message;
+  if (!sig || !sessionId || !liveTabId || sigTs === undefined || !sigNonce) {
     return false;
   }
   if (sessionId !== session.sessionId) {
@@ -101,11 +152,22 @@ export async function verifySignedMessage(message: SignedMessageFields, ownTabId
   if (liveTabId !== ownTabId) {
     return false;
   }
-  if (Math.abs(Date.now() - sigTs) > STALE_THRESHOLD_MS) {
+  const now = Date.now();
+  if (Math.abs(now - sigTs) > STALE_THRESHOLD_MS) {
     return false;
   }
-  const canonical = canonicalPayload(sessionId, liveTabId, message.kind, sigTs);
-  return verifyPayload(session.publicKeyB64, canonical, sig);
+  const canonical = canonicalSignedPayload(message);
+  const valid = await verifyPayload(session.publicKeyB64, canonical, sig);
+  if (!valid) {
+    return false;
+  }
+  pruneSeenMessages(now);
+  const replayKey = `${sessionId}:${sigNonce}`;
+  if (seenSignedMessages.has(replayKey)) {
+    return false;
+  }
+  seenSignedMessages.set(replayKey, now);
+  return true;
 }
 
 /** @internal Test-only reset of all pairing state. */
@@ -113,6 +175,7 @@ export function resetPairingManagerForTests(): void {
   pendingChallenge = null;
   acceptedSession = null;
   ownLiveTabId = null;
+  seenSignedMessages = new Map();
   challengeListeners.clear();
   acceptedListeners.clear();
 }

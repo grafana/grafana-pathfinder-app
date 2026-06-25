@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CrossTabTransport, createSenderId } from '../lib/cross-tab-transport';
-import { generateSessionKeyPair, signPayload } from '../security/cross-tab-crypto';
+import { createSignatureNonce, signSignedMessage } from '../lib/pairing-manager';
+import { generateSessionKeyPair } from '../security/cross-tab-crypto';
 import type {
   CheckRequirementsMessage,
   CrossTabMessage,
@@ -11,9 +12,8 @@ import type {
 
 const HEARTBEAT_INTERVAL_MS = 2000;
 const HEARTBEAT_STALE_MS = 5000;
-// Requirement/fix round-trips fall back after this; step-run completion is
-// unbounded (guided is human-paced) and fails only when the paired tab goes stale.
 const REQUEST_TIMEOUT_MS = 4000;
+const SIGNED_KINDS = new Set(['step-command', 'check-requirements', 'fix-requirement', 'sidebar-handoff']);
 
 interface ChannelTransport {
   start(): void;
@@ -33,7 +33,6 @@ type RequestPayload =
 
 interface ControllerChannel {
   post: (payload: CrossTabPayload) => void;
-  /** Ask the live tab to evaluate a step's requirements; resolves null on timeout. */
   requestRequirementCheck: (
     stepId: string,
     requirements: string,
@@ -44,9 +43,7 @@ interface ControllerChannel {
     opts: { requirements: string; fixType?: string; targetHref?: string; scrollContainer?: string }
   ) => Promise<FixOutcome>;
   awaitStepComplete: (stepId: string, runId: string) => Promise<boolean>;
-  /** Abandon a pending awaitStepComplete waiter (user cancelled); resolves it false. */
   cancelStepComplete: (stepId: string, runId: string) => void;
-  /** Subscribe to a composite step's per-action progress; returns an unsubscribe. */
   onStepProgress: (stepId: string, runId: string, cb: (index: number, total: number) => void) => () => void;
 }
 
@@ -56,10 +53,6 @@ interface PendingRequest {
 }
 
 const ControllerChannelContext = createContext<ControllerChannel | null>(null);
-// Connection state lives in its own context: the heartbeat flips `connected`
-// every few seconds, and folding it into the channel value would re-render
-// every InteractiveStep that only needs `post`. The status badge is the sole
-// consumer of this context (NEW-1065-1).
 const ControllerConnectionContext = createContext<boolean>(false);
 
 export function useControllerChannel(): ControllerChannel | null {
@@ -92,33 +85,43 @@ export function ControllerChannelProvider({
   const stepCompletionRef = useRef<Map<string, (ok: boolean) => void>>(new Map());
   const stepProgressRef = useRef<Map<string, (index: number, total: number) => void>>(new Map());
 
-  const SIGNED_KINDS = new Set(['step-command', 'check-requirements', 'fix-requirement', 'sidebar-handoff']);
-
-  const post = useCallback(
-    (payload: CrossTabPayload): void => {
+  const postPayload = useCallback(
+    async (payload: CrossTabPayload): Promise<void> => {
       const liveTabId = pairedLiveIdRef.current;
       const privateKey = privateKeyRef.current;
       const sid = sessionId;
-      if (SIGNED_KINDS.has(payload.kind) && liveTabId && privateKey) {
-        const sigTs = Date.now();
-        const canonical = `${sid}|${liveTabId}|${payload.kind}|${sigTs}`;
-        void signPayload(privateKey, canonical)
-          .then((sig) => {
-            active.post({ ...payload, sig, sessionId: sid, liveTabId, sigTs } as CrossTabPayload);
-          })
-          .catch(() => {
-            // Drop rather than send unsigned.
-          });
-      } else {
+      if (!SIGNED_KINDS.has(payload.kind)) {
         active.post(payload);
+        return;
+      }
+      if (!liveTabId || !privateKey) {
+        return;
+      }
+      const signedPayload = {
+        ...payload,
+        sessionId: sid,
+        liveTabId,
+        sigTs: Date.now(),
+        sigNonce: createSignatureNonce(),
+      };
+      try {
+        const sig = await signSignedMessage(privateKey, signedPayload);
+        active.post({ ...signedPayload, sig } as CrossTabPayload);
+      } catch {
+        return;
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [active]
+    [active, sessionId]
+  );
+
+  const post = useCallback(
+    (payload: CrossTabPayload): void => {
+      void postPayload(payload);
+    },
+    [postPayload]
   );
 
   useEffect(() => {
-    // Generate session key pair; announce challenge once ready.
     generateSessionKeyPair()
       .then(({ publicKeyB64, privateKey }) => {
         privateKeyRef.current = privateKey;
@@ -126,14 +129,13 @@ export function ControllerChannelProvider({
         active.post({ kind: 'pairing-challenge', sessionId: sessionId, publicKeyB64 });
       })
       .catch(() => {
-        // Non-fatal; controller will not be able to sign commands.
+        privateKeyRef.current = null;
+        publicKeyB64Ref.current = null;
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
+  }, [active, sessionId]);
 
   useEffect(() => {
     active.start();
-    // sidebar-handoff is now gated behind auth; send it after pairing-accept arrives.
 
     const pending = pendingRef.current;
     const stepDone = stepCompletionRef.current;
@@ -158,15 +160,12 @@ export function ControllerChannelProvider({
     };
 
     const unsubscribe = active.onMessage((message) => {
-      // Live tab accepted the pairing challenge: bind the live tab ID so
-      // signed commands target only this tab.
       if (message.kind === 'pairing-accept') {
         if (message.sessionId !== sessionId) {
           return;
         }
         if (pairedLiveIdRef.current === null) {
           pairedLiveIdRef.current = message.senderId;
-          // Now paired: send the sidebar-handoff so the live tab closes its sidebar.
           post({ kind: 'sidebar-handoff', action: 'close' });
         }
         return;
@@ -191,9 +190,6 @@ export function ControllerChannelProvider({
       ) {
         return;
       }
-      // T1 PART C: pairing happens on a heartbeat ONLY (above) — never adopt a
-      // sender from a reply, or a forged first reply could claim the pairing slot
-      // before any live tab heartbeats. An unpaired or mismatched sender is dropped.
       if (pairedLiveIdRef.current === null || message.senderId !== pairedLiveIdRef.current) {
         return;
       }
@@ -216,8 +212,6 @@ export function ControllerChannelProvider({
 
     const tick = () => {
       active.post({ kind: 'heartbeat', role: 'controller' });
-      // Re-announce the pairing challenge while unpaired so a live tab that
-      // starts after the controller still receives the public key.
       if (pairedLiveIdRef.current === null && publicKeyB64Ref.current) {
         active.post({
           kind: 'pairing-challenge',
@@ -227,7 +221,6 @@ export function ControllerChannelProvider({
       }
       if (lastLiveSeenRef.current > 0 && Date.now() - lastLiveSeenRef.current > HEARTBEAT_STALE_MS) {
         setConnected(false);
-        // Paired tab gone: drop the binding to allow re-pairing and fail waiters.
         pairedLiveIdRef.current = null;
         failAllPending();
       }
@@ -235,26 +228,26 @@ export function ControllerChannelProvider({
     tick();
     const intervalId = setInterval(tick, HEARTBEAT_INTERVAL_MS);
 
-    // Closing the controller tab (or unmounting) hands the sidebar back.
-    const handBack = () => active.post({ kind: 'sidebar-handoff', action: 'reopen' });
+    const handBack = () => postPayload({ kind: 'sidebar-handoff', action: 'reopen' });
     window.addEventListener('pagehide', handBack);
 
     return () => {
       window.removeEventListener('pagehide', handBack);
-      handBack();
+      const shouldWaitForHandBack = pairedLiveIdRef.current !== null && privateKeyRef.current !== null;
+      const handBackPromise = handBack();
       clearInterval(intervalId);
       unsubscribe();
-      active.stop();
       failAllPending();
+      if (shouldWaitForHandBack) {
+        void handBackPromise.finally(() => active.stop());
+      } else {
+        active.stop();
+      }
     };
-  }, [active, post, sessionId]);
+  }, [active, post, postPayload, sessionId]);
 
   const request = useCallback(
     <T extends RemoteRequirementResult | FixOutcome | null>(payload: RequestPayload, fallback: T): Promise<T> => {
-      // Globally unique so a reply can never settle the wrong pending request:
-      // a per-instance sequence (`req-1`, `req-2`, …) collides across two
-      // controller tabs sharing the channel, and a stray reply would resolve the
-      // other controller's same-numbered request.
       const requestId = crypto.randomUUID();
       return new Promise<T>((resolve) => {
         const timer = setTimeout(() => {
@@ -327,10 +320,6 @@ export function ControllerChannelProvider({
     };
   }, []);
 
-  // The channel value omits `connected` (it lives in ControllerConnectionContext)
-  // and depends only on the useCallback-stable post + round-trip helpers, so it
-  // stays referentially stable across heartbeat ticks — step consumers don't
-  // re-render (NEW-1065-1).
   const channel = useMemo<ControllerChannel>(
     () => ({ post, requestRequirementCheck, requestFix, awaitStepComplete, cancelStepComplete, onStepProgress }),
     [post, requestRequirementCheck, requestFix, awaitStepComplete, cancelStepComplete, onStepProgress]

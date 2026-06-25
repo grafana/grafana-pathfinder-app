@@ -51,6 +51,7 @@ export interface ControllerAuthFields {
   sessionId: string;
   liveTabId: string;
   sigTs: number;
+  sigNonce: string;
 }
 
 export interface StepCommandMessage extends CrossTabEnvelope {
@@ -63,6 +64,7 @@ export interface StepCommandMessage extends CrossTabEnvelope {
   sessionId?: string;
   liveTabId?: string;
   sigTs?: number;
+  sigNonce?: string;
 }
 
 // Controller announces its session public key so the live tab can show a
@@ -92,6 +94,7 @@ export interface SidebarHandoffMessage extends CrossTabEnvelope {
   sessionId?: string;
   liveTabId?: string;
   sigTs?: number;
+  sigNonce?: string;
 }
 
 // Requirement round-trip (controller → live → controller); requestId correlates
@@ -108,6 +111,7 @@ export interface CheckRequirementsMessage extends CrossTabEnvelope {
   sessionId?: string;
   liveTabId?: string;
   sigTs?: number;
+  sigNonce?: string;
 }
 
 export interface RequirementResultMessage extends CrossTabEnvelope {
@@ -129,6 +133,7 @@ export interface FixRequirementMessage extends CrossTabEnvelope {
   sessionId?: string;
   liveTabId?: string;
   sigTs?: number;
+  sigNonce?: string;
 }
 
 export interface FixResultMessage extends CrossTabEnvelope {
