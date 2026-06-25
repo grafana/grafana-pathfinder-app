@@ -11,6 +11,7 @@ import {
   getSelectorInfo,
   retargetElement,
   generateFallbackSelectors,
+  analyzeSelectorString,
 } from './selector-generator';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 
@@ -557,6 +558,37 @@ describe('Selector Generator — Pipeline', () => {
       document.body.appendChild(input);
 
       expect(generateBestSelector(input)).toMatch(/^grafana:pages\./);
+    });
+  });
+
+  // ==========================================================================
+  // analyzeSelectorString — single source of truth for the health badge
+  // ==========================================================================
+
+  describe('analyzeSelectorString', () => {
+    it('rates a data-testid selector as good with a high stability score', () => {
+      const analysis = analyzeSelectorString("button[data-testid='save']");
+      expect(analysis.method).toBe('data-testid');
+      expect(analysis.quality).toBe('good');
+      expect(analysis.stabilityScore).toBeGreaterThanOrEqual(80);
+    });
+
+    it('rates a bare positional selector as poor and flags it structural', () => {
+      const analysis = analyzeSelectorString('button:nth-of-type(3)');
+      expect(analysis.quality).toBe('poor');
+      expect(analysis.flags).toContain('structural');
+    });
+
+    it('flags an aria-label selector as i18n-sensitive', () => {
+      const analysis = analyzeSelectorString("button[aria-label='Save document']");
+      expect(analysis.flags).toContain('i18n-sensitive');
+      expect(analysis.quality).toBe('medium');
+    });
+
+    it('treats an ancestor-anchored structural selector as medium (testid scope + nth-child)', () => {
+      const analysis = analyzeSelectorString("section[data-testid='card'] > span:nth-child(2)");
+      expect(analysis.flags).toContain('structural');
+      expect(analysis.quality).toBe('medium');
     });
   });
 

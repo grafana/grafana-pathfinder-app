@@ -1059,8 +1059,7 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
     contextStrategy = 'parent-context';
   }
 
-  const stabilityScore =
-    winner.score <= 20 ? 100 : winner.score <= 60 ? 90 : winner.score <= 150 ? 70 : winner.score <= 500 ? 50 : 20;
+  const stabilityScore = scoreToStability(winner.score);
   const flags = computeStabilityFlags(selector, method);
   const quality = computeQuality(stabilityScore, flags);
 
@@ -1210,4 +1209,94 @@ function computeQuality(stabilityScore: number, flags: StabilityFlag[]): Selecto
     return 'good';
   }
   return 'medium';
+}
+
+/**
+ * Map a candidate's internal score (lower = stronger) onto a 0–100 stability
+ * score (higher = better). Shared by `getSelectorInfo` and `analyzeSelectorString`
+ * so the element-based and string-based paths agree.
+ */
+function scoreToStability(score: number): number {
+  return score <= 20 ? 100 : score <= 60 ? 90 : score <= 150 ? 70 : score <= 500 ? 50 : 20;
+}
+
+export interface SelectorStringAnalysis {
+  method: string;
+  stabilityScore: number;
+  quality: SelectorQuality;
+  flags: StabilityFlag[];
+  warnings: string[];
+}
+
+/**
+ * Infer the method + internal score of a *typed* selector string, in the same
+ * priority order the candidate generators use. The strongest signal present wins;
+ * `computeStabilityFlags` then corrects for fragility (e.g. a testid-scoped
+ * selector that also uses `:nth-child` is downgraded via the structural flag).
+ */
+function inferMethodAndScore(selector: string): { method: string; score: number } {
+  if (SELECTOR_CONFIG.testIdAttrs.some((attr) => selector.includes(attr))) {
+    return { method: 'data-testid', score: CANDIDATE_SCORES.testId };
+  }
+  if (/(^|[\s>+~])#[\w-]+/.test(selector)) {
+    return { method: 'id', score: CANDIDATE_SCORES.cssId };
+  }
+  if (selector.includes('[aria-label')) {
+    return { method: 'aria-label', score: CANDIDATE_SCORES.ariaLabel };
+  }
+  if (selector.includes(':text(')) {
+    return { method: 'role-text', score: CANDIDATE_SCORES.roleText };
+  }
+  if (selector.includes(':contains(')) {
+    return { method: 'role-contains', score: CANDIDATE_SCORES.roleContains };
+  }
+  if (selector.includes('[placeholder')) {
+    return { method: 'placeholder', score: CANDIDATE_SCORES.placeholder };
+  }
+  if (selector.includes('[title')) {
+    return { method: 'title', score: CANDIDATE_SCORES.title };
+  }
+  if (selector.includes('[name')) {
+    return { method: 'name', score: CANDIDATE_SCORES.name };
+  }
+  if (selector.includes('[href')) {
+    return { method: 'href', score: CANDIDATE_SCORES.href };
+  }
+  if (selector.includes(':nth-match')) {
+    return { method: 'nth-match', score: CANDIDATE_SCORES.nthMatch };
+  }
+  if (selector.includes(':nth-of-type') || selector.includes(':nth-child')) {
+    return { method: 'nth-of-type', score: CANDIDATE_SCORES.nthOfType };
+  }
+  return { method: 'compound', score: CANDIDATE_SCORES.compound };
+}
+
+/**
+ * Stability analysis for a selector STRING (no element required), so the block
+ * editor's health badge reflects the generator's own quality model
+ * (`computeStabilityFlags` + `computeQuality` + `scoreToStability`) rather than a
+ * parallel heuristic. Match-count-dependent warnings are added by the caller,
+ * which knows the live DOM.
+ */
+export function analyzeSelectorString(selector: string): SelectorStringAnalysis {
+  const { method, score } = inferMethodAndScore(selector);
+  const stabilityScore = scoreToStability(score);
+  const flags = computeStabilityFlags(selector, method);
+  const quality = computeQuality(stabilityScore, flags);
+
+  const warnings: string[] = [];
+  if (flags.includes('structural')) {
+    warnings.push('Selector depends on element position and may break if the page structure changes');
+  }
+  if (flags.includes('i18n-sensitive')) {
+    warnings.push('Selector uses translatable text — may break in different locales');
+  }
+  if (flags.includes('session-unstable')) {
+    warnings.push('Selector uses framework-generated values — may change between sessions');
+  }
+  if (flags.includes('environment-unstable')) {
+    warnings.push('Selector contains instance-specific data — may not work in different environments');
+  }
+
+  return { method, stabilityScore, quality, flags, warnings };
 }
