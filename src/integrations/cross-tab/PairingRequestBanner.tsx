@@ -93,12 +93,7 @@ function BannerInner({ senderId, onAccept, onReject }: BannerInnerProps) {
       <p className={styles.heading}>Allow Pathfinder to control this tab?</p>
       <p className={styles.body}>A Pathfinder controller tab is requesting to guide you through interactive steps.</p>
       <div className={styles.actions}>
-        <Button
-          variant="primary"
-          onClick={handleAccept}
-          autoFocus
-          data-testid={testIds.pairingBanner.acceptButton}
-        >
+        <Button variant="primary" onClick={handleAccept} autoFocus data-testid={testIds.pairingBanner.acceptButton}>
           Accept
         </Button>
         <Button variant="secondary" onClick={handleReject} data-testid={testIds.pairingBanner.rejectButton}>
