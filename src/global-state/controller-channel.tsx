@@ -90,7 +90,7 @@ export function ControllerChannelProvider({
   // first live heartbeat. step-command / fix-requirement are NOT buffered —
   // they mutate the live tab's DOM and must only fire after the user has
   // established a live tab connection.
-  const bufferedChecksRef = useRef<CrossTabPayload[]>([]);
+  const bufferedChecksRef = useRef<Extract<CrossTabPayload, { kind: 'check-requirements' }>[]>([]);
 
   const post = useCallback(
     (payload: CrossTabPayload) => {
