@@ -69,6 +69,10 @@ class FakeTransport {
     };
   }
 
+  getSenderId(): string {
+    return this.senderId;
+  }
+
   emit(message: CrossTabMessage): void {
     this.listener?.(message);
   }
@@ -582,5 +586,87 @@ describe('installLiveTabExecutor', () => {
     expect(checkRequirements).not.toHaveBeenCalled();
     expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'requirement-result' }));
     uninstall();
+  });
+
+  describe('unicast targeting', () => {
+    it('executes a step-command addressed to this tab', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+
+      transport.emit({
+        ...stampStepCommand('do', 'highlight', '#target'),
+        targetTabId: 'live-self',
+      } as CrossTabMessage);
+
+      await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalled());
+      uninstall();
+    });
+
+    it('drops a step-command addressed to a different tab', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+
+      transport.emit({
+        ...stampStepCommand('do', 'highlight', '#target'),
+        targetTabId: 'other-tab',
+      } as CrossTabMessage);
+      await Promise.resolve();
+
+      expect(executeOf(FocusHandler)).not.toHaveBeenCalled();
+      uninstall();
+    });
+
+    it('executes a step-command with no targetTabId (broadcast, backward compat)', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+
+      transport.emit(stampStepCommand('do', 'highlight', '#target'));
+
+      await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalled());
+      uninstall();
+    });
+
+    it('drops a check-requirements addressed to a different tab', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'check-requirements',
+        requestId: 'r1',
+        stepId: 's1',
+        requirements: 'navmenu-open',
+        targetTabId: 'other-tab',
+      } as CrossTabMessage);
+      await Promise.resolve();
+
+      expect(checkRequirements).not.toHaveBeenCalled();
+      expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'requirement-result' }));
+      uninstall();
+    });
+
+    it('drops a fix-requirement addressed to a different tab', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport);
+
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'fix-requirement',
+        requestId: 'f1',
+        stepId: 's1',
+        requirements: 'navmenu-open',
+        fixType: 'navigation',
+        targetTabId: 'other-tab',
+      } as CrossTabMessage);
+      await Promise.resolve();
+
+      expect(dispatchFix).not.toHaveBeenCalled();
+      expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'fix-result' }));
+      uninstall();
+    });
   });
 });

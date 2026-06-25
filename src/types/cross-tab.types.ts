@@ -49,6 +49,7 @@ export interface StepCommandMessage extends CrossTabEnvelope {
   stepId: string;
   runId: string;
   action: CrossTabAction;
+  targetTabId?: string;
 }
 
 export interface HeartbeatMessage extends CrossTabEnvelope {
@@ -71,6 +72,7 @@ export interface CheckRequirementsMessage extends CrossTabEnvelope {
   targetAction?: string;
   refTarget?: string;
   targetValue?: string;
+  targetTabId?: string;
 }
 
 export interface RequirementResultMessage extends CrossTabEnvelope {
@@ -88,6 +90,7 @@ export interface FixRequirementMessage extends CrossTabEnvelope {
   fixType?: string;
   targetHref?: string;
   scrollContainer?: string;
+  targetTabId?: string;
 }
 
 export interface FixResultMessage extends CrossTabEnvelope {
@@ -197,10 +200,11 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
       Array.isArray(action.internalActions) &&
       action.internalActions.every(
         (sub) => isRecord(sub) && typeof sub.targetAction === 'string' && KNOWN_TARGET_ACTIONS.has(sub.targetAction)
-      )
+      ) &&
+      isOptionalString(message.targetTabId)
     );
   }
-  return true;
+  return isOptionalString(message.targetTabId);
 }
 
 function isValidHeartbeat(message: Record<string, unknown>): boolean {
@@ -227,7 +231,8 @@ function isValidCheckRequirements(message: Record<string, unknown>): boolean {
     typeof message.requirements === 'string' &&
     isOptionalString(message.targetAction) &&
     isOptionalString(message.refTarget) &&
-    isOptionalString(message.targetValue)
+    isOptionalString(message.targetValue) &&
+    isOptionalString(message.targetTabId)
   );
 }
 
@@ -238,7 +243,8 @@ function isValidFixRequirement(message: Record<string, unknown>): boolean {
     typeof message.requirements === 'string' &&
     isOptionalString(message.fixType) &&
     isOptionalString(message.targetHref) &&
-    isOptionalString(message.scrollContainer)
+    isOptionalString(message.scrollContainer) &&
+    isOptionalString(message.targetTabId)
   );
 }
 

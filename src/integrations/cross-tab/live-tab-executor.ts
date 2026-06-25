@@ -45,6 +45,7 @@ interface ExecutorTransport {
   stop(): void;
   post(payload: CrossTabPayload): void;
   onMessage(listener: (message: CrossTabMessage) => void): () => void;
+  getSenderId(): string;
 }
 
 interface ExecutorPacing {
@@ -110,6 +111,7 @@ export function installLiveTabExecutor(
   // throwing constructor leaves installed=false and a later init can retry
   // instead of permanently bricking the executor for the session (NEW-1064-1).
   installed = true;
+  const myTabId = transport.getSenderId();
 
   // Teardown flag: a replay in flight (or queued) must not touch the DOM after
   // uninstall (NEW-1064-2).
@@ -312,6 +314,15 @@ export function installLiveTabExecutor(
     // off `validated`, never the raw message.
     const validated = validateCrossTabMessage(message);
     if (!validated) {
+      return;
+    }
+    if (
+      (validated.kind === 'step-command' ||
+        validated.kind === 'check-requirements' ||
+        validated.kind === 'fix-requirement') &&
+      validated.targetTabId !== undefined &&
+      validated.targetTabId !== myTabId
+    ) {
       return;
     }
     if (validated.kind === 'step-command') {

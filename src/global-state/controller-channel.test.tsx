@@ -140,13 +140,62 @@ describe('ControllerChannelProvider', () => {
 
     fireEvent.click(screen.getByText('post'));
 
-    expect(transport.postedMessages).toContainEqual({
-      kind: 'step-command',
-      phase: 'do',
-      stepId: 's1',
-      runId: 'test-run-id',
-      action: { targetAction: 'button', refTarget: '#x' },
-    });
+    expect(transport.postedMessages).toContainEqual(
+      expect.objectContaining({
+        kind: 'step-command',
+        phase: 'do',
+        stepId: 's1',
+        runId: 'test-run-id',
+        action: { targetAction: 'button', refTarget: '#x' },
+      })
+    );
+  });
+
+  it('injects targetTabId into step-command after pairing', () => {
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <Probe />
+      </ControllerChannelProvider>
+    );
+
+    act(() => transport.emit(liveHeartbeat()));
+    fireEvent.click(screen.getByText('post'));
+
+    expect(transport.postedMessages).toContainEqual(
+      expect.objectContaining({ kind: 'step-command', targetTabId: 'live' })
+    );
+  });
+
+  it('does not inject targetTabId into step-command before pairing', () => {
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <Probe />
+      </ControllerChannelProvider>
+    );
+
+    fireEvent.click(screen.getByText('post'));
+
+    const posted = (transport.postedMessages as any[]).find((m) => m.kind === 'step-command');
+    expect(posted).toBeDefined();
+    expect(posted.targetTabId).toBeUndefined();
+  });
+
+  it('injects targetTabId into check-requirements after pairing', () => {
+    const transport = new FakeTransport();
+    render(
+      <ControllerChannelProvider transport={transport}>
+        <RequestProbe />
+      </ControllerChannelProvider>
+    );
+
+    act(() => transport.emit(liveHeartbeat()));
+    fireEvent.click(screen.getByText('check'));
+
+    const posted = (transport.postedMessages as any[]).find((m) => m.kind === 'check-requirements');
+    expect(posted).toBeDefined();
+    expect(posted.targetTabId).toBe('live');
   });
 
   it('reports connected once a live heartbeat arrives', () => {

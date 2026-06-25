@@ -87,7 +87,21 @@ export function ControllerChannelProvider({
   const stepCompletionRef = useRef<Map<string, (ok: boolean) => void>>(new Map());
   const stepProgressRef = useRef<Map<string, (index: number, total: number) => void>>(new Map());
 
-  const post = useCallback((payload: CrossTabPayload) => active.post(payload), [active]);
+  const post = useCallback(
+    (payload: CrossTabPayload) => {
+      if (
+        (payload.kind === 'step-command' ||
+          payload.kind === 'check-requirements' ||
+          payload.kind === 'fix-requirement') &&
+        pairedLiveIdRef.current !== null
+      ) {
+        active.post({ ...payload, targetTabId: pairedLiveIdRef.current });
+      } else {
+        active.post(payload);
+      }
+    },
+    [active]
+  );
 
   useEffect(() => {
     active.start();
