@@ -17,6 +17,22 @@ export const E2E_ENV = {
   GUIDE_JSON_PATH: 'GUIDE_JSON_PATH',
   /** Grafana base URL under test. */
   GRAFANA_URL: 'GRAFANA_URL',
+  /**
+   * Absolute path the auth setup writes its storage state to, and the test
+   * project reads it back from. Per-guide and ephemeral: the CLI points this at
+   * a temp file it deletes after the guide finishes.
+   */
+  AUTH_STATE_FILE: 'AUTH_STATE_FILE',
+  /** Username the auth setup logs in with (cloud tier). Defaults to admin. */
+  GRAFANA_USER: 'GRAFANA_USER',
+  /** Password the auth setup logs in with (cloud tier). Defaults to admin. */
+  GRAFANA_PASSWORD: 'GRAFANA_PASSWORD',
+  /**
+   * Service-account Bearer token (cloud tier). When set, the runner authenticates
+   * every browser request with an Authorization header instead of a form-login
+   * session — the auth method that works against Grafana Cloud (grafana.com SSO).
+   */
+  GRAFANA_TOKEN: 'GRAFANA_TOKEN',
   /** Flag: enable Playwright tracing. */
   TRACE: 'E2E_TRACE',
   /** Flag: enable verbose runner and reporter output. */

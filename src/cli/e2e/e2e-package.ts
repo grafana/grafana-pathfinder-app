@@ -32,6 +32,7 @@ const FETCH_TIMEOUT_MS = 15_000;
 export const REMOTE_SKIP_REASONS = [
   'skipped_no_auth',
   'skipped_tier_mismatch',
+  'skipped_invalid_instance',
   'fetch_failed',
   'resolution_failed',
   'validation_failed',
@@ -42,7 +43,7 @@ export const REMOTE_SKIP_REASONS = [
 /** Why a remote package was skipped instead of run. */
 export type RemoteSkipReason = (typeof REMOTE_SKIP_REASONS)[number];
 
-/** A remote package resolved to a runnable guide against a local target. */
+/** A remote package resolved to a runnable guide against its target. */
 export interface ResolvedRemoteGuide {
   id: string;
   /** `path` is the source content URL; `content` is the raw JSON text. */
@@ -88,6 +89,15 @@ export interface RemoteResolveOptions {
   resolverUrl: string;
   /** CDN base URL override for `--remote` batch resolution. */
   repoUrl?: string;
+  /** Default cloud instance URL for `cloud`-tier guides without an `instance`. */
+  cloudUrl?: string;
+  /**
+   * Whether any cloud auth is available (a service-account token, or a full
+   * username/password pair). Only presence is threaded through resolution; the
+   * values go straight to the runner so secrets never touch the resolved-guide
+   * or report structures.
+   */
+  hasCredentials?: boolean;
 }
 
 /** Fetch a URL as raw text with a timeout. Never throws. */
@@ -131,7 +141,12 @@ async function buildGuideOrSkip(
     };
   }
 
-  const target = resolveTarget(testEnvironment, { grafanaUrl: options.grafanaUrl, currentTier: options.currentTier });
+  const target = resolveTarget(testEnvironment, {
+    grafanaUrl: options.grafanaUrl,
+    currentTier: options.currentTier,
+    cloudUrl: options.cloudUrl,
+    hasCredentials: options.hasCredentials,
+  });
   if (!target.runnable) {
     return {
       skipped: {

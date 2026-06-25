@@ -610,13 +610,13 @@ The following questions were identified during design and have been resolved:
 
 This section consolidates key decisions made during design and implementation phases. These decisions are authoritative and should not be duplicated in other documents.
 
-| Decision                | Value                                 | Rationale                                            |
-| ----------------------- | ------------------------------------- | ---------------------------------------------------- |
-| Max fix attempts        | 3                                     | Fail fast in E2E tests; 10 was too slow              |
-| Console error filtering | Hardcoded in runner                   | Known patterns (deprecations, DevTools) filtered out |
-| Auth strategies         | Cloud SSO/Okta, username/password     | MVP uses existing @grafana/plugin-e2e auth           |
-| Artifact storage        | Local files, GitHub Actions artifacts | Screenshots and DOM snapshots on failure             |
-| Version matrix          | Deferred                              | Guides may express compatibility metadata later      |
+| Decision                | Value                                    | Rationale                                                                                                                                                                          |
+| ----------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Max fix attempts        | 3                                        | Fail fast in E2E tests; 10 was too slow                                                                                                                                            |
+| Console error filtering | Hardcoded in runner                      | Known patterns (deprecations, DevTools) filtered out                                                                                                                               |
+| Cloud auth methods      | Service-account token; username/password | Token (Bearer header via Playwright `extraHTTPHeaders`) authenticates grafana.com-SSO stacks; form login (`POST /login`) for native-login instances; interactive SSO/Okta deferred |
+| Artifact storage        | Local files, GitHub Actions artifacts    | Screenshots and DOM snapshots on failure                                                                                                                                           |
+| Version matrix          | Deferred                                 | Guides may express compatibility metadata later                                                                                                                                    |
 
 ## Framework Test Guide
 
@@ -656,7 +656,34 @@ The sections above describe the core E2E runner: loading a `content.json` from d
 
 This extension can be framed as either "Layer 3 becomes package-aware" or as a new Layer 4 in the [testing strategy](./TESTING_STRATEGY.md) pyramid. If framed as Layer 4, the current "Live Environment Validation" vision (nightly runs, managed environment pools, observability dashboards) would become Layer 5.
 
-> **Implementation status — local-tier slice shipped.** Remote resolution by bare ID and whole-repository batch testing are implemented for `local`-tier guides, which run against the configured Grafana URL. What differs from the design below: batch mode uses a `--remote` flag (not a boolean `--repository`, since `--repository <path>` already denotes the local dependency-ordering index); `cloud`-tier guides are resolved but **skipped** (`skipped_no_auth` / `skipped_tier_mismatch`) because cloud credentials and ephemeral per-guide auth isolation are **not yet implemented**; and path/journey (`milestones`) expansion is **not yet implemented** — `path`/`journey` packages are skipped as `unsupported_type`. The rest of this section describes the full target design. See [`docs/developer/E2E_TESTING.md`](../developer/E2E_TESTING.md#remote-package-aware-testing) for the shipped behavior.
+> **Implementation status — local- and cloud-tier slices shipped.** Remote resolution by bare ID and whole-repository batch testing run for `local`-tier guides (against the configured Grafana URL) and `cloud`-tier guides (against `--cloud-url` or a host-only `instance`, with ephemeral per-guide auth isolation). What differs from the design below: batch mode uses a `--remote` flag (not a boolean `--repository`, since `--repository <path>` already denotes the local dependency-ordering index); cloud auth is a service-account Bearer token (`--service-account-token` / `GRAFANA_TOKEN`, the method that works against grafana.com-SSO Cloud stacks) or username/password form login (`POST /login`), and interactive SSO/Okta login is **not implemented**; and path/journey (`milestones`) expansion is **not implemented** — `path`/`journey` packages are skipped as `unsupported_type`. The rest of this section describes the full target design. See [`docs/developer/E2E_TESTING.md`](../developer/E2E_TESTING.md#remote-package-aware-testing) for the shipped behavior.
+
+### Cloud auth (#2) — shipped
+
+Status: shipped. Cloud-tier guides run against `--cloud-url` (or a host-only `testEnvironment.instance`) when cloud auth is supplied; without it they skip as `skipped_no_auth`, on a `local` environment they skip as `skipped_tier_mismatch`, and a malformed `instance` skips as `skipped_invalid_instance`.
+
+**Auth methods** (run-global — the CLI takes one set of credentials per run):
+
+- **Service-account Bearer token** (`--service-account-token` / `GRAFANA_TOKEN`) — recommended for Grafana Cloud. The runner attaches `Authorization: Bearer <token>` to every browser request via Playwright `extraHTTPHeaders`; there is no form login or session cookie. This is the only method that authenticates against grafana.com-SSO Cloud stacks, where the `POST /login` form is unavailable. Caveat: `--trace` captures request headers, so traces contain the token.
+- **Username/password form login** (`--user`/`--password` / `GRAFANA_USER`/`GRAFANA_PASSWORD`) — `POST /login`, for instances that expose the native Grafana login form (local OSS/Enterprise, or a stack with the form enabled).
+
+**Resolution source:** Resolution stayed on the recommender + CDN path (the open decision raised in PR #1103). Cloud auth is decoupled from resolution — it reads `testEnvironment.tier`/`instance` from whatever the resolver returns — so a later move to an app-platform / k8s-style guide API only needs a new CLI-local resolver emitting the same `RemoteResolution` shape; `resolveTarget` and the runner-spawn contract do not change.
+
+**Where cloud auth lives:**
+
+- `src/cli/utils/e2e-targets.ts` — the `cloud` branch resolves `grafanaUrl` (from `cloudUrl`/`instance`) and is runnable when any cloud auth is present (`hasCredentials`), else `skipped_no_auth`. Credential values never touch the resolved target.
+- `tests/e2e-runner/playwright.config.ts` — token mode sets chromium `extraHTTPHeaders: { Authorization: Bearer … }` and skips the form-login auth project; otherwise chromium `storageState` reads `AUTH_STATE_FILE`, falling back to the default `admin.json` for direct local runs.
+- `tests/e2e-runner/auth/auth.setup.ts` — form-login auth project: `POST /login` → storage state at `AUTH_STATE_FILE` (replaces plugin-e2e's username-derived path). Not used in token mode.
+- `src/cli/utils/playwright-runner.ts` — sets the per-guide ephemeral `AUTH_STATE_FILE` and passes the token / credentials into the spawned Playwright env.
+- `src/cli/commands/e2e.ts` — `--service-account-token`/`--user`/`--password`/`--cloud-url` (plus `GRAFANA_TOKEN`/`GRAFANA_USER`/`GRAFANA_PASSWORD` env), threaded into `RemoteResolveOptions` as a presence flag; per-guide reachability checks each distinct resolved target URL. Credentials are run-global and never enter `PackageMeta` or the JSON report.
+
+**Design constraints honored:**
+
+- CLI packaging boundary: `Dockerfile.cli` copies only `src/cli` + `src/types` + `src/validation`; data-access clients stay CLI-local (no `src/package-engine` import).
+- Ephemeral per-guide auth isolation (temp dir + `AUTH_STATE_FILE`, deleted after each guide) lets one batch mix targets. See the Authentication section below.
+- Fetched content/manifest URLs are guarded by http(s) scheme validation, not host allowlisting, so custom `--resolver-url` / `--repo-url` / dev hosts keep working.
+
+**Out of scope (deferred):** interactive SSO/Okta login (driving the identity provider's login UI), and path/journey (`milestones`) expansion — non-`guide` packages skip as `unsupported_type`.
 
 ### Design goals
 
@@ -763,15 +790,17 @@ This design anticipates a future pool executor that distributes guides to enviro
 
 ### Authentication
 
+> **Shipped behavior differs from the target design below.** The implementation adds a **service-account Bearer token** (`--service-account-token` / `GRAFANA_TOKEN`) as the primary cloud method (required for grafana.com-SSO stacks), uses a custom auth setup rather than `@grafana/plugin-e2e`'s login, and passes `GRAFANA_USER` / `GRAFANA_PASSWORD` (not `GRAFANA_ADMIN_*`). See [Cloud auth (#2) — shipped](#cloud-auth-2--shipped) for the authoritative description.
+
 #### Credentials
 
 Credentials are resolved in priority order (highest wins):
 
-1. `--user` / `--password` CLI flags
-2. `GRAFANA_USER` / `GRAFANA_PASSWORD` environment variables
+1. `--service-account-token` CLI flag, then `GRAFANA_TOKEN` environment variable (Bearer-header auth; works against grafana.com-SSO Cloud stacks)
+2. `--user` / `--password` CLI flags, then `GRAFANA_USER` / `GRAFANA_PASSWORD` environment variables (form login)
 3. No credentials available → cloud guides are skipped with `skipped_no_auth`
 
-For `tier: "local"`, the existing `@grafana/plugin-e2e` authentication is used, which defaults to `admin`/`admin` via the `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD` environment variables.
+For `tier: "local"`, the auth setup logs in with `admin`/`admin` by default.
 
 #### Ephemeral auth isolation
 

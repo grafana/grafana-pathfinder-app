@@ -400,23 +400,29 @@ The CLI can resolve published guides instead of reading local files, then test t
 Guides are routed by their manifest's `testEnvironment.tier`:
 
 - `local` (or no tier) guides run against `--grafana-url`.
-- `cloud` guides are **skipped** — cloud authentication is not yet supported, so they are logged and do not fail the run.
+- `cloud` guides run against `--cloud-url` (default `https://learn.grafana.net/`), or against `https://{instance}/` when the manifest declares a host-only `testEnvironment.instance`. They require cloud auth — a `--service-account-token` (`GRAFANA_TOKEN`) or a `--user`/`--password` pair (`GRAFANA_USER`/`GRAFANA_PASSWORD`); without either they are skipped as `skipped_no_auth`.
 
-This is the local-tier slice of the [Package-Aware Testing](../design/e2e-test-runner-design.md#package-aware-testing) design. Cloud credentials / auth isolation and path/journey (`milestones`) expansion are not yet implemented; `path` and `journey` packages are skipped as an unsupported type.
+Two cloud auth methods are supported:
+
+- **Service-account token (recommended for Grafana Cloud).** Create a stack-level service account and token in the Grafana UI, then pass `--service-account-token` (or `GRAFANA_TOKEN`). The runner attaches it as an `Authorization: Bearer` header on every browser request — the method that works against grafana.com-SSO Cloud stacks, where the `POST /login` form is unavailable. Caveat: `--trace` records request headers, so a trace will contain the token; do not share trace artifacts.
+- **Username/password form login.** `POST /login` against the target; only works on instances that expose the native Grafana login form (local OSS/Enterprise, or a stack with the login form explicitly enabled). Each guide authenticates into its own disposable session, deleted after it finishes.
+
+Interactive SSO/Okta login (driving the identity provider's login UI) is not supported. Path/journey (`milestones`) expansion is also not yet implemented; `path` and `journey` packages are skipped as an unsupported type. See the [Package-Aware Testing](../design/e2e-test-runner-design.md#package-aware-testing) design for the full picture.
 
 ### Package outcomes
 
 In remote modes a package can end in one of these states. Only `validation_failed` counts as a test failure; the rest are logged and the batch continues:
 
-| Outcome                 | Meaning                                                    | Test failure? |
-| ----------------------- | ---------------------------------------------------------- | ------------- |
-| `passed` / `failed`     | The guide ran (see step results)                           | `failed` only |
-| `skipped_tier_mismatch` | `cloud` guide on a `local` environment                     | No            |
-| `skipped_no_auth`       | `cloud` guide with no credentials (cloud auth deferred)    | No            |
-| `resolution_failed`     | Recommender returned 404 or a network error                | No            |
-| `fetch_failed`          | Could not fetch `content.json` from the CDN                | No            |
-| `unsupported_type`      | Package is a `path` / `journey` (milestone expansion TODO) | No            |
-| `validation_failed`     | Fetched `content.json` failed guide schema validation      | **Yes**       |
+| Outcome                    | Meaning                                                    | Test failure? |
+| -------------------------- | ---------------------------------------------------------- | ------------- |
+| `passed` / `failed`        | The guide ran (see step results)                           | `failed` only |
+| `skipped_tier_mismatch`    | `cloud` guide on a `local` environment                     | No            |
+| `skipped_no_auth`          | `cloud` guide with no cloud auth (token or user/password)  | No            |
+| `skipped_invalid_instance` | manifest `instance` is not a bare hostname                 | No            |
+| `resolution_failed`        | Recommender returned 404 or a network error                | No            |
+| `fetch_failed`             | Could not fetch `content.json` from the CDN                | No            |
+| `unsupported_type`         | Package is a `path` / `journey` (milestone expansion TODO) | No            |
+| `validation_failed`        | Fetched `content.json` failed guide schema validation      | **Yes**       |
 
 With `--output`, pre-run skips are recorded under a `preRunSkipped` array, and each tested guide's report carries package metadata (`packageId`, `tier`, `instance`, `targetUrl`, `sourceUrl`).
 
@@ -426,6 +432,19 @@ npx pathfinder-cli e2e --package alerting-101
 
 # Test the whole published repository (local-tier guides run, cloud guides skip)
 npx pathfinder-cli e2e --remote --output results.json
+
+# Resolve and test a cloud-tier guide on Grafana Cloud with a service-account token
+export GRAFANA_TOKEN=glsa_xxx   # stack-level service account token
+npx pathfinder-cli e2e --tier cloud --package alerting-101 \
+  --cloud-url https://your-stack.grafana.net/
+
+# Username/password form login (instances that expose the native login form)
+npx pathfinder-cli e2e --tier cloud --package alerting-101 \
+  --user "$GRAFANA_USER" --password "$GRAFANA_PASSWORD"
+
+# Test all cloud-tier guides against the default cloud instance
+npx pathfinder-cli e2e --remote --tier cloud --service-account-token "$GRAFANA_TOKEN" \
+  --cloud-url https://learn.grafana.net/
 ```
 
 ## Related documentation

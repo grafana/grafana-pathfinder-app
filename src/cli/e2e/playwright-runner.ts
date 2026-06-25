@@ -54,6 +54,11 @@ export interface RunGuideOptions {
   headed: boolean;
   artifacts: string;
   alwaysScreenshot: boolean;
+  /** Cloud credentials for the auth setup. Absent for local (admin/admin) runs. */
+  username?: string;
+  password?: string;
+  /** Service-account Bearer token for cloud-tier targets (alternative to username/password). */
+  token?: string;
 }
 
 /**
@@ -155,6 +160,10 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
   const abortFilePath = join(tempDir, 'abort.json');
   // Results file path for JSON reporting
   const resultsFilePath = join(tempDir, 'results.json');
+  // Ephemeral auth-state file: the auth setup writes login cookies here and the
+  // test project reads them back. Lives in the per-guide temp dir, so the
+  // finally-block cleanup deletes it along with everything else.
+  const authStateFile = join(tempDir, 'auth.json');
   // Path the runner records the produced trace location to (see e2e-runner-contract).
   const traceOutputFilePath = join(tempDir, 'trace-path.txt');
 
@@ -193,6 +202,13 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
           // The GRAFANA_URL wire key carries the resolved per-guide targetUrl;
           // it becomes Playwright's baseURL
           [E2E_ENV.GRAFANA_URL]: options.targetUrl,
+          [E2E_ENV.AUTH_STATE_FILE]: authStateFile,
+          // Credentials are only set for cloud runs; local runs fall back to
+          // admin/admin in the auth setup. A token, when present, switches the
+          // runner to Bearer-header auth. Never logged.
+          ...(options.username ? { [E2E_ENV.GRAFANA_USER]: options.username } : {}),
+          ...(options.password ? { [E2E_ENV.GRAFANA_PASSWORD]: options.password } : {}),
+          ...(options.token ? { [E2E_ENV.GRAFANA_TOKEN]: options.token } : {}),
           [E2E_ENV.TRACE]: encodeEnvFlag(options.trace),
           [E2E_ENV.VERBOSE]: encodeEnvFlag(options.verbose),
           [E2E_ENV.ABORT_FILE_PATH]: abortFilePath,

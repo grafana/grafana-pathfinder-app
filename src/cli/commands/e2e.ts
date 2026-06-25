@@ -47,6 +47,7 @@ import {
 import type { ManifestJson, RepositoryEntry, RepositoryJson } from '../../types/package.types';
 
 import { randomUUID } from 'crypto';
+import { hasCloudAuth } from '../e2e/e2e-targets';
 
 /**
  * CLI options for the e2e command
@@ -71,15 +72,37 @@ interface E2ECommandOptions {
   repoUrl?: string;
   /** Recommender base URL for --package <id> resolution. */
   resolverUrl: string;
+  /** Username for cloud-tier authentication (env fallback: GRAFANA_USER). */
+  user?: string;
+  /** Password for cloud-tier authentication (env fallback: GRAFANA_PASSWORD). */
+  password?: string;
+  /** Service-account Bearer token for cloud-tier auth (env fallback: GRAFANA_TOKEN). */
+  serviceAccountToken?: string;
+  /** Default cloud instance URL for cloud-tier guides without an `instance`. */
+  cloudUrl: string;
 }
 
 const DEFAULT_GRAFANA_URL = 'http://localhost:3000';
 const DEFAULT_RESOLVER_URL = 'https://recommender.grafana.com';
+const DEFAULT_CLOUD_URL = 'https://learn.grafana.net/';
 
 /** Repository source for dependency-aware planning (local index or remote CDN index). */
 interface RepoSource {
   repository: RepositoryJson;
   loadGuideById: (id: string, entry: RepositoryEntry) => LoadedGuide | null;
+}
+
+/**
+ * Run-global cloud credentials. The CLI accepts a single set of credentials, so
+ * every cloud-tier guide in a run authenticates the same way: a service-account
+ * Bearer `token` (the method that works against grafana.com-SSO Cloud stacks),
+ * or a `username`/`password` form login. Keeping them here (rather than
+ * per-guide) keeps secrets out of `PackageMeta` and the JSON report.
+ */
+interface RunCredentials {
+  username?: string;
+  password?: string;
+  token?: string;
 }
 
 /**
@@ -98,6 +121,8 @@ interface RunInputs {
   preRunSkipped: GuideRunResult[];
   /** Per-guide package metadata for report enrichment (remote modes). */
   packageMetaById: Map<string, PackageMeta>;
+  /** Run-global cloud credentials applied to cloud-tier guides (remote modes). */
+  credentials?: RunCredentials;
   /** Local package directory for manifest pre-flight, when applicable. */
   localPackageDir?: string;
 }
@@ -389,11 +414,33 @@ async function maybeCleanStart(cleanEnv: CleanEnvironment, options: E2ECommandOp
 }
 
 /**
- * Run CLI-level pre-flight checks: load the package manifest (when --package),
- * apply the tier check, verify Grafana health, then run manifest version/plugin
- * checks. Exits with the appropriate code on any failure or tier skip.
+ * Distinct target URLs that will actually be exercised this run. Remote guides
+ * carry their own resolved `targetUrl` (cloud guides differ per instance);
+ * local runs fall back to the global Grafana URL. Used so reachability checks
+ * hit the real targets instead of always probing the global URL.
  */
-async function runPreflightChecks(options: E2ECommandOptions, packageDir?: string): Promise<void> {
+function targetUrlsToCheck(inputs: RunInputs, globalUrl: string): string[] {
+  const urls = new Set<string>();
+  for (const meta of inputs.packageMetaById.values()) {
+    urls.add(meta.targetUrl ?? globalUrl);
+  }
+  if (urls.size === 0) {
+    urls.add(globalUrl);
+  }
+  return [...urls];
+}
+
+/**
+ * Run CLI-level pre-flight checks: load the package manifest (when --package),
+ * apply the tier check, verify each target's Grafana health, then run manifest
+ * version/plugin checks. Exits with the appropriate code on any failure or tier
+ * skip.
+ */
+async function runPreflightChecks(
+  options: E2ECommandOptions,
+  targetUrls: string[],
+  packageDir?: string
+): Promise<void> {
   console.log('\n🔍 Running pre-flight checks...');
 
   // Manifest pre-flight applies to a local package directory only. Remote modes
@@ -422,33 +469,38 @@ async function runPreflightChecks(options: E2ECommandOptions, packageDir?: strin
     }
   }
 
-  // 1. Check Grafana health (public endpoint, no auth needed)
-  const healthCheck = await checkGrafanaHealth(options.grafanaUrl);
+  // 1. Check each distinct target's Grafana health (public endpoint, no auth).
+  const healthByUrl = new Map<string, Awaited<ReturnType<typeof checkGrafanaHealth>>>();
+  for (const targetUrl of targetUrls) {
+    const healthCheck = await checkGrafanaHealth(targetUrl);
+    healthByUrl.set(targetUrl, healthCheck);
 
-  if (options.verbose) {
-    const status = healthCheck.passed ? '✓' : '✗';
-    console.log(`   ${status} grafana-reachable [${healthCheck.durationMs}ms]`);
-    if (!healthCheck.passed && healthCheck.error) {
-      console.log(`     Error: ${healthCheck.error}`);
+    if (options.verbose) {
+      const status = healthCheck.passed ? '✓' : '✗';
+      console.log(`   ${status} grafana-reachable (${targetUrl}) [${healthCheck.durationMs}ms]`);
+      if (!healthCheck.passed && healthCheck.error) {
+        console.log(`     Error: ${healthCheck.error}`);
+      }
+    }
+
+    if (!healthCheck.passed) {
+      console.error(`\n❌ Pre-flight check failed for ${targetUrl}: ${healthCheck.error}`);
+      console.error('   Ensure Grafana is running and accessible at the target URL.');
+      process.exit(ExitCode.GRAFANA_UNREACHABLE);
     }
   }
 
-  if (!healthCheck.passed) {
-    console.error(`\n❌ Pre-flight check failed: ${healthCheck.error}`);
-    console.error('   Ensure Grafana is running and accessible at the specified URL.');
-    process.exit(ExitCode.GRAFANA_UNREACHABLE);
-  }
+  console.log(`   ✓ Grafana is reachable (${targetUrls.length} target(s))`);
 
-  console.log('   ✓ Grafana is reachable');
-
-  // 2. Manifest pre-flight — version and plugin checks (local package dir only)
+  // 2. Manifest pre-flight — version and plugin checks (local package dir only).
+  //    A local package dir is always a single local target (options.grafanaUrl).
   if (packageDir) {
     if (packageManifest) {
       console.log('   → Running manifest pre-flight checks...');
       const outcome = await runManifestPreflight(packageManifest, {
         grafanaUrl: options.grafanaUrl,
         currentTier: options.tier,
-        grafanaVersion: healthCheck.version,
+        grafanaVersion: healthByUrl.get(options.grafanaUrl)?.version,
       });
 
       printPreflightOutcome(outcome, options.verbose);
@@ -493,7 +545,8 @@ async function runChains(
   plan: ExecutionPlan,
   options: E2ECommandOptions,
   cleanEnv: CleanEnvironment,
-  packageMetaById: Map<string, PackageMeta> = new Map()
+  packageMetaById: Map<string, PackageMeta> = new Map(),
+  credentials?: RunCredentials
 ): Promise<ChainRunOutcome> {
   console.log('\n🎭 Running Playwright tests...\n');
 
@@ -555,7 +608,12 @@ async function runChains(
       const suffix = planned.autoIncluded ? ' (auto-included prerequisite)' : '';
       console.log(`\n📚 Testing: ${planned.guide.path}${suffix}`);
 
+      // Per-guide target: remote guides each carry their own resolved targetUrl;
+      // local guides fall back to the global Grafana URL. Cloud-tier targets
+      // authenticate with the run's credentials; local targets leave them unset
+      // so the auth setup defaults to admin/admin.
       const meta = packageMetaById.get(planned.id);
+      const isCloudTarget = meta?.tier === 'cloud';
       const runGuideOptions: RunGuideOptions = {
         targetUrl: meta?.targetUrl ?? options.grafanaUrl,
         verbose: options.verbose,
@@ -563,7 +621,11 @@ async function runChains(
         headed: options.headed,
         artifacts: options.artifacts,
         alwaysScreenshot: options.alwaysScreenshot,
+        username: isCloudTarget ? credentials?.username : undefined,
+        password: isCloudTarget ? credentials?.password : undefined,
+        token: isCloudTarget ? credentials?.token : undefined,
       };
+
       const result = await runPlaywrightTests(planned.guide, runGuideOptions);
       applyPackageMeta(result.resultsData, meta);
       const status: GuideStatus = result.success
@@ -660,11 +722,20 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     };
   }
 
+  const credentials: RunCredentials = {
+    username: options.user ?? process.env.GRAFANA_USER,
+    password: options.password ?? process.env.GRAFANA_PASSWORD,
+    token: options.serviceAccountToken ?? process.env.GRAFANA_TOKEN,
+  };
+  // Presence (not the values) drives target resolution.
+  const hasCredentials = hasCloudAuth(credentials);
   const remoteOptions = {
     grafanaUrl: options.grafanaUrl,
     currentTier: options.tier,
     resolverUrl: options.resolverUrl,
     repoUrl: options.repoUrl,
+    cloudUrl: options.cloudUrl,
+    hasCredentials,
   };
   const resolution =
     mode === 'remote-package'
@@ -691,6 +762,7 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     },
     preRunSkipped: resolution.skipped.map(skipToResult),
     packageMetaById: buildPackageMetaMap(loadable),
+    credentials,
   };
 }
 
@@ -735,6 +807,17 @@ export const e2eCommand = new Command('e2e')
   .option('--remote', 'Resolve and test every package from the CDN repository index', false)
   .option('--repo-url <url>', 'CDN base URL for --remote (default: the public Pathfinder package repository)')
   .option('--resolver-url <url>', 'Recommender base URL for --package <id> resolution', DEFAULT_RESOLVER_URL)
+  .option('--user <user>', 'Username for cloud-tier authentication (env fallback: GRAFANA_USER)')
+  .option('--password <pw>', 'Password for cloud-tier authentication (env fallback: GRAFANA_PASSWORD)')
+  .option(
+    '--service-account-token <token>',
+    'Service-account Bearer token for cloud-tier auth; required for Grafana Cloud SSO stacks (env fallback: GRAFANA_TOKEN)'
+  )
+  .option(
+    '--cloud-url <url>',
+    `Default cloud instance URL for cloud-tier guides without an instance (default ${DEFAULT_CLOUD_URL})`,
+    DEFAULT_CLOUD_URL
+  )
   .action(async (files: string[], options: E2ECommandOptions) => {
     const cleanEnv = new CleanEnvironment(options.verbose);
     if (options.clean) {
@@ -761,9 +844,9 @@ export const e2eCommand = new Command('e2e')
 
       await maybeCleanStart(cleanEnv, options);
 
-      await runPreflightChecks(options, inputs.localPackageDir);
+      await runPreflightChecks(options, targetUrlsToCheck(inputs, options.grafanaUrl), inputs.localPackageDir);
 
-      const outcome = await runChains(plan, options, cleanEnv, inputs.packageMetaById);
+      const outcome = await runChains(plan, options, cleanEnv, inputs.packageMetaById, inputs.credentials);
 
       reportResults([...inputs.preRunSkipped, ...outcome.results], options);
     } catch (error) {
