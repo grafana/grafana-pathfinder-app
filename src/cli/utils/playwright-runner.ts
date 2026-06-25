@@ -47,7 +47,8 @@ export interface PlaywrightResult {
  * command options so the runner does not depend on the whole command surface.
  */
 export interface RunGuideOptions {
-  grafanaUrl: string;
+  /** Resolved base URL this guide is tested against. */
+  targetUrl: string;
   verbose: boolean;
   trace: boolean;
   headed: boolean;
@@ -189,7 +190,7 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
         env: {
           ...process.env,
           [E2E_ENV.GUIDE_JSON_PATH]: guidePath,
-          [E2E_ENV.GRAFANA_URL]: options.grafanaUrl,
+          [E2E_ENV.GRAFANA_URL]: options.targetUrl,
           [E2E_ENV.TRACE]: encodeEnvFlag(options.trace),
           [E2E_ENV.VERBOSE]: encodeEnvFlag(options.verbose),
           [E2E_ENV.ABORT_FILE_PATH]: abortFilePath,

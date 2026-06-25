@@ -47,7 +47,7 @@ import {
 import { checkGrafanaHealth } from '../utils/grafana-health';
 import { CleanEnvironment, CLEAN_COMPOSE_PROJECT, CLEAN_GRAFANA_URL } from '../utils/clean-environment';
 import { ExitCode } from '../utils/exit-codes';
-import { runPlaywrightTests, type AbortReason } from '../utils/playwright-runner';
+import { runPlaywrightTests, type AbortReason, type RunGuideOptions } from '../utils/playwright-runner';
 import type { ManifestJson, RepositoryEntry, RepositoryJson } from '../../types/package.types';
 
 import { randomUUID } from 'crypto';
@@ -113,6 +113,7 @@ const GUIDE_STATUS_LABELS: ReadonlyArray<readonly [GuideStatus, string]> = [
   ['validation_failed', '❌ Validation failed'],
   ['auth_expired', '🔐 Auth expired'],
   ['skipped_prereq', '⊘ Skipped (prerequisite failed)'],
+  ['prerequisite_failed', '⊘ Skipped (prerequisite failed)'],
   ['skipped_tier_mismatch', '⊘ Skipped (tier mismatch)'],
   ['skipped_no_auth', '⊘ Skipped (no cloud auth)'],
   ['unsupported_type', '⊘ Skipped (unsupported type)'],
@@ -127,6 +128,7 @@ const GUIDE_STATUS_ICONS: Record<GuideStatus, string> = {
   validation_failed: '❌',
   auth_expired: '🔐',
   skipped_prereq: '⊘',
+  prerequisite_failed: '⊘',
   skipped_tier_mismatch: '⊘',
   skipped_no_auth: '⊘',
   unsupported_type: '⊘',
@@ -667,16 +669,17 @@ async function runChains(
         blocked.add(planned.id);
         console.log(`\n📚 ${planned.guide.path}`);
         console.log(`   ⊘ Skipped: prerequisite "${blockingDep}" did not pass`);
+        const skippedMeta = packageMetaById.get(planned.id);
         const prereqResultsData: TestResultsData = {
           guide: { id: planned.id, title: planned.id, path: planned.guide.path },
-          grafanaUrl: options.grafanaUrl,
+          grafanaUrl: skippedMeta?.targetUrl ?? options.grafanaUrl,
           timestamp: new Date().toISOString(),
           results: [],
           aborted: true,
           abortReason: 'SKIPPED_PREREQ',
           abortMessage: `Prerequisite "${blockingDep}" did not pass`,
         };
-        applyPackageMeta(prereqResultsData, packageMetaById.get(planned.id));
+        applyPackageMeta(prereqResultsData, skippedMeta);
         results.push({
           guide: planned.guide.path,
           id: planned.id,
@@ -693,8 +696,17 @@ async function runChains(
       const suffix = planned.autoIncluded ? ' (auto-included prerequisite)' : '';
       console.log(`\n📚 Testing: ${planned.guide.path}${suffix}`);
 
-      const result = await runPlaywrightTests(planned.guide, options);
-      applyPackageMeta(result.resultsData, packageMetaById.get(planned.id));
+      const meta = packageMetaById.get(planned.id);
+      const runGuideOptions: RunGuideOptions = {
+        targetUrl: meta?.targetUrl ?? options.grafanaUrl,
+        verbose: options.verbose,
+        trace: options.trace,
+        headed: options.headed,
+        artifacts: options.artifacts,
+        alwaysScreenshot: options.alwaysScreenshot,
+      };
+      const result = await runPlaywrightTests(planned.guide, runGuideOptions);
+      applyPackageMeta(result.resultsData, meta);
       const status: GuideStatus = result.success
         ? 'passed'
         : result.abortReason === 'AUTH_EXPIRED'

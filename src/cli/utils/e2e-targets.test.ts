@@ -13,7 +13,7 @@ describe('resolveTarget', () => {
     const target = resolveTarget({ tier: 'local' }, { grafanaUrl: LOCAL_URL, currentTier: 'local' });
 
     expect(target.runnable).toBe(true);
-    expect(target.grafanaUrl).toBe(LOCAL_URL);
+    expect(target.targetUrl).toBe(LOCAL_URL);
     expect(target.tier).toBe('local');
     expect(target.skipReason).toBeUndefined();
   });
@@ -23,7 +23,7 @@ describe('resolveTarget', () => {
 
     expect(target.runnable).toBe(true);
     expect(target.tier).toBe('local');
-    expect(target.grafanaUrl).toBe(LOCAL_URL);
+    expect(target.targetUrl).toBe(LOCAL_URL);
   });
 
   it('runs an unknown tier (forward-compatible) against the configured URL', () => {
@@ -31,7 +31,7 @@ describe('resolveTarget', () => {
 
     expect(target.runnable).toBe(true);
     expect(target.tier).toBe('enterprise');
-    expect(target.grafanaUrl).toBe(LOCAL_URL);
+    expect(target.targetUrl).toBe(LOCAL_URL);
   });
 
   it('skips a cloud guide on a local environment with tier-mismatch', () => {
@@ -39,7 +39,7 @@ describe('resolveTarget', () => {
 
     expect(target.runnable).toBe(false);
     expect(target.skipReason).toBe('skipped_tier_mismatch');
-    expect(target.grafanaUrl).toBeUndefined();
+    expect(target.targetUrl).toBeUndefined();
     expect(target.message).toBeDefined();
   });
 
