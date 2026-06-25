@@ -205,6 +205,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // Set when the user cancels a controller-mode run, so the awaiting branch
     // distinguishes a deliberate cancel from a disconnect/failure (skips the toast).
     const controllerCancelledRef = React.useRef(false);
+    const activeRunIdRef = React.useRef<string>('');
 
     // Handle reset trigger from parent section
     useEffect(() => {
@@ -269,13 +270,12 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
     // Create cancellation handler
     const handleMultiStepCancel = useCallback(() => {
-      isCancelledRef.current = true; // Set ref for immediate access
-      // The running loop will detect this and break
+      isCancelledRef.current = true;
       // In controller mode the run is remote: release the awaitStepComplete waiter
-      // (F-1073-1) so the spinner clears, and flag the cancel so the awaiting
-      // branch skips its "not completed" toast.
+      // so the spinner clears, and flag the cancel so the awaiting branch skips
+      // its "not completed" toast.
       controllerCancelledRef.current = true;
-      controllerChannel?.cancelStepComplete(renderedStepId);
+      controllerChannel?.cancelStepComplete(renderedStepId, activeRunIdRef.current);
     }, [controllerChannel, renderedStepId]);
 
     // Main execution logic (similar to InteractiveSection's sequence execution)
@@ -627,16 +627,19 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         // that per click on top of its staged replay, so we keep the entry gate
         // only and let each sub-action fail on the live tab if a prereq regressed.
         controllerCancelledRef.current = false;
-        // Animate per-step progress from the live tab, and wait for it to finish
-        // before marking complete (the actual execution happens over there).
+        const runId = crypto.randomUUID();
+        activeRunIdRef.current = runId;
         setIsExecuting(true);
         // Subscribe before posting so the first progress tick the live tab emits
         // can't arrive before we're listening.
-        const stopProgress = controllerChannel.onStepProgress(renderedStepId, (index) => setCurrentActionIndex(index));
+        const stopProgress = controllerChannel.onStepProgress(renderedStepId, runId, (index) =>
+          setCurrentActionIndex(index)
+        );
         controllerChannel.post({
           kind: 'step-command',
           phase: 'do',
           stepId: renderedStepId,
+          runId,
           action: {
             targetAction: 'multistep',
             refTarget: '',
@@ -651,7 +654,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           },
         });
         try {
-          const finished = await controllerChannel.awaitStepComplete(renderedStepId);
+          const finished = await controllerChannel.awaitStepComplete(renderedStepId, runId);
           if (finished) {
             persistCompletion();
             if (onStepComplete && stepId) {

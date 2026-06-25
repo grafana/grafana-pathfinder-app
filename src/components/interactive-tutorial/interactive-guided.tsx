@@ -175,6 +175,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Set when the user cancels a controller-mode run, so the awaiting branch
     // distinguishes a deliberate cancel from a disconnect/failure (skips the toast).
     const controllerCancelledRef = useRef(false);
+    const activeRunIdRef = useRef<string>('');
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [failedStepIndex, setFailedStepIndex] = useState(-1);
     const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
@@ -575,12 +576,12 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         // that per click on top of its staged replay, so we keep the entry gate
         // only and let each sub-action fail on the live tab if a prereq regressed.
         controllerCancelledRef.current = false;
-        // Wait for the user to walk through every guided step on the live tab
-        // before marking complete, rather than completing optimistically.
+        const runId = crypto.randomUUID();
+        activeRunIdRef.current = runId;
         setIsExecuting(true);
         // Subscribe before posting so the first progress tick the live tab emits
         // can't arrive before we're listening.
-        const stopProgress = controllerChannel.onStepProgress(renderedStepId, (index) => {
+        const stopProgress = controllerChannel.onStepProgress(renderedStepId, runId, (index) => {
           setCurrentStepIndex(index);
           setCurrentStepStatus('waiting');
         });
@@ -588,6 +589,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           kind: 'step-command',
           phase: 'do',
           stepId: renderedStepId,
+          runId,
           action: {
             targetAction: 'guided',
             refTarget: '',
@@ -602,7 +604,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           },
         });
         try {
-          const finished = await controllerChannel.awaitStepComplete(renderedStepId);
+          const finished = await controllerChannel.awaitStepComplete(renderedStepId, runId);
           if (finished) {
             persistCompletion();
             if (onStepComplete && stepId) {
@@ -686,20 +688,17 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Handle cancel during guided execution
     const handleCancel = useCallback(async () => {
       // In controller mode the run is remote: release the awaitStepComplete waiter
-      // (F-1073-1) so the await resolves and the spinner clears, and flag the
-      // cancel so the awaiting branch skips its "not completed" toast.
+      // so the await resolves and the spinner clears, and flag the cancel so the
+      // awaiting branch skips its "not completed" toast.
       controllerCancelledRef.current = true;
-      controllerChannel?.cancelStepComplete(renderedStepId);
-      // Cancel the current guided step
-      // guidedHandler.cancel() already clears highlights via its own navigationManager
+      controllerChannel?.cancelStepComplete(renderedStepId, activeRunIdRef.current);
       guidedHandler.cancel();
 
-      // Reset to initial state - simply revert to "Start guided interaction" button
       setIsExecuting(false);
       setExecutionError(null);
       setCurrentStepIndex(0);
       setCurrentStepStatus('waiting');
-      setWasCancelled(false); // Don't show error state - just return to start
+      setWasCancelled(false);
     }, [guidedHandler, controllerChannel, renderedStepId]);
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;

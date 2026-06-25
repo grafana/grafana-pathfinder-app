@@ -47,6 +47,7 @@ export interface StepCommandMessage extends CrossTabEnvelope {
   kind: 'step-command';
   phase: 'show' | 'do';
   stepId: string;
+  runId: string;
   action: CrossTabAction;
 }
 
@@ -101,6 +102,7 @@ export interface FixResultMessage extends CrossTabEnvelope {
 export interface StepCompleteMessage extends CrossTabEnvelope {
   kind: 'step-complete';
   stepId: string;
+  runId: string;
   ok: boolean;
 }
 
@@ -109,6 +111,7 @@ export interface StepCompleteMessage extends CrossTabEnvelope {
 export interface StepProgressMessage extends CrossTabEnvelope {
   kind: 'step-progress';
   stepId: string;
+  runId: string;
   index: number;
   total: number;
 }
@@ -169,6 +172,9 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
     return false;
   }
   if (typeof message.stepId !== 'string') {
+    return false;
+  }
+  if (typeof message.runId !== 'string') {
     return false;
   }
   if (!isRecord(message.action)) {
@@ -256,7 +262,7 @@ function isValidFixResult(message: Record<string, unknown>): boolean {
 // triggers no DOM action, but it resolves a pending awaitStepComplete waiter, so
 // validate the shape to keep a malformed reply from completing the wrong step.
 function isValidStepComplete(message: Record<string, unknown>): boolean {
-  return typeof message.stepId === 'string' && typeof message.ok === 'boolean';
+  return typeof message.stepId === 'string' && typeof message.runId === 'string' && typeof message.ok === 'boolean';
 }
 
 // step-progress is a live → controller reply: the live tab reports which internal
@@ -264,7 +270,12 @@ function isValidStepComplete(message: Record<string, unknown>): boolean {
 // DOM action, but it drives a UI callback keyed by stepId, so validate the shape
 // to keep a malformed reply from advancing the wrong step's progress.
 function isValidStepProgress(message: Record<string, unknown>): boolean {
-  return typeof message.stepId === 'string' && typeof message.index === 'number' && typeof message.total === 'number';
+  return (
+    typeof message.stepId === 'string' &&
+    typeof message.runId === 'string' &&
+    typeof message.index === 'number' &&
+    typeof message.total === 'number'
+  );
 }
 
 // Per-kind validators — the single source of truth shared by the transport
