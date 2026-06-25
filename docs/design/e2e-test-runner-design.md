@@ -1174,7 +1174,7 @@ For multi-guide reports (batch or path), each guide entry includes these package
 
 ### Dependency-aware chaining
 
-The runner builds a dependency-aware execution plan from a `repository.json` index before running any guide (`src/cli/utils/guide-chains.ts`). For `--bundled` runs it defaults to `src/bundled-interactives/repository.json`; an optional `--repository <path>` flag points at a custom index.
+The runner builds a dependency-aware execution plan from a `repository.json` index before running any guide (`src/cli/e2e/guide-chains.ts`). For `--bundled` runs it defaults to `src/bundled-interactives/repository.json`; an optional `--repository <path>` flag points at a custom index.
 Only the hard `depends` relation participates (`recommends`/`suggests` are advisory and ignored). Dependency targets may be real package IDs or virtual capabilities resolved through `provides`. The planner:
 
 - Maps each selected guide to its `content.json` id (path-derived fallback for legacy files). Guides absent from the repository become dependency-free singletons.

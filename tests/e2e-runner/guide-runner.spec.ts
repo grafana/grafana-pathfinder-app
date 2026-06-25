@@ -15,7 +15,7 @@
  * @see tests/e2e-runner/utils/preflight.ts for pre-flight check utilities
  * @see tests/e2e-runner/utils/guide-test-runner.ts for step discovery utilities
  * @see tests/e2e-runner/utils/console-reporter.ts for console output formatting
- * @see src/cli/utils/e2e-reporter.ts for JSON report generation
+ * @see src/cli/e2e/e2e-reporter.ts for JSON report generation
  */
 
 import { readFileSync, writeFileSync } from 'fs';
@@ -41,8 +41,8 @@ import {
   printPreflightChecks,
   printDiscoveryResults,
 } from './utils/console-reporter';
-import type { TestResultsData } from '../../src/cli/utils/e2e-reporter';
-import { E2E_ENV, isEnvFlagEnabled } from '../../src/cli/utils/e2e-runner-contract';
+import type { TestResultsData } from '../../src/cli/e2e/e2e-reporter';
+import { E2E_ENV, isEnvFlagEnabled } from '../../src/cli/e2e/e2e-runner-contract';
 
 /**
  * Write abort reason to file for CLI to read and determine exit code.

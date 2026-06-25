@@ -8,8 +8,8 @@
  */
 
 import type { GraphEdge, GraphEdgeType, RepositoryEntry, RepositoryJson } from '../../types/package.types';
-import { detectCycles } from './graph-cycles';
-import type { LoadedGuide } from './file-loader';
+import { detectCycles } from '../utils/graph-cycles';
+import type { LoadedGuide } from '../utils/file-loader';
 
 export interface PlannedGuide {
   id: string;
