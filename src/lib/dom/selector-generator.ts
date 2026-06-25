@@ -62,6 +62,7 @@ const SELECTOR_CONFIG = {
   maxRetargetDepth: 10,
   maxDisambiguationDepth: 15,
   maxScopingDepth: 8,
+  maxDescendantScan: 50,
   genericButtonWords: [
     'new',
     'add',
@@ -112,6 +113,11 @@ const DISAMBIGUATION_PENALTIES = {
   overlayScope: 75,
   nthMatch: 1000,
 } as const;
+
+// Added to a descendant's own score when that descendant is used to anchor a
+// `:has()` selector on an identity-less ancestor. Keeps has-descendant just
+// below a direct intrinsic selector but far above positional fallbacks.
+const HAS_DESCENDANT_PENALTY = 60;
 
 const OVERLAY_ROLES = ['dialog', 'alertdialog', 'menu', 'listbox', 'tooltip', 'combobox'] as const;
 
@@ -703,7 +709,7 @@ function candidateNthOfType(element: HTMLElement): Candidate | null {
   };
 }
 
-function generateCandidates(element: HTMLElement): Candidate[] {
+function generateIntrinsicCandidates(element: HTMLElement): Candidate[] {
   const candidates: Candidate[] = [];
   const push = (c: Candidate | null) => {
     if (c) {
@@ -726,6 +732,24 @@ function generateCandidates(element: HTMLElement): Candidate[] {
   push(candidateHref(element));
   push(candidateCompound(element));
   push(candidateNthOfType(element));
+
+  return candidates;
+}
+
+function generateCandidates(element: HTMLElement): Candidate[] {
+  const candidates = generateIntrinsicCandidates(element);
+
+  // Reach for a descendant-anchored :has() selector only when the element has no
+  // stable identity of its own — i.e. every intrinsic candidate is structural
+  // (compound/nth). This is the identity-less-wrapper case (a styling div around
+  // a nav link); the :has() selector borrows the descendant's identity.
+  const hasStableIntrinsic = candidates.some((c) => !STRUCTURAL_METHODS.has(c.method));
+  if (!hasStableIntrinsic) {
+    const hasDescendant = candidateHasDescendant(element);
+    if (hasDescendant) {
+      candidates.push(hasDescendant);
+    }
+  }
 
   return candidates;
 }
@@ -916,7 +940,8 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
       if (
         candidate.method !== 'button-text' &&
         candidate.method !== 'scoped-testid' &&
-        candidate.method !== 'grafana'
+        candidate.method !== 'grafana' &&
+        candidate.method !== 'has-descendant'
       ) {
         let foundScope = false;
         for (const scope of ancestorScopes) {
@@ -978,6 +1003,152 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
 
   scored.sort((a, b) => a.score - b.score);
   return scored[0]!;
+}
+
+// ============================================================================
+// Descendant-anchored :has() selectors
+// ============================================================================
+
+/** Pure-CSS candidate methods that are safe to embed inside `:has(...)`. */
+function isHasUsable(candidate: Candidate): boolean {
+  if (STRUCTURAL_METHODS.has(candidate.method)) {
+    return false;
+  }
+  if (candidate.method === 'grafana' || candidate.method === 'button-text') {
+    return false;
+  }
+  if (candidate.selector.includes(':text(') || candidate.selector.includes(':contains(')) {
+    return false;
+  }
+  return true;
+}
+
+function isInteractiveDescendant(element: HTMLElement): boolean {
+  const tag = element.tagName.toLowerCase();
+  if ((SELECTOR_CONFIG.interactiveTags as readonly string[]).includes(tag)) {
+    return true;
+  }
+  if ((SELECTOR_CONFIG.formControlTags as readonly string[]).includes(tag)) {
+    return true;
+  }
+  const role = element.getAttribute('role');
+  return Boolean(role && (SELECTOR_CONFIG.interactiveRoles as readonly string[]).includes(role));
+}
+
+interface DescendantPick {
+  selector: string;
+  score: number;
+  unique: boolean;
+  interactive: boolean;
+}
+
+function isBetterDescendant(pick: DescendantPick, current: DescendantPick | null): boolean {
+  if (!current) {
+    return true;
+  }
+  if (pick.unique !== current.unique) {
+    return pick.unique;
+  }
+  if (pick.interactive !== current.interactive) {
+    return pick.interactive;
+  }
+  return pick.score < current.score;
+}
+
+/**
+ * Find the strongest stable descendant to anchor a `:has()` selector on.
+ * Prefers globally unique selectors, then interactive/semantic descendants (a
+ * link beats a decorative icon), then the lowest internal score.
+ */
+function bestStableDescendant(element: HTMLElement): DescendantPick | null {
+  const descendants = Array.from(element.querySelectorAll<HTMLElement>('*')).slice(
+    0,
+    SELECTOR_CONFIG.maxDescendantScan
+  );
+  let best: DescendantPick | null = null;
+  for (const descendant of descendants) {
+    const interactive = isInteractiveDescendant(descendant);
+    for (const candidate of generateIntrinsicCandidates(descendant)) {
+      if (!isHasUsable(candidate)) {
+        continue;
+      }
+      const { matchCount, containsTarget } = testUniqueness(candidate.selector, descendant, candidate.method);
+      if (matchCount === 0 || !containsTarget) {
+        continue;
+      }
+      const pick: DescendantPick = {
+        selector: candidate.selector,
+        score: candidate.score,
+        unique: matchCount === 1,
+        interactive,
+      };
+      if (isBetterDescendant(pick, best)) {
+        best = pick;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Make `base` (a `tag:has(descendant)` selector) resolve to exactly `element`.
+ * A bare `:has()` matches every same-tag ancestor that contains the descendant,
+ * so tighten with the parent's child combinator, then escalate to stable
+ * ancestor scopes. Returns null when uniqueness can't be achieved.
+ */
+function tightenHasSelector(base: string, element: HTMLElement): string | null {
+  const isUnique = (selector: string): boolean => {
+    const { matchCount, containsTarget } = testUniqueness(selector, element, 'has-descendant');
+    return matchCount === 1 && containsTarget;
+  };
+
+  if (isUnique(base)) {
+    return base;
+  }
+
+  const parent = element.parentElement;
+  const withParent = parent ? `${parent.tagName.toLowerCase()} > ${base}` : null;
+  if (withParent && isUnique(withParent)) {
+    return withParent;
+  }
+
+  for (const scope of findAllAncestorScopes(element)) {
+    const scoped = `${scope.selector} ${base}`;
+    if (isUnique(scoped)) {
+      return scoped;
+    }
+    if (withParent) {
+      const scopedChild = `${scope.selector} ${withParent}`;
+      if (isUnique(scopedChild)) {
+        return scopedChild;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * For an identity-less element, build a selector that borrows a stable
+ * descendant's identity via `:has()` — e.g. `li > div:has(a[href='/explore'])`.
+ * Keeps the clicked element as the target (no retarget) and degrades far more
+ * gracefully than a positional `:nth-match`. Scored just below the descendant's
+ * own strength, so a direct intrinsic selector always wins when one exists.
+ */
+function candidateHasDescendant(element: HTMLElement): Candidate | null {
+  const descendant = bestStableDescendant(element);
+  if (!descendant) {
+    return null;
+  }
+
+  const tag = element.tagName.toLowerCase();
+  const base = `${tag}:has(${descendant.selector})`;
+  const tightened = tightenHasSelector(base, element);
+  if (!tightened) {
+    return null;
+  }
+
+  return { selector: tightened, score: descendant.score + HAS_DESCENDANT_PENALTY, method: 'has-descendant' };
 }
 
 // ============================================================================
@@ -1143,6 +1314,9 @@ const STRUCTURAL_METHODS: ReadonlySet<string> = new Set(['compound', 'nth-of-typ
 function strategyFamily(method: string): string {
   if (method === 'grafana') {
     return 'grafana';
+  }
+  if (method === 'has-descendant') {
+    return 'has-descendant';
   }
   if (TESTID_METHODS.has(method)) {
     return 'testid';
@@ -1326,6 +1500,9 @@ export interface SelectorStringAnalysis {
 function inferMethodAndScore(selector: string): { method: string; score: number } {
   if (selector.startsWith('grafana:')) {
     return { method: 'grafana', score: CANDIDATE_SCORES.grafana };
+  }
+  if (selector.includes(':has(')) {
+    return { method: 'has-descendant', score: CANDIDATE_SCORES.testId + HAS_DESCENDANT_PENALTY };
   }
   if (SELECTOR_CONFIG.testIdAttrs.some((attr) => selector.includes(attr))) {
     return { method: 'data-testid', score: CANDIDATE_SCORES.testId };
