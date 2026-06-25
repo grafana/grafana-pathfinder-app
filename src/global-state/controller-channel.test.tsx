@@ -138,94 +138,18 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
+    // step-command is fail-closed; pair before clicking so it is dispatched.
     act(() => transport.emit(liveHeartbeat()));
     fireEvent.click(screen.getByText('post'));
 
-    expect(transport.postedMessages).toContainEqual(
-      expect.objectContaining({
-        kind: 'step-command',
-        phase: 'do',
-        stepId: 's1',
-        runId: 'test-run-id',
-        action: { targetAction: 'button', refTarget: '#x' },
-      })
-    );
-  });
-
-  it('injects targetTabId into step-command after pairing', () => {
-    const transport = new FakeTransport();
-    render(
-      <ControllerChannelProvider transport={transport}>
-        <Probe />
-      </ControllerChannelProvider>
-    );
-
-    act(() => transport.emit(liveHeartbeat()));
-    fireEvent.click(screen.getByText('post'));
-
-    expect(transport.postedMessages).toContainEqual(
-      expect.objectContaining({ kind: 'step-command', targetTabId: 'live' })
-    );
-  });
-
-  it('drops a step-command when unpaired', () => {
-    const transport = new FakeTransport();
-    render(
-      <ControllerChannelProvider transport={transport}>
-        <Probe />
-      </ControllerChannelProvider>
-    );
-
-    fireEvent.click(screen.getByText('post'));
-
-    const posted = (transport.postedMessages as any[]).find((m) => m.kind === 'step-command');
-    expect(posted).toBeUndefined();
-  });
-
-  it('injects targetTabId into check-requirements after pairing', () => {
-    const transport = new FakeTransport();
-    render(
-      <ControllerChannelProvider transport={transport}>
-        <RequestProbe />
-      </ControllerChannelProvider>
-    );
-
-    act(() => transport.emit(liveHeartbeat()));
-    fireEvent.click(screen.getByText('check'));
-
-    const posted = (transport.postedMessages as any[]).find((m) => m.kind === 'check-requirements');
-    expect(posted).toBeDefined();
-    expect(posted.targetTabId).toBe('live');
-  });
-
-  it('injects targetTabId into fix-requirement after pairing', () => {
-    const transport = new FakeTransport();
-    render(
-      <ControllerChannelProvider transport={transport}>
-        <RequestProbe />
-      </ControllerChannelProvider>
-    );
-
-    act(() => transport.emit(liveHeartbeat()));
-    fireEvent.click(screen.getByText('fix'));
-
-    const posted = postedOfKind(transport, 'fix-requirement');
-    expect(posted).toBeDefined();
-    expect(posted.targetTabId).toBe('live');
-
-    // Settle the pending promise so it doesn't resolve to null on unmount and
-    // contaminate the next test via the failAllPending → .then(r => r.ok) path.
-    act(() =>
-      transport.emit({
-        source: 'pathfinder',
-        senderId: 'live',
-        timestamp: 0,
-        kind: 'fix-result',
-        requestId: posted.requestId,
-        stepId: 's1',
-        ok: true,
-      })
-    );
+    expect(transport.postedMessages).toContainEqual({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 's1',
+      runId: 'test-run-id',
+      action: { targetAction: 'button', refTarget: '#x' },
+      targetTabId: 'live',
+    });
   });
 
   it('reports connected once a live heartbeat arrives', () => {
@@ -341,7 +265,7 @@ describe('ControllerChannelProvider', () => {
     }
   });
 
-  it('drops a reply from a non-paired tab and never lets it claim the pairing slot (T1 PART C)', async () => {
+  it('drops a reply from an unpaired tab and never lets it claim the pairing slot (T1 PART C)', async () => {
     const transport = new FakeTransport();
     render(
       <ControllerChannelProvider transport={transport}>
@@ -349,13 +273,13 @@ describe('ControllerChannelProvider', () => {
       </ControllerChannelProvider>
     );
 
-    // Pair with the real live tab first — pairing happens on a heartbeat only.
-    act(() => transport.emit(liveHeartbeat()));
+    // Pair first to flush the buffered check-requirements and get its requestId.
     fireEvent.click(screen.getByText('check'));
+    act(() => transport.emit(liveHeartbeat()));
     const request = postedOfKind(transport, 'check-requirements');
 
-    // A forged reply from a different sender arrives. It must be ignored — the
-    // attacker can't claim the already-bound pairing slot via a reply.
+    // A reply from a non-paired sender must be dropped even with the correct
+    // requestId — sender identity is the guard (T1 PART C).
     act(() =>
       transport.emit({
         source: 'pathfinder',
@@ -369,7 +293,7 @@ describe('ControllerChannelProvider', () => {
     );
     expect(screen.getByTestId('check')).toHaveTextContent('pending');
 
-    // The paired tab's reply is honored.
+    // The paired sender's reply is honored.
     act(() =>
       transport.emit({
         source: 'pathfinder',

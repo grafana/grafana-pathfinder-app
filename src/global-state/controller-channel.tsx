@@ -86,16 +86,25 @@ export function ControllerChannelProvider({
   const pendingRef = useRef<Map<string, PendingRequest>>(new Map());
   const stepCompletionRef = useRef<Map<string, (ok: boolean) => void>>(new Map());
   const stepProgressRef = useRef<Map<string, (index: number, total: number) => void>>(new Map());
+  // check-requirements posted before pairing are queued here and flushed on
+  // first live heartbeat. step-command / fix-requirement are NOT buffered —
+  // they mutate the live tab's DOM and must only fire after the user has
+  // established a live tab connection.
+  const bufferedChecksRef = useRef<CrossTabPayload[]>([]);
 
   const post = useCallback(
     (payload: CrossTabPayload) => {
-      if (
-        payload.kind === 'step-command' ||
-        payload.kind === 'check-requirements' ||
-        payload.kind === 'fix-requirement'
-      ) {
+      if (payload.kind === 'step-command' || payload.kind === 'fix-requirement') {
         if (pairedLiveIdRef.current !== null) {
           active.post({ ...payload, targetTabId: pairedLiveIdRef.current });
+        }
+      } else if (payload.kind === 'check-requirements') {
+        if (pairedLiveIdRef.current !== null) {
+          active.post({ ...payload, targetTabId: pairedLiveIdRef.current });
+        } else {
+          // Buffer until the live tab pairs; the flush below delivers it with
+          // targetTabId once the first heartbeat arrives.
+          bufferedChecksRef.current.push(payload);
         }
       } else {
         active.post(payload);
@@ -129,6 +138,7 @@ export function ControllerChannelProvider({
       stepDone.forEach((resolve) => resolve(false));
       stepDone.clear();
       stepProgressRef.current.clear();
+      bufferedChecksRef.current = [];
     };
 
     const unsubscribe = active.onMessage((message) => {
@@ -147,6 +157,11 @@ export function ControllerChannelProvider({
         // open. See CROSS_TAB_CONTROLLER.md "Known limitations".
         if (pairedLiveIdRef.current === null) {
           pairedLiveIdRef.current = message.senderId;
+          // Flush any check-requirements that were buffered before pairing.
+          const buffered = bufferedChecksRef.current.splice(0);
+          for (const msg of buffered) {
+            active.post({ ...msg, targetTabId: message.senderId });
+          }
         }
         if (message.senderId !== pairedLiveIdRef.current) {
           return;

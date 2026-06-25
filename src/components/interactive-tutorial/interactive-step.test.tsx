@@ -195,15 +195,15 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
   // requestId; reply to the latest one with a matching `requirement-result` so
   // the awaiting step resolves instead of waiting out the round-trip timeout.
   function replyToRequirementCheck(transport: ReturnType<typeof makeTransport>, pass: boolean, extra = {}) {
+    // Pair the controller first. check-requirements is buffered until pairing
+    // (fail-closed); emitting a live heartbeat triggers the flush so the call
+    // appears in transport.post.mock.calls before we look for it.
+    transport.emit({ source: 'pathfinder', senderId: 'live', timestamp: 0, kind: 'heartbeat', role: 'live' });
     const requests = transport.post.mock.calls.map((c) => c[0]).filter((p: any) => p.kind === 'check-requirements');
     const request = requests[requests.length - 1];
     if (!request) {
       return false;
     }
-    // Pairing happens on a heartbeat (T1 PART C); a reply is only honored from
-    // the paired tab. Emit one from the same sender so the result is accepted
-    // (binds once, harmless to repeat).
-    transport.emit({ source: 'pathfinder', senderId: 'live', timestamp: 0, kind: 'heartbeat', role: 'live' });
     transport.emit({
       source: 'pathfinder',
       senderId: 'live',
@@ -234,6 +234,8 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
 
     const button = await screen.findByRole('button', { name: /show me/i });
     await waitFor(() => expect(button).not.toBeDisabled());
+    // Pair before clicking — step-command is fail-closed when unpaired.
+    transport.emit({ source: 'pathfinder', senderId: 'live', timestamp: 0, kind: 'heartbeat', role: 'live' });
     fireEvent.click(button);
 
     await waitFor(() =>
@@ -262,6 +264,8 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
 
     const button = await screen.findByRole('button', { name: /do it/i });
     await waitFor(() => expect(button).not.toBeDisabled());
+    // Pair before clicking — step-command is fail-closed when unpaired.
+    transport.emit({ source: 'pathfinder', senderId: 'live', timestamp: 0, kind: 'heartbeat', role: 'live' });
     fireEvent.click(button);
 
     await waitFor(() =>
@@ -287,6 +291,10 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
         </ControllerChannelProvider>
       </InteractiveModeContext.Provider>
     );
+
+    // Pair the controller — check-requirements is buffered until the live
+    // heartbeat triggers the flush (fail-closed for check-requirements).
+    transport.emit({ source: 'pathfinder', senderId: 'live', timestamp: 0, kind: 'heartbeat', role: 'live' });
 
     await waitFor(() =>
       expect(transport.post).toHaveBeenCalledWith(
@@ -393,15 +401,10 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
         </InteractiveModeContext.Provider>
       );
 
-      // The controller posts the check, but no live tab ever replies. After the
-      // round-trip timeout the step must fail OPEN: strip the tab-local
-      // `exists-reftarget` token and evaluate the (now empty) remainder locally,
-      // which passes — so a disconnected driver stays usable instead of blocked
-      // forever on a silent live tab.
-      await waitFor(() =>
-        expect(transport.post).toHaveBeenCalledWith(expect.objectContaining({ kind: 'check-requirements' }))
-      );
-
+      // No live tab ever pairs, so the check-requirements request stays buffered.
+      // After REQUEST_TIMEOUT_MS the pending entry resolves to null; the fallback
+      // strips the tab-local `exists-reftarget` token and evaluates the empty
+      // remainder locally (passes), so a disconnected driver stays usable.
       await act(async () => {
         jest.advanceTimersByTime(5000);
       });
