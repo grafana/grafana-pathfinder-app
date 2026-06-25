@@ -24,14 +24,22 @@ export interface GuideMetadata {
   title: string;
   /** Path to the guide file (relative or absolute) */
   path: string;
+  /** Bare package ID, when the guide was resolved from a package. */
+  packageId?: string;
+  /** Declared test-environment tier (e.g. "local", "cloud"). */
+  tier?: string;
+  /** Specific Grafana instance the guide targets, if any. */
+  instance?: string;
+  /** Grafana URL the guide was tested against. */
+  targetUrl?: string;
+  /** Source content.json URL for remotely-resolved guides. */
+  sourceUrl?: string;
 }
 
 /**
  * Test execution configuration captured in the report.
  */
 export interface ReportConfig {
-  /** URL of the Grafana instance tested against */
-  grafanaUrl: string;
   /** Grafana version (if available) */
   grafanaVersion?: string;
   /** ISO timestamp of when the test started */
@@ -130,6 +138,25 @@ export interface ReportStepResult {
 }
 
 /**
+ * A package skipped before execution (not fetched/run), with a structured
+ * reason. Surfaced in JSON reports so batch runs record why guides were not run.
+ */
+export interface PreRunSkip {
+  /** Package ID (or source URL when no ID is known). */
+  id: string;
+  /** Structured skip reason (e.g. "skipped_no_auth", "fetch_failed"). */
+  reason: string;
+  /** Human-readable explanation. */
+  message: string;
+  /** Whether this entry counts as a test failure. True for `validation_failed` */
+  failed: boolean;
+  /** Declared tier, when known. */
+  tier?: string;
+  /** Source content.json URL, when known. */
+  sourceUrl?: string;
+}
+
+/**
  * Complete JSON report structure per design doc.
  *
  * @see docs/design/e2e-test-runner-design.md#json-output
@@ -149,6 +176,8 @@ export interface E2ETestReport {
   abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ';
   /** Human-readable abort message */
   abortMessage?: string;
+  /** Packages skipped before execution (remote modes). */
+  preRunSkipped?: PreRunSkip[];
 }
 
 // ============================================
@@ -179,14 +208,8 @@ export interface TestStepResult {
  * This is what the test writes to the results file.
  */
 export interface TestResultsData {
-  /** Guide metadata */
-  guide: {
-    id: string;
-    title: string;
-    path: string;
-  };
-  /** Grafana URL used for testing */
-  grafanaUrl: string;
+  /** Guide metadata  */
+  guide: GuideMetadata;
   /** ISO timestamp when test started */
   timestamp: string;
   /** Individual step results */
@@ -285,7 +308,6 @@ export function generateReport(data: TestResultsData, grafanaVersion?: string): 
   const report: E2ETestReport = {
     guide: data.guide,
     config: {
-      grafanaUrl: data.grafanaUrl,
       timestamp: data.timestamp,
     },
     summary,
@@ -458,6 +480,8 @@ export interface MultiGuideReport {
   guides: GuideResult[];
   /** Full reports for each guide (includes step details) */
   reports: E2ETestReport[];
+  /** Packages skipped before execution (remote modes). */
+  preRunSkipped?: PreRunSkip[];
 }
 
 // ============================================
@@ -538,15 +562,10 @@ export function toGuideResult(report: E2ETestReport): GuideResult {
  * Generate a multi-guide report from individual test results (L3-7B).
  *
  * @param resultsArray - Array of test results data from each guide
- * @param grafanaUrl - Grafana URL used for testing
  * @param grafanaVersion - Optional Grafana version
  * @returns Complete multi-guide report
  */
-export function generateMultiGuideReport(
-  resultsArray: TestResultsData[],
-  grafanaUrl: string,
-  grafanaVersion?: string
-): MultiGuideReport {
+export function generateMultiGuideReport(resultsArray: TestResultsData[], grafanaVersion?: string): MultiGuideReport {
   // Generate individual reports
   const reports = resultsArray.map((data) => generateReport(data, grafanaVersion));
 
@@ -557,7 +576,6 @@ export function generateMultiGuideReport(
   const guides = reports.map(toGuideResult);
 
   const config: ReportConfig = {
-    grafanaUrl,
     timestamp: new Date().toISOString(),
   };
 

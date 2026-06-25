@@ -64,14 +64,14 @@ function writeAbortFile(abortReason: AbortReason, message: string): void {
  *
  * @param results - The step test results
  * @param guide - Guide metadata
- * @param grafanaUrl - Grafana URL used for testing
+ * @param targetUrl - Resolved Grafana base URL the guide was tested against
  * @param timestamp - ISO timestamp of test start
  * @param allStepsResult - Full execution result including abort info
  */
 function writeResultsFile(
   results: StepTestResult[],
   guide: { id: string; title: string; path: string },
-  grafanaUrl: string,
+  targetUrl: string,
   timestamp: string,
   allStepsResult: AllStepsResult
 ): void {
@@ -81,8 +81,7 @@ function writeResultsFile(
   }
 
   const data: TestResultsData = {
-    guide,
-    grafanaUrl,
+    guide: { ...guide, targetUrl },
     timestamp,
     results: results.map((r) => ({
       stepId: r.stepId,
@@ -132,7 +131,7 @@ test.describe('Guide Runner', () => {
 
     // Read guide JSON from environment variable path
     const guidePath = process.env[E2E_ENV.GUIDE_JSON_PATH];
-    const grafanaUrl = process.env[E2E_ENV.GRAFANA_URL] ?? 'http://localhost:3000';
+    const targetUrl = process.env[E2E_ENV.GRAFANA_URL] ?? 'http://localhost:3000';
     const isVerbose = isEnvFlagEnabled(process.env[E2E_ENV.VERBOSE]);
     // L3-5D: Artifacts directory for artifact collection
     const artifactsDir = process.env[E2E_ENV.ARTIFACTS_DIR];
@@ -157,7 +156,7 @@ test.describe('Guide Runner', () => {
     // ============================================
     // Pre-flight checks: auth and plugin validation
     // ============================================
-    const preflightResult = await runPlaywrightPreflightChecks(page, grafanaUrl);
+    const preflightResult = await runPlaywrightPreflightChecks(page, targetUrl);
 
     // Log pre-flight results using console reporter
     printPreflightChecks(preflightResult.checks);
@@ -282,7 +281,7 @@ test.describe('Guide Runner', () => {
       title: guideTitle,
       path: guidePath ?? 'unknown',
     };
-    writeResultsFile(executionResult.results, guideMetadata, grafanaUrl, testStartTimestamp, executionResult);
+    writeResultsFile(executionResult.results, guideMetadata, targetUrl, testStartTimestamp, executionResult);
 
     // L3-3D: Handle session expiry with specific exit code
     if (executionResult.aborted && executionResult.abortReason === 'AUTH_EXPIRED') {

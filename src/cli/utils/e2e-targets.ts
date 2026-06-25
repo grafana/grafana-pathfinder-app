@@ -20,8 +20,8 @@ export interface ResolvedTarget {
   tier: string;
   /** Specific instance hostname the guide requested, if any. */
   instance?: string;
-  /** Grafana base URL to test against. Present only when `runnable`. */
-  grafanaUrl?: string;
+  /** Resolved Grafana base URL the guide will be tested against. Present only when `runnable`. */
+  targetUrl?: string;
   /** Why the guide is not runnable. Present only when not `runnable`. */
   skipReason?: TargetSkipReason;
   /** Human-readable explanation for logging. */
@@ -65,5 +65,5 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
     };
   }
 
-  return { runnable: true, tier, instance, grafanaUrl: options.grafanaUrl };
+  return { runnable: true, tier, instance, targetUrl: options.grafanaUrl };
 }

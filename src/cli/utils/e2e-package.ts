@@ -176,7 +176,7 @@ async function buildGuideOrSkip(
       guide: { path: contentUrl, content: fetched.text },
       tier: target.tier,
       instance: target.instance,
-      targetUrl: target.grafanaUrl!,
+      targetUrl: target.targetUrl!,
       sourceUrl: contentUrl,
     },
   };
