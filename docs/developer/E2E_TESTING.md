@@ -167,8 +167,8 @@ Use `--output report.json` to generate a structured report:
 
 ```json
 {
-  "guide": { "id": "...", "title": "...", "path": "..." },
-  "config": { "grafanaUrl": "...", "timestamp": "..." },
+  "guide": { "id": "...", "title": "...", "path": "...", "targetUrl": "..." },
+  "config": { "timestamp": "..." },
   "summary": {
     "total": 10,
     "passed": 8,

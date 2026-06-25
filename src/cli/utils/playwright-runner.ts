@@ -47,7 +47,7 @@ export interface PlaywrightResult {
  * command options so the runner does not depend on the whole command surface.
  */
 export interface RunGuideOptions {
-  /** Resolved base URL this guide is tested against. */
+  /** Resolved Grafana base URL this guide is tested against. */
   targetUrl: string;
   verbose: boolean;
   trace: boolean;
@@ -190,6 +190,8 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
         env: {
           ...process.env,
           [E2E_ENV.GUIDE_JSON_PATH]: guidePath,
+          // The GRAFANA_URL wire key carries the resolved per-guide targetUrl;
+          // it becomes Playwright's baseURL
           [E2E_ENV.GRAFANA_URL]: options.targetUrl,
           [E2E_ENV.TRACE]: encodeEnvFlag(options.trace),
           [E2E_ENV.VERBOSE]: encodeEnvFlag(options.verbose),

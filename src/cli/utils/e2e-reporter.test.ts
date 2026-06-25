@@ -10,8 +10,7 @@ import { generateMultiGuideReport, type TestResultsData } from './e2e-reporter';
 
 function ranGuide(id: string, opts: { failed?: boolean } = {}): TestResultsData {
   return {
-    guide: { id, title: id, path: `${id}/content.json` },
-    grafanaUrl: 'http://localhost:3000',
+    guide: { id, title: id, path: `${id}/content.json`, targetUrl: 'http://localhost:3000' },
     timestamp: '2026-01-01T00:00:00.000Z',
     results: [
       {
@@ -30,8 +29,7 @@ function ranGuide(id: string, opts: { failed?: boolean } = {}): TestResultsData 
 /** A guide skipped before execution because its prerequisite failed. */
 function skippedGuide(id: string, failedPrerequisite: string): TestResultsData {
   return {
-    guide: { id, title: id, path: `${id}/content.json` },
-    grafanaUrl: 'http://localhost:3000',
+    guide: { id, title: id, path: `${id}/content.json`, targetUrl: 'http://localhost:3000' },
     timestamp: '2026-01-01T00:00:00.000Z',
     results: [],
     aborted: true,
@@ -42,13 +40,10 @@ function skippedGuide(id: string, failedPrerequisite: string): TestResultsData {
 
 describe('generateMultiGuideReport — dependency-skipped guides', () => {
   it('counts a skipped dependent without treating it as passed', () => {
-    const report = generateMultiGuideReport(
-      [
-        ranGuide('prometheus-grafana-101', { failed: true }),
-        skippedGuide('loki-grafana-101', 'prometheus-grafana-101'),
-      ],
-      'http://localhost:3000'
-    );
+    const report = generateMultiGuideReport([
+      ranGuide('prometheus-grafana-101', { failed: true }),
+      skippedGuide('loki-grafana-101', 'prometheus-grafana-101'),
+    ]);
 
     // Both the failed prerequisite and the skipped dependent are represented.
     expect(report.summary.totalGuides).toBe(2);
@@ -60,7 +55,7 @@ describe('generateMultiGuideReport — dependency-skipped guides', () => {
   });
 
   it('reports zero skipped guides when none are skipped', () => {
-    const report = generateMultiGuideReport([ranGuide('a'), ranGuide('b')], 'http://localhost:3000');
+    const report = generateMultiGuideReport([ranGuide('a'), ranGuide('b')]);
 
     expect(report.summary.totalGuides).toBe(2);
     expect(report.summary.skippedGuides).toBe(0);

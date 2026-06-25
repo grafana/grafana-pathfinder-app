@@ -20,7 +20,7 @@ export interface ResolvedTarget {
   tier: string;
   /** Specific instance hostname the guide requested, if any. */
   instance?: string;
-  /** Resolved base URL the guide will be tested against. Present only when `runnable`. */
+  /** Resolved Grafana base URL the guide will be tested against. Present only when `runnable`. */
   targetUrl?: string;
   /** Why the guide is not runnable. Present only when not `runnable`. */
   skipReason?: TargetSkipReason;

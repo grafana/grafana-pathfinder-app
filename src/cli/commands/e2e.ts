@@ -623,7 +623,6 @@ function applyPackageMeta(data: TestResultsData | undefined, meta: PackageMeta |
     packageId: meta.packageId,
     tier: meta.tier,
     instance: meta.instance,
-    targetUrl: meta.targetUrl,
     sourceUrl: meta.sourceUrl,
   };
 }
@@ -671,8 +670,12 @@ async function runChains(
         console.log(`   ⊘ Skipped: prerequisite "${blockingDep}" did not pass`);
         const skippedMeta = packageMetaById.get(planned.id);
         const prereqResultsData: TestResultsData = {
-          guide: { id: planned.id, title: planned.id, path: planned.guide.path },
-          grafanaUrl: skippedMeta?.targetUrl ?? options.grafanaUrl,
+          guide: {
+            id: planned.id,
+            title: planned.id,
+            path: planned.guide.path,
+            targetUrl: skippedMeta?.targetUrl ?? options.grafanaUrl,
+          },
           timestamp: new Date().toISOString(),
           results: [],
           aborted: true,
@@ -881,7 +884,7 @@ function writeJsonReport(results: GuideRunResult[], options: E2ECommandOptions):
     console.warn(`   ⚠ No test results available for JSON report`);
   } else if (isMultiGuide) {
     try {
-      const report = generateMultiGuideReport(resultsWithData, options.grafanaUrl);
+      const report = generateMultiGuideReport(resultsWithData);
       if (preRunSkipped.length > 0) {
         report.preRunSkipped = preRunSkipped;
       }

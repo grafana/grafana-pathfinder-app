@@ -40,8 +40,6 @@ export interface GuideMetadata {
  * Test execution configuration captured in the report.
  */
 export interface ReportConfig {
-  /** URL of the Grafana instance tested against */
-  grafanaUrl: string;
   /** Grafana version (if available) */
   grafanaVersion?: string;
   /** ISO timestamp of when the test started */
@@ -210,10 +208,8 @@ export interface TestStepResult {
  * This is what the test writes to the results file.
  */
 export interface TestResultsData {
-  /** Guide metadata */
+  /** Guide metadata  */
   guide: GuideMetadata;
-  /** Grafana URL used for testing */
-  grafanaUrl: string;
   /** ISO timestamp when test started */
   timestamp: string;
   /** Individual step results */
@@ -312,7 +308,6 @@ export function generateReport(data: TestResultsData, grafanaVersion?: string): 
   const report: E2ETestReport = {
     guide: data.guide,
     config: {
-      grafanaUrl: data.grafanaUrl,
       timestamp: data.timestamp,
     },
     summary,
@@ -567,15 +562,10 @@ export function toGuideResult(report: E2ETestReport): GuideResult {
  * Generate a multi-guide report from individual test results (L3-7B).
  *
  * @param resultsArray - Array of test results data from each guide
- * @param grafanaUrl - Grafana URL used for testing
  * @param grafanaVersion - Optional Grafana version
  * @returns Complete multi-guide report
  */
-export function generateMultiGuideReport(
-  resultsArray: TestResultsData[],
-  grafanaUrl: string,
-  grafanaVersion?: string
-): MultiGuideReport {
+export function generateMultiGuideReport(resultsArray: TestResultsData[], grafanaVersion?: string): MultiGuideReport {
   // Generate individual reports
   const reports = resultsArray.map((data) => generateReport(data, grafanaVersion));
 
@@ -586,7 +576,6 @@ export function generateMultiGuideReport(
   const guides = reports.map(toGuideResult);
 
   const config: ReportConfig = {
-    grafanaUrl,
     timestamp: new Date().toISOString(),
   };
 
