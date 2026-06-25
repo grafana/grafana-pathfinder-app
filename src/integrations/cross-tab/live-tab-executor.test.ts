@@ -1,6 +1,6 @@
 import { waitFor } from '@testing-library/react';
 import { getAppEvents } from '@grafana/runtime';
-import { installLiveTabExecutor, resetLiveTabExecutorForTests } from './live-tab-executor';
+import { installLiveTabExecutor, resetLiveTabExecutorForTests, DEFAULT_PACING } from './live-tab-executor';
 import { FocusHandler, ButtonHandler, NavigateHandler, GuidedHandler } from '../../interactive-engine/action-handlers';
 import { checkRequirements, dispatchFix } from '../../requirements-manager';
 import { sidebarState } from '../../global-state/sidebar';
@@ -62,6 +62,10 @@ class FakeTransport {
     this.postedMessages.push(payload);
   }
 
+  getSenderId(): string {
+    return this.senderId;
+  }
+
   onMessage(listener: (message: CrossTabMessage) => void): () => void {
     this.listener = listener;
     return () => {
@@ -73,6 +77,30 @@ class FakeTransport {
     this.listener?.(message);
   }
 }
+
+// Open gate: all side-effecting messages are pre-authorized (for non-auth tests).
+const openAuthGate = {
+  async verifySignedMessage(): Promise<boolean> {
+    return true;
+  },
+  setPendingChallenge(): void {},
+  setOwnLiveTabId(): void {},
+  onSessionAccepted(): () => void {
+    return () => {};
+  },
+};
+
+// Closed gate: all side-effecting messages are rejected (negative auth tests).
+const closedAuthGate = {
+  async verifySignedMessage(): Promise<boolean> {
+    return false;
+  },
+  setPendingChallenge(): void {},
+  setOwnLiveTabId(): void {},
+  onSessionAccepted(): () => void {
+    return () => {};
+  },
+};
 
 function controllerHeartbeat(): CrossTabMessage {
   return { source: 'pathfinder', senderId: 'controller', timestamp: 0, kind: 'heartbeat', role: 'controller' };
@@ -117,7 +145,7 @@ describe('installLiveTabExecutor', () => {
 
   it('starts the transport on install and stops it on uninstall', () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     expect(transport.started).toBe(true);
     expect(transport.stopped).toBe(false);
@@ -128,7 +156,7 @@ describe('installLiveTabExecutor', () => {
 
   it('routes a "do" highlight command to FocusHandler.execute with click=true', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(stampStepCommand('do', 'highlight', '#target'));
 
@@ -142,7 +170,7 @@ describe('installLiveTabExecutor', () => {
 
   it('routes a "show" command to the handler with click=false', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(stampStepCommand('show', 'highlight', '#target'));
 
@@ -153,7 +181,7 @@ describe('installLiveTabExecutor', () => {
 
   it('routes button and navigate actions to their handlers', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(stampStepCommand('do', 'button', "button[type='submit']"));
     transport.emit(stampStepCommand('do', 'navigate', '/dashboards'));
@@ -165,7 +193,7 @@ describe('installLiveTabExecutor', () => {
 
   it('replays a multi-step internalActions sequence in order', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 });
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);
 
     transport.emit({
       source: 'pathfinder',
@@ -192,7 +220,7 @@ describe('installLiveTabExecutor', () => {
 
   it('paces each composite action through show then do', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 });
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);
 
     transport.emit({
       source: 'pathfinder',
@@ -217,7 +245,7 @@ describe('installLiveTabExecutor', () => {
 
   it('runs a guided command through the guided handler, not the auto replay', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit({
       source: 'pathfinder',
@@ -253,7 +281,7 @@ describe('installLiveTabExecutor', () => {
 
   it('posts step-progress for each action during a multi-step replay', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 });
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);
 
     transport.emit({
       source: 'pathfinder',
@@ -288,7 +316,7 @@ describe('installLiveTabExecutor', () => {
 
   it('echoes the runId from step-command in step-complete and step-progress replies', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 });
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);
 
     transport.emit({
       source: 'pathfinder',
@@ -320,7 +348,7 @@ describe('installLiveTabExecutor', () => {
 
   it('posts step-complete after a multi-step replay finishes', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 });
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);
 
     transport.emit({
       source: 'pathfinder',
@@ -347,7 +375,7 @@ describe('installLiveTabExecutor', () => {
 
   it('ignores unsupported actions without throwing or routing', () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     expect(() => transport.emit(stampStepCommand('do', 'multistep', '#x'))).not.toThrow();
     expect(executeOf(FocusHandler)).not.toHaveBeenCalled();
@@ -357,7 +385,7 @@ describe('installLiveTabExecutor', () => {
 
   it('responds to a controller heartbeat with a live heartbeat', () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(controllerHeartbeat());
 
@@ -365,35 +393,39 @@ describe('installLiveTabExecutor', () => {
     uninstall();
   });
 
-  it('closes the live-tab sidebar when a controller takes over', () => {
+  it('closes the live-tab sidebar when a controller takes over', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(stampSidebarHandoff('close'));
 
-    expect(getAppEvents().publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'close-extension-sidebar' }));
+    await waitFor(() =>
+      expect(getAppEvents().publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'close-extension-sidebar' }))
+    );
     uninstall();
   });
 
-  it('reopens the sidebar when the controller leaves and the slot is free', () => {
+  it('reopens the sidebar when the controller leaves and the slot is free', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(stampSidebarHandoff('close'));
     transport.emit(stampSidebarHandoff('reopen'));
 
-    expect(sidebarState.openSidebar).toHaveBeenCalled();
+    await waitFor(() => expect(sidebarState.openSidebar).toHaveBeenCalled());
     uninstall();
   });
 
-  it('does not reopen when another plugin occupies the sidebar', () => {
+  it('does not reopen when another plugin occupies the sidebar', async () => {
     (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(true);
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(stampSidebarHandoff('close'));
     transport.emit(stampSidebarHandoff('reopen'));
 
+    await Promise.resolve();
+    await Promise.resolve();
     expect(sidebarState.openSidebar).not.toHaveBeenCalled();
     uninstall();
   });
@@ -405,7 +437,7 @@ describe('installLiveTabExecutor', () => {
       error: [{ requirement: 'navmenu-open', pass: false, canFix: true, fixType: 'navigation' }],
     });
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit({
       source: 'pathfinder',
@@ -436,7 +468,7 @@ describe('installLiveTabExecutor', () => {
   it('runs a fix-requirement against the live tab and replies with the outcome', async () => {
     (dispatchFix as jest.Mock).mockResolvedValue({ ok: true });
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit({
       source: 'pathfinder',
@@ -465,7 +497,7 @@ describe('installLiveTabExecutor', () => {
   it('replies with a failed fix-result when the live-tab fix throws', async () => {
     (dispatchFix as jest.Mock).mockRejectedValue(new Error('boom'));
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit({
       source: 'pathfinder',
@@ -489,8 +521,8 @@ describe('installLiveTabExecutor', () => {
   it('only installs once until uninstalled', () => {
     const first = new FakeTransport();
     const second = new FakeTransport();
-    const uninstall = installLiveTabExecutor(first);
-    installLiveTabExecutor(second);
+    const uninstall = installLiveTabExecutor(first, DEFAULT_PACING, openAuthGate);
+    installLiveTabExecutor(second, DEFAULT_PACING, openAuthGate);
 
     expect(first.started).toBe(true);
     expect(second.started).toBe(false);
@@ -502,20 +534,20 @@ describe('installLiveTabExecutor', () => {
       throw new Error('constructor boom');
     });
     const first = new FakeTransport();
-    expect(() => installLiveTabExecutor(first)).toThrow('constructor boom');
+    expect(() => installLiveTabExecutor(first, DEFAULT_PACING, openAuthGate)).toThrow('constructor boom');
     expect(first.started).toBe(false);
 
     // installed stayed false, so a later init installs cleanly rather than
     // being permanently blocked by the failed attempt.
     const second = new FakeTransport();
-    const uninstall = installLiveTabExecutor(second);
+    const uninstall = installLiveTabExecutor(second, DEFAULT_PACING, openAuthGate);
     expect(second.started).toBe(true);
     uninstall();
   });
 
   it('does not execute commands delivered after uninstall (NEW-1064-2)', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
     uninstall();
 
     transport.emit(stampStepCommand('do', 'highlight', '#target'));
@@ -526,7 +558,7 @@ describe('installLiveTabExecutor', () => {
 
   it('drops a command with an unrecognized action at the sink (T1 defense in depth)', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     const forged = {
       ...stampStepCommand('do', 'highlight', '#t'),
@@ -541,7 +573,7 @@ describe('installLiveTabExecutor', () => {
 
   it('drops a forged fix-requirement missing required fields without dispatching a fix (T1 / security gate)', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     // fix-requirement is the highest-risk kind — runRemoteFix → dispatchFix
     // performs navigation / DOM mutation on the authenticated live tab. A message
@@ -566,7 +598,7 @@ describe('installLiveTabExecutor', () => {
 
   it('drops a forged check-requirements missing required fields without probing the DOM (T1 / security gate)', async () => {
     const transport = new FakeTransport();
-    const uninstall = installLiveTabExecutor(transport);
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     const forged = {
       source: 'pathfinder',
@@ -582,5 +614,145 @@ describe('installLiveTabExecutor', () => {
     expect(checkRequirements).not.toHaveBeenCalled();
     expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'requirement-result' }));
     uninstall();
+  });
+
+  describe('auth gate — side-effecting commands require verified session', () => {
+    it('drops step-command from an unpaired sender (closed gate)', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, closedAuthGate);
+
+      transport.emit(stampStepCommand('do', 'highlight', '#t'));
+      await Promise.resolve();
+
+      expect(executeOf(FocusHandler)).not.toHaveBeenCalled();
+      uninstall();
+    });
+
+    it('drops check-requirements from unpaired sender (closed gate)', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, closedAuthGate);
+
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'attacker',
+        timestamp: 0,
+        kind: 'check-requirements',
+        requestId: 'r1',
+        stepId: 's1',
+        requirements: 'navmenu-open',
+      });
+      await Promise.resolve();
+
+      expect(checkRequirements).not.toHaveBeenCalled();
+      uninstall();
+    });
+
+    it('drops fix-requirement from unpaired sender (closed gate)', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, closedAuthGate);
+
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'attacker',
+        timestamp: 0,
+        kind: 'fix-requirement',
+        requestId: 'f1',
+        stepId: 's1',
+        requirements: 'navmenu-open',
+        fixType: 'navigation',
+      });
+      await Promise.resolve();
+
+      expect(dispatchFix).not.toHaveBeenCalled();
+      uninstall();
+    });
+
+    it('executes step-command from a verified session (open gate)', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+
+      transport.emit(stampStepCommand('do', 'highlight', '#t'));
+
+      await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalled());
+      uninstall();
+    });
+
+    it('executes check-requirements from a verified session (open gate)', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'check-requirements',
+        requestId: 'r2',
+        stepId: 's2',
+        requirements: 'navmenu-open',
+      });
+
+      await waitFor(() => expect(checkRequirements).toHaveBeenCalled());
+      uninstall();
+    });
+
+    it('executes fix-requirement from a verified session (open gate)', async () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'fix-requirement',
+        requestId: 'f2',
+        stepId: 's2',
+        requirements: 'navmenu-open',
+        fixType: 'navigation',
+      });
+
+      await waitFor(() => expect(dispatchFix).toHaveBeenCalled());
+      uninstall();
+    });
+
+    it('stores pending challenge when pairing-challenge arrives', () => {
+      const challenges: unknown[] = [];
+      const gate = {
+        async verifySignedMessage(): Promise<boolean> {
+          return false;
+        },
+        setPendingChallenge(c: unknown): void {
+          challenges.push(c);
+        },
+        setOwnLiveTabId(): void {},
+        onSessionAccepted(): () => void {
+          return () => {};
+        },
+      };
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, gate);
+
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'ctrl-1',
+        timestamp: 0,
+        kind: 'pairing-challenge',
+        sessionId: 'sess-1',
+        publicKeyB64: 'abc123',
+      } as CrossTabMessage);
+
+      expect(challenges).toHaveLength(1);
+      expect(challenges[0]).toMatchObject({ sessionId: 'sess-1', publicKeyB64: 'abc123', senderTabId: 'ctrl-1' });
+      uninstall();
+    });
+
+    it('heartbeat from controller replies without auth check', () => {
+      const transport = new FakeTransport();
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, closedAuthGate);
+
+      transport.emit(controllerHeartbeat());
+
+      expect(transport.postedMessages).toContainEqual({ kind: 'heartbeat', role: 'live' });
+      uninstall();
+    });
   });
 });

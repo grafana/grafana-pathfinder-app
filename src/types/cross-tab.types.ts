@@ -43,12 +43,41 @@ export interface RemoteRequirementResult {
   error: RemoteRequirementError[];
 }
 
+// Auth fields carried on controller→live side-effecting messages.
+// Absent on live→controller replies. The executor auth gate validates their
+// presence and checks the ECDSA signature before dispatching.
+export interface ControllerAuthFields {
+  sig: string;
+  sessionId: string;
+  liveTabId: string;
+  sigTs: number;
+}
+
 export interface StepCommandMessage extends CrossTabEnvelope {
   kind: 'step-command';
   phase: 'show' | 'do';
   stepId: string;
   runId: string;
   action: CrossTabAction;
+  sig?: string;
+  sessionId?: string;
+  liveTabId?: string;
+  sigTs?: number;
+}
+
+// Controller announces its session public key so the live tab can show a
+// pairing prompt. Not side-effecting; unsigned.
+export interface PairingChallengeMessage extends CrossTabEnvelope {
+  kind: 'pairing-challenge';
+  sessionId: string;
+  publicKeyB64: string;
+}
+
+// Live tab confirms pairing after user accepts. The senderId in the envelope
+// IS the liveTabId the controller will use when signing subsequent commands.
+export interface PairingAcceptMessage extends CrossTabEnvelope {
+  kind: 'pairing-accept';
+  sessionId: string;
 }
 
 export interface HeartbeatMessage extends CrossTabEnvelope {
@@ -59,6 +88,10 @@ export interface HeartbeatMessage extends CrossTabEnvelope {
 export interface SidebarHandoffMessage extends CrossTabEnvelope {
   kind: 'sidebar-handoff';
   action: 'close' | 'reopen';
+  sig?: string;
+  sessionId?: string;
+  liveTabId?: string;
+  sigTs?: number;
 }
 
 // Requirement round-trip (controller → live → controller); requestId correlates
@@ -71,6 +104,10 @@ export interface CheckRequirementsMessage extends CrossTabEnvelope {
   targetAction?: string;
   refTarget?: string;
   targetValue?: string;
+  sig?: string;
+  sessionId?: string;
+  liveTabId?: string;
+  sigTs?: number;
 }
 
 export interface RequirementResultMessage extends CrossTabEnvelope {
@@ -88,6 +125,10 @@ export interface FixRequirementMessage extends CrossTabEnvelope {
   fixType?: string;
   targetHref?: string;
   scrollContainer?: string;
+  sig?: string;
+  sessionId?: string;
+  liveTabId?: string;
+  sigTs?: number;
 }
 
 export interface FixResultMessage extends CrossTabEnvelope {
@@ -125,7 +166,9 @@ export type CrossTabMessage =
   | FixRequirementMessage
   | FixResultMessage
   | StepCompleteMessage
-  | StepProgressMessage;
+  | StepProgressMessage
+  | PairingChallengeMessage
+  | PairingAcceptMessage;
 
 // Distributively strip the envelope from every message kind, so the
 // post() payload type stays derived from CrossTabMessage instead of a
@@ -278,6 +321,14 @@ function isValidStepProgress(message: Record<string, unknown>): boolean {
   );
 }
 
+function isValidPairingChallenge(message: Record<string, unknown>): boolean {
+  return typeof message.sessionId === 'string' && typeof message.publicKeyB64 === 'string';
+}
+
+function isValidPairingAccept(message: Record<string, unknown>): boolean {
+  return typeof message.sessionId === 'string';
+}
+
 // Per-kind validators — the single source of truth shared by the transport
 // receive gate and the live-tab executor. Same-origin traffic is forgeable
 // (the envelope alone proves nothing), so every side-effecting command is
@@ -294,6 +345,8 @@ const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, 
   'fix-result': isValidFixResult,
   'step-complete': isValidStepComplete,
   'step-progress': isValidStepProgress,
+  'pairing-challenge': isValidPairingChallenge,
+  'pairing-accept': isValidPairingAccept,
 };
 
 /**

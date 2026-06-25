@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CrossTabTransport, createSenderId } from '../lib/cross-tab-transport';
+import { generateSessionKeyPair, signPayload } from '../security/cross-tab-crypto';
 import type {
   CheckRequirementsMessage,
   CrossTabMessage,
@@ -76,10 +77,14 @@ export function ControllerChannelProvider({
   children: React.ReactNode;
   transport?: ChannelTransport;
 }) {
-  const [active] = useState<ChannelTransport>(() => transport ?? new CrossTabTransport(createSenderId()));
+  const [[sessionId, active]] = useState<[string, ChannelTransport]>(() => {
+    const sid = createSenderId();
+    return [sid, transport ?? new CrossTabTransport(sid)];
+  });
   const [connected, setConnected] = useState(false);
+  const privateKeyRef = useRef<CryptoKey | null>(null);
+  const publicKeyB64Ref = useRef<string | null>(null);
   const lastLiveSeenRef = useRef(0);
-  const reassertedCloseRef = useRef(false);
   // The one live tab this controller is bound to (first to send a `live`
   // heartbeat); replies from any other tab are ignored.
   const pairedLiveIdRef = useRef<string | null>(null);
@@ -87,12 +92,48 @@ export function ControllerChannelProvider({
   const stepCompletionRef = useRef<Map<string, (ok: boolean) => void>>(new Map());
   const stepProgressRef = useRef<Map<string, (index: number, total: number) => void>>(new Map());
 
-  const post = useCallback((payload: CrossTabPayload) => active.post(payload), [active]);
+  const SIGNED_KINDS = new Set(['step-command', 'check-requirements', 'fix-requirement', 'sidebar-handoff']);
+
+  const post = useCallback(
+    (payload: CrossTabPayload): void => {
+      const liveTabId = pairedLiveIdRef.current;
+      const privateKey = privateKeyRef.current;
+      const sid = sessionId;
+      if (SIGNED_KINDS.has(payload.kind) && liveTabId && privateKey) {
+        const sigTs = Date.now();
+        const canonical = `${sid}|${liveTabId}|${payload.kind}|${sigTs}`;
+        void signPayload(privateKey, canonical)
+          .then((sig) => {
+            active.post({ ...payload, sig, sessionId: sid, liveTabId, sigTs } as CrossTabPayload);
+          })
+          .catch(() => {
+            // Drop rather than send unsigned.
+          });
+      } else {
+        active.post(payload);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [active]
+  );
+
+  useEffect(() => {
+    // Generate session key pair; announce challenge once ready.
+    generateSessionKeyPair()
+      .then(({ publicKeyB64, privateKey }) => {
+        privateKeyRef.current = privateKey;
+        publicKeyB64Ref.current = publicKeyB64;
+        active.post({ kind: 'pairing-challenge', sessionId: sessionId, publicKeyB64 });
+      })
+      .catch(() => {
+        // Non-fatal; controller will not be able to sign commands.
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   useEffect(() => {
     active.start();
-    // Hand the main window's sidebar off to this controller tab while it drives.
-    active.post({ kind: 'sidebar-handoff', action: 'close' });
+    // sidebar-handoff is now gated behind auth; send it after pairing-accept arrives.
 
     const pending = pendingRef.current;
     const stepDone = stepCompletionRef.current;
@@ -117,36 +158,29 @@ export function ControllerChannelProvider({
     };
 
     const unsubscribe = active.onMessage((message) => {
+      // Live tab accepted the pairing challenge: bind the live tab ID so
+      // signed commands target only this tab.
+      if (message.kind === 'pairing-accept') {
+        if (message.sessionId !== sessionId) {
+          return;
+        }
+        if (pairedLiveIdRef.current === null) {
+          pairedLiveIdRef.current = message.senderId;
+          // Now paired: send the sidebar-handoff so the live tab closes its sidebar.
+          post({ kind: 'sidebar-handoff', action: 'close' });
+        }
+        return;
+      }
+
       if (message.kind === 'heartbeat') {
         if (message.role !== 'live') {
           return;
         }
-        // PAIRING SITE. TODO(twotab): v1 ships without a sender handshake — the
-        // controller binds to the first live tab that sends a `live` heartbeat,
-        // so any same-origin script that learns the channel name can claim this
-        // slot with a forged heartbeat. Once paired it can drive check-requirements
-        // / fix-requirement, which run navigation + DOM mutation against the
-        // authenticated live tab (the highest-risk surface, #1070). Per-kind
-        // validation gates message SHAPE, not AUTHORIZATION. Future work: a
-        // gesture-to-accept on the live tab or an out-of-band nonce at controller
-        // open. See CROSS_TAB_CONTROLLER.md "Known limitations".
-        if (pairedLiveIdRef.current === null) {
-          pairedLiveIdRef.current = message.senderId;
-        }
-        if (message.senderId !== pairedLiveIdRef.current) {
+        if (pairedLiveIdRef.current === null || message.senderId !== pairedLiveIdRef.current) {
           return;
         }
         lastLiveSeenRef.current = Date.now();
         setConnected(true);
-        if (!reassertedCloseRef.current) {
-          // The initial close above may have been posted before any live tab
-          // was listening (controller opened first, or the live tab mounted
-          // late). Re-assert it once the first live heartbeat proves a live tab
-          // exists, so the sidebar still hands off. The flag stops later
-          // reconnects from re-posting on every tick.
-          reassertedCloseRef.current = true;
-          active.post({ kind: 'sidebar-handoff', action: 'close' });
-        }
         return;
       }
       if (
@@ -182,6 +216,15 @@ export function ControllerChannelProvider({
 
     const tick = () => {
       active.post({ kind: 'heartbeat', role: 'controller' });
+      // Re-announce the pairing challenge while unpaired so a live tab that
+      // starts after the controller still receives the public key.
+      if (pairedLiveIdRef.current === null && publicKeyB64Ref.current) {
+        active.post({
+          kind: 'pairing-challenge',
+          sessionId: sessionId,
+          publicKeyB64: publicKeyB64Ref.current,
+        });
+      }
       if (lastLiveSeenRef.current > 0 && Date.now() - lastLiveSeenRef.current > HEARTBEAT_STALE_MS) {
         setConnected(false);
         // Paired tab gone: drop the binding to allow re-pairing and fail waiters.
@@ -204,7 +247,7 @@ export function ControllerChannelProvider({
       active.stop();
       failAllPending();
     };
-  }, [active]);
+  }, [active, post, sessionId]);
 
   const request = useCallback(
     <T extends RemoteRequirementResult | FixOutcome | null>(payload: RequestPayload, fallback: T): Promise<T> => {

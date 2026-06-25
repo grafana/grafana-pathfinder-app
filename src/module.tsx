@@ -164,11 +164,23 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   }
 
   // Live tab only (the controller tab returned early above): load the cross-tab
-  // executor so a controller tab can drive this Grafana DOM. Gated on
-  // shouldMountSidebar — the executor is a same-origin DOM sink and must not be
-  // installed for users the experiment has excluded. Lazy import keeps the
-  // interactive engine out of the entry bundle.
+  // executor so a controller tab can drive this Grafana DOM. Mount the pairing
+  // banner first so its challenge listener is live before the transport starts.
   if (TWOTAB_CONTROLLER_ENABLED && shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
+    if (!document.getElementById('pathfinder-pairing-banner-root')) {
+      const bannerContainer = document.createElement('div');
+      bannerContainer.id = 'pathfinder-pairing-banner-root';
+      document.body.appendChild(bannerContainer);
+      Promise.all([import('./integrations/cross-tab/PairingRequestBanner'), import('./lib/create-root-compat')])
+        .then(async ([{ PairingRequestBanner }, { createCompatRoot }]) => {
+          const root = await createCompatRoot(bannerContainer);
+          root.render(React.createElement(PairingRequestBanner));
+        })
+        .catch((err) => {
+          console.error('[Pathfinder] Failed to load pairing banner:', err);
+          bannerContainer.remove();
+        });
+    }
     import('./integrations/cross-tab/live-tab-executor')
       .then(({ installLiveTabExecutor }) => installLiveTabExecutor())
       .catch((err) => console.error('[Pathfinder] Failed to load cross-tab executor:', err));
