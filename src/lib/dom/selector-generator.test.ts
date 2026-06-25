@@ -531,6 +531,12 @@ describe('Selector Generator — Pipeline', () => {
       expect(analysis.flags).toContain('structural');
       expect(analysis.quality).toBe('medium');
     });
+
+    it('rates a version-stable grafana: selector as good', () => {
+      const analysis = analyzeSelectorString('grafana:components.RefreshPicker.runButton');
+      expect(analysis.method).toBe('grafana');
+      expect(analysis.quality).toBe('good');
+    });
   });
 
   // ==========================================================================

@@ -1324,6 +1324,9 @@ export interface SelectorStringAnalysis {
  * selector that also uses `:nth-child` is downgraded via the structural flag).
  */
 function inferMethodAndScore(selector: string): { method: string; score: number } {
+  if (selector.startsWith('grafana:')) {
+    return { method: 'grafana', score: CANDIDATE_SCORES.grafana };
+  }
   if (SELECTOR_CONFIG.testIdAttrs.some((attr) => selector.includes(attr))) {
     return { method: 'data-testid', score: CANDIDATE_SCORES.testId };
   }
