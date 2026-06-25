@@ -48,6 +48,7 @@ import type { ManifestJson, RepositoryEntry, RepositoryJson } from '../../types/
 
 import { randomUUID } from 'crypto';
 import { hasCloudAuth } from '../e2e/e2e-targets';
+import { CloudEnvironment } from '../e2e/cloud-environment';
 
 /**
  * CLI options for the e2e command
@@ -78,6 +79,8 @@ interface E2ECommandOptions {
   password?: string;
   /** Service-account Bearer token for cloud-tier auth (env fallback: GRAFANA_TOKEN). */
   serviceAccountToken?: string;
+  /** Admin token used to provision a fresh per-chain SA on the cloud stack (env fallback: GRAFANA_ADMIN_TOKEN). */
+  cloudAdminToken?: string;
   /** Default cloud instance URL for cloud-tier guides without an `instance`. */
   cloudUrl: string;
 }
@@ -251,12 +254,21 @@ interface ChainRunOutcome {
 
 /**
  * Install exit/signal handlers that tear down the isolated --clean docker stack
- * exactly once. On SIGINT/SIGTERM, re-raise with the conventional 128+signal code.
+ * and any provisioned cloud service account. On SIGINT/SIGTERM, re-raise with
+ * the conventional 128+signal code.
+ *
+ * The `exit` handler is synchronous, so only docker teardown can run there; a
+ * provisioned SA relies on its token TTL and the next run's orphan sweep if the
+ * process dies abruptly. The signal handlers are async so they can delete the SA
+ * before exiting.
  */
-function installCleanTeardownHandlers(cleanEnv: CleanEnvironment): void {
+function installTeardownHandlers(cleanEnv: CleanEnvironment, cloudEnv?: CloudEnvironment): void {
   const exitHandler = () => cleanEnv.teardownIfOwned();
-  const signalHandler = (signal: NodeJS.Signals) => {
+  const signalHandler = async (signal: NodeJS.Signals) => {
     cleanEnv.teardownIfOwned();
+    if (cloudEnv) {
+      await cloudEnv.teardownAll();
+    }
     // Re-raise the signal with the conventional 128 + signal-number exit code
     const code = signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 1;
     process.exit(code);
@@ -546,7 +558,8 @@ async function runChains(
   options: E2ECommandOptions,
   cleanEnv: CleanEnvironment,
   packageMetaById: Map<string, PackageMeta> = new Map(),
-  credentials?: RunCredentials
+  credentials?: RunCredentials,
+  cloudEnv?: CloudEnvironment
 ): Promise<ChainRunOutcome> {
   console.log('\n🎭 Running Playwright tests...\n');
 
@@ -566,6 +579,18 @@ async function runChains(
         allPassed = false;
         break;
       }
+    }
+
+    // Provision a fresh service account for this chain's cloud-tier guides,
+    // shared across the chain so within-chain dependent state survives, then
+    // torn down at chain end (mirrors --clean's per-chain reset). The inner loop
+    // never throws (runPlaywrightTests always resolves); teardown is also covered
+    // by signal handlers + token TTL + the next run's orphan sweep.
+    const chainHasCloud = chain.some((planned) => packageMetaById.get(planned.id)?.tier === 'cloud');
+    let chainToken: string | undefined;
+    if (cloudEnv && chainHasCloud) {
+      console.log(`\n🔑 Provisioning a service account for this cloud chain...`);
+      chainToken = await cloudEnv.provisionChain();
     }
 
     // IDs in this chain that failed or were skipped; their dependents skip.
@@ -623,7 +648,8 @@ async function runChains(
         alwaysScreenshot: options.alwaysScreenshot,
         username: isCloudTarget ? credentials?.username : undefined,
         password: isCloudTarget ? credentials?.password : undefined,
-        token: isCloudTarget ? credentials?.token : undefined,
+        // A provisioned per-chain token overrides any static --service-account-token.
+        token: isCloudTarget ? (chainToken ?? credentials?.token) : undefined,
       };
 
       const result = await runPlaywrightTests(planned.guide, runGuideOptions);
@@ -663,6 +689,10 @@ async function runChains(
       if (result.traceFile && options.trace) {
         console.log(`   📊 Trace file: ${result.traceFile}`);
       }
+    }
+
+    if (cloudEnv && chainHasCloud) {
+      await cloudEnv.teardownChain();
     }
   }
 
@@ -727,8 +757,11 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     password: options.password ?? process.env.GRAFANA_PASSWORD,
     token: options.serviceAccountToken ?? process.env.GRAFANA_TOKEN,
   };
-  // Presence (not the values) drives target resolution.
-  const hasCredentials = hasCloudAuth(credentials);
+  // Presence (not the values) drives target resolution. A bootstrap admin token
+  // counts as auth too: cloud guides become runnable because the runner can mint
+  // a per-chain token from it.
+  const adminToken = options.cloudAdminToken ?? process.env.GRAFANA_ADMIN_TOKEN;
+  const hasCredentials = hasCloudAuth(credentials) || Boolean(adminToken);
   const remoteOptions = {
     grafanaUrl: options.grafanaUrl,
     currentTier: options.tier,
@@ -814,18 +847,27 @@ export const e2eCommand = new Command('e2e')
     'Service-account Bearer token for cloud-tier auth; required for Grafana Cloud SSO stacks (env fallback: GRAFANA_TOKEN)'
   )
   .option(
+    '--cloud-admin-token <token>',
+    'Admin service-account token (serviceaccounts:write) used to provision a fresh per-chain service account on the cloud stack, deleted at chain end (env fallback: GRAFANA_ADMIN_TOKEN)'
+  )
+  .option(
     '--cloud-url <url>',
     `Default cloud instance URL for cloud-tier guides without an instance (default ${DEFAULT_CLOUD_URL})`,
     DEFAULT_CLOUD_URL
   )
   .action(async (files: string[], options: E2ECommandOptions) => {
     const cleanEnv = new CleanEnvironment(options.verbose);
-    if (options.clean) {
-      installCleanTeardownHandlers(cleanEnv);
 
-      if (options.grafanaUrl === DEFAULT_GRAFANA_URL) {
-        options.grafanaUrl = CLEAN_GRAFANA_URL;
-      }
+    // A bootstrap admin token switches cloud-tier guides to per-chain provisioned
+    // service accounts instead of a single static token.
+    const adminToken = options.cloudAdminToken ?? process.env.GRAFANA_ADMIN_TOKEN;
+    const cloudEnv = adminToken ? new CloudEnvironment(adminToken, options.cloudUrl, options.verbose) : undefined;
+
+    if (options.clean || cloudEnv) {
+      installTeardownHandlers(cleanEnv, cloudEnv);
+    }
+    if (options.clean && options.grafanaUrl === DEFAULT_GRAFANA_URL) {
+      options.grafanaUrl = CLEAN_GRAFANA_URL;
     }
 
     try {
@@ -844,9 +886,14 @@ export const e2eCommand = new Command('e2e')
 
       await maybeCleanStart(cleanEnv, options);
 
+      // Remove service accounts leaked by previous crashed runs (best-effort).
+      if (cloudEnv) {
+        await cloudEnv.sweepOrphans();
+      }
+
       await runPreflightChecks(options, targetUrlsToCheck(inputs, options.grafanaUrl), inputs.localPackageDir);
 
-      const outcome = await runChains(plan, options, cleanEnv, inputs.packageMetaById, inputs.credentials);
+      const outcome = await runChains(plan, options, cleanEnv, inputs.packageMetaById, inputs.credentials, cloudEnv);
 
       reportResults([...inputs.preRunSkipped, ...outcome.results], options);
     } catch (error) {

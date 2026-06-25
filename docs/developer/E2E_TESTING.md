@@ -407,6 +407,8 @@ Two cloud auth methods are supported:
 - **Service-account token (recommended for Grafana Cloud).** Create a stack-level service account and token in the Grafana UI, then pass `--service-account-token` (or `GRAFANA_TOKEN`). The runner attaches it as an `Authorization: Bearer` header on every browser request — the method that works against grafana.com-SSO Cloud stacks, where the `POST /login` form is unavailable. Caveat: `--trace` records request headers, so a trace will contain the token; do not share trace artifacts.
 - **Username/password form login.** `POST /login` against the target; only works on instances that expose the native Grafana login form (local OSS/Enterprise, or a stack with the login form explicitly enabled). Each guide authenticates into its own disposable session, deleted after it finishes.
 
+**Per-chain isolation (optional).** Pass `--cloud-admin-token` (an admin service-account token with `serviceaccounts:write`; env `GRAFANA_ADMIN_TOKEN`) to provision a fresh service account for each dependency chain, shared by the guides in that chain and deleted when the chain finishes — mirroring how `--clean` resets the local docker stack per chain. Minted tokens carry a TTL, and accounts orphaned by crashed runs are swept on the next run. This isolates per-identity state (preferences, stars, sessions) between chains; it does **not** reset org data such as dashboards or data sources created by guides (that needs ephemeral stacks, a future phase). It assumes a single stack — the one the admin token belongs to, matching `--cloud-url`.
+
 Interactive SSO/Okta login (driving the identity provider's login UI) is not supported. Path/journey (`milestones`) expansion is also not yet implemented; `path` and `journey` packages are skipped as an unsupported type. See the [Package-Aware Testing](../design/e2e-test-runner-design.md#package-aware-testing) design for the full picture.
 
 ### Package outcomes
@@ -445,6 +447,11 @@ npx pathfinder-cli e2e --tier cloud --package alerting-101 \
 # Test all cloud-tier guides against the default cloud instance
 npx pathfinder-cli e2e --remote --tier cloud --service-account-token "$GRAFANA_TOKEN" \
   --cloud-url https://learn.grafana.net/
+
+# Per-chain ephemeral service accounts (provisioned and deleted automatically)
+export GRAFANA_ADMIN_TOKEN=glsa_admin_xxx
+npx pathfinder-cli e2e --remote --tier cloud \
+  --cloud-url https://your-stack.grafana.net/
 ```
 
 ## Related documentation
