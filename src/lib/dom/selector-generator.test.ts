@@ -531,6 +531,12 @@ describe('Selector Generator — Pipeline', () => {
       expect(analysis.flags).toContain('structural');
       expect(analysis.quality).toBe('medium');
     });
+
+    it('rates a :has() descendant-anchored selector as medium', () => {
+      const analysis = analyzeSelectorString("li > div:has(a[data-testid='nav'][href='/explore'])");
+      expect(analysis.method).toBe('has-descendant');
+      expect(analysis.quality).toBe('medium');
+    });
   });
 
   // ==========================================================================
@@ -626,6 +632,76 @@ describe('Selector Generator — Pipeline', () => {
       expect(chain[0]).toContain("data-testid='lonely'");
       expect(chain.length).toBe(2);
       expect(chain[1]).toContain(':nth-of-type');
+    });
+  });
+
+  // ==========================================================================
+  // has-descendant — stable descendant anchoring via :has()
+  // ==========================================================================
+
+  describe('has-descendant selectors', () => {
+    it('selects an identity-less wrapper via a stable descendant using :has()', () => {
+      document.body.innerHTML = `
+        <ul>
+          <li><div class="css-a"><div class="css-b"><a data-testid="nav-item" href="/home">Home</a></div></div></li>
+          <li><div class="css-c"><div class="css-d"><a data-testid="nav-item" href="/explore">Explore</a></div></div></li>
+        </ul>
+      `;
+      const wrapper = document.querySelectorAll('li')[1]!.querySelector('div') as HTMLElement;
+
+      const selector = generateBestSelector(wrapper);
+
+      expect(selector).toContain(':has(');
+      expect(selector).toContain("href='/explore'");
+      expect(querySelectorAllEnhanced(selector).elements).toEqual([wrapper]);
+    });
+
+    it('prefers an interactive descendant over a decorative one', () => {
+      document.body.innerHTML = `
+        <ul><li><div class="css-wrap">
+          <svg data-testid="icon-x"></svg>
+          <a data-testid="link" href="/go">Go</a>
+        </div></li></ul>
+      `;
+      const wrapper = document.querySelector('.css-wrap') as HTMLElement;
+
+      const selector = generateBestSelector(wrapper);
+
+      expect(selector).toContain(':has(');
+      expect(selector).toContain("data-testid='link'");
+      expect(selector).not.toContain('icon-x');
+    });
+
+    it('does not use :has() when the element has its own stable selector', () => {
+      document.body.innerHTML = `<div data-testid="card"><a data-testid="x" href="/y">Y</a></div>`;
+      const card = document.querySelector("[data-testid='card']") as HTMLElement;
+
+      expect(generateBestSelector(card)).toBe("div[data-testid='card']");
+    });
+
+    it('falls back to a positional selector when no stable descendant exists', () => {
+      document.body.innerHTML = `<ul><li><div class="css-wrap"><span>plain</span></div></li></ul>`;
+      const wrapper = document.querySelector('.css-wrap') as HTMLElement;
+
+      const selector = generateBestSelector(wrapper);
+
+      expect(selector).not.toContain(':has(');
+      expect(querySelectorAllEnhanced(selector).elements).toContain(wrapper);
+    });
+
+    it('uses the :has() selector as the chain primary for an identity-less wrapper', () => {
+      document.body.innerHTML = `
+        <ul>
+          <li><div class="css-wrap"><a data-testid="n" href="/a">A</a></div></li>
+          <li><div class="css-wrap2"><a data-testid="n" href="/b">B</a></div></li>
+        </ul>
+      `;
+      const wrapper = document.querySelector('.css-wrap') as HTMLElement;
+
+      const chain = generateSelectorChain(wrapper);
+
+      expect(chain[0]).toContain(':has(');
+      expect(chain[0]).toContain("href='/a'");
     });
   });
 
