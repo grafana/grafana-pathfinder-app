@@ -757,7 +757,7 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     resolverUrl: options.resolverUrl,
     repoUrl: options.repoUrl,
     cloudUrl: options.cloudUrl,
-    ...cloudAuth.resolutionOptions,
+    cloudAuthTargets: cloudAuth.targets,
   };
   const resolution =
     mode === 'remote-package'

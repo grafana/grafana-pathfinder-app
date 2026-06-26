@@ -1,4 +1,4 @@
-import { cloudInstanceUrl, hasCloudAuth, sameOrigin } from './e2e-targets';
+import { cloudInstanceUrl, hasCloudAuth, sameOrigin, type CloudAuthTargets } from './e2e-targets';
 
 export interface CloudAuthConfigInput {
   cloudUrl: string;
@@ -16,14 +16,8 @@ export interface RunnerAuth {
   token?: string;
 }
 
-export interface CloudAuthResolutionOptions {
-  hasCredentials: boolean;
-  credentialTargetUrls: string[];
-  provisioningCloudUrl?: string;
-}
-
 export interface CloudAuthPolicy {
-  resolutionOptions: CloudAuthResolutionOptions;
+  targets: CloudAuthTargets;
   needsProvisioningFor(targetUrl: string | undefined): boolean;
   runnerAuthFor(targetUrl: string | undefined, provisionedToken?: string): RunnerAuth;
 }
@@ -93,10 +87,9 @@ export function createCloudAuthPolicy(input: CloudAuthConfigInput): CloudAuthPol
   const hasDefaultCredentials = hasCloudAuth(defaultAuth);
 
   return {
-    resolutionOptions: {
-      hasCredentials: hasDefaultCredentials,
-      credentialTargetUrls: [...(hasDefaultCredentials ? [input.cloudUrl] : []), ...instanceTokenConfig.targetUrls],
-      provisioningCloudUrl: adminToken ? input.cloudUrl : undefined,
+    targets: {
+      reusable: [...(hasDefaultCredentials ? [input.cloudUrl] : []), ...instanceTokenConfig.targetUrls],
+      provisionable: adminToken ? input.cloudUrl : undefined,
     },
     needsProvisioningFor(targetUrl) {
       return Boolean(adminToken) && sameOrigin(targetUrl, input.cloudUrl);

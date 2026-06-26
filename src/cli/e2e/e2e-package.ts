@@ -19,7 +19,7 @@ import { resolvePackageById } from './recommender-resolver';
 import { fetchRepositoryIndex, buildPackageFileUrl, type RepositoryPackage } from '../mcp/lib/repository-client';
 import { planGuideExecution } from './guide-chains';
 import type { LoadedGuide } from '../utils/file-loader';
-import { resolveTarget } from './e2e-targets';
+import { resolveTarget, type CloudAuthTargets } from './e2e-targets';
 import type { CurrentTier } from './manifest-preflight';
 
 const FETCH_TIMEOUT_MS = 15_000;
@@ -91,17 +91,8 @@ export interface RemoteResolveOptions {
   repoUrl?: string;
   /** Default cloud instance URL for `cloud`-tier guides without an `instance`. */
   cloudUrl?: string;
-  /**
-   * Whether reusable cloud auth is available (a service-account token, or a
-   * full username/password pair). Only presence is threaded through resolution;
-   * the values go straight to the runner so secrets never touch the
-   * resolved-guide or report structures.
-   */
-  hasCredentials?: boolean;
-  /** Cloud target URLs that have an explicitly associated reusable credential. */
-  credentialTargetUrls?: string[];
-  /** Cloud URL where admin-token provisioning can mint a temporary credential. */
-  provisioningCloudUrl?: string;
+  /** Cloud target URLs that can be authenticated without exposing credential values to resolution. */
+  cloudAuthTargets?: CloudAuthTargets;
 }
 
 /** Fetch a URL as raw text with a timeout. Never throws. */
@@ -149,9 +140,7 @@ async function buildGuideOrSkip(
     grafanaUrl: options.grafanaUrl,
     currentTier: options.currentTier,
     cloudUrl: options.cloudUrl,
-    hasCredentials: options.hasCredentials,
-    credentialTargetUrls: options.credentialTargetUrls,
-    provisioningCloudUrl: options.provisioningCloudUrl,
+    cloudAuthTargets: options.cloudAuthTargets,
   });
   if (!target.runnable) {
     return {

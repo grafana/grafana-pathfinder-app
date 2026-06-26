@@ -18,6 +18,10 @@ import { checkTier, type CurrentTier } from './manifest-preflight';
  * for (a legitimate routing decision). Collapsing them would hide a typo.
  */
 export type TargetSkipReason = 'skipped_no_auth' | 'skipped_tier_mismatch' | 'skipped_invalid_instance';
+export interface CloudAuthTargets {
+  reusable: string[];
+  provisionable?: string;
+}
 
 /** Resolution of a guide's `testEnvironment` to a concrete test target. */
 export interface ResolvedTarget {
@@ -42,17 +46,8 @@ export interface ResolveTargetOptions {
   currentTier: CurrentTier;
   /** Default cloud instance URL for `cloud`-tier guides without an `instance`. */
   cloudUrl?: string;
-  /**
-   * Whether reusable cloud auth is available (a service-account token, or a
-   * full username/password pair). Only presence matters here — the values are
-   * supplied to the runner separately (see `runChains`), so they are never
-   * carried on the resolved target or its downstream report metadata.
-   */
-  hasCredentials?: boolean;
-  /** Cloud target URLs that have an explicitly associated reusable credential. */
-  credentialTargetUrls?: string[];
-  /** Cloud URL where admin-token provisioning can mint a temporary credential. */
-  provisioningCloudUrl?: string;
+  /** Cloud target URLs that can be authenticated without exposing credential values to resolution. */
+  cloudAuthTargets?: CloudAuthTargets;
 }
 
 /** Cloud auth inputs: a service-account token, or a username/password pair. */
@@ -89,10 +84,9 @@ export function cloudInstanceUrl(instance: string): string | undefined {
 }
 
 function hasReusableCredentialFor(targetUrl: string, options: ResolveTargetOptions): boolean {
-  if (options.hasCredentials && sameOrigin(targetUrl, options.cloudUrl)) {
-    return true;
-  }
-  return (options.credentialTargetUrls ?? []).some((credentialTargetUrl) => sameOrigin(targetUrl, credentialTargetUrl));
+  return (options.cloudAuthTargets?.reusable ?? []).some((credentialTargetUrl) =>
+    sameOrigin(targetUrl, credentialTargetUrl)
+  );
 }
 
 export function sameOrigin(left: string | undefined, right: string | undefined): boolean {
@@ -125,14 +119,9 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
   }
 
   if (tier === 'cloud') {
-    const hasProvisioning = Boolean(options.provisioningCloudUrl);
+    const authTargets = options.cloudAuthTargets ?? { reusable: [] };
     const defaultTargetUrl = options.cloudUrl;
-
-    if (
-      !hasProvisioning &&
-      !options.hasCredentials &&
-      (!options.credentialTargetUrls || options.credentialTargetUrls.length === 0)
-    ) {
+    if (!authTargets.provisionable && authTargets.reusable.length === 0) {
       return {
         runnable: false,
         tier,
@@ -153,13 +142,13 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
           message: `Cloud instance "${instance}" is not a bare hostname (no protocol, port, or path allowed)`,
         };
       }
-      if (!hasReusableCredentialFor(instanceUrl, options) && !sameOrigin(instanceUrl, options.provisioningCloudUrl)) {
+      if (!hasReusableCredentialFor(instanceUrl, options) && !sameOrigin(instanceUrl, authTargets.provisionable)) {
         return {
           runnable: false,
           tier,
           instance,
           skipReason: 'skipped_no_auth',
-          message: `Cloud instance "${instance}" requires credentials for ${instanceUrl}; --cloud-admin-token only provisions ${options.provisioningCloudUrl}`,
+          message: `Cloud instance "${instance}" requires credentials for ${instanceUrl}; --cloud-admin-token only provisions ${authTargets.provisionable}`,
         };
       }
       return { runnable: true, tier, instance, targetUrl: instanceUrl };
@@ -175,7 +164,7 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
     }
     if (
       !hasReusableCredentialFor(defaultTargetUrl, options) &&
-      !sameOrigin(defaultTargetUrl, options.provisioningCloudUrl)
+      !sameOrigin(defaultTargetUrl, authTargets.provisionable)
     ) {
       return {
         runnable: false,

@@ -32,7 +32,7 @@ const CLOUD_OPTIONS = {
   currentTier: 'cloud' as const,
   resolverUrl: 'https://recommender.test',
   cloudUrl: 'https://learn.grafana.net/',
-  hasCredentials: true,
+  cloudAuthTargets: { reusable: ['https://learn.grafana.net/'] },
 };
 
 /** Configure the recommender resolver mock to return a fixed resolution. */
@@ -200,7 +200,7 @@ describe('resolveRemotePackage (single, recommender)', () => {
       manifest: { id: 'cloud-guide', type: 'guide', testEnvironment: { tier: 'cloud' } },
     });
 
-    const result = await resolveRemotePackage('cloud-guide', { ...CLOUD_OPTIONS, hasCredentials: false });
+    const result = await resolveRemotePackage('cloud-guide', { ...CLOUD_OPTIONS, cloudAuthTargets: { reusable: [] } });
 
     expect(result.runnable).toHaveLength(0);
     expect(result.skipped[0]).toMatchObject({ id: 'cloud-guide', reason: 'skipped_no_auth' });
@@ -227,8 +227,7 @@ describe('resolveRemotePackage (single, recommender)', () => {
 
     const result = await resolveRemotePackage('play-guide', {
       ...CLOUD_OPTIONS,
-      hasCredentials: false,
-      credentialTargetUrls: ['https://play.grafana.org/'],
+      cloudAuthTargets: { reusable: ['https://play.grafana.org/'] },
     });
 
     expect(result.skipped).toHaveLength(0);
@@ -252,8 +251,7 @@ describe('resolveRemotePackage (single, recommender)', () => {
 
     const result = await resolveRemotePackage('play-guide', {
       ...CLOUD_OPTIONS,
-      hasCredentials: false,
-      provisioningCloudUrl: CLOUD_OPTIONS.cloudUrl,
+      cloudAuthTargets: { reusable: [], provisionable: CLOUD_OPTIONS.cloudUrl },
     });
 
     expect(result.runnable).toHaveLength(0);

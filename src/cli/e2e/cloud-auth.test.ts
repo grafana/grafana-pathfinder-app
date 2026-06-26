@@ -10,10 +10,9 @@ describe('createCloudAuthPolicy', () => {
       env: {},
     });
 
-    expect(auth.resolutionOptions).toEqual({
-      hasCredentials: true,
-      credentialTargetUrls: [CLOUD_URL],
-      provisioningCloudUrl: undefined,
+    expect(auth.targets).toEqual({
+      reusable: [CLOUD_URL],
+      provisionable: undefined,
     });
     expect(auth.runnerAuthFor(CLOUD_URL)).toEqual({ token: 'glsa_default' });
     expect(auth.runnerAuthFor('https://play.grafana.org/')).toEqual({ token: undefined });
@@ -26,10 +25,9 @@ describe('createCloudAuthPolicy', () => {
       env: { GRAFANA_PLAY_TOKEN: 'glsa_play' },
     });
 
-    expect(auth.resolutionOptions).toEqual({
-      hasCredentials: false,
-      credentialTargetUrls: ['https://play.grafana.org/'],
-      provisioningCloudUrl: undefined,
+    expect(auth.targets).toEqual({
+      reusable: ['https://play.grafana.org/'],
+      provisionable: undefined,
     });
     expect(auth.runnerAuthFor('https://play.grafana.org/')).toEqual({ token: 'glsa_play' });
     expect(auth.runnerAuthFor(CLOUD_URL)).toEqual({ token: undefined });
@@ -43,10 +41,9 @@ describe('createCloudAuthPolicy', () => {
       env: {},
     });
 
-    expect(auth.resolutionOptions).toEqual({
-      hasCredentials: true,
-      credentialTargetUrls: [CLOUD_URL],
-      provisioningCloudUrl: CLOUD_URL,
+    expect(auth.targets).toEqual({
+      reusable: [CLOUD_URL],
+      provisionable: CLOUD_URL,
     });
     expect(auth.needsProvisioningFor(CLOUD_URL)).toBe(true);
     expect(auth.needsProvisioningFor('https://play.grafana.org/')).toBe(false);
