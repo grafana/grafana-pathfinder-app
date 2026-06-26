@@ -157,7 +157,6 @@ function loadBundledGuide(name: string): LoadedGuide | null {
   const guideName = name.replace(/^bundled:/, '');
   const allBundled = loadBundledGuides();
 
-  // First try exact match (filename without .json)
   const exactMatch = allBundled.find((g) => {
     const filename = g.path.split('/').pop()?.replace('.json', '') ?? '';
     return filename === guideName;
@@ -167,7 +166,6 @@ function loadBundledGuide(name: string): LoadedGuide | null {
     return exactMatch;
   }
 
-  // Fall back to partial match for convenience
   return allBundled.find((g) => g.path.includes(guideName)) ?? null;
 }
 
@@ -192,7 +190,6 @@ function loadGuideFromPackageDir(packageDir: string): LoadedGuide | null {
 function resolveGuides(files: string[], options: E2ECommandOptions): LoadedGuide[] {
   const guides: LoadedGuide[] = [];
 
-  // --package <dir> takes precedence over positional args and --bundled
   if (options.package) {
     const guide = loadGuideFromPackageDir(options.package);
     if (guide) {
@@ -202,13 +199,11 @@ function resolveGuides(files: string[], options: E2ECommandOptions): LoadedGuide
   }
 
   if (options.bundled) {
-    // Load all bundled guides
     return loadBundledGuides();
   }
 
   for (const file of files) {
     if (file.startsWith('bundled:')) {
-      // Handle bundled:name syntax
       const guide = loadBundledGuide(file);
       if (guide) {
         guides.push(guide);
@@ -216,7 +211,6 @@ function resolveGuides(files: string[], options: E2ECommandOptions): LoadedGuide
         console.warn(`Bundled guide not found: ${file}`);
       }
     } else {
-      // Regular file path
       const loaded = loadGuideFiles([file]);
       guides.push(...loaded);
     }

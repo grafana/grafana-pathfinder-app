@@ -22,11 +22,7 @@ const projectRoot = join(__dirname, '..', '..');
 // (non-CLI) local runs.
 const storageState = process.env[E2E_ENV.AUTH_STATE_FILE] || join(projectRoot, 'playwright/.auth/admin.json');
 
-// Service-account token auth (Grafana Cloud): authenticate every browser request
-// with a Bearer header rather than a form-login session. This is the method that
-// works against grafana.com-SSO Cloud stacks, where POST /login is unavailable.
-// When a token is present the form-login `auth` project is skipped (there is no
-// session cookie to establish) and no storageState is loaded.
+// Token mode: the CLI passes a minted short-lived service-account token for the target.
 const serviceAccountToken = process.env[E2E_ENV.GRAFANA_TOKEN];
 const useToken = Boolean(serviceAccountToken);
 
@@ -47,12 +43,7 @@ export default defineConfig<PluginOptions>({
     trace: isEnvFlagEnabled(process.env[E2E_ENV.TRACE]) ? 'on' : 'off',
   },
   projects: [
-    // 1. Form-login auth project: logs in and stores session state at
-    //    AUTH_STATE_FILE (our own setup, not plugin-e2e's). Skipped in token mode
-    //    because Bearer auth needs no session cookie.
     ...(useToken ? [] : [authProject]),
-    // 2. Run tests in Google Chrome. In token mode every request carries the
-    //    Bearer header; otherwise the test starts from the form-login session.
     {
       name: 'chromium',
       use: {

@@ -123,7 +123,7 @@ export class CloudEnvironment {
     }
   }
 
-  /** Tear down whatever SA is currently live. Used by exit/signal handlers. */
+  /** Tear down the currently live service account, if any. */
   async teardownAll(): Promise<void> {
     await this.teardownChain();
   }

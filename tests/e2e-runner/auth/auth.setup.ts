@@ -7,9 +7,8 @@
  * Writing to a disposable per-guide path is what gives each guide its own
  * isolated session with no reuse across guides.
  *
- * Credentials default to admin/admin (local tier); the CLI supplies cloud
- * credentials via `GRAFANA_USER`/`GRAFANA_PASSWORD`. Username/password only —
- * SSO/Okta would require a browser-driven login flow as a separate strategy.
+ * Used only in form-login mode. Provisioned cloud runs use token mode and skip
+ * this auth project.
  */
 
 import { test as setup } from '@playwright/test';
@@ -30,7 +29,6 @@ setup('authenticate', async ({ request }) => {
   const response = await request.post(loginUrl, { data: { user, password } });
 
   if (!response.ok()) {
-    // Surface status for triage; never echo the password.
     throw new Error(`Login to ${grafanaUrl} as "${user}" failed: HTTP ${response.status()} ${response.statusText()}`);
   }
 

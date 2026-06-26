@@ -54,10 +54,7 @@ export interface RunGuideOptions {
   headed: boolean;
   artifacts: string;
   alwaysScreenshot: boolean;
-  /** Cloud credentials for the auth setup. Absent for local (admin/admin) runs. */
-  username?: string;
-  password?: string;
-  /** Service-account Bearer token for cloud-tier targets (alternative to username/password). */
+  /** Minted short-lived token for a provisioned cloud target. Absent for form-login runs. */
   token?: string;
 }
 
@@ -203,11 +200,7 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
           // it becomes Playwright's baseURL
           [E2E_ENV.GRAFANA_URL]: options.targetUrl,
           [E2E_ENV.AUTH_STATE_FILE]: authStateFile,
-          // Credentials are only set for cloud runs; local runs fall back to
-          // admin/admin in the auth setup. A token, when present, switches the
-          // runner to Bearer-header auth. Never logged.
-          ...(options.username ? { [E2E_ENV.GRAFANA_USER]: options.username } : {}),
-          ...(options.password ? { [E2E_ENV.GRAFANA_PASSWORD]: options.password } : {}),
+          // A minted token switches the runner to Bearer-header auth; otherwise form login is used.
           ...(options.token ? { [E2E_ENV.GRAFANA_TOKEN]: options.token } : {}),
           [E2E_ENV.TRACE]: encodeEnvFlag(options.trace),
           [E2E_ENV.VERBOSE]: encodeEnvFlag(options.verbose),
