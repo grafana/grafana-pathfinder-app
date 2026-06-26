@@ -95,6 +95,41 @@ describe('provisionCloudTargetsForChain', () => {
     expect(provisioned.tokenFor('https://learn.grafana.net/')).toBe('minted:https://learn.grafana.net/');
     expect(provisioned.tokenFor('https://play.grafana.org/')).toBe('minted:https://play.grafana.org/');
   });
+
+  it('tears down already-provisioned targets when a later target fails', async () => {
+    (CloudEnvironment as unknown as jest.Mock).mockImplementationOnce((adminToken: string, cloudUrl: string) => ({
+      adminToken,
+      cloudUrl,
+      provisionChain: jest.fn(async () => `minted:${cloudUrl}`),
+      teardownChain: jest.fn(async () => undefined),
+      sweepOrphans: jest.fn(async () => undefined),
+    }));
+    (CloudEnvironment as unknown as jest.Mock).mockImplementationOnce((adminToken: string, cloudUrl: string) => ({
+      adminToken,
+      cloudUrl,
+      provisionChain: jest.fn(async () => {
+        throw new Error('boom');
+      }),
+      teardownChain: jest.fn(async () => undefined),
+      sweepOrphans: jest.fn(async () => undefined),
+    }));
+
+    await expect(
+      provisionCloudTargetsForChain({
+        targetUrls: ['https://learn.grafana.net/', 'https://play.grafana.org/'],
+        cloudAuth,
+        verbose: false,
+      })
+    ).rejects.toThrow('boom');
+
+    const first = (CloudEnvironment as unknown as jest.Mock).mock.results[0]?.value;
+    const second = (CloudEnvironment as unknown as jest.Mock).mock.results[1]?.value;
+
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(first!.teardownChain).toHaveBeenCalledTimes(1);
+    expect(second!.teardownChain).not.toHaveBeenCalled();
+  });
 });
 
 describe('sweepCloudTargets', () => {

@@ -59,18 +59,21 @@ export async function provisionCloudTargetsForChain(options: {
   verbose: boolean;
 }): Promise<ProvisionedCloudTargets> {
   const provisionedTargets = new ProvisionedCloudTargets();
-
-  for (const targetUrl of options.targetUrls) {
-    const adminToken = options.cloudAuth?.adminTokenFor(targetUrl);
-    if (!adminToken) {
-      continue;
+  try {
+    for (const targetUrl of options.targetUrls) {
+      const adminToken = options.cloudAuth?.adminTokenFor(targetUrl);
+      if (!adminToken) {
+        continue;
+      }
+      console.log(`\n🔑 Provisioning a service account for ${new URL(targetUrl).origin}...`);
+      const env = new CloudEnvironment(adminToken, targetUrl, options.verbose);
+      provisionedTargets.add(targetUrl, { env, token: await env.provisionChain() });
     }
-    console.log(`\n🔑 Provisioning a service account for ${new URL(targetUrl).origin}...`);
-    const env = new CloudEnvironment(adminToken, targetUrl, options.verbose);
-    provisionedTargets.add(targetUrl, { env, token: await env.provisionChain() });
+    return provisionedTargets;
+  } catch (err) {
+    await provisionedTargets.teardownAll();
+    throw err;
   }
-
-  return provisionedTargets;
 }
 
 export async function sweepCloudTargets(options: {
