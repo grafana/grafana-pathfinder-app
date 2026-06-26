@@ -206,6 +206,40 @@ describe('resolveRemotePackage (single, recommender)', () => {
     expect(result.skipped[0]).toMatchObject({ id: 'cloud-guide', reason: 'skipped_no_auth' });
   });
 
+  it('resolves an instance-targeted cloud guide with credentials for that instance', async () => {
+    mockResolve({
+      ok: true,
+      id: 'play-guide',
+      contentUrl: 'https://cdn.test/play-guide/content.json',
+      manifestUrl: 'https://cdn.test/play-guide/manifest.json',
+      repository: 'r',
+      manifest: { id: 'play-guide', type: 'guide', testEnvironment: { tier: 'cloud', instance: 'play.grafana.org' } },
+    });
+    mockIndex([
+      {
+        id: 'play-guide',
+        path: 'play-guide/',
+        type: 'guide',
+        testEnvironment: { tier: 'cloud', instance: 'play.grafana.org' },
+      },
+    ]);
+    mockFetch({ ok: true, text: '{"id":"play-guide"}' });
+
+    const result = await resolveRemotePackage('play-guide', {
+      ...CLOUD_OPTIONS,
+      hasCredentials: false,
+      credentialTargetUrls: ['https://play.grafana.org/'],
+    });
+
+    expect(result.skipped).toHaveLength(0);
+    expect(result.runnable[0]).toMatchObject({
+      id: 'play-guide',
+      tier: 'cloud',
+      instance: 'play.grafana.org',
+      targetUrl: 'https://play.grafana.org/',
+    });
+  });
+
   it('skips an instance-targeted cloud guide when only another origin can be provisioned', async () => {
     mockResolve({
       ok: true,

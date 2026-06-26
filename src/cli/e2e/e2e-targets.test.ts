@@ -65,12 +65,27 @@ describe('resolveTarget', () => {
   it('runs a cloud guide against its declared host-only instance', () => {
     const target = resolveTarget(
       { tier: 'cloud', instance: 'play.grafana.org' },
-      { grafanaUrl: LOCAL_URL, currentTier: 'cloud', cloudUrl: CLOUD_URL, hasCredentials: true }
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        credentialTargetUrls: ['https://play.grafana.org/'],
+      }
     );
 
     expect(target.runnable).toBe(true);
     expect(target.targetUrl).toBe('https://play.grafana.org/');
     expect(target.instance).toBe('play.grafana.org');
+  });
+
+  it('does not use default cloud credentials for a different declared instance', () => {
+    const target = resolveTarget(
+      { tier: 'cloud', instance: 'play.grafana.org' },
+      { grafanaUrl: LOCAL_URL, currentTier: 'cloud', cloudUrl: CLOUD_URL, hasCredentials: true }
+    );
+
+    expect(target.runnable).toBe(false);
+    expect(target.skipReason).toBe('skipped_no_auth');
   });
 
   it('runs a cloud guide against its declared instance when admin-token provisioning matches that origin', () => {

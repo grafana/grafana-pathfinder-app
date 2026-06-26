@@ -98,6 +98,8 @@ export interface RemoteResolveOptions {
    * resolved-guide or report structures.
    */
   hasCredentials?: boolean;
+  /** Cloud target URLs that have an explicitly associated reusable credential. */
+  credentialTargetUrls?: string[];
   /** Cloud URL where admin-token provisioning can mint a temporary credential. */
   provisioningCloudUrl?: string;
 }
@@ -148,6 +150,7 @@ async function buildGuideOrSkip(
     currentTier: options.currentTier,
     cloudUrl: options.cloudUrl,
     hasCredentials: options.hasCredentials,
+    credentialTargetUrls: options.credentialTargetUrls,
     provisioningCloudUrl: options.provisioningCloudUrl,
   });
   if (!target.runnable) {

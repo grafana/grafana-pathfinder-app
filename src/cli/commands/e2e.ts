@@ -47,7 +47,7 @@ import {
 import type { ManifestJson, RepositoryEntry, RepositoryJson } from '../../types/package.types';
 
 import { randomUUID } from 'crypto';
-import { hasCloudAuth } from '../e2e/e2e-targets';
+import { cloudInstanceUrl, hasCloudAuth } from '../e2e/e2e-targets';
 import { CloudEnvironment } from '../e2e/cloud-environment';
 
 /**
@@ -79,10 +79,56 @@ interface E2ECommandOptions {
   password?: string;
   /** Service-account Bearer token for cloud-tier auth (env fallback: GRAFANA_TOKEN). */
   serviceAccountToken?: string;
+  /** Host-to-env-var mappings for instance-specific cloud tokens. */
+  instanceToken: string[];
   /** Admin token used to provision a fresh per-chain SA on the cloud stack (env fallback: GRAFANA_ADMIN_TOKEN). */
   cloudAdminToken?: string;
   /** Default cloud instance URL for cloud-tier guides without an `instance`. */
   cloudUrl: string;
+}
+interface InstanceTokenConfig {
+  tokensByOrigin: Map<string, string>;
+  targetUrls: string[];
+}
+
+function collectOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+function parseInstanceTokenSpecs(specs: string[] | undefined): InstanceTokenConfig {
+  const tokensByOrigin = new Map<string, string>();
+  const targetUrls: string[] = [];
+
+  for (const spec of specs ?? []) {
+    const separator = spec.indexOf('=');
+    if (separator <= 0 || separator === spec.length - 1) {
+      throw new Error(`Invalid --instance-token value "${spec}". Expected host=ENV_VAR_NAME.`);
+    }
+
+    const host = spec.slice(0, separator);
+    const envName = spec.slice(separator + 1);
+    const targetUrl = cloudInstanceUrl(host);
+    if (!targetUrl) {
+      throw new Error(`Invalid --instance-token host "${host}". Expected a bare hostname.`);
+    }
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(envName)) {
+      throw new Error(`Invalid --instance-token env var "${envName}" for ${host}.`);
+    }
+
+    const token = process.env[envName];
+    if (!token) {
+      throw new Error(`--instance-token ${host} references unset or empty environment variable ${envName}.`);
+    }
+
+    const origin = new URL(targetUrl).origin;
+    if (tokensByOrigin.has(origin)) {
+      throw new Error(`Duplicate --instance-token entry for ${host}.`);
+    }
+    tokensByOrigin.set(origin, token);
+    targetUrls.push(targetUrl);
+  }
+
+  return { tokensByOrigin, targetUrls };
 }
 
 const DEFAULT_GRAFANA_URL = 'http://localhost:3000';
@@ -96,16 +142,14 @@ interface RepoSource {
 }
 
 /**
- * Run-global cloud credentials. The CLI accepts a single set of credentials, so
- * every cloud-tier guide in a run authenticates the same way: a service-account
- * Bearer `token` (the method that works against grafana.com-SSO Cloud stacks),
- * or a `username`/`password` form login. Keeping them here (rather than
- * per-guide) keeps secrets out of `PackageMeta` and the JSON report.
+ * Cloud credentials resolved from CLI flags and env vars. Values stay here
+ * rather than in `PackageMeta` so secrets never enter JSON reports.
  */
 interface RunCredentials {
   username?: string;
   password?: string;
   token?: string;
+  instanceTokensByOrigin: Map<string, string>;
 }
 
 /**
@@ -132,9 +176,7 @@ interface RunInputs {
 
 type GuideValidationError = { file: string; errors: string[] };
 
-/**
- * Format guide validation errors as an indented, file-grouped report.
- */
+/** Format guide validation errors as an indented, file-grouped report. */
 function formatGuideValidationErrors(errors: GuideValidationError[]): string {
   return errors
     .map(({ file, errors: fileErrors }) =>
@@ -642,6 +684,10 @@ async function runChains(
       const meta = packageMetaById.get(planned.id);
       const isCloudTarget = meta?.tier === 'cloud';
       const useProvisionedToken = isCloudTarget && usesProvisionedCloudTarget(meta, options.cloudUrl);
+      const useGlobalCredentials = isCloudTarget && sameOrigin(meta?.targetUrl, options.cloudUrl);
+      const instanceToken = isCloudTarget
+        ? tokenForTarget(credentials?.instanceTokensByOrigin, meta?.targetUrl)
+        : undefined;
       const runGuideOptions: RunGuideOptions = {
         targetUrl: meta?.targetUrl ?? options.grafanaUrl,
         verbose: options.verbose,
@@ -649,10 +695,14 @@ async function runChains(
         headed: options.headed,
         artifacts: options.artifacts,
         alwaysScreenshot: options.alwaysScreenshot,
-        username: isCloudTarget ? credentials?.username : undefined,
-        password: isCloudTarget ? credentials?.password : undefined,
+        username: useGlobalCredentials ? credentials?.username : undefined,
+        password: useGlobalCredentials ? credentials?.password : undefined,
         // A provisioned per-chain token is scoped to --cloud-url; other targets use reusable credentials.
-        token: isCloudTarget ? (useProvisionedToken ? chainToken : credentials?.token) : undefined,
+        token: isCloudTarget
+          ? useProvisionedToken
+            ? chainToken
+            : (instanceToken ?? (useGlobalCredentials ? credentials?.token : undefined))
+          : undefined,
       };
 
       const result = await runPlaywrightTests(planned.guide, runGuideOptions);
@@ -739,6 +789,21 @@ function usesProvisionedCloudTarget(meta: PackageMeta | undefined, cloudUrl: str
   return meta?.tier === 'cloud' && sameOrigin(meta.targetUrl, cloudUrl);
 }
 
+function tokenForTarget(
+  tokensByOrigin: Map<string, string> | undefined,
+  targetUrl: string | undefined
+): string | undefined {
+  if (!tokensByOrigin || !targetUrl) {
+    return undefined;
+  }
+  for (const [origin, token] of tokensByOrigin) {
+    if (sameOrigin(origin, targetUrl)) {
+      return token;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Build a synchronous `loadGuideById` backed by already-fetched remote guides.
  * Used for dependency chaining; prerequisites outside the fetched set (e.g. a
@@ -774,9 +839,13 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     username: options.user ?? process.env.GRAFANA_USER,
     password: options.password ?? process.env.GRAFANA_PASSWORD,
     token: options.serviceAccountToken ?? process.env.GRAFANA_TOKEN,
+    instanceTokensByOrigin: new Map(),
   };
+  const instanceTokenConfig = parseInstanceTokenSpecs(options.instanceToken);
+  credentials.instanceTokensByOrigin = instanceTokenConfig.tokensByOrigin;
   const adminToken = options.cloudAdminToken ?? process.env.GRAFANA_ADMIN_TOKEN;
   const hasCredentials = hasCloudAuth(credentials);
+  const credentialTargetUrls = [...(hasCredentials ? [options.cloudUrl] : []), ...instanceTokenConfig.targetUrls];
   const remoteOptions = {
     grafanaUrl: options.grafanaUrl,
     currentTier: options.tier,
@@ -784,6 +853,7 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     repoUrl: options.repoUrl,
     cloudUrl: options.cloudUrl,
     hasCredentials,
+    credentialTargetUrls,
     provisioningCloudUrl: adminToken ? options.cloudUrl : undefined,
   };
   const resolution =
@@ -861,6 +931,12 @@ export const e2eCommand = new Command('e2e')
   .option(
     '--service-account-token <token>',
     'Service-account Bearer token for cloud-tier auth; required for Grafana Cloud SSO stacks (env fallback: GRAFANA_TOKEN)'
+  )
+  .option(
+    '--instance-token <host=envVar>',
+    'Service-account Bearer token env var for a manifest-declared cloud instance; repeat for multiple instances',
+    collectOption,
+    []
   )
   .option(
     '--cloud-admin-token <token>',

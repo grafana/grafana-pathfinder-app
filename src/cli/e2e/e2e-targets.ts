@@ -49,6 +49,8 @@ export interface ResolveTargetOptions {
    * carried on the resolved target or its downstream report metadata.
    */
   hasCredentials?: boolean;
+  /** Cloud target URLs that have an explicitly associated reusable credential. */
+  credentialTargetUrls?: string[];
   /** Cloud URL where admin-token provisioning can mint a temporary credential. */
   provisioningCloudUrl?: string;
 }
@@ -74,7 +76,7 @@ export function hasCloudAuth(auth: CloudAuthInput): boolean {
  * scheme, port, or path, so the caller can report a malformed instance rather
  * than test the wrong target.
  */
-function bareHostnameUrl(instance: string): string | undefined {
+export function cloudInstanceUrl(instance: string): string | undefined {
   const hostnamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
   if (!hostnamePattern.test(instance)) {
     return undefined;
@@ -86,7 +88,14 @@ function bareHostnameUrl(instance: string): string | undefined {
   }
 }
 
-function sameOrigin(left: string | undefined, right: string | undefined): boolean {
+function hasReusableCredentialFor(targetUrl: string, options: ResolveTargetOptions): boolean {
+  if (options.hasCredentials && sameOrigin(targetUrl, options.cloudUrl)) {
+    return true;
+  }
+  return (options.credentialTargetUrls ?? []).some((credentialTargetUrl) => sameOrigin(targetUrl, credentialTargetUrl));
+}
+
+export function sameOrigin(left: string | undefined, right: string | undefined): boolean {
   if (!left || !right) {
     return false;
   }
@@ -116,10 +125,14 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
   }
 
   if (tier === 'cloud') {
-    const hasReusableCredentials = Boolean(options.hasCredentials);
     const hasProvisioning = Boolean(options.provisioningCloudUrl);
+    const defaultTargetUrl = options.cloudUrl;
 
-    if (!hasReusableCredentials && !hasProvisioning) {
+    if (
+      !hasProvisioning &&
+      !options.hasCredentials &&
+      (!options.credentialTargetUrls || options.credentialTargetUrls.length === 0)
+    ) {
       return {
         runnable: false,
         tier,
@@ -130,7 +143,7 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
     }
 
     if (instance !== undefined) {
-      const instanceUrl = bareHostnameUrl(instance);
+      const instanceUrl = cloudInstanceUrl(instance);
       if (!instanceUrl) {
         return {
           runnable: false,
@@ -140,7 +153,7 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
           message: `Cloud instance "${instance}" is not a bare hostname (no protocol, port, or path allowed)`,
         };
       }
-      if (!hasReusableCredentials && !sameOrigin(instanceUrl, options.provisioningCloudUrl)) {
+      if (!hasReusableCredentialFor(instanceUrl, options) && !sameOrigin(instanceUrl, options.provisioningCloudUrl)) {
         return {
           runnable: false,
           tier,
@@ -151,8 +164,7 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
       }
       return { runnable: true, tier, instance, targetUrl: instanceUrl };
     }
-
-    if (!options.cloudUrl) {
+    if (!defaultTargetUrl) {
       return {
         runnable: false,
         tier,
@@ -161,7 +173,19 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
         message: 'No cloud URL configured for this guide (set --cloud-url)',
       };
     }
-    return { runnable: true, tier, instance, targetUrl: options.cloudUrl };
+    if (
+      !hasReusableCredentialFor(defaultTargetUrl, options) &&
+      !sameOrigin(defaultTargetUrl, options.provisioningCloudUrl)
+    ) {
+      return {
+        runnable: false,
+        tier,
+        instance,
+        skipReason: 'skipped_no_auth',
+        message: `Cloud-tier guide requires credentials for ${defaultTargetUrl}`,
+      };
+    }
+    return { runnable: true, tier, instance, targetUrl: defaultTargetUrl };
   }
 
   return { runnable: true, tier, instance, targetUrl: options.grafanaUrl };
