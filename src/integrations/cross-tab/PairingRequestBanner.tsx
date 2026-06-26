@@ -60,7 +60,7 @@ function getBannerStyles(theme: GrafanaTheme2) {
 
 interface BannerDialogProps {
   challenge: PendingChallenge;
-  onAccept: () => void;
+  onAccept: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onReject: () => void;
 }
 
@@ -118,12 +118,12 @@ function PairingBannerInner() {
     return null;
   }
 
-  const handleAccept = () => {
-    acceptSession();
+  const handleAccept = (event: React.MouseEvent<HTMLButtonElement>) => {
+    acceptSession(challenge, event.nativeEvent.isTrusted);
   };
 
   const handleReject = () => {
-    rejectSession();
+    rejectSession(challenge);
   };
 
   return createPortal(

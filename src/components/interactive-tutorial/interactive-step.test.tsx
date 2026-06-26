@@ -294,7 +294,12 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     const transport = makeTransport();
     await renderPairedController(
       transport,
-      <InteractiveStep targetAction="button" refTarget="#not-on-this-tab" requirements="exists-reftarget" stepId="ctrl-req">
+      <InteractiveStep
+        targetAction="button"
+        refTarget="#not-on-this-tab"
+        requirements="exists-reftarget"
+        stepId="ctrl-req"
+      >
         Step
       </InteractiveStep>
     );

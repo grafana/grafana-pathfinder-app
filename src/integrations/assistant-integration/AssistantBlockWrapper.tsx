@@ -185,7 +185,7 @@ export function AssistantBlockWrapper({
           localStorage.setItem(storageKey, valueToSave);
           // Intentional: Sync React state with external SDK completion state
           // This is a workaround for SDK v0.1.8 onComplete callback bug
-          // eslint-disable-next-line react-hooks/set-state-in-effect
+
           setCustomizedValue(valueToSave);
           // Track datasource type for syntax highlighting (ctx is captured from outer scope)
 

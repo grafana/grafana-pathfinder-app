@@ -253,7 +253,7 @@ export function useFormElementValidation(
   const prevElementRef = useRef(element);
 
   // Sync value when element changes - use useLayoutEffect to run before paint
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: sync React state when external element prop changes */
+
   useLayoutEffect(() => {
     if (element !== prevElementRef.current) {
       prevElementRef.current = element;
@@ -262,7 +262,6 @@ export function useFormElementValidation(
       setValue(newValue);
     }
   }, [element, getElementValue]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Watch element value changes via event listeners
   useEffect(() => {
