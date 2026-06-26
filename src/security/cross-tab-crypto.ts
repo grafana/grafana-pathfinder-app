@@ -23,7 +23,10 @@ function fromBase64url(str: string): Uint8Array {
 }
 
 export async function generateSessionKeyPair(): Promise<{ publicKeyB64: string; privateKey: CryptoKey }> {
-  const keyPair = await crypto.subtle.generateKey(ECDSA_PARAMS, true, ['sign', 'verify']);
+  // Non-extractable private key: only the public key is exported (spki, below).
+  // The private key material can never be serialized out (exportKey/wrapKey on
+  // it throw); the CryptoKey handle can still be passed around and used to sign.
+  const keyPair = await crypto.subtle.generateKey(ECDSA_PARAMS, false, ['sign', 'verify']);
   const spki = await crypto.subtle.exportKey('spki', keyPair.publicKey);
   return {
     publicKeyB64: toBase64url(new Uint8Array(spki)),

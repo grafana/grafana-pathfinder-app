@@ -906,25 +906,31 @@ describe('cross-tab pairing protocol acceptance', () => {
 
     // Revocation in this protocol is implicit, not an API. Authority to drive
     // the live tab is possession of the controller's ECDSA private key — minted
-    // per session inside the controller tab, never exported or persisted, and
-    // destroyed when that tab closes. So "revocation" is the key ceasing to
-    // exist; closing the tab is the disconnect. There is deliberately no
-    // on-demand revoke affordance because a post-revocation controller tab has
-    // no remaining capability to revoke. This test pins the guarantee that the
-    // (intentionally absent) revoke API would otherwise stand in for: the public
-    // protocol material that survives on the same-origin channel after the
-    // controller is gone confers no authority on its own.
-    it('binds command authority to the controller private key, so it dies with the controller tab', async () => {
+    // per session inside the controller tab, non-extractable, and never exported
+    // (only the public key crosses the wire). The reasoned consequence is that
+    // closing the controller tab makes the key unreachable, which ends authority;
+    // there is deliberately no on-demand revoke API because a controller with no
+    // key has no capability to revoke.
+    //
+    // SCOPE: this test asserts the enforceable boundary — authority is bound to
+    // the accepted key, and the key is non-extractable — not the browser
+    // lifecycle. It does NOT simulate tab close / unmount / GC, so it proves
+    // "only the accepted key can issue commands," from which "authority ends when
+    // the key becomes unreachable" follows by reasoning, not by this test.
+    it('binds command authority to the accepted controller key (rejects other keys and exact replays)', async () => {
       const ctrl = await acceptControllerInManager();
+
+      // The signing key never leaves WebCrypto in extractable form, so the only
+      // way to reach it is to be the controller tab that minted it.
+      expect(ctrl.privateKey.extractable).toBe(false);
 
       // The legitimate controller — sole holder of the session private key — is accepted.
       const legitimate = await sign(ctrl.privateKey, COMMAND_FAMILIES[0]!.body, { sigNonce: 'legit' });
       expect(await verifySignedMessage(legitimate, LIVE_TAB_ID)).toBe(true);
 
-      // "Closing the tab" destroys that private key. Everything else about the
-      // session is observable on the same-origin channel — sessionId, liveTabId,
-      // the controller public key, and any message it already sent — and none of
-      // it confers authority:
+      // Everything else about the session is observable on the same-origin channel
+      // — sessionId, liveTabId, the controller public key, and any message it
+      // already sent — and none of it confers authority:
 
       // (1) A fresh, perfectly-shaped command signed by any OTHER key is rejected,
       //     even with the correct sessionId / liveTabId / fresh nonce / fresh ts.
@@ -936,8 +942,8 @@ describe('cross-tab pairing protocol acceptance', () => {
       });
       expect(await verifySignedMessage(forged, LIVE_TAB_ID)).toBe(false);
 
-      // (2) A captured genuine message can't be re-delivered after the controller
-      //     is gone — the session-wide nonce ledger rejects the second delivery.
+      // (2) An already-accepted message can't be re-delivered — the session-wide
+      //     nonce ledger rejects the second delivery of a once-accepted command.
       const captured = await sign(ctrl.privateKey, COMMAND_FAMILIES[0]!.body, { sigNonce: 'captured' });
       expect(await verifySignedMessage(captured, LIVE_TAB_ID)).toBe(true);
       expect(await verifySignedMessage(captured, LIVE_TAB_ID)).toBe(false);
