@@ -22,9 +22,7 @@ const projectRoot = join(__dirname, '..', '..');
 // (non-CLI) local runs.
 const storageState = process.env[E2E_ENV.AUTH_STATE_FILE] || join(projectRoot, 'playwright/.auth/admin.json');
 
-// Token mode: the CLI passes a minted short-lived service-account token for the target.
-const serviceAccountToken = process.env[E2E_ENV.GRAFANA_TOKEN];
-const useToken = Boolean(serviceAccountToken);
+const useToken = Boolean(process.env[E2E_ENV.GRAFANA_TOKEN]);
 
 const authProject = { name: 'auth', testMatch: /auth\/auth\.setup\.ts$/ };
 
@@ -48,7 +46,7 @@ export default defineConfig<PluginOptions>({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        ...(useToken ? { extraHTTPHeaders: { Authorization: `Bearer ${serviceAccountToken}` } } : { storageState }),
+        ...(useToken ? {} : { storageState }),
       },
       ...(useToken ? {} : { dependencies: ['auth'] }),
     },
