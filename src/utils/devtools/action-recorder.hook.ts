@@ -474,6 +474,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           isUnique: result.selectorInfo.isUnique,
           matchCount: result.selectorInfo.matchCount,
           contextStrategy: result.selectorInfo.contextStrategy,
+          selectorMethod: result.selectorInfo.method,
         };
 
         // Add step directly — skip modal detection since click was intercepted
@@ -533,6 +534,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
               isUnique: blurResult.selectorInfo.isUnique,
               matchCount: blurResult.selectorInfo.matchCount,
               contextStrategy: blurResult.selectorInfo.contextStrategy,
+              selectorMethod: blurResult.selectorInfo.method,
             };
 
             setRecordedSteps((prev) => [...prev, newStep]);
@@ -590,6 +592,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
         isUnique: selectorInfo.isUnique,
         matchCount: selectorInfo.matchCount,
         contextStrategy: selectorInfo.contextStrategy,
+        selectorMethod: selectorInfo.method,
       };
 
       // Modal detection: check if we're inside an active modal or if this might trigger one
@@ -755,6 +758,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           isUnique: selectorInfo.isUnique,
           matchCount: selectorInfo.matchCount,
           contextStrategy: selectorInfo.contextStrategy,
+          selectorMethod: selectorInfo.method,
         };
 
         // Modal detection: if we're inside a modal, add to pending group
