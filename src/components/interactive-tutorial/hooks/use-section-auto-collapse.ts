@@ -104,7 +104,7 @@ export function useSectionAutoCollapse({
       hasAutoCollapsedRef.current = true;
       // The ref guard above makes this setState conditional on the
       // first transition to `isCompleted=true`; it cannot loop.
-
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsCollapsed(true);
       const contentKey = getContentKey();
       sectionCollapseStorage.set(contentKey, sectionId, true);

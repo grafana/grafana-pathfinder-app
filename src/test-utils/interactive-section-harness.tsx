@@ -295,7 +295,7 @@ export function createRequirementsManagerMock() {
     // fix-registry → expand-options-group → constants/interactive-config at
     // harness initialization time, which fires the jest.mock factory for
     // interactive-config before the harness finishes loading → TDZ crash.
-
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     dispatchFix: require('../requirements-manager/fix-registry').dispatchFix,
     getRequirementExplanation: jest.fn((requirement?: string) => {
       if (requirement?.startsWith('on-page:')) {
@@ -348,6 +348,7 @@ export function createAnalyticsMock() {
  */
 export function createGrafanaDataMock() {
   return {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     ...jest.requireActual('@grafana/data'),
     usePluginContext: () => ({ meta: { jsonData: {} } }),
   };
@@ -397,10 +398,10 @@ export function resetSectionHarness() {
   _stableCheckRequirementsFromData?.mockClear();
   // The completion store keeps its own module-scope cache + hydration
   // tracking. Clear both so tests don't bleed state across runs.
-
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const store = require('../global-state/completion-store');
   store.resetCompletionStoreForTests();
-
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const contentKey = require('../global-state/content-key');
   contentKey.resetContentKeyForTests();
 }

@@ -686,7 +686,7 @@ describe('requirements-checker.utils', () => {
     describe('storage-backed (mount-free) path', () => {
       // Pulls `sectionDoneStorage` directly through the user-storage barrel
       // — same singleton the section component writes to in production.
-
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { sectionDoneStorage, StorageKeys } = require('../lib/user-storage');
 
       beforeEach(() => {

@@ -62,6 +62,7 @@ const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProp
   // Note: Promise.resolve().then() is used to satisfy react-hooks/set-state-in-effect lint rule
   useLayoutEffect(() => {
     if (!position || !containerRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRelativePosition(null);
 
       setHasTrackedSelection(false); // Reset tracking when selection is cleared

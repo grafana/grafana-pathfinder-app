@@ -261,6 +261,7 @@ async function finalizeImpl(args: {
     try {
       await sessionStore.delete(resolved.sessionToken);
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.warn(
         `pathfinder_finalize_for_app_platform: session delete failed for ${tokenLogPrefix(
           resolved.sessionToken

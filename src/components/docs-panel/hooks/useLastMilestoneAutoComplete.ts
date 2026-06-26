@@ -61,5 +61,6 @@ export function useLastMilestoneAutoComplete({
     // Deps mirror the original inline effect exactly. `activeTab.type` is
     // intentionally not in the deps — re-running on milestone-by-milestone
     // `currentUrl` changes is the load-bearing trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stableContent, activeTab?.currentUrl, activeTab?.baseUrl, contentRef]);
 }
