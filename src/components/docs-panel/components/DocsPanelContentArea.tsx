@@ -321,10 +321,10 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       }
                       const guideUrl = activeTab.content?.url || activeTab.baseUrl;
                       const action = pickControllerTabOpenAction(guideUrl, activeTab.type);
-                      if (!action.shouldShow || !action.controllerUrl) {
+                      if (!action.shouldShow || !action.createControllerUrl) {
                         return null;
                       }
-                      const controllerUrl = action.controllerUrl;
+                      const createControllerUrl = action.createControllerUrl;
                       return (
                         <button
                           className={styles.secondaryActionButton}
@@ -340,6 +340,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                               link_type: 'external_browser',
                               interaction_location: 'docs_content_meta_right',
                             });
+                            const controllerUrl = createControllerUrl();
                             window.open(controllerUrl, '_blank', 'noopener,noreferrer');
                           }}
                         >

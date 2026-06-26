@@ -21,6 +21,17 @@ describe('validateCrossTabMessage', () => {
     expect(validateCrossTabMessage(message)).toBe(message);
   });
 
+  it('accepts a launch-bound pairing challenge', () => {
+    const message = envelope({
+      kind: 'pairing-challenge',
+      sessionId: 'session-1',
+      publicKeyB64: 'public-key',
+      pairingId: 'pairing-1',
+      pairingProof: 'proof',
+    });
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
   it.each([
     ['non-object', 42],
     ['null', null],
@@ -112,6 +123,12 @@ describe('validateCrossTabMessage', () => {
 
   it('rejects a heartbeat with an invalid role', () => {
     expect(validateCrossTabMessage(envelope({ kind: 'heartbeat', role: 'admin' }))).toBeNull();
+  });
+
+  it('rejects a pairing challenge without a launch proof', () => {
+    expect(
+      validateCrossTabMessage(envelope({ kind: 'pairing-challenge', sessionId: 'session-1', publicKeyB64: 'public' }))
+    ).toBeNull();
   });
 
   it('accepts a sidebar-handoff with a known action and rejects others', () => {

@@ -1,3 +1,5 @@
+import type { ControllerPairingLaunch } from '../lib/pairing-manager';
+
 /**
  * Centralized contract for Pathfinder deep-link query parameters.
  *
@@ -84,6 +86,25 @@ export function parsePathfinderDeepLink(search: string): DeepLinkParams {
     panelMode,
     controller: params.get('controller') === '1',
   };
+}
+
+export function buildControllerPairingHash(launch: ControllerPairingLaunch): string {
+  const params = new URLSearchParams();
+  params.set('pairing_id', launch.pairingId);
+  params.set('pairing_secret', launch.pairingSecret);
+  params.set('pairing_code', launch.pairingCode);
+  return params.toString();
+}
+
+export function parseControllerPairingHash(hash: string): ControllerPairingLaunch | null {
+  const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+  const pairingId = params.get('pairing_id');
+  const pairingSecret = params.get('pairing_secret');
+  const pairingCode = params.get('pairing_code');
+  if (!pairingId || !pairingSecret || !pairingCode) {
+    return null;
+  }
+  return { pairingId, pairingSecret, pairingCode };
 }
 
 /**

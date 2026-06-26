@@ -56,6 +56,20 @@ describe('GuideReaderOverlay', () => {
     expect(content).toHaveTextContent('mode:controller');
   });
 
+  it('shows the pairing code in controller mode', async () => {
+    mockFetchContent.mockResolvedValue({ content: { url: 'backend-guide:x', type: 'interactive' } } as any);
+
+    render(
+      <GuideReaderOverlay
+        doc="backend-guide:x"
+        mode="controller"
+        controllerPairing={{ pairingId: 'pairing-1', pairingSecret: 'secret-1', pairingCode: '123456' }}
+      />
+    );
+
+    expect(await screen.findByTestId(testIds.guideReader.controllerStatus)).toHaveTextContent('Code: 123456');
+  });
+
   it('defaults to interactive mode (not the privileged controller) when none is passed', async () => {
     mockFetchContent.mockResolvedValue({ content: { url: 'backend-guide:x', type: 'interactive' } } as any);
 

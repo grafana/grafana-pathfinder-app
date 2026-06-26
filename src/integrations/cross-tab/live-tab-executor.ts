@@ -51,7 +51,7 @@ interface ExecutorTransport {
 
 interface AuthGate {
   verifySignedMessage(message: pairingManager.SignedMessageFields, ownTabId: string): Promise<boolean>;
-  setPendingChallenge(challenge: pairingManager.PendingChallenge): void;
+  setPendingChallenge(challenge: pairingManager.PendingChallenge): Promise<void> | void;
   setOwnLiveTabId(id: string): void;
   onSessionAccepted(listener: (liveTabId: string) => void): () => void;
 }
@@ -339,10 +339,12 @@ export function installLiveTabExecutor(
 
     // Pairing-challenge: controller announces its public key; show the banner.
     if (validated.kind === 'pairing-challenge') {
-      authGate.setPendingChallenge({
+      void authGate.setPendingChallenge({
         sessionId: validated.sessionId,
         publicKeyB64: validated.publicKeyB64,
         senderTabId: validated.senderId,
+        pairingId: validated.pairingId,
+        pairingProof: validated.pairingProof,
       });
       return;
     }

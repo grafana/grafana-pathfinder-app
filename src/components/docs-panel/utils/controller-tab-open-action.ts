@@ -1,8 +1,17 @@
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
+import { createControllerPairingLaunch, type ControllerPairingLaunch } from '../../../lib/pairing-manager';
+import { buildControllerPairingHash } from '../../../utils/pathfinder-search-params';
 
 export interface ControllerTabOpenAction {
   shouldShow: boolean;
-  controllerUrl?: string;
+  createControllerUrl?: () => string;
+}
+
+export function buildControllerTabUrl(url: string, launch: ControllerPairingLaunch): string {
+  const params = new URLSearchParams();
+  params.set('doc', url);
+  params.set('controller', '1');
+  return `/?${params.toString()}#${buildControllerPairingHash(launch)}`;
 }
 
 export function pickControllerTabOpenAction(
@@ -12,8 +21,5 @@ export function pickControllerTabOpenAction(
   if (!url || tabType !== 'interactive') {
     return { shouldShow: false };
   }
-  const params = new URLSearchParams();
-  params.set('doc', url);
-  params.set('controller', '1');
-  return { shouldShow: true, controllerUrl: `/?${params.toString()}` };
+  return { shouldShow: true, createControllerUrl: () => buildControllerTabUrl(url, createControllerPairingLaunch()) };
 }

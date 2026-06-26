@@ -90,8 +90,8 @@ function BannerDialog({ challenge, onAccept, onReject }: BannerDialogProps) {
           Interactive learning controller wants to connect
         </p>
         <p id="pathfinder-pairing-desc" className={styles.body}>
-          A controller tab ({challenge.senderTabId.slice(0, 8)}…) is requesting permission to run interactive steps on
-          this Grafana tab. Accept only if you opened the controller yourself.
+          A controller tab with code {challenge.pairingCode} is requesting permission to run interactive steps on this
+          Grafana tab. Accept only if it matches the code in the controller window.
         </p>
         <div className={styles.actions}>
           <Button variant="secondary" size="sm" onClick={onReject}>

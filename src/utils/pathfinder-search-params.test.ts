@@ -10,8 +10,10 @@
 
 import {
   PATHFINDER_PARAMS,
+  buildControllerPairingHash,
   buildFullScreenRouteUrl,
   buildPathfinderShareUrl,
+  parseControllerPairingHash,
   parsePathfinderDeepLink,
   shouldOpenAsLearningJourney,
   stripPathfinderParams,
@@ -79,6 +81,19 @@ describe('parsePathfinderDeepLink', () => {
     expect(parsePathfinderDeepLink('?panelMode=sidebar').panelMode).toBe('sidebar');
     expect(parsePathfinderDeepLink('?panelMode=floating').panelMode).toBe('floating');
     expect(parsePathfinderDeepLink('?panelMode=fullscreen').panelMode).toBe('fullscreen');
+  });
+});
+
+describe('controller pairing hash', () => {
+  it('round-trips launch material through the URL fragment', () => {
+    const launch = { pairingId: 'pairing-1', pairingSecret: 'secret-1', pairingCode: '123456' };
+    const hash = buildControllerPairingHash(launch);
+
+    expect(parseControllerPairingHash(`#${hash}`)).toEqual(launch);
+  });
+
+  it('rejects incomplete launch material', () => {
+    expect(parseControllerPairingHash('#pairing_id=pairing-1&pairing_code=123456')).toBeNull();
   });
 });
 

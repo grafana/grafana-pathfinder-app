@@ -1,9 +1,12 @@
-import { signPayload, verifyPayload } from '../security/cross-tab-crypto';
+import { signHmacPayload, signPayload, verifyHmacPayload, verifyPayload } from '../security/cross-tab-crypto';
 
 export interface PendingChallenge {
   sessionId: string;
   publicKeyB64: string;
   senderTabId: string;
+  pairingId?: string;
+  pairingProof?: string;
+  pairingCode?: string;
 }
 
 export interface AcceptedSession {
@@ -21,7 +24,15 @@ export interface SignedMessageFields {
   sigNonce?: string;
 }
 
-const STALE_THRESHOLD_MS = 30_000;
+export interface ControllerPairingLaunch {
+  pairingId: string;
+  pairingSecret: string;
+  pairingCode: string;
+}
+
+export const SIGNED_MESSAGE_STALE_MS = 30_000;
+const STALE_THRESHOLD_MS = SIGNED_MESSAGE_STALE_MS;
+const PAIRING_LAUNCH_TTL_MS = 5 * 60_000;
 const PENDING_CHALLENGE_TTL_MS = 30_000;
 const REJECTED_CHALLENGE_TTL_MS = 5 * 60_000;
 const UNSIGNED_FIELDS = new Set(['source', 'senderId', 'timestamp', 'sig']);
@@ -69,6 +80,49 @@ export async function signSignedMessage(privateKey: CryptoKey, message: SignedMe
   return signPayload(privateKey, canonicalSignedPayload(message));
 }
 
+function randomBase64url(byteLength: number): string {
+  const bytes = new Uint8Array(byteLength);
+  globalThis.crypto.getRandomValues(bytes);
+  let binary = '';
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function createPairingCode(): string {
+  const bytes = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(bytes);
+  return String(bytes[0]! % 1_000_000).padStart(6, '0');
+}
+
+export function createControllerPairingLaunch(): ControllerPairingLaunch {
+  const launch = {
+    pairingId: createSignatureNonce(),
+    pairingSecret: randomBase64url(32),
+    pairingCode: createPairingCode(),
+  };
+  registerExpectedPairingLaunch(launch);
+  return launch;
+}
+
+export function canonicalPairingChallengePayload(
+  challenge: Pick<PendingChallenge, 'pairingId' | 'sessionId' | 'publicKeyB64'>
+): string {
+  return stableJson({
+    pairingId: challenge.pairingId,
+    publicKeyB64: challenge.publicKeyB64,
+    sessionId: challenge.sessionId,
+  });
+}
+
+export async function createPairingChallengeProof(
+  pairingSecret: string,
+  challenge: Pick<PendingChallenge, 'pairingId' | 'sessionId' | 'publicKeyB64'>
+): Promise<string> {
+  return signHmacPayload(pairingSecret, canonicalPairingChallengePayload(challenge));
+}
+
 let pendingChallenge: PendingChallenge | null = null;
 let pendingChallengeExpiresAt = 0;
 let pendingChallengeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -76,6 +130,7 @@ let acceptedSession: AcceptedSession | null = null;
 let ownLiveTabId: string | null = null;
 let seenSignedMessages = new Map<string, number>();
 let rejectedChallenges = new Map<string, number>();
+let expectedLaunches = new Map<string, ControllerPairingLaunch & { expiresAt: number }>();
 
 const challengeListeners = new Set<(challenge: PendingChallenge | null) => void>();
 const acceptedListeners = new Set<(liveTabId: string) => void>();
@@ -85,7 +140,12 @@ function challengeKey(challenge: PendingChallenge): string {
 }
 
 function sameChallenge(a: PendingChallenge, b: PendingChallenge): boolean {
-  return a.sessionId === b.sessionId && a.publicKeyB64 === b.publicKeyB64 && a.senderTabId === b.senderTabId;
+  return (
+    a.sessionId === b.sessionId &&
+    a.publicKeyB64 === b.publicKeyB64 &&
+    a.senderTabId === b.senderTabId &&
+    a.pairingId === b.pairingId
+  );
 }
 
 function notifyPendingChallenge(challenge: PendingChallenge | null): void {
@@ -128,9 +188,41 @@ function pruneRejectedChallenges(now: number): void {
   });
 }
 
+function pruneExpectedLaunches(now: number): void {
+  expectedLaunches.forEach((launch, pairingId) => {
+    if (now > launch.expiresAt) {
+      expectedLaunches.delete(pairingId);
+    }
+  });
+}
+
 function isRejectedChallenge(challenge: PendingChallenge, now: number): boolean {
   pruneRejectedChallenges(now);
   return rejectedChallenges.has(challengeKey(challenge));
+}
+
+export function registerExpectedPairingLaunch(launch: ControllerPairingLaunch): void {
+  expectedLaunches.set(launch.pairingId, { ...launch, expiresAt: Date.now() + PAIRING_LAUNCH_TTL_MS });
+}
+
+async function verifiedLaunchForChallenge(
+  challenge: PendingChallenge,
+  now: number
+): Promise<ControllerPairingLaunch | null> {
+  pruneExpectedLaunches(now);
+  if (!challenge.pairingId || !challenge.pairingProof) {
+    return null;
+  }
+  const launch = expectedLaunches.get(challenge.pairingId);
+  if (!launch) {
+    return null;
+  }
+  const valid = await verifyHmacPayload(
+    launch.pairingSecret,
+    canonicalPairingChallengePayload(challenge),
+    challenge.pairingProof
+  );
+  return valid ? launch : null;
 }
 
 export function setOwnLiveTabId(id: string): void {
@@ -141,24 +233,49 @@ export function getOwnLiveTabId(): string | null {
   return ownLiveTabId;
 }
 
-export function setPendingChallenge(challenge: PendingChallenge): void {
+function reacceptSession(session: AcceptedSession): void {
+  acceptedListeners.forEach((l) => l(session.liveTabId));
+}
+
+function denyCompetingChallenge(challenge: PendingChallenge): void {
+  if (pendingChallenge?.pairingId) {
+    expectedLaunches.delete(pendingChallenge.pairingId);
+  }
+  if (challenge.pairingId) {
+    expectedLaunches.delete(challenge.pairingId);
+  }
+  clearPendingChallenge();
+}
+
+export async function setPendingChallenge(challenge: PendingChallenge): Promise<void> {
   const now = Date.now();
   if (acceptedSession && acceptedSession.sessionId === challenge.sessionId) {
+    if (acceptedSession.publicKeyB64 === challenge.publicKeyB64) {
+      reacceptSession(acceptedSession);
+    }
     return;
   }
+  const verifiedLaunch = await verifiedLaunchForChallenge(challenge, now);
+  if (!verifiedLaunch) {
+    return;
+  }
+  const verifiedChallenge = { ...challenge, pairingCode: verifiedLaunch.pairingCode };
   if (isRejectedChallenge(challenge, now)) {
     return;
   }
   if (pendingChallengeIsFresh(now)) {
+    if (pendingChallenge && !sameChallenge(pendingChallenge, verifiedChallenge)) {
+      denyCompetingChallenge(verifiedChallenge);
+    }
     return;
   }
   if (pendingChallenge) {
     clearPendingChallenge();
   }
-  pendingChallenge = challenge;
+  pendingChallenge = verifiedChallenge;
   pendingChallengeExpiresAt = now + PENDING_CHALLENGE_TTL_MS;
   schedulePendingChallengeExpiration();
-  notifyPendingChallenge(challenge);
+  notifyPendingChallenge(verifiedChallenge);
 }
 
 export function onPendingChallenge(listener: (challenge: PendingChallenge | null) => void): () => void {
@@ -185,6 +302,9 @@ export function acceptSession(challenge: PendingChallenge, trustedGesture: boole
     publicKeyB64: pendingChallenge.publicKeyB64,
     liveTabId: liveId,
   };
+  if (pendingChallenge.pairingId) {
+    expectedLaunches.delete(pendingChallenge.pairingId);
+  }
   seenSignedMessages.clear();
   clearPendingChallenge();
   acceptedListeners.forEach((l) => l(liveId));
@@ -200,6 +320,9 @@ export function rejectSession(challenge: PendingChallenge): void {
     return;
   }
   rejectedChallenges.set(challengeKey(pendingChallenge), Date.now());
+  if (pendingChallenge.pairingId) {
+    expectedLaunches.delete(pendingChallenge.pairingId);
+  }
   clearPendingChallenge();
 }
 
@@ -265,6 +388,7 @@ export function resetPairingManagerForTests(): void {
   ownLiveTabId = null;
   seenSignedMessages = new Map();
   rejectedChallenges = new Map();
+  expectedLaunches = new Map();
   challengeListeners.clear();
   acceptedListeners.clear();
 }

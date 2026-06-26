@@ -73,6 +73,8 @@ export interface PairingChallengeMessage extends CrossTabEnvelope {
   kind: 'pairing-challenge';
   sessionId: string;
   publicKeyB64: string;
+  pairingId: string;
+  pairingProof: string;
 }
 
 // Live tab confirms pairing after user accepts. The senderId in the envelope
@@ -327,7 +329,12 @@ function isValidStepProgress(message: Record<string, unknown>): boolean {
 }
 
 function isValidPairingChallenge(message: Record<string, unknown>): boolean {
-  return typeof message.sessionId === 'string' && typeof message.publicKeyB64 === 'string';
+  return (
+    typeof message.sessionId === 'string' &&
+    typeof message.publicKeyB64 === 'string' &&
+    typeof message.pairingId === 'string' &&
+    typeof message.pairingProof === 'string'
+  );
 }
 
 function isValidPairingAccept(message: Record<string, unknown>): boolean {

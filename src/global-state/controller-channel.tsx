@@ -1,6 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CrossTabTransport, createSenderId } from '../lib/cross-tab-transport';
-import { createSignatureNonce, signSignedMessage } from '../lib/pairing-manager';
+import {
+  createPairingChallengeProof,
+  createSignatureNonce,
+  SIGNED_MESSAGE_STALE_MS,
+  signSignedMessage,
+  type ControllerPairingLaunch,
+} from '../lib/pairing-manager';
 import { generateSessionKeyPair } from '../security/cross-tab-crypto';
 import type {
   CheckRequirementsMessage,
@@ -66,9 +72,11 @@ export function useControllerConnected(): boolean {
 export function ControllerChannelProvider({
   children,
   transport,
+  pairing,
 }: {
   children: React.ReactNode;
   transport?: ChannelTransport;
+  pairing?: ControllerPairingLaunch | null;
 }) {
   const [[sessionId, active]] = useState<[string, ChannelTransport]>(() => {
     const sid = createSenderId();
@@ -76,7 +84,8 @@ export function ControllerChannelProvider({
   });
   const [connected, setConnected] = useState(false);
   const privateKeyRef = useRef<CryptoKey | null>(null);
-  const publicKeyB64Ref = useRef<string | null>(null);
+  const pairingChallengeRef = useRef<CrossTabPayload | null>(null);
+  const preparedHandBackRef = useRef<CrossTabPayload | null>(null);
   const lastLiveSeenRef = useRef(0);
   // The one live tab this controller is bound to (first to send a `live`
   // heartbeat); replies from any other tab are ignored.
@@ -85,33 +94,61 @@ export function ControllerChannelProvider({
   const stepCompletionRef = useRef<Map<string, (ok: boolean) => void>>(new Map());
   const stepProgressRef = useRef<Map<string, (index: number, total: number) => void>>(new Map());
 
-  const postPayload = useCallback(
-    async (payload: CrossTabPayload): Promise<void> => {
+  const signForLive = useCallback(
+    async (payload: CrossTabPayload): Promise<CrossTabPayload | null> => {
       const liveTabId = pairedLiveIdRef.current;
       const privateKey = privateKeyRef.current;
-      const sid = sessionId;
-      if (!SIGNED_KINDS.has(payload.kind)) {
-        active.post(payload);
-        return;
-      }
       if (!liveTabId || !privateKey) {
-        return;
+        return null;
       }
       const signedPayload = {
         ...payload,
-        sessionId: sid,
+        sessionId,
         liveTabId,
         sigTs: Date.now(),
         sigNonce: createSignatureNonce(),
       };
       try {
         const sig = await signSignedMessage(privateKey, signedPayload);
-        active.post({ ...signedPayload, sig } as CrossTabPayload);
+        return { ...signedPayload, sig } as CrossTabPayload;
       } catch {
-        return;
+        return null;
       }
     },
-    [active, sessionId]
+    [sessionId]
+  );
+
+  const refreshPreparedHandBack = useCallback(async (): Promise<void> => {
+    const signed = await signForLive({ kind: 'sidebar-handoff', action: 'reopen' });
+    if (signed) {
+      preparedHandBackRef.current = signed;
+    }
+  }, [signForLive]);
+
+  const postPreparedHandBack = useCallback((): boolean => {
+    const payload = preparedHandBackRef.current;
+    if (!payload || payload.kind !== 'sidebar-handoff' || payload.sigTs === undefined) {
+      return false;
+    }
+    if (Math.abs(Date.now() - payload.sigTs) > SIGNED_MESSAGE_STALE_MS) {
+      return false;
+    }
+    active.post(payload);
+    return true;
+  }, [active]);
+
+  const postPayload = useCallback(
+    async (payload: CrossTabPayload): Promise<void> => {
+      if (!SIGNED_KINDS.has(payload.kind)) {
+        active.post(payload);
+        return;
+      }
+      const signed = await signForLive(payload);
+      if (signed) {
+        active.post(signed);
+      }
+    },
+    [active, signForLive]
   );
 
   const post = useCallback(
@@ -125,14 +162,21 @@ export function ControllerChannelProvider({
     generateSessionKeyPair()
       .then(({ publicKeyB64, privateKey }) => {
         privateKeyRef.current = privateKey;
-        publicKeyB64Ref.current = publicKeyB64;
-        active.post({ kind: 'pairing-challenge', sessionId: sessionId, publicKeyB64 });
+        if (!pairing) {
+          return;
+        }
+        const challenge = { pairingId: pairing.pairingId, sessionId, publicKeyB64 };
+        return createPairingChallengeProof(pairing.pairingSecret, challenge).then((pairingProof) => {
+          const payload = { kind: 'pairing-challenge', ...challenge, pairingProof } as CrossTabPayload;
+          pairingChallengeRef.current = payload;
+          active.post(payload);
+        });
       })
       .catch(() => {
         privateKeyRef.current = null;
-        publicKeyB64Ref.current = null;
+        pairingChallengeRef.current = null;
       });
-  }, [active, sessionId]);
+  }, [active, pairing, sessionId]);
 
   useEffect(() => {
     active.start();
@@ -166,7 +210,7 @@ export function ControllerChannelProvider({
         }
         if (pairedLiveIdRef.current === null) {
           pairedLiveIdRef.current = message.senderId;
-          post({ kind: 'sidebar-handoff', action: 'close' });
+          void refreshPreparedHandBack().finally(() => post({ kind: 'sidebar-handoff', action: 'close' }));
         }
         return;
       }
@@ -212,12 +256,11 @@ export function ControllerChannelProvider({
 
     const tick = () => {
       active.post({ kind: 'heartbeat', role: 'controller' });
-      if (pairedLiveIdRef.current === null && publicKeyB64Ref.current) {
-        active.post({
-          kind: 'pairing-challenge',
-          sessionId: sessionId,
-          publicKeyB64: publicKeyB64Ref.current,
-        });
+      if (pairedLiveIdRef.current === null && pairingChallengeRef.current) {
+        active.post(pairingChallengeRef.current);
+      }
+      if (pairedLiveIdRef.current !== null) {
+        void refreshPreparedHandBack();
       }
       if (lastLiveSeenRef.current > 0 && Date.now() - lastLiveSeenRef.current > HEARTBEAT_STALE_MS) {
         setConnected(false);
@@ -228,23 +271,28 @@ export function ControllerChannelProvider({
     tick();
     const intervalId = setInterval(tick, HEARTBEAT_INTERVAL_MS);
 
-    const handBack = () => postPayload({ kind: 'sidebar-handoff', action: 'reopen' });
+    const handBack = () => {
+      postPreparedHandBack();
+    };
     window.addEventListener('pagehide', handBack);
 
     return () => {
       window.removeEventListener('pagehide', handBack);
       const shouldWaitForHandBack = pairedLiveIdRef.current !== null && privateKeyRef.current !== null;
-      const handBackPromise = handBack();
+      const postedPreparedHandBack = postPreparedHandBack();
+      const handBackPromise = postedPreparedHandBack
+        ? Promise.resolve()
+        : postPayload({ kind: 'sidebar-handoff', action: 'reopen' });
       clearInterval(intervalId);
       unsubscribe();
       failAllPending();
-      if (shouldWaitForHandBack) {
+      if (shouldWaitForHandBack && !postedPreparedHandBack) {
         void handBackPromise.finally(() => active.stop());
       } else {
         active.stop();
       }
     };
-  }, [active, post, postPayload, sessionId]);
+  }, [active, post, postPayload, postPreparedHandBack, refreshPreparedHandBack, sessionId]);
 
   const request = useCallback(
     <T extends RemoteRequirementResult | FixOutcome | null>(payload: RequestPayload, fallback: T): Promise<T> => {

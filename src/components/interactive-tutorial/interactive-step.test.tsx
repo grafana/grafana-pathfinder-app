@@ -171,6 +171,12 @@ describe('InteractiveStep: popout action type', () => {
 });
 
 describe('InteractiveStep: controller mode emits over the channel instead of executing', () => {
+  const testPairing = {
+    pairingId: 'pairing-1',
+    pairingSecret: 'secret-1',
+    pairingCode: '123456',
+  };
+
   function makeTransport() {
     let listener: ((message: any) => void) | null = null;
     return {
@@ -211,13 +217,17 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
   async function renderPairedController(transport: ReturnType<typeof makeTransport>, children: React.ReactNode) {
     const view = render(
       <InteractiveModeContext.Provider value="controller">
-        <ControllerChannelProvider transport={transport}>{null}</ControllerChannelProvider>
+        <ControllerChannelProvider transport={transport} pairing={testPairing}>
+          {null}
+        </ControllerChannelProvider>
       </InteractiveModeContext.Provider>
     );
     await pairWithLive(transport);
     view.rerender(
       <InteractiveModeContext.Provider value="controller">
-        <ControllerChannelProvider transport={transport}>{children}</ControllerChannelProvider>
+        <ControllerChannelProvider transport={transport} pairing={testPairing}>
+          {children}
+        </ControllerChannelProvider>
       </InteractiveModeContext.Provider>
     );
     return view;

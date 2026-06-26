@@ -738,10 +738,18 @@ describe('installLiveTabExecutor', () => {
         kind: 'pairing-challenge',
         sessionId: 'sess-1',
         publicKeyB64: 'abc123',
+        pairingId: 'pairing-1',
+        pairingProof: 'proof-1',
       } as CrossTabMessage);
 
       expect(challenges).toHaveLength(1);
-      expect(challenges[0]).toMatchObject({ sessionId: 'sess-1', publicKeyB64: 'abc123', senderTabId: 'ctrl-1' });
+      expect(challenges[0]).toMatchObject({
+        sessionId: 'sess-1',
+        publicKeyB64: 'abc123',
+        senderTabId: 'ctrl-1',
+        pairingId: 'pairing-1',
+        pairingProof: 'proof-1',
+      });
       uninstall();
     });
 
