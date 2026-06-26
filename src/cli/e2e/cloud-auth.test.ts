@@ -3,60 +3,49 @@ import { createCloudAuthPolicy } from './cloud-auth';
 const CLOUD_URL = 'https://learn.grafana.net/';
 
 describe('createCloudAuthPolicy', () => {
-  it('scopes default reusable credentials to the configured cloud URL', () => {
+  it('declares a cloud URL provisionable when an admin token mapping exists', () => {
     const auth = createCloudAuthPolicy({
-      cloudUrl: CLOUD_URL,
-      serviceAccountToken: 'glsa_default',
-      env: {},
+      cloudInstanceAdminTokenSpecs: ['learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN'],
+      env: { GRAFANA_LEARN_ADMIN_TOKEN: 'glsa_admin' },
     });
 
     expect(auth.targets).toEqual({
-      reusable: [CLOUD_URL],
-      provisionable: undefined,
+      provisionable: [CLOUD_URL],
     });
-    expect(auth.runnerAuthFor(CLOUD_URL)).toEqual({ token: 'glsa_default' });
-    expect(auth.runnerAuthFor('https://play.grafana.org/')).toEqual({ token: undefined });
-  });
-
-  it('resolves instance tokens from env vars and scopes them to their hosts', () => {
-    const auth = createCloudAuthPolicy({
-      cloudUrl: CLOUD_URL,
-      instanceTokenSpecs: ['play.grafana.org=GRAFANA_PLAY_TOKEN'],
-      env: { GRAFANA_PLAY_TOKEN: 'glsa_play' },
-    });
-
-    expect(auth.targets).toEqual({
-      reusable: ['https://play.grafana.org/'],
-      provisionable: undefined,
-    });
-    expect(auth.runnerAuthFor('https://play.grafana.org/')).toEqual({ token: 'glsa_play' });
-    expect(auth.runnerAuthFor(CLOUD_URL)).toEqual({ token: undefined });
-  });
-
-  it('prefers a provisioned token for the configured cloud URL', () => {
-    const auth = createCloudAuthPolicy({
-      cloudUrl: CLOUD_URL,
-      serviceAccountToken: 'glsa_static',
-      cloudAdminToken: 'glsa_admin',
-      env: {},
-    });
-
-    expect(auth.targets).toEqual({
-      reusable: [CLOUD_URL],
-      provisionable: CLOUD_URL,
-    });
+    expect(auth.adminTokenFor(CLOUD_URL)).toBe('glsa_admin');
     expect(auth.needsProvisioningFor(CLOUD_URL)).toBe(true);
-    expect(auth.needsProvisioningFor('https://play.grafana.org/')).toBe(false);
-    expect(auth.runnerAuthFor(CLOUD_URL, 'glsa_provisioned')).toEqual({ token: 'glsa_provisioned' });
+    expect(auth.runnerAuthFor(CLOUD_URL)).toEqual({});
   });
 
-  it('throws when an instance token references an unset env var', () => {
+  it('resolves instance admin tokens from env vars and scopes them to their hosts', () => {
+    const auth = createCloudAuthPolicy({
+      cloudInstanceAdminTokenSpecs: ['play.grafana.org=GRAFANA_PLAY_ADMIN_TOKEN'],
+      env: { GRAFANA_PLAY_ADMIN_TOKEN: 'glsa_play_admin' },
+    });
+
+    expect(auth.targets).toEqual({
+      provisionable: ['https://play.grafana.org/'],
+    });
+    expect(auth.adminTokenFor('https://play.grafana.org/')).toBe('glsa_play_admin');
+    expect(auth.adminTokenFor(CLOUD_URL)).toBeUndefined();
+  });
+
+  it('returns the provisioned token as runner auth for that target', () => {
+    const auth = createCloudAuthPolicy({
+      cloudInstanceAdminTokenSpecs: ['learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN'],
+      env: { GRAFANA_LEARN_ADMIN_TOKEN: 'glsa_admin' },
+    });
+
+    expect(auth.runnerAuthFor(CLOUD_URL, 'glsa_provisioned')).toEqual({ token: 'glsa_provisioned' });
+    expect(auth.runnerAuthFor('https://play.grafana.org/', 'glsa_provisioned')).toEqual({});
+  });
+
+  it('throws when an admin token mapping references an unset env var', () => {
     expect(() =>
       createCloudAuthPolicy({
-        cloudUrl: CLOUD_URL,
-        instanceTokenSpecs: ['play.grafana.org=GRAFANA_PLAY_TOKEN'],
+        cloudInstanceAdminTokenSpecs: ['play.grafana.org=GRAFANA_PLAY_ADMIN_TOKEN'],
         env: {},
       })
-    ).toThrow(/GRAFANA_PLAY_TOKEN/);
+    ).toThrow(/GRAFANA_PLAY_ADMIN_TOKEN/);
   });
 });

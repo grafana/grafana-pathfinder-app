@@ -10,9 +10,8 @@
  * between chains. It does NOT reset org-global data (dashboards, data sources,
  * folders) created by guides — that requires ephemeral stacks, a future phase.
  *
- * Single-stack assumption: SAs are minted on `cloudUrl` (the stack the admin
- * token belongs to). Cloud guides declaring a different `instance` are not
- * supported with provisioning.
+ * One CloudEnvironment owns one cloud stack. Multi-instance runs create one
+ * CloudEnvironment per target origin that has a configured admin token.
  */
 
 import { randomUUID } from 'crypto';

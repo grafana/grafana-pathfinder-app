@@ -37,29 +37,25 @@ npx pathfinder-cli e2e [options] [files...]
 
 ### Options
 
-| Option                          | Description                                                                                                                                              | Default                           |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| `--grafana-url <url>`           | Grafana instance URL. Auto-switches to `http://localhost:3010` when `--clean` is set and this flag is not passed.                                        | `http://localhost:3000`           |
-| `--output <path>`               | Path for JSON report output                                                                                                                              | None                              |
-| `--artifacts <dir>`             | Directory for failure artifacts (screenshots, DOM snapshots)                                                                                             | `/tmp/pathfinder-e2e-{uuid}`      |
-| `--verbose`                     | Enable detailed logging                                                                                                                                  | `false`                           |
-| `--bundled`                     | Test all bundled guides                                                                                                                                  | `false`                           |
-| `--trace`                       | Generate Playwright trace files for debugging                                                                                                            | `false`                           |
-| `--headed`                      | Run browser visibly (not headless)                                                                                                                       | `false`                           |
-| `--always-screenshot`           | Capture screenshots on success and failure                                                                                                               | `false`                           |
-| `--clean`                       | Run against an isolated docker-compose stack (project `pathfinder-e2e`, Grafana on `:3010`). Resets between dependency chains and tears down at the end. | `false`                           |
-| `--clean-ready-timeout-ms <ms>` | How long to wait for the isolated Grafana to become healthy after a `--clean` reset                                                                      | `120000`                          |
-| `--package <dirOrId>`           | Test a local package directory, or — when not an existing directory — a bare package ID resolved remotely via the recommender                            | None                              |
-| `--tier <tier>`                 | Current environment tier (`local` or `cloud`); `cloud` guides are skipped on a `local` environment                                                       | `local`                           |
-| `--remote`                      | Resolve and test every package from the CDN repository index                                                                                             | `false`                           |
-| `--repo-url <url>`              | CDN base URL for `--remote`                                                                                                                              | Public package repository         |
-| `--resolver-url <url>`          | Recommender base URL for `--package <id>` resolution                                                                                                     | `https://recommender.grafana.com` |
-| `--user <user>`                 | Username for cloud-tier form-login auth. Falls back to `GRAFANA_USER`.                                                                                   | None                              |
-| `--password <pw>`               | Password for cloud-tier form-login auth. Falls back to `GRAFANA_PASSWORD`.                                                                               | None                              |
-| `--service-account-token <tok>` | Service-account Bearer token for `--cloud-url`. Falls back to `GRAFANA_TOKEN`.                                                                           | None                              |
-| `--instance-token <host=env>`   | Service-account Bearer token env var for a manifest-declared cloud `instance`. Repeat for multiple instances.                                            | None                              |
-| `--cloud-admin-token <tok>`     | Admin service-account token used to mint one ephemeral service account per dependency chain. Falls back to `GRAFANA_ADMIN_TOKEN`.                        | None                              |
-| `--cloud-url <url>`             | Default Grafana Cloud instance URL for cloud-tier guides without a manifest `instance`.                                                                  | `https://learn.grafana.net/`      |
+| Option                                    | Description                                                                                                                                              | Default                           |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `--grafana-url <url>`                     | Grafana instance URL. Auto-switches to `http://localhost:3010` when `--clean` is set and this flag is not passed.                                        | `http://localhost:3000`           |
+| `--output <path>`                         | Path for JSON report output                                                                                                                              | None                              |
+| `--artifacts <dir>`                       | Directory for failure artifacts (screenshots, DOM snapshots)                                                                                             | `/tmp/pathfinder-e2e-{uuid}`      |
+| `--verbose`                               | Enable detailed logging                                                                                                                                  | `false`                           |
+| `--bundled`                               | Test all bundled guides                                                                                                                                  | `false`                           |
+| `--trace`                                 | Generate Playwright trace files for debugging                                                                                                            | `false`                           |
+| `--headed`                                | Run browser visibly (not headless)                                                                                                                       | `false`                           |
+| `--always-screenshot`                     | Capture screenshots on success and failure                                                                                                               | `false`                           |
+| `--clean`                                 | Run against an isolated docker-compose stack (project `pathfinder-e2e`, Grafana on `:3010`). Resets between dependency chains and tears down at the end. | `false`                           |
+| `--clean-ready-timeout-ms <ms>`           | How long to wait for the isolated Grafana to become healthy after a `--clean` reset                                                                      | `120000`                          |
+| `--package <dirOrId>`                     | Test a local package directory, or — when not an existing directory — a bare package ID resolved remotely via the recommender                            | None                              |
+| `--tier <tier>`                           | Current environment tier (`local` or `cloud`); `cloud` guides are skipped on a `local` environment                                                       | `local`                           |
+| `--remote`                                | Resolve and test every package from the CDN repository index                                                                                             | `false`                           |
+| `--repo-url <url>`                        | CDN base URL for `--remote`                                                                                                                              | Public package repository         |
+| `--resolver-url <url>`                    | Recommender base URL for `--package <id>` resolution                                                                                                     | `https://recommender.grafana.com` |
+| `--cloud-instance-admin-token <host=env>` | Admin service-account token env var for a cloud target. Repeat for multiple cloud instances.                                                             | None                              |
+| `--cloud-url <url>`                       | Default Grafana Cloud instance URL for cloud-tier guides without a manifest `instance`.                                                                  | `https://learn.grafana.net/`      |
 
 ### Input formats
 
@@ -376,10 +372,6 @@ These variables are consumed by the CLI or passed to the spawned Playwright proc
 | `GUIDE_JSON_PATH`       | Path to JSON guide file                                                        | Required                |
 | `GRAFANA_URL`           | Grafana instance URL                                                           | `http://localhost:3000` |
 | `AUTH_STATE_FILE`       | Per-guide Playwright storage-state path for form-login auth                    | Temporary CLI path      |
-| `GRAFANA_USER`          | Username for cloud-tier form-login auth                                        | `admin` in runner setup |
-| `GRAFANA_PASSWORD`      | Password for cloud-tier form-login auth                                        | `admin` in runner setup |
-| `GRAFANA_TOKEN`         | Service-account Bearer token for `--cloud-url` request-header auth             | None                    |
-| `GRAFANA_ADMIN_TOKEN`   | Admin service-account token used by the CLI to mint per-chain cloud accounts   | None                    |
 | `E2E_VERBOSE`           | Enable verbose logging                                                         | `false`                 |
 | `E2E_TRACE`             | Generate Playwright trace file                                                 | `false`                 |
 | `ABORT_FILE_PATH`       | Path where the runner writes abort reason metadata                             | Temporary CLI path      |
@@ -388,7 +380,7 @@ These variables are consumed by the CLI or passed to the spawned Playwright proc
 | `ALWAYS_SCREENSHOT`     | Capture screenshots on success and failure                                     | `false`                 |
 | `E2E_TRACE_OUTPUT_FILE` | Path where the runner records the generated Playwright trace artifact location | Temporary CLI path      |
 
-For manifest-declared cloud instances, pass `--instance-token host=ENV_VAR_NAME`; the named env var contains the service-account token for that exact host. The env var name is user-defined, for example `GRAFANA_PLAY_TOKEN`.
+For cloud targets, pass `--cloud-instance-admin-token host=ENV_VAR_NAME`; the named env var contains an admin service-account token for that exact host. The env var name is user-defined, for example `GRAFANA_PLAY_ADMIN_TOKEN`.
 
 ## Error classification
 
@@ -417,15 +409,13 @@ The CLI can resolve published guides instead of reading local files, then test t
 Guides are routed by their manifest's `testEnvironment.tier`:
 
 - `local` (or no tier) guides run against `--grafana-url`.
-- `cloud` guides run against `--cloud-url` (default `https://learn.grafana.net/`), or against `https://{instance}/` when the manifest declares a host-only `testEnvironment.instance`. Guides without an `instance` use credentials for `--cloud-url`; guides with an `instance` require credentials explicitly associated with that host via `--instance-token host=ENV_VAR_NAME` unless the instance matches `--cloud-url`.
+- `cloud` guides run against `--cloud-url` (default `https://learn.grafana.net/`), or against `https://{instance}/` when the manifest declares a host-only `testEnvironment.instance`. Every resolved cloud target requires an admin token explicitly associated with that host via `--cloud-instance-admin-token host=ENV_VAR_NAME`.
 
-Cloud auth methods:
+Cloud auth:
 
-- **Service-account token for `--cloud-url` (recommended for Grafana Cloud).** Create a stack-level service account and token in the Grafana UI, then pass `--service-account-token` (or `GRAFANA_TOKEN`). The runner attaches it as an `Authorization: Bearer` header on every browser request to the configured cloud URL — the method that works against grafana.com-SSO Cloud stacks, where the `POST /login` form is unavailable. Caveat: `--trace` records request headers, so a trace will contain the token; do not share trace artifacts.
-- **Service-account token for a manifest `instance`.** Pass `--instance-token play.grafana.org=GRAFANA_PLAY_TOKEN` to associate a token env var with a specific manifest-declared host. The CLI reads the token from that env var and only uses it for that host. Repeat the flag for each supported instance.
-- **Username/password form login.** `POST /login` against `--cloud-url`; only works on instances that expose the native Grafana login form (local OSS/Enterprise, or a stack with the login form explicitly enabled). Each guide authenticates into its own disposable session, deleted after it finishes.
+- **Admin token per cloud target.** Pass `--cloud-instance-admin-token learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN` to associate an admin service-account token env var with a cloud target. The CLI uses that admin token only to mint a fresh service account and short-lived token for each dependency chain; the browser runner receives only the minted token. Repeat the flag for each supported instance.
 
-**Per-chain isolation (optional).** Pass `--cloud-admin-token` (an admin service-account token with `serviceaccounts:write`; env `GRAFANA_ADMIN_TOKEN`) to provision a fresh service account for each dependency chain, shared by the guides in that chain and deleted when the chain finishes — mirroring how `--clean` resets the local docker stack per chain. Minted tokens carry a TTL, and accounts orphaned by crashed runs are swept on the next run. This isolates per-identity state (preferences, stars, sessions) between chains; it does **not** reset org data such as dashboards or data sources created by guides (that needs ephemeral stacks, a future phase). It assumes a single stack — the one the admin token belongs to, matching `--cloud-url`; manifest-declared instances on other hosts need `--instance-token`.
+Per-chain isolation mirrors how `--clean` resets the local docker stack per chain. Minted tokens carry a TTL, and accounts orphaned by crashed runs are swept on the next run. This isolates per-identity state (preferences, stars, sessions) between chains; it does **not** reset org data such as dashboards or data sources created by guides (that needs ephemeral stacks, a future phase).
 
 Interactive SSO/Okta login (driving the identity provider's login UI) is not supported. Path/journey (`milestones`) expansion is also not yet implemented; `path` and `journey` packages are skipped as an unsupported type. See the [Package-Aware Testing](../design/e2e-test-runner-design.md#package-aware-testing) design for the full picture.
 
@@ -453,28 +443,21 @@ npx pathfinder-cli e2e --package alerting-101
 # Test the whole published repository (local-tier guides run, cloud guides skip)
 npx pathfinder-cli e2e --remote --output results.json
 
-# Resolve and test a cloud-tier guide on Grafana Cloud with a service-account token
-export GRAFANA_TOKEN=glsa_xxx   # stack-level service account token
+# Resolve and test a cloud-tier guide on Grafana Cloud with per-chain ephemeral auth
+export GRAFANA_LEARN_ADMIN_TOKEN=glsa_admin_xxx
 npx pathfinder-cli e2e --tier cloud --package alerting-101 \
-  --cloud-url https://your-stack.grafana.net/
-
-# Username/password form login (instances that expose the native login form)
-npx pathfinder-cli e2e --tier cloud --package alerting-101 \
-  --user "$GRAFANA_USER" --password "$GRAFANA_PASSWORD"
+  --cloud-url https://learn.grafana.net/ \
+  --cloud-instance-admin-token learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN
 
 # Test all cloud-tier guides against the default cloud instance
-npx pathfinder-cli e2e --remote --tier cloud --service-account-token "$GRAFANA_TOKEN" \
-  --cloud-url https://learn.grafana.net/
+npx pathfinder-cli e2e --remote --tier cloud \
+  --cloud-url https://learn.grafana.net/ \
+  --cloud-instance-admin-token learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN
 
 # Test a guide whose manifest declares instance: play.grafana.org
-export GRAFANA_PLAY_TOKEN=glsa_play_xxx
+export GRAFANA_PLAY_ADMIN_TOKEN=glsa_play_admin_xxx
 npx pathfinder-cli e2e --tier cloud --package play-guide \
-  --instance-token play.grafana.org=GRAFANA_PLAY_TOKEN
-
-# Per-chain ephemeral service accounts (provisioned and deleted automatically)
-export GRAFANA_ADMIN_TOKEN=glsa_admin_xxx
-npx pathfinder-cli e2e --remote --tier cloud \
-  --cloud-url https://your-stack.grafana.net/
+  --cloud-instance-admin-token play.grafana.org=GRAFANA_PLAY_ADMIN_TOKEN
 ```
 
 ## Related documentation

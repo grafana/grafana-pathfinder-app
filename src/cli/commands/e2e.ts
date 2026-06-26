@@ -47,8 +47,8 @@ import {
 import type { ManifestJson, RepositoryEntry, RepositoryJson } from '../../types/package.types';
 
 import { randomUUID } from 'crypto';
-import { CloudEnvironment } from '../e2e/cloud-environment';
 import { createCloudAuthPolicy, type CloudAuthPolicy } from '../e2e/cloud-auth';
+import { cloudTargetsInChain, provisionCloudTargetsForChain, sweepCloudTargets } from '../e2e/cloud-provisioning';
 
 /**
  * CLI options for the e2e command
@@ -73,16 +73,8 @@ interface E2ECommandOptions {
   repoUrl?: string;
   /** Recommender base URL for --package <id> resolution. */
   resolverUrl: string;
-  /** Username for cloud-tier authentication (env fallback: GRAFANA_USER). */
-  user?: string;
-  /** Password for cloud-tier authentication (env fallback: GRAFANA_PASSWORD). */
-  password?: string;
-  /** Service-account Bearer token for cloud-tier auth (env fallback: GRAFANA_TOKEN). */
-  serviceAccountToken?: string;
-  /** Host-to-env-var mappings for instance-specific cloud tokens. */
-  instanceToken: string[];
-  /** Admin token used to provision a fresh per-chain SA on the cloud stack (env fallback: GRAFANA_ADMIN_TOKEN). */
-  cloudAdminToken?: string;
+  /** Host-to-env-var mappings for cloud instance admin tokens. */
+  cloudInstanceAdminToken: string[];
   /** Default cloud instance URL for cloud-tier guides without an `instance`. */
   cloudUrl: string;
 }
@@ -244,22 +236,13 @@ interface ChainRunOutcome {
 }
 
 /**
- * Install exit/signal handlers that tear down the isolated --clean docker stack
- * and any provisioned cloud service account. On SIGINT/SIGTERM, re-raise with
- * the conventional 128+signal code.
- *
- * The `exit` handler is synchronous, so only docker teardown can run there; a
- * provisioned SA relies on its token TTL and the next run's orphan sweep if the
- * process dies abruptly. The signal handlers are async so they can delete the SA
- * before exiting.
+ * Install exit/signal handlers that tear down the isolated --clean docker stack.
+ * On SIGINT/SIGTERM, re-raise with the conventional 128+signal code.
  */
-function installTeardownHandlers(cleanEnv: CleanEnvironment, cloudEnv?: CloudEnvironment): void {
+function installTeardownHandlers(cleanEnv: CleanEnvironment): void {
   const exitHandler = () => cleanEnv.teardownIfOwned();
   const signalHandler = async (signal: NodeJS.Signals) => {
     cleanEnv.teardownIfOwned();
-    if (cloudEnv) {
-      await cloudEnv.teardownAll();
-    }
     // Re-raise the signal with the conventional 128 + signal-number exit code
     const code = signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 1;
     process.exit(code);
@@ -549,8 +532,7 @@ async function runChains(
   options: E2ECommandOptions,
   cleanEnv: CleanEnvironment,
   packageMetaById: Map<string, PackageMeta> = new Map(),
-  cloudAuth?: CloudAuthPolicy,
-  cloudEnv?: CloudEnvironment
+  cloudAuth?: CloudAuthPolicy
 ): Promise<ChainRunOutcome> {
   console.log('\n🎭 Running Playwright tests...\n');
 
@@ -572,118 +554,111 @@ async function runChains(
       }
     }
 
-    // Provision a fresh service account for this chain's cloud-tier guides,
-    // shared across the chain so within-chain dependent state survives, then
-    // torn down at chain end (mirrors --clean's per-chain reset). The inner loop
-    // never throws (runPlaywrightTests always resolves); teardown is also covered
-    // by signal handlers + token TTL + the next run's orphan sweep.
-    const chainNeedsProvisioning = chain.some((planned) =>
-      cloudAuth?.needsProvisioningFor(packageMetaById.get(planned.id)?.targetUrl)
-    );
-    let chainToken: string | undefined;
-    if (cloudEnv && chainNeedsProvisioning) {
-      console.log(`\n🔑 Provisioning a service account for this cloud chain...`);
-      chainToken = await cloudEnv.provisionChain();
-    }
+    const provisionedTargets = await provisionCloudTargetsForChain({
+      targetUrls: cloudTargetsInChain(chain, packageMetaById, cloudAuth),
+      cloudAuth,
+      verbose: options.verbose,
+    });
+    try {
+      // IDs in this chain that failed or were skipped; their dependents skip.
+      const blocked = new Set<string>();
 
-    // IDs in this chain that failed or were skipped; their dependents skip.
-    const blocked = new Set<string>();
-
-    for (const planned of chain) {
-      const blockingDep = planned.dependencies.find((dep) => blocked.has(dep));
-      if (blockingDep) {
-        blocked.add(planned.id);
-        console.log(`\n📚 ${planned.guide.path}`);
-        console.log(`   ⊘ Skipped: prerequisite "${blockingDep}" did not pass`);
-        const skippedMeta = packageMetaById.get(planned.id);
-        const prereqResultsData: TestResultsData = {
-          guide: {
+      for (const planned of chain) {
+        const blockingDep = planned.dependencies.find((dep) => blocked.has(dep));
+        if (blockingDep) {
+          blocked.add(planned.id);
+          console.log(`
+📚 ${planned.guide.path}`);
+          console.log(`   ⊘ Skipped: prerequisite "${blockingDep}" did not pass`);
+          const skippedMeta = packageMetaById.get(planned.id);
+          const prereqResultsData: TestResultsData = {
+            guide: {
+              id: planned.id,
+              title: planned.id,
+              path: planned.guide.path,
+              targetUrl: skippedMeta?.targetUrl ?? options.grafanaUrl,
+            },
+            timestamp: new Date().toISOString(),
+            results: [],
+            aborted: true,
+            abortReason: 'SKIPPED_PREREQ',
+            abortMessage: `Prerequisite "${blockingDep}" did not pass`,
+          };
+          applyPackageMeta(prereqResultsData, skippedMeta);
+          results.push({
+            guide: planned.guide.path,
             id: planned.id,
-            title: planned.id,
-            path: planned.guide.path,
-            targetUrl: skippedMeta?.targetUrl ?? options.grafanaUrl,
-          },
-          timestamp: new Date().toISOString(),
-          results: [],
-          aborted: true,
-          abortReason: 'SKIPPED_PREREQ',
-          abortMessage: `Prerequisite "${blockingDep}" did not pass`,
+            status: 'skipped_prereq',
+            exitCode: ExitCode.SUCCESS,
+            autoIncluded: planned.autoIncluded,
+            failedPrerequisite: blockingDep,
+            // Include a result so the skipped guide is represented in the JSON report
+            resultsData: prereqResultsData,
+          });
+          continue;
+        }
+
+        const suffix = planned.autoIncluded ? ' (auto-included prerequisite)' : '';
+        console.log(`
+📚 Testing: ${planned.guide.path}${suffix}`);
+
+        // Remote guides carry their own resolved targetUrl; local guides fall back
+        // to the global Grafana URL. Cloud auth policy owns credential selection.
+        const meta = packageMetaById.get(planned.id);
+        const isCloudTarget = meta?.tier === 'cloud';
+        const runnerAuth = isCloudTarget
+          ? cloudAuth?.runnerAuthFor(meta?.targetUrl, provisionedTargets.tokenFor(meta?.targetUrl))
+          : undefined;
+        const runGuideOptions: RunGuideOptions = {
+          targetUrl: meta?.targetUrl ?? options.grafanaUrl,
+          verbose: options.verbose,
+          trace: options.trace,
+          headed: options.headed,
+          artifacts: options.artifacts,
+          alwaysScreenshot: options.alwaysScreenshot,
+          token: runnerAuth?.token,
         };
-        applyPackageMeta(prereqResultsData, skippedMeta);
+
+        const result = await runPlaywrightTests(planned.guide, runGuideOptions);
+        applyPackageMeta(result.resultsData, meta);
+        const status: GuideStatus = result.success
+          ? 'passed'
+          : result.abortReason === 'AUTH_EXPIRED'
+            ? 'auth_expired'
+            : 'failed';
+
         results.push({
           guide: planned.guide.path,
           id: planned.id,
-          status: 'skipped_prereq',
-          exitCode: ExitCode.SUCCESS,
+          status,
+          exitCode: result.exitCode,
+          traceFile: result.traceFile,
+          abortReason: result.abortReason,
+          abortMessage: result.abortMessage,
+          resultsData: result.resultsData,
           autoIncluded: planned.autoIncluded,
-          failedPrerequisite: blockingDep,
-          // Include a result so the skipped guide is represented in the JSON report
-          resultsData: prereqResultsData,
         });
-        continue;
-      }
 
-      const suffix = planned.autoIncluded ? ' (auto-included prerequisite)' : '';
-      console.log(`\n📚 Testing: ${planned.guide.path}${suffix}`);
+        if (!result.success) {
+          allPassed = false;
+          blocked.add(planned.id);
 
-      // Remote guides carry their own resolved targetUrl; local guides fall back
-      // to the global Grafana URL. Cloud auth policy owns credential selection.
-      const meta = packageMetaById.get(planned.id);
-      const isCloudTarget = meta?.tier === 'cloud';
-      const runnerAuth = isCloudTarget ? cloudAuth?.runnerAuthFor(meta?.targetUrl, chainToken) : undefined;
-      const runGuideOptions: RunGuideOptions = {
-        targetUrl: meta?.targetUrl ?? options.grafanaUrl,
-        verbose: options.verbose,
-        trace: options.trace,
-        headed: options.headed,
-        artifacts: options.artifacts,
-        alwaysScreenshot: options.alwaysScreenshot,
-        username: runnerAuth?.username,
-        password: runnerAuth?.password,
-        token: runnerAuth?.token,
-      };
-
-      const result = await runPlaywrightTests(planned.guide, runGuideOptions);
-      applyPackageMeta(result.resultsData, meta);
-      const status: GuideStatus = result.success
-        ? 'passed'
-        : result.abortReason === 'AUTH_EXPIRED'
-          ? 'auth_expired'
-          : 'failed';
-
-      results.push({
-        guide: planned.guide.path,
-        id: planned.id,
-        status,
-        exitCode: result.exitCode,
-        traceFile: result.traceFile,
-        abortReason: result.abortReason,
-        abortMessage: result.abortMessage,
-        resultsData: result.resultsData,
-        autoIncluded: planned.autoIncluded,
-      });
-
-      if (!result.success) {
-        allPassed = false;
-        blocked.add(planned.id);
-
-        if (result.abortReason === 'AUTH_EXPIRED') {
-          hasAuthExpiry = true;
-          console.log(`   ❌ Session expired: ${result.abortMessage}`);
+          if (result.abortReason === 'AUTH_EXPIRED') {
+            hasAuthExpiry = true;
+            console.log(`   ❌ Session expired: ${result.abortMessage}`);
+          } else {
+            console.log(`   ❌ Test failed (exit code: ${result.exitCode})`);
+          }
         } else {
-          console.log(`   ❌ Test failed (exit code: ${result.exitCode})`);
+          console.log(`   ✅ Test passed`);
         }
-      } else {
-        console.log(`   ✅ Test passed`);
-      }
 
-      if (result.traceFile && options.trace) {
-        console.log(`   📊 Trace file: ${result.traceFile}`);
+        if (result.traceFile && options.trace) {
+          console.log(`   📊 Trace file: ${result.traceFile}`);
+        }
       }
-    }
-
-    if (cloudEnv && chainNeedsProvisioning) {
-      await cloudEnv.teardownChain();
+    } finally {
+      await provisionedTargets.teardownAll();
     }
   }
 
@@ -744,12 +719,7 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
   }
 
   const cloudAuth = createCloudAuthPolicy({
-    cloudUrl: options.cloudUrl,
-    username: options.user ?? process.env.GRAFANA_USER,
-    password: options.password ?? process.env.GRAFANA_PASSWORD,
-    serviceAccountToken: options.serviceAccountToken ?? process.env.GRAFANA_TOKEN,
-    cloudAdminToken: options.cloudAdminToken ?? process.env.GRAFANA_ADMIN_TOKEN,
-    instanceTokenSpecs: options.instanceToken,
+    cloudInstanceAdminTokenSpecs: options.cloudInstanceAdminToken,
   });
   const remoteOptions = {
     grafanaUrl: options.grafanaUrl,
@@ -829,21 +799,11 @@ export const e2eCommand = new Command('e2e')
   .option('--remote', 'Resolve and test every package from the CDN repository index', false)
   .option('--repo-url <url>', 'CDN base URL for --remote (default: the public Pathfinder package repository)')
   .option('--resolver-url <url>', 'Recommender base URL for --package <id> resolution', DEFAULT_RESOLVER_URL)
-  .option('--user <user>', 'Username for cloud-tier authentication (env fallback: GRAFANA_USER)')
-  .option('--password <pw>', 'Password for cloud-tier authentication (env fallback: GRAFANA_PASSWORD)')
   .option(
-    '--service-account-token <token>',
-    'Service-account Bearer token for cloud-tier auth; required for Grafana Cloud SSO stacks (env fallback: GRAFANA_TOKEN)'
-  )
-  .option(
-    '--instance-token <host=envVar>',
-    'Service-account Bearer token env var for a manifest-declared cloud instance; repeat for multiple instances',
+    '--cloud-instance-admin-token <host=envVar>',
+    'Admin service-account token env var for a cloud target; repeat for multiple cloud instances',
     collectOption,
     []
-  )
-  .option(
-    '--cloud-admin-token <token>',
-    'Admin service-account token (serviceaccounts:write) used to provision a fresh per-chain service account on the cloud stack, deleted at chain end (env fallback: GRAFANA_ADMIN_TOKEN)'
   )
   .option(
     '--cloud-url <url>',
@@ -853,15 +813,8 @@ export const e2eCommand = new Command('e2e')
   .action(async (files: string[], options: E2ECommandOptions) => {
     const cleanEnv = new CleanEnvironment(options.verbose);
 
-    // A bootstrap admin token switches cloud-tier guides to per-chain provisioned
-    // service accounts instead of a single static token.
-    const cloudAdminToken = options.cloudAdminToken ?? process.env.GRAFANA_ADMIN_TOKEN;
-    const cloudEnv = cloudAdminToken
-      ? new CloudEnvironment(cloudAdminToken, options.cloudUrl, options.verbose)
-      : undefined;
-
-    if (options.clean || cloudEnv) {
-      installTeardownHandlers(cleanEnv, cloudEnv);
+    if (options.clean) {
+      installTeardownHandlers(cleanEnv);
     }
     if (options.clean && options.grafanaUrl === DEFAULT_GRAFANA_URL) {
       options.grafanaUrl = CLEAN_GRAFANA_URL;
@@ -883,14 +836,15 @@ export const e2eCommand = new Command('e2e')
 
       await maybeCleanStart(cleanEnv, options);
 
-      // Remove service accounts leaked by previous crashed runs (best-effort).
-      if (cloudEnv) {
-        await cloudEnv.sweepOrphans();
-      }
+      await sweepCloudTargets({
+        targetUrls: inputs.cloudAuth?.targets.provisionable ?? [],
+        cloudAuth: inputs.cloudAuth,
+        verbose: options.verbose,
+      });
 
       await runPreflightChecks(options, targetUrlsToCheck(inputs, options.grafanaUrl), inputs.localPackageDir);
 
-      const outcome = await runChains(plan, options, cleanEnv, inputs.packageMetaById, inputs.cloudAuth, cloudEnv);
+      const outcome = await runChains(plan, options, cleanEnv, inputs.packageMetaById, inputs.cloudAuth);
 
       reportResults([...inputs.preRunSkipped, ...outcome.results], options);
     } catch (error) {

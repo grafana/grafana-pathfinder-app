@@ -19,8 +19,7 @@ import { checkTier, type CurrentTier } from './manifest-preflight';
  */
 export type TargetSkipReason = 'skipped_no_auth' | 'skipped_tier_mismatch' | 'skipped_invalid_instance';
 export interface CloudAuthTargets {
-  reusable: string[];
-  provisionable?: string;
+  provisionable: string[];
 }
 
 /** Resolution of a guide's `testEnvironment` to a concrete test target. */
@@ -50,21 +49,6 @@ export interface ResolveTargetOptions {
   cloudAuthTargets?: CloudAuthTargets;
 }
 
-/** Cloud auth inputs: a service-account token, or a username/password pair. */
-export interface CloudAuthInput {
-  username?: string;
-  password?: string;
-  token?: string;
-}
-
-/**
- * Whether usable cloud auth is present: a service-account token, or BOTH a
- * username and password. A lone username or password is not usable.
- */
-export function hasCloudAuth(auth: CloudAuthInput): boolean {
-  return Boolean(auth.token || (auth.username && auth.password));
-}
-
 /**
  * Build a Grafana base URL from a host-only `instance` (e.g. `play.grafana.org`
  * → `https://play.grafana.org/`). Returns undefined when `instance` carries a
@@ -83,9 +67,9 @@ export function cloudInstanceUrl(instance: string): string | undefined {
   }
 }
 
-function hasReusableCredentialFor(targetUrl: string, options: ResolveTargetOptions): boolean {
-  return (options.cloudAuthTargets?.reusable ?? []).some((credentialTargetUrl) =>
-    sameOrigin(targetUrl, credentialTargetUrl)
+function canProvisionFor(targetUrl: string, options: ResolveTargetOptions): boolean {
+  return (options.cloudAuthTargets?.provisionable ?? []).some((provisionableTargetUrl) =>
+    sameOrigin(targetUrl, provisionableTargetUrl)
   );
 }
 
@@ -119,15 +103,15 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
   }
 
   if (tier === 'cloud') {
-    const authTargets = options.cloudAuthTargets ?? { reusable: [] };
+    const authTargets = options.cloudAuthTargets ?? { provisionable: [] };
     const defaultTargetUrl = options.cloudUrl;
-    if (!authTargets.provisionable && authTargets.reusable.length === 0) {
+    if (authTargets.provisionable.length === 0) {
       return {
         runnable: false,
         tier,
         instance,
         skipReason: 'skipped_no_auth',
-        message: 'Cloud-tier guide requires --service-account-token, --user/--password, or --cloud-admin-token',
+        message: 'Cloud-tier guide requires --cloud-instance-admin-token for its target',
       };
     }
 
@@ -142,13 +126,13 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
           message: `Cloud instance "${instance}" is not a bare hostname (no protocol, port, or path allowed)`,
         };
       }
-      if (!hasReusableCredentialFor(instanceUrl, options) && !sameOrigin(instanceUrl, authTargets.provisionable)) {
+      if (!canProvisionFor(instanceUrl, options)) {
         return {
           runnable: false,
           tier,
           instance,
           skipReason: 'skipped_no_auth',
-          message: `Cloud instance "${instance}" requires credentials for ${instanceUrl}; --cloud-admin-token only provisions ${authTargets.provisionable}`,
+          message: `Cloud instance "${instance}" requires --cloud-instance-admin-token for ${instanceUrl}`,
         };
       }
       return { runnable: true, tier, instance, targetUrl: instanceUrl };
@@ -162,16 +146,13 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
         message: 'No cloud URL configured for this guide (set --cloud-url)',
       };
     }
-    if (
-      !hasReusableCredentialFor(defaultTargetUrl, options) &&
-      !sameOrigin(defaultTargetUrl, authTargets.provisionable)
-    ) {
+    if (!canProvisionFor(defaultTargetUrl, options)) {
       return {
         runnable: false,
         tier,
         instance,
         skipReason: 'skipped_no_auth',
-        message: `Cloud-tier guide requires credentials for ${defaultTargetUrl}`,
+        message: `Cloud-tier guide requires --cloud-instance-admin-token for ${defaultTargetUrl}`,
       };
     }
     return { runnable: true, tier, instance, targetUrl: defaultTargetUrl };

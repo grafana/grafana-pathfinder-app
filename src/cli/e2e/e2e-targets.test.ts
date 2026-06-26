@@ -3,7 +3,7 @@
  * reasons, and cloud credential/instance resolution.
  */
 
-import { resolveTarget, hasCloudAuth } from './e2e-targets';
+import { resolveTarget } from './e2e-targets';
 
 const LOCAL_URL = 'http://localhost:3000';
 const CLOUD_URL = 'https://learn.grafana.net/';
@@ -53,7 +53,12 @@ describe('resolveTarget', () => {
   it('runs a cloud guide with credentials against the default cloud URL when no instance is declared', () => {
     const target = resolveTarget(
       { tier: 'cloud' },
-      { grafanaUrl: LOCAL_URL, currentTier: 'cloud', cloudUrl: CLOUD_URL, cloudAuthTargets: { reusable: [CLOUD_URL] } }
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+      }
     );
 
     expect(target.runnable).toBe(true);
@@ -69,7 +74,7 @@ describe('resolveTarget', () => {
         grafanaUrl: LOCAL_URL,
         currentTier: 'cloud',
         cloudUrl: CLOUD_URL,
-        cloudAuthTargets: { reusable: ['https://play.grafana.org/'] },
+        cloudAuthTargets: { provisionable: ['https://play.grafana.org/'] },
       }
     );
 
@@ -81,7 +86,12 @@ describe('resolveTarget', () => {
   it('does not use default cloud credentials for a different declared instance', () => {
     const target = resolveTarget(
       { tier: 'cloud', instance: 'play.grafana.org' },
-      { grafanaUrl: LOCAL_URL, currentTier: 'cloud', cloudUrl: CLOUD_URL, cloudAuthTargets: { reusable: [CLOUD_URL] } }
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+      }
     );
 
     expect(target.runnable).toBe(false);
@@ -95,7 +105,7 @@ describe('resolveTarget', () => {
         grafanaUrl: LOCAL_URL,
         currentTier: 'cloud',
         cloudUrl: CLOUD_URL,
-        cloudAuthTargets: { reusable: [], provisionable: CLOUD_URL },
+        cloudAuthTargets: { provisionable: [CLOUD_URL] },
       }
     );
 
@@ -110,19 +120,24 @@ describe('resolveTarget', () => {
         grafanaUrl: LOCAL_URL,
         currentTier: 'cloud',
         cloudUrl: CLOUD_URL,
-        cloudAuthTargets: { reusable: [], provisionable: CLOUD_URL },
+        cloudAuthTargets: { provisionable: [CLOUD_URL] },
       }
     );
 
     expect(target.runnable).toBe(false);
     expect(target.skipReason).toBe('skipped_no_auth');
-    expect(target.message).toContain('--cloud-admin-token only provisions https://learn.grafana.net/');
+    expect(target.message).toContain('--cloud-instance-admin-token for https://play.grafana.org/');
   });
 
   it('skips a cloud guide whose instance is not a bare hostname with invalid-instance', () => {
     const target = resolveTarget(
       { tier: 'cloud', instance: 'https://play.grafana.org/path' },
-      { grafanaUrl: LOCAL_URL, currentTier: 'cloud', cloudUrl: CLOUD_URL, cloudAuthTargets: { reusable: [CLOUD_URL] } }
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+      }
     );
 
     expect(target.runnable).toBe(false);
@@ -133,7 +148,12 @@ describe('resolveTarget', () => {
   it('skips a cloud guide whose instance has URL control characters with invalid-instance', () => {
     const target = resolveTarget(
       { tier: 'cloud', instance: 'play.grafana.org?redirect=evil.test' },
-      { grafanaUrl: LOCAL_URL, currentTier: 'cloud', cloudUrl: CLOUD_URL, cloudAuthTargets: { reusable: [CLOUD_URL] } }
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+      }
     );
 
     expect(target.runnable).toBe(false);
@@ -143,7 +163,7 @@ describe('resolveTarget', () => {
   it('skips a cloud guide with credentials but no resolvable cloud URL', () => {
     const target = resolveTarget(
       { tier: 'cloud' },
-      { grafanaUrl: LOCAL_URL, currentTier: 'cloud', cloudAuthTargets: { reusable: [CLOUD_URL] } }
+      { grafanaUrl: LOCAL_URL, currentTier: 'cloud', cloudAuthTargets: { provisionable: [CLOUD_URL] } }
     );
 
     expect(target.runnable).toBe(false);
@@ -163,24 +183,5 @@ describe('resolveTarget', () => {
       { grafanaUrl: LOCAL_URL, currentTier: 'local' }
     );
     expect(skipped.instance).toBe('myslug.grafana.net');
-  });
-});
-
-describe('hasCloudAuth', () => {
-  it('is true with a service-account token alone', () => {
-    expect(hasCloudAuth({ token: 'glsa_x' })).toBe(true);
-  });
-
-  it('is true with both a username and password', () => {
-    expect(hasCloudAuth({ username: 'me', password: 'secret' })).toBe(true);
-  });
-
-  it('is false with only a username or only a password', () => {
-    expect(hasCloudAuth({ username: 'me' })).toBe(false);
-    expect(hasCloudAuth({ password: 'secret' })).toBe(false);
-  });
-
-  it('is false with no auth at all', () => {
-    expect(hasCloudAuth({})).toBe(false);
   });
 });
