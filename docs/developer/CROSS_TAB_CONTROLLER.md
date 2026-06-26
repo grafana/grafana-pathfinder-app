@@ -90,13 +90,43 @@ message on `pathfinder-cross-tab` is **not** proof it came from a Pathfinder
 controller — a compromised co-plugin, a panel/datasource XSS, or a browser
 extension content script could forge one. The live-tab executor turns messages
 into real actions (navigate, button clicks, form fills) against the user's
-authenticated Grafana, so the channel is treated as untrusted input:
+authenticated Grafana, so a forged message that reached the executor sink could
+drive that Grafana. The controller→live command path is therefore
+**authenticated**, not merely validated:
+
+- **Launch binding.** The live tab mints a one-time launch
+  (`pairingId` + HMAC secret + 6-digit code) and embeds it in the controller
+  tab's URL fragment when it opens the tab (`createControllerPairingLaunch`,
+  `buildControllerPairingHash`). The controller proves it holds that secret with
+  an HMAC over the canonical challenge `{pairingId, publicKeyB64, sessionId}`.
+  The live tab accepts a challenge only when it matches a registered, unexpired
+  launch — a wrong secret, a mutated `sessionId`/`publicKeyB64`, or an unknown
+  `pairingId` is dropped (`pairing-manager.ts`).
+- **Per-session keypair.** The controller generates a **non-extractable** ECDSA
+  P-256 keypair per session; only the public key crosses the wire
+  (`cross-tab-crypto.ts`). Authority to drive the live tab _is_ possession of
+  that private key, which lives only in the controller tab's memory and is
+  unrecoverable once that tab closes.
+- **Consent gesture.** Pairing is accepted only on a trusted user gesture on the
+  live tab (`acceptSession(..., trustedGesture)`); a programmatic or untrusted
+  accept does nothing. Competing valid challenges fail closed (the prompt is
+  cleared and both launches revoked); a rejected session stays suppressed; an
+  expired pending challenge can be retried.
+- **Signed commands.** Every side-effecting message — `step-command`,
+  `check-requirements`, `fix-requirement`, `sidebar-handoff` — is ECDSA-signed
+  and bound to `sessionId`, `liveTabId`, the command body, a fresh `sigNonce`,
+  and a `sigTs`. The executor's auth gate (`verifySignedMessage`) checks the
+  accepted session, the `sessionId`/`liveTabId` match, a ±30s timestamp window,
+  the signature against the accepted public key, and a session-wide
+  `(sessionId:sigNonce)` replay ledger before any action runs.
+
+Defense in depth on top of authentication:
 
 - **Per-kind validation.** Every inbound message is checked against
   `validateCrossTabMessage` (`types/cross-tab.types.ts`) — envelope plus the
   kind-specific shape, with `step-command` actions restricted to a known verb
-  set — at the transport receive gate _and_ again at the executor sink, before
-  any action runs. Malformed or unknown-kind messages are dropped.
+  set — at the transport receive gate _and_ again at the executor sink. Malformed
+  or unknown-kind messages are dropped before the auth gate is even consulted.
 - **Install/entry gating.** The executor is installed, and the controller
   overlay mounted, only when `pathfinderEnabled` is true — a disabled plugin
   exposes neither the sink nor the driver.
@@ -105,22 +135,35 @@ authenticated Grafana, so the channel is treated as untrusted input:
   is no protocol-version negotiation and cross-version compatibility is not a
   goal.
 
-This is a same-origin trust posture, not authentication: validation constrains
-_what_ a forged message can ask for, and gating limits _when_ the sink exists.
-
 ### Known limitations / future work
 
-**No sender authentication (v1).** The controller binds to the first live tab
-that answers its heartbeat (see [Tab pairing](#tab-pairing)) — there is no
-handshake proving the responder is a genuine Pathfinder live tab. Any same-origin
-script that learns the channel name can claim the pairing slot with a forged
-`live` heartbeat; once paired it can drive `check-requirements` /
-`fix-requirement`, which run navigation and DOM mutation against the
-authenticated live tab — the highest-risk surface. Per-kind validation constrains
-message _shape_, not _authorization_. Candidate mitigations for a future version:
-a gesture-to-accept on the live tab, or an out-of-band nonce exchanged when the
-controller opens the tab. (Mirrored by the `TODO(twotab)` at the pairing site in
-`controller-channel.tsx`.)
+**Replies are unauthenticated (by design).** Authentication covers the
+controller→live **command** direction. The reverse direction — `requirement-result`,
+`fix-result`, `step-progress`, `step-complete`, and the `live` heartbeat — is
+**not** signed. The controller trusts replies whose `senderId` matches its paired
+tab (see [Tab pairing](#tab-pairing)), but `senderId` is a forgeable plaintext
+field, so a same-origin script can spoof reply _content_ — telling the controller
+a requirement passed, a fix succeeded, or a step completed when it did not, or
+faking presence. It **cannot** issue commands or cause any action on the live tab;
+that still requires the controller private key. Replies are correlated by an
+unguessable `requestId`, which raises the bar for blind forgery. Signing replies
+is deliberately out of scope: it would require the live tab to mint and the
+controller to verify a second keypair, to defend against an attacker who — by
+assumption — already has same-origin code execution and strictly more direct
+targets (session cookies, the Grafana API).
+
+**No post-accept revoke affordance.** There is no on-demand "disconnect" API for
+an already-accepted controller. This is intentional: authority is the controller
+private key, so closing the controller tab is the disconnect — the key becomes
+unreachable and no further command can be signed. The accepted session lingering
+in live-tab memory afterward is inert (no key exists to use it), and the ±30s
+window plus the replay ledger kill any captured in-flight message.
+
+**Out of scope: same-origin code execution.** XSS or a malicious script running
+_inside_ the controller or live tab is out of scope — it already holds the
+session (and, in the controller, the signing key), so the cross-tab boundary is
+not the relevant control. Non-extractable keys and per-kind validation are
+hardening, not a defense against an already-compromised origin.
 
 ## Tab pairing
 

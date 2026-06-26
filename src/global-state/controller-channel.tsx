@@ -234,6 +234,12 @@ export function ControllerChannelProvider({
       ) {
         return;
       }
+      // live→controller replies are unauthenticated by design: senderId is a
+      // forgeable plaintext field, so this only scopes replies to the paired
+      // tab, it does not prove origin. A same-origin script can spoof reply
+      // CONTENT (mislead this controller's UI) but cannot issue commands or
+      // drive the live tab — that requires the controller private key. See
+      // docs/developer/CROSS_TAB_CONTROLLER.md "Known limitations".
       if (pairedLiveIdRef.current === null || message.senderId !== pairedLiveIdRef.current) {
         return;
       }
