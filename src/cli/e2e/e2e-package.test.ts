@@ -206,6 +206,31 @@ describe('resolveRemotePackage (single, recommender)', () => {
     expect(result.skipped[0]).toMatchObject({ id: 'cloud-guide', reason: 'skipped_no_auth' });
   });
 
+  it('skips an instance-targeted cloud guide when only another origin can be provisioned', async () => {
+    mockResolve({
+      ok: true,
+      id: 'play-guide',
+      contentUrl: 'https://cdn.test/play-guide/content.json',
+      manifestUrl: 'https://cdn.test/play-guide/manifest.json',
+      repository: 'r',
+      manifest: { id: 'play-guide', type: 'guide', testEnvironment: { tier: 'cloud', instance: 'play.grafana.org' } },
+    });
+
+    const result = await resolveRemotePackage('play-guide', {
+      ...CLOUD_OPTIONS,
+      hasCredentials: false,
+      provisioningCloudUrl: CLOUD_OPTIONS.cloudUrl,
+    });
+
+    expect(result.runnable).toHaveLength(0);
+    expect(result.skipped[0]).toMatchObject({
+      id: 'play-guide',
+      reason: 'skipped_no_auth',
+      tier: 'cloud',
+    });
+    expect(result.skipped[0]!.message).toContain('--cloud-admin-token only provisions https://learn.grafana.net/');
+  });
+
   it('treats a package with no manifest as a runnable local guide', async () => {
     mockResolve({
       ok: true,

@@ -73,6 +73,37 @@ describe('resolveTarget', () => {
     expect(target.instance).toBe('play.grafana.org');
   });
 
+  it('runs a cloud guide against its declared instance when admin-token provisioning matches that origin', () => {
+    const target = resolveTarget(
+      { tier: 'cloud', instance: 'learn.grafana.net' },
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        provisioningCloudUrl: CLOUD_URL,
+      }
+    );
+
+    expect(target.runnable).toBe(true);
+    expect(target.targetUrl).toBe('https://learn.grafana.net/');
+  });
+
+  it('skips a declared instance when only admin-token provisioning for another origin is available', () => {
+    const target = resolveTarget(
+      { tier: 'cloud', instance: 'play.grafana.org' },
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        provisioningCloudUrl: CLOUD_URL,
+      }
+    );
+
+    expect(target.runnable).toBe(false);
+    expect(target.skipReason).toBe('skipped_no_auth');
+    expect(target.message).toContain('--cloud-admin-token only provisions https://learn.grafana.net/');
+  });
+
   it('skips a cloud guide whose instance is not a bare hostname with invalid-instance', () => {
     const target = resolveTarget(
       { tier: 'cloud', instance: 'https://play.grafana.org/path' },
@@ -82,6 +113,16 @@ describe('resolveTarget', () => {
     expect(target.runnable).toBe(false);
     expect(target.skipReason).toBe('skipped_invalid_instance');
     expect(target.targetUrl).toBeUndefined();
+  });
+
+  it('skips a cloud guide whose instance has URL control characters with invalid-instance', () => {
+    const target = resolveTarget(
+      { tier: 'cloud', instance: 'play.grafana.org?redirect=evil.test' },
+      { grafanaUrl: LOCAL_URL, currentTier: 'cloud', cloudUrl: CLOUD_URL, hasCredentials: true }
+    );
+
+    expect(target.runnable).toBe(false);
+    expect(target.skipReason).toBe('skipped_invalid_instance');
   });
 
   it('skips a cloud guide with credentials but no resolvable cloud URL', () => {

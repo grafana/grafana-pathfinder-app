@@ -586,9 +586,11 @@ async function runChains(
     // torn down at chain end (mirrors --clean's per-chain reset). The inner loop
     // never throws (runPlaywrightTests always resolves); teardown is also covered
     // by signal handlers + token TTL + the next run's orphan sweep.
-    const chainHasCloud = chain.some((planned) => packageMetaById.get(planned.id)?.tier === 'cloud');
+    const chainNeedsProvisioning = chain.some((planned) =>
+      usesProvisionedCloudTarget(packageMetaById.get(planned.id), options.cloudUrl)
+    );
     let chainToken: string | undefined;
-    if (cloudEnv && chainHasCloud) {
+    if (cloudEnv && chainNeedsProvisioning) {
       console.log(`\n🔑 Provisioning a service account for this cloud chain...`);
       chainToken = await cloudEnv.provisionChain();
     }
@@ -639,6 +641,7 @@ async function runChains(
       // so the auth setup defaults to admin/admin.
       const meta = packageMetaById.get(planned.id);
       const isCloudTarget = meta?.tier === 'cloud';
+      const useProvisionedToken = isCloudTarget && usesProvisionedCloudTarget(meta, options.cloudUrl);
       const runGuideOptions: RunGuideOptions = {
         targetUrl: meta?.targetUrl ?? options.grafanaUrl,
         verbose: options.verbose,
@@ -648,8 +651,8 @@ async function runChains(
         alwaysScreenshot: options.alwaysScreenshot,
         username: isCloudTarget ? credentials?.username : undefined,
         password: isCloudTarget ? credentials?.password : undefined,
-        // A provisioned per-chain token overrides any static --service-account-token.
-        token: isCloudTarget ? (chainToken ?? credentials?.token) : undefined,
+        // A provisioned per-chain token is scoped to --cloud-url; other targets use reusable credentials.
+        token: isCloudTarget ? (useProvisionedToken ? chainToken : credentials?.token) : undefined,
       };
 
       const result = await runPlaywrightTests(planned.guide, runGuideOptions);
@@ -691,7 +694,7 @@ async function runChains(
       }
     }
 
-    if (cloudEnv && chainHasCloud) {
+    if (cloudEnv && chainNeedsProvisioning) {
       await cloudEnv.teardownChain();
     }
   }
@@ -719,6 +722,21 @@ function reportResults(results: GuideRunResult[], options: E2ECommandOptions): v
   printSummary(results);
   writeJsonReport(results, options.output);
   exitFromResults(results);
+}
+
+function sameOrigin(left: string | undefined, right: string | undefined): boolean {
+  if (!left || !right) {
+    return false;
+  }
+  try {
+    return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
+}
+
+function usesProvisionedCloudTarget(meta: PackageMeta | undefined, cloudUrl: string): boolean {
+  return meta?.tier === 'cloud' && sameOrigin(meta.targetUrl, cloudUrl);
 }
 
 /**
@@ -757,11 +775,8 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     password: options.password ?? process.env.GRAFANA_PASSWORD,
     token: options.serviceAccountToken ?? process.env.GRAFANA_TOKEN,
   };
-  // Presence (not the values) drives target resolution. A bootstrap admin token
-  // counts as auth too: cloud guides become runnable because the runner can mint
-  // a per-chain token from it.
   const adminToken = options.cloudAdminToken ?? process.env.GRAFANA_ADMIN_TOKEN;
-  const hasCredentials = hasCloudAuth(credentials) || Boolean(adminToken);
+  const hasCredentials = hasCloudAuth(credentials);
   const remoteOptions = {
     grafanaUrl: options.grafanaUrl,
     currentTier: options.tier,
@@ -769,6 +784,7 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     repoUrl: options.repoUrl,
     cloudUrl: options.cloudUrl,
     hasCredentials,
+    provisioningCloudUrl: adminToken ? options.cloudUrl : undefined,
   };
   const resolution =
     mode === 'remote-package'

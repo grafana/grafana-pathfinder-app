@@ -43,12 +43,14 @@ export interface ResolveTargetOptions {
   /** Default cloud instance URL for `cloud`-tier guides without an `instance`. */
   cloudUrl?: string;
   /**
-   * Whether any cloud auth is available (a service-account token, or a full
-   * username/password pair). Only presence matters here — the values are
+   * Whether reusable cloud auth is available (a service-account token, or a
+   * full username/password pair). Only presence matters here — the values are
    * supplied to the runner separately (see `runChains`), so they are never
    * carried on the resolved target or its downstream report metadata.
    */
   hasCredentials?: boolean;
+  /** Cloud URL where admin-token provisioning can mint a temporary credential. */
+  provisioningCloudUrl?: string;
 }
 
 /** Cloud auth inputs: a service-account token, or a username/password pair. */
@@ -73,13 +75,25 @@ export function hasCloudAuth(auth: CloudAuthInput): boolean {
  * than test the wrong target.
  */
 function bareHostnameUrl(instance: string): string | undefined {
-  if (/[/:]/.test(instance)) {
+  const hostnamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+  if (!hostnamePattern.test(instance)) {
     return undefined;
   }
   try {
     return new URL(`https://${instance}/`).toString();
   } catch {
     return undefined;
+  }
+}
+
+function sameOrigin(left: string | undefined, right: string | undefined): boolean {
+  if (!left || !right) {
+    return false;
+  }
+  try {
+    return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
   }
 }
 
@@ -102,13 +116,16 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
   }
 
   if (tier === 'cloud') {
-    if (!options.hasCredentials) {
+    const hasReusableCredentials = Boolean(options.hasCredentials);
+    const hasProvisioning = Boolean(options.provisioningCloudUrl);
+
+    if (!hasReusableCredentials && !hasProvisioning) {
       return {
         runnable: false,
         tier,
         instance,
         skipReason: 'skipped_no_auth',
-        message: 'Cloud-tier guide requires --user/--password (or GRAFANA_USER/GRAFANA_PASSWORD)',
+        message: 'Cloud-tier guide requires --service-account-token, --user/--password, or --cloud-admin-token',
       };
     }
 
@@ -121,6 +138,15 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
           instance,
           skipReason: 'skipped_invalid_instance',
           message: `Cloud instance "${instance}" is not a bare hostname (no protocol, port, or path allowed)`,
+        };
+      }
+      if (!hasReusableCredentials && !sameOrigin(instanceUrl, options.provisioningCloudUrl)) {
+        return {
+          runnable: false,
+          tier,
+          instance,
+          skipReason: 'skipped_no_auth',
+          message: `Cloud instance "${instance}" requires credentials for ${instanceUrl}; --cloud-admin-token only provisions ${options.provisioningCloudUrl}`,
         };
       }
       return { runnable: true, tier, instance, targetUrl: instanceUrl };

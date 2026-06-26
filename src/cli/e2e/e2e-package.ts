@@ -92,12 +92,14 @@ export interface RemoteResolveOptions {
   /** Default cloud instance URL for `cloud`-tier guides without an `instance`. */
   cloudUrl?: string;
   /**
-   * Whether any cloud auth is available (a service-account token, or a full
-   * username/password pair). Only presence is threaded through resolution; the
-   * values go straight to the runner so secrets never touch the resolved-guide
-   * or report structures.
+   * Whether reusable cloud auth is available (a service-account token, or a
+   * full username/password pair). Only presence is threaded through resolution;
+   * the values go straight to the runner so secrets never touch the
+   * resolved-guide or report structures.
    */
   hasCredentials?: boolean;
+  /** Cloud URL where admin-token provisioning can mint a temporary credential. */
+  provisioningCloudUrl?: string;
 }
 
 /** Fetch a URL as raw text with a timeout. Never throws. */
@@ -146,6 +148,7 @@ async function buildGuideOrSkip(
     currentTier: options.currentTier,
     cloudUrl: options.cloudUrl,
     hasCredentials: options.hasCredentials,
+    provisioningCloudUrl: options.provisioningCloudUrl,
   });
   if (!target.runnable) {
     return {
