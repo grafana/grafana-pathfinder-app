@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { InteractiveStep } from './interactive-step';
 import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
 import { ControllerChannelProvider } from '../../global-state/controller-channel';
+import { TEST_PAIRING } from '../../test-utils/fake-cross-tab-transport';
 
 describe('InteractiveStep: showMeText label override', () => {
   it('renders custom Show me label when showMeText is provided', () => {
@@ -171,12 +172,6 @@ describe('InteractiveStep: popout action type', () => {
 });
 
 describe('InteractiveStep: controller mode emits over the channel instead of executing', () => {
-  const testPairing = {
-    pairingId: 'pairing-1',
-    pairingSecret: 'secret-1',
-    pairingCode: '123456',
-  };
-
   function makeTransport() {
     let listener: ((message: any) => void) | null = null;
     return {
@@ -217,7 +212,7 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
   async function renderPairedController(transport: ReturnType<typeof makeTransport>, children: React.ReactNode) {
     const view = render(
       <InteractiveModeContext.Provider value="controller">
-        <ControllerChannelProvider transport={transport} pairing={testPairing}>
+        <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
           {null}
         </ControllerChannelProvider>
       </InteractiveModeContext.Provider>
@@ -225,7 +220,7 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     await pairWithLive(transport);
     view.rerender(
       <InteractiveModeContext.Provider value="controller">
-        <ControllerChannelProvider transport={transport} pairing={testPairing}>
+        <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
           {children}
         </ControllerChannelProvider>
       </InteractiveModeContext.Provider>

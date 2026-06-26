@@ -1,43 +1,8 @@
 import React from 'react';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { ControllerChannelProvider, useControllerChannel, useControllerConnected } from './controller-channel';
+import { FakeCrossTabTransport, TEST_PAIRING } from '../test-utils/fake-cross-tab-transport';
 import type { CrossTabMessage } from '../types/cross-tab.types';
-
-class FakeTransport {
-  started = false;
-  stopped = false;
-  postedMessages: unknown[] = [];
-  private listener: ((message: CrossTabMessage) => void) | null = null;
-
-  start(): void {
-    this.started = true;
-  }
-
-  stop(): void {
-    this.stopped = true;
-  }
-
-  post(payload: unknown): void {
-    this.postedMessages.push(payload);
-  }
-
-  onMessage(listener: (message: CrossTabMessage) => void): () => void {
-    this.listener = listener;
-    return () => {
-      this.listener = null;
-    };
-  }
-
-  emit(message: CrossTabMessage): void {
-    this.listener?.(message);
-  }
-}
-
-const testPairing = {
-  pairingId: 'pairing-1',
-  pairingSecret: 'secret-1',
-  pairingCode: '123456',
-};
 
 function liveHeartbeat(): CrossTabMessage {
   return { source: 'pathfinder', senderId: 'live', timestamp: 0, kind: 'heartbeat', role: 'live' };
@@ -94,16 +59,16 @@ function RequestProbe() {
   );
 }
 
-function postedOfKind(transport: FakeTransport, kind: string): any {
+function postedOfKind(transport: FakeCrossTabTransport, kind: string): any {
   return (transport.postedMessages as any[]).find((m) => m.kind === kind);
 }
 
-async function waitForPostedOfKind(transport: FakeTransport, kind: string): Promise<any> {
+async function waitForPostedOfKind(transport: FakeCrossTabTransport, kind: string): Promise<any> {
   await waitFor(() => expect(postedOfKind(transport, kind)).toBeTruthy());
   return postedOfKind(transport, kind);
 }
 
-async function pairWithLive(transport: FakeTransport, liveId = 'live'): Promise<void> {
+async function pairWithLive(transport: FakeCrossTabTransport, liveId = 'live'): Promise<void> {
   const challenge = await waitForPostedOfKind(transport, 'pairing-challenge');
   act(() =>
     transport.emit({
@@ -128,9 +93,9 @@ function signedFieldsFor(liveId: string) {
 
 describe('ControllerChannelProvider', () => {
   it('starts the transport on mount and stops it on unmount', () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     const { unmount } = render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <Probe />
       </ControllerChannelProvider>
     );
@@ -143,9 +108,9 @@ describe('ControllerChannelProvider', () => {
   });
 
   it('posts a controller heartbeat on mount', () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <Probe />
       </ControllerChannelProvider>
     );
@@ -154,9 +119,9 @@ describe('ControllerChannelProvider', () => {
   });
 
   it('posts a launch-bound pairing challenge', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <Probe />
       </ControllerChannelProvider>
     );
@@ -173,9 +138,9 @@ describe('ControllerChannelProvider', () => {
   });
 
   it('hands the sidebar off after pairing is accepted', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <Probe />
       </ControllerChannelProvider>
     );
@@ -191,9 +156,9 @@ describe('ControllerChannelProvider', () => {
   });
 
   it('forwards signed channel.post messages after pairing', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <Probe />
       </ControllerChannelProvider>
     );
@@ -216,9 +181,9 @@ describe('ControllerChannelProvider', () => {
   });
 
   it('reports connected once a paired live tab heartbeats', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <Probe />
       </ControllerChannelProvider>
     );
@@ -233,9 +198,9 @@ describe('ControllerChannelProvider', () => {
   });
 
   it('sends sidebar-handoff:close once for the accepted pairing', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <Probe />
       </ControllerChannelProvider>
     );
@@ -258,9 +223,9 @@ describe('ControllerChannelProvider', () => {
   });
 
   it('drops heartbeat-only pairing attempts', () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <Probe />
       </ControllerChannelProvider>
     );
@@ -272,9 +237,9 @@ describe('ControllerChannelProvider', () => {
   });
 
   it('resolves requestRequirementCheck with the live tab reply', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <RequestProbe />
       </ControllerChannelProvider>
     );
@@ -305,9 +270,9 @@ describe('ControllerChannelProvider', () => {
   });
 
   it('resolves requestFix with the live tab outcome', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <RequestProbe />
       </ControllerChannelProvider>
     );
@@ -340,9 +305,9 @@ describe('ControllerChannelProvider', () => {
   it('falls back to null when no live tab answers within the timeout', async () => {
     jest.useFakeTimers();
     try {
-      const transport = new FakeTransport();
+      const transport = new FakeCrossTabTransport();
       render(
-        <ControllerChannelProvider transport={transport} pairing={testPairing}>
+        <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
           <RequestProbe />
         </ControllerChannelProvider>
       );
@@ -359,9 +324,9 @@ describe('ControllerChannelProvider', () => {
   });
 
   it('drops a reply from an unpaired tab and never lets it claim the pairing slot', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <RequestProbe />
       </ControllerChannelProvider>
     );
@@ -405,9 +370,9 @@ describe('ControllerChannelProvider', () => {
   });
 
   it('binds to the first accepted live tab and ignores replies from others', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <RequestProbe />
       </ControllerChannelProvider>
     );
@@ -457,9 +422,9 @@ describe('ControllerChannelProvider', () => {
         </div>
       );
     }
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <CompleteProbe />
       </ControllerChannelProvider>
     );
@@ -494,9 +459,9 @@ describe('ControllerChannelProvider', () => {
         </div>
       );
     }
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <CompleteProbe />
       </ControllerChannelProvider>
     );
@@ -541,9 +506,9 @@ describe('ControllerChannelProvider', () => {
       );
       return <span data-testid="progress">{p}</span>;
     }
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <ProgressProbe />
       </ControllerChannelProvider>
     );
@@ -579,9 +544,9 @@ describe('ControllerChannelProvider', () => {
   });
 
   it('posts a signed sidebar hand-back on unmount after pairing', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     const { unmount } = render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <Probe />
       </ControllerChannelProvider>
     );
@@ -598,9 +563,9 @@ describe('ControllerChannelProvider', () => {
   });
 
   it('posts a prepared signed sidebar hand-back synchronously on pagehide', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport();
     render(
-      <ControllerChannelProvider transport={transport} pairing={testPairing}>
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
         <Probe />
       </ControllerChannelProvider>
     );

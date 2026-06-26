@@ -5,6 +5,7 @@ import { FocusHandler, ButtonHandler, NavigateHandler, GuidedHandler } from '../
 import { checkRequirements, dispatchFix } from '../../requirements-manager';
 import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
+import { FakeCrossTabTransport } from '../../test-utils/fake-cross-tab-transport';
 import type { CrossTabMessage } from '../../types/cross-tab.types';
 
 jest.mock('../../requirements-manager', () => {
@@ -42,41 +43,6 @@ jest.mock('../../utils/experiments/experiment-utils', () => {
   const actual = jest.requireActual('../../utils/experiments/experiment-utils');
   return { ...actual, isExtensionSidebarOwnedByOther: jest.fn(() => false) };
 });
-
-class FakeTransport {
-  started = false;
-  stopped = false;
-  senderId = 'live-self';
-  postedMessages: unknown[] = [];
-  private listener: ((message: CrossTabMessage) => void) | null = null;
-
-  start(): void {
-    this.started = true;
-  }
-
-  stop(): void {
-    this.stopped = true;
-  }
-
-  post(payload: unknown): void {
-    this.postedMessages.push(payload);
-  }
-
-  getSenderId(): string {
-    return this.senderId;
-  }
-
-  onMessage(listener: (message: CrossTabMessage) => void): () => void {
-    this.listener = listener;
-    return () => {
-      this.listener = null;
-    };
-  }
-
-  emit(message: CrossTabMessage): void {
-    this.listener?.(message);
-  }
-}
 
 // Open gate: all side-effecting messages are pre-authorized (for non-auth tests).
 const openAuthGate = {
@@ -144,7 +110,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('starts the transport on install and stops it on uninstall', () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     expect(transport.started).toBe(true);
@@ -155,7 +121,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('routes a "do" highlight command to FocusHandler.execute with click=true', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(stampStepCommand('do', 'highlight', '#target'));
@@ -169,7 +135,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('routes a "show" command to the handler with click=false', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(stampStepCommand('show', 'highlight', '#target'));
@@ -180,7 +146,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('routes button and navigate actions to their handlers', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(stampStepCommand('do', 'button', "button[type='submit']"));
@@ -192,7 +158,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('replays a multi-step internalActions sequence in order', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);
 
     transport.emit({
@@ -219,7 +185,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('paces each composite action through show then do', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);
 
     transport.emit({
@@ -244,7 +210,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('runs a guided command through the guided handler, not the auto replay', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit({
@@ -280,7 +246,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('posts step-progress for each action during a multi-step replay', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);
 
     transport.emit({
@@ -315,7 +281,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('echoes the runId from step-command in step-complete and step-progress replies', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);
 
     transport.emit({
@@ -347,7 +313,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('posts step-complete after a multi-step replay finishes', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);
 
     transport.emit({
@@ -374,7 +340,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('ignores unsupported actions without throwing or routing', () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     expect(() => transport.emit(stampStepCommand('do', 'multistep', '#x'))).not.toThrow();
@@ -384,7 +350,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('responds to a controller heartbeat with a live heartbeat', () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(controllerHeartbeat());
@@ -394,7 +360,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('closes the live-tab sidebar when a controller takes over', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(stampSidebarHandoff('close'));
@@ -406,7 +372,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('reopens the sidebar when the controller leaves and the slot is free', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(stampSidebarHandoff('close'));
@@ -418,7 +384,7 @@ describe('installLiveTabExecutor', () => {
 
   it('does not reopen when another plugin occupies the sidebar', async () => {
     (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(true);
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(stampSidebarHandoff('close'));
@@ -436,7 +402,7 @@ describe('installLiveTabExecutor', () => {
       pass: false,
       error: [{ requirement: 'navmenu-open', pass: false, canFix: true, fixType: 'navigation' }],
     });
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit({
@@ -467,7 +433,7 @@ describe('installLiveTabExecutor', () => {
 
   it('runs a fix-requirement against the live tab and replies with the outcome', async () => {
     (dispatchFix as jest.Mock).mockResolvedValue({ ok: true });
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit({
@@ -496,7 +462,7 @@ describe('installLiveTabExecutor', () => {
 
   it('replies with a failed fix-result when the live-tab fix throws', async () => {
     (dispatchFix as jest.Mock).mockRejectedValue(new Error('boom'));
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit({
@@ -519,8 +485,8 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('only installs once until uninstalled', () => {
-    const first = new FakeTransport();
-    const second = new FakeTransport();
+    const first = new FakeCrossTabTransport('live-self');
+    const second = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(first, DEFAULT_PACING, openAuthGate);
     installLiveTabExecutor(second, DEFAULT_PACING, openAuthGate);
 
@@ -533,20 +499,20 @@ describe('installLiveTabExecutor', () => {
     (ButtonHandler as unknown as jest.Mock).mockImplementationOnce(() => {
       throw new Error('constructor boom');
     });
-    const first = new FakeTransport();
+    const first = new FakeCrossTabTransport('live-self');
     expect(() => installLiveTabExecutor(first, DEFAULT_PACING, openAuthGate)).toThrow('constructor boom');
     expect(first.started).toBe(false);
 
     // installed stayed false, so a later init installs cleanly rather than
     // being permanently blocked by the failed attempt.
-    const second = new FakeTransport();
+    const second = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(second, DEFAULT_PACING, openAuthGate);
     expect(second.started).toBe(true);
     uninstall();
   });
 
   it('does not execute commands delivered after uninstall (NEW-1064-2)', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
     uninstall();
 
@@ -557,7 +523,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('drops a command with an unrecognized action at the sink (T1 defense in depth)', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     const forged = {
@@ -572,7 +538,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('drops a forged fix-requirement missing required fields without dispatching a fix (T1 / security gate)', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     // fix-requirement is the highest-risk kind — runRemoteFix → dispatchFix
@@ -597,7 +563,7 @@ describe('installLiveTabExecutor', () => {
   });
 
   it('drops a forged check-requirements missing required fields without probing the DOM (T1 / security gate)', async () => {
-    const transport = new FakeTransport();
+    const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     const forged = {
@@ -618,7 +584,7 @@ describe('installLiveTabExecutor', () => {
 
   describe('auth gate — side-effecting commands require verified session', () => {
     it('drops step-command from an unpaired sender (closed gate)', async () => {
-      const transport = new FakeTransport();
+      const transport = new FakeCrossTabTransport('live-self');
       const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, closedAuthGate);
 
       transport.emit(stampStepCommand('do', 'highlight', '#t'));
@@ -629,7 +595,7 @@ describe('installLiveTabExecutor', () => {
     });
 
     it('drops check-requirements from unpaired sender (closed gate)', async () => {
-      const transport = new FakeTransport();
+      const transport = new FakeCrossTabTransport('live-self');
       const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, closedAuthGate);
 
       transport.emit({
@@ -648,7 +614,7 @@ describe('installLiveTabExecutor', () => {
     });
 
     it('drops fix-requirement from unpaired sender (closed gate)', async () => {
-      const transport = new FakeTransport();
+      const transport = new FakeCrossTabTransport('live-self');
       const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, closedAuthGate);
 
       transport.emit({
@@ -668,7 +634,7 @@ describe('installLiveTabExecutor', () => {
     });
 
     it('executes step-command from a verified session (open gate)', async () => {
-      const transport = new FakeTransport();
+      const transport = new FakeCrossTabTransport('live-self');
       const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
       transport.emit(stampStepCommand('do', 'highlight', '#t'));
@@ -678,7 +644,7 @@ describe('installLiveTabExecutor', () => {
     });
 
     it('executes check-requirements from a verified session (open gate)', async () => {
-      const transport = new FakeTransport();
+      const transport = new FakeCrossTabTransport('live-self');
       const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
       transport.emit({
@@ -696,7 +662,7 @@ describe('installLiveTabExecutor', () => {
     });
 
     it('executes fix-requirement from a verified session (open gate)', async () => {
-      const transport = new FakeTransport();
+      const transport = new FakeCrossTabTransport('live-self');
       const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
       transport.emit({
@@ -728,7 +694,7 @@ describe('installLiveTabExecutor', () => {
           return () => {};
         },
       };
-      const transport = new FakeTransport();
+      const transport = new FakeCrossTabTransport('live-self');
       const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, gate);
 
       transport.emit({
@@ -754,7 +720,7 @@ describe('installLiveTabExecutor', () => {
     });
 
     it('heartbeat from controller replies without auth check', () => {
-      const transport = new FakeTransport();
+      const transport = new FakeCrossTabTransport('live-self');
       const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, closedAuthGate);
 
       transport.emit(controllerHeartbeat());
