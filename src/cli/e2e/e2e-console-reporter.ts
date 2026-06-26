@@ -16,6 +16,7 @@ import {
   generateMultiGuideReport,
   writeMultiGuideReport,
   formatMultiGuideSummary,
+  type MultiGuideReport,
 } from './e2e-reporter';
 import {
   countGuideStatuses,
@@ -30,6 +31,33 @@ import {
 import type { RemoteResolution } from './e2e-package';
 import type { LoadedGuide } from '../utils/file-loader';
 import type { PreflightOutcome } from './manifest-preflight';
+
+function skipOnlyReport(preRunSkipped: MultiGuideReport['preRunSkipped']): MultiGuideReport {
+  return {
+    type: 'multi-guide',
+    config: { timestamp: new Date().toISOString() },
+    summary: {
+      totalGuides: 0,
+      passedGuides: 0,
+      failedGuides: 0,
+      authExpiredGuides: 0,
+      skippedGuides: 0,
+      steps: {
+        total: 0,
+        passed: 0,
+        failed: 0,
+        skipped: 0,
+        notReached: 0,
+        mandatoryFailed: 0,
+        skippableFailed: 0,
+      },
+      totalDuration: 0,
+    },
+    guides: [],
+    reports: [],
+    preRunSkipped,
+  };
+}
 
 /** The resolved run settings rendered by printRunConfiguration. */
 export interface RunConfigurationView {
@@ -167,7 +195,16 @@ export function writeJsonReport(results: GuideRunResult[], outputPath: string | 
   const isMultiGuide = results.length > 1;
   const preRunSkipped = preRunSkipsFromResults(results);
 
-  if (resultsWithData.length === 0) {
+  if (resultsWithData.length === 0 && preRunSkipped.length > 0) {
+    try {
+      const report = skipOnlyReport(preRunSkipped);
+      writeMultiGuideReport(report, outputPath);
+      console.log(`\n📄 Multi-guide JSON report written to: ${outputPath}`);
+      console.log(`   ${formatMultiGuideSummary(report)}`);
+    } catch (err) {
+      console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  } else if (resultsWithData.length === 0) {
     console.warn(`   ⚠ No test results available for JSON report`);
   } else if (isMultiGuide) {
     try {
