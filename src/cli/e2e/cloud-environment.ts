@@ -21,7 +21,9 @@ const SA_NAME_PREFIX = 'pathfinder-e2e-';
 /** Token TTL: a safety net so a leaked token expires even if teardown never runs. */
 const TOKEN_TTL_SECONDS = 3600;
 const SWEEP_GRACE_SECONDS = 300;
-/** Role granted to the ephemeral SA. Admin so guide steps can exercise any action. */
+/** Role granted to the ephemeral SA. Admin so guide steps can exercise any action.
+ * This is a requirement for guides that require the Admin role to succeed.
+ */
 const SA_ROLE = 'Admin';
 const FETCH_TIMEOUT_MS = 15_000;
 
