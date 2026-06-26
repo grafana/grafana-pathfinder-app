@@ -610,13 +610,13 @@ The following questions were identified during design and have been resolved:
 
 This section consolidates key decisions made during design and implementation phases. These decisions are authoritative and should not be duplicated in other documents.
 
-| Decision                | Value                                 | Rationale                                                                                                                             |
-| ----------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Max fix attempts        | 3                                     | Fail fast in E2E tests; 10 was too slow                                                                                               |
-| Console error filtering | Hardcoded in runner                   | Known patterns (deprecations, DevTools) filtered out                                                                                  |
-| Cloud auth methods      | Per-instance admin token provisioning | Admin tokens mint short-lived per-chain service-account tokens; Playwright receives only minted tokens; interactive SSO/Okta deferred |
-| Artifact storage        | Local files, GitHub Actions artifacts | Screenshots and DOM snapshots on failure                                                                                              |
-| Version matrix          | Deferred                              | Guides may express compatibility metadata later                                                                                       |
+| Decision                | Value                                 | Rationale                                            |
+| ----------------------- | ------------------------------------- | ---------------------------------------------------- |
+| Max fix attempts        | 3                                     | Fail fast in E2E tests; 10 was too slow              |
+| Console error filtering | Hardcoded in runner                   | Known patterns (deprecations, DevTools) filtered out |
+| Auth strategies         | Cloud SSO/Okta, username/password     | MVP uses existing @grafana/plugin-e2e auth           |
+| Artifact storage        | Local files, GitHub Actions artifacts | Screenshots and DOM snapshots on failure             |
+| Version matrix          | Deferred                              | Guides may express compatibility metadata later      |
 
 ## Framework Test Guide
 
@@ -656,33 +656,7 @@ The sections above describe the core E2E runner: loading a `content.json` from d
 
 This extension can be framed as either "Layer 3 becomes package-aware" or as a new Layer 4 in the [testing strategy](./TESTING_STRATEGY.md) pyramid. If framed as Layer 4, the current "Live Environment Validation" vision (nightly runs, managed environment pools, observability dashboards) would become Layer 5.
 
-> **Implementation status — local- and cloud-tier slices shipped.** Remote resolution by bare ID and whole-repository batch testing run for `local`-tier guides (against the configured Grafana URL) and `cloud`-tier guides (against `--cloud-url` or a host-only `instance`, with per-chain ephemeral auth). What differs from the design below: batch mode uses a `--remote` flag (not a boolean `--repository`, since `--repository <path>` already denotes the local dependency-ordering index); cloud auth is explicit per-target admin-token mapping (`--cloud-instance-admin-token host=ENV_VAR`) that provisions short-lived service-account tokens for Playwright; interactive SSO/Okta login is **not implemented**; and path/journey (`milestones`) expansion is **not implemented** — `path`/`journey` packages are skipped as `unsupported_type`. The rest of this section describes the full target design. See [`docs/developer/E2E_TESTING.md`](../developer/E2E_TESTING.md#remote-package-aware-testing) for the shipped behavior.
-
-### Cloud auth (#2) — shipped
-
-Status: shipped. Cloud-tier guides run against `--cloud-url` (or a host-only `testEnvironment.instance`) when an admin token is mapped for that target; without it they skip as `skipped_no_auth`, on a `local` environment they skip as `skipped_tier_mismatch`, and a malformed `instance` skips as `skipped_invalid_instance`.
-
-**Auth method**:
-
-- **Per-target admin-token provisioning** (`--cloud-instance-admin-token host=ENV_VAR`) — each mapping names the env var containing an admin service-account token for a target host. The admin token mints a fresh service account per dependency chain for that target (shared within the chain, deleted at chain end; token TTL + a startup orphan sweep are the safety nets), mirroring `--clean`'s per-chain docker reset. Playwright receives only the minted short-lived token. This isolates per-identity state (preferences, stars, sessions) between chains; it does not reset org data (dashboards, data sources), which still requires ephemeral stacks (a future phase).
-
-**Resolution source:** Resolution stayed on the recommender + CDN path (the open decision raised in PR #1103). Cloud auth is decoupled from resolution — it reads `testEnvironment.tier`/`instance` from whatever the resolver returns — so a later move to an app-platform / k8s-style guide API only needs a new CLI-local resolver emitting the same `RemoteResolution` shape; `resolveTarget` and the runner-spawn contract do not change.
-
-**Where cloud auth lives:**
-
-- `src/cli/e2e/cloud-auth.ts` — parses `--cloud-instance-admin-token` mappings, exposes provisionable target origins to resolution, and selects minted runner tokens by target origin.
-- `src/cli/e2e/e2e-targets.ts` — resolves `cloudUrl`/`instance` to a target URL and checks only target capabilities (`CloudAuthTargets`), not credential values.
-- `src/cli/e2e/cloud-environment.ts` — `CloudEnvironment`: per-chain `provisionChain`/`teardownChain` plus a startup `sweepOrphans` for one target origin.
-- `src/cli/e2e/playwright-runner.ts` — passes only the minted short-lived token into the spawned Playwright env as `GRAFANA_TOKEN`.
-- `src/cli/commands/e2e.ts` — provisions one `CloudEnvironment` per target origin in a dependency chain, tears each down in `finally`, and keeps credentials out of `PackageMeta` and the JSON report.
-
-**Design constraints honored:**
-
-- CLI packaging boundary: `Dockerfile.cli` copies only `src/cli` + `src/types` + `src/validation`; data-access clients stay CLI-local (no `src/package-engine` import).
-- Per-chain ephemeral cloud auth lets one batch mix targets while keeping admin tokens out of Playwright. See the Authentication section below.
-- Fetched content/manifest URLs are guarded by http(s) scheme validation, not host allowlisting, so custom `--resolver-url` / `--repo-url` / dev hosts keep working.
-
-**Out of scope (deferred):** interactive SSO/Okta login (driving the identity provider's login UI), and path/journey (`milestones`) expansion — non-`guide` packages skip as `unsupported_type`.
+> **Implementation status — local-tier slice shipped.** Remote resolution by bare ID and whole-repository batch testing are implemented for `local`-tier guides, which run against the configured Grafana URL. What differs from the design below: batch mode uses a `--remote` flag (not a boolean `--repository`, since `--repository <path>` already denotes the local dependency-ordering index); `cloud`-tier guides are resolved but **skipped** (`skipped_no_auth` / `skipped_tier_mismatch`) because cloud credentials and ephemeral per-guide auth isolation are **not yet implemented**; and path/journey (`milestones`) expansion is **not yet implemented** — `path`/`journey` packages are skipped as `unsupported_type`. The rest of this section describes the full target design. See [`docs/developer/E2E_TESTING.md`](../developer/E2E_TESTING.md#remote-package-aware-testing) for the shipped behavior.
 
 ### Design goals
 
@@ -789,17 +763,15 @@ This design anticipates a future pool executor that distributes guides to enviro
 
 ### Authentication
 
-> **Shipped behavior differs from the target design below.** The implementation uses per-target admin tokens (`--cloud-instance-admin-token host=ENV_VAR`) to mint short-lived service-account tokens for Playwright. See [Cloud auth (#2) — shipped](#cloud-auth-2--shipped) for the authoritative description.
-
 #### Credentials
 
 Credentials are resolved in priority order (highest wins):
 
-1. `--service-account-token` CLI flag, then `GRAFANA_TOKEN` environment variable (Bearer-header auth; works against grafana.com-SSO Cloud stacks)
-2. `--user` / `--password` CLI flags, then `GRAFANA_USER` / `GRAFANA_PASSWORD` environment variables (form login)
+1. `--user` / `--password` CLI flags
+2. `GRAFANA_USER` / `GRAFANA_PASSWORD` environment variables
 3. No credentials available → cloud guides are skipped with `skipped_no_auth`
 
-For `tier: "local"`, the auth setup logs in with `admin`/`admin` by default.
+For `tier: "local"`, the existing `@grafana/plugin-e2e` authentication is used, which defaults to `admin`/`admin` via the `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD` environment variables.
 
 #### Ephemeral auth isolation
 
