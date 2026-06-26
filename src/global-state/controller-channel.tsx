@@ -8,18 +8,18 @@ import {
   type ControllerPairingLaunch,
 } from '../lib/pairing-manager';
 import { generateSessionKeyPair } from '../security/cross-tab-crypto';
-import type {
-  CheckRequirementsMessage,
-  CrossTabMessage,
-  CrossTabPayload,
-  FixRequirementMessage,
-  RemoteRequirementResult,
+import {
+  SIGNED_MESSAGE_KINDS,
+  type CheckRequirementsMessage,
+  type CrossTabMessage,
+  type CrossTabPayload,
+  type FixRequirementMessage,
+  type RemoteRequirementResult,
 } from '../types/cross-tab.types';
 
 const HEARTBEAT_INTERVAL_MS = 2000;
 const HEARTBEAT_STALE_MS = 5000;
 const REQUEST_TIMEOUT_MS = 4000;
-const SIGNED_KINDS = new Set(['step-command', 'check-requirements', 'fix-requirement', 'sidebar-handoff']);
 
 interface ChannelTransport {
   start(): void;
@@ -139,7 +139,7 @@ export function ControllerChannelProvider({
 
   const postPayload = useCallback(
     async (payload: CrossTabPayload): Promise<void> => {
-      if (!SIGNED_KINDS.has(payload.kind)) {
+      if (!SIGNED_MESSAGE_KINDS.has(payload.kind)) {
         active.post(payload);
         return;
       }

@@ -54,17 +54,12 @@ export interface ControllerAuthFields {
   sigNonce: string;
 }
 
-export interface StepCommandMessage extends CrossTabEnvelope {
+export interface StepCommandMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'step-command';
   phase: 'show' | 'do';
   stepId: string;
   runId: string;
   action: CrossTabAction;
-  sig?: string;
-  sessionId?: string;
-  liveTabId?: string;
-  sigTs?: number;
-  sigNonce?: string;
 }
 
 // Controller announces its session public key so the live tab can show a
@@ -89,19 +84,14 @@ export interface HeartbeatMessage extends CrossTabEnvelope {
   role: CrossTabRole;
 }
 
-export interface SidebarHandoffMessage extends CrossTabEnvelope {
+export interface SidebarHandoffMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'sidebar-handoff';
   action: 'close' | 'reopen';
-  sig?: string;
-  sessionId?: string;
-  liveTabId?: string;
-  sigTs?: number;
-  sigNonce?: string;
 }
 
 // Requirement round-trip (controller → live → controller); requestId correlates
 // each reply to its request since several steps may be in flight.
-export interface CheckRequirementsMessage extends CrossTabEnvelope {
+export interface CheckRequirementsMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'check-requirements';
   requestId: string;
   stepId: string;
@@ -109,11 +99,6 @@ export interface CheckRequirementsMessage extends CrossTabEnvelope {
   targetAction?: string;
   refTarget?: string;
   targetValue?: string;
-  sig?: string;
-  sessionId?: string;
-  liveTabId?: string;
-  sigTs?: number;
-  sigNonce?: string;
 }
 
 export interface RequirementResultMessage extends CrossTabEnvelope {
@@ -123,7 +108,7 @@ export interface RequirementResultMessage extends CrossTabEnvelope {
   result: RemoteRequirementResult;
 }
 
-export interface FixRequirementMessage extends CrossTabEnvelope {
+export interface FixRequirementMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'fix-requirement';
   requestId: string;
   stepId: string;
@@ -131,11 +116,6 @@ export interface FixRequirementMessage extends CrossTabEnvelope {
   fixType?: string;
   targetHref?: string;
   scrollContainer?: string;
-  sig?: string;
-  sessionId?: string;
-  liveTabId?: string;
-  sigTs?: number;
-  sigNonce?: string;
 }
 
 export interface FixResultMessage extends CrossTabEnvelope {
@@ -185,6 +165,17 @@ export type CrossTabPayload = CrossTabMessage extends infer M
     ? Omit<M, keyof CrossTabEnvelope>
     : never
   : never;
+
+// The controller→live message kinds that carry an ECDSA signature. The
+// controller signs exactly these before posting and the live-tab executor
+// requires a verified signature for exactly these before dispatch, so both
+// sides MUST agree — this is the single source of truth they share.
+export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Set([
+  'step-command',
+  'check-requirements',
+  'fix-requirement',
+  'sidebar-handoff',
+]);
 
 // Same-build assumption: the controller and live tabs are the same plugin
 // build in the same browser/origin/session, so there is no protocol-version

@@ -17,6 +17,7 @@ import type { GuidedAction } from '../../types/interactive-actions.types';
 import { CrossTabTransport, createSenderId } from '../../lib/cross-tab-transport';
 import { checkRequirements, dispatchFix, type RequirementsCheckResult } from '../../requirements-manager';
 import {
+  SIGNED_MESSAGE_KINDS,
   validateCrossTabMessage,
   type CheckRequirementsMessage,
   type CrossTabInternalAction,
@@ -55,8 +56,6 @@ interface AuthGate {
   setOwnLiveTabId(id: string): void;
   onSessionAccepted(listener: (liveTabId: string) => void): () => void;
 }
-
-const SIDE_EFFECTING_KINDS = new Set(['step-command', 'check-requirements', 'fix-requirement', 'sidebar-handoff']);
 
 interface ExecutorPacing {
   showToDoMs: number;
@@ -331,7 +330,7 @@ export function installLiveTabExecutor(
   let handedOffSidebar = false;
 
   const unsubscribe = transport.onMessage((message) => {
-    // Defense in depth: re-validate at the DOM sink before dispatch (T1).
+    // Defense in depth: re-validate at the DOM sink before dispatch.
     const validated = validateCrossTabMessage(message);
     if (!validated) {
       return;
@@ -349,14 +348,12 @@ export function installLiveTabExecutor(
       return;
     }
 
-    // Heartbeat: unsigned keep-alive, not side-effecting.
     if (validated.kind === 'heartbeat' && validated.role === 'controller') {
       transport.post({ kind: 'heartbeat', role: 'live' });
       return;
     }
 
-    // All other controller→live messages are side-effecting. Gate on verified session.
-    if (SIDE_EFFECTING_KINDS.has(validated.kind)) {
+    if (SIGNED_MESSAGE_KINDS.has(validated.kind)) {
       void (async () => {
         const authorized = await authGate.verifySignedMessage(validated, ownLiveTabId);
         if (!authorized) {

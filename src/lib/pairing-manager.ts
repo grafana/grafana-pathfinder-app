@@ -229,10 +229,6 @@ export function setOwnLiveTabId(id: string): void {
   ownLiveTabId = id;
 }
 
-export function getOwnLiveTabId(): string | null {
-  return ownLiveTabId;
-}
-
 function reacceptSession(session: AcceptedSession): void {
   acceptedListeners.forEach((l) => l(session.liveTabId));
 }
