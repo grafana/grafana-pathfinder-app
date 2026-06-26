@@ -7,7 +7,7 @@
  */
 
 import type { RepositoryJson } from '../../types/package.types';
-import type { LoadedGuide } from './file-loader';
+import type { LoadedGuide } from '../utils/file-loader';
 import { deriveGuideId, planGuideExecution, type GuideChain } from './guide-chains';
 
 function guide(id: string): LoadedGuide {

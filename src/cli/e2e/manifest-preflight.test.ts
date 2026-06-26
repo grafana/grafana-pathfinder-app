@@ -14,7 +14,7 @@ import {
   compareVersions,
   loadManifestFromDir,
   type CurrentTier,
-} from '../utils/manifest-preflight';
+} from './manifest-preflight';
 import type { ManifestJson, TestEnvironment } from '../../types/package.types';
 
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';

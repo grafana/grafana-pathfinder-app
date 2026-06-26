@@ -18,7 +18,7 @@ import type { RepositoryEntry, RepositoryJson, TestEnvironment } from '../../typ
 import { resolvePackageById } from './recommender-resolver';
 import { fetchRepositoryIndex, buildPackageFileUrl, type RepositoryPackage } from '../mcp/lib/repository-client';
 import { planGuideExecution } from './guide-chains';
-import type { LoadedGuide } from './file-loader';
+import type { LoadedGuide } from '../utils/file-loader';
 import { resolveTarget } from './e2e-targets';
 import type { CurrentTier } from './manifest-preflight';
 
