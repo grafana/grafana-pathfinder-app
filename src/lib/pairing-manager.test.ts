@@ -1,10 +1,17 @@
+// Fast unit smoke tests for the pairing state machine. The full protocol-level
+// acceptance — launch binding, consent / prompt-capture defense, session
+// binding, replay & staleness, reconnect, shutdown hand-back, and rejection
+// suppression — is the canonical centralized suite:
+//   src/integrations/cross-tab/cross-tab-protocol.acceptance.test.tsx
+// That suite exercises these same pairing-manager functions with real WebCrypto,
+// so the behaviors below are intentionally covered there too. Add new
+// protocol-behavioral assertions to the acceptance suite, not here; keep this
+// file to a couple of fast smoke checks that localize a gross regression.
+
 import {
   acceptSession,
   createPairingChallengeProof,
   getAcceptedSession,
-  onPendingChallenge,
-  onSessionAccepted,
-  rejectSession,
   registerExpectedPairingLaunch,
   resetPairingManagerForTests,
   setOwnLiveTabId,
@@ -61,7 +68,7 @@ function stepCommand(overrides: Partial<SignedMessageFields> = {}): SignedMessag
   } as SignedMessageFields;
 }
 
-describe('pairing-manager signed message verification', () => {
+describe('pairing-manager signed message verification (smoke)', () => {
   beforeEach(() => {
     resetPairingManagerForTests();
   });
@@ -79,7 +86,7 @@ describe('pairing-manager signed message verification', () => {
     return privateKey;
   }
 
-  it('rejects a signature reused with a mutated side-effecting payload', async () => {
+  it('verifies a command signed by the accepted key and rejects a signature reused over a mutated payload', async () => {
     const privateKey = await pairController();
     const signed = stepCommand();
     const sig = await signSignedMessage(privateKey, signed);
@@ -93,19 +100,9 @@ describe('pairing-manager signed message verification', () => {
     expect(await verifySignedMessage(mutated, 'live-1')).toBe(false);
     expect(await verifySignedMessage({ ...signed, sig }, 'live-1')).toBe(true);
   });
-
-  it('rejects replay of an already accepted signed message', async () => {
-    const privateKey = await pairController();
-    const signed = stepCommand();
-    const sig = await signSignedMessage(privateKey, signed);
-    const message = { ...signed, sig };
-
-    expect(await verifySignedMessage(message, 'live-1')).toBe(true);
-    expect(await verifySignedMessage(message, 'live-1')).toBe(false);
-  });
 });
 
-describe('pairing-manager challenge acceptance', () => {
+describe('pairing-manager challenge acceptance (smoke)', () => {
   beforeEach(() => {
     resetPairingManagerForTests();
     setOwnLiveTabId('live-1');
@@ -115,144 +112,14 @@ describe('pairing-manager challenge acceptance', () => {
     resetPairingManagerForTests();
   });
 
-  it('requires a trusted gesture before accepting a challenge', async () => {
+  it('opens the command gate only after a trusted-gesture accept', async () => {
     const challenge = await trustedChallenge();
-
     await setPendingChallenge(challenge);
+
     acceptSession(challenge, false);
-
-    expect(getAcceptedSession()).toBeNull();
-  });
-
-  it('accepts only the challenge currently visible to the user', async () => {
-    const first = await trustedChallenge();
-    const second = await trustedChallenge(
-      {
-        sessionId: 'session-2',
-        publicKeyB64: 'public-key-2',
-        senderTabId: 'controller-2',
-      },
-      {
-        pairingId: 'pairing-2',
-        pairingSecret: 'secret-2',
-        pairingCode: '234567',
-      }
-    );
-
-    await setPendingChallenge(first);
-    await setPendingChallenge(second);
-    acceptSession(second, true);
-
     expect(getAcceptedSession()).toBeNull();
 
-    acceptSession(first, true);
-
-    expect(getAcceptedSession()).toBeNull();
-  });
-
-  it('drops unproved challenges without blocking a valid controller', async () => {
-    const attacker = pendingChallenge({
-      sessionId: 'session-2',
-      publicKeyB64: 'public-key-2',
-      senderTabId: 'controller-2',
-    });
-    const valid = await trustedChallenge();
-    const seen: Array<PendingChallenge | null> = [];
-
-    const unsubscribe = onPendingChallenge((challenge) => seen.push(challenge));
-    await setPendingChallenge(attacker);
-    await setPendingChallenge(valid);
-    unsubscribe();
-
-    expect(seen).toEqual([{ ...valid, pairingCode: '123456' }]);
-  });
-
-  it('denies competing valid challenges while a prompt is visible', async () => {
-    const first = await trustedChallenge();
-    const second = await trustedChallenge(
-      {
-        sessionId: 'session-2',
-        publicKeyB64: 'public-key-2',
-        senderTabId: 'controller-2',
-      },
-      {
-        pairingId: 'pairing-2',
-        pairingSecret: 'secret-2',
-        pairingCode: '234567',
-      }
-    );
-    const seen: Array<PendingChallenge | null> = [];
-
-    const unsubscribe = onPendingChallenge((challenge) => seen.push(challenge));
-    await setPendingChallenge(first);
-    await setPendingChallenge(second);
-    unsubscribe();
-
-    expect(seen).toEqual([{ ...first, pairingCode: '123456' }, null]);
-  });
-
-  it('allows a new challenge after the pending challenge expires', async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(0);
-    try {
-      const first = await trustedChallenge();
-      const second = await trustedChallenge(
-        {
-          sessionId: 'session-2',
-          publicKeyB64: 'public-key-2',
-          senderTabId: 'controller-2',
-        },
-        {
-          pairingId: 'pairing-2',
-          pairingSecret: 'secret-2',
-          pairingCode: '234567',
-        }
-      );
-      const seen: Array<PendingChallenge | null> = [];
-
-      const unsubscribe = onPendingChallenge((challenge) => seen.push(challenge));
-      await setPendingChallenge(first);
-      jest.setSystemTime(30_001);
-      jest.advanceTimersByTime(30_001);
-      await setPendingChallenge(second);
-      unsubscribe();
-
-      expect(seen).toEqual([{ ...first, pairingCode: '123456' }, null, { ...second, pairingCode: '234567' }]);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('suppresses a rejected controller session', async () => {
-    const rejected = await trustedChallenge();
-    const otherSession = await trustedChallenge(
-      { sessionId: 'session-2', publicKeyB64: 'public-key-2' },
-      { pairingId: 'pairing-2', pairingSecret: 'secret-2', pairingCode: '234567' }
-    );
-    const seen: Array<PendingChallenge | null> = [];
-
-    const unsubscribe = onPendingChallenge((challenge) => seen.push(challenge));
-    await setPendingChallenge(rejected);
-    rejectSession(rejected);
-    await setPendingChallenge(rejected);
-    await setPendingChallenge(otherSession);
-    unsubscribe();
-
-    expect(seen).toEqual([{ ...rejected, pairingCode: '123456' }, null, { ...otherSession, pairingCode: '234567' }]);
-  });
-
-  it('re-accepts an already accepted same-session challenge after reconnect', async () => {
-    const challenge = await trustedChallenge();
-    const accepted: string[] = [];
-    const unsubscribeAccepted = onSessionAccepted((liveTabId: string) => {
-      accepted.push(liveTabId);
-    });
-
-    await setPendingChallenge(challenge);
     acceptSession(challenge, true);
-    await setPendingChallenge(challenge);
-
-    unsubscribeAccepted();
-    expect(accepted).toEqual(['live-1', 'live-1']);
+    expect(getAcceptedSession()).not.toBeNull();
   });
 });
