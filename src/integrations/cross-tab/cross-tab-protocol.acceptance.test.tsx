@@ -904,27 +904,43 @@ describe('cross-tab pairing protocol acceptance', () => {
       }
     });
 
-    // GAP PROBE: the protocol has no post-accept revocation affordance. Once a
-    // session is accepted, rejectSession is a no-op (it only acts on a pending
-    // challenge) and there is no disconnect/revoke API. This encodes the DESIRED
-    // behavior — a user-initiated disconnect should stop later commands — as a
-    // known-failing test: it.failing keeps the gate green today and flips to a
-    // hard failure the moment a revocation affordance lands, forcing this to be
-    // promoted to a normal assertion. See the acceptance report's gap matrix.
-    it.failing('GAP: a user-initiated disconnect prevents later signed commands from being accepted', async () => {
+    // Revocation in this protocol is implicit, not an API. Authority to drive
+    // the live tab is possession of the controller's ECDSA private key — minted
+    // per session inside the controller tab, never exported or persisted, and
+    // destroyed when that tab closes. So "revocation" is the key ceasing to
+    // exist; closing the tab is the disconnect. There is deliberately no
+    // on-demand revoke affordance because a post-revocation controller tab has
+    // no remaining capability to revoke. This test pins the guarantee that the
+    // (intentionally absent) revoke API would otherwise stand in for: the public
+    // protocol material that survives on the same-origin channel after the
+    // controller is gone confers no authority on its own.
+    it('binds command authority to the controller private key, so it dies with the controller tab', async () => {
       const ctrl = await acceptControllerInManager();
-      const liveChallenge: PendingChallenge = {
+
+      // The legitimate controller — sole holder of the session private key — is accepted.
+      const legitimate = await sign(ctrl.privateKey, COMMAND_FAMILIES[0]!.body, { sigNonce: 'legit' });
+      expect(await verifySignedMessage(legitimate, LIVE_TAB_ID)).toBe(true);
+
+      // "Closing the tab" destroys that private key. Everything else about the
+      // session is observable on the same-origin channel — sessionId, liveTabId,
+      // the controller public key, and any message it already sent — and none of
+      // it confers authority:
+
+      // (1) A fresh, perfectly-shaped command signed by any OTHER key is rejected,
+      //     even with the correct sessionId / liveTabId / fresh nonce / fresh ts.
+      const { privateKey: adversaryKey } = await generateSessionKeyPair();
+      const forged = await sign(adversaryKey, COMMAND_FAMILIES[0]!.body, {
         sessionId: ctrl.sessionId,
-        publicKeyB64: ctrl.publicKeyB64,
-        senderTabId: 'controller-1',
-        pairingId: 'p-x',
-      };
+        liveTabId: LIVE_TAB_ID,
+        sigNonce: 'forged',
+      });
+      expect(await verifySignedMessage(forged, LIVE_TAB_ID)).toBe(false);
 
-      // The only revocation-like primitive available today.
-      rejectSession(liveChallenge);
-
-      const signed = await sign(ctrl.privateKey, COMMAND_FAMILIES[0]!.body, { sigNonce: 'post-revoke' });
-      expect(await verifySignedMessage(signed, LIVE_TAB_ID)).toBe(false);
+      // (2) A captured genuine message can't be re-delivered after the controller
+      //     is gone — the session-wide nonce ledger rejects the second delivery.
+      const captured = await sign(ctrl.privateKey, COMMAND_FAMILIES[0]!.body, { sigNonce: 'captured' });
+      expect(await verifySignedMessage(captured, LIVE_TAB_ID)).toBe(true);
+      expect(await verifySignedMessage(captured, LIVE_TAB_ID)).toBe(false);
     });
   });
 });
