@@ -20,6 +20,7 @@ import { randomUUID } from 'crypto';
 const SA_NAME_PREFIX = 'pathfinder-e2e-';
 /** Token TTL: a safety net so a leaked token expires even if teardown never runs. */
 const TOKEN_TTL_SECONDS = 3600;
+const SWEEP_GRACE_SECONDS = 300;
 /** Role granted to the ephemeral SA. Admin so guide steps can exercise any action. */
 const SA_ROLE = 'Admin';
 const FETCH_TIMEOUT_MS = 15_000;
@@ -36,6 +37,26 @@ interface ServiceAccountSearchResult {
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Unknown error';
 }
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+function serviceAccountName(runId: string): string {
+  return `${SA_NAME_PREFIX}${nowSeconds()}-${runId}-${randomUUID().slice(0, 8)}`;
+}
+
+function provisionedAtSeconds(name: string): number | undefined {
+  const match = name.match(new RegExp(`^${SA_NAME_PREFIX}(\\d+)-[a-f0-9-]+-[a-f0-9]+$`));
+  if (!match?.[1]) {
+    return undefined;
+  }
+  return Number(match[1]);
+}
+
+function isStaleOrphan(name: string): boolean {
+  const provisionedAt = provisionedAtSeconds(name);
+  return provisionedAt !== undefined && nowSeconds() - provisionedAt > TOKEN_TTL_SECONDS + SWEEP_GRACE_SECONDS;
+}
 
 /**
  * Owns the per-chain ephemeral service-account lifecycle on a cloud stack. Only
@@ -44,6 +65,7 @@ function errorMessage(err: unknown): string {
  */
 export class CloudEnvironment {
   private currentSaId: number | null = null;
+  private readonly runId = randomUUID().slice(0, 8);
 
   constructor(
     private readonly adminToken: string,
@@ -51,17 +73,14 @@ export class CloudEnvironment {
     private readonly verbose: boolean
   ) {}
 
-  /**
-   * Delete service accounts left over from crashed runs (matched by name
-   * prefix). Best-effort: a failure here never aborts the run.
-   */
+  /** Delete stale service accounts left over from crashed runs. */
   async sweepOrphans(): Promise<void> {
     try {
       const result = await this.api<ServiceAccountSearchResult>(
         'GET',
         `/api/serviceaccounts/search?query=${encodeURIComponent(SA_NAME_PREFIX)}&perpage=100`
       );
-      const orphans = (result.serviceAccounts ?? []).filter((sa) => sa.name.startsWith(SA_NAME_PREFIX));
+      const orphans = (result.serviceAccounts ?? []).filter((sa) => isStaleOrphan(sa.name));
       for (const orphan of orphans) {
         try {
           await this.api('DELETE', `/api/serviceaccounts/${orphan.id}`);
@@ -84,7 +103,7 @@ export class CloudEnvironment {
    * admin token is a setup error, not something to silently skip).
    */
   async provisionChain(): Promise<string> {
-    const name = `${SA_NAME_PREFIX}${randomUUID().slice(0, 8)}`;
+    const name = serviceAccountName(this.runId);
     const sa = await this.api<CreatedServiceAccount>('POST', '/api/serviceaccounts', { name, role: SA_ROLE });
     this.currentSaId = sa.id;
     if (this.verbose) {

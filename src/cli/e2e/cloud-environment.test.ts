@@ -8,6 +8,7 @@ import { CloudEnvironment } from './cloud-environment';
 
 const ADMIN_TOKEN = 'glsa_admin';
 const CLOUD_URL = 'https://stack.grafana.net/';
+const NOW_SECONDS = 2_000_000;
 
 interface FetchCall {
   url: string;
@@ -38,6 +39,11 @@ function mockFetch(handler: (call: FetchCall) => { ok: boolean; status?: number;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.spyOn(Date, 'now').mockReturnValue(NOW_SECONDS * 1000);
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
 });
 
 describe('CloudEnvironment.provisionChain', () => {
@@ -59,7 +65,7 @@ describe('CloudEnvironment.provisionChain', () => {
     expect(calls[0]).toMatchObject({
       method: 'POST',
       url: 'https://stack.grafana.net/api/serviceaccounts',
-      body: { name: expect.stringContaining('pathfinder-e2e-'), role: 'Admin' },
+      body: { name: expect.stringMatching(/^pathfinder-e2e-\d+-[a-f0-9]{8}-[a-f0-9]{8}$/), role: 'Admin' },
     });
     expect(calls[1]).toMatchObject({
       method: 'POST',
@@ -124,16 +130,19 @@ describe('CloudEnvironment.teardownChain', () => {
 });
 
 describe('CloudEnvironment.sweepOrphans', () => {
-  it('deletes only prefix-matching service accounts', async () => {
+  it('deletes only stale provisioned service accounts', async () => {
+    const staleTimestamp = NOW_SECONDS - 3901;
+    const freshTimestamp = NOW_SECONDS - 60;
     const calls = mockFetch((call) => {
       if (call.method === 'GET') {
         return {
           ok: true,
           json: {
             serviceAccounts: [
-              { id: 1, name: 'pathfinder-e2e-aaa' },
+              { id: 1, name: `pathfinder-e2e-${staleTimestamp}-aaaaaaaa-bbbbbbbb` },
               { id: 2, name: 'some-other-account' },
-              { id: 3, name: 'pathfinder-e2e-bbb' },
+              { id: 3, name: `pathfinder-e2e-${freshTimestamp}-cccccccc-dddddddd` },
+              { id: 4, name: 'pathfinder-e2e-legacy' },
             ],
           },
         };
@@ -145,10 +154,7 @@ describe('CloudEnvironment.sweepOrphans', () => {
     await env.sweepOrphans();
 
     const deletedIds = calls.filter((c) => c.method === 'DELETE').map((c) => c.url);
-    expect(deletedIds).toEqual([
-      'https://stack.grafana.net/api/serviceaccounts/1',
-      'https://stack.grafana.net/api/serviceaccounts/3',
-    ]);
+    expect(deletedIds).toEqual(['https://stack.grafana.net/api/serviceaccounts/1']);
   });
 
   it('does not throw when the search request fails', async () => {
