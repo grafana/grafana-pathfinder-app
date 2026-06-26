@@ -43,6 +43,11 @@ import {
 } from './utils/console-reporter';
 import type { TestResultsData } from '../../src/cli/e2e/e2e-reporter';
 import { E2E_ENV, isEnvFlagEnabled } from '../../src/cli/e2e/e2e-runner-contract';
+import {
+  createScopedBearerTokenAuthStrategy,
+  installScopedBearerTokenRoute,
+  scopedBearerHeaders,
+} from './auth/scoped-bearer-token';
 
 /**
  * Write abort reason to file for CLI to read and determine exit code.
@@ -132,6 +137,7 @@ test.describe('Guide Runner', () => {
     // Read guide JSON from environment variable path
     const guidePath = process.env[E2E_ENV.GUIDE_JSON_PATH];
     const targetUrl = process.env[E2E_ENV.GRAFANA_URL] ?? 'http://localhost:3000';
+    const bearerToken = process.env[E2E_ENV.GRAFANA_TOKEN];
     const isVerbose = isEnvFlagEnabled(process.env[E2E_ENV.VERBOSE]);
     // L3-5D: Artifacts directory for artifact collection
     const artifactsDir = process.env[E2E_ENV.ARTIFACTS_DIR];
@@ -145,6 +151,9 @@ test.describe('Guide Runner', () => {
     if (!guidePath) {
       throw new Error(`${E2E_ENV.GUIDE_JSON_PATH} environment variable is required`);
     }
+    if (bearerToken) {
+      await installScopedBearerTokenRoute(page, targetUrl, bearerToken);
+    }
 
     const guideJson = readFileSync(guidePath, 'utf-8');
     const guide = JSON.parse(guideJson) as { title?: string; id?: string };
@@ -156,7 +165,10 @@ test.describe('Guide Runner', () => {
     // ============================================
     // Pre-flight checks: auth and plugin validation
     // ============================================
-    const preflightResult = await runPlaywrightPreflightChecks(page, targetUrl);
+    const preflightResult = await runPlaywrightPreflightChecks(page, targetUrl, {
+      authStrategy: bearerToken ? createScopedBearerTokenAuthStrategy(bearerToken, targetUrl) : undefined,
+      requestHeaders: bearerToken ? scopedBearerHeaders(targetUrl, targetUrl, bearerToken) : undefined,
+    });
 
     // Log pre-flight results using console reporter
     printPreflightChecks(preflightResult.checks);

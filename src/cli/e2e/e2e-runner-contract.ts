@@ -17,6 +17,21 @@ export const E2E_ENV = {
   GUIDE_JSON_PATH: 'GUIDE_JSON_PATH',
   /** Grafana base URL under test. */
   GRAFANA_URL: 'GRAFANA_URL',
+  /**
+   * Absolute path the form-login auth setup writes storage state to, and the
+   * test project reads in non-token mode. Per-guide and ephemeral.
+   */
+  AUTH_STATE_FILE: 'AUTH_STATE_FILE',
+  /** Username used by form-login auth setup. Defaults to admin. Not used in token mode. */
+  GRAFANA_USER: 'GRAFANA_USER',
+  /** Password used by form-login auth setup. Defaults to admin. Not used in token mode. */
+  GRAFANA_PASSWORD: 'GRAFANA_PASSWORD',
+  /**
+   * Minted short-lived service-account token for a provisioned cloud target.
+   * When set, the runner authenticates browser requests with an Authorization
+   * header and skips form-login auth.
+   */
+  GRAFANA_TOKEN: 'GRAFANA_TOKEN',
   /** Flag: enable Playwright tracing. */
   TRACE: 'E2E_TRACE',
   /** Flag: enable verbose runner and reporter output. */

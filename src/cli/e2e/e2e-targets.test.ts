@@ -1,12 +1,12 @@
 /**
- * Tests for the e2e target resolver. Covers tier → target mapping and the two
- * skip reasons, including the forward-looking cloud-on-cloud skip that the
- * cloud-auth follow-on will turn into a runnable target.
+ * Tests for the e2e target resolver. Covers tier → target mapping, the skip
+ * reasons, and cloud credential/instance resolution.
  */
 
 import { resolveTarget } from './e2e-targets';
 
 const LOCAL_URL = 'http://localhost:3000';
+const CLOUD_URL = 'https://learn.grafana.net/';
 
 describe('resolveTarget', () => {
   it('runs local-tier guides against the configured Grafana URL', () => {
@@ -43,11 +43,132 @@ describe('resolveTarget', () => {
     expect(target.message).toBeDefined();
   });
 
-  it('skips a cloud guide on a cloud environment with no-auth (credentials deferred)', () => {
+  it('skips a cloud guide on a cloud environment when credentials are absent', () => {
     const target = resolveTarget({ tier: 'cloud' }, { grafanaUrl: LOCAL_URL, currentTier: 'cloud' });
 
     expect(target.runnable).toBe(false);
     expect(target.skipReason).toBe('skipped_no_auth');
+  });
+
+  it('runs a cloud guide with credentials against the default cloud URL when no instance is declared', () => {
+    const target = resolveTarget(
+      { tier: 'cloud' },
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+      }
+    );
+
+    expect(target.runnable).toBe(true);
+    expect(target.tier).toBe('cloud');
+    expect(target.targetUrl).toBe(CLOUD_URL);
+    expect(target.skipReason).toBeUndefined();
+  });
+
+  it('runs a cloud guide against its declared host-only instance', () => {
+    const target = resolveTarget(
+      { tier: 'cloud', instance: 'play.grafana.org' },
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudAuthTargets: { provisionable: ['https://play.grafana.org/'] },
+      }
+    );
+
+    expect(target.runnable).toBe(true);
+    expect(target.targetUrl).toBe('https://play.grafana.org/');
+    expect(target.instance).toBe('play.grafana.org');
+  });
+
+  it('does not use default cloud credentials for a different declared instance', () => {
+    const target = resolveTarget(
+      { tier: 'cloud', instance: 'play.grafana.org' },
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+      }
+    );
+
+    expect(target.runnable).toBe(false);
+    expect(target.skipReason).toBe('skipped_no_auth');
+  });
+
+  it('runs a cloud guide against its declared instance when admin-token provisioning matches that origin', () => {
+    const target = resolveTarget(
+      { tier: 'cloud', instance: 'learn.grafana.net' },
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+      }
+    );
+
+    expect(target.runnable).toBe(true);
+    expect(target.targetUrl).toBe('https://learn.grafana.net/');
+  });
+
+  it('skips a declared instance when only admin-token provisioning for another origin is available', () => {
+    const target = resolveTarget(
+      { tier: 'cloud', instance: 'play.grafana.org' },
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+      }
+    );
+
+    expect(target.runnable).toBe(false);
+    expect(target.skipReason).toBe('skipped_no_auth');
+    expect(target.message).toContain('--cloud-instance-admin-token for https://play.grafana.org/');
+  });
+
+  it('skips a cloud guide whose instance is not a bare hostname with invalid-instance', () => {
+    const target = resolveTarget(
+      { tier: 'cloud', instance: 'https://play.grafana.org/path' },
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+      }
+    );
+
+    expect(target.runnable).toBe(false);
+    expect(target.skipReason).toBe('skipped_invalid_instance');
+    expect(target.targetUrl).toBeUndefined();
+  });
+
+  it('skips a cloud guide whose instance has URL control characters with invalid-instance', () => {
+    const target = resolveTarget(
+      { tier: 'cloud', instance: 'play.grafana.org?redirect=evil.test' },
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+      }
+    );
+
+    expect(target.runnable).toBe(false);
+    expect(target.skipReason).toBe('skipped_invalid_instance');
+  });
+
+  it('skips a cloud guide with credentials but no resolvable cloud URL', () => {
+    const target = resolveTarget(
+      { tier: 'cloud' },
+      { grafanaUrl: LOCAL_URL, currentTier: 'cloud', cloudAuthTargets: { provisionable: [CLOUD_URL] } }
+    );
+
+    expect(target.runnable).toBe(false);
+    expect(target.skipReason).toBe('skipped_tier_mismatch');
+    expect(target.targetUrl).toBeUndefined();
   });
 
   it('carries the requested instance through on both run and skip', () => {

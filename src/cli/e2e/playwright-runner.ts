@@ -54,6 +54,8 @@ export interface RunGuideOptions {
   headed: boolean;
   artifacts: string;
   alwaysScreenshot: boolean;
+  /** Minted short-lived token for a provisioned cloud target. Absent for form-login runs. */
+  token?: string;
 }
 
 /**
@@ -155,6 +157,10 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
   const abortFilePath = join(tempDir, 'abort.json');
   // Results file path for JSON reporting
   const resultsFilePath = join(tempDir, 'results.json');
+  // Ephemeral auth-state file: the auth setup writes login cookies here and the
+  // test project reads them back. Lives in the per-guide temp dir, so the
+  // finally-block cleanup deletes it along with everything else.
+  const authStateFile = join(tempDir, 'auth.json');
   // Path the runner records the produced trace location to (see e2e-runner-contract).
   const traceOutputFilePath = join(tempDir, 'trace-path.txt');
 
@@ -193,6 +199,9 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
           // The GRAFANA_URL wire key carries the resolved per-guide targetUrl;
           // it becomes Playwright's baseURL
           [E2E_ENV.GRAFANA_URL]: options.targetUrl,
+          [E2E_ENV.AUTH_STATE_FILE]: authStateFile,
+          // A minted token switches the runner to Bearer-header auth; otherwise form login is used.
+          ...(options.token ? { [E2E_ENV.GRAFANA_TOKEN]: options.token } : {}),
           [E2E_ENV.TRACE]: encodeEnvFlag(options.trace),
           [E2E_ENV.VERBOSE]: encodeEnvFlag(options.verbose),
           [E2E_ENV.ABORT_FILE_PATH]: abortFilePath,

@@ -19,7 +19,7 @@ import { resolvePackageById } from './recommender-resolver';
 import { fetchRepositoryIndex, buildPackageFileUrl, type RepositoryPackage } from '../mcp/lib/repository-client';
 import { planGuideExecution } from './guide-chains';
 import type { LoadedGuide } from '../utils/file-loader';
-import { resolveTarget } from './e2e-targets';
+import { resolveTarget, type CloudAuthTargets } from './e2e-targets';
 import type { CurrentTier } from './manifest-preflight';
 
 const FETCH_TIMEOUT_MS = 15_000;
@@ -32,6 +32,7 @@ const FETCH_TIMEOUT_MS = 15_000;
 export const REMOTE_SKIP_REASONS = [
   'skipped_no_auth',
   'skipped_tier_mismatch',
+  'skipped_invalid_instance',
   'fetch_failed',
   'resolution_failed',
   'validation_failed',
@@ -42,7 +43,7 @@ export const REMOTE_SKIP_REASONS = [
 /** Why a remote package was skipped instead of run. */
 export type RemoteSkipReason = (typeof REMOTE_SKIP_REASONS)[number];
 
-/** A remote package resolved to a runnable guide against a local target. */
+/** A remote package resolved to a runnable guide against its target. */
 export interface ResolvedRemoteGuide {
   id: string;
   /** `path` is the source content URL; `content` is the raw JSON text. */
@@ -88,6 +89,10 @@ export interface RemoteResolveOptions {
   resolverUrl: string;
   /** CDN base URL override for `--remote` batch resolution. */
   repoUrl?: string;
+  /** Default cloud instance URL for `cloud`-tier guides without an `instance`. */
+  cloudUrl?: string;
+  /** Cloud target URLs that can be authenticated without exposing credential values to resolution. */
+  cloudAuthTargets?: CloudAuthTargets;
 }
 
 /** Fetch a URL as raw text with a timeout. Never throws. */
@@ -131,7 +136,12 @@ async function buildGuideOrSkip(
     };
   }
 
-  const target = resolveTarget(testEnvironment, { grafanaUrl: options.grafanaUrl, currentTier: options.currentTier });
+  const target = resolveTarget(testEnvironment, {
+    grafanaUrl: options.grafanaUrl,
+    currentTier: options.currentTier,
+    cloudUrl: options.cloudUrl,
+    cloudAuthTargets: options.cloudAuthTargets,
+  });
   if (!target.runnable) {
     return {
       skipped: {

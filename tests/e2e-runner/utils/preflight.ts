@@ -187,14 +187,18 @@ export async function checkAuthValid(
  *
  * Requires authentication, so must be called from Playwright context.
  */
-export async function checkPluginInstalled(page: Page, grafanaUrl: string): Promise<PreFlightCheck> {
+export async function checkPluginInstalled(
+  page: Page,
+  grafanaUrl: string,
+  options: { headers?: Record<string, string> } = {}
+): Promise<PreFlightCheck> {
   const startTime = Date.now();
   const name: PreFlightCheckName = 'plugin-installed';
   const pluginId = 'grafana-pathfinder-app';
 
   try {
     const pluginUrl = `${grafanaUrl}/api/plugins/${pluginId}/settings`;
-    const response = await page.request.get(pluginUrl);
+    const response = await page.request.get(pluginUrl, { headers: options.headers });
 
     if (!response.ok()) {
       if (response.status() === 404) {
@@ -250,12 +254,19 @@ export async function checkPluginInstalled(page: Page, grafanaUrl: string): Prom
  * @param grafanaUrl - Base Grafana URL
  * @returns Pre-flight result with all check statuses
  */
-export async function runPlaywrightPreflightChecks(page: Page, grafanaUrl: string): Promise<PreFlightResult> {
+export async function runPlaywrightPreflightChecks(
+  page: Page,
+  grafanaUrl: string,
+  options: {
+    authStrategy?: AuthStrategy;
+    requestHeaders?: Record<string, string>;
+  } = {}
+): Promise<PreFlightResult> {
   const startTime = Date.now();
   const checks: PreFlightCheck[] = [];
 
   // 1. Check auth validity
-  const authCheck = await checkAuthValid(page, grafanaUrl);
+  const authCheck = await checkAuthValid(page, grafanaUrl, { authStrategy: options.authStrategy });
   checks.push(authCheck);
 
   // If auth fails, abort - no point checking plugin
@@ -269,7 +280,7 @@ export async function runPlaywrightPreflightChecks(page: Page, grafanaUrl: strin
   }
 
   // 2. Check plugin installed
-  const pluginCheck = await checkPluginInstalled(page, grafanaUrl);
+  const pluginCheck = await checkPluginInstalled(page, grafanaUrl, { headers: options.requestHeaders });
   checks.push(pluginCheck);
 
   if (!pluginCheck.passed) {

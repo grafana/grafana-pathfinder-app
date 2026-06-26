@@ -27,6 +27,14 @@ const OPTIONS = {
   resolverUrl: 'https://recommender.test',
 };
 
+const CLOUD_OPTIONS = {
+  grafanaUrl: 'http://localhost:3000',
+  currentTier: 'cloud' as const,
+  resolverUrl: 'https://recommender.test',
+  cloudUrl: 'https://learn.grafana.net/',
+  cloudAuthTargets: { provisionable: ['https://learn.grafana.net/'] },
+};
+
 /** Configure the recommender resolver mock to return a fixed resolution. */
 function mockResolve(resolution: unknown): void {
   (resolvePackageById as jest.Mock).mockResolvedValue(resolution);
@@ -158,6 +166,104 @@ describe('resolveRemotePackage (single, recommender)', () => {
     const result = await resolveRemotePackage('g', OPTIONS);
 
     expect(result.skipped[0]).toMatchObject({ id: 'g', reason: 'validation_failed' });
+  });
+
+  it('resolves a runnable cloud guide against the cloud target URL when credentials are present', async () => {
+    mockResolve({
+      ok: true,
+      id: 'cloud-guide',
+      contentUrl: 'https://cdn.test/cloud-guide/content.json',
+      manifestUrl: 'https://cdn.test/cloud-guide/manifest.json',
+      repository: 'r',
+      manifest: { id: 'cloud-guide', type: 'guide', testEnvironment: { tier: 'cloud' } },
+    });
+    mockIndex([{ id: 'cloud-guide', path: 'cloud-guide/', type: 'guide', testEnvironment: { tier: 'cloud' } }]);
+    mockFetch({ ok: true, text: '{"id":"cloud-guide"}' });
+
+    const result = await resolveRemotePackage('cloud-guide', CLOUD_OPTIONS);
+
+    expect(result.skipped).toHaveLength(0);
+    expect(result.runnable[0]).toMatchObject({
+      id: 'cloud-guide',
+      tier: 'cloud',
+      targetUrl: 'https://learn.grafana.net/',
+    });
+  });
+
+  it('skips a cloud guide as skipped_no_auth when credentials are absent', async () => {
+    mockResolve({
+      ok: true,
+      id: 'cloud-guide',
+      contentUrl: 'https://cdn.test/cloud-guide/content.json',
+      manifestUrl: 'https://cdn.test/cloud-guide/manifest.json',
+      repository: 'r',
+      manifest: { id: 'cloud-guide', type: 'guide', testEnvironment: { tier: 'cloud' } },
+    });
+
+    const result = await resolveRemotePackage('cloud-guide', {
+      ...CLOUD_OPTIONS,
+      cloudAuthTargets: { provisionable: [] },
+    });
+
+    expect(result.runnable).toHaveLength(0);
+    expect(result.skipped[0]).toMatchObject({ id: 'cloud-guide', reason: 'skipped_no_auth' });
+  });
+
+  it('resolves an instance-targeted cloud guide with credentials for that instance', async () => {
+    mockResolve({
+      ok: true,
+      id: 'play-guide',
+      contentUrl: 'https://cdn.test/play-guide/content.json',
+      manifestUrl: 'https://cdn.test/play-guide/manifest.json',
+      repository: 'r',
+      manifest: { id: 'play-guide', type: 'guide', testEnvironment: { tier: 'cloud', instance: 'play.grafana.org' } },
+    });
+    mockIndex([
+      {
+        id: 'play-guide',
+        path: 'play-guide/',
+        type: 'guide',
+        testEnvironment: { tier: 'cloud', instance: 'play.grafana.org' },
+      },
+    ]);
+    mockFetch({ ok: true, text: '{"id":"play-guide"}' });
+
+    const result = await resolveRemotePackage('play-guide', {
+      ...CLOUD_OPTIONS,
+      cloudAuthTargets: { provisionable: ['https://play.grafana.org/'] },
+    });
+
+    expect(result.skipped).toHaveLength(0);
+    expect(result.runnable[0]).toMatchObject({
+      id: 'play-guide',
+      tier: 'cloud',
+      instance: 'play.grafana.org',
+      targetUrl: 'https://play.grafana.org/',
+    });
+  });
+
+  it('skips an instance-targeted cloud guide when only another origin can be provisioned', async () => {
+    mockResolve({
+      ok: true,
+      id: 'play-guide',
+      contentUrl: 'https://cdn.test/play-guide/content.json',
+      manifestUrl: 'https://cdn.test/play-guide/manifest.json',
+      repository: 'r',
+      manifest: { id: 'play-guide', type: 'guide', testEnvironment: { tier: 'cloud', instance: 'play.grafana.org' } },
+    });
+
+    const result = await resolveRemotePackage('play-guide', {
+      ...CLOUD_OPTIONS,
+      cloudAuthTargets: { provisionable: [CLOUD_OPTIONS.cloudUrl] },
+    });
+
+    expect(result.runnable).toHaveLength(0);
+    expect(result.skipped[0]).toMatchObject({
+      id: 'play-guide',
+      reason: 'skipped_no_auth',
+      tier: 'cloud',
+    });
+    expect(result.skipped[0]!.message).toContain('--cloud-instance-admin-token for https://play.grafana.org/');
   });
 
   it('treats a package with no manifest as a runnable local guide', async () => {

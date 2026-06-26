@@ -10,14 +10,21 @@
 
 import type { PluginOptions } from '@grafana/plugin-e2e';
 import { defineConfig, devices } from '@playwright/test';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
 import { E2E_ENV, isEnvFlagEnabled } from '../../src/cli/e2e/e2e-runner-contract';
 
-const pluginE2eAuth = `${dirname(require.resolve('@grafana/plugin-e2e'))}/auth`;
-
 // Resolve paths relative to project root (two levels up from this file)
 const projectRoot = join(__dirname, '..', '..');
+
+// Per-guide auth state: the CLI points AUTH_STATE_FILE at a disposable temp file
+// the auth setup writes to. Falls back to the default admin state for direct
+// (non-CLI) local runs.
+const storageState = process.env[E2E_ENV.AUTH_STATE_FILE] || join(projectRoot, 'playwright/.auth/admin.json');
+
+const useToken = Boolean(process.env[E2E_ENV.GRAFANA_TOKEN]);
+
+const authProject = { name: 'auth', testMatch: /auth\/auth\.setup\.ts$/ };
 
 export default defineConfig<PluginOptions>({
   // Test directory is the e2e-runner folder
@@ -34,20 +41,14 @@ export default defineConfig<PluginOptions>({
     trace: isEnvFlagEnabled(process.env[E2E_ENV.TRACE]) ? 'on' : 'off',
   },
   projects: [
-    // 1. Login to Grafana and store the cookie on disk for use in other tests.
-    {
-      name: 'auth',
-      testDir: pluginE2eAuth,
-      testMatch: [/.*\.js/],
-    },
-    // 2. Run tests in Google Chrome. Every test will start authenticated as admin user.
+    ...(useToken ? [] : [authProject]),
     {
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        storageState: join(projectRoot, 'playwright/.auth/admin.json'),
+        ...(useToken ? {} : { storageState }),
       },
-      dependencies: ['auth'],
+      ...(useToken ? {} : { dependencies: ['auth'] }),
     },
   ],
 });

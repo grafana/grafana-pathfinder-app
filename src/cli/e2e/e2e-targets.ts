@@ -9,8 +9,18 @@
 import type { TestEnvironment } from '../../types/package.types';
 import { checkTier, type CurrentTier } from './manifest-preflight';
 
-/** Why a guide cannot be tested in the current environment. */
-export type TargetSkipReason = 'skipped_no_auth' | 'skipped_tier_mismatch';
+/**
+ * Why a guide cannot be tested in the current environment.
+ *
+ * `skipped_invalid_instance` is distinct from `skipped_tier_mismatch`: the
+ * former means the manifest's `instance` is malformed (author error), the
+ * latter means the guide targets a tier/instance this CLI is not configured
+ * for (a legitimate routing decision). Collapsing them would hide a typo.
+ */
+export type TargetSkipReason = 'skipped_no_auth' | 'skipped_tier_mismatch' | 'skipped_invalid_instance';
+export interface CloudAuthTargets {
+  provisionable: string[];
+}
 
 /** Resolution of a guide's `testEnvironment` to a concrete test target. */
 export interface ResolvedTarget {
@@ -26,9 +36,6 @@ export interface ResolvedTarget {
   skipReason?: TargetSkipReason;
   /** Human-readable explanation for logging. */
   message?: string;
-  /** Cloud credentials. */
-  username?: string;
-  password?: string;
 }
 
 export interface ResolveTargetOptions {
@@ -36,6 +43,45 @@ export interface ResolveTargetOptions {
   grafanaUrl: string;
   /** Tier of the current test environment (from `--tier`). */
   currentTier: CurrentTier;
+  /** Default cloud instance URL for `cloud`-tier guides without an `instance`. */
+  cloudUrl?: string;
+  /** Cloud target URLs that can be authenticated without exposing credential values to resolution. */
+  cloudAuthTargets?: CloudAuthTargets;
+}
+
+/**
+ * Build a Grafana base URL from a host-only `instance` (e.g. `play.grafana.org`
+ * → `https://play.grafana.org/`). Returns undefined when `instance` carries a
+ * scheme, port, or path, so the caller can report a malformed instance rather
+ * than test the wrong target.
+ */
+export function cloudInstanceUrl(instance: string): string | undefined {
+  const hostnamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+  if (!hostnamePattern.test(instance)) {
+    return undefined;
+  }
+  try {
+    return new URL(`https://${instance}/`).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function canProvisionFor(targetUrl: string, options: ResolveTargetOptions): boolean {
+  return (options.cloudAuthTargets?.provisionable ?? []).some((provisionableTargetUrl) =>
+    sameOrigin(targetUrl, provisionableTargetUrl)
+  );
+}
+
+export function sameOrigin(left: string | undefined, right: string | undefined): boolean {
+  if (!left || !right) {
+    return false;
+  }
+  try {
+    return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -43,7 +89,9 @@ export interface ResolveTargetOptions {
  *
  * - `local` / absent / unknown tier → runnable against `options.grafanaUrl`
  * - `cloud` tier on a `local` environment → `skipped_tier_mismatch`
- * - `cloud` tier on a `cloud` environment → `skipped_no_auth` (auth not yet supported)
+ * - `cloud` tier without credentials → `skipped_no_auth`
+ * - `cloud` tier with a malformed `instance` → `skipped_invalid_instance`
+ * - `cloud` tier with credentials → runnable against the resolved cloud URL
  */
 export function resolveTarget(testEnvironment: TestEnvironment, options: ResolveTargetOptions): ResolvedTarget {
   const tier = testEnvironment.tier ?? 'local';
@@ -54,15 +102,60 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
     return { runnable: false, tier, instance, skipReason: 'skipped_tier_mismatch', message: tierResult.reason };
   }
 
-  // Credentials not yet supported for cloud-tier guides; skip with "skipped_no_auth" reason.
   if (tier === 'cloud') {
-    return {
-      runnable: false,
-      tier,
-      instance,
-      skipReason: 'skipped_no_auth',
-      message: 'Cloud-tier guide requires credentials that are not yet supported',
-    };
+    const authTargets = options.cloudAuthTargets ?? { provisionable: [] };
+    const defaultTargetUrl = options.cloudUrl;
+    if (authTargets.provisionable.length === 0) {
+      return {
+        runnable: false,
+        tier,
+        instance,
+        skipReason: 'skipped_no_auth',
+        message: 'Cloud-tier guide requires --cloud-instance-admin-token for its target',
+      };
+    }
+
+    if (instance !== undefined) {
+      const instanceUrl = cloudInstanceUrl(instance);
+      if (!instanceUrl) {
+        return {
+          runnable: false,
+          tier,
+          instance,
+          skipReason: 'skipped_invalid_instance',
+          message: `Cloud instance "${instance}" is not a bare hostname (no protocol, port, or path allowed)`,
+        };
+      }
+      if (!canProvisionFor(instanceUrl, options)) {
+        return {
+          runnable: false,
+          tier,
+          instance,
+          skipReason: 'skipped_no_auth',
+          message: `Cloud instance "${instance}" requires --cloud-instance-admin-token for ${instanceUrl}`,
+        };
+      }
+      return { runnable: true, tier, instance, targetUrl: instanceUrl };
+    }
+    if (!defaultTargetUrl) {
+      return {
+        runnable: false,
+        tier,
+        instance,
+        skipReason: 'skipped_tier_mismatch',
+        message: 'No cloud URL configured for this guide (set --cloud-url)',
+      };
+    }
+    if (!canProvisionFor(defaultTargetUrl, options)) {
+      return {
+        runnable: false,
+        tier,
+        instance,
+        skipReason: 'skipped_no_auth',
+        message: `Cloud-tier guide requires --cloud-instance-admin-token for ${defaultTargetUrl}`,
+      };
+    }
+    return { runnable: true, tier, instance, targetUrl: defaultTargetUrl };
   }
 
   return { runnable: true, tier, instance, targetUrl: options.grafanaUrl };
