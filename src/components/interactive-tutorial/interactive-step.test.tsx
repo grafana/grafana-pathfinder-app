@@ -4,6 +4,7 @@ import { InteractiveStep } from './interactive-step';
 import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
 import { ControllerChannelProvider } from '../../global-state/controller-channel';
 import { TEST_PAIRING } from '../../test-utils/fake-cross-tab-transport';
+import { createPairingAcceptProof } from '../../lib/pairing-manager';
 
 describe('InteractiveStep: showMeText label override', () => {
   it('renders custom Show me label when showMeText is provided', () => {
@@ -198,6 +199,11 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     );
     const challenges = transport.post.mock.calls.map((c) => c[0]).filter((p: any) => p.kind === 'pairing-challenge');
     const challenge = challenges[challenges.length - 1];
+    const acceptProof = await createPairingAcceptProof(TEST_PAIRING.pairingSecret, {
+      pairingId: TEST_PAIRING.pairingId,
+      sessionId: challenge.sessionId,
+      liveTabId: liveId,
+    });
     act(() =>
       transport.emit({
         source: 'pathfinder',
@@ -205,7 +211,12 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
         timestamp: 0,
         kind: 'pairing-accept',
         sessionId: challenge.sessionId,
+        pairingId: TEST_PAIRING.pairingId,
+        acceptProof,
       })
+    );
+    await waitFor(() =>
+      expect(transport.post).toHaveBeenCalledWith(expect.objectContaining({ kind: 'sidebar-handoff' }))
     );
   }
 

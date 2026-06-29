@@ -5,6 +5,7 @@ import {
   createSignatureNonce,
   SIGNED_MESSAGE_STALE_MS,
   signSignedMessage,
+  verifyPairingAcceptProof,
   type ControllerPairingLaunch,
 } from '../lib/pairing-manager';
 import { generateSessionKeyPair } from '../security/cross-tab-crypto';
@@ -205,13 +206,21 @@ export function ControllerChannelProvider({
 
     const unsubscribe = active.onMessage((message) => {
       if (message.kind === 'pairing-accept') {
-        if (message.sessionId !== sessionId) {
+        if (message.sessionId !== sessionId || pairedLiveIdRef.current !== null || !pairing) {
           return;
         }
-        if (pairedLiveIdRef.current === null) {
-          pairedLiveIdRef.current = message.senderId;
-          void refreshPreparedHandBack().finally(() => post({ kind: 'sidebar-handoff', action: 'close' }));
+        if (message.pairingId !== pairing.pairingId) {
+          return;
         }
+        const liveTabId = message.senderId;
+        const binding = { pairingId: message.pairingId, sessionId, liveTabId };
+        void verifyPairingAcceptProof(pairing.pairingSecret, binding, message.acceptProof).then((ok) => {
+          if (!ok || pairedLiveIdRef.current !== null) {
+            return;
+          }
+          pairedLiveIdRef.current = liveTabId;
+          void refreshPreparedHandBack().finally(() => post({ kind: 'sidebar-handoff', action: 'close' }));
+        });
         return;
       }
 
@@ -298,7 +307,7 @@ export function ControllerChannelProvider({
         active.stop();
       }
     };
-  }, [active, post, postPayload, postPreparedHandBack, refreshPreparedHandBack, sessionId]);
+  }, [active, pairing, post, postPayload, postPreparedHandBack, refreshPreparedHandBack, sessionId]);
 
   const request = useCallback(
     <T extends RemoteRequirementResult | FixOutcome | null>(payload: RequestPayload, fallback: T): Promise<T> => {

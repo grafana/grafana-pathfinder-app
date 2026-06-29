@@ -13,6 +13,7 @@ export interface AcceptedSession {
   sessionId: string;
   publicKeyB64: string;
   liveTabId: string;
+  pairingId: string;
 }
 
 export interface SignedMessageFields {
@@ -32,6 +33,7 @@ export interface ControllerPairingLaunch {
 
 export const SIGNED_MESSAGE_STALE_MS = 30_000;
 const STALE_THRESHOLD_MS = SIGNED_MESSAGE_STALE_MS;
+const FUTURE_SKEW_MS = 1_000;
 const PAIRING_LAUNCH_TTL_MS = 5 * 60_000;
 const PENDING_CHALLENGE_TTL_MS = 30_000;
 const REJECTED_CHALLENGE_TTL_MS = 5 * 60_000;
@@ -123,10 +125,37 @@ export async function createPairingChallengeProof(
   return signHmacPayload(pairingSecret, canonicalPairingChallengePayload(challenge));
 }
 
+export interface PairingAcceptBinding {
+  pairingId: string;
+  sessionId: string;
+  liveTabId: string;
+}
+
+export function canonicalPairingAcceptPayload(binding: PairingAcceptBinding): string {
+  return stableJson({
+    liveTabId: binding.liveTabId,
+    pairingId: binding.pairingId,
+    sessionId: binding.sessionId,
+  });
+}
+
+export async function createPairingAcceptProof(pairingSecret: string, binding: PairingAcceptBinding): Promise<string> {
+  return signHmacPayload(pairingSecret, canonicalPairingAcceptPayload(binding));
+}
+
+export async function verifyPairingAcceptProof(
+  pairingSecret: string,
+  binding: PairingAcceptBinding,
+  acceptProof: string
+): Promise<boolean> {
+  return verifyHmacPayload(pairingSecret, canonicalPairingAcceptPayload(binding), acceptProof);
+}
+
 let pendingChallenge: PendingChallenge | null = null;
 let pendingChallengeExpiresAt = 0;
 let pendingChallengeTimer: ReturnType<typeof setTimeout> | null = null;
 let acceptedSession: AcceptedSession | null = null;
+let acceptedLaunchSecret: string | null = null;
 let ownLiveTabId: string | null = null;
 let seenSignedMessages = new Map<string, number>();
 let rejectedChallenges = new Map<string, number>();
@@ -287,20 +316,28 @@ export function acceptSession(challenge: PendingChallenge, trustedGesture: boole
   const liveId = ownLiveTabId;
   const now = Date.now();
   const pendingFresh = pendingChallengeIsFresh(now);
-  if (!trustedGesture || !pendingChallenge || !pendingFresh || !liveId || !sameChallenge(pendingChallenge, challenge)) {
+  if (
+    !trustedGesture ||
+    !pendingChallenge ||
+    !pendingFresh ||
+    !liveId ||
+    !pendingChallenge.pairingId ||
+    !sameChallenge(pendingChallenge, challenge)
+  ) {
     if (pendingChallenge && !pendingFresh) {
       clearPendingChallenge();
     }
     return;
   }
+  const launch = expectedLaunches.get(pendingChallenge.pairingId);
   acceptedSession = {
     sessionId: pendingChallenge.sessionId,
     publicKeyB64: pendingChallenge.publicKeyB64,
     liveTabId: liveId,
+    pairingId: pendingChallenge.pairingId,
   };
-  if (pendingChallenge.pairingId) {
-    expectedLaunches.delete(pendingChallenge.pairingId);
-  }
+  acceptedLaunchSecret = launch?.pairingSecret ?? null;
+  expectedLaunches.delete(pendingChallenge.pairingId);
   seenSignedMessages.clear();
   clearPendingChallenge();
   acceptedListeners.forEach((l) => l(liveId));
@@ -324,6 +361,20 @@ export function rejectSession(challenge: PendingChallenge): void {
 
 export function getAcceptedSession(): AcceptedSession | null {
   return acceptedSession;
+}
+
+export async function createPairingAcceptForSession(): Promise<{ pairingId: string; acceptProof: string } | null> {
+  const session = acceptedSession;
+  const secret = acceptedLaunchSecret;
+  if (!session || !secret) {
+    return null;
+  }
+  const acceptProof = await createPairingAcceptProof(secret, {
+    pairingId: session.pairingId,
+    sessionId: session.sessionId,
+    liveTabId: session.liveTabId,
+  });
+  return { pairingId: session.pairingId, acceptProof };
 }
 
 export function onSessionAccepted(listener: (liveTabId: string) => void): () => void {
@@ -355,7 +406,7 @@ export async function verifySignedMessage(message: SignedMessageFields, ownTabId
     return false;
   }
   const now = Date.now();
-  if (Math.abs(now - sigTs) > STALE_THRESHOLD_MS) {
+  if (sigTs - now > FUTURE_SKEW_MS || now - sigTs > STALE_THRESHOLD_MS) {
     return false;
   }
   const canonical = canonicalSignedPayload(message);
@@ -381,6 +432,7 @@ export function resetPairingManagerForTests(): void {
   pendingChallenge = null;
   pendingChallengeExpiresAt = 0;
   acceptedSession = null;
+  acceptedLaunchSecret = null;
   ownLiveTabId = null;
   seenSignedMessages = new Map();
   rejectedChallenges = new Map();

@@ -101,7 +101,11 @@ drive that Grafana. The controller→live command path is therefore
   an HMAC over the canonical challenge `{pairingId, publicKeyB64, sessionId}`.
   The live tab accepts a challenge only when it matches a registered, unexpired
   launch — a wrong secret, a mutated `sessionId`/`publicKeyB64`, or an unknown
-  `pairingId` is dropped (`pairing-manager.ts`).
+  `pairingId` is dropped (`pairing-manager.ts`). The reverse `pairing-accept`
+  carries an HMAC over `{pairingId, sessionId, liveTabId}` keyed by the same
+  launch secret, so the controller binds its pairing slot only to an accept it
+  can attribute to the launched tab — a forged accept (`sessionId` is readable
+  off the wire) can't take the slot.
 - **Per-session keypair.** The controller generates a **non-extractable** ECDSA
   P-256 keypair per session; only the public key crosses the wire
   (`cross-tab-crypto.ts`). Authority to drive the live tab _is_ possession of
@@ -116,8 +120,9 @@ drive that Grafana. The controller→live command path is therefore
   `check-requirements`, `fix-requirement`, `sidebar-handoff` — is ECDSA-signed
   and bound to `sessionId`, `liveTabId`, the command body, a fresh `sigNonce`,
   and a `sigTs`. The executor's auth gate (`verifySignedMessage`) checks the
-  accepted session, the `sessionId`/`liveTabId` match, a ±30s timestamp window,
-  the signature against the accepted public key, and a session-wide
+  accepted session, the `sessionId`/`liveTabId` match, the timestamp window (up
+  to 30s old, at most 1s future-dated since both tabs share a clock), the
+  signature against the accepted public key, and a session-wide
   `(sessionId:sigNonce)` replay ledger before any action runs.
 
 Defense in depth on top of authentication:

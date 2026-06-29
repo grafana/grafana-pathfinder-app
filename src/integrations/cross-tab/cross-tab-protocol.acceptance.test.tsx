@@ -687,6 +687,12 @@ describe('cross-tab pairing protocol acceptance', () => {
       const signed = await sign(ctrl.privateKey, COMMAND_FAMILIES[0]!.body, { sigTs: Date.now() + 60_000 });
       expect(await verifySignedMessage(signed, LIVE_TAB_ID)).toBe(false);
     });
+
+    it('rejects a future-dated sigTs within the stale window but past the tightened skew', async () => {
+      const ctrl = await acceptControllerInManager();
+      const signed = await sign(ctrl.privateKey, COMMAND_FAMILIES[0]!.body, { sigTs: Date.now() + 5_000 });
+      expect(await verifySignedMessage(signed, LIVE_TAB_ID)).toBe(false);
+    });
   });
 
   // ========================================================================

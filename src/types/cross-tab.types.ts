@@ -77,6 +77,8 @@ export interface PairingChallengeMessage extends CrossTabEnvelope {
 export interface PairingAcceptMessage extends CrossTabEnvelope {
   kind: 'pairing-accept';
   sessionId: string;
+  pairingId: string;
+  acceptProof: string;
 }
 
 export interface HeartbeatMessage extends CrossTabEnvelope {
@@ -353,7 +355,11 @@ function isValidPairingChallenge(message: Record<string, unknown>): boolean {
 }
 
 function isValidPairingAccept(message: Record<string, unknown>): boolean {
-  return typeof message.sessionId === 'string';
+  return (
+    typeof message.sessionId === 'string' &&
+    typeof message.pairingId === 'string' &&
+    typeof message.acceptProof === 'string'
+  );
 }
 
 // Per-kind validators — the single source of truth shared by the transport
