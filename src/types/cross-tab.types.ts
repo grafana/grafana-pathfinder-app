@@ -237,7 +237,13 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
     return (
       Array.isArray(action.internalActions) &&
       action.internalActions.every(
-        (sub) => isRecord(sub) && typeof sub.targetAction === 'string' && KNOWN_TARGET_ACTIONS.has(sub.targetAction)
+        (sub) =>
+          isRecord(sub) &&
+          typeof sub.targetAction === 'string' &&
+          KNOWN_TARGET_ACTIONS.has(sub.targetAction) &&
+          isOptionalString(sub.refTarget) &&
+          isOptionalString(sub.targetValue) &&
+          isOptionalString(sub.targetComment)
       )
     );
   }
@@ -291,7 +297,22 @@ function isValidRequirementResult(message: Record<string, unknown>): boolean {
     return false;
   }
   const result = message.result;
-  return typeof result.requirements === 'string' && typeof result.pass === 'boolean' && Array.isArray(result.error);
+  return (
+    typeof result.requirements === 'string' &&
+    typeof result.pass === 'boolean' &&
+    Array.isArray(result.error) &&
+    result.error.every(
+      (e) =>
+        isRecord(e) &&
+        typeof e.requirement === 'string' &&
+        typeof e.pass === 'boolean' &&
+        isOptionalString(e.error) &&
+        isOptionalString(e.fixType) &&
+        isOptionalString(e.targetHref) &&
+        isOptionalString(e.scrollContainer) &&
+        (e.canFix === undefined || typeof e.canFix === 'boolean')
+    )
+  );
 }
 
 function isValidFixResult(message: Record<string, unknown>): boolean {
@@ -315,7 +336,10 @@ function isValidStepProgress(message: Record<string, unknown>): boolean {
     typeof message.stepId === 'string' &&
     typeof message.runId === 'string' &&
     typeof message.index === 'number' &&
-    typeof message.total === 'number'
+    typeof message.total === 'number' &&
+    message.index >= 0 &&
+    message.total >= 1 &&
+    message.index <= message.total
   );
 }
 

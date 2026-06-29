@@ -115,6 +115,18 @@ describe('validateCrossTabMessage', () => {
     ],
     ['a non-array internalActions', { targetAction: 'guided', refTarget: '', internalActions: 'highlight' }],
     ['a non-object internal action', { targetAction: 'guided', refTarget: '', internalActions: ['highlight'] }],
+    [
+      'an internal action with a non-string refTarget',
+      { targetAction: 'guided', refTarget: '', internalActions: [{ targetAction: 'highlight', refTarget: 123 }] },
+    ],
+    [
+      'an internal action with a non-string targetValue',
+      {
+        targetAction: 'multistep',
+        refTarget: '',
+        internalActions: [{ targetAction: 'formfill', refTarget: '#a', targetValue: 5 }],
+      },
+    ],
   ])('rejects a composite step-command with %s', (_label, action) => {
     expect(
       validateCrossTabMessage(envelope({ kind: 'step-command', phase: 'do', stepId: 's1', runId: 'run-1', action }))
@@ -154,5 +166,38 @@ describe('validateCrossTabMessage', () => {
 
   it('rejects a step-progress missing runId', () => {
     expect(validateCrossTabMessage(envelope({ kind: 'step-progress', stepId: 's1', index: 0, total: 3 }))).toBeNull();
+  });
+
+  it.each([
+    ['index below zero', { index: -1, total: 3 }],
+    ['total below one', { index: 0, total: 0 }],
+    ['index past total', { index: 4, total: 3 }],
+  ])('rejects a step-progress with %s', (_label, bounds) => {
+    expect(
+      validateCrossTabMessage(envelope({ kind: 'step-progress', stepId: 's1', runId: 'run-1', ...bounds }))
+    ).toBeNull();
+  });
+
+  it('accepts a well-formed requirement-result', () => {
+    const message = envelope({
+      kind: 'requirement-result',
+      requestId: 'req-1',
+      stepId: 's1',
+      result: { requirements: 'navmenu-open', pass: false, error: [{ requirement: 'navmenu-open', pass: false }] },
+    });
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it.each([
+    ['a non-object error element', { requirements: 'x', pass: false, error: ['boom'] }],
+    ['an error element missing pass', { requirements: 'x', pass: false, error: [{ requirement: 'x' }] }],
+    [
+      'an error element with a non-string fixType',
+      { requirements: 'x', pass: false, error: [{ requirement: 'x', pass: false, fixType: 7 }] },
+    ],
+  ])('rejects a requirement-result with %s', (_label, result) => {
+    expect(
+      validateCrossTabMessage(envelope({ kind: 'requirement-result', requestId: 'req-1', stepId: 's1', result }))
+    ).toBeNull();
   });
 });
