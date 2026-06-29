@@ -70,6 +70,10 @@ export const DEFAULT_KIOSK_RULES_URL = '';
 // AI auto-heal: default OFF — the AI write path requires explicit admin opt-in
 export const DEFAULT_ENABLE_AI_AUTO_HEAL = false;
 
+// Two-tab controller: default OFF — the live-tab executor drives the user's
+// authenticated Grafana DOM, so it requires explicit admin opt-in
+export const DEFAULT_ENABLE_TWO_TAB_CONTROLLER = false;
+
 // PeerJS Server defaults (for live sessions)
 export const DEFAULT_PEERJS_HOST = 'localhost';
 export const DEFAULT_PEERJS_PORT = 9000;
@@ -141,6 +145,8 @@ export interface DocsPluginConfig {
   kioskRulesUrl?: string;
   // AI auto-heal
   enableAiAutoHeal?: boolean;
+  // Two-tab interactive controller (admin opt-in; drives the authenticated DOM)
+  enableTwoTabController?: boolean;
 }
 
 // Helper functions to get configuration values with defaults
@@ -187,6 +193,8 @@ export const getConfigWithDefaults = (
   kioskRulesUrl: config.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL,
   // AI auto-heal
   enableAiAutoHeal: config.enableAiAutoHeal ?? DEFAULT_ENABLE_AI_AUTO_HEAL,
+  // Two-tab interactive controller
+  enableTwoTabController: config.enableTwoTabController ?? DEFAULT_ENABLE_TWO_TAB_CONTROLLER,
 });
 
 /**

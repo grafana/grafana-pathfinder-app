@@ -76,4 +76,12 @@ describe('getConfigWithDefaults feature flags', () => {
   it('defaults enableAiAutoHeal to false when jsonData is absent', () => {
     expect(getConfigWithDefaults({}).enableAiAutoHeal).toBe(false);
   });
+
+  it('defaults enableTwoTabController to false when jsonData is absent', () => {
+    expect(getConfigWithDefaults({}).enableTwoTabController).toBe(false);
+  });
+
+  it('honors an explicit enableTwoTabController override', () => {
+    expect(getConfigWithDefaults({ enableTwoTabController: true }).enableTwoTabController).toBe(true);
+  });
 });

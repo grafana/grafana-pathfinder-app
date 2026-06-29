@@ -8,7 +8,6 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
-import { TWOTAB_CONTROLLER_ENABLED } from './constants/interactive-config';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { panelModeManager } from './global-state/panel-mode';
@@ -138,9 +137,10 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   // Interactive controller (?doc=<guide>&controller=1): the same overlay, but
   // step actions stay visible so this tab can drive the originating Grafana tab.
-  // Gated on pathfinder.enabled — the controller drives the user's authenticated
-  // Grafana, so it must not mount when the plugin is disabled.
-  if (TWOTAB_CONTROLLER_ENABLED && docsParam && controllerParam && controllerPairing && pathfinderEnabled) {
+  // Gated on the enableTwoTabController admin setting and pathfinder.enabled — the
+  // controller drives the user's authenticated Grafana, so it must not mount when
+  // the plugin is disabled or the instance hasn't opted in.
+  if (config.enableTwoTabController && docsParam && controllerParam && controllerPairing && pathfinderEnabled) {
     if (!document.getElementById('pathfinder-controller-root')) {
       // Claim the id synchronously, before the dynamic import, so a second
       // plugin.init can't race past the guard and double-mount.
@@ -166,7 +166,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Live tab only (the controller tab returned early above): load the cross-tab
   // executor so a controller tab can drive this Grafana DOM. Mount the pairing
   // banner first so its challenge listener is live before the transport starts.
-  if (TWOTAB_CONTROLLER_ENABLED && pathfinderEnabled) {
+  if (config.enableTwoTabController && pathfinderEnabled) {
     if (!document.getElementById('pathfinder-pairing-banner-root')) {
       const bannerContainer = document.createElement('div');
       bannerContainer.id = 'pathfinder-pairing-banner-root';

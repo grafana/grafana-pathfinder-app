@@ -24,9 +24,9 @@
 import React, { Suspense, lazy } from 'react';
 import { Button, Icon, IconButton } from '@grafana/ui';
 import { t } from '@grafana/i18n';
-import { PLUGIN_BASE_URL } from '../../../constants';
+import { usePluginContext } from '@grafana/data';
+import { PLUGIN_BASE_URL, getConfigWithDefaults } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
-import { TWOTAB_CONTROLLER_ENABLED } from '../../../constants/interactive-config';
 import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
 import { isDocsLikeTab, pickGrafanaDocsOpenAction, pickControllerTabOpenAction } from '../utils';
@@ -117,6 +117,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
     reloadActiveTab,
     restoreScrollPosition,
   } = props;
+
+  const pluginContext = usePluginContext();
+  const twoTabControllerEnabled = getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableTwoTabController;
 
   return (
     <div className={styles.content} data-testid={testIds.docsPanel.content}>
@@ -316,7 +319,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       );
                     })()}
                     {(() => {
-                      if (!TWOTAB_CONTROLLER_ENABLED) {
+                      if (!twoTabControllerEnabled) {
                         return null;
                       }
                       const guideUrl = activeTab.content?.url || activeTab.baseUrl;

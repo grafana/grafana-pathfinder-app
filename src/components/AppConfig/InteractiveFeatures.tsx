@@ -12,6 +12,7 @@ import {
   DEFAULT_ENABLE_KIOSK_MODE,
   DEFAULT_KIOSK_RULES_URL,
   DEFAULT_ENABLE_AI_AUTO_HEAL,
+  DEFAULT_ENABLE_TWO_TAB_CONTROLLER,
   getConfigWithDefaults,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
@@ -26,6 +27,7 @@ type State = {
   enableKioskMode: boolean;
   kioskRulesUrl: string;
   enableAiAutoHeal: boolean;
+  enableTwoTabController: boolean;
 };
 
 export interface InteractiveFeaturesProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -44,6 +46,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     enableKioskMode: jsonData?.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE,
     kioskRulesUrl: jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL,
     enableAiAutoHeal: jsonData?.enableAiAutoHeal ?? DEFAULT_ENABLE_AI_AUTO_HEAL,
+    enableTwoTabController: jsonData?.enableTwoTabController ?? DEFAULT_ENABLE_TWO_TAB_CONTROLLER,
   }));
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
@@ -100,6 +103,10 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     setState({ ...state, enableAiAutoHeal: event.target.checked });
   };
 
+  const onToggleEnableTwoTabController = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({ ...state, enableTwoTabController: event.target.checked });
+  };
+
   const onResetDefaults = () => {
     setState({
       enableAutoDetection: DEFAULT_ENABLE_AUTO_DETECTION,
@@ -109,6 +116,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
       enableKioskMode: DEFAULT_ENABLE_KIOSK_MODE,
       kioskRulesUrl: DEFAULT_KIOSK_RULES_URL,
       enableAiAutoHeal: DEFAULT_ENABLE_AI_AUTO_HEAL,
+      enableTwoTabController: DEFAULT_ENABLE_TWO_TAB_CONTROLLER,
     });
     setValidationErrors({});
   };
@@ -136,6 +144,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
         enableKioskMode: state.enableKioskMode,
         kioskRulesUrl: state.kioskRulesUrl,
         enableAiAutoHeal: state.enableAiAutoHeal,
+        enableTwoTabController: state.enableTwoTabController,
       };
 
       await updatePluginSettings(plugin.meta.id, {
@@ -168,7 +177,8 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     state.disableAutoCollapse !== (jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE) ||
     state.enableKioskMode !== (jsonData?.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE) ||
     state.kioskRulesUrl !== (jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL) ||
-    state.enableAiAutoHeal !== (jsonData?.enableAiAutoHeal ?? DEFAULT_ENABLE_AI_AUTO_HEAL);
+    state.enableAiAutoHeal !== (jsonData?.enableAiAutoHeal ?? DEFAULT_ENABLE_AI_AUTO_HEAL) ||
+    state.enableTwoTabController !== (jsonData?.enableTwoTabController ?? DEFAULT_ENABLE_TWO_TAB_CONTROLLER);
 
   return (
     <form onSubmit={onSubmit}>
@@ -357,6 +367,41 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
               <Text variant="body">
                 Accepted suggestions mutate the in-memory guide JSON for the user&apos;s session. Disable this toggle to
                 hide the AI-powered button entirely; the deterministic &quot;Fix this&quot; recovery path is unaffected.
+              </Text>
+            </Alert>
+          )}
+        </div>
+
+        <div className={styles.divider} />
+
+        <div className={styles.section}>
+          <Text variant="h4" weight="medium">
+            Two-tab interactive controller
+          </Text>
+          <div className={styles.toggleSection}>
+            <Switch
+              data-testid={testIds.appConfig.interactiveFeatures.enableTwoTabController}
+              id="enable-two-tab-controller"
+              value={state.enableTwoTabController}
+              onChange={onToggleEnableTwoTabController}
+            />
+            <div className={styles.toggleLabels}>
+              <Text variant="body" weight="medium">
+                Enable &quot;Open in interactive window&quot;
+              </Text>
+              <Text variant="body" color="secondary">
+                Lets an interactive guide pop out into its own browser tab and drive the original Grafana tab over a
+                same-origin channel. Pairing requires a one-time code and an explicit accept on this tab.
+              </Text>
+            </div>
+          </div>
+
+          {state.enableTwoTabController && (
+            <Alert severity="warning" title="Experimental — drives the authenticated DOM" className={styles.infoAlert}>
+              <Text variant="body">
+                Once paired, the controller tab can run guide actions (navigation, clicks, form fills) against this
+                Grafana session. Enable only on trusted instances. Disable to hide the affordance and the live-tab
+                executor entirely.
               </Text>
             </Alert>
           )}
