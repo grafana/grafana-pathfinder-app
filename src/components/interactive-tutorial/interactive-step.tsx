@@ -692,7 +692,12 @@ export const InteractiveStep = forwardRef<
           phase: 'show',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+          action: {
+            targetAction,
+            refTarget: primaryRefTarget(refTarget),
+            targetValue: currentTargetValue,
+            targetComment,
+          },
         });
         if (!doIt) {
           // F-1063-1 (fix-plan §6.2): simple steps complete optimistically — no
@@ -814,7 +819,12 @@ export const InteractiveStep = forwardRef<
           phase: 'do',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+          action: {
+            targetAction,
+            refTarget: primaryRefTarget(refTarget),
+            targetValue: currentTargetValue,
+            targetComment,
+          },
         });
         // F-1063-1 (fix-plan §6.2): simple steps complete optimistically — no live
         // ack, and they complete even with no live tab connected. Accepted by

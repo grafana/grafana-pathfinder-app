@@ -597,7 +597,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             internalActions: internalActions.map(
               (a): CrossTabInternalAction => ({
                 targetAction: a.targetAction,
-                refTarget: a.refTarget,
+                refTarget: a.refTarget === undefined ? undefined : primaryRefTarget(a.refTarget),
                 targetValue: a.targetValue,
                 targetComment: a.targetComment,
               })
