@@ -29,6 +29,7 @@ import {
   sectionCollapseStorage,
   sectionDoneStorage,
 } from '../../../lib/user-storage';
+import { StorageEvents } from '../../../lib/event-names';
 import type { StepInfo } from '../../../types/component-props.types';
 import type { AcknowledgementAnalysis } from '../step-section-utils';
 import { getContentKey } from '../get-content-key';
@@ -90,6 +91,28 @@ export function useSectionPersistence({
       sectionDoneStorage.clear(contentKey, sectionId);
     }
   }, [sectionId, isPreviewMode]);
+
+  useEffect(() => {
+    if (isPreviewMode) {
+      return;
+    }
+
+    const handleProgressCleared = (event: Event) => {
+      const customEvent = event as CustomEvent<{ contentKey?: string }>;
+      const activeContentKey = getContentKey();
+      if (customEvent.detail?.contentKey !== activeContentKey) {
+        return;
+      }
+
+      dispatch({ type: 'CLEAR_ACK' });
+      void clearAckAndCollapseStorage();
+    };
+
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
+    return () => {
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
+    };
+  }, [clearAckAndCollapseStorage, dispatch, isPreviewMode]);
 
   // Mount-only restore (#842, Bug 4 fix).
   //

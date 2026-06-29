@@ -47,6 +47,13 @@ describe('getAvailableConversions', () => {
       expect(getAvailableConversions('quiz')).toHaveLength(12);
       expect(getAvailableConversions('interactive')).toHaveLength(12);
     });
+
+    it('hides guided/multistep from the generic dropdown because they have a dedicated converter', () => {
+      expect(getAvailableConversions('guided')).not.toContain('multistep');
+      expect(getAvailableConversions('multistep')).not.toContain('guided');
+      expect(getAvailableConversions('guided')).toHaveLength(11);
+      expect(getAvailableConversions('multistep')).toHaveLength(11);
+    });
   });
 });
 
