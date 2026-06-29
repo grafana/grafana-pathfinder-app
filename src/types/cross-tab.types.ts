@@ -43,7 +43,18 @@ export interface RemoteRequirementResult {
   error: RemoteRequirementError[];
 }
 
-export interface StepCommandMessage extends CrossTabEnvelope {
+// Auth fields carried on controller→live side-effecting messages.
+// Absent on live→controller replies. The executor auth gate validates their
+// presence and checks the ECDSA signature before dispatching.
+export interface ControllerAuthFields {
+  sig: string;
+  sessionId: string;
+  liveTabId: string;
+  sigTs: number;
+  sigNonce: string;
+}
+
+export interface StepCommandMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'step-command';
   phase: 'show' | 'do';
   stepId: string;
@@ -51,19 +62,36 @@ export interface StepCommandMessage extends CrossTabEnvelope {
   action: CrossTabAction;
 }
 
+// Controller announces its session public key so the live tab can show a
+// pairing prompt. Not side-effecting; unsigned.
+export interface PairingChallengeMessage extends CrossTabEnvelope {
+  kind: 'pairing-challenge';
+  sessionId: string;
+  publicKeyB64: string;
+  pairingId: string;
+  pairingProof: string;
+}
+
+// Live tab confirms pairing after user accepts. The senderId in the envelope
+// IS the liveTabId the controller will use when signing subsequent commands.
+export interface PairingAcceptMessage extends CrossTabEnvelope {
+  kind: 'pairing-accept';
+  sessionId: string;
+}
+
 export interface HeartbeatMessage extends CrossTabEnvelope {
   kind: 'heartbeat';
   role: CrossTabRole;
 }
 
-export interface SidebarHandoffMessage extends CrossTabEnvelope {
+export interface SidebarHandoffMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'sidebar-handoff';
   action: 'close' | 'reopen';
 }
 
 // Requirement round-trip (controller → live → controller); requestId correlates
 // each reply to its request since several steps may be in flight.
-export interface CheckRequirementsMessage extends CrossTabEnvelope {
+export interface CheckRequirementsMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'check-requirements';
   requestId: string;
   stepId: string;
@@ -80,7 +108,7 @@ export interface RequirementResultMessage extends CrossTabEnvelope {
   result: RemoteRequirementResult;
 }
 
-export interface FixRequirementMessage extends CrossTabEnvelope {
+export interface FixRequirementMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'fix-requirement';
   requestId: string;
   stepId: string;
@@ -125,7 +153,9 @@ export type CrossTabMessage =
   | FixRequirementMessage
   | FixResultMessage
   | StepCompleteMessage
-  | StepProgressMessage;
+  | StepProgressMessage
+  | PairingChallengeMessage
+  | PairingAcceptMessage;
 
 // Distributively strip the envelope from every message kind, so the
 // post() payload type stays derived from CrossTabMessage instead of a
@@ -135,6 +165,17 @@ export type CrossTabPayload = CrossTabMessage extends infer M
     ? Omit<M, keyof CrossTabEnvelope>
     : never
   : never;
+
+// The controller→live message kinds that carry an ECDSA signature. The
+// controller signs exactly these before posting and the live-tab executor
+// requires a verified signature for exactly these before dispatch, so both
+// sides MUST agree — this is the single source of truth they share.
+export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Set([
+  'step-command',
+  'check-requirements',
+  'fix-requirement',
+  'sidebar-handoff',
+]);
 
 // Same-build assumption: the controller and live tabs are the same plugin
 // build in the same browser/origin/session, so there is no protocol-version
@@ -278,6 +319,19 @@ function isValidStepProgress(message: Record<string, unknown>): boolean {
   );
 }
 
+function isValidPairingChallenge(message: Record<string, unknown>): boolean {
+  return (
+    typeof message.sessionId === 'string' &&
+    typeof message.publicKeyB64 === 'string' &&
+    typeof message.pairingId === 'string' &&
+    typeof message.pairingProof === 'string'
+  );
+}
+
+function isValidPairingAccept(message: Record<string, unknown>): boolean {
+  return typeof message.sessionId === 'string';
+}
+
 // Per-kind validators — the single source of truth shared by the transport
 // receive gate and the live-tab executor. Same-origin traffic is forgeable
 // (the envelope alone proves nothing), so every side-effecting command is
@@ -294,6 +348,8 @@ const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, 
   'fix-result': isValidFixResult,
   'step-complete': isValidStepComplete,
   'step-progress': isValidStepProgress,
+  'pairing-challenge': isValidPairingChallenge,
+  'pairing-accept': isValidPairingAccept,
 };
 
 /**
