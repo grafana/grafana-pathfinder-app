@@ -47,6 +47,8 @@ export interface ResolveTargetOptions {
   cloudUrl?: string;
   /** Cloud target URLs that can be authenticated without exposing credential values to resolution. */
   cloudAuthTargets?: CloudAuthTargets;
+  /** Whether the runner can provision an ephemeral Cloud stack for this guide later. */
+  cloudStackProvisioningAvailable?: boolean;
 }
 
 /**
@@ -105,7 +107,7 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
   if (tier === 'cloud') {
     const authTargets = options.cloudAuthTargets ?? { provisionable: [] };
     const defaultTargetUrl = options.cloudUrl;
-    if (authTargets.provisionable.length === 0) {
+    if (authTargets.provisionable.length === 0 && !options.cloudStackProvisioningAvailable) {
       return {
         runnable: false,
         tier,
@@ -127,6 +129,9 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
         };
       }
       if (!canProvisionFor(instanceUrl, options)) {
+        if (options.cloudStackProvisioningAvailable) {
+          return { runnable: true, tier, instance, targetUrl: instanceUrl };
+        }
         return {
           runnable: false,
           tier,
@@ -147,6 +152,9 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
       };
     }
     if (!canProvisionFor(defaultTargetUrl, options)) {
+      if (options.cloudStackProvisioningAvailable) {
+        return { runnable: true, tier, instance, targetUrl: defaultTargetUrl };
+      }
       return {
         runnable: false,
         tier,

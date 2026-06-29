@@ -118,6 +118,7 @@ describe('buildPackageMetaMap', () => {
         instance: 'play.grafana.org',
         targetUrl: 'http://localhost:3000',
         sourceUrl: 'https://cdn.test/a/content.json',
+        sideEffects: { level: 'readonly', reasons: [] },
       },
     ];
 
@@ -127,6 +128,7 @@ describe('buildPackageMetaMap', () => {
       instance: 'play.grafana.org',
       targetUrl: 'http://localhost:3000',
       sourceUrl: 'https://cdn.test/a/content.json',
+      sideEffects: { level: 'readonly', reasons: [] },
     });
   });
 });

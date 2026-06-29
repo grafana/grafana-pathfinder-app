@@ -50,6 +50,21 @@ describe('resolveTarget', () => {
     expect(target.skipReason).toBe('skipped_no_auth');
   });
 
+  it('runs a cloud guide without fixed credentials when stack provisioning is available', () => {
+    const target = resolveTarget(
+      { tier: 'cloud' },
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudStackProvisioningAvailable: true,
+      }
+    );
+
+    expect(target.runnable).toBe(true);
+    expect(target.targetUrl).toBe(CLOUD_URL);
+  });
+
   it('runs a cloud guide with credentials against the default cloud URL when no instance is declared', () => {
     const target = resolveTarget(
       { tier: 'cloud' },
@@ -127,6 +142,21 @@ describe('resolveTarget', () => {
     expect(target.runnable).toBe(false);
     expect(target.skipReason).toBe('skipped_no_auth');
     expect(target.message).toContain('--cloud-instance-admin-token for https://play.grafana.org/');
+  });
+
+  it('allows an instance-targeted cloud guide when only stack provisioning is available', () => {
+    const target = resolveTarget(
+      { tier: 'cloud', instance: 'play.grafana.org' },
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudStackProvisioningAvailable: true,
+      }
+    );
+
+    expect(target.runnable).toBe(true);
+    expect(target.targetUrl).toBe('https://play.grafana.org/');
   });
 
   it('skips a cloud guide whose instance is not a bare hostname with invalid-instance', () => {

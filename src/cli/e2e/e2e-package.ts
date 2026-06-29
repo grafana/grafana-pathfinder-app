@@ -21,6 +21,7 @@ import { planGuideExecution } from './guide-chains';
 import type { LoadedGuide } from '../utils/file-loader';
 import { resolveTarget, type CloudAuthTargets } from './e2e-targets';
 import type { CurrentTier } from './manifest-preflight';
+import { classifyGuideSideEffectsFromString, type SideEffectClassification } from './side-effects';
 
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -38,6 +39,7 @@ export const REMOTE_SKIP_REASONS = [
   'validation_failed',
   'unsupported_type',
   'prerequisite_failed',
+  'skipped_unsafe_shared_stack',
 ] as const;
 
 /** Why a remote package was skipped instead of run. */
@@ -54,6 +56,8 @@ export interface ResolvedRemoteGuide {
   targetUrl: string;
   /** The content.json URL the guide was fetched from. */
   sourceUrl: string;
+  /** Static side-effect classification derived from the fetched guide content. */
+  sideEffects: SideEffectClassification;
 }
 
 /** A remote package that will not be run, with a structured reason. */
@@ -63,6 +67,7 @@ export interface SkippedPackage {
   message: string;
   sourceUrl?: string;
   tier?: string;
+  sideEffects?: SideEffectClassification;
 }
 
 /** Result of resolving one or more remote packages. */
@@ -93,6 +98,8 @@ export interface RemoteResolveOptions {
   cloudUrl?: string;
   /** Cloud target URLs that can be authenticated without exposing credential values to resolution. */
   cloudAuthTargets?: CloudAuthTargets;
+  /** Whether an ephemeral Cloud stack can be provisioned later for cloud-tier guides. */
+  cloudStackProvisioningAvailable?: boolean;
 }
 
 /** Fetch a URL as raw text with a timeout. Never throws. */
@@ -141,6 +148,7 @@ async function buildGuideOrSkip(
     currentTier: options.currentTier,
     cloudUrl: options.cloudUrl,
     cloudAuthTargets: options.cloudAuthTargets,
+    cloudStackProvisioningAvailable: options.cloudStackProvisioningAvailable,
   });
   if (!target.runnable) {
     return {
@@ -180,6 +188,8 @@ async function buildGuideOrSkip(
     };
   }
 
+  const sideEffects = classifyGuideSideEffectsFromString(fetched.text);
+
   return {
     runnable: {
       id,
@@ -188,6 +198,7 @@ async function buildGuideOrSkip(
       instance: target.instance,
       targetUrl: target.targetUrl!,
       sourceUrl: contentUrl,
+      sideEffects,
     },
   };
 }

@@ -9,6 +9,7 @@
 
 import { writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
+import type { SideEffectClassification } from './side-effects';
 
 // ============================================
 // Types - JSON Report Structure
@@ -34,6 +35,8 @@ export interface GuideMetadata {
   targetUrl?: string;
   /** Source content.json URL for remotely-resolved guides. */
   sourceUrl?: string;
+  /** Static side-effect classification for remote guide safety routing. */
+  sideEffects?: SideEffectClassification;
 }
 
 /**
@@ -154,6 +157,8 @@ export interface PreRunSkip {
   tier?: string;
   /** Source content.json URL, when known. */
   sourceUrl?: string;
+  /** Static side-effect classification, when guide content was fetched. */
+  sideEffects?: SideEffectClassification;
 }
 
 /**
