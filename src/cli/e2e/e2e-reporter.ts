@@ -9,6 +9,7 @@
 
 import { writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
+import type { SideEffectClassification } from './side-effects';
 
 // ============================================
 // Types - JSON Report Structure
@@ -34,6 +35,7 @@ export interface GuideMetadata {
   targetUrl?: string;
   /** Source content.json URL for remotely-resolved guides. */
   sourceUrl?: string;
+  sideEffects?: SideEffectClassification;
 }
 
 /**
@@ -154,6 +156,7 @@ export interface PreRunSkip {
   tier?: string;
   /** Source content.json URL, when known. */
   sourceUrl?: string;
+  sideEffects?: SideEffectClassification;
 }
 
 /**
@@ -461,6 +464,7 @@ export interface GuideResult {
   summary: ReportSummary;
   /** Duration in milliseconds */
   duration: number;
+  sideEffects?: SideEffectClassification;
 }
 
 /**
@@ -549,6 +553,7 @@ export function toGuideResult(report: E2ETestReport): GuideResult {
     success: isReportSuccess(report) && report.abortReason !== 'SKIPPED_PREREQ',
     summary: report.summary,
     duration: report.summary.duration,
+    sideEffects: report.guide.sideEffects,
   };
 
   if (report.abortReason) {

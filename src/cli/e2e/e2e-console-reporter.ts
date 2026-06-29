@@ -31,6 +31,7 @@ import {
 import type { RemoteResolution } from './e2e-package';
 import type { LoadedGuide } from '../utils/file-loader';
 import type { PreflightOutcome } from './manifest-preflight';
+import type { SideEffectClassification } from './side-effects';
 
 function skipOnlyReport(preRunSkipped: MultiGuideReport['preRunSkipped']): MultiGuideReport {
   return {
@@ -57,6 +58,16 @@ function skipOnlyReport(preRunSkipped: MultiGuideReport['preRunSkipped']): Multi
     reports: [],
     preRunSkipped,
   };
+}
+
+function formatSideEffects(sideEffects: SideEffectClassification | undefined): string {
+  if (!sideEffects) {
+    return 'side effects unknown';
+  }
+  if (sideEffects.reasons.length === 0) {
+    return sideEffects.level;
+  }
+  return `${sideEffects.level}: ${sideEffects.reasons.map((r) => `${r.path} ${r.message}`).join('; ')}`;
 }
 
 /** The resolved run settings rendered by printRunConfiguration. */
@@ -243,10 +254,11 @@ export function printRemoteResolution(
   console.log(`\n📦 Resolved ${source}: ${resolution.runnable.length} runnable, ${resolution.skipped.length} skipped`);
   if (verbose) {
     for (const g of resolution.runnable) {
-      console.log(`   ✓ ${g.id} (${g.tier}) → ${g.sourceUrl}`);
+      console.log(`   ✓ ${g.id} (${g.tier}, ${formatSideEffects(g.sideEffects)}) → ${g.sourceUrl}`);
     }
     for (const s of resolution.skipped) {
-      console.log(`   ⊘ ${s.id}: ${s.reason} — ${s.message}`);
+      const sideEffects = s.sideEffects ? ` (${formatSideEffects(s.sideEffects)})` : '';
+      console.log(`   ⊘ ${s.id}: ${s.reason}${sideEffects} — ${s.message}`);
     }
   }
 }

@@ -79,7 +79,10 @@ describe('resolveRemotePackage (single, recommender)', () => {
       manifest: { id: 'alerting-101', type: 'guide', testEnvironment: { tier: 'local' } },
     });
     mockIndex([{ id: 'alerting-101', path: 'alerting-101/', type: 'guide', testEnvironment: { tier: 'local' } }]);
-    mockFetch({ ok: true, text: '{"id":"alerting-101"}' });
+    mockFetch({
+      ok: true,
+      text: '{"id":"alerting-101","title":"Alerting","blocks":[{"type":"markdown","content":"Read this"}]}',
+    });
 
     const result = await resolveRemotePackage('alerting-101', OPTIONS);
 
@@ -90,8 +93,11 @@ describe('resolveRemotePackage (single, recommender)', () => {
       tier: 'local',
       targetUrl: 'http://localhost:3000',
       sourceUrl: 'https://cdn.test/alerting-101/content.json',
+      sideEffects: { level: 'readonly', reasons: [] },
     });
-    expect(result.runnable[0]!.guide.content).toBe('{"id":"alerting-101"}');
+    expect(result.runnable[0]!.guide.content).toBe(
+      '{"id":"alerting-101","title":"Alerting","blocks":[{"type":"markdown","content":"Read this"}]}'
+    );
   });
 
   it('maps a recommender failure to resolution_failed', async () => {
