@@ -152,6 +152,8 @@ export async function verifyPairingAcceptProof(
 }
 
 let pendingChallenge: PendingChallenge | null = null;
+// Captured at verify time so a launch pruned by its TTL while the prompt is still fresh can't strand the accept (#1170).
+let pendingChallengeSecret: string | null = null;
 let pendingChallengeExpiresAt = 0;
 let pendingChallengeTimer: ReturnType<typeof setTimeout> | null = null;
 let acceptedSession: AcceptedSession | null = null;
@@ -182,6 +184,7 @@ function clearPendingChallenge(): void {
     pendingChallengeTimer = null;
   }
   pendingChallenge = null;
+  pendingChallengeSecret = null;
   pendingChallengeExpiresAt = 0;
   notifyPendingChallenge(null);
 }
@@ -293,6 +296,7 @@ export async function setPendingChallenge(challenge: PendingChallenge): Promise<
     clearPendingChallenge();
   }
   pendingChallenge = verifiedChallenge;
+  pendingChallengeSecret = verifiedLaunch.pairingSecret;
   pendingChallengeExpiresAt = now + PENDING_CHALLENGE_TTL_MS;
   schedulePendingChallengeExpiration();
   notifyPendingChallenge(verifiedChallenge);
@@ -324,14 +328,13 @@ export function acceptSession(challenge: PendingChallenge, trustedGesture: boole
     }
     return;
   }
-  const launch = expectedLaunches.get(pendingChallenge.pairingId);
   acceptedSession = {
     sessionId: pendingChallenge.sessionId,
     publicKeyB64: pendingChallenge.publicKeyB64,
     liveTabId: liveId,
     pairingId: pendingChallenge.pairingId,
   };
-  acceptedLaunchSecret = launch?.pairingSecret ?? null;
+  acceptedLaunchSecret = pendingChallengeSecret;
   expectedLaunches.delete(pendingChallenge.pairingId);
   seenSignedMessages.clear();
   clearPendingChallenge();
@@ -425,6 +428,7 @@ export function resetPairingManagerForTests(): void {
     pendingChallengeTimer = null;
   }
   pendingChallenge = null;
+  pendingChallengeSecret = null;
   pendingChallengeExpiresAt = 0;
   acceptedSession = null;
   acceptedLaunchSecret = null;

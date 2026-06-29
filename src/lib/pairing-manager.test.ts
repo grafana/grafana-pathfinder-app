@@ -10,6 +10,7 @@
 
 import {
   acceptSession,
+  createPairingAcceptForSession,
   createPairingChallengeProof,
   getAcceptedSession,
   registerExpectedPairingLaunch,
@@ -17,6 +18,7 @@ import {
   setOwnLiveTabId,
   setPendingChallenge,
   signSignedMessage,
+  verifyPairingAcceptProof,
   verifySignedMessage,
   type ControllerPairingLaunch,
   type PendingChallenge,
@@ -121,5 +123,46 @@ describe('pairing-manager challenge acceptance (smoke)', () => {
 
     acceptSession(challenge, true);
     expect(getAcceptedSession()).not.toBeNull();
+  });
+});
+
+describe('pairing-manager launch TTL race (smoke)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(0);
+    resetPairingManagerForTests();
+    setOwnLiveTabId('live-1');
+  });
+
+  afterEach(() => {
+    resetPairingManagerForTests();
+    jest.useRealTimers();
+  });
+
+  it('still posts an authenticated accept when the launch is pruned while the prompt is fresh', async () => {
+    const FIVE_MIN = 5 * 60_000;
+    const challenge = await trustedChallenge(); // launch registered at t=0, expires at +5min
+
+    // Prompt armed just before the launch TTL → fresh for ~30s past it.
+    jest.setSystemTime(FIVE_MIN - 10_000);
+    await setPendingChallenge(challenge);
+
+    // A rebroadcast after the TTL prunes the expired launch; the prompt is still fresh.
+    jest.setSystemTime(FIVE_MIN + 1_000);
+    await setPendingChallenge(challenge);
+
+    acceptSession(challenge, true);
+    expect(getAcceptedSession()).not.toBeNull();
+
+    // The secret captured at verify time means an authenticated accept is still produced.
+    const accept = await createPairingAcceptForSession();
+    expect(accept).not.toBeNull();
+    expect(
+      await verifyPairingAcceptProof(
+        'secret-1',
+        { pairingId: 'pairing-1', sessionId: 'session-1', liveTabId: 'live-1' },
+        accept!.acceptProof
+      )
+    ).toBe(true);
   });
 });
