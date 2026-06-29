@@ -169,12 +169,7 @@ function challengeKey(challenge: PendingChallenge): string {
 }
 
 function sameChallenge(a: PendingChallenge, b: PendingChallenge): boolean {
-  return (
-    a.sessionId === b.sessionId &&
-    a.publicKeyB64 === b.publicKeyB64 &&
-    a.senderTabId === b.senderTabId &&
-    a.pairingId === b.pairingId
-  );
+  return a.sessionId === b.sessionId && a.publicKeyB64 === b.publicKeyB64 && a.pairingId === b.pairingId;
 }
 
 function notifyPendingChallenge(challenge: PendingChallenge | null): void {

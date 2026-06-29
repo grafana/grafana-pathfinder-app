@@ -167,8 +167,15 @@ window plus the replay ledger kill any captured in-flight message.
 **Out of scope: same-origin code execution.** XSS or a malicious script running
 _inside_ the controller or live tab is out of scope — it already holds the
 session (and, in the controller, the signing key), so the cross-tab boundary is
-not the relevant control. Non-extractable keys and per-kind validation are
-hardening, not a defense against an already-compromised origin.
+not the relevant control. This includes capturing the launch secret: it reaches
+the controller through a `window.open` URL fragment, so a same-page script
+(panel/datasource XSS) or an extension content script with page access can read
+it and forge a valid challenge or accept proof. The authenticated pairing path
+therefore defends specifically against a **separate same-origin tab that only
+observes the channel** — it can post forged messages but cannot read the secret,
+so it can neither pair as the controller nor claim the live tab's pairing slot.
+Non-extractable keys and per-kind validation are hardening, not a defense
+against an already-compromised origin.
 
 ## Tab pairing
 
