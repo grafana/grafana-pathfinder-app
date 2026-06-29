@@ -4,6 +4,7 @@ import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG, CLEAR_COMMAND } from '../../constants/interactive-config';
 import { resetValueTracker, isElementVisible } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
+import { trySetMonacoModelValue } from './code-block-handler';
 
 export class FormFillHandler {
   constructor(
@@ -410,6 +411,9 @@ export class FormFillHandler {
   }
 
   private async setMonacoEditorValue(element: HTMLElement, value: string): Promise<void> {
+    if (trySetMonacoModelValue(element, value)) {
+      return;
+    }
     element.focus();
     await this.clearMonacoEditor(element);
     this.setNativeTextareaValue(element, value);

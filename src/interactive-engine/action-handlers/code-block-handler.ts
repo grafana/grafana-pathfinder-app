@@ -58,6 +58,36 @@ export async function clearAndInsertCode(refTarget: string, code: string): Promi
   }
 }
 
+// Writes `value` via the Monaco model API (not the hidden textarea) for the
+// editor owning `element`, so it lands even on a backgrounded tab — e.g. the
+// two-tab controller driving a non-focused live tab. Returns false when the
+// API/model isn't found so callers fall back to synthetic textarea events.
+export function trySetMonacoModelValue(element: HTMLElement, value: string): boolean {
+  if (!window.monaco?.editor) {
+    return false;
+  }
+  const monacoEl = element.closest('[data-uri]') ?? element.querySelector('[data-uri]');
+  const dataUri = monacoEl?.getAttribute('data-uri');
+  if (!dataUri) {
+    return false;
+  }
+  for (const editor of window.monaco.editor.getEditors()) {
+    const model = editor.getModel();
+    if (model && model.uri.toString() === dataUri) {
+      editor.setValue(value);
+      editor.focus();
+      return true;
+    }
+  }
+  for (const model of window.monaco.editor.getModels()) {
+    if (model.uri.toString() === dataUri) {
+      model.setValue(value);
+      return true;
+    }
+  }
+  return false;
+}
+
 async function tryMonacoApi(container: HTMLElement, code: string): Promise<CodeBlockInsertResult> {
   if (!window.monaco?.editor) {
     return { success: false, error: 'Monaco API not available' };
