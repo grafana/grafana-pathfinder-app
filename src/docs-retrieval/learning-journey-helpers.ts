@@ -11,6 +11,13 @@ import {
   ConclusionImage,
 } from '../types/content.types';
 import { journeyCompletionStorage, milestoneCompletionStorage, learningProgressStorage } from '../lib/user-storage';
+// Pre-existing lateral edge documented in ALLOWED_LATERAL_VIOLATIONS
+// (architecture.test.ts). This file already calls into `learning-paths`
+// via several dynamic imports — moving the badge coordinator behind a
+// stable named import keeps that surface explicit instead of hidden in
+// `await import(...)` calls scattered through the module.
+// eslint-disable-next-line no-restricted-imports
+import { markGuideCompleted } from '../learning-paths';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
 const GRAFANA_BASE = new URL('https://grafana.com');
@@ -352,7 +359,7 @@ export function setJourneyCompletionPercentage(journeyBaseUrl: string, percentag
   if (percentage >= 100 && journeyBaseUrl.startsWith('bundled:')) {
     const guideId = journeyBaseUrl.replace('bundled:', '');
     // Fire and forget - learning paths storage handles errors internally
-    learningProgressStorage.markGuideCompleted(guideId);
+    markGuideCompleted(guideId);
   }
 }
 
@@ -362,7 +369,7 @@ export async function setJourneyCompletionPercentageAsync(journeyBaseUrl: string
   // Update learning paths progress when a bundled guide reaches 100%
   if (percentage >= 100 && journeyBaseUrl.startsWith('bundled:')) {
     const guideId = journeyBaseUrl.replace('bundled:', '');
-    await learningProgressStorage.markGuideCompleted(guideId);
+    await markGuideCompleted(guideId);
   }
 }
 
@@ -407,7 +414,7 @@ export function getMilestoneSlug(milestoneUrl: string): string {
 /**
  * Marks a learning journey milestone as completed.
  * - Persists the milestone slug in milestoneCompletionStorage
- * - Calls learningProgressStorage.markGuideCompleted to bridge to the learning paths badge/progress system
+ * - Calls markGuideCompleted (learning-paths/badge-coordinator) to bridge to the badge/progress system
  * - When totalMilestones is provided and all milestones are done, awards the path badge
  *   (URL-based paths have guides: [] in static data so the normal badge flow cannot detect completion)
  */
@@ -420,7 +427,7 @@ export async function markMilestoneDone(
     return;
   }
   await milestoneCompletionStorage.markCompleted(journeyBaseUrl, milestoneSlug);
-  await learningProgressStorage.markGuideCompleted(milestoneSlug);
+  await markGuideCompleted(milestoneSlug);
 
   // Award the path badge when all milestones in the journey are complete
   if (totalMilestones && totalMilestones > 0) {
