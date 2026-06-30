@@ -21,6 +21,7 @@ import { planGuideExecution } from './guide-chains';
 import type { LoadedGuide } from '../utils/file-loader';
 import { resolveTarget, type CloudAuthTargets } from './e2e-targets';
 import type { CurrentTier } from './manifest-preflight';
+import { classifyGuideSideEffectsFromString, type SideEffectClassification } from './side-effects';
 
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -38,6 +39,7 @@ export const REMOTE_SKIP_REASONS = [
   'validation_failed',
   'unsupported_type',
   'prerequisite_failed',
+  'skipped_unsafe_shared_stack',
 ] as const;
 
 /** Why a remote package was skipped instead of run. */
@@ -54,6 +56,8 @@ export interface ResolvedRemoteGuide {
   targetUrl: string;
   /** The content.json URL the guide was fetched from. */
   sourceUrl: string;
+  /** Conservative side-effect classification for the fetched content. */
+  sideEffects: SideEffectClassification;
 }
 
 /** A remote package that will not be run, with a structured reason. */
@@ -63,6 +67,7 @@ export interface SkippedPackage {
   message: string;
   sourceUrl?: string;
   tier?: string;
+  sideEffects?: SideEffectClassification;
 }
 
 /** Result of resolving one or more remote packages. */
@@ -179,6 +184,7 @@ async function buildGuideOrSkip(
       },
     };
   }
+  const sideEffects = classifyGuideSideEffectsFromString(fetched.text);
 
   return {
     runnable: {
@@ -188,6 +194,7 @@ async function buildGuideOrSkip(
       instance: target.instance,
       targetUrl: target.targetUrl!,
       sourceUrl: contentUrl,
+      sideEffects,
     },
   };
 }
@@ -246,6 +253,7 @@ function prerequisiteFailedSkip(target: ResolvedRemoteGuide, detail: string): Sk
     message: `Prerequisite(s) did not resolve: ${detail}`,
     sourceUrl: target.sourceUrl,
     tier: target.tier,
+    sideEffects: target.sideEffects,
   };
 }
 
@@ -256,6 +264,7 @@ function resolutionFailedSkip(target: ResolvedRemoteGuide, message: string): Ski
     message,
     sourceUrl: target.sourceUrl,
     tier: target.tier,
+    sideEffects: target.sideEffects,
   };
 }
 

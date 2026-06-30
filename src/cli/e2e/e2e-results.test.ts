@@ -34,6 +34,8 @@ import type { ResolvedRemoteGuide, SkippedPackage } from './e2e-package';
 import type { TestResultsData } from './e2e-reporter';
 import { ExitCode } from './exit-codes';
 
+const READONLY_SIDE_EFFECTS = { level: 'readonly' as const, reasons: [] };
+
 describe('resolveRunMode', () => {
   beforeEach(() => {
     (existsSync as jest.Mock).mockReset();
@@ -118,6 +120,7 @@ describe('buildPackageMetaMap', () => {
         instance: 'play.grafana.org',
         targetUrl: 'http://localhost:3000',
         sourceUrl: 'https://cdn.test/a/content.json',
+        sideEffects: READONLY_SIDE_EFFECTS,
       },
     ];
 
@@ -127,6 +130,7 @@ describe('buildPackageMetaMap', () => {
       instance: 'play.grafana.org',
       targetUrl: 'http://localhost:3000',
       sourceUrl: 'https://cdn.test/a/content.json',
+      sideEffects: READONLY_SIDE_EFFECTS,
     });
   });
 });
@@ -151,6 +155,7 @@ describe('applyPackageMeta', () => {
       // targetUrl is intentionally NOT propagated; the runner already set it.
       targetUrl: 'http://should-not-overwrite:3000',
       sourceUrl: 'https://cdn.test/a/content.json',
+      sideEffects: READONLY_SIDE_EFFECTS,
     });
 
     expect(data.guide).toMatchObject({
@@ -161,6 +166,7 @@ describe('applyPackageMeta', () => {
       tier: 'local',
       instance: 'play.grafana.org',
       sourceUrl: 'https://cdn.test/a/content.json',
+      sideEffects: READONLY_SIDE_EFFECTS,
     });
   });
 
@@ -187,6 +193,7 @@ describe('preRunSkipsFromResults', () => {
         autoIncluded: false,
         abortMessage: 'requires cloud',
         tier: 'cloud',
+        sideEffects: READONLY_SIDE_EFFECTS,
       },
       {
         guide: 'https://cdn.test/c/content.json',
@@ -220,6 +227,7 @@ describe('preRunSkipsFromResults', () => {
       failed: false,
       tier: 'cloud',
       sourceUrl: 'https://cdn.test/b/content.json',
+      sideEffects: READONLY_SIDE_EFFECTS,
     });
 
     // validation_failed is the one pre-run skip that counts as a failure, and an
@@ -267,6 +275,13 @@ describe('status label / icon tables', () => {
 
     expect(label).toBe('❌ Validation failed');
     expect(GUIDE_STATUS_ICONS.validation_failed).toBe('❌');
+  });
+
+  it('defines the unsafe shared-stack skip status', () => {
+    const label = GUIDE_STATUS_LABELS.find(([status]) => status === 'skipped_unsafe_shared_stack')?.[1];
+
+    expect(label).toBe('⊘ Skipped (unsafe shared stack)');
+    expect(GUIDE_STATUS_ICONS.skipped_unsafe_shared_stack).toBe('⊘');
   });
 });
 

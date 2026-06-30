@@ -20,6 +20,7 @@ import {
 import type { PreRunSkip, TestResultsData } from './e2e-reporter';
 import { ExitCode } from './exit-codes';
 import type { AbortReason } from './playwright-runner';
+import type { SideEffectClassification } from './side-effects';
 
 /** How guide inputs are resolved for a run. */
 export type RunMode = 'local' | 'remote-package' | 'remote-repository';
@@ -31,6 +32,7 @@ export interface PackageMeta {
   instance?: string;
   targetUrl?: string;
   sourceUrl?: string;
+  sideEffects?: SideEffectClassification;
 }
 
 /**
@@ -54,6 +56,7 @@ export interface GuideRunResult {
   failedPrerequisite?: string;
   /** Declared tier for pre-run skips (for reporting). */
   tier?: string;
+  sideEffects?: SideEffectClassification;
 }
 
 /** Statuses that count as a test failure (non-zero exit). */
@@ -73,6 +76,7 @@ export const GUIDE_STATUS_LABELS: ReadonlyArray<readonly [GuideStatus, string]> 
   ['skipped_tier_mismatch', '⊘ Skipped (tier mismatch)'],
   ['skipped_no_auth', '⊘ Skipped (no cloud auth)'],
   ['skipped_invalid_instance', '⊘ Skipped (invalid instance)'],
+  ['skipped_unsafe_shared_stack', '⊘ Skipped (unsafe shared stack)'],
   ['unsupported_type', '⊘ Skipped (unsupported type)'],
   ['fetch_failed', '⊘ Skipped (fetch failed)'],
   ['resolution_failed', '⊘ Skipped (resolution failed)'],
@@ -89,6 +93,7 @@ export const GUIDE_STATUS_ICONS: Record<GuideStatus, string> = {
   skipped_tier_mismatch: '⊘',
   skipped_no_auth: '⊘',
   skipped_invalid_instance: '⊘',
+  skipped_unsafe_shared_stack: '⊘',
   unsupported_type: '⊘',
   fetch_failed: '⊘',
   resolution_failed: '⊘',
@@ -132,6 +137,7 @@ export function skipToResult(skip: SkippedPackage): GuideRunResult {
     autoIncluded: false,
     abortMessage: skip.message,
     tier: skip.tier,
+    sideEffects: skip.sideEffects,
   };
 }
 
@@ -140,7 +146,14 @@ export function buildPackageMetaMap(runnable: ResolvedRemoteGuide[]): Map<string
   return new Map(
     runnable.map((g) => [
       g.id,
-      { packageId: g.id, tier: g.tier, instance: g.instance, targetUrl: g.targetUrl, sourceUrl: g.sourceUrl },
+      {
+        packageId: g.id,
+        tier: g.tier,
+        instance: g.instance,
+        targetUrl: g.targetUrl,
+        sourceUrl: g.sourceUrl,
+        sideEffects: g.sideEffects,
+      },
     ])
   );
 }
@@ -159,6 +172,7 @@ export function applyPackageMeta(data: TestResultsData | undefined, meta: Packag
     tier: meta.tier,
     instance: meta.instance,
     sourceUrl: meta.sourceUrl,
+    sideEffects: meta.sideEffects,
   };
 }
 
@@ -175,6 +189,7 @@ export function preRunSkipsFromResults(results: GuideRunResult[]): PreRunSkip[] 
       failed: FAILURE_STATUSES.has(r.status),
       tier: r.tier,
       sourceUrl: r.guide,
+      sideEffects: r.sideEffects,
     }));
 }
 

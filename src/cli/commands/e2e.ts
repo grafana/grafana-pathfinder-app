@@ -49,6 +49,7 @@ import type { ManifestJson, RepositoryEntry, RepositoryJson } from '../../types/
 import { randomUUID } from 'crypto';
 import { createCloudAuthPolicy, type CloudAuthPolicy } from '../e2e/cloud-auth';
 import { cloudTargetsInChain, provisionCloudTargetsForChain, sweepCloudTargets } from '../e2e/cloud-provisioning';
+import { unsafeCloudGuidesInChain, unsafeSharedStackMessage, unsafeSharedStackSkipResults } from '../e2e/cloud-routing';
 
 /**
  * CLI options for the e2e command
@@ -393,18 +394,33 @@ async function maybeCleanStart(cleanEnv: CleanEnvironment, options: E2ECommandOp
   }
 }
 
+function idsSkippedForUnsafeSharedStack(plan: ExecutionPlan, packageMetaById: Map<string, PackageMeta>): Set<string> {
+  const ids = new Set<string>();
+  for (const chain of plan.chains) {
+    if (unsafeCloudGuidesInChain(chain, packageMetaById).length > 0) {
+      for (const planned of chain) {
+        ids.add(planned.id);
+      }
+    }
+  }
+  return ids;
+}
+
 /**
  * Distinct target URLs that will actually be exercised this run. Remote guides
  * carry their own resolved `targetUrl` (cloud guides differ per instance);
  * local runs fall back to the global Grafana URL. Used so reachability checks
  * hit the real targets instead of always probing the global URL.
  */
-function targetUrlsToCheck(inputs: RunInputs, globalUrl: string): string[] {
+function targetUrlsToCheck(inputs: RunInputs, globalUrl: string, idsToSkip: Set<string>): string[] {
   const urls = new Set<string>();
-  for (const meta of inputs.packageMetaById.values()) {
+  for (const [id, meta] of inputs.packageMetaById) {
+    if (idsToSkip.has(id)) {
+      continue;
+    }
     urls.add(meta.targetUrl ?? globalUrl);
   }
-  if (urls.size === 0) {
+  if (inputs.packageMetaById.size === 0) {
     urls.add(globalUrl);
   }
   return [...urls];
@@ -470,7 +486,11 @@ async function runPreflightChecks(
     }
   }
 
-  console.log(`   ✓ Grafana is reachable (${targetUrls.length} target(s))`);
+  if (targetUrls.length > 0) {
+    console.log(`   ✓ Grafana is reachable (${targetUrls.length} target(s))`);
+  } else if (options.verbose) {
+    console.log('   ⊘ No runnable targets require Grafana reachability checks');
+  }
 
   // 2. Manifest pre-flight — version and plugin checks (local package dir only).
   //    A local package dir is always a single local target (options.grafanaUrl).
@@ -533,7 +553,6 @@ async function runChains(
   let allPassed = true;
   let hasAuthExpiry = false;
   const results: GuideRunResult[] = [];
-
   for (const [chainIndex, chain] of plan.chains.entries()) {
     if (options.clean && chainIndex > 0) {
       console.log(`\n🧹 Resetting docker compose between chains...`);
@@ -548,6 +567,13 @@ async function runChains(
       }
     }
 
+    const unsafeCloudGuides = unsafeCloudGuidesInChain(chain, packageMetaById);
+    if (unsafeCloudGuides.length > 0) {
+      const message = unsafeSharedStackMessage(unsafeCloudGuides.map((planned) => planned.id));
+      console.log(`\n⊘ Skipping cloud chain: ${message}`);
+      results.push(...unsafeSharedStackSkipResults(chain, packageMetaById, message));
+      continue;
+    }
     const provisionedTargets = await provisionCloudTargetsForChain({
       targetUrls: cloudTargetsInChain(chain, packageMetaById, cloudAuth),
       cloudAuth,
@@ -835,8 +861,12 @@ export const e2eCommand = new Command('e2e')
         cloudAuth: inputs.cloudAuth,
         verbose: options.verbose,
       });
-
-      await runPreflightChecks(options, targetUrlsToCheck(inputs, options.grafanaUrl), inputs.localPackageDir);
+      const idsToSkip = idsSkippedForUnsafeSharedStack(plan, inputs.packageMetaById);
+      await runPreflightChecks(
+        options,
+        targetUrlsToCheck(inputs, options.grafanaUrl, idsToSkip),
+        inputs.localPackageDir
+      );
 
       const outcome = await runChains(plan, options, cleanEnv, inputs.packageMetaById, inputs.cloudAuth);
 
