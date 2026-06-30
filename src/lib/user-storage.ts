@@ -41,7 +41,6 @@ import { useCallback, useRef, useEffect } from 'react';
 import { z } from 'zod';
 
 import type { LearningProgress, EarnedBadgeRecord } from '../types/learning-paths.types';
-import { reportAppInteraction, UserInteraction } from './analytics';
 import { StorageEvents } from './event-names';
 import { createBoundedRecordStorage } from './storage/bounded-record-storage';
 import { StorageKeys } from './storage-keys';
@@ -1496,84 +1495,6 @@ export const learningProgressStorage = {
       await storage.setItem(StorageKeys.LEARNING_PROGRESS, updated);
     } catch (error) {
       console.warn('Failed to update learning progress:', error);
-    }
-  },
-
-  /**
-   * Marks a guide as completed and checks for badge awards
-   * Does not add duplicates
-   * Dispatches events to notify listeners
-   * REACT: handle errors explicitly (R10)
-   */
-  async markGuideCompleted(guideId: string): Promise<void> {
-    try {
-      // Import badge checking utilities dynamically to avoid circular deps
-      const { getBadgesToAward, getBadgeById } = await import('../learning-paths');
-      const { getPathsData } = await import('../learning-paths');
-      const paths = getPathsData().paths;
-
-      const progress = await learningProgressStorage.get();
-      if (!progress.completedGuides.includes(guideId)) {
-        progress.completedGuides.push(guideId);
-
-        // Calculate and update streak before changing lastActivityDate
-        const { calculateUpdatedStreak } = await import('../learning-paths');
-        const today = new Date().toISOString().split('T')[0]!;
-        progress.streakDays = calculateUpdatedStreak(progress.streakDays, progress.lastActivityDate);
-        progress.lastActivityDate = today;
-
-        // Track badges awarded in THIS call only
-        const newlyAwardedBadges: string[] = [];
-
-        // Check for ALL badges that should be awarded (including path completion)
-        const badgesToAward = getBadgesToAward(progress, paths);
-
-        for (const badgeId of badgesToAward) {
-          if (!progress.earnedBadges.some((b) => b.id === badgeId)) {
-            progress.earnedBadges.push({ id: badgeId, earnedAt: Date.now() });
-            if (!progress.pendingCelebrations.includes(badgeId)) {
-              progress.pendingCelebrations.push(badgeId);
-            }
-            newlyAwardedBadges.push(badgeId);
-
-            // Track badge unlock analytics
-            const badge = getBadgeById(badgeId);
-            reportAppInteraction(UserInteraction.BadgeUnlocked, {
-              badge_id: badgeId,
-              badge_title: badge?.title || badgeId,
-              trigger_type: badge?.trigger?.type || 'unknown',
-            });
-          }
-        }
-
-        await learningProgressStorage.update(progress);
-
-        // Notify listeners that progress has changed
-        // Only include badges awarded in THIS call, not all pending celebrations
-        window.dispatchEvent(
-          new CustomEvent(StorageEvents.LearningProgressUpdated, {
-            detail: {
-              type: 'guide-completed',
-              guideId,
-              newBadges: newlyAwardedBadges,
-              progress: { ...progress }, // Clone to prevent mutation issues
-            },
-          })
-        );
-      }
-    } catch (error) {
-      console.error('Failed to mark guide as completed:', error);
-      // Still dispatch event so UI doesn't hang waiting for completion
-      window.dispatchEvent(
-        new CustomEvent(StorageEvents.LearningProgressUpdated, {
-          detail: {
-            type: 'guide-completed',
-            guideId,
-            newBadges: [],
-            error: true,
-          },
-        })
-      );
     }
   },
 

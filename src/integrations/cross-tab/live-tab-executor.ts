@@ -17,6 +17,7 @@ import type { GuidedAction } from '../../types/interactive-actions.types';
 import { CrossTabTransport, createSenderId } from '../../lib/cross-tab-transport';
 import { checkRequirements, dispatchFix, type RequirementsCheckResult } from '../../requirements-manager';
 import {
+  SIGNED_MESSAGE_KINDS,
   validateCrossTabMessage,
   type CheckRequirementsMessage,
   type CrossTabInternalAction,
@@ -26,6 +27,7 @@ import {
   type RemoteRequirementResult,
   type StepCommandMessage,
 } from '../../types/cross-tab.types';
+import * as pairingManager from '../../lib/pairing-manager';
 import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
 import pluginJson from '../../plugin.json';
@@ -45,6 +47,14 @@ interface ExecutorTransport {
   stop(): void;
   post(payload: CrossTabPayload): void;
   onMessage(listener: (message: CrossTabMessage) => void): () => void;
+  getSenderId(): string;
+}
+
+interface AuthGate {
+  verifySignedMessage(message: pairingManager.SignedMessageFields, ownTabId: string): Promise<boolean>;
+  setPendingChallenge(challenge: pairingManager.PendingChallenge): Promise<void> | void;
+  setOwnLiveTabId(id: string): void;
+  onSessionAccepted(listener: (liveTabId: string) => void): () => void;
 }
 
 interface ExecutorPacing {
@@ -53,7 +63,8 @@ interface ExecutorPacing {
   interStepMs: number;
 }
 
-const DEFAULT_PACING: ExecutorPacing = {
+/** @internal Exported for tests so they can pass it with a third authGate arg. */
+export const DEFAULT_PACING: ExecutorPacing = {
   showToDoMs: INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations * INTERACTIVE_CONFIG.delays.multiStep.baseInterval,
   settleMs: INTERACTIVE_CONFIG.delays.multiStep.settleAfterActionMs,
   interStepMs: INTERACTIVE_CONFIG.delays.multiStep.defaultStepDelay,
@@ -84,7 +95,8 @@ export function resetLiveTabExecutorForTests(): void {
 
 export function installLiveTabExecutor(
   transport: ExecutorTransport = new CrossTabTransport(createSenderId()),
-  pacing: ExecutorPacing = DEFAULT_PACING
+  pacing: ExecutorPacing = DEFAULT_PACING,
+  authGate: AuthGate = pairingManager
 ): () => void {
   if (installed || typeof window === 'undefined') {
     return () => undefined;
@@ -110,6 +122,19 @@ export function installLiveTabExecutor(
   // throwing constructor leaves installed=false and a later init can retry
   // instead of permanently bricking the executor for the session (NEW-1064-1).
   installed = true;
+
+  const ownLiveTabId = transport.getSenderId();
+  authGate.setOwnLiveTabId(ownLiveTabId);
+
+  // When the user accepts pairing, post pairing-accept so the controller can
+  // bind its liveTabId and start signing commands.
+  const unsubscribeAccepted = authGate.onSessionAccepted((liveTabId) => {
+    const accepted = pairingManager.getAcceptedSession();
+    if (accepted) {
+      transport.post({ kind: 'pairing-accept', sessionId: accepted.sessionId });
+    }
+    void liveTabId;
+  });
 
   // Teardown flag: a replay in flight (or queued) must not touch the DOM after
   // uninstall (NEW-1064-2).
@@ -305,35 +330,55 @@ export function installLiveTabExecutor(
   let handedOffSidebar = false;
 
   const unsubscribe = transport.onMessage((message) => {
-    // Defense in depth: re-validate at the DOM sink before dispatch, so the
-    // executor never trusts a message that bypassed the transport gate (T1).
-    // check-requirements and fix-requirement are the highest-risk kinds here —
-    // they drive DOM probes and navigation/DOM mutation — so they MUST dispatch
-    // off `validated`, never the raw message.
+    // Defense in depth: re-validate at the DOM sink before dispatch.
     const validated = validateCrossTabMessage(message);
     if (!validated) {
       return;
     }
-    if (validated.kind === 'step-command') {
-      queue = queue.then(() => runStepCommand(validated));
-    } else if (validated.kind === 'check-requirements') {
-      void evaluateRequirements(validated);
-    } else if (validated.kind === 'fix-requirement') {
-      void runRemoteFix(validated);
-    } else if (validated.kind === 'heartbeat' && validated.role === 'controller') {
+
+    // Pairing-challenge: controller announces its public key; show the banner.
+    if (validated.kind === 'pairing-challenge') {
+      void authGate.setPendingChallenge({
+        sessionId: validated.sessionId,
+        publicKeyB64: validated.publicKeyB64,
+        senderTabId: validated.senderId,
+        pairingId: validated.pairingId,
+        pairingProof: validated.pairingProof,
+      });
+      return;
+    }
+
+    if (validated.kind === 'heartbeat' && validated.role === 'controller') {
       transport.post({ kind: 'heartbeat', role: 'live' });
-    } else if (validated.kind === 'sidebar-handoff') {
-      if (validated.action === 'close') {
-        if (sidebarState.getIsSidebarMounted()) {
-          getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
-          handedOffSidebar = true;
+      return;
+    }
+
+    if (SIGNED_MESSAGE_KINDS.has(validated.kind)) {
+      void (async () => {
+        const authorized = await authGate.verifySignedMessage(validated, ownLiveTabId);
+        if (!authorized) {
+          return;
         }
-      } else if (validated.action === 'reopen') {
-        if (handedOffSidebar && !isExtensionSidebarOwnedByOther(pluginJson.id)) {
-          sidebarState.openSidebar('Interactive learning');
+        if (validated.kind === 'step-command') {
+          queue = queue.then(() => runStepCommand(validated));
+        } else if (validated.kind === 'check-requirements') {
+          void evaluateRequirements(validated);
+        } else if (validated.kind === 'fix-requirement') {
+          void runRemoteFix(validated);
+        } else if (validated.kind === 'sidebar-handoff') {
+          if (validated.action === 'close') {
+            if (sidebarState.getIsSidebarMounted()) {
+              getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
+              handedOffSidebar = true;
+            }
+          } else if (validated.action === 'reopen') {
+            if (handedOffSidebar && !isExtensionSidebarOwnedByOther(pluginJson.id)) {
+              sidebarState.openSidebar('Interactive learning');
+            }
+            handedOffSidebar = false;
+          }
         }
-        handedOffSidebar = false;
-      }
+      })();
     }
   });
   transport.start();
@@ -341,6 +386,7 @@ export function installLiveTabExecutor(
   return () => {
     cancelled = true;
     unsubscribe();
+    unsubscribeAccepted();
     transport.stop();
     navigationManager.clearAllHighlights();
     installed = false;

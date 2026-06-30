@@ -40,3 +40,6 @@ export {
 // Path data (runtime platform selection)
 export { getPathsData } from './paths-data';
 export type { PathsDataSet } from './paths-data';
+
+// Guide-completion coordinator (badge eval + analytics + event dispatch)
+export { markGuideCompleted } from './badge-coordinator';

@@ -55,6 +55,10 @@ export class CrossTabTransport {
     this.listeners.clear();
   }
 
+  getSenderId(): string {
+    return this.senderId;
+  }
+
   isActive(): boolean {
     return this.channel !== null;
   }

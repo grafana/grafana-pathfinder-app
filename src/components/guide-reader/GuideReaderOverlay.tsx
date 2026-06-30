@@ -15,11 +15,13 @@ import { ControllerChannelProvider, useControllerConnected } from '../../global-
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { testIds } from '../../constants/testIds';
 import type { RawContent } from '../../types/content.types';
+import type { ControllerPairingLaunch } from '../../lib/pairing-manager';
 import { getGuideReaderStyles } from './guide-reader.styles';
 
 interface GuideReaderOverlayProps {
   doc: string;
   mode?: InteractiveMode;
+  controllerPairing?: ControllerPairingLaunch | null;
 }
 
 // Mirrors FloatingPanelManager: this tree is mounted in a standalone root
@@ -44,7 +46,7 @@ function useGrafanaTheme() {
   return theme;
 }
 
-function ControllerStatusBadge() {
+function ControllerStatusBadge({ pairingCode }: { pairingCode?: string }) {
   const styles = useStyles2(getGuideReaderStyles);
   const connected = useControllerConnected();
   return (
@@ -55,7 +57,9 @@ function ControllerStatusBadge() {
           connected ? styles.controllerStatusConnected : styles.controllerStatusWaiting
         )}
       />
-      {connected ? 'Connected to your Grafana tab' : 'Waiting for your Grafana tab…'}
+      {connected
+        ? 'Connected to your Grafana tab'
+        : `Waiting for your Grafana tab…${pairingCode ? ` Code: ${pairingCode}` : ''}`}
     </div>
   );
 }
@@ -66,18 +70,30 @@ function ControllerStatusBadge() {
  * dedicated viewer. `mode` drives InteractiveModeContext: 'controller' keeps
  * step actions visible so this tab can drive the originating Grafana tab.
  */
-export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({ doc, mode = 'interactive' }) => {
+export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({
+  doc,
+  mode = 'interactive',
+  controllerPairing,
+}) => {
   const theme = useGrafanaTheme();
   return (
     <ThemeContext.Provider value={theme}>
       <PathfinderFeatureProvider>
-        <GuideReaderInner doc={doc} mode={mode} />
+        <GuideReaderInner doc={doc} mode={mode} controllerPairing={controllerPairing ?? null} />
       </PathfinderFeatureProvider>
     </ThemeContext.Provider>
   );
 };
 
-function GuideReaderInner({ doc, mode }: { doc: string; mode: InteractiveMode }) {
+function GuideReaderInner({
+  doc,
+  mode,
+  controllerPairing,
+}: {
+  doc: string;
+  mode: InteractiveMode;
+  controllerPairing: ControllerPairingLaunch | null;
+}) {
   const styles = useStyles2(getGuideReaderStyles);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
@@ -185,8 +201,8 @@ function GuideReaderInner({ doc, mode }: { doc: string; mode: InteractiveMode })
         {body && (
           <InteractiveModeContext.Provider value={mode}>
             {mode === 'controller' ? (
-              <ControllerChannelProvider>
-                <ControllerStatusBadge />
+              <ControllerChannelProvider pairing={controllerPairing}>
+                <ControllerStatusBadge pairingCode={controllerPairing?.pairingCode} />
                 {body}
               </ControllerChannelProvider>
             ) : (

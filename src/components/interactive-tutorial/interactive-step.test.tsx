@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { InteractiveStep } from './interactive-step';
 import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
 import { ControllerChannelProvider } from '../../global-state/controller-channel';
+import { TEST_PAIRING } from '../../test-utils/fake-cross-tab-transport';
 
 describe('InteractiveStep: showMeText label override', () => {
   it('renders custom Show me label when showMeText is provided', () => {
@@ -191,19 +192,48 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     return transport.post.mock.calls.map((c) => c[0]).filter((p: any) => p.kind === 'check-requirements').length;
   }
 
-  // The controller posts a `check-requirements` request with a generated
-  // requestId; reply to the latest one with a matching `requirement-result` so
-  // the awaiting step resolves instead of waiting out the round-trip timeout.
+  async function pairWithLive(transport: ReturnType<typeof makeTransport>, liveId = 'live') {
+    await waitFor(() =>
+      expect(transport.post).toHaveBeenCalledWith(expect.objectContaining({ kind: 'pairing-challenge' }))
+    );
+    const challenges = transport.post.mock.calls.map((c) => c[0]).filter((p: any) => p.kind === 'pairing-challenge');
+    const challenge = challenges[challenges.length - 1];
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: liveId,
+        timestamp: 0,
+        kind: 'pairing-accept',
+        sessionId: challenge.sessionId,
+      })
+    );
+  }
+
+  async function renderPairedController(transport: ReturnType<typeof makeTransport>, children: React.ReactNode) {
+    const view = render(
+      <InteractiveModeContext.Provider value="controller">
+        <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+          {null}
+        </ControllerChannelProvider>
+      </InteractiveModeContext.Provider>
+    );
+    await pairWithLive(transport);
+    view.rerender(
+      <InteractiveModeContext.Provider value="controller">
+        <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+          {children}
+        </ControllerChannelProvider>
+      </InteractiveModeContext.Provider>
+    );
+    return view;
+  }
+
   function replyToRequirementCheck(transport: ReturnType<typeof makeTransport>, pass: boolean, extra = {}) {
     const requests = transport.post.mock.calls.map((c) => c[0]).filter((p: any) => p.kind === 'check-requirements');
     const request = requests[requests.length - 1];
     if (!request) {
       return false;
     }
-    // Pairing happens on a heartbeat (T1 PART C); a reply is only honored from
-    // the paired tab. Emit one from the same sender so the result is accepted
-    // (binds once, harmless to repeat).
-    transport.emit({ source: 'pathfinder', senderId: 'live', timestamp: 0, kind: 'heartbeat', role: 'live' });
     transport.emit({
       source: 'pathfinder',
       senderId: 'live',
@@ -222,14 +252,11 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
 
   it('emits a "show" step-command when Show me is clicked', async () => {
     const transport = makeTransport();
-    render(
-      <InteractiveModeContext.Provider value="controller">
-        <ControllerChannelProvider transport={transport}>
-          <InteractiveStep targetAction="highlight" refTarget="#panel-add" stepId="ctrl-show" showMe doIt={false}>
-            Step
-          </InteractiveStep>
-        </ControllerChannelProvider>
-      </InteractiveModeContext.Provider>
+    await renderPairedController(
+      transport,
+      <InteractiveStep targetAction="highlight" refTarget="#panel-add" stepId="ctrl-show" showMe doIt={false}>
+        Step
+      </InteractiveStep>
     );
 
     const button = await screen.findByRole('button', { name: /show me/i });
@@ -250,14 +277,11 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
 
   it('emits a "do" step-command when Do it is clicked', async () => {
     const transport = makeTransport();
-    render(
-      <InteractiveModeContext.Provider value="controller">
-        <ControllerChannelProvider transport={transport}>
-          <InteractiveStep targetAction="button" refTarget="button[type='submit']" stepId="ctrl-do">
-            Step
-          </InteractiveStep>
-        </ControllerChannelProvider>
-      </InteractiveModeContext.Provider>
+    await renderPairedController(
+      transport,
+      <InteractiveStep targetAction="button" refTarget="button[type='submit']" stepId="ctrl-do">
+        Step
+      </InteractiveStep>
     );
 
     const button = await screen.findByRole('button', { name: /do it/i });
@@ -273,19 +297,16 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
 
   it('round-trips tab-local requirements to the live tab instead of stripping them', async () => {
     const transport = makeTransport();
-    render(
-      <InteractiveModeContext.Provider value="controller">
-        <ControllerChannelProvider transport={transport}>
-          <InteractiveStep
-            targetAction="button"
-            refTarget="#not-on-this-tab"
-            requirements="exists-reftarget"
-            stepId="ctrl-req"
-          >
-            Step
-          </InteractiveStep>
-        </ControllerChannelProvider>
-      </InteractiveModeContext.Provider>
+    await renderPairedController(
+      transport,
+      <InteractiveStep
+        targetAction="button"
+        refTarget="#not-on-this-tab"
+        requirements="exists-reftarget"
+        stepId="ctrl-req"
+      >
+        Step
+      </InteractiveStep>
     );
 
     await waitFor(() =>
@@ -297,14 +318,11 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
 
   it('enables a step once the live tab reports its requirements pass', async () => {
     const transport = makeTransport();
-    render(
-      <InteractiveModeContext.Provider value="controller">
-        <ControllerChannelProvider transport={transport}>
-          <InteractiveStep targetAction="button" refTarget="#ok" requirements="exists-reftarget" stepId="ctrl-pass">
-            Step
-          </InteractiveStep>
-        </ControllerChannelProvider>
-      </InteractiveModeContext.Provider>
+    await renderPairedController(
+      transport,
+      <InteractiveStep targetAction="button" refTarget="#ok" requirements="exists-reftarget" stepId="ctrl-pass">
+        Step
+      </InteractiveStep>
     );
 
     await waitFor(() => expect(replyToRequirementCheck(transport, true)).toBe(true));
@@ -328,14 +346,11 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
 
   it('gates the action when a re-check at click time reports the requirement failed', async () => {
     const transport = makeTransport();
-    render(
-      <InteractiveModeContext.Provider value="controller">
-        <ControllerChannelProvider transport={transport}>
-          <InteractiveStep targetAction="button" refTarget="#ok" requirements="navmenu-open" stepId="ctrl-regress">
-            Step
-          </InteractiveStep>
-        </ControllerChannelProvider>
-      </InteractiveModeContext.Provider>
+    await renderPairedController(
+      transport,
+      <InteractiveStep targetAction="button" refTarget="#ok" requirements="navmenu-open" stepId="ctrl-regress">
+        Step
+      </InteractiveStep>
     );
 
     // Step starts satisfied, so it enables and Do it is clickable.
@@ -356,14 +371,11 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
 
   it('surfaces a failing requirement and a fix affordance reported by the live tab', async () => {
     const transport = makeTransport();
-    render(
-      <InteractiveModeContext.Provider value="controller">
-        <ControllerChannelProvider transport={transport}>
-          <InteractiveStep targetAction="button" refTarget="#nav" requirements="navmenu-open" stepId="ctrl-fail">
-            Step
-          </InteractiveStep>
-        </ControllerChannelProvider>
-      </InteractiveModeContext.Provider>
+    await renderPairedController(
+      transport,
+      <InteractiveStep targetAction="button" refTarget="#nav" requirements="navmenu-open" stepId="ctrl-fail">
+        Step
+      </InteractiveStep>
     );
 
     await waitFor(() =>
@@ -378,19 +390,11 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     jest.useFakeTimers();
     try {
       const transport = makeTransport();
-      render(
-        <InteractiveModeContext.Provider value="controller">
-          <ControllerChannelProvider transport={transport}>
-            <InteractiveStep
-              targetAction="button"
-              refTarget="#ok"
-              requirements="exists-reftarget"
-              stepId="ctrl-timeout"
-            >
-              Step
-            </InteractiveStep>
-          </ControllerChannelProvider>
-        </InteractiveModeContext.Provider>
+      await renderPairedController(
+        transport,
+        <InteractiveStep targetAction="button" refTarget="#ok" requirements="exists-reftarget" stepId="ctrl-timeout">
+          Step
+        </InteractiveStep>
       );
 
       // The controller posts the check, but no live tab ever replies. After the
@@ -416,14 +420,11 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
   it('fails loud instead of dispatching a controller step with no stepId (F-1063-3)', async () => {
     const transport = makeTransport();
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    render(
-      <InteractiveModeContext.Provider value="controller">
-        <ControllerChannelProvider transport={transport}>
-          <InteractiveStep targetAction="highlight" refTarget="#panel-add" showMe doIt={false}>
-            Step
-          </InteractiveStep>
-        </ControllerChannelProvider>
-      </InteractiveModeContext.Provider>
+    await renderPairedController(
+      transport,
+      <InteractiveStep targetAction="highlight" refTarget="#panel-add" showMe doIt={false}>
+        Step
+      </InteractiveStep>
     );
 
     const button = await screen.findByRole('button', { name: /show me/i });

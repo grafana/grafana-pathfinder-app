@@ -14,7 +14,7 @@ import { sidebarState } from 'global-state/sidebar';
 import { panelModeManager } from './global-state/panel-mode';
 import { suggestionState } from './global-state/suggestion';
 import { handlePathfinderDeepLink, installDeepLinkNavListener } from './utils/pathfinder-deep-link-handler';
-import { parsePathfinderDeepLink } from './utils/pathfinder-search-params';
+import { parseControllerPairingHash, parsePathfinderDeepLink } from './utils/pathfinder-search-params';
 import {
   clearExtensionSidebarDocked,
   isExtensionSidebarOwnedByPathfinder,
@@ -132,6 +132,12 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   // Snapshotted before handlePathfinderDeepLink strips it from the URL.
   const { doc: docsParam, controller: controllerParam } = parsePathfinderDeepLink(window.location.search);
+  const controllerPairing = parseControllerPairingHash(window.location.hash);
+  if (controllerPairing && window.location.hash) {
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.hash = '';
+    window.history.replaceState(window.history.state, document.title, cleanUrl.toString());
+  }
 
   // Interactive controller (?doc=<guide>&controller=1): the same overlay, but
   // step actions stay visible so this tab can drive the originating Grafana tab.
@@ -141,6 +147,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     TWOTAB_CONTROLLER_ENABLED &&
     docsParam &&
     controllerParam &&
+    controllerPairing &&
     shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)
   ) {
     if (!document.getElementById('pathfinder-controller-root')) {
@@ -153,7 +160,9 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         .then(async ({ GuideReaderOverlay }) => {
           const { createCompatRoot } = await import('./lib/create-root-compat');
           const root = await createCompatRoot(container);
-          root.render(React.createElement(GuideReaderOverlay, { doc: docsParam, mode: 'controller' }));
+          root.render(
+            React.createElement(GuideReaderOverlay, { doc: docsParam, mode: 'controller', controllerPairing })
+          );
         })
         .catch((err) => {
           console.error('[Pathfinder] Failed to load interactive controller:', err);
@@ -164,11 +173,23 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   }
 
   // Live tab only (the controller tab returned early above): load the cross-tab
-  // executor so a controller tab can drive this Grafana DOM. Gated on
-  // shouldMountSidebar — the executor is a same-origin DOM sink and must not be
-  // installed for users the experiment has excluded. Lazy import keeps the
-  // interactive engine out of the entry bundle.
+  // executor so a controller tab can drive this Grafana DOM. Mount the pairing
+  // banner first so its challenge listener is live before the transport starts.
   if (TWOTAB_CONTROLLER_ENABLED && shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
+    if (!document.getElementById('pathfinder-pairing-banner-root')) {
+      const bannerContainer = document.createElement('div');
+      bannerContainer.id = 'pathfinder-pairing-banner-root';
+      document.body.appendChild(bannerContainer);
+      Promise.all([import('./integrations/cross-tab/PairingRequestBanner'), import('./lib/create-root-compat')])
+        .then(async ([{ PairingRequestBanner }, { createCompatRoot }]) => {
+          const root = await createCompatRoot(bannerContainer);
+          root.render(React.createElement(PairingRequestBanner));
+        })
+        .catch((err) => {
+          console.error('[Pathfinder] Failed to load pairing banner:', err);
+          bannerContainer.remove();
+        });
+    }
     import('./integrations/cross-tab/live-tab-executor')
       .then(({ installLiveTabExecutor }) => installLiveTabExecutor())
       .catch((err) => console.error('[Pathfinder] Failed to load cross-tab executor:', err));
