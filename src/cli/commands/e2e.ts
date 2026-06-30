@@ -21,7 +21,12 @@ import {
 import { planGuideExecution } from '../e2e/guide-chains';
 import type { TestResultsData } from '../e2e/e2e-reporter';
 import { checkTier, loadManifestFromDir, runManifestPreflight, type CurrentTier } from '../e2e/manifest-preflight';
-import { resolveRemotePackage, resolveRemoteRepository, type ResolvedRemoteGuide } from '../e2e/e2e-package';
+import {
+  resolveRemotePackage,
+  resolveRemoteRepository,
+  type RemoteResolveOptions,
+  type ResolvedRemoteGuide,
+} from '../e2e/e2e-package';
 import { checkGrafanaHealth } from '../e2e/grafana-health';
 import { CleanEnvironment, CLEAN_COMPOSE_PROJECT, CLEAN_GRAFANA_URL } from '../e2e/clean-environment';
 import { ExitCode } from '../e2e/exit-codes';
@@ -741,13 +746,13 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
   const cloudAuth = createCloudAuthPolicy({
     cloudInstanceAdminTokenSpecs: options.cloudInstanceAdminToken,
   });
-  const remoteOptions = {
+  const remoteOptions: RemoteResolveOptions = {
     grafanaUrl: options.grafanaUrl,
     currentTier: options.tier,
     resolverUrl: options.resolverUrl,
     repoUrl: options.repoUrl,
     cloudUrl: options.cloudUrl,
-    cloudAuthTargets: cloudAuth.targets,
+    cloudTargetCapabilities: cloudAuth.targets,
   };
   const resolution =
     mode === 'remote-package'
@@ -857,7 +862,7 @@ export const e2eCommand = new Command('e2e')
       await maybeCleanStart(cleanEnv, options);
 
       await sweepCloudTargets({
-        targetUrls: inputs.cloudAuth?.targets.provisionable ?? [],
+        targetUrls: inputs.cloudAuth?.targets.sharedStackUrls ?? [],
         cloudAuth: inputs.cloudAuth,
         verbose: options.verbose,
       });

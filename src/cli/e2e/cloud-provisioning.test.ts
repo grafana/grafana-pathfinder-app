@@ -1,5 +1,5 @@
-jest.mock('./cloud-environment', () => ({
-  CloudEnvironment: jest.fn().mockImplementation((adminToken: string, cloudUrl: string) => ({
+jest.mock('./shared-cloud-stack-environment', () => ({
+  SharedCloudStackEnvironment: jest.fn().mockImplementation((adminToken: string, cloudUrl: string) => ({
     adminToken,
     cloudUrl,
     provisionChain: jest.fn(async () => `minted:${cloudUrl}`),
@@ -8,7 +8,7 @@ jest.mock('./cloud-environment', () => ({
   })),
 }));
 
-import { CloudEnvironment } from './cloud-environment';
+import { SharedCloudStackEnvironment } from './shared-cloud-stack-environment';
 import {
   cloudTargetsInChain,
   provisionCloudTargetsForChain,
@@ -19,7 +19,7 @@ import type { CloudAuthPolicy } from './cloud-auth';
 import type { PackageMeta } from './e2e-results';
 
 const cloudAuth: CloudAuthPolicy = {
-  targets: { provisionable: ['https://learn.grafana.net/', 'https://play.grafana.org/'] },
+  targets: { sharedStackUrls: ['https://learn.grafana.net/', 'https://play.grafana.org/'] },
   adminTokenFor: (targetUrl) => {
     if (targetUrl?.startsWith('https://learn.grafana.net')) {
       return 'learn-admin';
@@ -34,7 +34,7 @@ const cloudAuth: CloudAuthPolicy = {
 };
 
 describe('cloudTargetsInChain', () => {
-  it('deduplicates provisionable targets by URL', () => {
+  it('deduplicates shared-stack target URLs', () => {
     const packageMetaById = new Map<string, PackageMeta>([
       ['a', { packageId: 'a', tier: 'cloud', targetUrl: 'https://learn.grafana.net/' }],
       ['b', { packageId: 'b', tier: 'cloud', targetUrl: 'https://learn.grafana.net/' }],
@@ -51,10 +51,10 @@ describe('cloudTargetsInChain', () => {
 describe('ProvisionedCloudTargets', () => {
   it('looks up minted tokens by origin and tears down all targets', async () => {
     const learnEnv = { teardownChain: jest.fn(async () => undefined) } as unknown as InstanceType<
-      typeof CloudEnvironment
+      typeof SharedCloudStackEnvironment
     >;
     const playEnv = { teardownChain: jest.fn(async () => undefined) } as unknown as InstanceType<
-      typeof CloudEnvironment
+      typeof SharedCloudStackEnvironment
     >;
     const provisioned = new ProvisionedCloudTargets();
 
@@ -90,29 +90,33 @@ describe('provisionCloudTargetsForChain', () => {
       verbose: false,
     });
 
-    expect(CloudEnvironment).toHaveBeenCalledWith('learn-admin', 'https://learn.grafana.net/', false);
-    expect(CloudEnvironment).toHaveBeenCalledWith('play-admin', 'https://play.grafana.org/', false);
+    expect(SharedCloudStackEnvironment).toHaveBeenCalledWith('learn-admin', 'https://learn.grafana.net/', false);
+    expect(SharedCloudStackEnvironment).toHaveBeenCalledWith('play-admin', 'https://play.grafana.org/', false);
     expect(provisioned.tokenFor('https://learn.grafana.net/')).toBe('minted:https://learn.grafana.net/');
     expect(provisioned.tokenFor('https://play.grafana.org/')).toBe('minted:https://play.grafana.org/');
   });
 
   it('tears down already-provisioned targets when a later target fails', async () => {
-    (CloudEnvironment as unknown as jest.Mock).mockImplementationOnce((adminToken: string, cloudUrl: string) => ({
-      adminToken,
-      cloudUrl,
-      provisionChain: jest.fn(async () => `minted:${cloudUrl}`),
-      teardownChain: jest.fn(async () => undefined),
-      sweepOrphans: jest.fn(async () => undefined),
-    }));
-    (CloudEnvironment as unknown as jest.Mock).mockImplementationOnce((adminToken: string, cloudUrl: string) => ({
-      adminToken,
-      cloudUrl,
-      provisionChain: jest.fn(async () => {
-        throw new Error('boom');
-      }),
-      teardownChain: jest.fn(async () => undefined),
-      sweepOrphans: jest.fn(async () => undefined),
-    }));
+    (SharedCloudStackEnvironment as unknown as jest.Mock).mockImplementationOnce(
+      (adminToken: string, cloudUrl: string) => ({
+        adminToken,
+        cloudUrl,
+        provisionChain: jest.fn(async () => `minted:${cloudUrl}`),
+        teardownChain: jest.fn(async () => undefined),
+        sweepOrphans: jest.fn(async () => undefined),
+      })
+    );
+    (SharedCloudStackEnvironment as unknown as jest.Mock).mockImplementationOnce(
+      (adminToken: string, cloudUrl: string) => ({
+        adminToken,
+        cloudUrl,
+        provisionChain: jest.fn(async () => {
+          throw new Error('boom');
+        }),
+        teardownChain: jest.fn(async () => undefined),
+        sweepOrphans: jest.fn(async () => undefined),
+      })
+    );
 
     await expect(
       provisionCloudTargetsForChain({
@@ -122,8 +126,8 @@ describe('provisionCloudTargetsForChain', () => {
       })
     ).rejects.toThrow('boom');
 
-    const first = (CloudEnvironment as unknown as jest.Mock).mock.results[0]?.value;
-    const second = (CloudEnvironment as unknown as jest.Mock).mock.results[1]?.value;
+    const first = (SharedCloudStackEnvironment as unknown as jest.Mock).mock.results[0]?.value;
+    const second = (SharedCloudStackEnvironment as unknown as jest.Mock).mock.results[1]?.value;
 
     expect(first).toBeDefined();
     expect(second).toBeDefined();
@@ -144,11 +148,11 @@ describe('sweepCloudTargets', () => {
       verbose: true,
     });
 
-    const first = (CloudEnvironment as unknown as jest.Mock).mock.results[0]?.value;
-    const second = (CloudEnvironment as unknown as jest.Mock).mock.results[1]?.value;
+    const first = (SharedCloudStackEnvironment as unknown as jest.Mock).mock.results[0]?.value;
+    const second = (SharedCloudStackEnvironment as unknown as jest.Mock).mock.results[1]?.value;
 
-    expect(CloudEnvironment).toHaveBeenCalledWith('learn-admin', 'https://learn.grafana.net/', true);
-    expect(CloudEnvironment).toHaveBeenCalledWith('play-admin', 'https://play.grafana.org/', true);
+    expect(SharedCloudStackEnvironment).toHaveBeenCalledWith('learn-admin', 'https://learn.grafana.net/', true);
+    expect(SharedCloudStackEnvironment).toHaveBeenCalledWith('play-admin', 'https://play.grafana.org/', true);
     expect(first).toBeDefined();
     expect(second).toBeDefined();
     expect(first!.sweepOrphans).toHaveBeenCalledTimes(1);

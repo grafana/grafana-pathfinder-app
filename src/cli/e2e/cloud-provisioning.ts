@@ -1,5 +1,5 @@
 import { sameOrigin } from './e2e-targets';
-import { CloudEnvironment } from './cloud-environment';
+import { SharedCloudStackEnvironment } from './shared-cloud-stack-environment';
 import type { CloudAuthPolicy } from './cloud-auth';
 import type { PackageMeta } from './e2e-results';
 
@@ -8,7 +8,7 @@ interface PlannedGuideRef {
 }
 
 interface ProvisionedCloudTarget {
-  env: CloudEnvironment;
+  env: SharedCloudStackEnvironment;
   token: string;
 }
 
@@ -66,7 +66,7 @@ export async function provisionCloudTargetsForChain(options: {
         continue;
       }
       console.log(`\n🔑 Provisioning a service account for ${new URL(targetUrl).origin}...`);
-      const env = new CloudEnvironment(adminToken, targetUrl, options.verbose);
+      const env = new SharedCloudStackEnvironment(adminToken, targetUrl, options.verbose);
       provisionedTargets.add(targetUrl, { env, token: await env.provisionChain() });
     }
     return provisionedTargets;
@@ -84,7 +84,7 @@ export async function sweepCloudTargets(options: {
   for (const targetUrl of options.targetUrls) {
     const adminToken = options.cloudAuth?.adminTokenFor(targetUrl);
     if (adminToken) {
-      await new CloudEnvironment(adminToken, targetUrl, options.verbose).sweepOrphans();
+      await new SharedCloudStackEnvironment(adminToken, targetUrl, options.verbose).sweepOrphans();
     }
   }
 }
