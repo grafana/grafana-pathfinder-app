@@ -1,10 +1,52 @@
 # Changelog
 
-## Unreleased
+## 2.13.0
 
 ### Added
 
 - **AI auto-heal ("Fix this") for failing interactive steps**: when a step's selector can't be matched and no deterministic recovery applies, an opt-in "Fix this ✨" button asks the Grafana Assistant to propose a patch to the guide, which is validated against the live DOM before it is applied. Gated behind a new `enableAiAutoHeal` admin setting (default off) **and** Grafana Assistant availability — fully inert until a tenant opts in. See `docs/developer/AI_FIX.md`. (#980, #983, #984, #993, #995, #996, #997)
+- **Reusable snippet references in interactive guides**: Authors can reference a shared set of steps by name instead of copy-pasting them. Pathfinder resolves the reference against the CDN when the guide loads, so improving a snippet upstream updates every guide that uses it. The block editor gains a "Reusable" palette group with a snippet picker, and an unresolvable snippet renders an inline placeholder rather than breaking the guide. Ships with a snippet schema and a `build-snippets` CLI command. This first version consumes upstream-authored snippets only — no nesting and no version pinning. (#907, #981)
+- **Full-screen guide-reader overlay**: New `GuideReaderOverlay` renders a guide full-screen as a portal over the page (the kiosk pattern) behind theme and feature providers, and an `InteractiveModeContext` distinguishes interactive from controller tabs. Anonymous step IDs are now assigned from a module-level counter so they stay stable across re-renders. Foundation for the two-tab controller. (#1045)
+- **camelCase field aliases accepted in JSON guides**: Hand-written guides using `targetAction` / `refTarget` / `targetValue` now pass validation. A pure pre-schema normalizer rewrites them to the canonical lowercase forms (canonical wins on conflict) at the single `validateGuide` chokepoint, closing the long-standing gap between the runtime parser — which already tolerated the aliases — and the schema. (#987)
+- **MCP authoring sessions**: The TypeScript MCP authoring server gains a session mode — an in-memory session store with sliding TTL and optimistic-concurrency generations, opaque Crockford base32 session tokens with log-safe hashing, session-aware authoring tools, finalize plus guidance handoff, and observability and hardening tests. Lands as a four-part stack. (#1024, #1025, #1026, #1027)
+- **Dependency-aware E2E guide chaining**: The `pathfinder-cli e2e` runner now plans guide execution from a `repository.json` index, grouping guides linked by a `depends` prerequisite into ordered chains and running prerequisites first. Under `--clean` the isolated docker stack resets once per chain instead of between every guide, so a prerequisite's state survives for its dependents. Missing prerequisites are auto-included, `depends` cycles are rejected, and dependents of a failed prerequisite are reported as skipped. Adds a `--repository` flag and a `--clean` flag for isolated docker-compose runs. (#994, #1016, #1017)
+- **Package-aware and remote E2E runs**: The E2E command can resolve published guides by bare package id (`--package <id>`) or run the entire published CDN repository (`--remote`), reusing the same plan, run, and report path as local guides. A CLI-local recommender client and remote package resolver fetch each target's transitive prerequisites from the CDN index, with a base-URL override and a package-aware test-target resolver. Network, validation, tier, and unsupported-type failures degrade to structured skips rather than aborting the batch. (#1086, #1087, #1103, #1104, #1089)
+- **Cloud-tier E2E authentication**: Cloud-tier guide runs can authenticate against real Grafana Cloud stacks by provisioning short-lived service-account tokens from explicit per-origin admin-token mappings (`--cloud-instance-admin-token host=ENV_VAR`). Admin tokens and minted runner tokens stay out of package metadata and JSON reports, and each dependency chain gets its own ephemeral identity. (#1154)
+
+### Fixed
+
+- **Two-tab controller gating** (epic #1133): The controller overlay and live-tab executor now mount on the same `shouldMountSidebar()` policy as the rest of Pathfinder rather than bare `pathfinderEnabled`, so they never appear in sessions where the sidebar is suppressed by experiment variant or 24h conditions. Per-run IDs added to the `step-command` / `step-complete` / `step-progress` wire messages let the controller discard replies from cancelled runs, preventing a stale `step-complete` from settling a subsequent retry. (#1145, #1146)
+- **React Compiler compliance**: Resolved the globals plus immutability, set-state-in-effect, and refs rules across the codebase and removed the lint disable block. (#1041, #1042, #1043)
+- **E2E step-completion reliability**: The guided substep loop and the post-interaction flow now treat a step unmount as completion, and step-locator attribute reads are bounded to prevent test-timeout hangs. (#982, #985, #1014)
+- **Analytics enrichment includes all enrolled experiments**: Event enrichment now includes every enrolled experiment rather than a subset. (#964)
+- **Image block URLs are validated**: Image block URLs are now validated before use. (#960)
+- **PR tester clamps stale persisted test mode**: A persisted test mode the current PR doesn't support is clamped to a supported mode instead of leaving the tester in an invalid state. (#1137)
+- **No redundant `dispatchEvents` after combobox fill**: Removes a redundant `dispatchEvents` call after a combobox fill in `handleDoMode`. (#966)
+- **E2E results posted as a PR comment**: CI posts E2E results as a PR comment instead of pushing them to `gh-pages`. (#1112)
+
+### Security
+
+- **Dependency overrides hardened and `dompurify` bumped**: Bumps `dompurify` to `^3.4.11` and pulls security-relevant transitive dependencies (`js-cookie`, `js-yaml`, `brace-expansion`) up to patched versions via targeted `overrides`, while deduping the OpenTelemetry and `uuid` trees. (#1203)
+- **Supply-chain and CI hardening (Node 24 + npm lockdown)**: Moves the toolchain to Node.js 24 and adds `.npmrc` lockdown — `allow-git=none` blocks git-protocol dependency installs and `min-release-age=3` refuses package versions younger than three days, mitigating fast-yanked malicious releases. Bumps `@grafana/*` to 13.0.2 to remove git-protocol usage inside `@grafana/ui`, and tightens `bundle-stats.yml` workflow permissions to `contents: read`. (#1101)
+- **Enforce F5 DOM sinks mechanically**: Adds mechanical enforcement of the F5 frontend-security rule for dangerous DOM sinks. (#1050)
+- **`js-yaml` to v4.2.0**: Security advisory update. (#1037)
+- **`golang.org/x/net` to v0.55.0**: Go module security advisory update. (#958)
+- **`golang.org/x/crypto` to v0.53.0**: Routine Go module security bump. (#1022)
+
+### Chore
+
+- **Storage subsystem refactor**: Phase 0-1 groundwork (characterization tests plus key inventory), extraction of `experimentAutoOpenStorage` and a bounded-record factory, promotion of `interactive-progress-cleared` into `StorageEvents`, three shared storage utilities, and added characterization tests for previously untested storage modules. Behaviour preserved. (#968, #1030, #1055, #1057, #1058, #1059)
+- **E2E command modularization**: The CLI `e2e` command is broken into named step functions and dedicated modules (clean-environment, grafana-health, playwright-runner, exit-codes, and the CLI↔Playwright env-var protocol) and finally relocated into `src/cli/e2e`. Duplicate file readers and guide-status counts are collapsed, requirement-ID comment tags dropped, and five earlier tech-debt findings in validate and build-graph addressed. (#1015, #1076, #1077, #1078, #1079, #1080, #1081, #1152)
+- **docs-retrieval and security-helper extractions**: Extracts `url-utils` and `metadata-extract` from `content-fetcher` and an `isTrustedFinalUrl` trust-gate helper. (#1105, #1106, #1109)
+- **docs-panel `loadTab` extraction**: Extracts shared `loadTab` helpers and routes `openDocsPage` through `loadTab`. (#986)
+- **Block-editor extractions**: Extracts a step-field-mapping utility and dedupes merge logic in `useBlockEditor`, with added tests. (#935, #1031)
+- **Context-engine event bus**: Extracts the context event bus out of `ContextService`. (#1046)
+- **Requirements check-dispatch lookup table**: Replaces the requirements check-dispatch if/else chain with a lookup table. (#989)
+- **Test tripwires**: A tripwire that the section step-type map matches the registry, and a skill/rule reference-graph test. (#988, #1028)
+- **`@grafana/*` core packages to 13.1.0** (#1150)
+- **Docs**: AI auto-heal flow plus admin opt-in (#998), dependency-aware E2E chaining and `--repository` (#1018), the `build-snippets` CLI command and `/coda/exec` endpoint (#1049), and a new `CONTRIBUTING.md` plus PR template with PR-scope guidance (#1122).
+- **Skills**: Rewrote the `pr-summary` skill for higher PR-process fidelity (#953) and increased `/review` depth and aggression (#1032).
+- **CI**: Cache `node_modules` by package-lock hash and drop the run-id handoff. (#992)
 
 ## 2.12.0
 
