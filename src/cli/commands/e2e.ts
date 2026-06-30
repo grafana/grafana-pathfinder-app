@@ -48,7 +48,19 @@ import type { ManifestJson, RepositoryEntry, RepositoryJson } from '../../types/
 
 import { randomUUID } from 'crypto';
 import { createCloudAuthPolicy, type CloudAuthPolicy } from '../e2e/cloud-auth';
-import { cloudTargetsInChain, provisionCloudTargetsForChain, sweepCloudTargets } from '../e2e/cloud-provisioning';
+import {
+  cloudTargetsInChain,
+  provisionCloudTargetsForChain,
+  sweepCloudTargets,
+  unsafeCloudGuidesWithoutStack,
+} from '../e2e/cloud-provisioning';
+import {
+  createCloudStackProvisioningConfig,
+  DEFAULT_CLOUD_STACK_SLUG_PREFIX,
+  sweepCloudStacks,
+  type CloudStackProvisioningConfig,
+} from '../e2e/cloud-stack-environment';
+import { CloudStackPool, createCloudStackPoolConfig } from '../e2e/cloud-stack-pool';
 
 /**
  * CLI options for the e2e command
@@ -77,6 +89,16 @@ interface E2ECommandOptions {
   cloudInstanceAdminToken: string[];
   /** Default cloud instance URL for cloud-tier guides without an `instance`. */
   cloudUrl: string;
+  /** Env var containing a Grafana Cloud Access Policy token for ephemeral stack provisioning. */
+  cloudStackAccessPolicyToken?: string;
+  /** Grafana Cloud region used when provisioning ephemeral stacks. */
+  cloudStackRegion?: string;
+  /** Prefix for generated ephemeral stack slugs. */
+  cloudStackSlugPrefix: string;
+  /** Pathfinder plugin version to install on ephemeral stacks. Defaults to latest. */
+  cloudStackPluginVersion?: string;
+  /** Pool id used to discover labeled pre-provisioned Cloud stacks. */
+  cloudStackPoolId?: string;
 }
 
 function collectOption(value: string, previous: string[]): string[] {
@@ -111,6 +133,10 @@ interface RunInputs {
   packageMetaById: Map<string, PackageMeta>;
   /** Cloud credential policy for target resolution and runner auth (remote modes). */
   cloudAuth?: CloudAuthPolicy;
+  /** Optional ephemeral Cloud stack provisioning config for unsafe cloud chains. */
+  cloudStack?: CloudStackProvisioningConfig;
+  /** Optional hot pool of pre-provisioned Cloud stacks. */
+  cloudStackPool?: CloudStackPool;
   /** Local package directory for manifest pre-flight, when applicable. */
   localPackageDir?: string;
 }
@@ -399,12 +425,27 @@ async function maybeCleanStart(cleanEnv: CleanEnvironment, options: E2ECommandOp
  * local runs fall back to the global Grafana URL. Used so reachability checks
  * hit the real targets instead of always probing the global URL.
  */
+function shouldUseEphemeralStackForMeta(
+  meta: PackageMeta,
+  cloudAuth: CloudAuthPolicy | undefined,
+  cloudStack: CloudStackProvisioningConfig | undefined,
+  cloudStackPool: CloudStackPool | undefined
+): boolean {
+  if ((!cloudStack && !cloudStackPool) || meta.tier !== 'cloud') {
+    return false;
+  }
+  return meta.sideEffects?.level !== 'readonly' || !cloudAuth?.needsProvisioningFor(meta.targetUrl);
+}
+
 function targetUrlsToCheck(inputs: RunInputs, globalUrl: string): string[] {
   const urls = new Set<string>();
   for (const meta of inputs.packageMetaById.values()) {
+    if (shouldUseEphemeralStackForMeta(meta, inputs.cloudAuth, inputs.cloudStack, inputs.cloudStackPool)) {
+      continue;
+    }
     urls.add(meta.targetUrl ?? globalUrl);
   }
-  if (urls.size === 0) {
+  if (urls.size === 0 && inputs.packageMetaById.size === 0) {
     urls.add(globalUrl);
   }
   return [...urls];
@@ -526,7 +567,9 @@ async function runChains(
   options: E2ECommandOptions,
   cleanEnv: CleanEnvironment,
   packageMetaById: Map<string, PackageMeta> = new Map(),
-  cloudAuth?: CloudAuthPolicy
+  cloudAuth?: CloudAuthPolicy,
+  cloudStack?: CloudStackProvisioningConfig,
+  cloudStackPool?: CloudStackPool
 ): Promise<ChainRunOutcome> {
   console.log('\n🎭 Running Playwright tests...\n');
 
@@ -547,10 +590,41 @@ async function runChains(
         break;
       }
     }
+    const unsafeSharedStackGuides = unsafeCloudGuidesWithoutStack(chain, packageMetaById, cloudStack, cloudStackPool);
+    if (unsafeSharedStackGuides.length > 0) {
+      const unsafeIds = new Set(unsafeSharedStackGuides.map((guide) => guide.id));
+      const classified = unsafeSharedStackGuides.map((guide) => {
+        const meta = packageMetaById.get(guide.id);
+        return `${guide.id} (${meta?.sideEffects?.level ?? 'unknown'})`;
+      });
+      for (const planned of chain) {
+        const meta = packageMetaById.get(planned.id);
+        results.push({
+          guide: planned.guide.path,
+          id: planned.id,
+          status: 'skipped_unsafe_shared_stack',
+          exitCode: ExitCode.SUCCESS,
+          autoIncluded: planned.autoIncluded,
+          abortMessage: unsafeIds.has(planned.id)
+            ? `Cloud guide classified as ${meta?.sideEffects?.level ?? 'unknown'}; provide --cloud-stack-access-policy-token and --cloud-stack-region to run it in an ephemeral stack.`
+            : `Skipped because this dependency chain contains cloud guide(s) unsafe for a shared stack: ${classified.join(', ')}.`,
+          tier: meta?.tier,
+          sideEffects: meta?.sideEffects,
+        });
+      }
+      console.log(
+        `\n⊘ Skipped chain: cloud guide(s) unsafe for a shared stack (${classified.join(', ')}). Provide --cloud-stack-access-policy-token and --cloud-stack-region to run them in an ephemeral stack.`
+      );
+      continue;
+    }
 
     const provisionedTargets = await provisionCloudTargetsForChain({
       targetUrls: cloudTargetsInChain(chain, packageMetaById, cloudAuth),
       cloudAuth,
+      chain,
+      packageMetaById,
+      cloudStack,
+      cloudStackPool,
       verbose: options.verbose,
     });
     try {
@@ -600,17 +674,22 @@ async function runChains(
         // to the global Grafana URL. Cloud auth policy owns credential selection.
         const meta = packageMetaById.get(planned.id);
         const isCloudTarget = meta?.tier === 'cloud';
-        const runnerAuth = isCloudTarget
-          ? cloudAuth?.runnerAuthFor(meta?.targetUrl, provisionedTargets.tokenFor(meta?.targetUrl))
+        const baseTargetUrl = meta?.targetUrl ?? options.grafanaUrl;
+        const targetUrl = isCloudTarget
+          ? provisionedTargets.targetUrlForGuide(planned.id, baseTargetUrl)
+          : baseTargetUrl;
+        const provisionedToken = isCloudTarget
+          ? provisionedTargets.tokenForGuide(planned.id, baseTargetUrl)
           : undefined;
+        const runnerAuth = isCloudTarget ? (cloudAuth?.runnerAuthFor(targetUrl, provisionedToken) ?? {}) : undefined;
         const runGuideOptions: RunGuideOptions = {
-          targetUrl: meta?.targetUrl ?? options.grafanaUrl,
+          targetUrl,
           verbose: options.verbose,
           trace: options.trace,
           headed: options.headed,
           artifacts: options.artifacts,
           alwaysScreenshot: options.alwaysScreenshot,
-          token: runnerAuth?.token,
+          token: runnerAuth?.token ?? provisionedToken,
         };
 
         const result = await runPlaywrightTests(planned.guide, runGuideOptions);
@@ -701,6 +780,21 @@ function remoteLoadGuideById(
  */
 async function resolveRunInputs(files: string[], options: E2ECommandOptions): Promise<RunInputs> {
   const mode = resolveRunMode(options);
+  const coldStackConfigRequested = Boolean(options.cloudStackRegion || options.cloudStackPluginVersion);
+  const cloudStack = createCloudStackProvisioningConfig({
+    accessPolicyTokenEnvVar: coldStackConfigRequested ? options.cloudStackAccessPolicyToken : undefined,
+    region: options.cloudStackRegion,
+    slugPrefix: options.cloudStackAccessPolicyToken ? options.cloudStackSlugPrefix : undefined,
+    pluginVersion: options.cloudStackPluginVersion,
+  });
+  const cloudStackPoolConfig = createCloudStackPoolConfig({
+    poolId: options.cloudStackPoolId,
+    accessPolicyTokenEnvVar: options.cloudStackAccessPolicyToken,
+    region: options.cloudStackRegion,
+    slugPrefix: options.cloudStackSlugPrefix,
+    verbose: options.verbose,
+  });
+  const cloudStackPool = cloudStackPoolConfig ? new CloudStackPool(cloudStackPoolConfig) : undefined;
 
   if (mode === 'local') {
     return {
@@ -709,6 +803,8 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
       preRunSkipped: [],
       packageMetaById: new Map(),
       localPackageDir: options.package,
+      cloudStack,
+      cloudStackPool,
     };
   }
 
@@ -722,6 +818,7 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     repoUrl: options.repoUrl,
     cloudUrl: options.cloudUrl,
     cloudAuthTargets: cloudAuth.targets,
+    cloudStackProvisioningAvailable: Boolean(cloudStack || cloudStackPool),
   };
   const resolution =
     mode === 'remote-package'
@@ -749,6 +846,8 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     preRunSkipped: resolution.skipped.map(skipToResult),
     packageMetaById: buildPackageMetaMap(loadable),
     cloudAuth,
+    cloudStack,
+    cloudStackPool,
   };
 }
 
@@ -804,6 +903,18 @@ export const e2eCommand = new Command('e2e')
     `Default cloud instance URL for cloud-tier guides without an instance (default ${DEFAULT_CLOUD_URL})`,
     DEFAULT_CLOUD_URL
   )
+  .option(
+    '--cloud-stack-access-policy-token <envVar>',
+    'Grafana Cloud Access Policy token env var for provisioning ephemeral Cloud stacks'
+  )
+  .option('--cloud-stack-region <region>', 'Grafana Cloud region for ephemeral Cloud stacks')
+  .option(
+    '--cloud-stack-slug-prefix <prefix>',
+    'Alphanumeric prefix for generated ephemeral Cloud stack slugs',
+    DEFAULT_CLOUD_STACK_SLUG_PREFIX
+  )
+  .option('--cloud-stack-plugin-version <version>', 'Pathfinder plugin version to install on ephemeral Cloud stacks')
+  .option('--cloud-stack-pool-id <id>', 'Pool id used to discover labeled pre-provisioned Cloud stacks')
   .action(async (files: string[], options: E2ECommandOptions) => {
     const cleanEnv = new CleanEnvironment(options.verbose);
 
@@ -835,10 +946,21 @@ export const e2eCommand = new Command('e2e')
         cloudAuth: inputs.cloudAuth,
         verbose: options.verbose,
       });
+      if (inputs.cloudStack) {
+        await sweepCloudStacks({ config: inputs.cloudStack, verbose: options.verbose });
+      }
 
       await runPreflightChecks(options, targetUrlsToCheck(inputs, options.grafanaUrl), inputs.localPackageDir);
 
-      const outcome = await runChains(plan, options, cleanEnv, inputs.packageMetaById, inputs.cloudAuth);
+      const outcome = await runChains(
+        plan,
+        options,
+        cleanEnv,
+        inputs.packageMetaById,
+        inputs.cloudAuth,
+        inputs.cloudStack,
+        inputs.cloudStackPool
+      );
 
       reportResults([...inputs.preRunSkipped, ...outcome.results], options);
     } catch (error) {

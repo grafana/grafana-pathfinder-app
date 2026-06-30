@@ -56,6 +56,11 @@ npx pathfinder-cli e2e [options] [files...]
 | `--resolver-url <url>`                    | Recommender base URL for `--package <id>` resolution                                                                                                     | `https://recommender.grafana.com` |
 | `--cloud-instance-admin-token <host=env>` | Admin service-account token env var for a cloud target. Repeat for multiple cloud instances.                                                             | None                              |
 | `--cloud-url <url>`                       | Default Grafana Cloud instance URL for cloud-tier guides without a manifest `instance`.                                                                  | `https://learn.grafana.net/`      |
+| `--cloud-stack-access-policy-token <env>` | Cloud Access Policy token env var for provisioning ephemeral Grafana Cloud stacks for state-mutating cloud guide chains.                                 | None                              |
+| `--cloud-stack-region <region>`           | Grafana Cloud region for ephemeral stacks. Required when stack provisioning is enabled.                                                                  | None                              |
+| `--cloud-stack-slug-prefix <prefix>`      | Alphanumeric prefix for generated ephemeral stack slugs. Hyphens are stripped because Cloud stack slugs must be alphanumeric.                            | `pfe2e`                           |
+| `--cloud-stack-plugin-version <version>`  | Pathfinder plugin version to install on ephemeral stacks.                                                                                                | `latest`                          |
+| `--cloud-stack-pool-id <id>`              | Optional pool namespace. When omitted, any stack labeled `pathfinder-e2e-pool=true` is eligible.                                                         | None                              |
 
 ### Input formats
 
@@ -382,6 +387,10 @@ These variables are consumed by the CLI or passed to the spawned Playwright proc
 
 For cloud targets, pass `--cloud-instance-admin-token host=ENV_VAR_NAME`; the named env var contains an admin service-account token for that exact host. The env var name is user-defined, for example `GRAFANA_PLAY_ADMIN_TOKEN`.
 
+For ephemeral Cloud stacks, pass `--cloud-stack-access-policy-token ENV_VAR_NAME` and `--cloud-stack-region <region>`. The named env var contains a Grafana Cloud Access Policy token with stack lifecycle and plugin-install permissions. The CLI passes this token to Terraform through `TF_VAR_cloud_access_policy_token`; it is not written into generated Terraform configuration.
+
+For a manual hot pool, pass `--cloud-stack-access-policy-token ENV_VAR_NAME`. The CLI discovers stacks labeled `pathfinder-e2e-pool=true`, leases one, and mints a short-lived service-account token for the runner. Add `--cloud-stack-pool-id <id>` to restrict leasing to stacks whose `pathfinder-e2e-pool-id` label matches that value. Pool leases are tried before cold stack provisioning.
+
 ## Error classification
 
 When a step fails, the runner assigns an error classification to help with triage:
@@ -414,8 +423,57 @@ Guides are routed by their manifest's `testEnvironment.tier`:
 Cloud auth:
 
 - **Admin token per cloud target.** Pass `--cloud-instance-admin-token learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN` to associate an admin service-account token env var with a cloud target. The CLI uses that admin token only to mint a fresh service account and short-lived token for each dependency chain; the browser runner receives only the minted token. Repeat the flag for each supported instance.
+- **Ephemeral stack provisioning for unsafe chains.** When `--cloud-stack-access-policy-token` and `--cloud-stack-region` are provided, the CLI can create a fresh Grafana Cloud stack for cloud guide chains that are unsafe to run on a shared stack. The generated stack creates a short-lived Admin service-account token for the runner, probes whether `grafana-pathfinder-app` is already installed, installs it only when missing, and is destroyed after the chain.
+- **Manual hot-pool leasing.** When a Cloud Access Policy token is provided, unsafe cloud chains can lease a pre-provisioned stack labeled `pathfinder-e2e-pool=true` before cold provisioning a new stack. `--cloud-stack-pool-id` narrows the eligible stacks by `pathfinder-e2e-pool-id`. A pool stack is used at most once and is destroyed after use; a future replenisher is expected to create replacements.
 
-Per-chain isolation mirrors how `--clean` resets the local docker stack per chain. Minted tokens carry a TTL, and accounts orphaned by crashed runs are swept on the next run. This isolates per-identity state (preferences, stars, sessions) between chains; it does **not** reset org data such as dashboards or data sources created by guides (that needs ephemeral stacks, a future phase).
+Per-chain isolation mirrors how `--clean` resets the local docker stack per chain. The shared-stack service-account flow isolates per-identity state (preferences, stars, sessions), while ephemeral stacks isolate the whole Grafana Cloud stack for chains that may mutate org-global resources such as dashboards, folders, data sources, or alert rules.
+
+### Cloud side-effect classification
+
+Before running a remote cloud guide, the CLI classifies the fetched `content.json` as:
+
+- `readonly`: instructional content and observational actions such as markdown, quiz, highlight, hover, noop, popout, and ordinary navigation.
+- `possibly_mutating`: actions that may lead to persisted changes, such as generic button clicks, form fills, code insertion, or navigation to creation/configuration routes.
+- `mutating`: strong static evidence of a persisted change, such as selectors or button text containing save, create, delete, remove, update, import, install, or similar state-changing verbs.
+- `unknown`: content that cannot be statically classified, such as unresolved snippet references, terminal blocks, challenges, or invalid guide JSON.
+
+Routing behavior:
+
+- `readonly` cloud chains use the existing shared-stack service-account flow when a matching `--cloud-instance-admin-token` is available.
+- `possibly_mutating`, `mutating`, and `unknown` cloud chains use an isolated stack when stack provisioning or pool flags are present. Pool stacks are tried before cold stack provisioning.
+- If a cloud chain is unsafe and no ephemeral stack config is present, the chain is skipped as `skipped_unsafe_shared_stack` instead of mutating the shared target.
+- If fixed-stack auth is absent but stack provisioning is configured, cloud guides can run on an ephemeral stack even when they are `readonly`.
+
+This classifier is conservative and explainable, not a manifest contract. The external `testEnvironment` schema is unchanged; manifest-level `stateIsolation` or `sideEffects` fields are deferred until the stack path has production signal.
+
+Ephemeral stack prerequisites:
+
+- Terraform must be available on `PATH`.
+- The Cloud Access Policy token needs at least `stacks:read`, `stacks:write`, `stacks:delete`, `stack-service-accounts:write`, `stack-plugins:read`, `stack-plugins:write`, and `stack-plugins:delete`.
+- If Pathfinder is not already pre-provisioned on the stack, the requested Pathfinder plugin version must be published and installable in Grafana Cloud. This path does not test an unpublished local plugin build.
+- Follow-up: install plugins declared by a guide's `testEnvironment.plugins` on ephemeral stacks. Today those plugins are checked by preflight/requirements, but they are not installed automatically.
+- Stack creation consumes hosted-instance quota and is slower than minting a service account on an existing stack.
+
+The CLI tags generated stacks with Pathfinder E2E labels and best-effort sweeps stale labeled stacks matching the configured slug prefix on later runs.
+
+### Manual hot-pool workflow
+
+To avoid waiting for a new stack during every run, prepare one or more Grafana Cloud stacks ahead of time and label them as pool members. Each stack must have Pathfinder installed or pre-provisioned. The CLI discovers pool stacks through the Cloud Access Policy token and mints a short-lived service-account token for the runner.
+
+Required labels:
+
+- `pathfinder-e2e-pool=true`
+- optional `pathfinder-e2e-pool-id=<pool id>`
+- optional `pathfinder-e2e-state=available`
+
+```bash
+export GRAFANA_CLOUD_E2E_TOKEN=glc_xxx
+
+npx pathfinder-cli e2e --remote --tier cloud \
+  --cloud-stack-access-policy-token GRAFANA_CLOUD_E2E_TOKEN
+```
+
+Leased pool stacks are always destroyed after use. This manual pool is process-local. It avoids reusing a stack within one CLI invocation, but it does not coordinate leases across multiple concurrent CLI invocations. A future replenisher service or scheduled job should own durable lease state and automatic replacement.
 
 Interactive SSO/Okta login (driving the identity provider's login UI) is not supported. Path/journey (`milestones`) expansion is also not yet implemented; `path` and `journey` packages are skipped as an unsupported type. See the [Package-Aware Testing](../design/e2e-test-runner-design.md#package-aware-testing) design for the full picture.
 
@@ -423,18 +481,19 @@ Interactive SSO/Okta login (driving the identity provider's login UI) is not sup
 
 In remote modes a package can end in one of these states. Only `validation_failed` counts as a test failure; the rest are logged and the batch continues:
 
-| Outcome                    | Meaning                                                    | Test failure? |
-| -------------------------- | ---------------------------------------------------------- | ------------- |
-| `passed` / `failed`        | The guide ran (see step results)                           | `failed` only |
-| `skipped_tier_mismatch`    | `cloud` guide on a `local` environment                     | No            |
-| `skipped_no_auth`          | `cloud` guide with no matching cloud auth                  | No            |
-| `skipped_invalid_instance` | manifest `instance` is not a bare hostname                 | No            |
-| `resolution_failed`        | Recommender returned 404 or a network error                | No            |
-| `fetch_failed`             | Could not fetch `content.json` from the CDN                | No            |
-| `unsupported_type`         | Package is a `path` / `journey` (milestone expansion TODO) | No            |
-| `validation_failed`        | Fetched `content.json` failed guide schema validation      | **Yes**       |
+| Outcome                       | Meaning                                                                                             | Test failure? |
+| ----------------------------- | --------------------------------------------------------------------------------------------------- | ------------- |
+| `passed` / `failed`           | The guide ran (see step results)                                                                    | `failed` only |
+| `skipped_tier_mismatch`       | `cloud` guide on a `local` environment                                                              | No            |
+| `skipped_no_auth`             | `cloud` guide with no matching cloud auth                                                           | No            |
+| `skipped_invalid_instance`    | manifest `instance` is not a bare hostname                                                          | No            |
+| `skipped_unsafe_shared_stack` | Cloud chain was classified as unsafe for a shared stack and no ephemeral stack config was available | No            |
+| `resolution_failed`           | Recommender returned 404 or a network error                                                         | No            |
+| `fetch_failed`                | Could not fetch `content.json` from the CDN                                                         | No            |
+| `unsupported_type`            | Package is a `path` / `journey` (milestone expansion TODO)                                          | No            |
+| `validation_failed`           | Fetched `content.json` failed guide schema validation                                               | **Yes**       |
 
-With `--output`, pre-run skips are recorded under a `preRunSkipped` array, and each tested guide's report carries package metadata (`packageId`, `tier`, `instance`, `targetUrl`, `sourceUrl`).
+With `--output`, pre-run skips are recorded under a `preRunSkipped` array, and each tested guide's report carries package metadata (`packageId`, `tier`, `instance`, `targetUrl`, `sourceUrl`, `sideEffects`).
 
 ```bash
 # Resolve and test a single published guide against local Grafana
@@ -458,6 +517,19 @@ npx pathfinder-cli e2e --remote --tier cloud \
 export GRAFANA_PLAY_ADMIN_TOKEN=glsa_play_admin_xxx
 npx pathfinder-cli e2e --tier cloud --package play-guide \
   --cloud-instance-admin-token play.grafana.org=GRAFANA_PLAY_ADMIN_TOKEN
+
+# Run unsafe cloud guide chains on ephemeral Grafana Cloud stacks
+export GRAFANA_CLOUD_E2E_TOKEN=glc_xxx
+npx pathfinder-cli e2e --remote --tier cloud \
+  --cloud-stack-access-policy-token GRAFANA_CLOUD_E2E_TOKEN \
+  --cloud-stack-region prod-us-east-0 \
+  --cloud-stack-plugin-version latest
+
+# Run unsafe cloud guide chains on a manual hot pool before cold-provision fallback
+npx pathfinder-cli e2e --remote --tier cloud \
+  --cloud-stack-pool-id pathfinder-e2e-prod-us-east-3 \
+  --cloud-stack-access-policy-token GRAFANA_CLOUD_E2E_TOKEN \
+  --cloud-stack-region prod-us-east-0
 ```
 
 ## Related documentation

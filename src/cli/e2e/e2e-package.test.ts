@@ -209,6 +209,36 @@ describe('resolveRemotePackage (single, recommender)', () => {
     expect(result.skipped[0]).toMatchObject({ id: 'cloud-guide', reason: 'skipped_no_auth' });
   });
 
+  it('resolves a cloud guide without fixed credentials when stack provisioning is available', async () => {
+    mockResolve({
+      ok: true,
+      id: 'cloud-guide',
+      contentUrl: 'https://cdn.test/cloud-guide/content.json',
+      manifestUrl: 'https://cdn.test/cloud-guide/manifest.json',
+      repository: 'r',
+      manifest: { id: 'cloud-guide', type: 'guide', testEnvironment: { tier: 'cloud' } },
+    });
+    mockIndex([{ id: 'cloud-guide', path: 'cloud-guide/', type: 'guide', testEnvironment: { tier: 'cloud' } }]);
+    mockFetch({
+      ok: true,
+      text: '{"id":"cloud-guide","title":"Cloud guide","blocks":[{"type":"markdown","content":"Read"}]}',
+    });
+
+    const result = await resolveRemotePackage('cloud-guide', {
+      ...CLOUD_OPTIONS,
+      cloudAuthTargets: { provisionable: [] },
+      cloudStackProvisioningAvailable: true,
+    });
+
+    expect(result.skipped).toHaveLength(0);
+    expect(result.runnable[0]).toMatchObject({
+      id: 'cloud-guide',
+      tier: 'cloud',
+      targetUrl: 'https://learn.grafana.net/',
+      sideEffects: { level: 'readonly', reasons: [] },
+    });
+  });
+
   it('resolves an instance-targeted cloud guide with credentials for that instance', async () => {
     mockResolve({
       ok: true,

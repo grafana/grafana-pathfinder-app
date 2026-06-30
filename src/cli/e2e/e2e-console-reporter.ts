@@ -31,6 +31,17 @@ import {
 import type { RemoteResolution } from './e2e-package';
 import type { LoadedGuide } from '../utils/file-loader';
 import type { PreflightOutcome } from './manifest-preflight';
+import type { SideEffectClassification } from './side-effects';
+
+function formatSideEffects(sideEffects: SideEffectClassification | undefined): string {
+  if (!sideEffects) {
+    return '';
+  }
+  if (sideEffects.reasons.length === 0) {
+    return sideEffects.level;
+  }
+  return `${sideEffects.level}: ${sideEffects.reasons.map((reason) => reason.message).join('; ')}`;
+}
 
 function skipOnlyReport(preRunSkipped: MultiGuideReport['preRunSkipped']): MultiGuideReport {
   return {
@@ -243,10 +254,12 @@ export function printRemoteResolution(
   console.log(`\n📦 Resolved ${source}: ${resolution.runnable.length} runnable, ${resolution.skipped.length} skipped`);
   if (verbose) {
     for (const g of resolution.runnable) {
-      console.log(`   ✓ ${g.id} (${g.tier}) → ${g.sourceUrl}`);
+      console.log(`   ✓ ${g.id} (${g.tier}, side effects: ${formatSideEffects(g.sideEffects)}) → ${g.sourceUrl}`);
     }
     for (const s of resolution.skipped) {
-      console.log(`   ⊘ ${s.id}: ${s.reason} — ${s.message}`);
+      const sideEffects = formatSideEffects(s.sideEffects);
+      const suffix = sideEffects ? ` (side effects: ${sideEffects})` : '';
+      console.log(`   ⊘ ${s.id}: ${s.reason} — ${s.message}${suffix}`);
     }
   }
 }
