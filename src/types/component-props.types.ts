@@ -72,6 +72,7 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
   id?: string; // HTML id attribute for section identification
   skippable?: boolean; // Whether this section can be skipped if requirements fail
   autoCollapse?: boolean; // Whether to auto-collapse on completion (default: true, can be overridden by user preference)
+  companion?: boolean;
 }
 
 /**

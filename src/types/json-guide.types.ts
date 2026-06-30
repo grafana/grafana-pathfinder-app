@@ -183,6 +183,7 @@ export interface JsonSectionBlock extends AuthorAnnotated {
   objectives?: string[];
   /** Whether to auto-collapse this section on completion. Defaults to true. */
   autoCollapse?: boolean;
+  companion?: boolean;
 }
 
 // ============ CONDITIONAL BLOCK ============
