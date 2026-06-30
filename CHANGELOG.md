@@ -26,6 +26,7 @@
 
 ### Security
 
+- **Dependency overrides hardened and `dompurify` bumped**: Bumps `dompurify` to `^3.4.11` and pulls security-relevant transitive dependencies (`js-cookie`, `js-yaml`, `brace-expansion`) up to patched versions via targeted `overrides`, while deduping the OpenTelemetry and `uuid` trees. (#1203)
 - **Supply-chain and CI hardening (Node 24 + npm lockdown)**: Moves the toolchain to Node.js 24 and adds `.npmrc` lockdown — `allow-git=none` blocks git-protocol dependency installs and `min-release-age=3` refuses package versions younger than three days, mitigating fast-yanked malicious releases. Bumps `@grafana/*` to 13.0.2 to remove git-protocol usage inside `@grafana/ui`, and tightens `bundle-stats.yml` workflow permissions to `contents: read`. (#1101)
 - **Enforce F5 DOM sinks mechanically**: Adds mechanical enforcement of the F5 frontend-security rule for dangerous DOM sinks. (#1050)
 - **`js-yaml` to v4.2.0**: Security advisory update. (#1037)
