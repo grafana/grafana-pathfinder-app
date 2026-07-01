@@ -55,7 +55,7 @@ jest.mock('../../lib/user-storage', () => ({
 }));
 
 const mockAttemptAutoOpen = jest.fn();
-jest.mock('./experiment-orchestrator', () => ({
+jest.mock('../sidebar-auto-open', () => ({
   attemptAutoOpen: () => mockAttemptAutoOpen(),
 }));
 
@@ -71,7 +71,7 @@ jest.mock('../openfeature', () => ({
 }));
 
 const mockIsExtensionSidebarOwnedByOther = jest.fn().mockReturnValue(false);
-jest.mock('./experiment-utils', () => ({
+jest.mock('../../lib/storage/extension-sidebar', () => ({
   isExtensionSidebarOwnedByOther: (id: string) => mockIsExtensionSidebarOwnedByOther(id),
 }));
 

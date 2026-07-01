@@ -31,13 +31,6 @@ export const StorageKeys = {
   LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
   // Guide responses from input blocks (user-entered values for variables)
   GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
-  // Experiment auto-open state (Grafana user storage key)
-  EXPERIMENT_AUTO_OPEN: 'grafana-pathfinder-app-experiment-auto-open',
-  // Experiment session storage key prefixes (used with hostname suffix)
-  // These are sessionStorage keys, not Grafana user storage
-  EXPERIMENT_SESSION_AUTO_OPENED_PREFIX: 'grafana-interactive-learning-panel-auto-opened-',
-  EXPERIMENT_TREATMENT_PAGE_PREFIX: 'grafana-pathfinder-treatment-page-',
-  EXPERIMENT_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-pop-open-reset-processed-',
   // Persistent dedup for experiment exposure events. Used with `{hostname}:{flagKey}:{variant}`
   // suffix so the analytics event fires at most once per arm assignment per browser. Variant
   // reassignment (e.g. control → treatment) yields a new key and re-fires, which is what
@@ -47,9 +40,6 @@ export const StorageKeys = {
   // not session — auto-open fires once per browser, not once per session.
   HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX: 'grafana-pathfinder-highlighted-guide-auto-open-',
   HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',
-  // Legacy global treatment auto-open key (kept for backwards compatibility).
-  // Used with a `{hostname}` suffix. Not migrated — see G5/G10 notes.
-  EXPERIMENT_TREATMENT_OPENED_LEGACY_PREFIX: 'grafana-pathfinder-experiment-treatment-opened-',
   // Dev/debug feature-flag overrides (localStorage). Read before the MTFF client.
   FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',
   // External app suggestions for the featured zone (sessionStorage)

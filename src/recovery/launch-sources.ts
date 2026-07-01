@@ -28,8 +28,6 @@ export type LaunchSource =
   | 'mcp_launch'
   | 'navigate-action'
   | 'grot_guide_block'
-  | 'experiment_treatment'
-  | 'experiment_treatment_navigation'
   | 'highlighted_guide_experiment'
   | 'auto_open'
   | 'floating_panel_dock'
@@ -79,14 +77,12 @@ export const ALIGNED_BY_CONSTRUCTION_SOURCES: ReadonlySet<LaunchSource> = new Se
   'navigate-action',
   // Grot guide block surfaces are already URL-filtered like the recommender.
   'grot_guide_block',
-  // Experiment treatments and auto-opens already coordinate location.
-  'experiment_treatment',
-  'experiment_treatment_navigation',
   // Highlighted-guide experiment auto-opens the sidebar on a matched page and
   // dispatches `auto-launch-tutorial` immediately after — the user is by
   // definition on a page the operator configured for this guide, so no
   // alignment prompt is needed.
   'highlighted_guide_experiment',
+  // Config-driven auto-open (open panel on launch) coordinates its own location.
   'auto_open',
   // Floating panel docking back to sidebar — tab already exists.
   'floating_panel_dock',

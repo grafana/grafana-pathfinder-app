@@ -76,8 +76,8 @@ function stringifyValue(value: JsonValue): string {
  * Report a `pathfinder_feature_flag_evaluated` exposure for a flag value.
  *
  * Used by both the real OpenFeature client path (via `TrackingHook.after`)
- * and the local-override short-circuit in `getExperimentConfig` /
- * `getHighlightedGuideConfig`, so overrides used for QA / demos generate
+ * and the local-override short-circuit in `getHighlightedGuideConfig`, so
+ * overrides used for QA / demos generate
  * the same analytics event that prod MTFF assignment does.
  *
  * Fires the event at most once per (hostname, flag, variant) per browser,

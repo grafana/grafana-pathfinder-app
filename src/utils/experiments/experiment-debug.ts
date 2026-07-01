@@ -1,28 +1,21 @@
 /**
- * Debug utilities for the Pathfinder experiment system
+ * Debug surface for the highlighted-guide experiment (window.__pathfinderExperiment).
  *
- * Exposes window.__pathfinderExperiment for console debugging:
- * - config: The experiment config captured at module load
- * - variant: The experiment variant
- * - loadedAt: Timestamp when config was loaded
- * - refetch(): Re-fetch from GOFF and compare (rate limited)
- * - clearCache(): Clear all Pathfinder storage to reset state
- * - showCache(): Display current storage state
+ * Exposes flag overrides (setOverride / removeOverride / clearOverrides /
+ * showOverrides) and analytics exposure inspection (showExposures /
+ * clearExposures) for local QA and demos. See docs/developer/EXPERIMENT_TESTING.md.
  */
 
-import { experimentAutoOpenStorage } from '../../lib/user-storage';
 import { collectKeysByPrefix } from '../../lib/storage/key-utils';
 import { StorageKeys } from '../../lib/storage-keys';
 import {
-  getExperimentConfig,
   setFlagOverride,
   removeFlagOverride,
   clearFlagOverrides,
   getFlagOverrides,
   pathfinderFeatureFlags,
-  type ExperimentConfig,
+  type HighlightedGuideConfig,
 } from '../openfeature';
-import { getStorageKeys } from './experiment-utils';
 
 interface ExposureMarker {
   key: string;
@@ -43,172 +36,17 @@ function listExposureMarkers(hostname: string): ExposureMarker[] {
   });
 }
 
-// Rate limiting for refetch
-const REFETCH_COOLDOWN_MS = 5000; // 5 second cooldown
-let lastRefetchTime = 0;
-
 /**
  * Creates the debug object exposed on window.__pathfinderExperiment
  */
-export function createExperimentDebugger(experimentConfig: ExperimentConfig): void {
+export function createExperimentDebugger(config: HighlightedGuideConfig): void {
   const hostname = window.location.hostname;
-  const storageKeys = getStorageKeys(hostname);
 
   (window as any).__pathfinderExperiment = {
-    // Config captured at module load time
-    config: experimentConfig,
-    variant: experimentConfig.variant,
+    // Highlighted-guide config captured at module load time
+    config,
+    variant: config.variant,
     loadedAt: new Date().toISOString(),
-
-    // Method to re-fetch from GOFF and compare (for debugging only)
-    // Rate limited to prevent spam (5 second cooldown)
-    refetch: () => {
-      const now = Date.now();
-      const timeSinceLastRefetch = now - lastRefetchTime;
-
-      if (timeSinceLastRefetch < REFETCH_COOLDOWN_MS) {
-        const waitTime = Math.ceil((REFETCH_COOLDOWN_MS - timeSinceLastRefetch) / 1000);
-        console.warn(`[Pathfinder] Refetch rate limited. Try again in ${waitTime}s`);
-        return null;
-      }
-
-      lastRefetchTime = now;
-      const freshConfig = getExperimentConfig('pathfinder.experiment-variant');
-      console.log('[Pathfinder] Experiment config comparison:');
-      console.log('  Loaded at init:', {
-        variant: experimentConfig.variant,
-        pages: experimentConfig.pages,
-        resetCache: experimentConfig.resetCache,
-      });
-      console.log('  Fresh from GOFF:', {
-        variant: freshConfig.variant,
-        pages: freshConfig.pages,
-        resetCache: freshConfig.resetCache,
-      });
-      return freshConfig;
-    },
-
-    // Method to clear all Pathfinder storage (localStorage + sessionStorage + Grafana user storage)
-    clearCache: async () => {
-      console.log('[Pathfinder] Clearing all storage...');
-
-      // Find all per-page treatment keys
-      const perPageKeys = collectKeysByPrefix(sessionStorage, storageKeys.treatmentPagePrefix);
-
-      // Show current state before clearing
-      const perPageState: Record<string, string | null> = {};
-      perPageKeys.forEach((key) => {
-        perPageState[key] = sessionStorage.getItem(key);
-      });
-
-      // Get Grafana user storage state
-      let userStorageState = null;
-      try {
-        userStorageState = await experimentAutoOpenStorage.get();
-      } catch {
-        console.warn('[Pathfinder] Could not read user storage state');
-      }
-
-      console.log('[Pathfinder] Current state:');
-      console.log('  localStorage:', {
-        [storageKeys.resetProcessed]: localStorage.getItem(storageKeys.resetProcessed),
-        [storageKeys.autoOpened]: localStorage.getItem(storageKeys.autoOpened),
-      });
-      console.log('  sessionStorage (global):', {
-        [storageKeys.autoOpened]: sessionStorage.getItem(storageKeys.autoOpened),
-        [storageKeys.treatmentOpened]: sessionStorage.getItem(storageKeys.treatmentOpened),
-      });
-      if (perPageKeys.length > 0) {
-        console.log('[Pathfinder] Per-page treatment keys:', perPageState);
-      }
-      if (userStorageState) {
-        console.log('[Pathfinder] Grafana user storage:', userStorageState);
-      }
-
-      // Clear localStorage
-      localStorage.removeItem(storageKeys.resetProcessed);
-      localStorage.removeItem(storageKeys.autoOpened);
-
-      // Clear sessionStorage (global keys)
-      sessionStorage.removeItem(storageKeys.autoOpened);
-      sessionStorage.removeItem(storageKeys.treatmentOpened);
-
-      // Clear per-page treatment keys
-      perPageKeys.forEach((key) => sessionStorage.removeItem(key));
-
-      // Clear Grafana user storage
-      try {
-        await experimentAutoOpenStorage.clear();
-        console.log('[Pathfinder] Grafana user storage cleared');
-      } catch (error) {
-        console.warn('[Pathfinder] Failed to clear Grafana user storage:', error);
-      }
-
-      console.log(
-        `[Pathfinder] Storage cleared (${perPageKeys.length} per-page keys). Refresh the page to re-evaluate experiment.`
-      );
-      return { cleared: true, keys: storageKeys, perPageKeysCleared: perPageKeys.length };
-    },
-
-    // Show current storage state without clearing
-    showCache: async () => {
-      // Find all per-page treatment keys
-      const perPageKeys: Record<string, string | null> = {};
-      for (const key of collectKeysByPrefix(sessionStorage, storageKeys.treatmentPagePrefix)) {
-        perPageKeys[key] = sessionStorage.getItem(key);
-      }
-
-      // Get Grafana user storage state
-      let userStorageState = null;
-      try {
-        userStorageState = await experimentAutoOpenStorage.get();
-      } catch {
-        console.warn('[Pathfinder] Could not read user storage state');
-      }
-
-      const state = {
-        localStorage: {
-          resetProcessed: localStorage.getItem(storageKeys.resetProcessed),
-          autoOpened: localStorage.getItem(storageKeys.autoOpened),
-        },
-        sessionStorage: {
-          autoOpened: sessionStorage.getItem(storageKeys.autoOpened),
-          treatmentOpened: sessionStorage.getItem(storageKeys.treatmentOpened),
-        },
-        perPageKeys,
-        userStorage: userStorageState,
-      };
-
-      console.log('[Pathfinder] Global keys:');
-      console.log(
-        '  Reset processed (localStorage):',
-        storageKeys.resetProcessed,
-        '=',
-        state.localStorage.resetProcessed
-      );
-      console.log('  Auto-opened (sessionStorage):', storageKeys.autoOpened, '=', state.sessionStorage.autoOpened);
-      console.log(
-        '  Treatment opened (sessionStorage):',
-        storageKeys.treatmentOpened,
-        '=',
-        state.sessionStorage.treatmentOpened
-      );
-
-      if (Object.keys(perPageKeys).length > 0) {
-        console.log('[Pathfinder] Per-page treatment keys (auto-open once per target page):', perPageKeys);
-      } else {
-        console.log('[Pathfinder] No per-page treatment keys found.');
-      }
-
-      if (userStorageState) {
-        console.log('[Pathfinder] Grafana user storage (persists across browsers):', userStorageState);
-      }
-
-      return state;
-    },
-
-    // Storage keys for reference
-    storageKeys,
 
     // --- Flag override methods (persist in localStorage, take effect on next page load) ---
 
@@ -282,13 +120,4 @@ export function createExperimentDebugger(experimentConfig: ExperimentConfig): vo
       return { cleared: markers.length };
     },
   };
-}
-
-/**
- * Logs the experiment config at load time (always visible as warning)
- */
-export function logExperimentConfig(config: ExperimentConfig): void {
-  console.warn(
-    `[Pathfinder] Experiment config loaded: variant="${config.variant}", pages=${JSON.stringify(config.pages)}, resetCache=${config.resetCache}`
-  );
 }

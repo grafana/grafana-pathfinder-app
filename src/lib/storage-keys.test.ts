@@ -36,12 +36,7 @@ describe('StorageKeys — stable string contract', () => {
       GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
 
       // Experiment / feature-flag state
-      EXPERIMENT_AUTO_OPEN: 'grafana-pathfinder-app-experiment-auto-open',
-      EXPERIMENT_SESSION_AUTO_OPENED_PREFIX: 'grafana-interactive-learning-panel-auto-opened-',
-      EXPERIMENT_TREATMENT_PAGE_PREFIX: 'grafana-pathfinder-treatment-page-',
-      EXPERIMENT_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-pop-open-reset-processed-',
       EXPERIMENT_EXPOSURE_REPORTED_PREFIX: 'grafana-pathfinder-experiment-exposure-reported-',
-      EXPERIMENT_TREATMENT_OPENED_LEGACY_PREFIX: 'grafana-pathfinder-experiment-treatment-opened-',
       HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX: 'grafana-pathfinder-highlighted-guide-auto-open-',
       HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',
       FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',

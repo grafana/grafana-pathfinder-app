@@ -39,16 +39,6 @@ export interface ExperimentConfig {
 }
 
 /**
- * Default experiment config when flag is not set or errors
- * Defaults to 'excluded' to preserve normal Pathfinder behavior
- */
-export const DEFAULT_EXPERIMENT_CONFIG: ExperimentConfig = {
-  variant: 'excluded',
-  pages: [],
-  resetCache: false,
-};
-
-/**
  * Highlighted-guide experiment configuration
  *
  * Drives the once-per-browser A/B test that opens the Pathfinder sidebar on a
@@ -124,32 +114,6 @@ const pathfinderFeatureFlags = {
     values: [true, false],
     defaultValue: false,
     trackingKey: 'auto_open_sidebar',
-  },
-  /**
-   * A/B experiment variant for testing Pathfinder impact on onboarding
-   * - "excluded": Not in experiment, normal Pathfinder behavior (sidebar available)
-   * - "control": In experiment, no sidebar (native Grafana help only)
-   * - "treatment": In experiment, sidebar auto-opens on target pages
-   * Default: "excluded" to preserve normal behavior if flag not set
-   */
-  'pathfinder.experiment-variant': {
-    valueType: 'object',
-    values: [DEFAULT_EXPERIMENT_CONFIG as unknown as JsonValue],
-    defaultValue: DEFAULT_EXPERIMENT_CONFIG as unknown as JsonValue,
-    trackingKey: 'experiment_variant',
-  },
-  /**
-   * A/B experiment for sidebar availability
-   * - "excluded": Not in experiment, normal Pathfinder behavior (sidebar available)
-   * - "control": In experiment, no sidebar (native Grafana help only)
-   * - "treatment": In experiment, sidebar available (no auto-open)
-   * Default: "excluded" to preserve normal behavior if flag not set
-   */
-  'pathfinder.after-24h-experiment': {
-    valueType: 'object',
-    values: [DEFAULT_EXPERIMENT_CONFIG as unknown as JsonValue],
-    defaultValue: DEFAULT_EXPERIMENT_CONFIG as unknown as JsonValue,
-    trackingKey: 'after_24h_experiment',
   },
   /**
    * Highlighted-guide popout A/B experiment
@@ -466,73 +430,6 @@ export const getStringFlagValue = (flagName: string, defaultValue: string): stri
 };
 
 /**
- * Get experiment configuration from a feature flag that returns a JSON object
- *
- * Use this for experiment flags that need to return both a variant and additional config.
- * The flag should return an object with { variant: string, pages: string[], resetCache?: boolean }
- *
- * @param flagName - The feature flag name
- * @returns The experiment configuration or DEFAULT_EXPERIMENT_CONFIG on error
- *
- * @example
- * const config = getExperimentConfig('pathfinder.experiment-variant');
- * if (config.variant === 'treatment') {
- *   // Auto-open on config.pages
- * }
- * if (config.resetCache) {
- *   // Clear session storage to allow sidebar to auto-open again
- * }
- */
-export const getExperimentConfig = (flagName: string): ExperimentConfig => {
-  try {
-    // Check for local override first
-    const overrides = getFlagOverrides();
-    if (flagName in overrides) {
-      const override = overrides[flagName];
-      if (override && typeof override === 'object' && !Array.isArray(override) && 'variant' in override) {
-        const record = override as Record<string, unknown>;
-        const config: ExperimentConfig = {
-          variant: (record.variant as ExperimentConfig['variant']) ?? 'excluded',
-          pages: Array.isArray(record.pages) ? (record.pages as string[]) : [],
-          resetCache: typeof record.resetCache === 'boolean' ? record.resetCache : false,
-        };
-        console.warn(`[OpenFeature] Using local override for '${flagName}':`, config);
-        // Fire the exposure event so override-driven QA / demo runs produce
-        // the same analytics as a real MTFF assignment. The dedup state is
-        // shared with the OpenFeature hook path — see openfeature-tracking.ts.
-        reportFeatureFlagExposure(flagName, config as unknown as JsonValue);
-        return config;
-      }
-    }
-
-    const client = getFeatureFlagClient();
-    const value = client.getObjectValue(flagName, DEFAULT_EXPERIMENT_CONFIG as unknown as JsonValue);
-
-    // Validate the response has required fields before using
-    if (
-      value &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      'variant' in value &&
-      typeof (value as Record<string, unknown>).variant === 'string' &&
-      'pages' in value &&
-      Array.isArray((value as Record<string, unknown>).pages)
-    ) {
-      const record = value as Record<string, unknown>;
-      return {
-        variant: record.variant as ExperimentConfig['variant'],
-        pages: record.pages as string[],
-        resetCache: typeof record.resetCache === 'boolean' ? record.resetCache : false,
-      };
-    }
-    return DEFAULT_EXPERIMENT_CONFIG;
-  } catch (error) {
-    console.error(`[OpenFeature] Error evaluating flag '${flagName}':`, error);
-    return DEFAULT_EXPERIMENT_CONFIG;
-  }
-};
-
-/**
  * Get the highlighted-guide experiment configuration.
  *
  * Reads `pathfinder.highlighted-guide-experiment` and validates the extra fields
@@ -540,7 +437,7 @@ export const getExperimentConfig = (flagName: string): ExperimentConfig => {
  * to `DEFAULT_HIGHLIGHTED_GUIDE_CONFIG` (variant: 'excluded') when the flag is
  * missing, malformed, or evaluation throws.
  *
- * Supports the same localStorage override mechanism as `getExperimentConfig`.
+ * Supports the localStorage flag-override mechanism for QA / demos.
  *
  * @returns The validated highlighted-guide config or the safe default
  *
@@ -610,21 +507,13 @@ function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig |
 
 const HIGHLIGHTED_GUIDE_FLAG: FeatureFlagName = 'pathfinder.highlighted-guide-experiment';
 
-const getExperimentFlagNames = (): FeatureFlagName[] =>
-  featureFlagNames.filter((name) => pathfinderFeatureFlags[name].valueType === 'object');
-
-// Enumerated from pathfinderFeatureFlags (single source of truth) so a new experiment
-// is captured automatically. Excluded arms are dropped — 'excluded' means the user
-// isn't enrolled, matching the exposure-event convention (openfeature-tracking.ts).
-export const getActiveExperiments = (): ExperimentAnalyticsEntry[] =>
-  getExperimentFlagNames()
-    .map((flag) =>
-      // highlighted-guide carries extra fields (guideId/docType) that getExperimentConfig strips
-      flag === HIGHLIGHTED_GUIDE_FLAG
-        ? { flag, ...getHighlightedGuideConfig() }
-        : { flag, ...getExperimentConfig(flag) }
-    )
-    .filter((entry) => entry.variant !== 'excluded');
+// The highlighted-guide experiment is the only live experiment. Excluded arms
+// are dropped — 'excluded' means the user isn't enrolled, matching the
+// exposure-event convention (openfeature-tracking.ts).
+export const getActiveExperiments = (): ExperimentAnalyticsEntry[] => {
+  const config = getHighlightedGuideConfig();
+  return config.variant === 'excluded' ? [] : [{ flag: HIGHLIGHTED_GUIDE_FLAG, ...config }];
+};
 
 // ============================================================================
 // URL PATTERN MATCHING
@@ -634,7 +523,7 @@ export const getActiveExperiments = (): ExperimentAnalyticsEntry[] =>
  * Match a URL path against a pattern with optional wildcard support
  *
  * Supports two matching modes:
- * - Pattern ending with `*`: matches path and all children (prefix match)
+ * - Pattern ending with `*`: matches the path and its children on a segment boundary
  * - Pattern without `*`: exact match with trailing slash normalization
  *
  * @param pattern - The pattern to match against (e.g., "/a/app/schedules*" or "/a/app/schedules")
@@ -646,6 +535,7 @@ export const getActiveExperiments = (): ExperimentAnalyticsEntry[] =>
  * matchPathPattern('/a/app/schedules*', '/a/app/schedules');      // true
  * matchPathPattern('/a/app/schedules*', '/a/app/schedules/123');  // true
  * matchPathPattern('/a/app/schedules*', '/a/app/schedule');       // false
+ * matchPathPattern('/a/app/schedules*', '/a/app/schedules-v2');   // false (segment boundary)
  *
  * // Exact matching (with trailing slash normalization)
  * matchPathPattern('/a/app/schedules', '/a/app/schedules');       // true
@@ -657,9 +547,18 @@ export const matchPathPattern = (pattern: string, path: string): boolean => {
   const normalizedPath = path.endsWith('/') ? path.slice(0, -1) : path;
 
   if (trimmedPattern.endsWith('*')) {
-    // Wildcard: match prefix
+    // Prefix match on a path-segment boundary: `/a/app*` matches `/a/app` and
+    // `/a/app/child` but NOT `/a/appointments` (a shared substring is not a
+    // match). When the prefix already ends in `/`, that slash is the boundary.
     const prefix = trimmedPattern.slice(0, -1);
-    return path.startsWith(prefix);
+    if (!path.startsWith(prefix)) {
+      return false;
+    }
+    if (prefix.endsWith('/')) {
+      return true;
+    }
+    const rest = path.slice(prefix.length);
+    return rest === '' || rest.startsWith('/');
   }
 
   // Exact match with trailing slash normalization

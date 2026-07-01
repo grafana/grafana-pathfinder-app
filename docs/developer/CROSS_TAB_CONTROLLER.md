@@ -81,7 +81,7 @@ DOM sink and is **not** unconditionally safe to install — see the trust model.
 
 ## Entry gate and mount policy
 
-Both the controller overlay (`?controller=1` path) and the live-tab executor install are gated on `shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)` — the same policy that controls whether the main Pathfinder sidebar mounts. Using only `pathfinderEnabled` would allow the controller and executor to appear for users in the experiment control group, where no Pathfinder surface exists. Because the executor drives the user's authenticated Grafana DOM, it must follow the same exclusion logic as the rest of the plugin.
+Both the controller overlay (`?controller=1` path) and the live-tab executor install are gated on `pathfinderEnabled` (the `pathfinder.enabled` kill-switch) — the same policy that controls whether the main Pathfinder sidebar mounts. Because the executor drives the user's authenticated Grafana DOM, it must follow the same mount gate as the rest of the plugin.
 
 ## Security / trust model
 

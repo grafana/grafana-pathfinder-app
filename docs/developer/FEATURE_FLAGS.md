@@ -24,10 +24,10 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 **Behavior**:
 
-- **`true`**: Pathfinder loads normally — sidebar is available, experiments run as configured
-- **`false`**: Plugin is dismounted, the native Grafana help menu takes over (same behavior as being in an experiment control group)
+- **`true`**: Pathfinder loads normally — sidebar is available, the highlighted-guide experiment runs as configured
+- **`false`**: Plugin is dismounted, the native Grafana help menu takes over
 
-**Important**: This flag is evaluated independently of the experiment flags. Even if a user is in the `excluded` variant for both experiments, setting `pathfinder.enabled` to `false` will dismount the plugin. Conversely, if `pathfinder.enabled` is `true`, the experiment variants still apply as normal.
+**Important**: This is the only gate on whether Pathfinder mounts. It is evaluated independently of the highlighted-guide experiment: setting `pathfinder.enabled` to `false` dismounts the plugin regardless; when `true`, the experiment applies as normal.
 
 **Tracking key**: `pathfinder_enabled`
 
@@ -52,45 +52,11 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 2. Feature flag value from MTFF
 3. `DEFAULT_OPEN_PANEL_ON_LAUNCH` constant (fallback)
 
-**Multi-instance support**: Auto-open tracking is scoped per Grafana instance using hostname. This ensures that users with multiple Cloud instances (e.g., `company1.grafana.net` and `company2.grafana.net`) will see the sidebar auto-open independently per instance.
+**Behavior on launch**: When enabled, the sidebar auto-opens on each Grafana load (deferred past the onboarding flow as described below). There is no persistent "already shown" suppression — the toggle simply reflects whether the panel opens on launch. This config-driven auto-open lives in `src/utils/sidebar-auto-open.ts`.
 
 **Onboarding flow integration**: If a user first lands on the setup guide onboarding flow (`/a/grafana-setupguide-app/onboarding-flow`), the plugin defers auto-open. It listens for navigation events via `locationService.getHistory().listen()` (with a `popstate` fallback) and triggers auto-open when the user navigates away from onboarding to normal Grafana pages.
 
 **Tracking key**: `auto_open_sidebar`
-
----
-
-### `pathfinder.experiment-variant`
-
-**Type**: Object (`ExperimentConfig`)
-
-**Purpose**: A/B experiment for testing Pathfinder's impact on onboarding. Returns a JSON object with variant assignment, target pages, and cache reset control.
-
-**Default**: `{ variant: 'excluded', pages: [], resetCache: false }`
-
-**Returned object shape**:
-
-```typescript
-interface ExperimentConfig {
-  variant: 'excluded' | 'control' | 'treatment';
-  pages: string[]; // Target page paths where sidebar should auto-open (treatment only)
-  resetCache?: boolean; // When toggled true, clears session storage to allow re-triggering auto-open
-}
-```
-
-**Variant behavior**:
-
-| Variant     | Sidebar registered | Auto-open | Behavior                                             |
-| ----------- | ------------------ | --------- | ---------------------------------------------------- |
-| `excluded`  | Yes                | Normal    | Not in experiment; normal Pathfinder behavior        |
-| `control`   | No                 | No        | In experiment; no sidebar (native Grafana help only) |
-| `treatment` | Yes                | Yes       | In experiment; sidebar auto-opens on target pages    |
-
-**Target pages**: The `pages` array contains URL path patterns (with optional `*` wildcard suffix) where auto-open triggers. An empty array means auto-open on all pages.
-
-**Cache reset**: The `resetCache` field allows operators to clear the "already shown" tracking via MTFF, enabling the sidebar to auto-open again for users who have already seen it.
-
-**Tracking key**: `experiment_variant`
 
 ---
 
@@ -210,18 +176,18 @@ These hooks must be used within an `OpenFeatureProvider` component tree.
 
 #### In non-React code (synchronous)
 
-Use `getFeatureFlagValue()` for boolean flags or `getExperimentConfig()` for object-valued experiment flags:
+Use `getFeatureFlagValue()` for boolean flags or `getHighlightedGuideConfig()` for the highlighted-guide experiment object flag:
 
 ```typescript
-import { getFeatureFlagValue, getExperimentConfig } from '../../utils/openfeature';
+import { getFeatureFlagValue, getHighlightedGuideConfig } from '../../utils/openfeature';
 
 // Boolean flag
 const shouldAutoOpen = getFeatureFlagValue('pathfinder.auto-open-sidebar', false);
 
-// Experiment config (object flag)
-const experimentConfig = getExperimentConfig('pathfinder.experiment-variant');
-if (experimentConfig.variant === 'treatment') {
-  // Auto-open sidebar on experimentConfig.pages
+// Highlighted-guide experiment config (object flag)
+const config = getHighlightedGuideConfig();
+if (config.variant !== 'excluded') {
+  // Auto-open + feature config.guideId on config.pages
 }
 ```
 

@@ -88,9 +88,8 @@ describe('reportAppInteraction experiment enrichment', () => {
     expect(props.plugin_version).toBe('1.0.0-test');
   });
 
-  it('passes the enrolled experiments through and rolls variant up to treatment', () => {
+  it('passes the enrolled experiment through and rolls variant up to treatment', () => {
     bindExperimentsProvider(() => [
-      { flag: 'pathfinder.experiment-variant', variant: 'control', pages: [] },
       { flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
     ]);
 
@@ -99,7 +98,6 @@ describe('reportAppInteraction experiment enrichment', () => {
     const props = mockReportInteraction.mock.calls[0][1];
     expect(props.variant).toBe('treatment');
     expect(props.experiments).toEqual([
-      expect.objectContaining({ flag: 'pathfinder.experiment-variant', variant: 'control' }),
       expect.objectContaining({ flag: HIGHLIGHTED, variant: 'treatment', guideId: 'g', docType: 'learning-journey' }),
     ]);
   });

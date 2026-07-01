@@ -27,8 +27,8 @@ import { StorageKeys } from '../../lib/storage-keys';
 import { sidebarState } from '../../global-state/sidebar';
 import { findDocPage } from '../find-doc-page';
 import { getHighlightedGuideConfig, type HighlightedGuideConfig } from '../openfeature';
-import { attemptAutoOpen } from './experiment-orchestrator';
-import { isExtensionSidebarOwnedByOther } from './experiment-utils';
+import { attemptAutoOpen } from '../sidebar-auto-open';
+import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import {
   clearHighlightedGuideMarkers,
   hasHighlightedGuideAutoOpened,
@@ -43,9 +43,8 @@ import {
 /**
  * Read the flag and process `resetCache` exactly once per false→true transition.
  *
- * Sentinel key: `HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX{hostname}`. Mirrors
- * the pattern in `experiment-orchestrator.ts:106` so a stuck `resetCache: true`
- * doesn't trigger a clear on every reload.
+ * Sentinel key: `HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX{hostname}` so a stuck
+ * `resetCache: true` doesn't trigger a clear on every reload.
  */
 export function initializeHighlightedGuideExperiment(hostname: string): HighlightedGuideConfig {
   const config = getHighlightedGuideConfig();

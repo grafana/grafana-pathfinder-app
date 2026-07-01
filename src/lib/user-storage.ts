@@ -1777,10 +1777,3 @@ export const guideResponseStorage = {
     }
   },
 };
-
-// ============================================================================
-// EXPERIMENT AUTO-OPEN STORAGE
-// Re-exported from ./storage/experiment-auto-open-storage for backward compatibility.
-// ============================================================================
-
-export { experimentAutoOpenStorage, type ExperimentAutoOpenState } from './storage/experiment-auto-open-storage';

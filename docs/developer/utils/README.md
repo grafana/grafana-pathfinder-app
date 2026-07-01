@@ -28,7 +28,8 @@ Only the following hook remains in `src/utils/`:
 - `dev-mode.ts` - Development mode utilities
 - `openfeature.ts` - Feature toggle utilities
 - `openfeature-tracking.ts` - OpenFeature hook for tracking flag evaluations to analytics
-- `experiment-debug.ts` - Debug utilities for the experiment system (`window.__pathfinderExperiment`)
+- `sidebar-auto-open.ts` - Config-driven sidebar auto-open on launch (open-panel-on-launch)
+- `experiments/experiment-debug.ts` - Debug surface for the highlighted-guide experiment (`window.__pathfinderExperiment`)
 - `variable-substitution.ts` - Template variable (`{{variableName}}`) substitution for dynamic content
 
 ### 🔧 **Development Tools** (`devtools/`)
@@ -190,11 +191,11 @@ function prefixRoute(route: string): string {
 - `getFeatureFlagValue()` - Synchronous boolean flag check
 - `getStringFlagValue()` - Synchronous string flag check
 - `initializeOpenFeature()` - Initialize the OpenFeature SDK
-- `ExperimentConfig` / `getExperimentConfig()` - Experiment configuration types and accessor
+- `ExperimentConfig` / `getHighlightedGuideConfig()` - Experiment configuration types and accessor
 
 **Used By**:
 
-- `src/utils/experiment-debug.ts` - Experiment debugging console tools
+- `src/utils/experiments/experiment-debug.ts` - Experiment debugging console tools
 - `src/utils/openfeature-tracking.ts` - Flag evaluation analytics tracking
 - Components requiring feature flag checks
 

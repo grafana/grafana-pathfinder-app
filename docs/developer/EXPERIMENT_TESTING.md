@@ -2,14 +2,12 @@
 
 How to force yourself into a specific experiment arm for local development, QA, and demos. The flag shapes and product intent live in [`FEATURE_FLAGS.md`](./FEATURE_FLAGS.md) — this doc focuses on the manual override workflow.
 
-All overrides go through `window.__pathfinderExperiment`, the debug surface created in [`src/utils/experiments/experiment-debug.ts`](../../src/utils/experiments/experiment-debug.ts) at plugin boot. It's available in any DevTools console where Pathfinder is loaded — except when Pathfinder is fully dismounted (the existing `pathfinder.experiment-variant` `control` arm hides the plugin, taking the debug surface with it; use raw `localStorage` writes in that case).
+All overrides go through `window.__pathfinderExperiment`, the debug surface created in [`src/utils/experiments/experiment-debug.ts`](../../src/utils/experiments/experiment-debug.ts) at plugin boot. It's available in any DevTools console where Pathfinder is loaded — except when Pathfinder is fully dismounted (`pathfinder.enabled=false` hides the plugin, taking the debug surface with it; use raw `localStorage` writes in that case).
 
 ## Current experiments
 
 | Flag                                      | Variants                             | What treatment does                                                                                                     |
 | ----------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `pathfinder.experiment-variant`           | `excluded` / `control` / `treatment` | `control` hides Pathfinder entirely; `treatment` mounts the sidebar and auto-opens on `pages[]`.                        |
-| `pathfinder.after-24h-experiment`         | `excluded` / `control` / `treatment` | `control` hides Pathfinder for users who first appeared >24h ago.                                                       |
 | `pathfinder.highlighted-guide-experiment` | `excluded` / `control` / `treatment` | Both `control` and `treatment` keep Pathfinder visible — they differ only in which `guideId` is auto-opened + featured. |
 
 See [`FEATURE_FLAGS.md`](./FEATURE_FLAGS.md) for the full flag shapes and variant tables.
@@ -22,14 +20,11 @@ __pathfinderExperiment.setOverride(flag, value);
 __pathfinderExperiment.removeOverride(flag);
 __pathfinderExperiment.clearOverrides();
 __pathfinderExperiment.showOverrides(); // returns the current overrides object
-__pathfinderExperiment.showCache(); // dumps per-page treatment keys + reset sentinel + user-storage
-__pathfinderExperiment.clearCache(); // clears the main-experiment auto-open tracking (sessionStorage + user-storage)
-__pathfinderExperiment.refetch(); // re-evaluates pathfinder.experiment-variant from MTFF (5s rate limit)
 __pathfinderExperiment.showExposures(); // lists (flag, variant) pairs already reported to analytics on this browser
 __pathfinderExperiment.clearExposures(); // clears the analytics dedup markers so the next reload re-fires pathfinder_feature_flag_evaluated
 ```
 
-Overrides are persisted in `localStorage` under `grafana-pathfinder-flag-overrides`, evaluated on every page load via the synchronous `getFeatureFlagValue` / `getExperimentConfig` / `getHighlightedGuideConfig` readers — they bypass MTFF entirely and produce a `[OpenFeature] Using local override for '<flag>'` warning every time they're read, which doubles as a visible reminder that you're in dev mode.
+Overrides are persisted in `localStorage` under `grafana-pathfinder-flag-overrides`, evaluated on every page load via the synchronous `getFeatureFlagValue` / `getHighlightedGuideConfig` readers — they bypass MTFF entirely and produce a `[OpenFeature] Using local override for '<flag>'` warning every time they're read, which doubles as a visible reminder that you're in dev mode.
 
 ## Reset to a clean baseline
 
@@ -57,64 +52,6 @@ location.reload();
 ```
 
 After the reload, Pathfinder behaves like a brand-new visitor: no overrides, no markers, no docked plugin.
-
-## `pathfinder.experiment-variant`
-
-Forces the user into the main pathfinder experiment. **`control` dismounts Pathfinder entirely** — use this when validating "what does the product look like with no Pathfinder."
-
-```js
-// Treatment: sidebar auto-opens on the listed pages
-__pathfinderExperiment.setOverride('pathfinder.experiment-variant', {
-  variant: 'treatment',
-  pages: ['/dashboards*', '/explore'],
-  resetCache: false,
-});
-location.reload();
-
-// Control: Pathfinder dismounted; native Grafana help only
-__pathfinderExperiment.setOverride('pathfinder.experiment-variant', {
-  variant: 'control',
-  pages: [],
-  resetCache: false,
-});
-location.reload();
-```
-
-After reload in `control`, `__pathfinderExperiment` is gone (Pathfinder didn't mount). To roll back, write to `localStorage.grafana-pathfinder-flag-overrides` directly or clear the key:
-
-```js
-localStorage.removeItem('grafana-pathfinder-flag-overrides');
-location.reload();
-```
-
-**Resetting per-page auto-open markers**: the treatment arm tracks per-page auto-opens so the sidebar doesn't re-open on every reload of the same page. To re-test:
-
-```js
-// Either toggle resetCache once (sentinel-guarded — see FEATURE_FLAGS.md)
-__pathfinderExperiment.setOverride('pathfinder.experiment-variant', {
-  variant: 'treatment',
-  pages: ['/dashboards*'],
-  resetCache: true,
-});
-location.reload();
-
-// Or nuke the cache via the debug helper
-__pathfinderExperiment.clearCache();
-location.reload();
-```
-
-## `pathfinder.after-24h-experiment`
-
-Same shape as `pathfinder.experiment-variant`. `control` also dismounts Pathfinder.
-
-```js
-__pathfinderExperiment.setOverride('pathfinder.after-24h-experiment', {
-  variant: 'control',
-  pages: [],
-  resetCache: false,
-});
-location.reload();
-```
 
 ## `pathfinder.highlighted-guide-experiment`
 
@@ -246,7 +183,7 @@ Variant reassignment is the **only** condition where the event auto-refires acro
 
 ## Common gotchas
 
-- **`__pathfinderExperiment` is undefined.** Pathfinder is dismounted — usually because you're in `control` on `pathfinder.experiment-variant` or `pathfinder.after-24h-experiment`. Clear `localStorage.grafana-pathfinder-flag-overrides` and reload, or write the override directly into `localStorage`.
+- **`__pathfinderExperiment` is undefined.** Pathfinder is dismounted — the `pathfinder.enabled` kill-switch is `false` (or overridden off). Clear `localStorage.grafana-pathfinder-flag-overrides` and reload, or write `{"pathfinder.enabled": true}` into that key.
 - **Auto-launch landed but I see the wrong tab.** The orchestrator dispatches `auto-launch-tutorial` which calls `openDocsPage` / `openLearningJourney` — those make the new guide tab active automatically. If you instead see the editor / devtools tab from a prior session, the configured `guideId` failed to resolve through `findDocPage`: check the console for `findDocPage returned null for guideId="…"` and fix the id (`bundled:<id>`, `api:<id>`, or a full URL on a whitelisted host).
 - **Auto-launch fires but the guide opens as the wrong type (docs page vs learning journey).** Set the flag's `docType` explicitly (`'docs-page' | 'learning-journey' | 'interactive'`). The operator override wins over `findDocPage`'s URL-based inference.
 - **Only one page renders / no milestones for an interactive-learning guide.** `guideId` is pointing at the `/guides/<slug>/` web URL rather than the `/packages/<slug>/content.json` package URL. The web URL bypasses `isPackageContentUrl` so the sibling `manifest.json` is never fetched and the docs panel falls through to a plain `fetchContent` render. Swap the URL form (see "`guideId` URL form" above). Quick console probe to confirm both URL forms exist for your guide: `fetch('https://interactive-learning.grafana.net/packages/<slug>/manifest.json').then(r => r.status)` should return `200`.
