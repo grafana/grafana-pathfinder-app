@@ -104,10 +104,9 @@ function FloatingPanelInner() {
 
   // Fire panel-mounted event so auto-launch and MCP flows work
   useEffect(() => {
-    // Catch the synchronous signal from module.tsx's dispatchAutoLaunch —
-    // this fires within the same microtask as pathfinder-panel-mounted,
-    // preventing the fallback-to-sidebar effect from racing the 500ms
-    // delayed auto-launch-tutorial event.
+    // Catch the synchronous `pathfinder-auto-launch-pending` signal — it fires
+    // within the same microtask as pathfinder-panel-mounted, preventing the
+    // fallback-to-sidebar effect from racing the 500ms delayed auto-launch emit.
     const handlePending = () => {
       guideOpenInFlightRef.current = true;
     };
@@ -144,14 +143,12 @@ function FloatingPanelInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
 
-  // Listen for auto-launch-tutorial events (shared across all panel surfaces).
-  // The hook owns the routing; we just flip the in-flight flag synchronously
-  // so the empty-state fallback doesn't fire on top of an incoming guide.
-  useAutoLaunchTutorial(panel, {
-    onIncoming: () => {
-      guideOpenInFlightRef.current = true;
-    },
-  });
+  // Flip the in-flight flag synchronously so the empty-state fallback doesn't
+  // fire on top of an incoming guide.
+  const markGuideOpenInFlight = useCallback(() => {
+    guideOpenInFlightRef.current = true;
+  }, []);
+  useAutoLaunchTutorial(panel, { onIncoming: markGuideOpenInFlight });
 
   // Get active tab content
   const activeTab = tabs.find((t) => t.id === activeTabId);

@@ -3,6 +3,7 @@ import { BusEventWithPayload } from '@grafana/data';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import pluginJson from '../plugin.json';
 import { panelModeManager } from './panel-mode';
+import { autoLaunchChannel } from './auto-launch';
 
 interface OpenExtensionSidebarPayload {
   pluginId: string;
@@ -68,7 +69,7 @@ class GlobalSidebarState {
   public openSidebar(componentTitle: string, props?: Record<string, unknown>): void {
     const mode = panelModeManager.getMode();
     // In floating mode, the panel is already mounted and listening for
-    // auto-launch-tutorial events. No sidebar open needed.
+    // auto-launch requests. No sidebar open needed.
     // In full-screen mode, the dedicated full-screen page owns the active
     // session; opening the sidebar would mount a *second*
     // CombinedLearningJourneyPanel that races on tabStorage. The user can
@@ -111,16 +112,12 @@ class GlobalSidebarState {
       document.removeEventListener('pathfinder-panel-mounted', dispatch);
       // Small delay so docs-panel's useEffect listener is registered after mount
       setTimeout(() => {
-        document.dispatchEvent(
-          new CustomEvent('auto-launch-tutorial', {
-            detail: {
-              url: `bundled:${guideId}`,
-              title: guideId,
-              type: 'docs-page',
-              source: 'mcp_launch',
-            },
-          })
-        );
+        autoLaunchChannel.emit({
+          url: `bundled:${guideId}`,
+          title: guideId,
+          type: 'docs-page',
+          source: 'mcp_launch',
+        });
       }, 300);
     };
 

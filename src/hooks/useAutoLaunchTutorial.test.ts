@@ -10,6 +10,7 @@
 
 import { renderHook } from '@testing-library/react';
 import { useAutoLaunchTutorial, type AutoLaunchPanel } from './useAutoLaunchTutorial';
+import { autoLaunchChannel, type AutoLaunchTutorialDetail } from '../global-state/auto-launch';
 
 function makePanel() {
   return {
@@ -22,11 +23,32 @@ function asPanel(panel: ReturnType<typeof makePanel>): AutoLaunchPanel {
   return panel as unknown as AutoLaunchPanel;
 }
 
-function dispatchAutoLaunch(detail?: { url?: string; title?: string; type?: string; source?: string }) {
-  document.dispatchEvent(new CustomEvent('auto-launch-tutorial', { detail }));
+function dispatchAutoLaunch(detail: Partial<AutoLaunchTutorialDetail> = {}) {
+  autoLaunchChannel.emit(detail as AutoLaunchTutorialDetail);
 }
 
 describe('useAutoLaunchTutorial', () => {
+  afterEach(() => {
+    // Drain any value latched by a test that emitted while unsubscribed so it
+    // cannot leak into the next test's mount.
+    autoLaunchChannel.subscribe(() => {})();
+  });
+
+  it('delivers a launch emitted before the hook mounts (latched replay, race fix)', () => {
+    // Producers can emit before the lazy panel's listener attaches; the latch
+    // must replay the request to the hook when it subscribes on mount.
+    autoLaunchChannel.emit({ url: 'bundled:late', title: 'Late', type: 'docs', source: 'url_param' });
+
+    const panel = makePanel();
+    renderHook(() => useAutoLaunchTutorial(asPanel(panel)));
+
+    expect(panel.openDocsPage).toHaveBeenCalledWith(
+      'bundled:late',
+      'Late',
+      expect.objectContaining({ source: 'url_param' })
+    );
+  });
+
   it('routes type=learning-journey through openLearningJourney', () => {
     const panel = makePanel();
     renderHook(() => useAutoLaunchTutorial(asPanel(panel)));

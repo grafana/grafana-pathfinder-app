@@ -1,40 +1,14 @@
-/**
- * Subscribe a panel model to the `auto-launch-tutorial` event.
- *
- * Why this exists: the same listener was duplicated across the three
- * surfaces that consume `auto-launch-tutorial` — the sidebar, the floating
- * panel manager, and the fullscreen panel. All three call
- * `coerceLaunchSource` and apply the same "open as learning journey" rule
- * (`type === 'learning-journey' || source === 'learning-hub'`). Drift
- * between those copies has produced real bugs and the routing decision
- * is exactly the kind of cross-surface contract that should live in one
- * place.
- *
- * The sidebar variant additionally fires `OpenResourceClick` analytics and
- * a `auto-launch-complete` window event — the consumer wires those in via
- * the optional `onLaunched` callback so the hook stays minimal for the
- * floating / fullscreen consumers that don't need them.
- */
+// Shared auto-launch routing: the panel surfaces (sidebar, floating, fullscreen)
+// subscribe to `autoLaunchChannel` through this hook so source coercion and the
+// learning-journey rule live in one place instead of drifting across copies.
 
 import { useEffect } from 'react';
 
 import { coerceLaunchSource, type LaunchSource } from '../recovery';
 import { shouldOpenAsLearningJourney } from '../utils/pathfinder-search-params';
+import { autoLaunchChannel, type AutoLaunchTutorialDetail } from '../global-state/auto-launch';
 
-/**
- * Detail payload of the `auto-launch-tutorial` CustomEvent.
- *
- * `type` and `source` are intentionally untyped strings here — they arrive
- * from external consumers (`module.tsx`, the link interceptor) and are
- * narrowed inside the hook via `coerceLaunchSource` and the shared
- * `shouldOpenAsLearningJourney` rule.
- */
-export interface AutoLaunchTutorialDetail {
-  url: string;
-  title: string;
-  type?: string;
-  source?: string;
-}
+export type { AutoLaunchTutorialDetail };
 
 /**
  * Minimal panel shape the hook depends on. Inlined here (rather than
@@ -48,7 +22,7 @@ export interface AutoLaunchPanel {
 
 export interface UseAutoLaunchTutorialOptions {
   /**
-   * Called synchronously when the event arrives, BEFORE the panel is
+   * Called synchronously when an auto-launch arrives, BEFORE the panel is
    * mutated. Used by floating / fullscreen surfaces to flip their
    * `guideOpenInFlightRef` so the empty-state fallback doesn't fire on top
    * of an incoming guide.
@@ -62,9 +36,9 @@ export interface UseAutoLaunchTutorialOptions {
    */
   onLaunched?: (detail: AutoLaunchTutorialDetail, openedAsLearningJourney: boolean) => void;
   /**
-   * When true, the auto-launch event is ignored. Fullscreen uses this to
-   * skip the deep-link handler's delayed `auto-launch-tutorial` dispatch
-   * when a pending-guide handoff already opened the guide on mount.
+   * When true, the incoming auto-launch is skipped. Fullscreen uses this to
+   * skip the deep-link handler's delayed auto-launch emit when a pending-guide
+   * handoff already opened the guide on mount.
    */
   skipLaunch?: () => boolean;
 }
@@ -75,11 +49,7 @@ export function useAutoLaunchTutorial(panel: AutoLaunchPanel, options?: UseAutoL
   const skipLaunch = options?.skipLaunch;
 
   useEffect(() => {
-    const handleAutoLaunch = (event: Event) => {
-      const detail = (event as CustomEvent<AutoLaunchTutorialDetail>).detail;
-      if (!detail) {
-        return;
-      }
+    const handleAutoLaunch = (detail: AutoLaunchTutorialDetail) => {
       onIncoming?.(detail);
 
       if (skipLaunch?.()) {
@@ -105,9 +75,6 @@ export function useAutoLaunchTutorial(panel: AutoLaunchPanel, options?: UseAutoL
       onLaunched?.(detail, openedAsLearningJourney);
     };
 
-    document.addEventListener('auto-launch-tutorial', handleAutoLaunch);
-    return () => {
-      document.removeEventListener('auto-launch-tutorial', handleAutoLaunch);
-    };
+    return autoLaunchChannel.subscribe(handleAutoLaunch);
   }, [panel, onIncoming, onLaunched, skipLaunch]);
 }

@@ -14,6 +14,7 @@ import { locationService } from '@grafana/runtime';
 import pluginJson from '../plugin.json';
 import { panelModeManager } from '../global-state/panel-mode';
 import { sidebarState } from '../global-state/sidebar';
+import { autoLaunchChannel } from '../global-state/auto-launch';
 import { validateRedirectPath } from '../security/url-validator';
 import {
   parsePathfinderDeepLink,
@@ -198,7 +199,7 @@ function hasAnyPathfinderParam(search: string): boolean {
   return PATHFINDER_ACTIVATION_PARAMS.some((p) => params.has(p));
 }
 
-/** Dispatch `auto-launch-tutorial` once whichever panel surface mounts first. */
+/** Emit the auto-launch onto `autoLaunchChannel` once whichever panel surface mounts first. */
 function installAutoLaunchOnMount(detail: { url: string; title: string; type: string; source: string }): void {
   let autoLaunched = false;
   const dispatch = () => {
@@ -212,11 +213,7 @@ function installAutoLaunchOnMount(detail: { url: string; title: string; type: st
     document.dispatchEvent(new CustomEvent('pathfinder-auto-launch-pending'));
 
     setTimeout(() => {
-      document.dispatchEvent(
-        new CustomEvent('auto-launch-tutorial', {
-          detail,
-        })
-      );
+      autoLaunchChannel.emit(detail);
     }, 500);
   };
 

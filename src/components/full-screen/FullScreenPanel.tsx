@@ -164,20 +164,21 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     }
   }, [restorationDone, panel]);
 
-  // Listen for auto-launch-tutorial events (shared across all panel surfaces).
-  // The hook owns the routing; we just flip the in-flight flag synchronously
-  // so the empty-state fallback doesn't fire on top of an incoming guide.
+  // Flip the in-flight flag synchronously so the empty-state fallback doesn't
+  // fire on top of an incoming guide.
+  const markGuideOpenInFlight = useCallback(() => {
+    guideOpenInFlightRef.current = true;
+  }, []);
+  // The floating→fullscreen handoff pushes a `?doc=` URL, which makes
+  // `handlePathfinderDeepLink` schedule a delayed auto-launch ~500ms later.
+  // By then the pending-guide mount effect has already opened the guide
+  // (with packageInfo). Without this skip, the duplicate open goes through
+  // `openLearningJourney` without packageInfo and replaces the journey
+  // content with a flat single-doc — the milestone arrows disappear.
+  const skipLaunchWhenGuideInFlight = useCallback(() => guideOpenInFlightRef.current, []);
   useAutoLaunchTutorial(panel, {
-    onIncoming: () => {
-      guideOpenInFlightRef.current = true;
-    },
-    // The floating→fullscreen handoff pushes a `?doc=` URL, which makes
-    // `handlePathfinderDeepLink` schedule a delayed auto-launch ~500ms later.
-    // By then the pending-guide mount effect has already opened the guide
-    // (with packageInfo). Without this skip, the duplicate open goes through
-    // `openLearningJourney` without packageInfo and replaces the journey
-    // content with a flat single-doc — the milestone arrows disappear.
-    skipLaunch: () => guideOpenInFlightRef.current,
+    onIncoming: markGuideOpenInFlight,
+    skipLaunch: skipLaunchWhenGuideInFlight,
   });
 
   // Active tab projection.

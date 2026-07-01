@@ -3,6 +3,7 @@ import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { config, locationService } from '@grafana/runtime';
 import { parseUrlSafely, validateRedirectPath } from '../../security/url-validator';
+import { autoLaunchChannel } from '../../global-state/auto-launch';
 
 export class NavigateHandler {
   constructor(
@@ -117,8 +118,8 @@ export class NavigateHandler {
   }
 
   /**
-   * Open a guide in the sidebar after SPA navigation completes.
-   * Uses the same auto-launch-tutorial event pattern as module.tsx.
+   * Open a guide in the sidebar after SPA navigation completes, by emitting
+   * onto `autoLaunchChannel` once navigation settles.
    */
   private async openGuideAfterNavigation(guideParam: string): Promise<void> {
     // Dynamic import to keep find-doc-page in a lazy chunk
@@ -130,18 +131,15 @@ export class NavigateHandler {
       return;
     }
 
-    // Wait for navigation to settle before dispatching
+    // Wait for navigation to settle before emitting
     await new Promise((resolve) => setTimeout(resolve, 500));
 
-    const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
-      detail: {
-        url: docPage.url,
-        title: docPage.title,
-        type: docPage.type,
-        source: 'navigate-action',
-      },
+    autoLaunchChannel.emit({
+      url: docPage.url,
+      title: docPage.title,
+      type: docPage.type,
+      source: 'navigate-action',
     });
-    document.dispatchEvent(autoLaunchEvent);
   }
 
   private async markAsCompleted(data: InteractiveElementData): Promise<void> {
