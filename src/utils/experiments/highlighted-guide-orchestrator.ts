@@ -208,6 +208,11 @@ function installAutoLaunchOnMount(detail: { url: string; title: string; type: st
     document.dispatchEvent(new CustomEvent('pathfinder-auto-launch-pending'));
 
     setTimeout(() => {
+      // If the surface unmounted during the delay, skip the emit — the channel
+      // latches, so a stale value would replay on a later manual open.
+      if (!sidebarState.getIsSidebarMounted()) {
+        return;
+      }
       autoLaunchChannel.emit({
         url: detail.url,
         title: detail.title,

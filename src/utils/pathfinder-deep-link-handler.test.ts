@@ -209,6 +209,31 @@ describe('handlePathfinderDeepLink', () => {
     }
   });
 
+  it('skips the auto-launch emit when the surface unmounts before the 500ms timer fires', async () => {
+    jest.useFakeTimers();
+    try {
+      setSearch('?doc=bundled%3Afoo&source=url_param');
+      mockGetIsSidebarMounted.mockReturnValue(true);
+
+      const events: AutoLaunchTutorialDetail[] = [];
+      const unsubscribe = autoLaunchChannel.subscribe((detail) => events.push(detail));
+      events.length = 0;
+
+      handlePathfinderDeepLink(mkDeps());
+      await flushPromises();
+
+      // Surface unmounts during the 500ms delay: the queued emit must not fire,
+      // or a stale value latches and replays on a later manual open.
+      mockGetIsSidebarMounted.mockReturnValue(false);
+      jest.advanceTimersByTime(500);
+      unsubscribe();
+
+      expect(events).toHaveLength(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('honors explicit ?type=learning-journey over findDocPage classification', async () => {
     jest.useFakeTimers();
     try {
