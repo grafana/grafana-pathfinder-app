@@ -118,8 +118,8 @@ export class NavigateHandler {
   }
 
   /**
-   * Open a guide in the sidebar after SPA navigation completes.
-   * Uses the same auto-launch-tutorial event pattern as module.tsx.
+   * Open a guide in the sidebar after SPA navigation completes, by emitting
+   * onto `autoLaunchChannel` once navigation settles.
    */
   private async openGuideAfterNavigation(guideParam: string): Promise<void> {
     // Dynamic import to keep find-doc-page in a lazy chunk
@@ -131,7 +131,7 @@ export class NavigateHandler {
       return;
     }
 
-    // Wait for navigation to settle before dispatching
+    // Wait for navigation to settle before emitting
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     autoLaunchChannel.emit({

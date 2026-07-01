@@ -31,7 +31,7 @@ import { isDevModeEnabled } from '../../utils/dev-mode';
 
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
-import { useGuideProgressState, useAutoLaunchTutorial } from '../../hooks';
+import { useGuideProgressState, useAutoLaunchTutorial, type AutoLaunchTutorialDetail } from '../../hooks';
 import {
   fetchContent,
   getNextMilestoneUrlFromContent,
@@ -1157,32 +1157,23 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // No need for automatic saving here as it's done when tabs are created/modified
   // Note: Click-outside and dropdown positioning now handled by useTabOverflow hook
 
-  // Auto-launch tutorial detection.
-  //
-  // The hook owns the routing (typed source coercion + the
-  // `learning-journey || learning-hub` rule) so all surfaces agree on what
-  // an `auto-launch-tutorial` event means. The sidebar additionally fires
-  // `OpenResourceClick` analytics and a follow-up `auto-launch-complete`
-  // window event — both fire unconditionally, mirroring the legacy
-  // behavior, so callers downstream can wait for completion regardless of
-  // whether url/title were present.
-  useAutoLaunchTutorial(model, {
-    onIncoming: (detail) => {
-      const { url, title, type, source } = detail;
-      const openAsLearningJourney = shouldOpenAsLearningJourney(type, source);
-      reportAppInteraction(UserInteraction.OpenResourceClick, {
-        content_title: title,
-        content_url: url,
-        content_type: getContentTypeForAnalytics(url, openAsLearningJourney ? 'learning-journey' : 'docs'),
-        trigger_source: 'auto_launch_tutorial',
-        interaction_location: 'docs_panel',
-        ...(openAsLearningJourney && {
-          completion_percentage: 0, // Auto-launch is always starting fresh
-        }),
-      });
-      window.dispatchEvent(new CustomEvent('auto-launch-complete', { detail }));
-    },
-  });
+  const handleAutoLaunchIncoming = useCallback((detail: AutoLaunchTutorialDetail) => {
+    const { url, title, type, source } = detail;
+    const openAsLearningJourney = shouldOpenAsLearningJourney(type, source);
+    reportAppInteraction(UserInteraction.OpenResourceClick, {
+      content_title: title,
+      content_url: url,
+      content_type: getContentTypeForAnalytics(url, openAsLearningJourney ? 'learning-journey' : 'docs'),
+      trigger_source: 'auto_launch_tutorial',
+      interaction_location: 'docs_panel',
+      ...(openAsLearningJourney && {
+        completion_percentage: 0, // Auto-launch is always starting fresh
+      }),
+    });
+    window.dispatchEvent(new CustomEvent('auto-launch-complete', { detail }));
+  }, []);
+
+  useAutoLaunchTutorial(model, { onIncoming: handleAutoLaunchIncoming });
 
   // Pop-out to floating panel: hand off the active guide before switching modes
   usePopOutHandoff(model);

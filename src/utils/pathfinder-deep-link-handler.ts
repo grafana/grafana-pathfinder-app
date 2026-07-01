@@ -199,7 +199,7 @@ function hasAnyPathfinderParam(search: string): boolean {
   return PATHFINDER_ACTIVATION_PARAMS.some((p) => params.has(p));
 }
 
-/** Dispatch `auto-launch-tutorial` once whichever panel surface mounts first. */
+/** Emit the auto-launch onto `autoLaunchChannel` once whichever panel surface mounts first. */
 function installAutoLaunchOnMount(detail: { url: string; title: string; type: string; source: string }): void {
   let autoLaunched = false;
   const dispatch = () => {

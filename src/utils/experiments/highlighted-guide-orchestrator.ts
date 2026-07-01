@@ -7,8 +7,8 @@
  *     key so a true→false→true sequence re-arms.
  *   - On a matched page, auto-opens the Pathfinder extension sidebar once per
  *     (hostname, guideId) — persisted in localStorage, NOT sessionStorage —
- *     and dispatches `auto-launch-tutorial` so the configured guide opens as
- *     a sidebar tab on mount (the same seam used by the `?doc=` deep link).
+ *     and emits an auto-launch request via `autoLaunchChannel` so the configured
+ *     guide opens as a sidebar tab on mount (the same seam used by `?doc=`).
  *     Crucially, no `locationService.replace` is called — the user stays on
  *     the page they were on. The Featured-slot injection remains as a
  *     re-entry point if the user later closes the auto-opened tab.
@@ -95,9 +95,9 @@ function handleHighlightedGuideResetCache(hostname: string, config: HighlightedG
  *   3. Page does NOT match — install a nav listener and return.
  *   4. Already auto-opened for this `guideId` — done.
  *   5. Extension sidebar owned by another plugin (e.g. Assistant) — don't steal.
- *   6. Auto-open: write marker, publish `open-extension-sidebar`, then dispatch
- *      `auto-launch-tutorial` on sidebar/panel mount so the configured guide
- *      opens as a tab without navigating the user away from their current page.
+ *   6. Auto-open: write marker, publish `open-extension-sidebar`, then emit an
+ *      auto-launch request on sidebar/panel mount so the configured guide opens
+ *      as a tab without navigating the user away from their current page.
  *
  * The nav listener uses the same logic, so a user navigating into a matched
  * page later in the same SPA navigation will trigger auto-open on first
@@ -146,10 +146,10 @@ export function setupHighlightedGuideAutoOpen(
     markHighlightedGuideAutoOpened(hostname, config.guideId);
     sidebarState.setPendingOpenSource('highlighted_guide_experiment', 'auto-open');
 
-    // Resolve the guide so we can dispatch `auto-launch-tutorial` on mount —
-    // same seam used by `?doc=` in `module.tsx`. If the guideId can't be
-    // resolved we still open the sidebar (Featured-slot injection in
-    // `context.service.ts` is the fallback path for misconfigured flags).
+    // Resolve the guide so we can emit the auto-launch on mount — same seam
+    // used by the `?doc=` deep link. If the guideId can't be resolved we still
+    // open the sidebar (Featured-slot injection in `context.service.ts` is the
+    // fallback path for misconfigured flags).
     const docsPage = findDocPage(config.guideId);
     if (!docsPage) {
       console.warn(
@@ -182,16 +182,15 @@ export function setupHighlightedGuideAutoOpen(
 }
 
 /**
- * Wire the `auto-launch-tutorial` dispatch to whichever panel surface mounts
- * first. Mirrors the `dispatchAutoLaunch` pattern in `module.tsx` so the
- * highlighted-guide experiment and `?doc=` deep links share the same
- * mount-then-dispatch contract.
+ * Emit the auto-launch onto `autoLaunchChannel` once whichever panel surface
+ * mounts first, so the highlighted-guide experiment and `?doc=` deep links
+ * share the same mount-then-emit contract.
  *
- * The dispatch fires exactly once even when both `pathfinder-sidebar-mounted`
- * and `pathfinder-panel-mounted` arrive (the floating panel can race the
- * sidebar). If the sidebar is already mounted (SPA navigation case — the user
- * already had the sidebar open from a prior page), we dispatch synchronously
- * so the listener isn't left dangling waiting for a mount that already fired.
+ * Fires exactly once even when both `pathfinder-sidebar-mounted` and
+ * `pathfinder-panel-mounted` arrive (the floating panel can race the sidebar).
+ * If the sidebar is already mounted (SPA navigation case — the user already had
+ * the sidebar open from a prior page), we invoke it synchronously so the listener
+ * isn't left dangling waiting for a mount that already fired.
  */
 function installAutoLaunchOnMount(detail: { url: string; title: string; type: string }): void {
   let autoLaunched = false;

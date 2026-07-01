@@ -72,6 +72,22 @@ describe('createLatchedBroadcast', () => {
     expect(second).not.toHaveBeenCalled();
   });
 
+  it('clears the latch on the first drain even when that subscriber then unsubscribes', () => {
+    const channel = createLatchedBroadcast<string>({ ttlMs: 1000 });
+    channel.emit('once');
+
+    const first = jest.fn();
+    const unsubscribe = channel.subscribe(first);
+    expect(first).toHaveBeenCalledWith('once');
+    unsubscribe();
+
+    jest.setSystemTime(500);
+    const second = jest.fn();
+    channel.subscribe(second);
+
+    expect(second).not.toHaveBeenCalled();
+  });
+
   it('stops delivering after unsubscribe', () => {
     const channel = createLatchedBroadcast<string>();
     const handler = jest.fn();
