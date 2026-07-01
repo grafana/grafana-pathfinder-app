@@ -93,7 +93,7 @@ Scan the diff against the unified detection table below. Security rules (F1-F6) 
 
 ### QC8 — Comment hygiene on changed code
 
-The canonical catalog of bad-shape comments and the keep-list live in `AGENTS.md` §Comments (always loaded in agent context). This section is reviewer-specific scoping only.
+`AGENTS.md` §Comments carries the shape summary — the eight shape titles plus the keep-list (always loaded in agent context). The canonical catalog with worked before/after examples lives in the `comment-hygiene` skill (`.cursor/skills/comment-hygiene/SKILL.md`); load it when a QC8 call is borderline. This section is reviewer-specific scoping only.
 
 **Reviewer scoping rules:**
 
@@ -106,7 +106,7 @@ The canonical catalog of bad-shape comments and the keep-list live in `AGENTS.md
 
 - **R1-R21 hit**: load `.cursor/rules/react-antipatterns.mdc` for the canonical Do/Don't example and fix pattern.
 - **F1-F6 hit**: load `.cursor/rules/frontend-security.mdc` for intent and remediation. For direct F5 sinks, `eslint.config.mjs` owns the mechanical catalog.
-- **QC8 hit**: cite the specific shape (1-8) from `AGENTS.md` §Comments when reporting.
+- **QC8 hit**: cite the specific shape (1-8) from `AGENTS.md` §Comments when reporting; load `.cursor/skills/comment-hygiene/SKILL.md` for the worked example when the call is borderline.
 
 ## Go backend checks
 
