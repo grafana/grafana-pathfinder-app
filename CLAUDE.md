@@ -25,14 +25,7 @@ Reusable agent workflows. Read a skill's `SKILL.md` before invoking it.
 | `secure`             | `/secure`                        | Security audit: F1-F6 frontend + backend allowlists + MCP transport + deps                                                                  |
 | `techdebt`           | `/techdebt <subsystem>`          | Confidence-tiered tech-debt audit: smells, duplication, prop drilling, dead code, extraction seams; also runs as sub-agent inside `/review` |
 
-### Doc-quality skill pairing
-
-The repo has two complementary doc-quality skills:
-
-- **`prevent-doc-drift`** runs **per-PR** against the diff. Catches new subdirs / scripts / skills / docs / architecture changes at introduction and produces the doc edits in the same PR. Invoked from `/review` or directly.
-- **`maintain-docs`** runs **periodically** across the whole repo. Catches gradual drift between `.cursor/rules/` and `docs/developer/`, indexes orphans, validates staleness. Invoked manually or on a schedule.
-
-Treat them as complementary: prevent-doc-drift handles _new_ drift introduced by each PR; maintain-docs sweeps for _accumulated_ drift the per-PR skill missed.
+The two doc-quality skills are complementary: `prevent-doc-drift` handles _new_ drift per-PR (from `/review` or directly); `maintain-docs` sweeps for _accumulated_ drift across the whole repo periodically.
 
 ### Other Claude Code specifics
 

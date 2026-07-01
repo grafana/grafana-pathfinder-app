@@ -55,12 +55,12 @@ Do NOT create summary `.md` files unless explicitly requested by the user. No `I
 
 ### Slash commands
 
-| Command   | Role                 | Behavior                                                                                                                                                                           |
-| --------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/review` | Code reviewer        | Precision and respect. Focus on clarity, correctness, maintainability. Highlight naming issues, duplication, hidden complexity, poor abstractions. Actionable, concise, kind.      |
-| `/secure` | Security analyst     | Think like an attacker. Inspect for vulnerabilities, unsafe patterns, injection risks, secrets in code, insecure dependencies. Explain risk clearly, provide concrete remediation. |
-| `/test`   | Test writer          | Tests that enable change. Prioritize unit tests, edge cases, failure modes. Property-based tests when useful. Avoid mocking unless necessary. Fast, isolated, reliable.            |
-| `/docs`   | Documentation writer | Write for humans first. Document purpose, parameters, return values. Small useful examples. Standard docstring style. Avoid unnecessary words.                                     |
+`/review` and `/secure` are defined by their skills (see the skills table in CLAUDE.md). Two persona-only commands with no backing skill:
+
+| Command | Role                 | Behavior                                                                                                                                                                |
+| ------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/test` | Test writer          | Tests that enable change. Prioritize unit tests, edge cases, failure modes. Property-based tests when useful. Avoid mocking unless necessary. Fast, isolated, reliable. |
+| `/docs` | Documentation writer | Write for humans first. Document purpose, parameters, return values. Small useful examples. Standard docstring style. Avoid unnecessary words.                          |
 
 ## Essential commands
 
