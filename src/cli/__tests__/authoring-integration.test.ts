@@ -27,6 +27,7 @@ import { runCreate } from '../commands/create';
 import { runInspect } from '../commands/inspect';
 import { runSetManifest } from '../commands/set-manifest';
 import { readPackage } from '../utils/package-io';
+import { findBlockById } from '../utils/package-io/tree';
 import { validatePackage } from '../../validation/validate-package';
 
 function tempDir(): string {
@@ -179,5 +180,53 @@ describe('agent authoring round-trip (full multi-block guide)', () => {
     expect(state.content.id).toBe('getting-started-with-loki');
     expect(state.manifest?.id).toBe('getting-started-with-loki');
     expect(state.manifest?.provides).toEqual(['loki-basics']);
+  });
+});
+
+describe('reftarget fallback arrays round-trip via the CLI', () => {
+  const root = tempDir();
+  const dir = path.join(root, 'fallback-guide');
+
+  afterAll(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('persists multiple --reftarget as an ordered array and a single one as a string', async () => {
+    const created = await runCreate({
+      dir,
+      id: 'fallback-guide',
+      title: 'Fallback guide',
+      type: 'guide',
+      description: 'Exercises reftarget fallback chains',
+    });
+    expect(created.status).toBe('ok');
+
+    // Repeated --reftarget (Commander accumulates into an array) → ordered fallback chain.
+    let r = await runAddBlock({
+      dir,
+      type: 'interactive',
+      explicitId: 'multi',
+      flagValues: {
+        action: 'button',
+        content: 'Save the dashboard',
+        reftarget: ['Save dashboard', "button[data-testid='save-dashboard']"],
+      },
+    });
+    expect(r.status).toBe('ok');
+
+    // A single --reftarget → plain string (byte-identical to legacy guides).
+    r = await runAddBlock({
+      dir,
+      type: 'interactive',
+      explicitId: 'single',
+      flagValues: { action: 'button', content: 'Open the menu', reftarget: ['Open menu'] },
+    });
+    expect(r.status).toBe('ok');
+
+    const state = readPackage(dir);
+    const multi = findBlockById(state.content, 'multi') as { reftarget?: unknown } | null;
+    const single = findBlockById(state.content, 'single') as { reftarget?: unknown } | null;
+    expect(multi?.reftarget).toEqual(['Save dashboard', "button[data-testid='save-dashboard']"]);
+    expect(single?.reftarget).toBe('Open menu');
   });
 });

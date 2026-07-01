@@ -15,7 +15,7 @@ import { waitForReactUpdates } from '../../lib/async-utils';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
-import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
+import { findButtonByText, querySelectorAllEnhanced, primaryRefTarget } from '../../lib/dom';
 import { GuidedAction } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
@@ -247,7 +247,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     // For exists-reftarget requirement, use the first internal action's target
     // This ensures the requirement checker knows which element to look for
-    const firstActionRefTarget = internalActions.length > 0 ? internalActions[0]!.refTarget : undefined;
+    const firstActionRefTarget = internalActions[0]?.refTarget;
     const firstActionTargetAction = internalActions.length > 0 ? internalActions[0]!.targetAction : undefined;
 
     // Runtime validation: check for impossible requirement configurations
@@ -430,8 +430,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           return;
         }
 
-        // Non-noop actions require refTarget
-        const selector = currentAction.refTarget;
+        // Non-noop actions require refTarget. Coordinate-matching detection keys
+        // off the primary selector; the execute path keeps the full fallback chain.
+        const selector = currentAction.refTarget === undefined ? undefined : primaryRefTarget(currentAction.refTarget);
         if (!selector) {
           return;
         }
@@ -596,7 +597,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             internalActions: internalActions.map(
               (a): CrossTabInternalAction => ({
                 targetAction: a.targetAction,
-                refTarget: a.refTarget,
+                refTarget: a.refTarget === undefined ? undefined : primaryRefTarget(a.refTarget),
                 targetValue: a.targetValue,
                 targetComment: a.targetComment,
               })
@@ -854,7 +855,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   detail={{
                     stepId: stepId ?? renderedStepId,
                     renderedStepId,
-                    refTarget: firstActionRefTarget,
+                    refTarget: firstActionRefTarget === undefined ? undefined : primaryRefTarget(firstActionRefTarget),
                     action: firstActionTargetAction,
                   }}
                 />
@@ -951,7 +952,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   detail={{
                     stepId: stepId ?? renderedStepId,
                     renderedStepId,
-                    refTarget: internalActions[failedStepIndex]?.refTarget,
+                    refTarget:
+                      internalActions[failedStepIndex]?.refTarget === undefined
+                        ? undefined
+                        : primaryRefTarget(internalActions[failedStepIndex]!.refTarget),
                     action: internalActions[failedStepIndex]?.targetAction,
                     containerInfo: {
                       containerId: stepId ?? renderedStepId,

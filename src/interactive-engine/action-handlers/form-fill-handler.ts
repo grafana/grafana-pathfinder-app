@@ -32,7 +32,7 @@ export class FormFillHandler {
     }
   }
 
-  private async findTargetElement(selector: string): Promise<HTMLElement> {
+  private async findTargetElement(selector: string | string[]): Promise<HTMLElement> {
     const resolved = await resolveWithRetry(selector, 'formfill');
 
     if (!resolved) {

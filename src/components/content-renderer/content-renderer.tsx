@@ -1014,10 +1014,12 @@ function renderParsedElement(
 
   // Helper to substitute variables in internal actions (for multistep/guided blocks)
   // Uses generic to preserve the input array type (InternalAction[], GuidedAction[], etc.)
-  const subInternalActions = <T extends { refTarget?: string; targetValue?: string }>(actions: T[]): T[] => {
+  const subInternalActions = <T extends { refTarget?: string | string[]; targetValue?: string }>(actions: T[]): T[] => {
     return actions.map((action) => ({
       ...action,
-      refTarget: sub(action.refTarget) ?? action.refTarget,
+      refTarget: Array.isArray(action.refTarget)
+        ? action.refTarget.map((target) => sub(target) ?? target)
+        : (sub(action.refTarget) ?? action.refTarget),
       targetValue: sub(action.targetValue),
     }));
   };

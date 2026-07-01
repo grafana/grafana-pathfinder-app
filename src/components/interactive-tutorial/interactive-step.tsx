@@ -22,7 +22,7 @@ import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../int
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { CodeBlock } from '../../docs-retrieval';
-import { scrollUntilElementFound } from '../../lib/dom';
+import { scrollUntilElementFound, primaryRefTarget } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { STEP_STATES } from './step-states';
 import { AiFixButton } from './ai-fix-button';
@@ -51,7 +51,7 @@ interface LazyScrollResult {
  * @returns Result indicating success/failure
  */
 async function executeWithLazyScroll(
-  refTarget: string,
+  refTarget: string | string[],
   lazyRender: boolean,
   scrollContainer: string | undefined,
   action: () => Promise<void>,
@@ -78,7 +78,7 @@ async function executeWithLazyScroll(
   // Element not found - try lazy scroll discovery only if enabled
   if (lazyRender) {
     console.log(`[LazyScroll] Element not found, attempting scroll discovery: ${refTarget}`);
-    const foundElement = await scrollUntilElementFound(refTarget, {
+    const foundElement = await scrollUntilElementFound(primaryRefTarget(refTarget), {
       scrollContainerSelector: scrollContainer,
     });
 
@@ -373,7 +373,11 @@ export const InteractiveStep = forwardRef<
       if (targetAction !== 'formfill' || !refTarget) {
         return null;
       }
-      return resolveTargetElement({ targetAction, refTarget, targetValue: currentTargetValue });
+      return resolveTargetElement({
+        targetAction,
+        refTarget: primaryRefTarget(refTarget),
+        targetValue: currentTargetValue,
+      });
     }, [targetAction, refTarget, currentTargetValue]);
 
     // Handle form validation completion
@@ -564,7 +568,7 @@ export const InteractiveStep = forwardRef<
                 buildInteractiveStepProperties(
                   {
                     target_action: targetAction,
-                    ref_target: refTarget,
+                    ref_target: primaryRefTarget(refTarget),
                     interaction_location: 'interactive_step_auto',
                     failure_reason: 'post_verification_failed',
                   },
@@ -581,7 +585,7 @@ export const InteractiveStep = forwardRef<
               buildInteractiveStepProperties(
                 {
                   target_action: targetAction,
-                  ref_target: refTarget,
+                  ref_target: primaryRefTarget(refTarget),
                   interaction_location: 'interactive_step_auto',
                   failure_reason: 'post_verification_error',
                 },
@@ -610,7 +614,7 @@ export const InteractiveStep = forwardRef<
           buildInteractiveStepProperties(
             {
               target_action: targetAction,
-              ref_target: refTarget,
+              ref_target: primaryRefTarget(refTarget),
               ...(currentTargetValue && { target_value: currentTargetValue }),
               interaction_location: 'interactive_step_auto',
               completion_method: 'auto_detected',
@@ -636,7 +640,7 @@ export const InteractiveStep = forwardRef<
     // Use the shared auto-detection hook
     useSingleActionDetection({
       targetAction,
-      refTarget,
+      refTarget: primaryRefTarget(refTarget),
       targetValue: currentTargetValue,
       isEnabled: finalIsEnabled,
       isCompleted: isCompletedWithObjectives,
@@ -661,7 +665,7 @@ export const InteractiveStep = forwardRef<
         buildInteractiveStepProperties(
           {
             target_action: targetAction,
-            ref_target: refTarget,
+            ref_target: primaryRefTarget(refTarget),
             ...(currentTargetValue && { target_value: currentTargetValue }),
             interaction_location: 'interactive_step',
           },
@@ -688,7 +692,12 @@ export const InteractiveStep = forwardRef<
           phase: 'show',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+          action: {
+            targetAction,
+            refTarget: primaryRefTarget(refTarget),
+            targetValue: currentTargetValue,
+            targetComment,
+          },
         });
         if (!doIt) {
           // F-1063-1 (fix-plan §6.2): simple steps complete optimistically — no
@@ -783,7 +792,7 @@ export const InteractiveStep = forwardRef<
         buildInteractiveStepProperties(
           {
             target_action: targetAction,
-            ref_target: refTarget,
+            ref_target: primaryRefTarget(refTarget),
             ...(currentTargetValue && { target_value: currentTargetValue }),
             interaction_location: 'interactive_step',
           },
@@ -810,7 +819,12 @@ export const InteractiveStep = forwardRef<
           phase: 'do',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+          action: {
+            targetAction,
+            refTarget: primaryRefTarget(refTarget),
+            targetValue: currentTargetValue,
+            targetComment,
+          },
         });
         // F-1063-1 (fix-plan §6.2): simple steps complete optimistically — no live
         // ack, and they complete even with no live tab connected. Accepted by
@@ -911,13 +925,13 @@ export const InteractiveStep = forwardRef<
     const getActionDescription = () => {
       switch (targetAction) {
         case 'button':
-          return `Click "${refTarget}"`;
+          return `Click "${primaryRefTarget(refTarget)}"`;
         case 'highlight':
           return `Highlight element`;
         case 'formfill':
           return `Fill form with "${currentTargetValue || 'value'}"`;
         case 'navigate':
-          return `Navigate to ${refTarget}`;
+          return `Navigate to ${primaryRefTarget(refTarget)}`;
         case 'hover':
           return `Hover over element`;
         case 'sequence':
@@ -953,7 +967,7 @@ export const InteractiveStep = forwardRef<
       <div
         className={`interactive-step${className ? ` ${className}` : ''}${completedClass}${isCurrentlyExecuting ? ' executing' : ''}`}
         data-targetaction={targetAction}
-        data-reftarget={refTarget}
+        data-reftarget={primaryRefTarget(refTarget)}
         data-targetvalue={currentTargetValue}
         data-targetcomment={targetComment}
         data-openguide={openGuide}
@@ -1162,7 +1176,7 @@ export const InteractiveStep = forwardRef<
                 detail={{
                   stepId: stepId ?? renderedStepId,
                   renderedStepId,
-                  refTarget,
+                  refTarget: primaryRefTarget(refTarget),
                   action: targetAction,
                 }}
               />
@@ -1248,7 +1262,7 @@ export const InteractiveStep = forwardRef<
                       detail={{
                         stepId: stepId ?? renderedStepId,
                         renderedStepId,
-                        refTarget,
+                        refTarget: primaryRefTarget(refTarget),
                         action: targetAction,
                       }}
                     />

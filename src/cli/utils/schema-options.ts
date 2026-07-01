@@ -39,6 +39,7 @@ export type FieldShape =
   | { kind: 'boolean'; optional: boolean; description: string | undefined }
   | { kind: 'enum'; optional: boolean; values: readonly string[]; description: string | undefined }
   | { kind: 'array-string'; optional: boolean; description: string | undefined }
+  | { kind: 'string-or-array-string'; optional: boolean; description: string | undefined }
   | { kind: 'literal'; optional: boolean }
   | { kind: 'unsupported'; reason: string; optional: boolean };
 
@@ -118,6 +119,20 @@ export function describeField(field: z.ZodType): FieldShape {
     }
     return { kind: 'unsupported', reason: `array of ${elementType ?? 'unknown'}`, optional };
   }
+  if (t === 'union') {
+    // `reftarget` is `z.union([z.string(), z.array(z.string())])` — a single
+    // selector or an ordered fallback chain. Expose it as a repeatable flag;
+    // parseOptionValues collapses a single value to a string.
+    const branches: Array<{ def?: { type?: string; element?: { def?: { type?: string } } } }> =
+      (def as any).options ?? [];
+    const hasString = branches.some((branch) => branch?.def?.type === 'string');
+    const hasStringArray = branches.some(
+      (branch) => branch?.def?.type === 'array' && branch?.def?.element?.def?.type === 'string'
+    );
+    if (hasString && hasStringArray) {
+      return { kind: 'string-or-array-string', optional, description };
+    }
+  }
 
   return { kind: 'unsupported', reason: t ?? 'unknown', optional };
 }
@@ -189,6 +204,19 @@ export function zodFieldToOption(name: string, field: z.ZodType): Option | null 
   if (shape.kind === 'array-string') {
     // Repeatable: each --flag <item> appends to the accumulated array.
     const option = new Option(`--${flag} <item>`, description);
+    option.argParser((value: string, previous: string[] | undefined) => [...(previous ?? []), value]);
+    option.default([] as string[]);
+    if (!shape.optional) {
+      option.makeOptionMandatory();
+    }
+    return option;
+  }
+
+  if (shape.kind === 'string-or-array-string') {
+    // Repeatable: pass --flag once for a single selector, or multiple times to
+    // build an ordered fallback chain (strongest first). parseOptionValues
+    // collapses a single value back to a plain string.
+    const option = new Option(`--${flag} <selector>`, description);
     option.argParser((value: string, previous: string[] | undefined) => [...(previous ?? []), value]);
     option.default([] as string[]);
     if (!shape.optional) {
@@ -357,6 +385,18 @@ export function parseOptionValues<T extends z.ZodObject>(
         continue;
       }
       out[name] = raw;
+      continue;
+    }
+    if (description.kind === 'string-or-array-string') {
+      const collected = Array.isArray(raw) ? raw : [raw];
+      if (collected.length === 0) {
+        // Flag never provided — leave absent so optional/required handling in the
+        // schema applies cleanly.
+        continue;
+      }
+      // One selector → plain string (byte-identical to single-selector guides);
+      // multiple → ordered fallback array.
+      out[name] = collected.length === 1 ? collected[0] : collected;
       continue;
     }
     out[name] = raw;

@@ -11,6 +11,7 @@ import {
   getSelectorInfo,
   retargetElement,
   generateFallbackSelectors,
+  generateSelectorChain,
 } from './selector-generator';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 
@@ -497,6 +498,72 @@ describe('Selector Generator — Pipeline', () => {
       const primary = generateBestSelector(button);
       const fallbacks = generateFallbackSelectors(button, primary);
       expect(fallbacks.length).toBeLessThanOrEqual(4);
+    });
+  });
+
+  // ==========================================================================
+  // generateSelectorChain — strategy-diverse fallback chain
+  // ==========================================================================
+
+  describe('generateSelectorChain', () => {
+    it('returns the strongest selector as primary with a strategy-diverse fallback', () => {
+      const button = document.createElement('button');
+      button.setAttribute('data-testid', 'save');
+      button.setAttribute('aria-label', 'Save document');
+      document.body.appendChild(button);
+
+      const chain = generateSelectorChain(button);
+
+      expect(chain[0]).toBe(generateBestSelector(button));
+      expect(chain[0]).toContain("data-testid='save'");
+      expect(chain.length).toBeGreaterThanOrEqual(2);
+      // A different (text/aria) family is represented among the fallbacks.
+      expect(chain.slice(1).some((s) => s.includes('aria-label'))).toBe(true);
+    });
+
+    it('caps the chain at three entries', () => {
+      const button = document.createElement('button');
+      button.setAttribute('data-testid', 'publish');
+      button.id = 'publish-btn';
+      button.setAttribute('aria-label', 'Publish the report');
+      button.setAttribute('title', 'Publish');
+      button.textContent = 'Publish report';
+      document.body.appendChild(button);
+
+      const chain = generateSelectorChain(button);
+      expect(chain.length).toBeLessThanOrEqual(3);
+    });
+
+    it('never repeats a selector', () => {
+      const button = document.createElement('button');
+      button.setAttribute('data-testid', 'publish');
+      button.setAttribute('aria-label', 'Publish the report');
+      button.textContent = 'Publish report';
+      document.body.appendChild(button);
+
+      const chain = generateSelectorChain(button);
+      expect(new Set(chain).size).toBe(chain.length);
+    });
+
+    it('omits fragile structural selectors when a diverse fallback exists', () => {
+      const button = document.createElement('button');
+      button.setAttribute('data-testid', 'publish');
+      button.setAttribute('aria-label', 'Publish the report');
+      document.body.appendChild(button);
+
+      const chain = generateSelectorChain(button);
+      expect(chain.some((s) => s.includes(':nth-of-type') || s.includes(':nth-match'))).toBe(false);
+    });
+
+    it('includes a structural fallback only when nothing more stable remains', () => {
+      const button = document.createElement('button');
+      button.setAttribute('data-testid', 'lonely');
+      document.body.appendChild(button);
+
+      const chain = generateSelectorChain(button);
+      expect(chain[0]).toContain("data-testid='lonely'");
+      expect(chain.length).toBe(2);
+      expect(chain[1]).toContain(':nth-of-type');
     });
   });
 

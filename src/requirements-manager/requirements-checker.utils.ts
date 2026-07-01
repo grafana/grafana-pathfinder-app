@@ -64,7 +64,7 @@ export interface CheckResultError {
 export interface RequirementsCheckOptions {
   requirements: string;
   targetAction?: string;
-  refTarget?: string;
+  refTarget?: string | string[];
   targetValue?: string;
   stepId?: string;
   retryCount?: number; // Current retry attempt (internal use)
@@ -79,7 +79,7 @@ type CheckMode = 'pre' | 'post';
 
 interface CheckContext {
   targetAction?: string;
-  refTarget?: string;
+  refTarget?: string | string[];
   /** Enable progressive scroll discovery for virtualized containers */
   lazyRender?: boolean;
   /** CSS selector for scroll container when lazyRender is enabled */
@@ -314,13 +314,14 @@ export async function checkPostconditions(options: RequirementsCheckOptions): Pr
 export function validateInteractiveRequirements(
   props: {
     requirements?: string;
-    refTarget?: string;
+    refTarget?: string | string[];
     stepId?: string;
     originalHTML?: string;
   },
   elementType: string
 ): boolean {
   const { requirements, refTarget, stepId, originalHTML } = props;
+  const hasRefTarget = Array.isArray(refTarget) ? refTarget.length > 0 : !!refTarget && refTarget.trim() !== '';
 
   // If no requirements, nothing to validate
   if (!requirements) {
@@ -332,7 +333,7 @@ export function validateInteractiveRequirements(
   const hasExistsReftarget = requirementList.includes('exists-reftarget');
 
   // If 'exists-reftarget' is present but no refTarget, this is an impossible configuration
-  if (hasExistsReftarget && !refTarget) {
+  if (hasExistsReftarget && !hasRefTarget) {
     const errorMessage = [
       `[${elementType}] Invalid requirement configuration:`,
       `  - Element has 'exists-reftarget' requirement but no refTarget`,

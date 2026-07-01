@@ -226,8 +226,8 @@ export interface JsonConditionalBlock extends AuthorAnnotated {
   description?: string;
   /** Display mode: 'inline' (default) or 'section' for section-styled rendering */
   display?: ConditionalDisplayMode;
-  /** Target element for exists-reftarget condition (CSS selector or button text) */
-  reftarget?: string;
+  /** Target element for exists-reftarget condition (CSS selector or button text; may be a fallback array) */
+  reftarget?: string | string[];
   /** Section config for the 'pass' branch (only used when display is 'section') */
   whenTrueSectionConfig?: ConditionalSectionConfig;
   /** Section config for the 'fail' branch (only used when display is 'section') */
@@ -264,10 +264,13 @@ export interface JsonInteractiveBlock extends AssistantProps, AuthorAnnotated {
    * present so authors who prefer camelCase still get a working guide.
    */
   targetAction?: JsonInteractiveAction;
-  /** CSS selector or Grafana selector for the target element (optional for noop actions) */
-  reftarget?: string;
+  /**
+   * CSS selector or Grafana selector for the target element (optional for noop actions).
+   * May be an ordered array of fallback selectors (strongest first). `navigate` must be a single string.
+   */
+  reftarget?: string | string[];
   /** camelCase alias for `reftarget`. Tolerated by the runtime parser. */
-  refTarget?: string;
+  refTarget?: string | string[];
   /**
    * Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/).
    * For popout actions, must be 'sidebar' (dock) or 'floating' (undock).
@@ -374,10 +377,13 @@ export interface JsonStep {
   action: JsonInteractiveAction;
   /** camelCase alias for `action`. Tolerated by the runtime parser. */
   targetAction?: JsonInteractiveAction;
-  /** CSS selector or Grafana selector for the target element (optional for noop actions) */
-  reftarget?: string;
+  /**
+   * CSS selector or Grafana selector for the target element (optional for noop actions).
+   * May be an ordered array of fallback selectors (strongest first). `navigate` must be a single string.
+   */
+  reftarget?: string | string[];
   /** camelCase alias for `reftarget`. Tolerated by the runtime parser. */
-  refTarget?: string;
+  refTarget?: string | string[];
   /**
    * Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/).
    * For popout actions, must be 'sidebar' (dock) or 'floating' (undock).
@@ -653,8 +659,8 @@ export interface JsonCodeBlockBlock extends AuthorAnnotated {
   type: 'code-block';
   /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
   id?: string;
-  /** CSS selector for the Monaco editor container */
-  reftarget: string;
+  /** CSS selector for the Monaco editor container (may be a fallback array, strongest first) */
+  reftarget: string | string[];
   /** Programming language for syntax highlighting (e.g., 'javascript', 'typescript', 'python') */
   language?: string;
   /** The code to display and insert */

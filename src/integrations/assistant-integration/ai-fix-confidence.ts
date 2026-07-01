@@ -1,4 +1,4 @@
-import { querySelectorAllEnhanced, resolveSelector } from '../../lib/dom';
+import { querySelectorAllEnhanced, resolveSelector, primaryRefTarget } from '../../lib/dom';
 import type { AiFixPatch } from './ai-fix-patch.schema';
 
 export type ConfidenceResult = { ok: true } | { ok: false; reason: string };
@@ -12,7 +12,9 @@ export type ConfidenceResult = { ok: true } | { ok: false; reason: string };
  * failing selector.
  */
 export function evaluatePatchConfidence(patch: AiFixPatch): ConfidenceResult {
-  const proposedSelector = patch.type === 'prepend-step' ? (patch.newStep.reftarget ?? '') : patch.newReftarget;
+  const proposedSelector = primaryRefTarget(
+    patch.type === 'prepend-step' ? (patch.newStep.reftarget ?? '') : patch.newReftarget
+  );
 
   // A prepend-step without a reftarget is purely instructional — no DOM target to verify.
   if (patch.type === 'prepend-step' && !proposedSelector) {

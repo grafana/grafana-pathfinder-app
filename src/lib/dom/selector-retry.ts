@@ -24,6 +24,8 @@ export interface ResolvedElement {
   resolvedSelector: string;
   usedFallback: boolean;
   retryCount: number;
+  /** Index of the candidate that resolved; 0 is the primary (strongest) selector. */
+  selectedIndex: number;
 }
 
 /**
@@ -36,13 +38,15 @@ export interface ResolvedElement {
  * 5. On retry 2+ with `relaxOnRetry`: relaxes child combinators (`>` -> space)
  * 6. After all strategies exhausted, returns null
  *
- * @param reftarget - The selector or button text to resolve
+ * @param reftarget - The selector or button text to resolve. May be an ordered
+ *   array of fallback selectors (strongest first); each is tried in full before
+ *   the next.
  * @param action - The action type (e.g. 'button', 'highlight', 'formfill'). Defaults to 'highlight'.
  * @param config - Retry configuration. Defaults to DEFAULT_RETRY_CONFIG.
  * @returns ResolvedElement on success, null if element not found after all retries
  */
 export async function resolveWithRetry(
-  reftarget: string,
+  reftarget: string | string[],
   action?: string,
   config?: Partial<RetryConfig>
 ): Promise<ResolvedElement | null> {
@@ -65,5 +69,6 @@ export async function resolveWithRetry(
     resolvedSelector: pipelineResult.resolvedSelector,
     usedFallback: pipelineResult.strategy !== 'exact',
     retryCount: pipelineResult.retryCount,
+    selectedIndex: pipelineResult.selectedIndex,
   };
 }

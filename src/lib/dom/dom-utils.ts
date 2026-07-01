@@ -153,18 +153,15 @@ export interface ReftargetExistsOptions {
 }
 
 /**
- * Check if a target element exists based on the action type
- * For button actions, checks if buttons with matching text exist
- * For other actions, checks if the CSS selector matches an element
- * Includes retry logic for elements that might not exist immediately
- * Enhanced with parent section expansion detection for navigation menu items
- * Supports lazy render fallback for virtualized containers (e.g., Grafana dashboards)
+ * The strongest selector from a reftarget value, for the call sites that need a
+ * single string (analytics, the data-reftarget attribute, display text, the
+ * navigate URL). Index 0 is the primary; an empty array yields ''.
  */
-export async function reftargetExistsCheck(
-  reftarget: string,
-  targetAction: string,
-  options?: ReftargetExistsOptions
-): Promise<{
+export function primaryRefTarget(reftarget: string | string[]): string {
+  return Array.isArray(reftarget) ? (reftarget[0] ?? '') : reftarget;
+}
+
+interface ReftargetCheckResult {
   requirement: string;
   pass: boolean;
   error?: string;
@@ -172,7 +169,49 @@ export async function reftargetExistsCheck(
   fixType?: string;
   targetHref?: string;
   scrollContainer?: string;
-}> {
+}
+
+/**
+ * Check if a target element exists based on the action type.
+ *
+ * `reftarget` may be a single selector or an ordered fallback array (strongest
+ * first); the check passes if ANY candidate currently exists. This is a fast,
+ * synchronous existence probe (no retry) — the action-time resolver does the
+ * selector-major retry-with-backoff. When all candidates fail, the richest
+ * fixable failure is returned so recovery (lazy-scroll, expand-nav) still fires.
+ *
+ * For button actions, checks if buttons with matching text exist; for other
+ * actions, checks if the CSS selector matches an element. Enhanced with parent
+ * section expansion detection for navigation menu items and lazy render fallback
+ * for virtualized containers (e.g., Grafana dashboards).
+ */
+export async function reftargetExistsCheck(
+  reftarget: string | string[],
+  targetAction: string,
+  options?: ReftargetExistsOptions
+): Promise<ReftargetCheckResult> {
+  const candidates = (Array.isArray(reftarget) ? reftarget : [reftarget]).map((s) => s.trim()).filter(Boolean);
+  if (candidates.length === 0) {
+    return { requirement: 'exists-reftarget', pass: false, error: 'No reftarget provided' };
+  }
+
+  const failures: ReftargetCheckResult[] = [];
+  for (const candidate of candidates) {
+    const result = await checkSingleReftarget(candidate, targetAction, options);
+    if (result.pass) {
+      return result;
+    }
+    failures.push(result);
+  }
+
+  return failures.find((failure) => failure.canFix) ?? failures[0]!;
+}
+
+async function checkSingleReftarget(
+  reftarget: string,
+  targetAction: string,
+  options?: ReftargetExistsOptions
+): Promise<ReftargetCheckResult> {
   // Resolve grafana: selectors first
   const resolvedSelector = resolveSelector(reftarget);
 

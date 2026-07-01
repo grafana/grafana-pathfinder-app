@@ -710,4 +710,62 @@ describe('JsonGuideSchema', () => {
       expect(result.isValid).toBe(false);
     });
   });
+
+  describe('reftarget fallback arrays', () => {
+    const guideWith = (block: Record<string, unknown>) => JSON.stringify({ id: 'g', title: 'T', blocks: [block] });
+
+    it('accepts an interactive block with an ordered reftarget array', () => {
+      const result = validateGuideFromString(
+        guideWith({
+          type: 'interactive',
+          action: 'button',
+          content: 'Click',
+          reftarget: ['Save', "button[data-testid='save']"],
+        })
+      );
+      expect(result.isValid).toBe(true);
+    });
+
+    it('accepts a multistep step with a reftarget array', () => {
+      const result = validateGuideFromString(
+        guideWith({ type: 'multistep', content: 'X', steps: [{ action: 'highlight', reftarget: ['#a', '#b'] }] })
+      );
+      expect(result.isValid).toBe(true);
+    });
+
+    it('accepts a code-block with a reftarget array', () => {
+      const result = validateGuideFromString(
+        guideWith({ type: 'code-block', code: 'up', reftarget: ['.monaco', "[data-testid='editor']"] })
+      );
+      expect(result.isValid).toBe(true);
+    });
+
+    it('rejects an empty reftarget array', () => {
+      const result = validateGuideFromString(
+        guideWith({ type: 'interactive', action: 'button', content: 'Click', reftarget: [] })
+      );
+      expect(result.isValid).toBe(false);
+    });
+
+    it('rejects a reftarget array containing an empty selector', () => {
+      const result = validateGuideFromString(
+        guideWith({ type: 'interactive', action: 'button', content: 'Click', reftarget: ['#a', ''] })
+      );
+      expect(result.isValid).toBe(false);
+    });
+
+    it('accepts navigate with a single string reftarget', () => {
+      const result = validateGuideFromString(
+        guideWith({ type: 'interactive', action: 'navigate', content: 'Go', reftarget: '/dashboards' })
+      );
+      expect(result.isValid).toBe(true);
+    });
+
+    it('rejects navigate with a reftarget array', () => {
+      const result = validateGuideFromString(
+        guideWith({ type: 'interactive', action: 'navigate', content: 'Go', reftarget: ['/dashboards', '/home'] })
+      );
+      expect(result.isValid).toBe(false);
+    });
+  });
 });

@@ -163,7 +163,7 @@ export function BlockFormModal({
   } | null>(null);
 
   // Store a callback to receive the selected element
-  const pickerCallbackRef = useRef<((selector: string) => void) | null>(null);
+  const pickerCallbackRef = useRef<((selector: string, fallbacks?: string[]) => void) | null>(null);
 
   // Store callbacks for record mode
   const recordStopCallbackRef = useRef<(() => void) | null>(null);
@@ -322,19 +322,22 @@ export function BlockFormModal({
   }, []);
 
   // Called by forms when they want to start the picker
-  const handlePickerModeChange = useCallback((isActive: boolean, onSelect?: (selector: string) => void) => {
-    setIsPickerActive(isActive);
-    if (isActive && onSelect) {
-      pickerCallbackRef.current = onSelect;
-    } else if (!isActive) {
-      pickerCallbackRef.current = null;
-    }
-  }, []);
+  const handlePickerModeChange = useCallback(
+    (isActive: boolean, onSelect?: (selector: string, fallbacks?: string[]) => void) => {
+      setIsPickerActive(isActive);
+      if (isActive && onSelect) {
+        pickerCallbackRef.current = onSelect;
+      } else if (!isActive) {
+        pickerCallbackRef.current = null;
+      }
+    },
+    []
+  );
 
   // Called when user selects an element
-  const handleElementSelect = useCallback((selector: string) => {
+  const handleElementSelect = useCallback((selector: string, fallbacks?: string[]) => {
     if (pickerCallbackRef.current) {
-      pickerCallbackRef.current(selector);
+      pickerCallbackRef.current(selector, fallbacks);
     }
     setIsPickerActive(false);
     pickerCallbackRef.current = null;

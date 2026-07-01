@@ -1,7 +1,13 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import { querySelectorAllEnhanced, findButtonByText, isElementVisible, resolveSelector } from '../../lib/dom';
+import {
+  querySelectorAllEnhanced,
+  findButtonByText,
+  isElementVisible,
+  resolveSelector,
+  primaryRefTarget,
+} from '../../lib/dom';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { GuidedAction } from '../../types/interactive-actions.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
@@ -148,7 +154,7 @@ export class GuidedHandler {
         action.isSkippable,
         action.formHint, // Pass form hint for formfill validation feedback
         action.targetValue, // Pass target value for data-test-target-value attribute
-        action.refTarget! // E2E contract: selector for current target (data-test-refTarget)
+        primaryRefTarget(refTarget) // E2E contract: selector for current target (data-test-refTarget)
       );
 
       // Wait for user to complete the action, skip, cancel, or timeout
@@ -340,7 +346,7 @@ export class GuidedHandler {
    * @param skipRetryOnFailure - If true, throw immediately on first failure (for skippable steps)
    */
   private async findTargetElementWithRetry(
-    selector: string,
+    selector: string | string[],
     actionType: 'hover' | 'button' | 'highlight' | 'formfill',
     timeout: number,
     retryInterval: number,
@@ -375,8 +381,9 @@ export class GuidedHandler {
     throw new Error(`Timeout finding element: ${selector}`);
   }
 
-  private async expandNavigationParentIfNeeded(selector: string): Promise<void> {
-    const targetHref = this.getNavigationTargetHref(selector);
+  private async expandNavigationParentIfNeeded(selector: string | string[]): Promise<void> {
+    // Nav expansion is a best-effort pre-step keyed off the primary selector.
+    const targetHref = this.getNavigationTargetHref(primaryRefTarget(selector));
     if (!targetHref) {
       return;
     }
@@ -399,9 +406,27 @@ export class GuidedHandler {
    * Formfill targets form elements (input, textarea, select)
    */
   private async findTargetElement(
-    selector: string,
+    selector: string | string[],
     actionType: 'hover' | 'button' | 'highlight' | 'formfill'
   ): Promise<HTMLElement> {
+    const candidates = Array.isArray(selector) ? selector : [selector];
+    for (const candidate of candidates) {
+      const element = this.findTargetElementForSelector(candidate, actionType);
+      if (element) {
+        return element;
+      }
+    }
+    throw new Error(`No elements found matching selector: ${selector}`);
+  }
+
+  /**
+   * Resolve a single selector to an element using action-specific detection.
+   * Returns null when nothing matches so the caller can try the next candidate.
+   */
+  private findTargetElementForSelector(
+    selector: string,
+    actionType: 'hover' | 'button' | 'highlight' | 'formfill'
+  ): HTMLElement | null {
     let targetElements: HTMLElement[];
 
     // Resolve grafana: prefix if present
@@ -473,7 +498,7 @@ export class GuidedHandler {
     targetElements = enhancedResult.elements;
 
     if (targetElements.length === 0) {
-      throw new Error(`No elements found matching selector: ${resolvedSelector}`);
+      return null;
     }
 
     if (targetElements.length > 1) {

@@ -35,6 +35,7 @@ import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
 import { checkRequirements, type RequirementsCheckResult } from './requirements-checker.utils';
+import { primaryRefTarget } from '../lib/dom';
 import { stripTabLocalRequirements } from './controller-requirements';
 import { useInteractiveMode } from '../global-state/interactive-mode-context';
 import { useControllerChannel } from '../global-state/controller-channel';
@@ -217,7 +218,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       options: {
         requirements: string;
         targetAction?: string;
-        refTarget?: string;
+        refTarget?: string | string[];
         stepId?: string;
         /** Force a specific retry count (0 disables retries entirely). */
         maxRetriesOverride?: number;
@@ -270,7 +271,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           const result = isRemote
             ? ((await controllerChannel?.requestRequirementCheck(optionsStepId ?? stepId, requirements, {
                 targetAction,
-                refTarget,
+                refTarget: primaryRefTarget(refTarget),
               })) ??
               (await checkRequirements({
                 requirements: stripTabLocalRequirements(requirements) ?? '',

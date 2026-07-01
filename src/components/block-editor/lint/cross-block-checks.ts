@@ -34,6 +34,7 @@ import {
 } from '../../../types/json-guide.types';
 import { ParameterizedRequirementPrefix } from '../../../types/requirements.types';
 import { suggestRequirementsFromContext } from '../forms/requirements-suggester';
+import { primaryRefTarget } from '../../../lib/dom';
 import type { Diagnostic } from './types';
 
 // ---------------------------------------------------------------------------
@@ -216,9 +217,13 @@ export function destructiveActionWithoutObjective(guide: JsonGuide): Diagnostic[
     let actionLabel = '';
 
     if (isInteractiveBlock(block)) {
-      if (block.action === 'button' && block.reftarget && DESTRUCTIVE_REFTARGET_PATTERN.test(block.reftarget)) {
+      if (
+        block.action === 'button' &&
+        block.reftarget &&
+        DESTRUCTIVE_REFTARGET_PATTERN.test(primaryRefTarget(block.reftarget))
+      ) {
         isDestructive = true;
-        actionLabel = `button "${block.reftarget}"`;
+        actionLabel = `button "${primaryRefTarget(block.reftarget)}"`;
       }
     } else {
       // multistep / guided — check if any step is destructive.
@@ -227,11 +232,11 @@ export function destructiveActionWithoutObjective(guide: JsonGuide): Diagnostic[
         continue;
       }
       const destructiveStep = steps.find(
-        (s) => s.action === 'button' && s.reftarget && DESTRUCTIVE_REFTARGET_PATTERN.test(s.reftarget)
+        (s) => s.action === 'button' && s.reftarget && DESTRUCTIVE_REFTARGET_PATTERN.test(primaryRefTarget(s.reftarget))
       );
       if (destructiveStep) {
         isDestructive = true;
-        actionLabel = `step "${destructiveStep.reftarget}"`;
+        actionLabel = `step "${primaryRefTarget(destructiveStep.reftarget!)}"`;
       }
     }
 
@@ -346,11 +351,15 @@ export function requirementsImpliedByActionButNotDeclared(guide: JsonGuide): Dia
       continue;
     }
 
-    const expected = suggestRequirementsFromContext(action, block.reftarget ?? block.refTarget ?? '', {
-      isFirstStepInGuide: isFirstStep,
-      isInsideMultistep: false,
-      currentPath: typeof window !== 'undefined' ? window.location.pathname : undefined,
-    });
+    const expected = suggestRequirementsFromContext(
+      action,
+      primaryRefTarget(block.reftarget ?? block.refTarget ?? ''),
+      {
+        isFirstStepInGuide: isFirstStep,
+        isInsideMultistep: false,
+        currentPath: typeof window !== 'undefined' ? window.location.pathname : undefined,
+      }
+    );
     if (expected.length === 0) {
       continue;
     }

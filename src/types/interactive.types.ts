@@ -10,8 +10,10 @@ export type InteractiveActionType =
   | 'popout'; // Toggle the docs panel between sidebar and floating modes
 
 export interface InteractiveElementData {
-  // Core interactive attributes
-  refTarget: string;
+  // Core interactive attributes.
+  // A single selector, or an ordered fallback chain (strongest first) that the
+  // resolver tries in order. Use primaryRefTarget() for sites that need one string.
+  refTarget: string | string[];
   targetAction: string;
   targetValue?: string;
   targetComment?: string;

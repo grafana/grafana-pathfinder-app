@@ -21,6 +21,7 @@ const makeResolved = (buttons: HTMLElement[]) => ({
   resolvedSelector: '#mock',
   usedFallback: false,
   retryCount: 0,
+  selectedIndex: 0,
 });
 
 const mockStateManager = {

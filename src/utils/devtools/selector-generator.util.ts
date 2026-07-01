@@ -5,12 +5,13 @@
  * the useActionRecorder hook and block editor components.
  */
 
-import { generateBestSelector, getSelectorInfo, validateAndCleanSelector } from '../../lib/dom';
+import { generateBestSelector, generateSelectorChain, getSelectorInfo, validateAndCleanSelector } from '../../lib/dom';
 import { detectActionType, type DetectedAction } from '../../lib/dom/action-detector';
 import type { SelectorInfo } from './dev-tools.types';
 
 export interface SelectorGenerationResult {
   selector: string;
+  fallbacks: string[];
   action: DetectedAction;
   selectorInfo: SelectorInfo;
   warnings: string[];
@@ -65,8 +66,15 @@ export function generateSelectorFromEvent(
     contextStrategy: info.contextStrategy,
   };
 
+  // The chain's first entry is the primary; keep only the weaker, strategy-diverse
+  // fallbacks, and drop any that collapse onto the validated primary.
+  const fallbacks = generateSelectorChain(target)
+    .slice(1)
+    .filter((candidate) => candidate !== selector);
+
   return {
     selector,
+    fallbacks,
     action,
     selectorInfo,
     warnings: validated.warnings,

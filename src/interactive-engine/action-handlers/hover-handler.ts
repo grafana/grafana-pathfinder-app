@@ -36,7 +36,7 @@ export class HoverHandler {
     }
   }
 
-  private async findTargetElement(selector: string): Promise<HTMLElement> {
+  private async findTargetElement(selector: string | string[]): Promise<HTMLElement> {
     const resolved = await resolveWithRetry(selector, 'hover');
 
     if (!resolved) {

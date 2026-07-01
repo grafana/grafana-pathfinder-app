@@ -30,7 +30,12 @@ import {
   removeTokenFromConditionField,
 } from '../lint';
 import { testIds } from '../../../constants/testIds';
-import { generateFallbackSelectors, querySelectorAllEnhanced, resolveSelector } from '../../../lib/dom';
+import {
+  generateFallbackSelectors,
+  querySelectorAllEnhanced,
+  resolveSelector,
+  primaryRefTarget,
+} from '../../../lib/dom';
 import { SelectorHealthBadge } from '../SelectorHealthBadge';
 import { SelectorTestOverlay } from '../SelectorTestOverlay';
 import { useSelectorTest } from '../useSelectorTest';
@@ -85,7 +90,12 @@ export function InteractiveBlockForm({
   // Initialize from existing data or defaults
   const initial = initialData && isInteractiveBlock(initialData) ? initialData : null;
   const [action, setAction] = useState<JsonInteractiveAction>(initial?.action ?? 'highlight');
-  const [reftarget, setReftarget] = useState(initial?.reftarget ?? '');
+  // The "Target selector" field holds the primary (strongest) selector; the
+  // optional fallback chain (weaker selectors, tried in order) is edited below.
+  const [reftarget, setReftarget] = useState(primaryRefTarget(initial?.reftarget ?? ''));
+  const [fallbacks, setFallbacks] = useState<string[]>(() =>
+    Array.isArray(initial?.reftarget) ? initial.reftarget.slice(1) : []
+  );
   const [targetvalue, setTargetvalue] = useState(initial?.targetvalue ?? '');
   const [content, setContent] = useState(initial?.content ?? '');
   const [tooltip, setTooltip] = useState(initial?.tooltip ?? '');
@@ -118,8 +128,9 @@ export function InteractiveBlockForm({
 
   // Start element picker - pass callback to receive selected element
   const startPicker = useCallback(() => {
-    onPickerModeChange?.(true, (selector: string) => {
+    onPickerModeChange?.(true, (selector: string, pickedFallbacks: string[] = []) => {
       setReftarget(selector);
+      setFallbacks(pickedFallbacks);
       // Auto-add default requirements based on selector pattern
       const suggestions = suggestDefaultRequirements(action, selector);
       if (suggestions.length > 0) {
@@ -152,11 +163,18 @@ export function InteractiveBlockForm({
       // Treat both actions like noop for the bulk of the optional-field gating below.
       const isStateOnlyAction = isNoopAction || isPopoutAction;
 
+      // The primary selector plus any non-empty fallbacks become an ordered array;
+      // with no fallbacks the value stays a plain string (legacy-identical).
+      const primarySelector = reftarget.trim();
+      const cleanedFallbacks = fallbacks.map((fb) => fb.trim()).filter(Boolean);
+      const reftargetValue: string | string[] =
+        cleanedFallbacks.length > 0 ? [primarySelector, ...cleanedFallbacks] : primarySelector;
+
       const block: JsonInteractiveBlock = {
         type: 'interactive',
         action,
         // Only include reftarget for actions that operate on DOM elements
-        ...(!isStateOnlyAction && reftarget.trim() && { reftarget: reftarget.trim() }),
+        ...(!isStateOnlyAction && primarySelector && { reftarget: reftargetValue }),
         content: content.trim(),
         // formfill stores the value to fill; popout stores the target panel mode.
         ...(!isStateOnlyAction && targetvalue.trim() && { targetvalue: targetvalue.trim() }),
@@ -187,6 +205,7 @@ export function InteractiveBlockForm({
     [
       action,
       reftarget,
+      fallbacks,
       targetvalue,
       content,
       tooltip,

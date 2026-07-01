@@ -1,4 +1,5 @@
 jest.mock('../../lib/dom', () => ({
+  primaryRefTarget: (rt: string | string[]) => (Array.isArray(rt) ? (rt[0] ?? '') : rt),
   resolveSelector: (selector: string) => selector,
   querySelectorAllEnhanced: (selector: string) => {
     try {

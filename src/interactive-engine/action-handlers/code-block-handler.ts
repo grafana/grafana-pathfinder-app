@@ -31,7 +31,7 @@ export interface CodeBlockInsertResult {
   error?: string;
 }
 
-export async function clearAndInsertCode(refTarget: string, code: string): Promise<CodeBlockInsertResult> {
+export async function clearAndInsertCode(refTarget: string | string[], code: string): Promise<CodeBlockInsertResult> {
   try {
     const resolved = await resolveWithRetry(refTarget, 'codeblock');
 
