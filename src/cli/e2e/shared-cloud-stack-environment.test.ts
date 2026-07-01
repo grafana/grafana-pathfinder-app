@@ -4,7 +4,7 @@
  * handling without real network or a Grafana stack.
  */
 
-import { CloudEnvironment } from './cloud-environment';
+import { SharedCloudStackEnvironment } from './shared-cloud-stack-environment';
 
 const ADMIN_TOKEN = 'glsa_admin';
 const CLOUD_URL = 'https://stack.grafana.net/';
@@ -46,7 +46,7 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-describe('CloudEnvironment.provisionChain', () => {
+describe('SharedCloudStackEnvironment.provisionChain', () => {
   it('creates a service account then a token and returns the key', async () => {
     const calls = mockFetch((call) => {
       if (call.method === 'POST' && call.url.endsWith('/api/serviceaccounts')) {
@@ -58,7 +58,7 @@ describe('CloudEnvironment.provisionChain', () => {
       return { ok: false, status: 404 };
     });
 
-    const env = new CloudEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
+    const env = new SharedCloudStackEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
     const token = await env.provisionChain();
 
     expect(token).toBe('glsa_minted');
@@ -76,13 +76,13 @@ describe('CloudEnvironment.provisionChain', () => {
 
   it('throws when service-account creation fails', async () => {
     mockFetch(() => ({ ok: false, status: 401 }));
-    const env = new CloudEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
+    const env = new SharedCloudStackEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
 
     await expect(env.provisionChain()).rejects.toThrow(/HTTP 401/);
   });
 });
 
-describe('CloudEnvironment.teardownChain', () => {
+describe('SharedCloudStackEnvironment.teardownChain', () => {
   it('deletes the provisioned service account by id', async () => {
     const calls = mockFetch((call) => {
       if (call.url.endsWith('/api/serviceaccounts')) {
@@ -94,7 +94,7 @@ describe('CloudEnvironment.teardownChain', () => {
       return { ok: true };
     });
 
-    const env = new CloudEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
+    const env = new SharedCloudStackEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
     await env.provisionChain();
     await env.teardownChain();
 
@@ -104,7 +104,7 @@ describe('CloudEnvironment.teardownChain', () => {
 
   it('is a no-op when nothing was provisioned', async () => {
     const calls = mockFetch(() => ({ ok: true }));
-    const env = new CloudEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
+    const env = new SharedCloudStackEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
 
     await env.teardownChain();
 
@@ -122,14 +122,14 @@ describe('CloudEnvironment.teardownChain', () => {
       return { ok: true, json: { id: 9, name: 'pathfinder-e2e-y' } };
     });
 
-    const env = new CloudEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
+    const env = new SharedCloudStackEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
     await env.provisionChain();
 
     await expect(env.teardownChain()).resolves.toBeUndefined();
   });
 });
 
-describe('CloudEnvironment.sweepOrphans', () => {
+describe('SharedCloudStackEnvironment.sweepOrphans', () => {
   it('deletes only stale provisioned service accounts', async () => {
     const staleTimestamp = NOW_SECONDS - 3901;
     const freshTimestamp = NOW_SECONDS - 60;
@@ -150,7 +150,7 @@ describe('CloudEnvironment.sweepOrphans', () => {
       return { ok: true };
     });
 
-    const env = new CloudEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
+    const env = new SharedCloudStackEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
     await env.sweepOrphans();
 
     const deletedIds = calls.filter((c) => c.method === 'DELETE').map((c) => c.url);
@@ -159,7 +159,7 @@ describe('CloudEnvironment.sweepOrphans', () => {
 
   it('does not throw when the search request fails', async () => {
     mockFetch(() => ({ ok: false, status: 403 }));
-    const env = new CloudEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
+    const env = new SharedCloudStackEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
 
     await expect(env.sweepOrphans()).resolves.toBeUndefined();
   });

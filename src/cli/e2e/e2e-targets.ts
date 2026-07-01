@@ -18,8 +18,9 @@ import { checkTier, type CurrentTier } from './manifest-preflight';
  * for (a legitimate routing decision). Collapsing them would hide a typo.
  */
 export type TargetSkipReason = 'skipped_no_auth' | 'skipped_tier_mismatch' | 'skipped_invalid_instance';
-export interface CloudAuthTargets {
-  provisionable: string[];
+export interface CloudTargetCapabilities {
+  sharedStackUrls: string[];
+  isolatedStack?: boolean;
 }
 
 /** Resolution of a guide's `testEnvironment` to a concrete test target. */
@@ -45,8 +46,8 @@ export interface ResolveTargetOptions {
   currentTier: CurrentTier;
   /** Default cloud instance URL for `cloud`-tier guides without an `instance`. */
   cloudUrl?: string;
-  /** Cloud target URLs that can be authenticated without exposing credential values to resolution. */
-  cloudAuthTargets?: CloudAuthTargets;
+  /** Cloud execution capabilities without exposing credential values to resolution. */
+  cloudTargetCapabilities?: CloudTargetCapabilities;
 }
 
 /**
@@ -67,9 +68,9 @@ export function cloudInstanceUrl(instance: string): string | undefined {
   }
 }
 
-function canProvisionFor(targetUrl: string, options: ResolveTargetOptions): boolean {
-  return (options.cloudAuthTargets?.provisionable ?? []).some((provisionableTargetUrl) =>
-    sameOrigin(targetUrl, provisionableTargetUrl)
+function hasSharedStackAuthFor(targetUrl: string, options: ResolveTargetOptions): boolean {
+  return (options.cloudTargetCapabilities?.sharedStackUrls ?? []).some((sharedStackUrl) =>
+    sameOrigin(targetUrl, sharedStackUrl)
   );
 }
 
@@ -89,9 +90,10 @@ export function sameOrigin(left: string | undefined, right: string | undefined):
  *
  * - `local` / absent / unknown tier → runnable against `options.grafanaUrl`
  * - `cloud` tier on a `local` environment → `skipped_tier_mismatch`
- * - `cloud` tier without credentials → `skipped_no_auth`
+ * - `cloud` tier without shared-stack auth or isolated-stack support → `skipped_no_auth`
  * - `cloud` tier with a malformed `instance` → `skipped_invalid_instance`
- * - `cloud` tier with credentials → runnable against the resolved cloud URL
+ * - `cloud` tier with `instance` → runnable only with shared-stack auth for that exact instance
+ * - `cloud` tier without `instance` → runnable with shared-stack auth or isolated-stack support
  */
 export function resolveTarget(testEnvironment: TestEnvironment, options: ResolveTargetOptions): ResolvedTarget {
   const tier = testEnvironment.tier ?? 'local';
@@ -103,17 +105,8 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
   }
 
   if (tier === 'cloud') {
-    const authTargets = options.cloudAuthTargets ?? { provisionable: [] };
+    const targetCapabilities = options.cloudTargetCapabilities ?? { sharedStackUrls: [] };
     const defaultTargetUrl = options.cloudUrl;
-    if (authTargets.provisionable.length === 0) {
-      return {
-        runnable: false,
-        tier,
-        instance,
-        skipReason: 'skipped_no_auth',
-        message: 'Cloud-tier guide requires --cloud-instance-admin-token for its target',
-      };
-    }
 
     if (instance !== undefined) {
       const instanceUrl = cloudInstanceUrl(instance);
@@ -126,7 +119,7 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
           message: `Cloud instance "${instance}" is not a bare hostname (no protocol, port, or path allowed)`,
         };
       }
-      if (!canProvisionFor(instanceUrl, options)) {
+      if (!hasSharedStackAuthFor(instanceUrl, options)) {
         return {
           runnable: false,
           tier,
@@ -146,7 +139,19 @@ export function resolveTarget(testEnvironment: TestEnvironment, options: Resolve
         message: 'No cloud URL configured for this guide (set --cloud-url)',
       };
     }
-    if (!canProvisionFor(defaultTargetUrl, options)) {
+    if (targetCapabilities.sharedStackUrls.length === 0 && !targetCapabilities.isolatedStack) {
+      return {
+        runnable: false,
+        tier,
+        instance,
+        skipReason: 'skipped_no_auth',
+        message: 'Cloud-tier guide requires --cloud-instance-admin-token for its target',
+      };
+    }
+    if (!hasSharedStackAuthFor(defaultTargetUrl, options)) {
+      if (targetCapabilities.isolatedStack) {
+        return { runnable: true, tier, instance, targetUrl: defaultTargetUrl };
+      }
       return {
         runnable: false,
         tier,

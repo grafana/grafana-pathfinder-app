@@ -1,6 +1,6 @@
 /**
- * Tests for the e2e target resolver. Covers tier → target mapping, the skip
- * reasons, and cloud credential/instance resolution.
+ * Tests for the e2e target resolver. Covers tier → target mapping, skip
+ * reasons, and cloud execution capabilities.
  */
 
 import { resolveTarget } from './e2e-targets';
@@ -43,21 +43,54 @@ describe('resolveTarget', () => {
     expect(target.message).toBeDefined();
   });
 
-  it('skips a cloud guide on a cloud environment when credentials are absent', () => {
-    const target = resolveTarget({ tier: 'cloud' }, { grafanaUrl: LOCAL_URL, currentTier: 'cloud' });
+  it('skips a cloud guide on a cloud environment when no cloud execution capability is available', () => {
+    const target = resolveTarget(
+      { tier: 'cloud' },
+      { grafanaUrl: LOCAL_URL, currentTier: 'cloud', cloudUrl: CLOUD_URL }
+    );
 
     expect(target.runnable).toBe(false);
     expect(target.skipReason).toBe('skipped_no_auth');
   });
 
-  it('runs a cloud guide with credentials against the default cloud URL when no instance is declared', () => {
+  it('runs a cloud guide when isolated stack provisioning is available without shared-stack auth', () => {
     const target = resolveTarget(
       { tier: 'cloud' },
       {
         grafanaUrl: LOCAL_URL,
         currentTier: 'cloud',
         cloudUrl: CLOUD_URL,
-        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+        cloudTargetCapabilities: { sharedStackUrls: [], isolatedStack: true },
+      }
+    );
+
+    expect(target.runnable).toBe(true);
+    expect(target.targetUrl).toBe(CLOUD_URL);
+  });
+
+  it('does not use isolated stack provisioning for a declared cloud instance', () => {
+    const target = resolveTarget(
+      { tier: 'cloud', instance: 'play.grafana.org' },
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudTargetCapabilities: { sharedStackUrls: [CLOUD_URL], isolatedStack: true },
+      }
+    );
+    expect(target.runnable).toBe(false);
+    expect(target.skipReason).toBe('skipped_no_auth');
+    expect(target.message).toContain('--cloud-instance-admin-token for https://play.grafana.org/');
+  });
+
+  it('runs a cloud guide with shared-stack auth against the default cloud URL when no instance is declared', () => {
+    const target = resolveTarget(
+      { tier: 'cloud' },
+      {
+        grafanaUrl: LOCAL_URL,
+        currentTier: 'cloud',
+        cloudUrl: CLOUD_URL,
+        cloudTargetCapabilities: { sharedStackUrls: [CLOUD_URL] },
       }
     );
 
@@ -74,7 +107,7 @@ describe('resolveTarget', () => {
         grafanaUrl: LOCAL_URL,
         currentTier: 'cloud',
         cloudUrl: CLOUD_URL,
-        cloudAuthTargets: { provisionable: ['https://play.grafana.org/'] },
+        cloudTargetCapabilities: { sharedStackUrls: ['https://play.grafana.org/'] },
       }
     );
 
@@ -83,14 +116,14 @@ describe('resolveTarget', () => {
     expect(target.instance).toBe('play.grafana.org');
   });
 
-  it('does not use default cloud credentials for a different declared instance', () => {
+  it('does not use default shared-stack auth for a different declared instance', () => {
     const target = resolveTarget(
       { tier: 'cloud', instance: 'play.grafana.org' },
       {
         grafanaUrl: LOCAL_URL,
         currentTier: 'cloud',
         cloudUrl: CLOUD_URL,
-        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+        cloudTargetCapabilities: { sharedStackUrls: [CLOUD_URL] },
       }
     );
 
@@ -105,7 +138,7 @@ describe('resolveTarget', () => {
         grafanaUrl: LOCAL_URL,
         currentTier: 'cloud',
         cloudUrl: CLOUD_URL,
-        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+        cloudTargetCapabilities: { sharedStackUrls: [CLOUD_URL] },
       }
     );
 
@@ -120,7 +153,7 @@ describe('resolveTarget', () => {
         grafanaUrl: LOCAL_URL,
         currentTier: 'cloud',
         cloudUrl: CLOUD_URL,
-        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+        cloudTargetCapabilities: { sharedStackUrls: [CLOUD_URL] },
       }
     );
 
@@ -136,7 +169,7 @@ describe('resolveTarget', () => {
         grafanaUrl: LOCAL_URL,
         currentTier: 'cloud',
         cloudUrl: CLOUD_URL,
-        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+        cloudTargetCapabilities: { sharedStackUrls: [CLOUD_URL] },
       }
     );
 
@@ -152,7 +185,7 @@ describe('resolveTarget', () => {
         grafanaUrl: LOCAL_URL,
         currentTier: 'cloud',
         cloudUrl: CLOUD_URL,
-        cloudAuthTargets: { provisionable: [CLOUD_URL] },
+        cloudTargetCapabilities: { sharedStackUrls: [CLOUD_URL] },
       }
     );
 
@@ -160,10 +193,10 @@ describe('resolveTarget', () => {
     expect(target.skipReason).toBe('skipped_invalid_instance');
   });
 
-  it('skips a cloud guide with credentials but no resolvable cloud URL', () => {
+  it('skips a cloud guide with target capabilities but no resolvable cloud URL', () => {
     const target = resolveTarget(
       { tier: 'cloud' },
-      { grafanaUrl: LOCAL_URL, currentTier: 'cloud', cloudAuthTargets: { provisionable: [CLOUD_URL] } }
+      { grafanaUrl: LOCAL_URL, currentTier: 'cloud', cloudTargetCapabilities: { sharedStackUrls: [CLOUD_URL] } }
     );
 
     expect(target.runnable).toBe(false);

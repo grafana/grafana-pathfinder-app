@@ -19,7 +19,7 @@ import { resolvePackageById } from './recommender-resolver';
 import { fetchRepositoryIndex, buildPackageFileUrl, type RepositoryPackage } from '../mcp/lib/repository-client';
 import { planGuideExecution } from './guide-chains';
 import type { LoadedGuide } from '../utils/file-loader';
-import { resolveTarget, type CloudAuthTargets } from './e2e-targets';
+import { resolveTarget, type CloudTargetCapabilities } from './e2e-targets';
 import type { CurrentTier } from './manifest-preflight';
 import { classifyGuideSideEffectsFromString, type SideEffectClassification } from './side-effects';
 
@@ -96,8 +96,8 @@ export interface RemoteResolveOptions {
   repoUrl?: string;
   /** Default cloud instance URL for `cloud`-tier guides without an `instance`. */
   cloudUrl?: string;
-  /** Cloud target URLs that can be authenticated without exposing credential values to resolution. */
-  cloudAuthTargets?: CloudAuthTargets;
+  /** Cloud execution capabilities without exposing credential values to resolution. */
+  cloudTargetCapabilities?: CloudTargetCapabilities;
 }
 
 /** Fetch a URL as raw text with a timeout. Never throws. */
@@ -145,7 +145,7 @@ async function buildGuideOrSkip(
     grafanaUrl: options.grafanaUrl,
     currentTier: options.currentTier,
     cloudUrl: options.cloudUrl,
-    cloudAuthTargets: options.cloudAuthTargets,
+    cloudTargetCapabilities: options.cloudTargetCapabilities,
   });
   if (!target.runnable) {
     return {

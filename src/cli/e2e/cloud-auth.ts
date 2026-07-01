@@ -1,4 +1,4 @@
-import { cloudInstanceUrl, sameOrigin, type CloudAuthTargets } from './e2e-targets';
+import { cloudInstanceUrl, sameOrigin, type CloudTargetCapabilities } from './e2e-targets';
 
 export interface CloudAuthConfigInput {
   cloudInstanceAdminTokenSpecs?: string[];
@@ -10,7 +10,7 @@ export interface RunnerAuth {
 }
 
 export interface CloudAuthPolicy {
-  targets: CloudAuthTargets;
+  targets: CloudTargetCapabilities;
   adminTokenFor(targetUrl: string | undefined): string | undefined;
   needsProvisioningFor(targetUrl: string | undefined): boolean;
   runnerAuthFor(targetUrl: string | undefined, provisionedToken?: string): RunnerAuth;
@@ -80,7 +80,7 @@ export function createCloudAuthPolicy(input: CloudAuthConfigInput): CloudAuthPol
 
   return {
     targets: {
-      provisionable: adminTokenConfig.targetUrls,
+      sharedStackUrls: adminTokenConfig.targetUrls,
     },
     adminTokenFor(targetUrl) {
       return tokenForTarget(adminTokenConfig.adminTokensByOrigin, targetUrl);

@@ -8,10 +8,11 @@
  *
  * Scope: this isolates per-identity state (preferences, stars, sessions)
  * between chains. It does NOT reset org-global data (dashboards, data sources,
- * folders) created by guides — that requires ephemeral stacks, a future phase.
+ * folders) created by guides — unsafe guides require isolated stack execution.
  *
- * One CloudEnvironment owns one cloud stack. Multi-instance runs create one
- * CloudEnvironment per target origin that has a configured admin token.
+ * One SharedCloudStackEnvironment owns service-account lifecycle for one existing
+ * cloud stack. Multi-instance runs create one per target origin with configured
+ * shared-stack admin auth.
  */
 
 import { randomUUID } from 'crypto';
@@ -65,7 +66,7 @@ function isStaleOrphan(name: string): boolean {
  * one SA is live at a time (chains run sequentially), tracked in `currentSaId`
  * so teardown — including from signal handlers — can always find it.
  */
-export class CloudEnvironment {
+export class SharedCloudStackEnvironment {
   private currentSaId: number | null = null;
   private readonly runId = randomUUID().slice(0, 8);
 

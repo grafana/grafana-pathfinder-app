@@ -3,14 +3,14 @@ import { createCloudAuthPolicy } from './cloud-auth';
 const CLOUD_URL = 'https://learn.grafana.net/';
 
 describe('createCloudAuthPolicy', () => {
-  it('declares a cloud URL provisionable when an admin token mapping exists', () => {
+  it('declares shared-stack URLs when an admin token mapping exists', () => {
     const auth = createCloudAuthPolicy({
       cloudInstanceAdminTokenSpecs: ['learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN'],
       env: { GRAFANA_LEARN_ADMIN_TOKEN: 'glsa_admin' },
     });
 
     expect(auth.targets).toEqual({
-      provisionable: [CLOUD_URL],
+      sharedStackUrls: [CLOUD_URL],
     });
     expect(auth.adminTokenFor(CLOUD_URL)).toBe('glsa_admin');
     expect(auth.needsProvisioningFor(CLOUD_URL)).toBe(true);
@@ -24,7 +24,7 @@ describe('createCloudAuthPolicy', () => {
     });
 
     expect(auth.targets).toEqual({
-      provisionable: ['https://play.grafana.org/'],
+      sharedStackUrls: ['https://play.grafana.org/'],
     });
     expect(auth.adminTokenFor('https://play.grafana.org/')).toBe('glsa_play_admin');
     expect(auth.adminTokenFor(CLOUD_URL)).toBeUndefined();
