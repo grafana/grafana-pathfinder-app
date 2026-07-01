@@ -11,6 +11,7 @@ import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 import { PLUGIN_BASE_URL } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
+import { clearExtensionSidebarDocked } from '../../../lib/storage/extension-sidebar';
 
 export interface TabBarActionsProps {
   /** CSS class name for the container */
@@ -58,6 +59,9 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
       type: 'close-extension-sidebar',
       payload: {},
     });
+    // Clear the persisted docked state too, so an explicit close isn't undone by
+    // Grafana restoring the panel (browser_restore) on the next page load.
+    clearExtensionSidebarDocked();
   };
 
   const handleMyLearningClick = () => {
