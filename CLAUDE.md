@@ -4,28 +4,7 @@
 
 ## Additional context for Claude Code
 
-### Skills (`.cursor/skills/`)
-
-Reusable agent workflows. Read a skill's `SKILL.md` before invoking it.
-
-| Skill                | Trigger                          | Purpose                                                                                                                                     |
-| -------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bugfix`             | `/bugfix [issue-#]`              | Two-commit failing-test → fix workflow in a worktree                                                                                        |
-| `changelog`          | `/changelog [version]`           | Draft CHANGELOG entry from merged PRs since the last release tag                                                                            |
-| `design-review`      | conversation request             | Principal-engineer design partner; never writes code                                                                                        |
-| `e2e-guide-analysis` | run E2E on a guide               | Diagnose E2E failures, write a learning report                                                                                              |
-| `i18n-sync`          | `/i18n-sync`                     | Stub missing keys across 21 locales; emit a translation gap report                                                                          |
-| `maintain-docs`      | conversation request, periodic   | Whole-repo doc audit: orphans, drift, staleness — opens a PR                                                                                |
-| `plugin-bundle-size` | conversation request             | Reduce plugin bundle size via React.lazy + webpack code splitting                                                                           |
-| `pr-summary`         | `/pr-summary`                    | Draft structured PR description: interviews author for "why" context, then drafts via `CONCERNS.md` routing; `--quick` skips interview      |
-| `prevent-doc-drift`  | `/review`, pre-merge             | **Per-PR** drift prevention: detects new features / architecture in a PR and updates AGENTS.md, CLAUDE.md, `.cursor/rules/` in same PR      |
-| `refactor`           | `/refactor-investigate <target>` | High-risk refactor with pre / extract / post-test gates                                                                                     |
-| `release-prep`       | `/release-prep [version]`        | Bump version + draft changelog + run check; user creates the tag                                                                            |
-| `review`             | `/review`                        | Principal-engineer PR review: routes via `CONCERNS.md`, grounds findings in `docs/design/PR_REVIEW.md` catalog, invokes doc-drift check     |
-| `secure`             | `/secure`                        | Security audit: F1-F6 frontend + backend allowlists + MCP transport + deps                                                                  |
-| `techdebt`           | `/techdebt <subsystem>`          | Confidence-tiered tech-debt audit: smells, duplication, prop drilling, dead code, extraction seams; also runs as sub-agent inside `/review` |
-
-The two doc-quality skills are complementary: `prevent-doc-drift` handles _new_ drift per-PR (from `/review` or directly); `maintain-docs` sweeps for _accumulated_ drift across the whole repo periodically.
+Skills are indexed in AGENTS.md's "Skills" section — a names-only list plus a command to hydrate each skill's frontmatter description on demand. That is the single source of truth for all harnesses; there is no separate CLAUDE.md skills table to keep in sync.
 
 ### Other Claude Code specifics
 

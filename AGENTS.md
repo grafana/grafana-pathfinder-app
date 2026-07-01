@@ -55,12 +55,29 @@ Do NOT create summary `.md` files unless explicitly requested by the user. No `I
 
 ### Slash commands
 
-`/review` and `/secure` are defined by their skills (see the skills table in CLAUDE.md). Two persona-only commands with no backing skill:
+`/review` and `/secure` are defined by their skills (see the "Skills" section below). Two persona-only commands with no backing skill:
 
 | Command | Role                 | Behavior                                                                                                                                                                |
 | ------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/test` | Test writer          | Tests that enable change. Prioritize unit tests, edge cases, failure modes. Property-based tests when useful. Avoid mocking unless necessary. Fast, isolated, reliable. |
 | `/docs` | Documentation writer | Write for humans first. Document purpose, parameters, return values. Small useful examples. Standard docstring style. Avoid unnecessary words.                          |
+
+## Skills
+
+Skills are reusable agent workflows. Each lives at `.cursor/skills/<name>/SKILL.md` with `name` + `description` frontmatter. Read a skill's `SKILL.md` before running it, and follow it exactly. Invoke a skill by name; harnesses that support slash commands expose it as `/<name>`. Every agent on this repo shares these skills regardless of harness.
+
+Available skills: `bugfix`, `changelog`, `comment-hygiene`, `design-review`, `e2e-guide-analysis`, `i18n-sync`, `maintain-docs`, `plugin-bundle-size`, `pr-summary`, `prevent-doc-drift`, `refactor`, `release-prep`, `review`, `secure`, `techdebt`.
+
+This is a names-only index — the authoritative description of what each skill does and when to use it is its frontmatter, read live. Before starting a non-trivial task, hydrate the descriptions to see which skill applies:
+
+```bash
+for f in .cursor/skills/*/SKILL.md; do
+  echo "### $(basename "$(dirname "$f")")"
+  awk 'NR==1 && /^---/ {f=1; next} f && /^---/ {exit} f' "$f"
+done
+```
+
+To add a skill: create `.cursor/skills/<name>/SKILL.md` with `name` + `description` frontmatter and add `<name>` to the list above. There is no per-skill description to maintain here — the frontmatter is the single source of truth.
 
 ## Essential commands
 
