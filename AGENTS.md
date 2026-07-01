@@ -80,35 +80,9 @@ Dev server runs at http://localhost:3000 (admin/admin). For the complete command
 
 ### Frontend tier model
 
-Imports flow **downward only** to avoid cycles. Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; exceptions require an explicit allowlist entry with justification.
+Imports flow **downward only** to avoid cycles, across five tiers: **0** types & constants → **1** support (`lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`) → **2** engines & hooks (`context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `snippet-engine/`, `hooks/`) → **3** integrations → **4** UI (`components/`, `pages/`). Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; the canonical source is `TIER_MAP` in `src/validation/import-graph.ts`.
 
-- **Tier 0 — Types & constants**: `types/`, `constants/`
-- **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`
-- **Tier 2 — Engines & hooks**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `snippet-engine/`, `hooks/`
-- **Tier 3 — Integrations**: `integrations/`
-- **Tier 4 — UI**: `components/`, `pages/`
-
-Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-interactives/`, `img/`, `locales/`. The canonical source is `TIER_MAP` in `src/validation/import-graph.ts`; this list must stay in sync with it (enforced by `src/validation/architecture.test.ts`).
-
-**Key dependency edges** (where the load-bearing wiring lives):
-
-| Edge                                                          | Why                                                                                |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `context-engine` → `docs-retrieval`                           | Fetches content for the recommendations it surfaces                                |
-| `docs-retrieval` → `bundled-interactives`                     | Fallback when the online CDN is unavailable                                        |
-| `docs-retrieval` → `package-engine`                           | Resolves package manifests + content                                               |
-| `docs-retrieval` → `snippet-engine`                           | Inlines `snippet-ref` blocks against the CDN at parse time                         |
-| `components/docs-panel` → `interactive-engine`                | Executes step actions when the user clicks "Show me" / "Do it"                     |
-| `interactive-engine` → `requirements-manager`                 | Checks prereqs before enabling / executing a step                                  |
-| `interactive-engine` → `lib/dom`                              | Selector resolution + element detection                                            |
-| `components/docs-panel` → `context-engine`                    | Reads and renders recommendations                                                  |
-| `components/docs-panel` → `global-state`                      | Sidebar, panel-mode, tab persistence                                               |
-| `learning-paths` → `lib/user-storage`                         | Persists progress + streak data                                                    |
-| `recovery` → `requirements-manager`                           | Decides whether a failed requirement is auto-recoverable                           |
-| `global-state/controller-channel` → `lib/cross-tab-transport` | BroadcastChannel link between a popped-out controller tab and the live Grafana tab |
-| `integrations/cross-tab` → `interactive-engine`               | Live tab replays a controller tab's step commands against its own DOM              |
-
-For per-subsystem entry points, public surfaces, and key files, load `.cursor/rules/systemPatterns.mdc`.
+For the annotated tier definitions, the per-subsystem reference, and the key dependency-edges table (load-bearing producer → consumer wiring), load `.cursor/rules/systemPatterns.mdc`.
 
 ### Backend (`pkg/`)
 
