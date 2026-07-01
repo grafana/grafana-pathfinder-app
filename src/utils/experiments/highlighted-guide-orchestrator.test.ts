@@ -244,7 +244,8 @@ describe('setupHighlightedGuideAutoOpen → auto-launch-tutorial dispatch', () =
     jest.runAllTimers();
     jest.clearAllMocks();
     mockIsExtensionSidebarOwnedByOther.mockReturnValue(false);
-    mockGetIsSidebarMounted.mockReturnValue(false);
+    // A surface is mounted when the delayed emit fires; the emit is now guarded on it.
+    mockGetIsSidebarMounted.mockReturnValue(true);
     mockFindDocPage.mockReturnValue({
       url: 'https://grafana.com/docs/onboarding',
       title: 'Onboarding',
@@ -357,6 +358,19 @@ describe('setupHighlightedGuideAutoOpen → auto-launch-tutorial dispatch', () =
     expect(localStorage.getItem(`grafana-pathfinder-highlighted-guide-auto-open-${HOSTNAME}:bundled:onboarding`)).toBe(
       'true'
     );
+  });
+
+  it('skips the auto-launch emit when the surface unmounts before the 500ms timer fires', () => {
+    mockGetIsSidebarMounted.mockReturnValue(true);
+    const handler = captureAutoLaunch();
+    setupHighlightedGuideAutoOpen(baseConfig, '/connections/datasources/new', HOSTNAME);
+
+    // Surface unmounts during the delay: the queued emit must not fire, or a
+    // stale value latches and replays on a later manual open.
+    mockGetIsSidebarMounted.mockReturnValue(false);
+    jest.advanceTimersByTime(500);
+
+    expect(handler).not.toHaveBeenCalled();
   });
 
   it('fires the pathfinder-auto-launch-pending coordination event synchronously on mount', () => {

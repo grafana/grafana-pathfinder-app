@@ -112,6 +112,11 @@ class GlobalSidebarState {
       document.removeEventListener('pathfinder-panel-mounted', dispatch);
       // Small delay so docs-panel's useEffect listener is registered after mount
       setTimeout(() => {
+        // If the surface unmounted during the delay, skip the emit — the channel
+        // latches, so a stale value would replay on a later manual open.
+        if (!this.getIsSidebarMounted()) {
+          return;
+        }
         autoLaunchChannel.emit({
           url: `bundled:${guideId}`,
           title: guideId,
