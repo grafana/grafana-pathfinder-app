@@ -45,6 +45,11 @@ jest.mock('../../../lib/analytics', () => ({
   },
 }));
 
+// Mock extension-sidebar docked-state storage
+jest.mock('../../../lib/storage/extension-sidebar', () => ({
+  clearExtensionSidebarDocked: jest.fn(),
+}));
+
 // Get mock reference after imports
 const {
   __mockPublish: mockPublish,
@@ -112,6 +117,16 @@ describe('TabBarActions', () => {
         action: 'close_sidebar',
         source: 'header_close_button',
       });
+    });
+
+    it('clears the persisted docked state so the panel is not restored on the next load', () => {
+      const { clearExtensionSidebarDocked } = jest.requireMock('../../../lib/storage/extension-sidebar');
+
+      render(<TabBarActions />);
+
+      fireEvent.click(screen.getByTestId(testIds.docsPanel.closeButton));
+
+      expect(clearExtensionSidebarDocked).toHaveBeenCalled();
     });
   });
 
