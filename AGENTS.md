@@ -97,7 +97,15 @@ Dev server runs at http://localhost:3000 (admin/admin). For the complete command
 
 ### Frontend tier model
 
-Imports flow **downward only** to avoid cycles, across five tiers: **0** types & constants → **1** support (`lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`) → **2** engines & hooks (`context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `snippet-engine/`, `hooks/`) → **3** integrations → **4** UI (`components/`, `pages/`). Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; the canonical source is `TIER_MAP` in `src/validation/import-graph.ts`.
+Imports flow **downward only** to avoid cycles. Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; exceptions require an explicit allowlist entry with justification.
+
+- **Tier 0 — Types & constants**: `types/`, `constants/`
+- **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`
+- **Tier 2 — Engines & hooks**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `snippet-engine/`, `hooks/`
+- **Tier 3 — Integrations**: `integrations/`
+- **Tier 4 — UI**: `components/`, `pages/`
+
+Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-interactives/`, `img/`, `locales/`. The canonical source is `TIER_MAP` in `src/validation/import-graph.ts`; this list must stay in sync with it (enforced by `src/validation/architecture.test.ts`).
 
 For the annotated tier definitions, the per-subsystem reference, and the key dependency-edges table (load-bearing producer → consumer wiring), load `.cursor/rules/systemPatterns.mdc`.
 
