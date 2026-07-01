@@ -2,14 +2,22 @@ import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { Box, Button, Icon, Input, Combobox, useStyles2, RadioButtonGroup, type ComboboxOption } from '@grafana/ui';
 import { SelectableValue } from '@grafana/data';
 import { getPrTesterStyles } from './pr-tester.styles';
-import { fetchPrContentFilesFromUrl, fetchPrManifest, isValidPrUrl, type PrJsonFile } from './github-api';
+import {
+  fetchPrContentFilesFromUrl,
+  fetchPrContentMeta,
+  fetchPrManifest,
+  isValidPrUrl,
+  type PrJsonFile,
+} from './github-api';
 import {
   buildPathPackageInfo,
-  indexContentByPackageId,
-  indexPrFiles,
+  discoverCatalogPaths,
+  getCatalogMilestoneIds,
   type PathPackageBuildResult,
+  type PrContentEntry,
 } from './pr-path-package';
 import { resolveEffectiveTestMode, type TestMode } from './pr-tester-mode';
+import { fetchOnlinePackageRecommendations, type OnlinePackageEntry } from '../../lib/package-recommendations-client';
 import type { ManifestJson } from '../../types/package.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
@@ -21,6 +29,28 @@ const SELECTED_PATH_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_SELECTED_PATH;
 const TEST_MODE_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_MODE;
 const FETCHED_FILES_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_FETCHED_FILES;
 const FETCHED_URL_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_FETCHED_URL;
+
+const EMPTY_CATALOG_BY_ID: ReadonlyMap<string, OnlinePackageEntry> = new Map();
+
+/** The published catalog, indexed for reverse lookup + URL building. */
+interface CatalogState {
+  baseUrl: string;
+  entries: OnlinePackageEntry[];
+  byId: Map<string, OnlinePackageEntry>;
+}
+
+/** A path/journey testable in path mode — either from the PR or auto-discovered from the catalog. */
+interface PathCandidate {
+  /** Selector value: PR directory name, or `cdn:<id>` for a catalog-discovered path. */
+  key: string;
+  id: string;
+  origin: 'pr' | 'cdn';
+  label: string;
+  type: string;
+  milestoneIds: string[];
+  description?: string;
+  manifest?: Record<string, unknown>;
+}
 
 export interface PrTesterProps {
   /**
@@ -40,9 +70,9 @@ type FetchState = 'idle' | 'fetching' | 'fetched' | 'error';
  * Modes:
  * 1. Single — open one content.json
  * 2. Open all — open every content.json in separate tabs
- * 3. Learning path — detect a `path`/`journey` manifest in the PR and open
- *    it as a real package (cover page + milestone toolbar + Alt+arrow nav)
- *    using the same pipeline the recommender uses for production paths.
+ * 3. Learning path — open a `path`/`journey` as a real package. Milestones the
+ *    PR changes are served from the PR; unchanged milestones (and paths whose
+ *    manifest isn't in the PR) are resolved from the published CDN catalog.
  */
 export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   const styles = useStyles2(getPrTesterStyles);
@@ -101,28 +131,32 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     }
   });
 
-  /**
-   * All parsed manifests in the PR, indexed by directoryName.
-   *
-   * We keep every manifest (not just path/journey) because child packages of
-   * a path use their *own* `manifest.id` as the canonical key. Without those
-   * we can't translate `manifest.milestones` (package IDs) into raw URLs in
-   * the PR — directory names are storage, package IDs are identity.
-   */
+  /** All parsed manifests in the PR, indexed by directoryName — used to detect path/journey packages. */
   const [allManifests, setAllManifests] = useState<Map<string, ManifestJson>>(new Map());
-  const [manifestsLoading, setManifestsLoading] = useState(false);
+
+  /**
+   * PR content.json files keyed by their own package `id`. The content's `id`
+   * is the canonical milestone ID, so this maps a changed milestone to a path's
+   * `manifest.milestones[]` even when its sibling manifest.json isn't in the diff.
+   */
+  const [prContentById, setPrContentById] = useState<Map<string, PrContentEntry>>(new Map());
+  const [metaLoading, setMetaLoading] = useState(false);
+
+  /** Published package catalog, used to discover paths and resolve unchanged milestones. */
+  const [catalog, setCatalog] = useState<CatalogState | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(false);
 
   const [testSuccess, setTestSuccess] = useState(false);
 
   // REACT: refs for cleanup on unmount (R1, R4)
   const abortControllerRef = useRef<AbortController>();
-  const manifestAbortRef = useRef<AbortController>();
+  const metaAbortRef = useRef<AbortController>();
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
-      manifestAbortRef.current?.abort();
+      metaAbortRef.current?.abort();
       if (successTimeoutRef.current) {
         clearTimeout(successTimeoutRef.current);
       }
@@ -178,87 +212,94 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
 
   // Content-only subset for single/all modes
   const contentFiles = useMemo(() => files.filter((f) => f.kind === 'content'), [files]);
-  const manifestFiles = useMemo(() => files.filter((f) => f.kind === 'manifest'), [files]);
 
   /**
-   * Stable signature for the manifest set. The preload effect below depends
-   * on this string instead of the `manifestFiles` array reference so we don't
-   * abort + restart in-flight fetches every time `files` changes — even when
-   * the manifest subset is identical (e.g. a content-only update). The rawUrl
-   * encodes both the file path AND the head SHA, so a force-push or directory
-   * rename produces a different fingerprint and correctly triggers a refetch.
+   * Stable signature for the file set. The preload effects below depend on this
+   * string instead of the `files` array reference so we don't abort + restart
+   * in-flight fetches on every render. Each rawUrl encodes both the file path
+   * AND the head SHA, so a force-push or rename produces a different fingerprint
+   * and correctly triggers a refetch.
    */
-  const manifestFingerprint = useMemo(
+  const filesFingerprint = useMemo(
     () =>
-      manifestFiles
+      files
         .map((f) => f.rawUrl)
         .sort()
         .join('|'),
-    [manifestFiles]
+    [files]
   );
 
-  /**
-   * Latest manifestFiles, read inside the preload effect via ref so the
-   * effect can depend on the stable fingerprint while still using the
-   * up-to-date file list when it does run.
-   */
-  const manifestFilesRef = useRef(manifestFiles);
-  // eslint-disable-next-line react-hooks/refs -- intentional latest-value ref read inside the preload effect (see comment above)
-  manifestFilesRef.current = manifestFiles;
+  const filesRef = useRef(files);
+  // eslint-disable-next-line react-hooks/refs -- intentional latest-value ref read inside the preload effects (see fingerprint comment above)
+  filesRef.current = files;
 
   /**
-   * Load every manifest.json in the PR in parallel.
-   *
-   * We keep them all (not just path/journey) so we can resolve milestone
-   * package IDs to raw URLs via each child manifest's `id` field, even when
-   * the directory name and the canonical package ID disagree.
+   * Preload every manifest.json (to detect path/journey packages) and every
+   * content.json's metadata (to map changed milestones by their package id).
    */
   useEffect(() => {
-    const currentManifestFiles = manifestFilesRef.current;
-    if (currentManifestFiles.length === 0) {
+    const currentFiles = filesRef.current;
+    if (currentFiles.length === 0) {
       setAllManifests(new Map());
-      setManifestsLoading(false);
+      setPrContentById(new Map());
+      setMetaLoading(false);
       return;
     }
 
-    manifestAbortRef.current?.abort();
+    metaAbortRef.current?.abort();
     const controller = new AbortController();
-    manifestAbortRef.current = controller;
+    metaAbortRef.current = controller;
 
-    setManifestsLoading(true);
+    setMetaLoading(true);
     let cancelled = false;
 
     (async () => {
       try {
-        const results = await Promise.all(
-          currentManifestFiles.map(async (file) => {
-            const manifest = await fetchPrManifest(file.rawUrl, controller.signal);
-            return { file, manifest };
-          })
-        );
+        const manifestFiles = currentFiles.filter((f) => f.kind === 'manifest');
+        const contentFilesNow = currentFiles.filter((f) => f.kind === 'content');
+        const [manifestResults, contentResults] = await Promise.all([
+          Promise.all(
+            manifestFiles.map(async (file) => ({
+              file,
+              manifest: await fetchPrManifest(file.rawUrl, controller.signal),
+            }))
+          ),
+          Promise.all(
+            contentFilesNow.map(async (file) => ({
+              file,
+              meta: await fetchPrContentMeta(file.rawUrl, controller.signal),
+            }))
+          ),
+        ]);
         if (cancelled || controller.signal.aborted) {
           return;
         }
-        const next = new Map<string, ManifestJson>();
-        for (const { file, manifest } of results) {
+        const nextManifests = new Map<string, ManifestJson>();
+        for (const { file, manifest } of manifestResults) {
           if (manifest) {
-            next.set(file.directoryName, manifest);
+            nextManifests.set(file.directoryName, manifest);
           }
         }
-        setAllManifests(next);
+        const nextContent = new Map<string, PrContentEntry>();
+        for (const { file, meta } of contentResults) {
+          if (meta) {
+            nextContent.set(meta.id, { file, title: meta.title });
+          }
+        }
+        setAllManifests(nextManifests);
+        setPrContentById(nextContent);
       } catch (error) {
-        // `fetchPrManifest` already swallows its own errors, but anything
-        // else inside this block (Promise.all rejection from an unexpected
-        // throw, a post-unmount setState, etc.) must still flip us out of
-        // the loading state. Without this `finally`, the path-mode UI
-        // would be stuck on "Loading manifests..." with no recovery path.
+        // The fetch helpers swallow their own errors, but anything else inside
+        // this block must still flip us out of the loading state or path mode
+        // is stranded on "Loading…" with no recovery.
         if (!cancelled && !controller.signal.aborted) {
-          console.error('[PrTester] manifest preload failed', error);
+          console.error('[PrTester] PR metadata preload failed', error);
           setAllManifests(new Map());
+          setPrContentById(new Map());
         }
       } finally {
         if (!cancelled && !controller.signal.aborted) {
-          setManifestsLoading(false);
+          setMetaLoading(false);
         }
       }
     })();
@@ -267,9 +308,60 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       cancelled = true;
       controller.abort();
     };
-  }, [manifestFingerprint]);
+  }, [filesFingerprint]);
 
-  /** Subset that drives the path-mode UI: only path/journey manifests. */
+  /**
+   * Load the published package catalog once a PR is fetched. The client is
+   * session-cached and never throws; an empty result degrades path mode to
+   * diff-only (no auto-discovery, no CDN fallback for unchanged milestones).
+   */
+  useEffect(() => {
+    if (filesRef.current.length === 0) {
+      setCatalog(null);
+      setCatalogLoading(false);
+      return;
+    }
+
+    setCatalogLoading(true);
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const response = await fetchOnlinePackageRecommendations();
+        if (cancelled) {
+          return;
+        }
+        if (!response.baseUrl || response.packages.length === 0) {
+          setCatalog(null);
+          return;
+        }
+        const byId = new Map<string, OnlinePackageEntry>();
+        for (const entry of response.packages) {
+          byId.set(entry.id, entry);
+        }
+        setCatalog({ baseUrl: response.baseUrl, entries: response.packages, byId });
+      } catch {
+        if (!cancelled) {
+          setCatalog(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setCatalogLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filesFingerprint]);
+
+  const pathDiscoveryLoading = metaLoading || catalogLoading;
+
+  /** IDs of the content.json files changed in this PR. */
+  const changedIds = useMemo(() => new Set(prContentById.keys()), [prContentById]);
+
+  /** Path/journey manifests found directly in the PR diff. */
   const pathManifests = useMemo(() => {
     const next = new Map<string, ManifestJson>();
     for (const [dir, manifest] of allManifests) {
@@ -281,23 +373,50 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   }, [allManifests]);
 
   /**
-   * Index PR files by directory once and share the result with everything
-   * downstream (`indexContentByPackageId` for milestone resolution and
-   * `buildPathPackageInfo` for the cover-page lookup). Without this each
-   * call site would re-iterate `files`, doubling work on every render that
-   * touches the PR.
+   * Paths testable in path mode: those whose manifest is in the PR, plus
+   * published paths that contain a changed milestone (auto-discovery). PR
+   * manifests win when both describe the same path id.
    */
-  const contentByDir = useMemo(() => indexPrFiles(files).contentByDir, [files]);
+  const pathCandidates = useMemo<PathCandidate[]>(() => {
+    const prCandidates: PathCandidate[] = [];
+    for (const [dir, manifest] of pathManifests) {
+      prCandidates.push({
+        key: dir,
+        id: manifest.id,
+        origin: 'pr',
+        label: manifest.id,
+        type: manifest.type,
+        milestoneIds: Array.isArray(manifest.milestones) ? manifest.milestones : [],
+        description: typeof manifest.description === 'string' ? manifest.description : undefined,
+        manifest: manifest as unknown as Record<string, unknown>,
+      });
+    }
 
-  /**
-   * `manifest.milestones[]` lists package IDs, not directory names.
-   * Build the ID→file index by reading each child's manifest.id so the path
-   * tester resolves milestones the same way the production resolver does.
-   */
-  const contentByPackageId = useMemo(
-    () => indexContentByPackageId(contentByDir, allManifests),
-    [contentByDir, allManifests]
-  );
+    const prIds = new Set(prCandidates.map((c) => c.id));
+    const cdnCandidates: PathCandidate[] = [];
+    if (catalog) {
+      for (const entry of discoverCatalogPaths(catalog.entries, changedIds)) {
+        if (prIds.has(entry.id)) {
+          continue;
+        }
+        const manifestType = typeof entry.manifest?.type === 'string' ? (entry.manifest.type as string) : undefined;
+        const manifestDescription =
+          typeof entry.manifest?.description === 'string' ? (entry.manifest.description as string) : undefined;
+        cdnCandidates.push({
+          key: `cdn:${entry.id}`,
+          id: entry.id,
+          origin: 'cdn',
+          label: entry.id,
+          type: entry.type ?? manifestType ?? 'path',
+          milestoneIds: getCatalogMilestoneIds(entry),
+          description: entry.description ?? manifestDescription,
+          manifest: entry.manifest,
+        });
+      }
+    }
+
+    return [...prCandidates, ...cdnCandidates];
+  }, [pathManifests, catalog, changedIds]);
 
   // Effective selected single-mode file
   const selectedFile = useMemo(() => {
@@ -325,50 +444,54 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     [contentFiles, selectedFile]
   );
 
-  const pathManifestEntries = useMemo(() => Array.from(pathManifests.entries()), [pathManifests]);
-
-  // Effective selected path manifest
+  // Effective selected path candidate
   const selectedPath = useMemo(() => {
-    if (pathManifestEntries.length === 0) {
+    if (pathCandidates.length === 0) {
       return null;
     }
-    if (userSelectedPath && pathManifests.has(userSelectedPath)) {
+    if (userSelectedPath && pathCandidates.some((c) => c.key === userSelectedPath)) {
       return userSelectedPath;
     }
-    return pathManifestEntries[0]![0];
-  }, [pathManifestEntries, pathManifests, userSelectedPath]);
+    return pathCandidates[0]!.key;
+  }, [pathCandidates, userSelectedPath]);
+
+  const selectedCandidate = useMemo(
+    () => pathCandidates.find((c) => c.key === selectedPath) ?? null,
+    [pathCandidates, selectedPath]
+  );
 
   const pathOptions: Array<ComboboxOption<string>> = useMemo(
     () =>
-      pathManifestEntries.map(([dir, manifest]) => ({
-        value: dir,
-        label: manifest.id,
-        description: manifest.type,
+      pathCandidates.map((c) => ({
+        value: c.key,
+        label: c.label,
+        description: c.origin === 'pr' ? c.type : `${c.type} · from published catalog`,
       })),
-    [pathManifestEntries]
+    [pathCandidates]
   );
 
   /**
-   * Build the path package preview for the currently selected manifest. Pure
-   * derivation from the shared `contentByDir` index + `pathManifests` — no
-   * side effects, so we memo it and use the same value for both the preview
-   * list and the action.
+   * Build the path package preview for the selected candidate by overlaying the
+   * PR's changed content on the published catalog. Pure derivation from fetched
+   * state, so we memo it and reuse the same value for preview + action.
    */
   const pathBuild: PathPackageBuildResult | null = useMemo(() => {
-    if (!selectedPath) {
-      return null;
-    }
-    const manifest = pathManifests.get(selectedPath);
-    if (!manifest) {
+    if (!selectedCandidate) {
       return null;
     }
     return buildPathPackageInfo({
-      contentByDir,
-      manifest,
-      manifestDirectory: selectedPath,
-      contentByPackageId,
+      pathId: selectedCandidate.id,
+      description: selectedCandidate.description,
+      milestoneIds: selectedCandidate.milestoneIds,
+      coverFromPr: prContentById.get(selectedCandidate.id)?.file,
+      packageManifest: selectedCandidate.manifest,
+      prContentById,
+      catalogById: catalog?.byId ?? EMPTY_CATALOG_BY_ID,
+      catalogBaseUrl: catalog?.baseUrl ?? '',
     });
-  }, [contentByDir, pathManifests, selectedPath, contentByPackageId]);
+  }, [selectedCandidate, prContentById, catalog]);
+
+  const hasAnyPathPackage = pathCandidates.length > 0;
 
   // testMode is restored from localStorage and can outlive the PR it was
   // chosen for. A single-guide PR hides the mode selector, so a stale 'path'
@@ -376,10 +499,10 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   const effectiveTestMode: TestMode = useMemo(
     () =>
       resolveEffectiveTestMode(testMode, {
-        manifestsLoading,
-        hasAnyPathPackage: pathManifestEntries.length > 0,
+        manifestsLoading: pathDiscoveryLoading,
+        hasAnyPathPackage,
       }),
-    [manifestsLoading, testMode, pathManifestEntries.length]
+    [pathDiscoveryLoading, testMode, hasAnyPathPackage]
   );
 
   const handleFetchPr = useCallback(async () => {
@@ -399,6 +522,8 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     setWarning(null);
     setFiles([]);
     setAllManifests(new Map());
+    setPrContentById(new Map());
+    setCatalog(null);
 
     const result = await fetchPrContentFilesFromUrl(cleanedUrl, abortControllerRef.current.signal);
 
@@ -451,6 +576,8 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         setError(null);
         setFiles([]);
         setAllManifests(new Map());
+        setPrContentById(new Map());
+        setCatalog(null);
         localStorage.removeItem(FETCHED_FILES_STORAGE_KEY);
         localStorage.removeItem(FETCHED_URL_STORAGE_KEY);
       }
@@ -459,6 +586,8 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       setError(null);
       setFiles([]);
       setAllManifests(new Map());
+      setPrContentById(new Map());
+      setCatalog(null);
     }
   }, []);
 
@@ -489,9 +618,8 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   const hasFetched = fetchState === 'fetched';
   const hasMultipleContentFiles = contentFiles.length > 1;
   const hasSingleContentFile = contentFiles.length === 1;
-  const hasAnyPathPackage = pathManifestEntries.length > 0;
 
-  // Path mode is only meaningful when at least one path/journey manifest is in the PR.
+  // Path mode is only meaningful when at least one path/journey is testable.
   const modeOptions: Array<SelectableValue<TestMode>> = [
     { label: 'Single', value: 'single' as TestMode, description: 'Test one guide at a time' },
     { label: 'Open all', value: 'all' as TestMode, description: 'Open all guides in tabs' },
@@ -500,7 +628,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       value: 'path' as TestMode,
       description: hasAnyPathPackage
         ? 'Test a path/journey package as a real journey'
-        : 'No path/journey manifest found in this PR',
+        : 'No path/journey found for this PR',
     },
   ];
 
@@ -524,37 +652,35 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     return !pathBuild || !pathBuild.ok;
   })();
 
+  /** True when the assembled path pulls any milestone from the published catalog. */
+  const usesPublishedContent = pathBuild?.ok ? pathBuild.preview.some((m) => m.source === 'cdn') : false;
+
   /**
    * Human-readable explanation when the path build is not OK. Surfaces in a
    * warning box so the author knows why "Test as learning path" is disabled.
    */
   const pathErrorMessage = useMemo(() => {
-    if (!hasFetched || effectiveTestMode !== 'path') {
-      return null;
-    }
-    if (manifestsLoading) {
+    if (!hasFetched || effectiveTestMode !== 'path' || pathDiscoveryLoading) {
       return null;
     }
     if (!hasAnyPathPackage) {
-      return 'No path or journey manifest found in this PR. Add a manifest.json with type "path" or "journey" to test as a learning path.';
+      return 'No path or journey manifest is in this PR, and no published path contains the changed guides. Add a path/journey manifest.json, or check that the path is published.';
     }
-    if (!pathBuild) {
-      return null;
-    }
-    if (pathBuild.ok) {
+    if (!pathBuild || pathBuild.ok) {
       return null;
     }
     if (pathBuild.reason === 'no_milestones') {
       return 'The selected manifest has no milestones to chain together.';
     }
     if (pathBuild.reason === 'missing_cover') {
-      return 'The selected manifest has no sibling content.json in the PR. Add the cover page to test it as a learning path.';
+      return 'The selected path has no cover content.json in the PR and none published yet.';
     }
     if (pathBuild.reason === 'missing_milestones' && pathBuild.missingMilestones?.length) {
-      return `Missing milestone content in this PR: ${pathBuild.missingMilestones.join(', ')}. Include each milestone's content.json in the PR.`;
+      const catalogNote = catalog ? '' : ' (Could not load the published catalog.)';
+      return `These milestones aren't in the PR and aren't published yet: ${pathBuild.missingMilestones.join(', ')}.${catalogNote}`;
     }
     return null;
-  }, [hasFetched, effectiveTestMode, manifestsLoading, hasAnyPathPackage, pathBuild]);
+  }, [hasFetched, effectiveTestMode, pathDiscoveryLoading, hasAnyPathPackage, pathBuild, catalog]);
 
   return (
     <div className={styles.formGroup} data-testid={testIds.prTester.form}>
@@ -606,52 +732,58 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         </div>
       )}
 
-      {/* Path mode: pick a manifest + show its milestones in manifest order */}
+      {/* Path mode: pick a path + show its milestones in manifest order */}
       {hasFetched && effectiveTestMode === 'path' && (
         <div className={styles.pathOrderContainer}>
-          {manifestsLoading && (
+          {pathDiscoveryLoading && (
             <p className={styles.helpText}>
-              <Icon name="fa fa-spinner" /> Loading manifests...
+              <Icon name="fa fa-spinner" /> Resolving paths…
             </p>
           )}
-          {!manifestsLoading && hasAnyPathPackage && pathManifestEntries.length > 1 && (
+          {!pathDiscoveryLoading && hasAnyPathPackage && pathCandidates.length > 1 && (
             <div className={styles.selectContainer}>
               <label className={styles.label}>Path package to test</label>
-              <Combobox options={pathOptions} value={selectedPath} onChange={handlePathSelect} />
+              <Combobox
+                options={pathOptions}
+                value={selectedPath}
+                onChange={handlePathSelect}
+                data-testid={testIds.prTester.pathSelect}
+              />
             </div>
           )}
-          {/* Only render the milestones list when we actually have items to
-              show: a successful build, OR a `missing_milestones` failure
-              where each manifest milestone ID is rendered with its missing
-              badge. The other failure reasons (`no_milestones`,
-              `missing_cover`, `not_path_package`) are surfaced via
-              `pathErrorMessage` below — without this gate they leave the
-              "Milestones (from manifest)" label hovering above an empty
-              <ol>. */}
-          {!manifestsLoading && pathBuild?.ok && (
+          {!pathDiscoveryLoading && pathBuild?.ok && (
             <>
-              <label className={styles.label}>Milestones (from manifest)</label>
+              <label className={styles.label}>Milestones</label>
               <ol className={styles.guidesList}>
-                {pathBuild.packageInfo.resolvedMilestones?.map((milestone) => (
-                  <li key={milestone.title} className={styles.guidesListItem}>
+                {pathBuild.preview.map((milestone) => (
+                  <li key={milestone.id} className={styles.guidesListItem}>
                     <Icon name="document-info" />
                     <span>{milestone.title}</span>
+                    <span className={milestone.source === 'pr' ? getStatusClass('modified') : styles.statusBadge}>
+                      {milestone.source === 'pr' ? 'from PR' : 'from published'}
+                    </span>
                   </li>
                 ))}
               </ol>
+              {usesPublishedContent && (
+                <p className={styles.helpText}>
+                  <Icon name="info-circle" /> Unchanged milestones load from the published version, so this reflects the
+                  post-merge state.
+                </p>
+              )}
             </>
           )}
-          {!manifestsLoading && pathBuild && !pathBuild.ok && pathBuild.reason === 'missing_milestones' && (
+          {!pathDiscoveryLoading && pathBuild && !pathBuild.ok && pathBuild.reason === 'missing_milestones' && (
             <>
-              <label className={styles.label}>Milestones (from manifest)</label>
+              <label className={styles.label}>Milestones</label>
               <ol className={styles.guidesList}>
-                {pathManifests.get(selectedPath ?? '')?.milestones?.map((id) => {
+                {selectedCandidate?.milestoneIds.map((id) => {
                   const isMissing = pathBuild.missingMilestones?.includes(id);
                   return (
                     <li key={id} className={styles.guidesListItem}>
                       <Icon name={isMissing ? 'exclamation-triangle' : 'document-info'} />
                       <span>{id}</span>
-                      {isMissing && <span className={getStatusClass('removed')}>not in PR</span>}
+                      {isMissing && <span className={getStatusClass('removed')}>not available</span>}
                     </li>
                   );
                 })}

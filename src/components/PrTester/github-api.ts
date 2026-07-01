@@ -10,9 +10,23 @@
  * single mega-guide.
  */
 
-import { ManifestJsonObjectSchema } from '../../types/package.schema';
+import { z } from 'zod';
+
+import { ContentJsonSchema, ManifestJsonObjectSchema } from '../../types/package.schema';
 import type { ManifestJson } from '../../types/package.types';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../../constants';
+
+/**
+ * The package `id` (and optional `title`) read from a content.json. `title` is
+ * optional so an in-progress content.json without one still yields its id.
+ */
+const ContentMetaSchema = ContentJsonSchema.pick({ id: true }).extend({ title: z.string().optional() });
+
+/** Minimal content.json metadata the PR tester reads to map a file to its package ID. */
+export interface PrContentMeta {
+  id: string;
+  title?: string;
+}
 
 /** Parsed GitHub PR URL components */
 export interface ParsedPrUrl {
@@ -497,6 +511,39 @@ export async function fetchPrManifest(rawUrl: string, signal?: AbortSignal): Pro
       return undefined;
     }
     return parsed.data as unknown as ManifestJson;
+  } catch {
+    return undefined;
+  } finally {
+    composed.dispose();
+  }
+}
+
+/**
+ * Fetch a content.json from a PR raw URL and read its own package `id` (+ title).
+ *
+ * The content's `id` is the canonical package ID — so a milestone whose
+ * content.json is in the PR can be matched to a path's `manifest.milestones[]`
+ * even when its sibling manifest.json isn't in the diff. Mirrors
+ * {@link fetchPrManifest}'s timeout + signal composition and error swallowing.
+ */
+export async function fetchPrContentMeta(rawUrl: string, signal?: AbortSignal): Promise<PrContentMeta | undefined> {
+  const timeoutSignal = AbortSignal.timeout(DEFAULT_CONTENT_FETCH_TIMEOUT);
+  const composed = signal ? composeAbortSignals(signal, timeoutSignal) : { signal: timeoutSignal, dispose: () => {} };
+  try {
+    const response = await fetch(rawUrl, {
+      method: 'GET',
+      signal: composed.signal,
+      redirect: 'follow',
+    });
+    if (!response.ok) {
+      return undefined;
+    }
+    const json: unknown = await response.json();
+    const parsed = ContentMetaSchema.safeParse(json);
+    if (!parsed.success) {
+      return undefined;
+    }
+    return parsed.data;
   } catch {
     return undefined;
   } finally {

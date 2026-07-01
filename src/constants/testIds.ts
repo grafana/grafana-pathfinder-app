@@ -316,6 +316,7 @@ export const testIds = {
     form: 'pr-tester-form',
     prNumberInput: 'pr-tester-pr-number',
     fileSelect: 'pr-tester-file-select',
+    pathSelect: 'pr-tester-path-select',
     loadButton: 'pr-tester-load',
   },
 
