@@ -56,6 +56,10 @@ npx pathfinder-cli e2e [options] [files...]
 | `--resolver-url <url>`                    | Recommender base URL for `--package <id>` resolution                                                                                                     | `https://recommender.grafana.com` |
 | `--cloud-instance-admin-token <host=env>` | Admin service-account token env var for a cloud target. Repeat for multiple cloud instances.                                                             | None                              |
 | `--cloud-url <url>`                       | Default Grafana Cloud instance URL for cloud-tier guides without a manifest `instance`.                                                                  | `https://learn.grafana.net/`      |
+| `--cloud-stack-access-policy-token <env>` | Cloud Access Policy token env var for cold isolated Grafana Cloud stack provisioning.                                                                    | None                              |
+| `--cloud-stack-region <region>`           | Grafana Cloud region slug for cold isolated stack provisioning. Required with `--cloud-stack-access-policy-token`.                                       | None                              |
+| `--cloud-stack-slug-prefix <prefix>`      | Slug prefix for cold-provisioned Grafana Cloud stacks.                                                                                                   | `pfe2e`                           |
+| `--cloud-stack-plugin-version <version>`  | Pathfinder plugin version to install when the cold-provisioned stack does not already include the plugin.                                                | `latest`                          |
 
 ### Input formats
 
@@ -409,13 +413,18 @@ The CLI can resolve published guides instead of reading local files, then test t
 Guides are routed by their manifest's `testEnvironment.tier`:
 
 - `local` (or no tier) guides run against `--grafana-url`.
-- `cloud` guides run against `--cloud-url` (default `https://learn.grafana.net/`), or against `https://{instance}/` when the manifest declares a host-only `testEnvironment.instance`. Every resolved cloud target requires an admin token explicitly associated with that host via `--cloud-instance-admin-token host=ENV_VAR_NAME`.
+- `cloud` guides run against `--cloud-url` (default `https://learn.grafana.net/`), or against `https://{instance}/` when the manifest declares a host-only `testEnvironment.instance`. Shared-stack runs require an admin token explicitly associated with that host via `--cloud-instance-admin-token host=ENV_VAR_NAME`; cold isolated-stack runs require Cloud stack provisioning config instead.
 
 Cloud auth:
 
 - **Admin token per cloud target.** Pass `--cloud-instance-admin-token learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN` to associate an admin service-account token env var with a cloud target. The CLI uses that admin token only to mint a fresh service account and short-lived token for each dependency chain; the browser runner receives only the minted token. Repeat the flag for each supported instance.
+- **Cold isolated stack provisioning.** Pass `--cloud-stack-access-policy-token GRAFANA_CLOUD_ACCESS_POLICY_TOKEN --cloud-stack-region <region>` to let unsafe cloud dependency chains run against a fresh Grafana Cloud stack instead of the shared target. The token value must live in the named environment variable; the CLI passes it to Terraform as `TF_VAR_cloud_access_policy_token` and passes region/plugin version through Terraform variables rather than generated HCL. The local `terraform` CLI must be installed.
 
-Per-chain isolation mirrors how `--clean` resets the local docker stack per chain. Minted tokens carry a TTL, and accounts orphaned by crashed runs are swept on the next run. This isolates per-identity state (preferences, stars, sessions) between chains; it does **not** reset org data such as dashboards or data sources created by guides (that needs ephemeral stacks, a future phase).
+Per-chain service-account isolation mirrors how `--clean` resets the local docker stack per chain. Minted tokens carry a TTL, and accounts orphaned by crashed runs are swept on the next run. This isolates per-identity state (preferences, stars, sessions) between chains; it does **not** reset org data such as dashboards or data sources created by guides.
+
+Cold isolated stack routing is used for cloud dependency chains classified as `possibly_mutating`, `mutating`, or `unknown` when cold-stack config is present. The CLI creates a Grafana Cloud stack with `delete_protection=false`, mints a short-lived Admin runner token, probes for `grafana-pathfinder-app`, installs the plugin only when missing, runs the chain against the fresh stack URL, and then attempts `terraform destroy`. Teardown is best-effort: cleanup failures are reported as warnings without replacing the primary guide result. Ctrl-C and SIGTERM also attempt to destroy any active cold-provisioned stack before exiting. If the process is killed before signal handling or Terraform teardown runs, a labeled cold stack may require manual cleanup; future hot-pool/reconciler work will add durable recovery. If cold-stack config is absent, unsafe cloud chains remain `skipped_unsafe_shared_stack`.
+
+Read-only cloud chains with matching `--cloud-instance-admin-token` keep using the faster shared-stack service-account path. If a cloud chain lacks shared-stack auth but cold-stack config is present, the runner can use a cold isolated stack for that chain.
 
 Interactive SSO/Okta login (driving the identity provider's login UI) is not supported. Path/journey (`milestones`) expansion is also not yet implemented; `path` and `journey` packages are skipped as an unsupported type. See the [Package-Aware Testing](../design/e2e-test-runner-design.md#package-aware-testing) design for the full picture.
 
