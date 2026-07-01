@@ -60,6 +60,7 @@ import {
   handlePathfinderDeepLink,
   installDeepLinkNavListener,
 } from './pathfinder-deep-link-handler';
+import { autoLaunchChannel, type AutoLaunchTutorialDetail } from '../global-state/auto-launch';
 
 type Deps = Parameters<typeof handlePathfinderDeepLink>[0];
 
@@ -180,9 +181,10 @@ describe('handlePathfinderDeepLink', () => {
       mockGetIsSidebarMounted.mockReturnValue(true);
 
       const deps = mkDeps();
-      const events: CustomEvent[] = [];
-      const captureAutoLaunch = (e: Event) => events.push(e as CustomEvent);
-      document.addEventListener('auto-launch-tutorial', captureAutoLaunch);
+      const events: AutoLaunchTutorialDetail[] = [];
+      const unsubscribe = autoLaunchChannel.subscribe((detail) => events.push(detail));
+      // Discard any value a prior test latched and delivered on subscribe.
+      events.length = 0;
 
       expect(handlePathfinderDeepLink(deps)).toBe(true);
 
@@ -190,12 +192,12 @@ describe('handlePathfinderDeepLink', () => {
       // before we advance fake timers for the auto-launch delay.
       await flushPromises();
 
-      // The mount-then-dispatch waits 500ms before dispatching.
+      // The mount-then-dispatch waits 500ms before emitting.
       jest.advanceTimersByTime(500);
-      document.removeEventListener('auto-launch-tutorial', captureAutoLaunch);
+      unsubscribe();
 
       expect(events).toHaveLength(1);
-      expect(events[0]?.detail).toMatchObject({
+      expect(events[0]).toMatchObject({
         url: 'https://grafana.com/docs/foo',
         title: 'Foo',
         type: 'docs-page',
@@ -220,16 +222,16 @@ describe('handlePathfinderDeepLink', () => {
         type: 'interactive',
       });
 
-      const events: CustomEvent[] = [];
-      const captureAutoLaunch = (e: Event) => events.push(e as CustomEvent);
-      document.addEventListener('auto-launch-tutorial', captureAutoLaunch);
+      const events: AutoLaunchTutorialDetail[] = [];
+      const unsubscribe = autoLaunchChannel.subscribe((detail) => events.push(detail));
+      events.length = 0;
 
       handlePathfinderDeepLink(mkDeps());
       await flushPromises();
       jest.advanceTimersByTime(500);
-      document.removeEventListener('auto-launch-tutorial', captureAutoLaunch);
+      unsubscribe();
 
-      expect(events[0]?.detail?.type).toBe('learning-journey');
+      expect(events[0]?.type).toBe('learning-journey');
     } finally {
       jest.useRealTimers();
     }

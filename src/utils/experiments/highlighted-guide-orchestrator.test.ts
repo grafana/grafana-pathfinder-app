@@ -76,6 +76,7 @@ jest.mock('../../lib/storage/extension-sidebar', () => ({
 }));
 
 import { initializeHighlightedGuideExperiment, setupHighlightedGuideAutoOpen } from './highlighted-guide-orchestrator';
+import { autoLaunchChannel } from '../../global-state/auto-launch';
 
 const HOSTNAME = 'stack-a.grafana.net';
 
@@ -227,6 +228,8 @@ describe('setupHighlightedGuideAutoOpen', () => {
 // that payload to `openDocsPage` / `openLearningJourney` without navigating
 // the user away from their current page.
 describe('setupHighlightedGuideAutoOpen → auto-launch-tutorial dispatch', () => {
+  const channelUnsubscribers: Array<() => void> = [];
+
   beforeEach(() => {
     localStorage.clear();
     jest.useFakeTimers();
@@ -247,15 +250,20 @@ describe('setupHighlightedGuideAutoOpen → auto-launch-tutorial dispatch', () =
       title: 'Onboarding',
       type: 'docs-page',
     });
+    // Clear any auto-launch value latched by the mount-listener flush above so
+    // it can't leak into this test's channel subscriber.
+    autoLaunchChannel.subscribe(() => {})();
   });
 
   afterEach(() => {
     jest.useRealTimers();
+    channelUnsubscribers.forEach((unsubscribe) => unsubscribe());
+    channelUnsubscribers.length = 0;
   });
 
   function captureAutoLaunch(): jest.Mock {
     const handler = jest.fn();
-    document.addEventListener('auto-launch-tutorial', handler);
+    channelUnsubscribers.push(autoLaunchChannel.subscribe(handler));
     return handler;
   }
 
@@ -268,8 +276,7 @@ describe('setupHighlightedGuideAutoOpen → auto-launch-tutorial dispatch', () =
     jest.advanceTimersByTime(500);
 
     expect(handler).toHaveBeenCalledTimes(1);
-    const event = handler.mock.calls[0][0] as CustomEvent;
-    expect(event.detail).toEqual({
+    expect(handler.mock.calls[0][0]).toEqual({
       url: 'https://grafana.com/docs/onboarding',
       title: 'Onboarding',
       type: 'docs-page',
@@ -311,8 +318,7 @@ describe('setupHighlightedGuideAutoOpen → auto-launch-tutorial dispatch', () =
     window.dispatchEvent(new Event('pathfinder-sidebar-mounted'));
     jest.advanceTimersByTime(500);
 
-    const event = handler.mock.calls[0][0] as CustomEvent;
-    expect(event.detail).toEqual(
+    expect(handler.mock.calls[0][0]).toEqual(
       expect.objectContaining({
         type: 'learning-journey',
         source: 'highlighted_guide_experiment',

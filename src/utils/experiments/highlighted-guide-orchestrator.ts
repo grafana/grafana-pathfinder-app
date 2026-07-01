@@ -25,6 +25,7 @@ import { locationService } from '@grafana/runtime';
 import pluginJson from '../../plugin.json';
 import { StorageKeys } from '../../lib/storage-keys';
 import { sidebarState } from '../../global-state/sidebar';
+import { autoLaunchChannel } from '../../global-state/auto-launch';
 import { findDocPage } from '../find-doc-page';
 import { getHighlightedGuideConfig, type HighlightedGuideConfig } from '../openfeature';
 import { attemptAutoOpen } from '../sidebar-auto-open';
@@ -208,16 +209,12 @@ function installAutoLaunchOnMount(detail: { url: string; title: string; type: st
     document.dispatchEvent(new CustomEvent('pathfinder-auto-launch-pending'));
 
     setTimeout(() => {
-      document.dispatchEvent(
-        new CustomEvent('auto-launch-tutorial', {
-          detail: {
-            url: detail.url,
-            title: detail.title,
-            type: detail.type,
-            source: 'highlighted_guide_experiment',
-          },
-        })
-      );
+      autoLaunchChannel.emit({
+        url: detail.url,
+        title: detail.title,
+        type: detail.type,
+        source: 'highlighted_guide_experiment',
+      });
     }, 500);
   };
 

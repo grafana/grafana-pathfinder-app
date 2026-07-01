@@ -20,21 +20,9 @@ import { useEffect } from 'react';
 
 import { coerceLaunchSource, type LaunchSource } from '../recovery';
 import { shouldOpenAsLearningJourney } from '../utils/pathfinder-search-params';
+import { autoLaunchChannel, type AutoLaunchTutorialDetail } from '../global-state/auto-launch';
 
-/**
- * Detail payload of the `auto-launch-tutorial` CustomEvent.
- *
- * `type` and `source` are intentionally untyped strings here — they arrive
- * from external consumers (`module.tsx`, the link interceptor) and are
- * narrowed inside the hook via `coerceLaunchSource` and the shared
- * `shouldOpenAsLearningJourney` rule.
- */
-export interface AutoLaunchTutorialDetail {
-  url: string;
-  title: string;
-  type?: string;
-  source?: string;
-}
+export type { AutoLaunchTutorialDetail };
 
 /**
  * Minimal panel shape the hook depends on. Inlined here (rather than
@@ -75,11 +63,7 @@ export function useAutoLaunchTutorial(panel: AutoLaunchPanel, options?: UseAutoL
   const skipLaunch = options?.skipLaunch;
 
   useEffect(() => {
-    const handleAutoLaunch = (event: Event) => {
-      const detail = (event as CustomEvent<AutoLaunchTutorialDetail>).detail;
-      if (!detail) {
-        return;
-      }
+    const handleAutoLaunch = (detail: AutoLaunchTutorialDetail) => {
       onIncoming?.(detail);
 
       if (skipLaunch?.()) {
@@ -105,9 +89,6 @@ export function useAutoLaunchTutorial(panel: AutoLaunchPanel, options?: UseAutoL
       onLaunched?.(detail, openedAsLearningJourney);
     };
 
-    document.addEventListener('auto-launch-tutorial', handleAutoLaunch);
-    return () => {
-      document.removeEventListener('auto-launch-tutorial', handleAutoLaunch);
-    };
+    return autoLaunchChannel.subscribe(handleAutoLaunch);
   }, [panel, onIncoming, onLaunched, skipLaunch]);
 }

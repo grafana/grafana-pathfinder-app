@@ -14,6 +14,7 @@ import { locationService } from '@grafana/runtime';
 import pluginJson from '../plugin.json';
 import { panelModeManager } from '../global-state/panel-mode';
 import { sidebarState } from '../global-state/sidebar';
+import { autoLaunchChannel } from '../global-state/auto-launch';
 import { validateRedirectPath } from '../security/url-validator';
 import {
   parsePathfinderDeepLink,
@@ -212,11 +213,7 @@ function installAutoLaunchOnMount(detail: { url: string; title: string; type: st
     document.dispatchEvent(new CustomEvent('pathfinder-auto-launch-pending'));
 
     setTimeout(() => {
-      document.dispatchEvent(
-        new CustomEvent('auto-launch-tutorial', {
-          detail,
-        })
-      );
+      autoLaunchChannel.emit(detail);
     }, 500);
   };
 
