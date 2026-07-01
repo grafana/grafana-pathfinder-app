@@ -6,6 +6,7 @@ import {
   isValidPrUrl,
   fetchPrContentFiles,
   fetchPrContentFilesFromUrl,
+  fetchPrContentMeta,
   fetchPrManifest,
 } from './github-api';
 
@@ -1076,5 +1077,69 @@ describe('fetchPrManifest', () => {
     expect(added.length).toBe(1);
     expect(removed.length).toBe(1);
     expect(removed[0]![1]).toBe(added[0]![1]);
+  });
+});
+
+describe('fetchPrContentMeta', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('reads the id and title from a valid content.json', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ id: 'my-guide', title: 'My guide', blocks: [] }),
+    });
+
+    const result = await fetchPrContentMeta('https://raw.githubusercontent.com/org/repo/abc/my-guide/content.json');
+
+    expect(result).toEqual({ id: 'my-guide', title: 'My guide' });
+  });
+
+  it('yields the id even when title is absent (in-progress content)', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ id: 'my-guide' }),
+    });
+
+    const result = await fetchPrContentMeta('https://raw.githubusercontent.com/org/repo/abc/my-guide/content.json');
+
+    expect(result).toEqual({ id: 'my-guide' });
+  });
+
+  it('returns undefined for non-OK responses', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 404 });
+
+    const result = await fetchPrContentMeta('https://raw.githubusercontent.com/org/repo/abc/missing/content.json');
+
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined when the JSON has no valid package id', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ title: 'no id here' }),
+    });
+
+    const result = await fetchPrContentMeta('https://raw.githubusercontent.com/org/repo/abc/bad/content.json');
+
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined on fetch errors (no throw)', async () => {
+    (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network failure'));
+
+    const result = await fetchPrContentMeta('https://raw.githubusercontent.com/org/repo/abc/x/content.json');
+
+    expect(result).toBeUndefined();
   });
 });

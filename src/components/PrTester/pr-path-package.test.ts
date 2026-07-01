@@ -1,133 +1,125 @@
-import { buildPathPackageInfo, indexContentByPackageId, indexPrFiles } from './pr-path-package';
+import {
+  buildPathPackageInfo,
+  discoverCatalogPaths,
+  getCatalogMilestoneIds,
+  isCatalogPathEntry,
+  type PrContentEntry,
+} from './pr-path-package';
 import type { PrJsonFile } from './github-api';
-import type { ManifestJson } from '../../types/package.types';
+import type { OnlinePackageEntry } from '../../lib/package-recommendations-client';
 
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 const RAW_BASE = `https://raw.githubusercontent.com/org/repo/${SHA}`;
+const CDN_BASE = 'https://interactive-learning.grafana.net/packages';
 
-function content(directoryName: string): PrJsonFile {
+function prFile(directoryName: string, kind: 'content' | 'manifest' = 'content'): PrJsonFile {
   return {
     directoryName,
-    rawUrl: `${RAW_BASE}/${directoryName}/content.json`,
-    status: 'added',
-    kind: 'content',
+    rawUrl: `${RAW_BASE}/${directoryName}/${kind}.json`,
+    status: 'modified',
+    kind,
   };
 }
 
-function manifestFile(directoryName: string): PrJsonFile {
-  return {
-    directoryName,
-    rawUrl: `${RAW_BASE}/${directoryName}/manifest.json`,
-    status: 'added',
-    kind: 'manifest',
-  };
+function prContentEntry(directoryName: string, title?: string): PrContentEntry {
+  return { file: prFile(directoryName, 'content'), title };
 }
 
-function pathManifest(overrides: Partial<ManifestJson> = {}): ManifestJson {
+function catalogPath(id: string, milestones: string[], extra: Partial<OnlinePackageEntry> = {}): OnlinePackageEntry {
   return {
-    id: 'my-path',
+    id,
+    path: `${id}/v1.0.0`,
     type: 'path',
-    milestones: ['guide-one', 'guide-two'],
-    ...overrides,
+    manifest: { id, type: 'path', milestones },
+    ...extra,
   };
 }
 
-function guideManifest(id: string): ManifestJson {
-  return { id, type: 'guide' };
+function catalogGuide(id: string, extra: Partial<OnlinePackageEntry> = {}): OnlinePackageEntry {
+  return {
+    id,
+    path: `${id}/v1.0.0`,
+    type: 'guide',
+    manifest: { id, type: 'guide' },
+    ...extra,
+  };
 }
 
-/**
- * Helper that builds the package-id index assuming `manifest.id` matches
- * `directoryName`. Tests for the prefix-mismatch scenario (where directory
- * and id differ) construct the index manually.
- */
-function idIndexMatchingDir(files: readonly PrJsonFile[]): Map<string, PrJsonFile> {
-  const manifests = new Map<string, ManifestJson>();
-  for (const file of files) {
-    if (file.kind === 'manifest') {
-      manifests.set(file.directoryName, guideManifest(file.directoryName));
-    }
-  }
-  return indexContentByPackageId(indexPrFiles(files).contentByDir, manifests);
+function byId(entries: OnlinePackageEntry[]): Map<string, OnlinePackageEntry> {
+  return new Map(entries.map((e) => [e.id, e]));
 }
 
-describe('indexPrFiles', () => {
-  it('separates content and manifest files by directory', () => {
-    const files: PrJsonFile[] = [content('a'), manifestFile('a'), content('b'), manifestFile('c')];
+describe('getCatalogMilestoneIds', () => {
+  it('reads milestone IDs from the inlined manifest', () => {
+    expect(getCatalogMilestoneIds(catalogPath('p', ['a', 'b']))).toEqual(['a', 'b']);
+  });
 
-    const { contentByDir, manifestByDir } = indexPrFiles(files);
+  it('returns [] when there is no manifest or milestones array', () => {
+    expect(getCatalogMilestoneIds({ id: 'p', path: 'p/' })).toEqual([]);
+    expect(getCatalogMilestoneIds({ id: 'p', path: 'p/', manifest: { id: 'p' } })).toEqual([]);
+  });
 
-    expect(contentByDir.size).toBe(2);
-    expect(contentByDir.get('a')?.kind).toBe('content');
-    expect(contentByDir.get('b')?.kind).toBe('content');
-    expect(manifestByDir.size).toBe(2);
-    expect(manifestByDir.get('a')?.kind).toBe('manifest');
-    expect(manifestByDir.get('c')?.kind).toBe('manifest');
+  it('filters out non-string milestone entries', () => {
+    const entry: OnlinePackageEntry = { id: 'p', path: 'p/', manifest: { milestones: ['a', 5, null, 'b'] } };
+    expect(getCatalogMilestoneIds(entry)).toEqual(['a', 'b']);
   });
 });
 
-describe('indexContentByPackageId', () => {
-  it('keys content files by the sibling manifest.id, not the directory name', () => {
-    const files: PrJsonFile[] = [
-      content('01-where-we-are'),
-      manifestFile('01-where-we-are'),
-      content('02-event-demo-suite'),
-      manifestFile('02-event-demo-suite'),
-    ];
-    const manifests = new Map<string, ManifestJson>([
-      ['01-where-we-are', guideManifest('pathfinder-roadmap-where-we-are')],
-      ['02-event-demo-suite', guideManifest('pathfinder-roadmap-event-demo-suite')],
-    ]);
-
-    const index = indexContentByPackageId(indexPrFiles(files).contentByDir, manifests);
-
-    expect(index.size).toBe(2);
-    expect(index.get('pathfinder-roadmap-where-we-are')?.rawUrl).toBe(`${RAW_BASE}/01-where-we-are/content.json`);
-    expect(index.get('pathfinder-roadmap-event-demo-suite')?.rawUrl).toBe(
-      `${RAW_BASE}/02-event-demo-suite/content.json`
-    );
-    // Directory names are NOT exposed as keys
-    expect(index.has('01-where-we-are')).toBe(false);
+describe('isCatalogPathEntry', () => {
+  it('recognizes path/journey via the top-level type', () => {
+    expect(isCatalogPathEntry({ id: 'p', path: 'p/', type: 'path' })).toBe(true);
+    expect(isCatalogPathEntry({ id: 'p', path: 'p/', type: 'journey' })).toBe(true);
+    expect(isCatalogPathEntry({ id: 'g', path: 'g/', type: 'guide' })).toBe(false);
   });
 
-  it('skips manifests whose sibling content.json is not in the PR', () => {
-    const files: PrJsonFile[] = [manifestFile('orphan-manifest')];
-    const manifests = new Map<string, ManifestJson>([['orphan-manifest', guideManifest('orphan')]]);
+  it('falls back to the manifest type when the top-level type is absent', () => {
+    expect(isCatalogPathEntry({ id: 'p', path: 'p/', manifest: { type: 'path' } })).toBe(true);
+    expect(isCatalogPathEntry({ id: 'g', path: 'g/', manifest: { type: 'guide' } })).toBe(false);
+  });
+});
 
-    const index = indexContentByPackageId(indexPrFiles(files).contentByDir, manifests);
+describe('discoverCatalogPaths', () => {
+  const catalog = [
+    catalogPath('alpha-lj', ['a1', 'a2', 'shared']),
+    catalogPath('beta-lj', ['b1', 'shared']),
+    catalogGuide('shared'),
+    catalogGuide('a1'),
+  ];
 
-    expect(index.size).toBe(0);
+  it('finds paths whose milestones intersect the changed IDs', () => {
+    const found = discoverCatalogPaths(catalog, new Set(['a2']));
+    expect(found.map((e) => e.id)).toEqual(['alpha-lj']);
   });
 
-  it('skips orphan content.json files (no sibling manifest)', () => {
-    // Without a sibling manifest we cannot recover the canonical package ID,
-    // so the file is unreachable for milestone resolution.
-    const files: PrJsonFile[] = [content('orphan-content')];
-    const manifests = new Map<string, ManifestJson>();
+  it('returns every path that contains a shared changed milestone', () => {
+    const found = discoverCatalogPaths(catalog, new Set(['shared']));
+    expect(found.map((e) => e.id).sort()).toEqual(['alpha-lj', 'beta-lj']);
+  });
 
-    const index = indexContentByPackageId(indexPrFiles(files).contentByDir, manifests);
+  it('ignores guide-type entries even if their id matches', () => {
+    const found = discoverCatalogPaths(catalog, new Set(['a1']));
+    // a1 is a milestone of alpha-lj AND a guide entry; only the path is returned.
+    expect(found.map((e) => e.id)).toEqual(['alpha-lj']);
+  });
 
-    expect(index.size).toBe(0);
+  it('returns [] when nothing intersects or the changed set is empty', () => {
+    expect(discoverCatalogPaths(catalog, new Set(['nope']))).toEqual([]);
+    expect(discoverCatalogPaths(catalog, new Set())).toEqual([]);
   });
 });
 
 describe('buildPathPackageInfo', () => {
-  it('builds a packageInfo with milestones in manifest order, mapped to PR raw URLs', () => {
-    const manifest = pathManifest();
-    const files: PrJsonFile[] = [
-      manifestFile('my-path'),
-      content('my-path'),
-      manifestFile('guide-two'),
-      content('guide-two'), // intentionally out of order vs. manifest
-      manifestFile('guide-one'),
-      content('guide-one'),
-    ];
-
+  it('builds milestones in manifest order from PR raw URLs when all are in the PR', () => {
     const result = buildPathPackageInfo({
-      contentByDir: indexPrFiles(files).contentByDir,
-      manifest,
-      manifestDirectory: 'my-path',
-      contentByPackageId: idIndexMatchingDir(files),
+      pathId: 'my-path',
+      milestoneIds: ['guide-one', 'guide-two'],
+      coverFromPr: prFile('my-path', 'content'),
+      prContentById: new Map<string, PrContentEntry>([
+        ['guide-one', prContentEntry('guide-one', 'Guide One')],
+        ['guide-two', prContentEntry('guide-two')],
+      ]),
+      catalogById: new Map(),
+      catalogBaseUrl: '',
     });
 
     expect(result.ok).toBe(true);
@@ -135,197 +127,83 @@ describe('buildPathPackageInfo', () => {
       return;
     }
     expect(result.coverUrl).toBe(`${RAW_BASE}/my-path/content.json`);
-    // Slug-formatted fallback when the manifest has no `description`. Mirrors
-    // the `formatSlug` convention used by `find-doc-page.ts` for `?doc=` deep
-    // links so PR-tester tabs and deep-link tabs read the same.
     expect(result.title).toBe('My Path');
-    expect(result.packageInfo.packageId).toBe('my-path');
-    expect(result.packageInfo.packageManifest).toBe(manifest as unknown as Record<string, unknown>);
-
     const milestones = result.packageInfo.resolvedMilestones ?? [];
-    expect(milestones).toHaveLength(2);
-    // Order must follow manifest.milestones, not file order
-    expect(milestones.map((m) => m.title)).toEqual(['guide-one', 'guide-two']);
-    expect(milestones[0]?.number).toBe(1);
-    expect(milestones[0]?.url).toBe(`${RAW_BASE}/guide-one/content.json`);
-    expect(milestones[1]?.number).toBe(2);
-    expect(milestones[1]?.url).toBe(`${RAW_BASE}/guide-two/content.json`);
-  });
-
-  describe('title resolution', () => {
-    function buildWithManifest(manifest: ManifestJson) {
-      const files: PrJsonFile[] = [manifestFile('my-path'), content('my-path')];
-      // Self-reference so the cover resolves; we only care about `result.title`.
-      return buildPathPackageInfo({
-        contentByDir: indexPrFiles(files).contentByDir,
-        manifest,
-        manifestDirectory: 'my-path',
-        contentByPackageId: new Map([['stub', content('my-path')]]),
-      });
-    }
-
-    it('prefers `manifest.description` over the slug-formatted id', () => {
-      const result = buildWithManifest({
-        id: 'pathfinder-roadmap-2026-lj',
-        type: 'path',
-        milestones: ['stub'],
-        description: 'Pathfinder roadmap 2026',
-      });
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.title).toBe('Pathfinder roadmap 2026');
-      }
-    });
-
-    it('falls back to slug-formatted id when description is missing', () => {
-      const result = buildWithManifest({
-        id: 'pathfinder-roadmap-2026',
-        type: 'path',
-        milestones: ['stub'],
-      });
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.title).toBe('Pathfinder Roadmap 2026');
-      }
-    });
-
-    it('falls back to slug-formatted id when description is whitespace-only', () => {
-      const result = buildWithManifest({
-        id: 'my-cool-path',
-        type: 'path',
-        milestones: ['stub'],
-        description: '   ',
-      });
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.title).toBe('My Cool Path');
-      }
-    });
-
-    it('keeps the raw id as the package identity even when title comes from description', () => {
-      const result = buildWithManifest({
-        id: 'pathfinder-roadmap-2026-lj',
-        type: 'path',
-        milestones: ['stub'],
-        description: 'Pathfinder roadmap 2026',
-      });
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        // Identity must remain the slug so milestone progress + storage keys
-        // match production lookups.
-        expect(result.packageInfo.packageId).toBe('pathfinder-roadmap-2026-lj');
-      }
-    });
-  });
-
-  it('resolves milestones via package id even when the directory name differs (the real-world prefix case)', () => {
-    const manifest: ManifestJson = {
-      id: 'pathfinder-roadmap-2026-lj',
-      type: 'path',
-      milestones: ['pathfinder-roadmap-where-we-are', 'pathfinder-roadmap-event-demo-suite'],
-    };
-    const files: PrJsonFile[] = [
-      content('pathfinder-roadmap-2026-lj'),
-      manifestFile('pathfinder-roadmap-2026-lj'),
-      content('pathfinder-roadmap-2026-lj/01-where-we-are'),
-      manifestFile('pathfinder-roadmap-2026-lj/01-where-we-are'),
-      content('pathfinder-roadmap-2026-lj/02-event-demo-suite'),
-      manifestFile('pathfinder-roadmap-2026-lj/02-event-demo-suite'),
-    ];
-    // The path manifest's own id matches its directory name, but the children
-    // declare ids without the numeric prefix.
-    const manifests = new Map<string, ManifestJson>([
-      ['pathfinder-roadmap-2026-lj', manifest],
-      ['pathfinder-roadmap-2026-lj/01-where-we-are', guideManifest('pathfinder-roadmap-where-we-are')],
-      ['pathfinder-roadmap-2026-lj/02-event-demo-suite', guideManifest('pathfinder-roadmap-event-demo-suite')],
+    expect(milestones.map((m) => m.url)).toEqual([
+      `${RAW_BASE}/guide-one/content.json`,
+      `${RAW_BASE}/guide-two/content.json`,
     ]);
+    expect(milestones[0]?.title).toBe('Guide One');
+    expect(result.preview.map((p) => p.source)).toEqual(['pr', 'pr']);
+  });
 
-    const { contentByDir } = indexPrFiles(files);
+  it('overlays the PR onto the catalog: changed milestones win, unchanged come from the CDN', () => {
     const result = buildPathPackageInfo({
-      contentByDir,
-      manifest,
-      manifestDirectory: 'pathfinder-roadmap-2026-lj',
-      contentByPackageId: indexContentByPackageId(contentByDir, manifests),
+      pathId: 'my-path',
+      milestoneIds: ['guide-one', 'guide-two'],
+      coverFromPr: undefined,
+      prContentById: new Map<string, PrContentEntry>([['guide-one', prContentEntry('guide-one', 'PR One')]]),
+      catalogById: byId([
+        catalogPath('my-path', ['guide-one', 'guide-two']),
+        catalogGuide('guide-one', { title: 'Published One' }),
+        catalogGuide('guide-two', { title: 'Published Two' }),
+      ]),
+      catalogBaseUrl: CDN_BASE,
     });
 
     expect(result.ok).toBe(true);
     if (!result.ok) {
       return;
     }
+    // Cover falls back to the published path package.
+    expect(result.coverUrl).toBe(`${CDN_BASE}/my-path/v1.0.0/content.json`);
     const milestones = result.packageInfo.resolvedMilestones ?? [];
-    expect(milestones.map((m) => m.url)).toEqual([
-      `${RAW_BASE}/pathfinder-roadmap-2026-lj/01-where-we-are/content.json`,
-      `${RAW_BASE}/pathfinder-roadmap-2026-lj/02-event-demo-suite/content.json`,
-    ]);
+    // guide-one: PR wins. guide-two: from the catalog.
+    expect(milestones[0]?.url).toBe(`${RAW_BASE}/guide-one/content.json`);
+    expect(milestones[0]?.title).toBe('PR One');
+    expect(milestones[1]?.url).toBe(`${CDN_BASE}/guide-two/v1.0.0/content.json`);
+    expect(milestones[1]?.title).toBe('Published Two');
+    expect(result.preview.map((p) => p.source)).toEqual(['pr', 'cdn']);
   });
 
-  it('also accepts journey-type manifests', () => {
-    const manifest = pathManifest({ type: 'journey' });
-    const files: PrJsonFile[] = [
-      content('my-path'),
-      content('guide-one'),
-      manifestFile('guide-one'),
-      content('guide-two'),
-      manifestFile('guide-two'),
-    ];
-
+  it('prefers the PR cover when the path content.json is in the diff', () => {
     const result = buildPathPackageInfo({
-      contentByDir: indexPrFiles(files).contentByDir,
-      manifest,
-      manifestDirectory: 'my-path',
-      contentByPackageId: idIndexMatchingDir(files),
+      pathId: 'my-path',
+      milestoneIds: ['guide-one'],
+      coverFromPr: prFile('my-path', 'content'),
+      prContentById: new Map<string, PrContentEntry>([['guide-one', prContentEntry('guide-one')]]),
+      catalogById: byId([catalogPath('my-path', ['guide-one'])]),
+      catalogBaseUrl: CDN_BASE,
     });
 
-    expect(result.ok).toBe(true);
+    expect(result.ok && result.coverUrl).toBe(`${RAW_BASE}/my-path/content.json`);
   });
 
-  it('rejects guide-type manifests as not a path package', () => {
-    const manifest: ManifestJson = { id: 'g', type: 'guide' };
+  it('reports missing_milestones for IDs in neither the PR nor the catalog', () => {
     const result = buildPathPackageInfo({
-      contentByDir: indexPrFiles([content('g')]).contentByDir,
-      manifest,
-      manifestDirectory: 'g',
-      contentByPackageId: new Map(),
+      pathId: 'my-path',
+      milestoneIds: ['guide-one', 'guide-missing'],
+      coverFromPr: prFile('my-path', 'content'),
+      prContentById: new Map<string, PrContentEntry>([['guide-one', prContentEntry('guide-one')]]),
+      catalogById: byId([catalogGuide('guide-one')]),
+      catalogBaseUrl: CDN_BASE,
     });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toBe('not_path_package');
+      expect(result.reason).toBe('missing_milestones');
+      expect(result.missingMilestones).toEqual(['guide-missing']);
     }
   });
 
-  it('reports no_milestones when the manifest has an empty milestones array', () => {
-    const manifest = pathManifest({ milestones: [] });
+  it('reports missing_cover when there is no PR cover and the path is not published', () => {
     const result = buildPathPackageInfo({
-      contentByDir: indexPrFiles([content('my-path')]).contentByDir,
-      manifest,
-      manifestDirectory: 'my-path',
-      contentByPackageId: new Map(),
-    });
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.reason).toBe('no_milestones');
-    }
-  });
-
-  it('reports missing_cover when the path package itself has no content.json in the PR', () => {
-    const manifest = pathManifest();
-    const files: PrJsonFile[] = [
-      content('guide-one'),
-      manifestFile('guide-one'),
-      content('guide-two'),
-      manifestFile('guide-two'),
-    ];
-    const result = buildPathPackageInfo({
-      contentByDir: indexPrFiles(files).contentByDir,
-      manifest,
-      manifestDirectory: 'my-path',
-      contentByPackageId: idIndexMatchingDir(files),
+      pathId: 'my-path',
+      milestoneIds: ['guide-one'],
+      coverFromPr: undefined,
+      prContentById: new Map<string, PrContentEntry>([['guide-one', prContentEntry('guide-one')]]),
+      catalogById: byId([catalogGuide('guide-one')]), // no 'my-path' entry
+      catalogBaseUrl: CDN_BASE,
     });
 
     expect(result.ok).toBe(false);
@@ -334,26 +212,50 @@ describe('buildPathPackageInfo', () => {
     }
   });
 
-  it('reports missing_milestones with the list of unresolved IDs', () => {
-    const manifest = pathManifest({ milestones: ['guide-one', 'guide-missing', 'guide-two'] });
-    const files: PrJsonFile[] = [
-      content('my-path'),
-      content('guide-one'),
-      manifestFile('guide-one'),
-      content('guide-two'),
-      manifestFile('guide-two'),
-    ];
+  it('reports no_milestones for an empty milestone list', () => {
     const result = buildPathPackageInfo({
-      contentByDir: indexPrFiles(files).contentByDir,
-      manifest,
-      manifestDirectory: 'my-path',
-      contentByPackageId: idIndexMatchingDir(files),
+      pathId: 'my-path',
+      milestoneIds: [],
+      coverFromPr: prFile('my-path', 'content'),
+      prContentById: new Map(),
+      catalogById: new Map(),
+      catalogBaseUrl: '',
     });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toBe('missing_milestones');
-      expect(result.missingMilestones).toEqual(['guide-missing']);
+      expect(result.reason).toBe('no_milestones');
     }
+  });
+
+  describe('title resolution', () => {
+    function buildWithDescription(pathId: string, description?: string) {
+      return buildPathPackageInfo({
+        pathId,
+        description,
+        milestoneIds: ['guide-one'],
+        coverFromPr: prFile(pathId, 'content'),
+        prContentById: new Map<string, PrContentEntry>([['guide-one', prContentEntry('guide-one')]]),
+        catalogById: new Map(),
+        catalogBaseUrl: '',
+      });
+    }
+
+    it('prefers the description over the slug-formatted id', () => {
+      const result = buildWithDescription('pathfinder-roadmap-2026-lj', 'Pathfinder roadmap 2026');
+      expect(result.ok && result.title).toBe('Pathfinder roadmap 2026');
+    });
+
+    it('falls back to the slug-formatted id when description is missing or whitespace', () => {
+      expect((buildWithDescription('pathfinder-roadmap-2026') as { title: string }).title).toBe(
+        'Pathfinder Roadmap 2026'
+      );
+      expect((buildWithDescription('my-cool-path', '   ') as { title: string }).title).toBe('My Cool Path');
+    });
+
+    it('keeps the raw id as the package identity even when the title comes from description', () => {
+      const result = buildWithDescription('pathfinder-roadmap-2026-lj', 'Pathfinder roadmap 2026');
+      expect(result.ok && result.packageInfo.packageId).toBe('pathfinder-roadmap-2026-lj');
+    });
   });
 });

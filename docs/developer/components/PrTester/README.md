@@ -50,11 +50,10 @@ PR Tester exists to:
 
 **Learning Path Mode**
 
-- Create ordered sequence of guides
-- Drag-and-drop reordering
-- Test guides in logical sequence
-- Opens as connected learning path
-- Ideal for multi-guide PRs
+- Detects `path`/`journey` manifests and opens them as a real package (cover + milestone toolbar + Alt+arrow navigation)
+- Milestones the PR changes are served from the PR; unchanged milestones are resolved from the published CDN catalog (post-merge state)
+- Auto-discovers the parent path from the catalog even when the path's own manifest isn't in the PR
+- Ideal for multi-guide PRs and PRs that touch only a subset of a path's milestones
 
 ### Content File Detection
 
@@ -144,22 +143,26 @@ All state persists to localStorage:
 
 ### Learning Path Mode
 
-**Use Case**: Sequential testing, related guides
+**Use Case**: Testing a `path`/`journey` package end-to-end, including PRs that change only some of its milestones
 
 **Flow:**
 
 1. Paste PR URL
 2. Click "Fetch PR"
-3. Select "Learning Path" mode
-4. Drag files to reorder
-5. Click "Create Learning Path"
-6. Opens as connected journey with navigation
+3. Select "Learning path" mode
+4. Pick a path package (PR manifests plus any published path the PR's changed guides belong to)
+5. Click "Test as learning path"
+6. Opens as a real package: changed milestones from the PR, unchanged milestones from the published catalog
+
+**Notes:**
+
+- The milestone list labels each milestone `from PR` or `from published`. A note flags when unchanged milestones load from the published version, so the test reflects the post-merge state.
+- Resolution leans on the published package catalog (`fetchOnlinePackageRecommendations`). If the catalog is unavailable, path mode degrades to PR-only (milestones not in the PR are reported missing).
 
 **Best For:**
 
-- Multi-guide PRs
-- Sequential content
-- Path-based content
+- Multi-guide PRs and path-based content
+- PRs that edit a subset of an existing path's milestones
 - Testing navigation flow
 
 ## Data Collected
