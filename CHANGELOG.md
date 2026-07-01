@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.13.1
+
+### Added
+
+- **PR tester assembles full learning paths from the CDN catalog**: Learning-path mode now overlays a PR onto the published CDN catalog instead of requiring every milestone's `content.json` and `manifest.json` to be present in the diff, so a PR that edits only a subset of a path's milestones can still be tested end to end. (#1214)
+
+### Fixed
+
+- **Sidebar no longer re-opens on unrelated page navigation**: An explicit close now clears the persisted docked-sidebar state, so Grafana's `browser_restore` stops re-opening the Pathfinder panel on later page loads (`/alerting`, `/dashboards`, `/explore`, and others). (#1217)
+- **Auto-launched guides always render**: Guide delivery now flows through a reusable latched broadcast channel, closing a race where the one-shot auto-launch event could fire before the lazy-loaded panel's listener attached — leaving the experiment open recorded but the guide never shown. Covers both the highlighted-guide experiment and the `?doc=` deep-link path. (#1218)
+- **No spurious guide opens after the sidebar unmounts**: Delayed auto-launch emits are now guarded on the sidebar being mounted at fire time, so a latched post-unmount emit can no longer replay on a later manual open (which also raised a spurious `auto_launch_tutorial` analytics event). Follow-up to #1218. (#1219)
+
+### Chore
+
+- **Retired unused A/B experiments**: Removed dormant A/B experiment scaffolding, keeping the active highlighted-guide experiment. (#1215)
+- **Shared cloud-stack E2E targeting clarified**: Renamed the shared cloud-stack environment module and tightened how E2E runs target it. (#1211)
+- **Docs**: Trimmed and centralized per-session agent context. (#1216)
+
 ## 2.13.0
 
 ### Added
