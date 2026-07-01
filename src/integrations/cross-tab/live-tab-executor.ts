@@ -29,7 +29,7 @@ import {
 } from '../../types/cross-tab.types';
 import * as pairingManager from '../../lib/pairing-manager';
 import { sidebarState } from '../../global-state/sidebar';
-import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
+import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import pluginJson from '../../plugin.json';
 
 // The verbs the guided handler can actually drive — narrower than the receive

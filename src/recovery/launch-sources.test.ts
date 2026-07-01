@@ -23,8 +23,6 @@ const ALL_LAUNCH_SOURCES = [
   'mcp_launch',
   'navigate-action',
   'grot_guide_block',
-  'experiment_treatment',
-  'experiment_treatment_navigation',
   'highlighted_guide_experiment',
   'auto_open',
   'floating_panel_dock',

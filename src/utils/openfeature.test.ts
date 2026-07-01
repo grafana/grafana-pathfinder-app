@@ -122,7 +122,9 @@ describe('openfeature', () => {
 
         const { pathfinderFeatureFlags } = require('./openfeature');
         expect(pathfinderFeatureFlags['pathfinder.auto-open-sidebar'].trackingKey).toBe('auto_open_sidebar');
-        expect(pathfinderFeatureFlags['pathfinder.experiment-variant'].trackingKey).toBe('experiment_variant');
+        expect(pathfinderFeatureFlags['pathfinder.highlighted-guide-experiment'].trackingKey).toBe(
+          'highlighted_guide_experiment'
+        );
       });
     });
   });
@@ -270,9 +272,9 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
         const { getStringFlagValue } = require('./openfeature');
-        const result = getStringFlagValue('pathfinder.experiment-variant', 'a');
+        const result = getStringFlagValue('pathfinder.string-flag', 'a');
 
-        expect(mockOF.mockClient.getStringValue).toHaveBeenCalledWith('pathfinder.experiment-variant', 'a');
+        expect(mockOF.mockClient.getStringValue).toHaveBeenCalledWith('pathfinder.string-flag', 'a');
         expect(result).toBe('b');
       });
     });
@@ -286,7 +288,7 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
         const { getStringFlagValue } = require('./openfeature');
-        const result = getStringFlagValue('pathfinder.experiment-variant', 'a');
+        const result = getStringFlagValue('pathfinder.string-flag', 'a');
 
         expect(result).toBe('a');
       });
@@ -314,179 +316,6 @@ describe('openfeature', () => {
         );
 
         consoleSpy.mockRestore();
-      });
-    });
-  });
-
-  describe('getExperimentConfig', () => {
-    it('should return treatment config with pages from GOFF', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'treatment',
-          pages: ['/a/grafana-synthetic-monitoring-app/checks/create'],
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { getExperimentConfig } = require('./openfeature');
-        const result = getExperimentConfig('pathfinder.experiment-variant');
-
-        expect(result).toEqual({
-          variant: 'treatment',
-          pages: ['/a/grafana-synthetic-monitoring-app/checks/create'],
-          resetCache: false,
-        });
-      });
-    });
-
-    it('should return control config with empty pages', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'control',
-          pages: [],
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { getExperimentConfig } = require('./openfeature');
-        const result = getExperimentConfig('pathfinder.experiment-variant');
-
-        expect(result).toEqual({
-          variant: 'control',
-          pages: [],
-          resetCache: false,
-        });
-      });
-    });
-
-    it('should return excluded config (default) when not in experiment', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'excluded',
-          pages: [],
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { getExperimentConfig } = require('./openfeature');
-        const result = getExperimentConfig('pathfinder.experiment-variant');
-
-        expect(result).toEqual({
-          variant: 'excluded',
-          pages: [],
-          resetCache: false,
-        });
-      });
-    });
-
-    it('should return resetCache: true when set in GOFF config', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'treatment',
-          pages: ['/a/grafana-synthetic-monitoring-app/'],
-          resetCache: true,
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { getExperimentConfig } = require('./openfeature');
-        const result = getExperimentConfig('pathfinder.experiment-variant');
-
-        expect(result).toEqual({
-          variant: 'treatment',
-          pages: ['/a/grafana-synthetic-monitoring-app/'],
-          resetCache: true,
-        });
-      });
-    });
-
-    it('should return DEFAULT_EXPERIMENT_CONFIG when response is invalid (missing pages)', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        // Return invalid response (missing pages)
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'treatment',
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { getExperimentConfig, DEFAULT_EXPERIMENT_CONFIG } = require('./openfeature');
-        const result = getExperimentConfig('pathfinder.experiment-variant');
-
-        expect(result).toEqual(DEFAULT_EXPERIMENT_CONFIG);
-      });
-    });
-
-    it('should return DEFAULT_EXPERIMENT_CONFIG when response is invalid (pages not array)', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'treatment',
-          pages: 'not-an-array',
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { getExperimentConfig, DEFAULT_EXPERIMENT_CONFIG } = require('./openfeature');
-        const result = getExperimentConfig('pathfinder.experiment-variant');
-
-        expect(result).toEqual(DEFAULT_EXPERIMENT_CONFIG);
-      });
-    });
-
-    it('should return DEFAULT_EXPERIMENT_CONFIG on error', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockImplementation(() => {
-          throw new Error('Provider not ready');
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-        const { getExperimentConfig, DEFAULT_EXPERIMENT_CONFIG } = require('./openfeature');
-        const result = getExperimentConfig('pathfinder.experiment-variant');
-
-        expect(result).toEqual(DEFAULT_EXPERIMENT_CONFIG);
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('[OpenFeature] Error evaluating flag'),
-          expect.any(Error)
-        );
-
-        consoleSpy.mockRestore();
-      });
-    });
-
-    it('should handle multiple target pages for IRM treatment', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'treatment',
-          pages: ['/a/grafana-synthetic-monitoring-app/', '/a/grafana-irm-app/'],
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { getExperimentConfig } = require('./openfeature');
-        const result = getExperimentConfig('pathfinder.experiment-variant');
-
-        expect(result.variant).toBe('treatment');
-        expect(result.pages).toHaveLength(2);
-        expect(result.pages).toContain('/a/grafana-synthetic-monitoring-app/');
-        expect(result.pages).toContain('/a/grafana-irm-app/');
       });
     });
   });
@@ -529,29 +358,6 @@ describe('openfeature', () => {
             resetCache: false,
           },
         ]);
-      });
-    });
-
-    it('includes every enrolled experiment and drops excluded + boolean flags', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockImplementation((flagName: string) => {
-          if (flagName === 'pathfinder.experiment-variant') {
-            return { variant: 'control', pages: [] };
-          }
-          if (flagName === 'pathfinder.highlighted-guide-experiment') {
-            return { variant: 'treatment', pages: ['/a/grafana-irm-app*'], guideId: 'bundled:g', autoOpen: true };
-          }
-          return { variant: 'excluded', pages: [] };
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { getActiveExperiments } = require('./openfeature');
-        const flags = getActiveExperiments().map((entry: { flag: string }) => entry.flag);
-
-        expect(flags).toEqual(['pathfinder.experiment-variant', 'pathfinder.highlighted-guide-experiment']);
       });
     });
 
@@ -627,12 +433,12 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const { evaluateFeatureFlag, DEFAULT_EXPERIMENT_CONFIG } = require('./openfeature');
-        const result = await evaluateFeatureFlag('pathfinder.experiment-variant');
+        const { evaluateFeatureFlag, DEFAULT_HIGHLIGHTED_GUIDE_CONFIG } = require('./openfeature');
+        const result = await evaluateFeatureFlag('pathfinder.highlighted-guide-experiment');
 
         expect(mockOF.mockClient.getObjectValue).toHaveBeenCalledWith(
-          'pathfinder.experiment-variant',
-          DEFAULT_EXPERIMENT_CONFIG
+          'pathfinder.highlighted-guide-experiment',
+          DEFAULT_HIGHLIGHTED_GUIDE_CONFIG
         );
         expect(result).toEqual(expectedConfig);
       });
@@ -702,13 +508,13 @@ describe('openfeature', () => {
 
         const { setFlagOverride, removeFlagOverride, getFlagOverrides } = require('./openfeature');
         setFlagOverride('pathfinder.auto-open-sidebar', true);
-        setFlagOverride('pathfinder.after-24h-experiment', { variant: 'control', pages: [] });
+        setFlagOverride('pathfinder.highlighted-guide-experiment', { variant: 'control', pages: [] });
 
         removeFlagOverride('pathfinder.auto-open-sidebar');
 
         const overrides = getFlagOverrides();
         expect('pathfinder.auto-open-sidebar' in overrides).toBe(false);
-        expect('pathfinder.after-24h-experiment' in overrides).toBe(true);
+        expect('pathfinder.highlighted-guide-experiment' in overrides).toBe(true);
       });
     });
 
@@ -721,7 +527,7 @@ describe('openfeature', () => {
 
         const { setFlagOverride, clearFlagOverrides, getFlagOverrides } = require('./openfeature');
         setFlagOverride('pathfinder.auto-open-sidebar', true);
-        setFlagOverride('pathfinder.after-24h-experiment', { variant: 'control', pages: [] });
+        setFlagOverride('pathfinder.highlighted-guide-experiment', { variant: 'control', pages: [] });
 
         clearFlagOverrides();
 
@@ -765,126 +571,6 @@ describe('openfeature', () => {
 
         expect(result).toBe(false);
         expect(mockOF.mockClient.getBooleanValue).toHaveBeenCalled();
-      });
-    });
-
-    it('getExperimentConfig should use override when set', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'excluded',
-          pages: [],
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-        const { setFlagOverride, getExperimentConfig } = require('./openfeature');
-        setFlagOverride('pathfinder.after-24h-experiment', { variant: 'control', pages: [] });
-
-        const result = getExperimentConfig('pathfinder.after-24h-experiment');
-
-        expect(result).toEqual({ variant: 'control', pages: [], resetCache: false });
-        expect(mockOF.mockClient.getObjectValue).not.toHaveBeenCalled();
-        consoleSpy.mockRestore();
-      });
-    });
-
-    it('getExperimentConfig should fall through when override has no variant', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'excluded',
-          pages: [],
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { setFlagOverride, getExperimentConfig } = require('./openfeature');
-        setFlagOverride('pathfinder.after-24h-experiment', { pages: [] });
-
-        const result = getExperimentConfig('pathfinder.after-24h-experiment');
-
-        expect(result).toEqual({ variant: 'excluded', pages: [], resetCache: false });
-        expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
-      });
-    });
-
-    it('getExperimentConfig should fire exposure event when returning via override', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-        const { setFlagOverride, getExperimentConfig } = require('./openfeature');
-        setFlagOverride('pathfinder.experiment-variant', { variant: 'treatment', pages: ['/dashboards'] });
-
-        getExperimentConfig('pathfinder.experiment-variant');
-
-        expect(mockReportFeatureFlagExposure).toHaveBeenCalledTimes(1);
-        expect(mockReportFeatureFlagExposure).toHaveBeenCalledWith('pathfinder.experiment-variant', {
-          variant: 'treatment',
-          pages: ['/dashboards'],
-          resetCache: false,
-        });
-        expect(mockOF.mockClient.getObjectValue).not.toHaveBeenCalled();
-
-        consoleSpy.mockRestore();
-      });
-    });
-
-    it('getExperimentConfig should pass through repeated override calls to the exposure helper (helper handles dedup)', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-        const { setFlagOverride, getExperimentConfig } = require('./openfeature');
-        setFlagOverride('pathfinder.experiment-variant', { variant: 'control', pages: [] });
-
-        getExperimentConfig('pathfinder.experiment-variant');
-        getExperimentConfig('pathfinder.experiment-variant');
-        getExperimentConfig('pathfinder.experiment-variant');
-
-        // openfeature.ts calls reportFeatureFlagExposure on every override evaluation;
-        // the helper itself owns the (flag, variant) dedup — verified end-to-end in
-        // openfeature-tracking.test.ts. Here we only verify that the wiring fires.
-        expect(mockReportFeatureFlagExposure).toHaveBeenCalledTimes(3);
-        consoleSpy.mockRestore();
-      });
-    });
-
-    it('getExperimentConfig should NOT fire exposure when override is invalid and falls through', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'excluded',
-          pages: [],
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { setFlagOverride, getExperimentConfig } = require('./openfeature');
-        // Missing `variant` field — invalid override, falls through to client.
-        setFlagOverride('pathfinder.experiment-variant', { pages: [] });
-
-        getExperimentConfig('pathfinder.experiment-variant');
-
-        // The override branch did not return — the client path runs and the
-        // real TrackingHook (mocked here) would handle the exposure. The
-        // standalone helper must not be called from the override branch.
-        expect(mockReportFeatureFlagExposure).not.toHaveBeenCalled();
-        expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
       });
     });
 
@@ -973,6 +659,8 @@ describe('openfeature', () => {
         expect(matchPathPattern('/a/app/schedules*', '/a/app/schedules')).toBe(true);
         expect(matchPathPattern('/a/app/schedules*', '/a/app/schedules/123')).toBe(true);
         expect(matchPathPattern('/a/app/schedules*', '/a/app/schedule')).toBe(false);
+        expect(matchPathPattern('/a/app/schedules*', '/a/app/schedules-v2')).toBe(false);
+        expect(matchPathPattern('/a/grafana-irm-app*', '/a/grafana-irm-appointments')).toBe(false);
       });
     });
   });

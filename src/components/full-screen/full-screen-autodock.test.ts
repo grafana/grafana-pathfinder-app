@@ -7,7 +7,7 @@
 import { dockOnLeavingFullScreen } from './full-screen-autodock';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
-import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
+import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { reportAppInteraction } from '../../lib/analytics';
 
 jest.mock('../../global-state/panel-mode', () => ({
@@ -25,9 +25,10 @@ jest.mock('../../global-state/sidebar', () => ({
   },
 }));
 
-jest.mock('../../utils/experiments/experiment-utils', () => ({
-  isExtensionSidebarOwnedByOther: jest.fn(),
-}));
+jest.mock('../../lib/storage/extension-sidebar', () => {
+  const actual = jest.requireActual('../../lib/storage/extension-sidebar');
+  return { ...actual, isExtensionSidebarOwnedByOther: jest.fn() };
+});
 
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),

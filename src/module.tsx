@@ -53,27 +53,24 @@ try {
   console.error('[OpenFeature] Error initializing feature flags:', e);
 }
 
-// Initialize experiments and get state (dynamic import keeps zod/user-storage out of module.js)
-const {
-  initializeExperiments,
-  shouldMountSidebar,
-  setupMainExperimentAutoOpen,
-  attemptAutoOpen,
-  getAutoOpenFeatureFlag,
-  getCurrentPath,
-  createExperimentDebugger,
-  initializeHighlightedGuideExperiment,
-  setupHighlightedGuideAutoOpen,
-} = await import('./utils/experiments');
-const experimentState = initializeExperiments();
-const { pathfinderEnabled, mainConfig, mainVariant, after24hVariant, hostname } = experimentState;
+// Highlighted-guide experiment + config-driven auto-open (dynamic imports keep
+// zod/user-storage out of module.js).
+const { createExperimentDebugger, initializeHighlightedGuideExperiment, setupHighlightedGuideAutoOpen } =
+  await import('./utils/experiments');
+const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
+  await import('./utils/sidebar-auto-open');
+const { getFeatureFlagValue } = await import('./utils/openfeature');
 
-createExperimentDebugger(mainConfig);
+// The pathfinder.enabled kill-switch is the only gate on whether Pathfinder mounts.
+const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
+const hostname = window.location.hostname;
 
 // Initialize highlighted-guide experiment (reads flag, processes resetCache).
 // The popout half is set up later, after the sidebar-mount decision, so it
 // short-circuits when Pathfinder is dismounted.
 const highlightedGuideConfig = initializeHighlightedGuideExperiment(hostname);
+
+createExperimentDebugger(highlightedGuideConfig);
 
 // Check if Pathfinder was already docked (browser restore scenario).
 // If floating mode is active, clear the docked state so Grafana doesn't
@@ -141,15 +138,9 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   // Interactive controller (?doc=<guide>&controller=1): the same overlay, but
   // step actions stay visible so this tab can drive the originating Grafana tab.
-  // Gated on shouldMountSidebar — the controller drives the user's authenticated
+  // Gated on pathfinder.enabled — the controller drives the user's authenticated
   // Grafana, so it must not mount when the plugin is disabled.
-  if (
-    TWOTAB_CONTROLLER_ENABLED &&
-    docsParam &&
-    controllerParam &&
-    controllerPairing &&
-    shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)
-  ) {
+  if (TWOTAB_CONTROLLER_ENABLED && docsParam && controllerParam && controllerPairing && pathfinderEnabled) {
     if (!document.getElementById('pathfinder-controller-root')) {
       // Claim the id synchronously, before the dynamic import, so a second
       // plugin.init can't race past the guard and double-mount.
@@ -175,7 +166,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Live tab only (the controller tab returned early above): load the cross-tab
   // executor so a controller tab can drive this Grafana DOM. Mount the pairing
   // banner first so its challenge listener is live before the transport starts.
-  if (TWOTAB_CONTROLLER_ENABLED && shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
+  if (TWOTAB_CONTROLLER_ENABLED && pathfinderEnabled) {
     if (!document.getElementById('pathfinder-pairing-banner-root')) {
       const bannerContainer = document.createElement('div');
       bannerContainer.id = 'pathfinder-pairing-banner-root';
@@ -195,7 +186,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       .catch((err) => console.error('[Pathfinder] Failed to load cross-tab executor:', err));
   }
 
-  const sidebarMountable = shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant);
+  const sidebarMountable = pathfinderEnabled;
   const deepLinkDeps = {
     shouldMountSidebar: sidebarMountable,
     attemptAutoOpen,
@@ -245,7 +236,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // active (page refresh or ?panelMode=floating). For sidebar→floating transitions
   // at runtime, a mode-change listener lazily loads and mounts the manager.
   // This avoids unconditional chunk loads that prevent networkidle on older Grafana.
-  if (shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
+  if (pathfinderEnabled) {
     const mountFloatingPanel = () => {
       if (document.getElementById('pathfinder-floating-root')) {
         return;
@@ -278,34 +269,24 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     }) as EventListener);
   }
 
-  // Skip experiment auto-open when a ?doc= param is present — the doc-param
-  // handler (async import above) owns sidebar opening and may redirect first.
-  // Running the experiment here would evaluate against the pre-redirect path.
+  // Skip auto-open when a ?doc= param is present — the doc-param handler (async
+  // import above) owns sidebar opening and may redirect first. Running auto-open
+  // here would evaluate against the pre-redirect path.
   if (!docsParam && pathfinderEnabled) {
     const currentPath = getCurrentPath();
-    setupMainExperimentAutoOpen(experimentState, {
+    setupConfigAutoOpen({
       currentPath,
       featureFlagEnabled: getAutoOpenFeatureFlag(),
       pluginConfig: config,
     });
-
-    // Highlighted-guide sidebar auto-open: only meaningful when Pathfinder is
-    // mounted. If either existing experiment landed the user in 'control', the
-    // sidebar is dismounted, so the open-extension-sidebar event would have no
-    // surface to attach to.
-    if (shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
-      setupHighlightedGuideAutoOpen(highlightedGuideConfig, currentPath, hostname);
-    }
+    setupHighlightedGuideAutoOpen(highlightedGuideConfig, currentPath, hostname);
   }
 };
 
 export { plugin };
 
-// Register sidebar for everyone EXCEPT control groups from EITHER experiment
-// - excluded: normal behavior (sidebar available)
-// - control: no sidebar (native Grafana help only)
-// - treatment: sidebar + auto-open (on target pages for main experiment, for 24h+ users for after-24h experiment)
-if (shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
+// Register the sidebar unless the pathfinder.enabled kill-switch is off.
+if (pathfinderEnabled) {
   plugin.addComponent({
     targets: `grafana/extension-sidebar/v0-alpha`,
     title: 'Interactive learning',
@@ -420,7 +401,7 @@ if (shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
 
   // Swap in the real suggest handler and replay any buffered events
   const realSuggestHandler = ((event: CustomEvent) => {
-    handlePathfinderSuggest(event, after24hVariant);
+    handlePathfinderSuggest(event);
   }) as EventListener;
   document.removeEventListener('pathfinder-suggest', earlySuggestListener);
   document.addEventListener('pathfinder-suggest', realSuggestHandler);
@@ -429,7 +410,7 @@ if (shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
     if (buffered.detail) {
       buffered.detail._buffered = true;
     }
-    handlePathfinderSuggest(buffered, after24hVariant);
+    handlePathfinderSuggest(buffered);
   }
   pendingSuggestEvents.length = 0;
 } else {
@@ -451,7 +432,7 @@ if (shouldMountSidebar(pathfinderEnabled, mainVariant, after24hVariant)) {
  * (via the pathfinder-sidebar-mounted event) so the flag is never burned
  * if the sidebar fails to open for any reason.
  */
-function handlePathfinderSuggest(event: CustomEvent, experimentVariant: string): void {
+function handlePathfinderSuggest(event: CustomEvent): void {
   const detail = event.detail;
   if (!detail) {
     console.warn('[Pathfinder] pathfinder-suggest event missing detail');
@@ -508,42 +489,6 @@ function handlePathfinderSuggest(event: CustomEvent, experimentVariant: string):
     });
     detail.status = 'accepted';
     return;
-  }
-
-  // For 24h experiment treatment: only auto-open once, but always store suggestions.
-  // Uses localStorage as cache, with Grafana user storage as cross-device source of truth.
-  if (experimentVariant === 'treatment') {
-    const hostname = window.location.hostname;
-    const autoOpenedKey = `grafana-interactive-learning-panel-auto-opened-${hostname}`;
-    const alreadyOpened = localStorage.getItem(autoOpenedKey) === 'true';
-
-    if (alreadyOpened) {
-      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-        action: 'suggest',
-        source: 'external_app',
-        suggestion_count: valid.length,
-        suggested_titles: suggestedTitles,
-        suggested_urls: suggestedUrls,
-        sidebar_already_opened_by_experiment: true,
-        buffered,
-      });
-      detail.status = 'accepted';
-      detail.reason = 'suggestions_stored_no_reopen';
-      return;
-    }
-
-    // Defer flag write until sidebar actually mounts — if it never opens
-    // the flag stays unset and the next page load can retry.
-    window.addEventListener(
-      'pathfinder-sidebar-mounted',
-      () => {
-        localStorage.setItem(autoOpenedKey, 'true');
-        import('./lib/user-storage').then(({ experimentAutoOpenStorage }) => {
-          experimentAutoOpenStorage.markGlobalAutoOpened().catch(() => {});
-        });
-      },
-      { once: true }
-    );
   }
 
   reportAppInteraction(UserInteraction.DocsPanelInteraction, {

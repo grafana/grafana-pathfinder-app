@@ -19,7 +19,7 @@
 
 import { panelModeManager } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
-import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
+import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
 export type AutoDockOutcome = 'sidebar' | 'floating' | 'noop';

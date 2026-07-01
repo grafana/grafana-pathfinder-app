@@ -27,11 +27,6 @@ jest.mock('./openfeature', () => ({
       defaultValue: true,
       trackingKey: 'pathfinder_enabled',
     },
-    'pathfinder.experiment-variant': {
-      valueType: 'object',
-      defaultValue: { variant: 'excluded', pages: [], resetCache: false },
-      trackingKey: 'experiment_variant',
-    },
     'pathfinder.highlighted-guide-experiment': {
       valueType: 'object',
       defaultValue: { variant: 'excluded' },
@@ -194,19 +189,19 @@ describe('reportFeatureFlagExposure', () => {
 
   it('persists a marker so a fresh module instance does not re-fire', () => {
     let report = freshReportFn();
-    report('pathfinder.experiment-variant', { variant: 'treatment', pages: [] });
+    report('pathfinder.highlighted-guide-experiment', { variant: 'treatment', pages: [] });
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
 
     report = freshReportFn();
-    report('pathfinder.experiment-variant', { variant: 'treatment', pages: [] });
+    report('pathfinder.highlighted-guide-experiment', { variant: 'treatment', pages: [] });
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
   });
 
   it('dedups within a single page load even across repeated calls', () => {
     const report = freshReportFn();
-    report('pathfinder.experiment-variant', { variant: 'treatment', pages: [] });
-    report('pathfinder.experiment-variant', { variant: 'treatment', pages: [] });
-    report('pathfinder.experiment-variant', { variant: 'treatment', pages: [] });
+    report('pathfinder.highlighted-guide-experiment', { variant: 'treatment', pages: [] });
+    report('pathfinder.highlighted-guide-experiment', { variant: 'treatment', pages: [] });
+    report('pathfinder.highlighted-guide-experiment', { variant: 'treatment', pages: [] });
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
   });
 
@@ -223,7 +218,7 @@ describe('reportFeatureFlagExposure', () => {
 
   it('skips excluded variants', () => {
     const report = freshReportFn();
-    report('pathfinder.experiment-variant', { variant: 'excluded', pages: [] });
+    report('pathfinder.highlighted-guide-experiment', { variant: 'excluded', pages: [] });
     expect(mockReportAppInteraction).not.toHaveBeenCalled();
     expect(localStorage.length).toBe(0);
   });

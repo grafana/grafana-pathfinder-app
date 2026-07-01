@@ -4,7 +4,7 @@ import { installLiveTabExecutor, resetLiveTabExecutorForTests, DEFAULT_PACING } 
 import { FocusHandler, ButtonHandler, NavigateHandler, GuidedHandler } from '../../interactive-engine/action-handlers';
 import { checkRequirements, dispatchFix } from '../../requirements-manager';
 import { sidebarState } from '../../global-state/sidebar';
-import { isExtensionSidebarOwnedByOther } from '../../utils/experiments/experiment-utils';
+import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { FakeCrossTabTransport } from '../../test-utils/fake-cross-tab-transport';
 import type { CrossTabMessage } from '../../types/cross-tab.types';
 
@@ -39,8 +39,8 @@ jest.mock('../../global-state/sidebar', () => ({
   sidebarState: { getIsSidebarMounted: jest.fn(() => true), openSidebar: jest.fn() },
 }));
 
-jest.mock('../../utils/experiments/experiment-utils', () => {
-  const actual = jest.requireActual('../../utils/experiments/experiment-utils');
+jest.mock('../../lib/storage/extension-sidebar', () => {
+  const actual = jest.requireActual('../../lib/storage/extension-sidebar');
   return { ...actual, isExtensionSidebarOwnedByOther: jest.fn(() => false) };
 });
 
