@@ -5,15 +5,10 @@ export interface CloudAuthConfigInput {
   env?: NodeJS.ProcessEnv;
 }
 
-export interface RunnerAuth {
-  token?: string;
-}
-
 export interface CloudAuthPolicy {
   targets: CloudTargetCapabilities;
   adminTokenFor(targetUrl: string | undefined): string | undefined;
   needsProvisioningFor(targetUrl: string | undefined): boolean;
-  runnerAuthFor(targetUrl: string | undefined, provisionedToken?: string): RunnerAuth;
 }
 
 interface CloudInstanceAdminTokenConfig {
@@ -87,12 +82,6 @@ export function createCloudAuthPolicy(input: CloudAuthConfigInput): CloudAuthPol
     },
     needsProvisioningFor(targetUrl) {
       return Boolean(this.adminTokenFor(targetUrl));
-    },
-    runnerAuthFor(targetUrl, provisionedToken) {
-      if (provisionedToken && this.needsProvisioningFor(targetUrl)) {
-        return { token: provisionedToken };
-      }
-      return {};
     },
   };
 }

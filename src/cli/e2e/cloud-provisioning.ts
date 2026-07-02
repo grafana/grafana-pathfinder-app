@@ -11,15 +11,16 @@ import {
 interface PlannedGuideRef {
   id: string;
 }
+interface CloudTargetEnvironment {
+  teardownChain(): Promise<void | string[]>;
+}
 
 interface ProvisionedCloudTarget {
-  env: { teardownChain(): Promise<void | string[]> };
+  env: CloudTargetEnvironment;
   token: string;
   targetUrl?: string;
   cleanupRegistry?: ColdCloudStackCleanupRegistry;
-  cleanupTarget?: ColdCloudStackEnvironment;
 }
-
 export class ProvisionedCloudTargets {
   private readonly targets = new Map<string, ProvisionedCloudTarget>();
   private readonly guideTargets = new Map<string, ProvisionedCloudTarget>();
@@ -64,8 +65,8 @@ export class ProvisionedCloudTargets {
       if (!tornDown.has(provisioned)) {
         tornDown.add(provisioned);
         warnings.push(...((await provisioned.env.teardownChain()) ?? []));
-        if (provisioned.cleanupTarget) {
-          provisioned.cleanupRegistry?.untrack(provisioned.cleanupTarget);
+        if (provisioned.cleanupRegistry) {
+          provisioned.cleanupRegistry.untrack(provisioned.env as ColdCloudStackEnvironment);
         }
       }
     }
@@ -126,27 +127,27 @@ export function cloudTargetsInChain(
 export async function provisionCloudTargetsForChain(options: {
   targetUrls: string[];
   cloudAuth: CloudAuthPolicy | undefined;
-  chain?: PlannedGuideRef[];
-  packageMetaById?: Map<string, PackageMeta>;
+  chain: PlannedGuideRef[];
+  packageMetaById: Map<string, PackageMeta>;
   cloudStack?: ColdCloudStackProvisioningConfig;
   cloudStackCleanup?: ColdCloudStackCleanupRegistry;
   verbose: boolean;
 }): Promise<ProvisionedCloudTargets> {
   const provisionedTargets = new ProvisionedCloudTargets();
   try {
+    const cloudStack = options.cloudStack;
     if (
-      options.chain &&
-      options.packageMetaById &&
+      cloudStack &&
       chainNeedsCloudStack({
         chain: options.chain,
         packageMetaById: options.packageMetaById,
         cloudAuth: options.cloudAuth,
-        cloudStack: options.cloudStack,
+        cloudStack,
       })
     ) {
       const ids = cloudGuideIds(options.chain, options.packageMetaById);
       console.log(`\n☁️ Provisioning an ephemeral Grafana Cloud stack for ${ids.length} guide(s)...`);
-      const env = new ColdCloudStackEnvironment(options.cloudStack!, options.verbose);
+      const env = new ColdCloudStackEnvironment(cloudStack, options.verbose);
       options.cloudStackCleanup?.track(env);
       try {
         const stack = await env.provisionChain();
@@ -155,7 +156,6 @@ export async function provisionCloudTargetsForChain(options: {
           token: stack.token,
           targetUrl: stack.targetUrl,
           cleanupRegistry: options.cloudStackCleanup,
-          cleanupTarget: env,
         });
       } catch (err) {
         options.cloudStackCleanup?.untrack(env);

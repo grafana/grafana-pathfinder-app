@@ -44,7 +44,6 @@ const cloudAuth: CloudAuthPolicy = {
   needsProvisioningFor(targetUrl) {
     return Boolean(this.adminTokenFor(targetUrl));
   },
-  runnerAuthFor: () => ({}),
 };
 
 const cloudStack: ColdCloudStackProvisioningConfig = {
@@ -188,6 +187,8 @@ describe('provisionCloudTargetsForChain', () => {
     const provisioned = await provisionCloudTargetsForChain({
       targetUrls: ['https://learn.grafana.net/', 'https://play.grafana.org/'],
       cloudAuth,
+      chain: [],
+      packageMetaById: new Map(),
       verbose: false,
     });
 
@@ -223,6 +224,8 @@ describe('provisionCloudTargetsForChain', () => {
       provisionCloudTargetsForChain({
         targetUrls: ['https://learn.grafana.net/', 'https://play.grafana.org/'],
         cloudAuth,
+        chain: [],
+        packageMetaById: new Map(),
         verbose: false,
       })
     ).rejects.toThrow('boom');

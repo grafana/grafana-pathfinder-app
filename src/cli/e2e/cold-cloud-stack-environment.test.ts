@@ -170,6 +170,13 @@ describe('ColdCloudStackEnvironment', () => {
     await env.teardownChain();
 
     expect(calls.map((call) => call.args[0])).toEqual(['init', 'apply', 'output', 'destroy']);
+    expect(calls.find((call) => call.args[0] === 'destroy')?.args).toEqual([
+      'destroy',
+      '-input=false',
+      '-auto-approve',
+      '-lock-timeout=60s',
+      '-no-color',
+    ]);
     expect(existsSync(moduleDir)).toBe(false);
   });
 

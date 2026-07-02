@@ -35,6 +35,7 @@ import {
   applyPackageMeta,
   buildPackageMetaMap,
   exitCodeFromResults,
+  provisioningFailureResults,
   resolveRunMode,
   skipToResult,
   type GuideRunResult,
@@ -249,22 +250,45 @@ interface ChainRunOutcome {
   cleanupWarnings: string[];
 }
 
+const REPEATED_SIGNAL_FORCE_EXIT_GRACE_MS = 30_000;
+
 /**
  * Install exit/signal handlers that tear down owned isolated environments.
  * On SIGINT/SIGTERM, re-raise with the conventional 128+signal code.
  */
 function installTeardownHandlers(cleanEnv: CleanEnvironment, cloudStackCleanup: ColdCloudStackCleanupRegistry): void {
-  let exiting = false;
+  let cleanupStartedAtMs: number | undefined;
   const exitHandler = () => cleanEnv.teardownIfOwned();
+  const exitCodeForSignal = (signal: NodeJS.Signals) => (signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 1);
   const signalHandler = async (signal: NodeJS.Signals) => {
-    if (exiting) {
+    const code = exitCodeForSignal(signal);
+    if (cleanupStartedAtMs !== undefined) {
+      const elapsedMs = Date.now() - cleanupStartedAtMs;
+      if (elapsedMs >= REPEATED_SIGNAL_FORCE_EXIT_GRACE_MS) {
+        console.warn('\n⚠ Force exiting before cleanup completed; Cloud stacks may require manual teardown.');
+        process.exit(code);
+        return;
+      }
+      const remainingSeconds = Math.ceil((REPEATED_SIGNAL_FORCE_EXIT_GRACE_MS - elapsedMs) / 1000);
+      console.warn(
+        `\n⚠ Cleanup is still running; ignoring repeated ${signal}. Press again in ${remainingSeconds}s to force exit, which may leave Cloud stacks running.`
+      );
       return;
     }
-    exiting = true;
-    await cloudStackCleanup.teardownAll();
-    cleanEnv.teardownIfOwned();
-    const code = signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 1;
-    process.exit(code);
+    cleanupStartedAtMs = Date.now();
+    try {
+      const warnings = await cloudStackCleanup.teardownAll();
+      for (const warning of warnings) {
+        console.warn(`   ⚠ ${warning}`);
+      }
+    } catch (err) {
+      console.warn(
+        `   ⚠ Failed to tear down active Cloud stacks: ${err instanceof Error ? err.message : 'Unknown error'}`
+      );
+    } finally {
+      cleanEnv.teardownIfOwned();
+      process.exit(code);
+    }
   };
   process.on('exit', exitHandler);
   process.on('SIGINT', signalHandler);
@@ -569,15 +593,24 @@ async function runChains(
       results.push(...unsafeSharedStackSkipResults(chain, packageMetaById, message));
       continue;
     }
-    const provisionedTargets = await provisionCloudTargetsForChain({
-      targetUrls: cloudTargetsInChain(chain, packageMetaById, cloudAuth),
-      cloudAuth,
-      chain,
-      packageMetaById,
-      cloudStack,
-      cloudStackCleanup,
-      verbose: options.verbose,
-    });
+    let provisionedTargets: Awaited<ReturnType<typeof provisionCloudTargetsForChain>>;
+    try {
+      provisionedTargets = await provisionCloudTargetsForChain({
+        targetUrls: cloudTargetsInChain(chain, packageMetaById, cloudAuth),
+        cloudAuth,
+        chain,
+        packageMetaById,
+        cloudStack,
+        cloudStackCleanup,
+        verbose: options.verbose,
+      });
+    } catch (err) {
+      const message = `Cloud target provisioning failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      console.error(`\n❌ ${message}`);
+      results.push(...provisioningFailureResults(chain, packageMetaById, options.grafanaUrl, message));
+      allPassed = false;
+      continue;
+    }
     try {
       // IDs in this chain that failed or were skipped; their dependents skip.
       const blocked = new Set<string>();

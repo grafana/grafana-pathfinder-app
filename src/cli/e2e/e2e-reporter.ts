@@ -176,7 +176,7 @@ export interface E2ETestReport {
   /** Whether test was aborted (L3-3D) */
   aborted?: boolean;
   /** Reason for abort if aborted is true */
-  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ';
+  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ' | 'PROVISIONING_FAILED';
   /** Human-readable abort message */
   abortMessage?: string;
   /** Packages skipped before execution (remote modes). */
@@ -222,7 +222,7 @@ export interface TestResultsData {
   /** Whether execution was aborted */
   aborted: boolean;
   /** Reason for abort if aborted */
-  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ';
+  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ' | 'PROVISIONING_FAILED';
   /** Abort message */
   abortMessage?: string;
 }
@@ -381,14 +381,14 @@ export function generateAndWriteReport(
 /**
  * Check if a report indicates overall success.
  *
- * Per L3-4C design doc: only mandatory failures count against success.
+ * Report-level failures without step data also count against success.
  * Skippable step failures do NOT fail the overall test.
  *
  * @param report - The test report
- * @returns true if the test passed (no mandatory failures)
+ * @returns true if the test passed without mandatory or provisioning failures
  */
 export function isReportSuccess(report: E2ETestReport): boolean {
-  return report.summary.mandatoryFailed === 0;
+  return report.summary.mandatoryFailed === 0 && report.abortReason !== 'PROVISIONING_FAILED';
 }
 
 /**
@@ -461,7 +461,7 @@ export interface GuideResult {
   /** Whether this guide passed (no mandatory failures) */
   success: boolean;
   /** Reason for failure/abort if any */
-  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ';
+  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ' | 'PROVISIONING_FAILED';
   /** Summary statistics for this guide */
   summary: ReportSummary;
   /** Duration in milliseconds */
@@ -621,13 +621,13 @@ export function writeMultiGuideReport(report: MultiGuideReport, outputPath: stri
 /**
  * Check if a multi-guide report indicates overall success (L3-7B).
  *
- * Per L3-4C design doc: only mandatory failures count against success.
+ * Uses the aggregated guide outcomes so setup failures without step data count.
  *
  * @param report - The multi-guide report
- * @returns true if all guides passed (no mandatory failures in any guide)
+ * @returns true if all guides passed without auth or provisioning failures
  */
 export function isMultiGuideReportSuccess(report: MultiGuideReport): boolean {
-  return report.summary.steps.mandatoryFailed === 0;
+  return report.summary.failedGuides === 0 && report.summary.authExpiredGuides === 0;
 }
 
 /**

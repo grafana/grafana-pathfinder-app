@@ -21,7 +21,6 @@ const cloudAuth: CloudAuthPolicy = {
   needsProvisioningFor(targetUrl) {
     return Boolean(this.adminTokenFor(targetUrl));
   },
-  runnerAuthFor: () => ({}),
 };
 
 const cloudStack: ColdCloudStackProvisioningConfig = {

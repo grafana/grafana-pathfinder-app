@@ -23,6 +23,7 @@ import {
   exitCodeFromResults,
   guideResultReason,
   preRunSkipsFromResults,
+  provisioningFailureResults,
   resolveRunMode,
   skipToResult,
   summarizeSteps,
@@ -152,7 +153,6 @@ describe('applyPackageMeta', () => {
       packageId: 'a',
       tier: 'local',
       instance: 'play.grafana.org',
-      // targetUrl is intentionally NOT propagated; the runner already set it.
       targetUrl: 'http://should-not-overwrite:3000',
       sourceUrl: 'https://cdn.test/a/content.json',
       sideEffects: READONLY_SIDE_EFFECTS,
@@ -178,6 +178,59 @@ describe('applyPackageMeta', () => {
     expect(data.guide).toEqual(before);
 
     expect(() => applyPackageMeta(undefined, { packageId: 'a' })).not.toThrow();
+  });
+});
+
+describe('provisioningFailureResults', () => {
+  it('builds failed aborted guide results with package metadata', () => {
+    const results = provisioningFailureResults(
+      [{ id: 'cloud-guide', guide: { path: 'https://cdn.test/cloud-guide/content.json' }, autoIncluded: true }],
+      new Map([
+        [
+          'cloud-guide',
+          {
+            packageId: 'cloud-guide',
+            tier: 'cloud',
+            instance: 'learn.grafana.net',
+            targetUrl: 'https://learn.grafana.net/',
+            sourceUrl: 'https://cdn.test/cloud-guide/content.json',
+            sideEffects: READONLY_SIDE_EFFECTS,
+          },
+        ],
+      ]),
+      'http://localhost:3000',
+      'Cloud target provisioning failed: terraform apply failed'
+    );
+
+    expect(results).toEqual([
+      expect.objectContaining({
+        guide: 'https://cdn.test/cloud-guide/content.json',
+        id: 'cloud-guide',
+        status: 'provisioning_failed',
+        exitCode: ExitCode.TEST_FAILURE,
+        autoIncluded: true,
+        abortMessage: 'Cloud target provisioning failed: terraform apply failed',
+        tier: 'cloud',
+        sideEffects: READONLY_SIDE_EFFECTS,
+      }),
+    ]);
+    expect(results[0]!.resultsData).toMatchObject({
+      guide: {
+        id: 'cloud-guide',
+        title: 'cloud-guide',
+        path: 'https://cdn.test/cloud-guide/content.json',
+        targetUrl: 'https://learn.grafana.net/',
+        packageId: 'cloud-guide',
+        tier: 'cloud',
+        instance: 'learn.grafana.net',
+        sourceUrl: 'https://cdn.test/cloud-guide/content.json',
+        sideEffects: READONLY_SIDE_EFFECTS,
+      },
+      results: [],
+      aborted: true,
+      abortReason: 'PROVISIONING_FAILED',
+      abortMessage: 'Cloud target provisioning failed: terraform apply failed',
+    });
   });
 });
 
@@ -211,6 +264,14 @@ describe('preRunSkipsFromResults', () => {
         exitCode: 0,
         autoIncluded: false,
         failedPrerequisite: 'x',
+      },
+      {
+        guide: 'f/content.json',
+        id: 'f',
+        status: 'provisioning_failed',
+        exitCode: 1,
+        autoIncluded: false,
+        abortMessage: 'terraform failed',
       },
     ];
 
@@ -253,9 +314,10 @@ describe('exitCodeFromResults', () => {
     expect(exitCodeFromResults([])).toBe(ExitCode.SUCCESS);
   });
 
-  it('returns TEST_FAILURE when a guide failed or failed validation', () => {
+  it('returns TEST_FAILURE when a guide failed, failed validation, or provisioning failed', () => {
     expect(exitCodeFromResults([result('passed'), result('failed')])).toBe(ExitCode.TEST_FAILURE);
     expect(exitCodeFromResults([result('validation_failed')])).toBe(ExitCode.TEST_FAILURE);
+    expect(exitCodeFromResults([result('provisioning_failed')])).toBe(ExitCode.TEST_FAILURE);
   });
 
   it('prioritizes AUTH_FAILURE over a generic test failure', () => {
@@ -275,6 +337,13 @@ describe('status label / icon tables', () => {
 
     expect(label).toBe('❌ Validation failed');
     expect(GUIDE_STATUS_ICONS.validation_failed).toBe('❌');
+  });
+
+  it('classifies provisioning_failed with a failure label and icon', () => {
+    const label = GUIDE_STATUS_LABELS.find(([status]) => status === 'provisioning_failed')?.[1];
+
+    expect(label).toBe('❌ Provisioning failed');
+    expect(GUIDE_STATUS_ICONS.provisioning_failed).toBe('❌');
   });
 
   it('defines the unsafe shared-stack skip status', () => {
@@ -328,6 +397,12 @@ describe('guideResultReason', () => {
 
   it('surfaces an abortMessage for a skip status', () => {
     expect(guideResultReason({ ...base, status: 'fetch_failed', abortMessage: 'HTTP 503' })).toBe(' (HTTP 503)');
+  });
+
+  it('surfaces an abortMessage for provisioning failures', () => {
+    expect(guideResultReason({ ...base, status: 'provisioning_failed', abortMessage: 'terraform failed' })).toBe(
+      ' (terraform failed)'
+    );
   });
 
   it('suppresses the abortMessage for passed and failed statuses', () => {
