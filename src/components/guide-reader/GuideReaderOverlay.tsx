@@ -14,9 +14,11 @@ import { InteractiveModeContext, type InteractiveMode } from '../../global-state
 import { ControllerChannelProvider, useControllerConnected } from '../../global-state/controller-channel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { testIds } from '../../constants/testIds';
+import { useDocumentOutline } from '../../hooks';
 import type { RawContent } from '../../types/content.types';
 import type { ControllerPairingLaunch } from '../../lib/pairing-manager';
 import { getGuideReaderStyles } from './guide-reader.styles';
+import { OutlineRail } from './OutlineRail';
 
 interface GuideReaderOverlayProps {
   doc: string;
@@ -99,11 +101,22 @@ function GuideReaderInner({
   const docsStyles = useStyles2(docsContentHtml);
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
+  const backdropRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [content, setContent] = useState<RawContent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [closeBlocked, setCloseBlocked] = useState(false);
+  const [contentReady, setContentReady] = useState(false);
   const closeTimerRef = useRef<number | undefined>(undefined);
+  const outlineItems = useDocumentOutline(contentRef, content?.url ?? null, contentReady);
+
+  // Reset during render (not in an effect) when `doc` changes, so a new guide never
+  // briefly shows the outline extracted from the previous one.
+  const [trackedDoc, setTrackedDoc] = useState(doc);
+  if (doc !== trackedDoc) {
+    setTrackedDoc(doc);
+    setContentReady(false);
+  }
 
   const handleClose = useCallback(() => {
     window.close();
@@ -118,6 +131,10 @@ function GuideReaderInner({
   }, []);
 
   useEffect(() => () => window.clearTimeout(closeTimerRef.current), []);
+
+  const handleContentReady = useCallback(() => {
+    setContentReady(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,12 +179,18 @@ function GuideReaderInner({
 
   const body = content ? (
     <div ref={contentRef}>
-      <ContentRenderer content={content} containerRef={contentRef} className={contentClassName} />
+      <ContentRenderer
+        content={content}
+        containerRef={contentRef}
+        className={contentClassName}
+        onContentReady={handleContentReady}
+      />
     </div>
   ) : null;
 
   return createPortal(
     <div
+      ref={backdropRef}
       className={styles.backdrop}
       role="dialog"
       aria-modal="true"
@@ -187,29 +210,32 @@ function GuideReaderInner({
           You can close this browser tab to return to Grafana.
         </div>
       )}
-      <div className={styles.container}>
-        {error && (
-          <div className={styles.message} data-testid={testIds.guideReader.error}>
-            {error}
-          </div>
-        )}
-        {!error && !content && (
-          <div className={styles.message} data-testid={testIds.guideReader.loading}>
-            Loading guide...
-          </div>
-        )}
-        {body && (
-          <InteractiveModeContext.Provider value={mode}>
-            {mode === 'controller' ? (
-              <ControllerChannelProvider pairing={controllerPairing}>
-                <ControllerStatusBadge pairingCode={controllerPairing?.pairingCode} />
-                {body}
-              </ControllerChannelProvider>
-            ) : (
-              body
-            )}
-          </InteractiveModeContext.Provider>
-        )}
+      <div className={styles.layoutRow}>
+        <div className={styles.container}>
+          {error && (
+            <div className={styles.message} data-testid={testIds.guideReader.error}>
+              {error}
+            </div>
+          )}
+          {!error && !content && (
+            <div className={styles.message} data-testid={testIds.guideReader.loading}>
+              Loading guide...
+            </div>
+          )}
+          {body && (
+            <InteractiveModeContext.Provider value={mode}>
+              {mode === 'controller' ? (
+                <ControllerChannelProvider pairing={controllerPairing}>
+                  <ControllerStatusBadge pairingCode={controllerPairing?.pairingCode} />
+                  {body}
+                </ControllerChannelProvider>
+              ) : (
+                body
+              )}
+            </InteractiveModeContext.Provider>
+          )}
+        </div>
+        <OutlineRail items={outlineItems} containerRef={contentRef} />
       </div>
     </div>,
     document.body

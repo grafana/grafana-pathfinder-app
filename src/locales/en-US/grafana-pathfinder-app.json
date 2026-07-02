@@ -90,5 +90,8 @@
       "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
       "toggleViewMode": "Toggle view mode"
     }
+  },
+  "guideReader": {
+    "outlineLabel": "Document outline"
   }
 }
