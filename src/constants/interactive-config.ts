@@ -346,10 +346,3 @@ export interface ActionMetadata {
 export type ActionType = (typeof ACTION_TYPES)[keyof typeof ACTION_TYPES];
 export type CommonRequirement = (typeof COMMON_REQUIREMENTS)[number];
 export type DataAttribute = (typeof DATA_ATTRIBUTES)[keyof typeof DATA_ATTRIBUTES];
-
-// Two-tab interactive controller feature flag.
-// Set to false to ship the feature dark — all three gates (controller overlay
-// entry, live-tab executor install, and the docs-panel UI affordance) check
-// this constant. Flip to true once the follow-up security/correctness items
-// are resolved (see epic #1133).
-export const TWOTAB_CONTROLLER_ENABLED = false;

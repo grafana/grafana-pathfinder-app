@@ -200,6 +200,7 @@ export const testIds = {
       guidedTimeout: 'config-interactive-guided-timeout',
       disableAutoCollapse: 'config-interactive-disable-auto-collapse',
       enableAiAutoHeal: 'config-interactive-enable-ai-auto-heal',
+      enableTwoTabController: 'config-interactive-enable-two-tab-controller',
       reset: 'config-interactive-reset-defaults',
       submit: 'config-interactive-submit',
     },
