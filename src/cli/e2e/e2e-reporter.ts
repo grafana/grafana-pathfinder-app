@@ -181,6 +181,8 @@ export interface E2ETestReport {
   abortMessage?: string;
   /** Packages skipped before execution (remote modes). */
   preRunSkipped?: PreRunSkip[];
+  /** Best-effort cleanup failures that did not replace the primary guide outcome. */
+  cleanupWarnings?: string[];
 }
 
 // ============================================
@@ -486,6 +488,8 @@ export interface MultiGuideReport {
   reports: E2ETestReport[];
   /** Packages skipped before execution (remote modes). */
   preRunSkipped?: PreRunSkip[];
+  /** Best-effort cleanup failures that did not replace the primary guide outcome. */
+  cleanupWarnings?: string[];
 }
 
 // ============================================

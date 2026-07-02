@@ -33,7 +33,10 @@ import type { LoadedGuide } from '../utils/file-loader';
 import type { PreflightOutcome } from './manifest-preflight';
 import type { SideEffectClassification } from './side-effects';
 
-function skipOnlyReport(preRunSkipped: MultiGuideReport['preRunSkipped']): MultiGuideReport {
+function skipOnlyReport(
+  preRunSkipped: MultiGuideReport['preRunSkipped'],
+  cleanupWarnings: string[] = []
+): MultiGuideReport {
   return {
     type: 'multi-guide',
     config: { timestamp: new Date().toISOString() },
@@ -57,6 +60,7 @@ function skipOnlyReport(preRunSkipped: MultiGuideReport['preRunSkipped']): Multi
     guides: [],
     reports: [],
     preRunSkipped,
+    cleanupWarnings: cleanupWarnings.length > 0 ? cleanupWarnings : undefined,
   };
 }
 
@@ -139,7 +143,7 @@ export function printRunConfiguration(valid: LoadedGuide[], config: RunConfigura
  * Print the run summary: aggregate guide/step counts for multi-guide runs, or a
  * compact pass/fail breakdown for a single guide.
  */
-export function printSummary(results: GuideRunResult[]): void {
+export function printSummary(results: GuideRunResult[], cleanupWarnings: string[] = []): void {
   const resultsWithData = results.filter((r) => r.resultsData).map((r) => r.resultsData!);
   const isMultiGuide = results.length > 1;
   const counts = countGuideStatuses(results);
@@ -189,6 +193,12 @@ export function printSummary(results: GuideRunResult[]): void {
     }
   }
 
+  if (cleanupWarnings.length > 0) {
+    console.log(`\n   Cleanup warnings: ${cleanupWarnings.length}`);
+    for (const warning of cleanupWarnings) {
+      console.log(`   ⚠ ${warning}`);
+    }
+  }
   console.log('\n' + '─'.repeat(68));
 }
 
@@ -197,7 +207,11 @@ export function printSummary(results: GuideRunResult[]): void {
  * report or a single detailed report. A failure to write is a warning, not an
  * error.
  */
-export function writeJsonReport(results: GuideRunResult[], outputPath: string | undefined): void {
+export function writeJsonReport(
+  results: GuideRunResult[],
+  outputPath: string | undefined,
+  cleanupWarnings: string[] = []
+): void {
   if (!outputPath) {
     return;
   }
@@ -208,7 +222,7 @@ export function writeJsonReport(results: GuideRunResult[], outputPath: string | 
 
   if (resultsWithData.length === 0 && preRunSkipped.length > 0) {
     try {
-      const report = skipOnlyReport(preRunSkipped);
+      const report = skipOnlyReport(preRunSkipped, cleanupWarnings);
       writeMultiGuideReport(report, outputPath);
       console.log(`\n📄 Multi-guide JSON report written to: ${outputPath}`);
       console.log(`   ${formatMultiGuideSummary(report)}`);
@@ -223,6 +237,9 @@ export function writeJsonReport(results: GuideRunResult[], outputPath: string | 
       if (preRunSkipped.length > 0) {
         report.preRunSkipped = preRunSkipped;
       }
+      if (cleanupWarnings.length > 0) {
+        report.cleanupWarnings = cleanupWarnings;
+      }
       writeMultiGuideReport(report, outputPath);
       console.log(`\n📄 Multi-guide JSON report written to: ${outputPath}`);
       console.log(`   ${formatMultiGuideSummary(report)}`);
@@ -234,6 +251,9 @@ export function writeJsonReport(results: GuideRunResult[], outputPath: string | 
       const report = generateReport(resultsWithData[0]!);
       if (preRunSkipped.length > 0) {
         report.preRunSkipped = preRunSkipped;
+      }
+      if (cleanupWarnings.length > 0) {
+        report.cleanupWarnings = cleanupWarnings;
       }
       writeReport(report, outputPath);
       console.log(`\n📄 JSON report written to: ${outputPath}`);
