@@ -7,9 +7,21 @@ jest.mock('./shared-cloud-stack-environment', () => ({
     sweepOrphans: jest.fn(async () => undefined),
   })),
 }));
+jest.mock('./cold-cloud-stack-environment', () => ({
+  ColdCloudStackEnvironment: jest.fn().mockImplementation(() => ({
+    provisionChain: jest.fn(async () => ({
+      targetUrl: 'https://isolated.grafana.net/',
+      token: 'isolated-token',
+      stackSlug: 'isolated',
+    })),
+    teardownChain: jest.fn(async () => ['cleanup warning']),
+  })),
+}));
 
 import { SharedCloudStackEnvironment } from './shared-cloud-stack-environment';
+import { ColdCloudStackEnvironment, type ColdCloudStackProvisioningConfig } from './cold-cloud-stack-environment';
 import {
+  chainNeedsCloudStack,
   cloudTargetsInChain,
   provisionCloudTargetsForChain,
   ProvisionedCloudTargets,
@@ -29,8 +41,16 @@ const cloudAuth: CloudAuthPolicy = {
     }
     return undefined;
   },
-  needsProvisioningFor: (targetUrl) => Boolean(targetUrl?.includes('grafana.')),
-  runnerAuthFor: () => ({}),
+  needsProvisioningFor(targetUrl) {
+    return Boolean(this.adminTokenFor(targetUrl));
+  },
+};
+
+const cloudStack: ColdCloudStackProvisioningConfig = {
+  accessPolicyTokenEnvVar: 'GRAFANA_CLOUD_ACCESS_POLICY_TOKEN',
+  accessPolicyToken: 'cloud-access-token',
+  region: 'prod-us-east-0',
+  slugPrefix: 'pfe2e',
 };
 
 describe('cloudTargetsInChain', () => {
@@ -65,15 +85,95 @@ describe('ProvisionedCloudTargets', () => {
     expect(provisioned.tokenFor('https://play.grafana.org/a')).toBe('play-token');
     expect(provisioned.tokenFor('https://other.grafana.net/')).toBeUndefined();
 
-    await provisioned.teardownAll();
-
+    await expect(provisioned.teardownAll()).resolves.toEqual([]);
     expect(learnEnv.teardownChain).toHaveBeenCalledTimes(1);
     expect(playEnv.teardownChain).toHaveBeenCalledTimes(1);
+  });
+
+  it('looks up isolated target URLs and tokens by guide id', async () => {
+    const env = { teardownChain: jest.fn(async () => ['warning']) };
+    const provisioned = new ProvisionedCloudTargets();
+
+    provisioned.addForGuides(['a', 'b'], {
+      env,
+      token: 'isolated-token',
+      targetUrl: 'https://isolated.grafana.net/',
+    });
+
+    expect(provisioned.targetUrlForGuide('a', 'https://learn.grafana.net/')).toBe('https://isolated.grafana.net/');
+    expect(provisioned.tokenForGuide('b', 'https://learn.grafana.net/')).toBe('isolated-token');
+    expect(provisioned.targetUrlForGuide('c', 'https://learn.grafana.net/')).toBe('https://learn.grafana.net/');
+
+    await expect(provisioned.teardownAll()).resolves.toEqual(['warning']);
+    expect(env.teardownChain).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('chainNeedsCloudStack', () => {
+  it('requires a cold stack for unsafe cloud guides when stack config is available', () => {
+    const packageMetaById = new Map<string, PackageMeta>([
+      [
+        'readonly',
+        {
+          packageId: 'readonly',
+          tier: 'cloud',
+          targetUrl: 'https://learn.grafana.net/',
+          sideEffects: { level: 'readonly', reasons: [] },
+        },
+      ],
+      [
+        'mutating',
+        {
+          packageId: 'mutating',
+          tier: 'cloud',
+          targetUrl: 'https://learn.grafana.net/',
+          sideEffects: { level: 'mutating', reasons: [] },
+        },
+      ],
+    ]);
+
+    expect(chainNeedsCloudStack({ chain: [{ id: 'readonly' }], packageMetaById, cloudAuth, cloudStack })).toBe(false);
+    expect(chainNeedsCloudStack({ chain: [{ id: 'mutating' }], packageMetaById, cloudAuth, cloudStack })).toBe(true);
+  });
+
+  it('uses a cold stack for cloud guides that lack shared-stack auth', () => {
+    const packageMetaById = new Map<string, PackageMeta>([
+      [
+        'readonly',
+        {
+          packageId: 'readonly',
+          tier: 'cloud',
+          targetUrl: 'https://other.grafana.net/',
+          sideEffects: { level: 'readonly', reasons: [] },
+        },
+      ],
+    ]);
+
+    expect(chainNeedsCloudStack({ chain: [{ id: 'readonly' }], packageMetaById, cloudAuth, cloudStack })).toBe(true);
+  });
+
+  it('does not require a cold stack when no stack config exists', () => {
+    const packageMetaById = new Map<string, PackageMeta>([
+      [
+        'mutating',
+        {
+          packageId: 'mutating',
+          tier: 'cloud',
+          targetUrl: 'https://learn.grafana.net/',
+          sideEffects: { level: 'mutating', reasons: [] },
+        },
+      ],
+    ]);
+
+    expect(
+      chainNeedsCloudStack({ chain: [{ id: 'mutating' }], packageMetaById, cloudAuth, cloudStack: undefined })
+    ).toBe(false);
   });
 });
 
 describe('provisionCloudTargetsForChain', () => {
   let logSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
     logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -87,6 +187,8 @@ describe('provisionCloudTargetsForChain', () => {
     const provisioned = await provisionCloudTargetsForChain({
       targetUrls: ['https://learn.grafana.net/', 'https://play.grafana.org/'],
       cloudAuth,
+      chain: [],
+      packageMetaById: new Map(),
       verbose: false,
     });
 
@@ -122,6 +224,8 @@ describe('provisionCloudTargetsForChain', () => {
       provisionCloudTargetsForChain({
         targetUrls: ['https://learn.grafana.net/', 'https://play.grafana.org/'],
         cloudAuth,
+        chain: [],
+        packageMetaById: new Map(),
         verbose: false,
       })
     ).rejects.toThrow('boom');
@@ -133,6 +237,49 @@ describe('provisionCloudTargetsForChain', () => {
     expect(second).toBeDefined();
     expect(first!.teardownChain).toHaveBeenCalledTimes(1);
     expect(second!.teardownChain).not.toHaveBeenCalled();
+  });
+
+  it('provisions one isolated stack for an unsafe cloud chain', async () => {
+    const packageMetaById = new Map<string, PackageMeta>([
+      [
+        'mutating',
+        {
+          packageId: 'mutating',
+          tier: 'cloud',
+          targetUrl: 'https://learn.grafana.net/',
+          sideEffects: { level: 'mutating', reasons: [] },
+        },
+      ],
+      [
+        'dependent',
+        {
+          packageId: 'dependent',
+          tier: 'cloud',
+          targetUrl: 'https://learn.grafana.net/',
+          sideEffects: { level: 'readonly', reasons: [] },
+        },
+      ],
+    ]);
+
+    const provisioned = await provisionCloudTargetsForChain({
+      targetUrls: ['https://learn.grafana.net/'],
+      cloudAuth,
+      chain: [{ id: 'mutating' }, { id: 'dependent' }],
+      packageMetaById,
+      cloudStack,
+      verbose: false,
+    });
+
+    expect(ColdCloudStackEnvironment).toHaveBeenCalledWith(cloudStack, false);
+    expect(SharedCloudStackEnvironment).not.toHaveBeenCalled();
+    expect(provisioned.targetUrlForGuide('mutating', 'https://learn.grafana.net/')).toBe(
+      'https://isolated.grafana.net/'
+    );
+    expect(provisioned.targetUrlForGuide('dependent', 'https://learn.grafana.net/')).toBe(
+      'https://isolated.grafana.net/'
+    );
+    expect(provisioned.tokenForGuide('mutating', 'https://learn.grafana.net/')).toBe('isolated-token');
+    await expect(provisioned.teardownAll()).resolves.toEqual(['cleanup warning']);
   });
 });
 

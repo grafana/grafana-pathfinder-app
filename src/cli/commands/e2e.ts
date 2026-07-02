@@ -18,7 +18,7 @@ import {
   bundledRepositoryPath,
   type LoadedGuide,
 } from '../utils/file-loader';
-import { planGuideExecution } from '../e2e/guide-chains';
+import { planGuideExecution, type ExecutionPlan } from '../e2e/guide-chains';
 import type { TestResultsData } from '../e2e/e2e-reporter';
 import { checkTier, loadManifestFromDir, runManifestPreflight, type CurrentTier } from '../e2e/manifest-preflight';
 import {
@@ -35,6 +35,7 @@ import {
   applyPackageMeta,
   buildPackageMetaMap,
   exitCodeFromResults,
+  provisioningFailureResults,
   resolveRunMode,
   skipToResult,
   type GuideRunResult,
@@ -55,6 +56,12 @@ import { randomUUID } from 'crypto';
 import { createCloudAuthPolicy, type CloudAuthPolicy } from '../e2e/cloud-auth';
 import { cloudTargetsInChain, provisionCloudTargetsForChain, sweepCloudTargets } from '../e2e/cloud-provisioning';
 import { unsafeCloudGuidesInChain, unsafeSharedStackMessage, unsafeSharedStackSkipResults } from '../e2e/cloud-routing';
+import {
+  ColdCloudStackCleanupRegistry,
+  createColdCloudStackProvisioningConfig,
+  type ColdCloudStackProvisioningConfig,
+} from '../e2e/cold-cloud-stack-environment';
+import { preflightTargetUrlsForPlan } from '../e2e/preflight-targets';
 
 /**
  * CLI options for the e2e command
@@ -83,6 +90,14 @@ interface E2ECommandOptions {
   cloudInstanceAdminToken: string[];
   /** Default cloud instance URL for cloud-tier guides without an `instance`. */
   cloudUrl: string;
+  /** Env var containing a Grafana Cloud Access Policy token for cold stack provisioning. */
+  cloudStackAccessPolicyToken?: string;
+  /** Grafana Cloud region slug for cold stack provisioning. */
+  cloudStackRegion?: string;
+  /** Slug prefix for cold-provisioned Grafana Cloud stacks. */
+  cloudStackSlugPrefix?: string;
+  /** Pathfinder plugin version to install on cold-provisioned stacks. */
+  cloudStackPluginVersion?: string;
 }
 
 function collectOption(value: string, previous: string[]): string[] {
@@ -117,6 +132,8 @@ interface RunInputs {
   packageMetaById: Map<string, PackageMeta>;
   /** Cloud credential policy for target resolution and runner auth (remote modes). */
   cloudAuth?: CloudAuthPolicy;
+  /** Cold isolated-stack provisioning config for unsafe cloud chains. */
+  cloudStack?: ColdCloudStackProvisioningConfig;
   /** Local package directory for manifest pre-flight, when applicable. */
   localPackageDir?: string;
 }
@@ -225,27 +242,53 @@ function resolveGuides(files: string[], options: E2ECommandOptions): LoadedGuide
   return guides;
 }
 
-/** The dependency-aware execution plan produced by planGuideExecution. */
-type ExecutionPlan = ReturnType<typeof planGuideExecution>;
-
 /** Outcome of running every planned chain: per-guide results plus exit signals. */
 interface ChainRunOutcome {
   results: GuideRunResult[];
   allPassed: boolean;
   hasAuthExpiry: boolean;
+  cleanupWarnings: string[];
 }
 
+const REPEATED_SIGNAL_FORCE_EXIT_GRACE_MS = 30_000;
+
 /**
- * Install exit/signal handlers that tear down the isolated --clean docker stack.
+ * Install exit/signal handlers that tear down owned isolated environments.
  * On SIGINT/SIGTERM, re-raise with the conventional 128+signal code.
  */
-function installTeardownHandlers(cleanEnv: CleanEnvironment): void {
+function installTeardownHandlers(cleanEnv: CleanEnvironment, cloudStackCleanup: ColdCloudStackCleanupRegistry): void {
+  let cleanupStartedAtMs: number | undefined;
   const exitHandler = () => cleanEnv.teardownIfOwned();
+  const exitCodeForSignal = (signal: NodeJS.Signals) => (signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 1);
   const signalHandler = async (signal: NodeJS.Signals) => {
-    cleanEnv.teardownIfOwned();
-    // Re-raise the signal with the conventional 128 + signal-number exit code
-    const code = signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 1;
-    process.exit(code);
+    const code = exitCodeForSignal(signal);
+    if (cleanupStartedAtMs !== undefined) {
+      const elapsedMs = Date.now() - cleanupStartedAtMs;
+      if (elapsedMs >= REPEATED_SIGNAL_FORCE_EXIT_GRACE_MS) {
+        console.warn('\n⚠ Force exiting before cleanup completed; Cloud stacks may require manual teardown.');
+        process.exit(code);
+        return;
+      }
+      const remainingSeconds = Math.ceil((REPEATED_SIGNAL_FORCE_EXIT_GRACE_MS - elapsedMs) / 1000);
+      console.warn(
+        `\n⚠ Cleanup is still running; ignoring repeated ${signal}. Press again in ${remainingSeconds}s to force exit, which may leave Cloud stacks running.`
+      );
+      return;
+    }
+    cleanupStartedAtMs = Date.now();
+    try {
+      const warnings = await cloudStackCleanup.teardownAll();
+      for (const warning of warnings) {
+        console.warn(`   ⚠ ${warning}`);
+      }
+    } catch (err) {
+      console.warn(
+        `   ⚠ Failed to tear down active Cloud stacks: ${err instanceof Error ? err.message : 'Unknown error'}`
+      );
+    } finally {
+      cleanEnv.teardownIfOwned();
+      process.exit(code);
+    }
   };
   process.on('exit', exitHandler);
   process.on('SIGINT', signalHandler);
@@ -399,38 +442,6 @@ async function maybeCleanStart(cleanEnv: CleanEnvironment, options: E2ECommandOp
   }
 }
 
-function idsSkippedForUnsafeSharedStack(plan: ExecutionPlan, packageMetaById: Map<string, PackageMeta>): Set<string> {
-  const ids = new Set<string>();
-  for (const chain of plan.chains) {
-    if (unsafeCloudGuidesInChain(chain, packageMetaById).length > 0) {
-      for (const planned of chain) {
-        ids.add(planned.id);
-      }
-    }
-  }
-  return ids;
-}
-
-/**
- * Distinct target URLs that will actually be exercised this run. Remote guides
- * carry their own resolved `targetUrl` (cloud guides differ per instance);
- * local runs fall back to the global Grafana URL. Used so reachability checks
- * hit the real targets instead of always probing the global URL.
- */
-function targetUrlsToCheck(inputs: RunInputs, globalUrl: string, idsToSkip: Set<string>): string[] {
-  const urls = new Set<string>();
-  for (const [id, meta] of inputs.packageMetaById) {
-    if (idsToSkip.has(id)) {
-      continue;
-    }
-    urls.add(meta.targetUrl ?? globalUrl);
-  }
-  if (inputs.packageMetaById.size === 0) {
-    urls.add(globalUrl);
-  }
-  return [...urls];
-}
-
 /**
  * Run CLI-level pre-flight checks: load the package manifest (when --package),
  * apply the tier check, verify each target's Grafana health, then run manifest
@@ -551,12 +562,15 @@ async function runChains(
   options: E2ECommandOptions,
   cleanEnv: CleanEnvironment,
   packageMetaById: Map<string, PackageMeta> = new Map(),
-  cloudAuth?: CloudAuthPolicy
+  cloudAuth?: CloudAuthPolicy,
+  cloudStack?: ColdCloudStackProvisioningConfig,
+  cloudStackCleanup?: ColdCloudStackCleanupRegistry
 ): Promise<ChainRunOutcome> {
   console.log('\n🎭 Running Playwright tests...\n');
 
   let allPassed = true;
   let hasAuthExpiry = false;
+  const cleanupWarnings: string[] = [];
   const results: GuideRunResult[] = [];
   for (const [chainIndex, chain] of plan.chains.entries()) {
     if (options.clean && chainIndex > 0) {
@@ -573,17 +587,30 @@ async function runChains(
     }
 
     const unsafeCloudGuides = unsafeCloudGuidesInChain(chain, packageMetaById);
-    if (unsafeCloudGuides.length > 0) {
+    if (unsafeCloudGuides.length > 0 && !cloudStack) {
       const message = unsafeSharedStackMessage(unsafeCloudGuides.map((planned) => planned.id));
       console.log(`\n⊘ Skipping cloud chain: ${message}`);
       results.push(...unsafeSharedStackSkipResults(chain, packageMetaById, message));
       continue;
     }
-    const provisionedTargets = await provisionCloudTargetsForChain({
-      targetUrls: cloudTargetsInChain(chain, packageMetaById, cloudAuth),
-      cloudAuth,
-      verbose: options.verbose,
-    });
+    let provisionedTargets: Awaited<ReturnType<typeof provisionCloudTargetsForChain>>;
+    try {
+      provisionedTargets = await provisionCloudTargetsForChain({
+        targetUrls: cloudTargetsInChain(chain, packageMetaById, cloudAuth),
+        cloudAuth,
+        chain,
+        packageMetaById,
+        cloudStack,
+        cloudStackCleanup,
+        verbose: options.verbose,
+      });
+    } catch (err) {
+      const message = `Cloud target provisioning failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      console.error(`\n❌ ${message}`);
+      results.push(...provisioningFailureResults(chain, packageMetaById, options.grafanaUrl, message));
+      allPassed = false;
+      continue;
+    }
     try {
       // IDs in this chain that failed or were skipped; their dependents skip.
       const blocked = new Set<string>();
@@ -596,12 +623,16 @@ async function runChains(
 📚 ${planned.guide.path}`);
           console.log(`   ⊘ Skipped: prerequisite "${blockingDep}" did not pass`);
           const skippedMeta = packageMetaById.get(planned.id);
+          const skippedTargetUrl = provisionedTargets.targetUrlForGuide(
+            planned.id,
+            skippedMeta?.targetUrl ?? options.grafanaUrl
+          );
           const prereqResultsData: TestResultsData = {
             guide: {
               id: planned.id,
               title: planned.id,
               path: planned.guide.path,
-              targetUrl: skippedMeta?.targetUrl ?? options.grafanaUrl,
+              targetUrl: skippedTargetUrl,
             },
             timestamp: new Date().toISOString(),
             results: [],
@@ -627,21 +658,17 @@ async function runChains(
         console.log(`
 📚 Testing: ${planned.guide.path}${suffix}`);
 
-        // Remote guides carry their own resolved targetUrl; local guides fall back
-        // to the global Grafana URL. Cloud auth policy owns credential selection.
         const meta = packageMetaById.get(planned.id);
         const isCloudTarget = meta?.tier === 'cloud';
-        const runnerAuth = isCloudTarget
-          ? cloudAuth?.runnerAuthFor(meta?.targetUrl, provisionedTargets.tokenFor(meta?.targetUrl))
-          : undefined;
+        const targetUrl = provisionedTargets.targetUrlForGuide(planned.id, meta?.targetUrl ?? options.grafanaUrl);
         const runGuideOptions: RunGuideOptions = {
-          targetUrl: meta?.targetUrl ?? options.grafanaUrl,
+          targetUrl,
           verbose: options.verbose,
           trace: options.trace,
           headed: options.headed,
           artifacts: options.artifacts,
           alwaysScreenshot: options.alwaysScreenshot,
-          token: runnerAuth?.token,
+          token: isCloudTarget ? provisionedTargets.tokenForGuide(planned.id, meta?.targetUrl) : undefined,
         };
 
         const result = await runPlaywrightTests(planned.guide, runGuideOptions);
@@ -683,11 +710,11 @@ async function runChains(
         }
       }
     } finally {
-      await provisionedTargets.teardownAll();
+      cleanupWarnings.push(...(await provisionedTargets.teardownAll()));
     }
   }
 
-  return { results, allPassed, hasAuthExpiry };
+  return { results, allPassed, hasAuthExpiry, cleanupWarnings };
 }
 
 /**
@@ -706,9 +733,9 @@ function exitFromResults(results: GuideRunResult[]): void {
  * exit per the results' statuses. Shared by the normal path and the
  * nothing-to-run path so both report identically.
  */
-function reportResults(results: GuideRunResult[], options: E2ECommandOptions): void {
-  printSummary(results);
-  writeJsonReport(results, options.output);
+function reportResults(results: GuideRunResult[], options: E2ECommandOptions, cleanupWarnings: string[] = []): void {
+  printSummary(results, cleanupWarnings);
+  writeJsonReport(results, options.output, cleanupWarnings);
   exitFromResults(results);
 }
 
@@ -746,13 +773,19 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
   const cloudAuth = createCloudAuthPolicy({
     cloudInstanceAdminTokenSpecs: options.cloudInstanceAdminToken,
   });
+  const cloudStack = createColdCloudStackProvisioningConfig({
+    accessPolicyTokenEnvVar: options.cloudStackAccessPolicyToken,
+    region: options.cloudStackRegion,
+    slugPrefix: options.cloudStackSlugPrefix,
+    pluginVersion: options.cloudStackPluginVersion,
+  });
   const remoteOptions: RemoteResolveOptions = {
     grafanaUrl: options.grafanaUrl,
     currentTier: options.tier,
     resolverUrl: options.resolverUrl,
     repoUrl: options.repoUrl,
     cloudUrl: options.cloudUrl,
-    cloudTargetCapabilities: cloudAuth.targets,
+    cloudTargetCapabilities: { ...cloudAuth.targets, isolatedStack: Boolean(cloudStack) },
   };
   const resolution =
     mode === 'remote-package'
@@ -780,6 +813,7 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     preRunSkipped: resolution.skipped.map(skipToResult),
     packageMetaById: buildPackageMetaMap(loadable),
     cloudAuth,
+    cloudStack,
   };
 }
 
@@ -835,12 +869,18 @@ export const e2eCommand = new Command('e2e')
     `Default cloud instance URL for cloud-tier guides without an instance (default ${DEFAULT_CLOUD_URL})`,
     DEFAULT_CLOUD_URL
   )
+  .option(
+    '--cloud-stack-access-policy-token <envVar>',
+    'Cloud Access Policy token env var for cold isolated Grafana Cloud stack provisioning'
+  )
+  .option('--cloud-stack-region <region>', 'Grafana Cloud region slug for cold isolated stack provisioning')
+  .option('--cloud-stack-slug-prefix <prefix>', 'Slug prefix for cold-provisioned Grafana Cloud stacks')
+  .option('--cloud-stack-plugin-version <version>', 'Pathfinder plugin version to install on cold-provisioned stacks')
   .action(async (files: string[], options: E2ECommandOptions) => {
     const cleanEnv = new CleanEnvironment(options.verbose);
+    const cloudStackCleanup = new ColdCloudStackCleanupRegistry();
 
-    if (options.clean) {
-      installTeardownHandlers(cleanEnv);
-    }
+    installTeardownHandlers(cleanEnv, cloudStackCleanup);
     if (options.clean && options.grafanaUrl === DEFAULT_GRAFANA_URL) {
       options.grafanaUrl = CLEAN_GRAFANA_URL;
     }
@@ -866,16 +906,29 @@ export const e2eCommand = new Command('e2e')
         cloudAuth: inputs.cloudAuth,
         verbose: options.verbose,
       });
-      const idsToSkip = idsSkippedForUnsafeSharedStack(plan, inputs.packageMetaById);
       await runPreflightChecks(
         options,
-        targetUrlsToCheck(inputs, options.grafanaUrl, idsToSkip),
+        preflightTargetUrlsForPlan({
+          plan,
+          packageMetaById: inputs.packageMetaById,
+          cloudAuth: inputs.cloudAuth,
+          cloudStack: inputs.cloudStack,
+          globalUrl: options.grafanaUrl,
+        }),
         inputs.localPackageDir
       );
 
-      const outcome = await runChains(plan, options, cleanEnv, inputs.packageMetaById, inputs.cloudAuth);
+      const outcome = await runChains(
+        plan,
+        options,
+        cleanEnv,
+        inputs.packageMetaById,
+        inputs.cloudAuth,
+        inputs.cloudStack,
+        cloudStackCleanup
+      );
 
-      reportResults([...inputs.preRunSkipped, ...outcome.results], options);
+      reportResults([...inputs.preRunSkipped, ...outcome.results], options, outcome.cleanupWarnings);
     } catch (error) {
       console.error('❌ Error:', error instanceof Error ? error.message : 'Unknown error');
       process.exit(ExitCode.CONFIGURATION_ERROR);

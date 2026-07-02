@@ -363,7 +363,10 @@ export class ColdCloudStackEnvironment {
 
     const warnings: string[] = [];
     try {
-      await this.runTerraform(['destroy', '-input=false', '-auto-approve', '-no-color'], 'destroy');
+      await this.runTerraform(
+        ['destroy', '-input=false', '-auto-approve', '-lock-timeout=60s', '-no-color'],
+        'destroy'
+      );
       if (this.verbose && this.currentStackSlug) {
         console.log(`   🧹 Destroyed Cloud stack ${this.currentStackSlug}`);
       }

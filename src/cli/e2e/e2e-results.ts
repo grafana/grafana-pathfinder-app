@@ -41,7 +41,13 @@ export interface PackageMeta {
  * skip half is derived from the resolver's `RemoteSkipReason` so the two
  * vocabularies cannot drift.
  */
-export type GuideStatus = 'passed' | 'failed' | 'auth_expired' | 'skipped_prereq' | RemoteSkipReason;
+export type GuideStatus =
+  | 'passed'
+  | 'failed'
+  | 'provisioning_failed'
+  | 'auth_expired'
+  | 'skipped_prereq'
+  | RemoteSkipReason;
 
 export interface GuideRunResult {
   guide: string;
@@ -60,7 +66,11 @@ export interface GuideRunResult {
 }
 
 /** Statuses that count as a test failure (non-zero exit). */
-export const FAILURE_STATUSES: ReadonlySet<GuideStatus> = new Set<GuideStatus>(['failed', 'validation_failed']);
+export const FAILURE_STATUSES: ReadonlySet<GuideStatus> = new Set<GuideStatus>([
+  'failed',
+  'provisioning_failed',
+  'validation_failed',
+]);
 
 /** Pre-run skips (the resolver's skip reasons) recorded in the JSON report; excludes skipped_prereq, which carries step data. */
 export const PRE_RUN_SKIP_STATUSES: ReadonlySet<GuideStatus> = new Set<GuideStatus>(REMOTE_SKIP_REASONS);
@@ -69,6 +79,7 @@ export const PRE_RUN_SKIP_STATUSES: ReadonlySet<GuideStatus> = new Set<GuideStat
 export const GUIDE_STATUS_LABELS: ReadonlyArray<readonly [GuideStatus, string]> = [
   ['passed', '✅ Passed'],
   ['failed', '❌ Failed'],
+  ['provisioning_failed', '❌ Provisioning failed'],
   ['validation_failed', '❌ Validation failed'],
   ['auth_expired', '🔐 Auth expired'],
   ['skipped_prereq', '⊘ Skipped (prerequisite failed)'],
@@ -86,6 +97,7 @@ export const GUIDE_STATUS_LABELS: ReadonlyArray<readonly [GuideStatus, string]> 
 export const GUIDE_STATUS_ICONS: Record<GuideStatus, string> = {
   passed: '✅',
   failed: '❌',
+  provisioning_failed: '❌',
   validation_failed: '❌',
   auth_expired: '🔐',
   skipped_prereq: '⊘',
@@ -174,6 +186,48 @@ export function applyPackageMeta(data: TestResultsData | undefined, meta: Packag
     sourceUrl: meta.sourceUrl,
     sideEffects: meta.sideEffects,
   };
+}
+
+interface PlannedGuideForResult {
+  id: string;
+  guide: { path: string };
+  autoIncluded: boolean;
+}
+
+export function provisioningFailureResults(
+  chain: PlannedGuideForResult[],
+  packageMetaById: Map<string, PackageMeta>,
+  fallbackTargetUrl: string,
+  message: string
+): GuideRunResult[] {
+  return chain.map((planned) => {
+    const meta = packageMetaById.get(planned.id);
+    const resultsData: TestResultsData = {
+      guide: {
+        id: planned.id,
+        title: planned.id,
+        path: planned.guide.path,
+        targetUrl: meta?.targetUrl ?? fallbackTargetUrl,
+      },
+      timestamp: new Date().toISOString(),
+      results: [],
+      aborted: true,
+      abortReason: 'PROVISIONING_FAILED',
+      abortMessage: message,
+    };
+    applyPackageMeta(resultsData, meta);
+    return {
+      guide: planned.guide.path,
+      id: planned.id,
+      status: 'provisioning_failed',
+      exitCode: ExitCode.TEST_FAILURE,
+      autoIncluded: planned.autoIncluded,
+      abortMessage: message,
+      tier: meta?.tier,
+      sideEffects: meta?.sideEffects,
+      resultsData,
+    };
+  });
 }
 
 /**

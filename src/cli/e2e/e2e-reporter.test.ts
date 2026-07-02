@@ -38,6 +38,17 @@ function skippedGuide(id: string, failedPrerequisite: string): TestResultsData {
   };
 }
 
+function provisioningFailedGuide(id: string): TestResultsData {
+  return {
+    guide: { id, title: id, path: `${id}/content.json`, targetUrl: 'https://learn.grafana.net/' },
+    timestamp: '2026-01-01T00:00:00.000Z',
+    results: [],
+    aborted: true,
+    abortReason: 'PROVISIONING_FAILED',
+    abortMessage: 'Cloud target provisioning failed: terraform apply failed',
+  };
+}
+
 describe('generateMultiGuideReport — dependency-skipped guides', () => {
   it('counts a skipped dependent without treating it as passed', () => {
     const report = generateMultiGuideReport([
@@ -60,5 +71,16 @@ describe('generateMultiGuideReport — dependency-skipped guides', () => {
     expect(report.summary.totalGuides).toBe(2);
     expect(report.summary.skippedGuides).toBe(0);
     expect(report.guides.every((g) => g.abortReason === undefined)).toBe(true);
+  });
+
+  it('counts provisioning failures as failed guides', () => {
+    const report = generateMultiGuideReport([ranGuide('a'), provisioningFailedGuide('cloud-guide')]);
+
+    expect(report.summary.totalGuides).toBe(2);
+    expect(report.summary.passedGuides).toBe(1);
+    expect(report.summary.failedGuides).toBe(1);
+
+    const failedResult = report.guides.find((g) => g.id === 'cloud-guide');
+    expect(failedResult).toMatchObject({ abortReason: 'PROVISIONING_FAILED', success: false });
   });
 });
