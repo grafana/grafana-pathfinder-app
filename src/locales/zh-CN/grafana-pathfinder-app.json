@@ -69,5 +69,8 @@
       "simplifiedView": "这是一个简化视图。你可以将其替换为 Grafana 的完整 HelpModal 组件。",
       "toggleViewMode": "切换视图模式"
     }
+  },
+  "guideReader": {
+    "outlineLabel": ""
   }
 }
