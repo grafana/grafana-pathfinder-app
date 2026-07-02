@@ -26,7 +26,7 @@ const SWEEP_GRACE_SECONDS = 300;
  * This is a requirement for guides that require the Admin role to succeed.
  */
 const SA_ROLE = 'Admin';
-const FETCH_TIMEOUT_MS = 15_000;
+export const CLOUD_STACK_FETCH_TIMEOUT_MS = 15_000;
 
 interface CreatedServiceAccount {
   id: number;
@@ -165,7 +165,7 @@ export class SharedCloudStackEnvironment {
         Accept: 'application/json',
       },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      signal: AbortSignal.timeout(CLOUD_STACK_FETCH_TIMEOUT_MS),
     });
     if (!response.ok) {
       throw new Error(`${method} ${path} failed: HTTP ${response.status} ${response.statusText}`);
