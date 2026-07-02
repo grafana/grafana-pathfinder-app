@@ -89,42 +89,9 @@ export function trySetMonacoModelValue(element: HTMLElement, value: string): boo
 }
 
 async function tryMonacoApi(container: HTMLElement, code: string): Promise<CodeBlockInsertResult> {
-  if (!window.monaco?.editor) {
-    return { success: false, error: 'Monaco API not available' };
-  }
-
-  // Find the Monaco editor element with data-uri
-  const monacoEl = container.querySelector('[data-uri]') as HTMLElement | null;
-  if (!monacoEl) {
-    return { success: false, error: 'Monaco editor element not found' };
-  }
-
-  const dataUri = monacoEl.getAttribute('data-uri');
-  if (!dataUri) {
-    return { success: false, error: 'Monaco data-uri not found' };
-  }
-
-  // Try to find the editor instance by URI
-  const editors = window.monaco.editor.getEditors();
-  for (const editor of editors) {
-    const model = editor.getModel();
-    if (model && model.uri.toString() === dataUri) {
-      editor.setValue(code);
-      editor.focus();
-      return { success: true };
-    }
-  }
-
-  // Try model-based approach
-  const models = window.monaco.editor.getModels();
-  for (const model of models) {
-    if (model.uri.toString() === dataUri) {
-      model.setValue(code);
-      return { success: true };
-    }
-  }
-
-  return { success: false, error: 'Monaco editor instance not found' };
+  return trySetMonacoModelValue(container, code)
+    ? { success: true }
+    : { success: false, error: 'Monaco editor instance not found' };
 }
 
 async function tryTextareaApproach(container: HTMLElement, code: string): Promise<CodeBlockInsertResult> {
