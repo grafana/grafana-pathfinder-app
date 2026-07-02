@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { ControllerChannelProvider, useControllerChannel, useControllerConnected } from './controller-channel';
 import { FakeCrossTabTransport, TEST_PAIRING } from '../test-utils/fake-cross-tab-transport';
+import { createPairingAcceptProof } from '../lib/pairing-manager';
 import type { CrossTabMessage } from '../types/cross-tab.types';
 
 function liveHeartbeat(): CrossTabMessage {
@@ -70,6 +71,11 @@ async function waitForPostedOfKind(transport: FakeCrossTabTransport, kind: strin
 
 async function pairWithLive(transport: FakeCrossTabTransport, liveId = 'live'): Promise<void> {
   const challenge = await waitForPostedOfKind(transport, 'pairing-challenge');
+  const acceptProof = await createPairingAcceptProof(TEST_PAIRING.pairingSecret, {
+    pairingId: TEST_PAIRING.pairingId,
+    sessionId: challenge.sessionId,
+    liveTabId: liveId,
+  });
   act(() =>
     transport.emit({
       source: 'pathfinder',
@@ -77,8 +83,11 @@ async function pairWithLive(transport: FakeCrossTabTransport, liveId = 'live'): 
       timestamp: 0,
       kind: 'pairing-accept',
       sessionId: challenge.sessionId,
+      pairingId: TEST_PAIRING.pairingId,
+      acceptProof,
     })
   );
+  await waitForPostedOfKind(transport, 'sidebar-handoff');
 }
 
 function signedFieldsFor(liveId: string) {
@@ -213,13 +222,52 @@ describe('ControllerChannelProvider', () => {
     );
 
     act(() =>
-      transport.emit({ source: 'pathfinder', senderId: 'live', timestamp: 0, kind: 'pairing-accept', sessionId: 'x' })
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live',
+        timestamp: 0,
+        kind: 'pairing-accept',
+        sessionId: 'x',
+        pairingId: TEST_PAIRING.pairingId,
+        acceptProof: 'ignored-already-paired',
+      })
     );
     act(() => transport.emit(liveHeartbeat()));
 
     expect(
       transport.postedMessages.filter((m) => (m as any)?.kind === 'sidebar-handoff' && (m as any)?.action === 'close')
     ).toHaveLength(1);
+  });
+
+  it('ignores a forged pairing-accept and still pairs with the genuine live tab', async () => {
+    const transport = new FakeCrossTabTransport();
+    render(
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+        <Probe />
+      </ControllerChannelProvider>
+    );
+
+    const challenge = await waitForPostedOfKind(transport, 'pairing-challenge');
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'attacker',
+        timestamp: 0,
+        kind: 'pairing-accept',
+        sessionId: challenge.sessionId,
+        pairingId: TEST_PAIRING.pairingId,
+        acceptProof: 'forged',
+      })
+    );
+
+    await pairWithLive(transport, 'live');
+
+    fireEvent.click(screen.getByText('post'));
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ ...signedFieldsFor('live'), kind: 'step-command' })
+      )
+    );
   });
 
   it('drops heartbeat-only pairing attempts', () => {

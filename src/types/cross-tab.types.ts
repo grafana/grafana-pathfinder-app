@@ -77,6 +77,8 @@ export interface PairingChallengeMessage extends CrossTabEnvelope {
 export interface PairingAcceptMessage extends CrossTabEnvelope {
   kind: 'pairing-accept';
   sessionId: string;
+  pairingId: string;
+  acceptProof: string;
 }
 
 export interface HeartbeatMessage extends CrossTabEnvelope {
@@ -262,6 +264,12 @@ function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === 'string';
 }
 
+const MAX_PAIRING_FIELD_LENGTH = 512;
+
+function isBoundedString(value: unknown, maxLength: number): boolean {
+  return typeof value === 'string' && value.length <= maxLength;
+}
+
 // check-requirements / fix-requirement are SIDE-EFFECTING on the live tab —
 // the executor runs checkRequirements (DOM/URL probes) and dispatchFix
 // (navigation / DOM mutation) against the authenticated document. They are the
@@ -345,15 +353,19 @@ function isValidStepProgress(message: Record<string, unknown>): boolean {
 
 function isValidPairingChallenge(message: Record<string, unknown>): boolean {
   return (
-    typeof message.sessionId === 'string' &&
-    typeof message.publicKeyB64 === 'string' &&
-    typeof message.pairingId === 'string' &&
-    typeof message.pairingProof === 'string'
+    isBoundedString(message.sessionId, MAX_PAIRING_FIELD_LENGTH) &&
+    isBoundedString(message.publicKeyB64, MAX_PAIRING_FIELD_LENGTH) &&
+    isBoundedString(message.pairingId, MAX_PAIRING_FIELD_LENGTH) &&
+    isBoundedString(message.pairingProof, MAX_PAIRING_FIELD_LENGTH)
   );
 }
 
 function isValidPairingAccept(message: Record<string, unknown>): boolean {
-  return typeof message.sessionId === 'string';
+  return (
+    isBoundedString(message.sessionId, MAX_PAIRING_FIELD_LENGTH) &&
+    isBoundedString(message.pairingId, MAX_PAIRING_FIELD_LENGTH) &&
+    isBoundedString(message.acceptProof, MAX_PAIRING_FIELD_LENGTH)
+  );
 }
 
 // Per-kind validators — the single source of truth shared by the transport

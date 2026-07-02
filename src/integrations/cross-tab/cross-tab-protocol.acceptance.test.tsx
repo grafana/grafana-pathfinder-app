@@ -510,6 +510,29 @@ describe('cross-tab pairing protocol acceptance', () => {
       acceptSession({ ...b, pairingProof: proofB }, true);
       expect(getAcceptedSession()).toBeNull();
     });
+
+    it('ignores a verbatim challenge replay under a different senderId and stays acceptable', async () => {
+      const launch = createControllerPairingLaunch();
+      const valid: PendingChallenge = {
+        sessionId: 'session-1',
+        publicKeyB64: 'pk-1',
+        senderTabId: 'ctrl-1',
+        pairingId: launch.pairingId,
+      };
+      const proof = await createPairingChallengeProof(launch.pairingSecret, valid);
+      setOwnLiveTabId(LIVE_TAB_ID);
+
+      const seen: Array<PendingChallenge | null> = [];
+      const unsub = onPendingChallenge((c) => seen.push(c));
+      await setPendingChallenge({ ...valid, pairingProof: proof });
+      await setPendingChallenge({ ...valid, senderTabId: 'attacker', pairingProof: proof });
+      unsub();
+
+      expect(seen).toEqual([expect.objectContaining({ sessionId: 'session-1' })]);
+
+      acceptSession({ ...valid, pairingProof: proof }, true);
+      expect(getAcceptedSession()).toMatchObject({ sessionId: 'session-1', liveTabId: LIVE_TAB_ID });
+    });
   });
 
   // ========================================================================
@@ -685,6 +708,12 @@ describe('cross-tab pairing protocol acceptance', () => {
     it('rejects a future-dated sigTs beyond the allowed skew', async () => {
       const ctrl = await acceptControllerInManager();
       const signed = await sign(ctrl.privateKey, COMMAND_FAMILIES[0]!.body, { sigTs: Date.now() + 60_000 });
+      expect(await verifySignedMessage(signed, LIVE_TAB_ID)).toBe(false);
+    });
+
+    it('rejects a future-dated sigTs within the stale window but past the tightened skew', async () => {
+      const ctrl = await acceptControllerInManager();
+      const signed = await sign(ctrl.privateKey, COMMAND_FAMILIES[0]!.body, { sigTs: Date.now() + 5_000 });
       expect(await verifySignedMessage(signed, LIVE_TAB_ID)).toBe(false);
     });
   });

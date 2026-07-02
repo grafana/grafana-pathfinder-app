@@ -128,12 +128,19 @@ export function installLiveTabExecutor(
 
   // When the user accepts pairing, post pairing-accept so the controller can
   // bind its liveTabId and start signing commands.
-  const unsubscribeAccepted = authGate.onSessionAccepted((liveTabId) => {
-    const accepted = pairingManager.getAcceptedSession();
-    if (accepted) {
-      transport.post({ kind: 'pairing-accept', sessionId: accepted.sessionId });
-    }
-    void liveTabId;
+  const unsubscribeAccepted = authGate.onSessionAccepted(() => {
+    void (async () => {
+      const accept = await pairingManager.createPairingAcceptForSession();
+      const accepted = pairingManager.getAcceptedSession();
+      if (accepted && accept) {
+        transport.post({
+          kind: 'pairing-accept',
+          sessionId: accepted.sessionId,
+          pairingId: accept.pairingId,
+          acceptProof: accept.acceptProof,
+        });
+      }
+    })();
   });
 
   // Teardown flag: a replay in flight (or queued) must not touch the DOM after

@@ -81,9 +81,16 @@ DOM sink and is **not** unconditionally safe to install — see the trust model.
 
 ## Entry gate and mount policy
 
-Both the controller overlay (`?controller=1` path) and the live-tab executor install are gated on `pathfinderEnabled` (the `pathfinder.enabled` kill-switch) — the same policy that controls whether the main Pathfinder sidebar mounts. Because the executor drives the user's authenticated Grafana DOM, it must follow the same mount gate as the rest of the plugin.
+Both the controller overlay (`?controller=1` path) and the live-tab executor install are gated on two conditions: the `enableTwoTabController` admin setting (plugin config → Interactive features, default **off**), and `pathfinderEnabled` (the `pathfinder.enabled` kill-switch) — the same policy that controls whether the main Pathfinder sidebar mounts. The admin setting ships the feature dark until an instance opts in; the kill-switch keeps it aligned with the rest of the plugin. Because the executor drives the user's authenticated Grafana DOM, it must follow the same mount gate as the rest of the plugin.
 
 ## Security / trust model
+
+> **Reviewing a change in this subsystem?** The `cross-tab-controller` concern in
+> [`docs/design/CONCERNS.md`](../design/CONCERNS.md) is the canonical review checklist
+> for these files. It fires on any single touch of the cross-tab files and enumerates
+> the trust invariants below — signed commands, gesture-to-accept pairing, the per-kind
+> validation gate, and the `enableTwoTabController` re-enable one-way door — that a
+> reviewer must confirm before merge.
 
 `BroadcastChannel` is shared by every script running on the same origin, so a
 message on `pathfinder-cross-tab` is **not** proof it came from a Pathfinder
@@ -101,7 +108,11 @@ drive that Grafana. The controller→live command path is therefore
   an HMAC over the canonical challenge `{pairingId, publicKeyB64, sessionId}`.
   The live tab accepts a challenge only when it matches a registered, unexpired
   launch — a wrong secret, a mutated `sessionId`/`publicKeyB64`, or an unknown
-  `pairingId` is dropped (`pairing-manager.ts`).
+  `pairingId` is dropped (`pairing-manager.ts`). The reverse `pairing-accept`
+  carries an HMAC over `{pairingId, sessionId, liveTabId}` keyed by the same
+  launch secret, so the controller binds its pairing slot only to an accept it
+  can attribute to the launched tab — a forged accept (`sessionId` is readable
+  off the wire) can't take the slot.
 - **Per-session keypair.** The controller generates a **non-extractable** ECDSA
   P-256 keypair per session; only the public key crosses the wire
   (`cross-tab-crypto.ts`). Authority to drive the live tab _is_ possession of
@@ -116,8 +127,9 @@ drive that Grafana. The controller→live command path is therefore
   `check-requirements`, `fix-requirement`, `sidebar-handoff` — is ECDSA-signed
   and bound to `sessionId`, `liveTabId`, the command body, a fresh `sigNonce`,
   and a `sigTs`. The executor's auth gate (`verifySignedMessage`) checks the
-  accepted session, the `sessionId`/`liveTabId` match, a ±30s timestamp window,
-  the signature against the accepted public key, and a session-wide
+  accepted session, the `sessionId`/`liveTabId` match, the timestamp window (up
+  to 30s old, at most 1s future-dated since both tabs share a clock), the
+  signature against the accepted public key, and a session-wide
   `(sessionId:sigNonce)` replay ledger before any action runs.
 
 Defense in depth on top of authentication:
@@ -128,8 +140,9 @@ Defense in depth on top of authentication:
   set — at the transport receive gate _and_ again at the executor sink. Malformed
   or unknown-kind messages are dropped before the auth gate is even consulted.
 - **Install/entry gating.** The executor is installed, and the controller
-  overlay mounted, only when `pathfinderEnabled` is true — a disabled plugin
-  exposes neither the sink nor the driver.
+  overlay mounted, only when the `enableTwoTabController` admin setting is on
+  _and_ `pathfinderEnabled` is true — a disabled plugin, or an instance that
+  hasn't opted in, exposes neither the sink nor the driver.
 - **Same-build / same-origin / one-session assumption.** Controller and live
   tabs are the same plugin build in the same browser profile and session; there
   is no protocol-version negotiation and cross-version compatibility is not a
@@ -162,8 +175,15 @@ window plus the replay ledger kill any captured in-flight message.
 **Out of scope: same-origin code execution.** XSS or a malicious script running
 _inside_ the controller or live tab is out of scope — it already holds the
 session (and, in the controller, the signing key), so the cross-tab boundary is
-not the relevant control. Non-extractable keys and per-kind validation are
-hardening, not a defense against an already-compromised origin.
+not the relevant control. This includes capturing the launch secret: it reaches
+the controller through a `window.open` URL fragment, so a same-page script
+(panel/datasource XSS) or an extension content script with page access can read
+it and forge a valid challenge or accept proof. The authenticated pairing path
+therefore defends specifically against a **separate same-origin tab that only
+observes the channel** — it can post forged messages but cannot read the secret,
+so it can neither pair as the controller nor claim the live tab's pairing slot.
+Non-extractable keys and per-kind validation are hardening, not a defense
+against an already-compromised origin.
 
 ## Tab pairing
 
