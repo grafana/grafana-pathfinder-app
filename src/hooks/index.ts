@@ -6,3 +6,4 @@ export {
 } from './useAutoLaunchTutorial';
 export { useStepProgressFromEvents } from './useStepProgressFromEvents';
 export { usePersistedBoolean, usePersistedLocalState, usePersistedString } from './usePersistedLocalState';
+export { useDocumentOutline, type OutlineItem } from './useDocumentOutline';
