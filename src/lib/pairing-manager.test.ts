@@ -11,6 +11,7 @@
 import {
   acceptSession,
   createPairingAcceptForSession,
+  createPairingAcceptProof,
   createPairingChallengeProof,
   getAcceptedSession,
   registerExpectedPairingLaunch,
@@ -164,5 +165,22 @@ describe('pairing-manager launch TTL race (smoke)', () => {
         accept!.acceptProof
       )
     ).toBe(true);
+  });
+
+  it('rejects a challenge proof presented as an accept proof (cross-protocol domain separation)', async () => {
+    const launch = pairingLaunch();
+    const challenge = pendingChallenge({ pairingId: launch.pairingId });
+    const acceptBinding = { pairingId: launch.pairingId, sessionId: challenge.sessionId, liveTabId: 'live-1' };
+
+    // Challenge proof binds {pairingId, publicKeyB64, sessionId}; accept binds
+    // {pairingId, sessionId, liveTabId}. Same secret + shared pairingId/sessionId,
+    // but the distinct field sets must keep the two proofs non-interchangeable.
+    const challengeProof = await createPairingChallengeProof(launch.pairingSecret, challenge);
+    expect(await verifyPairingAcceptProof(launch.pairingSecret, acceptBinding, challengeProof)).toBe(false);
+
+    // Positive control: a genuine accept proof over the same binding still validates,
+    // so the rejection above is domain separation, not a blanket failure.
+    const acceptProof = await createPairingAcceptProof(launch.pairingSecret, acceptBinding);
+    expect(await verifyPairingAcceptProof(launch.pairingSecret, acceptBinding, acceptProof)).toBe(true);
   });
 });

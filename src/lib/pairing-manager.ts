@@ -166,6 +166,10 @@ let expectedLaunches = new Map<string, ControllerPairingLaunch & { expiresAt: nu
 const challengeListeners = new Set<(challenge: PendingChallenge | null) => void>();
 const acceptedListeners = new Set<(liveTabId: string) => void>();
 
+// The rejected-ledger key is scoped per originating tab, so it includes
+// senderTabId; sameChallenge deliberately omits it — challenge identity is the
+// crypto triple (sessionId/publicKeyB64/pairingId), not the sender. The
+// divergence is intentional; don't align them.
 function challengeKey(challenge: PendingChallenge): string {
   return `${challenge.senderTabId}:${challenge.sessionId}`;
 }
