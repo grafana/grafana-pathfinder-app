@@ -14,7 +14,7 @@ import { InteractiveModeContext, type InteractiveMode } from '../../global-state
 import { ControllerChannelProvider, useControllerConnected } from '../../global-state/controller-channel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { testIds } from '../../constants/testIds';
-import { useDocumentOutline } from '../../hooks';
+import { useDocumentOutline, useActiveOutlineItem } from '../../hooks';
 import type { RawContent } from '../../types/content.types';
 import type { ControllerPairingLaunch } from '../../lib/pairing-manager';
 import { getGuideReaderStyles } from './guide-reader.styles';
@@ -109,6 +109,7 @@ function GuideReaderInner({
   const [contentReady, setContentReady] = useState(false);
   const closeTimerRef = useRef<number | undefined>(undefined);
   const outlineItems = useDocumentOutline(contentRef, content?.url ?? null, contentReady);
+  const { activeId, notifyJump } = useActiveOutlineItem(outlineItems, contentRef, backdropRef);
 
   // Reset during render (not in an effect) when `doc` changes, so a new guide never
   // briefly shows the outline extracted from the previous one.
@@ -235,7 +236,7 @@ function GuideReaderInner({
             </InteractiveModeContext.Provider>
           )}
         </div>
-        <OutlineRail items={outlineItems} containerRef={contentRef} />
+        <OutlineRail items={outlineItems} containerRef={contentRef} activeId={activeId} onJump={notifyJump} />
       </div>
     </div>,
     document.body

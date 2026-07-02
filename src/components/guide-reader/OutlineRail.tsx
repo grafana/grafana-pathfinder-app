@@ -31,12 +31,29 @@ function levelClassName(styles: GuideReaderStyles, level: number): string {
   return styles.outlineItemLevel2;
 }
 
+function handleListKeyDown(event: React.KeyboardEvent<HTMLUListElement>): void {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+    return;
+  }
+  const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button'));
+  const currentIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
+  if (currentIndex === -1) {
+    return;
+  }
+  event.preventDefault();
+  const nextIndex =
+    event.key === 'ArrowDown' ? Math.min(currentIndex + 1, buttons.length - 1) : Math.max(currentIndex - 1, 0);
+  buttons[nextIndex]?.focus();
+}
+
 interface OutlineRailProps {
   items: OutlineItem[];
   containerRef: React.RefObject<HTMLDivElement>;
+  activeId?: string | null;
+  onJump?: (id: string) => void;
 }
 
-export function OutlineRail({ items, containerRef }: OutlineRailProps) {
+export function OutlineRail({ items, containerRef, activeId, onJump }: OutlineRailProps) {
   const styles = useStyles2(getGuideReaderStyles);
 
   if (items.length === 0) {
@@ -49,23 +66,32 @@ export function OutlineRail({ items, containerRef }: OutlineRailProps) {
       aria-label={t('guideReader.outlineLabel', 'Document outline')}
       data-testid={testIds.guideReader.outline}
     >
-      <ul className={styles.outlineList}>
-        {items.map((item) => (
-          <li key={item.id}>
-            <button
-              type="button"
-              className={cx(styles.outlineItem, levelClassName(styles, item.level))}
-              onClick={() => {
-                if (containerRef.current) {
-                  jumpToHeading(containerRef.current, item.id);
-                }
-              }}
-              data-testid={testIds.guideReader.outlineItem(item.id)}
-            >
-              {item.text}
-            </button>
-          </li>
-        ))}
+      <ul className={styles.outlineList} onKeyDown={handleListKeyDown}>
+        {items.map((item) => {
+          const isActive = item.id === activeId;
+          return (
+            <li key={item.id}>
+              <button
+                type="button"
+                className={cx(
+                  styles.outlineItem,
+                  levelClassName(styles, item.level),
+                  isActive && styles.outlineItemActive
+                )}
+                aria-current={isActive ? 'true' : undefined}
+                onClick={() => {
+                  onJump?.(item.id);
+                  if (containerRef.current) {
+                    jumpToHeading(containerRef.current, item.id);
+                  }
+                }}
+                data-testid={testIds.guideReader.outlineItem(item.id)}
+              >
+                {item.text}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );
