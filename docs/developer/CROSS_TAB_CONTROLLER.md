@@ -81,9 +81,16 @@ DOM sink and is **not** unconditionally safe to install — see the trust model.
 
 ## Entry gate and mount policy
 
-Both the controller overlay (`?controller=1` path) and the live-tab executor install are gated on `pathfinderEnabled` (the `pathfinder.enabled` kill-switch) — the same policy that controls whether the main Pathfinder sidebar mounts. Because the executor drives the user's authenticated Grafana DOM, it must follow the same mount gate as the rest of the plugin.
+Both the controller overlay (`?controller=1` path) and the live-tab executor install are gated on two conditions: the `enableTwoTabController` admin setting (plugin config → Interactive features, default **off**), and `pathfinderEnabled` (the `pathfinder.enabled` kill-switch) — the same policy that controls whether the main Pathfinder sidebar mounts. The admin setting ships the feature dark until an instance opts in; the kill-switch keeps it aligned with the rest of the plugin. Because the executor drives the user's authenticated Grafana DOM, it must follow the same mount gate as the rest of the plugin.
 
 ## Security / trust model
+
+> **Reviewing a change in this subsystem?** The `cross-tab-controller` concern in
+> [`docs/design/CONCERNS.md`](../design/CONCERNS.md) is the canonical review checklist
+> for these files. It fires on any single touch of the cross-tab files and enumerates
+> the trust invariants below — signed commands, gesture-to-accept pairing, the per-kind
+> validation gate, and the `enableTwoTabController` re-enable one-way door — that a
+> reviewer must confirm before merge.
 
 `BroadcastChannel` is shared by every script running on the same origin, so a
 message on `pathfinder-cross-tab` is **not** proof it came from a Pathfinder
@@ -133,8 +140,9 @@ Defense in depth on top of authentication:
   set — at the transport receive gate _and_ again at the executor sink. Malformed
   or unknown-kind messages are dropped before the auth gate is even consulted.
 - **Install/entry gating.** The executor is installed, and the controller
-  overlay mounted, only when `pathfinderEnabled` is true — a disabled plugin
-  exposes neither the sink nor the driver.
+  overlay mounted, only when the `enableTwoTabController` admin setting is on
+  _and_ `pathfinderEnabled` is true — a disabled plugin, or an instance that
+  hasn't opted in, exposes neither the sink nor the driver.
 - **Same-build / same-origin / one-session assumption.** Controller and live
   tabs are the same plugin build in the same browser profile and session; there
   is no protocol-version negotiation and cross-version compatibility is not a
