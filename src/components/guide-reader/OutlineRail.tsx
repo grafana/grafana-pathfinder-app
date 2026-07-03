@@ -1,7 +1,6 @@
 import React from 'react';
 import { cx } from '@emotion/css';
 import { useStyles2 } from '@grafana/ui';
-import { t } from '@grafana/i18n';
 
 import { testIds } from '../../constants/testIds';
 import type { OutlineItem } from '../../hooks';
@@ -61,11 +60,7 @@ export function OutlineRail({ items, containerRef, activeId, onJump }: OutlineRa
   }
 
   return (
-    <nav
-      className={styles.outlineRail}
-      aria-label={t('guideReader.outlineLabel', 'Document outline')}
-      data-testid={testIds.guideReader.outline}
-    >
+    <nav className={styles.outlineRail} aria-label="Document outline" data-testid={testIds.guideReader.outline}>
       <ul className={styles.outlineList} onKeyDown={handleListKeyDown}>
         {items.map((item) => {
           const isActive = item.id === activeId;

@@ -77,8 +77,5 @@
       "simplifiedView": "Ceci est une vue simplifiée. Vous pouvez la remplacer par le composant HelpModal complet de Grafana.",
       "toggleViewMode": "Basculer le mode d'affichage"
     }
-  },
-  "guideReader": {
-    "outlineLabel": ""
   }
 }

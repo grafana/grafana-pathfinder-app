@@ -73,8 +73,5 @@
       "simplifiedView": "Detta är en förenklad vy. Du kan ersätta den med Grafanas fullständiga HelpModal-komponent.",
       "toggleViewMode": "Växla visningsläge"
     }
-  },
-  "guideReader": {
-    "outlineLabel": ""
   }
 }
