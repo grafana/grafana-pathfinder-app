@@ -39,6 +39,7 @@ jest.mock('@grafana/i18n', () => ({
 // Mock analytics
 jest.mock('../../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
+  getContentTypeForAnalytics: jest.fn((_url: string | undefined | null, fallback = 'docs') => fallback),
   UserInteraction: {
     GeneralPluginFeedbackButton: 'general_plugin_feedback_button',
     DocsPanelInteraction: 'docs_panel_interaction',
@@ -56,6 +57,20 @@ const {
   __mockPush: mockPush,
   __mockConfig: mockConfig,
 } = jest.requireMock('@grafana/runtime');
+
+function makeTab(overrides: Record<string, unknown> = {}): any {
+  return {
+    id: 'tab-1',
+    title: 'Tab',
+    baseUrl: 'https://example.com/',
+    currentUrl: 'https://example.com/page',
+    content: { url: 'https://example.com/page', type: 'docs', metadata: {}, content: '' },
+    isLoading: false,
+    error: null,
+    type: 'docs',
+    ...overrides,
+  };
+}
 
 describe('TabBarActions', () => {
   beforeEach(() => {
@@ -202,6 +217,72 @@ describe('TabBarActions', () => {
       fireEvent.click(settingsItem);
 
       expect(mockPush).toHaveBeenCalledWith('/plugins/grafana-pathfinder-app?page=configuration');
+    });
+  });
+
+  describe('Refresh (dev) menu item', () => {
+    const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+
+    it('is not rendered when isDevMode is false', () => {
+      render(<TabBarActions activeTab={makeTab()} isDevMode={false} onReloadActiveTab={jest.fn()} />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: /refresh \(dev\)/i })).not.toBeInTheDocument();
+    });
+
+    it('is not rendered when there is no active content tab', () => {
+      render(<TabBarActions activeTab={null} isDevMode onReloadActiveTab={jest.fn()} />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: /refresh \(dev\)/i })).not.toBeInTheDocument();
+    });
+
+    it('is not rendered for a permanent (non-content) tab', () => {
+      render(<TabBarActions activeTab={makeTab({ id: 'recommendations' })} isDevMode onReloadActiveTab={jest.fn()} />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: /refresh \(dev\)/i })).not.toBeInTheDocument();
+    });
+
+    it('is rendered in dev mode for a content tab and reloads it when clicked', () => {
+      const onReloadActiveTab = jest.fn();
+      const tab = makeTab();
+      render(<TabBarActions activeTab={tab} isDevMode onReloadActiveTab={onReloadActiveTab} />);
+      openMenu();
+      const item = screen.getByRole('menuitem', { name: /refresh \(dev\)/i });
+      fireEvent.click(item);
+      expect(onReloadActiveTab).toHaveBeenCalledWith(tab);
+    });
+  });
+
+  describe('feedback analytics', () => {
+    it('enriches the payload with content context for a content tab', () => {
+      const { reportAppInteraction } = require('../../../lib/analytics');
+      render(<TabBarActions activeTab={makeTab({ type: 'interactive' })} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Give feedback' }));
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        'general_plugin_feedback_button',
+        expect.objectContaining({
+          interaction_location: 'header_menu_feedback',
+          panel_type: 'docs_panel',
+          content_url: 'https://example.com/page',
+          content_type: 'interactive',
+        })
+      );
+    });
+
+    it('stays generic when there is no active content tab', () => {
+      const { reportAppInteraction } = require('../../../lib/analytics');
+      render(<TabBarActions activeTab={null} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Give feedback' }));
+
+      const payload = reportAppInteraction.mock.calls[0][1];
+      expect(payload).toEqual({
+        interaction_location: 'header_menu_feedback',
+        panel_type: 'docs_panel',
+      });
     });
   });
 });

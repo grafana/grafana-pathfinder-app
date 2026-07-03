@@ -29,6 +29,7 @@ export interface DocsPanelTabBarProps {
   styles: DocsPanelStyles;
   tabs: LearningJourneyTab[];
   activeTabId: string;
+  activeTab: LearningJourneyTab | null;
   visibleTabs: LearningJourneyTab[];
   overflowGuideTabs: LearningJourneyTab[];
   isEditorUser: boolean;
@@ -42,11 +43,13 @@ export interface DocsPanelTabBarProps {
   dropdownOpenTimeRef: React.MutableRefObject<number>;
   onSetActiveTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
+  reloadActiveTab: (tab: LearningJourneyTab) => void;
 }
 
 export function DocsPanelTabBar({
   styles,
   activeTabId,
+  activeTab,
   visibleTabs,
   overflowGuideTabs,
   isEditorUser,
@@ -60,6 +63,7 @@ export function DocsPanelTabBar({
   dropdownOpenTimeRef,
   onSetActiveTab,
   onCloseTab,
+  reloadActiveTab,
 }: DocsPanelTabBarProps): React.ReactElement {
   return (
     <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
@@ -251,7 +255,12 @@ export function DocsPanelTabBar({
       )}
 
       {/* Menu and close actions */}
-      <TabBarActions className={styles.tabBarActions} />
+      <TabBarActions
+        className={styles.tabBarActions}
+        activeTab={activeTab}
+        isDevMode={isDevMode}
+        onReloadActiveTab={reloadActiveTab}
+      />
     </div>
   );
 }

@@ -15,11 +15,6 @@ export {
   type LearningJourneyMilestoneToolbarProps,
   type MilestoneToolbarSurface,
 } from './LearningJourneyMilestoneToolbar';
-export {
-  DocsPanelHeaderMenu,
-  type DocsPanelHeaderMenuProps,
-  type FeedbackInteractionLocation,
-} from './DocsPanelHeaderMenu';
 export { LiveSessionTopBar, type LiveSessionTopBarProps } from './LiveSessionTopBar';
 export { DocsPanelTabBar, type DocsPanelTabBarProps } from './DocsPanelTabBar';
 export { LiveSessionModals, type LiveSessionModalsProps } from './LiveSessionModals';

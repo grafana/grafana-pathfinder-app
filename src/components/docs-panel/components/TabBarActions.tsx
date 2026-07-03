@@ -8,28 +8,49 @@ import React, { useState, useEffect } from 'react';
 import { IconButton, Dropdown, Menu, Tooltip } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
+import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../../lib/analytics';
 import { PLUGIN_BASE_URL } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
 import { clearExtensionSidebarDocked } from '../../../lib/storage/extension-sidebar';
+import { PERMANENT_TAB_IDS } from '../utils';
+import type { LearningJourneyTab } from '../../../types/content-panel.types';
 
 export interface TabBarActionsProps {
   /** CSS class name for the container */
   className?: string;
+  /** Active tab; when it is a content tab, enriches feedback analytics and enables the dev-only refresh item. */
+  activeTab?: LearningJourneyTab | null;
+  /** Whether the dev-only `Refresh (dev)` item is rendered. */
+  isDevMode?: boolean;
+  /** Reload handler for the `Refresh (dev)` item. */
+  onReloadActiveTab?: (tab: LearningJourneyTab) => void;
 }
 
 /**
  * Renders the tab bar action buttons: menu dropdown and close sidebar button.
  * Menu contains feedback and settings options.
  */
-export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
+export const TabBarActions: React.FC<TabBarActionsProps> = ({
+  className,
+  activeTab,
+  isDevMode = false,
+  onReloadActiveTab,
+}) => {
   const user = config.bootData?.user;
   const canAccessPluginSettings = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
 
+  const contentTab = activeTab && !PERMANENT_TAB_IDS.has(activeTab.id) ? activeTab : null;
+  const reloadContentTab = contentTab && onReloadActiveTab ? () => onReloadActiveTab(contentTab) : null;
+
   const handleFeedbackClick = () => {
+    const contentUrl = contentTab ? contentTab.content?.url || contentTab.baseUrl : undefined;
     reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
       interaction_location: 'header_menu_feedback',
       panel_type: 'docs_panel',
+      ...(contentTab && {
+        content_url: contentUrl || '',
+        content_type: getContentTypeForAnalytics(contentUrl, contentTab.type || 'docs'),
+      }),
     });
     setTimeout(() => {
       window.open(
@@ -104,6 +125,9 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({ className }) => {
         placement="bottom-end"
         overlay={
           <Menu>
+            {isDevMode && reloadContentTab && (
+              <Menu.Item label={t('docsPanel.refreshDev', 'Refresh (dev)')} icon="sync" onClick={reloadContentTab} />
+            )}
             <Menu.Item
               label={t('docsPanel.giveFeedback', 'Give feedback')}
               icon="comment-alt-message"
