@@ -39,6 +39,22 @@ describe('useDocumentOutline', () => {
     expect(containerRef.current!.querySelector('h3')!.id).toBe('getting-started');
   });
 
+  it('falls back to a non-empty id for headings with no ASCII alphanumerics (CJK/Cyrillic/emoji)', () => {
+    const containerRef = containerWith(`
+      <h2>こんにちは</h2>
+      <h2>Привет</h2>
+      <h2>🎉🎊</h2>
+    `);
+    const { result } = renderHook(() => useDocumentOutline(containerRef, 'doc-1', true));
+
+    expect(result.current).toEqual([
+      { id: 'section', text: 'こんにちは', level: 2, kind: 'heading' },
+      { id: 'section-1', text: 'Привет', level: 2, kind: 'heading' },
+      { id: 'section-2', text: '🎉🎊', level: 2, kind: 'heading' },
+    ]);
+    expect(result.current.every((item) => item.id.length > 0)).toBe(true);
+  });
+
   it('extracts interactive-guide sections using their existing id and title text', () => {
     const containerRef = containerWith(`
       <div data-interactive-section="true" id="section-1">

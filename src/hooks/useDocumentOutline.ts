@@ -35,7 +35,7 @@ function extractOutline(container: HTMLElement): OutlineItem[] {
 
     let id = el.id;
     if (!id) {
-      id = uniqueSlug(slugify(text), taken);
+      id = uniqueSlug(slugify(text) || 'section', taken);
       el.id = id;
       taken.add(id);
     }

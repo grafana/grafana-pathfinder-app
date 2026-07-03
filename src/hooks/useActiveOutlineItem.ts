@@ -30,6 +30,7 @@ export function useActiveOutlineItem(
       .filter((entry): entry is { item: OutlineItem; el: HTMLElement } => entry.el !== null);
 
     if (tracked.length === 0) {
+      setActiveId(null);
       return;
     }
 
@@ -37,8 +38,9 @@ export function useActiveOutlineItem(
       if (Date.now() < suppressedUntilRef.current) {
         return;
       }
-      const rootTop = root.getBoundingClientRect().top;
-      const bandHeight = root.getBoundingClientRect().height * TOP_BAND_FRACTION;
+      const rootRect = root.getBoundingClientRect();
+      const rootTop = rootRect.top;
+      const bandHeight = rootRect.height * TOP_BAND_FRACTION;
 
       // The active item is the last one whose top has scrolled above the
       // top-quarter band — iterating in document order means a later match

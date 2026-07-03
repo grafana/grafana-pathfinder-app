@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
 import { useActiveOutlineItem } from './useActiveOutlineItem';
-import type { OutlineItem } from './useDocumentOutline';
+import { useDocumentOutline, type OutlineItem } from './useDocumentOutline';
 
 class MockIntersectionObserver {
   static instances: MockIntersectionObserver[] = [];
@@ -94,5 +94,34 @@ describe('useActiveOutlineItem', () => {
     });
     // Still suppressed immediately after the jump, so the recompute is a no-op.
     expect(result.current.activeId).toBe('end');
+  });
+
+  it('resets activeId when items are non-empty but none resolve in the container', () => {
+    const { containerRef, rootRef } = buildRefs();
+    const { result, rerender } = renderHook(({ items }) => useActiveOutlineItem(items, containerRef, rootRef), {
+      initialProps: { items: ITEMS },
+    });
+    expect(result.current.activeId).toBe('intro');
+
+    rerender({ items: [{ id: 'missing', text: 'Missing', level: 2, kind: 'heading' }] });
+    expect(result.current.activeId).toBeNull();
+  });
+
+  it('does not throw for ids generated from headings with no ASCII alphanumerics (CJK/Cyrillic/emoji)', () => {
+    const container = document.createElement('div');
+    container.innerHTML = '<h2>こんにちは</h2><h2>Привет</h2><h2>🎉🎊</h2>';
+    const containerRef = { current: container };
+    const { result: outline } = renderHook(() => useDocumentOutline(containerRef, 'doc-1', true));
+    expect(outline.current.every((item) => item.id.length > 0)).toBe(true);
+
+    const root = document.createElement('div');
+    root.getBoundingClientRect = jest.fn(() => rectAt(0));
+    container.querySelectorAll<HTMLElement>('h2').forEach((el) => {
+      el.getBoundingClientRect = jest.fn(() => rectAt(1000));
+    });
+
+    expect(() => {
+      renderHook(() => useActiveOutlineItem(outline.current, containerRef, { current: root }));
+    }).not.toThrow();
   });
 });
