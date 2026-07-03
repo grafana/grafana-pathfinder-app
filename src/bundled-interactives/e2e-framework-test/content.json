@@ -5,7 +5,7 @@
   "blocks": [
     {
       "type": "markdown",
-      "content": "# E2E framework test\n\nThis guide validates the E2E test runner framework. All steps are read-only and have no side effects.\n\n**If this guide fails, the issue is with the framework, not the guide content.**"
+      "content": "This guide validates the E2E test runner framework. All steps are read-only and have no side effects.\n\n**If this guide fails, the issue is with the framework, not the guide content.**"
     },
     {
       "type": "interactive",

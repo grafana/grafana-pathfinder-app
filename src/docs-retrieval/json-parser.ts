@@ -8,7 +8,7 @@
 import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from '../types/content.types';
 import { deriveStepId } from '../global-state/step-id';
 import { parseHTMLToComponents } from './html-parser';
-import { validateGuide } from '../validation';
+import { validateGuide, headingDuplicatesTitle } from '../validation';
 import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
 import { renderMarkdown } from '@grafana/data';
 import DOMPurify from 'dompurify';
@@ -188,7 +188,7 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
   }
 
   const parsedContent: ParsedContent = {
-    elements,
+    elements: dedupeLeadingTitleHeading(elements, guide.title),
     hasInteractiveElements,
     hasCodeBlocks,
     hasExpandableTables: false,
@@ -448,6 +448,42 @@ function convertMarkdownBlock(block: JsonMarkdownBlock, path: string, baseUrl?: 
       children: elements,
     },
   };
+}
+
+function elementToPlainText(node: ParsedElement | string): string {
+  return typeof node === 'string' ? node : node.children.map(elementToPlainText).join('');
+}
+
+// Shallow unwrap only: recursing into other wrapper types (e.g. assistant-block-wrapper) would drop their props.
+function findLeadingHeadingText(element: ParsedElement): string | null {
+  if (element.type === 'h1') {
+    return elementToPlainText(element);
+  }
+  const firstChild = element.children[0];
+  if (element.type === 'div' && firstChild && typeof firstChild !== 'string' && firstChild.type === 'h1') {
+    return elementToPlainText(firstChild);
+  }
+  return null;
+}
+
+function dropLeadingHeading(element: ParsedElement): ParsedElement | null {
+  if (element.type === 'h1') {
+    return null;
+  }
+  const rest = element.children.slice(1);
+  return rest.length === 1 && typeof rest[0] !== 'string' ? (rest[0] as ParsedElement) : { ...element, children: rest };
+}
+
+function dedupeLeadingTitleHeading(elements: ParsedElement[], title: string): ParsedElement[] {
+  if (elements.length === 0) {
+    return elements;
+  }
+  const headingText = findLeadingHeadingText(elements[0]!);
+  if (!headingText || !headingDuplicatesTitle(headingText, title)) {
+    return elements;
+  }
+  const replacement = dropLeadingHeading(elements[0]!);
+  return replacement ? [replacement, ...elements.slice(1)] : elements.slice(1);
 }
 
 function convertHtmlBlock(block: JsonHtmlBlock, path: string, baseUrl?: string): ConversionResult {

@@ -46,6 +46,32 @@ function conditionIssueToWarning(issue: ConditionIssue): ValidationWarning {
   };
 }
 
+function extractLeadingH1(markdown: string): string | null {
+  const firstLine = markdown.trim().split('\n')[0] ?? '';
+  const match = firstLine.match(/^#\s+(.+)$/);
+  return match ? match[1]!.trim() : null;
+}
+
+function normalizeHeadingWords(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[!?.,:;'"()]/g, '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+export function headingDuplicatesTitle(headingText: string, title: string): boolean {
+  const headingWords = normalizeHeadingWords(headingText);
+  const titleWords = normalizeHeadingWords(title);
+  if (headingWords.length === 0 || titleWords.length === 0) {
+    return false;
+  }
+  const [shorter, longer] =
+    headingWords.length <= titleWords.length ? [headingWords, titleWords] : [titleWords, headingWords];
+  return shorter.every((word, i) => word === longer[i]);
+}
+
 export function validateGuide(data: unknown, options: ValidationOptions = {}): ValidationResult {
   // Normalize camelCase aliases before both the schema and the unknown-field check.
   const normalized = normalizeJsonGuideAliases(data);
@@ -67,6 +93,18 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
   // 4. Additional suggestions
   if (result.data.blocks.length === 0) {
     warnings.push({ message: 'Guide has no blocks', path: ['blocks'], type: 'suggestion' });
+  }
+
+  const firstBlock = (result.data as JsonGuide).blocks[0];
+  if (firstBlock?.type === 'markdown') {
+    const leadingHeading = extractLeadingH1(firstBlock.content);
+    if (leadingHeading && headingDuplicatesTitle(leadingHeading, result.data.title)) {
+      warnings.push({
+        message: `blocks[0] starts with a heading ("${leadingHeading}") that duplicates the guide title — the title is already rendered separately; consider removing this heading.`,
+        path: ['blocks', 0],
+        type: 'suggestion',
+      });
+    }
   }
 
   // 5. Strict mode - promote all warnings to errors
