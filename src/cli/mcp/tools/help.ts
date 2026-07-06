@@ -7,7 +7,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { formatHelpAsJson } from '../../utils/output';
+import { formatHelpAsJson, renderJsonPayload } from '../../utils/output';
 import { CLI_COMMANDS } from '../program';
 import { readOnly } from './annotations';
 import { textResult } from './result';
@@ -35,31 +35,23 @@ export function registerHelpTool(server: McpServer): void {
     async ({ command, subcommand }) => {
       if (!command) {
         return textResult(
-          JSON.stringify(
-            {
-              commands: Array.from(CLI_COMMANDS.entries()).map(([name, cmd]) => ({
-                name,
-                description: cmd.description(),
-              })),
-            },
-            null,
-            2
-          )
+          renderJsonPayload({
+            commands: Array.from(CLI_COMMANDS.entries()).map(([name, cmd]) => ({
+              name,
+              description: cmd.description(),
+            })),
+          })
         );
       }
 
       const root = CLI_COMMANDS.get(command);
       if (!root) {
         return textResult(
-          JSON.stringify(
-            {
-              status: 'error',
-              code: 'UNKNOWN_COMMAND',
-              message: `Unknown command "${command}". Available: ${Array.from(CLI_COMMANDS.keys()).join(', ')}`,
-            },
-            null,
-            2
-          ),
+          renderJsonPayload({
+            status: 'error',
+            code: 'UNKNOWN_COMMAND',
+            message: `Unknown command "${command}". Available: ${Array.from(CLI_COMMANDS.keys()).join(', ')}`,
+          }),
           true
         );
       }
@@ -72,7 +64,7 @@ export function registerHelpTool(server: McpServer): void {
         }
       }
 
-      return textResult(JSON.stringify(formatHelpAsJson(target), null, 2));
+      return textResult(renderJsonPayload(formatHelpAsJson(target)));
     }
   );
 }

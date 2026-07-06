@@ -28,6 +28,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { runValidate } from '../../commands/validate';
+import { renderJsonPayload } from '../../utils/output';
 import { PLUGIN_VIEWER_BASE } from '../lib/constants';
 import { tokenLogPrefix } from '../lib/session-token';
 import type { AuthoringSessionStore } from '../lib/session-store';
@@ -101,19 +102,15 @@ async function finalizeImpl(args: {
 
   if (validation.status !== 'ok') {
     return textResult(
-      JSON.stringify(
-        {
-          status: 'invalid',
-          validation: {
-            isValid: false,
-            code: validation.code,
-            message: validation.message,
-            issues: (validation.data?.issues as unknown) ?? [],
-          },
+      renderJsonPayload({
+        status: 'invalid',
+        validation: {
+          isValid: false,
+          code: validation.code,
+          message: validation.message,
+          issues: (validation.data?.issues as unknown) ?? [],
         },
-        null,
-        2
-      ),
+      }),
       true
     );
   }
@@ -271,5 +268,5 @@ async function finalizeImpl(args: {
     }
   }
 
-  return textResult(JSON.stringify(handoff, null, 2));
+  return textResult(renderJsonPayload(handoff));
 }
