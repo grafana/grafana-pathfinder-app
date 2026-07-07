@@ -1,5 +1,6 @@
 import { reportAppInteraction, UserInteraction, bindExperimentsProvider } from './analytics';
 import { reportInteraction } from '@grafana/runtime';
+import { pushFaroEvent } from './faro';
 
 jest.mock('@grafana/runtime', () => ({
   reportInteraction: jest.fn(),
@@ -13,7 +14,12 @@ jest.mock('../security/url-validator', () => ({
   isInteractiveLearningUrl: jest.fn(() => false),
 }));
 
+jest.mock('./faro', () => ({
+  pushFaroEvent: jest.fn(),
+}));
+
 const mockReportInteraction = reportInteraction as jest.Mock;
+const mockPushFaroEvent = pushFaroEvent as jest.Mock;
 
 describe('reportAppInteraction', () => {
   beforeEach(() => {
@@ -66,6 +72,35 @@ describe('reportAppInteraction', () => {
     expect(properties.step_id).toBe('step-1');
     expect(properties.content_type).toBe('interactive_guide');
     expect(properties.plugin_version).toBe('1.0.0-test');
+  });
+});
+
+describe('reportAppInteraction Faro mirroring', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('mirrors the same interaction name and enriched properties to Faro', () => {
+    reportAppInteraction(UserInteraction.ShowMeButtonClick, { step_id: 'step-1' });
+
+    expect(mockReportInteraction).toHaveBeenCalledTimes(1);
+    expect(mockPushFaroEvent).toHaveBeenCalledTimes(1);
+
+    const [reportedName, reportedProperties] = mockReportInteraction.mock.calls[0];
+    const [mirroredName, mirroredProperties] = mockPushFaroEvent.mock.calls[0];
+    expect(mirroredName).toBe(reportedName);
+    expect(mirroredProperties).toBe(reportedProperties);
+  });
+
+  it('still reports to Rudderstack even if the Faro mirror throws', () => {
+    mockPushFaroEvent.mockImplementationOnce(() => {
+      throw new Error('faro is down');
+    });
+
+    // reportInteraction is called before the mirror, and the outer try/catch
+    // means a later mirror failure can't unwind or suppress that earlier call.
+    expect(() => reportAppInteraction(UserInteraction.ShowMeButtonClick, {})).not.toThrow();
+    expect(mockReportInteraction).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -142,6 +142,32 @@ export function pushFaroLog(level: FaroLogLevel, message: string, context?: Reco
   }
 }
 
+const MAX_ATTRIBUTE_LENGTH = 500;
+
+// Faro event attributes are string-only; analytics properties are not
+// (numbers, booleans, the experiments array). Stringify here so every
+// caller of pushFaroEvent gets the same coercion.
+export function stringifyAttributes(attributes: Record<string, unknown>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(attributes)) {
+    if (value === null || value === undefined) {
+      continue;
+    }
+    const stringified =
+      typeof value === 'string' ? value : typeof value === 'object' ? JSON.stringify(value) : String(value);
+    result[key] = stringified.slice(0, MAX_ATTRIBUTE_LENGTH);
+  }
+  return result;
+}
+
+export function pushFaroEvent(name: string, attributes?: Record<string, unknown>): void {
+  try {
+    faroInstance?.api.pushEvent(name, attributes ? stringifyAttributes(attributes) : undefined);
+  } catch {
+    // Telemetry must never break the app it's observing.
+  }
+}
+
 export function pauseFaroBeforeReload(): void {
   try {
     faroInstance?.pause();

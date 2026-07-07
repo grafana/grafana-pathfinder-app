@@ -13,8 +13,12 @@ jest.mock('../../package.json', () => ({ name: 'grafana-pathfinder-app', version
 
 const mockPushError = jest.fn();
 const mockPushLog = jest.fn();
+const mockPushEvent = jest.fn();
 const mockPause = jest.fn();
-const mockFaroInstance = { api: { pushError: mockPushError, pushLog: mockPushLog }, pause: mockPause };
+const mockFaroInstance = {
+  api: { pushError: mockPushError, pushLog: mockPushLog, pushEvent: mockPushEvent },
+  pause: mockPause,
+};
 interface CapturedFaroConfig {
   isolate: boolean;
   app: { name: string; version: string; environment: string };
@@ -46,7 +50,12 @@ jest.mock('@grafana/runtime', () => ({ config: mockedConfig }));
 // before any of this file's own top-level statements, which would trigger
 // the `@grafana/runtime` mock factory above before `mockedConfig` is
 // assigned. Requiring here, after the assignment, avoids that ordering trap.
-const { getEnvironment, isGrafanaCloud, filterPathfinderTelemetry }: typeof import('./faro') = require('./faro');
+const {
+  getEnvironment,
+  isGrafanaCloud,
+  filterPathfinderTelemetry,
+  stringifyAttributes,
+}: typeof import('./faro') = require('./faro');
 
 function freshFaro(): typeof import('./faro') {
   jest.resetModules();
@@ -290,5 +299,60 @@ describe('pushFaroLog', () => {
       throw new Error('transport down');
     });
     expect(() => faro.pushFaroLog('error', 'boom')).not.toThrow();
+  });
+});
+
+describe('stringifyAttributes', () => {
+  it('passes strings through, truncated to 500 characters', () => {
+    expect(stringifyAttributes({ foo: 'bar' })).toEqual({ foo: 'bar' });
+    expect(stringifyAttributes({ long: 'a'.repeat(600) }).long).toHaveLength(500);
+  });
+
+  it('coerces numbers and booleans with String()', () => {
+    expect(stringifyAttributes({ count: 3, ok: false })).toEqual({ count: '3', ok: 'false' });
+  });
+
+  it('JSON.stringifies objects and arrays', () => {
+    expect(stringifyAttributes({ experiments: [{ flag: 'x', variant: 'treatment' }] })).toEqual({
+      experiments: '[{"flag":"x","variant":"treatment"}]',
+    });
+  });
+
+  it('drops null and undefined attributes entirely', () => {
+    expect(stringifyAttributes({ a: null, b: undefined, c: 'kept' })).toEqual({ c: 'kept' });
+  });
+});
+
+describe('pushFaroEvent', () => {
+  it('no-ops before initialization without throwing', () => {
+    const faro = freshFaro();
+    expect(() => faro.pushFaroEvent('pathfinder_docs_panel_interaction', { action: 'open' })).not.toThrow();
+    expect(mockPushEvent).not.toHaveBeenCalled();
+  });
+
+  it('forwards the same event name with stringified attributes once initialized', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.pushFaroEvent('pathfinder_docs_panel_interaction', { action: 'open', step: 2 });
+    expect(mockPushEvent).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', { action: 'open', step: '2' });
+  });
+
+  it('forwards undefined attributes as undefined, not an empty object', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.pushFaroEvent('pathfinder_docs_panel_interaction');
+    expect(mockPushEvent).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', undefined);
+  });
+
+  it('swallows errors thrown by the underlying Faro API', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockPushEvent.mockImplementationOnce(() => {
+      throw new Error('transport down');
+    });
+    expect(() => faro.pushFaroEvent('pathfinder_docs_panel_interaction', {})).not.toThrow();
   });
 });
