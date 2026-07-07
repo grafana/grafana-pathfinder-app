@@ -8,7 +8,7 @@ import React, { useState, useCallback } from 'react';
 import { Button, Field, Alert, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
-import yaml from 'js-yaml';
+import { loadAll } from 'js-yaml';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import type { BlockFormProps } from '../types';
@@ -23,7 +23,7 @@ function convertYamlToBlock(yamlContent: string): JsonGrotGuideBlock {
   // Grot Guide YAML files use --- frontmatter delimiters which create multiple
   // YAML documents. Parse all documents and find the one with welcome/screens.
   const documents: any[] = [];
-  yaml.loadAll(yamlContent, (doc) => documents.push(doc));
+  loadAll(yamlContent, (doc) => documents.push(doc));
 
   const parsed = documents.find((doc) => doc && typeof doc === 'object' && (doc.welcome || doc.screens));
 
