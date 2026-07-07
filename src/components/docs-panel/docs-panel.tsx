@@ -1245,6 +1245,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         styles={styles}
         tabs={tabs}
         activeTabId={activeTabId}
+        activeTab={activeTab}
         visibleTabs={visibleTabs}
         overflowGuideTabs={overflowGuideTabs}
         isEditorUser={isEditorUser}
@@ -1258,6 +1259,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         dropdownOpenTimeRef={dropdownOpenTimeRef}
         onSetActiveTab={(tabId) => model.setActiveTab(tabId)}
         onCloseTab={(tabId) => model.closeTab(tabId)}
+        reloadActiveTab={reloadActiveTab}
       />
 
       <DocsPanelContentArea
@@ -1271,7 +1273,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         isFullScreenActive={isFullScreenActive}
         isRecommendationsTab={isRecommendationsTab}
         isEditorUser={isEditorUser}
-        isDevMode={isDevMode}
         isWysiwygPreview={isWysiwygPreview}
         activeTabId={activeTabId}
         activeTab={activeTab}
