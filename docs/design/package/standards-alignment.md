@@ -30,7 +30,7 @@ The `links.to` relationships are soft recommendations — "completing prom-data-
 
 The `category` field aligns directly. The documented convention uses the same taxonomy: `"data-availability"`, `"query-visualize"`, `"take-action"`.
 
-The docs team's `*-lj` directory structure — a top-level directory containing ordered sub-directories of guides — maps directly to the [journey metapackage model](./learning-journeys.md). The top-level directory becomes the journey package with a `manifest.json` declaring `type: "journey"` and a `steps` array. Each sub-directory is a step package.
+The docs team's `*-lj` directory structure — a top-level directory containing ordered sub-directories of guides — maps directly to the [journey metapackage model](./learning-journeys.md). The top-level directory becomes the journey package with a `manifest.json` declaring `type: "journey"` and a `milestones` array. Each sub-directory is a milestone package.
 
 ### Dublin Core / IEEE LOM
 
@@ -54,14 +54,14 @@ The package format is designed to be the **output target** for a future SCORM im
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | Package (ZIP)              | Package directory                                                                                                                       |
 | `imsmanifest.xml` metadata | `manifest.json`                                                                                                                         |
-| Organization tree          | [Journey metapackage](./learning-journeys.md) with `steps` array                                                                        |
-| Item (with sequencing)     | Step ordering via `steps` array                                                                                                         |
-| SCO (interactive content)  | Step package — `content.json` with content blocks                                                                                       |
-| Asset (static content)     | `assets/` directory within package                                                                                                      |
-| Prerequisites              | `manifest.json` → `depends`                                                                                                             |
-| Sequencing (forward-only)  | Advisory `steps` ordering (see [step ordering and completion semantics](./learning-journeys.md#step-ordering-and-completion-semantics)) |
+| Organization tree          | [Journey metapackage](./learning-journeys.md) with `milestones` array                                                                       |
+| Item (with sequencing)     | Milestone ordering via `milestones` array                                                                                                    |
+| SCO (interactive content)  | Milestone package — `content.json` with content blocks                                                                                       |
+| Asset (static content)     | `assets/` directory within package                                                                                                           |
+| Prerequisites              | `manifest.json` → `depends`                                                                                                                  |
+| Sequencing (forward-only)  | Advisory `milestones` ordering (see [milestone ordering and completion semantics](./learning-journeys.md#milestone-ordering-and-completion-semantics)) |
 
-The SCORM import pipeline writes two files per guide: `content.json` (converted from SCO HTML) and `manifest.json` (converted from `imsmanifest.xml` metadata). This separation means the importer naturally produces the correct package structure. For multi-SCO courses, the importer produces a journey metapackage with step packages — the same structure used for natively authored learning journeys.
+The SCORM import pipeline writes two files per guide: `content.json` (converted from SCO HTML) and `manifest.json` (converted from `imsmanifest.xml` metadata). This separation means the importer naturally produces the correct package structure. For multi-SCO courses, the importer produces a journey metapackage with milestone packages — the same structure used for natively authored learning journeys.
 
 SCORM-specific fields (`source`, `rights`, `educationalContext`) are deferred to the SCORM implementation phase but will be backward-compatible flat additions to `manifest.json`.
 
@@ -101,7 +101,7 @@ Future `type` values for SCORM extend the same pattern:
 - `"course"`: SCORM course decomposition — a refinement of the journey concept with potentially stricter sequencing semantics (course → modules → guides)
 - `"module"`: Grouping of related guides without strict ordering (section overview rendering)
 
-Both future types will build on the metapackage and `steps` infrastructure established by journeys, not introduce parallel composition machinery. Default remains `"guide"` for all existing content.
+Both future types will build on the metapackage and `milestones` infrastructure established by journeys, not introduce parallel composition machinery. Default remains `"guide"` for all existing content.
 
 ### Test environment metadata (future)
 
@@ -125,7 +125,7 @@ A flat `testEnvironment` field will be added to `manifest.json` when Layer 4 E2E
 | Version | Scope                                                                                                                                  |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `1.0.0` | Current: single-file `content.json` with `id`, `title`, `blocks`, `schemaVersion`                                                      |
-| `1.1.0` | Phase 1 packages: two-file model (`content.json` + `manifest.json`), `assets/` directory, `type` and `steps` for journeys              |
+| `1.1.0` | Phase 1 packages: two-file model (`content.json` + `manifest.json`), `assets/` directory, `type` and `milestones` for journeys          |
 | `1.2.0` | Future: adds `source`, `keywords`, `difficulty`, `estimatedDuration`, `testEnvironment`; extends `type` with `"course"` and `"module"` |
 | `2.0.0` | Reserved for breaking changes (field removal, semantic changes)                                                                        |
 
