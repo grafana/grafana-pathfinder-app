@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as ts from 'typescript';
 
 export const SRC_DIR = path.resolve(__dirname, '..');
+export const REPO_ROOT = path.resolve(SRC_DIR, '..');
 
 /**
  * Tier model: lower number = more foundational.
@@ -122,7 +123,88 @@ export function getTopLevelDir(relPath: string): string | null {
   return segments[0] ?? null;
 }
 
-export function extractRelativeImports(content: string): string[] {
+export interface TsconfigPathsConfig {
+  configDir: string;
+  paths: Record<string, string[]>;
+}
+
+export function readJsoncFile<T>(filePath: string): T {
+  const text = fs.readFileSync(filePath, 'utf-8');
+  const stripped = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  return JSON.parse(stripped) as T;
+}
+
+export function loadTsconfigPaths(tsconfigPath: string): TsconfigPathsConfig {
+  const parsed = readJsoncFile<{ compilerOptions?: { paths?: Record<string, string[]> } }>(tsconfigPath);
+  return {
+    configDir: path.dirname(tsconfigPath),
+    paths: parsed.compilerOptions?.paths ?? {},
+  };
+}
+
+/** TS `paths` patterns support at most one `*`; mirrors that instead of full glob matching. */
+function matchPathPattern(specifier: string, pattern: string): string | null {
+  const starIndex = pattern.indexOf('*');
+  if (starIndex === -1) {
+    return specifier === pattern ? '' : null;
+  }
+  const prefix = pattern.slice(0, starIndex);
+  const suffix = pattern.slice(starIndex + 1);
+  if (
+    !specifier.startsWith(prefix) ||
+    !specifier.endsWith(suffix) ||
+    specifier.length < prefix.length + suffix.length
+  ) {
+    return null;
+  }
+  return specifier.slice(prefix.length, specifier.length - suffix.length);
+}
+
+const ALIAS_RESOLUTION_SUFFIXES = ['', '.ts', '.tsx', '/index.ts', '/index.tsx'];
+
+function findExistingSourceFile(candidateNoExt: string): string | null {
+  for (const suffix of ALIAS_RESOLUTION_SUFFIXES) {
+    const candidate = candidateNoExt + suffix;
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolves a bare specifier through tsconfig `paths` the same way TypeScript
+ * would, but only reports a hit when the target exists on disk — a pattern
+ * like `"*"` matches any string, so an npm package name (`react`) would
+ * otherwise "match" and get misresolved as an internal file. Returns the
+ * real file path (with extension), unlike relative specifiers elsewhere in
+ * this module which are extension-less — callers that need the relative-
+ * specifier convention should strip it themselves.
+ */
+export function resolvePathAlias(specifier: string, tsconfigPaths: TsconfigPathsConfig): string | null {
+  for (const [pattern, targets] of Object.entries(tsconfigPaths.paths)) {
+    const matched = matchPathPattern(specifier, pattern);
+    if (matched === null) {
+      continue;
+    }
+    for (const target of targets) {
+      const substituted = target.includes('*') ? target.replace('*', matched) : target;
+      const absolute = path.resolve(tsconfigPaths.configDir, substituted);
+      const found = findExistingSourceFile(absolute);
+      if (found) {
+        return found;
+      }
+    }
+  }
+  return null;
+}
+
+export interface AliasResolutionContext {
+  fileDir: string;
+  tsconfigPaths: TsconfigPathsConfig;
+}
+
+export function extractRelativeImports(content: string, aliasContext?: AliasResolutionContext): string[] {
   const specifiers = new Set<string>();
   const sourceFile = ts.createSourceFile(
     'import-graph-input.tsx',
@@ -133,10 +215,21 @@ export function extractRelativeImports(content: string): string[] {
   );
 
   const isRelativeSpecifier = (value: string): boolean => value.startsWith('./') || value.startsWith('../');
-  const addIfRelative = (value: string): void => {
+  const addSpecifier = (value: string): void => {
     if (isRelativeSpecifier(value)) {
       specifiers.add(value);
+      return;
     }
+    if (!aliasContext) {
+      return;
+    }
+    const resolved = resolvePathAlias(value, aliasContext.tsconfigPaths);
+    if (!resolved) {
+      return;
+    }
+    const withoutExt = resolved.replace(/\/index\.tsx?$/, '').replace(/\.tsx?$/, '');
+    const relative = toPosixPath(path.relative(aliasContext.fileDir, withoutExt));
+    specifiers.add(relative.startsWith('.') ? relative : `./${relative}`);
   };
 
   const visit = (node: ts.Node): void => {
@@ -145,7 +238,7 @@ export function extractRelativeImports(content: string): string[] {
       node.moduleSpecifier &&
       ts.isStringLiteralLike(node.moduleSpecifier)
     ) {
-      addIfRelative(node.moduleSpecifier.text);
+      addSpecifier(node.moduleSpecifier.text);
     }
 
     if (ts.isCallExpression(node)) {
@@ -156,9 +249,9 @@ export function extractRelativeImports(content: string): string[] {
       }
 
       if (ts.isIdentifier(node.expression) && node.expression.text === 'require') {
-        addIfRelative(firstArg.text);
+        addSpecifier(firstArg.text);
       } else if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-        addIfRelative(firstArg.text);
+        addSpecifier(firstArg.text);
       }
     }
 
@@ -193,25 +286,36 @@ export function getSourceTier(relPath: string, topLevelDir: string | null): numb
 }
 
 let cachedFileImports: FileImports[] | undefined;
+let cachedTsconfigPaths: TsconfigPathsConfig | undefined;
+
+function getProjectTsconfigPaths(): TsconfigPathsConfig {
+  if (!cachedTsconfigPaths) {
+    cachedTsconfigPaths = loadTsconfigPaths(path.join(REPO_ROOT, '.config', 'tsconfig.json'));
+  }
+  return cachedTsconfigPaths;
+}
 
 export function getAllFileImports(): FileImports[] {
   if (cachedFileImports) {
     return cachedFileImports;
   }
+  const tsconfigPaths = getProjectTsconfigPaths();
   const files = collectSourceFiles();
   cachedFileImports = files.map((file) => {
     const relPath = toPosixPath(path.relative(SRC_DIR, file));
     const topLevelDir = getTopLevelDir(relPath);
     const content = fs.readFileSync(file, 'utf-8');
-    const imports = extractRelativeImports(content);
+    const fileDir = path.dirname(file);
+    const imports = extractRelativeImports(content, { fileDir, tsconfigPaths });
     return { file, relPath, topLevelDir, imports };
   });
   return cachedFileImports;
 }
 
-/** Reset the cached file imports. Useful for testing. */
+/** Reset the cached file imports and tsconfig paths. Useful for testing. */
 export function resetCache(): void {
   cachedFileImports = undefined;
+  cachedTsconfigPaths = undefined;
 }
 
 // ---------------------------------------------------------------------------

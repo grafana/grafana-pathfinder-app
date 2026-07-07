@@ -8,6 +8,7 @@
 import * as path from 'path';
 
 import {
+  REPO_ROOT,
   ROOT_LEVEL_ALLOWED_FILES,
   ROOT_LEVEL_TIER_MAP,
   SRC_DIR,
@@ -24,7 +25,10 @@ import {
   isTestFile,
   assertRatchet,
   collectSourceFiles,
+  loadTsconfigPaths,
+  readJsoncFile,
   resolveImportToRelative,
+  resolvePathAlias,
   toPosixPath,
 } from './import-graph';
 
@@ -102,6 +106,97 @@ describe('extractRelativeImports', () => {
       `import { real } from './actual';`,
     ].join('\n');
     expect(extractRelativeImports(content)).toEqual(['./actual']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractRelativeImports with alias resolution
+// ---------------------------------------------------------------------------
+
+describe('extractRelativeImports with an alias context', () => {
+  const tsconfigPaths = { configDir: path.join(REPO_ROOT, '.config'), paths: { '*': ['../src/*'] } };
+
+  it('resolves a bare specifier matching a real src/ file to a relative path', () => {
+    const content = `import { foo } from 'validation/import-graph';`;
+    const fileDir = path.join(SRC_DIR, 'components');
+    expect(extractRelativeImports(content, { fileDir, tsconfigPaths })).toEqual(['../validation/import-graph']);
+  });
+
+  it('resolves a bare specifier matching a barrel directory to its index', () => {
+    const content = `import { useSomething } from 'hooks';`;
+    const fileDir = path.join(SRC_DIR, 'components');
+    expect(extractRelativeImports(content, { fileDir, tsconfigPaths })).toEqual(['../hooks']);
+  });
+
+  it('still ignores npm package names with no matching file under src/', () => {
+    const content = `import React from 'react';\nimport { css } from '@emotion/css';`;
+    const fileDir = path.join(SRC_DIR, 'components');
+    expect(extractRelativeImports(content, { fileDir, tsconfigPaths })).toEqual([]);
+  });
+
+  it('does not attempt alias resolution when no alias context is given (no regression)', () => {
+    const content = `import { foo } from 'validation/import-graph';`;
+    expect(extractRelativeImports(content)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readJsoncFile / loadTsconfigPaths
+// ---------------------------------------------------------------------------
+
+describe('readJsoncFile', () => {
+  it('parses the real .config/tsconfig.json, stripping comments', () => {
+    const parsed = readJsoncFile<{ compilerOptions?: { paths?: Record<string, string[]> } }>(
+      path.join(REPO_ROOT, '.config', 'tsconfig.json')
+    );
+    expect(parsed.compilerOptions?.paths).toEqual({ '*': ['../src/*'] });
+  });
+});
+
+describe('loadTsconfigPaths', () => {
+  it('resolves configDir relative to the tsconfig file location', () => {
+    const tsconfigPath = path.join(REPO_ROOT, '.config', 'tsconfig.json');
+    const result = loadTsconfigPaths(tsconfigPath);
+    expect(result).toEqual({ configDir: path.dirname(tsconfigPath), paths: { '*': ['../src/*'] } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolvePathAlias
+// ---------------------------------------------------------------------------
+
+describe('resolvePathAlias', () => {
+  const tsconfigPaths = { configDir: path.join(REPO_ROOT, '.config'), paths: { '*': ['../src/*'] } };
+
+  it('resolves a bare specifier to a real file under src/', () => {
+    expect(resolvePathAlias('validation/import-graph', tsconfigPaths)).toBe(
+      path.join(SRC_DIR, 'validation', 'import-graph.ts')
+    );
+  });
+
+  it('resolves a bare specifier to a directory index file', () => {
+    expect(resolvePathAlias('hooks', tsconfigPaths)).toBe(path.join(SRC_DIR, 'hooks', 'index.ts'));
+  });
+
+  it('returns null for an npm package name with no matching file under src/', () => {
+    expect(resolvePathAlias('react', tsconfigPaths)).toBeNull();
+    expect(resolvePathAlias('@emotion/css', tsconfigPaths)).toBeNull();
+  });
+
+  it('returns null when no configured pattern matches the specifier', () => {
+    expect(resolvePathAlias('foo', { configDir: SRC_DIR, paths: { '@app/*': ['./app/*'] } })).toBeNull();
+  });
+
+  it('substitutes the wildcard capture into the target pattern', () => {
+    expect(resolvePathAlias('@app/validation/import-graph', { configDir: SRC_DIR, paths: { '@app/*': ['./*'] } })).toBe(
+      path.join(SRC_DIR, 'validation', 'import-graph.ts')
+    );
+  });
+
+  it('matches an exact non-wildcard pattern', () => {
+    expect(
+      resolvePathAlias('root-constants', { configDir: SRC_DIR, paths: { 'root-constants': ['./constants.ts'] } })
+    ).toBe(path.join(SRC_DIR, 'constants.ts'));
   });
 });
 
