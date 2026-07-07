@@ -4,14 +4,7 @@
  */
 
 export type ActionType =
-  | 'highlight'
-  | 'button'
-  | 'formfill'
-  | 'navigate'
-  | 'hover'
-  | 'sequence'
-  | 'multistep'
-  | 'guided';
+  'highlight' | 'button' | 'formfill' | 'navigate' | 'hover' | 'sequence' | 'multistep' | 'guided';
 
 export interface ValidatedSelector {
   selector: string;

@@ -55,22 +55,18 @@ interface PickerOption extends ComboboxOption<string> {
 }
 
 const PICKER_OPTIONS: PickerOption[] = [
-  ...FIXED_REQUIREMENTS.map(
-    (token): PickerOption => ({
-      value: token,
-      label: token,
-      description: REQUIREMENT_DESCRIPTIONS[token] ?? '',
-      isPrefix: false,
-    })
-  ),
-  ...PARAMETERIZED_REQUIREMENT_PREFIXES.map(
-    (prefix): PickerOption => ({
-      value: prefix,
-      label: prefix,
-      description: REQUIREMENT_DESCRIPTIONS[prefix] ?? '',
-      isPrefix: true,
-    })
-  ),
+  ...FIXED_REQUIREMENTS.map((token): PickerOption => ({
+    value: token,
+    label: token,
+    description: REQUIREMENT_DESCRIPTIONS[token] ?? '',
+    isPrefix: false,
+  })),
+  ...PARAMETERIZED_REQUIREMENT_PREFIXES.map((prefix): PickerOption => ({
+    value: prefix,
+    label: prefix,
+    description: REQUIREMENT_DESCRIPTIONS[prefix] ?? '',
+    isPrefix: true,
+  })),
 ];
 
 function tokensFromString(value: string): string[] {

@@ -75,8 +75,7 @@ interface GitHubPrFileEntry {
 
 /** Result type for PR content file fetching */
 export type FetchPrFilesResult =
-  | { success: true; files: PrJsonFile[]; warning?: string }
-  | { success: false; error: GitHubApiError };
+  { success: true; files: PrJsonFile[]; warning?: string } | { success: false; error: GitHubApiError };
 
 // Pattern to extract owner, repo, and PR number from GitHub PR URL
 const PR_URL_PATTERN = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;

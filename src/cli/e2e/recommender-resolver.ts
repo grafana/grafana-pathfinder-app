@@ -26,8 +26,7 @@ interface PackageResolutionResponse {
 
 /** Outcome of resolving a bare package id. Failures never throw. */
 export type RecommenderResolution =
-  | { ok: true; id: string; contentUrl: string; manifest?: ManifestJson }
-  | { ok: false; message: string };
+  { ok: true; id: string; contentUrl: string; manifest?: ManifestJson } | { ok: false; message: string };
 
 /**
  * Resolve a bare package id through the recommender, then fetch its manifest
