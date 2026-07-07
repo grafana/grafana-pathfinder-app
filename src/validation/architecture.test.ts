@@ -721,4 +721,28 @@ describe('TS path-alias tripwire', () => {
       );
     }
   });
+
+  // Locked-in regression coverage: the real-file case above only exercises
+  // pathsMatchBaseline on the "matches" branch (today's .config/tsconfig.json
+  // agrees with KNOWN_BASELINE_PATHS). Exercise the "doesn't match" branches
+  // directly so an inverted condition here doesn't stay silently green.
+  it('pathsMatchBaseline returns true when paths exactly match the baseline', () => {
+    expect(pathsMatchBaseline({ '*': ['../src/*'] }, { '*': ['../src/*'] })).toBe(true);
+  });
+
+  it('pathsMatchBaseline returns false when no baseline is registered', () => {
+    expect(pathsMatchBaseline({ '*': ['../src/*'] }, undefined)).toBe(false);
+  });
+
+  it('pathsMatchBaseline returns false when the key sets differ in size', () => {
+    expect(pathsMatchBaseline({ '*': ['../src/*'], '@app/*': ['../app/*'] }, { '*': ['../src/*'] })).toBe(false);
+  });
+
+  it('pathsMatchBaseline returns false when a key differs', () => {
+    expect(pathsMatchBaseline({ '@app/*': ['../src/*'] }, { '*': ['../src/*'] })).toBe(false);
+  });
+
+  it('pathsMatchBaseline returns false when a shared key maps to a different target', () => {
+    expect(pathsMatchBaseline({ '*': ['../other/*'] }, { '*': ['../src/*'] })).toBe(false);
+  });
 });

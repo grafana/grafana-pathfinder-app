@@ -312,9 +312,10 @@ export function getAllFileImports(): FileImports[] {
   return cachedFileImports;
 }
 
-/** Reset the cached file imports. Useful for testing. */
+/** Reset the cached file imports and tsconfig paths. Useful for testing. */
 export function resetCache(): void {
   cachedFileImports = undefined;
+  cachedTsconfigPaths = undefined;
 }
 
 // ---------------------------------------------------------------------------
