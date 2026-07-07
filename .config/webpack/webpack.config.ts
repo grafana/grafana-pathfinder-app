@@ -188,7 +188,6 @@ const config = async (env: Env): Promise<Configuration> => {
         {
           dir: DIST_DIR,
           test: [/(^|\/)plugin\.json$/, /(^|\/)README\.md$/],
-
           rules: [
             {
               search: /\%VERSION\%/g,
