@@ -228,10 +228,7 @@ export function concurrentModification(expected: number, actual: number): Concur
 }
 
 export type DispatchSessionResult =
-  | SessionOutcome
-  | SessionNotFound
-  | ConcurrentModificationResult
-  | SessionTooLargeResult;
+  SessionOutcome | SessionNotFound | ConcurrentModificationResult | SessionTooLargeResult;
 
 /**
  * Pre-save size gate. Returns a structured SESSION_TOO_LARGE when the

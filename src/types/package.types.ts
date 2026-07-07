@@ -276,13 +276,7 @@ export interface GraphNode extends PackageMetadataFields {
 
 /** Edge types in the dependency graph */
 export type GraphEdgeType =
-  | 'depends'
-  | 'recommends'
-  | 'suggests'
-  | 'provides'
-  | 'conflicts'
-  | 'replaces'
-  | 'milestones';
+  'depends' | 'recommends' | 'suggests' | 'provides' | 'conflicts' | 'replaces' | 'milestones';
 
 /**
  * An edge in the dependency graph.

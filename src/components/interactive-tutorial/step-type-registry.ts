@@ -20,14 +20,7 @@ import type { StepInfo } from '../../types/component-props.types';
 
 /** Discriminant for the tracked step component types. */
 export type StepTypeKind =
-  | 'plain'
-  | 'multistep'
-  | 'guided'
-  | 'quiz'
-  | 'terminal'
-  | 'terminal-connect'
-  | 'codeblock'
-  | 'challenge';
+  'plain' | 'multistep' | 'guided' | 'quiz' | 'terminal' | 'terminal-connect' | 'codeblock' | 'challenge';
 
 /** Where the cloneElement `ref` callback for this type should be
  *  stored on the section. `'none'` means no ref is attached. */

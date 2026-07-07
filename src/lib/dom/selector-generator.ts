@@ -17,11 +17,7 @@ import { querySelectorAllEnhanced, querySelectorAllEnhancedVisible } from './enh
 // ============================================================================
 
 export type StabilityFlag =
-  | 'i18n-sensitive'
-  | 'session-unstable'
-  | 'environment-unstable'
-  | 'structural'
-  | 'portal-scoped';
+  'i18n-sensitive' | 'session-unstable' | 'environment-unstable' | 'structural' | 'portal-scoped';
 
 export type SelectorQuality = 'good' | 'medium' | 'poor';
 

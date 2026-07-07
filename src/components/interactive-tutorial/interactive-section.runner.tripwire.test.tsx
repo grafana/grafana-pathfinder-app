@@ -176,8 +176,7 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
 
         // Final persisted completion set covers all 3 steps.
         const persisted = memoryStore.get(`section-steps::${NON_PREVIEW_KEY}::${SECTION_ID}`) as
-          | Set<string>
-          | undefined;
+          Set<string> | undefined;
         expect(persisted).toBeDefined();
         expect(persisted!.size).toBe(3);
       } finally {
@@ -218,8 +217,7 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
 
         // Step 1 completes; step 3 does not.
         const persisted = memoryStore.get(`section-steps::${NON_PREVIEW_KEY}::${SECTION_ID}`) as
-          | Set<string>
-          | undefined;
+          Set<string> | undefined;
         expect(persisted).toBeDefined();
         expect(persisted!.has(`${SECTION_ID}-step-1`)).toBe(true);
         expect(persisted!.has(`${SECTION_ID}-step-3`)).toBe(false);
