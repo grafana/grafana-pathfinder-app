@@ -1,10 +1,12 @@
 import path from 'path';
 import type { Configuration } from 'webpack';
 import { merge } from 'webpack-merge';
+import FaroSourceMapUploaderPlugin from '@grafana/faro-webpack-plugin';
 import grafanaConfig, { type Env } from './.config/webpack/webpack.config';
 
 const config = async (env: Env): Promise<Configuration> => {
   const baseConfig = await grafanaConfig(env);
+  const faroSourceMapApiKey = process.env.FARO_SOURCEMAP_API_KEY;
 
   return merge(baseConfig, {
     externals: ['react/jsx-runtime', 'react/jsx-dev-runtime'],
@@ -18,6 +20,22 @@ const config = async (env: Env): Promise<Configuration> => {
         '@grafana/i18n': path.resolve(__dirname, 'node_modules/@grafana/i18n/dist/cjs/index.cjs'),
       },
     },
+    // Absent outside of CI runs that supply the API key, so local and PR builds
+    // never attempt an upload.
+    plugins:
+      env.production && faroSourceMapApiKey
+        ? [
+            new FaroSourceMapUploaderPlugin({
+              appName: 'grafana-pathfinder-app',
+              endpoint: 'https://faro-api-ops-eu-south-0.grafana-ops.net/faro/api/v1',
+              appId: '77',
+              stackId: '27821',
+              apiKey: faroSourceMapApiKey,
+              gzipContents: true,
+              verbose: true,
+            }),
+          ]
+        : [],
   });
 };
 

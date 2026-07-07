@@ -193,6 +193,9 @@ jobs:
       has-backend: ${{ steps.check-for-backend.outputs.has-backend }}
     env:
       GRAFANA_ACCESS_POLICY_TOKEN: ${{ secrets.GRAFANA_ACCESS_POLICY_TOKEN }}
+      # main-only: a PR build's sourcemaps would tie a real user-facing stack
+      # trace to code that may never merge, or may differ from what does.
+      FARO_SOURCEMAP_API_KEY: ${{ github.event_name == 'push' && secrets.FARO_SOURCEMAP_API_KEY || '' }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
