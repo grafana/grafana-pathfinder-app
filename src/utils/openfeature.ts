@@ -105,6 +105,19 @@ const pathfinderFeatureFlags = {
     trackingKey: 'pathfinder_enabled',
   },
   /**
+   * Remote kill-switch for Faro frontend telemetry (errors, sessions, and — in
+   * later phases — logs and analytics-event mirroring). Independent of
+   * `pathfinder.enabled`: this only stops the telemetry stream, not the plugin.
+   * Telemetry is already gated to Grafana Cloud; this flag exists to disable
+   * it fleet-wide without a release if the collector or filtering misbehaves.
+   */
+  'pathfinder.frontend-telemetry': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: true,
+    trackingKey: 'frontend_telemetry',
+  },
+  /**
    * Controls whether the sidebar automatically opens on first Grafana load per session
    * When true: sidebar opens automatically on first page load
    * When false: sidebar only opens when user explicitly requests it

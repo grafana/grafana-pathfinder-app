@@ -125,6 +125,19 @@ describe('openfeature', () => {
         expect(pathfinderFeatureFlags['pathfinder.highlighted-guide-experiment'].trackingKey).toBe(
           'highlighted_guide_experiment'
         );
+        expect(pathfinderFeatureFlags['pathfinder.frontend-telemetry'].trackingKey).toBe('frontend_telemetry');
+      });
+    });
+
+    it('pathfinder.frontend-telemetry should default to true', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.frontend-telemetry'].defaultValue).toBe(true);
       });
     });
   });

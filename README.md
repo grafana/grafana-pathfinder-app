@@ -66,6 +66,15 @@ Admins can configure Interactive learning from the plugin's configuration page i
 - **Auto-completion detection** – (Experimental) Enable automatic step completion when users perform actions themselves (without clicking "Do it" buttons)
 - **Timing settings** – Configure timeouts for requirement checks and guided steps to optimize the guide experience
 
+### Frontend telemetry
+
+Interactive learning sends frontend telemetry (errors and session data, via [Grafana Faro](https://grafana.com/oss/faro/)) to help us detect and fix bugs in the plugin. This telemetry:
+
+- Is only sent from Grafana Cloud instances – OSS and self-hosted instances never send it
+- Respects the instance-level analytics/reporting setting – disabling analytics reporting for your Grafana instance also disables this telemetry
+- Contains no user-identifying data (no user id, email, or IP)
+- Can be disabled fleet-wide independently of the plugin itself, without a release, if needed
+
 ## Creating interactive guides
 
 Editors and admins can author custom interactive guides in two ways:

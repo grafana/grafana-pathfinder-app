@@ -5,6 +5,7 @@
 
 import React, { Component, ReactNode } from 'react';
 import { Icon, Button } from '@grafana/ui';
+import { pushFaroError } from '../../../lib/faro';
 
 interface MyLearningErrorBoundaryState {
   hasError: boolean;
@@ -29,6 +30,7 @@ export class MyLearningErrorBoundary extends Component<MyLearningErrorBoundaryPr
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('MyLearningTab error:', error, errorInfo);
+    pushFaroError(error, { componentStack: errorInfo.componentStack ?? 'unknown', source: 'MyLearningErrorBoundary' });
   }
 
   render() {

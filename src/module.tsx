@@ -2,9 +2,6 @@ import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, use
 import React, { lazy, Suspense, useEffect, useMemo } from 'react';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
-
-// TODO: Re-enable Faro once collector CORS is configured correctly
-// import { initializeFaroMetrics } from './lib/faro';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
@@ -28,15 +25,6 @@ const earlySuggestListener = ((event: CustomEvent) => {
   pendingSuggestEvents.push(event);
 }) as EventListener;
 document.addEventListener('pathfinder-suggest', earlySuggestListener);
-
-// TODO: Re-enable Faro once collector CORS is configured correctly
-// Initialize Faro metrics (before translations to capture early errors)
-// Wrapped in try-catch to prevent plugin load failure if Faro has issues
-// try {
-//   await initializeFaroMetrics();
-// } catch (e) {
-//   console.error('[Faro] Error initializing frontend metrics:', e);
-// }
 
 // Initialize OpenFeature provider for dynamic feature flag evaluation
 // This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
@@ -63,6 +51,17 @@ const { getFeatureFlagValue } = await import('./utils/openfeature');
 // The pathfinder.enabled kill-switch is the only gate on whether Pathfinder mounts.
 const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
 const hostname = window.location.hostname;
+
+// Faro frontend telemetry: Grafana Cloud only, behind its own remote kill-switch.
+// Import stays dynamic so the SDK never downloads when the flag is off.
+try {
+  if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
+    const { initFaro } = await import('./lib/faro');
+    await initFaro();
+  }
+} catch (e) {
+  console.error('[Faro] Error initializing frontend telemetry:', e);
+}
 
 // Initialize highlighted-guide experiment (reads flag, processes resetCache).
 // The popout half is set up later, after the sidebar-mount decision, so it
