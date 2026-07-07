@@ -50,15 +50,15 @@ Phase 1 metadata field names are chosen to align with established standards wher
 
 The package format is designed to be the **output target** for a future SCORM import pipeline. The two-file model aligns naturally with SCORM's separation of `imsmanifest.xml` (metadata) from content files:
 
-| SCORM concept              | Package equivalent                                                                                                                      |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Package (ZIP)              | Package directory                                                                                                                       |
-| `imsmanifest.xml` metadata | `manifest.json`                                                                                                                         |
-| Organization tree          | [Journey metapackage](./learning-journeys.md) with `milestones` array                                                                       |
-| Item (with sequencing)     | Milestone ordering via `milestones` array                                                                                                    |
-| SCO (interactive content)  | Milestone package — `content.json` with content blocks                                                                                       |
-| Asset (static content)     | `assets/` directory within package                                                                                                           |
-| Prerequisites              | `manifest.json` → `depends`                                                                                                                  |
+| SCORM concept              | Package equivalent                                                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Package (ZIP)              | Package directory                                                                                                                                      |
+| `imsmanifest.xml` metadata | `manifest.json`                                                                                                                                        |
+| Organization tree          | [Journey metapackage](./learning-journeys.md) with `milestones` array                                                                                  |
+| Item (with sequencing)     | Milestone ordering via `milestones` array                                                                                                              |
+| SCO (interactive content)  | Milestone package — `content.json` with content blocks                                                                                                 |
+| Asset (static content)     | `assets/` directory within package                                                                                                                     |
+| Prerequisites              | `manifest.json` → `depends`                                                                                                                            |
 | Sequencing (forward-only)  | Advisory `milestones` ordering (see [milestone ordering and completion semantics](./learning-journeys.md#milestone-ordering-and-completion-semantics)) |
 
 The SCORM import pipeline writes two files per guide: `content.json` (converted from SCO HTML) and `manifest.json` (converted from `imsmanifest.xml` metadata). This separation means the importer naturally produces the correct package structure. For multi-SCO courses, the importer produces a journey metapackage with milestone packages — the same structure used for natively authored learning journeys.
@@ -125,7 +125,7 @@ A flat `testEnvironment` field will be added to `manifest.json` when Layer 4 E2E
 | Version | Scope                                                                                                                                  |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `1.0.0` | Current: single-file `content.json` with `id`, `title`, `blocks`, `schemaVersion`                                                      |
-| `1.1.0` | Phase 1 packages: two-file model (`content.json` + `manifest.json`), `assets/` directory, `type` and `milestones` for journeys          |
+| `1.1.0` | Phase 1 packages: two-file model (`content.json` + `manifest.json`), `assets/` directory, `type` and `milestones` for journeys         |
 | `1.2.0` | Future: adds `source`, `keywords`, `difficulty`, `estimatedDuration`, `testEnvironment`; extends `type` with `"course"` and `"module"` |
 | `2.0.0` | Reserved for breaking changes (field removal, semantic changes)                                                                        |
 
