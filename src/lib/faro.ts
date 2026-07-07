@@ -1,4 +1,4 @@
-import type { ExceptionEvent, Faro, LogEvent, TransportItem, APIEvent } from '@grafana/faro-web-sdk';
+import type { ExceptionEvent, Faro, LogEvent, LogLevel, TransportItem, APIEvent } from '@grafana/faro-web-sdk';
 import { config } from '@grafana/runtime';
 import packageJson from '../../package.json';
 
@@ -127,6 +127,16 @@ export async function initFaro(): Promise<void> {
 export function pushFaroError(error: Error, context?: Record<string, string>): void {
   try {
     faroInstance?.api.pushError(error, context ? { context } : undefined);
+  } catch {
+    // Telemetry must never break the app it's observing.
+  }
+}
+
+export type FaroLogLevel = 'info' | 'warn' | 'error';
+
+export function pushFaroLog(level: FaroLogLevel, message: string, context?: Record<string, string>): void {
+  try {
+    faroInstance?.api.pushLog([`${LOG_PREFIX} ${message}`], { level: level as LogLevel, context });
   } catch {
     // Telemetry must never break the app it's observing.
   }

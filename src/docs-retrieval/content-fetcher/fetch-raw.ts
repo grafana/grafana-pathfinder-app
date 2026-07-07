@@ -13,6 +13,7 @@ import {
   isTrustedFinalUrl,
 } from '../../security';
 import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
+import { logger } from '../../lib/logging';
 import { isJsonContentUrl, generateInteractiveLearningVariations, getContentUrls } from './url-utils';
 
 // Internal error structure for detailed error handling
@@ -148,7 +149,7 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
 
   // All variations failed
   if (lastError) {
-    console.error(`Failed to fetch from any URL variation. Last error: ${lastError.message}`);
+    logger.error('Failed to fetch from any URL variation', { lastErrorMessage: lastError.message });
   }
   return { html: null, error: lastError || { message: 'No content found', errorType: 'not-found' } };
 }
@@ -411,7 +412,7 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
   }
 
   if (lastError) {
-    console.error(`Failed to fetch content from ${url}. Last error: ${lastError.message}`);
+    logger.error(`Failed to fetch content from ${url}`, { lastErrorMessage: lastError.message });
   }
 
   return { html: null, error: lastError };

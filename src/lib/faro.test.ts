@@ -12,8 +12,9 @@ import type { TransportItem, APIEvent } from '@grafana/faro-web-sdk';
 jest.mock('../../package.json', () => ({ name: 'grafana-pathfinder-app', version: '9.9.9-test' }));
 
 const mockPushError = jest.fn();
+const mockPushLog = jest.fn();
 const mockPause = jest.fn();
-const mockFaroInstance = { api: { pushError: mockPushError }, pause: mockPause };
+const mockFaroInstance = { api: { pushError: mockPushError, pushLog: mockPushLog }, pause: mockPause };
 interface CapturedFaroConfig {
   isolate: boolean;
   app: { name: string; version: string; environment: string };
@@ -260,5 +261,34 @@ describe('pushFaroError / pauseFaroBeforeReload', () => {
       throw new Error('transport down');
     });
     expect(() => faro.pushFaroError(new Error('boom'))).not.toThrow();
+  });
+});
+
+describe('pushFaroLog', () => {
+  it('no-ops before initialization without throwing', () => {
+    const faro = freshFaro();
+    expect(() => faro.pushFaroLog('info', 'hello')).not.toThrow();
+    expect(mockPushLog).not.toHaveBeenCalled();
+  });
+
+  it('prefixes the message with [pathfinder] and forwards level/context once initialized', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.pushFaroLog('warn', 'something happened', { step: 'one' });
+    expect(mockPushLog).toHaveBeenCalledWith(['[pathfinder] something happened'], {
+      level: 'warn',
+      context: { step: 'one' },
+    });
+  });
+
+  it('swallows errors thrown by the underlying Faro API', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockPushLog.mockImplementationOnce(() => {
+      throw new Error('transport down');
+    });
+    expect(() => faro.pushFaroLog('error', 'boom')).not.toThrow();
   });
 });

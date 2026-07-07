@@ -2,6 +2,7 @@ import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, use
 import React, { lazy, Suspense, useEffect, useMemo } from 'react';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
+import { logger } from './lib/logging';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
@@ -37,7 +38,7 @@ try {
   const { bindExperimentsProvider } = await import('./lib/analytics');
   bindExperimentsProvider(getActiveExperiments);
 } catch (e) {
-  console.error('[OpenFeature] Error initializing feature flags:', e);
+  logger.exception(e, { source: 'OpenFeature init' });
 }
 
 // Highlighted-guide experiment + config-driven auto-open (dynamic imports keep
@@ -60,7 +61,7 @@ try {
     await initFaro();
   }
 } catch (e) {
-  console.error('[Faro] Error initializing frontend telemetry:', e);
+  logger.exception(e, { source: 'Faro init' });
 }
 
 // Initialize highlighted-guide experiment (reads flag, processes resetCache).
