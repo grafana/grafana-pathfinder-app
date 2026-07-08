@@ -22,6 +22,7 @@ import {
   type InlineAssistantResult,
 } from '@grafana/assistant';
 import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
+import { logger } from '../../lib/logging';
 
 // Create a persistent BehaviorSubject for mock availability
 // This ensures the mock stays active and doesn't get overridden
@@ -44,12 +45,12 @@ const getMockOpenAssistant = (props: {
   context?: ChatContextItem[];
   autoSend?: boolean;
 }): void => {
-  console.warn('=== Assistant Dev Mode ===');
-  console.warn('Origin:', props.origin);
-  console.warn('Prompt:', props.prompt || '(no prompt)');
-  console.warn('AutoSend:', props.autoSend ?? true);
-  console.warn('Context:', props.context);
-  console.warn('=========================');
+  logger.warn('=== Assistant Dev Mode ===');
+  logger.warn('Origin', { origin: props.origin });
+  logger.warn('Prompt', { prompt: props.prompt || '(no prompt)' });
+  logger.warn('AutoSend', { autoSend: props.autoSend ?? true });
+  logger.warn('Context', { context: props.context });
+  logger.warn('=========================');
 };
 
 /**
@@ -105,11 +106,11 @@ export const useMockInlineAssistant = (): InlineAssistantResult => {
   const [error, setError] = useState<Error | null>(null);
 
   const generate = useCallback(async (options: InlineAssistantOptions) => {
-    console.warn('=== Inline Assistant Dev Mode ===');
-    console.warn('Origin:', options.origin);
-    console.warn('Prompt:', options.prompt);
-    console.warn('System Prompt:', options.systemPrompt || '(none)');
-    console.warn('=====================================');
+    logger.warn('=== Inline Assistant Dev Mode ===');
+    logger.warn('Origin', { origin: options.origin });
+    logger.warn('Prompt', { prompt: options.prompt });
+    logger.warn('System Prompt', { systemPrompt: options.systemPrompt || '(none)' });
+    logger.warn('=====================================');
 
     // Set isGenerating to true at the start
     setIsGenerating(true);
@@ -143,12 +144,12 @@ export const useMockInlineAssistant = (): InlineAssistantResult => {
   }, []);
 
   const cancel = useCallback(() => {
-    console.warn('[Dev Mode] Cancel called');
+    logger.warn('[Dev Mode] Cancel called');
     setIsGenerating(false);
   }, []);
 
   const reset = useCallback(() => {
-    console.warn('[Dev Mode] Reset called');
+    logger.warn('[Dev Mode] Reset called');
     setIsGenerating(false);
     setContent('');
     setError(null);

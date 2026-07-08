@@ -93,7 +93,7 @@ describe('NavigationManager', () => {
 
       await navigationManager.ensureElementVisible(mockElement);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Element is hidden or not visible:', mockElement);
+      expect(mockConsoleWarn).toHaveBeenCalledWith('Element is hidden or not visible', { element: mockElement });
     });
 
     it('should scroll element into view when not in viewport', async () => {

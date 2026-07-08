@@ -6,6 +6,7 @@
 
 import type { JsonBlock, JsonGuide, JsonStep } from '../types';
 import { validateGuide as validateGuideCanonical, validateGuideFromString, toLegacyResult } from '../../../validation';
+import { logger } from '../../../lib/logging';
 
 /**
  * Recursively remove editor-only `authorNote` fields from every block in
@@ -128,10 +129,7 @@ export function formatGuideJson(guide: JsonGuide): string {
 export function parseGuideJson(json: string): JsonGuide | null {
   const result = validateGuideFromString(json, { skipUnknownFieldCheck: true });
   if (!result.isValid || !result.guide) {
-    console.error(
-      'Invalid guide JSON:',
-      result.errors.map((e) => e.message)
-    );
+    logger.error('Invalid guide JSON', { errors: result.errors.map((e) => e.message) });
     return null;
   }
   return result.guide;

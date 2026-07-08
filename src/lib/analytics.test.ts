@@ -16,6 +16,8 @@ jest.mock('../security/url-validator', () => ({
 
 jest.mock('./faro', () => ({
   pushFaroUserAction: jest.fn(),
+  pushFaroLog: jest.fn(),
+  pushFaroError: jest.fn(),
 }));
 
 const mockReportInteraction = reportInteraction as jest.Mock;

@@ -35,6 +35,7 @@ import {
 } from '../lib/user-storage';
 import { StorageEvents } from '../lib/event-names';
 import { StorageKeys } from '../lib/storage-keys';
+import { logger } from '../lib/logging';
 
 import { getContentKey } from './content-key';
 import { getRegisteredSectionCount, getTotalDocumentSteps } from './section-registry';
@@ -229,7 +230,7 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
     })
     .catch((error) => {
       hydrationClears.delete(key);
-      console.warn('[completion-store] hydration failed', { contentKey, sectionId, error });
+      logger.warn('[completion-store] hydration failed', { contentKey, sectionId, error });
     });
 }
 

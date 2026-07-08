@@ -12,6 +12,7 @@
 import { locationService } from '@grafana/runtime';
 
 import pluginJson from '../plugin.json';
+import { logger } from '../lib/logging';
 import { panelModeManager } from '../global-state/panel-mode';
 import { sidebarState } from '../global-state/sidebar';
 import { autoLaunchChannel } from '../global-state/auto-launch';
@@ -99,7 +100,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
     deps
       .loadControlGroupDocPopup()
       .then(({ showControlGroupDocPopup }) => showControlGroupDocPopup(docOpenSource))
-      .catch((err) => console.error('[Pathfinder] Failed to load control group popup:', err));
+      .catch((err) => logger.error('[Pathfinder] Failed to load control group popup', { error: err }));
     return true;
   }
 
@@ -120,11 +121,11 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       const redirectTarget = rawRedirectTarget ? validateRedirectPath(rawRedirectTarget) : null;
 
       if (!docsPage) {
-        console.warn(
-          'Could not parse doc param:',
-          ctx.docsParam,
-          '- Supported formats: api:<resourceName>, bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
-        );
+        logger.warn('Could not parse doc param', {
+          docsParam: ctx.docsParam,
+          supportedFormats:
+            '- Supported formats: api:<resourceName>, bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...',
+        });
         rewriteCurrentUrl(stripPathfinderParams);
         sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto-open');
         deps.attemptAutoOpen(200);
@@ -159,7 +160,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       });
     })
     .catch((err) => {
-      console.error('[Pathfinder] Failed to load find-doc-page chunk:', err);
+      logger.error('[Pathfinder] Failed to load find-doc-page chunk', { error: err });
       sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto-open');
       deps.attemptAutoOpen(200);
       setTimeout(() => {

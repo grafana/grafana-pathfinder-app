@@ -7,6 +7,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { BLOCK_EDITOR_STORAGE_KEY } from '../constants';
 import type { JsonGuide } from '../types';
+import { logger } from '../../../lib/logging';
 
 /**
  * Debounce delay for auto-save (ms)
@@ -91,7 +92,7 @@ export function useBlockPersistence({
       // Notify that save was successful
       onSave?.();
     } catch (e) {
-      console.error('Failed to save guide to localStorage:', e);
+      logger.error('Failed to save guide to localStorage', { error: e });
     }
   }, [guide, blockIds, storageKey, onSave]);
 
@@ -107,12 +108,12 @@ export function useBlockPersistence({
 
       // Version check for future migrations
       if (parsed.version !== STORAGE_VERSION) {
-        console.warn('Stored guide version mismatch, may need migration');
+        logger.warn('Stored guide version mismatch, may need migration');
       }
 
       return parsed.guide;
     } catch (e) {
-      console.error('Failed to load guide from localStorage:', e);
+      logger.error('Failed to load guide from localStorage', { error: e });
       return null;
     }
   }, [storageKey]);
@@ -123,7 +124,7 @@ export function useBlockPersistence({
       localStorage.removeItem(storageKey);
       lastGuideRef.current = '';
     } catch (e) {
-      console.error('Failed to clear guide from localStorage:', e);
+      logger.error('Failed to clear guide from localStorage', { error: e });
     }
   }, [storageKey]);
 
@@ -195,7 +196,7 @@ export function useBlockPersistence({
           onLoad(parsed.guide, parsed.blockIds);
         }
       } catch (e) {
-        console.error('Failed to load guide from localStorage:', e);
+        logger.error('Failed to load guide from localStorage', { error: e });
       }
     }
     // Only run on mount

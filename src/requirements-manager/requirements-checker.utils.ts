@@ -19,6 +19,7 @@ import { reftargetExistsCheck, navmenuOpenCheck, formValidCheck } from '../lib/d
 import { sectionCompletedCheck } from './checks/section-completed-check';
 import { isValidRequirement } from '../types/requirements.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { logger } from '../lib/logging';
 import { TimeoutManager } from '../utils/timeout-manager';
 
 import {
@@ -143,7 +144,7 @@ export { CHECK_HANDLERS };
 async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<CheckResultError> {
   // Type-safe validation with helpful developer feedback
   if (!isValidRequirement(check)) {
-    console.warn(
+    logger.warn(
       `Unknown requirement type: '${check}'. Check the requirement syntax and ensure it's supported. Allowing step to proceed.`
     );
 
@@ -161,7 +162,7 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
   }
 
   // Should never be reached due to the validation above, but keep as a fallback.
-  console.error(
+  logger.error(
     `Unexpected requirement type reached end of router: '${check}'. This indicates a bug in the type validation.`
   );
 
@@ -347,7 +348,7 @@ export function validateInteractiveRequirements(
       );
     }
 
-    console.error(errorMessage.join('\n'));
+    logger.error(errorMessage.join('\n'));
 
     return false;
   }

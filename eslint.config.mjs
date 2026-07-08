@@ -116,6 +116,17 @@ export default defineConfig([
   },
   ...baseConfig,
 
+  // console.warn/error must go through the Faro-backed logger (src/lib/logging.ts)
+  // so warnings and errors reach frontend observability. console.log/info/debug
+  // stay local-only by design. The CLI is a Node tool where console IS the output.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.*', '**/*.spec.*', 'src/cli/**', 'src/test-utils/**', 'src/lib/logging.ts'],
+    rules: {
+      'no-console': ['error', { allow: ['log', 'info', 'debug'] }],
+    },
+  },
+
   // Phase 6: Security and architecture lint rules (Epic #603)
   // Mechanically enforce security patterns (F1, F5) and architecture patterns.
   // Test files are excluded — they legitimately use innerHTML for DOM setup/teardown.

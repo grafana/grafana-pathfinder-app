@@ -10,6 +10,7 @@
 
 import { LearningJourneyTab, PersistedTabData } from '../../../types/content-panel.types';
 import { isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from '../../../security';
+import { logger } from '../../../lib/logging';
 
 /**
  * Tab storage interface for dependency injection
@@ -131,7 +132,7 @@ export async function restoreTabsFromStorage(
       const isValidCurrent = !data.currentUrl || validateUrl(data.currentUrl);
 
       if (!isValidBase || !isValidCurrent) {
-        console.warn('Rejected potentially unsafe URL from storage:', {
+        logger.warn('Rejected potentially unsafe URL from storage', {
           baseUrl: data.baseUrl,
           currentUrl: data.currentUrl,
           isValidBase,
@@ -155,7 +156,7 @@ export async function restoreTabsFromStorage(
 
     return tabs;
   } catch (error) {
-    console.error('Failed to restore tabs from storage:', error);
+    logger.error('Failed to restore tabs from storage', { error });
     return [
       {
         id: 'recommendations',
@@ -190,7 +191,7 @@ export async function restoreActiveTabFromStorage(tabStorage: TabStorage, tabs: 
       return tabExists ? activeTabId : 'recommendations';
     }
   } catch (error) {
-    console.error('Failed to restore active tab from storage:', error);
+    logger.error('Failed to restore active tab from storage', { error });
   }
 
   return 'recommendations';

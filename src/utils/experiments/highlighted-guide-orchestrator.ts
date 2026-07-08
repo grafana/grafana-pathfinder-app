@@ -24,6 +24,7 @@ import { locationService } from '@grafana/runtime';
 
 import pluginJson from '../../plugin.json';
 import { StorageKeys } from '../../lib/storage-keys';
+import { logger } from '../../lib/logging';
 import { sidebarState } from '../../global-state/sidebar';
 import { autoLaunchChannel } from '../../global-state/auto-launch';
 import { findDocPage } from '../find-doc-page';
@@ -152,7 +153,7 @@ export function setupHighlightedGuideAutoOpen(
     // fallback path for misconfigured flags).
     const docsPage = findDocPage(config.guideId);
     if (!docsPage) {
-      console.warn(
+      logger.warn(
         `[Pathfinder] Highlighted-guide auto-open: findDocPage returned null for guideId="${config.guideId}". Opening sidebar without auto-launch; Featured-slot injection remains as fallback.`
       );
       attemptAutoOpen();

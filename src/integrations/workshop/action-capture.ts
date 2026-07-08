@@ -7,6 +7,7 @@
 
 import type { SessionManager } from './session-manager';
 import type { InteractiveStepEvent, InteractiveAction } from '../../types/collaboration.types';
+import { logger } from '../../lib/logging';
 
 /**
  * Action capture system that intercepts and broadcasts presenter actions
@@ -30,7 +31,7 @@ export class ActionCaptureSystem {
    */
   startCapture(): void {
     if (this.isCapturing) {
-      console.warn('[ActionCapture] Already capturing');
+      logger.warn('[ActionCapture] Already capturing');
       return;
     }
 
@@ -86,14 +87,14 @@ export class ActionCaptureSystem {
     // Get the interactive step element
     const stepElement = this.findInteractiveStepElement(button);
     if (!stepElement) {
-      console.warn('[ActionCapture] Could not find interactive step element');
+      logger.warn('[ActionCapture] Could not find interactive step element');
       return;
     }
 
     // Extract action details
     const action = this.extractActionFromElement(stepElement);
     if (!action) {
-      console.warn('[ActionCapture] Could not extract action details');
+      logger.warn('[ActionCapture] Could not extract action details');
       return;
     }
 
@@ -258,7 +259,7 @@ export class ActionCaptureSystem {
         try {
           action.internalActions = JSON.parse(internalActionsStr);
         } catch (err) {
-          console.error('[ActionCapture] Failed to parse internal actions:', err);
+          logger.error('[ActionCapture] Failed to parse internal actions', { error: err });
         }
       }
     }

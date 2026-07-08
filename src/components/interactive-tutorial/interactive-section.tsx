@@ -6,6 +6,7 @@ import { useInteractiveElements, ActionMonitor } from '../../interactive-engine'
 import { useStepChecker, stripTabLocalRequirements } from '../../requirements-manager';
 import { useIsAlignmentPaused, useAlignmentStartingLocation } from '../../global-state/alignment-pending-context';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
+import { logger } from '../../lib/logging';
 import { InteractiveStep, resetStepCounter } from './interactive-step';
 import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
 import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
@@ -605,11 +606,11 @@ export function InteractiveSection({
           try {
             return await multiStepRef.executeStep();
           } catch (error) {
-            console.error(`Multi-step execution failed: ${stepInfo.stepId}`, error);
+            logger.error(`Multi-step execution failed: ${stepInfo.stepId}`, { error });
             return false;
           }
         } else {
-          console.error(`Multi-step ref not found for: ${stepInfo.stepId}`);
+          logger.error(`Multi-step ref not found for: ${stepInfo.stepId}`);
           return false;
         }
       }
@@ -636,14 +637,14 @@ export function InteractiveSection({
             stepInfo.stepId
           );
           if (!result.pass) {
-            console.warn(`Post-verify failed for ${stepInfo.stepId}:`, result.error);
+            logger.warn(`Post-verify failed for ${stepInfo.stepId}`, { error: result.error });
             return false;
           }
         }
 
         return true;
       } catch (error) {
-        console.error(`Step execution failed: ${stepInfo.stepId}`, error);
+        logger.error(`Step execution failed: ${stepInfo.stepId}`, { error });
         return false;
       }
     },
@@ -661,7 +662,7 @@ export function InteractiveSection({
     // Reset user scroll tracking + set isProgrammaticScroll=true for
     // the entire section run. The hook keeps both flags consistent.
     beginProgrammaticScroll();
-    console.warn(
+    logger.warn(
       '[Section] Starting section run, reset userScrolled=false, isProgrammatic=TRUE (will stay true during execution)'
     );
 
@@ -725,27 +726,27 @@ export function InteractiveSection({
 
               if (!sectionRecheckResult.pass) {
                 // Section requirements still not met after fix attempt
-                console.warn('Section requirements could not be fixed, stopping execution');
+                logger.warn('Section requirements could not be fixed, stopping execution');
                 ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
                 setIsRunning(false);
                 return;
               }
             } catch (fixError) {
-              console.warn('Failed to fix section requirements:', fixError);
+              logger.warn('Failed to fix section requirements', { error: fixError });
               ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
               setIsRunning(false);
               return;
             }
           } else {
             // No fix available for section requirements
-            console.warn('Section requirements not met and no fix available, stopping execution');
+            logger.warn('Section requirements not met and no fix available, stopping execution');
             ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
             setIsRunning(false);
             return;
           }
         }
       } catch (error) {
-        console.warn('Section requirements check failed:', error);
+        logger.warn('Section requirements check failed', { error });
         ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
         setIsRunning(false);
         return;
@@ -863,7 +864,7 @@ export function InteractiveSection({
                   }
                   // If recheck passed, continue with normal execution below
                 } catch (fixError) {
-                  console.warn(`Failed to fix requirements for step ${i + 1}:`, fixError);
+                  logger.warn(`Failed to fix requirements for step ${i + 1}`, { error: fixError });
 
                   // Fix failed - check if step is skippable
                   if (stepInfo.skippable) {
@@ -900,7 +901,7 @@ export function InteractiveSection({
               }
             }
           } catch (error) {
-            console.warn(`Step ${i + 1} requirements check failed, stopping section execution:`, error);
+            logger.warn(`Step ${i + 1} requirements check failed, stopping section execution`, { error });
             stoppedDueToRequirements = true;
             break;
           }
@@ -984,7 +985,7 @@ export function InteractiveSection({
         markStepsCompleted(allStepIds, sectionId, 'manual');
       }
     } catch (error) {
-      console.error('Error running section sequence:', error);
+      logger.error('Error running section sequence', { error });
     } finally {
       // Re-enable action monitor after section execution completes
       ActionMonitor.getInstance().forceEnable();

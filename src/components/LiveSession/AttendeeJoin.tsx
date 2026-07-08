@@ -12,6 +12,7 @@ import { parseJoinCode, parseSessionFromUrl, useSession } from '../../integratio
 import { FOLLOW_MODE_ENABLED } from '../../integrations/workshop/flags';
 import type { SessionOffer, AttendeeMode } from '../../types/collaboration.types';
 import { testIds } from '../../constants/testIds';
+import { logger } from '../../lib/logging';
 
 /**
  * Get user-friendly error guidance based on error type
@@ -224,7 +225,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
       onJoined();
       onClose();
     } catch (err) {
-      console.error('[AttendeeJoin] Failed to join session:', err);
+      logger.error('[AttendeeJoin] Failed to join session', { error: err });
       setError(err); // Store the actual error for better guidance
       setIsJoining(false);
     }

@@ -3,6 +3,7 @@ import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { isElementVisible } from '../../lib/dom';
+import { logger } from '../../lib/logging';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 
 /**
@@ -44,7 +45,7 @@ export class HoverHandler {
     }
 
     if (resolved.elements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${selector}, using first element`);
+      logger.warn(`Multiple elements found matching selector: ${selector}, using first element`);
     }
 
     return resolved.element;
@@ -53,7 +54,7 @@ export class HoverHandler {
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
     // Validate visibility before interaction
     if (!isElementVisible(targetElement)) {
-      console.warn('Target element is not visible:', targetElement);
+      logger.warn('Target element is not visible', { targetElement });
       // Continue anyway (non-breaking)
     }
 

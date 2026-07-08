@@ -40,6 +40,7 @@ import { HealthStatusBar } from './HealthStatusBar';
 import { ConfirmModal } from './NotificationModals';
 import { BACKEND_TRACKING_STORAGE_KEY, DEFAULT_GUIDE_METADATA } from './constants';
 import { testIds } from '../../constants/testIds';
+import { logger } from '../../lib/logging';
 import {
   assignNestedInstanceId,
   findSectionNestedBlockByInstanceId,
@@ -852,7 +853,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
           currentGuideBackendStatus
         );
       } catch (error) {
-        console.error('[BlockEditor] Failed to save guide:', error);
+        logger.error('[BlockEditor] Failed to save guide', { error });
         notify('error', 'Save failed', error instanceof Error ? error.message : 'Unknown error');
       }
     },
@@ -885,7 +886,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       setLastPublishedJson(JSON.stringify(editor.getGuide()));
       notify('success', 'Guide unpublished.');
     } catch (error) {
-      console.error('[BlockEditor] Failed to unpublish guide:', error);
+      logger.error('[BlockEditor] Failed to unpublish guide', { error });
       notify('error', 'Unpublish failed', error instanceof Error ? error.message : 'Unknown error');
     }
   }, [backendGuides, currentGuideResourceName, currentGuideMetadata, editor]);

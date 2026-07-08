@@ -1,4 +1,5 @@
 import { InteractiveElementData } from '../../types/interactive.types';
+import { logger } from '../logging';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 import { resolveSelector } from './selector-resolver';
 import { isCssSelector } from './selector-detector';
@@ -66,7 +67,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   const textContent = element.textContent?.trim() || undefined;
 
   if (refTarget && textContent && refTarget === textContent && refTarget.length > 5) {
-    console.warn(`refTarget "${refTarget}" matches element text — check data-reftarget attribute`);
+    logger.warn(`refTarget "${refTarget}" matches element text — check data-reftarget attribute`);
   }
 
   return {
@@ -327,7 +328,7 @@ export async function scrollUntilElementFound(
   // Find the scroll container
   const scrollContainer = document.querySelector(scrollContainerSelector);
   if (!scrollContainer || !(scrollContainer instanceof HTMLElement)) {
-    console.warn(`[LazyScroll] Scroll container not found: ${scrollContainerSelector}`);
+    logger.warn(`[LazyScroll] Scroll container not found: ${scrollContainerSelector}`);
     return null;
   }
 

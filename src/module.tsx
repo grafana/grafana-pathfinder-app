@@ -157,7 +157,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           );
         })
         .catch((err) => {
-          console.error('[Pathfinder] Failed to load interactive controller:', err);
+          logger.error('[Pathfinder] Failed to load interactive controller', { error: err });
           container.remove();
         });
     }
@@ -178,13 +178,13 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           root.render(React.createElement(PairingRequestBanner));
         })
         .catch((err) => {
-          console.error('[Pathfinder] Failed to load pairing banner:', err);
+          logger.error('[Pathfinder] Failed to load pairing banner', { error: err });
           bannerContainer.remove();
         });
     }
     import('./integrations/cross-tab/live-tab-executor')
       .then(({ installLiveTabExecutor }) => installLiveTabExecutor())
-      .catch((err) => console.error('[Pathfinder] Failed to load cross-tab executor:', err));
+      .catch((err) => logger.error('[Pathfinder] Failed to load cross-tab executor', { error: err }));
   }
 
   const sidebarMountable = pathfinderEnabled;
@@ -228,7 +228,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           );
         })
         .catch((err) => {
-          console.error('[Pathfinder] Failed to load kiosk mode:', err);
+          logger.error('[Pathfinder] Failed to load kiosk mode', { error: err });
         });
     }
   }
@@ -255,7 +255,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           root.render(React.createElement(FloatingPanelManager));
         })
         .catch((err) => {
-          console.error('[Pathfinder] Failed to load floating panel:', err);
+          logger.error('[Pathfinder] Failed to load floating panel', { error: err });
         });
     };
 
@@ -436,11 +436,11 @@ if (pathfinderEnabled) {
 function handlePathfinderSuggest(event: CustomEvent): void {
   const detail = event.detail;
   if (!detail) {
-    console.warn('[Pathfinder] pathfinder-suggest event missing detail');
+    logger.warn('[Pathfinder] pathfinder-suggest event missing detail');
     return;
   }
   if (!Array.isArray(detail.suggestions)) {
-    console.warn('[Pathfinder] pathfinder-suggest event missing suggestions array');
+    logger.warn('[Pathfinder] pathfinder-suggest event missing suggestions array');
     detail.status = 'rejected';
     detail.reason = 'invalid_payload';
     return;
@@ -455,7 +455,7 @@ function handlePathfinderSuggest(event: CustomEvent): void {
   );
 
   if (valid.length === 0) {
-    console.warn('[Pathfinder] pathfinder-suggest event had no valid suggestions (need title + url)');
+    logger.warn('[Pathfinder] pathfinder-suggest event had no valid suggestions (need title + url)');
     detail.status = 'rejected';
     detail.reason = 'no_valid_suggestions';
     return;
@@ -464,7 +464,7 @@ function handlePathfinderSuggest(event: CustomEvent): void {
   // Check if another plugin is occupying the sidebar
   const docked = parseExtensionSidebarDocked();
   if (docked?.pluginId && docked.pluginId !== pluginJson.id) {
-    console.warn('[Pathfinder] pathfinder-suggest rejected: sidebar occupied by', docked.pluginId);
+    logger.warn('[Pathfinder] pathfinder-suggest rejected: sidebar occupied by', { pluginId: docked.pluginId });
     detail.status = 'rejected';
     detail.reason = 'sidebar_in_use';
     return;

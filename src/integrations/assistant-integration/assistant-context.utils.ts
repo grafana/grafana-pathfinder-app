@@ -1,5 +1,6 @@
 import { createAssistantContextItem, type ChatContextItem } from '@grafana/assistant';
 import { RawContent } from '../../types/content.types';
+import { logger } from '../../lib/logging';
 
 /**
  * Build the prompt for the assistant based on highlighted text
@@ -66,7 +67,7 @@ export const buildDocumentContext = (content: RawContent): ChatContextItem[] => 
 
     contexts.push(structuredContext);
   } catch (error) {
-    console.warn('[AssistantIntegration] Failed to build document context:', error);
+    logger.warn('[AssistantIntegration] Failed to build document context', { error });
   }
 
   return contexts;

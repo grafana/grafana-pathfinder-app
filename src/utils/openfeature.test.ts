@@ -222,7 +222,8 @@ describe('openfeature', () => {
         await initializeOpenFeature();
 
         expect(consoleSpy).toHaveBeenCalledWith(
-          '[OpenFeature] config.namespace not available, skipping initialization'
+          '[OpenFeature] config.namespace not available, skipping initialization',
+          ''
         );
         expect(mockOF.OpenFeature.setProviderAndWait).not.toHaveBeenCalled();
 
@@ -282,7 +283,7 @@ describe('openfeature', () => {
         expect(result).toBe(true);
         expect(consoleSpy).toHaveBeenCalledWith(
           expect.stringContaining("[OpenFeature] Error evaluating flag 'some-flag'"),
-          expect.any(Error)
+          { error: expect.any(Error) }
         );
 
         consoleSpy.mockRestore();
@@ -340,7 +341,7 @@ describe('openfeature', () => {
         expect(result).toBe('default-variant');
         expect(consoleSpy).toHaveBeenCalledWith(
           expect.stringContaining("[OpenFeature] Error evaluating flag 'experiment-flag'"),
-          expect.any(Error)
+          { error: expect.any(Error) }
         );
 
         consoleSpy.mockRestore();
@@ -383,7 +384,7 @@ describe('openfeature', () => {
         expect(result).toBe(1);
         expect(consoleSpy).toHaveBeenCalledWith(
           expect.stringContaining("[OpenFeature] Error evaluating flag 'pathfinder.frontend-telemetry-sample-rate'"),
-          expect.any(Error)
+          { error: expect.any(Error) }
         );
 
         consoleSpy.mockRestore();

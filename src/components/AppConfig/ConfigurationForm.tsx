@@ -21,6 +21,7 @@ import {
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
+import { logger } from '../../lib/logging';
 import { config, getBackendSrv } from '@grafana/runtime';
 
 type JsonData = DocsPluginConfig;
@@ -134,7 +135,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         window.location.reload();
       }, 500);
     } catch (error) {
-      console.error('Failed to toggle dev mode:', error);
+      logger.error('Failed to toggle dev mode', { error });
 
       // Show user-friendly error message
       const errorMessage =
@@ -164,7 +165,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         window.location.reload();
       }, 500);
     } catch (error) {
-      console.error('Failed to toggle assistant dev mode:', error);
+      logger.error('Failed to toggle assistant dev mode', { error });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Failed to toggle assistant dev mode. You may need admin permissions.';
@@ -275,7 +276,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           window.location.reload();
         }, 500);
       } catch (error) {
-        console.error('Failed to register with Coda:', error);
+        logger.error('Failed to register with Coda', { error });
         const errorMessage =
           error instanceof Error ? error.message : 'Failed to register with Coda. Please check your enrollment key.';
         setRegistrationError(errorMessage);
@@ -392,11 +393,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         try {
           window.location.reload();
         } catch (e) {
-          console.error('Failed to reload page after saving configuration', e);
+          logger.error('Failed to reload page after saving configuration', { error: e });
         }
       }, 100);
     } catch (error) {
-      console.error('Error saving configuration:', error);
+      logger.error('Error saving configuration', { error });
       const errorMessage = error instanceof Error ? error.message : 'Failed to save configuration. Please try again.';
       if (state.enableCodaTerminal && state.codaEnrollmentKey && !codaRegistered) {
         setRegistrationError(errorMessage);

@@ -29,6 +29,7 @@ export class MyLearningErrorBoundary extends Component<MyLearningErrorBoundaryPr
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // eslint-disable-next-line no-console -- local debug output; pushFaroError below already reports to Faro
     console.error('MyLearningTab error:', error, errorInfo);
     pushFaroError(error, { componentStack: errorInfo.componentStack ?? 'unknown', source: 'MyLearningErrorBoundary' });
   }

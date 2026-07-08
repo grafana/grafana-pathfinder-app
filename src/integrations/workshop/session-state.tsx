@@ -17,6 +17,7 @@ import type {
   SessionStartEvent,
   HandRaiseInfo,
 } from '../../types/collaboration.types';
+import { logger } from '../../lib/logging';
 
 /**
  * Session context value
@@ -153,7 +154,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         try {
           callback(event);
         } catch (error) {
-          console.error('[SessionState] Error in event callback:', error);
+          logger.error('[SessionState] Error in event callback', { error });
         }
       });
     });
@@ -187,7 +188,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         setSessionRole('presenter');
         return info;
       } catch (error) {
-        console.error('[SessionState] Failed to create session:', error);
+        logger.error('[SessionState] Failed to create session', { error });
         throw error;
       }
     },
@@ -257,7 +258,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
         console.log('[SessionState] Successfully joined session:', info);
       } catch (error) {
-        console.error('[SessionState] Failed to join session:', error);
+        logger.error('[SessionState] Failed to join session', { error });
         throw error;
       }
     },

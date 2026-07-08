@@ -13,6 +13,7 @@ import { simpleMarkdownToHtml, injectJourneyExtrasIntoJsonGuide } from './conten
 import { fetchBundledInteractive } from './content-fetcher/bundled';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
 import { enforceHttps, fetchRawHtml, generateUserFriendlyError } from './content-fetcher/fetch-raw';
+import { logger } from '../lib/logging';
 
 // Re-exported to keep the barrel surface stable: `injectJourneyExtrasIntoJsonGuide`
 // is consumed by `components/docs-panel`, and `simpleMarkdownToHtml` by the
@@ -57,7 +58,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
   try {
     // Validate URL
     if (!url || typeof url !== 'string' || url.trim() === '') {
-      console.error('fetchContent called with invalid URL:', url);
+      logger.error('fetchContent called with invalid URL', { url });
       return { content: null, error: 'Invalid URL provided', errorType: 'other' };
     }
 
@@ -189,7 +190,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
         jsonContent = fetchResult.html; // Valid JSON guide
       } catch {
         // Invalid JSON - treat as HTML and wrap
-        console.warn('Failed to parse native JSON, treating as HTML');
+        logger.warn('Failed to parse native JSON, treating as HTML');
         jsonContent = wrapContentAsJsonGuide(fetchResult.html, finalUrl, metadata.title);
       }
     } else {
@@ -220,7 +221,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
 
     return { content: rawContent };
   } catch (error) {
-    console.error(`Failed to fetch content from ${url}:`, error);
+    logger.error(`Failed to fetch content from ${url}`, { error });
     return {
       content: null,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -236,7 +237,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
 function determineContentType(url: string): ContentType {
   // Handle undefined or empty URL
   if (!url || typeof url !== 'string') {
-    console.warn('determineContentType called with invalid URL:', url);
+    logger.warn('determineContentType called with invalid URL', { url });
     return 'single-doc';
   }
 

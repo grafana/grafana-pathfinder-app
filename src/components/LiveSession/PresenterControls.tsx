@@ -12,6 +12,7 @@ import { useSession } from '../../integrations/workshop';
 import { ConnectionIndicator } from './ConnectionIndicator';
 import type { SessionConfig, AttendeeInfo } from '../../types/collaboration.types';
 import { testIds } from '../../constants/testIds';
+import { logger } from '../../lib/logging';
 
 /**
  * Props for PresenterControls
@@ -60,7 +61,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
       await createSession(config);
       console.log('[PresenterControls] Session created successfully');
     } catch (err) {
-      console.error('[PresenterControls] Failed to create session:', err);
+      logger.error('[PresenterControls] Failed to create session', { error: err });
       setError('Failed to create session. Please try again.');
     } finally {
       setIsCreating(false);
@@ -76,7 +77,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
       setCopied(type);
       setTimeout(() => setCopied(null), 2000);
     } catch (error) {
-      console.error('[PresenterControls] Failed to copy:', error);
+      logger.error('[PresenterControls] Failed to copy', { error });
     }
   };
 

@@ -6,6 +6,7 @@
 
 import QRCode from 'qrcode';
 import type { SessionOffer, SessionAnswer, SessionError } from '../../types/collaboration.types';
+import { logger } from '../../lib/logging';
 
 /**
  * Generate a base64-encoded join code from a session offer
@@ -25,7 +26,7 @@ export function generateJoinCode(offer: SessionOffer): string {
     }
     return btoa(JSON.stringify(compact));
   } catch (error) {
-    console.error('Failed to generate join code:', error);
+    logger.error('Failed to generate join code', { error });
     throw error;
   }
 }
@@ -80,7 +81,7 @@ export function parseJoinCode(code: string): SessionOffer {
 
     throw new Error('Invalid join code format');
   } catch (error) {
-    console.error('Failed to parse join code:', error);
+    logger.error('Failed to parse join code', { error });
     const sessionError: SessionError = {
       code: 'INVALID_CODE',
       message: 'Invalid join code. Please check and try again.',
@@ -131,7 +132,7 @@ export function parseSessionFromUrl(): SessionOffer | null {
       tutorialUrl: tutorialUrl || baseSession.tutorialUrl,
     };
   } catch (error) {
-    console.error('Failed to parse session from URL:', error);
+    logger.error('Failed to parse session from URL', { error });
     return null;
   }
 }
@@ -158,7 +159,7 @@ export async function generateQRCode(offer: SessionOffer, baseUrl?: string): Pro
     });
     return qrCode;
   } catch (error) {
-    console.error('Failed to generate QR code:', error);
+    logger.error('Failed to generate QR code', { error });
     throw error;
   }
 }
@@ -174,7 +175,7 @@ export function generateAnswerCode(answer: SessionAnswer): string {
     const json = JSON.stringify(answer);
     return btoa(json);
   } catch (error) {
-    console.error('Failed to generate answer code:', error);
+    logger.error('Failed to generate answer code', { error });
     throw error;
   }
 }
@@ -198,7 +199,7 @@ export function parseAnswerCode(code: string): SessionAnswer {
 
     return answer;
   } catch (error) {
-    console.error('Failed to parse answer code:', error);
+    logger.error('Failed to parse answer code', { error });
     const sessionError: SessionError = {
       code: 'INVALID_CODE',
       message: 'Invalid or malformed answer code',

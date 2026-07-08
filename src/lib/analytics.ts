@@ -9,6 +9,7 @@ import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security/url-validator';
 import { pushFaroUserAction } from './faro';
+import { logger } from './logging';
 import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
 
 type GetActiveExperimentsFn = () => ExperimentAnalyticsEntry[];
@@ -209,7 +210,7 @@ export function reportAppInteraction(
     // reportInteraction call above.
     pushFaroUserAction(interactionName, enrichedProperties);
   } catch (error) {
-    console.warn('Analytics reporting failed:', error);
+    logger.warn('Analytics reporting failed', { error });
   }
 }
 

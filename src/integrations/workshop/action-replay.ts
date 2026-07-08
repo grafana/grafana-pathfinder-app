@@ -16,6 +16,7 @@ import type {
 } from '../../types/collaboration.types';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { querySelectorAllEnhanced } from '../../lib/dom/enhanced-selector';
+import { logger } from '../../lib/logging';
 
 /**
  * Action replay system for attendees
@@ -94,7 +95,7 @@ export class ActionReplaySystem {
           console.log(`[ActionReplay] Unhandled event type: ${event.type}`);
       }
     } catch (error) {
-      console.error(`[ActionReplay] Error handling ${event.type}:`, error);
+      logger.error(`[ActionReplay] Error handling ${event.type}`, { error });
       // Don't throw - gracefully handle errors
     }
   }
@@ -149,7 +150,7 @@ export class ActionReplaySystem {
       console.log('[ActionReplay] Follow mode: Executing action');
       await this.executeAction(event);
     } else {
-      console.warn(`[ActionReplay] Unknown mode: ${this.mode}`);
+      logger.warn(`[ActionReplay] Unknown mode: ${this.mode}`);
     }
 
     // Update last event
@@ -184,7 +185,7 @@ export class ActionReplaySystem {
       const elements = this.findElements(action.refTarget, action.targetAction);
 
       if (elements.length === 0) {
-        console.warn(`[ActionReplay] Element not found: ${action.refTarget}`);
+        logger.warn(`[ActionReplay] Element not found: ${action.refTarget}`);
         this.showNotification(`Element not found: ${action.refTarget}`, 'warning');
         return;
       }
@@ -202,7 +203,7 @@ export class ActionReplaySystem {
 
       console.log(`[ActionReplay] Highlighted element: ${action.refTarget}`);
     } catch (error) {
-      console.error('[ActionReplay] Error showing highlight:', error);
+      logger.error('[ActionReplay] Error showing highlight', { error });
       this.showNotification('Failed to show highlight', 'error');
     }
   }
@@ -225,12 +226,12 @@ export class ActionReplaySystem {
       const stepElement = this.findStepElement(event.stepId, action);
 
       if (!stepElement) {
-        console.error('[ActionReplay] ❌ Step element not found:', {
+        logger.error('[ActionReplay] ❌ Step element not found', {
           stepId: event.stepId,
           actionType: action.targetAction,
           refTarget: action.refTarget,
         });
-        console.warn('[ActionReplay] Attendee may be on different page');
+        logger.warn('[ActionReplay] Attendee may be on different page');
         this.showNotification(
           'Unable to execute action - please ensure you are on the same page as presenter',
           'warning'
@@ -255,10 +256,10 @@ export class ActionReplaySystem {
         console.log('[ActionReplay] ✅ Do It button clicked');
       } else {
         // Fallback: should rarely happen
-        console.warn('[ActionReplay] ❌ Do It button not found');
+        logger.warn('[ActionReplay] ❌ Do It button not found');
       }
     } catch (error) {
-      console.error('[ActionReplay] Error executing action:', error);
+      logger.error('[ActionReplay] Error executing action', { error });
       this.showNotification('Failed to execute action', 'error');
     }
   }
@@ -321,7 +322,7 @@ export class ActionReplaySystem {
         return Array.from(elements);
       }
     } catch (error) {
-      console.error(`[ActionReplay] Error finding elements:`, error);
+      logger.error(`[ActionReplay] Error finding elements`, { error });
       return [];
     }
   }

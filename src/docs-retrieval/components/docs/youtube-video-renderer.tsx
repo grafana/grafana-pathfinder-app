@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 import { getActiveTabUrl, getContentKeyOverride } from '../../../global-state/content-key';
 import { parseUrlSafely } from '../../../security/url-validator';
+import { logger } from '../../../lib/logging';
 
 export interface YouTubeVideoRendererProps {
   src: string;
@@ -100,7 +101,7 @@ export function YouTubeVideoRenderer({
           videoPosition = Math.round(playerRef.current.getCurrentTime());
         }
       } catch (error) {
-        console.warn('Could not get video duration/position:', error);
+        logger.warn('Could not get video duration/position', { error });
       }
 
       reportAppInteraction(UserInteraction.VideoViewLength, {
@@ -157,7 +158,7 @@ export function YouTubeVideoRenderer({
                 actualVideoTitleRef.current = videoData.title;
               }
             } catch (error) {
-              console.warn('Could not get video title from YouTube API:', error);
+              logger.warn('Could not get video title from YouTube API', { error });
             }
           },
           onStateChange: (event: any) => {
@@ -184,7 +185,7 @@ export function YouTubeVideoRenderer({
                   lastPositionRef.current = playerRef.current.getCurrentTime();
                 }
               } catch (error) {
-                console.warn('Could not get current video position:', error);
+                logger.warn('Could not get current video position', { error });
               }
             } else if (event.data === window.YT.PlayerState.PAUSED || event.data === window.YT.PlayerState.ENDED) {
               // Calculate and accumulate viewing time
@@ -204,7 +205,7 @@ export function YouTubeVideoRenderer({
         },
       });
     } catch (error) {
-      console.warn('Failed to initialize YouTube player for analytics:', error);
+      logger.warn('Failed to initialize YouTube player for analytics', { error });
     }
   }, [src, getVideoId, getDocumentInfo, trackViewLength]);
 
@@ -219,7 +220,7 @@ export function YouTubeVideoRenderer({
           initializePlayer();
         }, 100);
       } catch (error) {
-        console.warn('Failed to setup YouTube analytics tracking:', error);
+        logger.warn('Failed to setup YouTube analytics tracking', { error });
       }
     };
 
@@ -242,7 +243,7 @@ export function YouTubeVideoRenderer({
         try {
           playerRef.current.destroy();
         } catch (error) {
-          console.warn('Error destroying YouTube player:', error);
+          logger.warn('Error destroying YouTube player', { error });
         }
       }
     };
@@ -250,7 +251,7 @@ export function YouTubeVideoRenderer({
 
   const videoId = getVideoId(src);
   if (!videoId) {
-    console.warn('Invalid YouTube URL provided to YouTubeVideoRenderer:', src);
+    logger.warn('Invalid YouTube URL provided to YouTubeVideoRenderer', { src });
     // Fallback to regular iframe
     return (
       <iframe
@@ -271,7 +272,7 @@ export function YouTubeVideoRenderer({
   const embedUrl = (() => {
     const url = parseUrlSafely(src);
     if (!url) {
-      console.error('YouTubeVideoRenderer: Invalid URL provided, cannot safely construct embed URL', { src });
+      logger.error('YouTubeVideoRenderer: Invalid URL provided, cannot safely construct embed URL', { src });
       return null;
     }
 

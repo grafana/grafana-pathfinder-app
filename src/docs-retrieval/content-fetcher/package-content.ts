@@ -11,6 +11,7 @@ import type { ResolvedNavLink } from '../../types/context.types';
 import { getPackageRenderType } from '../../types/package.types';
 import { fetchContent } from '../content-fetcher';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
+import { logger } from '../../lib/logging';
 
 /**
  * Module-level PackageResolver injected at Tier 3+ (docs-panel wires the
@@ -81,13 +82,13 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
     const id = milestoneIds[i]!;
 
     if (result.status === 'rejected') {
-      console.warn(`[resolvePackageMilestones] Error resolving milestone ${id}:`, result.reason);
+      logger.warn(`[resolvePackageMilestones] Error resolving milestone ${id}`, { reason: result.reason });
       continue;
     }
 
     const resolution = result.value;
     if (!resolution.ok) {
-      console.warn(`[resolvePackageMilestones] Skipping unresolvable milestone: ${id}`);
+      logger.warn(`[resolvePackageMilestones] Skipping unresolvable milestone: ${id}`);
       continue;
     }
 
@@ -129,13 +130,13 @@ export async function resolvePackageNavLinks(packageIds: string[]): Promise<Reso
     const id = packageIds[i]!;
 
     if (result.status === 'rejected') {
-      console.warn(`[resolvePackageNavLinks] Error resolving package ${id}:`, result.reason);
+      logger.warn(`[resolvePackageNavLinks] Error resolving package ${id}`, { reason: result.reason });
       continue;
     }
 
     const resolution = result.value;
     if (!resolution.ok) {
-      console.warn(`[resolvePackageNavLinks] Skipping unresolvable package: ${id}`);
+      logger.warn(`[resolvePackageNavLinks] Skipping unresolvable package: ${id}`);
       continue;
     }
 

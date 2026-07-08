@@ -233,7 +233,7 @@ describe('HoverHandler', () => {
 
       await hoverHandler.execute(data, true);
 
-      expect(consoleSpy).toHaveBeenCalledWith('Target element is not visible:', mockElement);
+      expect(consoleSpy).toHaveBeenCalledWith('Target element is not visible', { targetElement: mockElement });
       expect(mockStateManager.setState).toHaveBeenCalledWith(data, 'completed');
 
       consoleSpy.mockRestore();
@@ -333,7 +333,7 @@ describe('HoverHandler', () => {
 
       await hoverHandler.execute(data, true);
 
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Multiple elements found'));
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Multiple elements found'), '');
       // Should use first element - verify by checking data attribute was set
       expect(mockElement1.getAttribute('data-interactive-hover')).toBe('true');
 

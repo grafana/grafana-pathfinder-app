@@ -7,6 +7,7 @@
 import { getBackendSrv } from '@grafana/runtime';
 import type { DataSourceApi } from '@grafana/data';
 import type { TracingMetadata } from '../types';
+import { logger } from '../../../../lib/logging';
 
 /**
  * Tempo datasource interface
@@ -57,7 +58,7 @@ const fetchTags = async (ds: TempoDatasource): Promise<string[]> => {
 
     return [];
   } catch (error) {
-    console.warn('[TempoUtils] Failed to fetch tags:', error);
+    logger.warn('[TempoUtils] Failed to fetch tags', { error });
     return [];
   }
 };
@@ -77,7 +78,7 @@ const fetchTagValues = async (ds: TempoDatasource, tagName: string): Promise<str
 
     return [];
   } catch (error) {
-    console.warn(`[TempoUtils] Failed to fetch values for tag ${tagName}:`, error);
+    logger.warn(`[TempoUtils] Failed to fetch values for tag ${tagName}`, { error });
     return [];
   }
 };

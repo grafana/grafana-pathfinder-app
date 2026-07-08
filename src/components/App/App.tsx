@@ -36,6 +36,7 @@ class PluginErrorBoundary extends Component<{ children: ReactNode }, ErrorBounda
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // eslint-disable-next-line no-console -- local debug output; pushFaroError below already reports to Faro
     console.error('Pathfinder plugin error:', error, errorInfo);
     this.setState({ errorInfo });
 

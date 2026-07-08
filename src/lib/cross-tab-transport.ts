@@ -4,6 +4,7 @@ import {
   type CrossTabPayload,
   validateCrossTabMessage,
 } from '../types/cross-tab.types';
+import { logger } from './logging';
 
 export interface BroadcastChannelLike {
   postMessage(message: unknown): void;
@@ -93,7 +94,7 @@ export class CrossTabTransport {
         listener(message);
       } catch (err) {
         // One throwing listener must not starve the rest (F-1056-5).
-        console.error('cross-tab listener threw', err);
+        logger.error('cross-tab listener threw', { error: err });
       }
     });
   };

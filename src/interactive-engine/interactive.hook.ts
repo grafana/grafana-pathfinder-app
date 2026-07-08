@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
 import { useTheme2 } from '@grafana/ui';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../styles/interactive.styles';
 import { waitForReactUpdates } from '../lib/async-utils';
+import { logger } from '../lib/logging';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
 import { checkRequirements, checkPostconditions, RequirementsCheckOptions } from '../requirements-manager';
 import { extractInteractiveDataFromElement } from '../lib/dom';
@@ -445,7 +446,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             break;
 
           default:
-            console.warn(`Unknown interactive action: ${targetAction}`);
+            logger.warn(`Unknown interactive action: ${targetAction}`);
         }
       } catch (error) {
         stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);

@@ -39,6 +39,9 @@ jest.mock('../../lib/analytics', () => {
 });
 jest.mock('../../constants', () => createConstantsMock());
 jest.mock('../../constants/interactive-config', () => createInteractiveConfigMock());
+jest.mock('../../lib/logging', () => ({
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
+}));
 jest.mock('../../lib/user-storage', () => {
   return require('../../test-utils/interactive-section-harness').createUserStorageMock();
 });

@@ -8,6 +8,7 @@ import { lastValueFrom } from 'rxjs';
 import type { JsonGuide } from '../types';
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
 import { stripAuthorNotes } from '../utils/block-export';
+import { logger } from '../../../lib/logging';
 
 interface BackendGuide {
   metadata: {
@@ -78,7 +79,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
       }
       return fetchedGuides;
     } catch (err) {
-      console.error('[useBackendGuides] Failed to fetch guides:', err);
+      logger.error('[useBackendGuides] Failed to fetch guides', { error: err });
       if (isMountedRef.current) {
         setError(err instanceof Error ? err.message : 'Failed to fetch guides');
       }
@@ -309,7 +310,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         // Refresh the list after deleting
         await refreshGuides();
       } catch (err) {
-        console.error('[useBackendGuides] Failed to delete guide:', err);
+        logger.error('[useBackendGuides] Failed to delete guide', { error: err });
         throw err;
       }
     },

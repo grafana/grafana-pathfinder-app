@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { logger } from '../../../lib/logging';
 
 export interface ImageRendererProps {
   src?: string;
@@ -29,7 +30,7 @@ export function ImageRenderer({
     // Handle both camelCase dataSrc and kebab-case data-src
     const imgSrc = src || dataSrc || (props as any)['data-src'];
     if (!imgSrc) {
-      console.error('ImageRenderer: No image source found', {
+      logger.error('ImageRenderer: No image source found', {
         src,
         dataSrc,
         'data-src': (props as any)['data-src'],

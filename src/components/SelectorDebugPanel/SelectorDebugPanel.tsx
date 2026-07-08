@@ -5,6 +5,7 @@ import { UrlTester } from 'components/UrlTester';
 import { PrTester } from 'components/PrTester';
 import type { PackageOpenInfo } from 'types/content-panel.types';
 import { StorageKeys } from 'lib/storage-keys';
+import { logger } from 'lib/logging';
 import { usePersistedBoolean } from '../../hooks';
 
 export interface SelectorDebugPanelProps {
@@ -45,7 +46,7 @@ export function SelectorDebugPanel({ onOpenDocsPage, onOpenLearningJourney }: Se
 
       window.location.reload();
     } catch (error) {
-      console.error('Failed to disable dev mode:', error);
+      logger.error('Failed to disable dev mode', { error });
 
       // Show user-friendly error message
       const errorMessage = error instanceof Error ? error.message : 'Failed to disable dev mode. Please try again.';

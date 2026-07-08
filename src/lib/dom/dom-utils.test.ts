@@ -161,7 +161,8 @@ describe('extractInteractiveDataFromElement', () => {
     extractInteractiveDataFromElement(element);
 
     expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining('refTarget "This is a very long suspicious value" matches element text')
+      expect.stringContaining('refTarget "This is a very long suspicious value" matches element text'),
+      ''
     );
   });
 

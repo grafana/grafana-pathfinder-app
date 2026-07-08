@@ -7,6 +7,7 @@ import { ContextData, Recommendation, UseContextPanelOptions, UseContextPanelRet
 import type { PackageOpenInfo } from '../types/content-panel.types';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { StorageEvents } from '../lib/event-names';
+import { logger } from '../lib/logging';
 import { suggestionState, SUGGESTIONS_UPDATED_EVENT } from '../global-state/suggestion';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
@@ -68,7 +69,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       const newContextData = await ContextService.getContextData();
       setContextData(newContextData);
     } catch (error) {
-      console.error('Failed to fetch context data:', error);
+      logger.error('Failed to fetch context data', { error });
       setContextData((prev) => ({ ...prev, isLoading: false }));
     }
   }, []); // Empty dependency array - setContextData is stable
@@ -111,7 +112,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
           usingFallbackRecommendations,
         }));
       } catch (error) {
-        console.error('Failed to fetch recommendations:', error);
+        logger.error('Failed to fetch recommendations', { error });
         setContextData((prev) => ({
           ...prev,
           recommendationsError: 'Failed to fetch recommendations',

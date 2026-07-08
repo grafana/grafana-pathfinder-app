@@ -3,6 +3,7 @@ import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG, CLEAR_COMMAND } from '../../constants/interactive-config';
 import { resetValueTracker, isElementVisible } from '../../lib/dom';
+import { logger } from '../../lib/logging';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { trySetMonacoModelValue } from './code-block-handler';
 
@@ -41,7 +42,7 @@ export class FormFillHandler {
     }
 
     if (resolved.elements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${selector}`);
+      logger.warn(`Multiple elements found matching selector: ${selector}`);
     }
 
     return resolved.element;
@@ -50,7 +51,7 @@ export class FormFillHandler {
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
     // Validate visibility before interaction
     if (!isElementVisible(targetElement)) {
-      console.warn('Target element is not visible:', targetElement);
+      logger.warn('Target element is not visible', { targetElement });
       // Continue anyway (non-breaking)
     }
 
@@ -288,7 +289,7 @@ export class FormFillHandler {
 
     // SECURITY: Prevent ReDoS attacks with length limit
     if (fullValue.length > 1000) {
-      console.warn('Input too long for combobox, truncating to 1000 chars');
+      logger.warn('Input too long for combobox, truncating to 1000 chars');
       fullValue = fullValue.substring(0, 1000);
     }
 

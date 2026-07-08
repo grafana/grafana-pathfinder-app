@@ -13,6 +13,7 @@ import { getDataSourceSrv } from '@grafana/runtime';
 import { useGuideResponsesOptional } from '../../docs-retrieval';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
+import { logger } from '../../lib/logging';
 import { testIds } from '../../constants/testIds';
 
 /** Props for the InputBlock component */
@@ -116,7 +117,7 @@ function getDatasourceOptions(filter?: string): Array<ComboboxOption<string>> {
       description: ds.type,
     }));
   } catch (error) {
-    console.warn('[InputBlock] Failed to get datasources:', error);
+    logger.warn('[InputBlock] Failed to get datasources', { error });
     return [];
   }
 }
@@ -192,7 +193,7 @@ export function InputBlock({
     try {
       return new RegExp(pattern);
     } catch {
-      console.warn(`[InputBlock] Invalid pattern regex: ${pattern}`);
+      logger.warn(`[InputBlock] Invalid pattern regex: ${pattern}`);
       return null;
     }
   }, [pattern]);

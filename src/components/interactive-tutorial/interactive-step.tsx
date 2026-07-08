@@ -9,6 +9,7 @@ import {
   validateInteractiveRequirements,
 } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { logger } from '../../lib/logging';
 import type { InteractiveStepProps } from '../../types/component-props.types';
 import {
   type DetectedActionEvent,
@@ -508,7 +509,7 @@ export const InteractiveStep = forwardRef<
 
         return true;
       } catch (error) {
-        console.error(`Step execution failed: ${stepId}`, error);
+        logger.error(`Step execution failed: ${stepId}`, { error });
         setPostVerifyError(error instanceof Error ? error.message : 'Execution failed');
         return false;
       }
@@ -674,7 +675,7 @@ export const InteractiveStep = forwardRef<
           // F-1063-3: a controller-mode step must carry an author/parser-assigned
           // stepId. The anonymous fallback is mount-instance-derived and would
           // mis-address the live tab, so fail loud rather than dispatch a guess.
-          console.warn('[Pathfinder] controller "show" skipped: step has no stepId');
+          logger.warn('[Pathfinder] controller "show" skipped: step has no stepId');
           return;
         }
         // Cross-tab state can be stale; re-verify against the live tab and gate.
@@ -739,7 +740,7 @@ export const InteractiveStep = forwardRef<
           }
         }
       } catch (error) {
-        console.error('Interactive show action failed:', error);
+        logger.error('Interactive show action failed', { error });
         setLazyScrollError(error instanceof Error ? error.message : 'Action failed');
       } finally {
         setIsShowRunning(false);
@@ -796,7 +797,7 @@ export const InteractiveStep = forwardRef<
           // F-1063-3: a controller-mode step must carry an author/parser-assigned
           // stepId. The anonymous fallback is mount-instance-derived and would
           // mis-address the live tab, so fail loud rather than dispatch a guess.
-          console.warn('[Pathfinder] controller "do" skipped: step has no stepId');
+          logger.warn('[Pathfinder] controller "do" skipped: step has no stepId');
           return;
         }
         // Cross-tab state can be stale; re-verify against the live tab and gate.
@@ -843,7 +844,7 @@ export const InteractiveStep = forwardRef<
           setLazyScrollError(result.error || 'Element not found');
         }
       } catch (error) {
-        console.error('Interactive do action failed:', error);
+        logger.error('Interactive do action failed', { error });
         setLazyScrollError(error instanceof Error ? error.message : 'Action failed');
       } finally {
         setIsDoRunning(false);

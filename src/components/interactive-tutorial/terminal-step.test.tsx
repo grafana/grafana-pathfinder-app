@@ -25,6 +25,10 @@ jest.mock('@grafana/ui', () => ({
   }),
 }));
 
+jest.mock('../../lib/logging', () => ({
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
+}));
+
 // Mock useStepChecker
 jest.mock('../../requirements-manager', () => ({
   useStepChecker: () => ({

@@ -17,6 +17,7 @@ import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import { CodeBlock } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
+import { logger } from '../../lib/logging';
 
 export interface CodeBlockStepProps {
   code: string;
@@ -183,7 +184,7 @@ export const CodeBlockStep = forwardRef<
         // Highlight the target Monaco editor using the interactive engine
         await executeInteractiveAction('highlight', refTarget, undefined, 'show');
       } catch (err) {
-        console.error('[CodeBlockStep] Show me failed:', err);
+        logger.error('[CodeBlockStep] Show me failed', { error: err });
       } finally {
         setIsShowRunning(false);
       }
@@ -200,7 +201,7 @@ export const CodeBlockStep = forwardRef<
           setInsertError(result.error || 'Failed to insert code');
         }
       } catch (err) {
-        console.error('[CodeBlockStep] Insert failed:', err);
+        logger.error('[CodeBlockStep] Insert failed', { error: err });
         setInsertError(err instanceof Error ? err.message : 'Insert failed');
       } finally {
         setIsInsertRunning(false);

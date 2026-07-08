@@ -4,6 +4,7 @@
 // (WYSIWYG preview + E2E test guides).
 import { RawContent, ContentFetchResult } from '../../types/content.types';
 import { StorageKeys } from '../../lib/user-storage';
+import { logger } from '../../lib/logging';
 
 /**
  * Discriminated representation of a `bundled:` URL. Adding a new
@@ -68,7 +69,7 @@ function readBundledLocalStorageGuide(
     };
     return { content: rawContent };
   } catch (error) {
-    console.error(`${errorPrefix}:`, error);
+    logger.error(errorPrefix, { error });
     return {
       content: null,
       error: `${errorPrefix}: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -122,7 +123,7 @@ function loadBundledPackage(url: string, relativePath: string): ContentFetchResu
     };
     return { content: rawContent };
   } catch (err) {
-    console.warn(`[docs-retrieval] Failed to load bundled package file: ${relativePath}`, err);
+    logger.warn(`[docs-retrieval] Failed to load bundled package file: ${relativePath}`, { error: err });
     return {
       content: null,
       error: `Bundled package file not found: ${relativePath}`,
@@ -153,7 +154,7 @@ function loadBundledIndexed(url: string, id: string): ContentFetchResult {
     };
     return { content: rawContent };
   } catch (error) {
-    console.error(`Failed to load bundled interactive ${id}:`, error);
+    logger.error(`Failed to load bundled interactive ${id}`, { error });
     return {
       content: null,
       error: `Failed to load bundled interactive: ${id}. Error: ${

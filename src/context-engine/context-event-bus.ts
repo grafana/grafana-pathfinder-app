@@ -1,4 +1,5 @@
 import { getEchoSrv, EchoEventType } from '@grafana/runtime';
+import { logger } from '../lib/logging';
 
 /**
  * Context event bus.
@@ -74,7 +75,7 @@ function notifyContextChange(): void {
     try {
       listener();
     } catch (error) {
-      console.error('Error in context change listener:', error);
+      logger.error('Error in context change listener', { error });
     }
   });
 }
@@ -185,7 +186,7 @@ export function initializeEchoLogging(): void {
 
     echoLoggingInitialized = true;
   } catch (error) {
-    console.error('Failed to initialize EchoSrv logging:', error);
+    logger.error('Failed to initialize EchoSrv logging', { error });
   }
 }
 

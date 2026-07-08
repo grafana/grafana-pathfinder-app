@@ -25,6 +25,10 @@ jest.mock('../../constants', () => {
   return require('../../test-utils/interactive-section-harness').createConstantsMock();
 });
 
+jest.mock('../../lib/logging', () => ({
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
+}));
+
 jest.mock('../../constants/interactive-config', () => {
   return require('../../test-utils/interactive-section-harness').createInteractiveConfigMock();
 });
