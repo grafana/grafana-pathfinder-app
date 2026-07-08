@@ -1,5 +1,8 @@
 {
   "contextPanel": {
+    "categoryDocsPage": "Belge sayfası",
+    "categoryInteractiveGuide": "Etkileşimli kılavuz",
+    "categoryLearningJourney": "Öğrenme yolu",
     "failedToLoad": "Öneriler yüklenemedi: {{error}}",
     "giveFeedback": "Geri bildirim ver",
     "items_one": "{{count}} öğe",
@@ -14,6 +17,7 @@
     "resume": "Devam et",
     "settings": "Ayarlar",
     "start": "Başla",
+    "startInteractiveGuide": "Etkileşimli kılavuzu başlat",
     "startLearningJourney": "Öğrenme Yolculuğunu Başlat",
     "subtitle": "Üzerinde çalıştığınız konulara göre etkileşimli kılavuzlar ve kaynaklar.",
     "summary": "Özet",
@@ -21,26 +25,34 @@
     "viewDocumentation": "Belgeleri Görüntüle"
   },
   "docsPanel": {
+    "closeSidebar": "Kenar çubuğunu kapat",
     "closeTab": "{{title}} kapat",
     "documentation": "Belgeler",
+    "giveFeedback": "Geri bildirim ver",
     "interactiveJourney": "Etkileşimli yolculuk",
     "learningJourney": "Öğrenme Yolculuğu",
     "loading": "Yükleniyor...",
+    "menuAriaLabel": "Daha fazla seçenek",
+    "menuTooltip": "Daha fazla seçenek",
     "milestoneProgress": "Kilometre taşı {{current}} / {{total}}",
     "milestonesCount_one": "{{count}} kilometre taşı",
     "milestonesCount_other": "{{count}} kilometre taşı",
+    "moreTabsMenu": "Daha fazla sekme",
     "moreTabs_one": "{{count}} daha",
     "moreTabs_other": "{{count}} daha",
-    "moreTabsMenu": "Daha fazla sekme",
     "nextMilestone": "Sonraki kilometre taşı",
     "nextMilestoneTooltip": "Sonraki kilometre taşı (Alt + →)",
     "open": "Aç",
+    "openControllerInNewTab": "Etkileşimli pencerede aç",
     "openInNewTab": "Bu sayfayı yeni sekmede aç",
     "previousMilestone": "Önceki kilometre taşı",
     "previousMilestoneTooltip": "Önceki kilometre taşı (Alt + ←)",
     "recommendations": "Öneriler",
     "resetGuide": "Kılavuzu sıfırla",
+    "resetGuideErrorMessage": "Kılavuz ilerlemesi sıfırlanamadı. Lütfen tekrar deneyin veya sayfayı yenileyin.",
+    "resetGuideErrorTitle": "Sıfırlama başarısız",
     "resetGuideTooltip": "Tüm etkileşimli adımları sıfırlar",
+    "settings": "Ayarlar",
     "showMoreTabs_one": "{{count}} sekme daha göster",
     "showMoreTabs_other": "{{count}} sekme daha göster",
     "switchToTab": "{{title}} sekmesine geç"
@@ -60,17 +72,28 @@
       "support": "Destek"
     },
     "modal": {
-      "dashboardSettings": "Dashboard settings",
+      "dashboardSettings": "Dashboard ayarları",
       "dashboardShortcuts": "Dashboard Shortcuts",
-      "exitEditViews": "Exit edit/setting views",
+      "exitEditViews": "Düzenleme/ayar görünümlerinden çık",
       "globalShortcuts": "Global Shortcuts",
       "goToDashboards": "Go to Dashboards",
       "goToHomeDashboard": "Go to Home Dashboard",
       "keyboardShortcuts": "Keyboard Shortcuts",
-      "refreshAllPanels": "Refresh all panels",
-      "showAllShortcuts": "Show all keyboard shortcuts",
-      "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
-      "toggleViewMode": "Toggle view mode"
+      "refreshAllPanels": "Tüm panelleri yenile",
+      "showAllShortcuts": "Tüm klavye kısayollarını göster",
+      "simplifiedView": "Bu basitleştirilmiş bir görünümdür. Bunu Grafana'nın tam HelpModal bileşeniyle değiştirebilirsiniz.",
+      "toggleViewMode": "Görünüm modunu değiştir"
     }
+  },
+  "userProfileBar": {
+    "allComplete": "Tüm yollar tamamlandı!",
+    "allCompleteTooltip": "Tüm öğrenme yollarını tamamladınız — harika iş!",
+    "badgesTooltip": "{{- total}} rozetden {{- earned}} tanesi kazanıldı",
+    "days": "gün",
+    "guides": "kılavuz",
+    "guidesTooltip": "{{- count}} öğrenme kılavuzu tamamlandı",
+    "nextGuide": "Sıradaki: {{- title}}",
+    "nextTooltip": "\"{{- pathTitle}}\" devam et — %{{- percent}} tamamlandı",
+    "streakTooltip": "{{- days}} günlük öğrenme serisi — devam edin!"
   }
 }

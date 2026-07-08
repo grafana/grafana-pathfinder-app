@@ -1,7 +1,11 @@
 {
   "contextPanel": {
+    "categoryDocsPage": "Halaman dokumentasi",
+    "categoryInteractiveGuide": "Panduan interaktif",
+    "categoryLearningJourney": "Jalur pembelajaran",
     "failedToLoad": "Gagal memuat rekomendasi: {{error}}",
     "giveFeedback": "Berikan masukan",
+    "items_one": "{{count}} item",
     "items_other": "{{count}} item",
     "menuAriaLabel": "Opsi lainnya",
     "menuTooltip": "Opsi lainnya",
@@ -13,6 +17,7 @@
     "resume": "Lanjutkan",
     "settings": "Pengaturan",
     "start": "Mulai",
+    "startInteractiveGuide": "Mulai panduan interaktif",
     "startLearningJourney": "Mulai Perjalanan Belajar",
     "subtitle": "Panduan interaktif dan sumber daya berdasarkan apa yang sedang Anda kerjakan.",
     "summary": "Ringkasan",
@@ -20,25 +25,35 @@
     "viewDocumentation": "Lihat Dokumentasi"
   },
   "docsPanel": {
+    "closeSidebar": "Tutup bilah samping",
     "closeTab": "Tutup {{title}}",
     "documentation": "Dokumentasi",
+    "giveFeedback": "Berikan masukan",
     "interactiveJourney": "Perjalanan interaktif",
     "learningJourney": "Perjalanan Belajar",
     "loading": "Memuat...",
+    "menuAriaLabel": "Opsi lainnya",
+    "menuTooltip": "Opsi lainnya",
     "milestoneProgress": "Pencapaian {{current}} dari {{total}}",
+    "milestonesCount_one": "{{count}} pencapaian",
     "milestonesCount_other": "{{count}} pencapaian",
-    "moreTabs_other": "{{count}} lagi",
     "moreTabsMenu": "Tab lainnya",
+    "moreTabs_one": "{{count}} lagi",
+    "moreTabs_other": "{{count}} lagi",
     "nextMilestone": "Pencapaian berikutnya",
     "nextMilestoneTooltip": "Pencapaian berikutnya (Alt + →)",
     "open": "Buka",
-    "openControllerInNewTab": "",
+    "openControllerInNewTab": "Buka di jendela interaktif",
     "openInNewTab": "Buka halaman ini di tab baru",
     "previousMilestone": "Pencapaian sebelumnya",
     "previousMilestoneTooltip": "Pencapaian sebelumnya (Alt + ←)",
     "recommendations": "Rekomendasi",
     "resetGuide": "Atur ulang panduan",
+    "resetGuideErrorMessage": "Tidak dapat mengatur ulang progres panduan. Silakan coba lagi atau muat ulang halaman.",
+    "resetGuideErrorTitle": "Pengaturan ulang gagal",
     "resetGuideTooltip": "Mengatur ulang semua langkah interaktif",
+    "settings": "Pengaturan",
+    "showMoreTabs_one": "Tampilkan {{count}} tab lagi",
     "showMoreTabs_other": "Tampilkan {{count}} tab lagi",
     "switchToTab": "Beralih ke {{title}}"
   },
@@ -57,17 +72,28 @@
       "support": "Dukungan"
     },
     "modal": {
-      "dashboardSettings": "Dashboard settings",
+      "dashboardSettings": "Pengaturan dasbor",
       "dashboardShortcuts": "Dashboard Shortcuts",
-      "exitEditViews": "Exit edit/setting views",
+      "exitEditViews": "Keluar dari tampilan edit/pengaturan",
       "globalShortcuts": "Global Shortcuts",
       "goToDashboards": "Go to Dashboards",
       "goToHomeDashboard": "Go to Home Dashboard",
       "keyboardShortcuts": "Keyboard Shortcuts",
-      "refreshAllPanels": "Refresh all panels",
-      "showAllShortcuts": "Show all keyboard shortcuts",
-      "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
-      "toggleViewMode": "Toggle view mode"
+      "refreshAllPanels": "Segarkan semua panel",
+      "showAllShortcuts": "Tampilkan semua pintasan keyboard",
+      "simplifiedView": "Ini adalah tampilan yang disederhanakan. Anda dapat menggantinya dengan komponen HelpModal lengkap dari Grafana.",
+      "toggleViewMode": "Alihkan mode tampilan"
     }
+  },
+  "userProfileBar": {
+    "allComplete": "Semua jalur selesai!",
+    "allCompleteTooltip": "Anda telah menyelesaikan semua jalur pembelajaran — kerja bagus!",
+    "badgesTooltip": "{{- earned}} dari {{- total}} lencana diperoleh",
+    "days": "hari",
+    "guides": "panduan",
+    "guidesTooltip": "{{- count}} panduan pembelajaran selesai",
+    "nextGuide": "Berikutnya: {{- title}}",
+    "nextTooltip": "Lanjutkan \"{{- pathTitle}}\" — {{- percent}}% selesai",
+    "streakTooltip": "Streak belajar {{- days}} hari — terus pertahankan!"
   }
 }

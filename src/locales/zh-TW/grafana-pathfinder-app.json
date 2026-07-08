@@ -1,7 +1,11 @@
 {
   "contextPanel": {
+    "categoryDocsPage": "文件頁面",
+    "categoryInteractiveGuide": "互動指南",
+    "categoryLearningJourney": "學習路徑",
     "failedToLoad": "載入推薦失敗：{{error}}",
     "giveFeedback": "提供回饋",
+    "items_one": "{{count}} 個項目",
     "items_other": "{{count}} 個項目",
     "menuAriaLabel": "更多選項",
     "menuTooltip": "更多選項",
@@ -13,6 +17,7 @@
     "resume": "繼續",
     "settings": "設定",
     "start": "開始",
+    "startInteractiveGuide": "開始互動指南",
     "startLearningJourney": "開始學習之旅",
     "subtitle": "基於您正在處理的內容的互動式指南和資源。",
     "summary": "摘要",
@@ -20,25 +25,35 @@
     "viewDocumentation": "查看文件"
   },
   "docsPanel": {
+    "closeSidebar": "關閉側邊欄",
     "closeTab": "關閉 {{title}}",
     "documentation": "文件",
+    "giveFeedback": "提供回饋",
     "interactiveJourney": "互動之旅",
     "learningJourney": "學習之旅",
     "loading": "載入中...",
+    "menuAriaLabel": "更多選項",
+    "menuTooltip": "更多選項",
     "milestoneProgress": "里程碑 {{current}} / {{total}}",
+    "milestonesCount_one": "{{count}} 個里程碑",
     "milestonesCount_other": "{{count}} 個里程碑",
-    "moreTabs_other": "還有 {{count}} 個",
     "moreTabsMenu": "更多標籤頁",
+    "moreTabs_one": "還有 {{count}} 個",
+    "moreTabs_other": "還有 {{count}} 個",
     "nextMilestone": "下一個里程碑",
     "nextMilestoneTooltip": "下一個里程碑 (Alt + →)",
     "open": "打開",
-    "openControllerInNewTab": "",
+    "openControllerInNewTab": "在互動視窗中開啟",
     "openInNewTab": "在新標籤頁中打開此頁面",
     "previousMilestone": "上一個里程碑",
     "previousMilestoneTooltip": "上一個里程碑 (Alt + ←)",
     "recommendations": "推薦",
     "resetGuide": "重置指南",
+    "resetGuideErrorMessage": "無法重置指南進度。請重試或重新載入頁面。",
+    "resetGuideErrorTitle": "重置失敗",
     "resetGuideTooltip": "重置所有互動步驟",
+    "settings": "設定",
+    "showMoreTabs_one": "顯示更多 {{count}} 個標籤頁",
     "showMoreTabs_other": "顯示更多 {{count}} 個標籤頁",
     "switchToTab": "切換到 {{title}}"
   },
@@ -69,5 +84,16 @@
       "simplifiedView": "這是簡化的檢視。你可以將其替換為 Grafana 的完整 HelpModal 元件。",
       "toggleViewMode": "切換檢視模式"
     }
+  },
+  "userProfileBar": {
+    "allComplete": "所有路徑已完成！",
+    "allCompleteTooltip": "您已完成所有學習路徑——做得很好！",
+    "badgesTooltip": "已獲得 {{- earned}} / {{- total}} 個徽章",
+    "days": "天",
+    "guides": "指南",
+    "guidesTooltip": "已完成 {{- count}} 個學習指南",
+    "nextGuide": "下一個：{{- title}}",
+    "nextTooltip": "繼續「{{- pathTitle}}」——已完成 {{- percent}}%",
+    "streakTooltip": "連續學習 {{- days}} 天——繼續保持！"
   }
 }

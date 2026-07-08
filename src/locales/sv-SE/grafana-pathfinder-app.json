@@ -1,5 +1,8 @@
 {
   "contextPanel": {
+    "categoryDocsPage": "Dokumentationssida",
+    "categoryInteractiveGuide": "Interaktiv guide",
+    "categoryLearningJourney": "Lärstig",
     "failedToLoad": "Misslyckades att ladda rekommendationer: {{error}}",
     "giveFeedback": "Ge feedback",
     "items_one": "{{count}} objekt",
@@ -14,6 +17,7 @@
     "resume": "Fortsätt",
     "settings": "Inställningar",
     "start": "Starta",
+    "startInteractiveGuide": "Starta interaktiv guide",
     "startLearningJourney": "Starta Lärresa",
     "subtitle": "Interaktiva guider och resurser baserat på vad du arbetar med.",
     "summary": "Sammanfattning",
@@ -21,27 +25,34 @@
     "viewDocumentation": "Visa Dokumentation"
   },
   "docsPanel": {
+    "closeSidebar": "Stäng sidopanel",
     "closeTab": "Stäng {{title}}",
     "documentation": "Dokumentation",
+    "giveFeedback": "Ge feedback",
     "interactiveJourney": "Interaktiv resa",
     "learningJourney": "Lärresa",
     "loading": "Laddar...",
+    "menuAriaLabel": "Fler alternativ",
+    "menuTooltip": "Fler alternativ",
     "milestoneProgress": "Milstolpe {{current}} av {{total}}",
     "milestonesCount_one": "{{count}} milstolpe",
     "milestonesCount_other": "{{count}} milstolpar",
+    "moreTabsMenu": "Fler flikar",
     "moreTabs_one": "{{count}} till",
     "moreTabs_other": "{{count}} till",
-    "moreTabsMenu": "Fler flikar",
     "nextMilestone": "Nästa milstolpe",
     "nextMilestoneTooltip": "Nästa milstolpe (Alt + →)",
     "open": "Öppna",
-    "openControllerInNewTab": "",
+    "openControllerInNewTab": "Öppna i interaktivt fönster",
     "openInNewTab": "Öppna denna sida i ny flik",
     "previousMilestone": "Föregående milstolpe",
     "previousMilestoneTooltip": "Föregående milstolpe (Alt + ←)",
     "recommendations": "Rekommendationer",
     "resetGuide": "Återställ guide",
+    "resetGuideErrorMessage": "Det gick inte att återställa guidens framsteg. Försök igen eller ladda om sidan.",
+    "resetGuideErrorTitle": "Återställningen misslyckades",
     "resetGuideTooltip": "Återställer alla interaktiva steg",
+    "settings": "Inställningar",
     "showMoreTabs_one": "Visa {{count}} flik till",
     "showMoreTabs_other": "Visa {{count}} flikar till",
     "switchToTab": "Växla till {{title}}"
@@ -73,5 +84,16 @@
       "simplifiedView": "Detta är en förenklad vy. Du kan ersätta den med Grafanas fullständiga HelpModal-komponent.",
       "toggleViewMode": "Växla visningsläge"
     }
+  },
+  "userProfileBar": {
+    "allComplete": "Alla stigar slutförda!",
+    "allCompleteTooltip": "Du har slutfört alla lärstigar — bra jobbat!",
+    "badgesTooltip": "{{- earned}} av {{- total}} märken upplåsta",
+    "days": "dagar",
+    "guides": "guider",
+    "guidesTooltip": "{{- count}} lärguider slutförda",
+    "nextGuide": "Nästa: {{- title}}",
+    "nextTooltip": "Fortsätt \"{{- pathTitle}}\" — {{- percent}}% klar",
+    "streakTooltip": "{{- days}} dagars lärserie — fortsätt så!"
   }
 }
