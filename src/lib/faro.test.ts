@@ -22,6 +22,7 @@ const mockFaroInstance = {
 interface CapturedFaroConfig {
   isolate: boolean;
   app: { name: string; version: string; environment: string };
+  sessionTracking: { samplingRate: number };
 }
 
 const mockInitializeFaro = jest.fn((_cfg: CapturedFaroConfig) => mockFaroInstance);
@@ -231,6 +232,29 @@ describe('initFaro', () => {
     const faro = freshFaro();
     await faro.initFaro();
     expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
+  });
+
+  it('defaults sessionTracking.samplingRate to 1 when no rate is passed', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+    const calledWith = mockInitializeFaro.mock.calls[0]![0];
+    expect(calledWith.sessionTracking.samplingRate).toBe(1);
+  });
+
+  it('forwards a custom sample rate into sessionTracking.samplingRate', async () => {
+    const faro = freshFaro();
+    await faro.initFaro(0.25);
+    const calledWith = mockInitializeFaro.mock.calls[0]![0];
+    expect(calledWith.sessionTracking.samplingRate).toBe(0.25);
+  });
+
+  it('ignores the passed sample rate under the local override — always samples at 1', async () => {
+    mockedConfig.buildInfo.env = 'development';
+    localStorage.setItem('pathfinder.faro.local', 'true');
+    const faro = freshFaro();
+    await faro.initFaro(0);
+    const calledWith = mockInitializeFaro.mock.calls[0]![0];
+    expect(calledWith.sessionTracking.samplingRate).toBe(1);
   });
 
   it('does not re-initialize on a second call (idempotent)', async () => {

@@ -79,7 +79,7 @@ export function isFaroEnabled(): boolean {
   return faroInstance !== null;
 }
 
-export async function initFaro(): Promise<void> {
+export async function initFaro(sampleRate = 1): Promise<void> {
   if (initStarted) {
     return;
   }
@@ -114,6 +114,10 @@ export async function initFaro(): Promise<void> {
     sessionTracking: {
       enabled: true,
       persistent: true,
+      // A session not selected by the sample sends nothing for its entire
+      // lifetime. The local QA override always gets the real rate (1), not
+      // whatever the remote production-volume control happens to be set to.
+      samplingRate: isLocalOverride ? 1 : sampleRate,
       session: {
         attributes: {
           grafana_version: config.buildInfo.version,

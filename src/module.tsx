@@ -47,7 +47,7 @@ const { createExperimentDebugger, initializeHighlightedGuideExperiment, setupHig
   await import('./utils/experiments');
 const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
   await import('./utils/sidebar-auto-open');
-const { getFeatureFlagValue } = await import('./utils/openfeature');
+const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfeature');
 
 // The pathfinder.enabled kill-switch is the only gate on whether Pathfinder mounts.
 const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
@@ -57,8 +57,9 @@ const hostname = window.location.hostname;
 // Import stays dynamic so the SDK never downloads when the flag is off.
 try {
   if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
+    const sampleRate = getNumberFlagValue('pathfinder.frontend-telemetry-sample-rate', 1);
     const { initFaro } = await import('./lib/faro');
-    await initFaro();
+    await initFaro(sampleRate);
   }
 } catch (e) {
   logger.exception(e, { source: 'Faro init' });
