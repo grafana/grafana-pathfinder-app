@@ -37,16 +37,81 @@ export const getGuideReaderStyles = (theme: GrafanaTheme2) => ({
       background: theme.colors.action.hover,
     },
   }),
+  layoutRow: css({
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: theme.spacing(4),
+    maxWidth: '1360px',
+    width: '100%',
+    margin: '0 auto',
+  }),
   container: css({
     maxWidth: '1100px',
     width: '100%',
     margin: '0 auto',
     padding: theme.spacing(4),
+    flex: 1,
+    minWidth: 0,
   }),
   message: css({
     padding: theme.spacing(4),
     textAlign: 'center',
     color: theme.colors.text.secondary,
+  }),
+  outlineRail: css({
+    width: '240px',
+    flexShrink: 0,
+    position: 'sticky',
+    top: theme.spacing(8),
+    maxHeight: `calc(100vh - ${theme.spacing(16)})`,
+    overflowY: 'auto',
+    padding: theme.spacing(4, 2),
+    '@media (max-width: 1280px)': {
+      display: 'none',
+    },
+  }),
+  outlineList: css({
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
+  }),
+  outlineItem: css({
+    display: 'block',
+    width: '100%',
+    textAlign: 'left',
+    background: 'none',
+    border: 'none',
+    borderLeft: '2px solid transparent',
+    padding: theme.spacing(0.5, 1.5),
+    color: theme.colors.text.secondary,
+    fontSize: theme.typography.bodySmall.fontSize,
+    cursor: 'pointer',
+    borderRadius: theme.shape.radius.default,
+    '&:hover': {
+      color: theme.colors.text.primary,
+      background: theme.colors.action.hover,
+    },
+    '&:focus-visible': {
+      outline: `2px solid ${theme.colors.primary.main}`,
+      outlineOffset: '-2px',
+    },
+  }),
+  outlineItemLevel2: css({
+    paddingLeft: theme.spacing(1.5),
+  }),
+  outlineItemLevel3: css({
+    paddingLeft: theme.spacing(3),
+  }),
+  outlineItemLevel4: css({
+    paddingLeft: theme.spacing(4.5),
+  }),
+  outlineItemActive: css({
+    color: theme.colors.text.primary,
+    borderLeft: `2px solid ${theme.colors.primary.border}`,
+    fontWeight: theme.typography.fontWeightMedium,
   }),
   controllerStatus: css({
     position: 'fixed',
@@ -76,3 +141,5 @@ export const getGuideReaderStyles = (theme: GrafanaTheme2) => ({
     background: theme.colors.warning.text,
   }),
 });
+
+export type GuideReaderStyles = ReturnType<typeof getGuideReaderStyles>;
