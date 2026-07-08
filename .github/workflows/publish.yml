@@ -53,8 +53,13 @@ jobs:
       # main only: publishing an arbitrary branch to dev/ops for testing must
       # never upload sourcemaps under the real release's version — that would
       # tie a production stack trace to code that isn't what's actually live.
-      # Vault path: ci/data/repo/grafana/grafana-pathfinder-app/FARO_SOURCEMAP_API_KEY
-      frontend-secrets: ${{ github.event.inputs.branch == 'main' && 'FARO_SOURCEMAP_API_KEY=FARO_SOURCEMAP_API_KEY:value' || '' }}
+      # Vault paths: ci/data/repo/grafana/grafana-pathfinder-app/FARO_SOURCEMAP_API_KEY
+      #              ci/data/repo/grafana/grafana-pathfinder-app/faro-connection (endpoint/appId/stackId fields)
+      frontend-secrets: |
+        ${{ github.event.inputs.branch == 'main' && 'FARO_SOURCEMAP_API_KEY=FARO_SOURCEMAP_API_KEY:value' || '' }}
+        ${{ github.event.inputs.branch == 'main' && 'FARO_SOURCEMAP_ENDPOINT=faro-connection:endpoint' || '' }}
+        ${{ github.event.inputs.branch == 'main' && 'FARO_SOURCEMAP_APP_ID=faro-connection:appId' || '' }}
+        ${{ github.event.inputs.branch == 'main' && 'FARO_SOURCEMAP_STACK_ID=faro-connection:stackId' || '' }}
 
       # TODO: add here any other CI custom inputs you may need:
       #   https://enghub.grafana-ops.net/docs/default/component/grafana-plugins-platform/plugins-ci-github-actions/010-plugins-ci-github-actions/#customizing-the-workflows-with-inputs
