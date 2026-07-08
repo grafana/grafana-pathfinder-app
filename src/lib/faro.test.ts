@@ -13,12 +13,26 @@ jest.mock('../../package.json', () => ({ name: 'grafana-pathfinder-app', version
 
 const mockPushError = jest.fn();
 const mockPushLog = jest.fn();
+const mockPushEvent = jest.fn();
 const mockActionEnd = jest.fn();
-const mockStartUserAction = jest.fn(() => ({ name: 'x', parentId: 'x', end: mockActionEnd }));
+const mockStartUserAction = jest.fn(() => ({
+  name: 'x',
+  parentId: 'x',
+  attributes: undefined as Record<string, string> | undefined,
+  end: mockActionEnd,
+}));
+const mockGetActiveUserAction = jest.fn((): unknown => undefined);
 const mockSetView = jest.fn();
 const mockPause = jest.fn();
 const mockFaroInstance = {
-  api: { pushError: mockPushError, pushLog: mockPushLog, startUserAction: mockStartUserAction, setView: mockSetView },
+  api: {
+    pushError: mockPushError,
+    pushLog: mockPushLog,
+    pushEvent: mockPushEvent,
+    startUserAction: mockStartUserAction,
+    getActiveUserAction: mockGetActiveUserAction,
+    setView: mockSetView,
+  },
   pause: mockPause,
 };
 interface CapturedFaroConfig {
@@ -70,6 +84,7 @@ function freshFaro(): typeof import('./faro') {
 beforeEach(() => {
   jest.clearAllMocks();
   localStorage.clear();
+  sessionStorage.clear();
   mockedConfig.buildInfo = { env: 'production', version: '13.1.0' };
   mockedConfig.bootData = { settings: { buildInfo: { versionString: 'Grafana Cloud' } } };
   mockedConfig.analytics = { enabled: true };
@@ -493,6 +508,271 @@ describe('pushFaroUserAction', () => {
       throw new Error('transport down');
     });
     expect(() => faro.pushFaroUserAction('pathfinder_docs_panel_interaction', {})).not.toThrow();
+  });
+});
+
+describe('pushFaroUserAction fallback while a real action is active', () => {
+  it('pushes a plain skip-dedupe event instead of starting a second action', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockGetActiveUserAction.mockReturnValueOnce({ name: 'outer' });
+    faro.pushFaroUserAction('pathfinder_docs_panel_interaction', { action: 'open' });
+    expect(mockPushEvent).toHaveBeenCalledWith(
+      'pathfinder_docs_panel_interaction',
+      { action: 'open', seq: '0' },
+      undefined,
+      { skipDedupe: true }
+    );
+    expect(mockStartUserAction).not.toHaveBeenCalled();
+  });
+
+  it('keeps one monotonic seq counter across both mirror shapes', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.pushFaroUserAction('pathfinder_a');
+    mockGetActiveUserAction.mockReturnValueOnce({ name: 'outer' });
+    faro.pushFaroUserAction('pathfinder_b');
+    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_a', { seq: '0' });
+    expect(mockPushEvent).toHaveBeenCalledWith('pathfinder_b', { seq: '1' }, undefined, { skipDedupe: true });
+  });
+});
+
+describe('withFaroUserAction', () => {
+  it('runs the work directly before initialization and never starts an action', async () => {
+    const faro = freshFaro();
+    await expect(faro.withFaroUserAction('pathfinder_step_do', {}, () => 42)).resolves.toBe(42);
+    expect(mockStartUserAction).not.toHaveBeenCalled();
+  });
+
+  it('propagates a rejection with the same error instance when uninitialized', async () => {
+    const faro = freshFaro();
+    const boom = new Error('boom');
+    await expect(
+      faro.withFaroUserAction('pathfinder_step_do', {}, () => {
+        throw boom;
+      })
+    ).rejects.toBe(boom);
+  });
+
+  it('starts an action with stringified attributes, stamps outcome ok, and ends it once', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    const result = await faro.withFaroUserAction('pathfinder_step_do', { step: 2 }, async () => 'done');
+    expect(result).toBe('done');
+    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_step_do', { step: '2' });
+    const action = mockStartUserAction.mock.results[0]!.value;
+    expect(action.attributes).toEqual({ outcome: 'ok' });
+    expect(mockActionEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('stamps outcome error and rethrows the same error instance on rejection', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    const boom = new Error('boom');
+    await expect(
+      faro.withFaroUserAction('pathfinder_step_do', {}, async () => {
+        throw boom;
+      })
+    ).rejects.toBe(boom);
+    const action = mockStartUserAction.mock.results[0]!.value;
+    expect(action.attributes).toEqual({ outcome: 'error' });
+    expect(mockActionEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a synchronous throw from work like a rejection', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    const boom = new Error('sync boom');
+    await expect(
+      faro.withFaroUserAction('pathfinder_step_do', {}, () => {
+        throw boom;
+      })
+    ).rejects.toBe(boom);
+    expect(mockActionEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a passthrough while another action is active — no start, no end', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockGetActiveUserAction.mockReturnValueOnce({ name: 'outer' });
+    await expect(faro.withFaroUserAction('pathfinder_step_do', {}, () => 'inner')).resolves.toBe('inner');
+    expect(mockStartUserAction).not.toHaveBeenCalled();
+    expect(mockActionEnd).not.toHaveBeenCalled();
+  });
+
+  it('force-ends a hung action after the safety timeout with outcome timeout', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    jest.useFakeTimers();
+    try {
+      void faro.withFaroUserAction('pathfinder_step_do', {}, () => new Promise<never>(() => {}));
+      jest.advanceTimersByTime(30_000);
+      const action = mockStartUserAction.mock.results[0]!.value;
+      expect(action.attributes).toEqual({ outcome: 'timeout' });
+      expect(mockActionEnd).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('never double-ends: work settles first, then the timer fires', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    jest.useFakeTimers();
+    try {
+      await faro.withFaroUserAction('pathfinder_step_do', {}, async () => 'v');
+      jest.advanceTimersByTime(60_000);
+      const action = mockStartUserAction.mock.results[0]!.value;
+      expect(action.attributes).toEqual({ outcome: 'ok' });
+      expect(mockActionEnd).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('honors a custom timeout', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    jest.useFakeTimers();
+    try {
+      void faro.withFaroUserAction('pathfinder_step_do', {}, () => new Promise<never>(() => {}), 5_000);
+      jest.advanceTimersByTime(5_000);
+      expect(mockActionEnd).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('still runs the work when startUserAction throws', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockStartUserAction.mockImplementationOnce(() => {
+      throw new Error('transport down');
+    });
+    await expect(faro.withFaroUserAction('pathfinder_step_do', {}, () => 'ok')).resolves.toBe('ok');
+  });
+
+  it('swallows errors thrown by end() and still returns the value', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockActionEnd.mockImplementationOnce(() => {
+      throw new Error('transport down');
+    });
+    await expect(faro.withFaroUserAction('pathfinder_step_do', {}, () => 'ok')).resolves.toBe('ok');
+  });
+});
+
+describe('setFaroUserActionAttributes', () => {
+  it('merges stringified attributes onto the active action', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    const active = { name: 'outer', attributes: { a: '1' } };
+    mockGetActiveUserAction.mockReturnValueOnce(active);
+    faro.setFaroUserActionAttributes({ b: 2 });
+    expect(active.attributes).toEqual({ a: '1', b: '2' });
+  });
+
+  it('no-ops without an active action or before initialization', () => {
+    const faro = freshFaro();
+    expect(() => faro.setFaroUserActionAttributes({ a: 1 })).not.toThrow();
+  });
+});
+
+describe('armFaro / engagement gating', () => {
+  it('does not initialize until an engagement trigger fires', () => {
+    const faro = freshFaro();
+    faro.armFaro(0.5);
+    expect(mockInitializeFaro).not.toHaveBeenCalled();
+  });
+
+  it('notifyFaroEngagement initializes and flushes buffered calls in order', async () => {
+    const faro = freshFaro();
+    faro.armFaro();
+    faro.pushFaroLog('warn', 'early warning');
+    faro.pushFaroUserAction('pathfinder_feature_flag_evaluated', { flag_key: 'x' });
+    expect(mockInitializeFaro).not.toHaveBeenCalled();
+    expect(mockPushLog).not.toHaveBeenCalled();
+
+    await faro.notifyFaroEngagement();
+    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
+    expect(mockPushLog).toHaveBeenCalledWith(['[pathfinder] early warning'], { level: 'warn', context: undefined });
+    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_feature_flag_evaluated', {
+      flag_key: 'x',
+      seq: '0',
+    });
+  });
+
+  it('a buffered error triggers initialization by itself', async () => {
+    const faro = freshFaro();
+    faro.armFaro();
+    const boom = new Error('boom');
+    faro.pushFaroError(boom);
+    await faro.notifyFaroEngagement();
+    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
+    expect(mockPushError).toHaveBeenCalledWith(boom, undefined);
+  });
+
+  it('an error-level log triggers initialization; warn does not', async () => {
+    const faro = freshFaro();
+    faro.armFaro();
+    faro.pushFaroLog('warn', 'just a warning');
+    await Promise.resolve();
+    expect(mockInitializeFaro).not.toHaveBeenCalled();
+
+    faro.pushFaroLog('error', 'broken');
+    await faro.notifyFaroEngagement();
+    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
+    expect(mockPushLog).toHaveBeenCalledTimes(2);
+  });
+
+  it('initializes immediately when a live Faro session already exists in this tab', async () => {
+    sessionStorage.setItem('com.grafana.faro.session', '{}');
+    const faro = freshFaro();
+    faro.armFaro();
+    await faro.notifyFaroEngagement();
+    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
+  });
+
+  it('initializes immediately under the dev-build local override', async () => {
+    mockedConfig.buildInfo.env = 'development';
+    localStorage.setItem('pathfinder.faro.local', 'true');
+    const faro = freshFaro();
+    faro.armFaro();
+    await faro.notifyFaroEngagement();
+    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
+  });
+
+  it('never arms outside Grafana Cloud — pushes stay no-ops and no init happens', async () => {
+    mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
+    const faro = freshFaro();
+    faro.armFaro();
+    faro.pushFaroLog('error', 'broken');
+    await faro.notifyFaroEngagement();
+    expect(mockInitializeFaro).not.toHaveBeenCalled();
+    expect(mockPushLog).not.toHaveBeenCalled();
+  });
+
+  it('caps the pre-init buffer at 30, dropping the oldest entries', async () => {
+    const faro = freshFaro();
+    faro.armFaro();
+    for (let i = 0; i < 35; i++) {
+      faro.pushFaroLog('warn', `message ${i}`);
+    }
+    await faro.notifyFaroEngagement();
+    expect(mockPushLog).toHaveBeenCalledTimes(30);
+    expect(mockPushLog).toHaveBeenNthCalledWith(1, ['[pathfinder] message 5'], { level: 'warn', context: undefined });
   });
 });
 

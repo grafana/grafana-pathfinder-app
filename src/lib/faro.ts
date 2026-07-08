@@ -28,6 +28,90 @@ type FaroEnvironment = 'dev' | 'ops' | 'prod' | 'local';
 let faroInstance: Faro | null = null;
 let initStarted = false;
 
+// Faro init is engagement-gated: sessions must mean "used Pathfinder or
+// Pathfinder errored", not "loaded a Grafana page". While armed, facade calls
+// queue here and flush after the first trigger (any analytics event except
+// flag exposures, or an error) completes the real init.
+type BufferedFaroCall =
+  | { kind: 'error'; error: Error; context?: Record<string, string> }
+  | { kind: 'log'; level: FaroLogLevel; message: string; context?: Record<string, string> }
+  | { kind: 'userAction'; name: string; attributes?: Record<string, unknown> };
+
+const PRE_INIT_BUFFER_CAP = 30;
+let preInitBuffer: BufferedFaroCall[] | null = null;
+let armedSampleRate = 1;
+let pendingInit: Promise<void> | null = null;
+
+// The SDK's fixed volatile-session sessionStorage key. Hardcoded because
+// importing the constant would pull @grafana/faro-web-sdk into the entry
+// bundle — the SDK must stay behind the dynamic import in initFaro.
+const FARO_SESSION_STORAGE_KEY = 'com.grafana.faro.session';
+
+function hasLiveFaroSession(): boolean {
+  try {
+    return sessionStorage.getItem(FARO_SESSION_STORAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function bufferPreInitCall(call: BufferedFaroCall): boolean {
+  if (!preInitBuffer) {
+    return false;
+  }
+  if (preInitBuffer.length >= PRE_INIT_BUFFER_CAP) {
+    preInitBuffer.shift();
+  }
+  preInitBuffer.push(call);
+  return true;
+}
+
+function flushPreInitBuffer(): void {
+  const buffered = preInitBuffer ?? [];
+  preInitBuffer = null;
+  for (const call of buffered) {
+    if (call.kind === 'error') {
+      pushFaroError(call.error, call.context);
+    } else if (call.kind === 'log') {
+      pushFaroLog(call.level, call.message, call.context);
+    } else {
+      pushFaroUserAction(call.name, call.attributes);
+    }
+  }
+}
+
+function triggerFaroInit(): Promise<void> {
+  if (!pendingInit) {
+    pendingInit = initFaro(armedSampleRate)
+      .catch(() => undefined)
+      .then(() => flushPreInitBuffer());
+  }
+  return pendingInit;
+}
+
+export function armFaro(sampleRate = 1): void {
+  if (initStarted || preInitBuffer) {
+    return;
+  }
+  const resolved = resolveFaroEnvironment();
+  if (!resolved) {
+    return;
+  }
+  armedSampleRate = sampleRate;
+  if (resolved.isLocalOverride || hasLiveFaroSession()) {
+    void triggerFaroInit();
+    return;
+  }
+  preInitBuffer = [];
+}
+
+export function notifyFaroEngagement(): Promise<void> {
+  if (!preInitBuffer && !pendingInit) {
+    return Promise.resolve();
+  }
+  return triggerFaroInit();
+}
+
 // Pathfinder is a micro-frontend inside Grafana; multiple Faro instances can
 // share the page. `local` only activates via an explicit localStorage flag in
 // a dev build, so a real production bundle can never take this path.
@@ -130,21 +214,29 @@ export function isFaroEnabled(): boolean {
   return faroInstance !== null;
 }
 
+function resolveFaroEnvironment(): { environment: FaroEnvironment; isLocalOverride: boolean } | null {
+  const environment = getEnvironment(window.location.hostname);
+  if (!environment) {
+    return null;
+  }
+  const isLocalOverride = environment === 'local';
+  if (!isLocalOverride && (!isGrafanaCloud() || config.analytics?.enabled === false)) {
+    return null;
+  }
+  return { environment, isLocalOverride };
+}
+
 export async function initFaro(sampleRate = 1): Promise<void> {
   if (initStarted) {
     return;
   }
   initStarted = true;
 
-  const environment = getEnvironment(window.location.hostname);
-  if (!environment) {
+  const resolved = resolveFaroEnvironment();
+  if (!resolved) {
     return;
   }
-
-  const isLocalOverride = environment === 'local';
-  if (!isLocalOverride && (!isGrafanaCloud() || config.analytics?.enabled === false)) {
-    return;
-  }
+  const { environment, isLocalOverride } = resolved;
 
   const {
     initializeFaro,
@@ -200,6 +292,10 @@ export async function initFaro(sampleRate = 1): Promise<void> {
 
 export function pushFaroError(error: Error, context?: Record<string, string>): void {
   try {
+    if (bufferPreInitCall({ kind: 'error', error, context })) {
+      void triggerFaroInit();
+      return;
+    }
     faroInstance?.api.pushError(error, context ? { context } : undefined);
   } catch {
     // Telemetry must never break the app it's observing.
@@ -210,6 +306,12 @@ export type FaroLogLevel = 'info' | 'warn' | 'error';
 
 export function pushFaroLog(level: FaroLogLevel, message: string, context?: Record<string, string>): void {
   try {
+    if (bufferPreInitCall({ kind: 'log', level, message, context })) {
+      if (level === 'error') {
+        void triggerFaroInit();
+      }
+      return;
+    }
     faroInstance?.api.pushLog([`${LOG_PREFIX} ${message}`], { level: level as LogLevel, context });
   } catch {
     // Telemetry must never break the app it's observing.
@@ -242,14 +344,97 @@ let userActionSeq = 0;
 // cast internally, since UserActionsAPI has no top-level `endUserAction()`.
 export function pushFaroUserAction(name: string, attributes?: Record<string, unknown>): void {
   try {
-    const action = faroInstance?.api.startUserAction(name, {
+    if (bufferPreInitCall({ kind: 'userAction', name, attributes })) {
+      return;
+    }
+    if (!faroInstance) {
+      return;
+    }
+    const attrs = {
       ...(attributes ? stringifyAttributes(attributes) : {}),
       // Faro's dedupe compares name+attributes but not timestamps, so two
       // identical mirrors in the same millisecond would collapse into one
       // event; `seq` keeps the count in parity with RudderStack.
       seq: String(userActionSeq++),
-    });
+    };
+    // A real action is in flight: starting another would return undefined and
+    // silently drop this mirror. Push it as a plain event instead — the SDK
+    // buffers it into the open action and stamps action.parentId/name on end.
+    if (faroInstance.api.getActiveUserAction() !== undefined) {
+      faroInstance.api.pushEvent(name, attrs, undefined, { skipDedupe: true });
+      return;
+    }
+    const action = faroInstance.api.startUserAction(name, attrs);
     (action as UserActionInternalInterface | undefined)?.end();
+  } catch {
+    // Telemetry must never break the app it's observing.
+  }
+}
+
+const USER_ACTION_TIMEOUT_MS = 30_000;
+export const USER_ACTION_TIMEOUT_LONG_MS = 600_000;
+
+type StampableUserAction = UserActionInternalInterface & { attributes?: Record<string, string> };
+
+// UserActionInternalInterface.end() declares an attributes parameter, but the
+// 2.8.2 implementation ignores it — outcome must be stamped by mutating the
+// action's public `attributes` field before end(). end() also only guards
+// re-entry from the Cancelled state, so calling it again after the safety
+// timeout already ended the action would emit a duplicate faro.user.action
+// event; `settled` is the idempotency guard for both.
+export async function withFaroUserAction<T>(
+  name: string,
+  attributes: Record<string, unknown>,
+  work: () => Promise<T> | T,
+  timeoutMs = USER_ACTION_TIMEOUT_MS
+): Promise<T> {
+  let action: StampableUserAction | undefined;
+  try {
+    if (faroInstance && faroInstance.api.getActiveUserAction() === undefined) {
+      action = faroInstance.api.startUserAction(name, stringifyAttributes(attributes)) as
+        StampableUserAction | undefined;
+    }
+  } catch {
+    // Telemetry must never break the app it's observing.
+  }
+  if (!action) {
+    return work();
+  }
+  const started = action;
+  let settled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const finish = (outcome: 'ok' | 'error' | 'timeout') => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+    try {
+      started.attributes = { ...started.attributes, outcome };
+      started.end();
+    } catch {
+      // Telemetry must never break the app it's observing.
+    }
+  };
+  timer = setTimeout(() => finish('timeout'), timeoutMs);
+  try {
+    const result = await work();
+    finish('ok');
+    return result;
+  } catch (error) {
+    finish('error');
+    throw error;
+  }
+}
+
+export function setFaroUserActionAttributes(attributes: Record<string, unknown>): void {
+  try {
+    const action = faroInstance?.api.getActiveUserAction() as StampableUserAction | undefined;
+    if (action) {
+      action.attributes = { ...action.attributes, ...stringifyAttributes(attributes) };
+    }
   } catch {
     // Telemetry must never break the app it's observing.
   }

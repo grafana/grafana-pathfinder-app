@@ -54,12 +54,14 @@ const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
 const hostname = window.location.hostname;
 
 // Faro frontend telemetry: Grafana Cloud only, behind its own remote kill-switch.
-// Import stays dynamic so the SDK never downloads when the flag is off.
+// Arming is engagement-gated — the SDK downloads and a session starts only on
+// the first real interaction or Pathfinder error, so sessions mean "used
+// Pathfinder", not "loaded a Grafana page".
 try {
   if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
     const sampleRate = getNumberFlagValue('pathfinder.frontend-telemetry-sample-rate', 1);
-    const { initFaro } = await import('./lib/faro');
-    await initFaro(sampleRate);
+    const { armFaro } = await import('./lib/faro');
+    armFaro(sampleRate);
   }
 } catch (e) {
   logger.exception(e, { source: 'Faro init' });

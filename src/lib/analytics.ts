@@ -8,7 +8,7 @@
 import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security/url-validator';
-import { pushFaroUserAction } from './faro';
+import { notifyFaroEngagement, pushFaroUserAction } from './faro';
 import { logger } from './logging';
 import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
 
@@ -204,6 +204,12 @@ export function reportAppInteraction(
     };
 
     reportInteraction(interactionName, enrichedProperties);
+    // Flag exposures fire for the whole experiment population on page load —
+    // they must not summon Faro (a session would then exist for every user).
+    // They ride the pre-init buffer until real engagement instead.
+    if (type !== UserInteraction.FeatureFlagEvaluated) {
+      void notifyFaroEngagement();
+    }
     // Mirrors every analytics event into Faro as a User Action (same name, same
     // properties) so the two pipelines can be cross-checked against each other.
     // pushFaroUserAction never throws, so a mirror failure can't affect the
