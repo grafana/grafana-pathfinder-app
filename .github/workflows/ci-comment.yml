@@ -1,0 +1,98 @@
+name: CI comment
+
+# Posts the aggregated Playwright e2e results table as a PR comment.
+#
+# WHY THIS IS A SEPARATE WORKFLOW (and why it is safe):
+# The CI workflow runs on `pull_request`. For PRs opened from forks, GitHub forcibly
+# downgrades that workflow's GITHUB_TOKEN to read-only regardless of any `permissions:`
+# block, so it cannot comment on the PR. This is GitHub's defense against "pwn requests"
+# (untrusted fork code running with a write-capable token).
+#
+# This workflow runs on `workflow_run`, which executes in the context of the BASE repo's
+# default branch, so its token is write-capable even for fork PRs. That is only safe
+# because of two invariants that MUST be preserved:
+#   1. It runs ONLY trusted code from the default branch. The checkout below takes the
+#      default ref - it never checks out `github.event.workflow_run.head_sha`, so fork
+#      source code is never placed on disk or executed here.
+#   2. Everything crossing the trust boundary from the fork-triggered run arrives as inert
+#      DATA (downloaded artifacts), never as code. Artifact contents are treated as
+#      untrusted: the PR number is validated as a bare integer before use, and the results
+#      table is rendered by our own trusted script.
+# Do NOT add a checkout of the PR head ref or execute any downloaded/fork-provided code in
+# this workflow - that would reintroduce the pwn-request vulnerability this design avoids.
+
+on:
+  workflow_run:
+    workflows: ['CI']
+    types:
+      - completed
+
+permissions: {} # Granted per job
+
+jobs:
+  playwright-comment:
+    name: Comment PR with e2e results
+    # Only for PR-triggered CI runs; skip pushes to main.
+    if: ${{ github.event.workflow_run.event == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # Checkout the trusted comment-generation script from the default branch
+      pull-requests: write # Comment on PRs - honored here even for fork PRs (see file header)
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Download PR number
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: pr-number
+          path: pr-number
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download report summaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: all-reports
+          pattern: gf-playwright-report-*
+          merge-multiple: true
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read and validate PR number
+        id: pr
+        run: |
+          num="$(cat pr-number/pr-number.txt)"
+          # Artifact contents come from the fork-triggered run and are untrusted. Only accept
+          # a bare integer so it cannot inject into the comment step's expressions.
+          if [[ "$num" =~ ^[0-9]+$ ]]; then
+            echo "number=$num" >> "$GITHUB_OUTPUT"
+          else
+            echo "Refusing to use non-numeric PR number: '$num'"
+          fi
+
+      - name: Generate results table
+        id: results
+        run: |
+          if [ ! -d all-reports ]; then
+            echo "No report artifacts found; skipping summary."
+            exit 0
+          fi
+          table=$(node .github/scripts/build-playwright-comment.js)
+          {
+            echo "table<<EOF"
+            echo "$table"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "$table" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment PR with results
+        if: ${{ steps.pr.outputs.number != '' && steps.results.outputs.table != '' }}
+        uses: thollander/actions-comment-pull-request@24bffb9b452ba05a4f3f77933840a6a841d1b32b # v3.0.1
+        with:
+          pr-number: ${{ steps.pr.outputs.number }}
+          comment-tag: gf-playwright-test-results
+          create-if-not-exists: true
+          message: ${{ steps.results.outputs.table }}

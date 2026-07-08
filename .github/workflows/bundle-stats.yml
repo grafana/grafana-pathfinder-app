@@ -24,4 +24,10 @@ jobs:
         with:
           persist-credentials: false
 
+      # The bundle-size action builds, compares against main, and comments in a single
+      # composite step. On PRs from forks the GITHUB_TOKEN is read-only, so the comment step
+      # fails with "Resource not accessible by integration". This is informational reporting,
+      # not a gate, so we let it fail without reddening the build. The action cannot be split
+      # into a workflow_run flow (like ci.yml's comment) without reimplementing its diff logic.
       - uses: grafana/plugin-actions/bundle-size@4698961fa64137fcac207108397ebe8a738a33d1
+        continue-on-error: true

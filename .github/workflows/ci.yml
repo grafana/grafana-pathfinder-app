@@ -414,49 +414,33 @@ jobs:
       #     path: grafana-server.log
       #     retention-days: 5
 
-  # Aggregates the per-version e2e summaries and posts them as a single PR comment.
+  # The per-version e2e summaries are uploaded as `gf-playwright-report-*` artifacts by
+  # the matrix job above. They are aggregated into a single PR comment by the separate
+  # "CI comment" workflow (.github/workflows/ci-comment.yml), which runs on `workflow_run`
+  # so it holds a write-capable token even for PRs from forks. This `pull_request` workflow
+  # runs with a read-only token on fork PRs and therefore cannot comment itself.
+  #
+  # `workflow_run` does not reliably know the PR number for fork PRs, so we persist it here
+  # as an artifact for the comment workflow to read back.
+  #
   # We deliberately do NOT deploy to the gh-pages branch: the org-wide "Signed Commits"
   # ruleset (required_signatures on ~ALL branches) rejects the unsigned commit that the
   # shared deploy-report-pages action pushes, which reddens every PR. The hosted report
   # carried no content anyway because upload-report is false in the matrix job above.
-  publish-report:
-    if: ${{ always() && !cancelled() }}
-    needs: [playwright-tests]
+  save-pr-number:
+    name: Save PR number for comment workflow
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read # Checkout to access the comment-generation script
-      pull-requests: write # Comment on PRs with the e2e results table
+    timeout-minutes: 2
+    permissions: {} # No token access needed - only writes a static artifact
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          persist-credentials: false
+      - name: Write PR number to file
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+        run: echo "$PR_NUMBER" > pr-number.txt
 
-      - name: Download report summaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - name: Upload PR number
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          path: all-reports
-          pattern: gf-playwright-report-*
-          merge-multiple: true
-
-      - name: Generate results table
-        id: results
-        run: |
-          if [ ! -d all-reports ]; then
-            echo "No report artifacts found; skipping summary."
-            exit 0
-          fi
-          table=$(node .github/scripts/build-playwright-comment.js)
-          {
-            echo "table<<EOF"
-            echo "$table"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-          echo "$table" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Comment PR with results
-        if: ${{ github.event.number != null && steps.results.outputs.table != '' }}
-        uses: thollander/actions-comment-pull-request@24bffb9b452ba05a4f3f77933840a6a841d1b32b # v3.0.1
-        with:
-          comment-tag: gf-playwright-test-results
-          create-if-not-exists: true
-          message: ${{ steps.results.outputs.table }}
+          name: pr-number
+          path: pr-number.txt
