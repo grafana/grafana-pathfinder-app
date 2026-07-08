@@ -1,4 +1,5 @@
 import type {
+  EventEvent,
   ExceptionEvent,
   Faro,
   LogEvent,
@@ -9,6 +10,11 @@ import type {
 } from '@grafana/faro-web-sdk';
 import { config } from '@grafana/runtime';
 import packageJson from '../../package.json';
+import {
+  ALLOWED_GRAFANA_DOCS_HOSTNAMES,
+  ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES,
+  ALLOWED_RECOMMENDER_DOMAINS,
+} from '../constants';
 
 const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/d6ec87b657b65de6e363de05623d9c57';
 const APP_NAME = packageJson.name;
@@ -68,10 +74,39 @@ function isLogItem(item: TransportItem<APIEvent>): item is TransportItem<LogEven
   return item.type === 'log';
 }
 
+function isEventItem(item: TransportItem<APIEvent>): item is TransportItem<EventEvent> {
+  return item.type === 'event';
+}
+
+// PerformanceInstrumentation reports every fetch/xhr resource load on the
+// page (Grafana core's own requests included) — these two are the only
+// domains this plugin itself ever fetches from, so anything else is core's
+// traffic, not ours.
+const TRACKED_RESOURCE_HOSTNAMES = new Set([
+  ...ALLOWED_GRAFANA_DOCS_HOSTNAMES,
+  ...ALLOWED_RECOMMENDER_DOMAINS,
+  ...ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES,
+]);
+
+function isTrackedResourceUrl(resourceUrl: string | undefined): boolean {
+  if (typeof resourceUrl !== 'string') {
+    return false;
+  }
+  try {
+    return TRACKED_RESOURCE_HOSTNAMES.has(new URL(resourceUrl).hostname);
+  } catch {
+    return false;
+  }
+}
+
 // Whitelist, not blocklist: Grafana core and other app plugins run their own
 // Faro instances on the same page, so exceptions/logs must be attributable to
-// Pathfinder. Other item types (events, measurements) only ever originate
-// from this isolated instance's own API, so they pass through unfiltered.
+// Pathfinder, and PerformanceInstrumentation's resource entries must be
+// attributable to a domain we actually fetch from. Page-wide navigation
+// timing (the whole page's load, not a specific resource) is always dropped.
+// Everything else — our own pushed events/user-actions/measurements — only
+// ever originates from this isolated instance's own API, so it passes
+// through unfiltered.
 export function filterPathfinderTelemetry(item: TransportItem<APIEvent>): TransportItem<APIEvent> | null {
   if (isExceptionItem(item)) {
     const frames = item.payload.stacktrace?.frames ?? [];
@@ -79,6 +114,14 @@ export function filterPathfinderTelemetry(item: TransportItem<APIEvent>): Transp
   }
   if (isLogItem(item)) {
     return item.payload.message.startsWith(LOG_PREFIX) ? item : null;
+  }
+  if (isEventItem(item)) {
+    if (item.payload.name === 'faro.performance.navigation') {
+      return null;
+    }
+    if (item.payload.name === 'faro.performance.resource') {
+      return isTrackedResourceUrl(item.payload.attributes?.['name']) ? item : null;
+    }
   }
   return item;
 }
@@ -103,8 +146,13 @@ export async function initFaro(sampleRate = 1): Promise<void> {
     return;
   }
 
-  const { initializeFaro, ErrorsInstrumentation, SessionInstrumentation, ViewInstrumentation } =
-    await import('@grafana/faro-web-sdk');
+  const {
+    initializeFaro,
+    ErrorsInstrumentation,
+    SessionInstrumentation,
+    ViewInstrumentation,
+    PerformanceInstrumentation,
+  } = await import('@grafana/faro-web-sdk');
 
   faroInstance = initializeFaro({
     url: COLLECTOR_URL,
@@ -118,7 +166,15 @@ export async function initFaro(sampleRate = 1): Promise<void> {
       version: APP_VERSION,
       environment,
     },
-    instrumentations: [new ErrorsInstrumentation(), new SessionInstrumentation(), new ViewInstrumentation()],
+    instrumentations: [
+      new ErrorsInstrumentation(),
+      new SessionInstrumentation(),
+      new ViewInstrumentation(),
+      // Only fetch/xhr resources are tracked by default (config.trackResources
+      // is left unset) — not every image/script/CSS on the page. Filtered
+      // further in beforeSend down to docs/recommender hosts specifically.
+      new PerformanceInstrumentation(),
+    ],
     sessionTracking: {
       enabled: true,
       persistent: true,

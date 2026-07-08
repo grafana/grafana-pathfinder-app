@@ -24,6 +24,7 @@ interface CapturedFaroConfig {
   isolate: boolean;
   app: { name: string; version: string; environment: string };
   sessionTracking: { samplingRate: number };
+  instrumentations: Array<{ constructor: { name: string } }>;
 }
 
 const mockInitializeFaro = jest.fn((_cfg: CapturedFaroConfig) => mockFaroInstance);
@@ -33,6 +34,7 @@ jest.mock('@grafana/faro-web-sdk', () => ({
   ErrorsInstrumentation: class ErrorsInstrumentation {},
   SessionInstrumentation: class SessionInstrumentation {},
   ViewInstrumentation: class ViewInstrumentation {},
+  PerformanceInstrumentation: class PerformanceInstrumentation {},
 }));
 
 // A stable object reference, not a fresh literal per require: `freshFaro()`
@@ -157,6 +159,26 @@ function eventItem(): TransportItem<APIEvent> {
   } as unknown as TransportItem<APIEvent>;
 }
 
+function performanceResourceItem(resourceUrl: string): TransportItem<APIEvent> {
+  return {
+    type: 'event',
+    payload: {
+      name: 'faro.performance.resource',
+      timestamp: new Date().toISOString(),
+      attributes: { name: resourceUrl },
+    },
+    meta: {},
+  } as unknown as TransportItem<APIEvent>;
+}
+
+function performanceNavigationItem(): TransportItem<APIEvent> {
+  return {
+    type: 'event',
+    payload: { name: 'faro.performance.navigation', timestamp: new Date().toISOString(), attributes: {} },
+    meta: {},
+  } as unknown as TransportItem<APIEvent>;
+}
+
 describe('filterPathfinderTelemetry', () => {
   it('keeps an exception with a pathfinder stack frame', () => {
     const item = exceptionItem(['webpack://grafana-pathfinder-app/./src/lib/faro.ts']);
@@ -189,6 +211,35 @@ describe('filterPathfinderTelemetry', () => {
   it('passes through other item types unfiltered', () => {
     const item = eventItem();
     expect(filterPathfinderTelemetry(item)).toBe(item);
+  });
+
+  it('always drops page-wide navigation timing', () => {
+    expect(filterPathfinderTelemetry(performanceNavigationItem())).toBeNull();
+  });
+
+  it('keeps a resource-timing entry for the docs domain', () => {
+    const item = performanceResourceItem('https://grafana.com/docs/some-page/content.json');
+    expect(filterPathfinderTelemetry(item)).toBe(item);
+  });
+
+  it('keeps a resource-timing entry for the recommender domain', () => {
+    const item = performanceResourceItem('https://recommender.grafana.com/api/v1/recommend');
+    expect(filterPathfinderTelemetry(item)).toBe(item);
+  });
+
+  it('keeps a resource-timing entry for the interactive-learning domain', () => {
+    const item = performanceResourceItem('https://interactive-learning.grafana.net/guide/content.json');
+    expect(filterPathfinderTelemetry(item)).toBe(item);
+  });
+
+  it('drops a resource-timing entry for an untracked (e.g. Grafana core) domain', () => {
+    const item = performanceResourceItem('https://foo.grafana.net/api/dashboards/uid/abc');
+    expect(filterPathfinderTelemetry(item)).toBeNull();
+  });
+
+  it('drops a resource-timing entry with a malformed URL', () => {
+    const item = performanceResourceItem('not-a-valid-url');
+    expect(filterPathfinderTelemetry(item)).toBeNull();
   });
 });
 
@@ -223,6 +274,21 @@ describe('initFaro', () => {
     expect(calledWith.app.name).toBe('grafana-pathfinder-app');
     expect(calledWith.app.version).toBe('9.9.9-test');
     expect(calledWith.app.version).not.toBe('%VERSION%');
+  });
+
+  it('includes PerformanceInstrumentation (filtered down in beforeSend, not excluded outright)', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+    const calledWith = mockInitializeFaro.mock.calls[0]![0];
+    const instrumentationNames = calledWith.instrumentations.map((i) => i.constructor.name);
+    expect(instrumentationNames).toEqual(
+      expect.arrayContaining([
+        'ErrorsInstrumentation',
+        'SessionInstrumentation',
+        'ViewInstrumentation',
+        'PerformanceInstrumentation',
+      ])
+    );
   });
 
   it('skips the cloud/analytics checks under the dev-build local override', async () => {
