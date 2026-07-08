@@ -50,5 +50,11 @@ jobs:
       # temp disable while https://github.com/grafana/plugin-actions/pull/118 is being fixed
       run-playwright: false
 
+      # main only: publishing an arbitrary branch to dev/ops for testing must
+      # never upload sourcemaps under the real release's version — that would
+      # tie a production stack trace to code that isn't what's actually live.
+      # Vault path: ci/data/repo/grafana/grafana-pathfinder-app/FARO_SOURCEMAP_API_KEY
+      frontend-secrets: ${{ github.event.inputs.branch == 'main' && 'FARO_SOURCEMAP_API_KEY=FARO_SOURCEMAP_API_KEY:value' || '' }}
+
       # TODO: add here any other CI custom inputs you may need:
       #   https://enghub.grafana-ops.net/docs/default/component/grafana-plugins-platform/plugins-ci-github-actions/010-plugins-ci-github-actions/#customizing-the-workflows-with-inputs
