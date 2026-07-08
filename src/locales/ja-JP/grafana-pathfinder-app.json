@@ -73,12 +73,12 @@
     },
     "modal": {
       "dashboardSettings": "ダッシュボード設定",
-      "dashboardShortcuts": "Dashboard Shortcuts",
+      "dashboardShortcuts": "ダッシュボードのショートカット",
       "exitEditViews": "編集／設定ビューを終了",
-      "globalShortcuts": "Global Shortcuts",
-      "goToDashboards": "Go to Dashboards",
-      "goToHomeDashboard": "Go to Home Dashboard",
-      "keyboardShortcuts": "Keyboard Shortcuts",
+      "globalShortcuts": "グローバルショートカット",
+      "goToDashboards": "ダッシュボードへ移動",
+      "goToHomeDashboard": "ホームダッシュボードへ移動",
+      "keyboardShortcuts": "キーボードショートカット",
       "refreshAllPanels": "すべてのパネルを更新",
       "showAllShortcuts": "すべてのキーボードショートカットを表示",
       "simplifiedView": "これは簡易ビューです。Grafana の完全な HelpModal コンポーネントに置き換えることができます。",
@@ -90,10 +90,18 @@
     "allCompleteTooltip": "すべての学習パスを完了しました — お疲れさまでした！",
     "badgesTooltip": "{{- total}} 個中 {{- earned}} 個のバッジを獲得",
     "days": "日",
+    "days_one": "日",
+    "days_other": "日",
     "guides": "ガイド",
-    "guidesTooltip": "{{- count}} 個の学習ガイドを完了",
+    "guides_one": "ガイド",
+    "guides_other": "ガイド",
+    "guidesTooltip": "{{- count}} 件の学習ガイドを完了",
+    "guidesTooltip_one": "{{- count}} 件の学習ガイドを完了",
+    "guidesTooltip_other": "{{- count}} 件の学習ガイドを完了",
     "nextGuide": "次へ：{{- title}}",
     "nextTooltip": "「{{- pathTitle}}」を続ける — {{- percent}}% 完了",
-    "streakTooltip": "{{- days}} 日間の学習ストリーク — 続けましょう！"
+    "streakTooltip": "{{- days}} 日連続学習中 — その調子です！",
+    "streakTooltip_one": "{{- days}} 日連続学習中 — その調子です！",
+    "streakTooltip_other": "{{- days}} 日連続学習中 — その調子です！"
   }
 }

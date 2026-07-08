@@ -73,12 +73,12 @@
     },
     "modal": {
       "dashboardSettings": "Dashboardinstellingen",
-      "dashboardShortcuts": "Dashboard Shortcuts",
+      "dashboardShortcuts": "Dashboardsneltoetsen",
       "exitEditViews": "Bewerkings-/instellingsweergaven verlaten",
-      "globalShortcuts": "Global Shortcuts",
-      "goToDashboards": "Go to Dashboards",
-      "goToHomeDashboard": "Go to Home Dashboard",
-      "keyboardShortcuts": "Keyboard Shortcuts",
+      "globalShortcuts": "Globale sneltoetsen",
+      "goToDashboards": "Naar dashboards gaan",
+      "goToHomeDashboard": "Naar startdashboard gaan",
+      "keyboardShortcuts": "Sneltoetsen",
       "refreshAllPanels": "Alle panelen vernieuwen",
       "showAllShortcuts": "Alle sneltoetsen tonen",
       "simplifiedView": "Dit is een vereenvoudigde weergave. U kunt deze vervangen door de volledige HelpModal-component van Grafana.",
@@ -86,14 +86,22 @@
     }
   },
   "userProfileBar": {
-    "allComplete": "Alle leerpaadjes voltooid!",
+    "allComplete": "Alle leerpaden voltooid!",
     "allCompleteTooltip": "U heeft elk leerpad voltooid — goed gedaan!",
     "badgesTooltip": "{{- earned}} van {{- total}} badges verdiend",
     "days": "dagen",
+    "days_one": "dag",
+    "days_other": "dagen",
     "guides": "gidsen",
+    "guides_one": "gids",
+    "guides_other": "gidsen",
     "guidesTooltip": "{{- count}} leergidsen voltooid",
+    "guidesTooltip_one": "{{- count}} leergids voltooid",
+    "guidesTooltip_other": "{{- count}} leergidsen voltooid",
     "nextGuide": "Volgende: {{- title}}",
-    "nextTooltip": "Ga verder met \"{{- pathTitle}}\" — {{- percent}}% klaar",
-    "streakTooltip": "{{- days}}-daagse leerreeks — houd het vol!"
+    "nextTooltip": "Ga verder met \"{{- pathTitle}}\" — {{- percent}}% voltooid",
+    "streakTooltip": "{{- days}}-daagse leerstreak — houd het vol!",
+    "streakTooltip_one": "{{- days}}-daagse leerstreak — houd het vol!",
+    "streakTooltip_other": "{{- days}}-daagse leerstreak — houd het vol!"
   }
 }

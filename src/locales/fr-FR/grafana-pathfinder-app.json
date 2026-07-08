@@ -94,10 +94,22 @@
     "allCompleteTooltip": "Vous avez terminé tous les parcours d'apprentissage — bravo !",
     "badgesTooltip": "{{- earned}} badges obtenus sur {{- total}}",
     "days": "jours",
+    "days_one": "jour",
+    "days_many": "jours",
+    "days_other": "jours",
     "guides": "guides",
-    "guidesTooltip": "{{- count}} guides d'apprentissage terminés",
+    "guides_one": "guide",
+    "guides_many": "guides",
+    "guides_other": "guides",
+    "guidesTooltip": "{{- count}} guides d’apprentissage terminés",
+    "guidesTooltip_one": "{{- count}} guide d’apprentissage terminé",
+    "guidesTooltip_many": "{{- count}} guides d’apprentissage terminés",
+    "guidesTooltip_other": "{{- count}} guides d’apprentissage terminés",
     "nextGuide": "Suivant : {{- title}}",
     "nextTooltip": "Continuer « {{- pathTitle}} » — {{- percent}}% terminé",
-    "streakTooltip": "Série d'apprentissage de {{- days}} jours — continuez ainsi !"
+    "streakTooltip": "Série d’apprentissage de {{- days}} jours — continuez ainsi !",
+    "streakTooltip_one": "Série d’apprentissage de {{- days}} jour — continuez ainsi !",
+    "streakTooltip_many": "Série d’apprentissage de {{- days}} jours — continuez ainsi !",
+    "streakTooltip_other": "Série d’apprentissage de {{- days}} jours — continuez ainsi !"
   }
 }

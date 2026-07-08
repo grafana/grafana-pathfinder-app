@@ -73,27 +73,35 @@
     },
     "modal": {
       "dashboardSettings": "Dashboard beállításai",
-      "dashboardShortcuts": "Dashboard Shortcuts",
+      "dashboardShortcuts": "Dashboard billentyűparancsai",
       "exitEditViews": "Kilépés a szerkesztési/beállítási nézetből",
-      "globalShortcuts": "Global Shortcuts",
-      "goToDashboards": "Go to Dashboards",
-      "goToHomeDashboard": "Go to Home Dashboard",
-      "keyboardShortcuts": "Keyboard Shortcuts",
+      "globalShortcuts": "Globális billentyűparancsok",
+      "goToDashboards": "Ugrás a dashboardokhoz",
+      "goToHomeDashboard": "Ugrás a kezdő dashboardhoz",
+      "keyboardShortcuts": "Billentyűparancsok",
       "refreshAllPanels": "Összes panel frissítése",
       "showAllShortcuts": "Összes billentyűparancs megjelenítése",
       "simplifiedView": "Ez egy egyszerűsített nézet. Lecserélhető a Grafana teljes HelpModal komponensére.",
-      "toggleViewMode": "Nézet váltása"
+      "toggleViewMode": "Nézetmód váltása"
     }
   },
   "userProfileBar": {
     "allComplete": "Minden útvonal teljesítve!",
-    "allCompleteTooltip": "Minden tanulási útvonalat teljesítettél – szép munka!",
-    "badgesTooltip": "{{- earned}} / {{- total}} jelvény megszerzve",
+    "allCompleteTooltip": "Minden tanulási útvonal teljesítve – szép munka!",
+    "badgesTooltip": "{{- earned}} / {{- total}} jelvény megszerezve",
     "days": "nap",
+    "days_one": "nap",
+    "days_other": "nap",
     "guides": "útmutató",
+    "guides_one": "útmutató",
+    "guides_other": "útmutató",
     "guidesTooltip": "{{- count}} tanulási útmutató teljesítve",
+    "guidesTooltip_one": "{{- count}} tanulási útmutató teljesítve",
+    "guidesTooltip_other": "{{- count}} tanulási útmutató teljesítve",
     "nextGuide": "Következő: {{- title}}",
     "nextTooltip": "„{{- pathTitle}}” folytatása – {{- percent}}% kész",
-    "streakTooltip": "{{- days}} napos tanulási sorozat – csak így tovább!"
+    "streakTooltip": "{{- days}} napos tanulási sorozat – csak így tovább!",
+    "streakTooltip_one": "{{- days}} napos tanulási sorozat – csak így tovább!",
+    "streakTooltip_other": "{{- days}} napos tanulási sorozat – csak így tovább!"
   }
 }

@@ -90,10 +90,18 @@
     "allCompleteTooltip": "모든 학습 경로를 완료했습니다 — 수고하셨습니다!",
     "badgesTooltip": "{{- total}}개 중 {{- earned}}개 배지 획득",
     "days": "일",
+    "days_one": "일",
+    "days_other": "일",
     "guides": "가이드",
-    "guidesTooltip": "{{- count}}개 학습 가이드 완료",
+    "guides_one": "가이드",
+    "guides_other": "가이드",
+    "guidesTooltip": "{{- count}}개의 학습 가이드 완료",
+    "guidesTooltip_one": "{{- count}}개의 학습 가이드 완료",
+    "guidesTooltip_other": "{{- count}}개의 학습 가이드 완료",
     "nextGuide": "다음: {{- title}}",
-    "nextTooltip": "\"{{- pathTitle}}\" 이어서 — {{- percent}}% 완료",
-    "streakTooltip": "{{- days}}일 연속 학습 중 — 계속 유지하세요!"
+    "nextTooltip": "\"{{- pathTitle}}\" 계속하기 — {{- percent}}% 완료",
+    "streakTooltip": "{{- days}}일 연속 학습 중 — 계속 이어가세요!",
+    "streakTooltip_one": "{{- days}}일 연속 학습 중 — 계속 이어가세요!",
+    "streakTooltip_other": "{{- days}}일 연속 학습 중 — 계속 이어가세요!"
   }
 }

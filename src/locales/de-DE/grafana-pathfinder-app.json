@@ -86,14 +86,22 @@
     }
   },
   "userProfileBar": {
-    "allComplete": "Alle Pfade abgeschlossen!",
+    "allComplete": "Alle Lernpfade abgeschlossen!",
     "allCompleteTooltip": "Sie haben alle Lernpfade abgeschlossen – gut gemacht!",
     "badgesTooltip": "{{- earned}} von {{- total}} Abzeichen erhalten",
     "days": "Tage",
+    "days_one": "Tag",
+    "days_other": "Tage",
     "guides": "Anleitungen",
+    "guides_one": "Anleitung",
+    "guides_other": "Anleitungen",
     "guidesTooltip": "{{- count}} Lernanleitungen abgeschlossen",
-    "nextGuide": "Weiter: {{- title}}",
+    "guidesTooltip_one": "{{- count}} Lernanleitung abgeschlossen",
+    "guidesTooltip_other": "{{- count}} Lernanleitungen abgeschlossen",
+    "nextGuide": "Als Nächstes: {{- title}}",
     "nextTooltip": "„{{- pathTitle}}“ fortsetzen — {{- percent}}% abgeschlossen",
-    "streakTooltip": "{{- days}}-tägige Lernserie – weiter so!"
+    "streakTooltip": "{{- days}}-tägige Lernserie – weiter so!",
+    "streakTooltip_one": "{{- days}}-tägige Lernserie – weiter so!",
+    "streakTooltip_other": "{{- days}}-tägige Lernserie – weiter so!"
   }
 }

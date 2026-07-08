@@ -73,12 +73,12 @@
     },
     "modal": {
       "dashboardSettings": "Pengaturan dasbor",
-      "dashboardShortcuts": "Dashboard Shortcuts",
+      "dashboardShortcuts": "Pintasan dasbor",
       "exitEditViews": "Keluar dari tampilan edit/pengaturan",
-      "globalShortcuts": "Global Shortcuts",
-      "goToDashboards": "Go to Dashboards",
-      "goToHomeDashboard": "Go to Home Dashboard",
-      "keyboardShortcuts": "Keyboard Shortcuts",
+      "globalShortcuts": "Pintasan global",
+      "goToDashboards": "Buka dasbor",
+      "goToHomeDashboard": "Buka dasbor beranda",
+      "keyboardShortcuts": "Pintasan keyboard",
       "refreshAllPanels": "Segarkan semua panel",
       "showAllShortcuts": "Tampilkan semua pintasan keyboard",
       "simplifiedView": "Ini adalah tampilan yang disederhanakan. Anda dapat menggantinya dengan komponen HelpModal lengkap dari Grafana.",
@@ -90,10 +90,18 @@
     "allCompleteTooltip": "Anda telah menyelesaikan semua jalur pembelajaran — kerja bagus!",
     "badgesTooltip": "{{- earned}} dari {{- total}} lencana diperoleh",
     "days": "hari",
+    "days_one": "hari",
+    "days_other": "hari",
     "guides": "panduan",
-    "guidesTooltip": "{{- count}} panduan pembelajaran selesai",
+    "guides_one": "panduan",
+    "guides_other": "panduan",
+    "guidesTooltip": "{{- count}} panduan belajar selesai",
+    "guidesTooltip_one": "{{- count}} panduan belajar selesai",
+    "guidesTooltip_other": "{{- count}} panduan belajar selesai",
     "nextGuide": "Berikutnya: {{- title}}",
     "nextTooltip": "Lanjutkan \"{{- pathTitle}}\" — {{- percent}}% selesai",
-    "streakTooltip": "Streak belajar {{- days}} hari — terus pertahankan!"
+    "streakTooltip": "Belajar {{- days}} hari berturut-turut — terus pertahankan!",
+    "streakTooltip_one": "Belajar {{- days}} hari berturut-turut — terus pertahankan!",
+    "streakTooltip_other": "Belajar {{- days}} hari berturut-turut — terus pertahankan!"
   }
 }

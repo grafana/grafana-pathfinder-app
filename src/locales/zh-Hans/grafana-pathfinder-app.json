@@ -90,10 +90,18 @@
     "allCompleteTooltip": "您已完成所有学习路径——干得漂亮！",
     "badgesTooltip": "已获得 {{- earned}} / {{- total}} 个徽章",
     "days": "天",
+    "days_one": "天",
+    "days_other": "天",
     "guides": "指南",
+    "guides_one": "指南",
+    "guides_other": "指南",
     "guidesTooltip": "已完成 {{- count}} 个学习指南",
+    "guidesTooltip_one": "已完成 {{- count}} 个学习指南",
+    "guidesTooltip_other": "已完成 {{- count}} 个学习指南",
     "nextGuide": "下一个：{{- title}}",
     "nextTooltip": "继续“{{- pathTitle}}”——已完成 {{- percent}}%",
-    "streakTooltip": "连续学习 {{- days}} 天——继续保持！"
+    "streakTooltip": "连续学习 {{- days}} 天 — 继续保持！",
+    "streakTooltip_one": "连续学习 {{- days}} 天 — 继续保持！",
+    "streakTooltip_other": "连续学习 {{- days}} 天 — 继续保持！"
   }
 }

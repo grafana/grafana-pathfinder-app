@@ -94,10 +94,22 @@
     "allCompleteTooltip": "Has completado todas las rutas de aprendizaje. ¡Buen trabajo!",
     "badgesTooltip": "{{- earned}} de {{- total}} insignias obtenidas",
     "days": "días",
+    "days_one": "día",
+    "days_many": "días",
+    "days_other": "días",
     "guides": "guías",
+    "guides_one": "guía",
+    "guides_many": "guías",
+    "guides_other": "guías",
     "guidesTooltip": "{{- count}} guías de aprendizaje completadas",
+    "guidesTooltip_one": "{{- count}} guía de aprendizaje completada",
+    "guidesTooltip_many": "{{- count}} guías de aprendizaje completadas",
+    "guidesTooltip_other": "{{- count}} guías de aprendizaje completadas",
     "nextGuide": "Siguiente: {{- title}}",
     "nextTooltip": "Continuar «{{- pathTitle}}» — {{- percent}}% completado",
-    "streakTooltip": "{{- days}} días de racha de aprendizaje. ¡Sigue así!"
+    "streakTooltip": "{{- days}} días de racha de aprendizaje — ¡sigue así!",
+    "streakTooltip_one": "{{- days}} día de racha de aprendizaje — ¡sigue así!",
+    "streakTooltip_many": "{{- days}} días de racha de aprendizaje — ¡sigue así!",
+    "streakTooltip_other": "{{- days}} días de racha de aprendizaje — ¡sigue así!"
   }
 }

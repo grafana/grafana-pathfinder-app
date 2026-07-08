@@ -1,6 +1,6 @@
 {
   "contextPanel": {
-    "categoryDocsPage": "Belge sayfası",
+    "categoryDocsPage": "Dokümantasyon sayfası",
     "categoryInteractiveGuide": "Etkileşimli kılavuz",
     "categoryLearningJourney": "Öğrenme yolu",
     "failedToLoad": "Öneriler yüklenemedi: {{error}}",
@@ -72,13 +72,13 @@
       "support": "Destek"
     },
     "modal": {
-      "dashboardSettings": "Dashboard ayarları",
-      "dashboardShortcuts": "Dashboard Shortcuts",
+      "dashboardSettings": "Pano ayarları",
+      "dashboardShortcuts": "Pano kısayolları",
       "exitEditViews": "Düzenleme/ayar görünümlerinden çık",
-      "globalShortcuts": "Global Shortcuts",
-      "goToDashboards": "Go to Dashboards",
-      "goToHomeDashboard": "Go to Home Dashboard",
-      "keyboardShortcuts": "Keyboard Shortcuts",
+      "globalShortcuts": "Genel kısayollar",
+      "goToDashboards": "Panolara git",
+      "goToHomeDashboard": "Ana panoya git",
+      "keyboardShortcuts": "Klavye kısayolları",
       "refreshAllPanels": "Tüm panelleri yenile",
       "showAllShortcuts": "Tüm klavye kısayollarını göster",
       "simplifiedView": "Bu basitleştirilmiş bir görünümdür. Bunu Grafana'nın tam HelpModal bileşeniyle değiştirebilirsiniz.",
@@ -86,14 +86,22 @@
     }
   },
   "userProfileBar": {
-    "allComplete": "Tüm yollar tamamlandı!",
-    "allCompleteTooltip": "Tüm öğrenme yollarını tamamladınız — harika iş!",
-    "badgesTooltip": "{{- total}} rozetden {{- earned}} tanesi kazanıldı",
+    "allComplete": "Tüm öğrenme yolları tamamlandı!",
+    "allCompleteTooltip": "Tüm öğrenme yollarını tamamladınız — harika!",
+    "badgesTooltip": "{{- earned}}/{{- total}} rozet kazanıldı",
     "days": "gün",
+    "days_one": "gün",
+    "days_other": "gün",
     "guides": "kılavuz",
+    "guides_one": "kılavuz",
+    "guides_other": "kılavuz",
     "guidesTooltip": "{{- count}} öğrenme kılavuzu tamamlandı",
+    "guidesTooltip_one": "{{- count}} öğrenme kılavuzu tamamlandı",
+    "guidesTooltip_other": "{{- count}} öğrenme kılavuzu tamamlandı",
     "nextGuide": "Sıradaki: {{- title}}",
-    "nextTooltip": "\"{{- pathTitle}}\" devam et — %{{- percent}} tamamlandı",
-    "streakTooltip": "{{- days}} günlük öğrenme serisi — devam edin!"
+    "nextTooltip": "\"{{- pathTitle}}\" ile devam et — {{- percent}}% tamamlandı",
+    "streakTooltip": "{{- days}} günlük öğrenme serisi — devam edin!",
+    "streakTooltip_one": "{{- days}} günlük öğrenme serisi — devam edin!",
+    "streakTooltip_other": "{{- days}} günlük öğrenme serisi — devam edin!"
   }
 }

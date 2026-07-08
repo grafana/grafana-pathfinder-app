@@ -2,7 +2,7 @@
   "contextPanel": {
     "categoryDocsPage": "Dokumentationssida",
     "categoryInteractiveGuide": "Interaktiv guide",
-    "categoryLearningJourney": "Lärstig",
+    "categoryLearningJourney": "Lärresa",
     "failedToLoad": "Misslyckades att ladda rekommendationer: {{error}}",
     "giveFeedback": "Ge feedback",
     "items_one": "{{count}} objekt",
@@ -86,14 +86,22 @@
     }
   },
   "userProfileBar": {
-    "allComplete": "Alla stigar slutförda!",
-    "allCompleteTooltip": "Du har slutfört alla lärstigar — bra jobbat!",
+    "allComplete": "Alla lärresor slutförda!",
+    "allCompleteTooltip": "Du har slutfört alla lärresor — bra jobbat!",
     "badgesTooltip": "{{- earned}} av {{- total}} märken upplåsta",
     "days": "dagar",
+    "days_one": "dag",
+    "days_other": "dagar",
     "guides": "guider",
+    "guides_one": "guide",
+    "guides_other": "guider",
     "guidesTooltip": "{{- count}} lärguider slutförda",
+    "guidesTooltip_one": "{{- count}} lärguide slutförd",
+    "guidesTooltip_other": "{{- count}} lärguider slutförda",
     "nextGuide": "Nästa: {{- title}}",
-    "nextTooltip": "Fortsätt \"{{- pathTitle}}\" — {{- percent}}% klar",
-    "streakTooltip": "{{- days}} dagars lärserie — fortsätt så!"
+    "nextTooltip": "Fortsätt med \"{{- pathTitle}}\" — {{- percent}}% klart",
+    "streakTooltip": "{{- days}} dagars inlärningssvit — fortsätt så!",
+    "streakTooltip_one": "{{- days}} dags inlärningssvit — fortsätt så!",
+    "streakTooltip_other": "{{- days}} dagars inlärningssvit — fortsätt så!"
   }
 }
