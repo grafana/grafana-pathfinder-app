@@ -8,7 +8,7 @@
 import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security/url-validator';
-import { pushFaroEvent } from './faro';
+import { pushFaroUserAction } from './faro';
 import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
 
 type GetActiveExperimentsFn = () => ExperimentAnalyticsEntry[];
@@ -203,10 +203,11 @@ export function reportAppInteraction(
     };
 
     reportInteraction(interactionName, enrichedProperties);
-    // Mirrors every analytics event into Faro (same name, same properties) so the
-    // two pipelines can be cross-checked against each other. pushFaroEvent never
-    // throws, so a mirror failure can't affect the reportInteraction call above.
-    pushFaroEvent(interactionName, enrichedProperties);
+    // Mirrors every analytics event into Faro as a User Action (same name, same
+    // properties) so the two pipelines can be cross-checked against each other.
+    // pushFaroUserAction never throws, so a mirror failure can't affect the
+    // reportInteraction call above.
+    pushFaroUserAction(interactionName, enrichedProperties);
   } catch (error) {
     console.warn('Analytics reporting failed:', error);
   }

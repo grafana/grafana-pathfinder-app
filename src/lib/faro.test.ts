@@ -13,10 +13,11 @@ jest.mock('../../package.json', () => ({ name: 'grafana-pathfinder-app', version
 
 const mockPushError = jest.fn();
 const mockPushLog = jest.fn();
-const mockPushEvent = jest.fn();
+const mockActionEnd = jest.fn();
+const mockStartUserAction = jest.fn(() => ({ name: 'x', parentId: 'x', end: mockActionEnd }));
 const mockPause = jest.fn();
 const mockFaroInstance = {
-  api: { pushError: mockPushError, pushLog: mockPushLog, pushEvent: mockPushEvent },
+  api: { pushError: mockPushError, pushLog: mockPushLog, startUserAction: mockStartUserAction },
   pause: mockPause,
 };
 interface CapturedFaroConfig {
@@ -347,56 +348,59 @@ describe('stringifyAttributes', () => {
   });
 });
 
-describe('pushFaroEvent', () => {
+describe('pushFaroUserAction', () => {
   it('no-ops before initialization without throwing', () => {
     const faro = freshFaro();
-    expect(() => faro.pushFaroEvent('pathfinder_docs_panel_interaction', { action: 'open' })).not.toThrow();
-    expect(mockPushEvent).not.toHaveBeenCalled();
+    expect(() => faro.pushFaroUserAction('pathfinder_docs_panel_interaction', { action: 'open' })).not.toThrow();
+    expect(mockStartUserAction).not.toHaveBeenCalled();
   });
 
-  it('forwards the same event name with stringified attributes once initialized', async () => {
+  it('starts a user action with the same name and stringified attributes, and ends it immediately', async () => {
     const faro = freshFaro();
     await faro.initFaro();
 
-    faro.pushFaroEvent('pathfinder_docs_panel_interaction', { action: 'open', step: 2 });
-    expect(mockPushEvent).toHaveBeenCalledWith(
-      'pathfinder_docs_panel_interaction',
-      { action: 'open', step: '2' },
-      undefined,
-      { skipDedupe: true }
-    );
+    faro.pushFaroUserAction('pathfinder_docs_panel_interaction', { action: 'open', step: 2 });
+    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', {
+      action: 'open',
+      step: '2',
+    });
+    expect(mockActionEnd).toHaveBeenCalledTimes(1);
   });
 
   it('forwards undefined attributes as undefined, not an empty object', async () => {
     const faro = freshFaro();
     await faro.initFaro();
 
-    faro.pushFaroEvent('pathfinder_docs_panel_interaction');
-    expect(mockPushEvent).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', undefined, undefined, {
-      skipDedupe: true,
-    });
+    faro.pushFaroUserAction('pathfinder_docs_panel_interaction');
+    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', undefined);
   });
 
-  it('always skips Faro’s built-in dedupe, since a repeated identical interaction is legitimate and Rudderstack (the pipeline being cross-checked) does not dedupe', async () => {
+  it('does not throw if startUserAction returns undefined (e.g. Faro declines to start one)', async () => {
     const faro = freshFaro();
     await faro.initFaro();
 
-    faro.pushFaroEvent('pathfinder_do_it_button_click', { step_id: 'step-1' });
-    faro.pushFaroEvent('pathfinder_do_it_button_click', { step_id: 'step-1' });
-
-    expect(mockPushEvent).toHaveBeenCalledTimes(2);
-    for (const call of mockPushEvent.mock.calls) {
-      expect(call[3]).toEqual({ skipDedupe: true });
-    }
+    mockStartUserAction.mockReturnValueOnce(undefined as unknown as ReturnType<typeof mockStartUserAction>);
+    expect(() => faro.pushFaroUserAction('pathfinder_docs_panel_interaction', {})).not.toThrow();
+    expect(mockActionEnd).not.toHaveBeenCalled();
   });
 
-  it('swallows errors thrown by the underlying Faro API', async () => {
+  it('swallows errors thrown by startUserAction', async () => {
     const faro = freshFaro();
     await faro.initFaro();
 
-    mockPushEvent.mockImplementationOnce(() => {
+    mockStartUserAction.mockImplementationOnce(() => {
       throw new Error('transport down');
     });
-    expect(() => faro.pushFaroEvent('pathfinder_docs_panel_interaction', {})).not.toThrow();
+    expect(() => faro.pushFaroUserAction('pathfinder_docs_panel_interaction', {})).not.toThrow();
+  });
+
+  it('swallows errors thrown by the action’s end()', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockActionEnd.mockImplementationOnce(() => {
+      throw new Error('transport down');
+    });
+    expect(() => faro.pushFaroUserAction('pathfinder_docs_panel_interaction', {})).not.toThrow();
   });
 });

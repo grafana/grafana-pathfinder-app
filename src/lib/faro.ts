@@ -1,4 +1,12 @@
-import type { ExceptionEvent, Faro, LogEvent, LogLevel, TransportItem, APIEvent } from '@grafana/faro-web-sdk';
+import type {
+  ExceptionEvent,
+  Faro,
+  LogEvent,
+  LogLevel,
+  TransportItem,
+  APIEvent,
+  UserActionInternalInterface,
+} from '@grafana/faro-web-sdk';
 import { config } from '@grafana/runtime';
 import packageJson from '../../package.json';
 
@@ -164,16 +172,14 @@ export function stringifyAttributes(attributes: Record<string, unknown>): Record
   return result;
 }
 
-export function pushFaroEvent(name: string, attributes?: Record<string, unknown>): void {
+// Faro's public startUserAction() return type only exposes `name`/`parentId` —
+// ending it requires the internal interface. This isn't a hack: Faro's own
+// built-in click instrumentation (UserActionController) does the exact same
+// cast internally, since UserActionsAPI has no top-level `endUserAction()`.
+export function pushFaroUserAction(name: string, attributes?: Record<string, unknown>): void {
   try {
-    // Faro's pushEvent dedupes consecutive identical (name + attributes)
-    // pushes by default. That's wrong for an analytics mirror meant for
-    // exact cross-checking against Rudderstack, which doesn't dedupe — a
-    // legitimate repeated interaction (e.g. retrying the same button) would
-    // otherwise silently vanish from Faro's side only.
-    faroInstance?.api.pushEvent(name, attributes ? stringifyAttributes(attributes) : undefined, undefined, {
-      skipDedupe: true,
-    });
+    const action = faroInstance?.api.startUserAction(name, attributes ? stringifyAttributes(attributes) : undefined);
+    (action as UserActionInternalInterface | undefined)?.end();
   } catch {
     // Telemetry must never break the app it's observing.
   }
