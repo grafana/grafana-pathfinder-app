@@ -15,15 +15,16 @@ const mockPushError = jest.fn();
 const mockPushLog = jest.fn();
 const mockActionEnd = jest.fn();
 const mockStartUserAction = jest.fn(() => ({ name: 'x', parentId: 'x', end: mockActionEnd }));
+const mockSetView = jest.fn();
 const mockPause = jest.fn();
 const mockFaroInstance = {
-  api: { pushError: mockPushError, pushLog: mockPushLog, startUserAction: mockStartUserAction },
+  api: { pushError: mockPushError, pushLog: mockPushLog, startUserAction: mockStartUserAction, setView: mockSetView },
   pause: mockPause,
 };
 interface CapturedFaroConfig {
   isolate: boolean;
   app: { name: string; version: string; environment: string };
-  sessionTracking: { samplingRate: number };
+  sessionTracking: { samplingRate: number; persistent: boolean };
   instrumentations: Array<{ constructor: { name: string } }>;
 }
 
@@ -301,6 +302,13 @@ describe('initFaro', () => {
     expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
   });
 
+  it('uses volatile (sessionStorage) sessions — persistent sessions would share localStorage with Grafana core', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+    const calledWith = mockInitializeFaro.mock.calls[0]![0];
+    expect(calledWith.sessionTracking.persistent).toBe(false);
+  });
+
   it('defaults sessionTracking.samplingRate to 1 when no rate is passed', async () => {
     const faro = freshFaro();
     await faro.initFaro();
@@ -429,16 +437,33 @@ describe('pushFaroUserAction', () => {
     expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', {
       action: 'open',
       step: '2',
+      seq: '0',
     });
     expect(mockActionEnd).toHaveBeenCalledTimes(1);
   });
 
-  it('forwards undefined attributes as undefined, not an empty object', async () => {
+  it('adds an incrementing seq attribute so identical rapid-fire mirrors survive Faro dedupe', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.pushFaroUserAction('pathfinder_docs_panel_interaction', { action: 'open' });
+    faro.pushFaroUserAction('pathfinder_docs_panel_interaction', { action: 'open' });
+    expect(mockStartUserAction).toHaveBeenNthCalledWith(1, 'pathfinder_docs_panel_interaction', {
+      action: 'open',
+      seq: '0',
+    });
+    expect(mockStartUserAction).toHaveBeenNthCalledWith(2, 'pathfinder_docs_panel_interaction', {
+      action: 'open',
+      seq: '1',
+    });
+  });
+
+  it('sends only the seq attribute when no attributes are passed', async () => {
     const faro = freshFaro();
     await faro.initFaro();
 
     faro.pushFaroUserAction('pathfinder_docs_panel_interaction');
-    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', undefined);
+    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', { seq: '0' });
   });
 
   it('does not throw if startUserAction returns undefined (e.g. Faro declines to start one)', async () => {
@@ -468,5 +493,39 @@ describe('pushFaroUserAction', () => {
       throw new Error('transport down');
     });
     expect(() => faro.pushFaroUserAction('pathfinder_docs_panel_interaction', {})).not.toThrow();
+  });
+});
+
+describe('setFaroView', () => {
+  it('no-ops before initialization without throwing', () => {
+    const faro = freshFaro();
+    expect(() => faro.setFaroView('https://grafana.com/docs/grafana/latest/')).not.toThrow();
+    expect(mockSetView).not.toHaveBeenCalled();
+  });
+
+  it('sets the view to hostname + pathname, dropping query and fragment', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.setFaroView('https://grafana.com/docs/grafana/latest/alerting/?pg=docs#section-2');
+    expect(mockSetView).toHaveBeenCalledWith({ name: 'grafana.com/docs/grafana/latest/alerting/' });
+  });
+
+  it('no-ops on an empty URL, keeping the previous view', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.setFaroView('');
+    expect(mockSetView).not.toHaveBeenCalled();
+  });
+
+  it('swallows errors thrown by the underlying Faro API', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockSetView.mockImplementationOnce(() => {
+      throw new Error('transport down');
+    });
+    expect(() => faro.setFaroView('https://grafana.com/docs/')).not.toThrow();
   });
 });

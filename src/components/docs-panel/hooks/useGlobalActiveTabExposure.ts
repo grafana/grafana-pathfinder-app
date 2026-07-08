@@ -1,6 +1,7 @@
 /**
  * Exposes the active tab's id and URL on `window` for interactive persistence
- * keys (read by `InteractiveSection` during progress restoration).
+ * keys (read by `InteractiveSection` during progress restoration), and mirrors
+ * the active URL into Faro's view meta.
  *
  * MUST use `useLayoutEffect` (not `useEffect`) so the globals are set
  * synchronously before any child's passive `useEffect` runs. `useEffect`
@@ -17,6 +18,7 @@
  * in unusual host environments (e.g. some sandboxed Grafana embeds).
  */
 import * as React from 'react';
+import { setFaroView } from '../../../lib/faro';
 
 export interface UseGlobalActiveTabExposureParams {
   activeTabId: string | undefined;
@@ -36,5 +38,6 @@ export function useGlobalActiveTabExposure({
     } catch {
       // no-op
     }
+    setFaroView(activeTabCurrentUrl || activeTabBaseUrl || '');
   }, [activeTabId, activeTabCurrentUrl, activeTabBaseUrl]);
 }

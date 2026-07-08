@@ -177,7 +177,13 @@ export async function initFaro(sampleRate = 1): Promise<void> {
     ],
     sessionTracking: {
       enabled: true,
-      persistent: true,
+      // Faro's persistent-session localStorage key is a fixed SDK constant
+      // (`com.grafana.faro.session`) that `isolate` does not namespace, and
+      // Grafana core's Faro uses it too — persistent:true would resume core's
+      // session, inherit its sampling decision (making samplingRate below a
+      // no-op), and could contaminate core's RUM sampling in return. Volatile
+      // sessions live in sessionStorage, which core doesn't touch.
+      persistent: false,
       // A session not selected by the sample sends nothing for its entire
       // lifetime. The local QA override always gets the real rate (1), not
       // whatever the remote production-volume control happens to be set to.
@@ -228,14 +234,34 @@ export function stringifyAttributes(attributes: Record<string, unknown>): Record
   return result;
 }
 
+let userActionSeq = 0;
+
 // Faro's public startUserAction() return type only exposes `name`/`parentId` —
 // ending it requires the internal interface. This isn't a hack: Faro's own
 // built-in click instrumentation (UserActionController) does the exact same
 // cast internally, since UserActionsAPI has no top-level `endUserAction()`.
 export function pushFaroUserAction(name: string, attributes?: Record<string, unknown>): void {
   try {
-    const action = faroInstance?.api.startUserAction(name, attributes ? stringifyAttributes(attributes) : undefined);
+    const action = faroInstance?.api.startUserAction(name, {
+      ...(attributes ? stringifyAttributes(attributes) : {}),
+      // Faro's dedupe compares name+attributes but not timestamps, so two
+      // identical mirrors in the same millisecond would collapse into one
+      // event; `seq` keeps the count in parity with RudderStack.
+      seq: String(userActionSeq++),
+    });
     (action as UserActionInternalInterface | undefined)?.end();
+  } catch {
+    // Telemetry must never break the app it's observing.
+  }
+}
+
+export function setFaroView(url: string): void {
+  try {
+    if (!url || !faroInstance) {
+      return;
+    }
+    const { hostname, pathname } = new URL(url, window.location.origin);
+    faroInstance.api.setView({ name: `${hostname}${pathname}` });
   } catch {
     // Telemetry must never break the app it's observing.
   }
