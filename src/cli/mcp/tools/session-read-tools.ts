@@ -20,6 +20,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { buildArtifactSummary, findBlockById } from '../../utils/package-io';
+import { renderMachineJson } from '../../utils/output';
 import type { LoadedSession, AuthoringSessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveAndPinToken } from './read-input';
@@ -60,7 +61,7 @@ async function withLoadedSession(
     if (isToolResult(rendered)) {
       return rendered;
     }
-    return textResult(JSON.stringify(rendered, null, 2));
+    return textResult(renderMachineJson(rendered));
   });
 }
 
@@ -107,17 +108,13 @@ export function registerSessionReadTools(
         const block = findBlockById(loaded.artifact.content, blockId);
         if (!block) {
           return textResult(
-            JSON.stringify(
-              {
-                status: 'error',
-                code: 'NOT_FOUND',
-                message: `No block with id "${blockId}" in this session.`,
-                sessionToken: token,
-                generation: loaded.generation,
-              },
-              null,
-              2
-            ),
+            renderMachineJson({
+              status: 'error',
+              code: 'NOT_FOUND',
+              message: `No block with id "${blockId}" in this session.`,
+              sessionToken: token,
+              generation: loaded.generation,
+            }),
             /* isError */ true
           );
         }
