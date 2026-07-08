@@ -335,7 +335,12 @@ describe('pushFaroEvent', () => {
     await faro.initFaro();
 
     faro.pushFaroEvent('pathfinder_docs_panel_interaction', { action: 'open', step: 2 });
-    expect(mockPushEvent).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', { action: 'open', step: '2' });
+    expect(mockPushEvent).toHaveBeenCalledWith(
+      'pathfinder_docs_panel_interaction',
+      { action: 'open', step: '2' },
+      undefined,
+      { skipDedupe: true }
+    );
   });
 
   it('forwards undefined attributes as undefined, not an empty object', async () => {
@@ -343,7 +348,22 @@ describe('pushFaroEvent', () => {
     await faro.initFaro();
 
     faro.pushFaroEvent('pathfinder_docs_panel_interaction');
-    expect(mockPushEvent).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', undefined);
+    expect(mockPushEvent).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', undefined, undefined, {
+      skipDedupe: true,
+    });
+  });
+
+  it('always skips Faro’s built-in dedupe, since a repeated identical interaction is legitimate and Rudderstack (the pipeline being cross-checked) does not dedupe', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.pushFaroEvent('pathfinder_do_it_button_click', { step_id: 'step-1' });
+    faro.pushFaroEvent('pathfinder_do_it_button_click', { step_id: 'step-1' });
+
+    expect(mockPushEvent).toHaveBeenCalledTimes(2);
+    for (const call of mockPushEvent.mock.calls) {
+      expect(call[3]).toEqual({ skipDedupe: true });
+    }
   });
 
   it('swallows errors thrown by the underlying Faro API', async () => {

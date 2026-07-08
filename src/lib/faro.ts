@@ -162,7 +162,14 @@ export function stringifyAttributes(attributes: Record<string, unknown>): Record
 
 export function pushFaroEvent(name: string, attributes?: Record<string, unknown>): void {
   try {
-    faroInstance?.api.pushEvent(name, attributes ? stringifyAttributes(attributes) : undefined);
+    // Faro's pushEvent dedupes consecutive identical (name + attributes)
+    // pushes by default. That's wrong for an analytics mirror meant for
+    // exact cross-checking against Rudderstack, which doesn't dedupe — a
+    // legitimate repeated interaction (e.g. retrying the same button) would
+    // otherwise silently vanish from Faro's side only.
+    faroInstance?.api.pushEvent(name, attributes ? stringifyAttributes(attributes) : undefined, undefined, {
+      skipDedupe: true,
+    });
   } catch {
     // Telemetry must never break the app it's observing.
   }
