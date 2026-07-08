@@ -203,18 +203,22 @@ export function reportAppInteraction(
       ...(kioskSessionId && { kiosk_session_id: kioskSessionId }),
     };
 
-    reportInteraction(interactionName, enrichedProperties);
-    // Flag exposures fire for the whole experiment population on page load —
-    // they must not summon Faro (a session would then exist for every user).
-    // They ride the pre-init buffer until real engagement instead.
-    if (type !== UserInteraction.FeatureFlagEvaluated) {
-      void notifyFaroEngagement();
+    try {
+      reportInteraction(interactionName, enrichedProperties);
+    } finally {
+      // Flag exposures fire for the whole experiment population on page load —
+      // they must not summon Faro (a session would then exist for every user).
+      // They ride the pre-init buffer until real engagement instead.
+      if (type !== UserInteraction.FeatureFlagEvaluated) {
+        void notifyFaroEngagement();
+      }
+      // Mirrors every analytics event into Faro as a User Action (same name,
+      // copied properties) so the two pipelines can be cross-checked against
+      // each other. The finally keeps the mirror alive when reportInteraction
+      // itself throws — a lost RudderStack event is exactly the divergence the
+      // mirror exists to surface. pushFaroUserAction never throws.
+      pushFaroUserAction(interactionName, { ...enrichedProperties });
     }
-    // Mirrors every analytics event into Faro as a User Action (same name, same
-    // properties) so the two pipelines can be cross-checked against each other.
-    // pushFaroUserAction never throws, so a mirror failure can't affect the
-    // reportInteraction call above.
-    pushFaroUserAction(interactionName, enrichedProperties);
   } catch (error) {
     logger.warn('Analytics reporting failed', { error });
   }

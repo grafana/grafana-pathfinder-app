@@ -2,7 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG, CLEAR_COMMAND } from '../../constants/interactive-config';
-import { resetValueTracker, isElementVisible } from '../../lib/dom';
+import { describeElement, resetValueTracker, isElementVisible } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { trySetMonacoModelValue } from './code-block-handler';
@@ -51,7 +51,7 @@ export class FormFillHandler {
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
     // Validate visibility before interaction
     if (!isElementVisible(targetElement)) {
-      logger.warn('Target element is not visible', { targetElement });
+      logger.warn('Target element is not visible', { targetElement: describeElement(targetElement) });
       // Continue anyway (non-breaking)
     }
 

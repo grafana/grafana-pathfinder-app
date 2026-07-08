@@ -2,7 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { isElementVisible } from '../../lib/dom';
+import { describeElement, isElementVisible } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
@@ -64,7 +64,7 @@ export class ButtonHandler {
     for (const button of buttons) {
       // Validate visibility before interaction
       if (!isElementVisible(button)) {
-        logger.warn('Target button is not visible', { button });
+        logger.warn('Target button is not visible', { button: describeElement(button) });
         // Continue anyway (non-breaking)
       }
 
@@ -82,7 +82,7 @@ export class ButtonHandler {
     for (const button of buttons) {
       // Validate visibility before interaction
       if (!isElementVisible(button)) {
-        logger.warn('Target button is not visible', { button });
+        logger.warn('Target button is not visible', { button: describeElement(button) });
         // Continue anyway (non-breaking)
       }
 

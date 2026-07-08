@@ -82,6 +82,43 @@ describe('logger', () => {
     });
   });
 
+  describe('error with a throwable — routes to pushFaroError, not pushFaroLog', () => {
+    it('accepts an Error as the second argument', () => {
+      const boom = new Error('boom');
+      logger.error('operation failed', boom);
+      expect(errorSpy).toHaveBeenCalledWith('operation failed', boom, '');
+      expect(mockPushFaroError).toHaveBeenCalledWith(boom, { message: 'operation failed' });
+      expect(mockPushFaroLog).not.toHaveBeenCalled();
+    });
+
+    it('accepts an Error second argument with a separate context object', () => {
+      const boom = new Error('boom');
+      logger.error('operation failed', boom, { step: 'two' });
+      expect(mockPushFaroError).toHaveBeenCalledWith(boom, { step: 'two', message: 'operation failed' });
+    });
+
+    it('extracts an Error from the legacy { error } context shape, keeping the other keys', () => {
+      const boom = new Error('boom');
+      logger.error('operation failed', { error: boom, step: 'two' });
+      expect(errorSpy).toHaveBeenCalledWith('operation failed', boom, { step: 'two' });
+      expect(mockPushFaroError).toHaveBeenCalledWith(boom, { step: 'two', message: 'operation failed' });
+      expect(mockPushFaroLog).not.toHaveBeenCalled();
+    });
+
+    it('stays a plain error log when the error context key is not an Error instance', () => {
+      logger.error('operation failed', { error: 'not found' });
+      expect(mockPushFaroError).not.toHaveBeenCalled();
+      expect(mockPushFaroLog).toHaveBeenCalledWith('error', 'operation failed', { error: 'not found' });
+    });
+
+    it('serializes an Error left in a warn context instead of collapsing it to "{}"', () => {
+      logger.warn('careful', { error: new Error('boom') });
+      const [, , context] = mockPushFaroLog.mock.calls[0];
+      expect(context.error).toContain('Error: boom');
+      expect(context.error).not.toBe('{}');
+    });
+  });
+
   describe('exception', () => {
     it('logs a real Error unchanged and forwards it to pushFaroError', () => {
       const error = new Error('kaboom');

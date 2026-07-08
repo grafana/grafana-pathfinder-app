@@ -8,6 +8,20 @@ function sanitizeContext(context?: Record<string, unknown>): Record<string, stri
   return Object.fromEntries(Object.entries(context).map(([key, value]) => [key, sanitizeForLogging(value)]));
 }
 
+function splitThrowable(
+  errorOrContext?: Error | Record<string, unknown>,
+  context?: Record<string, unknown>
+): { error?: Error; context?: Record<string, unknown> } {
+  if (errorOrContext instanceof Error) {
+    return { error: errorOrContext, context };
+  }
+  if (errorOrContext && errorOrContext.error instanceof Error) {
+    const { error, ...rest } = errorOrContext;
+    return { error, context: Object.keys(rest).length > 0 ? rest : undefined };
+  }
+  return { context: errorOrContext };
+}
+
 export const logger = {
   debug(message: string, context?: Record<string, unknown>): void {
     console.log(message, context ?? '');
@@ -25,10 +39,18 @@ export const logger = {
     pushFaroLog('warn', sanitized, sanitizeContext(context));
   },
 
-  error(message: string, context?: Record<string, unknown>): void {
+  // A throwable (second arg, or an `error` context key) becomes a Faro
+  // *exception* signal — error-level logs never reach Error Tracking.
+  error(message: string, errorOrContext?: Error | Record<string, unknown>, context?: Record<string, unknown>): void {
     const sanitized = sanitizeForLogging(message);
-    console.error(sanitized, context ?? '');
-    pushFaroLog('error', sanitized, sanitizeContext(context));
+    const split = splitThrowable(errorOrContext, context);
+    if (split.error) {
+      console.error(sanitized, split.error, split.context ?? '');
+      pushFaroError(split.error, sanitizeContext({ ...split.context, message: sanitized }));
+      return;
+    }
+    console.error(sanitized, split.context ?? '');
+    pushFaroLog('error', sanitized, sanitizeContext(split.context));
   },
 
   exception(error: unknown, context?: Record<string, unknown>): void {

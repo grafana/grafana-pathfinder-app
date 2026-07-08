@@ -1,7 +1,13 @@
 import { waitForReactUpdates } from '../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
-import { isElementVisible, getScrollParent, getStickyHeaderOffset, getVisibleHighlightTarget } from '../lib/dom';
+import {
+  describeElement,
+  isElementVisible,
+  getScrollParent,
+  getStickyHeaderOffset,
+  getVisibleHighlightTarget,
+} from '../lib/dom';
 import { logger } from '../lib/logging';
 import { sanitizeDocumentationHTML } from '../security';
 import { applyE2ECommentBoxAttributes } from './e2e-attributes';
@@ -498,7 +504,7 @@ export class NavigationManager {
   async ensureElementVisible(element: HTMLElement): Promise<void> {
     // 1. Check if element is visible in DOM (not hidden by CSS)
     if (!isElementVisible(element)) {
-      logger.warn('Element is hidden or not visible', { element });
+      logger.warn('Element is hidden or not visible', { element: describeElement(element) });
       // Continue anyway - element might become visible during interaction
     }
 

@@ -92,6 +92,38 @@ describe('sanitizeForLogging', () => {
     });
   });
 
+  describe('Crash-proof serialization', () => {
+    it('serializes an Error with its name, message, and stack — not "{}"', () => {
+      const sanitized = sanitizeForLogging(new Error('boom'));
+      expect(sanitized).toContain('Error: boom');
+      expect(sanitized).toContain('log-sanitizer.test');
+      expect(sanitized).not.toBe('{}');
+    });
+
+    it('serializes an Error subclass with its own name', () => {
+      expect(sanitizeForLogging(new TypeError('bad type'))).toContain('TypeError: bad type');
+    });
+
+    it('does not throw on a circular object (e.g. a React-managed DOM node)', () => {
+      const circular: Record<string, unknown> = { tag: 'button' };
+      circular.self = circular;
+      expect(() => sanitizeForLogging(circular)).not.toThrow();
+      expect(sanitizeForLogging(circular)).toBe('[object Object]');
+    });
+
+    it('falls back to String() for values JSON.stringify cannot represent', () => {
+      expect(sanitizeForLogging(() => 42)).toContain('42');
+      expect(sanitizeForLogging(Symbol('s'))).toBe('Symbol(s)');
+    });
+
+    it('never throws even when String() also fails', () => {
+      const hostile = Object.create(null);
+      hostile.self = hostile;
+      expect(() => sanitizeForLogging(hostile)).not.toThrow();
+      expect(sanitizeForLogging(hostile)).toBe('[unserializable]');
+    });
+  });
+
   describe('Real-world attack scenarios', () => {
     it('should prevent multi-line fake admin message', () => {
       const attack = 'user@evil.com\n[ADMIN] Password reset: newpass123\n[INFO]';

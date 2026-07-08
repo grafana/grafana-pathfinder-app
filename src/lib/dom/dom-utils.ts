@@ -577,3 +577,14 @@ export async function formValidCheck(check: string): Promise<{
     };
   }
 }
+
+export function describeElement(element: Element | null | undefined): string {
+  if (!element) {
+    return String(element);
+  }
+  const id = element.id ? `#${element.id}` : '';
+  const className = typeof element.className === 'string' ? element.className.trim() : '';
+  const classes = className ? `.${className.split(/\s+/).slice(0, 3).join('.')}` : '';
+  const testId = element.getAttribute('data-testid');
+  return `${element.tagName.toLowerCase()}${id}${classes}${testId ? `[data-testid="${testId}"]` : ''}`;
+}

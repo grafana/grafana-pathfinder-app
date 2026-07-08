@@ -119,19 +119,6 @@ const pathfinderFeatureFlags = {
     trackingKey: 'frontend_telemetry',
   },
   /**
-   * Fraction of sessions Faro actually sends telemetry for (Faro's own
-   * `sessionTracking.samplingRate`), remotely tunable without a release.
-   * A session not selected by the sample sends nothing — errors, events,
-   * logs — for its entire lifetime, not just a fraction of its signals.
-   * 1 = every session (default, current behavior unchanged); 0 = none.
-   */
-  'pathfinder.frontend-telemetry-sample-rate': {
-    valueType: 'number',
-    values: [1],
-    defaultValue: 1,
-    trackingKey: 'frontend_telemetry_sample_rate',
-  },
-  /**
    * Controls whether the sidebar automatically opens on first Grafana load per session
    * When true: sidebar opens automatically on first page load
    * When false: sidebar only opens when user explicitly requests it
@@ -450,28 +437,6 @@ export const getStringFlagValue = (flagName: string, defaultValue: string): stri
   try {
     const client = getFeatureFlagClient();
     return client.getStringValue(flagName, defaultValue);
-  } catch (error) {
-    logger.error(`[OpenFeature] Error evaluating flag '${flagName}'`, { error });
-    return defaultValue;
-  }
-};
-
-/**
- * Synchronously get a number feature flag value (for non-React code)
- *
- * Use this for flags with a numeric value, e.g. a sample rate.
- *
- * @param flagName - The feature flag name
- * @param defaultValue - Default value if flag evaluation fails
- * @returns The evaluated flag value or default
- *
- * @example
- * const sampleRate = getNumberFlagValue('pathfinder.frontend-telemetry-sample-rate', 1);
- */
-export const getNumberFlagValue = (flagName: string, defaultValue: number): number => {
-  try {
-    const client = getFeatureFlagClient();
-    return client.getNumberValue(flagName, defaultValue);
   } catch (error) {
     logger.error(`[OpenFeature] Error evaluating flag '${flagName}'`, { error });
     return defaultValue;

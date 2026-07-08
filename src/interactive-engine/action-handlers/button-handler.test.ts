@@ -42,6 +42,10 @@ const mockIsElementVisible = elementValidator.isElementVisible as jest.MockedFun
   typeof elementValidator.isElementVisible
 >;
 
+const mockDescribeElement = elementValidator.describeElement as jest.MockedFunction<
+  typeof elementValidator.describeElement
+>;
+
 const mockConsoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
 describe('ButtonHandler', () => {
@@ -51,6 +55,7 @@ describe('ButtonHandler', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockIsElementVisible.mockReturnValue(true);
+    mockDescribeElement.mockReturnValue('button');
 
     mockButtons = [
       { click: jest.fn() } as unknown as HTMLButtonElement,
@@ -110,7 +115,7 @@ describe('ButtonHandler', () => {
 
       await buttonHandler.execute(mockData, false);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Target button is not visible', { button: mockButtons[0]! });
+      expect(mockConsoleWarn).toHaveBeenCalledWith('Target button is not visible', { button: 'button' });
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalled();
       expect(mockNavigationManager.highlightWithComment).toHaveBeenCalled();
     });
@@ -120,7 +125,7 @@ describe('ButtonHandler', () => {
 
       await buttonHandler.execute(mockData, true);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Target button is not visible', { button: mockButtons[0]! });
+      expect(mockConsoleWarn).toHaveBeenCalledWith('Target button is not visible', { button: 'button' });
       expect(mockButtons[0]!.click).toHaveBeenCalled();
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
     });

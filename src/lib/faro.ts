@@ -10,6 +10,7 @@ import type {
 } from '@grafana/faro-web-sdk';
 import { config } from '@grafana/runtime';
 import packageJson from '../../package.json';
+import pluginJson from '../plugin.json';
 import {
   ALLOWED_GRAFANA_DOCS_HOSTNAMES,
   ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES,
@@ -39,8 +40,15 @@ type BufferedFaroCall =
 
 const PRE_INIT_BUFFER_CAP = 30;
 let preInitBuffer: BufferedFaroCall[] | null = null;
-let armedSampleRate = 1;
 let pendingInit: Promise<void> | null = null;
+
+function guardTelemetry(fn: () => void): void {
+  try {
+    fn();
+  } catch {
+    // Telemetry must never break the app it's observing.
+  }
+}
 
 // The SDK's fixed volatile-session sessionStorage key. Hardcoded because
 // importing the constant would pull @grafana/faro-web-sdk into the entry
@@ -82,14 +90,14 @@ function flushPreInitBuffer(): void {
 
 function triggerFaroInit(): Promise<void> {
   if (!pendingInit) {
-    pendingInit = initFaro(armedSampleRate)
+    pendingInit = initFaro()
       .catch(() => undefined)
       .then(() => flushPreInitBuffer());
   }
   return pendingInit;
 }
 
-export function armFaro(sampleRate = 1): void {
+export function armFaro(): void {
   if (initStarted || preInitBuffer) {
     return;
   }
@@ -97,7 +105,6 @@ export function armFaro(sampleRate = 1): void {
   if (!resolved) {
     return;
   }
-  armedSampleRate = sampleRate;
   if (resolved.isLocalOverride || hasLiveFaroSession()) {
     void triggerFaroInit();
     return;
@@ -144,11 +151,19 @@ export function isGrafanaCloud(): boolean {
   }
 }
 
+// Both derived from their source of truth (Grafana serves plugin assets from
+// /public/plugins/<id>/; sourcemapped frames use webpack://<package name>/),
+// so a plugin rename can't silently break the whitelist.
+const PLUGIN_ASSET_PATH = `/public/plugins/${pluginJson.id}/`;
+
 function isPathfinderStackFrame(filename: string | undefined): boolean {
-  return (
-    typeof filename === 'string' && (filename.includes('grafana-pathfinder-app') || filename.includes('/pathfinder/'))
-  );
+  return typeof filename === 'string' && (filename.includes(PLUGIN_ASSET_PATH) || filename.includes(APP_NAME));
 }
+
+// Exceptions we report explicitly (error boundaries, logger) must survive the
+// beforeSend frame filter even when the stack is missing or lives entirely in
+// a shared chunk; ambient window errors still need a Pathfinder frame.
+const EXPLICIT_REPORT_MARKER = 'pathfinder_reported';
 
 function isExceptionItem(item: TransportItem<APIEvent>): item is TransportItem<ExceptionEvent> {
   return item.type === 'exception';
@@ -163,21 +178,32 @@ function isEventItem(item: TransportItem<APIEvent>): item is TransportItem<Event
 }
 
 // PerformanceInstrumentation reports every fetch/xhr resource load on the
-// page (Grafana core's own requests included) — these two are the only
-// domains this plugin itself ever fetches from, so anything else is core's
-// traffic, not ours.
+// page (Grafana core's own requests included); only hosts this plugin itself
+// fetches from are kept.
 const TRACKED_RESOURCE_HOSTNAMES = new Set([
   ...ALLOWED_GRAFANA_DOCS_HOSTNAMES,
   ...ALLOWED_RECOMMENDER_DOMAINS,
   ...ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES,
 ]);
 
+// Bare grafana.com is shared with Grafana core (plugin catalog, news feed);
+// only the docs/tutorials paths url-validator lets this plugin fetch count.
+const SHARED_HOSTNAME = 'grafana.com';
+const SHARED_HOSTNAME_PATH_PREFIXES = ['/docs', '/tutorials'];
+
 function isTrackedResourceUrl(resourceUrl: string | undefined): boolean {
   if (typeof resourceUrl !== 'string') {
     return false;
   }
   try {
-    return TRACKED_RESOURCE_HOSTNAMES.has(new URL(resourceUrl).hostname);
+    const { hostname, pathname } = new URL(resourceUrl);
+    if (!TRACKED_RESOURCE_HOSTNAMES.has(hostname)) {
+      return false;
+    }
+    return (
+      hostname !== SHARED_HOSTNAME ||
+      SHARED_HOSTNAME_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+    );
   } catch {
     return false;
   }
@@ -193,6 +219,9 @@ function isTrackedResourceUrl(resourceUrl: string | undefined): boolean {
 // through unfiltered.
 export function filterPathfinderTelemetry(item: TransportItem<APIEvent>): TransportItem<APIEvent> | null {
   if (isExceptionItem(item)) {
+    if (item.payload.context?.[EXPLICIT_REPORT_MARKER] === 'true') {
+      return item;
+    }
     const frames = item.payload.stacktrace?.frames ?? [];
     return frames.some((frame) => isPathfinderStackFrame(frame.filename)) ? item : null;
   }
@@ -226,7 +255,7 @@ function resolveFaroEnvironment(): { environment: FaroEnvironment; isLocalOverri
   return { environment, isLocalOverride };
 }
 
-export async function initFaro(sampleRate = 1): Promise<void> {
+export async function initFaro(): Promise<void> {
   if (initStarted) {
     return;
   }
@@ -236,7 +265,7 @@ export async function initFaro(sampleRate = 1): Promise<void> {
   if (!resolved) {
     return;
   }
-  const { environment, isLocalOverride } = resolved;
+  const { environment } = resolved;
 
   const {
     initializeFaro,
@@ -272,14 +301,10 @@ export async function initFaro(sampleRate = 1): Promise<void> {
       // Faro's persistent-session localStorage key is a fixed SDK constant
       // (`com.grafana.faro.session`) that `isolate` does not namespace, and
       // Grafana core's Faro uses it too — persistent:true would resume core's
-      // session, inherit its sampling decision (making samplingRate below a
-      // no-op), and could contaminate core's RUM sampling in return. Volatile
-      // sessions live in sessionStorage, which core doesn't touch.
+      // session, inherit its sampling decision, and could contaminate core's
+      // RUM sampling in return. Volatile sessions live in sessionStorage,
+      // which core doesn't touch.
       persistent: false,
-      // A session not selected by the sample sends nothing for its entire
-      // lifetime. The local QA override always gets the real rate (1), not
-      // whatever the remote production-volume control happens to be set to.
-      samplingRate: isLocalOverride ? 1 : sampleRate,
       session: {
         attributes: {
           grafana_version: config.buildInfo.version,
@@ -291,21 +316,19 @@ export async function initFaro(sampleRate = 1): Promise<void> {
 }
 
 export function pushFaroError(error: Error, context?: Record<string, string>): void {
-  try {
+  guardTelemetry(() => {
     if (bufferPreInitCall({ kind: 'error', error, context })) {
       void triggerFaroInit();
       return;
     }
-    faroInstance?.api.pushError(error, context ? { context } : undefined);
-  } catch {
-    // Telemetry must never break the app it's observing.
-  }
+    faroInstance?.api.pushError(error, { context: { ...context, [EXPLICIT_REPORT_MARKER]: 'true' } });
+  });
 }
 
 export type FaroLogLevel = 'info' | 'warn' | 'error';
 
 export function pushFaroLog(level: FaroLogLevel, message: string, context?: Record<string, string>): void {
-  try {
+  guardTelemetry(() => {
     if (bufferPreInitCall({ kind: 'log', level, message, context })) {
       if (level === 'error') {
         void triggerFaroInit();
@@ -313,16 +336,14 @@ export function pushFaroLog(level: FaroLogLevel, message: string, context?: Reco
       return;
     }
     faroInstance?.api.pushLog([`${LOG_PREFIX} ${message}`], { level: level as LogLevel, context });
-  } catch {
-    // Telemetry must never break the app it's observing.
-  }
+  });
 }
 
 const MAX_ATTRIBUTE_LENGTH = 500;
 
 // Faro event attributes are string-only; analytics properties are not
 // (numbers, booleans, the experiments array). Stringify here so every
-// caller of pushFaroEvent gets the same coercion.
+// user-action producer gets the same coercion.
 export function stringifyAttributes(attributes: Record<string, unknown>): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(attributes)) {
@@ -343,7 +364,7 @@ let userActionSeq = 0;
 // built-in click instrumentation (UserActionController) does the exact same
 // cast internally, since UserActionsAPI has no top-level `endUserAction()`.
 export function pushFaroUserAction(name: string, attributes?: Record<string, unknown>): void {
-  try {
+  guardTelemetry(() => {
     if (bufferPreInitCall({ kind: 'userAction', name, attributes })) {
       return;
     }
@@ -366,9 +387,7 @@ export function pushFaroUserAction(name: string, attributes?: Record<string, unk
     }
     const action = faroInstance.api.startUserAction(name, attrs);
     (action as UserActionInternalInterface | undefined)?.end();
-  } catch {
-    // Telemetry must never break the app it's observing.
-  }
+  });
 }
 
 const USER_ACTION_TIMEOUT_MS = 30_000;
@@ -389,14 +408,12 @@ export async function withFaroUserAction<T>(
   timeoutMs = USER_ACTION_TIMEOUT_MS
 ): Promise<T> {
   let action: StampableUserAction | undefined;
-  try {
+  guardTelemetry(() => {
     if (faroInstance && faroInstance.api.getActiveUserAction() === undefined) {
       action = faroInstance.api.startUserAction(name, stringifyAttributes(attributes)) as
         StampableUserAction | undefined;
     }
-  } catch {
-    // Telemetry must never break the app it's observing.
-  }
+  });
   if (!action) {
     return work();
   }
@@ -411,12 +428,10 @@ export async function withFaroUserAction<T>(
     if (timer !== undefined) {
       clearTimeout(timer);
     }
-    try {
+    guardTelemetry(() => {
       started.attributes = { ...started.attributes, outcome };
       started.end();
-    } catch {
-      // Telemetry must never break the app it's observing.
-    }
+    });
   };
   timer = setTimeout(() => finish('timeout'), timeoutMs);
   try {
@@ -430,32 +445,26 @@ export async function withFaroUserAction<T>(
 }
 
 export function setFaroUserActionAttributes(attributes: Record<string, unknown>): void {
-  try {
+  guardTelemetry(() => {
     const action = faroInstance?.api.getActiveUserAction() as StampableUserAction | undefined;
     if (action) {
       action.attributes = { ...action.attributes, ...stringifyAttributes(attributes) };
     }
-  } catch {
-    // Telemetry must never break the app it's observing.
-  }
+  });
 }
 
 export function setFaroView(url: string): void {
-  try {
+  guardTelemetry(() => {
     if (!url || !faroInstance) {
       return;
     }
     const { hostname, pathname } = new URL(url, window.location.origin);
     faroInstance.api.setView({ name: `${hostname}${pathname}` });
-  } catch {
-    // Telemetry must never break the app it's observing.
-  }
+  });
 }
 
 export function pauseFaroBeforeReload(): void {
-  try {
+  guardTelemetry(() => {
     faroInstance?.pause();
-  } catch {
-    // best-effort only
-  }
+  });
 }

@@ -8,6 +8,7 @@
  * @jest-environment-options {"url": "https://foo.grafana.net"}
  */
 import type { TransportItem, APIEvent } from '@grafana/faro-web-sdk';
+import pluginJson from '../plugin.json';
 
 jest.mock('../../package.json', () => ({ name: 'grafana-pathfinder-app', version: '9.9.9-test' }));
 
@@ -38,7 +39,7 @@ const mockFaroInstance = {
 interface CapturedFaroConfig {
   isolate: boolean;
   app: { name: string; version: string; environment: string };
-  sessionTracking: { samplingRate: number; persistent: boolean };
+  sessionTracking: { samplingRate?: number; persistent: boolean };
   instrumentations: Array<{ constructor: { name: string } }>;
 }
 
@@ -138,7 +139,10 @@ describe('isGrafanaCloud', () => {
   });
 });
 
-function exceptionItem(filenames: Array<string | undefined>): TransportItem<APIEvent> {
+function exceptionItem(
+  filenames: Array<string | undefined>,
+  context?: Record<string, string>
+): TransportItem<APIEvent> {
   return {
     type: 'exception',
     payload: {
@@ -146,15 +150,16 @@ function exceptionItem(filenames: Array<string | undefined>): TransportItem<APIE
       value: 'boom',
       timestamp: new Date().toISOString(),
       stacktrace: { frames: filenames.map((filename) => ({ filename, function: 'fn' })) },
+      ...(context && { context }),
     },
     meta: {},
   } as unknown as TransportItem<APIEvent>;
 }
 
-function exceptionItemWithoutStacktrace(): TransportItem<APIEvent> {
+function exceptionItemWithoutStacktrace(context?: Record<string, string>): TransportItem<APIEvent> {
   return {
     type: 'exception',
-    payload: { type: 'Error', value: 'boom', timestamp: new Date().toISOString() },
+    payload: { type: 'Error', value: 'boom', timestamp: new Date().toISOString(), ...(context && { context }) },
     meta: {},
   } as unknown as TransportItem<APIEvent>;
 }
@@ -201,8 +206,8 @@ describe('filterPathfinderTelemetry', () => {
     expect(filterPathfinderTelemetry(item)).toBe(item);
   });
 
-  it('keeps an exception matching the /pathfinder/ path fallback', () => {
-    const item = exceptionItem(['/public/plugins/pathfinder/module.js']);
+  it('keeps an exception served from the real plugin asset path, derived from plugin.json', () => {
+    const item = exceptionItem([`https://foo.grafana.net/public/plugins/${pluginJson.id}/613.js`]);
     expect(filterPathfinderTelemetry(item)).toBe(item);
   });
 
@@ -213,6 +218,16 @@ describe('filterPathfinderTelemetry', () => {
 
   it('drops an exception with no stacktrace at all', () => {
     expect(filterPathfinderTelemetry(exceptionItemWithoutStacktrace())).toBeNull();
+  });
+
+  it('keeps a stackless exception carrying the explicit-report marker', () => {
+    const item = exceptionItemWithoutStacktrace({ pathfinder_reported: 'true' });
+    expect(filterPathfinderTelemetry(item)).toBe(item);
+  });
+
+  it('keeps an explicitly-reported exception even when every frame is foreign (e.g. a shared chunk)', () => {
+    const item = exceptionItem(['webpack://grafana-core/./src/app.ts'], { pathfinder_reported: 'true' });
+    expect(filterPathfinderTelemetry(item)).toBe(item);
   });
 
   it('keeps a log message prefixed with [pathfinder]', () => {
@@ -236,6 +251,16 @@ describe('filterPathfinderTelemetry', () => {
   it('keeps a resource-timing entry for the docs domain', () => {
     const item = performanceResourceItem('https://grafana.com/docs/some-page/content.json');
     expect(filterPathfinderTelemetry(item)).toBe(item);
+  });
+
+  it('keeps a resource-timing entry for a tutorials path on the shared hostname', () => {
+    const item = performanceResourceItem('https://grafana.com/tutorials/some-tutorial/');
+    expect(filterPathfinderTelemetry(item)).toBe(item);
+  });
+
+  it('drops Grafana core traffic to the shared grafana.com hostname (non-docs paths)', () => {
+    expect(filterPathfinderTelemetry(performanceResourceItem('https://grafana.com/api/plugins/foo'))).toBeNull();
+    expect(filterPathfinderTelemetry(performanceResourceItem('https://grafana.com/docs-lookalike/x'))).toBeNull();
   });
 
   it('keeps a resource-timing entry for the recommender domain', () => {
@@ -324,27 +349,11 @@ describe('initFaro', () => {
     expect(calledWith.sessionTracking.persistent).toBe(false);
   });
 
-  it('defaults sessionTracking.samplingRate to 1 when no rate is passed', async () => {
+  it('sets no samplingRate — every engaged session sends (the SDK default of 1 applies)', async () => {
     const faro = freshFaro();
     await faro.initFaro();
     const calledWith = mockInitializeFaro.mock.calls[0]![0];
-    expect(calledWith.sessionTracking.samplingRate).toBe(1);
-  });
-
-  it('forwards a custom sample rate into sessionTracking.samplingRate', async () => {
-    const faro = freshFaro();
-    await faro.initFaro(0.25);
-    const calledWith = mockInitializeFaro.mock.calls[0]![0];
-    expect(calledWith.sessionTracking.samplingRate).toBe(0.25);
-  });
-
-  it('ignores the passed sample rate under the local override — always samples at 1', async () => {
-    mockedConfig.buildInfo.env = 'development';
-    localStorage.setItem('pathfinder.faro.local', 'true');
-    const faro = freshFaro();
-    await faro.initFaro(0);
-    const calledWith = mockInitializeFaro.mock.calls[0]![0];
-    expect(calledWith.sessionTracking.samplingRate).toBe(1);
+    expect(calledWith.sessionTracking.samplingRate).toBeUndefined();
   });
 
   it('does not re-initialize on a second call (idempotent)', async () => {
@@ -370,7 +379,9 @@ describe('pushFaroError / pauseFaroBeforeReload', () => {
 
     const error = new Error('boom');
     faro.pushFaroError(error, { source: 'test' });
-    expect(mockPushError).toHaveBeenCalledWith(error, { context: { source: 'test' } });
+    expect(mockPushError).toHaveBeenCalledWith(error, {
+      context: { source: 'test', pathfinder_reported: 'true' },
+    });
 
     faro.pauseFaroBeforeReload();
     expect(mockPause).toHaveBeenCalledTimes(1);
@@ -693,7 +704,7 @@ describe('setFaroUserActionAttributes', () => {
 describe('armFaro / engagement gating', () => {
   it('does not initialize until an engagement trigger fires', () => {
     const faro = freshFaro();
-    faro.armFaro(0.5);
+    faro.armFaro();
     expect(mockInitializeFaro).not.toHaveBeenCalled();
   });
 
@@ -721,7 +732,7 @@ describe('armFaro / engagement gating', () => {
     faro.pushFaroError(boom);
     await faro.notifyFaroEngagement();
     expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
-    expect(mockPushError).toHaveBeenCalledWith(boom, undefined);
+    expect(mockPushError).toHaveBeenCalledWith(boom, { context: { pathfinder_reported: 'true' } });
   });
 
   it('an error-level log triggers initialization; warn does not', async () => {

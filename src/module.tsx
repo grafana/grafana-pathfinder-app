@@ -47,21 +47,21 @@ const { createExperimentDebugger, initializeHighlightedGuideExperiment, setupHig
   await import('./utils/experiments');
 const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
   await import('./utils/sidebar-auto-open');
-const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfeature');
+const { getFeatureFlagValue } = await import('./utils/openfeature');
 
 // The pathfinder.enabled kill-switch is the only gate on whether Pathfinder mounts.
 const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
 const hostname = window.location.hostname;
 
-// Faro frontend telemetry: Grafana Cloud only, behind its own remote kill-switch.
-// Arming is engagement-gated — the SDK downloads and a session starts only on
-// the first real interaction or Pathfinder error, so sessions mean "used
-// Pathfinder", not "loaded a Grafana page".
+// Faro frontend telemetry, behind its own remote kill-switch — default-on, so
+// a missing flag means enabled; armFaro itself enforces the Grafana Cloud-only
+// gate. Arming is engagement-gated — the SDK downloads and a session starts
+// only on the first real interaction or Pathfinder error, so sessions mean
+// "used Pathfinder", not "loaded a Grafana page".
 try {
   if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
-    const sampleRate = getNumberFlagValue('pathfinder.frontend-telemetry-sample-rate', 1);
     const { armFaro } = await import('./lib/faro');
-    armFaro(sampleRate);
+    armFaro();
   }
 } catch (e) {
   logger.exception(e, { source: 'Faro init' });

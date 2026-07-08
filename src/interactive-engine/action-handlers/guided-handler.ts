@@ -1,7 +1,13 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import { querySelectorAllEnhanced, findButtonByText, isElementVisible, resolveSelector } from '../../lib/dom';
+import {
+  describeElement,
+  querySelectorAllEnhanced,
+  findButtonByText,
+  isElementVisible,
+  resolveSelector,
+} from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { withFaroUserAction } from '../../lib/faro';
 import { isCssSelector } from '../../lib/dom/selector-detector';
@@ -511,7 +517,7 @@ export class GuidedHandler {
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
     // Validate visibility before interaction
     if (!isElementVisible(targetElement)) {
-      logger.warn('Target element is not visible', { targetElement });
+      logger.warn('Target element is not visible', { targetElement: describeElement(targetElement) });
       // Continue anyway (non-breaking)
     }
 

@@ -93,7 +93,10 @@ describe('reportAppInteraction Faro mirroring', () => {
     const [reportedName, reportedProperties] = mockReportInteraction.mock.calls[0];
     const [mirroredName, mirroredProperties] = mockPushFaroUserAction.mock.calls[0];
     expect(mirroredName).toBe(reportedName);
-    expect(mirroredProperties).toBe(reportedProperties);
+    expect(mirroredProperties).toEqual(reportedProperties);
+    // A defensive copy, not the shared reference — neither pipeline can
+    // mutate the other's payload.
+    expect(mirroredProperties).not.toBe(reportedProperties);
   });
 
   it('still reports to Rudderstack even if the Faro mirror throws', () => {
@@ -105,6 +108,18 @@ describe('reportAppInteraction Faro mirroring', () => {
     // means a later mirror failure can't unwind or suppress that earlier call.
     expect(() => reportAppInteraction(UserInteraction.ShowMeButtonClick, {})).not.toThrow();
     expect(mockReportInteraction).toHaveBeenCalledTimes(1);
+  });
+
+  it('still mirrors to Faro when reportInteraction itself throws', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+    mockReportInteraction.mockImplementationOnce(() => {
+      throw new Error('rudderstack down');
+    });
+
+    expect(() => reportAppInteraction(UserInteraction.ShowMeButtonClick, { step_id: 'step-1' })).not.toThrow();
+    expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
+    expect(mockNotifyFaroEngagement).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
   });
 });
 

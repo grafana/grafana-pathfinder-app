@@ -24,12 +24,29 @@
  * // Logs: URL: https://evil.com\nFAKE LOG ENTRY (newline is escaped)
  * ```
  */
+function stringifyValue(value: unknown): string {
+  if (value instanceof Error) {
+    return `${value.name}: ${value.message}${value.stack ? `\n${value.stack}` : ''}`;
+  }
+  try {
+    // JSON.stringify returns undefined for functions/symbols and throws on
+    // circular values (e.g. React-managed DOM nodes via __reactFiber$).
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    try {
+      return String(value);
+    } catch {
+      return '[unserializable]';
+    }
+  }
+}
+
 export function sanitizeForLogging(value: unknown): string {
   if (value === null || value === undefined) {
     return String(value);
   }
 
-  const str = typeof value === 'string' ? value : JSON.stringify(value);
+  const str = typeof value === 'string' ? value : stringifyValue(value);
 
   // IMPORTANT: Escape newlines/tabs/cr FIRST, then remove other control chars
   // Otherwise they get removed before we can escape them

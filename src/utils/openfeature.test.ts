@@ -126,9 +126,6 @@ describe('openfeature', () => {
           'highlighted_guide_experiment'
         );
         expect(pathfinderFeatureFlags['pathfinder.frontend-telemetry'].trackingKey).toBe('frontend_telemetry');
-        expect(pathfinderFeatureFlags['pathfinder.frontend-telemetry-sample-rate'].trackingKey).toBe(
-          'frontend_telemetry_sample_rate'
-        );
       });
     });
 
@@ -141,18 +138,6 @@ describe('openfeature', () => {
 
         const { pathfinderFeatureFlags } = require('./openfeature');
         expect(pathfinderFeatureFlags['pathfinder.frontend-telemetry'].defaultValue).toBe(true);
-      });
-    });
-
-    it('pathfinder.frontend-telemetry-sample-rate should default to 1 (every session)', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { pathfinderFeatureFlags } = require('./openfeature');
-        expect(pathfinderFeatureFlags['pathfinder.frontend-telemetry-sample-rate'].defaultValue).toBe(1);
       });
     });
   });
@@ -283,7 +268,8 @@ describe('openfeature', () => {
         expect(result).toBe(true);
         expect(consoleSpy).toHaveBeenCalledWith(
           expect.stringContaining("[OpenFeature] Error evaluating flag 'some-flag'"),
-          { error: expect.any(Error) }
+          expect.any(Error),
+          ''
         );
 
         consoleSpy.mockRestore();
@@ -341,50 +327,8 @@ describe('openfeature', () => {
         expect(result).toBe('default-variant');
         expect(consoleSpy).toHaveBeenCalledWith(
           expect.stringContaining("[OpenFeature] Error evaluating flag 'experiment-flag'"),
-          { error: expect.any(Error) }
-        );
-
-        consoleSpy.mockRestore();
-      });
-    });
-  });
-
-  describe('getNumberFlagValue', () => {
-    it('should return number flag value from client', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getNumberValue.mockReturnValue(0.25);
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { getNumberFlagValue } = require('./openfeature');
-        const result = getNumberFlagValue('pathfinder.frontend-telemetry-sample-rate', 1);
-
-        expect(mockOF.mockClient.getNumberValue).toHaveBeenCalledWith('pathfinder.frontend-telemetry-sample-rate', 1);
-        expect(result).toBe(0.25);
-      });
-    });
-
-    it('should return default value on error', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getNumberValue.mockImplementation(() => {
-          throw new Error('Provider not ready');
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-        const { getNumberFlagValue } = require('./openfeature');
-        const result = getNumberFlagValue('pathfinder.frontend-telemetry-sample-rate', 1);
-
-        expect(result).toBe(1);
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining("[OpenFeature] Error evaluating flag 'pathfinder.frontend-telemetry-sample-rate'"),
-          { error: expect.any(Error) }
+          expect.any(Error),
+          ''
         );
 
         consoleSpy.mockRestore();

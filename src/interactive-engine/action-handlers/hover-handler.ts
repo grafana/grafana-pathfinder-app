@@ -2,7 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { isElementVisible } from '../../lib/dom';
+import { describeElement, isElementVisible } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 
@@ -54,7 +54,7 @@ export class HoverHandler {
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
     // Validate visibility before interaction
     if (!isElementVisible(targetElement)) {
-      logger.warn('Target element is not visible', { targetElement });
+      logger.warn('Target element is not visible', { targetElement: describeElement(targetElement) });
       // Continue anyway (non-breaking)
     }
 

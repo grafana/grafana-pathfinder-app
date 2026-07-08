@@ -15,6 +15,10 @@ global.ResizeObserver = MockResizeObserver as any;
 const mockIsElementVisible = elementValidator.isElementVisible as jest.MockedFunction<
   typeof elementValidator.isElementVisible
 >;
+
+const mockDescribeElement = elementValidator.describeElement as jest.MockedFunction<
+  typeof elementValidator.describeElement
+>;
 const mockHasFixedPosition = elementValidator.hasFixedPosition as jest.MockedFunction<
   typeof elementValidator.hasFixedPosition
 >;
@@ -38,6 +42,7 @@ describe('NavigationManager', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDescribeElement.mockReturnValue('div');
     navigationManager = new NavigationManager();
 
     // Create mock element
@@ -93,7 +98,7 @@ describe('NavigationManager', () => {
 
       await navigationManager.ensureElementVisible(mockElement);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Element is hidden or not visible', { element: mockElement });
+      expect(mockConsoleWarn).toHaveBeenCalledWith('Element is hidden or not visible', { element: 'div' });
     });
 
     it('should scroll element into view when not in viewport', async () => {

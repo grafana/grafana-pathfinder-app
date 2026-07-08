@@ -1,4 +1,5 @@
 import {
+  describeElement,
   getAllTextContent,
   extractInteractiveDataFromElement,
   findButtonByText,
@@ -756,5 +757,32 @@ describe('getVisibleHighlightTarget', () => {
 
     // Should not find wrapper (beyond maxDepth=5), return original
     expect(result).toBe(input);
+  });
+});
+
+describe('describeElement', () => {
+  it('renders tag, id, classes, and data-testid as a compact selector-like string', () => {
+    const el = document.createElement('button');
+    el.id = 'save';
+    el.className = 'btn primary';
+    el.setAttribute('data-testid', 'save-button');
+    expect(describeElement(el)).toBe('button#save.btn.primary[data-testid="save-button"]');
+  });
+
+  it('caps the class list at three entries', () => {
+    const el = document.createElement('div');
+    el.className = 'a b c d e';
+    expect(describeElement(el)).toBe('div.a.b.c');
+  });
+
+  it('handles a bare element and nullish input', () => {
+    expect(describeElement(document.createElement('span'))).toBe('span');
+    expect(describeElement(null)).toBe('null');
+    expect(describeElement(undefined)).toBe('undefined');
+  });
+
+  it('tolerates SVG elements, whose className is not a string', () => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    expect(describeElement(svg)).toBe('svg');
   });
 });
