@@ -11,7 +11,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { exportAllSchemas, exportSchema, listSchemas, SCHEMA_REGISTRY } from '../../commands/schema';
-import { renderJsonPayload } from '../../utils/output';
+import { renderMachineJson } from '../../utils/output';
 import { readOnly } from './annotations';
 import { outcomeResult, textResult } from './result';
 
@@ -49,11 +49,11 @@ export function registerSchemaTools(server: McpServer): void {
       const resolvedMode = mode ?? (name ? 'one' : 'all');
 
       if (resolvedMode === 'list') {
-        return textResult(renderJsonPayload({ schemas: listSchemas() }));
+        return textResult(renderMachineJson({ schemas: listSchemas() }));
       }
 
       if (resolvedMode === 'all') {
-        return textResult(renderJsonPayload({ schemas: exportAllSchemas(wantVersion), available: SCHEMA_NAMES }));
+        return textResult(renderMachineJson({ schemas: exportAllSchemas(wantVersion), available: SCHEMA_NAMES }));
       }
 
       if (!name) {
@@ -73,7 +73,7 @@ export function registerSchemaTools(server: McpServer): void {
         });
       }
 
-      return textResult(renderJsonPayload({ name, schema }));
+      return textResult(renderMachineJson({ name, schema }));
     }
   );
 }

@@ -28,7 +28,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { runValidate } from '../../commands/validate';
-import { renderJsonPayload } from '../../utils/output';
+import { renderMachineJson } from '../../utils/output';
 import { PLUGIN_VIEWER_BASE } from '../lib/constants';
 import { tokenLogPrefix } from '../lib/session-token';
 import type { AuthoringSessionStore } from '../lib/session-store';
@@ -102,7 +102,7 @@ async function finalizeImpl(args: {
 
   if (validation.status !== 'ok') {
     return textResult(
-      renderJsonPayload({
+      renderMachineJson({
         status: 'invalid',
         validation: {
           isValid: false,
@@ -268,5 +268,5 @@ async function finalizeImpl(args: {
     }
   }
 
-  return textResult(renderJsonPayload(handoff));
+  return textResult(renderMachineJson(handoff));
 }

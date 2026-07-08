@@ -7,7 +7,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { formatHelpAsJson, renderJsonPayload } from '../../utils/output';
+import { formatHelpAsJson, renderMachineJson } from '../../utils/output';
 import { CLI_COMMANDS } from '../program';
 import { readOnly } from './annotations';
 import { textResult } from './result';
@@ -35,7 +35,7 @@ export function registerHelpTool(server: McpServer): void {
     async ({ command, subcommand }) => {
       if (!command) {
         return textResult(
-          renderJsonPayload({
+          renderMachineJson({
             commands: Array.from(CLI_COMMANDS.entries()).map(([name, cmd]) => ({
               name,
               description: cmd.description(),
@@ -47,7 +47,7 @@ export function registerHelpTool(server: McpServer): void {
       const root = CLI_COMMANDS.get(command);
       if (!root) {
         return textResult(
-          renderJsonPayload({
+          renderMachineJson({
             status: 'error',
             code: 'UNKNOWN_COMMAND',
             message: `Unknown command "${command}". Available: ${Array.from(CLI_COMMANDS.keys()).join(', ')}`,
@@ -64,7 +64,7 @@ export function registerHelpTool(server: McpServer): void {
         }
       }
 
-      return textResult(renderJsonPayload(formatHelpAsJson(target)));
+      return textResult(renderMachineJson(formatHelpAsJson(target)));
     }
   );
 }

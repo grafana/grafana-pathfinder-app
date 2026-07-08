@@ -54,13 +54,13 @@ export function readOutputOptions(cmd: Command): OutputOptions {
 }
 
 /**
- * Serialize an LLM/agent-facing payload as compact JSON. Pretty-print
- * indentation is pure token overhead for a model consumer; the output stays
- * valid JSON that existing JSON.parse consumers read unchanged. Human-read
- * output (CLI text mode) and on-disk build artifacts keep prettier formatting
- * via formatJsonWithPrettier.
+ * Serialize a machine-facing payload (MCP tool results, CLI `--format json`)
+ * as compact JSON. Pretty-print indentation is pure token overhead for an
+ * agent consumer; output stays valid JSON that existing JSON.parse consumers
+ * read unchanged. Human-read output (CLI text mode) and on-disk build
+ * artifacts keep prettier formatting via formatJsonWithPrettier.
  */
-export function renderJsonPayload(value: unknown): string {
+export function renderMachineJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
@@ -241,7 +241,7 @@ export function renderError(err: unknown): string {
 export function printOutcome(outcome: CommandOutcome, output: OutputOptions): number {
   if (output.format === 'json') {
     const stream = outcome.status === 'ok' ? process.stdout : process.stderr;
-    stream.write(renderJsonPayload(outcome) + '\n');
+    stream.write(renderMachineJson(outcome) + '\n');
     return outcome.status === 'ok' ? 0 : 1;
   }
 

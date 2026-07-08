@@ -16,7 +16,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
-import { renderJsonPayload } from '../../utils/output';
+import { renderMachineJson } from '../../utils/output';
 import { PATHFINDER_DOMAINS, PATHFINDER_NOT_FOR, PATHFINDER_TRIGGER_PHRASES } from '../lib/agent-routing';
 import { readOnly } from './annotations';
 import { textResult } from './result';
@@ -108,6 +108,6 @@ export function registerAuthoringStart(server: McpServer): void {
       annotations: readOnly('Start Pathfinder authoring'),
       inputSchema: {},
     },
-    async () => textResult(renderJsonPayload(AUTHORING_CONTEXT))
+    async () => textResult(renderMachineJson(AUTHORING_CONTEXT))
   );
 }
