@@ -1,5 +1,11 @@
 import { renderHook, act } from '@testing-library/react';
 import { useInteractiveElements } from './interactive.hook';
+import { withFaroUserAction } from '../lib/faro';
+
+jest.mock('../lib/faro', () => ({
+  withFaroUserAction: jest.fn((_name: string, _attributes: unknown, work: () => unknown) => work()),
+  USER_ACTION_TIMEOUT_LONG_MS: 600000,
+}));
 
 // Mock Grafana's location service
 jest.mock('@grafana/runtime', () => ({
@@ -243,6 +249,38 @@ describe('useInteractiveElements', () => {
 
       // Since we're using mocked handlers, we just verify the function was called
       expect(result.current.interactiveFocus).toBeDefined();
+    });
+  });
+
+  describe('Faro user action wiring', () => {
+    it('wraps show-mode execution in a pathfinder_step_show action', async () => {
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      await act(async () => {
+        await result.current.executeInteractiveAction('highlight', '#target', undefined, 'show');
+      });
+
+      expect(withFaroUserAction).toHaveBeenCalledWith(
+        'pathfinder_step_show',
+        { target_action: 'highlight', ref_target: '#target' },
+        expect.any(Function),
+        undefined
+      );
+    });
+
+    it('wraps do-mode execution in a pathfinder_step_do action', async () => {
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      await act(async () => {
+        await result.current.executeInteractiveAction('button', 'Save', undefined, 'do');
+      });
+
+      expect(withFaroUserAction).toHaveBeenCalledWith(
+        'pathfinder_step_do',
+        { target_action: 'button', ref_target: 'Save' },
+        expect.any(Function),
+        undefined
+      );
     });
   });
 
