@@ -739,10 +739,18 @@ describe('cross-tab pairing protocol acceptance', () => {
 
     it('keeps verifying signed commands after a re-pair (accepted session persists)', async () => {
       const harness = await pairOverBus();
+      const before = harness.live.postedPayloads.filter((p) => p.kind === 'pairing-accept').length;
+
       await act(async () => {
         await setPendingChallenge(harness.acceptedChallenge);
         await Promise.resolve();
       });
+
+      // Ensure the reconnect HMAC chain has settled before the step-command ECDSA chain
+      // starts; concurrent crypto work saturates the UV thread pool under CI load.
+      await waitFor(() =>
+        expect(harness.live.postedPayloads.filter((p) => p.kind === 'pairing-accept').length).toBeGreaterThan(before)
+      );
 
       act(() => {
         harness.channel.post({
