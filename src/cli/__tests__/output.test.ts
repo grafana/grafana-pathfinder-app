@@ -6,6 +6,7 @@ import {
   issueToOutcome,
   printOutcome,
   readOutputOptions,
+  renderMachineJson,
   type CommandOutcome,
   type HelpJson,
 } from '../utils/output';
@@ -35,6 +36,19 @@ function captureOutput<T>(fn: () => T): { stdout: string; stderr: string; result
     process.stderr.write = origErr;
   }
 }
+
+describe('renderMachineJson', () => {
+  it('emits compact JSON with no pretty-print whitespace', () => {
+    const payload = { status: 'ok', data: { id: 'markdown-1', tags: ['a', 'b'] } };
+    const rendered = renderMachineJson(payload);
+    // Guards the machine-facing contract: a future switch back to
+    // JSON.stringify(x, null, 2) would reintroduce indentation and regress
+    // token cost. Assert on the exact compact form, not just round-tripping.
+    expect(rendered).toBe('{"status":"ok","data":{"id":"markdown-1","tags":["a","b"]}}');
+    expect(rendered).not.toContain('\n');
+    expect(JSON.parse(rendered)).toEqual(payload);
+  });
+});
 
 describe('readOutputOptions', () => {
   it('defaults to text format and not quiet when no flags are set', () => {
