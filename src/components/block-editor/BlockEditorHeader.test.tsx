@@ -1,7 +1,8 @@
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import { BlockEditorHeader } from './BlockEditorHeader';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
+import { testIds } from '../../constants/testIds';
 
 const baseProps = {
   guideTitle: 'Test guide',
@@ -23,6 +24,7 @@ const baseProps = {
   onUnpublish: jest.fn(),
   onNewGuide: jest.fn(),
   isBackendAvailable: true,
+  hasBackendGuides: true,
   hasBlocks: false,
   isSelectionMode: false,
   onToggleSelectionMode: jest.fn(),
@@ -98,5 +100,25 @@ describe('BlockEditorHeader: pop out / dock button', () => {
     });
 
     expect(screen.getByRole('button', { name: 'Dock editor' })).toBeInTheDocument();
+  });
+});
+
+describe('BlockEditorHeader: Library menu item visibility', () => {
+  const openMoreActions = () => {
+    fireEvent.click(screen.getByTestId(testIds.blockEditor.moreActionsButton));
+  };
+
+  it('shows the Library item when the backend is available and there are guides to manage', () => {
+    render(<BlockEditorHeader {...baseProps} isBackendAvailable={true} hasBackendGuides={true} />);
+    openMoreActions();
+    expect(screen.getByText('Library')).toBeInTheDocument();
+  });
+
+  it('hides the Library item once the backend has confirmed no guides', () => {
+    render(<BlockEditorHeader {...baseProps} isBackendAvailable={true} hasBackendGuides={false} />);
+    openMoreActions();
+    // The menu is open (Import is always present), but Library is gated out.
+    expect(screen.getByText('Import')).toBeInTheDocument();
+    expect(screen.queryByText('Library')).not.toBeInTheDocument();
   });
 });

@@ -20,7 +20,7 @@ import { useRecordingActions } from './hooks/useRecordingActions';
 import { useJsonModeHandlers } from './hooks/useJsonModeHandlers';
 import { useBlockConversionHandlers } from './hooks/useBlockConversionHandlers';
 import { useGuideOperations } from './hooks/useGuideOperations';
-import { useBackendGuides } from './hooks/useBackendGuides';
+import { useBackendGuides, hasManageableBackendGuides } from './hooks/useBackendGuides';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import { isBackendApiAvailable } from '../../utils/fetchBackendGuides';
 import { getBlockEditorStyles } from './block-editor.styles';
@@ -1055,6 +1055,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         isPostingToBackend={backendGuides.isSaving}
         onNewGuide={handleNewGuideClick}
         isBackendAvailable={backendAvailable}
+        hasBackendGuides={hasManageableBackendGuides(backendGuides)}
         hasBlocks={hasBlocks}
         isSelectionMode={selection.isSelectionMode}
         onToggleSelectionMode={selection.toggleSelectionMode}

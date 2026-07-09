@@ -62,6 +62,8 @@ export interface BlockEditorHeaderProps {
   onNewGuide: () => void;
   /** Whether the Pathfinder backend API is available; hides Library and Publish controls when false */
   isBackendAvailable: boolean;
+  /** Whether the guide Library entry should be offered (stays hidden until the user has a saved guide) */
+  hasBackendGuides: boolean;
   /** Whether the guide has any blocks (drives selection-mode trigger visibility) */
   hasBlocks: boolean;
   /** Whether selection mode is currently active */
@@ -251,6 +253,7 @@ export function BlockEditorHeader({
   isPostingToBackend = false,
   onNewGuide,
   isBackendAvailable,
+  hasBackendGuides,
   hasBlocks,
   isSelectionMode,
   onToggleSelectionMode,
@@ -369,7 +372,7 @@ export function BlockEditorHeader({
         onClick={onNewGuide}
         data-testid={testIds.blockEditor.newGuideButton}
       />
-      {isBackendAvailable && (
+      {isBackendAvailable && hasBackendGuides && (
         <Menu.Item
           label="Library"
           icon="book-open"
