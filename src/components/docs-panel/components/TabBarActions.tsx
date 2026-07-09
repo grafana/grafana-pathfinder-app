@@ -24,6 +24,13 @@ export interface TabBarActionsProps {
   isDevMode?: boolean;
   /** Reload handler for the `Refresh (dev)` item. */
   onReloadActiveTab?: (tab: LearningJourneyTab) => void;
+  /**
+   * Switch the panel back to the recommendations tab in place. When supplied,
+   * the "My learning" button keeps the user in the sidebar instead of a
+   * full-page navigation to the plugin home. Falls back to navigation when
+   * absent (e.g. the component rendered outside the panel).
+   */
+  onNavigateToRecommendations?: () => void;
 }
 
 /**
@@ -35,6 +42,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
   activeTab,
   isDevMode = false,
   onReloadActiveTab,
+  onNavigateToRecommendations,
 }) => {
   const user = config.bootData?.user;
   const canAccessPluginSettings = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
@@ -86,6 +94,14 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
   };
 
   const handleMyLearningClick = () => {
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'navigate_to_recommendations',
+      source: 'header_my_learning',
+    });
+    if (onNavigateToRecommendations) {
+      onNavigateToRecommendations();
+      return;
+    }
     locationService.push(PLUGIN_BASE_URL);
   };
 
