@@ -1,7 +1,6 @@
 import { isPathfinderContent } from '../lib/dom/pathfinder-content';
 
-const MODAL_SELECTOR =
-  '[role="dialog"], [aria-modal="true"], [data-overlay-container="true"], .journey-image-modal';
+const MODAL_SELECTOR = '[role="dialog"], [aria-modal="true"], [data-overlay-container="true"], .journey-image-modal';
 const POLL_INTERVAL_MS = 1000;
 
 function isVisible(el: Element): boolean {
