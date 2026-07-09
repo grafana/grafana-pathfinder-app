@@ -5,6 +5,7 @@
 
 // Re-export all DOM utilities
 export * from './dom-utils';
+export * from './pathfinder-content';
 export * from './enhanced-selector';
 export * from './selector-generator';
 export * from './selector-validator';

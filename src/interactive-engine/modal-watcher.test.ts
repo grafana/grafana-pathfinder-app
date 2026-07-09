@@ -1,4 +1,4 @@
-import { detectModalActive, startModalWatch, stopModalWatch } from './modal-watcher';
+import { detectModalActive, getVisibleModalRects, startModalWatch, stopModalWatch } from './modal-watcher';
 
 function addDialog(attrs: Record<string, string> = {}, opacity = '1'): HTMLElement {
   const el = document.createElement('div');
@@ -7,6 +7,21 @@ function addDialog(attrs: Record<string, string> = {}, opacity = '1'): HTMLEleme
   Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
   document.body.appendChild(el);
   return el;
+}
+
+function mockRect(el: HTMLElement, left: number, top: number, width: number, height: number) {
+  el.getBoundingClientRect = () =>
+    ({
+      left,
+      top,
+      right: left + width,
+      bottom: top + height,
+      width,
+      height,
+      x: left,
+      y: top,
+      toJSON: () => ({}),
+    }) as DOMRect;
 }
 
 afterEach(() => {
@@ -35,6 +50,14 @@ describe('detectModalActive', () => {
     o.setAttribute('data-overlay-container', 'true');
     o.style.opacity = '1';
     document.body.appendChild(o);
+    expect(detectModalActive()).toBe(true);
+  });
+
+  it('returns true for the journey image lightbox (.journey-image-modal, no role/aria)', () => {
+    const lightbox = document.createElement('div');
+    lightbox.className = 'journey-image-modal';
+    lightbox.style.opacity = '1';
+    document.body.appendChild(lightbox);
     expect(detectModalActive()).toBe(true);
   });
 
@@ -71,6 +94,28 @@ describe('detectModalActive', () => {
   });
 });
 
+describe('getVisibleModalRects', () => {
+  it('returns one rect per visible modal, across all selector shapes', () => {
+    const dialog = addDialog();
+    mockRect(dialog, 0, 0, 300, 300);
+    const lightbox = document.createElement('div');
+    lightbox.className = 'journey-image-modal';
+    lightbox.style.opacity = '1';
+    document.body.appendChild(lightbox);
+    mockRect(lightbox, 400, 400, 200, 200);
+
+    const rects = getVisibleModalRects();
+    expect(rects).toHaveLength(2);
+    expect(rects.map((r) => r.width).sort((a, b) => a - b)).toEqual([200, 300]);
+  });
+
+  it('excludes Pathfinder content and hidden modals from the scan', () => {
+    addDialog({ 'data-pathfinder-content': 'true' });
+    addDialog({}, '0');
+    expect(getVisibleModalRects()).toHaveLength(0);
+  });
+});
+
 describe('startModalWatch / stopModalWatch', () => {
   const flush = () => new Promise((r) => setTimeout(r, 5));
 
@@ -87,6 +132,25 @@ describe('startModalWatch / stopModalWatch', () => {
     dialog.remove();
     await flush();
     expect(events).toContain(false);
+
+    document.removeEventListener('pathfinder-modal-state-changed', handler);
+  });
+
+  it('re-emits when an open modal resizes or moves (geometry signature change)', async () => {
+    const events: boolean[] = [];
+    const handler = (e: Event) => events.push((e as CustomEvent).detail.isOpen);
+    document.addEventListener('pathfinder-modal-state-changed', handler);
+
+    startModalWatch();
+    const dialog = addDialog();
+    mockRect(dialog, 100, 100, 300, 300);
+    await flush();
+    expect(events).toEqual([true]);
+
+    mockRect(dialog, 100, 100, 300, 500);
+    dialog.style.height = '500px'; // watched attribute mutation triggers a re-check
+    await flush();
+    expect(events).toEqual([true, true]);
 
     document.removeEventListener('pathfinder-modal-state-changed', handler);
   });

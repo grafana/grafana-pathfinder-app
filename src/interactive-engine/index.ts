@@ -79,4 +79,4 @@ export type {
 } from './auto-completion';
 
 // Modal detection + watcher (companion mode)
-export { detectModalActive, startModalWatch, stopModalWatch } from './modal-watcher';
+export { detectModalActive, getVisibleModalRects, startModalWatch, stopModalWatch } from './modal-watcher';

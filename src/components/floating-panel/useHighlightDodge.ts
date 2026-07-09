@@ -1,5 +1,10 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { FLOATING_PANEL_DODGE_MARGIN, type FloatingPanelGeometry } from '../../constants/floating-panel';
+import {
+  FLOATING_PANEL_DODGE_MARGIN,
+  FLOATING_PANEL_MIN_HEIGHT,
+  type FloatingPanelGeometry,
+} from '../../constants/floating-panel';
+import { getVisibleModalRects } from '../../interactive-engine';
 
 /** Selectors for interactive overlay elements that the panel should dodge. */
 const HIGHLIGHT_SELECTOR = '.interactive-highlight-outline, .interactive-comment-box';
@@ -17,18 +22,31 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 }
 
+function expandRect(r: Rect, margin: number): Rect {
+  return {
+    left: r.left - margin,
+    top: r.top - margin,
+    right: r.right + margin,
+    bottom: r.bottom + margin,
+    width: r.width + margin * 2,
+    height: r.height + margin * 2,
+  };
+}
+
 /**
- * Find the best corner position that avoids the highlight rect.
- * Returns null if no corner provides enough clearance.
+ * Find the best corner position where the panel clears every obstacle.
+ * Obstacles are tested individually (not as a union) so free space between
+ * far-apart obstacles remains usable. Returns null if no corner clears.
  */
 function findDodgePosition(
   panelWidth: number,
   panelHeight: number,
-  highlightRect: Rect,
+  obstacles: Rect[],
   margin: number
 ): { x: number; y: number } | null {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
+  const expanded = obstacles.map((o) => expandRect(o, margin));
 
   const candidates = [
     { x: vw - panelWidth - margin, y: vh - panelHeight - margin }, // bottom-right
@@ -47,16 +65,7 @@ function findDodgePosition(
       height: panelHeight,
     };
 
-    const expandedHighlight: Rect = {
-      left: highlightRect.left - margin,
-      top: highlightRect.top - margin,
-      right: highlightRect.right + margin,
-      bottom: highlightRect.bottom + margin,
-      width: highlightRect.width + margin * 2,
-      height: highlightRect.height + margin * 2,
-    };
-
-    if (!rectsOverlap(panelRect, expandedHighlight)) {
+    if (expanded.every((o) => !rectsOverlap(panelRect, o))) {
       return pos;
     }
   }
@@ -66,36 +75,6 @@ function findDodgePosition(
 
 function toRect(r: DOMRect): Rect {
   return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
-}
-
-function unionOfRects(rects: Rect[]): Rect {
-  const left = Math.min(...rects.map((r) => r.left));
-  const top = Math.min(...rects.map((r) => r.top));
-  const right = Math.max(...rects.map((r) => r.right));
-  const bottom = Math.max(...rects.map((r) => r.bottom));
-  return { left, top, right, bottom, width: right - left, height: bottom - top };
-}
-
-/** Largest visible native modal rect, excluding Pathfinder's own floating panel. */
-function largestVisibleModalRect(): Rect | null {
-  let best: Rect | null = null;
-  let bestArea = 0;
-  for (const el of Array.from(document.querySelectorAll('[role="dialog"], [aria-modal="true"]'))) {
-    if (el.closest('[data-pathfinder-content="true"]')) {
-      continue;
-    }
-    const style = window.getComputedStyle(el);
-    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
-      continue;
-    }
-    const r = el.getBoundingClientRect();
-    const area = r.width * r.height;
-    if (area > bestArea) {
-      bestArea = area;
-      best = toRect(r);
-    }
-  }
-  return best;
 }
 
 /**
@@ -128,9 +107,8 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
         toRect(el.getBoundingClientRect())
       );
       if (dodgeModalRef.current) {
-        const modalRect = largestVisibleModalRect();
-        if (modalRect) {
-          obstacles.push(modalRect);
+        for (const r of getVisibleModalRects()) {
+          obstacles.push(toRect(r));
         }
       }
       if (obstacles.length === 0) {
@@ -146,8 +124,6 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
         return;
       }
 
-      const union = unionOfRects(obstacles);
-
       const panelRect: Rect = {
         left: geo.x,
         top: geo.y,
@@ -157,7 +133,7 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
         height: geo.height,
       };
 
-      if (!rectsOverlap(panelRect, union)) {
+      if (!obstacles.some((o) => rectsOverlap(panelRect, o))) {
         return;
       }
 
@@ -165,7 +141,7 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
         previousPositionRef.current = { x: geo.x, y: geo.y };
       }
 
-      const dodgePos = findDodgePosition(geo.width, geo.height, union, FLOATING_PANEL_DODGE_MARGIN);
+      const dodgePos = findDodgePosition(geo.width, geo.height, obstacles, FLOATING_PANEL_DODGE_MARGIN);
 
       if (dodgePos) {
         document.dispatchEvent(
@@ -173,8 +149,20 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
             detail: dodgePos,
           })
         );
-      } else {
-        document.dispatchEvent(new CustomEvent('pathfinder-floating-compact'));
+        return;
+      }
+
+      // No corner fits the full panel: compact, and if a corner can hold the
+      // compacted panel (min height as its best-known lower bound), move there
+      // too — compacting in place alone often uncovers nothing.
+      document.dispatchEvent(new CustomEvent('pathfinder-floating-compact'));
+      const compactPos = findDodgePosition(geo.width, FLOATING_PANEL_MIN_HEIGHT, obstacles, FLOATING_PANEL_DODGE_MARGIN);
+      if (compactPos) {
+        document.dispatchEvent(
+          new CustomEvent('pathfinder-floating-dodge', {
+            detail: compactPos,
+          })
+        );
       }
     };
 
@@ -206,13 +194,24 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
 
     const handleModalStateChange = () => requestAnimationFrame(checkAndDodge);
 
+    // A manual drag while a dodge is active overrides the saved position:
+    // restoring would otherwise teleport the panel to a stale pre-dodge spot,
+    // discarding the user's placement.
+    const handleManualMove = (e: Event) => {
+      if (previousPositionRef.current) {
+        previousPositionRef.current = (e as CustomEvent<{ x: number; y: number }>).detail;
+      }
+    };
+
     observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener('pathfinder-modal-state-changed', handleModalStateChange);
+    document.addEventListener('pathfinder-floating-manual-move', handleManualMove);
     checkAndDodge();
 
     return () => {
       observer.disconnect();
       document.removeEventListener('pathfinder-modal-state-changed', handleModalStateChange);
+      document.removeEventListener('pathfinder-floating-manual-move', handleManualMove);
       previousPositionRef.current = null;
     };
   }, [isMinimized]); // Stable deps — geometry read from ref

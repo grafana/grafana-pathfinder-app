@@ -15,7 +15,7 @@
  * @module action-detector
  */
 
-import { findButtonByText, isElementVisible } from '.';
+import { findButtonByText, isElementVisible, isPathfinderContent } from '.';
 
 export type DetectedAction = 'highlight' | 'button' | 'formfill' | 'navigate' | 'hover';
 
@@ -166,7 +166,7 @@ export function shouldCaptureElement(element: HTMLElement): boolean {
   if (
     element.closest('[class*="debug"]') ||
     element.closest('#CombinedLearningJourney') ||
-    element.closest('[data-pathfinder-content="true"]')
+    isPathfinderContent(element)
   ) {
     return false;
   }
