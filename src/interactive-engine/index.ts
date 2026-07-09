@@ -77,3 +77,6 @@ export type {
   FormValidationResult,
   UseFormValidationOptions,
 } from './auto-completion';
+
+// Modal detection + watcher (companion mode)
+export { detectModalActive, startModalWatch, stopModalWatch } from './modal-watcher';

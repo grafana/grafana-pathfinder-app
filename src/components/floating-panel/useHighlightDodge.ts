@@ -64,6 +64,40 @@ function findDodgePosition(
   return null;
 }
 
+function toRect(r: DOMRect): Rect {
+  return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+}
+
+function unionOfRects(rects: Rect[]): Rect {
+  const left = Math.min(...rects.map((r) => r.left));
+  const top = Math.min(...rects.map((r) => r.top));
+  const right = Math.max(...rects.map((r) => r.right));
+  const bottom = Math.max(...rects.map((r) => r.bottom));
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
+/** Largest visible native modal rect, excluding Pathfinder's own floating panel. */
+function largestVisibleModalRect(): Rect | null {
+  let best: Rect | null = null;
+  let bestArea = 0;
+  for (const el of Array.from(document.querySelectorAll('[role="dialog"], [aria-modal="true"]'))) {
+    if (el.closest('[data-pathfinder-content="true"]')) {
+      continue;
+    }
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+      continue;
+    }
+    const r = el.getBoundingClientRect();
+    const area = r.width * r.height;
+    if (area > bestArea) {
+      bestArea = area;
+      best = toRect(r);
+    }
+  }
+  return best;
+}
+
 /**
  * Hook that watches for interactive highlight overlays and auto-repositions
  * the floating panel to avoid overlapping them.
@@ -72,13 +106,15 @@ function findDodgePosition(
  * are added/removed. Geometry is read from a ref so the observer doesn't
  * need to be recreated when the panel moves.
  */
-export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: boolean) {
+export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: boolean, dodgeModal = false) {
   const previousPositionRef = useRef<{ x: number; y: number } | null>(null);
   // Store geometry in a ref so the observer callback always reads current values
   // without the effect needing to depend on geometry (which changes during drag)
   const geometryRef = useRef(geometry);
+  const dodgeModalRef = useRef(dodgeModal);
   useLayoutEffect(() => {
     geometryRef.current = geometry;
+    dodgeModalRef.current = dodgeModal;
   });
 
   useEffect(() => {
@@ -88,8 +124,16 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
 
     const checkAndDodge = () => {
       const geo = geometryRef.current;
-      const highlights = document.querySelectorAll(HIGHLIGHT_SELECTOR);
-      if (highlights.length === 0) {
+      const obstacles: Rect[] = Array.from(document.querySelectorAll(HIGHLIGHT_SELECTOR)).map((el) =>
+        toRect(el.getBoundingClientRect())
+      );
+      if (dodgeModalRef.current) {
+        const modalRect = largestVisibleModalRect();
+        if (modalRect) {
+          obstacles.push(modalRect);
+        }
+      }
+      if (obstacles.length === 0) {
         if (previousPositionRef.current) {
           document.dispatchEvent(
             new CustomEvent('pathfinder-floating-restore-position', {
@@ -102,32 +146,7 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
         return;
       }
 
-      const highlightArray = Array.from(highlights);
-      const rects = highlightArray.map((el) => el.getBoundingClientRect());
-      const firstRect = rects[0];
-      if (!firstRect) {
-        return;
-      }
-      const union: Rect = {
-        left: firstRect.left,
-        top: firstRect.top,
-        right: firstRect.right,
-        bottom: firstRect.bottom,
-        width: firstRect.width,
-        height: firstRect.height,
-      };
-      for (let i = 1; i < rects.length; i++) {
-        const r = rects[i];
-        if (!r) {
-          continue;
-        }
-        union.left = Math.min(union.left, r.left);
-        union.top = Math.min(union.top, r.top);
-        union.right = Math.max(union.right, r.right);
-        union.bottom = Math.max(union.bottom, r.bottom);
-      }
-      union.width = union.right - union.left;
-      union.height = union.bottom - union.top;
+      const union = unionOfRects(obstacles);
 
       const panelRect: Rect = {
         left: geo.x,
@@ -185,11 +204,15 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
       }
     });
 
+    const handleModalStateChange = () => requestAnimationFrame(checkAndDodge);
+
     observer.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener('pathfinder-modal-state-changed', handleModalStateChange);
     checkAndDodge();
 
     return () => {
       observer.disconnect();
+      document.removeEventListener('pathfinder-modal-state-changed', handleModalStateChange);
       previousPositionRef.current = null;
     };
   }, [isMinimized]); // Stable deps — geometry read from ref
