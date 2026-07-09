@@ -88,4 +88,21 @@ describe('DocsPanelTabBar', () => {
     expect(props.onSetActiveTab).toHaveBeenCalledWith('recommendations');
     expect(mockPush).not.toHaveBeenCalled();
   });
+
+  describe('overflow chevron', () => {
+    const overflowTab: any = { id: 'overflow-1', title: 'overflow-1', baseUrl: '', currentUrl: '' };
+
+    it('renders the count before the chevron and points it down when the dropdown is closed', () => {
+      render(<DocsPanelTabBar {...makeProps({ overflowGuideTabs: [overflowTab], isDropdownOpen: false })} />);
+      const button = screen.getByTestId(testIds.docsPanel.tabOverflowButton);
+      expect(button.firstElementChild?.textContent).toBe('+1');
+      expect(screen.getByTestId('angle-down')).toBeInTheDocument();
+    });
+
+    it('points the chevron up when the dropdown is open', () => {
+      render(<DocsPanelTabBar {...makeProps({ overflowGuideTabs: [overflowTab], isDropdownOpen: true })} />);
+      expect(screen.getByTestId('angle-up')).toBeInTheDocument();
+      expect(screen.queryByTestId('angle-down')).not.toBeInTheDocument();
+    });
+  });
 });

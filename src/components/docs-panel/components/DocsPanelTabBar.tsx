@@ -179,8 +179,8 @@ export function DocsPanelTabBar({
             aria-haspopup="true"
             data-testid={testIds.docsPanel.tabOverflowButton}
           >
-            <Icon name="angle-down" size="sm" />
             <span>+{overflowGuideTabs.length}</span>
+            <Icon name={isDropdownOpen ? 'angle-up' : 'angle-down'} size="sm" />
           </button>
         </div>
       )}
