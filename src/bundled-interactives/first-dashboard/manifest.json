@@ -13,7 +13,7 @@
   "provides": ["first-dashboard-created"],
   "targeting": {
     "match": {
-      "urlPrefix": "/"
+      "and": [{ "urlPrefix": "/" }, { "targetPlatform": "oss" }]
     }
   },
   "testEnvironment": {

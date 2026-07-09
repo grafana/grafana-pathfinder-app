@@ -8,12 +8,12 @@
     "name": "Interactive Learning",
     "team": "Grafana Developer Advocacy"
   },
-  "startingLocation": "/a/grafana-setupguide-app/home",
+  "startingLocation": "/",
   "recommends": ["welcome-to-grafana-cloud"],
   "provides": ["first-dashboard-created-cloud"],
   "targeting": {
     "match": {
-      "and": [{ "urlPrefix": "/a/grafana-setupguide-app/home" }, { "targetPlatform": "cloud" }]
+      "and": [{ "urlPrefix": "/" }, { "targetPlatform": "cloud" }]
     }
   },
   "testEnvironment": {
