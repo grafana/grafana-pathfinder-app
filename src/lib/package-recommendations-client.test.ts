@@ -148,6 +148,29 @@ describe('fetchOnlinePackageRecommendations', () => {
     expect(result.packages[0]?.id).toBe('prom-101');
   });
 
+  it('populates the cache when the caller stops awaiting a slow response', async () => {
+    let resolveFetch!: (value: typeof samplePayload) => void;
+    mockGet.mockImplementation(
+      () =>
+        new Promise<typeof samplePayload>((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+
+    // Caller abandons the await (boot-budget timeout race in ContextService).
+    void fetchOnlinePackageRecommendations();
+    expect(mockGet).toHaveBeenCalledTimes(1);
+
+    resolveFetch(samplePayload);
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Next call is served from the module cache — no new backend hit and no
+    // sticky-unavailable misfire from the abandoned await.
+    const result = await fetchOnlinePackageRecommendations();
+    expect(result.packages[0]?.id).toBe('prom-101');
+    expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+
   it('does not flip unavailable when offline (recovery is still possible)', async () => {
     setOnline(false);
     await fetchOnlinePackageRecommendations();

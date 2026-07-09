@@ -76,4 +76,35 @@ describe('OnlineCdnPackageResolver', () => {
       expect(result.contentUrl).not.toContain('//content.json');
     }
   });
+
+  it('fetches manifest.json from the CDN on metadata-only resolve when no manifest is inlined', async () => {
+    // The backend only inlines manifests for targeted entries; untargeted
+    // (milestone/recommends-only) entries rely on this lazy fallback.
+    (fetchOnlinePackageRecommendations as jest.Mock).mockResolvedValue({
+      baseUrl,
+      packages: [{ id: 'milestone-only', path: 'milestone-only/', title: 'Milestone only', type: 'guide' }],
+    });
+    const originalFetch = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ id: 'milestone-only', type: 'guide', description: 'Lazy manifest' }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const resolver = new OnlineCdnPackageResolver();
+      const result = await resolver.resolve('milestone-only', { loadContent: 'metadata-only' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.manifest).toBeDefined();
+        expect((result.manifest as unknown as Record<string, unknown>).id).toBe('milestone-only');
+      }
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://interactive-learning.grafana.net/packages/milestone-only/manifest.json'
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });
