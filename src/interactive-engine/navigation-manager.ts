@@ -1,7 +1,13 @@
 import { waitForReactUpdates } from '../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
-import { isElementVisible, getScrollParent, getStickyHeaderOffset, getVisibleHighlightTarget } from '../lib/dom';
+import {
+  isElementVisible,
+  getScrollParent,
+  getStickyHeaderOffset,
+  getVisibleHighlightTarget,
+  isPathfinderContent,
+} from '../lib/dom';
 import { sanitizeDocumentationHTML } from '../security';
 import { applyE2ECommentBoxAttributes } from './e2e-attributes';
 
@@ -453,9 +459,11 @@ export class NavigationManager {
       // - The comment box
       // - The close buttons
       // - Inside the highlighted element
+      // - The Pathfinder floating panel
       if (
         target.closest('.interactive-highlight-outline') ||
         target.closest('.interactive-comment-box') ||
+        isPathfinderContent(target) ||
         target === element ||
         element.contains(target)
       ) {

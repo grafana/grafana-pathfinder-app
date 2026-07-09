@@ -90,9 +90,15 @@ function useDrag(
     if (!dragStartRef.current) {
       return;
     }
+    const { originX, originY } = dragStartRef.current;
     dragStartRef.current = null;
     setGeometry((prev) => {
       panelModeManager.setPanelGeometry(prev);
+      if (prev.x !== originX || prev.y !== originY) {
+        document.dispatchEvent(
+          new CustomEvent('pathfinder-floating-manual-move', { detail: { x: prev.x, y: prev.y } })
+        );
+      }
       reportAppInteraction(UserInteraction.FloatingPanelMoved, {
         trigger: 'manual_drag',
         x: prev.x,
