@@ -782,15 +782,16 @@ describe('JsonGuideSchema', () => {
       expect(warning).toBeUndefined();
     });
 
-    it('should promote the duplicate-heading warning to an error in strict mode', () => {
+    it('should stay a warning in strict mode instead of promoting to an error', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Create your first dashboard',
         blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
       });
       const result = validateGuideFromString(guide, { strict: true });
-      expect(result.isValid).toBe(false);
-      expect(result.errors.some((e) => e.message.includes('duplicates the guide title'))).toBe(true);
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+      expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(true);
     });
   });
 });

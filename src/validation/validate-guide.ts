@@ -61,7 +61,7 @@ function normalizeHeadingWords(text: string): string[] {
     .filter(Boolean);
 }
 
-export function headingDuplicatesTitle(headingText: string, title: string): boolean {
+function headingDuplicatesTitle(headingText: string, title: string): boolean {
   const headingWords = normalizeHeadingWords(headingText);
   const titleWords = normalizeHeadingWords(title);
   if (headingWords.length === 0 || titleWords.length === 0) {
@@ -95,11 +95,13 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
     warnings.push({ message: 'Guide has no blocks', path: ['blocks'], type: 'suggestion' });
   }
 
+  // Advisory only — authoring guidance, never promoted to an error by strict mode.
+  const advisories: ValidationWarning[] = [];
   const firstBlock = (result.data as JsonGuide).blocks[0];
   if (firstBlock?.type === 'markdown') {
     const leadingHeading = extractLeadingH1(firstBlock.content);
     if (leadingHeading && headingDuplicatesTitle(leadingHeading, result.data.title)) {
-      warnings.push({
+      advisories.push({
         message: `blocks[0] starts with a heading ("${leadingHeading}") that duplicates the guide title — the title is already rendered separately; consider removing this heading.`,
         path: ['blocks', 0],
         type: 'suggestion',
@@ -112,11 +114,11 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
     return {
       isValid: false,
       errors: warnings.map((w) => ({ message: w.message, path: w.path, code: 'strict' })),
-      warnings: [],
+      warnings: advisories,
       guide: null,
     };
   }
-  return { isValid: true, errors: [], warnings, guide: result.data as JsonGuide };
+  return { isValid: true, errors: [], warnings: [...warnings, ...advisories], guide: result.data as JsonGuide };
 }
 
 export function validateGuideFromString(jsonString: string, options: ValidationOptions = {}): ValidationResult {

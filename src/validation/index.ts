@@ -22,7 +22,6 @@ export {
   validateGuide,
   validateGuideFromString,
   toLegacyResult,
-  headingDuplicatesTitle,
   type ValidationResult,
   type LegacyValidationResult,
   type ValidationOptions,
