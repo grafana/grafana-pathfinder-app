@@ -5,7 +5,7 @@
   "blocks": [
     {
       "type": "markdown",
-      "content": "# JSON Guide Demo\n\nThis guide demonstrates **all block types** supported by the JSON guide format. Use this as a reference for creating your own guides.\n\n## Markdown Blocks\n\nMarkdown blocks support:\n\n- **Bold text** and *italic text*\n- `Inline code` snippets\n- [Links](https://grafana.com) to external resources\n- Ordered and unordered lists\n\n### Code Blocks\n\nYou can include fenced code blocks with syntax highlighting:\n\n```json\n{\n  \"type\": \"markdown\",\n  \"content\": \"Your markdown content here\"\n}\n```\n\n```promql\nrate(http_requests_total[5m])\n```"
+      "content": "This guide demonstrates **all block types** supported by the JSON guide format. Use this as a reference for creating your own guides.\n\n## Markdown Blocks\n\nMarkdown blocks support:\n\n- **Bold text** and *italic text*\n- `Inline code` snippets\n- [Links](https://grafana.com) to external resources\n- Ordered and unordered lists\n\n### Code Blocks\n\nYou can include fenced code blocks with syntax highlighting:\n\n```json\n{\n  \"type\": \"markdown\",\n  \"content\": \"Your markdown content here\"\n}\n```\n\n```promql\nrate(http_requests_total[5m])\n```"
     },
     {
       "type": "markdown",

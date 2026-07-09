@@ -4,7 +4,7 @@
   "blocks": [
     {
       "type": "markdown",
-      "content": "# Create your first dashboard\n\nWelcome! In this tutorial, you'll learn how to create your first Grafana dashboard by following Jack and Jill on their hiking adventure. You'll start by exploring sample data in Explore, then transform that data into a beautiful visualization on a dashboard.\n\nBy the end of this tutorial, you'll understand how to query data, add labels to organize your metrics, and create meaningful visualizations that tell a story with your data."
+      "content": "Welcome! In this tutorial, you'll learn how to create your first Grafana dashboard by following Jack and Jill on their hiking adventure. You'll start by exploring sample data in Explore, then transform that data into a beautiful visualization on a dashboard.\n\nBy the end of this tutorial, you'll understand how to query data, add labels to organize your metrics, and create meaningful visualizations that tell a story with your data."
     },
     {
       "type": "markdown",
