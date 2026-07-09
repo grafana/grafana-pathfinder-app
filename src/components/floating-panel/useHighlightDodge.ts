@@ -156,7 +156,12 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
       // compacted panel (min height as its best-known lower bound), move there
       // too — compacting in place alone often uncovers nothing.
       document.dispatchEvent(new CustomEvent('pathfinder-floating-compact'));
-      const compactPos = findDodgePosition(geo.width, FLOATING_PANEL_MIN_HEIGHT, obstacles, FLOATING_PANEL_DODGE_MARGIN);
+      const compactPos = findDodgePosition(
+        geo.width,
+        FLOATING_PANEL_MIN_HEIGHT,
+        obstacles,
+        FLOATING_PANEL_DODGE_MARGIN
+      );
       if (compactPos) {
         document.dispatchEvent(
           new CustomEvent('pathfinder-floating-dodge', {
