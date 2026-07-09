@@ -407,6 +407,13 @@ export async function withFaroUserAction<T>(
   work: () => Promise<T> | T,
   timeoutMs = USER_ACTION_TIMEOUT_MS
 ): Promise<T> {
+  // Reaching an interactive funnel is engagement by definition: complete an
+  // armed init before deciding to pass through, so the first action in a
+  // fresh tab is captured rather than run outside an action envelope. Only
+  // awaited pre-init — once initialized the action must start synchronously.
+  if (!faroInstance) {
+    await notifyFaroEngagement().catch(() => undefined);
+  }
   let action: StampableUserAction | undefined;
   guardTelemetry(() => {
     if (faroInstance && faroInstance.api.getActiveUserAction() === undefined) {

@@ -617,6 +617,37 @@ describe('withFaroUserAction', () => {
     expect(mockActionEnd).not.toHaveBeenCalled();
   });
 
+  it('captures the first pathfinder_section_run in a fresh armed tab (init completes first)', async () => {
+    const faro = freshFaro();
+    faro.armFaro();
+    expect(mockInitializeFaro).not.toHaveBeenCalled();
+
+    const result = await faro.withFaroUserAction('pathfinder_section_run', { section_id: 's1' }, () => 'ran');
+    expect(result).toBe('ran');
+    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
+    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_section_run', { section_id: 's1' });
+    expect(mockActionEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('captures the first pathfinder_remote_step in a fresh armed tab', async () => {
+    const faro = freshFaro();
+    faro.armFaro();
+
+    await faro.withFaroUserAction('pathfinder_remote_step', {}, async () => 'ok');
+    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_remote_step', {});
+    expect(mockActionEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays a passthrough when Faro never armed (outside Grafana Cloud)', async () => {
+    mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
+    const faro = freshFaro();
+    faro.armFaro();
+
+    await expect(faro.withFaroUserAction('pathfinder_section_run', {}, () => 'ok')).resolves.toBe('ok');
+    expect(mockInitializeFaro).not.toHaveBeenCalled();
+    expect(mockStartUserAction).not.toHaveBeenCalled();
+  });
+
   it('force-ends a hung action after the safety timeout with outcome timeout', async () => {
     const faro = freshFaro();
     await faro.initFaro();
