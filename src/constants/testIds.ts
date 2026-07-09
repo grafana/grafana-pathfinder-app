@@ -399,5 +399,7 @@ export const testIds = {
     error: 'guide-reader-error',
     closeHint: 'guide-reader-close-hint',
     controllerStatus: 'guide-reader-controller-status',
+    outline: 'guide-reader-outline',
+    outlineItem: (id: string) => `guide-reader-outline-item-${id}`,
   },
 };

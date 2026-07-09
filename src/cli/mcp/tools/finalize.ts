@@ -28,6 +28,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { runValidate } from '../../commands/validate';
+import { renderMachineJson } from '../../utils/output';
 import { PLUGIN_VIEWER_BASE } from '../lib/constants';
 import { tokenLogPrefix } from '../lib/session-token';
 import type { AuthoringSessionStore } from '../lib/session-store';
@@ -101,19 +102,15 @@ async function finalizeImpl(args: {
 
   if (validation.status !== 'ok') {
     return textResult(
-      JSON.stringify(
-        {
-          status: 'invalid',
-          validation: {
-            isValid: false,
-            code: validation.code,
-            message: validation.message,
-            issues: (validation.data?.issues as unknown) ?? [],
-          },
+      renderMachineJson({
+        status: 'invalid',
+        validation: {
+          isValid: false,
+          code: validation.code,
+          message: validation.message,
+          issues: (validation.data?.issues as unknown) ?? [],
         },
-        null,
-        2
-      ),
+      }),
       true
     );
   }
@@ -261,7 +258,6 @@ async function finalizeImpl(args: {
     try {
       await sessionStore.delete(resolved.sessionToken);
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.warn(
         `pathfinder_finalize_for_app_platform: session delete failed for ${tokenLogPrefix(
           resolved.sessionToken
@@ -271,5 +267,5 @@ async function finalizeImpl(args: {
     }
   }
 
-  return textResult(JSON.stringify(handoff, null, 2));
+  return textResult(renderMachineJson(handoff));
 }

@@ -36,14 +36,7 @@ const SENTINEL_WRITE_COMMAND = 'touch /tmp/pathfinder-ready.tmp && mv /tmp/pathf
 const EMPTY_SETUP_COMMANDS = Object.freeze([]) as unknown as string[];
 
 export type ChallengeState =
-  | 'idle'
-  | 'connecting'
-  | 'preparing'
-  | 'ready'
-  | 'checking'
-  | 'solved'
-  | 'failed-check'
-  | 'setup-failed';
+  'idle' | 'connecting' | 'preparing' | 'ready' | 'checking' | 'solved' | 'failed-check' | 'setup-failed';
 
 export interface ChallengeHintProps {
   text: string;

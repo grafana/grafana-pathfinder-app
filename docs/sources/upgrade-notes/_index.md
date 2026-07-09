@@ -49,7 +49,7 @@ If your team has documentation referencing "enable dev mode to access the block 
 
 ### Action required
 
-If you author **path** or **journey** packages, the manifest field that lists child guides is `steps` and the runtime concept that displays them is `milestones`. No manifest migration is required, but be aware of the terminology when reading docs and code.
+If you author **path** or **journey** packages, the manifest field that lists child guides is `milestones`.
 
 ## Version 2.6: Kiosk mode without dev mode
 

@@ -50,9 +50,7 @@ function mutateMatchingBlock(
 }
 
 type SubstepMutateOutcome =
-  | { outcome: 'patched' }
-  | { outcome: 'out-of-range'; stepCount: number }
-  | { outcome: 'not-found' };
+  { outcome: 'patched' } | { outcome: 'out-of-range'; stepCount: number } | { outcome: 'not-found' };
 
 // Split outcomes keep the recursion clean: a not-found inner branch must not mask a sibling that matches.
 function mutateSubstepReftarget(

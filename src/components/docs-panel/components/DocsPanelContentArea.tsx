@@ -41,7 +41,6 @@ import { FullScreenModeNotice } from './FullScreenModeNotice';
 import { LoadingIndicator } from './LoadingIndicator';
 import { LearningJourneyMilestoneToolbar } from './LearningJourneyMilestoneToolbar';
 import { PanelModeActionButtons } from './PanelModeActionButtons';
-import { DocsPanelHeaderMenu } from './DocsPanelHeaderMenu';
 import type { SceneObject } from '@grafana/scenes';
 import type { OpenDocsOptions } from '../types';
 import type { CombinedLearningJourneyPanel } from '../docs-panel';
@@ -75,7 +74,6 @@ export interface DocsPanelContentAreaProps {
   isFullScreenActive: boolean;
   isRecommendationsTab: boolean;
   isEditorUser: boolean;
-  isDevMode: boolean;
   isWysiwygPreview: boolean;
 
   activeTabId: string;
@@ -104,7 +102,6 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
     isFullScreenActive,
     isRecommendationsTab,
     isEditorUser,
-    isDevMode,
     isWysiwygPreview,
     activeTabId,
     activeTab,
@@ -368,13 +365,6 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       </button>
                     )}
                     <PanelModeActionButtons className={styles.secondaryActionButton} />
-                    <DocsPanelHeaderMenu
-                      activeTab={activeTab}
-                      isDevMode={isDevMode}
-                      onReload={reloadActiveTab}
-                      interactionLocation="docs_panel_header_feedback_menu"
-                      defaultContentType="docs"
-                    />
                   </div>
                 </div>
               )}
@@ -391,18 +381,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                 hasInteractiveProgress={hasInteractiveProgress}
                 progressKey={progressKey}
                 onResetGuide={handleResetGuide}
-                trailingActions={
-                  <>
-                    <PanelModeActionButtons className={styles.secondaryActionButton} />
-                    <DocsPanelHeaderMenu
-                      activeTab={activeTab}
-                      isDevMode={isDevMode}
-                      onReload={reloadActiveTab}
-                      interactionLocation="milestone_progress_bar_feedback_menu"
-                      defaultContentType="learning-journey"
-                    />
-                  </>
-                }
+                trailingActions={<PanelModeActionButtons className={styles.secondaryActionButton} />}
               />
 
               {/* Unified Content Renderer - works for both learning journeys and docs! */}

@@ -42,12 +42,7 @@ export interface PackageMeta {
  * vocabularies cannot drift.
  */
 export type GuideStatus =
-  | 'passed'
-  | 'failed'
-  | 'provisioning_failed'
-  | 'auth_expired'
-  | 'skipped_prereq'
-  | RemoteSkipReason;
+  'passed' | 'failed' | 'provisioning_failed' | 'auth_expired' | 'skipped_prereq' | RemoteSkipReason;
 
 export interface GuideRunResult {
   guide: string;

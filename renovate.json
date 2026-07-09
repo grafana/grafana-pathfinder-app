@@ -54,9 +54,15 @@
         "!/^@types/jest/",
         "!/^@types/testing-library/"
       ]
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["indirect"],
+      "enabled": false
     }
   ],
   "prConcurrentLimit": 10,
   "minimumReleaseAge": "14 days",
-  "rebaseWhen": "behind-base-branch"
+  "internalChecksFilter": "strict",
+  "rebaseWhen": "conflicted"
 }

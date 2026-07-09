@@ -17,6 +17,7 @@ import * as path from 'path';
 
 import {
   EXCLUDED_TOP_LEVEL,
+  REPO_ROOT,
   ROOT_LEVEL_ALLOWED_FILES,
   SRC_DIR,
   TIER_2_ENGINES,
@@ -27,6 +28,7 @@ import {
   getSourceTier,
   getTargetTopLevel,
   isTestFile,
+  readJsoncFile,
   resolveImportToRelative,
   toPosixPath,
 } from './import-graph';
@@ -304,8 +306,6 @@ describe('Architecture ratchet progress', () => {
 // ---------------------------------------------------------------------------
 // Tier documentation sync (A2 — prevents F-1 regression)
 // ---------------------------------------------------------------------------
-
-const REPO_ROOT = path.resolve(SRC_DIR, '..');
 
 interface ParsedTierDoc {
   tiers: Map<string, number>;
@@ -651,42 +651,58 @@ describe('Tier documentation sync', () => {
 // TS path-alias tripwire
 // ---------------------------------------------------------------------------
 //
-// The import-graph scanner only resolves relative specifiers. If
-// tsconfig.compilerOptions.paths is ever populated — or if baseUrl is
-// widened beyond the scaffolded baseline — aliased / bare-rooted imports
-// would silently bypass tier enforcement. Fail loudly the moment either
-// appears so whoever introduces it extends the scanner first.
+// import-graph.ts's resolvePathAlias resolves tsconfig.paths (in addition to
+// relative specifiers), but only ever against the tsconfig it's pointed at
+// (.config/tsconfig.json). If paths is widened beyond the known baseline —
+// or a new baseUrl appears — aliased / bare-rooted imports could resolve
+// differently than resolvePathAlias expects and silently bypass tier
+// enforcement. Fail loudly so whoever changes it re-verifies resolvePathAlias
+// still sees everything a bare specifier can now reach (add a case in
+// import-graph.test.ts), then updates the baseline below.
 //
-// KNOWN_BASELINE_BASE_URL documents the pre-existing blind spot: the
-// scaffolded `.config/tsconfig.json` sets baseUrl="../src", which lets
-// bare specifiers like `import x from 'lib/foo'` resolve against src/.
-// These are already invisible to extractRelativeImports. Treating the
-// baseline as known (rather than failing now) keeps the tripwire shippable
-// while still catching any further widening.
+// KNOWN_BASELINE_BASE_URL is empty: the create-plugin TS6-compat migration
+// replaced .config/tsconfig.json's baseUrl="../src" with the equivalent
+// paths={"*": ["../src/*"]} entry in KNOWN_BASELINE_PATHS below (TS6
+// deprecates baseUrl — error TS5101). Kept as a live map, not deleted, so a
+// future baseUrl reintroduction still trips this wire.
 
-const KNOWN_BASELINE_BASE_URL: Record<string, string> = {
-  '.config/tsconfig.json': '../src',
+const KNOWN_BASELINE_BASE_URL: Record<string, string> = {};
+
+const KNOWN_BASELINE_PATHS: Record<string, Record<string, string[]>> = {
+  '.config/tsconfig.json': { '*': ['../src/*'] },
 };
+
+function pathsMatchBaseline(paths: Record<string, string[]>, baseline: Record<string, string[]> | undefined): boolean {
+  if (!baseline) {
+    return false;
+  }
+  const pathKeys = Object.keys(paths).sort();
+  const baselineKeys = Object.keys(baseline).sort();
+  return (
+    pathKeys.length === baselineKeys.length &&
+    pathKeys.every((key, i) => key === baselineKeys[i] && JSON.stringify(paths[key]) === JSON.stringify(baseline[key]))
+  );
+}
 
 describe('TS path-alias tripwire', () => {
   const tsconfigs = [path.join(REPO_ROOT, 'tsconfig.json'), path.join(REPO_ROOT, '.config', 'tsconfig.json')];
 
-  it.each(tsconfigs)('%s declares no compilerOptions.paths or new baseUrl', (tsconfigPath) => {
-    const text = fs.readFileSync(tsconfigPath, 'utf-8');
-    const stripped = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    const parsed = JSON.parse(stripped) as {
-      compilerOptions?: { paths?: Record<string, unknown>; baseUrl?: string };
-    };
+  it.each(tsconfigs)('%s declares only the known-resolved paths/baseUrl', (tsconfigPath) => {
+    const parsed = readJsoncFile<{
+      compilerOptions?: { paths?: Record<string, string[]>; baseUrl?: string };
+    }>(tsconfigPath);
     const relPath = toPosixPath(path.relative(REPO_ROOT, tsconfigPath));
     const paths = parsed.compilerOptions?.paths ?? {};
     const baseUrl = parsed.compilerOptions?.baseUrl;
 
-    if (Object.keys(paths).length > 0) {
+    if (Object.keys(paths).length > 0 && !pathsMatchBaseline(paths, KNOWN_BASELINE_PATHS[relPath])) {
       throw new Error(
-        `${relPath} declares compilerOptions.paths, but the ` +
-          `import-graph scanner in src/validation/import-graph.ts only resolves relative ` +
-          `specifiers. Aliased imports would silently bypass tier enforcement. Extend the ` +
-          `scanner to resolve tsconfig.paths before merging this change.`
+        `${relPath} declares compilerOptions.paths=${JSON.stringify(paths)}, which doesn't match the ` +
+          `known-good baseline in KNOWN_BASELINE_PATHS (architecture.test.ts). resolvePathAlias ` +
+          `(src/validation/import-graph.ts) resolves tsconfig.paths generically, so it likely already ` +
+          `handles the new pattern correctly — but aliased imports matching it would silently bypass ` +
+          `tier enforcement if it doesn't. Add a case in import-graph.test.ts's "resolvePathAlias" ` +
+          `describe block covering the new pattern, then update KNOWN_BASELINE_PATHS to match.`
       );
     }
 
@@ -704,5 +720,29 @@ describe('TS path-alias tripwire', () => {
           `architecture.test.ts if this change is deliberate.`
       );
     }
+  });
+
+  // Locked-in regression coverage: the real-file case above only exercises
+  // pathsMatchBaseline on the "matches" branch (today's .config/tsconfig.json
+  // agrees with KNOWN_BASELINE_PATHS). Exercise the "doesn't match" branches
+  // directly so an inverted condition here doesn't stay silently green.
+  it('pathsMatchBaseline returns true when paths exactly match the baseline', () => {
+    expect(pathsMatchBaseline({ '*': ['../src/*'] }, { '*': ['../src/*'] })).toBe(true);
+  });
+
+  it('pathsMatchBaseline returns false when no baseline is registered', () => {
+    expect(pathsMatchBaseline({ '*': ['../src/*'] }, undefined)).toBe(false);
+  });
+
+  it('pathsMatchBaseline returns false when the key sets differ in size', () => {
+    expect(pathsMatchBaseline({ '*': ['../src/*'], '@app/*': ['../app/*'] }, { '*': ['../src/*'] })).toBe(false);
+  });
+
+  it('pathsMatchBaseline returns false when a key differs', () => {
+    expect(pathsMatchBaseline({ '@app/*': ['../src/*'] }, { '*': ['../src/*'] })).toBe(false);
+  });
+
+  it('pathsMatchBaseline returns false when a shared key maps to a different target', () => {
+    expect(pathsMatchBaseline({ '*': ['../other/*'] }, { '*': ['../src/*'] })).toBe(false);
   });
 });
