@@ -129,6 +129,12 @@ export function FloatingPanel({
 
   // Dodge event handlers with timer cleanup
   const dodgeTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  // Content scrollTop across compact <-> full: compact sets the panel's
+  // height to 'auto', which collapses .content's scroll container (nothing
+  // left to scroll), forcing scrollTop to 0. Save it before compacting and
+  // restore it after the fixed height comes back.
+  const contentRef = useRef<HTMLDivElement>(null);
+  const savedScrollTopRef = useRef<number | null>(null);
 
   useEffect(() => {
     const handleDodge = (e: CustomEvent<{ x: number; y: number }>) => {
@@ -156,6 +162,9 @@ export function FloatingPanel({
     };
 
     const handleCompact = () => {
+      if (savedScrollTopRef.current === null) {
+        savedScrollTopRef.current = contentRef.current?.scrollTop ?? null;
+      }
       setPanelState('compact');
     };
 
@@ -165,6 +174,17 @@ export function FloatingPanel({
 
     const handleRestoreFull = () => {
       setPanelState('full');
+      const savedScrollTop = savedScrollTopRef.current;
+      savedScrollTopRef.current = null;
+      if (savedScrollTop !== null) {
+        // Wait for the fixed height (and thus the scroll container) to
+        // come back before setting scrollTop.
+        requestAnimationFrame(() => {
+          if (contentRef.current) {
+            contentRef.current.scrollTop = savedScrollTop;
+          }
+        });
+      }
     };
 
     document.addEventListener('pathfinder-floating-dodge', handleDodge as EventListener);
@@ -256,7 +276,9 @@ export function FloatingPanel({
         </div>
 
         {/* Content area — always mounted for progress tracking */}
-        <div className={styles.content}>{children}</div>
+        <div ref={contentRef} className={styles.content}>
+          {children}
+        </div>
 
         {/* Resize handle */}
         {panelState === 'full' && (
