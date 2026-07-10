@@ -12,6 +12,7 @@
 import React, { createContext, useContext, useCallback, useRef, useState, useEffect } from 'react';
 import type { ConnectionStatus, TerminalVMOptions } from './useTerminalLive.hook';
 import { setLastVmOpts } from './terminal-storage';
+import { logger } from '../../lib/logging';
 
 export type { TerminalVMOptions };
 
@@ -128,7 +129,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
   const sendCommand = useCallback(async (command: string) => {
     if (!registeredSendCommandRef.current) {
-      console.warn('[TerminalContext] Cannot send command: terminal not registered');
+      logger.warn('[TerminalContext] Cannot send command: terminal not registered');
       return;
     }
     await registeredSendCommandRef.current(command);

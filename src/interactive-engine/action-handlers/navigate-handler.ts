@@ -3,6 +3,7 @@ import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { config, locationService } from '@grafana/runtime';
 import { parseUrlSafely, validateRedirectPath } from '../../security/url-validator';
+import { logger } from '../../lib/logging';
 import { autoLaunchChannel } from '../../global-state/auto-launch';
 
 export class NavigateHandler {
@@ -48,7 +49,7 @@ export class NavigateHandler {
       // SECURITY: Validate external URL scheme to prevent javascript:/data: injection
       const parsed = parseUrlSafely(data.refTarget);
       if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) {
-        console.warn(`[NavigateHandler] Blocked navigation to invalid URL: ${data.refTarget.slice(0, 100)}`);
+        logger.warn(`[NavigateHandler] Blocked navigation to invalid URL: ${data.refTarget.slice(0, 100)}`);
         return;
       }
       // External URL - open in new tab to preserve current Grafana session
@@ -58,7 +59,7 @@ export class NavigateHandler {
       // '//evil.com' parses via new URL() as cross-origin with pathname '/', which
       // collides with validateRedirectPath's rejection sentinel and bypasses the check.
       if (!data.refTarget.startsWith('/') || data.refTarget.startsWith('//')) {
-        console.warn(`[NavigateHandler] Blocked navigation to invalid path: ${data.refTarget.slice(0, 100)}`);
+        logger.warn(`[NavigateHandler] Blocked navigation to invalid path: ${data.refTarget.slice(0, 100)}`);
         return;
       }
 
@@ -71,12 +72,12 @@ export class NavigateHandler {
       try {
         parsed = new URL(data.refTarget, window.location.origin);
       } catch {
-        console.warn(`[NavigateHandler] Blocked navigation to unparseable path: ${data.refTarget.slice(0, 100)}`);
+        logger.warn(`[NavigateHandler] Blocked navigation to unparseable path: ${data.refTarget.slice(0, 100)}`);
         return;
       }
 
       if (safePath !== parsed.pathname) {
-        console.warn(`[NavigateHandler] Blocked navigation to restricted path: ${data.refTarget.slice(0, 100)}`);
+        logger.warn(`[NavigateHandler] Blocked navigation to restricted path: ${data.refTarget.slice(0, 100)}`);
         return;
       }
 
@@ -127,7 +128,7 @@ export class NavigateHandler {
     const docPage = findDocPage(guideParam);
 
     if (!docPage) {
-      console.warn(`[NavigateHandler] Could not resolve guide param: ${guideParam}`);
+      logger.warn(`[NavigateHandler] Could not resolve guide param: ${guideParam}`);
       return;
     }
 

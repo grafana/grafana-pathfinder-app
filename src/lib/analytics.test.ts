@@ -1,5 +1,6 @@
 import { reportAppInteraction, UserInteraction, bindExperimentsProvider } from './analytics';
 import { reportInteraction } from '@grafana/runtime';
+import { pushFaroUserAction } from './faro';
 
 jest.mock('@grafana/runtime', () => ({
   reportInteraction: jest.fn(),
@@ -13,7 +14,14 @@ jest.mock('../security/url-validator', () => ({
   isInteractiveLearningUrl: jest.fn(() => false),
 }));
 
+jest.mock('./faro', () => ({
+  pushFaroUserAction: jest.fn(),
+  pushFaroLog: jest.fn(),
+  pushFaroError: jest.fn(),
+}));
+
 const mockReportInteraction = reportInteraction as jest.Mock;
+const mockPushFaroUserAction = pushFaroUserAction as jest.Mock;
 
 describe('reportAppInteraction', () => {
   beforeEach(() => {
@@ -66,6 +74,49 @@ describe('reportAppInteraction', () => {
     expect(properties.step_id).toBe('step-1');
     expect(properties.content_type).toBe('interactive_guide');
     expect(properties.plugin_version).toBe('1.0.0-test');
+  });
+});
+
+describe('reportAppInteraction Faro mirroring', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('mirrors the same interaction name and enriched properties to Faro', () => {
+    reportAppInteraction(UserInteraction.ShowMeButtonClick, { step_id: 'step-1' });
+
+    expect(mockReportInteraction).toHaveBeenCalledTimes(1);
+    expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
+
+    const [reportedName, reportedProperties] = mockReportInteraction.mock.calls[0];
+    const [mirroredName, mirroredProperties] = mockPushFaroUserAction.mock.calls[0];
+    expect(mirroredName).toBe(reportedName);
+    expect(mirroredProperties).toEqual(reportedProperties);
+    // A defensive copy, not the shared reference — neither pipeline can
+    // mutate the other's payload.
+    expect(mirroredProperties).not.toBe(reportedProperties);
+  });
+
+  it('still reports to Rudderstack even if the Faro mirror throws', () => {
+    mockPushFaroUserAction.mockImplementationOnce(() => {
+      throw new Error('faro is down');
+    });
+
+    // reportInteraction is called before the mirror, and the outer try/catch
+    // means a later mirror failure can't unwind or suppress that earlier call.
+    expect(() => reportAppInteraction(UserInteraction.ShowMeButtonClick, {})).not.toThrow();
+    expect(mockReportInteraction).toHaveBeenCalledTimes(1);
+  });
+
+  it('still mirrors to Faro when reportInteraction itself throws', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+    mockReportInteraction.mockImplementationOnce(() => {
+      throw new Error('rudderstack down');
+    });
+
+    expect(() => reportAppInteraction(UserInteraction.ShowMeButtonClick, { step_id: 'step-1' })).not.toThrow();
+    expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
   });
 });
 
@@ -129,5 +180,10 @@ describe('reportAppInteraction experiment enrichment', () => {
     expect(props).not.toHaveProperty('experiments');
     expect(props).not.toHaveProperty('variant');
     expect(props.flag_key).toBe(HIGHLIGHTED);
+  });
+
+  it('still mirrors flag exposures to Faro (beforeSend gates delivery, not the mirror)', () => {
+    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: HIGHLIGHTED });
+    expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
   });
 });

@@ -18,6 +18,7 @@ import {
 } from '@grafana/data';
 import { Subscription } from 'rxjs';
 import type { Terminal } from '@xterm/xterm';
+import { logger } from '../../lib/logging';
 
 interface ConnectionLog {
   error: (message: string, error?: unknown, data?: Record<string, unknown>) => void;
@@ -31,10 +32,10 @@ function createConnectionLog(): ConnectionLog {
         error instanceof Error
           ? { errorName: error.name, errorMessage: error.message, errorStack: error.stack }
           : { rawError: error };
-      console.error(`[Terminal] ${message}`, { ...errorDetails, ...data });
+      logger.error(`[Terminal] ${message}`, { ...errorDetails, ...data });
     },
     warn: (message: string, data?: Record<string, unknown>) => {
-      console.warn(`[Terminal] ${message}`, data);
+      logger.warn(`[Terminal] ${message}`, data);
     },
   };
 }

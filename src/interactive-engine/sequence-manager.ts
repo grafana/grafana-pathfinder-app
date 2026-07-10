@@ -1,6 +1,7 @@
 import { InteractiveElementData } from '../types/interactive.types';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { logger } from '../lib/logging';
 
 /**
  * Result of a retry operation
@@ -62,7 +63,7 @@ export class SequenceManager {
       }
     }
 
-    console.warn(
+    logger.warn(
       `${context.stepName} ${context.stepIndex + 1} failed after ${this.MAX_RETRIES} retries, stopping sequence`
     );
     return 'failed';

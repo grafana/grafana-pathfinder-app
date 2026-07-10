@@ -9,6 +9,7 @@ import {
   Milestone,
 } from '../../types/content.types';
 import { getLearningJourneyBaseUrl, urlsMatch } from './url-utils';
+import { logger } from '../../lib/logging';
 
 /**
  * Extract metadata from HTML without DOM processing
@@ -185,10 +186,10 @@ export async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Pro
         return milestones; // Already in sequential order, no need to sort
       }
     } else {
-      console.warn(`Failed to fetch metadata (${response.status}): ${indexJsonUrl}`);
+      logger.warn(`Failed to fetch metadata (${response.status}): ${indexJsonUrl}`);
     }
   } catch (error) {
-    console.warn(`Failed to fetch learning journey metadata from ${baseUrl}/index.json:`, error);
+    logger.warn(`Failed to fetch learning journey metadata from ${baseUrl}/index.json`, { error });
   }
 
   return [];

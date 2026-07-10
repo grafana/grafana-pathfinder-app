@@ -9,6 +9,7 @@
 
 import type { DetectedAction } from '../../lib/dom/action-detector';
 import { findButtonByText } from '../../lib/dom';
+import { logger } from '../../lib/logging';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 
 // ============ REGEX PATTERN MATCHING ============
@@ -95,7 +96,7 @@ export function parseRegexPattern(pattern: string): RegExp | null {
     // Bare anchor pattern: treat entire string as regex
     return new RegExp(pattern);
   } catch (error) {
-    console.warn('Invalid regex pattern:', pattern, error);
+    logger.warn('Invalid regex pattern', { pattern, error });
     return null;
   }
 }
@@ -636,7 +637,7 @@ export class ActionMatcher {
           targetElement = elementResolver();
         } catch (error) {
           // Element resolution failed, fall back to selector-based matching
-          console.warn(`Element resolver failed for step ${stepId}:`, error);
+          logger.warn(`Element resolver failed for step ${stepId}`, { error });
         }
       }
 

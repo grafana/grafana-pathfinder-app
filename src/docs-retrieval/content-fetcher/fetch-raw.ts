@@ -13,6 +13,7 @@ import {
   isTrustedFinalUrl,
 } from '../../security';
 import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
+import { logger } from '../../lib/logging';
 import { isJsonContentUrl, generateInteractiveLearningVariations, getContentUrls } from './url-utils';
 
 // Internal error structure for detailed error handling
@@ -41,7 +42,7 @@ export function enforceHttps(url: string): boolean {
   // Parse URL safely
   const parsedUrl = parseUrlSafely(url);
   if (!parsedUrl) {
-    console.error('Invalid URL format:');
+    logger.error('Invalid URL format:');
     return false;
   }
 
@@ -52,7 +53,7 @@ export function enforceHttps(url: string): boolean {
 
   // Require HTTPS for all other URLs
   if (parsedUrl.protocol !== 'https:') {
-    console.error('Only HTTPS URLs are allowed');
+    logger.error('Only HTTPS URLs are allowed');
     return false;
   }
 
@@ -109,7 +110,7 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
           const isFinalUrlTrusted = isTrustedFinalUrl(finalUrl);
 
           if (!isFinalUrlTrusted) {
-            console.warn(`URL variation ${urlVariation} redirected to untrusted URL: ${finalUrl}`);
+            logger.warn(`URL variation ${urlVariation} redirected to untrusted URL: ${finalUrl}`);
             continue; // Try next variation
           }
 
@@ -148,7 +149,7 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
 
   // All variations failed
   if (lastError) {
-    console.error(`Failed to fetch from any URL variation. Last error: ${lastError.message}`);
+    logger.error('Failed to fetch from any URL variation', { lastErrorMessage: lastError.message });
   }
   return { html: null, error: lastError || { message: 'No content found', errorType: 'not-found' } };
 }
@@ -283,7 +284,7 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
         const isFinalUrlTrusted = isTrustedFinalUrl(finalUrl);
 
         if (!isFinalUrlTrusted) {
-          console.warn(
+          logger.warn(
             `Redirect target not in trusted domain list.\n` +
               `Original URL: ${url}\n` +
               `Final URL: ${finalUrl}\n` +
@@ -334,7 +335,7 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
           errorType: 'other',
           statusCode: response.status,
         };
-        console.warn(`Manual redirect detected from ${url}:`, lastError.message);
+        logger.warn(`Manual redirect detected from ${url}`, { lastErrorMessage: lastError.message });
 
         if (location.startsWith('/')) {
           try {
@@ -342,7 +343,7 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
             const redirectUrl = new URL(location, originalUrl.origin);
 
             if (redirectUrl.origin !== originalUrl.origin) {
-              console.warn(`Blocked redirect to different origin: ${redirectUrl.origin}`);
+              logger.warn(`Blocked redirect to different origin: ${redirectUrl.origin}`);
               lastError = {
                 message: `Cross-origin redirect blocked for security: ${redirectUrl.origin}`,
                 errorType: 'other',
@@ -351,7 +352,7 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
               const isRedirectTrusted = isTrustedFinalUrl(redirectUrl.href);
 
               if (!isRedirectTrusted) {
-                console.warn(`Redirect target not in trusted domain list: ${redirectUrl.href}`);
+                logger.warn(`Redirect target not in trusted domain list: ${redirectUrl.href}`);
                 lastError = {
                   message: 'Redirect target is not in trusted domain list',
                   errorType: 'other',
@@ -371,7 +372,7 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
               }
             }
           } catch (redirectError) {
-            console.warn(`Failed to fetch redirect target:`, redirectError);
+            logger.warn('Failed to fetch redirect target', { redirectError });
             lastError = {
               message: redirectError instanceof Error ? redirectError.message : 'Redirect failed',
               errorType: 'other',
@@ -392,7 +393,7 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
         errorType,
         statusCode: response.status,
       };
-      console.warn(`Failed to fetch from ${url}: ${lastError.message}`);
+      logger.warn(`Failed to fetch from ${url}: ${lastError.message}`);
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -407,11 +408,11 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
       message: errorMessage,
       errorType: isTimeout ? 'timeout' : isNetwork ? 'network' : 'other',
     };
-    console.warn(`Failed to fetch from ${url}:`, error);
+    logger.warn(`Failed to fetch from ${url}`, { error });
   }
 
   if (lastError) {
-    console.error(`Failed to fetch content from ${url}. Last error: ${lastError.message}`);
+    logger.error(`Failed to fetch content from ${url}`, { lastErrorMessage: lastError.message });
   }
 
   return { html: null, error: lastError };

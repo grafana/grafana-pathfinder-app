@@ -7,6 +7,7 @@ import { DocsPluginConfig, TERMS_VERSION, getConfigWithDefaults } from '../../co
 import { TERMS_AND_CONDITIONS_CONTENT } from './terms-content';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
+import { logger } from '../../lib/logging';
 
 type JsonData = DocsPluginConfig & {
   isDocsPasswordSet?: boolean;
@@ -56,14 +57,14 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
         try {
           window.location.reload();
         } catch (e) {
-          console.error('Failed to reload page after saving settings', e);
+          logger.error('Failed to reload page after saving settings', { error: e });
         }
       }, 100);
 
       // Reset saving state - let Grafana's plugin context system handle the refresh
       setIsSaving(false);
     } catch (error) {
-      console.error('Error saving Terms and Conditions:', error);
+      logger.error('Error saving Terms and Conditions', { error });
       setIsSaving(false);
       // Re-throw to let user know something went wrong
       throw error;

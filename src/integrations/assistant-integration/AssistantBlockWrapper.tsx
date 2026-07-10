@@ -23,6 +23,7 @@ import {
   buildQuerySystemPrompt,
   buildContentSystemPrompt,
 } from './useAssistantGeneration.hook';
+import { logger } from '../../lib/logging';
 
 export interface AssistantBlockWrapperProps {
   /** Unique ID for this assistant element */
@@ -207,7 +208,7 @@ export function AssistantBlockWrapper({
             )
           );
         } catch (error) {
-          console.warn('[AssistantBlockWrapper] Failed to save to localStorage:', error);
+          logger.warn('[AssistantBlockWrapper] Failed to save to localStorage', { error });
         }
       }
 
@@ -238,7 +239,7 @@ export function AssistantBlockWrapper({
     const dsContext = await getDatasourceContext();
 
     if (!dsContext.currentDatasource) {
-      console.error('[AssistantBlockWrapper] No datasource available');
+      logger.error('[AssistantBlockWrapper] No datasource available');
       setGenerationError('No datasource available. Please select a datasource first.');
       return;
     }
@@ -370,12 +371,12 @@ Return only the customized content text.`;
               })
             );
           } catch (error) {
-            console.warn('[AssistantBlockWrapper] Failed to save to localStorage:', error);
+            logger.warn('[AssistantBlockWrapper] Failed to save to localStorage', { error });
           }
         }
       },
       onError: (err) => {
-        console.error('[AssistantBlockWrapper] Generation failed:', err);
+        logger.error('[AssistantBlockWrapper] Generation failed', { error: err });
 
         // Set error state for UI feedback
         const errorMessage = err instanceof Error ? err.message : 'Generation failed. Please try again.';
@@ -423,7 +424,7 @@ Return only the customized content text.`;
         })
       );
     } catch (error) {
-      console.warn('[AssistantBlockWrapper] Failed to revert:', error);
+      logger.warn('[AssistantBlockWrapper] Failed to revert', { error });
     }
   }, [getStorageKey, reset, getAnalyticsContext, blockType]);
 

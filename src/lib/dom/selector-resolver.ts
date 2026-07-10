@@ -3,6 +3,7 @@
  * Central resolver for handling different selector formats including Grafana e2e selectors
  */
 
+import { logger } from '../logging';
 import { toGrafanaSelector } from './grafana-selector';
 
 /**
@@ -57,7 +58,7 @@ export function resolveSelector(reftarget: string): string {
     try {
       return toGrafanaSelector(selectorPath, selectorId);
     } catch (error) {
-      console.error(`Failed to resolve Grafana selector: ${reftarget}`, error);
+      logger.error(`Failed to resolve Grafana selector: ${reftarget}`, { error });
       // Return original selector as fallback
       return reftarget;
     }

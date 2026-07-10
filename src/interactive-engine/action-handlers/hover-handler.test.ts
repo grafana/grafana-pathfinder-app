@@ -8,6 +8,7 @@ jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
 jest.mock('../../lib/dom', () => ({
   isElementVisible: jest.fn().mockReturnValue(true),
+  describeElement: jest.fn(() => 'div'),
 }));
 jest.mock('../../lib/dom/selector-retry', () => ({
   resolveWithRetry: jest.fn().mockResolvedValue(null),
@@ -233,7 +234,7 @@ describe('HoverHandler', () => {
 
       await hoverHandler.execute(data, true);
 
-      expect(consoleSpy).toHaveBeenCalledWith('Target element is not visible:', mockElement);
+      expect(consoleSpy).toHaveBeenCalledWith('Target element is not visible', { targetElement: 'div' });
       expect(mockStateManager.setState).toHaveBeenCalledWith(data, 'completed');
 
       consoleSpy.mockRestore();
@@ -333,7 +334,7 @@ describe('HoverHandler', () => {
 
       await hoverHandler.execute(data, true);
 
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Multiple elements found'));
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Multiple elements found'), '');
       // Should use first element - verify by checking data attribute was set
       expect(mockElement1.getAttribute('data-interactive-hover')).toBe('true');
 

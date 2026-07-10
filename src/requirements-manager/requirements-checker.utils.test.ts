@@ -819,7 +819,8 @@ describe('requirements-checker.utils', () => {
       expect(result.error[0]!.error).toContain('Warning: Unknown requirement type');
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Unknown requirement type: 'unknown-requirement-type'")
+        expect.stringContaining("Unknown requirement type: 'unknown-requirement-type'"),
+        ''
       );
 
       consoleSpy.mockRestore();
@@ -854,7 +855,8 @@ describe('requirements-checker.utils', () => {
       expect(unknownResult?.error).toContain('Warning: Unknown requirement type');
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Unknown requirement type: 'unknown-requirement'")
+        expect.stringContaining("Unknown requirement type: 'unknown-requirement'"),
+        ''
       );
 
       consoleSpy.mockRestore();
@@ -1038,7 +1040,7 @@ describe('requirements-checker.utils', () => {
         'InteractiveMultiStep'
       );
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('[InteractiveMultiStep]'));
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('[InteractiveMultiStep]'), '');
     });
   });
 });

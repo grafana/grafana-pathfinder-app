@@ -27,6 +27,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getRequirementExplanation, dispatchFix } from '../../../requirements-manager';
 import { subscribeProgressEvent } from '../../../global-state/progress-events';
+import { logger } from '../../../lib/logging';
 import { DEFAULT_INTERACTIVE_SECTION_TITLE } from '../interactive-section';
 
 interface SectionRequirementsResult {
@@ -138,7 +139,7 @@ export function useSectionRequirements({
         });
       }
     } catch (error) {
-      console.warn('Section requirements check failed:', error);
+      logger.warn('Section requirements check failed', { error });
       if (sectionMountedRef.current) {
         // On error, allow section to proceed (fail open for better UX).
         setStatus({ checking: false, passed: true });
@@ -171,11 +172,11 @@ export function useSectionRequirements({
         fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(),
       });
       if (!result.ok) {
-        console.warn('useSectionRequirements: fix failed:', result.error);
+        logger.warn('useSectionRequirements: fix failed', { error: result.error });
       }
       await recheck();
     } catch (fixError) {
-      console.warn('Failed to fix section requirements:', fixError);
+      logger.warn('Failed to fix section requirements', { error: fixError });
     }
   }, [requirements, sectionId, recheck]);
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, RefObject } from 'react';
 import { isValidSelection } from './assistant-context.utils';
 import type { TextSelectionState } from '../../types/hooks.types';
+import { logger } from '../../lib/logging';
 
 /** Delay (ms) after user stops selecting before showing the popover */
 const SELECTION_DEBOUNCE_MS = 400;
@@ -102,7 +103,7 @@ export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSele
         debounceRef.current = null;
       }, SELECTION_DEBOUNCE_MS);
     } catch (error) {
-      console.warn('[useTextSelection] Error handling selection change:', error);
+      logger.warn('[useTextSelection] Error handling selection change', { error });
       clearSelectionState();
     }
   }, [containerRef, clearDebounceTimer, clearSelectionState]);

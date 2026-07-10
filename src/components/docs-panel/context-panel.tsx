@@ -17,6 +17,7 @@ import { getSkeletonStyles } from '../../styles/skeleton.styles';
 import { useContextPanel, Recommendation } from '../../context-engine';
 import type { ResolvedNavLink } from '../../types/context.types';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
+import { logger } from '../../lib/logging';
 import { getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../../constants/testIds';
@@ -110,7 +111,7 @@ const getRecommendationContentUrl = (recommendation: Recommendation): string => 
   if (recommendation.type === 'package') {
     const url = recommendation.contentUrl ?? '';
     if (!url && process.env.NODE_ENV !== 'production') {
-      console.warn('[context-panel] Package recommendation missing contentUrl:', recommendation.title);
+      logger.warn('[context-panel] Package recommendation missing contentUrl', { title: recommendation.title });
     }
     return url;
   }
@@ -200,7 +201,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     if (this.state.onOpenDocsPage) {
       this.state.onOpenDocsPage(url, title, packageInfo);
     } else {
-      console.warn('No onOpenDocsPage callback available');
+      logger.warn('No onOpenDocsPage callback available');
     }
   }
 

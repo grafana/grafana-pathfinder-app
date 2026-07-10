@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { IconButton } from '@grafana/ui';
 import Prism from 'prismjs';
+import { logger } from '../../../lib/logging';
 
 // Import Prism CSS theme
 import 'prismjs/themes/prism.css';
@@ -34,7 +35,7 @@ export function CodeBlock({ code, language, showCopy = true, inline = false, cla
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
-      console.warn('Failed to copy code:', error);
+      logger.warn('Failed to copy code', { error });
     }
   }, [code]);
 
@@ -44,7 +45,7 @@ export function CodeBlock({ code, language, showCopy = true, inline = false, cla
       try {
         Prism.highlightElement(codeRef.current);
       } catch (error) {
-        console.warn('Failed to highlight code with Prism:', error);
+        logger.warn('Failed to highlight code with Prism', { error });
       }
     }
   }, [code, language]);

@@ -8,6 +8,8 @@
 import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security/url-validator';
+import { pushFaroUserAction } from './faro';
+import { logger } from './logging';
 import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
 
 type GetActiveExperimentsFn = () => ExperimentAnalyticsEntry[];
@@ -201,9 +203,18 @@ export function reportAppInteraction(
       ...(kioskSessionId && { kiosk_session_id: kioskSessionId }),
     };
 
-    reportInteraction(interactionName, enrichedProperties);
+    try {
+      reportInteraction(interactionName, enrichedProperties);
+    } finally {
+      // Mirrors every analytics event into Faro as a User Action (same name,
+      // copied properties) so the two pipelines can be cross-checked against
+      // each other. The finally keeps the mirror alive when reportInteraction
+      // itself throws — a lost RudderStack event is exactly the divergence the
+      // mirror exists to surface. pushFaroUserAction never throws.
+      pushFaroUserAction(interactionName, { ...enrichedProperties });
+    }
   } catch (error) {
-    console.warn('Analytics reporting failed:', error);
+    logger.warn('Analytics reporting failed', { error });
   }
 }
 

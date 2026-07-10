@@ -2,10 +2,14 @@ import { GuidedHandler } from './guided-handler';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { querySelectorAllEnhanced } from '../../lib/dom';
+import { withFaroUserAction } from '../../lib/faro';
 
 // Mock dependencies
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
+jest.mock('../../lib/faro', () => ({
+  withFaroUserAction: jest.fn((_name: string, _attributes: unknown, work: () => unknown) => work()),
+}));
 jest.mock('../../lib/dom', () => ({
   querySelectorAllEnhanced: jest.fn().mockReturnValue({ elements: [], usedFallback: false }),
   findButtonByText: jest.fn().mockReturnValue([]),
@@ -146,6 +150,13 @@ describe('GuidedHandler', () => {
         undefined,
         undefined,
         expect.objectContaining({ actionType: 'highlight', refTarget: refTarget })
+      );
+
+      expect(withFaroUserAction).toHaveBeenCalledWith(
+        'pathfinder_guided_step',
+        { target_action: 'highlight', ref_target: refTarget, step_index: 0, total_steps: 1 },
+        expect.any(Function),
+        10_005
       );
 
       consoleErrorSpy.mockRestore();

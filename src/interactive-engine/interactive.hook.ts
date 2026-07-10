@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
 import { useTheme2 } from '@grafana/ui';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../styles/interactive.styles';
 import { waitForReactUpdates } from '../lib/async-utils';
+import { logger } from '../lib/logging';
+import { USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../lib/faro';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
 import { checkRequirements, checkPostconditions, RequirementsCheckOptions } from '../requirements-manager';
 import { extractInteractiveDataFromElement } from '../lib/dom';
@@ -159,21 +161,27 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   // Define helper functions using refs to avoid circular dependencies
   const dispatchInteractiveAction = useCallback(
     async (data: InteractiveElementData, click: boolean) => {
-      if (data.targetAction === 'highlight') {
-        await interactiveFocus(data, click);
-      } else if (data.targetAction === 'button') {
-        await interactiveButton(data, click);
-      } else if (data.targetAction === 'formfill') {
-        await interactiveFormFill(data, click);
-      } else if (data.targetAction === 'navigate') {
-        interactiveNavigate(data, click);
-      } else if (data.targetAction === 'hover') {
-        await interactiveHover(data, click);
-      } else if (data.targetAction === 'guided') {
-        await interactiveGuided(data, click);
-      } else if (data.targetAction === 'popout') {
-        await interactivePopout(data, click);
-      }
+      await withFaroUserAction(
+        click ? 'pathfinder_step_do' : 'pathfinder_step_show',
+        { target_action: data.targetAction, ref_target: data.refTarget },
+        async () => {
+          if (data.targetAction === 'highlight') {
+            await interactiveFocus(data, click);
+          } else if (data.targetAction === 'button') {
+            await interactiveButton(data, click);
+          } else if (data.targetAction === 'formfill') {
+            await interactiveFormFill(data, click);
+          } else if (data.targetAction === 'navigate') {
+            interactiveNavigate(data, click);
+          } else if (data.targetAction === 'hover') {
+            await interactiveHover(data, click);
+          } else if (data.targetAction === 'guided') {
+            await interactiveGuided(data, click);
+          } else if (data.targetAction === 'popout') {
+            await interactivePopout(data, click);
+          }
+        }
+      );
     },
     [
       interactiveFocus,
@@ -395,61 +403,68 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       // No DOM element needed - React components manage their own state
       const isShowMode = buttonType === 'show';
 
-      try {
-        switch (targetAction) {
-          case 'highlight':
-            await interactiveFocus(elementData, !isShowMode);
-            break;
+      await withFaroUserAction(
+        isShowMode ? 'pathfinder_step_show' : 'pathfinder_step_do',
+        { target_action: targetAction, ref_target: refTarget },
+        async () => {
+          try {
+            switch (targetAction) {
+              case 'highlight':
+                await interactiveFocus(elementData, !isShowMode);
+                break;
 
-          case 'button':
-            await interactiveButton(elementData, !isShowMode);
-            break;
+              case 'button':
+                await interactiveButton(elementData, !isShowMode);
+                break;
 
-          case 'formfill':
-            await interactiveFormFill(elementData, !isShowMode);
-            break;
+              case 'formfill':
+                await interactiveFormFill(elementData, !isShowMode);
+                break;
 
-          case 'navigate':
-            interactiveNavigate(elementData, !isShowMode);
-            break;
+              case 'navigate':
+                interactiveNavigate(elementData, !isShowMode);
+                break;
 
-          case 'hover':
-            await interactiveHover(elementData, !isShowMode);
-            break;
+              case 'hover':
+                await interactiveHover(elementData, !isShowMode);
+                break;
 
-          case 'guided':
-            await interactiveGuided(elementData, !isShowMode);
-            break;
+              case 'guided':
+                await interactiveGuided(elementData, !isShowMode);
+                break;
 
-          case 'popout':
-            await interactivePopout(elementData, !isShowMode);
-            break;
+              case 'popout':
+                await interactivePopout(elementData, !isShowMode);
+                break;
 
-          case 'sequence':
-            await interactiveSequence(elementData, isShowMode);
-            break;
+              case 'sequence':
+                await interactiveSequence(elementData, isShowMode);
+                break;
 
-          case 'noop':
-            // Noop actions are informational - no element interaction needed
-            // In show mode, briefly display the comment if provided
-            // In do mode, just mark as completed (nothing to execute)
-            if (isShowMode && targetComment) {
-              // Show a brief notification with the comment
-              // Use navigationManager to show a floating comment briefly
-              navigationManager.showNoopComment(targetComment);
-              // Auto-dismiss after a delay
-              await new Promise((resolve) => setTimeout(resolve, 2000));
-              navigationManager.clearAllHighlights();
+              case 'noop':
+                // Noop actions are informational - no element interaction needed
+                // In show mode, briefly display the comment if provided
+                // In do mode, just mark as completed (nothing to execute)
+                if (isShowMode && targetComment) {
+                  // Show a brief notification with the comment
+                  // Use navigationManager to show a floating comment briefly
+                  navigationManager.showNoopComment(targetComment);
+                  // Auto-dismiss after a delay
+                  await new Promise((resolve) => setTimeout(resolve, 2000));
+                  navigationManager.clearAllHighlights();
+                }
+                // Do mode: nothing to do - noop steps complete immediately
+                break;
+
+              default:
+                logger.warn(`Unknown interactive action: ${targetAction}`);
             }
-            // Do mode: nothing to do - noop steps complete immediately
-            break;
-
-          default:
-            console.warn(`Unknown interactive action: ${targetAction}`);
-        }
-      } catch (error) {
-        stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);
-      }
+          } catch (error) {
+            stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);
+          }
+        },
+        targetAction === 'sequence' ? USER_ACTION_TIMEOUT_LONG_MS : undefined
+      );
     },
     [
       interactiveFocus,

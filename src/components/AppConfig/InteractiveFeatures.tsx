@@ -16,6 +16,7 @@ import {
   getConfigWithDefaults,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
+import { logger } from '../../lib/logging';
 
 type JsonData = DocsPluginConfig;
 
@@ -158,13 +159,13 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
         try {
           window.location.reload();
         } catch (e) {
-          console.error('Failed to reload page after saving settings', e);
+          logger.error('Failed to reload page after saving settings', { error: e });
         }
       }, 100);
 
       setIsSaving(false);
     } catch (error) {
-      console.error('Error saving Interactive Features:', error);
+      logger.error('Error saving Interactive Features', { error });
       setIsSaving(false);
       throw error;
     }

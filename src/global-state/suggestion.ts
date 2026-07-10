@@ -7,6 +7,7 @@
  */
 
 import { StorageKeys } from '../lib/storage-keys';
+import { logger } from '../lib/logging';
 import type { Recommendation } from '../types/context.types';
 
 export const SUGGESTIONS_UPDATED_EVENT = 'pathfinder-suggestions-updated';
@@ -16,7 +17,7 @@ class GlobalSuggestionState {
     try {
       sessionStorage.setItem(StorageKeys.SUGGESTIONS, JSON.stringify(suggestions));
     } catch {
-      console.warn('[Pathfinder] Failed to persist suggestions to sessionStorage');
+      logger.warn('[Pathfinder] Failed to persist suggestions to sessionStorage');
     }
 
     document.dispatchEvent(new CustomEvent(SUGGESTIONS_UPDATED_EVENT));

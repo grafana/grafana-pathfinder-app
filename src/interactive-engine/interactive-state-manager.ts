@@ -1,4 +1,5 @@
 import { waitForReactUpdates } from '../lib/async-utils';
+import { logger } from '../lib/logging';
 import { InteractiveElementData } from '../types/interactive.types';
 import GlobalInteractionBlocker from './global-interaction-blocker';
 
@@ -54,7 +55,7 @@ export class InteractiveStateManager {
     }
 
     const errorMessage = typeof error === 'string' ? error : error.message;
-    console.error(`${context}: ${errorMessage}`, data);
+    logger.error(`${context}: ${errorMessage}`, { data });
   }
 
   /**

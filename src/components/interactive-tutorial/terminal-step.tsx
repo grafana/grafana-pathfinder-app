@@ -16,6 +16,7 @@ import { useStepChecker, validateInteractiveRequirements } from '../../requireme
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { logger } from '../../lib/logging';
 
 export interface TerminalStepProps {
   command: string;
@@ -181,7 +182,7 @@ export const TerminalStep = forwardRef<
         markComplete();
         setTimeout(() => setCopyFeedback(false), 2000);
       } catch (err) {
-        console.error('[TerminalStep] Copy failed:', err);
+        logger.error('[TerminalStep] Copy failed', { error: err });
       }
     }, [command, markComplete]);
 
@@ -195,7 +196,7 @@ export const TerminalStep = forwardRef<
         await terminalCtx.sendCommand(command);
         markComplete();
       } catch (err) {
-        console.error('[TerminalStep] Exec failed:', err);
+        logger.error('[TerminalStep] Exec failed', { error: err });
       } finally {
         setIsExecRunning(false);
       }

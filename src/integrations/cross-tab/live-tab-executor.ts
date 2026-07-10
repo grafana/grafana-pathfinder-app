@@ -31,6 +31,8 @@ import * as pairingManager from '../../lib/pairing-manager';
 import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import pluginJson from '../../plugin.json';
+import { logger } from '../../lib/logging';
+import { setFaroUserActionAttributes, USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../../lib/faro';
 
 // The verbs the guided handler can actually drive — narrower than the receive
 // gate's KNOWN_TARGET_ACTIONS, so runGuided checks against this before casting.
@@ -106,7 +108,7 @@ export function installLiveTabExecutor(
     addGlobalInteractiveStyles();
     updateInteractiveThemeColors(config.theme2);
   } catch (error) {
-    console.warn('[Pathfinder] cross-tab executor: style init failed', error);
+    logger.warn('[Pathfinder] cross-tab executor: style init failed', { error });
   }
 
   const stateManager = new InteractiveStateManager();
@@ -185,12 +187,12 @@ export function installLiveTabExecutor(
         // A composite verb reaching runAction means its internalActions were
         // empty/absent — runStepCommand expands them before dispatch, so this
         // is a malformed command, not a directly-executable action.
-        console.warn(
+        logger.warn(
           `[Pathfinder] cross-tab executor: composite action "${action.targetAction}" carried no internalActions to replay`
         );
         break;
       default:
-        console.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
+        logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
     }
   };
 
@@ -233,7 +235,7 @@ export function installLiveTabExecutor(
       // the guided verb set — guard the cast so a non-guided verb (e.g. navigate)
       // fails loud instead of being mistyped into the guided handler (F-1073-nit-cast).
       if (!GUIDED_VERBS.has(action.targetAction as GuidedAction['targetAction'])) {
-        console.warn(`[Pathfinder] cross-tab executor: guided step has non-guided verb "${action.targetAction}"`);
+        logger.warn(`[Pathfinder] cross-tab executor: guided step has non-guided verb "${action.targetAction}"`);
         return false;
       }
       const result = await guidedHandler.executeGuidedStep(
@@ -261,29 +263,44 @@ export function installLiveTabExecutor(
     const internalActions = command.action.internalActions;
     const postProgress = (index: number) =>
       transport.post({ kind: 'step-progress', stepId, runId, index, total: internalActions?.length ?? 0 });
-    let ok = false;
-    try {
-      if (internalActions?.length) {
-        if (command.action.targetAction === 'guided') {
-          ok = await runGuided(internalActions, postProgress);
-        } else {
-          await runComposite(internalActions, postProgress);
-          ok = true;
+    await withFaroUserAction(
+      'pathfinder_remote_step',
+      {
+        target_action: command.action.targetAction,
+        ref_target: command.action.refTarget ?? '',
+        phase: command.phase,
+        step_id: stepId,
+        run_id: runId,
+        internal_action_count: internalActions?.length ?? 0,
+      },
+      async () => {
+        let ok = false;
+        try {
+          if (internalActions?.length) {
+            if (command.action.targetAction === 'guided') {
+              ok = await runGuided(internalActions, postProgress);
+            } else {
+              await runComposite(internalActions, postProgress);
+              ok = true;
+            }
+          } else {
+            await runAction(command.action, command.phase === 'show');
+            ok = true;
+          }
+        } catch (error) {
+          logger.error('[Pathfinder] cross-tab executor: failed to run remote step', { error });
+          ok = false;
         }
-      } else {
-        await runAction(command.action, command.phase === 'show');
-        ok = true;
-      }
-    } catch (error) {
-      console.error('[Pathfinder] cross-tab executor: failed to run remote step', error);
-      ok = false;
-    }
-    // Tell the controller whether a composite actually finished, so it surfaces
-    // failure instead of completing early. Simple steps stay optimistic by design
-    // and report nothing back.
-    if (internalActions?.length) {
-      transport.post({ kind: 'step-complete', stepId, runId, ok });
-    }
+        setFaroUserActionAttributes({ step_ok: ok });
+        // Tell the controller whether a composite actually finished, so it surfaces
+        // failure instead of completing early. Simple steps stay optimistic by design
+        // and report nothing back.
+        if (internalActions?.length) {
+          transport.post({ kind: 'step-complete', stepId, runId, ok });
+        }
+      },
+      USER_ACTION_TIMEOUT_LONG_MS
+    );
   };
 
   // Evaluate the controller's tab-local requirements against this tab's DOM.

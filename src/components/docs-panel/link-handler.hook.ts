@@ -8,6 +8,7 @@ import {
   enrichWithStepContext,
   getContentTypeForAnalytics,
 } from '../../lib/analytics';
+import { logger } from '../../lib/logging';
 import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
 import {
   parseUrlSafely,
@@ -100,7 +101,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             model.loadTab(activeTab.id, firstMilestone.url);
           }
         } else {
-          console.warn('No milestone URL found to navigate to');
+          logger.warn('No milestone URL found to navigate to');
         }
       }
 
@@ -158,7 +159,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 const baseUrl = new URL(currentPageUrl);
                 resolvedUrl = new URL(href, baseUrl).href;
               } catch (error) {
-                console.warn('Failed to resolve relative URL:', href, 'against base:', currentPageUrl, error);
+                logger.warn('Failed to resolve relative URL', { href, base: currentPageUrl, error });
                 // Fallback: assume it's relative to Grafana docs root
                 resolvedUrl = `https://grafana.com/docs/${href}`;
               }
@@ -180,7 +181,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             try {
               fullUrl = new URL(resolvedUrl, baseUrl).href;
             } catch (error) {
-              console.warn('Failed to resolve URL against base:', resolvedUrl, baseUrl, error);
+              logger.warn('Failed to resolve URL against base', { url: resolvedUrl, base: baseUrl, error });
               // Fallback to grafana.com only if resolution fails
               fullUrl = `https://grafana.com${resolvedUrl}`;
             }
@@ -337,7 +338,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             try {
               fullUrl = new URL(linkUrl, baseUrl).href;
             } catch (error) {
-              console.warn('Failed to resolve side journey URL:', linkUrl, error);
+              logger.warn('Failed to resolve side journey URL', { url: linkUrl, error });
               // Fallback to grafana.com only if resolution fails
               fullUrl = linkUrl.startsWith('/')
                 ? `https://grafana.com${linkUrl}`
@@ -425,7 +426,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             try {
               fullUrl = new URL(linkUrl, baseUrl).href;
             } catch (error) {
-              console.warn('Failed to resolve related journey URL:', linkUrl, error);
+              logger.warn('Failed to resolve related journey URL', { url: linkUrl, error });
               // Fallback to grafana.com only if resolution fails
               fullUrl = linkUrl.startsWith('/')
                 ? `https://grafana.com${linkUrl}`

@@ -1,4 +1,5 @@
 import { StorageEvents } from '../lib/event-names';
+import { logger } from '../lib/logging';
 import { TimeoutManager } from '../utils/timeout-manager';
 
 /**
@@ -215,7 +216,7 @@ export class SequentialRequirementsManager {
             try {
               checker();
             } catch (error) {
-              console.error(`Error in selective step checker for ${stepId}:`, error);
+              logger.error(`Error in selective step checker for ${stepId}`, { error });
             }
           }, 300); // Wait for DOM to settle after state changes
         }
@@ -237,7 +238,7 @@ export class SequentialRequirementsManager {
           try {
             checker();
           } catch (error) {
-            console.error(`Error in eligibility-triggered check for ${stepId}:`, error);
+            logger.error(`Error in eligibility-triggered check for ${stepId}`, { error });
           }
         });
       }
@@ -318,7 +319,7 @@ export class SequentialRequirementsManager {
             try {
               checker();
             } catch (error) {
-              console.error(`Error in context-triggered check for ${stepId}:`, error);
+              logger.error(`Error in context-triggered check for ${stepId}`, { error });
             }
           }
         });
@@ -355,7 +356,7 @@ export class SequentialRequirementsManager {
       .catch((error) => {
         // Only log if not cancelled
         if (!this.contextMonitoringCancelled) {
-          console.error('Failed to start context monitoring:', error);
+          logger.error('Failed to start context monitoring', { error });
         }
       });
   }

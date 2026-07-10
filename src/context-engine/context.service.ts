@@ -23,6 +23,7 @@ import {
 } from '../docs-retrieval';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { hashUserData } from '../lib/hash.util';
+import { logger } from '../lib/logging';
 import { withTimeout } from '../lib/async-utils';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
@@ -197,7 +198,7 @@ export class ContextService {
       // Always try external recommendations when T&C are enabled, regardless of previous errors
       return this.getExternalRecommendations(contextData, pluginConfig, bundledRecommendations);
     } catch (error) {
-      console.warn('Failed to fetch recommendations:', error);
+      logger.exception(error, { source: 'fetchRecommendations' });
       const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData, pluginConfig);
       const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
       return {
@@ -240,7 +241,7 @@ export class ContextService {
     const parsedUrl = parseUrlSafely(url);
 
     if (!parsedUrl) {
-      console.error('Invalid recommender service URL');
+      logger.error('Invalid recommender service URL');
       return false;
     }
 
@@ -252,7 +253,7 @@ export class ContextService {
 
     // Production: Require HTTPS
     if (parsedUrl.protocol !== 'https:') {
-      console.error('Recommender service URL must use HTTPS (dev mode disabled)');
+      logger.error('Recommender service URL must use HTTPS (dev mode disabled)');
       return false;
     }
 
@@ -262,7 +263,7 @@ export class ContextService {
     });
 
     if (!isAllowedDomain) {
-      console.error('Recommender service domain not in allowlist');
+      logger.error('Recommender service domain not in allowlist');
       return false;
     }
 
@@ -316,7 +317,7 @@ export class ContextService {
 
           return hostname;
         } catch (error) {
-          console.warn('Failed to extract/hash source:', error);
+          logger.warn('Failed to extract/hash source', { error });
           return undefined;
         }
       };
@@ -872,7 +873,7 @@ export class ContextService {
               completionPercentage,
             };
           } catch (error) {
-            console.warn(`Failed to fetch journey data for ${sanitizeForLogging(rec.title)}:`, error);
+            logger.warn(`Failed to fetch journey data for ${sanitizeForLogging(rec.title)}`, { error });
             return {
               ...rec,
               totalSteps: 0,
@@ -1019,7 +1020,7 @@ export class ContextService {
       const language = config.bootData.user.language;
       return language;
     } catch (error) {
-      console.warn('Failed to get current language:', error);
+      logger.warn('Failed to get current language', { error });
       return 'en-US';
     }
   }
@@ -1032,7 +1033,7 @@ export class ContextService {
       const dataSources = await getBackendSrv().get('/api/datasources');
       return dataSources || [];
     } catch (error) {
-      console.warn('Failed to fetch data sources:', error);
+      logger.warn('Failed to fetch data sources', { error });
       return [];
     }
   }
@@ -1045,7 +1046,7 @@ export class ContextService {
       const plugins = await getBackendSrv().get('/api/plugins');
       return plugins || [];
     } catch (error) {
-      console.warn('Failed to fetch plugins:', error);
+      logger.warn('Failed to fetch plugins', { error });
       return [];
     }
   }
@@ -1063,7 +1064,7 @@ export class ContextService {
       });
       return dashboards || [];
     } catch (error) {
-      console.warn('Failed to fetch dashboards:', error);
+      logger.warn('Failed to fetch dashboards', { error });
       return [];
     }
   }
@@ -1088,7 +1089,7 @@ export class ContextService {
       }
       return null;
     } catch (error) {
-      console.warn('Failed to fetch dashboard info:', error);
+      logger.warn('Failed to fetch dashboard info', { error });
       return null;
     }
   }
@@ -1402,11 +1403,11 @@ export class ContextService {
             });
           }
         } catch (error) {
-          console.warn(`Failed to load static links file ${filename}:`, error);
+          logger.warn(`Failed to load static links file ${filename}`, { error });
         }
       }
     } catch (error) {
-      console.warn('Failed to load static link recommendations:', error);
+      logger.warn('Failed to load static link recommendations', { error });
     }
 
     return staticRecommendations;
@@ -1709,7 +1710,7 @@ export class ContextService {
       }
       // The client itself never throws, but guard against future regressions
       // — a failure here must not break the bundled flow.
-      console.warn('Failed to load online package recommendations:', error);
+      logger.warn('Failed to load online package recommendations', { error });
       return [];
     }
   }
@@ -1772,7 +1773,7 @@ export class ContextService {
         bundledRecommendations.push(...recommendations);
       }
     } catch (error) {
-      console.warn('Failed to load bundled interactives index.json:', error);
+      logger.warn('Failed to load bundled interactives index.json', { error });
       // Fallback to empty array - no bundled interactives will be shown
     }
 

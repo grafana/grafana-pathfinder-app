@@ -8,6 +8,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { RECORDING_STATE_STORAGE_KEY } from '../constants';
 import type { RecordedStep } from '../../../utils/devtools/tutorial-exporter';
+import { logger } from '../../../lib/logging';
 
 /**
  * State that needs to be persisted for recording mode
@@ -91,7 +92,7 @@ export function useRecordingPersistence({
       };
       localStorage.setItem(RECORDING_STATE_STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
-      console.error('Failed to save recording state to localStorage:', e);
+      logger.error('Failed to save recording state to localStorage', { error: e });
     }
   }, [isRecording, recordingIntoSection, recordingIntoConditionalBranch, recordingStartUrl, recordedSteps]);
 
@@ -104,7 +105,7 @@ export function useRecordingPersistence({
       }
       return JSON.parse(stored) as PersistedRecordingState;
     } catch (e) {
-      console.error('Failed to load recording state from localStorage:', e);
+      logger.error('Failed to load recording state from localStorage', { error: e });
       return null;
     }
   }, []);
@@ -114,7 +115,7 @@ export function useRecordingPersistence({
     try {
       localStorage.removeItem(RECORDING_STATE_STORAGE_KEY);
     } catch (e) {
-      console.error('Failed to clear recording state from localStorage:', e);
+      logger.error('Failed to clear recording state from localStorage', { error: e });
     }
   }, []);
 

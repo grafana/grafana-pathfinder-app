@@ -1,4 +1,5 @@
 import { isGrafanaDocsUrl, isInteractiveLearningUrl } from '../security';
+import { logger } from '../lib/logging';
 
 export interface DocPage {
   type: 'docs-page' | 'learning-journey' | 'interactive';
@@ -61,7 +62,7 @@ export function findDocPage(param: string): DocPage | null {
         };
       }
     } catch (e) {
-      console.warn('Failed to load bundled interactives index', e);
+      logger.warn('Failed to load bundled interactives index', { error: e });
     }
   }
 
@@ -74,7 +75,7 @@ export function findDocPage(param: string): DocPage | null {
 
     // SECURITY: Use validated interactive learning URL check
     if (!isInteractiveLearningUrl(url)) {
-      console.warn('Security: Rejected non-interactive-learning URL:', url);
+      logger.warn('Security: Rejected non-interactive-learning URL', { url });
       return null;
     }
 
@@ -111,7 +112,7 @@ export function findDocPage(param: string): DocPage | null {
       }
     }
   } catch (error) {
-    console.error('Failed to load static links:', error);
+    logger.error('Failed to load static links', { error });
   }
 
   // Case 4: Any Grafana docs URL (fallback for non-curated content)
@@ -130,7 +131,7 @@ export function findDocPage(param: string): DocPage | null {
     // 2. Protocol is https (prevents protocol injection)
     // 3. Path contains valid docs paths (prevents arbitrary URL injection)
     if (!isGrafanaDocsUrl(fullUrl)) {
-      console.warn('Security: Rejected non-Grafana docs URL:', fullUrl);
+      logger.warn('Security: Rejected non-Grafana docs URL', { url: fullUrl });
       return null;
     }
 

@@ -76,7 +76,7 @@ describe('initializeEchoLogging', () => {
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     expect(() => initializeEchoLogging()).not.toThrow();
-    expect(consoleSpy).toHaveBeenCalledWith('Failed to initialize EchoSrv logging:', expect.any(Error));
+    expect(consoleSpy).toHaveBeenCalledWith('Failed to initialize EchoSrv logging', expect.any(Error), '');
 
     consoleSpy.mockRestore();
   });
@@ -195,7 +195,7 @@ describe('listeners', () => {
 
     expect(bad).toHaveBeenCalled();
     expect(good).toHaveBeenCalled();
-    expect(consoleSpy).toHaveBeenCalledWith('Error in context change listener:', expect.any(Error));
+    expect(consoleSpy).toHaveBeenCalledWith('Error in context change listener', expect.any(Error), '');
     consoleSpy.mockRestore();
   });
 });

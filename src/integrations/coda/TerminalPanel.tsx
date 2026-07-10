@@ -35,6 +35,7 @@ import {
   clearScrollback,
   getLastVmOpts,
 } from './terminal-storage';
+import { logger } from '../../lib/logging';
 
 interface TerminalPanelProps {
   /** Callback when panel is closed via X button */
@@ -309,7 +310,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   // Routes through the context so activeVmOptsRef and storage stay in sync.
   const handleConnect = useCallback(() => {
     if (!terminalInstanceRef.current) {
-      console.warn('[CodaTerminal] Terminal not initialized yet');
+      logger.warn('[CodaTerminal] Terminal not initialized yet');
       return;
     }
     const savedOpts = getLastVmOpts();

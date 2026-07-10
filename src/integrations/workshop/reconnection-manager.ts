@@ -5,6 +5,8 @@
  * to avoid overwhelming the server during connection issues.
  */
 
+import { logger } from '../../lib/logging';
+
 export interface ReconnectionConfig {
   /** Maximum number of reconnection attempts */
   maxAttempts?: number;
@@ -84,7 +86,7 @@ export class ReconnectionManager {
     onAttempt?: (attempt: number, maxAttempts: number, delay: number) => void
   ): Promise<boolean> {
     if (this.reconnecting) {
-      console.warn('[ReconnectionManager] Reconnection already in progress');
+      logger.warn('[ReconnectionManager] Reconnection already in progress');
       return false;
     }
 
@@ -117,14 +119,13 @@ export class ReconnectionManager {
         return true;
       } catch (err) {
         this.attempts++;
-        console.warn(
-          `[ReconnectionManager] Attempt ${this.attempts}/${this.maxAttempts} failed:`,
-          err instanceof Error ? err.message : err
-        );
+        logger.warn(`[ReconnectionManager] Attempt ${this.attempts}/${this.maxAttempts} failed`, {
+          error: err instanceof Error ? err.message : err,
+        });
 
         // If we've exhausted all attempts, give up
         if (this.attempts >= this.maxAttempts) {
-          console.error('[ReconnectionManager] All reconnection attempts exhausted');
+          logger.error('[ReconnectionManager] All reconnection attempts exhausted');
           this.reconnecting = false;
           return false;
         }

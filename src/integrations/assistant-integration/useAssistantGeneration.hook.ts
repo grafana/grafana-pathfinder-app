@@ -22,6 +22,7 @@ import { getIsAssistantAvailable, useMockInlineAssistant } from './assistant-dev
 import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { buildAssistantStorageKey } from '../../lib/storage-keys';
 import { createDatasourceMetadataTool, type DatasourceMetadataArtifact, isSupportedDatasourceType } from './tools';
+import { logger } from '../../lib/logging';
 
 // REACT: Stable array reference to prevent context thrashing (R3)
 const EMPTY_CONTEXT_DEPS: ChatContextItem[] = [];
@@ -156,7 +157,7 @@ export function useAssistantGeneration(options: UseAssistantGenerationOptions): 
           : null,
       };
     } catch (error) {
-      console.warn('[useAssistantGeneration] Failed to fetch datasources:', error);
+      logger.warn('[useAssistantGeneration] Failed to fetch datasources', { error });
       return { dataSources: [], currentDatasource: null };
     }
   }, [setPageContext]);

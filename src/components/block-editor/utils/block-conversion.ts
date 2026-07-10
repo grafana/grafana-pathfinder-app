@@ -11,6 +11,7 @@
 import { JsonBlockSchema, KNOWN_FIELDS } from '../../../types/json-guide.schema';
 import type { BlockType } from '../types';
 import type { JsonBlock } from '../../../types/json-guide.types';
+import { logger } from '../../../lib/logging';
 
 // ============ Configuration Maps ============
 
@@ -222,7 +223,7 @@ export function convertBlockType(source: JsonBlock, targetType: BlockType): Json
   // 5. Validate against schema
   const result = JsonBlockSchema.safeParse(converted);
   if (!result.success) {
-    console.error('Block conversion produced invalid block:', result.error);
+    logger.error('Block conversion produced invalid block', { error: result.error });
     throw new Error(`Conversion to ${targetType} failed validation: ${result.error.message}`);
   }
 

@@ -7,6 +7,7 @@
 
 import type { JsonGuide } from '../types';
 import { validateGuide, formatFileSize } from './block-export';
+import { logger } from '../../../lib/logging';
 
 /**
  * GitHub repository configuration
@@ -98,7 +99,7 @@ async function copyToClipboard(json: string): Promise<boolean> {
     await navigator.clipboard.writeText(json);
     return true;
   } catch (e) {
-    console.warn('Clipboard copy failed:', e);
+    logger.warn('Clipboard copy failed', { error: e });
     return false;
   }
 }

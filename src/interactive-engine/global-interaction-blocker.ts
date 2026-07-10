@@ -2,6 +2,7 @@ import { InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { INTERACTIVE_Z_INDEX } from '../constants/interactive-z-index';
 import { TimeoutManager } from '../utils/timeout-manager';
+import { logger } from '../lib/logging';
 import { detectModalActive } from './modal-watcher';
 
 /**
@@ -96,7 +97,7 @@ class GlobalInteractionBlocker {
     const header = document.querySelector('header') as HTMLElement;
 
     if (!header) {
-      console.warn('No header element found for overlay creation');
+      logger.warn('No header element found for overlay creation');
       return;
     }
 

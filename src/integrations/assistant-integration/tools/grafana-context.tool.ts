@@ -10,6 +10,7 @@ import { config, locationService, getBackendSrv, getDataSourceSrv } from '@grafa
 
 import type { GrafanaContextArtifact, DatasourceInfo } from './types';
 import { getDetectedDatasourceType, getDetectedVisualizationType } from '../../../context-engine';
+import { logger } from '../../../lib/logging';
 
 /**
  * Tool input schema - no input required
@@ -101,7 +102,7 @@ const fetchDashboardInfo = async (
     }
     return undefined;
   } catch (error) {
-    console.warn('[GrafanaContextTool] Failed to fetch dashboard info:', error);
+    logger.warn('[GrafanaContextTool] Failed to fetch dashboard info', { error });
     return undefined;
   }
 };
@@ -118,7 +119,7 @@ const getDatasourcesInfo = (): DatasourceInfo[] => {
       type: ds.type,
     }));
   } catch (error) {
-    console.warn('[GrafanaContextTool] Failed to get datasources:', error);
+    logger.warn('[GrafanaContextTool] Failed to get datasources', { error });
     return [];
   }
 };

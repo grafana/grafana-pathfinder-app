@@ -30,6 +30,7 @@ import { useLinkClickHandler } from './link-handler.hook';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
+import { logger } from '../../lib/logging';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
 import { useGuideProgressState, useAutoLaunchTutorial, type AutoLaunchTutorialDetail } from '../../hooks';
 import {
@@ -266,7 +267,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       // Save both tabs and active tab
       await Promise.all([tabStorage.setTabs(tabsToSave), tabStorage.setActiveTab(this.state.activeTabId)]);
     } catch (error) {
-      console.error('Failed to save tabs to storage:', error);
+      logger.error('Failed to save tabs to storage', { error });
     }
   }
 
@@ -274,7 +275,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     try {
       await tabStorage.clear();
     } catch (error) {
-      console.error('Failed to clear persisted tabs:', error);
+      logger.error('Failed to clear persisted tabs', { error });
     }
   }
 
@@ -440,7 +441,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         this.failTab(tabId, result.error || 'Failed to load content');
       }
     } catch (error) {
-      console.error(`Failed to load journey content for tab ${tabId}:`, error);
+      logger.error(`Failed to load journey content for tab ${tabId}`, { error });
       this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load content');
     }
   }
@@ -781,7 +782,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         this.failTab(tabId, result.error || 'Failed to load documentation');
       }
     } catch (error) {
-      console.error(`Failed to load docs content for tab ${tabId}:`, error);
+      logger.error(`Failed to load docs content for tab ${tabId}`, { error });
       this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load documentation');
     }
   }

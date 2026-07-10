@@ -43,6 +43,15 @@ jest.mock('../../constants/interactive-config', () => {
   return require('../../test-utils/interactive-section-harness').createInteractiveConfigMock();
 });
 
+jest.mock('../../lib/logging', () => ({
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
+}));
+jest.mock('../../lib/faro', () => ({
+  withFaroUserAction: jest.fn((_name: string, _attributes: unknown, work: () => unknown) => work()),
+  setFaroUserActionAttributes: jest.fn(),
+  USER_ACTION_TIMEOUT_LONG_MS: 600000,
+}));
+
 jest.mock('../../lib/user-storage', () => {
   return require('../../test-utils/interactive-section-harness').createUserStorageMock();
 });

@@ -7,11 +7,17 @@ import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { FakeCrossTabTransport } from '../../test-utils/fake-cross-tab-transport';
 import type { CrossTabMessage } from '../../types/cross-tab.types';
+import { withFaroUserAction } from '../../lib/faro';
 
 jest.mock('../../requirements-manager', () => {
   const actual = jest.requireActual('../../requirements-manager');
   return { ...actual, checkRequirements: jest.fn(), dispatchFix: jest.fn() };
 });
+jest.mock('../../lib/faro', () => ({
+  withFaroUserAction: jest.fn((_name: string, _attributes: unknown, work: () => unknown) => work()),
+  setFaroUserActionAttributes: jest.fn(),
+  USER_ACTION_TIMEOUT_LONG_MS: 600000,
+}));
 
 jest.mock('../../interactive-engine/action-handlers', () => {
   const makeHandler = () => ({ execute: jest.fn().mockResolvedValue(undefined) });
@@ -130,6 +136,12 @@ describe('installLiveTabExecutor', () => {
     expect(executeOf(FocusHandler)).toHaveBeenCalledWith(
       expect.objectContaining({ refTarget: '#target', targetAction: 'highlight' }),
       true
+    );
+    expect(withFaroUserAction).toHaveBeenCalledWith(
+      'pathfinder_remote_step',
+      expect.objectContaining({ target_action: 'highlight', ref_target: '#target', phase: 'do' }),
+      expect.any(Function),
+      600000
     );
     uninstall();
   });

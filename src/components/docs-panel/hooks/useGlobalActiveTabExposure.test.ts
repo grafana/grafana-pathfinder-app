@@ -1,8 +1,16 @@
 import { renderHook } from '@testing-library/react';
 import { useGlobalActiveTabExposure } from './useGlobalActiveTabExposure';
+import { setFaroView } from '../../../lib/faro';
+
+jest.mock('../../../lib/faro', () => ({
+  setFaroView: jest.fn(),
+}));
+
+const mockSetFaroView = setFaroView as jest.Mock;
 
 describe('useGlobalActiveTabExposure', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     delete (window as any).__DocsPluginActiveTabId;
     delete (window as any).__DocsPluginActiveTabUrl;
   });
@@ -45,6 +53,17 @@ describe('useGlobalActiveTabExposure', () => {
     );
     expect((window as any).__DocsPluginActiveTabId).toBe('');
     expect((window as any).__DocsPluginActiveTabUrl).toBe('');
+  });
+
+  it('mirrors the active URL (with baseUrl fallback) into the Faro view meta', () => {
+    renderHook(() =>
+      useGlobalActiveTabExposure({
+        activeTabId: 'tab-7',
+        activeTabCurrentUrl: 'https://example.com/cur',
+        activeTabBaseUrl: 'https://example.com/base',
+      })
+    );
+    expect(mockSetFaroView).toHaveBeenCalledWith('https://example.com/cur');
   });
 
   it('updates globals when props change across re-renders', () => {

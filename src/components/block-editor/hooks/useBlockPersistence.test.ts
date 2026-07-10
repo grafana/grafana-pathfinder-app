@@ -183,7 +183,7 @@ describe('useBlockPersistence — load() / clear() / hasSavedGuide / getLastSave
     const loaded = result.current.load();
 
     expect(loaded?.title).toBe('legacy');
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('version mismatch'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('version mismatch'), '');
     warnSpy.mockRestore();
   });
 

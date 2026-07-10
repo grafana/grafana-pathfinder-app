@@ -1,3 +1,4 @@
+import { logger } from '../logging';
 import { createUserStorage, warnQuotaExceededOnce } from '../user-storage';
 
 export interface BoundedRecordStorage {
@@ -39,15 +40,15 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
         if (hasRetried) {
           // Quota still exceeded after cleanup — likely consumed by other keys.
           // Stop here rather than recursing forever.
-          console.warn(`Failed to save ${label} percentage after cleanup retry:`, error);
+          logger.warn(`Failed to save ${label} percentage after cleanup retry`, { error });
           return;
         }
-        console.warn(`Storage quota exceeded, clearing old ${label} data`);
+        logger.warn(`Storage quota exceeded, clearing old ${label} data`);
         warnQuotaExceededOnce();
         await api.cleanup();
         await setInternal(key, percentage, true);
       } else {
-        console.warn(`Failed to save ${label} percentage:`, error);
+        logger.warn(`Failed to save ${label} percentage`, { error });
       }
     }
   };
@@ -74,7 +75,7 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
         delete data[key];
         await storage.setItem(storageKey, data);
       } catch (error) {
-        console.warn(`Failed to clear ${label}:`, error);
+        logger.warn(`Failed to clear ${label}`, { error });
       }
     },
 
@@ -95,7 +96,7 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
           await writeWithCap(data);
         }
       } catch (error) {
-        console.warn(`Failed to cleanup ${label} entries:`, error);
+        logger.warn(`Failed to cleanup ${label} entries`, { error });
       }
     },
 
@@ -104,7 +105,7 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
         const storage = createUserStorage();
         await storage.removeItem(storageKey);
       } catch (error) {
-        console.warn(`Failed to clear all ${label} entries:`, error);
+        logger.warn(`Failed to clear all ${label} entries`, { error });
       }
     },
   };
