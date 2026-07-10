@@ -13,7 +13,6 @@ describe('dodgeSessionReducer', () => {
 
       expect(state.view).toBe('compact');
       expect(state.savedScrollTop).toBe(800);
-      expect(state.restoreScroll).toBe('idle');
       expect(state.restoreToken).toBe(initial.restoreToken + 1);
     });
 
@@ -33,7 +32,6 @@ describe('dodgeSessionReducer', () => {
       const scheduled = dodgeSessionReducer(compacted, { type: 'RESTORE_FULL' });
       const recompacted = dodgeSessionReducer(scheduled, { type: 'COMPACT', measuredScrollTop: 0 });
 
-      expect(recompacted.restoreScroll).toBe('idle');
       expect(recompacted.restoreToken).toBe(scheduled.restoreToken + 1);
       expect(dodgeSessionReducer(recompacted, { type: 'SCROLL_RESTORE_LANDED', token: scheduled.restoreToken })).toBe(
         recompacted
@@ -47,18 +45,20 @@ describe('dodgeSessionReducer', () => {
       const state = dodgeSessionReducer(compacted, { type: 'RESTORE_FULL' });
 
       expect(state.view).toBe('full');
-      expect(state.restoreScroll).toBe('scheduled');
       expect(state.savedScrollTop).toBe(800);
       expect(state.restoreToken).toBe(compacted.restoreToken + 1);
     });
 
-    it('without saved scroll returns to full without scheduling', () => {
+    it('without saved scroll returns to full without a token bump', () => {
       const compacted = dodgeSessionReducer(initial, { type: 'COMPACT', measuredScrollTop: null });
       const state = dodgeSessionReducer(compacted, { type: 'RESTORE_FULL' });
 
       expect(state.view).toBe('full');
-      expect(state.restoreScroll).toBe('idle');
       expect(state.restoreToken).toBe(compacted.restoreToken);
+    });
+
+    it('is a reference-equal no-op when already full with nothing saved', () => {
+      expect(dodgeSessionReducer(initial, { type: 'RESTORE_FULL' })).toBe(initial);
     });
 
     it('a second RESTORE_FULL supersedes the first schedule', () => {
@@ -77,19 +77,30 @@ describe('dodgeSessionReducer', () => {
       const compacted = dodgeSessionReducer(initial, { type: 'COMPACT', measuredScrollTop: 800 });
       const state = dodgeSessionReducer(compacted, { type: 'RESTORE_FULL' });
 
-      expect(Object.keys(state).sort()).toEqual(['restoreScroll', 'restoreToken', 'savedScrollTop', 'view']);
+      expect(Object.keys(state).sort()).toEqual(['restoreToken', 'savedScrollTop', 'view']);
     });
   });
 
   describe('MINIMIZE', () => {
-    it('preserves savedScrollTop and invalidates any scheduled restore', () => {
+    it('adopts the measured scrollTop when no session scroll is saved', () => {
+      // Minimize hides the panel with display:none, which clamps the scroll
+      // container to 0 — the pre-minimize measurement is the only
+      // authoritative value left for the pill restore.
+      const state = dodgeSessionReducer(initial, { type: 'MINIMIZE', measuredScrollTop: 800 });
+
+      expect(state.view).toBe('minimized');
+      expect(state.savedScrollTop).toBe(800);
+      expect(state.restoreToken).toBe(initial.restoreToken + 1);
+    });
+
+    it('preserves savedScrollTop over a layout-derived read and invalidates any scheduled restore', () => {
       const compacted = dodgeSessionReducer(initial, { type: 'COMPACT', measuredScrollTop: 800 });
       const scheduled = dodgeSessionReducer(compacted, { type: 'RESTORE_FULL' });
-      const minimized = dodgeSessionReducer(scheduled, { type: 'MINIMIZE' });
+      const minimized = dodgeSessionReducer(scheduled, { type: 'MINIMIZE', measuredScrollTop: 0 });
 
       expect(minimized.view).toBe('minimized');
       expect(minimized.savedScrollTop).toBe(800);
-      expect(minimized.restoreScroll).toBe('idle');
+      expect(minimized.restoreToken).toBe(scheduled.restoreToken + 1);
       expect(dodgeSessionReducer(minimized, { type: 'SCROLL_RESTORE_LANDED', token: scheduled.restoreToken })).toBe(
         minimized
       );
@@ -97,12 +108,21 @@ describe('dodgeSessionReducer', () => {
 
     it('then RESTORE_FULL schedules the preserved scroll (pill restore)', () => {
       const compacted = dodgeSessionReducer(initial, { type: 'COMPACT', measuredScrollTop: 800 });
-      const minimized = dodgeSessionReducer(compacted, { type: 'MINIMIZE' });
+      const minimized = dodgeSessionReducer(compacted, { type: 'MINIMIZE', measuredScrollTop: 0 });
       const restored = dodgeSessionReducer(minimized, { type: 'RESTORE_FULL' });
 
       expect(restored.view).toBe('full');
-      expect(restored.restoreScroll).toBe('scheduled');
       expect(restored.savedScrollTop).toBe(800);
+      expect(restored.restoreToken).toBe(minimized.restoreToken + 1);
+    });
+
+    it('then RESTORE_FULL schedules the scroll measured at minimize time', () => {
+      const minimized = dodgeSessionReducer(initial, { type: 'MINIMIZE', measuredScrollTop: 800 });
+      const restored = dodgeSessionReducer(minimized, { type: 'RESTORE_FULL' });
+
+      expect(restored.view).toBe('full');
+      expect(restored.savedScrollTop).toBe(800);
+      expect(restored.restoreToken).toBe(minimized.restoreToken + 1);
     });
   });
 
@@ -113,7 +133,6 @@ describe('dodgeSessionReducer', () => {
       const landed = dodgeSessionReducer(scheduled, { type: 'SCROLL_RESTORE_LANDED', token: scheduled.restoreToken });
 
       expect(landed.savedScrollTop).toBeNull();
-      expect(landed.restoreScroll).toBe('idle');
       expect(landed.view).toBe('full');
     });
 
@@ -128,7 +147,7 @@ describe('dodgeSessionReducer', () => {
       expect(state).toBe(scheduled);
     });
 
-    it('while idle is a no-op even with a matching token', () => {
+    it('with nothing saved is a no-op even with a matching token', () => {
       const state = dodgeSessionReducer(initial, { type: 'SCROLL_RESTORE_LANDED', token: initial.restoreToken });
 
       expect(state).toBe(initial);

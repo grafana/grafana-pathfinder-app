@@ -124,6 +124,26 @@ describe('FloatingPanel dodge session interleavings', () => {
     expect(content.scrollTop).toBe(800);
   });
 
+  it('minimizing a never-compacted panel captures the scroll, surviving the display:none clamp', async () => {
+    const content = renderPanel();
+    content.scrollTop = 800;
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+    });
+    // Simulate the real-browser clamp: display:none collapses the scroll
+    // container and resets scrollTop to 0 (jsdom does not emulate this).
+    content.scrollTop = 0;
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Restore floating panel'));
+      await flushReactUpdates();
+    });
+
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-panel-state', 'full');
+    expect(content.scrollTop).toBe(800);
+  });
+
   it('a dodge repositions, flashes the dodging style, and a rapid second dodge reports only the final move', () => {
     jest.useFakeTimers();
     try {

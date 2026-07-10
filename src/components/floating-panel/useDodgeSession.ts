@@ -14,7 +14,7 @@ import {
  * Adapter between the pure dodge-session reducer and the DOM: owns the
  * document-level pathfinder-floating-* listeners, the scrollable content
  * ref, the deferred token-gated scroll write, and the dodge flash/analytics
- * timers that FloatingPanel previously managed inline.
+ * timers.
  */
 export function useDodgeSession(setPosition: (x: number, y: number) => void): {
   view: FloatingPanelView;
@@ -23,27 +23,27 @@ export function useDodgeSession(setPosition: (x: number, y: number) => void): {
   minimize: () => void;
   restoreFromPill: () => void;
 } {
-  const [session, setSession] = useState<DodgeSessionState>(createInitialDodgeSession);
-  const sessionRef = useRef(session);
+  const sessionRef = useRef<DodgeSessionState>(createInitialDodgeSession());
+  const [view, setView] = useState<FloatingPanelView>('full');
   const contentRef = useRef<HTMLDivElement>(null);
   const [isDodging, setIsDodging] = useState(false);
   const dodgeTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
 
   // Synchronous dispatch: handlers need the next state immediately (to know
-  // whether a scroll write was scheduled and under which token), so the
-  // reducer is applied to a ref before setState. Must only be called from
-  // event/promise callbacks — calling during render would double-apply
-  // actions under StrictMode.
+  // whether a scroll write was scheduled and under which token), so the ref
+  // is the single source of truth and only the render-relevant view mirrors
+  // into React state. Must only be called from event/promise callbacks —
+  // calling during render would double-apply actions under StrictMode.
   const dispatch = useCallback((action: DodgeSessionAction): DodgeSessionState => {
     const next = dodgeSessionReducer(sessionRef.current, action);
     sessionRef.current = next;
-    setSession(next);
+    setView(next.view);
     return next;
   }, []);
 
   const restoreFull = useCallback(() => {
     const next = dispatch({ type: 'RESTORE_FULL' });
-    if (next.restoreScroll !== 'scheduled' || next.savedScrollTop === null) {
+    if (next.savedScrollTop === null) {
       return;
     }
     const { restoreToken: token, savedScrollTop } = next;
@@ -59,7 +59,9 @@ export function useDodgeSession(setPosition: (x: number, y: number) => void): {
   }, [dispatch]);
 
   const minimize = useCallback(() => {
-    dispatch({ type: 'MINIMIZE' });
+    // Measure before the minimized re-render applies display:none, which
+    // clamps the scroll container to 0.
+    dispatch({ type: 'MINIMIZE', measuredScrollTop: contentRef.current?.scrollTop ?? null });
   }, [dispatch]);
 
   useEffect(() => {
@@ -114,7 +116,7 @@ export function useDodgeSession(setPosition: (x: number, y: number) => void): {
   }, [setPosition, dispatch, restoreFull]);
 
   return {
-    view: session.view,
+    view,
     isDodging,
     contentRef,
     minimize,
