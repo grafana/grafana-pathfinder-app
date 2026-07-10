@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { IconButton, useStyles2, getPortalContainer } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { buildPathfinderShareUrl } from '../../utils/pathfinder-search-params';
+import { waitForReactUpdates } from '../../lib/async-utils';
 import { startModalWatch, stopModalWatch } from '../../interactive-engine';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 import { useDragResize } from './useDragResize';
@@ -132,9 +133,13 @@ export function FloatingPanel({
   // Content scrollTop across compact <-> full: compact sets the panel's
   // height to 'auto', which collapses .content's scroll container (nothing
   // left to scroll), forcing scrollTop to 0. Save it before compacting and
-  // restore it after the fixed height comes back.
+  // restore it after the fixed height comes back. restoreTokenRef guards
+  // against a stale write landing after a subsequent compact/restore cycle
+  // has already started (rapid dodge churn can fire these events faster
+  // than the deferred write below resolves).
   const contentRef = useRef<HTMLDivElement>(null);
   const savedScrollTopRef = useRef<number | null>(null);
+  const restoreTokenRef = useRef(0);
 
   useEffect(() => {
     const handleDodge = (e: CustomEvent<{ x: number; y: number }>) => {
@@ -162,6 +167,7 @@ export function FloatingPanel({
     };
 
     const handleCompact = () => {
+      restoreTokenRef.current++;
       if (savedScrollTopRef.current === null) {
         savedScrollTopRef.current = contentRef.current?.scrollTop ?? null;
       }
@@ -176,15 +182,17 @@ export function FloatingPanel({
       setPanelState('full');
       const savedScrollTop = savedScrollTopRef.current;
       savedScrollTopRef.current = null;
-      if (savedScrollTop !== null) {
-        // Wait for the fixed height (and thus the scroll container) to
-        // come back before setting scrollTop.
-        requestAnimationFrame(() => {
-          if (contentRef.current) {
-            contentRef.current.scrollTop = savedScrollTop;
-          }
-        });
+      if (savedScrollTop === null) {
+        return;
       }
+      const token = ++restoreTokenRef.current;
+      waitForReactUpdates().then(() => {
+        // Bail if a later compact/restore cycle started before this write
+        // landed — applying it now would overwrite that cycle's state.
+        if (restoreTokenRef.current === token && contentRef.current) {
+          contentRef.current.scrollTop = savedScrollTop;
+        }
+      });
     };
 
     document.addEventListener('pathfinder-floating-dodge', handleDodge as EventListener);

@@ -2,9 +2,13 @@ import React from 'react';
 import { render, screen, act } from '@testing-library/react';
 import { FloatingPanel } from './FloatingPanel';
 
-/** Flushes one requestAnimationFrame tick (the restore-full handler defers its scrollTop write to a frame). */
-function flushFrame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+/**
+ * Mirrors `waitForReactUpdates` (double requestAnimationFrame) — the
+ * restore-full handler defers its scrollTop write behind the same wait,
+ * so tests need to flush the same number of frames to observe it land.
+ */
+function flushReactUpdates(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 }
 
 describe('FloatingPanel scroll preservation across compact <-> full', () => {
@@ -19,25 +23,31 @@ describe('FloatingPanel scroll preservation across compact <-> full', () => {
     return screen.getByTestId('guide-content').parentElement as HTMLDivElement;
   }
 
-  it('restores scrollTop after a compact -> restore-full cycle', async () => {
-    const content = renderPanel();
-    content.scrollTop = 800;
-
+  /**
+   * Drives one compact -> restore-full cycle. `scrollTopDuringCompact`
+   * emulates the real-browser clamp: compact mode collapses .content's
+   * scroll container, so scrollTop reads back as 0 (or whatever a user
+   * scroll during compact left it at) until restore-full completes.
+   */
+  async function compactAndRestore(content: HTMLDivElement, scrollTopDuringCompact = 0) {
     act(() => {
       document.dispatchEvent(new CustomEvent('pathfinder-floating-compact'));
     });
     expect(screen.getByRole('dialog')).toHaveAttribute('data-panel-state', 'compact');
-
-    // Compact mode sets the panel's own height to 'auto', which collapses
-    // .content's scroll container in a real browser (nothing left to
-    // scroll). jsdom does no layout, so emulate that clamp explicitly.
-    content.scrollTop = 0;
+    content.scrollTop = scrollTopDuringCompact;
 
     await act(async () => {
       document.dispatchEvent(new CustomEvent('pathfinder-floating-restore-full'));
-      await flushFrame();
+      await flushReactUpdates();
     });
     expect(screen.getByRole('dialog')).toHaveAttribute('data-panel-state', 'full');
+  }
+
+  it('restores scrollTop after a compact -> restore-full cycle', async () => {
+    const content = renderPanel();
+    content.scrollTop = 800;
+
+    await compactAndRestore(content);
 
     expect(content.scrollTop).toBe(800);
   });
@@ -46,27 +56,44 @@ describe('FloatingPanel scroll preservation across compact <-> full', () => {
     const content = renderPanel();
     content.scrollTop = 800;
 
-    act(() => {
-      document.dispatchEvent(new CustomEvent('pathfinder-floating-compact'));
-    });
-    content.scrollTop = 0;
-    await act(async () => {
-      document.dispatchEvent(new CustomEvent('pathfinder-floating-restore-full'));
-      await flushFrame();
-    });
+    await compactAndRestore(content);
     expect(content.scrollTop).toBe(800);
 
     // A second cycle starting from scrollTop 0 (user scrolled back to the
     // top) must not resurrect the previous saved value.
     content.scrollTop = 0;
+    await compactAndRestore(content);
+
+    expect(content.scrollTop).toBe(0);
+  });
+
+  it('drops a stale restore write when a new compact starts before it lands', async () => {
+    const content = renderPanel();
+    content.scrollTop = 800;
+
     act(() => {
       document.dispatchEvent(new CustomEvent('pathfinder-floating-compact'));
     });
     content.scrollTop = 0;
-    await act(async () => {
+
+    // Schedule the deferred restore write (saved scrollTop: 800), but don't
+    // flush the frames yet — a second compact should invalidate it before
+    // it has a chance to land.
+    act(() => {
       document.dispatchEvent(new CustomEvent('pathfinder-floating-restore-full'));
-      await flushFrame();
     });
+    act(() => {
+      document.dispatchEvent(new CustomEvent('pathfinder-floating-compact'));
+    });
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-panel-state', 'compact');
+
+    await act(async () => {
+      await flushReactUpdates();
+    });
+
+    // The stale write (800, from the superseded restore) must not have
+    // landed — nothing has restored scrollTop since the second compact.
     expect(content.scrollTop).toBe(0);
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-panel-state', 'compact');
   });
 });
