@@ -212,13 +212,18 @@ jobs:
 
       # main-only: a PR build's sourcemaps would tie a real user-facing stack
       # trace to code that may never merge, or may differ from what does.
+      # continue-on-error: a Vault lookup failure (e.g. a renamed field) must
+      # degrade to "sourcemap upload skipped", never fail the whole build —
+      # the outcome-guard below already treats a non-success outcome as "no
+      # secrets" and leaves the plugin inert.
       - name: Get Faro sourcemap secrets from Vault
         id: faro-secrets
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.head_ref == 'faro/sourcemap-upload'
+        continue-on-error: true
         uses: grafana/shared-workflows/actions/get-vault-secrets@e46fe1e9a2bf9e618bcf8d8d32f3a7381b45c06d # get-vault-secrets/v2.0.0
         with:
           repo_secrets: |
-            FARO_SOURCEMAP_API_KEY=FARO_SOURCEMAP_API_KEY:value
+            FARO_SOURCEMAP_API_KEY=FARO_SOURCEMAP_API_KEY:FARO_SOURCEMAP_API_KEY
             FARO_SOURCEMAP_ENDPOINT=faro-connection:endpoint
             FARO_SOURCEMAP_APP_ID=faro-connection:appId
             FARO_SOURCEMAP_STACK_ID=faro-connection:stackId
