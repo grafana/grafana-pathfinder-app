@@ -1081,6 +1081,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const {
     contextData,
     isLoadingRecommendations,
+    hasFetchedRecommendations,
     otherDocsExpanded,
     openLearningJourney,
     openDocsPage,
@@ -1090,7 +1091,11 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     onOpenLearningJourney: model.state.onOpenLearningJourney,
     onOpenDocsPage: model.state.onOpenDocsPage,
   });
-  const { guides: customGuides, isLoading: isLoadingCustomGuides } = usePublishedGuides();
+  const {
+    guides: customGuides,
+    isLoading: isLoadingCustomGuides,
+    hasLoaded: hasLoadedCustomGuides,
+  } = usePublishedGuides();
   const [customGuidesExpanded, setCustomGuidesExpanded] = useState(true);
   const [suggestedGuidesExpanded, setSuggestedGuidesExpanded] = useState(true);
 
@@ -1109,7 +1114,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     recommendations.length > 0 &&
     !configWithDefaults.acceptedTermsAndConditions;
 
-  const scrollContainerRef = useRecommendationsScrollPosition(!isLoadingRecommendations && !contextData.isLoading);
+  const recommendationsScrollReady =
+    !contextData.isLoading && !isLoadingRecommendations && hasFetchedRecommendations && hasLoadedCustomGuides;
+  const scrollContainerRef = useRecommendationsScrollPosition(recommendationsScrollReady);
 
   return (
     <div className={styles.container} data-testid={testIds.contextPanel.container}>
