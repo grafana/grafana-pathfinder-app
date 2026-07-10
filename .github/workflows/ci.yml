@@ -209,16 +209,6 @@ jobs:
       - if: steps.node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
-      # No sourcemap upload here: this job's build artifact is archived for
-      # CI inspection only (5-day retention) and never deployed anywhere —
-      # publish.yml's CD path does its own independent build for real
-      # deploys. Uploading sourcemaps for a bundle no browser will ever load
-      # would just accumulate orphaned artifacts in Frontend Observability
-      # for zero benefit. See webpack.config.ts for the upload itself, which
-      # activates only when all four FARO_SOURCEMAP_* env vars are present —
-      # currently blocked upstream (grafana/plugin-ci-workflows' cd.yml
-      # fetches frontend-secrets from Vault but never wires them into its
-      # own build step's env).
       - name: Build frontend
         run: npm run build
 
