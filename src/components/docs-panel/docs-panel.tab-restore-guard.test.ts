@@ -224,6 +224,7 @@ jest.mock('../../hooks', () => ({}));
 // ---------------------------------------------------------------------------
 
 import { CombinedLearningJourneyPanel } from './docs-panel';
+import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -251,7 +252,7 @@ const RESTORED_TABS = [
   },
 ];
 
-const makeTab = (id: string, type?: string) => ({
+const makeTab = (id: string, type?: LearningJourneyTab['type']) => ({
   id,
   title: id,
   baseUrl: '',
