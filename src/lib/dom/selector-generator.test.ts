@@ -331,7 +331,7 @@ describe('Selector Generator — Pipeline', () => {
       expect(selector).not.toContain('data-state');
     });
 
-    it('uses unique name attribute when input has it (parent testid is not forced)', () => {
+    it('prefers a testid-scoped bare tag over the name attribute when both are unique', () => {
       document.body.innerHTML = `
         <div data-intercom-target="env-selectors">
           <div data-testid="env-field">
@@ -341,8 +341,10 @@ describe('Selector Generator — Pipeline', () => {
       `;
       const input = document.querySelector('input') as HTMLElement;
       const selector = generateBestSelector(input);
-      // input[name='env'] is unique, so it wins without needing parent context
-      expect(selector).toContain("[name='env']");
+      // A stable-testid-scoped bare tag ranks above `name` (same tier as the existing
+      // aria-label/button-text-over-name ordering) since it's anchored to a deliberately
+      // labeled container rather than an attribute that's often reused across forms.
+      expect(selector).toBe("div[data-testid='env-field'] input");
     });
   });
 
