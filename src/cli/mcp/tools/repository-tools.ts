@@ -26,6 +26,7 @@ import {
   type RepositoryPackage,
 } from '../lib/repository-client';
 import { PLUGIN_VIEWER_BASE } from '../lib/constants';
+import { renderMachineJson } from '../../utils/output';
 import { readOnly } from './annotations';
 import { textResult } from './result';
 
@@ -231,7 +232,7 @@ function summarizeEntry(p: RepositoryPackage): Record<string, unknown> {
 }
 
 function jsonResult(payload: unknown): ReturnType<typeof textResult> {
-  return textResult(JSON.stringify(payload, null, 2));
+  return textResult(renderMachineJson(payload));
 }
 
 function errorResult(err: RepositoryClientError): ReturnType<typeof textResult> {
@@ -243,5 +244,5 @@ function errorResult(err: RepositoryClientError): ReturnType<typeof textResult> 
   if (err.code === 'HTTP_ERROR') {
     payload.httpStatus = err.status;
   }
-  return textResult(JSON.stringify(payload, null, 2), true);
+  return textResult(renderMachineJson(payload), true);
 }

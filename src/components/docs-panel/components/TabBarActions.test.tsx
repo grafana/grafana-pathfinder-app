@@ -146,11 +146,20 @@ describe('TabBarActions', () => {
   });
 
   describe('My learning button', () => {
-    it('navigates to my learning home page when clicked', () => {
+    it('switches to the recommendations tab in place when an in-panel handler is provided', () => {
+      const onNavigateToRecommendations = jest.fn();
+      render(<TabBarActions onNavigateToRecommendations={onNavigateToRecommendations} />);
+
+      fireEvent.click(screen.getByTestId(testIds.docsPanel.myLearningTab));
+
+      expect(onNavigateToRecommendations).toHaveBeenCalledTimes(1);
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it('falls back to full-page navigation when no in-panel handler is provided', () => {
       render(<TabBarActions />);
 
-      const myLearningButton = screen.getByTestId(testIds.docsPanel.myLearningTab);
-      fireEvent.click(myLearningButton);
+      fireEvent.click(screen.getByTestId(testIds.docsPanel.myLearningTab));
 
       expect(mockPush).toHaveBeenCalledWith(PLUGIN_BASE_URL);
     });

@@ -1022,15 +1022,16 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               </span>
               <span className="interactive-guided-completed-text">Completed</span>
             </div>
-            <button
-              className="interactive-guided-redo-btn"
+            <Button
+              size="sm"
+              variant="secondary"
               onClick={handleStepRedo}
               disabled={disabled || isAnyActionRunning}
               data-testid={testIds.interactive.redoButton(renderedStepId)}
               title="Redo this guided tour"
             >
               ↻ Redo
-            </button>
+            </Button>
           </div>
         )}
       </div>

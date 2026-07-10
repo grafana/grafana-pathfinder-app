@@ -25,7 +25,7 @@ import React, { Suspense, lazy } from 'react';
 import { Button, Icon, IconButton } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { usePluginContext } from '@grafana/data';
-import { PLUGIN_BASE_URL, getConfigWithDefaults } from '../../../constants';
+import { getConfigWithDefaults } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
@@ -437,7 +437,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                     icon="book-open"
                     size="md"
                     onClick={() => {
-                      window.location.assign(PLUGIN_BASE_URL);
+                      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                        action: 'navigate_to_recommendations',
+                        source: 'content_footer',
+                      });
+                      model.setActiveTab('recommendations');
                     }}
                   >
                     {t('docsPanel.returnToMyLearning', 'Return to my learning')}

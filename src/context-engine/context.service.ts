@@ -10,6 +10,7 @@ import {
   isRecommenderEnabled,
   DocsPluginConfig,
   DEFAULT_RECOMMENDER_TIMEOUT,
+  ONLINE_PACKAGES_BOOT_BUDGET_MS,
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: context-engine -> docs-retrieval
@@ -23,6 +24,7 @@ import {
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { hashUserData } from '../lib/hash.util';
 import { logger } from '../lib/logging';
+import { withTimeout } from '../lib/async-utils';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
 import {
@@ -55,6 +57,10 @@ const SUPPORTED_MATCH_PREDICATE_KEYS: ReadonlySet<string> = new Set([
   'and',
   'or',
 ]);
+
+// Sentinel used to tell an expected boot-budget timeout apart from real
+// failures in getOnlinePackageRecommendations' catch.
+export const ONLINE_PACKAGES_TIMEOUT_MESSAGE = 'Online package recommendations timed out; continuing without them';
 
 export class ContextService {
   // Error handling state
@@ -169,8 +175,11 @@ export class ContextService {
       if (!isRecommenderEnabled(pluginConfig)) {
         // When the recommender is disabled, OSS users with internet access can
         // still see guides authored on the public CDN. The fetch is gated on
-        // navigator.onLine and goes sticky-disabled on the first failure, so
-        // air-gapped installs make at most one attempt per session.
+        // navigator.onLine, goes sticky-disabled on the first failure (so
+        // air-gapped installs make at most one attempt per session), and the
+        // wait is capped so a cold backend cache never holds bundled
+        // recommendations hostage — a timed-out fetch keeps running and the
+        // next recommendations cycle picks its result up from the cache.
         const onlinePackageRecommendations = await this.getOnlinePackageRecommendations(contextData);
         const merged = [...bundledRecommendations, ...onlinePackageRecommendations];
         const fallbackResult = await this.getFallbackRecommendations(contextData, merged);
@@ -1649,7 +1658,15 @@ export class ContextService {
    */
   private static async getOnlinePackageRecommendations(contextData: ContextData): Promise<Recommendation[]> {
     try {
-      const { baseUrl, packages } = await fetchOnlinePackageRecommendations();
+      // The race abandons the await, not the request: the client's shared
+      // in-flight promise keeps running and populates its module cache, and
+      // its sticky `unavailable` flag is untouched by a timeout — so the next
+      // recommendations cycle returns the packages instantly.
+      const { baseUrl, packages } = await withTimeout(
+        fetchOnlinePackageRecommendations(),
+        ONLINE_PACKAGES_BOOT_BUDGET_MS,
+        ONLINE_PACKAGES_TIMEOUT_MESSAGE
+      );
       if (!packages.length) {
         return [];
       }
@@ -1686,6 +1703,11 @@ export class ContextService {
         };
       });
     } catch (error) {
+      if (error instanceof Error && error.message === ONLINE_PACKAGES_TIMEOUT_MESSAGE) {
+        // Expected on a cold backend cache or slow CDN — not a failure.
+        console.info(ONLINE_PACKAGES_TIMEOUT_MESSAGE);
+        return [];
+      }
       // The client itself never throws, but guard against future regressions
       // — a failure here must not break the bundled flow.
       logger.warn('Failed to load online package recommendations', { error });

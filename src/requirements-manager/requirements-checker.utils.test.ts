@@ -211,9 +211,8 @@ describe('requirements-checker.utils', () => {
 
   describe('datasourceConfiguredCHECK', () => {
     beforeEach(() => {
-      // Mock getBackendSrv
       (getBackendSrv as jest.Mock).mockReturnValue({
-        post: jest.fn(),
+        get: jest.fn(),
       });
     });
 
@@ -224,7 +223,7 @@ describe('requirements-checker.utils', () => {
       ]);
 
       const mockBackend = getBackendSrv();
-      (mockBackend.post as jest.Mock).mockResolvedValue({ status: 'success' });
+      (mockBackend.get as jest.Mock).mockResolvedValue({ status: 'OK', message: 'Data source is working' });
 
       const options: RequirementsCheckOptions = {
         requirements: 'datasource-configured:prometheus',
@@ -233,16 +232,16 @@ describe('requirements-checker.utils', () => {
       const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
       expect(result.error[0]!.pass).toBe(true);
-      expect(mockBackend.post).toHaveBeenCalledWith('/api/datasources/uid/prom-uid/test');
+      expect(mockBackend.get).toHaveBeenCalledWith('/api/datasources/uid/prom-uid/health');
     });
 
-    it('should fail when data source test fails', async () => {
+    it('should fail when the health check reports a non-OK status', async () => {
       (ContextService.fetchDataSources as jest.Mock).mockResolvedValue([
         { id: 1, name: 'Prometheus', type: 'prometheus', uid: 'prom-uid' },
       ]);
 
       const mockBackend = getBackendSrv();
-      (mockBackend.post as jest.Mock).mockResolvedValue({ status: 'error', message: 'Connection failed' });
+      (mockBackend.get as jest.Mock).mockResolvedValue({ status: 'ERROR', message: 'Connection failed' });
 
       const options: RequirementsCheckOptions = {
         requirements: 'datasource-configured:prometheus',
@@ -251,7 +250,25 @@ describe('requirements-checker.utils', () => {
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
       expect(result.error[0]!.pass).toBe(false);
-      expect(result.error[0]!.error).toContain('test failed');
+      expect(result.error[0]!.error).toContain('health check failed');
+    });
+
+    it('should fail when the health endpoint rejects (Grafana returns 400 on failed checks)', async () => {
+      (ContextService.fetchDataSources as jest.Mock).mockResolvedValue([
+        { id: 1, name: 'Prometheus', type: 'prometheus', uid: 'prom-uid' },
+      ]);
+
+      const mockBackend = getBackendSrv();
+      (mockBackend.get as jest.Mock).mockRejectedValue(new Error('Bad request'));
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'datasource-configured:prometheus',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0]!.pass).toBe(false);
+      expect(result.error[0]!.error).toContain('configuration test failed');
     });
 
     it('should fail when data source not found', async () => {

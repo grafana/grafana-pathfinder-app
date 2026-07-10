@@ -83,6 +83,7 @@ export const DEFAULT_PEERJS_SECURE = false;
 // Network timeout defaults
 export const DEFAULT_CONTENT_FETCH_TIMEOUT = 10000; // 10 seconds for document retrieval
 export const DEFAULT_RECOMMENDER_TIMEOUT = 5000; // 5 seconds for recommender API
+export const ONLINE_PACKAGES_BOOT_BUDGET_MS = 3000; // max wait before rendering recommendations without the online package index
 
 // Security: Allowed interactive learning hostnames (exact match only, no wildcards)
 // These are the only hostnames permitted for fetching interactive guides

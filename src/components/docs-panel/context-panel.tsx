@@ -304,13 +304,15 @@ export const RecommendationsSection = memo(function RecommendationsSection({
             icon="book-open"
             variant="secondary"
             onClick={() => {
-              // Close the extension sidebar
+              // Empty list: unlike the header/footer "my learning" buttons (which
+              // switch to the in-panel recommendations tab), there is nothing to
+              // return to in-panel here, so close the sidebar and open the full
+              // My Learning page instead.
               const appEvents = getAppEvents();
               appEvents.publish({
                 type: 'close-extension-sidebar',
                 payload: {},
               });
-              // Navigate to the home page
               locationService.push(PLUGIN_BASE_URL);
             }}
           >

@@ -7,6 +7,7 @@ import {
   getScrollParent,
   getStickyHeaderOffset,
   getVisibleHighlightTarget,
+  isPathfinderContent,
 } from '../lib/dom';
 import { logger } from '../lib/logging';
 import { sanitizeDocumentationHTML } from '../security';
@@ -460,9 +461,11 @@ export class NavigationManager {
       // - The comment box
       // - The close buttons
       // - Inside the highlighted element
+      // - The Pathfinder floating panel
       if (
         target.closest('.interactive-highlight-outline') ||
         target.closest('.interactive-comment-box') ||
+        isPathfinderContent(target) ||
         target === element ||
         element.contains(target)
       ) {

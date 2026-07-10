@@ -1116,8 +1116,9 @@ export const InteractiveStep = forwardRef<
                   {checker.completionReason === 'skipped' ? 'Skipped' : 'Completed'}
                 </span>
               </div>
-              <button
-                className="interactive-guided-redo-btn"
+              <Button
+                size="sm"
+                variant="secondary"
                 onClick={handleStepRedo}
                 disabled={disabled || isAnyActionRunning}
                 data-testid={testIds.interactive.redoButton(renderedStepId)}
@@ -1128,7 +1129,7 @@ export const InteractiveStep = forwardRef<
                 }
               >
                 ↻ Redo
-              </button>
+              </Button>
             </div>
           )}
         </div>
