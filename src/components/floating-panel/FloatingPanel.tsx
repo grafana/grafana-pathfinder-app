@@ -62,6 +62,9 @@ export function FloatingPanel({
   const [panelState, setPanelState] = useState<FloatingPanelState>('full');
   const [isDodging, setIsDodging] = useState(false);
   const { geometry, setPosition, drag, resize } = useDragResize();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const savedScrollTopRef = useRef<number | null>(null);
+  const restoreTokenRef = useRef(0);
 
   // Auto-reposition to dodge interactive highlights and any open native modal
   useHighlightDodge(geometry, panelState === 'minimized', true);
@@ -71,13 +74,28 @@ export function FloatingPanel({
     return () => stopModalWatch();
   }, []);
 
+  const restoreSavedContentScrollTop = useCallback(() => {
+    const savedScrollTop = savedScrollTopRef.current;
+    savedScrollTopRef.current = null;
+    if (savedScrollTop === null) {
+      return;
+    }
+    const token = ++restoreTokenRef.current;
+    waitForReactUpdates().then(() => {
+      if (restoreTokenRef.current === token && contentRef.current) {
+        contentRef.current.scrollTop = savedScrollTop;
+      }
+    });
+  }, []);
+
   const handleMinimize = useCallback(() => {
     setPanelState('minimized');
   }, []);
 
   const handleRestore = useCallback(() => {
     setPanelState('full');
-  }, []);
+    restoreSavedContentScrollTop();
+  }, [restoreSavedContentScrollTop]);
 
   const handleSwitchToSidebar = useCallback(() => {
     // Don't call setMode here — the manager (onSwitchToSidebar) handles
@@ -130,17 +148,8 @@ export function FloatingPanel({
 
   // Dodge event handlers with timer cleanup
   const dodgeTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
-  // Content scrollTop across compact <-> full: compact sets the panel's
-  // height to 'auto', which collapses .content's scroll container (nothing
-  // left to scroll), forcing scrollTop to 0. Save it before compacting and
-  // restore it after the fixed height comes back. restoreTokenRef guards
-  // against a stale write landing after a subsequent compact/restore cycle
-  // has already started (rapid dodge churn can fire these events faster
-  // than the deferred write below resolves).
-  const contentRef = useRef<HTMLDivElement>(null);
-  const savedScrollTopRef = useRef<number | null>(null);
-  const restoreTokenRef = useRef(0);
-
+  // Compact mode collapses .content's scroll container, so saved scroll
+  // has to survive both restore-full events and manual minimize/restore.
   useEffect(() => {
     const handleDodge = (e: CustomEvent<{ x: number; y: number }>) => {
       setIsDodging(true);
@@ -180,19 +189,7 @@ export function FloatingPanel({
 
     const handleRestoreFull = () => {
       setPanelState('full');
-      const savedScrollTop = savedScrollTopRef.current;
-      savedScrollTopRef.current = null;
-      if (savedScrollTop === null) {
-        return;
-      }
-      const token = ++restoreTokenRef.current;
-      waitForReactUpdates().then(() => {
-        // Bail if a later compact/restore cycle started before this write
-        // landed — applying it now would overwrite that cycle's state.
-        if (restoreTokenRef.current === token && contentRef.current) {
-          contentRef.current.scrollTop = savedScrollTop;
-        }
-      });
+      restoreSavedContentScrollTop();
     };
 
     document.addEventListener('pathfinder-floating-dodge', handleDodge as EventListener);
@@ -209,7 +206,7 @@ export function FloatingPanel({
       dodgeTimersRef.current = [];
       clearTimeout(copyTimerRef.current);
     };
-  }, [setPosition]);
+  }, [setPosition, restoreSavedContentScrollTop]);
 
   const isMinimized = panelState === 'minimized';
 
