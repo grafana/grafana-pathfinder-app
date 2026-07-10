@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { IconButton, useStyles2, getPortalContainer } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { buildPathfinderShareUrl } from '../../utils/pathfinder-search-params';
+import { waitForReactUpdates } from '../../lib/async-utils';
 import { startModalWatch, stopModalWatch } from '../../interactive-engine';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 import { useDragResize } from './useDragResize';
@@ -61,6 +62,9 @@ export function FloatingPanel({
   const [panelState, setPanelState] = useState<FloatingPanelState>('full');
   const [isDodging, setIsDodging] = useState(false);
   const { geometry, setPosition, drag, resize } = useDragResize();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const savedScrollTopRef = useRef<number | null>(null);
+  const restoreTokenRef = useRef(0);
 
   // Auto-reposition to dodge interactive highlights and any open native modal
   useHighlightDodge(geometry, panelState === 'minimized', true);
@@ -70,13 +74,31 @@ export function FloatingPanel({
     return () => stopModalWatch();
   }, []);
 
+  const restoreSavedContentScrollTop = useCallback(() => {
+    const savedScrollTop = savedScrollTopRef.current;
+    if (savedScrollTop === null) {
+      return;
+    }
+    const token = ++restoreTokenRef.current;
+    waitForReactUpdates().then(() => {
+      if (restoreTokenRef.current !== token) {
+        return;
+      }
+      savedScrollTopRef.current = null;
+      if (contentRef.current) {
+        contentRef.current.scrollTop = savedScrollTop;
+      }
+    });
+  }, []);
+
   const handleMinimize = useCallback(() => {
     setPanelState('minimized');
   }, []);
 
   const handleRestore = useCallback(() => {
     setPanelState('full');
-  }, []);
+    restoreSavedContentScrollTop();
+  }, [restoreSavedContentScrollTop]);
 
   const handleSwitchToSidebar = useCallback(() => {
     // Don't call setMode here — the manager (onSwitchToSidebar) handles
@@ -129,7 +151,8 @@ export function FloatingPanel({
 
   // Dodge event handlers with timer cleanup
   const dodgeTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
-
+  // Compact mode collapses .content's scroll container, so saved scroll
+  // has to survive both restore-full events and manual minimize/restore.
   useEffect(() => {
     const handleDodge = (e: CustomEvent<{ x: number; y: number }>) => {
       setIsDodging(true);
@@ -156,6 +179,10 @@ export function FloatingPanel({
     };
 
     const handleCompact = () => {
+      restoreTokenRef.current++;
+      if (savedScrollTopRef.current === null) {
+        savedScrollTopRef.current = contentRef.current?.scrollTop ?? null;
+      }
       setPanelState('compact');
     };
 
@@ -165,6 +192,7 @@ export function FloatingPanel({
 
     const handleRestoreFull = () => {
       setPanelState('full');
+      restoreSavedContentScrollTop();
     };
 
     document.addEventListener('pathfinder-floating-dodge', handleDodge as EventListener);
@@ -181,7 +209,7 @@ export function FloatingPanel({
       dodgeTimersRef.current = [];
       clearTimeout(copyTimerRef.current);
     };
-  }, [setPosition]);
+  }, [setPosition, restoreSavedContentScrollTop]);
 
   const isMinimized = panelState === 'minimized';
 
@@ -256,7 +284,9 @@ export function FloatingPanel({
         </div>
 
         {/* Content area — always mounted for progress tracking */}
-        <div className={styles.content}>{children}</div>
+        <div ref={contentRef} className={styles.content}>
+          {children}
+        </div>
 
         {/* Resize handle */}
         {panelState === 'full' && (
