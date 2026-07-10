@@ -3,15 +3,12 @@ import { createPortal } from 'react-dom';
 import { IconButton, useStyles2, getPortalContainer } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { buildPathfinderShareUrl } from '../../utils/pathfinder-search-params';
-import { waitForReactUpdates } from '../../lib/async-utils';
-import { FloatingPanelEvents, type FloatingPanelMoveDetail } from '../../lib/event-names';
 import { startModalWatch, stopModalWatch } from '../../interactive-engine';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 import { useDragResize } from './useDragResize';
+import { useDodgeSession } from './useDodgeSession';
 import { useHighlightDodge } from './useHighlightDodge';
 import { MinimizedPill } from './MinimizedPill';
-
-type FloatingPanelState = 'full' | 'compact' | 'minimized';
 
 export interface FloatingPanelProps {
   /** Title of the currently active guide/tab */
@@ -60,46 +57,16 @@ export function FloatingPanel({
   children,
 }: FloatingPanelProps) {
   const styles = useStyles2(getFloatingPanelStyles);
-  const [panelState, setPanelState] = useState<FloatingPanelState>('full');
-  const [isDodging, setIsDodging] = useState(false);
   const { geometry, setPosition, drag, resize } = useDragResize();
-  const contentRef = useRef<HTMLDivElement>(null);
-  const savedScrollTopRef = useRef<number | null>(null);
-  const restoreTokenRef = useRef(0);
+  const { view, isDodging, contentRef, minimize, restoreFromPill } = useDodgeSession(setPosition);
 
   // Auto-reposition to dodge interactive highlights and any open native modal
-  useHighlightDodge(geometry, panelState === 'minimized', true);
+  useHighlightDodge(geometry, view === 'minimized', true);
 
   useEffect(() => {
     startModalWatch();
     return () => stopModalWatch();
   }, []);
-
-  const restoreSavedContentScrollTop = useCallback(() => {
-    const savedScrollTop = savedScrollTopRef.current;
-    if (savedScrollTop === null) {
-      return;
-    }
-    const token = ++restoreTokenRef.current;
-    waitForReactUpdates().then(() => {
-      if (restoreTokenRef.current !== token) {
-        return;
-      }
-      savedScrollTopRef.current = null;
-      if (contentRef.current) {
-        contentRef.current.scrollTop = savedScrollTop;
-      }
-    });
-  }, []);
-
-  const handleMinimize = useCallback(() => {
-    setPanelState('minimized');
-  }, []);
-
-  const handleRestore = useCallback(() => {
-    setPanelState('full');
-    restoreSavedContentScrollTop();
-  }, [restoreSavedContentScrollTop]);
 
   const handleSwitchToSidebar = useCallback(() => {
     // Don't call setMode here — the manager (onSwitchToSidebar) handles
@@ -136,88 +103,28 @@ export function FloatingPanel({
   const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || panelState === 'minimized' || e.defaultPrevented) {
+      if (e.key !== 'Escape' || view === 'minimized' || e.defaultPrevented) {
         return;
       }
       const target = e.target as Element | null;
       const isInsidePanel = target && panelRef.current?.contains(target);
       const isBodyOrDocument = target === document.body || target === document.documentElement;
       if (isInsidePanel || isBodyOrDocument) {
-        handleMinimize();
+        minimize();
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [panelState, handleMinimize]);
+  }, [view, minimize]);
 
-  // Dodge event handlers with timer cleanup
-  const dodgeTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
-  // Compact mode collapses .content's scroll container, so saved scroll
-  // has to survive both restore-full events and manual minimize/restore.
-  useEffect(() => {
-    const handleDodge = (e: CustomEvent<FloatingPanelMoveDetail>) => {
-      setIsDodging(true);
-      setPosition(e.detail.x, e.detail.y);
-      // Clear any pending dodge timers from a previous dodge
-      dodgeTimersRef.current.forEach(clearTimeout);
-      dodgeTimersRef.current = [];
-      // Report move after the position transition completes
-      dodgeTimersRef.current.push(
-        setTimeout(() => {
-          reportAppInteraction(UserInteraction.FloatingPanelMoved, {
-            trigger: 'highlight_dodge',
-            x: e.detail.x,
-            y: e.detail.y,
-          });
-        }, 250)
-      );
-      // Keep the border flash visible for 1s so the user notices the move
-      dodgeTimersRef.current.push(
-        setTimeout(() => {
-          setIsDodging(false);
-        }, 1000)
-      );
-    };
+  useEffect(() => () => clearTimeout(copyTimerRef.current), []);
 
-    const handleCompact = () => {
-      restoreTokenRef.current++;
-      if (savedScrollTopRef.current === null) {
-        savedScrollTopRef.current = contentRef.current?.scrollTop ?? null;
-      }
-      setPanelState('compact');
-    };
-
-    const handleRestorePosition = (e: CustomEvent<FloatingPanelMoveDetail>) => {
-      setPosition(e.detail.x, e.detail.y);
-    };
-
-    const handleRestoreFull = () => {
-      setPanelState('full');
-      restoreSavedContentScrollTop();
-    };
-
-    document.addEventListener(FloatingPanelEvents.Dodge, handleDodge as EventListener);
-    document.addEventListener(FloatingPanelEvents.RestorePosition, handleRestorePosition as EventListener);
-    document.addEventListener(FloatingPanelEvents.Compact, handleCompact);
-    document.addEventListener(FloatingPanelEvents.RestoreFull, handleRestoreFull);
-
-    return () => {
-      document.removeEventListener(FloatingPanelEvents.Dodge, handleDodge as EventListener);
-      document.removeEventListener(FloatingPanelEvents.RestorePosition, handleRestorePosition as EventListener);
-      document.removeEventListener(FloatingPanelEvents.Compact, handleCompact);
-      document.removeEventListener(FloatingPanelEvents.RestoreFull, handleRestoreFull);
-      dodgeTimersRef.current.forEach(clearTimeout);
-      dodgeTimersRef.current = [];
-      clearTimeout(copyTimerRef.current);
-    };
-  }, [setPosition, restoreSavedContentScrollTop]);
-
-  const isMinimized = panelState === 'minimized';
+  const isMinimized = view === 'minimized';
 
   const panelContent = (
     <>
       {isMinimized && (
-        <MinimizedPill hasActiveGuide={hasActiveGuide} stepProgress={stepProgress} onRestore={handleRestore} />
+        <MinimizedPill hasActiveGuide={hasActiveGuide} stepProgress={stepProgress} onRestore={restoreFromPill} />
       )}
       <div
         ref={panelRef}
@@ -226,13 +133,13 @@ export function FloatingPanel({
           left: geometry.x,
           top: geometry.y,
           width: geometry.width,
-          height: panelState === 'compact' ? 'auto' : geometry.height,
+          height: view === 'compact' ? 'auto' : geometry.height,
           // Keep mounted but hidden when minimized so ContentRenderer
           // and the interactive engine continue tracking progress
           display: isMinimized ? 'none' : undefined,
         }}
         data-pathfinder-content="true"
-        data-panel-state={panelState}
+        data-panel-state={view}
         role="dialog"
         aria-label="Pathfinder floating panel"
       >
@@ -273,13 +180,7 @@ export function FloatingPanel({
                 aria-label="Open in full screen"
               />
             )}
-            <IconButton
-              name="minus"
-              size="sm"
-              tooltip="Minimize"
-              onClick={handleMinimize}
-              aria-label="Minimize panel"
-            />
+            <IconButton name="minus" size="sm" tooltip="Minimize" onClick={minimize} aria-label="Minimize panel" />
             <IconButton name="times" size="sm" tooltip="Close" onClick={onClose} aria-label="Close panel" />
           </div>
         </div>
@@ -290,7 +191,7 @@ export function FloatingPanel({
         </div>
 
         {/* Resize handle */}
-        {panelState === 'full' && (
+        {view === 'full' && (
           <div
             className={styles.resizeHandle}
             onPointerDown={resize.onPointerDown}
