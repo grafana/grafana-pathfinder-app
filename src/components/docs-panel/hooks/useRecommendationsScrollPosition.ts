@@ -18,7 +18,12 @@ export function useRecommendationsScrollPosition(isReady: boolean): RefObject<HT
     }
     hasRestoredRef.current = true;
 
-    const saved = sessionStorage.getItem(StorageKeys.RECOMMENDATIONS_SCROLL_POSITION);
+    let saved: string | null = null;
+    try {
+      saved = sessionStorage.getItem(StorageKeys.RECOMMENDATIONS_SCROLL_POSITION);
+    } catch {
+      return;
+    }
     if (saved === null) {
       return;
     }
@@ -31,6 +36,9 @@ export function useRecommendationsScrollPosition(isReady: boolean): RefObject<HT
     });
   }, [isReady]);
 
+  // Deliberately independent of `isReady`: this effect attaches once per mount so the
+  // teardown it runs on `isReady` transitions can't overwrite the value the restore
+  // effect above is about to read.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
@@ -50,7 +58,7 @@ export function useRecommendationsScrollPosition(isReady: boolean): RefObject<HT
       handleScroll();
       container.removeEventListener('scroll', handleScroll);
     };
-  }, [isReady]);
+  }, []);
 
   return containerRef;
 }

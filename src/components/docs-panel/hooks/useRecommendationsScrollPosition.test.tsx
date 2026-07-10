@@ -42,6 +42,22 @@ describe('useRecommendationsScrollPosition', () => {
     expect(container.scrollTop).toBe(0);
   });
 
+  it('does not clobber the saved position when isReady flips from false to true within one mount', async () => {
+    sessionStorage.setItem(StorageKeys.RECOMMENDATIONS_SCROLL_POSITION, '450');
+
+    const { getByTestId, rerender } = render(<TestContainer isReady={false} />);
+    const container = getByTestId('scroll-container') as HTMLDivElement;
+    Object.defineProperty(container, 'scrollTop', { value: 0, writable: true });
+
+    act(() => {
+      rerender(<TestContainer isReady={true} />);
+    });
+    await flushAnimationFrame();
+
+    expect(sessionStorage.getItem(StorageKeys.RECOMMENDATIONS_SCROLL_POSITION)).toBe('450');
+    expect(container.scrollTop).toBe(450);
+  });
+
   it('saves scroll position on scroll and restores it after remount', async () => {
     const { getByTestId, unmount } = render(<TestContainer isReady={true} />);
     const container = getByTestId('scroll-container') as HTMLDivElement;
