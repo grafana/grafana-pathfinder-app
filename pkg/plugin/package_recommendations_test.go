@@ -64,7 +64,8 @@ func validPayload(t *testing.T) []byte {
 		},
 		"untargeted": {
 			"path": "untargeted/v1.0.0",
-			// no targeting -> must be dropped
+			// no targeting -> kept in the response (for by-ID resolution) but
+			// skipped by manifest enrichment
 		},
 		"no-path": {
 			"targeting": map[string]any{
@@ -131,9 +132,10 @@ func TestHandlePackageRecommendations_Success(t *testing.T) {
 	if promMatch["urlPrefix"] != "/connections" {
 		t.Errorf("urlPrefix not preserved on prom-101: %+v", promMatch)
 	}
-	// 1 repo fetch + 2 manifest fetches (one per kept entry).
-	if got := atomic.LoadInt32(calls); got != 3 {
-		t.Errorf("calls = %d, want 3 (repo + 2 manifests)", got)
+	// 1 repo fetch + 1 manifest fetch (targeted entry only; untargeted
+	// entries resolve their manifests lazily on the frontend).
+	if got := atomic.LoadInt32(calls); got != 2 {
+		t.Errorf("calls = %d, want 2 (repo + 1 manifest)", got)
 	}
 }
 
@@ -191,10 +193,10 @@ func TestHandlePackageRecommendations_DetachesFetchFromRequestCancellation(t *te
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
 	}
-	// 1 repo + 2 manifest fetches (one per kept entry in validPayload), all
+	// 1 repo + 1 manifest fetch (targeted entry in validPayload), all
 	// succeeding because the fetcher's ctx.Err() check passes.
-	if got := atomic.LoadInt32(calls); got != 3 {
-		t.Errorf("upstream calls = %d, want 3", got)
+	if got := atomic.LoadInt32(calls); got != 2 {
+		t.Errorf("upstream calls = %d, want 2", got)
 	}
 }
 
@@ -289,7 +291,7 @@ func TestIsAllowedInteractiveLearningHost(t *testing.T) {
 }
 
 func TestFetchAndParsePackageRepository_RejectsDisallowedHost(t *testing.T) {
-	_, err := fetchAndParsePackageRepository(context.Background(), "https://evil.example.com/repository.json")
+	_, _, err := fetchAndParsePackageRepository(context.Background(), "https://evil.example.com/repository.json")
 	if err == nil || !strings.Contains(err.Error(), "host not allowed") {
 		t.Fatalf("expected host-not-allowed error, got %v", err)
 	}
@@ -303,7 +305,8 @@ func TestEnrichPackagesWithManifests_InlinesParsedJSON(t *testing.T) {
 		"prom-101": {"path": "prom-101/v1", "type": "guide", "title": "Prom",
 			"targeting": {"match": {"urlPrefix": "/connections"}}},
 		"prom-lj": {"path": "prom-lj/v1", "type": "path", "title": "Prom journey",
-			"targeting": {"match": {"urlPrefix": "/connections"}}}
+			"targeting": {"match": {"urlPrefix": "/connections"}}},
+		"milestone-only": {"path": "milestone-only/v1", "type": "guide"}
 	}`)
 	manifestBody := []byte(`{
 		"id": "prom-lj",
@@ -357,18 +360,21 @@ func TestEnrichPackagesWithManifests_InlinesParsedJSON(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 
-	if len(resp.Packages) != 2 {
-		t.Fatalf("expected 2 packages, got %d", len(resp.Packages))
+	if len(resp.Packages) != 3 {
+		t.Fatalf("expected 3 packages, got %d", len(resp.Packages))
 	}
 
 	var promLJ *PackageEntry
 	var prom101 *PackageEntry
+	var milestoneOnly *PackageEntry
 	for i := range resp.Packages {
 		switch resp.Packages[i].ID {
 		case "prom-lj":
 			promLJ = &resp.Packages[i]
 		case "prom-101":
 			prom101 = &resp.Packages[i]
+		case "milestone-only":
+			milestoneOnly = &resp.Packages[i]
 		}
 	}
 
@@ -390,6 +396,22 @@ func TestEnrichPackagesWithManifests_InlinesParsedJSON(t *testing.T) {
 		t.Errorf("prom-101 manifest should be nil after fetch failure, got %+v", prom101.Manifest)
 	}
 
+	// Untargeted entries survive in the response but are never enriched —
+	// their manifests resolve lazily via OnlineCdnPackageResolver.
+	if milestoneOnly == nil {
+		t.Fatal("milestone-only missing from response")
+	}
+	if milestoneOnly.Manifest != nil {
+		t.Errorf("milestone-only manifest should be nil (untargeted, not enriched), got %+v", milestoneOnly.Manifest)
+	}
+	mu.Lock()
+	for url := range calls {
+		if strings.Contains(url, "milestone-only") {
+			t.Errorf("untargeted entry's manifest was fetched: %s", url)
+		}
+	}
+	mu.Unlock()
+
 	// Bug 3 regression: every manifest fetch must request the tighter
 	// 256 KB cap, not the 5 MB repository cap.
 	mu.Lock()
@@ -402,6 +424,132 @@ func TestEnrichPackagesWithManifests_InlinesParsedJSON(t *testing.T) {
 			t.Errorf("manifest fetch %q maxBytes = %d, want %d (manifest cap, not repo cap)",
 				url, got, packageManifestMaxBytes)
 		}
+	}
+}
+
+func withEnrichBudgetOverride(t *testing.T, d time.Duration) {
+	t.Helper()
+	prev := packageManifestEnrichTotalBudget
+	packageManifestEnrichTotalBudget = d
+	t.Cleanup(func() { packageManifestEnrichTotalBudget = prev })
+}
+
+// slowManifestRepo builds a repo index with n targeted entries and a fetcher
+// whose manifest branch blocks until its context expires — simulating a CDN
+// slow enough to trip the total enrichment budget.
+func slowManifestRepo(t *testing.T, n int) packageRepositoryFetcher {
+	t.Helper()
+	raw := map[string]map[string]any{}
+	for i := 0; i < n; i++ {
+		raw[fmt.Sprintf("pkg-%d", i)] = map[string]any{
+			"path":      fmt.Sprintf("pkg-%d/v1", i),
+			"type":      "guide",
+			"targeting": map[string]any{"match": map[string]any{"urlPrefix": "/connections"}},
+		}
+	}
+	repoBody, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return func(ctx context.Context, rawURL string, maxBytes int64) ([]byte, error) {
+		if strings.HasSuffix(rawURL, "repository.json") {
+			return repoBody, nil
+		}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+}
+
+func TestEnrichPackagesWithManifests_RespectsTotalBudget(t *testing.T) {
+	resetPackageRecommendationsCache()
+	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+	withEnrichBudgetOverride(t, 100*time.Millisecond)
+	withFetcherOverride(t, slowManifestRepo(t, 64))
+
+	app := newTestApp(t)
+	start := time.Now()
+	rr := httptest.NewRecorder()
+	app.handlePackageRecommendations(rr, httptest.NewRequest(http.MethodGet, "/package-recommendations", nil))
+	elapsed := time.Since(start)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	// Generous ceiling: the response must arrive in ~budget time, not
+	// batches × per-fetch-timeout.
+	if elapsed > 2*time.Second {
+		t.Errorf("handler took %v; budget should bound it near 100ms", elapsed)
+	}
+
+	var resp PackageRecommendationsResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Packages) != 64 {
+		t.Fatalf("expected all 64 packages in response, got %d", len(resp.Packages))
+	}
+	for _, p := range resp.Packages {
+		if p.Manifest != nil {
+			t.Errorf("package %s has a manifest despite budget expiry", p.ID)
+		}
+	}
+
+	packageCacheMu.Lock()
+	partial := packageCache != nil && packageCache.partial
+	packageCacheMu.Unlock()
+	if !partial {
+		t.Error("budget-expired response was not cached as partial")
+	}
+}
+
+func TestHandlePackageRecommendations_PartialResultUsesShortTTL(t *testing.T) {
+	resetPackageRecommendationsCache()
+	advance := withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+	withEnrichBudgetOverride(t, 50*time.Millisecond)
+
+	var repoFetches int32
+	slow := slowManifestRepo(t, 4)
+	withFetcherOverride(t, func(ctx context.Context, rawURL string, maxBytes int64) ([]byte, error) {
+		if strings.HasSuffix(rawURL, "repository.json") {
+			atomic.AddInt32(&repoFetches, 1)
+		}
+		return slow(ctx, rawURL, maxBytes)
+	})
+
+	app := newTestApp(t)
+	app.handlePackageRecommendations(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/package-recommendations", nil))
+	if got := atomic.LoadInt32(&repoFetches); got != 1 {
+		t.Fatalf("repo fetches = %d, want 1", got)
+	}
+
+	// Within the short TTL the partial result is served from cache.
+	advance(packageRepositoryPartialCacheTTL - time.Minute)
+	app.handlePackageRecommendations(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/package-recommendations", nil))
+	if got := atomic.LoadInt32(&repoFetches); got != 1 {
+		t.Errorf("repo fetches = %d before partial TTL expiry, want 1", got)
+	}
+
+	// Past the short TTL the partial result is refetched — this time let the
+	// manifests succeed instantly so the refresh completes within budget.
+	withFetcherOverride(t, func(ctx context.Context, rawURL string, maxBytes int64) ([]byte, error) {
+		if strings.HasSuffix(rawURL, "repository.json") {
+			atomic.AddInt32(&repoFetches, 1)
+			return slow(ctx, rawURL, maxBytes)
+		}
+		return []byte(`{"id": "x", "type": "guide"}`), nil
+	})
+	advance(2 * time.Minute)
+	app.handlePackageRecommendations(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/package-recommendations", nil))
+	if got := atomic.LoadInt32(&repoFetches); got != 2 {
+		t.Errorf("repo fetches = %d after partial TTL expiry, want 2", got)
+	}
+
+	// The refreshed result enriched fully, so it's complete and now honours
+	// the long TTL: another short-TTL-sized advance must NOT refetch.
+	advance(packageRepositoryPartialCacheTTL + time.Minute)
+	app.handlePackageRecommendations(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/package-recommendations", nil))
+	if got := atomic.LoadInt32(&repoFetches); got != 2 {
+		t.Errorf("repo fetches = %d; complete result must use the 6h TTL, want 2", got)
 	}
 }
 
