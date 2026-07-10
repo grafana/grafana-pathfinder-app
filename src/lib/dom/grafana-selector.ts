@@ -4,8 +4,27 @@
  * Based on @grafana/plugin-e2e approach for cross-version compatibility
  */
 
-import { selectors as grafanaSelectors } from '@grafana/e2e-selectors';
+import { resolveSelectors, versionedComponents, versionedPages } from '@grafana/e2e-selectors';
+import { config } from '@grafana/runtime';
 import { querySelectorAllEnhanced } from './enhanced-selector';
+
+type SelectorNode = { [key: string]: SelectorNode | string | ((...args: never[]) => unknown) };
+
+let resolvedSelectors: { version: string; tree: SelectorNode } | null = null;
+
+/**
+ * The selector tree resolved for the running Grafana version, so both forward
+ * resolution and reverse lookup use the values this instance actually renders,
+ * not the newest values in the bundled package.
+ */
+function getResolvedSelectors(): SelectorNode {
+  const version = config.buildInfo.version || 'latest';
+  if (resolvedSelectors?.version !== version) {
+    const tree = resolveSelectors({ components: versionedComponents, pages: versionedPages }, version);
+    resolvedSelectors = { version, tree: tree as unknown as SelectorNode };
+  }
+  return resolvedSelectors.tree;
+}
 
 /**
  * Convert a Grafana selector path to a CSS selector string
@@ -31,7 +50,7 @@ export function toGrafanaSelector(selectorPath: string, selectorId?: string): st
 
   // Navigate the selector object path
   const parts = selectorPath.split('.');
-  let current: any = grafanaSelectors;
+  let current: SelectorNode[string] | undefined = getResolvedSelectors();
 
   for (const part of parts) {
     if (!current || typeof current !== 'object') {
@@ -49,7 +68,11 @@ export function toGrafanaSelector(selectorPath: string, selectorId?: string): st
     if (!selectorId) {
       throw new Error(`Selector ${selectorPath} requires an ID parameter`);
     }
-    resolvedValue = current(selectorId);
+    const result = (current as (id: string) => unknown)(selectorId);
+    if (typeof result !== 'string') {
+      throw new Error(`Invalid selector type at ${selectorPath}: ${typeof result}`);
+    }
+    resolvedValue = result;
   } else if (typeof current === 'string') {
     resolvedValue = current;
   } else {
@@ -118,8 +141,6 @@ export function existsByGrafanaSelector(selectorPath: string, selectorId?: strin
 // Reverse lookup: element → grafana: selector path
 // ============================================================================
 
-type SelectorNode = { [key: string]: SelectorNode | string | ((...args: never[]) => unknown) };
-
 interface ReverseIndex {
   exact: Map<string, string>;
   templates: Array<{ regex: RegExp; path: string }>;
@@ -163,13 +184,15 @@ function buildTemplate(fn: (...args: never[]) => unknown): { regex: RegExp; weig
   return { regex: new RegExp(`^${escapeRegExp(prefix)}(.+)${escapeRegExp(suffix)}$`), weight: discriminator.length };
 }
 
-let reverseIndex: ReverseIndex | null = null;
+let reverseIndex: { source: SelectorNode; index: ReverseIndex } | null = null;
 
 function getReverseIndex(): ReverseIndex {
-  if (reverseIndex) {
-    return reverseIndex;
+  const root = getResolvedSelectors();
+  if (reverseIndex?.source === root) {
+    return reverseIndex.index;
   }
   const exact = new Map<string, string>();
+  const ambiguous = new Set<string>();
   const templates: Array<{ regex: RegExp; path: string; weight: number }> = [];
 
   const walk = (node: SelectorNode, path: string): void => {
@@ -177,7 +200,13 @@ function getReverseIndex(): ReverseIndex {
       const value = node[key];
       const childPath = path ? `${path}.${key}` : key;
       if (typeof value === 'string') {
-        if (!exact.has(value)) {
+        if (ambiguous.has(value)) {
+          continue;
+        }
+        if (exact.has(value)) {
+          exact.delete(value);
+          ambiguous.add(value);
+        } else {
           exact.set(value, childPath);
         }
       } else if (typeof value === 'function') {
@@ -191,14 +220,13 @@ function getReverseIndex(): ReverseIndex {
     }
   };
 
-  const root = grafanaSelectors as unknown as SelectorNode;
   walk(root.components as SelectorNode, 'components');
   walk(root.pages as SelectorNode, 'pages');
 
   // Most specific templates first, so a generic pattern never shadows a precise one.
   templates.sort((a, b) => b.weight - a.weight);
-  reverseIndex = { exact, templates: templates.map(({ regex, path }) => ({ regex, path })) };
-  return reverseIndex;
+  reverseIndex = { source: root, index: { exact, templates: templates.map(({ regex, path }) => ({ regex, path })) } };
+  return reverseIndex.index;
 }
 
 /**
@@ -209,6 +237,11 @@ function getReverseIndex(): ReverseIndex {
  * Covers both `components.*` and `pages.*`, matching on `data-testid` first and
  * `aria-label` second, and extracts the parameter for parameterized selectors
  * (e.g. `grafana:components.Breadcrumbs.breadcrumb:Home`).
+ *
+ * Lookups are resolved against the running Grafana version, and any ambiguous
+ * value — one claimed by several selector paths, or matching several templates —
+ * returns null so the picker degrades to its own CSS strategies rather than
+ * emitting a confidently wrong path.
  */
 export function findGrafanaSelectorPath(element: HTMLElement): string | null {
   const index = getReverseIndex();
@@ -224,11 +257,20 @@ export function findGrafanaSelectorPath(element: HTMLElement): string | null {
   }
 
   for (const value of values) {
+    let matched: string | null = null;
     for (const template of index.templates) {
       const match = template.regex.exec(value);
-      if (match && match[1]) {
-        return `grafana:${template.path}:${match[1]}`;
+      if (!match || !match[1]) {
+        continue;
       }
+      if (matched) {
+        matched = null;
+        break;
+      }
+      matched = `grafana:${template.path}:${match[1]}`;
+    }
+    if (matched) {
+      return matched;
     }
   }
 
