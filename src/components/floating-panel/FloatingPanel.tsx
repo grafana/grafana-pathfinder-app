@@ -76,13 +76,16 @@ export function FloatingPanel({
 
   const restoreSavedContentScrollTop = useCallback(() => {
     const savedScrollTop = savedScrollTopRef.current;
-    savedScrollTopRef.current = null;
     if (savedScrollTop === null) {
       return;
     }
     const token = ++restoreTokenRef.current;
     waitForReactUpdates().then(() => {
-      if (restoreTokenRef.current === token && contentRef.current) {
+      if (restoreTokenRef.current !== token) {
+        return;
+      }
+      savedScrollTopRef.current = null;
+      if (contentRef.current) {
         contentRef.current.scrollTop = savedScrollTop;
       }
     });

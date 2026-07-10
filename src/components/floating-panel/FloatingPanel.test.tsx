@@ -105,6 +105,32 @@ describe('FloatingPanel scroll preservation across compact <-> full', () => {
     expect(screen.getByRole('dialog')).toHaveAttribute('data-panel-state', 'compact');
   });
 
+  it('keeps the saved scroll position when restore is interrupted by another compact', async () => {
+    const content = renderPanel();
+    content.scrollTop = 800;
+
+    act(() => {
+      document.dispatchEvent(new CustomEvent('pathfinder-floating-compact'));
+    });
+    content.scrollTop = 0;
+
+    act(() => {
+      document.dispatchEvent(new CustomEvent('pathfinder-floating-restore-full'));
+    });
+    act(() => {
+      document.dispatchEvent(new CustomEvent('pathfinder-floating-compact'));
+    });
+    content.scrollTop = 0;
+
+    await act(async () => {
+      document.dispatchEvent(new CustomEvent('pathfinder-floating-restore-full'));
+      await flushReactUpdates();
+    });
+
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-panel-state', 'full');
+    expect(content.scrollTop).toBe(800);
+  });
+
   it('restores saved compact scroll when the user minimizes before restore-full', async () => {
     const content = renderPanel();
     content.scrollTop = 800;
