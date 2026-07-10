@@ -1,6 +1,6 @@
 import { reportAppInteraction, UserInteraction, bindExperimentsProvider } from './analytics';
 import { reportInteraction } from '@grafana/runtime';
-import { notifyFaroEngagement, pushFaroUserAction } from './faro';
+import { pushFaroUserAction } from './faro';
 
 jest.mock('@grafana/runtime', () => ({
   reportInteraction: jest.fn(),
@@ -18,12 +18,10 @@ jest.mock('./faro', () => ({
   pushFaroUserAction: jest.fn(),
   pushFaroLog: jest.fn(),
   pushFaroError: jest.fn(),
-  notifyFaroEngagement: jest.fn(() => Promise.resolve()),
 }));
 
 const mockReportInteraction = reportInteraction as jest.Mock;
 const mockPushFaroUserAction = pushFaroUserAction as jest.Mock;
-const mockNotifyFaroEngagement = notifyFaroEngagement as jest.Mock;
 
 describe('reportAppInteraction', () => {
   beforeEach(() => {
@@ -118,7 +116,6 @@ describe('reportAppInteraction Faro mirroring', () => {
 
     expect(() => reportAppInteraction(UserInteraction.ShowMeButtonClick, { step_id: 'step-1' })).not.toThrow();
     expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
-    expect(mockNotifyFaroEngagement).toHaveBeenCalledTimes(1);
     warnSpy.mockRestore();
   });
 });
@@ -185,15 +182,8 @@ describe('reportAppInteraction experiment enrichment', () => {
     expect(props.flag_key).toBe(HIGHLIGHTED);
   });
 
-  it('signals Faro engagement for regular interactions', () => {
-    reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'open' });
-    expect(mockNotifyFaroEngagement).toHaveBeenCalledTimes(1);
-    expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not signal Faro engagement for flag exposures, but still mirrors them', () => {
+  it('still mirrors flag exposures to Faro (beforeSend gates delivery, not the mirror)', () => {
     reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: HIGHLIGHTED });
-    expect(mockNotifyFaroEngagement).not.toHaveBeenCalled();
     expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
   });
 });

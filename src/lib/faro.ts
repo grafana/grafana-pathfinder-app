@@ -16,6 +16,8 @@ import {
   ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES,
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
+import { StorageKeys } from './storage-keys';
+import { isExtensionSidebarOwnedByPathfinder } from './storage/extension-sidebar';
 
 const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/d6ec87b657b65de6e363de05623d9c57';
 const APP_NAME = packageJson.name;
@@ -29,94 +31,12 @@ type FaroEnvironment = 'dev' | 'ops' | 'prod' | 'local';
 let faroInstance: Faro | null = null;
 let initStarted = false;
 
-// Faro init is engagement-gated: sessions must mean "used Pathfinder or
-// Pathfinder errored", not "loaded a Grafana page". While armed, facade calls
-// queue here and flush after the first trigger (any analytics event except
-// flag exposures, or an error) completes the real init.
-type BufferedFaroCall =
-  | { kind: 'error'; error: Error; context?: Record<string, string> }
-  | { kind: 'log'; level: FaroLogLevel; message: string; context?: Record<string, string> }
-  | { kind: 'userAction'; name: string; attributes?: Record<string, unknown> };
-
-const PRE_INIT_BUFFER_CAP = 30;
-let preInitBuffer: BufferedFaroCall[] | null = null;
-let pendingInit: Promise<void> | null = null;
-
 function guardTelemetry(fn: () => void): void {
   try {
     fn();
   } catch {
     // Telemetry must never break the app it's observing.
   }
-}
-
-// The SDK's fixed volatile-session sessionStorage key. Hardcoded because
-// importing the constant would pull @grafana/faro-web-sdk into the entry
-// bundle — the SDK must stay behind the dynamic import in initFaro.
-const FARO_SESSION_STORAGE_KEY = 'com.grafana.faro.session';
-
-function hasLiveFaroSession(): boolean {
-  try {
-    return sessionStorage.getItem(FARO_SESSION_STORAGE_KEY) !== null;
-  } catch {
-    return false;
-  }
-}
-
-function bufferPreInitCall(call: BufferedFaroCall): boolean {
-  if (!preInitBuffer) {
-    return false;
-  }
-  if (preInitBuffer.length >= PRE_INIT_BUFFER_CAP) {
-    preInitBuffer.shift();
-  }
-  preInitBuffer.push(call);
-  return true;
-}
-
-function flushPreInitBuffer(): void {
-  const buffered = preInitBuffer ?? [];
-  preInitBuffer = null;
-  for (const call of buffered) {
-    if (call.kind === 'error') {
-      pushFaroError(call.error, call.context);
-    } else if (call.kind === 'log') {
-      pushFaroLog(call.level, call.message, call.context);
-    } else {
-      pushFaroUserAction(call.name, call.attributes);
-    }
-  }
-}
-
-function triggerFaroInit(): Promise<void> {
-  if (!pendingInit) {
-    pendingInit = initFaro()
-      .catch(() => undefined)
-      .then(() => flushPreInitBuffer());
-  }
-  return pendingInit;
-}
-
-export function armFaro(): void {
-  if (initStarted || preInitBuffer) {
-    return;
-  }
-  const resolved = resolveFaroEnvironment();
-  if (!resolved) {
-    return;
-  }
-  if (resolved.isLocalOverride || hasLiveFaroSession()) {
-    void triggerFaroInit();
-    return;
-  }
-  preInitBuffer = [];
-}
-
-export function notifyFaroEngagement(): Promise<void> {
-  if (!preInitBuffer && !pendingInit) {
-    return Promise.resolve();
-  }
-  return triggerFaroInit();
 }
 
 // Pathfinder is a micro-frontend inside Grafana; multiple Faro instances can
@@ -239,8 +159,46 @@ export function filterPathfinderTelemetry(item: TransportItem<APIEvent>): Transp
   return item;
 }
 
-export function isFaroEnabled(): boolean {
-  return faroInstance !== null;
+const SIDEBAR_COMPONENT_TITLE = 'Interactive learning';
+const OVERLAY_ROOT_IDS = ['pathfinder-controller-root', 'pathfinder-kiosk-root'];
+
+// Mode literals mirror PanelMode in global-state/panel-mode — importing
+// panelModeManager here would cycle via global-state → analytics → faro.
+function isPathfinderOpen(): boolean {
+  try {
+    const mode = localStorage.getItem(StorageKeys.PANEL_MODE);
+    if (mode === 'floating' || mode === 'fullscreen') {
+      return true;
+    }
+  } catch {
+    // localStorage unavailable — fall through to the DOM checks.
+  }
+  if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, SIDEBAR_COMPONENT_TITLE)) {
+    return true;
+  }
+  return OVERLAY_ROOT_IDS.some((id) => document.getElementById(id) !== null);
+}
+
+// Latched for the rest of the page load: the sidebar-close mirror fires
+// after unmount, when the docked key is already gone.
+let pathfinderWasOpen = false;
+
+// Attribution (filterPathfinderTelemetry) asks "is this ours?"; this gate
+// asks "is Pathfinder actually in use?". Everything except exceptions and
+// error-level logs is dropped until Pathfinder is open in one of its
+// surfaces, so collector sessions mean "used Pathfinder or Pathfinder
+// errored", not "loaded a Grafana page".
+export function passesActivityGate(item: TransportItem<APIEvent>): boolean {
+  if (isExceptionItem(item)) {
+    return true;
+  }
+  if (isLogItem(item) && String(item.payload.level) === 'error') {
+    return true;
+  }
+  if (!pathfinderWasOpen && isPathfinderOpen()) {
+    pathfinderWasOpen = true;
+  }
+  return pathfinderWasOpen;
 }
 
 function resolveFaroEnvironment(): { environment: FaroEnvironment; isLocalOverride: boolean } | null {
@@ -311,16 +269,12 @@ export async function initFaro(): Promise<void> {
         },
       },
     },
-    beforeSend: filterPathfinderTelemetry,
+    beforeSend: (item) => (passesActivityGate(item) ? filterPathfinderTelemetry(item) : null),
   });
 }
 
 export function pushFaroError(error: Error, context?: Record<string, string>): void {
   guardTelemetry(() => {
-    if (bufferPreInitCall({ kind: 'error', error, context })) {
-      void triggerFaroInit();
-      return;
-    }
     faroInstance?.api.pushError(error, { context: { ...context, [EXPLICIT_REPORT_MARKER]: 'true' } });
   });
 }
@@ -329,12 +283,6 @@ export type FaroLogLevel = 'info' | 'warn' | 'error';
 
 export function pushFaroLog(level: FaroLogLevel, message: string, context?: Record<string, string>): void {
   guardTelemetry(() => {
-    if (bufferPreInitCall({ kind: 'log', level, message, context })) {
-      if (level === 'error') {
-        void triggerFaroInit();
-      }
-      return;
-    }
     faroInstance?.api.pushLog([`${LOG_PREFIX} ${message}`], { level: level as LogLevel, context });
   });
 }
@@ -365,9 +313,6 @@ let userActionSeq = 0;
 // cast internally, since UserActionsAPI has no top-level `endUserAction()`.
 export function pushFaroUserAction(name: string, attributes?: Record<string, unknown>): void {
   guardTelemetry(() => {
-    if (bufferPreInitCall({ kind: 'userAction', name, attributes })) {
-      return;
-    }
     if (!faroInstance) {
       return;
     }
@@ -407,13 +352,6 @@ export async function withFaroUserAction<T>(
   work: () => Promise<T> | T,
   timeoutMs = USER_ACTION_TIMEOUT_MS
 ): Promise<T> {
-  // Reaching an interactive funnel is engagement by definition: complete an
-  // armed init before deciding to pass through, so the first action in a
-  // fresh tab is captured rather than run outside an action envelope. Only
-  // awaited pre-init — once initialized the action must start synchronously.
-  if (!faroInstance) {
-    await notifyFaroEngagement().catch(() => undefined);
-  }
   let action: StampableUserAction | undefined;
   guardTelemetry(() => {
     if (faroInstance && faroInstance.api.getActiveUserAction() === undefined) {

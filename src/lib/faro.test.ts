@@ -41,6 +41,7 @@ interface CapturedFaroConfig {
   app: { name: string; version: string; environment: string };
   sessionTracking: { samplingRate?: number; persistent: boolean };
   instrumentations: Array<{ constructor: { name: string } }>;
+  beforeSend: (item: TransportItem<APIEvent>) => TransportItem<APIEvent> | null;
 }
 
 const mockInitializeFaro = jest.fn((_cfg: CapturedFaroConfig) => mockFaroInstance);
@@ -164,10 +165,10 @@ function exceptionItemWithoutStacktrace(context?: Record<string, string>): Trans
   } as unknown as TransportItem<APIEvent>;
 }
 
-function logItem(message: string): TransportItem<APIEvent> {
+function logItem(message: string, level = 'error'): TransportItem<APIEvent> {
   return {
     type: 'log',
-    payload: { message, level: 'error', timestamp: new Date().toISOString(), context: undefined },
+    payload: { message, level, timestamp: new Date().toISOString(), context: undefined },
     meta: {},
   } as unknown as TransportItem<APIEvent>;
 }
@@ -290,7 +291,6 @@ describe('initFaro', () => {
     const faro = freshFaro();
     await faro.initFaro();
     expect(mockInitializeFaro).not.toHaveBeenCalled();
-    expect(faro.isFaroEnabled()).toBe(false);
   });
 
   it('does not initialize when analytics reporting is disabled', async () => {
@@ -304,7 +304,6 @@ describe('initFaro', () => {
     const faro = freshFaro();
     await faro.initFaro();
     expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
-    expect(faro.isFaroEnabled()).toBe(true);
   });
 
   it('initializes with isolate: true and the real package version, not the %VERSION% placeholder', async () => {
@@ -617,31 +616,10 @@ describe('withFaroUserAction', () => {
     expect(mockActionEnd).not.toHaveBeenCalled();
   });
 
-  it('captures the first pathfinder_section_run in a fresh armed tab (init completes first)', async () => {
-    const faro = freshFaro();
-    faro.armFaro();
-    expect(mockInitializeFaro).not.toHaveBeenCalled();
-
-    const result = await faro.withFaroUserAction('pathfinder_section_run', { section_id: 's1' }, () => 'ran');
-    expect(result).toBe('ran');
-    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
-    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_section_run', { section_id: 's1' });
-    expect(mockActionEnd).toHaveBeenCalledTimes(1);
-  });
-
-  it('captures the first pathfinder_remote_step in a fresh armed tab', async () => {
-    const faro = freshFaro();
-    faro.armFaro();
-
-    await faro.withFaroUserAction('pathfinder_remote_step', {}, async () => 'ok');
-    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_remote_step', {});
-    expect(mockActionEnd).toHaveBeenCalledTimes(1);
-  });
-
-  it('stays a passthrough when Faro never armed (outside Grafana Cloud)', async () => {
+  it('stays a passthrough when init was skipped (outside Grafana Cloud)', async () => {
     mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
     const faro = freshFaro();
-    faro.armFaro();
+    await faro.initFaro();
 
     await expect(faro.withFaroUserAction('pathfinder_section_run', {}, () => 'ok')).resolves.toBe('ok');
     expect(mockInitializeFaro).not.toHaveBeenCalled();
@@ -732,89 +710,117 @@ describe('setFaroUserActionAttributes', () => {
   });
 });
 
-describe('armFaro / engagement gating', () => {
-  it('does not initialize until an engagement trigger fires', () => {
+describe('passesActivityGate', () => {
+  const DOCKED_KEY = 'grafana.navigation.extensionSidebarDocked';
+  const PANEL_MODE_KEY = 'grafana-pathfinder-app-panel-mode';
+
+  it('drops events while no Pathfinder surface is open', () => {
     const faro = freshFaro();
-    faro.armFaro();
-    expect(mockInitializeFaro).not.toHaveBeenCalled();
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
   });
 
-  it('notifyFaroEngagement initializes and flushes buffered calls in order', async () => {
+  it('passes events when the panel mode is floating', () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
     const faro = freshFaro();
-    faro.armFaro();
-    faro.pushFaroLog('warn', 'early warning');
-    faro.pushFaroUserAction('pathfinder_feature_flag_evaluated', { flag_key: 'x' });
-    expect(mockInitializeFaro).not.toHaveBeenCalled();
-    expect(mockPushLog).not.toHaveBeenCalled();
-
-    await faro.notifyFaroEngagement();
-    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
-    expect(mockPushLog).toHaveBeenCalledWith(['[pathfinder] early warning'], { level: 'warn', context: undefined });
-    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_feature_flag_evaluated', {
-      flag_key: 'x',
-      seq: '0',
-    });
+    expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
-  it('a buffered error triggers initialization by itself', async () => {
+  it('passes events when the panel mode is fullscreen', () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'fullscreen');
     const faro = freshFaro();
-    faro.armFaro();
-    const boom = new Error('boom');
-    faro.pushFaroError(boom);
-    await faro.notifyFaroEngagement();
-    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
-    expect(mockPushError).toHaveBeenCalledWith(boom, { context: { pathfinder_reported: 'true' } });
+    expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
-  it('an error-level log triggers initialization; warn does not', async () => {
+  it('stays closed for the default sidebar mode with nothing docked', () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'sidebar');
     const faro = freshFaro();
-    faro.armFaro();
-    faro.pushFaroLog('warn', 'just a warning');
-    await Promise.resolve();
-    expect(mockInitializeFaro).not.toHaveBeenCalled();
-
-    faro.pushFaroLog('error', 'broken');
-    await faro.notifyFaroEngagement();
-    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
-    expect(mockPushLog).toHaveBeenCalledTimes(2);
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
   });
 
-  it('initializes immediately when a live Faro session already exists in this tab', async () => {
-    sessionStorage.setItem('com.grafana.faro.session', '{}');
+  it('passes events when the extension sidebar is docked by Pathfinder', () => {
+    localStorage.setItem(DOCKED_KEY, JSON.stringify({ pluginId: pluginJson.id }));
     const faro = freshFaro();
-    faro.armFaro();
-    await faro.notifyFaroEngagement();
-    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
+    expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
-  it('initializes immediately under the dev-build local override', async () => {
-    mockedConfig.buildInfo.env = 'development';
-    localStorage.setItem('pathfinder.faro.local', 'true');
+  it('recognizes the legacy plain-string docked format', () => {
+    localStorage.setItem(DOCKED_KEY, pluginJson.id);
     const faro = freshFaro();
-    faro.armFaro();
-    await faro.notifyFaroEngagement();
-    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
+    expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
-  it('never arms outside Grafana Cloud — pushes stay no-ops and no init happens', async () => {
-    mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
+  it('recognizes a componentTitle match from older Grafana versions', () => {
+    localStorage.setItem(DOCKED_KEY, JSON.stringify({ componentTitle: 'Interactive learning' }));
     const faro = freshFaro();
-    faro.armFaro();
-    faro.pushFaroLog('error', 'broken');
-    await faro.notifyFaroEngagement();
-    expect(mockInitializeFaro).not.toHaveBeenCalled();
-    expect(mockPushLog).not.toHaveBeenCalled();
+    expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
-  it('caps the pre-init buffer at 30, dropping the oldest entries', async () => {
+  it('stays closed when another plugin owns the docked sidebar', () => {
+    localStorage.setItem(DOCKED_KEY, JSON.stringify({ pluginId: 'some-other-app' }));
     const faro = freshFaro();
-    faro.armFaro();
-    for (let i = 0; i < 35; i++) {
-      faro.pushFaroLog('warn', `message ${i}`);
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
+  });
+
+  it.each(['pathfinder-controller-root', 'pathfinder-kiosk-root'])(
+    'passes events when the %s overlay is mounted in this tab',
+    (id) => {
+      const el = document.createElement('div');
+      el.id = id;
+      document.body.appendChild(el);
+      try {
+        const faro = freshFaro();
+        expect(faro.passesActivityGate(eventItem())).toBe(true);
+      } finally {
+        el.remove();
+      }
     }
-    await faro.notifyFaroEngagement();
-    expect(mockPushLog).toHaveBeenCalledTimes(30);
-    expect(mockPushLog).toHaveBeenNthCalledWith(1, ['[pathfinder] message 5'], { level: 'warn', context: undefined });
+  );
+
+  it('latches open for the rest of the page load once Pathfinder was open', () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+    expect(faro.passesActivityGate(eventItem())).toBe(true);
+    localStorage.removeItem(PANEL_MODE_KEY);
+    expect(faro.passesActivityGate(eventItem())).toBe(true);
+  });
+
+  it('opens on a later check after starting closed — closed does not latch', () => {
+    const faro = freshFaro();
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    expect(faro.passesActivityGate(eventItem())).toBe(true);
+  });
+
+  it('lets exceptions through while closed', () => {
+    const faro = freshFaro();
+    expect(faro.passesActivityGate(exceptionItem(['webpack://grafana-core/x.ts']))).toBe(true);
+  });
+
+  it('lets error-level logs through while closed, but not warn-level ones', () => {
+    const faro = freshFaro();
+    expect(faro.passesActivityGate(logItem('[pathfinder] broke'))).toBe(true);
+    expect(faro.passesActivityGate(logItem('[pathfinder] hmm', 'warn'))).toBe(false);
+  });
+
+  it('an exception while closed does not latch the gate open', () => {
+    const faro = freshFaro();
+    faro.passesActivityGate(exceptionItem(['webpack://grafana-core/x.ts']));
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
+  });
+});
+
+describe('beforeSend wiring', () => {
+  it('composes the activity gate with attribution filtering', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+    const { beforeSend } = mockInitializeFaro.mock.calls[0]![0];
+
+    expect(beforeSend(eventItem())).toBeNull();
+    expect(beforeSend(exceptionItem(['webpack://grafana-pathfinder-app/./src/lib/faro.ts']))).not.toBeNull();
+    expect(beforeSend(exceptionItem(['webpack://grafana-core/./src/app.ts']))).toBeNull();
+
+    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');
+    expect(beforeSend(eventItem())).not.toBeNull();
   });
 });
 

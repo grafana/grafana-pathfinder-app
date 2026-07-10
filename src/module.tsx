@@ -54,14 +54,14 @@ const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
 const hostname = window.location.hostname;
 
 // Faro frontend telemetry, behind its own remote kill-switch — default-on, so
-// a missing flag means enabled; armFaro itself enforces the Grafana Cloud-only
-// gate. Arming is engagement-gated — the SDK downloads and a session starts
-// only on the first real interaction or Pathfinder error, so sessions mean
-// "used Pathfinder", not "loaded a Grafana page".
+// a missing flag means enabled; initFaro itself enforces the Grafana Cloud-only
+// gate. Init is eager (not awaited — the SDK chunk must not block boot); the
+// beforeSend activity gate in lib/faro drops all telemetry until Pathfinder
+// is open in one of its surfaces.
 try {
   if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
-    const { armFaro } = await import('./lib/faro');
-    armFaro();
+    const { initFaro } = await import('./lib/faro');
+    initFaro().catch((e) => logger.exception(e, { source: 'Faro init' }));
   }
 } catch (e) {
   logger.exception(e, { source: 'Faro init' });
