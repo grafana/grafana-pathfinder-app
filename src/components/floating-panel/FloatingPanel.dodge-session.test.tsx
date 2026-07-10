@@ -92,6 +92,38 @@ describe('FloatingPanel dodge session interleavings', () => {
     expect(content.scrollTop).toBe(800);
   });
 
+  it('a scroll restore scheduled before minimize does not write while minimized', async () => {
+    const content = renderPanel();
+    content.scrollTop = 800;
+
+    act(() => {
+      document.dispatchEvent(new CustomEvent('pathfinder-floating-compact'));
+    });
+    content.scrollTop = 0;
+
+    act(() => {
+      document.dispatchEvent(new CustomEvent('pathfinder-floating-restore-full'));
+    });
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+    });
+    await act(async () => {
+      await flushReactUpdates();
+    });
+
+    // Minimize staled the scheduled write: nothing may touch scrollTop while
+    // the panel is display:none (a real browser would clamp the write away).
+    expect(screen.getByRole('dialog', { hidden: true })).toHaveAttribute('data-panel-state', 'minimized');
+    expect(content.scrollTop).toBe(0);
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Restore floating panel'));
+      await flushReactUpdates();
+    });
+
+    expect(content.scrollTop).toBe(800);
+  });
+
   it('a dodge repositions, flashes the dodging style, and a rapid second dodge reports only the final move', () => {
     jest.useFakeTimers();
     try {
