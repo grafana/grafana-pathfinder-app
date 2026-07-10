@@ -20,7 +20,7 @@
 
 import type { TreeNode } from '../../utils/package-io';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
-import type { CommandOutcome } from '../../utils/output';
+import { type CommandOutcome, renderMachineJson } from '../../utils/output';
 import { type ConcurrentModificationResult, type SessionTooLargeResult } from './state-bridge';
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
@@ -50,7 +50,7 @@ function errorResult(
   if (opts.data !== undefined) {
     payload.data = opts.data;
   }
-  return textResult(JSON.stringify(payload, null, 2), /* isError */ true);
+  return textResult(renderMachineJson(payload), /* isError */ true);
 }
 
 /**
@@ -81,7 +81,7 @@ export function outcomeResult(
   if (summary) {
     payload.summary = summary;
   }
-  return textResult(JSON.stringify(payload, null, 2), outcome.status === 'error');
+  return textResult(renderMachineJson(payload), outcome.status === 'error');
 }
 
 /**
@@ -100,7 +100,7 @@ export function sessionOutcomeResult(
   if (generation !== undefined) {
     payload.generation = generation;
   }
-  return textResult(JSON.stringify(payload, null, 2), outcome.status === 'error');
+  return textResult(renderMachineJson(payload), outcome.status === 'error');
 }
 
 // ── Error wire shapes ────────────────────────────────────────────────────

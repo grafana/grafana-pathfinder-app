@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { IconButton, useStyles2 } from '@grafana/ui';
+import { IconButton, useStyles2, getPortalContainer } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { buildPathfinderShareUrl } from '../../utils/pathfinder-search-params';
+import { startModalWatch, stopModalWatch } from '../../interactive-engine';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 import { useDragResize } from './useDragResize';
 import { useHighlightDodge } from './useHighlightDodge';
@@ -61,8 +62,13 @@ export function FloatingPanel({
   const [isDodging, setIsDodging] = useState(false);
   const { geometry, setPosition, drag, resize } = useDragResize();
 
-  // Auto-reposition when interactive highlights overlap the panel
-  useHighlightDodge(geometry, panelState === 'minimized');
+  // Auto-reposition to dodge interactive highlights and any open native modal
+  useHighlightDodge(geometry, panelState === 'minimized', true);
+
+  useEffect(() => {
+    startModalWatch();
+    return () => stopModalWatch();
+  }, []);
 
   const handleMinimize = useCallback(() => {
     setPanelState('minimized');
@@ -265,5 +271,5 @@ export function FloatingPanel({
     </>
   );
 
-  return createPortal(panelContent, document.body);
+  return createPortal(panelContent, getPortalContainer());
 }

@@ -5,7 +5,7 @@
   "blocks": [
     {
       "type": "markdown",
-      "content": "# Welcome to Grafana!\n\nWelcome to your Grafana Cloud journey! In this interactive guide, we'll take you on a tour of key locations in Grafana Cloud. By the end, you'll be familiar with:\n\n- Navigating Grafana Cloud's main sections\n- Understanding the key areas: Dashboards, Data Sources, Explore, and Alerting\n- Finding your way around the interface"
+      "content": "Welcome to your Grafana Cloud journey! In this interactive guide, we'll take you on a tour of key locations in Grafana Cloud. By the end, you'll be familiar with:\n\n- Navigating Grafana Cloud's main sections\n- Understanding the key areas: Dashboards, Data Sources, Explore, and Alerting\n- Finding your way around the interface"
     },
     {
       "type": "markdown",
@@ -19,7 +19,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/a/grafana-setupguide-app/home']",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/']",
           "requirements": ["navmenu-open"],
           "content": "First, let's visit the **Home** page - your starting point in Grafana.",
           "tooltip": "The **Home** page in Grafana Cloud is your central hub. It shows your cloud instance overview, recent activity, and quick access to getting started guides. Perfect *starting point* for your observability journey!"

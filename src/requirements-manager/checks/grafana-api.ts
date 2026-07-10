@@ -399,7 +399,7 @@ export async function dashboardExistsCheck(check: string): Promise<CheckResultEr
 
 /**
  * Data source connection test. Stronger than `hasDataSourceCheck` — verifies
- * the data source's `/test` endpoint returns success, not just that it's listed.
+ * the data source's health endpoint reports OK, not just that it's listed.
  */
 export async function datasourceConfiguredCheck(check: string): Promise<CheckResultError> {
   try {
@@ -452,17 +452,18 @@ export async function datasourceConfiguredCheck(check: string): Promise<CheckRes
     }
 
     try {
-      // Use the data source test API
-      const testResult = await getBackendSrv().post(`/api/datasources/uid/${targetDataSource.uid}/test`);
+      // Grafana returns 400 (which throws) when the health check fails, so the
+      // non-OK branch below only covers unexpected 200-with-error payloads.
+      const healthResult = await getBackendSrv().get(`/api/datasources/uid/${targetDataSource.uid}/health`);
 
-      const isConfigured = testResult && testResult.status === 'success';
+      const isConfigured = healthResult?.status === 'OK';
 
       return {
         requirement: check,
         pass: isConfigured,
         error: isConfigured
           ? undefined
-          : `Data source '${targetDataSource.name}' test failed: ${testResult?.message || 'Unknown error'}`,
+          : `Data source '${targetDataSource.name}' health check failed: ${healthResult?.message || 'Unknown error'}`,
         context: {
           searched: dsRequirement,
           testedDataSource: {
@@ -470,7 +471,7 @@ export async function datasourceConfiguredCheck(check: string): Promise<CheckRes
             name: targetDataSource.name,
             type: targetDataSource.type,
           },
-          testResult: testResult?.status || 'unknown',
+          testResult: healthResult?.status || 'unknown',
           suggestion: isConfigured
             ? undefined
             : `Data source '${targetDataSource.name}' exists but configuration test failed. Check connection settings.`,

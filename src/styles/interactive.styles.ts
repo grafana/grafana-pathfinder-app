@@ -1155,22 +1155,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.text.secondary,
   },
 
-  '.interactive-guided-redo-btn': {
-    padding: '4px 10px',
-    fontSize: '0.8rem',
-    border: `1px solid ${theme.colors.border.weak}`,
-    background: 'transparent',
-    color: theme.colors.text.secondary,
-    borderRadius: '4px',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease',
-    '&:hover': {
-      borderColor: theme.colors.border.medium,
-      color: theme.colors.text.primary,
-      background: theme.colors.action.hover,
-    },
-  },
-
   // ─── SKIP BUTTON (shared) ─────────────────────────────────────────────────
   '.interactive-guided-skip-btn': {
     opacity: 0.8,

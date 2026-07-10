@@ -125,7 +125,9 @@ async function performFetch(): Promise<PackageRecommendationsResponse | null> {
  *  - the backend returned a malformed response
  *
  * Never throws. Concurrent callers share a single in-flight promise so the
- * backend is hit at most once per cache window.
+ * backend is hit at most once per cache window. Callers may stop awaiting
+ * (e.g. a boot-budget timeout race); the in-flight fetch keeps running and
+ * still populates the cache for later calls.
  */
 export async function fetchOnlinePackageRecommendations(): Promise<{
   baseUrl: string;

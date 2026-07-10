@@ -30,6 +30,8 @@ export interface UseBackendGuidesReturn {
   guides: BackendGuide[];
   isLoading: boolean;
   error: string | null;
+  /** True once the initial fetch has resolved (success or failure). */
+  hasLoaded: boolean;
   refreshGuides: () => Promise<BackendGuide[]>;
   saveGuide: (
     guide: JsonGuide,
@@ -43,6 +45,19 @@ export interface UseBackendGuidesReturn {
   isSaving: boolean;
 }
 
+// Keep the guide Library entry available while the list is still loading or
+// after a failed fetch; report "no guides" only once an initial fetch has
+// confirmed an empty list, so the entry neither flash-hides for existing users
+// nor gets stuck hidden on error.
+export function hasManageableBackendGuides(
+  state: Pick<UseBackendGuidesReturn, 'guides' | 'error' | 'hasLoaded'>
+): boolean {
+  if (!state.hasLoaded || state.error !== null) {
+    return true;
+  }
+  return state.guides.length > 0;
+}
+
 /**
  * Hook to manage guides from the Pathfinder backend
  */
@@ -51,6 +66,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   const namespace = config.namespace;
 
@@ -86,6 +102,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
     } finally {
       if (isMountedRef.current) {
         setIsLoading(false);
+        setHasLoaded(true);
       }
     }
   }, [namespace]);
@@ -334,6 +351,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
     guides,
     isLoading,
     error,
+    hasLoaded,
     refreshGuides,
     saveGuide,
     publishGuide,

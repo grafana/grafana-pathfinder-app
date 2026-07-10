@@ -23,7 +23,7 @@ import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import { MCP_TMPDIR_PREFIX } from '../lib/constants';
 import { generateSessionToken } from '../lib/session-token';
 import { SESSION_GENERATION_ABSENT, type SessionArtifact, type AuthoringSessionStore } from '../lib/session-store';
-import type { CommandOutcome } from '../../utils/output';
+import { type CommandOutcome, renderMachineJson } from '../../utils/output';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import { writeAppend } from './annotations';
 import { outcomeResult, textResult, withToolErrorEnvelope } from './result';
@@ -227,5 +227,5 @@ function sessionCreateResult(
     },
     summary,
   };
-  return textResult(JSON.stringify(payload, null, 2), outcome.status === 'error');
+  return textResult(renderMachineJson(payload), outcome.status === 'error');
 }
