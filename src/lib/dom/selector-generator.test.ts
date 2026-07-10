@@ -331,7 +331,7 @@ describe('Selector Generator — Pipeline', () => {
       expect(selector).not.toContain('data-state');
     });
 
-    it('uses unique name attribute when input has it (parent testid is not forced)', () => {
+    it('prefers a testid-scoped bare tag over the name attribute when both are unique', () => {
       document.body.innerHTML = `
         <div data-intercom-target="env-selectors">
           <div data-testid="env-field">
@@ -341,8 +341,10 @@ describe('Selector Generator — Pipeline', () => {
       `;
       const input = document.querySelector('input') as HTMLElement;
       const selector = generateBestSelector(input);
-      // input[name='env'] is unique, so it wins without needing parent context
-      expect(selector).toContain("[name='env']");
+      // A stable-testid-scoped bare tag ranks above `name` (same tier as the existing
+      // aria-label/button-text-over-name ordering) since it's anchored to a deliberately
+      // labeled container rather than an attribute that's often reused across forms.
+      expect(selector).toBe("div[data-testid='env-field'] input");
     });
   });
 
@@ -497,6 +499,32 @@ describe('Selector Generator — Pipeline', () => {
       const primary = generateBestSelector(button);
       const fallbacks = generateFallbackSelectors(button, primary);
       expect(fallbacks.length).toBeLessThanOrEqual(4);
+    });
+
+    it('rejects a bare tag fallback when no stable ancestor scope exists', () => {
+      document.body.innerHTML = `
+        <div>
+          <button aria-label="Save document">Save</button>
+        </div>
+      `;
+      const button = document.querySelector('button') as HTMLElement;
+      const primary = generateBestSelector(button);
+      const fallbacks = generateFallbackSelectors(button, primary);
+      // The only <button> on the page is globally unique, but "unique by luck" is not
+      // admissible — the same rule rankAndSelect applies to the primary selector.
+      expect(fallbacks).not.toContain('button');
+    });
+
+    it('admits a bare tag fallback only in its stably scoped form', () => {
+      document.body.innerHTML = `
+        <div data-testid="env-field">
+          <input name="env" type="text" />
+        </div>
+      `;
+      const input = document.querySelector('input') as HTMLElement;
+      const fallbacks = generateFallbackSelectors(input, "input[name='env']");
+      expect(fallbacks).not.toContain('input');
+      expect(fallbacks).toContain("div[data-testid='env-field'] input");
     });
   });
 
