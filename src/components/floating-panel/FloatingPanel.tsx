@@ -4,6 +4,7 @@ import { IconButton, useStyles2, getPortalContainer } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { buildPathfinderShareUrl } from '../../utils/pathfinder-search-params';
 import { waitForReactUpdates } from '../../lib/async-utils';
+import { FloatingPanelEvents, type FloatingPanelMoveDetail } from '../../lib/event-names';
 import { startModalWatch, stopModalWatch } from '../../interactive-engine';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 import { useDragResize } from './useDragResize';
@@ -154,7 +155,7 @@ export function FloatingPanel({
   // Compact mode collapses .content's scroll container, so saved scroll
   // has to survive both restore-full events and manual minimize/restore.
   useEffect(() => {
-    const handleDodge = (e: CustomEvent<{ x: number; y: number }>) => {
+    const handleDodge = (e: CustomEvent<FloatingPanelMoveDetail>) => {
       setIsDodging(true);
       setPosition(e.detail.x, e.detail.y);
       // Clear any pending dodge timers from a previous dodge
@@ -186,7 +187,7 @@ export function FloatingPanel({
       setPanelState('compact');
     };
 
-    const handleRestorePosition = (e: CustomEvent<{ x: number; y: number }>) => {
+    const handleRestorePosition = (e: CustomEvent<FloatingPanelMoveDetail>) => {
       setPosition(e.detail.x, e.detail.y);
     };
 
@@ -195,16 +196,16 @@ export function FloatingPanel({
       restoreSavedContentScrollTop();
     };
 
-    document.addEventListener('pathfinder-floating-dodge', handleDodge as EventListener);
-    document.addEventListener('pathfinder-floating-restore-position', handleRestorePosition as EventListener);
-    document.addEventListener('pathfinder-floating-compact', handleCompact);
-    document.addEventListener('pathfinder-floating-restore-full', handleRestoreFull);
+    document.addEventListener(FloatingPanelEvents.Dodge, handleDodge as EventListener);
+    document.addEventListener(FloatingPanelEvents.RestorePosition, handleRestorePosition as EventListener);
+    document.addEventListener(FloatingPanelEvents.Compact, handleCompact);
+    document.addEventListener(FloatingPanelEvents.RestoreFull, handleRestoreFull);
 
     return () => {
-      document.removeEventListener('pathfinder-floating-dodge', handleDodge as EventListener);
-      document.removeEventListener('pathfinder-floating-restore-position', handleRestorePosition as EventListener);
-      document.removeEventListener('pathfinder-floating-compact', handleCompact);
-      document.removeEventListener('pathfinder-floating-restore-full', handleRestoreFull);
+      document.removeEventListener(FloatingPanelEvents.Dodge, handleDodge as EventListener);
+      document.removeEventListener(FloatingPanelEvents.RestorePosition, handleRestorePosition as EventListener);
+      document.removeEventListener(FloatingPanelEvents.Compact, handleCompact);
+      document.removeEventListener(FloatingPanelEvents.RestoreFull, handleRestoreFull);
       dodgeTimersRef.current.forEach(clearTimeout);
       dodgeTimersRef.current = [];
       clearTimeout(copyTimerRef.current);
