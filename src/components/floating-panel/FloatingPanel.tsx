@@ -257,7 +257,7 @@ export function FloatingPanel({
               />
             )}
             <IconButton
-              name="angle-double-right"
+              name="columns"
               size="sm"
               tooltip="Dock to sidebar"
               onClick={handleSwitchToSidebar}
