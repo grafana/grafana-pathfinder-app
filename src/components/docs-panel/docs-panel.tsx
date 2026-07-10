@@ -493,34 +493,26 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   public closeTab(tabId: string) {
     if (tabId === 'recommendations') {
-      return; // Can't close recommendations tab
+      return;
     }
 
     const currentTabs = this.state.tabs;
     const tabIndex = currentTabs.findIndex((t) => t.id === tabId);
-
-    // Remove the tab
     const newTabs = currentTabs.filter((t) => t.id !== tabId);
-
-    // Determine new active tab
     let newActiveTabId = this.state.activeTabId;
+
     if (this.state.activeTabId === tabId) {
       if (tabIndex > 0 && tabIndex < currentTabs.length - 1) {
-        // Choose the next tab if available
         newActiveTabId = currentTabs[tabIndex + 1]!.id;
       } else if (tabIndex > 0) {
-        // Choose the previous tab if at the end
         newActiveTabId = currentTabs[tabIndex - 1]!.id;
       } else {
-        // Default to recommendations if only tab
         newActiveTabId = 'recommendations';
       }
     }
 
-    // If only permanent tabs remain, fall back to recommendations — unless the
-    // user is actively on the editor tab (a first-class content tab).
     const onlyDefaultTabsRemaining = newTabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
-    if (onlyDefaultTabsRemaining && newActiveTabId !== 'recommendations' && newActiveTabId !== 'editor') {
+    if (onlyDefaultTabsRemaining && this.state.activeTabId !== 'editor') {
       newActiveTabId = 'recommendations';
     }
 
@@ -529,13 +521,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       activeTabId: newActiveTabId,
     });
 
-    // Save tabs to storage after closing
     this.saveTabsToStorage();
-
-    // Clear any persisted interactive completion state for this tab
-    // Note: Interactive step completion is now handled by interactiveStepStorage
-    // which uses a different key format and is managed within interactive components
-    // This cleanup is now handled automatically when interactive sections are unmounted
   }
 
   public setActiveTab(tabId: string) {
