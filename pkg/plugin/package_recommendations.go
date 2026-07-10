@@ -30,10 +30,10 @@ const (
 	packageRepositoryPartialCacheTTL = 15 * time.Minute
 
 	// Per-manifest fetch limits — keep manifests small and the fan-out bounded
-	// so a slow CDN can't stall the whole response or run us out of memory.
-	packageManifestFetchTimeout = 5 * time.Second
-	packageManifestMaxBytes     = 256 * 1024
-	packageManifestConcurrency  = 16
+	// so the enrichment can't run us out of memory. Latency is bounded by
+	// packageManifestEnrichTotalBudget, not per fetch.
+	packageManifestMaxBytes    = 256 * 1024
+	packageManifestConcurrency = 16
 )
 
 // packageManifestEnrichTotalBudget caps the whole manifest fan-out so the
@@ -229,9 +229,9 @@ func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageReco
 
 	// Detach the upstream fetch from the request's cancellation: a canceled
 	// request (browser closed, panel collapsed mid-flight) must not poison
-	// the 6-hour cache with a "context canceled" error. The per-fetch
-	// timeouts inside fetchAndParsePackageRepository / enrichPackagesWithManifests
-	// still apply because they're added with their own context.WithTimeout.
+	// the 6-hour cache with a "context canceled" error. The index fetch
+	// timeout and the enrichment budget still apply because they're added
+	// with their own context.WithTimeout.
 	resp, partial, err := fetchAndParsePackageRepository(context.WithoutCancel(ctx), packageRepositoryURL)
 
 	packageCacheMu.Lock()
@@ -356,14 +356,11 @@ func enrichPackagesWithManifests(
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			fetchCtx, cancel := context.WithTimeout(budgetCtx, packageManifestFetchTimeout)
-			defer cancel()
-
 			// Pass the manifest cap directly so the body is bounded at read
 			// time. Without this, a misconfigured 4 MB manifest would be
 			// fully buffered before the post-read check rejected it,
 			// transiently allocating ~64 MB across 16 in-flight goroutines.
-			body, err := fetch(fetchCtx, url, packageManifestMaxBytes)
+			body, err := fetch(budgetCtx, url, packageManifestMaxBytes)
 			if err != nil {
 				return
 			}
