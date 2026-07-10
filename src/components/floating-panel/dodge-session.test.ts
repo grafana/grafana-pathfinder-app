@@ -106,6 +106,22 @@ describe('dodgeSessionReducer', () => {
     });
   });
 
+  describe('CANCEL_PENDING_RESTORE', () => {
+    it('invalidates a scheduled restore without changing the view or saved scroll', () => {
+      const compacted = dodgeSessionReducer(initial, { type: 'COMPACT', measuredScrollTop: 800 });
+      const scheduled = dodgeSessionReducer(compacted, { type: 'RESTORE_FULL' });
+      const cancelled = dodgeSessionReducer(scheduled, { type: 'CANCEL_PENDING_RESTORE' });
+
+      expect(cancelled.view).toBe('full');
+      expect(cancelled.savedScrollTop).toBe(800);
+      expect(cancelled.restoreScroll).toBe('idle');
+      expect(cancelled.restoreToken).toBe(scheduled.restoreToken + 1);
+      expect(dodgeSessionReducer(cancelled, { type: 'SCROLL_RESTORE_LANDED', token: scheduled.restoreToken })).toBe(
+        cancelled
+      );
+    });
+  });
+
   describe('SCROLL_RESTORE_LANDED', () => {
     it('with the current token clears the saved scroll', () => {
       const compacted = dodgeSessionReducer(initial, { type: 'COMPACT', measuredScrollTop: 800 });

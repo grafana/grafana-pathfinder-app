@@ -34,6 +34,7 @@ export type DodgeSessionAction =
   | { type: 'COMPACT'; measuredScrollTop: number | null }
   | { type: 'RESTORE_FULL' }
   | { type: 'MINIMIZE' }
+  | { type: 'CANCEL_PENDING_RESTORE' }
   | { type: 'SCROLL_RESTORE_LANDED'; token: number };
 
 export function createInitialDodgeSession(): DodgeSessionState {
@@ -70,6 +71,13 @@ export function dodgeSessionReducer(state: DodgeSessionState, action: DodgeSessi
       return {
         ...state,
         view: 'minimized',
+        restoreScroll: 'idle',
+        restoreToken: state.restoreToken + 1,
+      };
+
+    case 'CANCEL_PENDING_RESTORE':
+      return {
+        ...state,
         restoreScroll: 'idle',
         restoreToken: state.restoreToken + 1,
       };

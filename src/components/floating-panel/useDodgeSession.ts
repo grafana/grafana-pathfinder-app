@@ -32,12 +32,14 @@ export function useDodgeSession(setPosition: (x: number, y: number) => void): {
   // Synchronous dispatch: handlers need the next state immediately (to know
   // whether a scroll write was scheduled and under which token), so the
   // reducer is applied to a ref before setState. Must only be called from
-  // event/promise callbacks — calling during render would double-apply
+  // event/promise callbacks or effect cleanup — calling during render would double-apply
   // actions under StrictMode.
-  const dispatch = useCallback((action: DodgeSessionAction): DodgeSessionState => {
+  const dispatch = useCallback((action: DodgeSessionAction, commit = true): DodgeSessionState => {
     const next = dodgeSessionReducer(sessionRef.current, action);
     sessionRef.current = next;
-    setSession(next);
+    if (commit) {
+      setSession(next);
+    }
     return next;
   }, []);
 
@@ -104,6 +106,7 @@ export function useDodgeSession(setPosition: (x: number, y: number) => void): {
     document.addEventListener(FloatingPanelEvents.RestoreFull, handleRestoreFull);
 
     return () => {
+      dispatch({ type: 'CANCEL_PENDING_RESTORE' }, false);
       document.removeEventListener(FloatingPanelEvents.Dodge, handleDodge as EventListener);
       document.removeEventListener(FloatingPanelEvents.RestorePosition, handleRestorePosition as EventListener);
       document.removeEventListener(FloatingPanelEvents.Compact, handleCompact);
