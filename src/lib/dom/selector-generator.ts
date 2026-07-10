@@ -912,59 +912,60 @@ interface ScoredCandidate extends Candidate {
   matchCount: number;
 }
 
+/**
+ * Shared admissibility gate for primary AND fallback selection: every candidate —
+ * whichever list it ends up in — must pass the same uniqueness, ancestor-scoping,
+ * and bare-tag rules, so fallback alternatives can't smuggle in selectors the
+ * primary ranking would have rejected.
+ */
+function admitCandidate(
+  candidate: Candidate,
+  element: HTMLElement,
+  ancestorScopes: AncestorScope[],
+  inOverlay: boolean
+): ScoredCandidate[] {
+  const { matchCount, containsTarget } = testUniqueness(candidate.selector, element, candidate.method, inOverlay);
+
+  if (matchCount === 0 || !containsTarget) {
+    return [];
+  }
+
+  if (matchCount === 1) {
+    if (candidate.method === 'button-text' || candidate.method === 'scoped-testid') {
+      return [{ ...candidate, matchCount }];
+    }
+    for (const scope of ancestorScopes) {
+      const scoped = `${scope.selector} ${candidate.selector}`;
+      const scopedResult = testUniqueness(scoped, element, candidate.method, inOverlay);
+      if (scopedResult.matchCount === 1 && scopedResult.containsTarget) {
+        return [
+          {
+            selector: cleanDynamicAttributes(scoped),
+            score: candidate.score,
+            method: candidate.method,
+            matchCount: 1,
+          },
+        ];
+      }
+    }
+    // A bare tag name carries no signal on its own — it's only trustworthy when
+    // scoped to a stable ancestor. If no scope was needed/available, accepting it
+    // unscoped would mean "unique right now, for no meaningful reason" (e.g. the
+    // only <button> in a small test fixture), which is no more stable than luck.
+    return candidate.method === 'scoped-bare-tag' ? [] : [{ ...candidate, matchCount }];
+  }
+
+  if (candidate.method === 'button-text') {
+    return [];
+  }
+
+  return disambiguate(candidate, element, ancestorScopes, inOverlay).map((d) => ({ ...d, matchCount: 1 }));
+}
+
 function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCandidate {
-  const scored: ScoredCandidate[] = [];
   const ancestorScopes = findAllAncestorScopes(element);
   const inOverlay = findOverlayContext(element) !== null;
-
-  for (const candidate of candidates) {
-    const { matchCount, containsTarget } = testUniqueness(candidate.selector, element, candidate.method, inOverlay);
-
-    if (matchCount === 0 || !containsTarget) {
-      continue;
-    }
-
-    if (matchCount === 1) {
-      if (candidate.method !== 'button-text' && candidate.method !== 'scoped-testid') {
-        let foundScope = false;
-        for (const scope of ancestorScopes) {
-          const scoped = `${scope.selector} ${candidate.selector}`;
-          const scopedResult = testUniqueness(scoped, element, candidate.method, inOverlay);
-          if (scopedResult.matchCount === 1 && scopedResult.containsTarget) {
-            scored.push({
-              selector: cleanDynamicAttributes(scoped),
-              score: candidate.score,
-              method: candidate.method,
-              matchCount: 1,
-            });
-            foundScope = true;
-            break;
-          }
-        }
-        if (!foundScope) {
-          // A bare tag name carries no signal on its own — it's only trustworthy when
-          // scoped to a stable ancestor. If no scope was needed/available, accepting it
-          // unscoped would mean "unique right now, for no meaningful reason" (e.g. the
-          // only <button> in a small test fixture), which is no more stable than luck.
-          if (candidate.method !== 'scoped-bare-tag') {
-            scored.push({ ...candidate, matchCount });
-          }
-        }
-      } else {
-        scored.push({ ...candidate, matchCount });
-      }
-      continue;
-    }
-
-    if (candidate.method === 'button-text') {
-      continue;
-    }
-
-    const disambiguated = disambiguate(candidate, element, ancestorScopes, inOverlay);
-    for (const d of disambiguated) {
-      scored.push({ ...d, matchCount: 1 });
-    }
-  }
+  const scored = candidates.flatMap((candidate) => admitCandidate(candidate, element, ancestorScopes, inOverlay));
 
   if (scored.length === 0) {
     // No attribute / text / structural candidate matched — fall back to a positional
@@ -1094,28 +1095,11 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
  */
 export function generateFallbackSelectors(element: HTMLElement, primarySelector: string): string[] {
   const target = retargetElement(element);
-  const candidates = generateCandidates(target);
-  const scored: ScoredCandidate[] = [];
-
-  for (const candidate of candidates) {
-    if (candidate.selector === primarySelector) {
-      continue;
-    }
-    const { matchCount, containsTarget } = testUniqueness(candidate.selector, target, candidate.method);
-    if (matchCount === 0 || !containsTarget) {
-      continue;
-    }
-    if (matchCount === 1) {
-      scored.push({ ...candidate, matchCount });
-      continue;
-    }
-    if (candidate.method !== 'button-text') {
-      const disambiguated = disambiguate(candidate, target);
-      for (const d of disambiguated) {
-        scored.push({ ...d, matchCount: 1 });
-      }
-    }
-  }
+  const ancestorScopes = findAllAncestorScopes(target);
+  const inOverlay = findOverlayContext(target) !== null;
+  const scored = generateCandidates(target)
+    .filter((candidate) => candidate.selector !== primarySelector)
+    .flatMap((candidate) => admitCandidate(candidate, target, ancestorScopes, inOverlay));
 
   scored.sort((a, b) => a.score - b.score);
 

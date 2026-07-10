@@ -500,6 +500,32 @@ describe('Selector Generator — Pipeline', () => {
       const fallbacks = generateFallbackSelectors(button, primary);
       expect(fallbacks.length).toBeLessThanOrEqual(4);
     });
+
+    it('rejects a bare tag fallback when no stable ancestor scope exists', () => {
+      document.body.innerHTML = `
+        <div>
+          <button aria-label="Save document">Save</button>
+        </div>
+      `;
+      const button = document.querySelector('button') as HTMLElement;
+      const primary = generateBestSelector(button);
+      const fallbacks = generateFallbackSelectors(button, primary);
+      // The only <button> on the page is globally unique, but "unique by luck" is not
+      // admissible — the same rule rankAndSelect applies to the primary selector.
+      expect(fallbacks).not.toContain('button');
+    });
+
+    it('admits a bare tag fallback only in its stably scoped form', () => {
+      document.body.innerHTML = `
+        <div data-testid="env-field">
+          <input name="env" type="text" />
+        </div>
+      `;
+      const input = document.querySelector('input') as HTMLElement;
+      const fallbacks = generateFallbackSelectors(input, "input[name='env']");
+      expect(fallbacks).not.toContain('input');
+      expect(fallbacks).toContain("div[data-testid='env-field'] input");
+    });
   });
 
   // ==========================================================================
