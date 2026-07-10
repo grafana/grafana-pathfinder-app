@@ -24,6 +24,7 @@ import { CustomGuidesSection } from './CustomGuidesSection';
 import { usePublishedGuides, PublishedGuide } from '../../utils/usePublishedGuides';
 import { ContextPanelState, PackageOpenInfo } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
+import { useRecommendationsScrollPosition } from './hooks';
 
 /**
  * Resolve the effective display type for a recommendation.
@@ -1108,9 +1109,11 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     recommendations.length > 0 &&
     !configWithDefaults.acceptedTermsAndConditions;
 
+  const scrollContainerRef = useRecommendationsScrollPosition(!isLoadingRecommendations && !contextData.isLoading);
+
   return (
     <div className={styles.container} data-testid={testIds.contextPanel.container}>
-      <div className={styles.content}>
+      <div className={styles.content} ref={scrollContainerRef} data-testid={testIds.contextPanel.scrollContainer}>
         <div className={styles.contextSections}>
           {/* User profile bar with learning stats and next action */}
           <UserProfileBar onOpenGuide={openLearningJourney} />
