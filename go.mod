@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/grafana-plugin-sdk-go v0.292.2
-	golang.org/x/crypto v0.53.0
+	golang.org/x/crypto v0.54.0
 )
 
 require (
@@ -79,8 +79,8 @@ require (
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
 	golang.org/x/net v0.56.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
-	golang.org/x/text v0.39.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260622175928-b703f567277d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260622175928-b703f567277d // indirect
 	google.golang.org/grpc v1.82.0 // indirect
