@@ -1,0 +1,17 @@
+{
+  "id": "run-first-k6-test-end-journey",
+  "type": "guide",
+  "description": "Congratulations on completing your first k6 performance test journey.",
+  "category": "take-action",
+  "author": {
+    "name": "bonnywelsford-source",
+    "team": "Grafana Documentation"
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": ["run-first-k6-test-analyze-results"],
+  "recommends": [],
+  "suggests": ["detect-outages-synthetic-monitoring-lj", "create-availability-slo-lj"],
+  "provides": []
+}

@@ -1,0 +1,37 @@
+{
+  "id": "run-first-k6-test-install-k6",
+  "title": "Install k6",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "In this milestone, you install k6 on your machine using your preferred package manager and verify that it is working as expected."
+    },
+    {
+      "type": "section",
+      "id": "install",
+      "title": "Install k6",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Choose the installation method for your operating system:\n\n| OS | Method |\n|---|---|\n| **macOS** | Homebrew |\n| **Linux (Debian/Ubuntu)** | APT |\n| **Linux (Fedora/CentOS)** | DNF/YUM |\n| **Windows** | Chocolatey or Winget |\n| **Any platform** | Docker or standalone binary |"
+        },
+        {
+          "type": "markdown",
+          "content": "**In your terminal**, install k6 using your chosen method.\n\nFor macOS:\n```bash\nbrew install k6\n```\n\nFor Linux (Debian/Ubuntu):\n```bash\nsudo gpg -k\nsudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69\necho \"deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main\" | sudo tee /etc/apt/sources.list.d/k6.list\nsudo apt-get update\nsudo apt-get install k6\n```\n\nFor Docker:\n```bash\ndocker pull grafana/k6\n```"
+        },
+        {
+          "type": "markdown",
+          "content": "Verify the installation by checking the k6 version:\n\n```bash\nk6 version\n```\n\nYou should see version information displayed in your terminal."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "**Troubleshooting**\n\nExplore the following troubleshooting topic if you need help:\n\n- [k6 installation troubleshooting guide](/docs/k6/latest/set-up/install-k6/troubleshooting/)"
+    },
+    {
+      "type": "markdown",
+      "content": "In the next milestone, you write your first k6 test script with HTTP requests and checks."
+    }
+  ]
+}

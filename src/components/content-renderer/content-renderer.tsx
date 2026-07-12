@@ -1091,6 +1091,7 @@ function renderParsedElement(
           title={sub(element.props.title)}
           lazyRender={element.props.lazyRender}
           scrollContainer={element.props.scrollContainer}
+          openGuide={element.props.openGuide}
           // Standalone step position (for guides without sections)
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}

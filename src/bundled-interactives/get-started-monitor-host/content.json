@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "get-started-monitor-host",
+  "title": "Monitor a host or service",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Start monitoring a host or service by installing an integration. An integration sets up the Grafana Alloy collector and prebuilt dashboards for a host, database, or web server, so you can see data in minutes."
+    },
+    {
+      "type": "markdown",
+      "content": "You'll need a host or service to monitor, terminal and admin access to it, and outbound HTTPS on port 443 to `*.grafana.net` allowed."
+    },
+    {
+      "type": "markdown",
+      "content": "You start on the **Add new connection** page, filtered to integrations. Choose the one that matches your host or service, then run its install command."
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "noop",
+          "content": "Search for the integration that matches what you want to monitor, for example a Linux, macOS, or Windows host, a database, or a web server, then click its tile."
+        },
+        {
+          "type": "interactive",
+          "action": "noop",
+          "content": "On the **Configuration details** tab, copy the install command and run it in your terminal. The command includes a token, so treat it like a secret and don't share it."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "Optionally set a **Hostname value** to label this host. Use the **Advanced integration** toggle to send only the metrics the integration needs, which helps control cost."
+    },
+    {
+      "type": "markdown",
+      "content": "You've installed an integration. Alloy is now collecting metrics and sending them to Grafana Cloud."
+    },
+    {
+      "type": "markdown",
+      "content": "See your metrics on the dashboard the integration installed."
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
+          "content": "Open the main menu and click **Dashboards**.",
+          "requirements": ["exists-reftarget", "navmenu-open"]
+        },
+        {
+          "type": "interactive",
+          "action": "noop",
+          "content": "Open the folder the integration created, then open one of its prebuilt dashboards."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "The dashboard stays empty until the first scrape, then data appears. You can adjust the scrape interval later to balance detail and cost."
+    },
+    {
+      "type": "markdown",
+      "content": "You're viewing your first metrics in Grafana Cloud."
+    },
+    {
+      "type": "markdown",
+      "content": "Metrics usage scales with what you send. The **Advanced integration** option and the scrape interval are your main cost levers. Refer to [Manage metrics costs](/docs/grafana-cloud/cost-management-and-billing/reduce-costs/metrics-costs/)."
+    },
+    {
+      "type": "interactive",
+      "action": "navigate",
+      "reftarget": "/a/cloud-home-app",
+      "openGuide": "bundled:get-started-hub",
+      "content": "**Return to Get started with Grafana Cloud** to pick another path."
+    }
+  ]
+}

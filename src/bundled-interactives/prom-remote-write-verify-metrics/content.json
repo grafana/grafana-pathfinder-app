@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "prom-remote-write-verify-metrics",
+  "title": "Verify metrics query successful",
+  "blocks": [
+    {
+      "type": "video",
+      "src": "https://www.youtube.com/embed/BDJO-vC-gEw",
+      "provider": "youtube",
+      "title": "Verify metrics query successful",
+      "start": 349
+    },
+    {
+      "type": "markdown",
+      "content": "As the final step in your journey, complete the following steps to confirm that you've successfully sent Prometheus metrics to Grafana Cloud:"
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[href=\"/a/grafana-metricsdrilldown-app/drilldown\"]",
+          "requirements": ["navmenu-open", "exists-reftarget"],
+          "content": "In the Grafana side menu, click **Drilldown > Metrics**."
+        },
+        {
+          "type": "markdown",
+          "content": "If you see a **Let's start!** button, click it."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "You should see Prometheus metrics displayed in the Grafana Drilldown Metrics app."
+    },
+    {
+      "type": "markdown",
+      "content": "**Congratulations!** You've successfully connected to your Prometheus data source."
+    },
+    {
+      "type": "markdown",
+      "content": "---\n\n### Troubleshooting\n\nExplore the following troubleshooting topic if you need help:\n\n- [Data doesn't appear in Explore metrics](https://grafana.com/docs/grafana-cloud/connect-externally-hosted/data-sources/prometheus/configure-prometheus-data-source/#troubleshooting)"
+    }
+  ]
+}

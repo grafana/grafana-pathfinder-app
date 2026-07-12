@@ -1,0 +1,37 @@
+{
+  "id": "run-first-k6-test-run-locally",
+  "title": "Run your k6 test locally",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "In this milestone, you run your k6 test script locally and review the results in your terminal."
+    },
+    {
+      "type": "section",
+      "id": "run-test",
+      "title": "Run the test",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "**In your terminal**, navigate to the directory containing your `script.js` file and run the test:\n\n```bash\nk6 run script.js\n```\n\nIf you're using Docker:\n```bash\ndocker run --rm -i grafana/k6 run - < script.js\n```"
+        },
+        {
+          "type": "markdown",
+          "content": "Observe the test execution in your terminal. k6 displays real-time progress including iteration count, HTTP request statistics, and response time metrics."
+        },
+        {
+          "type": "markdown",
+          "content": "When the test completes, review the summary. Look for:\n\n- **checks_succeeded**: Should be 100% if all requests returned status 200\n- **http_req_duration**: Average, median, and p95 response times\n- **http_req_failed**: Should be 0% for a healthy endpoint\n- **iterations**: Should show 10 completed iterations"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "**Troubleshooting**\n\nIf the test fails to run, check that your script syntax is correct and that you have network connectivity to `https://quickpizza.grafana.com`.\n\n- [Running k6 tests](/docs/k6/latest/get-started/running-k6/)"
+    },
+    {
+      "type": "markdown",
+      "content": "In the next milestone, you send your test results to Grafana Cloud for visualization and analysis."
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "id": "run-first-k6-test-lj",
+  "type": "path",
+  "description": "Step-by-step guide: Install k6, write a test script, run it locally, and stream results to Grafana Cloud.",
+  "category": "take-action",
+  "author": {
+    "name": "bonnywelsford-source",
+    "team": "Grafana Documentation"
+  },
+  "startingLocation": "/a/k6-app",
+  "targeting": {
+    "match": {
+      "and": [
+        { "urlPrefix": "/a/k6-app" },
+        { "targetPlatform": "cloud" }
+      ]
+    }
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "milestones": [
+    "run-first-k6-test-install-k6",
+    "run-first-k6-test-write-test-script",
+    "run-first-k6-test-run-locally",
+    "run-first-k6-test-send-to-grafana-cloud",
+    "run-first-k6-test-analyze-results",
+    "run-first-k6-test-end-journey"
+  ],
+  "depends": [],
+  "recommends": [],
+  "suggests": ["detect-outages-synthetic-monitoring-lj", "create-availability-slo-lj"],
+  "provides": []
+}

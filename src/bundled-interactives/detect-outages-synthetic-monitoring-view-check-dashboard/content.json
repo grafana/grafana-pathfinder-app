@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "detect-outages-synthetic-monitoring-view-check-dashboard",
+  "title": "View the check dashboard",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Each check in Synthetic Monitoring has a dedicated dashboard that displays key performance metrics over time. The dashboard provides a comprehensive view of your check's health, including uptime percentage, reachability from each probe location, average latency, and error rates."
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "hover",
+          "reftarget": "section[data-testid='data-testid Panel header Uptime']",
+          "content": "Review the **Uptime** panel to see the percentage of successful checks over the selected time range. Refresh the page after a few minutes to allow data to populate if you don't see any results.",
+          "requirements": [
+            "exists-reftarget"
+          ],
+          "doIt": false
+        },
+        {
+          "type": "interactive",
+          "action": "hover",
+          "reftarget": "section[data-testid='data-testid Panel header Reachability']",
+          "content": "Review the **Reachability** panel to see how often the target responds from each probe location.",
+          "requirements": [
+            "exists-reftarget"
+          ],
+          "doIt": false
+        },
+        {
+          "type": "interactive",
+          "action": "hover",
+          "reftarget": "section[data-testid='data-testid Panel header Average latency']",
+          "content": "Review the **Average latency** panel to see response times from each probe location.",
+          "requirements": [
+            "exists-reftarget"
+          ],
+          "doIt": false
+        },
+        {
+          "type": "interactive",
+          "action": "hover",
+          "reftarget": "[data-testid='data-testid template variable']",
+          "content": "Use the **probe** filter at the top of the dashboard to focus on specific locations.",
+          "requirements": [
+            "exists-reftarget"
+          ],
+          "doIt": false
+        },
+        {
+          "type": "interactive",
+          "action": "hover",
+          "reftarget": "button[data-testid='data-testid TimePicker Open Button']",
+          "content": "Use the time picker to adjust the time range for the displayed data.",
+          "requirements": [
+            "exists-reftarget"
+          ],
+          "doIt": false
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "### Explore the time point explorer\n\nThe check dashboard includes a time point explorer, a specialized visualization that combines logs and metrics to provide a detailed view of individual check executions."
+    },
+    {
+      "type": "markdown",
+      "content": "To investigate a specific execution:"
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "id": "guide-section-99978",
+      "title": "View check execution",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "div[data-testid='timepoint-list']",
+          "content": "Locate the Time point graph, and click on a specific data point in the graph.",
+          "requirements": [
+            "exists-reftarget"
+          ],
+          "doIt": false
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "[data-testid='timepoint-viewer']",
+          "content": "Review the Time point viewer at the bottom to see the logs, response headers, and execution details for that specific moment.",
+          "requirements": [
+            "exists-reftarget"
+          ],
+          "doIt": false
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "In the next milestone, you'll review what you've accomplished in this journey."
+    },
+    {
+      "type": "markdown",
+      "content": "---\n\n### More to explore (optional)\n\nAt this point in your journey, you can explore the following paths:\n\n- [Analyze results with Synthetic Monitoring](https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/analyze-results/)\n- [Visualize check execution with the time point explorer](https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/analyze-results/visualize-check-execution/)"
+    }
+  ]
+}

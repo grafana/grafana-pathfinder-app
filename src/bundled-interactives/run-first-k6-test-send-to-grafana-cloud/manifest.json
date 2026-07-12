@@ -1,0 +1,26 @@
+{
+  "id": "run-first-k6-test-send-to-grafana-cloud",
+  "type": "guide",
+  "description": "Hands-on guide: Find your API token and stream k6 test results to Grafana Cloud.",
+  "category": "take-action",
+  "author": {
+    "name": "bonnywelsford-source",
+    "team": "Grafana Documentation"
+  },
+  "startingLocation": "/a/k6-app/settings",
+  "targeting": {
+    "match": {
+      "and": [
+        { "targetPlatform": "cloud" },
+        { "urlPrefix": "/a/k6-app/settings" }
+      ]
+    }
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": ["run-first-k6-test-run-locally"],
+  "recommends": ["run-first-k6-test-analyze-results"],
+  "suggests": [],
+  "provides": []
+}

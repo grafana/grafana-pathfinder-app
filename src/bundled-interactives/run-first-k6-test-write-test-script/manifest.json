@@ -1,0 +1,26 @@
+{
+  "id": "run-first-k6-test-write-test-script",
+  "type": "guide",
+  "description": "Hands-on guide: Create a k6 test script with HTTP requests and checks.",
+  "category": "take-action",
+  "author": {
+    "name": "bonnywelsford-source",
+    "team": "Grafana Documentation"
+  },
+  "startingLocation": "/testing-and-synthetics",
+  "targeting": {
+    "match": {
+      "and": [
+        { "targetPlatform": "cloud" },
+        { "urlPrefix": "/testing-and-synthetics" }
+      ]
+    }
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": ["run-first-k6-test-install-k6"],
+  "recommends": ["run-first-k6-test-run-locally"],
+  "suggests": [],
+  "provides": []
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "detect-outages-synthetic-monitoring-create-ping-check",
+  "type": "guide",
+  "description": "Learn how to create your first ping check to test endpoint reachability and measure response latency.",
+  "category": "data-availability",
+  "author": {
+    "name": "heitortsergent",
+    "team": "Grafana Documentation"
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": ["detect-outages-synthetic-monitoring-initialize-plugin"],
+  "recommends": ["detect-outages-synthetic-monitoring-select-probe-locations"],
+  "suggests": []
+}

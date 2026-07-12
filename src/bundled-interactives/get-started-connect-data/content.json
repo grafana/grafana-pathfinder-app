@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "get-started-connect-data",
+  "title": "Query data where it lives",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Grafana Cloud queries your data where it already lives, so you don't have to move it. In this guide you'll connect an existing data source and confirm you can query it."
+    },
+    {
+      "type": "markdown",
+      "content": "You need a Grafana Cloud user with the **Admin** role and a reachable data source. Don't have one yet? You can use the built-in **TestData** data source to generate sample time series and still complete this guide."
+    },
+    {
+      "type": "markdown",
+      "content": "You start on the **Add data source** page, which lists data source types. Pick one and configure it."
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "noop",
+          "content": "Filter by name or type, then click your data source type to open its configuration page. If you don't have one, choose **TestData** to generate sample time series."
+        },
+        {
+          "type": "interactive",
+          "action": "noop",
+          "content": "Enter the connection details for your data source, such as a fully qualified host name or URL. Grafana Cloud connects over the public network, so use a public address, not localhost or a private IP."
+        },
+        {
+          "type": "interactive",
+          "action": "noop",
+          "content": "If your data source requires credentials, enter them now. Use an account with least-privilege, read-only access.",
+          "skippable": true
+        },
+        {
+          "type": "interactive",
+          "action": "button",
+          "reftarget": "Save & test",
+          "content": "Click **Save & test** to confirm Grafana Cloud can reach your data source.",
+          "requirements": ["exists-reftarget"]
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "You've connected and tested a data source. Grafana Cloud can now query it in place."
+    },
+    {
+      "type": "markdown",
+      "content": "Now confirm you can query your data."
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "navigate",
+          "reftarget": "/explore",
+          "content": "Go to **Explore**, select your new data source, and run a query."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "You've queried your own data in Grafana Cloud."
+    },
+    {
+      "type": "markdown",
+      "content": "As you connect more data, keep an eye on cost. Usage scales with the data you query and store. Refer to [Cost management and billing](/docs/grafana-cloud/cost-management-and-billing/)."
+    },
+    {
+      "type": "interactive",
+      "action": "navigate",
+      "reftarget": "/a/cloud-home-app",
+      "openGuide": "bundled:get-started-hub",
+      "content": "**Return to Get started with Grafana Cloud** to pick another path, such as **Monitor a host or service**."
+    }
+  ]
+}

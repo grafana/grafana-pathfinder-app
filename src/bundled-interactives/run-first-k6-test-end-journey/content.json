@@ -1,0 +1,22 @@
+{
+  "id": "run-first-k6-test-end-journey",
+  "title": "Destination reached!",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Congratulations on completing this journey! You now have the foundational knowledge to create and run k6 performance tests."
+    },
+    {
+      "type": "markdown",
+      "content": "**What you achieved**\n\nThroughout this journey you:\n\n- Learned the value of performance testing with k6\n- Installed k6 on your machine\n- Wrote your first test script with HTTP requests and checks\n- Ran a test locally and reviewed results in your terminal\n- Sent test results to Grafana Cloud\n- Analyzed results in Grafana Cloud dashboards"
+    },
+    {
+      "type": "markdown",
+      "content": "**What's next**\n\nContinue your k6 learning by exploring:\n\n- **Advanced test scripting**: Multiple requests, data parameterization, and custom logic\n- **Thresholds and checks**: Automatic pass/fail criteria for test results\n- **Browser testing**: Test web applications with real browser automation using k6 browser\n- **CI/CD integration**: Add k6 tests to your continuous integration pipeline"
+    },
+    {
+      "type": "markdown",
+      "content": "In Grafana Cloud, go to **Testing & synthetics > Performance** to explore the interactive onboarding: try k6 Studio, OpenAPI to k6, and running tests from the UI."
+    }
+  ]
+}

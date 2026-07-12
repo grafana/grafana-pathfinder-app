@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "prom-remote-write-end",
+  "title": "Destination reached!",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Congratulations on completing this journey! Job well done!"
+    },
+    {
+      "type": "markdown",
+      "content": "We hope you've enjoyed traveling with us as you:\n\n- Learned about the value of observability and the advantages of Prometheus remote write\n- Verified that your Prometheus server is capturing metrics\n- Configure Prometheus to send metrics to Grafana Cloud\n- Verified that metrics appear in Grafana Cloud"
+    },
+    {
+      "type": "markdown",
+      "content": "---\n\n### Related paths\n\nConsider taking the following paths after you complete this journey:\n\n- [Explore data using Metrics Drilldown](https://grafana.com/docs/learning-paths/drilldown-metrics/)"
+    },
+    {
+      "type": "markdown",
+      "content": "---\n\n### More to explore (optional)\n\nThe world is your oyster! Read more about how you can:\n\n- [Monitor alerts](https://grafana.com/docs/grafana-cloud/alerting-and-irm/alerting/monitor-status)\n- [Get started with incident response](https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/incident/get-started)\n- [Set up Slack to manage incidents](https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/irm-slack)\n- [Set up a Service Level Objective](https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/set-up)"
+    }
+  ]
+}

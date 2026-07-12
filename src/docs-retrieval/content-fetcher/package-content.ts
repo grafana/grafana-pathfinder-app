@@ -7,6 +7,7 @@
 // here (one-directional — the orchestrator never imports back).
 import { ContentFetchResult, LearningJourneyMetadata, Milestone } from '../../types/content.types';
 import type { PackageResolver } from '../../types';
+import type { PackageOpenInfo } from '../../types/content-panel.types';
 import type { ResolvedNavLink } from '../../types/context.types';
 import { getPackageRenderType } from '../../types/package.types';
 import { fetchContent } from '../content-fetcher';
@@ -154,6 +155,51 @@ export async function resolvePackageNavLinks(packageIds: string[]): Promise<Reso
   }
 
   return links;
+}
+
+/**
+ * True if the URL is a bundled package ID reference (e.g.
+ * "bundled:run-first-k6-test-lj") rather than a bundled package file path
+ * ("bundled:foo/content.json"), the wysiwyg preview, or the e2e-test guide.
+ */
+export function isBundledPackageUrl(url: string): boolean {
+  if (!url.startsWith('bundled:')) {
+    return false;
+  }
+  const id = url.slice('bundled:'.length);
+  if (id === 'wysiwyg-preview' || id === 'e2e-test' || id.includes('/')) {
+    return false;
+  }
+  return id.length > 0;
+}
+
+/**
+ * Derive {@link PackageOpenInfo} for a bundled package ID by resolving its
+ * manifest through the injected PackageResolver (bundled tier resolves first).
+ *
+ * Only path/journey packages return info: their milestone toolbar depends on
+ * `packageInfo` being threaded through `openDocsPage`. When a `path` package is
+ * launched via `openGuide: "bundled:<id>"` (auto-launch emits only url/title),
+ * no recommender-provided manifest is available, so without this the model
+ * falls through to plain `fetchContent` and the milestone arrows never appear —
+ * the same gap `fetchPackageInfoFromUrl` closes for remote `/packages/` URLs.
+ *
+ * Single guides return `undefined` so they keep the plain-fetch render path.
+ */
+export async function fetchBundledPackageInfo(url: string): Promise<PackageOpenInfo | undefined> {
+  if (!_packageResolver || !isBundledPackageUrl(url)) {
+    return undefined;
+  }
+  const packageId = url.slice('bundled:'.length);
+  const resolution = await _packageResolver.resolve(packageId, { loadContent: 'metadata-only' });
+  if (!resolution.ok || !resolution.manifest) {
+    return undefined;
+  }
+  const manifest = resolution.manifest as unknown as Record<string, unknown>;
+  if (!isPathManifest(manifest)) {
+    return undefined;
+  }
+  return { packageId, packageManifest: manifest };
 }
 
 function isPathManifest(manifest?: Record<string, unknown>): boolean {

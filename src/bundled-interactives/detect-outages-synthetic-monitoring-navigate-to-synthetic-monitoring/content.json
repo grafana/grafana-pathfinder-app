@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "detect-outages-synthetic-monitoring-navigate-to-synthetic-monitoring",
+  "title": "Navigate to Synthetic Monitoring",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Synthetic Monitoring is available as an app within Grafana Cloud. The home page provides an overview of all your checks, their current status, and key performance metrics. rom this central location, you can create new checks, view dashboards, and access detailed check results.\n\nWhen you first access Synthetic Monitoring, you’ll see a summary of your checks’ health, including uptime percentages, latency measurements, and error rates across all probe locations. This overview helps you quickly identify any services that need attention.\n\nTo navigate to Synthetic Monitoring in Grafana Cloud, complete the following steps:"
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "objectives": [
+        "on-page:/a/grafana-synthetic-monitoring-app/home"
+      ],
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/testing-and-synthetics']",
+          "content": "In the main menu, navigate to **Testing & synthetics**.",
+          "requirements": [
+            "navmenu-open"
+          ]
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "[id='pageContent'] a[href='/a/grafana-synthetic-monitoring-app/home']",
+          "content": "Next, click **Synthetics**.",
+          "requirements": [
+            "exists-reftarget"
+          ],
+          "objectives": [
+            "on-page:/a/grafana-synthetic-monitoring-app/home"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "The Synthetic Monitoring home page displays. If this is your first time accessing Synthetic Monitoring, you'll see an option to initialize the plugin and get started with creating checks."
+    },
+    {
+      "type": "markdown",
+      "content": "In the next milestone, you'll learn how to initialize the Synthetic Monitoring plugin."
+    }
+  ]
+}

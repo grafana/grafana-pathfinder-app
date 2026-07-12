@@ -1,0 +1,22 @@
+{
+  "id": "run-first-k6-test-lj",
+  "title": "Run your first k6 performance test",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "k6 is a modern performance testing tool that helps developers simulate realistic user behavior and test how their systems behave under load. By writing k6 test scripts, you can identify potential issues such as slow response times or system failures before they occur in production.\n\nThis journey guides you through the complete process of creating and running a k6 performance test, from understanding the value of performance testing to analyzing results in Grafana Cloud. You'll learn how to write test scripts, run them locally, send results to Grafana Cloud, and visualize metrics in dashboards.\n\n_Grafana Cloud users:_ you can also try the interactive onboarding in the k6 app. Go to **Testing & synthetics** > **Performance** to:\n\n- Explore test authoring tools (k6 Studio, OpenAPI to k6)\n- Run tests from the UI or CLI\n- Understand results\n\nThis guide complements the in-product onboarding with step-by-step instructions you can follow at your own pace."
+    },
+    {
+      "type": "markdown",
+      "content": "## Here's what to expect\n\nWhen you complete this journey, you'll be able to:\n\n- Understand the value of performance testing with k6\n- Install k6 on your machine\n- Write your first k6 test script\n- Run a test locally and view results\n- Send test results to Grafana Cloud\n- Analyze test results in Grafana Cloud dashboards"
+    },
+    {
+      "type": "markdown",
+      "content": "## Before you begin\n\nBefore you run your first k6 performance test, ensure that you have:\n\n- Basic knowledge of JavaScript or TypeScript (k6 scripts are written in JavaScript/TypeScript).\n- A code editor to write your scripts, such as [Visual Studio Code](https://code.visualstudio.com/) or [Cursor editors](https://www.cursor.com/).\n- Access to a terminal or command line interface.\n- A basic understanding of HTTP requests and web applications."
+    },
+    {
+      "type": "markdown",
+      "content": "## Troubleshooting\n\nIf you get stuck, we've got your back! Where appropriate, troubleshooting information is just a click away.\n\n## More to explore\n\nWe understand you might want to explore other capabilities not strictly on this path. We'll provide you opportunities where it makes sense."
+    }
+  ]
+}

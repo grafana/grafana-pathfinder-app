@@ -1,0 +1,20 @@
+{
+  "id": "prom-remote-write-configure",
+  "type": "guide",
+  "description": "How to configure Prometheus to send metrics to Grafana Cloud.",
+  "category": "data-availability",
+  "author": {
+    "team": "Grafana Documentation"
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": [
+    "prom-remote-write-verify-prom-data"
+  ],
+  "recommends": [
+    "prom-remote-write-verify-metrics"
+  ],
+  "suggests": [],
+  "provides": []
+}

@@ -1,0 +1,20 @@
+{
+  "id": "prom-remote-write-verify-metrics",
+  "type": "guide",
+  "description": "How to verify that a Prometheus data source query works.",
+  "category": "data-availability",
+  "author": {
+    "team": "Grafana Documentation"
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": [
+    "prom-remote-write-configure"
+  ],
+  "recommends": [
+    "prom-remote-write-end"
+  ],
+  "suggests": [],
+  "provides": []
+}

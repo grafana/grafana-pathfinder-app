@@ -386,7 +386,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       refTarget: string,
       targetValue?: string,
       buttonType: 'show' | 'do' = 'do',
-      targetComment?: string
+      targetComment?: string,
+      openGuide?: string
     ): Promise<void> => {
       // Create InteractiveElementData directly from parameters
       const elementData: InteractiveElementData = {
@@ -394,6 +395,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         targetAction: targetAction,
         targetValue: targetValue,
         targetComment: targetComment,
+        openGuide: openGuide,
         requirements: undefined,
         tagName: 'button', // Simulated for React components
         textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${refTarget}`,

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "detect-outages-synthetic-monitoring-select-probe-locations",
+  "title": "Select probe locations",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Probe locations are the global locations from which Synthetic Monitoring runs your checks. Grafana Labs operates public probes in data centers around the world, enabling you to test your services from multiple geographic regions simultaneously."
+    },
+    {
+      "type": "markdown",
+      "content": "Selecting multiple probe locations helps you understand availability and performance from where your users are located. If your service is accessible from some locations but not others, using multiple probes helps you identify region-specific issues such as DNS problems, network routing failures, or CDN misconfigurations.\n\nTo select probe locations and create your check, complete the following steps:"
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "button[data-testid='checkEditor navigation execution']",
+          "content": "In the check creation stepper, click **Execution**."
+        },
+        {
+          "type": "markdown",
+          "content": "In the **Probe locations** section, select the locations from which to run your check. For example, select **North California**, **Singapore**, and **Frankfurt** to test from three continents."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "label:contains('1m')",
+          "content": "Leave the **Frequency** parameter with its default value, or adjust based on your monitoring needs. The default frequency runs checks every minute.",
+          "skippable": true,
+          "hint": "The default frequency is suitable for most checks.",
+          "doIt": false
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "button[data-testid='checkEditor form submit']",
+          "content": "Click **Save** to create your check."
+        }
+      ]
+    },
+    {
+      "type": "image",
+      "src": "https://grafana.com/media/docs/learning-journey/detect-outages-synthetic-monitoring/grafana-cloud-synthetic-monitoring-create-ping-check-probes.png",
+      "alt": "Synthetic Monitoring application in Grafana Cloud, showing the API Endpoint check creation page in the Execution step, with North California, Singapore, and Frankfurt selected"
+    },
+    {
+      "type": "markdown",
+      "content": "After you click **Save**, the check is created, and the check dashboard page is displayed. Synthetic Monitoring starts executing your check at the configured frequency. After a few executions, the Uptime, Reachability, and Latency columns populate with data."
+    },
+    {
+      "type": "markdown",
+      "content": "In the next milestone, you'll explore the check dashboard data."
+    },
+    {
+      "type": "markdown",
+      "content": "---\n\n### More to explore (optional)\n\nAt this point in your journey, you can explore the following paths:\n\n- [Public probes reference](https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/create-checks/public-probes/)\n- [Private probes reference](https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/set-up/set-up-private-probes/)"
+    }
+  ]
+}

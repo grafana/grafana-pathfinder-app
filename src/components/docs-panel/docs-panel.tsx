@@ -43,6 +43,8 @@ import {
   injectJourneyExtrasIntoJsonGuide,
   fetchPackageInfoFromUrl,
   isPackageContentUrl,
+  fetchBundledPackageInfo,
+  isBundledPackageUrl,
 } from '../../docs-retrieval';
 import { createCompositeResolver } from '../../package-engine';
 
@@ -723,6 +725,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       // appears. See package-info-from-url.ts for the URL pattern.
       if (!packageInfo && isPackageContentUrl(url)) {
         packageInfo = await fetchPackageInfoFromUrl(url);
+      }
+      // Same rationale for bundled path/journey packages opened via
+      // `openGuide: "bundled:<id>"` (hub → spoke). The auto-launch event
+      // carries no manifest, so resolve it from the bundled repository here
+      // to restore the milestone toolbar.
+      if (!packageInfo && isBundledPackageUrl(url)) {
+        packageInfo = await fetchBundledPackageInfo(url);
       }
       const result = await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo });
 

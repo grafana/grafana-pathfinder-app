@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "detect-outages-synthetic-monitoring-lj",
+  "title": "Detect customer-visible outages using Synthetic Monitoring",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Synthetic Monitoring is a blackbox monitoring solution that lets you test your applications and services from an external perspective. Unlike traditional monitoring that observes systems from within, Synthetic Monitoring emulates user behavior from probe locations around the world, giving you insight into how your services appear to actual users."
+    },
+    {
+      "type": "markdown",
+      "content": "When you complete this journey, you'll be able to:\n\n- Understand the value of Synthetic Monitoring for proactive blackbox monitoring\n- Navigate to Synthetic Monitoring in Grafana Cloud\n- Initialize the Synthetic Monitoring plugin for your account\n- Create a ping check to test endpoint reachability\n- Select global probe locations to monitor from multiple regions\n- View the check dashboard with uptime, latency, and reachability metrics\n- Explore the time point explorer to analyze individual check executions"
+    },
+    {
+      "type": "markdown",
+      "content": "## Before you begin\n\nBefore you get started with Synthetic Monitoring, ensure that you have:\n\n- Access to your Grafana Cloud instance with permissions to install plugins.\n- A target endpoint to monitor (you can use `grafana.com` for testing purposes)."
+    }
+  ]
+}

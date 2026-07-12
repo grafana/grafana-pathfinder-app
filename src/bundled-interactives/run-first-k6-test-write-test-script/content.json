@@ -1,0 +1,41 @@
+{
+  "id": "run-first-k6-test-write-test-script",
+  "title": "Write your first k6 test script",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "In this milestone, you create your first k6 test script. k6 tests are written in JavaScript, making them accessible and easy to integrate into existing projects."
+    },
+    {
+      "type": "section",
+      "id": "write-script",
+      "title": "Write the test script",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "**In your terminal**, create a new test file:\n\n```bash\ntouch script.js\n```\n\nYou can name the file anything you like, but it should have a `.js` or `.ts` extension."
+        },
+        {
+          "type": "markdown",
+          "content": "Open the file in your code editor and import the k6 modules:\n\n```javascript\nimport http from 'k6/http';\nimport { check, sleep } from 'k6';\n```\n\nThe `http` module makes HTTP requests, and `sleep` simulates real-world delays between requests."
+        },
+        {
+          "type": "markdown",
+          "content": "Define the test options to configure execution:\n\n```javascript\nexport const options = {\n  iterations: 10,\n};\n```\n\nThis tells k6 to execute the default function 10 times."
+        },
+        {
+          "type": "markdown",
+          "content": "Define the default function with your test logic:\n\n```javascript\nexport default function () {\n  const res = http.get('https://quickpizza.grafana.com');\n  check(res, { 'status was 200': (r) => r.status === 200 });\n  sleep(1);\n}\n```\n\nThis makes a GET request, verifies a 200 status, and waits 1 second between iterations."
+        },
+        {
+          "type": "markdown",
+          "content": "Save the complete script. Your `script.js` file should contain:\n\n```javascript\nimport http from 'k6/http';\nimport { check, sleep } from 'k6';\n\nexport const options = {\n  iterations: 10,\n};\n\nexport default function () {\n  const res = http.get('https://quickpizza.grafana.com');\n  check(res, { 'status was 200': (r) => r.status === 200 });\n  sleep(1);\n}\n```"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "In the next milestone, you run this test locally and review the results in your terminal."
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "run-first-k6-test-analyze-results",
+  "type": "guide",
+  "description": "Hands-on guide: Navigate test results and explore Performance Overview, Cloud Insights, HTTP, and Thresholds tabs.",
+  "category": "take-action",
+  "author": {
+    "name": "bonnywelsford-source",
+    "team": "Grafana Documentation"
+  },
+  "startingLocation": "/a/k6-app/runs",
+  "targeting": {
+    "match": {
+      "and": [
+        { "targetPlatform": "cloud" },
+        { "urlPrefix": "/a/k6-app/runs" }
+      ]
+    }
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": ["run-first-k6-test-send-to-grafana-cloud"],
+  "recommends": ["run-first-k6-test-end-journey"],
+  "suggests": [],
+  "provides": []
+}

@@ -458,7 +458,7 @@ export const InteractiveStep = forwardRef<
         }
 
         // Execute the action using existing interactive logic
-        await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'do', targetComment);
+        await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'do', targetComment, openGuide);
 
         // Wait for DOM to settle after action (especially important for navigation, form fills, etc.)
         await waitForReactUpdates();
@@ -523,6 +523,7 @@ export const InteractiveStep = forwardRef<
       refTarget,
       currentTargetValue,
       targetComment,
+      openGuide,
       postVerify,
       verifyStepResult,
       executeInteractiveAction,

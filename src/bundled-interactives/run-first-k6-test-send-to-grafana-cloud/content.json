@@ -1,0 +1,58 @@
+{
+  "id": "run-first-k6-test-send-to-grafana-cloud",
+  "title": "Send test results to Grafana Cloud",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "In this milestone, you send your k6 test results to Grafana Cloud for real-time visualization and analysis."
+    },
+    {
+      "type": "section",
+      "id": "send-results",
+      "title": "Send results to Grafana Cloud",
+      "blocks": [
+        {
+          "type": "multistep",
+          "content": "In the main menu, navigate to **Testing & synthetics > Performance**.",
+          "requirements": ["navmenu-open"],
+          "skippable": true,
+          "steps": [
+            { "action": "highlight", "reftarget": "a[data-testid='data-testid Nav menu item'][href='/testing-and-synthetics']" },
+            { "action": "highlight", "reftarget": "a[data-testid='data-testid Nav menu item'][href='/a/k6-app']" }
+          ]
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/a/k6-app/settings']",
+          "requirements": ["navmenu-open"],
+          "content": "In the left navigation under **Performance**, select **Settings** to find your API token."
+        },
+        {
+          "type": "markdown",
+          "content": "Copy your API token from the Settings page. You'll use it in the next step to authenticate k6."
+        },
+        {
+          "type": "markdown",
+          "content": "**In your terminal**, navigate to the directory where you saved your `script.js` file, then log in to Grafana Cloud k6:\n\n```bash\nk6 cloud login --token YOUR_API_TOKEN\n```\n\nReplace `YOUR_API_TOKEN` with the token you just copied."
+        },
+        {
+          "type": "markdown",
+          "content": "Run your test with the `--local-execution` flag to stream results to Grafana Cloud:\n\n```bash\nk6 cloud run --local-execution script.js\n```"
+        },
+        {
+          "type": "markdown",
+          "content": "After the test completes, scroll up in your terminal output and find the `output:` line. It contains a URL like:\n\n`output: cloud (https://your-stack.grafana.net/a/k6-app/runs/...)`"
+        },
+        {
+          "type": "markdown",
+          "content": "Copy this URL — it links to your test results in Grafana Cloud. You'll use it in the next milestone to view your results."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "In the next milestone, you analyze your test results in Grafana Cloud dashboards."
+    }
+  ]
+}

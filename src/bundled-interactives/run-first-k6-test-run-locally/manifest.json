@@ -1,0 +1,26 @@
+{
+  "id": "run-first-k6-test-run-locally",
+  "type": "guide",
+  "description": "Hands-on guide: Execute your k6 test and review results in your terminal.",
+  "category": "take-action",
+  "author": {
+    "name": "bonnywelsford-source",
+    "team": "Grafana Documentation"
+  },
+  "startingLocation": "/testing-and-synthetics",
+  "targeting": {
+    "match": {
+      "and": [
+        { "targetPlatform": "cloud" },
+        { "urlPrefix": "/testing-and-synthetics" }
+      ]
+    }
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": ["run-first-k6-test-write-test-script"],
+  "recommends": ["run-first-k6-test-send-to-grafana-cloud"],
+  "suggests": [],
+  "provides": []
+}

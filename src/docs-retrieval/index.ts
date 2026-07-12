@@ -29,6 +29,8 @@ export { fetchContent as fetchUnifiedContent } from './content-fetcher';
 export {
   fetchPackageContent,
   fetchPackageById,
+  fetchBundledPackageInfo,
+  isBundledPackageUrl,
   setPackageResolver,
   resolvePackageMilestones,
   resolvePackageNavLinks,

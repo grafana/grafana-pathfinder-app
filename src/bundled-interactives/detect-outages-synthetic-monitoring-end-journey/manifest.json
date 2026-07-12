@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "detect-outages-synthetic-monitoring-end-journey",
+  "type": "guide",
+  "description": "Congratulations on completing the Synthetic Monitoring get started learning path! Explore next steps for expanding your monitoring capabilities.",
+  "category": "data-availability",
+  "author": {
+    "name": "heitortsergent",
+    "team": "Grafana Documentation"
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": ["detect-outages-synthetic-monitoring-view-check-dashboard"],
+  "recommends": [],
+  "suggests": []
+}

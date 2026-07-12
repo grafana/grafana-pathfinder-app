@@ -1,0 +1,26 @@
+{
+  "id": "run-first-k6-test-install-k6",
+  "type": "guide",
+  "description": "Hands-on guide: Install k6 on your machine and verify the installation.",
+  "category": "take-action",
+  "author": {
+    "name": "bonnywelsford-source",
+    "team": "Grafana Documentation"
+  },
+  "startingLocation": "/testing-and-synthetics",
+  "targeting": {
+    "match": {
+      "and": [
+        { "targetPlatform": "cloud" },
+        { "urlPrefix": "/testing-and-synthetics" }
+      ]
+    }
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": [],
+  "recommends": ["run-first-k6-test-write-test-script"],
+  "suggests": [],
+  "provides": []
+}

@@ -42,8 +42,13 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/",
-    "recommends": ["welcome-to-grafana", "prometheus-grafana-101"],
-    "provides": ["first-dashboard-created"],
+    "recommends": [
+      "welcome-to-grafana",
+      "prometheus-grafana-101"
+    ],
+    "provides": [
+      "first-dashboard-created"
+    ],
     "targeting": {
       "match": {
         "and": [
@@ -72,8 +77,12 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/",
-    "recommends": ["welcome-to-grafana-cloud"],
-    "provides": ["first-dashboard-created-cloud"],
+    "recommends": [
+      "welcome-to-grafana-cloud"
+    ],
+    "provides": [
+      "first-dashboard-created-cloud"
+    ],
     "targeting": {
       "match": {
         "and": [
@@ -118,8 +127,12 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/connections",
-    "depends": ["prometheus-grafana-101"],
-    "provides": ["loki-configured"],
+    "depends": [
+      "prometheus-grafana-101"
+    ],
+    "provides": [
+      "loki-configured"
+    ],
     "targeting": {
       "match": {
         "and": [
@@ -148,7 +161,10 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/explore",
-    "recommends": ["prometheus-grafana-101", "loki-grafana-101"],
+    "recommends": [
+      "prometheus-grafana-101",
+      "loki-grafana-101"
+    ],
     "targeting": {
       "match": {
         "urlPrefix": "/explore"
@@ -170,8 +186,12 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/connections",
-    "recommends": ["welcome-to-grafana"],
-    "provides": ["prometheus-configured"],
+    "recommends": [
+      "welcome-to-grafana"
+    ],
+    "provides": [
+      "prometheus-configured"
+    ],
     "targeting": {
       "match": {
         "and": [
@@ -200,7 +220,9 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/",
-    "provides": ["grafana-tour-oss"],
+    "provides": [
+      "grafana-tour-oss"
+    ],
     "targeting": {
       "match": {
         "and": [
@@ -229,7 +251,9 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/",
-    "provides": ["grafana-tour-cloud"],
+    "provides": [
+      "grafana-tour-cloud"
+    ],
     "targeting": {
       "match": {
         "and": [
@@ -246,5 +270,257 @@
       "tier": "cloud",
       "minVersion": "12.2.0"
     }
+  },
+  "get-started-hub": {
+    "path": "get-started-hub/",
+    "title": "Get started with Grafana Cloud",
+    "type": "guide",
+    "description": "Choose how to get started with Grafana Cloud and reach a first success fast: explore demo data, connect existing data, send metrics, load test with k6, or monitor uptime.",
+    "category": "getting-started",
+    "author": {
+      "name": "Chris Moyer",
+      "team": "Interactive Learning"
+    },
+    "startingLocation": "/a/cloud-home-app",
+    "suggests": [
+      "get-started-explore",
+      "get-started-connect-data",
+      "get-started-monitor-host",
+      "prom-remote-write-lj",
+      "run-first-k6-test-lj",
+      "detect-outages-synthetic-monitoring-lj"
+    ],
+    "targeting": {
+      "match": {
+        "and": [
+          {
+            "urlPrefixIn": [
+              "/a/cloud-home-app",
+              "/a/grafana-setupguide-app/getting-started"
+            ]
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    "testEnvironment": {
+      "tier": "cloud",
+      "minVersion": "12.2.0"
+    }
+  },
+  "get-started-explore": {
+    "path": "get-started-explore/",
+    "title": "See Grafana Cloud in action with demo data",
+    "type": "guide",
+    "description": "Install ready-made demo dashboards and read your first one. The fastest way to see value with no data setup.",
+    "category": "getting-started",
+    "author": {
+      "name": "Chris Moyer",
+      "team": "Interactive Learning"
+    },
+    "startingLocation": "/dashboards",
+    "testEnvironment": {
+      "tier": "cloud",
+      "minVersion": "12.2.0"
+    }
+  },
+  "get-started-connect-data": {
+    "path": "get-started-connect-data/",
+    "title": "Query data where it lives",
+    "type": "guide",
+    "description": "Connect a data source and query it in place, with no moving or duplicating your data.",
+    "category": "getting-started",
+    "author": {
+      "name": "Chris Moyer",
+      "team": "Interactive Learning"
+    },
+    "startingLocation": "/connections/datasources/new",
+    "testEnvironment": {
+      "tier": "cloud",
+      "minVersion": "12.2.0"
+    }
+  },
+  "get-started-monitor-host": {
+    "path": "get-started-monitor-host/",
+    "title": "Monitor a host or service",
+    "type": "guide",
+    "description": "Install an integration that sets up data collection and a prebuilt dashboard for a host, database, or web server.",
+    "category": "getting-started",
+    "author": {
+      "name": "Chris Moyer",
+      "team": "Interactive Learning"
+    },
+    "startingLocation": "/connections/add-new-connection?cat=integration",
+    "testEnvironment": {
+      "tier": "cloud",
+      "minVersion": "12.2.0"
+    }
+  },
+  "run-first-k6-test-lj": {
+    "path": "run-first-k6-test-lj/",
+    "title": "Run your first k6 performance test",
+    "type": "path",
+    "description": "Create and run your first performance test against a target.",
+    "category": "testing",
+    "author": {
+      "name": "Chris Moyer",
+      "team": "Interactive Learning"
+    },
+    "startingLocation": "/a/k6-app",
+    "testEnvironment": {
+      "tier": "cloud",
+      "minVersion": "12.2.0"
+    },
+    "milestones": [
+      "run-first-k6-test-install-k6",
+      "run-first-k6-test-write-test-script",
+      "run-first-k6-test-run-locally",
+      "run-first-k6-test-send-to-grafana-cloud",
+      "run-first-k6-test-analyze-results",
+      "run-first-k6-test-end-journey"
+    ]
+  },
+  "detect-outages-synthetic-monitoring-lj": {
+    "path": "detect-outages-synthetic-monitoring-lj/",
+    "title": "Detect customer-visible outages using Synthetic Monitoring",
+    "type": "path",
+    "description": "Create your first check to track availability and latency.",
+    "category": "testing",
+    "author": {
+      "name": "Chris Moyer",
+      "team": "Interactive Learning"
+    },
+    "startingLocation": "/a/grafana-synthetic-monitoring-app/home",
+    "testEnvironment": {
+      "tier": "cloud",
+      "minVersion": "12.2.0"
+    },
+    "milestones": [
+      "detect-outages-synthetic-monitoring-navigate-to-synthetic-monitoring",
+      "detect-outages-synthetic-monitoring-initialize-plugin",
+      "detect-outages-synthetic-monitoring-create-ping-check",
+      "detect-outages-synthetic-monitoring-select-probe-locations",
+      "detect-outages-synthetic-monitoring-view-check-dashboard",
+      "detect-outages-synthetic-monitoring-end-journey"
+    ]
+  },
+  "prom-remote-write-lj": {
+    "path": "prom-remote-write-lj/",
+    "title": "Send metrics to Grafana Cloud using Prometheus remote write",
+    "type": "path",
+    "description": "Already running Prometheus? Push its metrics to Grafana Cloud with remote write.",
+    "category": "getting-started",
+    "author": {
+      "name": "knylander-grafana",
+      "team": "Grafana Documentation"
+    },
+    "startingLocation": "/connections/add-new-connection/hmInstancePromId",
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "milestones": [
+      "prom-remote-write-verify-prom-data",
+      "prom-remote-write-configure",
+      "prom-remote-write-verify-metrics",
+      "prom-remote-write-end"
+    ]
+  },
+  "run-first-k6-test-install-k6": {
+    "path": "run-first-k6-test-install-k6/",
+    "title": "Install k6",
+    "type": "guide",
+    "description": "Hands-on guide: Install k6 on your machine and verify the installation."
+  },
+  "run-first-k6-test-write-test-script": {
+    "path": "run-first-k6-test-write-test-script/",
+    "title": "Write your first k6 test script",
+    "type": "guide",
+    "description": "Hands-on guide: Create a k6 test script with HTTP requests and checks."
+  },
+  "run-first-k6-test-run-locally": {
+    "path": "run-first-k6-test-run-locally/",
+    "title": "Run your k6 test locally",
+    "type": "guide",
+    "description": "Hands-on guide: Execute your k6 test and review results in your terminal."
+  },
+  "run-first-k6-test-send-to-grafana-cloud": {
+    "path": "run-first-k6-test-send-to-grafana-cloud/",
+    "title": "Send test results to Grafana Cloud",
+    "type": "guide",
+    "description": "Hands-on guide: Find your API token and stream k6 test results to Grafana Cloud."
+  },
+  "run-first-k6-test-analyze-results": {
+    "path": "run-first-k6-test-analyze-results/",
+    "title": "Analyze test results in Grafana Cloud",
+    "type": "guide",
+    "description": "Hands-on guide: Navigate test results and explore Performance Overview, Cloud Insights, HTTP, and Thresholds tabs."
+  },
+  "run-first-k6-test-end-journey": {
+    "path": "run-first-k6-test-end-journey/",
+    "title": "Destination reached!",
+    "type": "guide",
+    "description": "Congratulations on completing your first k6 performance test journey."
+  },
+  "detect-outages-synthetic-monitoring-navigate-to-synthetic-monitoring": {
+    "path": "detect-outages-synthetic-monitoring-navigate-to-synthetic-monitoring/",
+    "title": "Navigate to Synthetic Monitoring",
+    "type": "guide",
+    "description": "Learn how to access the Synthetic Monitoring app within Grafana Cloud to view and manage your checks."
+  },
+  "detect-outages-synthetic-monitoring-initialize-plugin": {
+    "path": "detect-outages-synthetic-monitoring-initialize-plugin/",
+    "title": "Initialize the Synthetic Monitoring plugin",
+    "type": "guide",
+    "description": "Learn how to initialize the Synthetic Monitoring plugin to set up the required data sources for your checks."
+  },
+  "detect-outages-synthetic-monitoring-create-ping-check": {
+    "path": "detect-outages-synthetic-monitoring-create-ping-check/",
+    "title": "Create a ping check",
+    "type": "guide",
+    "description": "Learn how to create your first ping check to test endpoint reachability and measure response latency."
+  },
+  "detect-outages-synthetic-monitoring-select-probe-locations": {
+    "path": "detect-outages-synthetic-monitoring-select-probe-locations/",
+    "title": "Select probe locations",
+    "type": "guide",
+    "description": "Learn how to select global probe locations and create your check to start monitoring your services."
+  },
+  "detect-outages-synthetic-monitoring-view-check-dashboard": {
+    "path": "detect-outages-synthetic-monitoring-view-check-dashboard/",
+    "title": "View the check dashboard",
+    "type": "guide",
+    "description": "Learn how to view and interpret the check dashboard with uptime, latency, and reachability metrics."
+  },
+  "detect-outages-synthetic-monitoring-end-journey": {
+    "path": "detect-outages-synthetic-monitoring-end-journey/",
+    "title": "Destination reached!",
+    "type": "guide",
+    "description": "Congratulations on completing the Synthetic Monitoring get started learning path! Explore next steps for expanding your monitoring capabilities."
+  },
+  "prom-remote-write-verify-prom-data": {
+    "path": "prom-remote-write-verify-prom-data/",
+    "title": "Verify Prometheus metrics are written to an endpoint",
+    "type": "guide",
+    "description": "How to verify that metrics are being written to an endpoint."
+  },
+  "prom-remote-write-configure": {
+    "path": "prom-remote-write-configure/",
+    "title": "Configure Prometheus remote write to send metrics to Grafana Cloud",
+    "type": "guide",
+    "description": "How to configure Prometheus to send metrics to Grafana Cloud."
+  },
+  "prom-remote-write-verify-metrics": {
+    "path": "prom-remote-write-verify-metrics/",
+    "title": "Verify metrics query successful",
+    "type": "guide",
+    "description": "How to verify that a Prometheus data source query works."
+  },
+  "prom-remote-write-end": {
+    "path": "prom-remote-write-end/",
+    "title": "Destination reached!",
+    "type": "guide",
+    "description": "Your journey concludes and it's time to learn about related paths you can take."
   }
 }

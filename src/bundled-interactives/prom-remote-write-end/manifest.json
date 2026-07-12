@@ -1,0 +1,20 @@
+{
+  "id": "prom-remote-write-end",
+  "type": "guide",
+  "description": "Your journey concludes and it's time to learn about related paths you can take.",
+  "category": "data-availability",
+  "author": {
+    "team": "Grafana Documentation"
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": [
+    "prom-remote-write-verify-metrics"
+  ],
+  "recommends": [],
+  "suggests": [
+    "drilldown-metrics-lj"
+  ],
+  "provides": []
+}

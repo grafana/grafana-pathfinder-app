@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "detect-outages-synthetic-monitoring-select-probe-locations",
+  "type": "guide",
+  "description": "Learn how to select global probe locations and create your check to start monitoring your services.",
+  "category": "data-availability",
+  "author": {
+    "name": "heitortsergent",
+    "team": "Grafana Documentation"
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": ["detect-outages-synthetic-monitoring-create-ping-check"],
+  "recommends": ["detect-outages-synthetic-monitoring-view-check-dashboard"],
+  "suggests": []
+}

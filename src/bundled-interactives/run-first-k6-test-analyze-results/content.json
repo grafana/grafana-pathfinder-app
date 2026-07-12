@@ -1,0 +1,59 @@
+{
+  "id": "run-first-k6-test-analyze-results",
+  "title": "Analyze test results in Grafana Cloud",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "In this milestone, you analyze your k6 test results in Grafana Cloud dashboards to understand performance metrics and identify potential issues."
+    },
+    {
+      "type": "section",
+      "id": "explore-results",
+      "title": "Explore test results",
+      "blocks": [
+        {
+          "type": "multistep",
+          "content": "In the main menu, navigate to **Testing & synthetics > Performance**.",
+          "requirements": ["navmenu-open"],
+          "skippable": true,
+          "steps": [
+            { "action": "highlight", "reftarget": "a[data-testid='data-testid Nav menu item'][href='/testing-and-synthetics']" },
+            { "action": "highlight", "reftarget": "a[data-testid='data-testid Nav menu item'][href='/a/k6-app']" }
+          ]
+        },
+        {
+          "type": "markdown",
+          "content": "On the Performance page, select the project that contains your test."
+        },
+        {
+          "type": "markdown",
+          "content": "Select your test, then choose the most recent test run from the list to open the **Performance Overview** dashboard."
+        },
+        {
+          "type": "markdown",
+          "content": "Review the **Performance Overview** dashboard, which displays test summary information (duration, virtual users, iterations), HTTP request statistics (total requests, success rate, error rate), response time metrics (average, median, p95), and throughput metrics (requests per second, data transfer rates)."
+        },
+        {
+          "type": "markdown",
+          "content": "Scroll down to the **Cloud Insights** section.\n\nCloud Insights analyzes your test script and results, then generates scores and recommendations across categories such as best practice, reliability, and system performance."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Tab HTTP']",
+          "content": "Select the **HTTP** tab to explore detailed request metrics for each endpoint, including count, response times (min, average, p95, p99, max), and status codes."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Tab THRESHOLDS']",
+          "content": "Select the **Thresholds** tab to review the default and custom thresholds for your test.\n\nGrafana Cloud k6 automatically applies thresholds like `http_req_failed` and `http_req_duration`."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "You now know how to find your test results in Grafana Cloud and read the performance overview, Cloud Insights, HTTP details, and thresholds for your test."
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "prom-remote-write-verify-prom-data",
+  "type": "guide",
+  "description": "How to verify that metrics are being written to an endpoint.",
+  "category": "data-availability",
+  "author": {
+    "team": "Grafana Documentation"
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": [],
+  "recommends": [
+    "prom-remote-write-configure"
+  ],
+  "suggests": [],
+  "provides": []
+}

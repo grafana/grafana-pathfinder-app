@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "detect-outages-synthetic-monitoring-create-ping-check",
+  "title": "Create a ping check",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "A ping check is the simplest type of synthetic check. It tests whether an endpoint is reachable by sending ICMP packets to a target host and measuring the response time. Ping checks verify basic network connectivity and availability without testing application-level functionality.\n\nPing checks are ideal for monitoring infrastructure components, verifying that servers are online, and establishing baseline network latency measurements. They run quickly and use minimal resources, making them suitable for frequent monitoring intervals."
+    },
+    {
+      "type": "video",
+      "src": "https://www.youtube.com/embed/GAzh8nHj2w8",
+      "provider": "youtube"
+    },
+    {
+      "type": "markdown",
+      "content": "To create a ping check, complete the following steps:"
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='action create check']",
+          "content": "On the Synthetic Monitoring home page, click **Create new check**."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[href='/a/grafana-synthetic-monitoring-app/checks/new/api-endpoint']",
+          "content": "Click **API endpoint**."
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "input[data-testid='checkEditor form job']",
+          "targetvalue": "grafana-ping-check",
+          "content": "In the **Job name** field, enter a descriptive name for your check.",
+          "doIt": false
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "label[for^='option-ping-radiogroup-']",
+          "content": "Under **Request type**, click **Ping**."
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "input[name='target'][placeholder='grafana.com']",
+          "targetvalue": "grafana.com",
+          "content": "In the **Request target** field, enter the hostname or IP address to ping. You can use `grafana.com` for testing.",
+          "requirements": [
+            "exists-reftarget"
+          ],
+          "doIt": false
+        }
+      ]
+    },
+    {
+      "type": "image",
+      "src": "https://grafana.com/media/docs/learning-journey/detect-outages-synthetic-monitoring/grafana-cloud-synthetic-monitoring-create-ping-check-2.png",
+      "alt": "Synthetic Monitoring application in Grafana Cloud, showing the API Endpoint check creation page with Ping selected as the request type"
+    },
+    {
+      "type": "markdown",
+      "content": "The check configuration form displays your **Job name** and **Target**. To finish setting up your check, you must now configure where and how often it runs."
+    },
+    {
+      "type": "markdown",
+      "content": "In the next milestone, you'll navigate to the execution step to select your probe locations."
+    },
+    {
+      "type": "markdown",
+      "content": "---\n\n### More to explore (optional)\n\nAt this point in your journey, you can explore the following paths:\n\n- [Ping check reference](https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/create-checks/checks/ping/)"
+    }
+  ]
+}

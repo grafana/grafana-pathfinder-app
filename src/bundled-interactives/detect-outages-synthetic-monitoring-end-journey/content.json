@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "detect-outages-synthetic-monitoring-end-journey",
+  "title": "Destination reached!",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Congratulations on completing this journey! Job well done!\n\nWe hope you've enjoyed traveling with us as you:\n\n- Learned about the value of Synthetic Monitoring for proactive blackbox monitoring\n- Navigated to Synthetic Monitoring in Grafana Cloud\n- Initialized the Synthetic Monitoring plugin for your account\n- Created your first ping check to test endpoint reachability\n- Selected global probe locations to monitor from multiple regions\n- Explored the check dashboard with uptime, latency, and reachability metrics\n- Explored the time point explorer to analyze individual check executions"
+    },
+    {
+      "type": "markdown",
+      "content": "---\n\n### More to explore (optional)\n\nThe world is your oyster! Read more about how you can:\n\n- [Create HTTP checks](https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/create-checks/checks/http/)\n- [Create k6 scripted checks](https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/create-checks/checks/k6/)\n- [Configure Synthetic Monitoring alerts](https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/configure-alerts/)\n- [Set up private probes](https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/set-up/set-up-private-probes/)"
+    }
+  ]
+}

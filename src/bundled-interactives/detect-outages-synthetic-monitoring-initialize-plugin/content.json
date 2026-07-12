@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "detect-outages-synthetic-monitoring-initialize-plugin",
+  "title": "Initialize the Synthetic Monitoring plugin",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Before you can create checks, you need to initialize the Synthetic Monitoring plugin. This one-time setup process configures the connection between the plugin and your Grafana Cloud account, automatically creating the required Prometheus and Loki data sources for storing metrics and logs from your checks.\n\nThe initialization process ensures that all check results are stored in your Grafana Cloud stack, where you can query them using familiar tools like Explore and build custom dashboards and alerts.\n\nTo initialize the Synthetic Monitoring plugin, complete the following steps:"
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "button[data-testid='app-init init-button']",
+          "content": "On the Synthetic Monitoring home page, click **Initialize the plugin**. If you can see a **Create new check** button, the plugin has already been initialized and you can proceed to the next milestone.",
+          "requirements": [
+            "exists-reftarget"
+          ],
+          "skippable": true
+        },
+        {
+          "type": "markdown",
+          "content": "Wait for the initialization process to complete. This typically takes a few seconds."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "After initialization completes, the Synthetic Monitoring home page refreshes and displays options to create your first check. You’re now ready to start monitoring your endpoints."
+    },
+    {
+      "type": "markdown",
+      "content": "In the next milestone, you'll learn how to create your first ping check."
+    }
+  ]
+}

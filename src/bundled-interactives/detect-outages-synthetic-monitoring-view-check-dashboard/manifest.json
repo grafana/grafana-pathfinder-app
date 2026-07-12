@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "detect-outages-synthetic-monitoring-view-check-dashboard",
+  "type": "guide",
+  "description": "Learn how to view and interpret the check dashboard with uptime, latency, and reachability metrics.",
+  "category": "data-availability",
+  "author": {
+    "name": "heitortsergent",
+    "team": "Grafana Documentation"
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": ["detect-outages-synthetic-monitoring-select-probe-locations"],
+  "recommends": ["detect-outages-synthetic-monitoring-end-journey"],
+  "suggests": []
+}

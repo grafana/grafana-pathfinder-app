@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "prom-remote-write-verify-prom-data",
+  "title": "Verify Prometheus metrics are written to an endpoint",
+  "blocks": [
+    {
+      "type": "video",
+      "src": "https://www.youtube.com/embed/BDJO-vC-gEw",
+      "provider": "youtube",
+      "title": "Verify Prometheus metrics are written to an endpoint",
+      "start": 127,
+      "end": 193
+    },
+    {
+      "type": "markdown",
+      "content": "While installing and configuring Prometheus in your local environment is out of scope for this journey, a good first step in this journey is to verify that your system is writing metrics to the Prometheus endpoint."
+    },
+    {
+      "type": "markdown",
+      "content": "To verify Prometheus metrics are written to an endpoint:"
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Log into the machine on which Prometheus is installed."
+        },
+        {
+          "type": "markdown",
+          "content": "If required, switch to a user that has administrative privileges."
+        },
+        {
+          "type": "markdown",
+          "content": "To check the Prometheus service status, run one of the following commands:\n\nFor Linux:\n\n```\nsystemctl status prometheus.service\n```\n\nFor Windows:\n\n```\nsc query prometheus\n```\n\nYou should see something similar to the following:"
+        },
+        {
+          "type": "image",
+          "src": "https://grafana.com/media/docs/learning-journey/prom-data-source/verify-prom-data-1.png",
+          "alt": "Picture that shows the Prometheus service up and running"
+        },
+        {
+          "type": "markdown",
+          "content": "To ensure that Prometheus is capturing the metrics, open a browser tab and navigate to the metrics endpoint URL.\n\nFor example, navigate to `http://localhost:9090/metrics`\n\nYou should see something similar to the following:"
+        },
+        {
+          "type": "image",
+          "src": "https://grafana.com/media/docs/learning-journey/prom-data-source/verify-prom-data-2.png",
+          "alt": "Picture that shows metrics in a browser tab"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "**Tip:** Consult the Prometheus documentation if you are unable to run the Prometheus service or can't verify that Prometheus is capturing metrics."
+    }
+  ]
+}

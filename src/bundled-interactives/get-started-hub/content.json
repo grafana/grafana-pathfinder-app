@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "get-started-hub",
+  "title": "Get started with Grafana Cloud",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Grafana Cloud can do a lot, and there's no single right place to begin. Pick the path that matches what you want to do first. You can come back and choose another anytime.\n\n**Not sure where to start?** Choose **See Grafana Cloud in action** for a quick win with demo data. No setup or instrumentation required, and you're not billed for it."
+    },
+    {
+      "type": "interactive",
+      "action": "navigate",
+      "reftarget": "/dashboards",
+      "openGuide": "bundled:get-started-explore",
+      "content": "**See Grafana Cloud in action**\n\nInstall ready-made demo dashboards and read your first one. The fastest way to see value with no data setup."
+    },
+    {
+      "type": "interactive",
+      "action": "navigate",
+      "reftarget": "/connections/datasources/new",
+      "openGuide": "bundled:get-started-connect-data",
+      "content": "**Query data where it lives**\n\nConnect a data source and query it in place, with no moving or duplicating your data."
+    },
+    {
+      "type": "interactive",
+      "action": "navigate",
+      "reftarget": "/connections/add-new-connection?cat=integration",
+      "openGuide": "bundled:get-started-monitor-host",
+      "content": "**Monitor a host or service**\n\nInstall an integration that sets up data collection and a prebuilt dashboard for a host, database, or web server."
+    },
+    {
+      "type": "interactive",
+      "action": "navigate",
+      "reftarget": "/connections/add-new-connection/hmInstancePromId",
+      "openGuide": "bundled:prom-remote-write-lj",
+      "content": "**Send metrics from an existing collector**\n\nAlready running Prometheus? Push its metrics to Grafana Cloud with remote write."
+    },
+    {
+      "type": "interactive",
+      "action": "navigate",
+      "reftarget": "/a/k6-app",
+      "openGuide": "bundled:run-first-k6-test-lj",
+      "content": "**Run a load test with k6**\n\nCreate and run your first performance test against a target."
+    },
+    {
+      "type": "interactive",
+      "action": "navigate",
+      "reftarget": "/a/grafana-synthetic-monitoring-app/home",
+      "openGuide": "bundled:detect-outages-synthetic-monitoring-lj",
+      "content": "**Monitor uptime with Synthetic Monitoring**\n\nCreate your first check to track availability and latency."
+    },
+    {
+      "type": "markdown",
+      "content": "---\n\n### Moving from another tool?\n\nComing from Datadog, Elastic, New Relic, or Splunk? Refer to [Migrate to Grafana Cloud](/docs/grafana-cloud/) for the migration path."
+    }
+  ]
+}

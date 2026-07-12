@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "detect-outages-synthetic-monitoring-lj",
+  "type": "path",
+  "description": "Step-by-step guide: Detect customer-visible outages using Synthetic Monitoring.",
+  "category": "data-availability",
+  "author": {
+    "name": "heitortsergent",
+    "team": "Grafana Documentation"
+  },
+  "startingLocation": "/a/grafana-synthetic-monitoring-app/home",
+  "targeting": {
+    "match": {
+      "and": [
+        {
+          "urlPrefix": "/a/grafana-synthetic-monitoring-app/home"
+        },
+        {
+          "targetPlatform": "cloud"
+        }
+      ]
+    }
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "milestones": [
+    "detect-outages-synthetic-monitoring-navigate-to-synthetic-monitoring",
+    "detect-outages-synthetic-monitoring-initialize-plugin",
+    "detect-outages-synthetic-monitoring-create-ping-check",
+    "detect-outages-synthetic-monitoring-select-probe-locations",
+    "detect-outages-synthetic-monitoring-view-check-dashboard",
+    "detect-outages-synthetic-monitoring-end-journey"
+  ],
+  "recommends": [],
+  "suggests": []
+}
