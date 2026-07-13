@@ -124,7 +124,7 @@ export function useBlockPersistence({
         guide,
         blockIds,
         viewMode,
-        jsonModeState: jsonModeState ?? undefined,
+        jsonModeState: viewMode === 'json' ? (jsonModeState ?? undefined) : undefined,
         savedAt: new Date().toISOString(),
         version: STORAGE_VERSION,
       };
