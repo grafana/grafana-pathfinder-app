@@ -65,6 +65,7 @@ export const testIds = {
   // Context Panel - Recommendations and content
   contextPanel: {
     container: 'context-panel-container',
+    scrollContainer: 'context-panel-scroll-container',
     userProfileBar: 'user-profile-bar',
     userProfileBarLoading: 'user-profile-bar-loading',
     userProfileBarNextAction: 'user-profile-bar-next-action',

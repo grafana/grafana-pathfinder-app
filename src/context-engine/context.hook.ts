@@ -42,6 +42,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   });
 
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  const [hasFetchedRecommendations, setHasFetchedRecommendations] = useState(false);
   const [otherDocsExpanded, setOtherDocsExpanded] = useState(false);
 
   // Track location changes with more detail
@@ -66,6 +67,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   const fetchContextData = useCallback(async () => {
     try {
       setContextData((prev) => ({ ...prev, isLoading: true }));
+      setHasFetchedRecommendations(false);
       const newContextData = await ContextService.getContextData();
       setContextData(newContextData);
     } catch (error) {
@@ -90,6 +92,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       }
 
       setIsLoadingRecommendations(true);
+      setHasFetchedRecommendations(false);
       try {
         const { recommendations, featuredRecommendations, error, errorType, usingFallbackRecommendations } =
           await ContextService.fetchRecommendations(contextData, pluginConfig);
@@ -121,6 +124,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
         }));
       } finally {
         setIsLoadingRecommendations(false);
+        setHasFetchedRecommendations(true);
       }
     },
     [pluginConfig]
@@ -368,6 +372,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   return {
     contextData,
     isLoadingRecommendations,
+    hasFetchedRecommendations,
     otherDocsExpanded,
 
     // Actions

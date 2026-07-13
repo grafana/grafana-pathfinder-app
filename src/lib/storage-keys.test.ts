@@ -45,6 +45,7 @@ describe('StorageKeys — stable string contract', () => {
       SUGGESTIONS: 'grafana-pathfinder-app-suggestions',
       PANEL_MODE: 'grafana-pathfinder-app-panel-mode',
       FLOATING_PANEL_GEOMETRY: 'grafana-pathfinder-app-floating-panel-geometry',
+      RECOMMENDATIONS_SCROLL_POSITION: 'grafana-pathfinder-app-recommendations-scroll-position',
 
       // Block editor (centralized from block-editor/constants.ts + UI prefs)
       BLOCK_EDITOR_STATE: 'pathfinder-block-editor-state',

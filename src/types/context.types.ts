@@ -163,6 +163,7 @@ export interface UseContextPanelOptions {
 export interface UseContextPanelReturn {
   contextData: ContextData;
   isLoadingRecommendations: boolean;
+  hasFetchedRecommendations: boolean;
   otherDocsExpanded: boolean;
 
   // Actions
