@@ -16,6 +16,18 @@ import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
 import { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
+import {
+  CHALLENGE_BLOCK_SCHEMA,
+  CODE_BLOCK_STEP_SCHEMA,
+  type EnhanceContext,
+  INTERACTIVE_GUIDED_SCHEMA,
+  INTERACTIVE_MULTISTEP_SCHEMA,
+  INTERACTIVE_QUIZ_SCHEMA,
+  INTERACTIVE_STEP_SCHEMA,
+  type StepTypeSchema,
+  TERMINAL_CONNECT_STEP_SCHEMA,
+  TERMINAL_STEP_SCHEMA,
+} from './step-type-registry';
 import { wrapSectionChildrenForNumbering } from './section-numbering';
 // Re-exports preserved for back-compat with `section-numbering.test.tsx`,
 // which imports both helpers from this module. New code should import
@@ -87,19 +99,6 @@ import {
   registerSectionSteps,
   resetRegistry,
 } from '../../global-state/section-registry';
-import {
-  CHALLENGE_BLOCK_SCHEMA,
-  CODE_BLOCK_STEP_SCHEMA,
-  type EnhanceContext,
-  INTERACTIVE_GUIDED_SCHEMA,
-  INTERACTIVE_MULTISTEP_SCHEMA,
-  INTERACTIVE_QUIZ_SCHEMA,
-  INTERACTIVE_STEP_SCHEMA,
-  type StepTypeSchema,
-  TERMINAL_CONNECT_STEP_SCHEMA,
-  TERMINAL_STEP_SCHEMA,
-} from './step-type-registry';
-
 // Re-exports preserved for back-compat with `content-renderer.tsx`. New code
 // should import directly from `./section-registry`.
 export {
