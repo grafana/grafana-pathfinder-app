@@ -348,6 +348,47 @@ describe('useBlockPersistence — JSON draft persistence', () => {
 
     expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'json', jsonModeState);
   });
+
+  it.each(['edit', 'preview'] as const)('does not persist a dormant JSON draft in %s mode', (viewMode) => {
+    const { rerender } = renderHook(
+      ({ mode }: { mode: 'json' | 'edit' | 'preview' }) =>
+        useBlockPersistence({
+          guide: guide('replacement'),
+          viewMode: mode,
+          jsonModeState,
+        }),
+      { initialProps: { mode: 'json' as 'json' | 'edit' | 'preview' } }
+    );
+
+    rerender({ mode: viewMode });
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(stored.viewMode).toBe(viewMode);
+    expect(stored.jsonModeState).toBeUndefined();
+  });
+
+  it.each([
+    ['non-string json', { ...jsonModeState, json: 5 }],
+    ['non-string originalJson', { ...jsonModeState, originalJson: false }],
+    ['non-array originalBlockIds', { ...jsonModeState, originalBlockIds: 'b1' }],
+    ['non-string originalBlockIds entry', { ...jsonModeState, originalBlockIds: ['b1', 2] }],
+  ])('rejects a persisted JSON draft with %s', (_description, malformedState) => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        guide: guide('original'),
+        viewMode: 'json',
+        jsonModeState: malformedState,
+        savedAt: new Date().toISOString(),
+        version: 2,
+      })
+    );
+
+    const onLoad = jest.fn();
+    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+
+    expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'json', undefined);
+  });
 });
 
 describe('useBlockPersistence — custom storageKey', () => {
