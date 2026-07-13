@@ -67,6 +67,21 @@ const mockedConfig = {
 
 jest.mock('@grafana/runtime', () => ({ config: mockedConfig }));
 
+const mockSpanIsRecording = jest.fn(() => true);
+const mockSpan = { isRecording: mockSpanIsRecording };
+const mockStartSpan = jest.fn(() => mockSpan);
+const mockGetPathfinderTracer = jest.fn(() => ({ startSpan: mockStartSpan }));
+const mockToSpanAttributes = jest.fn((attributes: Record<string, unknown>) => attributes);
+const mockEndSpanWithOutcome = jest.fn();
+const mockRegisterOtelWithFaro = jest.fn();
+
+jest.mock('./otel-tracer', () => ({
+  getPathfinderTracer: () => mockGetPathfinderTracer(),
+  toSpanAttributes: (attributes: Record<string, unknown>) => mockToSpanAttributes(attributes),
+  endSpanWithOutcome: (...args: unknown[]) => mockEndSpanWithOutcome(...args),
+  registerOtelWithFaro: (...args: unknown[]) => mockRegisterOtelWithFaro(...args),
+}));
+
 // Loaded via `require`, not a static ES `import`: ES imports are evaluated
 // before any of this file's own top-level statements, which would trigger
 // the `@grafana/runtime` mock factory above before `mockedConfig` is
@@ -291,6 +306,7 @@ describe('initFaro', () => {
     const faro = freshFaro();
     await faro.initFaro();
     expect(mockInitializeFaro).not.toHaveBeenCalled();
+    expect(mockRegisterOtelWithFaro).not.toHaveBeenCalled();
   });
 
   it('does not initialize when analytics reporting is disabled', async () => {
@@ -304,6 +320,7 @@ describe('initFaro', () => {
     const faro = freshFaro();
     await faro.initFaro();
     expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
+    expect(mockRegisterOtelWithFaro).toHaveBeenCalledWith(mockFaroInstance);
   });
 
   it('initializes with isolate: true and the real package version, not the %VERSION% placeholder', async () => {
@@ -576,6 +593,10 @@ describe('withFaroUserAction', () => {
     const action = mockStartUserAction.mock.results[0]!.value;
     expect(action.attributes).toEqual({ outcome: 'ok' });
     expect(mockActionEnd).toHaveBeenCalledTimes(1);
+
+    // Span attributes go through toSpanAttributes (step: 2), not stringifyAttributes (step: '2').
+    expect(mockStartSpan).toHaveBeenCalledWith('pathfinder_step_do', { attributes: { step: 2 }, root: true });
+    expect(mockEndSpanWithOutcome).toHaveBeenCalledWith(mockFaroInstance, mockSpan, true, 'ok', undefined);
   });
 
   it('stamps outcome error and rethrows the same error instance on rejection', async () => {
@@ -591,6 +612,7 @@ describe('withFaroUserAction', () => {
     const action = mockStartUserAction.mock.results[0]!.value;
     expect(action.attributes).toEqual({ outcome: 'error' });
     expect(mockActionEnd).toHaveBeenCalledTimes(1);
+    expect(mockEndSpanWithOutcome).toHaveBeenCalledWith(mockFaroInstance, mockSpan, true, 'error', boom);
   });
 
   it('treats a synchronous throw from work like a rejection', async () => {
@@ -614,6 +636,7 @@ describe('withFaroUserAction', () => {
     await expect(faro.withFaroUserAction('pathfinder_step_do', {}, () => 'inner')).resolves.toBe('inner');
     expect(mockStartUserAction).not.toHaveBeenCalled();
     expect(mockActionEnd).not.toHaveBeenCalled();
+    expect(mockGetPathfinderTracer).not.toHaveBeenCalled();
   });
 
   it('stays a passthrough when init was skipped (outside Grafana Cloud)', async () => {
@@ -624,6 +647,7 @@ describe('withFaroUserAction', () => {
     await expect(faro.withFaroUserAction('pathfinder_section_run', {}, () => 'ok')).resolves.toBe('ok');
     expect(mockInitializeFaro).not.toHaveBeenCalled();
     expect(mockStartUserAction).not.toHaveBeenCalled();
+    expect(mockGetPathfinderTracer).not.toHaveBeenCalled();
   });
 
   it('force-ends a hung action after the safety timeout with outcome timeout', async () => {
@@ -637,6 +661,7 @@ describe('withFaroUserAction', () => {
       const action = mockStartUserAction.mock.results[0]!.value;
       expect(action.attributes).toEqual({ outcome: 'timeout' });
       expect(mockActionEnd).toHaveBeenCalledTimes(1);
+      expect(mockEndSpanWithOutcome).toHaveBeenCalledWith(mockFaroInstance, mockSpan, true, 'timeout', undefined);
     } finally {
       jest.useRealTimers();
     }
@@ -653,6 +678,7 @@ describe('withFaroUserAction', () => {
       const action = mockStartUserAction.mock.results[0]!.value;
       expect(action.attributes).toEqual({ outcome: 'ok' });
       expect(mockActionEnd).toHaveBeenCalledTimes(1);
+      expect(mockEndSpanWithOutcome).toHaveBeenCalledTimes(1);
     } finally {
       jest.useRealTimers();
     }
@@ -690,6 +716,18 @@ describe('withFaroUserAction', () => {
       throw new Error('transport down');
     });
     await expect(faro.withFaroUserAction('pathfinder_step_do', {}, () => 'ok')).resolves.toBe('ok');
+  });
+
+  it('still runs the work and completes the user action when span creation throws', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockGetPathfinderTracer.mockImplementationOnce(() => {
+      throw new Error('otel down');
+    });
+    await expect(faro.withFaroUserAction('pathfinder_step_do', {}, () => 'ok')).resolves.toBe('ok');
+    expect(mockActionEnd).toHaveBeenCalledTimes(1);
+    expect(mockEndSpanWithOutcome).not.toHaveBeenCalled();
   });
 });
 

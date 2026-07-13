@@ -9,6 +9,7 @@ import type {
   UserActionInternalInterface,
 } from '@grafana/faro-web-sdk';
 import { config } from '@grafana/runtime';
+import type { Span } from '@opentelemetry/api';
 import packageJson from '../../package.json';
 import pluginJson from '../plugin.json';
 import {
@@ -16,6 +17,7 @@ import {
   ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES,
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
+import { endSpanWithOutcome, getPathfinderTracer, registerOtelWithFaro, toSpanAttributes } from './otel-tracer';
 import { StorageKeys } from './storage-keys';
 import { isExtensionSidebarOwnedByPathfinder } from './storage/extension-sidebar';
 
@@ -271,6 +273,7 @@ export async function initFaro(): Promise<void> {
     },
     beforeSend: (item) => (passesActivityGate(item) ? filterPathfinderTelemetry(item) : null),
   });
+  registerOtelWithFaro(faroInstance);
 }
 
 export function pushFaroError(error: Error, context?: Record<string, string>): void {
@@ -353,10 +356,18 @@ export async function withFaroUserAction<T>(
   timeoutMs = USER_ACTION_TIMEOUT_MS
 ): Promise<T> {
   let action: StampableUserAction | undefined;
+  let span: Span | undefined;
+  let wasRecording = false;
   guardTelemetry(() => {
     if (faroInstance && faroInstance.api.getActiveUserAction() === undefined) {
       action = faroInstance.api.startUserAction(name, stringifyAttributes(attributes)) as
         StampableUserAction | undefined;
+      if (action) {
+        // root: true guarantees this is never silently parented to an ambient
+        // active span core Grafana may have in context.
+        span = getPathfinderTracer().startSpan(name, { attributes: toSpanAttributes(attributes), root: true });
+        wasRecording = span.isRecording();
+      }
     }
   });
   if (!action) {
@@ -365,7 +376,7 @@ export async function withFaroUserAction<T>(
   const started = action;
   let settled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const finish = (outcome: 'ok' | 'error' | 'timeout') => {
+  const finish = (outcome: 'ok' | 'error' | 'timeout', error?: unknown) => {
     if (settled) {
       return;
     }
@@ -377,6 +388,9 @@ export async function withFaroUserAction<T>(
       started.attributes = { ...started.attributes, outcome };
       started.end();
     });
+    if (span) {
+      guardTelemetry(() => endSpanWithOutcome(faroInstance!, span!, wasRecording, outcome, error));
+    }
   };
   timer = setTimeout(() => finish('timeout'), timeoutMs);
   try {
@@ -384,7 +398,7 @@ export async function withFaroUserAction<T>(
     finish('ok');
     return result;
   } catch (error) {
-    finish('error');
+    finish('error', error);
     throw error;
   }
 }
