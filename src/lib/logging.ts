@@ -1,5 +1,17 @@
 import { sanitizeForLogging } from '../security/log-sanitizer';
-import { pushFaroError, pushFaroLog } from './faro';
+
+type FaroTelemetry = Pick<typeof import('./faro'), 'pushFaroError' | 'pushFaroLog'>;
+
+function getFaroTelemetry(): FaroTelemetry | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    return require('./faro') as FaroTelemetry;
+  } catch {
+    return null;
+  }
+}
 
 function sanitizeContext(context?: Record<string, unknown>): Record<string, string> | undefined {
   if (!context) {
@@ -30,13 +42,13 @@ export const logger = {
   info(message: string, context?: Record<string, unknown>): void {
     const sanitized = sanitizeForLogging(message);
     console.info(sanitized, context ?? '');
-    pushFaroLog('info', sanitized, sanitizeContext(context));
+    getFaroTelemetry()?.pushFaroLog('info', sanitized, sanitizeContext(context));
   },
 
   warn(message: string, context?: Record<string, unknown>): void {
     const sanitized = sanitizeForLogging(message);
     console.warn(sanitized, context ?? '');
-    pushFaroLog('warn', sanitized, sanitizeContext(context));
+    getFaroTelemetry()?.pushFaroLog('warn', sanitized, sanitizeContext(context));
   },
 
   // A throwable (second arg, or an `error` context key) becomes a Faro
@@ -46,16 +58,16 @@ export const logger = {
     const split = splitThrowable(errorOrContext, context);
     if (split.error) {
       console.error(sanitized, split.error, split.context ?? '');
-      pushFaroError(split.error, sanitizeContext({ ...split.context, message: sanitized }));
+      getFaroTelemetry()?.pushFaroError(split.error, sanitizeContext({ ...split.context, message: sanitized }));
       return;
     }
     console.error(sanitized, split.context ?? '');
-    pushFaroLog('error', sanitized, sanitizeContext(split.context));
+    getFaroTelemetry()?.pushFaroLog('error', sanitized, sanitizeContext(split.context));
   },
 
   exception(error: unknown, context?: Record<string, unknown>): void {
     const normalizedError = error instanceof Error ? error : new Error(sanitizeForLogging(error));
     console.error(normalizedError, context ?? '');
-    pushFaroError(normalizedError, sanitizeContext(context));
+    getFaroTelemetry()?.pushFaroError(normalizedError, sanitizeContext(context));
   },
 };
