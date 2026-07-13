@@ -6,7 +6,7 @@
 
 import { useEffect, useCallback, useRef } from 'react';
 import { BLOCK_EDITOR_STORAGE_KEY } from '../constants';
-import type { JsonGuide } from '../types';
+import type { JsonGuide, ViewMode } from '../types';
 import { logger } from '../../../lib/logging';
 
 /**
@@ -22,8 +22,10 @@ export interface UseBlockPersistenceOptions {
   guide: JsonGuide;
   /** Current block IDs (to preserve across refreshes) */
   blockIds?: string[];
+  /** Current view mode (to preserve across pop out/dock remounts) */
+  viewMode?: ViewMode;
   /** Called when guide should be loaded from storage */
-  onLoad?: (guide: JsonGuide, blockIds?: string[]) => void;
+  onLoad?: (guide: JsonGuide, blockIds?: string[], viewMode?: ViewMode) => void;
   /** Called after a successful save */
   onSave?: () => void;
   /** Whether auto-save is enabled */
@@ -57,6 +59,8 @@ interface StoredGuide {
   guide: JsonGuide;
   /** Block IDs to preserve across page refreshes (added in v2) */
   blockIds?: string[];
+  /** View mode to preserve across pop out/dock remounts (optional — absent in older stored guides) */
+  viewMode?: ViewMode;
   savedAt: string;
   version: number;
 }
@@ -69,6 +73,7 @@ const STORAGE_VERSION = 2;
 export function useBlockPersistence({
   guide,
   blockIds,
+  viewMode,
   onLoad,
   onSave,
   autoSave = true,
@@ -77,6 +82,7 @@ export function useBlockPersistence({
 }: UseBlockPersistenceOptions): UseBlockPersistenceReturn {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastGuideRef = useRef<string>('');
+  const lastViewModeRef = useRef<ViewMode | undefined>(viewMode);
 
   // Save guide to localStorage
   const save = useCallback(() => {
@@ -84,6 +90,7 @@ export function useBlockPersistence({
       const stored: StoredGuide = {
         guide,
         blockIds, // Store block IDs to preserve across refreshes
+        viewMode, // Store view mode to preserve across pop out/dock remounts
         savedAt: new Date().toISOString(),
         version: STORAGE_VERSION,
       };
@@ -94,7 +101,7 @@ export function useBlockPersistence({
     } catch (e) {
       logger.error('Failed to save guide to localStorage', { error: e });
     }
-  }, [guide, blockIds, storageKey, onSave]);
+  }, [guide, blockIds, viewMode, storageKey, onSave]);
 
   // Load guide from localStorage
   const load = useCallback((): JsonGuide | null => {
@@ -192,8 +199,8 @@ export function useBlockPersistence({
         const stored = localStorage.getItem(storageKey);
         if (stored) {
           const parsed: StoredGuide = JSON.parse(stored);
-          // Pass both guide and blockIds to onLoad
-          onLoad(parsed.guide, parsed.blockIds);
+          // Pass guide, blockIds, and viewMode to onLoad
+          onLoad(parsed.guide, parsed.blockIds, parsed.viewMode);
         }
       } catch (e) {
         logger.error('Failed to load guide from localStorage', { error: e });
@@ -202,6 +209,17 @@ export function useBlockPersistence({
     // Only run on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Persist viewMode immediately on change rather than waiting for the debounced
+  // guide-content autosave — a pop out/dock remount can happen right after the
+  // user switches view mode, before that debounce would otherwise fire.
+  useEffect(() => {
+    if (!autoSave || autoSavePaused || viewMode === lastViewModeRef.current) {
+      return;
+    }
+    lastViewModeRef.current = viewMode;
+    save();
+  }, [viewMode, autoSave, autoSavePaused, save]);
 
   return {
     save,

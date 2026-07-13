@@ -641,14 +641,16 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   const persistence = useBlockPersistence({
     guide: editor.getGuide(),
     blockIds: editor.state.blocks.map((b) => b.id), // Store block IDs to preserve across refreshes
+    viewMode: state.viewMode, // Store view mode to preserve across pop out/dock remounts
     autoSave: true,
     autoSavePaused: isBlockFormOpen,
-    onLoad: (savedGuide, savedBlockIds) => {
+    onLoad: (savedGuide, savedBlockIds, savedViewMode) => {
       // Only load once on initial mount
       if (!hasLoadedFromStorage.current && !initialGuide) {
         hasLoadedFromStorage.current = true;
         // Pass savedBlockIds to preserve IDs (important for recording persistence)
-        editor.loadGuide(savedGuide, savedBlockIds);
+        // and savedViewMode so pop out/dock remounts land back where the author was
+        editor.loadGuide(savedGuide, savedBlockIds, savedViewMode);
         editor.markSaved(); // Don't mark as dirty after loading
       }
     },

@@ -217,6 +217,82 @@ describe('useBlockPersistence — load() / clear() / hasSavedGuide / getLastSave
   });
 });
 
+describe('useBlockPersistence — viewMode persistence (pop out/dock handoff)', () => {
+  it('persists viewMode immediately on change, without waiting for the guide debounce', () => {
+    const { rerender } = renderHook(
+      ({ vm }: { vm: 'edit' | 'preview' }) => useBlockPersistence({ guide: guide('a'), viewMode: vm }),
+      { initialProps: { vm: 'edit' } }
+    );
+
+    rerender({ vm: 'preview' });
+
+    // No advanceTimersByTime — the viewMode-change effect must save synchronously.
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(stored.viewMode).toBe('preview');
+  });
+
+  it('does not persist viewMode changes when autoSavePaused is true', () => {
+    const { rerender } = renderHook(
+      ({ vm }: { vm: 'edit' | 'preview' }) =>
+        useBlockPersistence({ guide: guide('a'), viewMode: vm, autoSavePaused: true }),
+      { initialProps: { vm: 'edit' } }
+    );
+
+    rerender({ vm: 'preview' });
+
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('does not persist viewMode changes when autoSave is false', () => {
+    const { rerender } = renderHook(
+      ({ vm }: { vm: 'edit' | 'preview' }) => useBlockPersistence({ guide: guide('a'), viewMode: vm, autoSave: false }),
+      { initialProps: { vm: 'edit' } }
+    );
+
+    rerender({ vm: 'preview' });
+
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('passes the stored viewMode through to onLoad on mount', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        guide: guide('restored'),
+        blockIds: ['b1'],
+        viewMode: 'preview',
+        savedAt: new Date().toISOString(),
+        version: 2,
+      })
+    );
+
+    const onLoad = jest.fn();
+    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+
+    expect(onLoad).toHaveBeenCalledTimes(1);
+    const [, , restoredViewMode] = onLoad.mock.calls[0]!;
+    expect(restoredViewMode).toBe('preview');
+  });
+
+  it('onLoad receives undefined viewMode for older stored guides that predate this field', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        guide: guide('restored'),
+        blockIds: ['b1'],
+        savedAt: new Date().toISOString(),
+        version: 2,
+      })
+    );
+
+    const onLoad = jest.fn();
+    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+
+    const [, , restoredViewMode] = onLoad.mock.calls[0]!;
+    expect(restoredViewMode).toBeUndefined();
+  });
+});
+
 describe('useBlockPersistence — custom storageKey', () => {
   it('honors a custom storageKey for save / load', () => {
     const customKey = 'custom-block-editor-state';
