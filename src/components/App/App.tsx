@@ -20,7 +20,6 @@ import { pauseFaroBeforeReload, pushFaroError } from '../../lib/faro';
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
-  errorInfo: React.ErrorInfo | null;
 }
 
 // eslint-disable-next-line no-restricted-syntax -- Error boundaries require componentDidCatch (no hook equivalent)
@@ -28,7 +27,6 @@ class PluginErrorBoundary extends Component<{ children: ReactNode }, ErrorBounda
   state: ErrorBoundaryState = {
     hasError: false,
     error: null,
-    errorInfo: null,
   };
 
   static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
@@ -38,7 +36,6 @@ class PluginErrorBoundary extends Component<{ children: ReactNode }, ErrorBounda
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     // eslint-disable-next-line no-console -- local debug output; pushFaroError below already reports to Faro
     console.error('Pathfinder plugin error:', error, errorInfo);
-    this.setState({ errorInfo });
 
     pushFaroError(error, {
       componentStack: errorInfo.componentStack ?? 'unknown',
@@ -47,7 +44,7 @@ class PluginErrorBoundary extends Component<{ children: ReactNode }, ErrorBounda
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: null, errorInfo: null });
+    this.setState({ hasError: false, error: null });
   };
 
   render() {
