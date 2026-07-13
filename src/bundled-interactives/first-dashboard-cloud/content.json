@@ -84,8 +84,8 @@
             {
               "action": "highlight",
               "reftarget": "grafana:components.DataSourcePicker.inputV2",
-              "tooltip": "Lets select the TestData data source to work with sample data.",
-              "requirements": ["exists-reftarget"]
+              "requirements": ["exists-reftarget"],
+              "tooltip": "Lets select the TestData data source to work with sample data."
             },
             {
               "action": "highlight",
@@ -219,11 +219,11 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "input[id=\"barchart-unit\"]",
-          "targetvalue": "ALT",
+          "reftarget": "div[data-testid='input-wrapper'] #unit",
           "content": "We can give our walking data meaning by setting a unit.",
           "tooltip": "Units give meaning to numbers. Is that value 42 seconds, bytes, requests, or meters? Without units, numbers are just numbers. Grafana can automatically format values based on their units - bytes become KB/MB/GB, seconds become ms/s/m, and so on. This polish makes your dashboards professional and removes ambiguity.",
-          "requirements": ["exists-reftarget"]
+          "requirements": ["exists-reftarget"],
+          "doIt": false
         },
         {
           "type": "multistep",

@@ -19,10 +19,10 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/']",
-          "requirements": ["navmenu-open"],
+          "reftarget": "div[data-testid='data-testid navigation mega-menu'] a[data-testid='data-testid Home breadcrumb']",
           "content": "First, let's visit the **Home** page - your starting point in Grafana.",
-          "tooltip": "The **Home** page in Grafana Cloud is your central hub. It shows your cloud instance overview, recent activity, and quick access to getting started guides. Perfect *starting point* for your observability journey!"
+          "tooltip": "The **Home** page in Grafana Cloud is your central hub. It shows your cloud instance overview, recent activity, and quick access to getting started guides. Perfect *starting point* for your observability journey!",
+          "requirements": ["navmenu-open", "exists-reftarget"]
         },
         {
           "type": "interactive",
@@ -35,9 +35,9 @@
           "type": "interactive",
           "action": "highlight",
           "reftarget": "a[data-testid='data-testid Nav menu item'][href='/explore']",
-          "skippable": true,
           "content": "Then **Explore** - perfect for ad-hoc queries and data exploration.",
-          "tooltip": "**Explore** is your data playground! Query logs with `LogQL`, run `PromQL` queries against metrics, and investigate traces with `TraceQL`. Perfect for troubleshooting and *data discovery*."
+          "tooltip": "**Explore** is your data playground! Query logs with `LogQL`, run `PromQL` queries against metrics, and investigate traces with `TraceQL`. Perfect for troubleshooting and *data discovery*.",
+          "skippable": true
         },
         {
           "type": "interactive",
@@ -50,11 +50,11 @@
           "type": "interactive",
           "action": "highlight",
           "reftarget": "a[data-testid='data-testid Nav menu item'][href='/connections']",
+          "content": "You need the Admin role to connect data sources. You can skip this step if you don't have permissions.",
+          "tooltip": "Grafana Cloud comes with **pre-configured data sources**! Your `Prometheus`, `Loki`, and `Tempo` instances are already connected. You can also add external sources like `AWS`, `GCP`, or your own infrastructure.",
           "requirements": ["is-admin"],
           "skippable": true,
-          "hint": "Connections requires admin permissions to access",
-          "content": "You need the Admin role to connect data sources. You can skip this step if you don't have permissions.",
-          "tooltip": "Grafana Cloud comes with **pre-configured data sources**! Your `Prometheus`, `Loki`, and `Tempo` instances are already connected. You can also add external sources like `AWS`, `GCP`, or your own infrastructure."
+          "hint": "Connections requires admin permissions to access"
         },
         {
           "type": "interactive",
@@ -67,10 +67,10 @@
           "type": "interactive",
           "action": "highlight",
           "reftarget": "a[data-testid='data-testid Nav menu item'][href='/admin/plugins']",
-          "requirements": ["exists-reftarget"],
-          "skippable": true,
           "content": "Plugins extend Grafana by adding capabilities that are not available by default. For example, you can install plugins that add the ability to import data from diverse sources, that bundle data sources and panels, or that provide new visualization types for use in dashboards.",
-          "tooltip": "Plugins and data allows you to extend Grafana's functionality. You can install custom plugins from here."
+          "tooltip": "Plugins and data allows you to extend Grafana's functionality. You can install custom plugins from here.",
+          "requirements": ["exists-reftarget"],
+          "skippable": true
         }
       ]
     },
