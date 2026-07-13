@@ -1453,9 +1453,13 @@ export function InteractiveSection({
                 return 'Reset section and clear all step completion to allow manual re-interaction';
               }
               if (resumeInfo.isResume) {
-                return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
+                const stepWord = resumeInfo.remainingSteps === 1 ? 'step' : 'steps';
+                return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} ${stepWord} remaining`;
               }
-              return hints || `Run through all ${nonNoopSteps.length} steps in sequence`;
+              return (
+                hints ||
+                `Run through all ${nonNoopSteps.length} ${nonNoopSteps.length === 1 ? 'step' : 'steps'} in sequence`
+              );
             })()}
           >
             {(() => {
@@ -1466,9 +1470,9 @@ export function InteractiveSection({
                 return 'Reset section';
               }
               if (resumeInfo.isResume) {
-                return `▶ Resume (${resumeInfo.remainingSteps} steps)`;
+                return `▶ Resume (${resumeInfo.remainingSteps} ${resumeInfo.remainingSteps === 1 ? 'step' : 'steps'})`;
               }
-              return `▶ Do Section (${nonNoopSteps.length} steps)`;
+              return `▶ Do Section (${nonNoopSteps.length} ${nonNoopSteps.length === 1 ? 'step' : 'steps'})`;
             })()}
           </Button>
         )}
