@@ -100,7 +100,7 @@ function wrapInOrangeOutlineList(heading: string, bodyMarkdown: string): string 
   ].join('\n');
 }
 
-const EXPECT_HEADING_RE = /^#{1,3}\s+(?:here[''\u2019]s\s+)?what\s+to\s+expect/im;
+const EXPECT_HEADING_RE = /^#{1,3}\s+(?:here['\u2019]s\s+)?what\s+to\s+expect/im;
 const NEXT_HEADING_RE = /^#{1,3}\s+/m;
 
 /**
