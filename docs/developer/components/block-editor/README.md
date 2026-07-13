@@ -51,6 +51,7 @@ The Block Editor exists to:
 
 - **Auto-save**: State persists to localStorage automatically
 - **Crash Recovery**: Recover work after browser refresh
+- **View State**: View mode (Edit/Preview/JSON) and unsaved JSON drafts survive remounts, including popping the editor out to the floating panel and docking it back
 - **Multi-guide Support**: Work on multiple guides independently
 
 ## Architecture
