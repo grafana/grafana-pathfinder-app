@@ -213,7 +213,7 @@ async function executeChecksWithRetry(
 
   if (!requirements) {
     return {
-      requirements: requirements || '',
+      requirements,
       pass: true,
       error: [],
     };
@@ -276,11 +276,11 @@ async function executeChecksWithRetry(
     // If we've exhausted retries, return error result
     const checkTypeName = checkType.charAt(0).toUpperCase() + checkType.slice(1);
     return {
-      requirements: requirements || '',
+      requirements,
       pass: false,
       error: [
         {
-          requirement: requirements || 'unknown',
+          requirement: requirements,
           pass: false,
           error: `${checkTypeName} check failed after ${maxRetries + 1} attempts: ${error}`,
           context: { error: String(error), retryCount, maxRetries },

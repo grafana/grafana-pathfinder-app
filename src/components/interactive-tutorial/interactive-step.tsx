@@ -353,9 +353,7 @@ export const InteractiveStep = forwardRef<
     // via the onObjectivesComplete callback passed above.
 
     const shouldShowExplanation = isPartOfSection
-      ? !isNoopAction &&
-        (!isEligibleForChecking ||
-          (isEligibleForChecking && requirements && !checker.isEnabled && !lazyScrollAvailable))
+      ? !isNoopAction && (!isEligibleForChecking || (requirements && !checker.isEnabled && !lazyScrollAvailable))
       : !checker.isEnabled && !lazyScrollAvailable;
 
     // Choose appropriate explanation text based on step state
