@@ -146,8 +146,9 @@ interface ReverseIndex {
   templates: Array<{ regex: RegExp; path: string }>;
 }
 
-// A control character that never appears in a real selector value, used to
-// locate the parameter position inside a parameterized selector's output.
+// Delimited by U+E000 private-use characters that never appear in a real
+// selector value, used to locate the parameter position inside a
+// parameterized selector's output.
 const TEMPLATE_SENTINEL = 'PARAM';
 const TESTID_PREFIX = /^data-testid\s*/;
 

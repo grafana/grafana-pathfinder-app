@@ -30,6 +30,9 @@ jest.mock('@grafana/e2e-selectors', () => {
         row: { '8.5.0': (title: string) => `data-testid thing row ${title}` },
         cell: { '8.5.0': (title: string) => `data-testid thing ${title} end` },
       },
+      Static: {
+        label: { '8.5.0': () => 'data-testid PARAM label' },
+      },
     },
     versionedPages: {
       DupePage: {
@@ -102,5 +105,14 @@ describe('grafana-selector — ambiguity rejection', () => {
   it('returns null when a value matches more than one template', () => {
     config.buildInfo.version = '12.0.0';
     expect(findGrafanaSelectorPath(elementWithTestId('data-testid thing row alpha end'))).toBeNull();
+  });
+
+  it('never treats an argument-ignoring selector function as a template', () => {
+    // Pins the TEMPLATE_SENTINEL contract: the U+E000-delimited sentinel cannot
+    // appear in a probe's output unless the function interpolates its argument,
+    // so Static.label ('data-testid PARAM label') must not become a template
+    // matching unrelated values of the shape 'data-testid ... label'.
+    config.buildInfo.version = '12.0.0';
+    expect(findGrafanaSelectorPath(elementWithTestId('data-testid foo label'))).toBeNull();
   });
 });
