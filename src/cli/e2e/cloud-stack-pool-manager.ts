@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type {
   CloudChainEnvironment,
+  CloudChainRetireOutcome,
   CloudChainTeardownContext,
   ProvisionedCloudStack,
 } from './cloud-chain-environment';
@@ -63,7 +64,7 @@ interface CreateLeaseResponse {
 }
 
 interface RetireLeaseRequest {
-  outcome: string;
+  outcome: CloudChainRetireOutcome;
   used: boolean;
   runId: string;
   chainId: string;
@@ -201,6 +202,42 @@ function parseCleanupWarnings(value: unknown): string[] {
   }
   return value.flatMap((warning) => (typeof warning === 'string' && warning ? [warning] : []));
 }
+async function postJson<T>(
+  config: CloudStackPoolManagerConfig,
+  fetchImpl: typeof fetch,
+  path: string,
+  body: unknown,
+  errorPrefix: string,
+  extraSecrets: string[] = []
+): Promise<T> {
+  const secrets = [config.token, ...extraSecrets];
+  const url = new URL(path, config.managerUrl).toString();
+  let response: Response;
+  try {
+    response = await fetchImpl(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(POOL_MANAGER_FETCH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw new CloudStackPoolManagerError(`Pool manager request failed: ${redact(errorMessage(err), secrets)}`);
+  }
+
+  const text = await response.text();
+  const parsed = text ? (JSON.parse(text) as T | ErrorResponse) : ({} as T);
+  if (!response.ok) {
+    const error = (parsed as ErrorResponse).error;
+    const code = typeof error?.code === 'string' ? error.code : `http_${response.status}`;
+    const message = typeof error?.message === 'string' ? error.message : response.statusText;
+    throw new CloudStackPoolManagerError(`${errorPrefix}${code}: ${redact(message, secrets)}`, code, response.status);
+  }
+  return parsed as T;
+}
 
 export function createCloudStackPoolManagerConfig(
   input: CloudStackPoolManagerConfigInput
@@ -255,7 +292,13 @@ export class CloudStackPoolManager {
       metadata: metadataFor(packageIds, options.packageMetaById),
       ...(this.config.maxWaitSeconds !== undefined ? { maxWaitSeconds: this.config.maxWaitSeconds } : {}),
     };
-    const response = await this.api<CreateLeaseResponse>('POST', '/v1/leases', request);
+    const response = await postJson<CreateLeaseResponse>(
+      this.config,
+      this.fetchImpl,
+      '/v1/leases',
+      request,
+      `Pool manager could not lease a stack from pool "${this.config.poolId}": `
+    );
     const lease = {
       leaseId: stringField(response.leaseId, 'leaseId'),
       targetUrl: normalizeGrafanaUrl(response.grafanaUrl),
@@ -270,43 +313,6 @@ export class CloudStackPoolManager {
     }
 
     return new CloudStackPoolManagerLease(lease, this.config, this.runId, chainId, this.verbose, this.fetchImpl);
-  }
-
-  private async api<T>(method: string, path: string, body: unknown): Promise<T> {
-    const url = new URL(path, this.config.managerUrl).toString();
-    let response: Response;
-    try {
-      response = await this.fetchImpl(url, {
-        method,
-        headers: {
-          Authorization: `Bearer ${this.config.token}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(POOL_MANAGER_FETCH_TIMEOUT_MS),
-      });
-    } catch (err) {
-      throw new CloudStackPoolManagerError(
-        `Pool manager request failed: ${redact(errorMessage(err), [this.config.token])}`
-      );
-    }
-
-    const text = await response.text();
-    const parsed = text ? (JSON.parse(text) as T | ErrorResponse) : ({} as T);
-    if (!response.ok) {
-      const error = (parsed as ErrorResponse).error;
-      const code = typeof error?.code === 'string' ? error.code : `http_${response.status}`;
-      const message = typeof error?.message === 'string' ? error.message : response.statusText;
-      throw new CloudStackPoolManagerError(
-        `Pool manager could not lease a stack from pool "${this.config.poolId}": ${code}: ${redact(message, [
-          this.config.token,
-        ])}`,
-        code,
-        response.status
-      );
-    }
-    return parsed as T;
   }
 }
 
@@ -355,54 +361,21 @@ export class CloudStackPoolManagerLease implements CloudChainEnvironment {
       summary: context.summary ?? 'Pathfinder CLI chain finished',
     };
     try {
-      const response = await this.api<RetireLeaseResponse>('POST', `/v1/leases/${this.lease.leaseId}/retire`, request);
+      const response = await postJson<RetireLeaseResponse>(
+        this.config,
+        this.fetchImpl,
+        `/v1/leases/${this.lease.leaseId}/retire`,
+        request,
+        '',
+        [this.lease.token]
+      );
       if (this.verbose) {
         const status = typeof response.status === 'string' ? response.status : 'retire_requested';
         console.log(`   🧹 Retired Cloud stack lease ${this.lease.leaseId} (${status})`);
       }
       return parseCleanupWarnings(response.cleanupWarnings);
     } catch (err) {
-      return [
-        `Failed to retire Cloud stack lease ${this.lease.leaseId}: ${redact(errorMessage(err), [
-          this.config.token,
-          this.lease.token,
-        ])}`,
-      ];
+      return [`Failed to retire Cloud stack lease ${this.lease.leaseId}: ${errorMessage(err)}`];
     }
-  }
-
-  private async api<T>(method: string, path: string, body: unknown): Promise<T> {
-    const url = new URL(path, this.config.managerUrl).toString();
-    let response: Response;
-    try {
-      response = await this.fetchImpl(url, {
-        method,
-        headers: {
-          Authorization: `Bearer ${this.config.token}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(POOL_MANAGER_FETCH_TIMEOUT_MS),
-      });
-    } catch (err) {
-      throw new CloudStackPoolManagerError(
-        `Pool manager request failed: ${redact(errorMessage(err), [this.config.token, this.lease.token])}`
-      );
-    }
-
-    const text = await response.text();
-    const parsed = text ? (JSON.parse(text) as T | ErrorResponse) : ({} as T);
-    if (!response.ok) {
-      const error = (parsed as ErrorResponse).error;
-      const code = typeof error?.code === 'string' ? error.code : `http_${response.status}`;
-      const message = typeof error?.message === 'string' ? error.message : response.statusText;
-      throw new CloudStackPoolManagerError(
-        `${code}: ${redact(message, [this.config.token, this.lease.token])}`,
-        code,
-        response.status
-      );
-    }
-    return parsed as T;
   }
 }

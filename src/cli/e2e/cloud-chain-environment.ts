@@ -1,6 +1,6 @@
 export type CloudChainEnvironmentKind = 'shared' | 'pool';
 
-export type CloudChainRetireOutcome = 'passed' | 'failed' | 'provisioning_failed' | 'cancelled' | 'runner_error';
+export type CloudChainRetireOutcome = 'passed' | 'failed' | 'cancelled' | 'runner_error';
 
 export interface ProvisionedCloudTarget {
   kind: CloudChainEnvironmentKind;

@@ -422,7 +422,7 @@ Cloud auth:
 
 Per-chain service-account isolation mirrors how `--clean` resets the local docker stack per chain. Minted tokens carry a TTL, and accounts orphaned by crashed runs are swept on the next run. This isolates per-identity state (preferences, stars, sessions) between chains; it does **not** reset org data such as dashboards or data sources created by guides.
 
-Pool-manager stack routing is used for cloud dependency chains classified as `possibly_mutating`, `mutating`, or `unknown` when manager config is present. It is also used for cloud chains that lack matching shared-stack auth. If the manager returns `no_capacity`, the affected chain fails with `provisioning_failed` instead of running against a shared stack. Cold provisioning and plugin installation are manager responsibilities for a later phase.
+Pool-manager stack routing is used for cloud dependency chains classified as `possibly_mutating`, `mutating`, or `unknown` when manager config is present. It is also used for cloud chains that lack matching shared-stack auth. If the manager returns `no_capacity`, the affected chain fails instead of running against a shared stack. Cold provisioning and plugin installation are manager responsibilities for a later phase.
 
 Read-only cloud chains with matching `--cloud-instance-admin-token` keep using the faster shared-stack service-account path. If a cloud chain lacks shared-stack auth but isolated stack config is present, the runner can use an isolated stack for that chain.
 
