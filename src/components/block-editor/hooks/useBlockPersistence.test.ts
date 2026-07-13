@@ -13,7 +13,7 @@
 import { act, renderHook } from '@testing-library/react';
 
 import { StorageKeys } from '../../../lib/storage-keys';
-import type { JsonGuide } from '../types';
+import type { JsonGuide, JsonModeState } from '../types';
 
 import { useBlockPersistence } from './useBlockPersistence';
 
@@ -290,6 +290,63 @@ describe('useBlockPersistence — viewMode persistence (pop out/dock handoff)', 
 
     const [, , restoredViewMode] = onLoad.mock.calls[0]!;
     expect(restoredViewMode).toBeUndefined();
+  });
+
+  it('defaults invalid stored viewMode values to edit', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        guide: guide('restored'),
+        viewMode: 'invalid',
+        savedAt: new Date().toISOString(),
+        version: 2,
+      })
+    );
+
+    const onLoad = jest.fn();
+    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+
+    expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'edit', undefined);
+  });
+});
+
+describe('useBlockPersistence — JSON draft persistence', () => {
+  const originalJson = JSON.stringify(guide('original'), null, 2);
+  const jsonModeState: JsonModeState = {
+    json: '{ invalid',
+    originalBlockIds: ['b1'],
+    originalJson,
+  };
+
+  it('persists JSON draft changes immediately', () => {
+    const { rerender } = renderHook(
+      ({ draft }: { draft: JsonModeState | null }) =>
+        useBlockPersistence({ guide: guide('original'), viewMode: 'json', jsonModeState: draft }),
+      { initialProps: { draft: null } }
+    );
+
+    rerender({ draft: jsonModeState });
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(stored.jsonModeState).toEqual(jsonModeState);
+  });
+
+  it('restores the exact persisted JSON draft', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        guide: guide('original'),
+        viewMode: 'json',
+        jsonModeState,
+        savedAt: new Date().toISOString(),
+        version: 2,
+      })
+    );
+
+    const onLoad = jest.fn();
+    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+
+    expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'json', jsonModeState);
   });
 });
 
