@@ -545,7 +545,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-section-do-button': {
-    minWidth: '200px',
     fontWeight: theme.typography.fontWeightMedium,
 
     '&:disabled': {
@@ -612,12 +611,10 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-step-show-btn': {
-    minWidth: '80px',
     fontSize: theme.typography.bodySmall.fontSize,
   },
 
   '.interactive-step-do-btn': {
-    minWidth: '80px',
     fontSize: theme.typography.bodySmall.fontSize,
   },
 

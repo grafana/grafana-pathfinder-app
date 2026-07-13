@@ -16,6 +16,18 @@ import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
 import { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
+import {
+  CHALLENGE_BLOCK_SCHEMA,
+  CODE_BLOCK_STEP_SCHEMA,
+  type EnhanceContext,
+  INTERACTIVE_GUIDED_SCHEMA,
+  INTERACTIVE_MULTISTEP_SCHEMA,
+  INTERACTIVE_QUIZ_SCHEMA,
+  INTERACTIVE_STEP_SCHEMA,
+  type StepTypeSchema,
+  TERMINAL_CONNECT_STEP_SCHEMA,
+  TERMINAL_STEP_SCHEMA,
+} from './step-type-registry';
 import { wrapSectionChildrenForNumbering } from './section-numbering';
 // Re-exports preserved for back-compat with `section-numbering.test.tsx`,
 // which imports both helpers from this module. New code should import
@@ -87,19 +99,6 @@ import {
   registerSectionSteps,
   resetRegistry,
 } from '../../global-state/section-registry';
-import {
-  CHALLENGE_BLOCK_SCHEMA,
-  CODE_BLOCK_STEP_SCHEMA,
-  type EnhanceContext,
-  INTERACTIVE_GUIDED_SCHEMA,
-  INTERACTIVE_MULTISTEP_SCHEMA,
-  INTERACTIVE_QUIZ_SCHEMA,
-  INTERACTIVE_STEP_SCHEMA,
-  type StepTypeSchema,
-  TERMINAL_CONNECT_STEP_SCHEMA,
-  TERMINAL_STEP_SCHEMA,
-} from './step-type-registry';
-
 // Re-exports preserved for back-compat with `content-renderer.tsx`. New code
 // should import directly from `./section-registry`.
 export {
@@ -1454,9 +1453,13 @@ export function InteractiveSection({
                 return 'Reset section and clear all step completion to allow manual re-interaction';
               }
               if (resumeInfo.isResume) {
-                return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
+                const stepWord = resumeInfo.remainingSteps === 1 ? 'step' : 'steps';
+                return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} ${stepWord} remaining`;
               }
-              return hints || `Run through all ${nonNoopSteps.length} steps in sequence`;
+              return (
+                hints ||
+                `Run through all ${nonNoopSteps.length} ${nonNoopSteps.length === 1 ? 'step' : 'steps'} in sequence`
+              );
             })()}
           >
             {(() => {
@@ -1467,9 +1470,9 @@ export function InteractiveSection({
                 return 'Reset section';
               }
               if (resumeInfo.isResume) {
-                return `▶ Resume (${resumeInfo.remainingSteps} steps)`;
+                return `▶ Resume (${resumeInfo.remainingSteps} ${resumeInfo.remainingSteps === 1 ? 'step' : 'steps'})`;
               }
-              return `▶ Do Section (${nonNoopSteps.length} steps)`;
+              return `▶ Do Section (${nonNoopSteps.length} ${nonNoopSteps.length === 1 ? 'step' : 'steps'})`;
             })()}
           </Button>
         )}

@@ -21,7 +21,7 @@ Interactive learning is your in-app learning companion. It provides:
 1. Look for the **Help** button (?) in the top navigation bar of Grafana
 2. Click the Help button to open the Interactive learning panel
 3. Browse recommended documentation based on your current context
-4. Click **View** to read a doc or **Start** to begin an interactive guides
+4. Click **View** to read a doc or **Start** to begin an interactive guide
 
 ## Getting started
 
