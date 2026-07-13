@@ -1,5 +1,48 @@
 # Changelog
 
+## 2.14.0
+
+### Added
+
+- **Faro frontend telemetry re-enabled**: Re-enables Grafana Faro frontend telemetry for Pathfinder in Grafana Cloud — disabled since #389 pending a collector CORS fix — covering errors, sessions, logs, user actions, and sourcemaps. Cloud-only, gated behind a remote kill-switch (`pathfinder.frontend-telemetry`), and filtered so only telemetry attributable to Pathfinder leaves the page. (#1275)
+- **Document outline navigation in the guide reader**: Adds a GitHub-style jump-to-heading rail to the two-tab guide reader, with scroll-spy highlighting of the current section and keyboard/a11y support. (#1226)
+- **Two-tab controller admin toggle**: Replaces the compile-time flag gating the two-tab interactive controller with an admin-controlled plugin-config setting, `enableTwoTabController` (default off), mirroring the existing `enableAiAutoHeal` opt-in. The feature still ships dark by default. (#1174)
+
+### Fixed
+
+- **Floating panel coexists with native modals**: Renders the floating panel into `getPortalContainer()` instead of `document.body`, so on Grafana >=13.1 (which ships the upstream fix) clicking or scrolling the popped-out panel next to an open native modal no longer dismisses it. (#1283)
+- **"My learning" navigation stays in the sidebar**: The guide footer's "Return to my learning" button and the tab-bar icon previously did a full-page navigation that tore down the sidebar, dropping users out of the Grafana page they were on. Both now switch to the in-panel recommendations tab instead. (#1286)
+- **Recommendations list keeps its scroll position**: Selecting a guide from the Recommended list and returning to it no longer resets the list to the top. (#1296)
+- **Floating panel keeps its scroll position through highlight-dodge**: Compacting or restoring the floating panel to dodge a highlighted element no longer resets the guide's scroll position to the top. (#1297)
+- **Selector generator no longer picks unstable ids**: Record mode now rejects React `useId()`-generated ids (which are render-position-dependent) and prefers a nearby `data-testid`-scoped bare tag when one is available, closing two root causes of unstable recorded selectors. (#1295)
+- **Datasource health requirement checks the real endpoint**: `datasource-configured:` checks now call `GET /api/datasources/uid/{uid}/health` instead of a `/test` endpoint that has never existed in Grafana's route table — every check previously 404ed and failed even for healthy data sources. (#1293)
+- **OSS boot no longer blocked by the online package index**: OSS users who haven't accepted the recommender T&C no longer wait 12-15s (or longer on slow networks) for the recommendations skeleton — the disabled branch no longer waits on a cold-cache manifest fan-out across all published packages. (#1285)
+- **Cloud home guide recommendations restored**: Guide targeting now gates on `targetPlatform` instead of the retired setupguide path, so Cloud users see the Cloud-specific first-dashboard and welcome guides again now that Cloud's landing page moved to `/`. (#1282)
+- **Bundled guides no longer render their title twice**: Removes a redundant leading heading from six bundled guides and adds a `validateGuide()` warning (surfaced in the CLI and MCP authoring tool) so future guides get flagged before shipping. (#1235)
+- **Block editor "Library" action hidden until a guide is saved**: The more-actions menu no longer surfaces the Library item (which lists, opens, and deletes backend guides) for users who have never saved one. (#1287)
+- **Docs panel overflow-tab chevron**: The "Show N more tabs" control now puts the count before the chevron and flips the chevron to reflect whether the dropdown is open. (#1288)
+- **Redo control matches the shared secondary button style**: The completed-step Redo control now uses the same `Button` component as "Show me" / "Skip" instead of a bespoke styled `<button>`. (#1289)
+- **Dock-to-sidebar action uses the columns icon**: Swaps the popout header's dock-to-sidebar icon from `angle-double-right` (read as navigate-forward) to `columns`, matching the layout the action produces. (#1303)
+- **Removed the redundant guide-toolbar "More options" menu**: The docs panel showed two "More options" menus at once; the toolbar's (which only duplicated "Give feedback") is gone, and its dev-only "Refresh" action moved into the tab-bar menu. (#1238)
+- **Two-tab controller formfill lands on backgrounded live tabs**: Formfill steps targeting the Monaco query editor now write through Monaco's model API instead of the hidden textarea, so they take effect on the live tab when driven from the two-tab controller. (#1181)
+
+### Security
+
+- **Authenticated pairing-accept in the two-tab controller**: The two-tab controller no longer binds its pairing slot on a bare `sessionId` match, closing a forged-accept availability DoS where a same-origin script could dead-lock the controller, and tightens the signed-message timestamp window against future-dated `sigTs`. Both are pre-launch hardening for the still-disabled `enableTwoTabController` toggle. (#1170)
+
+### Chore
+
+- **Dependency cleanup unblocks faro-react**: Forward/backward-compat pass for Grafana Cloud's move to React 19 in prod (self-hosted OSS stays on React 18; `react`/`react-dom` remain pinned at 18.3.1), plus ~28 safe patch/minor bumps and a `js-yaml` override fix. (#1241, #1242)
+- **`@grafana/scenes` refreshed within declared ranges**: 8.2.6 → 8.9.5 in the lockfile; `@grafana/assistant` held back by the `.npmrc` min-release-age supply-chain guard. (#1294)
+- **`grafana-plugin-sdk-go` bumped to v0.292.2** (#1243)
+- **Compact JSON for agent-facing MCP and CLI output**: Drops the two-space `JSON.stringify` indentation from MCP tool results and the CLI `--format json` path — pure token overhead for LLM/agent consumers, saving 22-48% of bytes. (#1240)
+- **Floating panel dodge-session state machine**: Models the highlight-dodge compact/restore lifecycle as an explicit pure reducer instead of an implicit combination of refs and event ordering. (#1300)
+- **Two-tab controller pre-launch hardening**: Adds real-browser adversarial Playwright specs (registered but skipped until the flag flips) and a dedicated `cross-tab-controller` subsystem concern entry so security-relevant changes route to focused review before the feature ships enabled. (#1173, #1165)
+- **Cold Grafana Cloud stack E2E lifecycle**: Adds a standalone disposable-stack lifecycle (provisioning, short-lived runner tokens, best-effort teardown) and routes unsafe/unauthenticated non-instance Cloud E2E chains through it. (#1212, #1213)
+- **Renovate noise reduction**: Adds a 14-day stability filter before PRs are created, switches rebasing to only fire on conflict, and disables indirect Go module updates. (#1267)
+- **Fixed a flaky cross-tab reconnect acceptance test**: The signing and reconnect HMAC chains were competing for Node's UV thread pool under CI load, pushing latency past the test's timeout. (#1270)
+- **Docs**: Corrected `steps`/`milestones` terminology in the package format docs (#1268) and reformatted `standards-alignment.md` with Prettier (#1269).
+
 ## 2.13.1
 
 ### Added
