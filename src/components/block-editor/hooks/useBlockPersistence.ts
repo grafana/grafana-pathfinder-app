@@ -199,7 +199,6 @@ export function useBlockPersistence({
         const stored = localStorage.getItem(storageKey);
         if (stored) {
           const parsed: StoredGuide = JSON.parse(stored);
-          // Pass guide, blockIds, and viewMode to onLoad
           onLoad(parsed.guide, parsed.blockIds, parsed.viewMode);
         }
       } catch (e) {

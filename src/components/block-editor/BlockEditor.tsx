@@ -651,6 +651,11 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         // Pass savedBlockIds to preserve IDs (important for recording persistence)
         // and savedViewMode so pop out/dock remounts land back where the author was
         editor.loadGuide(savedGuide, savedBlockIds, savedViewMode);
+        if (savedViewMode === 'json') {
+          // jsonModeState is separate from editor.state.viewMode — restore it too,
+          // or the JSON pane has a mode but nothing to render.
+          jsonMode.restoreJsonMode(savedGuide, savedBlockIds);
+        }
         editor.markSaved(); // Don't mark as dirty after loading
       }
     },
