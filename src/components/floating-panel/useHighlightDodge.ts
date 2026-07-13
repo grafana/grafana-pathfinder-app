@@ -5,6 +5,7 @@ import {
   type FloatingPanelGeometry,
 } from '../../constants/floating-panel';
 import { getVisibleModalRects } from '../../interactive-engine';
+import { FloatingPanelEvents, type FloatingPanelMoveDetail } from '../../lib/event-names';
 
 /** Selectors for interactive overlay elements that the panel should dodge. */
 const HIGHLIGHT_SELECTOR = '.interactive-highlight-outline, .interactive-comment-box';
@@ -114,12 +115,12 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
       if (obstacles.length === 0) {
         if (previousPositionRef.current) {
           document.dispatchEvent(
-            new CustomEvent('pathfinder-floating-restore-position', {
+            new CustomEvent(FloatingPanelEvents.RestorePosition, {
               detail: previousPositionRef.current,
             })
           );
           previousPositionRef.current = null;
-          document.dispatchEvent(new CustomEvent('pathfinder-floating-restore-full'));
+          document.dispatchEvent(new CustomEvent(FloatingPanelEvents.RestoreFull));
         }
         return;
       }
@@ -145,7 +146,7 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
 
       if (dodgePos) {
         document.dispatchEvent(
-          new CustomEvent('pathfinder-floating-dodge', {
+          new CustomEvent(FloatingPanelEvents.Dodge, {
             detail: dodgePos,
           })
         );
@@ -155,7 +156,7 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
       // No corner fits the full panel: compact, and if a corner can hold the
       // compacted panel (min height as its best-known lower bound), move there
       // too — compacting in place alone often uncovers nothing.
-      document.dispatchEvent(new CustomEvent('pathfinder-floating-compact'));
+      document.dispatchEvent(new CustomEvent(FloatingPanelEvents.Compact));
       const compactPos = findDodgePosition(
         geo.width,
         FLOATING_PANEL_MIN_HEIGHT,
@@ -164,7 +165,7 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
       );
       if (compactPos) {
         document.dispatchEvent(
-          new CustomEvent('pathfinder-floating-dodge', {
+          new CustomEvent(FloatingPanelEvents.Dodge, {
             detail: compactPos,
           })
         );
@@ -204,19 +205,19 @@ export function useHighlightDodge(geometry: FloatingPanelGeometry, isMinimized: 
     // discarding the user's placement.
     const handleManualMove = (e: Event) => {
       if (previousPositionRef.current) {
-        previousPositionRef.current = (e as CustomEvent<{ x: number; y: number }>).detail;
+        previousPositionRef.current = (e as CustomEvent<FloatingPanelMoveDetail>).detail;
       }
     };
 
     observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener('pathfinder-modal-state-changed', handleModalStateChange);
-    document.addEventListener('pathfinder-floating-manual-move', handleManualMove);
+    document.addEventListener(FloatingPanelEvents.ManualMove, handleManualMove);
     checkAndDodge();
 
     return () => {
       observer.disconnect();
       document.removeEventListener('pathfinder-modal-state-changed', handleModalStateChange);
-      document.removeEventListener('pathfinder-floating-manual-move', handleManualMove);
+      document.removeEventListener(FloatingPanelEvents.ManualMove, handleManualMove);
       previousPositionRef.current = null;
     };
   }, [isMinimized]); // Stable deps — geometry read from ref
