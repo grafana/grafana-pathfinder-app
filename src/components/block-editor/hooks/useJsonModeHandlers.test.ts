@@ -99,4 +99,29 @@ describe('useJsonModeHandlers — restoreJsonMode', () => {
 
     expect(result.current.jsonMode.jsonModeState?.originalBlockIds).toEqual([]);
   });
+
+  it('restores an invalid persisted draft and derives its validation state', () => {
+    const { result } = renderHook(() => useEditorAndJsonMode(oldGuide));
+    const savedState = {
+      json: '{ invalid',
+      originalBlockIds: ['b1'],
+      originalJson: JSON.stringify(newGuide, null, 2),
+    };
+
+    act(() => {
+      result.current.jsonMode.restoreJsonMode(newGuide, ['b1'], savedState);
+    });
+
+    expect(result.current.jsonMode.jsonModeState).toEqual(savedState);
+    expect(result.current.jsonMode.isJsonValid).toBe(false);
+    expect(result.current.jsonMode.jsonValidationErrors).not.toHaveLength(0);
+    expect(result.current.jsonMode.canUndo).toBe(true);
+
+    act(() => {
+      result.current.jsonMode.handleJsonUndo();
+    });
+
+    expect(result.current.jsonMode.jsonModeState?.json).toBe(savedState.originalJson);
+    expect(result.current.jsonMode.isJsonValid).toBe(true);
+  });
 });

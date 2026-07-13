@@ -322,7 +322,7 @@ describe('useBlockPersistence — JSON draft persistence', () => {
     const { rerender } = renderHook(
       ({ draft }: { draft: JsonModeState | null }) =>
         useBlockPersistence({ guide: guide('original'), viewMode: 'json', jsonModeState: draft }),
-      { initialProps: { draft: null } }
+      { initialProps: { draft: null as JsonModeState | null } }
     );
 
     rerender({ draft: jsonModeState });
