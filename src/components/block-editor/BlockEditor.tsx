@@ -636,36 +636,25 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     editor.markSaved();
   }, [editor]);
 
-  // Persistence - auto-save and restore from localStorage
-  // Auto-save is paused while block form modal is open to avoid saving on every keystroke
   const persistence = useBlockPersistence({
     guide: editor.getGuide(),
-    blockIds: editor.state.blocks.map((b) => b.id), // Store block IDs to preserve across refreshes
+    blockIds: editor.state.blocks.map((b) => b.id),
+    viewMode: state.viewMode,
+    jsonModeState: jsonMode.jsonModeState,
     autoSave: true,
     autoSavePaused: isBlockFormOpen,
-    onLoad: (savedGuide, savedBlockIds) => {
-      // Only load once on initial mount
+    onLoad: (savedGuide, savedBlockIds, savedViewMode, savedJsonModeState) => {
       if (!hasLoadedFromStorage.current && !initialGuide) {
         hasLoadedFromStorage.current = true;
-        // Pass savedBlockIds to preserve IDs (important for recording persistence)
-        editor.loadGuide(savedGuide, savedBlockIds);
-        editor.markSaved(); // Don't mark as dirty after loading
+        editor.loadGuide(savedGuide, savedBlockIds, savedViewMode);
+        if (savedViewMode === 'json') {
+          jsonMode.restoreJsonMode(savedGuide, savedBlockIds, savedJsonModeState);
+        }
+        editor.markSaved();
       }
     },
     onSave: handlePersistenceSave,
   });
-
-  // Load from localStorage on mount (if no initialGuide provided)
-  useEffect(() => {
-    if (!hasLoadedFromStorage.current && !initialGuide && persistence.hasSavedGuide()) {
-      const saved = persistence.load();
-      if (saved) {
-        hasLoadedFromStorage.current = true;
-        editor.loadGuide(saved);
-        editor.markSaved();
-      }
-    }
-  }, [initialGuide, persistence, editor]);
 
   // Clear backend tracking when starting a new guide
   const handleClearBackendTracking = useCallback(() => {

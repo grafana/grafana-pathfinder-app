@@ -80,8 +80,8 @@ export interface UseBlockEditorReturn {
   // Guide export
   /** Get the current guide as a JsonGuide object */
   getGuide: () => JsonGuide;
-  /** Load a guide from JsonGuide data */
-  loadGuide: (guide: JsonGuide, blockIds?: string[]) => void;
+  /** Load a guide from JsonGuide data. `viewMode` defaults to `'edit'` when omitted. */
+  loadGuide: (guide: JsonGuide, blockIds?: string[], viewMode?: ViewMode) => void;
   /** Reset to a new empty guide */
   resetGuide: () => void;
 
@@ -1153,7 +1153,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
 
   // Load a guide — full reset, undo across this point doesn't make sense.
   const loadGuide = useCallback(
-    (guide: JsonGuide, blockIds?: string[]) => {
+    (guide: JsonGuide, blockIds?: string[], viewMode?: ViewMode) => {
       // If blockIds are provided (from persistence), use them to preserve IDs across refreshes
       // Otherwise generate new IDs (for new/imported guides)
       const newBlocks: EditorBlock[] = guide.blocks.map((block, index) => ({
@@ -1168,7 +1168,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
             title: guide.title,
           },
           blocks: newBlocks,
-          viewMode: 'edit',
+          viewMode: viewMode ?? 'edit',
           isDirty: false,
         },
         { skipHistory: true }
