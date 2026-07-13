@@ -1,8 +1,4 @@
-/**
- * Shared toast-notification helper for the block editor.
- * Extracted so both BlockEditor and its extracted hooks can raise
- * notifications without a circular import between them.
- */
+// Module boundary prevents a circular import between BlockEditor and its hooks.
 
 import { getAppEvents } from '@grafana/runtime';
 
