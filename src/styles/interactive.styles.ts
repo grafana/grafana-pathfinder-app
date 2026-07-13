@@ -545,7 +545,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-section-do-button': {
-    minWidth: '200px',
     fontWeight: theme.typography.fontWeightMedium,
 
     '&:disabled': {
