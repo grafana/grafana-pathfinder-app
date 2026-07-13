@@ -81,16 +81,11 @@ function findModalInNodes(nodes: NodeList): Element | null {
  * Scan the entire DOM for any visible modal elements
  * Used as a backup when MutationObserver might have missed the modal
  */
-function findAnyVisibleModal(excludeElement?: Element | null): Element | null {
+function findAnyVisibleModal(): Element | null {
   const selector = MODAL_SELECTORS.join(',');
   const modals = document.querySelectorAll(selector);
 
   for (const modal of modals) {
-    // Skip the element we're already tracking
-    if (excludeElement && (modal === excludeElement || modal.contains(excludeElement))) {
-      continue;
-    }
-
     // Check if it's visible (has dimensions and is not hidden)
     const rect = modal.getBoundingClientRect();
     const style = window.getComputedStyle(modal);

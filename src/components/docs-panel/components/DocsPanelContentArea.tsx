@@ -161,7 +161,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           );
         }
 
-        if (!isRecommendationsTab && activeTab?.isLoading) {
+        if (activeTab?.isLoading) {
           const ljMeta = activeTab.content?.metadata?.learningJourney;
           const showBarWhileLoading =
             ljMeta &&
@@ -221,7 +221,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           );
         }
 
-        if (!isRecommendationsTab && activeTab?.error && !activeTab.isLoading) {
+        if (activeTab?.error && !activeTab.isLoading) {
           return (
             <ErrorDisplay
               className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}
@@ -232,7 +232,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           );
         }
 
-        if (!isRecommendationsTab && activeTab?.content && !activeTab.isLoading) {
+        if (activeTab?.content && !activeTab.isLoading) {
           const isLearningJourneyTab = activeTab.type === 'learning-journey' || !isDocsLikeTab(activeTab.type);
           const showMilestoneProgress =
             isLearningJourneyTab &&
