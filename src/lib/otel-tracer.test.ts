@@ -1,6 +1,6 @@
-import { SpanStatusCode, type Span } from '@opentelemetry/api';
+import { trace, SpanStatusCode, type Span, type Tracer, type TracerProvider } from '@opentelemetry/api';
 import type { Faro } from '@grafana/faro-web-sdk';
-import { endSpanWithOutcome, toSpanAttributes } from './otel-tracer';
+import { endSpanWithOutcome, recordSpanEvent, toSpanAttributes } from './otel-tracer';
 
 const mockExport = jest.fn();
 
@@ -28,6 +28,23 @@ function fakeSpan(): Span {
 
 function fakeFaro(): Faro {
   return { api: {} } as Faro;
+}
+
+class FakeTracerProvider implements TracerProvider {
+  startSpanCalls: Array<{ name: string; options: unknown }> = [];
+  span = fakeSpan();
+
+  getTracer(): Tracer {
+    return {
+      startSpan: (name: string, options?: unknown) => {
+        this.startSpanCalls.push({ name, options });
+        return this.span;
+      },
+      startActiveSpan: (): never => {
+        throw new Error('not exercised by recordSpanEvent');
+      },
+    };
+  }
 }
 
 beforeEach(() => {
@@ -90,5 +107,29 @@ describe('endSpanWithOutcome', () => {
 
     expect(span.end).toHaveBeenCalledTimes(1);
     expect(mockExport).not.toHaveBeenCalled();
+  });
+});
+
+describe('recordSpanEvent', () => {
+  afterEach(() => {
+    trace.disable();
+  });
+
+  it('does not throw and does not export when no global TracerProvider is registered', () => {
+    expect(() => recordSpanEvent(fakeFaro(), 'pathfinder_click', {})).not.toThrow();
+    expect(mockExport).not.toHaveBeenCalled();
+  });
+
+  it('starts and immediately ends a root span with the given name and attributes, then exports it', () => {
+    const provider = new FakeTracerProvider();
+    trace.setGlobalTracerProvider(provider);
+
+    recordSpanEvent(fakeFaro(), 'pathfinder_click', { step: 2 });
+
+    expect(provider.startSpanCalls).toEqual([
+      { name: 'pathfinder_click', options: { attributes: { step: 2 }, root: true } },
+    ]);
+    expect(provider.span.end).toHaveBeenCalledTimes(1);
+    expect(mockExport).toHaveBeenCalledTimes(1);
   });
 });

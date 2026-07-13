@@ -17,7 +17,13 @@ import {
   ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES,
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
-import { endSpanWithOutcome, getPathfinderTracer, registerOtelWithFaro, toSpanAttributes } from './otel-tracer';
+import {
+  endSpanWithOutcome,
+  getPathfinderTracer,
+  recordSpanEvent,
+  registerOtelWithFaro,
+  toSpanAttributes,
+} from './otel-tracer';
 import { StorageKeys } from './storage-keys';
 import { isExtensionSidebarOwnedByPathfinder } from './storage/extension-sidebar';
 
@@ -335,6 +341,13 @@ export function pushFaroUserAction(name: string, attributes?: Record<string, unk
     }
     const action = faroInstance.api.startUserAction(name, attrs);
     (action as UserActionInternalInterface | undefined)?.end();
+  });
+  // Isolated from the Faro action logic above so a span failure never
+  // affects the Faro user-action mirror, and vice versa.
+  guardTelemetry(() => {
+    if (faroInstance) {
+      recordSpanEvent(faroInstance, name, attributes ?? {});
+    }
   });
 }
 

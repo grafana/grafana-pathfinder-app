@@ -74,12 +74,14 @@ const mockGetPathfinderTracer = jest.fn(() => ({ startSpan: mockStartSpan }));
 const mockToSpanAttributes = jest.fn((attributes: Record<string, unknown>) => attributes);
 const mockEndSpanWithOutcome = jest.fn();
 const mockRegisterOtelWithFaro = jest.fn();
+const mockRecordSpanEvent = jest.fn();
 
 jest.mock('./otel-tracer', () => ({
   getPathfinderTracer: () => mockGetPathfinderTracer(),
   toSpanAttributes: (attributes: Record<string, unknown>) => mockToSpanAttributes(attributes),
   endSpanWithOutcome: (...args: unknown[]) => mockEndSpanWithOutcome(...args),
   registerOtelWithFaro: (...args: unknown[]) => mockRegisterOtelWithFaro(...args),
+  recordSpanEvent: (...args: unknown[]) => mockRecordSpanEvent(...args),
 }));
 
 // Loaded via `require`, not a static ES `import`: ES imports are evaluated
@@ -469,6 +471,7 @@ describe('pushFaroUserAction', () => {
     const faro = freshFaro();
     expect(() => faro.pushFaroUserAction('pathfinder_docs_panel_interaction', { action: 'open' })).not.toThrow();
     expect(mockStartUserAction).not.toHaveBeenCalled();
+    expect(mockRecordSpanEvent).not.toHaveBeenCalled();
   });
 
   it('starts a user action with the same name and stringified attributes, and ends it immediately', async () => {
@@ -482,6 +485,25 @@ describe('pushFaroUserAction', () => {
       seq: '0',
     });
     expect(mockActionEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('records a point-in-time span alongside the Faro action, with the raw (unstringified) attributes', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.pushFaroUserAction('pathfinder_docs_panel_interaction', { action: 'open', step: 2 });
+    expect(mockRecordSpanEvent).toHaveBeenCalledWith(mockFaroInstance, 'pathfinder_docs_panel_interaction', {
+      action: 'open',
+      step: 2,
+    });
+  });
+
+  it('records a span event even with no attributes passed', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.pushFaroUserAction('pathfinder_docs_panel_interaction');
+    expect(mockRecordSpanEvent).toHaveBeenCalledWith(mockFaroInstance, 'pathfinder_docs_panel_interaction', {});
   });
 
   it('adds an incrementing seq attribute so identical rapid-fire mirrors survive Faro dedupe', async () => {
@@ -536,6 +558,17 @@ describe('pushFaroUserAction', () => {
     });
     expect(() => faro.pushFaroUserAction('pathfinder_docs_panel_interaction', {})).not.toThrow();
   });
+
+  it('still completes the Faro action when span recording throws', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockRecordSpanEvent.mockImplementationOnce(() => {
+      throw new Error('otel down');
+    });
+    expect(() => faro.pushFaroUserAction('pathfinder_docs_panel_interaction', {})).not.toThrow();
+    expect(mockActionEnd).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('pushFaroUserAction fallback while a real action is active', () => {
@@ -552,6 +585,9 @@ describe('pushFaroUserAction fallback while a real action is active', () => {
       { skipDedupe: true }
     );
     expect(mockStartUserAction).not.toHaveBeenCalled();
+    expect(mockRecordSpanEvent).toHaveBeenCalledWith(mockFaroInstance, 'pathfinder_docs_panel_interaction', {
+      action: 'open',
+    });
   });
 
   it('keeps one monotonic seq counter across both mirror shapes', async () => {

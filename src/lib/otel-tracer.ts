@@ -62,6 +62,12 @@ function setOutcomeOnSpan(span: Span, outcome: SpanOutcome, error?: unknown): vo
 // run automatically, works standalone). Skips export for non-recording spans
 // (nothing globally registered) - wasRecording must be captured before
 // span.end(), since isRecording() always reports false afterwards.
+function exportSpan(faro: Faro, span: Span, wasRecording: boolean): void {
+  if (wasRecording) {
+    new FaroTraceExporter({ api: faro.api }).export([span as unknown as ReadableSpan], () => {});
+  }
+}
+
 export function endSpanWithOutcome(
   faro: Faro,
   span: Span,
@@ -71,9 +77,19 @@ export function endSpanWithOutcome(
 ): void {
   setOutcomeOnSpan(span, outcome, error);
   span.end();
-  if (wasRecording) {
-    new FaroTraceExporter({ api: faro.api }).export([span as unknown as ReadableSpan], () => {});
-  }
+  exportSpan(faro, span, wasRecording);
+}
+
+// Point-in-time counterpart to endSpanWithOutcome: for events with no
+// meaningful duration (a click, a page-level interaction), start and end the
+// span immediately - mirrors how core Grafana's own CUJ framework treats
+// recordEvent() vs startStep(). No outcome to stamp: these record that
+// something happened, not the result of an operation.
+export function recordSpanEvent(faro: Faro, name: string, attributes: Record<string, unknown>): void {
+  const span = getPathfinderTracer().startSpan(name, { attributes: toSpanAttributes(attributes), root: true });
+  const wasRecording = span.isRecording();
+  span.end();
+  exportSpan(faro, span, wasRecording);
 }
 
 // Lets Faro's own getTraceContext()/isOTELInitialized() helpers work, mirroring
