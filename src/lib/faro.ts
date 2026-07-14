@@ -296,6 +296,10 @@ export async function initFaro(): Promise<void> {
           grafana_version: config.buildInfo.version,
           edition: config.buildInfo.edition ?? '',
           language: config.bootData?.user?.language ?? '',
+          // Stack hostname (slug.grafana.net on Cloud) so sessions are
+          // attributable to an instance; the recommender payload sends the
+          // same hostname unhashed as `source`.
+          instance: window.location.hostname,
         },
       },
     },
@@ -311,7 +315,9 @@ export async function initFaro(): Promise<void> {
 
 // Reuses the same hashes as the recommender's context payload
 // (context.service.ts) so Faro sessions are joinable with recommender data
-// without introducing a second identity scheme or any raw PII.
+// without introducing a second identity scheme or any raw PII. The hashed
+// email is the primary id (joins on the recommender's user_email); the
+// hashed analytics identifier rides along for the user_id join.
 async function stampFaroUser(): Promise<void> {
   try {
     const isCloud = isGrafanaCloud();
@@ -319,8 +325,8 @@ async function stampFaroUser(): Promise<void> {
     const userEmail = isCloud ? config.bootData.user.email || 'unknown@example.com' : 'oss-user@example.com';
     const { hashedUserId, hashedEmail } = await hashUserData(userId, userEmail);
     faroInstance?.api.setUser({
-      id: hashedUserId,
-      attributes: { email_hash: hashedEmail, org_role: config.bootData.user.orgRole || 'Viewer' },
+      id: hashedEmail,
+      attributes: { user_id_hash: hashedUserId, org_role: config.bootData.user.orgRole || 'Viewer' },
     });
   } catch {
     // Telemetry must never break the app it's observing.

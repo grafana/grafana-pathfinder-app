@@ -430,14 +430,14 @@ describe('initFaro', () => {
     expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
   });
 
-  it("stamps meta.user with the recommender's hashed identity, never raw PII", async () => {
+  it("stamps meta.user with the recommender's hashed identity (email hash as id), never raw PII", async () => {
     const faro = freshFaro();
     await faro.initFaro();
     await flushMicrotasks();
     expect(mockHashUserData).toHaveBeenCalledWith('abc', 'x@y.z');
     expect(mockSetUser).toHaveBeenCalledWith({
-      id: 'hashed-abc',
-      attributes: { email_hash: 'hashed-x@y.z', org_role: 'Admin' },
+      id: 'hashed-x@y.z',
+      attributes: { user_id_hash: 'hashed-abc', org_role: 'Admin' },
     });
   });
 
@@ -460,7 +460,7 @@ describe('initFaro', () => {
     expect(mockSetUser).not.toHaveBeenCalled();
   });
 
-  it('includes edition and language in the initial session attributes', async () => {
+  it('includes edition, language, and the instance hostname in the initial session attributes', async () => {
     mockedConfig.bootData!.user.language = 'fr-FR';
     mockedConfig.buildInfo.edition = 'Enterprise';
     const faro = freshFaro();
@@ -469,7 +469,12 @@ describe('initFaro', () => {
       sessionTracking: { session: { attributes: Record<string, string> } };
     };
     expect(calledWith.sessionTracking.session.attributes).toEqual(
-      expect.objectContaining({ grafana_version: '13.1.0', edition: 'Enterprise', language: 'fr-FR' })
+      expect.objectContaining({
+        grafana_version: '13.1.0',
+        edition: 'Enterprise',
+        language: 'fr-FR',
+        instance: window.location.hostname,
+      })
     );
   });
 
