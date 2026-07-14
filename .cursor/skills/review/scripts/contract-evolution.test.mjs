@@ -4,7 +4,8 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, test } from 'node:test';
-import { computeGate } from './contract-evolution-gate.mjs';
+import { fileURLToPath } from 'node:url';
+import { computeGate, conventionalType, extractConcernPaths, parseArgs } from './contract-evolution-gate.mjs';
 import { buildFinding, decideDisposition } from './contract-evolution-policy.mjs';
 
 const tempDirs = [];
@@ -57,6 +58,7 @@ function packet(overrides = {}) {
     use_ordinal: 'second',
     same_bug_count: 0,
     has_recorded_anchor: false,
+    anchor_violated: false,
     branching_conditions: ['new_event_vocabulary'],
     sources: [{ kind: 'pr', id: 10, sha: 'abcdef0', selection_reason: 'Most recent semantic PR' }],
     finding: {
@@ -101,6 +103,99 @@ test('gate counts distinct prior PRs and excludes current branch commits', () =>
   assert.equal(result.triggered, true);
 });
 
+test('gate treats unreadable prose as an evidence gap but excluded types as noise', () => {
+  const repo = createRepo();
+  commit(repo, 'feat(telemetry): add facade (#10)', 'feature\n');
+  commit(repo, 'Rework telemetry pipeline internals (#42)', 'prose\n');
+  commit(repo, 'chore(deps): update dep digest (#43)', 'deps\n');
+  const base = commit(repo, 'Revert "feat(telemetry): add facade (#10)" (#44)', 'revert\n');
+
+  const result = computeGate({ base, head: base, concern: 'telemetry', cwd: repo });
+
+  assert.equal(result.history_status, 'partial');
+  assert.deepEqual(
+    result.unclassified_commits.map((entry) => entry.pr),
+    [42]
+  );
+  assert.deepEqual(
+    result.recent_semantic_changes.map((entry) => entry.pr),
+    [44, 10]
+  );
+  assert.equal(result.prior_semantic_pr_count, 2);
+});
+
+test('recognized-but-excluded types do not degrade history status', () => {
+  const repo = createRepo();
+  const base = commit(repo, 'chore(deps): update dep digest (#43)', 'deps\n');
+
+  const result = computeGate({ base, head: base, concern: 'telemetry', cwd: repo });
+
+  assert.equal(result.history_status, 'complete');
+  assert.deepEqual(result.unclassified_commits, []);
+  assert.equal(result.prior_semantic_pr_count, 0);
+});
+
+test('conventionalType classifies real-world subjects', () => {
+  assert.equal(conventionalType('Revert "feat: rebrand devtools (#677)"'), 'revert');
+  assert.equal(conventionalType('Fixed a very small typo. (#1322)'), 'fix');
+  assert.equal(conventionalType('Fix duplicate guide title rendering (#1235)'), 'fix');
+  assert.equal(conventionalType('hardening(cross-tab): deepen wire validation (#1172)'), 'hardening');
+  assert.equal(conventionalType('feature: Adds a Create GitHub PR button (#410)'), 'feat');
+  assert.equal(conventionalType('chore(deps): update digest (#1326)'), 'chore');
+  assert.equal(conventionalType('Fixture cleanup for tests (#99)'), 'other');
+  assert.equal(conventionalType('Pivot CLI publish to GHCR continuous on main'), 'other');
+});
+
+const routingTable = [
+  '| id | cat | on | mode | min | max | trigger_paths | trigger_keywords |',
+  '| -- | -- | -- | -- | -- | -- | -- | -- |',
+  '| `telemetry` | sub | N | strong | 1 | 8 | `src/lib/telemetry.ts` | `telemetry` |',
+].join('\n');
+
+test('extractConcernPaths ignores non-routing tables that mention the concern', () => {
+  const decoy = [
+    '| concern | anchor | contract |',
+    '| -- | -- | -- |',
+    '| `telemetry` | #10 → #11 | owns `src/decoy/**` |',
+    '',
+  ].join('\n');
+  assert.deepEqual(extractConcernPaths(`${decoy}\n${routingTable}\n`, 'telemetry'), ['src/lib/telemetry.ts']);
+});
+
+test('extractConcernPaths reads columns from the header, not fixed positions', () => {
+  const reordered = [
+    '| id | trigger_paths | cat | on | mode | min | max | trigger_keywords |',
+    '| -- | -- | -- | -- | -- | -- | -- | -- |',
+    '| `telemetry` | `src/lib/telemetry.ts` | sub | N | strong | 1 | 8 | `telemetry` |',
+  ].join('\n');
+  assert.deepEqual(extractConcernPaths(reordered, 'telemetry'), ['src/lib/telemetry.ts']);
+});
+
+test('extractConcernPaths requires a routing table header', () => {
+  assert.throws(() => extractConcernPaths('| concern | anchor |\n| -- | -- |\n', 'telemetry'), /Routing table header/);
+});
+
+test('ai-subsystem concern id in CONCERNS.md still matches the gate special case', () => {
+  const markdown = readFileSync(fileURLToPath(new URL('../../../../docs/design/CONCERNS.md', import.meta.url)), 'utf8');
+  assert.ok(extractConcernPaths(markdown, 'ai-subsystem').length > 0);
+});
+
+test('parseArgs rejects unknown flags loudly', () => {
+  assert.throws(() => parseArgs(['--windowDays', '90']), /--windowDays/);
+});
+
+test('parseArgs accepts the documented flags', () => {
+  assert.deepEqual(
+    { ...parseArgs(['--base', 'a', '--head', 'b', '--concern', 'c', '--window-days', '90']) },
+    {
+      base: 'a',
+      head: 'b',
+      concern: 'c',
+      'window-days': '90',
+    }
+  );
+});
+
 test('gate passes metacharacter paths to Git without shell execution', () => {
   const triggerPath = 'src/lib/safe;touch pwned';
   const repo = createRepo(triggerPath);
@@ -136,10 +231,22 @@ test('#1297-style second unanchored branch is advisory and schema-compatible', (
   });
 });
 
-test('anchored or mature branching is blocking', () => {
-  assert.equal(decideDisposition(packet({ has_recorded_anchor: true })).disposition, 'blocking');
+test('violated-anchor or mature branching is blocking', () => {
+  assert.equal(decideDisposition(packet({ has_recorded_anchor: true, anchor_violated: true })).disposition, 'blocking');
   assert.equal(decideDisposition(packet({ use_ordinal: 'third_or_later' })).disposition, 'blocking');
   assert.equal(decideDisposition(packet({ same_bug_count: 2 })).disposition, 'blocking');
+});
+
+test('an unviolated anchor does not block early-use branching', () => {
+  assert.equal(decideDisposition(packet({ has_recorded_anchor: true })).disposition, 'advisory');
+});
+
+test('same bug count below two stays advisory', () => {
+  assert.equal(decideDisposition(packet({ same_bug_count: 1 })).disposition, 'advisory');
+});
+
+test('anchor_violated requires a recorded anchor', () => {
+  assert.throws(() => decideDisposition(packet({ anchor_violated: true })), /anchor_violated requires/);
 });
 
 test('#1334-style third vendor consumer is blocking', () => {
@@ -165,6 +272,22 @@ test('missing history cannot block without an anchor', () => {
     requires_finding: true,
   });
   assert.equal(buildFinding(value).confidence, 'low');
+});
+
+test('downgraded clean verdict synthesizes a deterministic finding', () => {
+  const { finding: _omitted, ...value } = packet({ verdict: 'coherent_extension', history_status: 'partial' });
+  assert.equal(decideDisposition(value).effective_verdict, 'insufficient_history');
+  const result = buildFinding(value);
+  assert.equal(result.confidence, 'low');
+  assert.equal(result.disposition, 'advisory');
+  assert.equal(result.finding_id, 'contract-evolution-telemetry-insufficient-history');
+  assert.equal(result.reversibility, 'unknown');
+  assert.deepEqual(result.applies_to_files, []);
+});
+
+test('sub-agent insufficient_history verdicts still require a finding', () => {
+  const { finding: _omitted, ...value } = packet({ verdict: 'insufficient_history' });
+  assert.throws(() => buildFinding(value), /must include finding/);
 });
 
 test('stable-surface coherent extensions stay silent', () => {

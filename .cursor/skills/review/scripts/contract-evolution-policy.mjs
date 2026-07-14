@@ -82,6 +82,12 @@ export function validatePacket(packet) {
   if (typeof packet.has_recorded_anchor !== 'boolean') {
     throw new Error('has_recorded_anchor must be a boolean');
   }
+  if (typeof packet.anchor_violated !== 'boolean') {
+    throw new Error('anchor_violated must be a boolean');
+  }
+  if (packet.anchor_violated && !packet.has_recorded_anchor) {
+    throw new Error('anchor_violated requires has_recorded_anchor to be true');
+  }
   if (!Number.isInteger(packet.same_bug_count) || packet.same_bug_count < 0) {
     throw new Error('same_bug_count must be a non-negative integer');
   }
@@ -90,15 +96,10 @@ export function validatePacket(packet) {
 
 export function decideDisposition(packet) {
   validatePacket(packet);
-  if (packet.verdict === 'insufficient_history') {
-    return {
-      effective_verdict: 'insufficient_history',
-      disposition: 'advisory',
-      severity: 'low',
-      requires_finding: true,
-    };
-  }
-  if (packet.history_status !== 'complete' && !packet.has_recorded_anchor) {
+  if (
+    packet.verdict === 'insufficient_history' ||
+    (packet.history_status !== 'complete' && !packet.has_recorded_anchor)
+  ) {
     return {
       effective_verdict: 'insufficient_history',
       disposition: 'advisory',
@@ -119,7 +120,7 @@ export function decideDisposition(packet) {
   }
 
   const matureTripwire =
-    packet.has_recorded_anchor || packet.use_ordinal === 'third_or_later' || packet.same_bug_count >= 2;
+    packet.anchor_violated || packet.use_ordinal === 'third_or_later' || packet.same_bug_count >= 2;
   const blocking = matureTripwire && packet.branching_conditions.length > 0;
   return {
     effective_verdict: 'contract_branching',
@@ -129,13 +130,37 @@ export function decideDisposition(packet) {
   };
 }
 
+function synthesizeInsufficientHistoryFinding(packet) {
+  return {
+    finding_id: `contract-evolution-${packet.concern_id}-insufficient-history`,
+    title: `Insufficient history for ${packet.concern_id}: ${packet.verdict} could not be confirmed`,
+    evidence: [
+      `history_status: ${packet.history_status}`,
+      'has_recorded_anchor: false',
+      `sub_agent_verdict: ${packet.verdict}`,
+    ],
+    why_it_matters:
+      'The scan could not verify the contract verdict against complete history or a recorded anchor, so contract branching may be invisible.',
+    suggested_action: `Record a contract anchor for ${packet.concern_id} in docs/design/CONCERNS.md (Contract anchors) or re-run the scan with complete history.`,
+    reversibility: 'unknown',
+    applies_to_files: [],
+  };
+}
+
 export function buildFinding(packet) {
   const decision = decideDisposition(packet);
   if (!decision.requires_finding) {
     return null;
   }
 
-  const finding = packet.finding;
+  let finding = packet.finding;
+  if (
+    !finding &&
+    decision.effective_verdict === 'insufficient_history' &&
+    (packet.verdict === 'follows_contract' || packet.verdict === 'coherent_extension')
+  ) {
+    finding = synthesizeInsufficientHistoryFinding(packet);
+  }
   if (!finding || typeof finding !== 'object') {
     throw new Error('A non-clean packet must include finding');
   }

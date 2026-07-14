@@ -61,12 +61,13 @@ Required fields:
 - `competing_owners_or_representations`
 - `history_status` — `complete | partial | unavailable`
 - `use_ordinal` — `first | second | third_or_later`
-- `same_bug_count`
+- `same_bug_count` — total bugs observed in this class, including the one this PR addresses; `0` when this PR does not address a bug in a previously seen class
 - `has_recorded_anchor`
+- `anchor_violated` — `true` only when the change contradicts an invariant stated in the recorded anchor; must be `false` when `has_recorded_anchor` is `false`
 - `branching_conditions`
 - `sources` — immutable same-repository PR, issue, and commit identifiers plus selection reasons
 - `verdict`
-- `finding` — required for `contract_missing`, `contract_branching`, and `insufficient_history`; contains `finding_id`, `title`, `evidence`, `why_it_matters`, `suggested_action`, `reversibility`, and `applies_to_files`
+- `finding` — required for `contract_missing`, `contract_branching`, and `insufficient_history`; contains `finding_id`, `title`, `evidence`, `why_it_matters`, `suggested_action`, `reversibility`, and `applies_to_files`. When the policy downgrades a clean verdict to `insufficient_history`, `contract-evolution-policy.mjs` synthesizes the finding — packets with clean verdicts never include one.
 
 Also record the deterministic gate output or the router's explicitly labeled `discretionary_trigger`. Never present a subjective router judgment as a gate metric.
 
@@ -98,7 +99,7 @@ This table is the only source of disposition truth. `.cursor/skills/review/scrip
 | Complete history; change conforms                                      | `follows_contract`     | —        | none        |
 | Complete history; one owner grows coherently                           | `coherent_extension`   | —        | none        |
 | No owner, any use ordinal                                              | `contract_missing`     | medium   | advisory    |
-| First or second use, no recorded anchor                                | `contract_branching`   | medium   | advisory    |
+| First or second use, no anchor violation                               | `contract_branching`   | medium   | advisory    |
 | Recorded anchor is violated and a branching condition exists           | `contract_branching`   | high     | blocking    |
 | Third-or-later use and a branching condition exists                    | `contract_branching`   | high     | blocking    |
 | Second or later bug in the same class and a branching condition exists | `contract_branching`   | high     | blocking    |
