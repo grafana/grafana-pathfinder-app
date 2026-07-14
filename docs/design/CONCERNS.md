@@ -103,7 +103,7 @@ Column key — **cat**: `AO`=always-on · `sub`=subsystem · `xcut`=cross-cuttin
 
 ## Contract anchors
 
-A contract anchor records the deliberately established contract of a capability: its owning module, its load-bearing invariants, and the PR or issue that established it. The contract evolution scan (`.cursor/skills/review/SKILL.md` §3b) checks new PRs for **conformance** against a recorded anchor; when no anchor exists it must reconstruct the implied contract from recent PR history, which is slower and weaker. Anchors exist because contracts established in refactor PR bodies are otherwise invisible to future reviews and silently re-fracture.
+A contract anchor records the deliberately established contract of a capability: its owning module, its load-bearing invariants, and the PR or issue that established it. The contract evolution scan (`.cursor/skills/review/SKILL.md` §3b) checks new PRs for **conformance** against a recorded anchor; when no anchor exists it must reconstruct the implied contract from recent PR history, which is slower and weaker.
 
 Rules:
 
