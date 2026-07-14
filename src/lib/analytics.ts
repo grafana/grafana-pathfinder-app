@@ -8,7 +8,9 @@
 import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security/url-validator';
-import { pushFaroUserAction } from './faro';
+// Bridge, not the Faro adapter: analytics is entry-eager and a direct
+// adapter import would pull the telemetry package into module.js.
+import { pushFaroUserAction } from './telemetry/bridge';
 import { logger } from './logging';
 import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
 

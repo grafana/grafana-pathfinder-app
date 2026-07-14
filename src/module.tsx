@@ -18,7 +18,9 @@ import {
   isExtensionSidebarOwnedByPathfinder,
   parseExtensionSidebarDocked,
 } from './lib/storage/extension-sidebar';
-import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from './lib/telemetry';
+// Surgical import (not the ./lib/telemetry barrel): module.tsx is the entry
+// point, and the barrel would pull the whole telemetry package into module.js.
+import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from './lib/telemetry/surface';
 
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading

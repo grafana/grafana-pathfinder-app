@@ -1,13 +1,15 @@
 import { sanitizeForLogging } from '../security/log-sanitizer';
 
-type FaroTelemetry = Pick<typeof import('./faro'), 'pushFaroError' | 'pushFaroLog'>;
+// Bridge, not the Faro adapter: logging is entry-eager and a direct adapter
+// import would pull the telemetry package into module.js.
+type FaroTelemetry = Pick<typeof import('./telemetry/bridge'), 'pushFaroError' | 'pushFaroLog'>;
 
 function getFaroTelemetry(): FaroTelemetry | null {
   if (typeof window === 'undefined') {
     return null;
   }
   try {
-    return require('./faro') as FaroTelemetry;
+    return require('./telemetry/bridge') as FaroTelemetry;
   } catch {
     return null;
   }

@@ -1,6 +1,6 @@
 import { reportAppInteraction, UserInteraction, bindExperimentsProvider } from './analytics';
 import { reportInteraction } from '@grafana/runtime';
-import { pushFaroUserAction } from './faro';
+import { pushFaroUserAction } from './telemetry/bridge';
 
 jest.mock('@grafana/runtime', () => ({
   reportInteraction: jest.fn(),
@@ -14,7 +14,7 @@ jest.mock('../security/url-validator', () => ({
   isInteractiveLearningUrl: jest.fn(() => false),
 }));
 
-jest.mock('./faro', () => ({
+jest.mock('./telemetry/bridge', () => ({
   pushFaroUserAction: jest.fn(),
   pushFaroLog: jest.fn(),
   pushFaroError: jest.fn(),

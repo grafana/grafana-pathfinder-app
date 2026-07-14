@@ -14,6 +14,7 @@ import {
 import { buildTelemetryIdentity } from './identity';
 import { getPathfinderSurface, onPathfinderSurfaceChange } from './surface';
 import { stampSessionExperiments } from './session';
+import { registerTelemetryBridge } from './bridge';
 
 const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/d6ec87b657b65de6e363de05623d9c57';
 const APP_NAME = packageJson.name;
@@ -327,3 +328,7 @@ export function pauseFaroBeforeReload(): void {
     faroInstance?.pause();
   });
 }
+
+// Entry-eager modules reach these through the bridge so this adapter (and
+// everything it imports) stays out of module.js; see ./bridge.ts.
+registerTelemetryBridge({ pushFaroUserAction, pushFaroError, pushFaroLog });

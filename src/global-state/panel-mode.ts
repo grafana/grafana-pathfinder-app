@@ -1,7 +1,9 @@
 import { getAppEvents } from '@grafana/runtime';
 import { StorageKeys } from '../lib/storage-keys';
 import { PANEL_MODE_CHANGE_EVENT } from '../lib/event-names';
-import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/telemetry';
+// Surgical import (not the ../lib/telemetry barrel): panel-mode is
+// entry-eager, and the barrel would pull the telemetry package into module.js.
+import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/telemetry/surface';
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
 import type { PackageOpenInfo } from '../types/content-panel.types';
 
