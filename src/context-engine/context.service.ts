@@ -25,8 +25,7 @@ import { interactiveCompletionStorage } from '../lib/user-storage';
 import { hashUserData } from '../lib/hash.util';
 import { logger } from '../lib/logging';
 import { withTimeout } from '../lib/async-utils';
-import { pushFaroMeasurement } from '../lib/faro';
-import { reportAppInteraction, UserInteraction } from '../lib/analytics';
+import { pushFaroEvent, pushFaroMeasurement } from '../lib/faro';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
 import {
@@ -495,7 +494,7 @@ export class ContextService {
     // Fallback here always merges bundled + static-link recommendations
     // (getFallbackRecommendations); there is no separate online-packages
     // tier to distinguish once the external recommender has failed.
-    reportAppInteraction(UserInteraction.RecommenderFallback, {
+    pushFaroEvent('recommender_fallback', {
       fallback_tier: 'bundled+static',
       error_type: errorType,
     });

@@ -14,8 +14,7 @@ import { fetchBundledInteractive } from './content-fetcher/bundled';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
 import { enforceHttps, fetchRawHtml, generateUserFriendlyError } from './content-fetcher/fetch-raw';
 import { logger } from '../lib/logging';
-import { pushFaroMeasurement } from '../lib/faro';
-import { reportAppInteraction, UserInteraction } from '../lib/analytics';
+import { pushFaroEvent, pushFaroMeasurement } from '../lib/faro';
 
 type ContentFetchTier = 'bundled' | 'backend-guide' | 'content-json' | 'unstyled-html' | 'other';
 
@@ -152,7 +151,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // tryGrafanaDocsContentLadder in fetch-raw.ts) — landing on the HTML
     // tier for one of them means that ladder fell back.
     if (contentType === 'learning-journey' && tier === 'unstyled-html') {
-      reportAppInteraction(UserInteraction.ContentFetchFallback, {
+      pushFaroEvent('content_fetch_fallback', {
         content_url: url,
         tier_used: 'unstyled-html',
         error_type: 'content-json-unavailable',
@@ -173,7 +172,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
         // JSON.parse("null") returns the JavaScript value null
         if (parsed === null) {
           tier = 'unstyled-html';
-          reportAppInteraction(UserInteraction.ContentFetchFallback, {
+          pushFaroEvent('content_fetch_fallback', {
             content_url: url,
             tier_used: 'unstyled-html',
             error_type: 'content-json-null',

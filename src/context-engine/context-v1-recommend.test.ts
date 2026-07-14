@@ -72,15 +72,11 @@ jest.mock('../lib/hash.util', () => ({
 }));
 
 const mockPushFaroMeasurement = jest.fn();
+const mockPushFaroEvent = jest.fn();
 jest.mock('../lib/faro', () => ({
   ...jest.requireActual('../lib/faro'),
   pushFaroMeasurement: (...args: unknown[]) => mockPushFaroMeasurement(...args),
-}));
-
-const mockReportAppInteraction = jest.fn();
-jest.mock('../lib/analytics', () => ({
-  ...jest.requireActual('../lib/analytics'),
-  reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
+  pushFaroEvent: (...args: unknown[]) => mockPushFaroEvent(...args),
 }));
 
 jest.mock('../docs-retrieval', () => ({
@@ -592,7 +588,7 @@ describe('V1 error handling and edge cases', () => {
       { recommender_ms: expect.any(Number) },
       { outcome: 'other' }
     );
-    expect(mockReportAppInteraction).toHaveBeenCalledWith('recommender_fallback', {
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('recommender_fallback', {
       fallback_tier: 'bundled+static',
       error_type: 'other',
     });
@@ -662,7 +658,7 @@ describe('V1 error handling and edge cases', () => {
       { recommender_ms: expect.any(Number) },
       { outcome: 'unavailable' }
     );
-    expect(mockReportAppInteraction).toHaveBeenCalledWith('recommender_fallback', {
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('recommender_fallback', {
       fallback_tier: 'bundled+static',
       error_type: 'unavailable',
     });
@@ -681,7 +677,7 @@ describe('V1 error handling and edge cases', () => {
       { recommender_ms: expect.any(Number) },
       { outcome: 'ok' }
     );
-    expect(mockReportAppInteraction).not.toHaveBeenCalledWith('recommender_fallback', expect.anything());
+    expect(mockPushFaroEvent).not.toHaveBeenCalledWith('recommender_fallback', expect.anything());
   });
 });
 

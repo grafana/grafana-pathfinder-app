@@ -108,11 +108,6 @@ export enum UserInteraction {
   AiFixAccepted = 'ai_fix_accepted',
   AiFixApplied = 'ai_fix_applied',
   AiFixFailed = 'ai_fix_failed',
-
-  // Funnel degradation — silent failures worth alerting on
-  RecommenderFallback = 'recommender_fallback',
-  ContentFetchFallback = 'content_fetch_fallback',
-  RequirementsExhausted = 'requirements_exhausted',
 }
 
 // ============================================================================

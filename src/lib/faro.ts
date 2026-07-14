@@ -478,6 +478,18 @@ export function setFaroUserActionAttributes(attributes: Record<string, unknown>)
   });
 }
 
+// For operational signals (funnel degradations, silent fallbacks) that
+// belong in Faro for alerting but are not product analytics — unlike
+// reportAppInteraction, nothing here reaches RudderStack. skipDedupe keeps
+// repeated identical failures countable.
+export function pushFaroEvent(name: string, attributes?: Record<string, unknown>): void {
+  guardTelemetry(() => {
+    faroInstance?.api.pushEvent(name, attributes ? stringifyAttributes(attributes) : undefined, undefined, {
+      skipDedupe: true,
+    });
+  });
+}
+
 // Namespaced type + analogy-legible value names (e.g. `panel_lcp_ms`), never
 // Faro's default web-vitals names (`lcp`/`cls`/`inp`/...) — those are scored
 // against Google's Core Web Vitals thresholds in the Frontend Observability

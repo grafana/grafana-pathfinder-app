@@ -2,8 +2,7 @@ import { InteractiveElementData } from '../types/interactive.types';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { logger } from '../lib/logging';
-import { pushFaroMeasurement } from '../lib/faro';
-import { reportAppInteraction, UserInteraction } from '../lib/analytics';
+import { pushFaroEvent, pushFaroMeasurement } from '../lib/faro';
 
 const MAX_REQUIREMENT_CONTEXT_LENGTH = 200;
 
@@ -72,7 +71,7 @@ export class SequenceManager {
     );
     const requirement = (context.data.requirements ?? '').slice(0, MAX_REQUIREMENT_CONTEXT_LENGTH);
     pushFaroMeasurement('pathfinder_requirements', { retry_count: this.MAX_RETRIES }, { requirement });
-    reportAppInteraction(UserInteraction.RequirementsExhausted, {
+    pushFaroEvent('requirements_exhausted', {
       requirement,
       retry_count: this.MAX_RETRIES,
     });

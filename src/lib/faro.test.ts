@@ -569,6 +569,37 @@ describe('pushFaroLog', () => {
   });
 });
 
+describe('pushFaroEvent', () => {
+  it('no-ops before initialization without throwing', () => {
+    const faro = freshFaro();
+    expect(() => faro.pushFaroEvent('recommender_fallback', { error_type: 'timeout' })).not.toThrow();
+    expect(mockPushEvent).not.toHaveBeenCalled();
+  });
+
+  it('forwards name and stringified attributes with skipDedupe once initialized', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.pushFaroEvent('requirements_exhausted', { requirement: 'has-role:admin', retry_count: 3 });
+    expect(mockPushEvent).toHaveBeenCalledWith(
+      'requirements_exhausted',
+      { requirement: 'has-role:admin', retry_count: '3' },
+      undefined,
+      { skipDedupe: true }
+    );
+  });
+
+  it('swallows errors thrown by the underlying Faro API', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockPushEvent.mockImplementationOnce(() => {
+      throw new Error('transport down');
+    });
+    expect(() => faro.pushFaroEvent('recommender_fallback')).not.toThrow();
+  });
+});
+
 describe('pushFaroMeasurement', () => {
   it('no-ops before initialization without throwing', () => {
     const faro = freshFaro();

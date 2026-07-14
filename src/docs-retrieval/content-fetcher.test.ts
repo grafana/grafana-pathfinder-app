@@ -4,15 +4,11 @@
 import { fetchContent, simpleMarkdownToHtml } from './content-fetcher';
 
 const mockPushFaroMeasurement = jest.fn();
+const mockPushFaroEvent = jest.fn();
 jest.mock('../lib/faro', () => ({
   ...jest.requireActual('../lib/faro'),
   pushFaroMeasurement: (...args: unknown[]) => mockPushFaroMeasurement(...args),
-}));
-
-const mockReportAppInteraction = jest.fn();
-jest.mock('../lib/analytics', () => ({
-  ...jest.requireActual('../lib/analytics'),
-  reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
+  pushFaroEvent: (...args: unknown[]) => mockPushFaroEvent(...args),
 }));
 
 // Mock AbortSignal.timeout for Node environments that don't support it
@@ -82,7 +78,7 @@ describe('content.json → unstyled.html ladder', () => {
     expect(htmlIdx).toBeGreaterThanOrEqual(0);
     expect(jsonIdx).toBeLessThan(htmlIdx);
 
-    expect(mockReportAppInteraction).toHaveBeenCalledWith('content_fetch_fallback', {
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('content_fetch_fallback', {
       content_url: journeyUrl,
       tier_used: 'unstyled-html',
       error_type: 'content-json-unavailable',
@@ -105,7 +101,7 @@ describe('content.json → unstyled.html ladder', () => {
 
     expect(result.content?.isNativeJson).toBe(true);
     expect(order).not.toContain('unstyled.html');
-    expect(mockReportAppInteraction).not.toHaveBeenCalledWith('content_fetch_fallback', expect.anything());
+    expect(mockPushFaroEvent).not.toHaveBeenCalledWith('content_fetch_fallback', expect.anything());
     expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
       'pathfinder_content_fetch',
       { content_fetch_ms: expect.any(Number) },

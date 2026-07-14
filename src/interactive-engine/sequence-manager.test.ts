@@ -4,15 +4,11 @@ import { InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 
 const mockPushFaroMeasurement = jest.fn();
+const mockPushFaroEvent = jest.fn();
 jest.mock('../lib/faro', () => ({
   ...jest.requireActual('../lib/faro'),
   pushFaroMeasurement: (...args: unknown[]) => mockPushFaroMeasurement(...args),
-}));
-
-const mockReportAppInteraction = jest.fn();
-jest.mock('../lib/analytics', () => ({
-  ...jest.requireActual('../lib/analytics'),
-  reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
+  pushFaroEvent: (...args: unknown[]) => mockPushFaroEvent(...args),
 }));
 
 // Mock dependencies
@@ -151,7 +147,7 @@ describe('SequenceManager', () => {
         { retry_count: INTERACTIVE_CONFIG.maxRetries },
         { requirement: 'test-requirements' }
       );
-      expect(mockReportAppInteraction).toHaveBeenCalledWith('requirements_exhausted', {
+      expect(mockPushFaroEvent).toHaveBeenCalledWith('requirements_exhausted', {
         requirement: 'test-requirements',
         retry_count: INTERACTIVE_CONFIG.maxRetries,
       });
@@ -163,7 +159,7 @@ describe('SequenceManager', () => {
       await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
 
       expect(mockPushFaroMeasurement).not.toHaveBeenCalled();
-      expect(mockReportAppInteraction).not.toHaveBeenCalled();
+      expect(mockPushFaroEvent).not.toHaveBeenCalled();
     });
 
     it('should handle errors gracefully', async () => {
@@ -266,7 +262,7 @@ describe('SequenceManager', () => {
         { retry_count: INTERACTIVE_CONFIG.maxRetries },
         { requirement: 'test-requirements' }
       );
-      expect(mockReportAppInteraction).toHaveBeenCalledWith('requirements_exhausted', {
+      expect(mockPushFaroEvent).toHaveBeenCalledWith('requirements_exhausted', {
         requirement: 'test-requirements',
         retry_count: INTERACTIVE_CONFIG.maxRetries,
       });
