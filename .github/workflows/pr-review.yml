@@ -75,13 +75,52 @@ jobs:
           # tools so injected content cannot read the key (no Bash to reach env)
           # or exfiltrate it (no WebFetch/WebSearch). Read/Grep/Glob and the
           # github_comment posting tools remain available.
-          claude_args: '--model claude-opus-4-8 --max-turns 40 --disallowedTools "Bash,WebFetch,WebSearch,Write,Edit,MultiEdit"'
+          claude_args: '--model claude-opus-4-8 --max-turns 40 --disallowedTools "Bash,WebFetch,WebSearch,Write,Edit,MultiEdit,TodoWrite"'
           prompt: >-
-            Read .cursor/skills/review/SKILL.md and docs/design/CONCERNS.md, then
-            review this pull request's diff by following that skill's phases 1-5
-            (classify, route, run concern reviewers, synthesize). Run this as a
-            trimmed CI profile: SKIP phase 4b (adversarial verification) and
-            phase 6 (tech-debt scan). Post exactly one consolidated PR review
-            with findings ordered by severity then confidence, using the report
-            format from the skill's phase 5. If no activated concern has
-            findings, say so explicitly.
+            Review this pull request. Follow .cursor/skills/review/SKILL.md phases
+            1-4 (classify, route, run concern reviewers) with routing from
+            docs/design/CONCERNS.md. Trimmed CI profile: SKIP phase 4b
+            (adversarial verification) and phase 6 (tech-debt scan). Do the full
+            analysis internally but DO NOT narrate your process.
+
+
+            Which findings to include (be strict — this profile has no adversarial
+            verification, so do not surface speculation): include a finding only if
+            its confidence is high OR its severity is critical or high. For an
+            included finding whose confidence is not high, append " · unverified"
+            to its heading and phrase it as a question to check, not an asserted
+            defect. Exclude everything else.
+
+
+            Post exactly ONE consolidated PR review comment in GitHub-flavored
+            markdown with this exact structure and nothing outside it:
+
+
+            1. One H2 verdict heading. If no finding qualifies:
+            "## ✅ No blocking findings". Otherwise
+            "## ⚠️ Review: <counts>" listing only non-zero severities
+            (e.g. "1 critical, 2 high").
+
+            2. If there are findings, a table with columns "Severity | Count" and
+            rows Critical/High/Medium/Low using badges 🔴/🟠/🟡/🔵 (include zero rows).
+
+            3. One blockquote line: "> Trimmed profile · <N> files reviewed ·
+            ordered by severity".
+
+            4. Each finding, ordered by severity then confidence:
+            "### <badge> <Severity> — <concise title>" then a bold location line
+            "**`path:line`** · <concern>", then 1-2 sentences on what is wrong and
+            its concrete impact, then "**Fix:** <one imperative sentence>". If the
+            finding is a one-way door (reversibility partially_reversible or
+            irreversible_without_cleanup) add "⚠️ **One-way door:** <why revert
+            won't cleanly restore>". Put all deeper reasoning, evidence, traces and
+            code refs inside "<details><summary>Why & evidence</summary> … </details>".
+
+            5. End with one "<details><summary>Scope & what was checked</summary> …
+            </details>" containing classification, routed concerns, coverage
+            confidence, and a brief list of areas that checked out clean.
+
+
+            Do NOT include: a task/todo checklist, any re-review / current-HEAD /
+            commit-hash preamble, restated phase-by-phase narration, "Fix this"
+            links, or any text outside the structure above.
