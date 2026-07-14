@@ -41,7 +41,7 @@ Categories:
 4. **Run each pattern** against the inventory:
    - **Category A**: read each file; scan for the signature.
    - **Category B**: agent is the similarity engine. Normalize bodies (strip imports, JSX scaffolding, comments) before comparing. Emit the explicit similarity claim in `Evidence` so it can be audited.
-   - **Category C**: build a minimal import graph via `grep -rn "from ['\"]" <subsystem>`. Use `git log` for churn (C3) and module age / fix-to-feat ratio (C5).
+   - **Category C**: build a minimal import graph via `grep -rn "from ['\"]" <subsystem>`. Use `git log` for churn (C3). For C5, use distinct PR history from the contract-evolution gate when the target maps to a concern; never substitute directory-level commit counts.
    - **Category D**: D1 diffs `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/` docs against current code; D2 reads test files and counts meaningful assertions.
    - **Category E**: targeted grep + read. E1 looks for paired resource APIs (`setInterval`/`addEventListener`/`*Observer`) with cleanup distance; E2 looks for `AbortController` + debounce + retry in the same function; E3 looks for `export const … = new X()` then traces importers; E4 looks for top-level `let` / `new Map()` / `new Set()` outside any function; E5 looks for repeated string literals matching CustomEvent / storage / testid / query-param patterns; E6 inspects the project's designated entry-point file(s).
 5. **Check disqualifiers BEFORE emitting**. For every candidate hit, walk the pattern's disqualifier list. If any matches → drop the candidate. If a disqualifier cannot be verified, demote to **suggestive**. Never emit high-confidence with an unchecked disqualifier. The `Disqualifiers checked` field on each finding is the audit trail.

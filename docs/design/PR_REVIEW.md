@@ -51,15 +51,24 @@ If no findings, include:
 
 Emitted by the contract evolution scan (`.cursor/skills/review/SKILL.md` §3b) when its deterministic gate fires. The packet gives diff-scoped reviewers and the synthesizer the temporal context they otherwise lack: whether the sequence of recent changes to a capability is converging on a contract or branching it.
 
-Fields:
+Required fields:
 
-- `concern` — the concern id whose capability is under scan
-- `origin_or_contract_anchor` — the introducing PR, or the most recent contract-establishing PR/issue (from the Contract anchors section of `docs/design/CONCERNS.md` when recorded)
-- `recent_semantic_changes` — the last 3 `feat`/`fix`/`refactor` PRs affecting the concern, each with a one-line semantic summary
-- `current_contract_owner` — the module, hook, reducer, schema, or facade that owns the contract, or `none` if ownership is distributed across consumers
-- `new_contract_delta` — what this PR adds to or changes about the contract surface
-- `competing_owners_or_representations` — concepts this PR gives a second owner or second raw representation
-- `verdict` — one of the values below
+- `concern_id`
+- `origin_or_contract_anchor`
+- `recent_semantic_changes` — up to three entries with PR number, merge SHA, timestamp, and semantic summary
+- `current_contract_owner`
+- `new_contract_delta`
+- `competing_owners_or_representations`
+- `history_status` — `complete | partial | unavailable`
+- `use_ordinal` — `first | second | third_or_later`
+- `same_bug_count`
+- `has_recorded_anchor`
+- `branching_conditions`
+- `sources` — immutable same-repository PR, issue, and commit identifiers plus selection reasons
+- `verdict`
+- `finding` — required for `contract_missing`, `contract_branching`, and `insufficient_history`; contains `finding_id`, `title`, `evidence`, `why_it_matters`, `suggested_action`, `reversibility`, and `applies_to_files`
+
+Also record the deterministic gate output or the router's explicitly labeled `discretionary_trigger`. Never present a subjective router judgment as a gate metric.
 
 ### Verdict values
 
@@ -67,10 +76,11 @@ Fields:
 - `coherent_extension`: the change grows the contract surface in a way consistent with its established shape and ownership
 - `contract_missing`: the capability has no single owner; refs, events, storage, or browser state collectively implement an unmodeled contract
 - `contract_branching`: the change creates a new branch of the implicit contract — a competing owner, representation, or vocabulary
+- `insufficient_history`: no anchor exists and reliable history is insufficient for a contract verdict; never blocking
 
-### Branching conditions (blocking)
+### Branching conditions
 
-A `contract_branching` verdict is blocking when the PR adds any of:
+Record each applicable condition; conditions classify the delta but do not determine disposition by themselves:
 
 - another raw representation of an existing concept
 - another state or lifecycle owner for a concept that already has one
@@ -79,7 +89,22 @@ A `contract_branching` verdict is blocking when the PR adds any of:
 - ordering-sensitive bootstrap behavior
 - another patch for a bug class already visible in the recent history
 
-`contract_missing` on a growing surface is advisory, not blocking, but the synthesizer must surface it even when all subsystem reviewers are clean.
+### Disposition table
+
+This table is the only source of disposition truth. `.cursor/skills/review/scripts/contract-evolution-policy.mjs` implements it.
+
+| History and contract state                                             | Verdict                | Severity | Disposition |
+| ---------------------------------------------------------------------- | ---------------------- | -------- | ----------- |
+| Complete history; change conforms                                      | `follows_contract`     | —        | none        |
+| Complete history; one owner grows coherently                           | `coherent_extension`   | —        | none        |
+| No owner, any use ordinal                                              | `contract_missing`     | medium   | advisory    |
+| First or second use, no recorded anchor                                | `contract_branching`   | medium   | advisory    |
+| Recorded anchor is violated and a branching condition exists           | `contract_branching`   | high     | blocking    |
+| Third-or-later use and a branching condition exists                    | `contract_branching`   | high     | blocking    |
+| Second or later bug in the same class and a branching condition exists | `contract_branching`   | high     | blocking    |
+| Partial or unavailable history with no recorded anchor                 | `insufficient_history` | low      | advisory    |
+
+Every advisory or blocking packet is converted to the shared reviewer output schema before adversarial verification. Skeptics receive that finding, the relevant hunks, and the immutable sources recorded in the packet.
 
 ## React reliability, security, and quality checks
 

@@ -112,11 +112,18 @@ Rules:
 - Anchors are evidence, not authority: a scan that finds the anchored contract incoherent should propose replacing it, not enforce it.
 - Name contracts after the domain, never the vendor — a telemetry contract, not a "Faro contract".
 
-| concern                   | anchor                    | contract                                                                                                                                                                                                                                                                                                                            |
-| ------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `floating-panel`          | #1298 → #1300             | The dodge-session reducer (`dodge-session.ts`) owns the compact/restore lifecycle; layout-derived values like `scrollTop` are not authoritative while a session holds saved state; `FloatingPanelEvents` owns the `pathfinder-floating-*` event names. Invariants in `purpose`.                                                     |
-| `block-editor-authoring`  | #1314 → #1331             | One mount-time path owns restoration; `useBackendSaveFlow` owns save/publish/unpublish orchestration; `useBlockPersistence` is narrowed to `clear`. Invariants in `purpose`.                                                                                                                                                        |
-| `analytics-and-telemetry` | none — accreting (#1275+) | Pre-contract. Consumers currently call vendor primitives (`pushFaro*`) directly and define event names and payload shapes locally. Intended boundary: a vendor-neutral typed telemetry facade with domain operations, Faro/OTel as internal adapters. Treat further direct vendor calls from product tiers as `contract_branching`. |
+| concern                  | anchor        | contract                                                                                                                                                                                                                                                |
+| ------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `floating-panel`         | #1298 → #1300 | The dodge-session reducer (`dodge-session.ts`) owns the compact/restore lifecycle; layout-derived values like `scrollTop` are not authoritative while a session holds saved state; `FloatingPanelEvents` owns the event names. Invariants in `purpose`. |
+| `block-editor-authoring` | #1314 → #1331 | One mount-time path owns restoration; `useBackendSaveFlow` owns save/publish/unpublish orchestration; `useBlockPersistence` is narrowed to `clear`. Invariants in `purpose`.                                                                            |
+
+### Pre-contract candidates
+
+These are advisory architecture hypotheses, not anchors. They cannot create a blocking conformance finding until an implementation PR establishes the owner and records the contract above.
+
+| concern                   | evidence         | proposed owner                                                                                                                                                                                                      |
+| ------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `analytics-and-telemetry` | Accreting #1275+ | A vendor-neutral typed telemetry facade with domain operations and Faro/OTel as internal adapters. Until it lands, direct vendor consumers are evidence for `contract_missing`, not an anchored-contract violation. |
 
 ---
 
