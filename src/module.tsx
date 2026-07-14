@@ -42,15 +42,29 @@ try {
 }
 
 // Highlighted-guide experiment + config-driven auto-open (dynamic imports keep
-// zod/user-storage out of module.js).
-const { createExperimentDebugger, initializeHighlightedGuideExperiment, setupHighlightedGuideAutoOpen } =
-  await import('./utils/experiments');
-const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
-  await import('./utils/sidebar-auto-open');
-const { getFeatureFlagValue } = await import('./utils/openfeature');
+// zod/user-storage out of module.js). Guarded: an unguarded top-level await
+// on a failed chunk load (CDN purge after redeploy, transient network)
+// rejects module evaluation and Grafana reports "Could not load plugin",
+// killing Pathfinder for the whole session. Degrade instead: flags fall
+// back to their defaults, experiments and auto-open are skipped.
+let bootstrap: {
+  experiments: typeof import('./utils/experiments');
+  sidebarAutoOpen: typeof import('./utils/sidebar-auto-open');
+  openfeature: typeof import('./utils/openfeature');
+} | null = null;
+try {
+  const [experiments, sidebarAutoOpen, openfeature] = await Promise.all([
+    import('./utils/experiments'),
+    import('./utils/sidebar-auto-open'),
+    import('./utils/openfeature'),
+  ]);
+  bootstrap = { experiments, sidebarAutoOpen, openfeature };
+} catch (e) {
+  logger.exception(e, { source: 'Bootstrap chunk load' });
+}
 
 // The pathfinder.enabled kill-switch is the only gate on whether Pathfinder mounts.
-const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
+const pathfinderEnabled = bootstrap?.openfeature.getFeatureFlagValue('pathfinder.enabled', true) ?? true;
 const hostname = window.location.hostname;
 
 // Faro frontend telemetry, behind its own remote kill-switch — default-on, so
@@ -59,7 +73,7 @@ const hostname = window.location.hostname;
 // beforeSend activity gate in lib/faro drops all telemetry until Pathfinder
 // is open in one of its surfaces.
 try {
-  if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
+  if (bootstrap?.openfeature.getFeatureFlagValue('pathfinder.frontend-telemetry', true) ?? true) {
     const { initFaro } = await import('./lib/faro');
     initFaro().catch((e) => logger.exception(e, { source: 'Faro init' }));
   }
@@ -70,9 +84,11 @@ try {
 // Initialize highlighted-guide experiment (reads flag, processes resetCache).
 // The popout half is set up later, after the sidebar-mount decision, so it
 // short-circuits when Pathfinder is dismounted.
-const highlightedGuideConfig = initializeHighlightedGuideExperiment(hostname);
+const highlightedGuideConfig = bootstrap ? bootstrap.experiments.initializeHighlightedGuideExperiment(hostname) : null;
 
-createExperimentDebugger(highlightedGuideConfig);
+if (bootstrap && highlightedGuideConfig) {
+  bootstrap.experiments.createExperimentDebugger(highlightedGuideConfig);
+}
 
 // Check if Pathfinder was already docked (browser restore scenario).
 // If floating mode is active, clear the docked state so Grafana doesn't
@@ -87,8 +103,13 @@ if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, 'Interactive learning')) 
   }
 }
 
-// Initialize translations
-await initPluginTranslations(pluginJson.id);
+// Initialize translations. Guarded for the same reason as the bootstrap
+// chunks above — t() falls back to default messages if this fails.
+try {
+  await initPluginTranslations(pluginJson.id);
+} catch (e) {
+  logger.exception(e, { source: 'i18n init' });
+}
 
 const LazyApp = lazy(() => import('./components/App/App'));
 const LazyContextPanel = lazy(() => import('./components/App/ContextPanel'));
@@ -192,7 +213,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const sidebarMountable = pathfinderEnabled;
   const deepLinkDeps = {
     shouldMountSidebar: sidebarMountable,
-    attemptAutoOpen,
+    attemptAutoOpen: bootstrap?.sidebarAutoOpen.attemptAutoOpen ?? (() => {}),
     loadControlGroupDocPopup: () => import('./components/ControlGroupDocPopup'),
   };
 
@@ -275,14 +296,16 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Skip auto-open when a ?doc= param is present — the doc-param handler (async
   // import above) owns sidebar opening and may redirect first. Running auto-open
   // here would evaluate against the pre-redirect path.
-  if (!docsParam && pathfinderEnabled) {
-    const currentPath = getCurrentPath();
-    setupConfigAutoOpen({
+  if (!docsParam && pathfinderEnabled && bootstrap) {
+    const currentPath = bootstrap.sidebarAutoOpen.getCurrentPath();
+    bootstrap.sidebarAutoOpen.setupConfigAutoOpen({
       currentPath,
-      featureFlagEnabled: getAutoOpenFeatureFlag(),
+      featureFlagEnabled: bootstrap.sidebarAutoOpen.getAutoOpenFeatureFlag(),
       pluginConfig: config,
     });
-    setupHighlightedGuideAutoOpen(highlightedGuideConfig, currentPath, hostname);
+    if (highlightedGuideConfig) {
+      bootstrap.experiments.setupHighlightedGuideAutoOpen(highlightedGuideConfig, currentPath, hostname);
+    }
   }
 };
 
