@@ -6,6 +6,14 @@ export const StorageEvents = {
 
 export type StorageEventName = (typeof StorageEvents)[keyof typeof StorageEvents];
 
+// Dispatched by global-state/panel-mode's panelModeManager.setMode with
+// detail { mode, previous }; consumed by every Pathfinder surface.
+export const PANEL_MODE_CHANGE_EVENT = 'pathfinder-panel-mode-change';
+
+// Dispatched by ContextPanelRenderer when the recommendations list has
+// finished loading; consumed by docs-panel's panel_lcp_ms measurement.
+export const RECOMMENDATIONS_READY_EVENT = 'pathfinder-recommendations-ready';
+
 export const FloatingPanelEvents = {
   Dodge: 'pathfinder-floating-dodge',
   Compact: 'pathfinder-floating-compact',

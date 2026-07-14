@@ -31,6 +31,8 @@ import { isDevModeEnabled } from '../../utils/dev-mode';
 
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
+import { pushFaroMeasurement, withFaroUserAction } from '../../lib/faro';
+import { RECOMMENDATIONS_READY_EVENT } from '../../lib/event-names';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
 import { useGuideProgressState, useAutoLaunchTutorial, type AutoLaunchTutorialDetail } from '../../hooks';
 import {
@@ -375,13 +377,24 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     url: string,
     options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo }
   ): Promise<void> {
-    const tab = this.state.tabs.find((t) => t.id === tabId);
-    const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
-    if (needsDocsLoader) {
-      await this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
-      return;
-    }
-    await this.loadTabContent(tabId, url);
+    // Real start/end timestamps (unlike the pushFaroUserAction mirror, which
+    // stamps and ends in the same tick) — this is the funnel action the
+    // Frontend Observability Actions tab's avg/P95 duration should reflect.
+    await withFaroUserAction(
+      'pathfinder_guide_open',
+      { content_url: url },
+      async () => {
+        const tab = this.state.tabs.find((t) => t.id === tabId);
+        const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
+        if (needsDocsLoader) {
+          await this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
+          return;
+        }
+        await this.loadTabContent(tabId, url);
+      },
+      undefined,
+      { critical: true }
+    );
   }
 
   private async loadTabContent(tabId: string, url: string) {
@@ -930,6 +943,33 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // STABILITY: Memoize activeTab.content to prevent ContentRenderer from remounting
   // when other tab properties change (isLoading, error, etc.)
   const stableContent = React.useMemo(() => activeTab?.content, [activeTab?.content]);
+
+  // Panel-scoped analog of LCP: time from this component's first render to
+  // the first tab (or the recommendations list) actually showing content.
+  // Deliberately not Faro's page-level Web Vitals — those would measure
+  // Grafana core's render, not Pathfinder's. Fires once per panel mount.
+  const panelMountTimeRef = useRef<number | undefined>(undefined);
+  const panelLcpRecordedRef = useRef(false);
+  const [recommendationsReady, setRecommendationsReady] = React.useState(false);
+  React.useEffect(() => {
+    const onReady = () => setRecommendationsReady(true);
+    document.addEventListener(RECOMMENDATIONS_READY_EVENT, onReady);
+    return () => document.removeEventListener(RECOMMENDATIONS_READY_EVENT, onReady);
+  }, []);
+  React.useEffect(() => {
+    panelMountTimeRef.current ??= performance.now();
+    if (panelLcpRecordedRef.current) {
+      return;
+    }
+    if (stableContent || (isRecommendationsTab && recommendationsReady)) {
+      panelLcpRecordedRef.current = true;
+      pushFaroMeasurement(
+        'pathfinder_panel',
+        { panel_lcp_ms: performance.now() - panelMountTimeRef.current },
+        { surface: panelMode }
+      );
+    }
+  }, [stableContent, isRecommendationsTab, recommendationsReady, panelMode]);
 
   // STABILITY: Memoize the AlignmentPendingContext value keyed on the two
   // underlying primitives so consumers (`useStepChecker` in every interactive

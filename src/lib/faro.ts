@@ -17,7 +17,9 @@ import {
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
 import { StorageKeys } from './storage-keys';
+import { PANEL_MODE_CHANGE_EVENT } from './event-names';
 import { isExtensionSidebarOwnedByPathfinder } from './storage/extension-sidebar';
+import { hashUserData } from './hash.util';
 
 const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/d6ec87b657b65de6e363de05623d9c57';
 const APP_NAME = packageJson.name;
@@ -111,6 +113,18 @@ const TRACKED_RESOURCE_HOSTNAMES = new Set([
 const SHARED_HOSTNAME = 'grafana.com';
 const SHARED_HOSTNAME_PATH_PREFIXES = ['/docs', '/tutorials'];
 
+// Belt-and-braces with isTrackedResourceUrl/filterPathfinderTelemetry below:
+// this one runs *inside* PerformanceInstrumentation's PerformanceObserver
+// (via Faro's `ignoreUrls` config), before a resource-timing payload is even
+// built, so the ~99% of entries that are Grafana core's own requests never
+// get constructed at all. It's hostname-only (no path awareness), so the
+// `/docs`|`/tutorials` restriction on shared grafana.com still has to live in
+// the beforeSend filter below.
+export function buildResourceIgnorePattern(hostnames: ReadonlySet<string>): RegExp {
+  const escaped = [...hostnames].map((hostname) => hostname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`^(?!https?://(${escaped.join('|')})/)`);
+}
+
 function isTrackedResourceUrl(resourceUrl: string | undefined): boolean {
   if (typeof resourceUrl !== 'string') {
     return false;
@@ -160,23 +174,36 @@ export function filterPathfinderTelemetry(item: TransportItem<APIEvent>): Transp
 }
 
 const SIDEBAR_COMPONENT_TITLE = 'Interactive learning';
-const OVERLAY_ROOT_IDS = ['pathfinder-controller-root', 'pathfinder-kiosk-root'];
+const KIOSK_ROOT_ID = 'pathfinder-kiosk-root';
+const CONTROLLER_ROOT_ID = 'pathfinder-controller-root';
+
+type PathfinderSurface = 'sidebar' | 'floating' | 'fullscreen' | 'kiosk' | 'controller' | 'closed';
 
 // Mode literals mirror PanelMode in global-state/panel-mode — importing
 // panelModeManager here would cycle via global-state → analytics → faro.
-function isPathfinderOpen(): boolean {
+function readPathfinderSurface(): PathfinderSurface {
   try {
     const mode = localStorage.getItem(StorageKeys.PANEL_MODE);
     if (mode === 'floating' || mode === 'fullscreen') {
-      return true;
+      return mode;
     }
   } catch {
     // localStorage unavailable — fall through to the DOM checks.
   }
   if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, SIDEBAR_COMPONENT_TITLE)) {
-    return true;
+    return 'sidebar';
   }
-  return OVERLAY_ROOT_IDS.some((id) => document.getElementById(id) !== null);
+  if (document.getElementById(KIOSK_ROOT_ID) !== null) {
+    return 'kiosk';
+  }
+  if (document.getElementById(CONTROLLER_ROOT_ID) !== null) {
+    return 'controller';
+  }
+  return 'closed';
+}
+
+function isPathfinderOpen(): boolean {
+  return readPathfinderSurface() !== 'closed';
 }
 
 // Latched for the rest of the page load: the sidebar-close mirror fires
@@ -240,6 +267,7 @@ export async function initFaro(): Promise<void> {
     // without this, initializing here would clobber the global object Grafana
     // core attaches its own Faro instance to.
     isolate: true,
+    ignoreUrls: [buildResourceIgnorePattern(TRACKED_RESOURCE_HOSTNAMES)],
     app: {
       name: APP_NAME,
       version: APP_VERSION,
@@ -266,11 +294,37 @@ export async function initFaro(): Promise<void> {
       session: {
         attributes: {
           grafana_version: config.buildInfo.version,
+          edition: config.buildInfo.edition ?? '',
+          language: config.bootData?.user?.language ?? '',
         },
       },
     },
     beforeSend: (item) => (passesActivityGate(item) ? filterPathfinderTelemetry(item) : null),
   });
+
+  void stampFaroUser();
+
+  const stampSurface = () => setFaroSessionAttributes({ surface: readPathfinderSurface() });
+  document.addEventListener(PANEL_MODE_CHANGE_EVENT, stampSurface);
+  stampSurface();
+}
+
+// Reuses the same hashes as the recommender's context payload
+// (context.service.ts) so Faro sessions are joinable with recommender data
+// without introducing a second identity scheme or any raw PII.
+async function stampFaroUser(): Promise<void> {
+  try {
+    const isCloud = isGrafanaCloud();
+    const userId = isCloud ? config.bootData.user.analytics.identifier || 'unknown' : 'oss-user';
+    const userEmail = isCloud ? config.bootData.user.email || 'unknown@example.com' : 'oss-user@example.com';
+    const { hashedUserId, hashedEmail } = await hashUserData(userId, userEmail);
+    faroInstance?.api.setUser({
+      id: hashedUserId,
+      attributes: { email_hash: hashedEmail, org_role: config.bootData.user.orgRole || 'Viewer' },
+    });
+  } catch {
+    // Telemetry must never break the app it's observing.
+  }
 }
 
 export function pushFaroError(error: Error, context?: Record<string, string>): void {
@@ -303,6 +357,22 @@ export function stringifyAttributes(attributes: Record<string, unknown>): Record
     result[key] = stringified.slice(0, MAX_ATTRIBUTE_LENGTH);
   }
   return result;
+}
+
+// Merges onto the existing session attributes rather than replacing them —
+// setSession() itself replaces the whole meta, so the current session
+// (including its id) must be read back first or the SDK would rotate it.
+export function setFaroSessionAttributes(attributes: Record<string, unknown>): void {
+  guardTelemetry(() => {
+    if (!faroInstance) {
+      return;
+    }
+    const session = faroInstance.api.getSession();
+    faroInstance.api.setSession({
+      ...session,
+      attributes: { ...session?.attributes, ...stringifyAttributes(attributes) },
+    });
+  });
 }
 
 let userActionSeq = 0;
@@ -346,17 +416,27 @@ type StampableUserAction = UserActionInternalInterface & { attributes?: Record<s
 // re-entry from the Cancelled state, so calling it again after the safety
 // timeout already ended the action would emit a duplicate faro.user.action
 // event; `settled` is the idempotency guard for both.
+export interface WithFaroUserActionOptions {
+  // `@grafana/faro-web-sdk` only re-exports UserActionImportance as a type,
+  // not a value, so the literal is passed straight through to startUserAction.
+  critical?: boolean;
+}
+
 export async function withFaroUserAction<T>(
   name: string,
   attributes: Record<string, unknown>,
   work: () => Promise<T> | T,
-  timeoutMs = USER_ACTION_TIMEOUT_MS
+  timeoutMs = USER_ACTION_TIMEOUT_MS,
+  options?: WithFaroUserActionOptions
 ): Promise<T> {
   let action: StampableUserAction | undefined;
   guardTelemetry(() => {
     if (faroInstance && faroInstance.api.getActiveUserAction() === undefined) {
-      action = faroInstance.api.startUserAction(name, stringifyAttributes(attributes)) as
-        StampableUserAction | undefined;
+      action = faroInstance.api.startUserAction(
+        name,
+        stringifyAttributes(attributes),
+        options?.critical ? { importance: 'critical' } : undefined
+      ) as StampableUserAction | undefined;
     }
   });
   if (!action) {
@@ -398,6 +478,20 @@ export function setFaroUserActionAttributes(attributes: Record<string, unknown>)
   });
 }
 
+// Namespaced type + analogy-legible value names (e.g. `panel_lcp_ms`), never
+// Faro's default web-vitals names (`lcp`/`cls`/`inp`/...) — those are scored
+// against Google's Core Web Vitals thresholds in the Frontend Observability
+// UI, which don't fit panel-scoped measurements and would be misleading.
+export function pushFaroMeasurement(
+  type: string,
+  values: Record<string, number>,
+  context?: Record<string, string>
+): void {
+  guardTelemetry(() => {
+    faroInstance?.api.pushMeasurement({ type, values }, context ? { context } : undefined);
+  });
+}
+
 export function setFaroView(url: string): void {
   guardTelemetry(() => {
     if (!url || !faroInstance) {
@@ -405,6 +499,17 @@ export function setFaroView(url: string): void {
     }
     const { hostname, pathname } = new URL(url, window.location.origin);
     faroInstance.api.setView({ name: `${hostname}${pathname}` });
+  });
+}
+
+// For surfaces with no URL to derive a view name from (e.g. the
+// recommendations tab) — setFaroView's hostname+pathname derivation doesn't
+// apply there, so the view would otherwise stay unset/stale until a doc opens.
+export function setFaroViewName(name: string): void {
+  guardTelemetry(() => {
+    if (name && faroInstance) {
+      faroInstance.api.setView({ name });
+    }
   });
 }
 

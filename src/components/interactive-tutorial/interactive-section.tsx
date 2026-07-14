@@ -1046,7 +1046,8 @@ export function InteractiveSection({
           });
         }
       },
-      USER_ACTION_TIMEOUT_LONG_MS
+      USER_ACTION_TIMEOUT_LONG_MS,
+      { critical: true }
     );
   }, [
     disabled,

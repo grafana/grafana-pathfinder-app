@@ -264,7 +264,8 @@ describe('useInteractiveElements', () => {
         'pathfinder_step_show',
         { target_action: 'highlight', ref_target: '#target' },
         expect.any(Function),
-        undefined
+        undefined,
+        { critical: false }
       );
     });
 
@@ -279,7 +280,8 @@ describe('useInteractiveElements', () => {
         'pathfinder_step_do',
         { target_action: 'button', ref_target: 'Save' },
         expect.any(Function),
-        undefined
+        undefined,
+        { critical: true }
       );
     });
   });

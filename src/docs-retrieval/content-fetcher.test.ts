@@ -3,6 +3,18 @@
  */
 import { fetchContent, simpleMarkdownToHtml } from './content-fetcher';
 
+const mockPushFaroMeasurement = jest.fn();
+jest.mock('../lib/faro', () => ({
+  ...jest.requireActual('../lib/faro'),
+  pushFaroMeasurement: (...args: unknown[]) => mockPushFaroMeasurement(...args),
+}));
+
+const mockReportAppInteraction = jest.fn();
+jest.mock('../lib/analytics', () => ({
+  ...jest.requireActual('../lib/analytics'),
+  reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
+}));
+
 // Mock AbortSignal.timeout for Node environments that don't support it
 if (!AbortSignal.timeout) {
   (AbortSignal as any).timeout = jest.fn((ms: number) => {
@@ -18,6 +30,7 @@ if (!AbortSignal.timeout) {
 // behavior-preserving. Replaces the prior `expect(true).toBe(true)` doc-tests.
 describe('content.json → unstyled.html ladder', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     global.fetch = jest.fn();
   });
 
@@ -68,6 +81,17 @@ describe('content.json → unstyled.html ladder', () => {
     expect(jsonIdx).toBeGreaterThanOrEqual(0);
     expect(htmlIdx).toBeGreaterThanOrEqual(0);
     expect(jsonIdx).toBeLessThan(htmlIdx);
+
+    expect(mockReportAppInteraction).toHaveBeenCalledWith('content_fetch_fallback', {
+      content_url: journeyUrl,
+      tier_used: 'unstyled-html',
+      error_type: 'content-json-unavailable',
+    });
+    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
+      'pathfinder_content_fetch',
+      { content_fetch_ms: expect.any(Number) },
+      { tier: 'unstyled-html', outcome: 'ok', content_url: journeyUrl }
+    );
   });
 
   it('uses content.json directly and never fetches unstyled.html when it returns a valid guide', async () => {
@@ -81,6 +105,12 @@ describe('content.json → unstyled.html ladder', () => {
 
     expect(result.content?.isNativeJson).toBe(true);
     expect(order).not.toContain('unstyled.html');
+    expect(mockReportAppInteraction).not.toHaveBeenCalledWith('content_fetch_fallback', expect.anything());
+    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
+      'pathfinder_content_fetch',
+      { content_fetch_ms: expect.any(Number) },
+      { tier: 'content-json', outcome: 'ok', content_url: journeyUrl }
+    );
   });
 
   it('falls through to unstyled.html when content.json returns the null signal', async () => {

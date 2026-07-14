@@ -71,6 +71,18 @@ jest.mock('../lib/hash.util', () => ({
   }),
 }));
 
+const mockPushFaroMeasurement = jest.fn();
+jest.mock('../lib/faro', () => ({
+  ...jest.requireActual('../lib/faro'),
+  pushFaroMeasurement: (...args: unknown[]) => mockPushFaroMeasurement(...args),
+}));
+
+const mockReportAppInteraction = jest.fn();
+jest.mock('../lib/analytics', () => ({
+  ...jest.requireActual('../lib/analytics'),
+  reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
+}));
+
 jest.mock('../docs-retrieval', () => ({
   fetchContent: jest.fn().mockResolvedValue({
     content: { metadata: { learningJourney: { milestones: [], summary: '' } } },
@@ -575,6 +587,15 @@ describe('V1 error handling and edge cases', () => {
 
     expect(result.recommendations).toBeDefined();
     expect(result.errorType).toBe('other');
+    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
+      'pathfinder_recommender',
+      { recommender_ms: expect.any(Number) },
+      { outcome: 'other' }
+    );
+    expect(mockReportAppInteraction).toHaveBeenCalledWith('recommender_fallback', {
+      fallback_tier: 'bundled+static',
+      error_type: 'other',
+    });
   });
 
   it('should fall back gracefully when v1 returns HTTP 403', async () => {
@@ -636,6 +657,31 @@ describe('V1 error handling and edge cases', () => {
 
     expect(result.recommendations).toBeDefined();
     expect(result.errorType).toBe('unavailable');
+    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
+      'pathfinder_recommender',
+      { recommender_ms: expect.any(Number) },
+      { outcome: 'unavailable' }
+    );
+    expect(mockReportAppInteraction).toHaveBeenCalledWith('recommender_fallback', {
+      fallback_tier: 'bundled+static',
+      error_type: 'unavailable',
+    });
+  });
+
+  it('pushes an ok-outcome measurement (no fallback event) on a successful recommend call', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(makeV1Response()),
+    });
+
+    await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
+      'pathfinder_recommender',
+      { recommender_ms: expect.any(Number) },
+      { outcome: 'ok' }
+    );
+    expect(mockReportAppInteraction).not.toHaveBeenCalledWith('recommender_fallback', expect.anything());
   });
 });
 

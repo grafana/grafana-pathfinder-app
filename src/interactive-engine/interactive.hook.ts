@@ -180,7 +180,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           } else if (data.targetAction === 'popout') {
             await interactivePopout(data, click);
           }
-        }
+        },
+        undefined,
+        // "Do it" is the funnel action; "Show me" is just a preview.
+        { critical: click }
       );
     },
     [
@@ -463,7 +466,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);
           }
         },
-        targetAction === 'sequence' ? USER_ACTION_TIMEOUT_LONG_MS : undefined
+        targetAction === 'sequence' ? USER_ACTION_TIMEOUT_LONG_MS : undefined,
+        { critical: !isShowMode }
       );
     },
     [

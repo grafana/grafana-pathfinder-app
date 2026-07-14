@@ -3,6 +3,18 @@ import { InteractiveStateManager } from './interactive-state-manager';
 import { InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 
+const mockPushFaroMeasurement = jest.fn();
+jest.mock('../lib/faro', () => ({
+  ...jest.requireActual('../lib/faro'),
+  pushFaroMeasurement: (...args: unknown[]) => mockPushFaroMeasurement(...args),
+}));
+
+const mockReportAppInteraction = jest.fn();
+jest.mock('../lib/analytics', () => ({
+  ...jest.requireActual('../lib/analytics'),
+  reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
+}));
+
 // Mock dependencies
 const mockStateManager = {
   logError: jest.fn(),
@@ -134,6 +146,24 @@ describe('SequenceManager', () => {
 
       expect(mockCheckRequirementsFromData).toHaveBeenCalledTimes(INTERACTIVE_CONFIG.maxRetries);
       expect(mockDispatchInteractiveAction).not.toHaveBeenCalled();
+      expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
+        'pathfinder_requirements',
+        { retry_count: INTERACTIVE_CONFIG.maxRetries },
+        { requirement: 'test-requirements' }
+      );
+      expect(mockReportAppInteraction).toHaveBeenCalledWith('requirements_exhausted', {
+        requirement: 'test-requirements',
+        retry_count: INTERACTIVE_CONFIG.maxRetries,
+      });
+    });
+
+    it('does not report exhaustion when a step eventually succeeds', async () => {
+      mockCheckRequirementsFromData.mockResolvedValueOnce({ pass: false }).mockResolvedValueOnce({ pass: true });
+
+      await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
+
+      expect(mockPushFaroMeasurement).not.toHaveBeenCalled();
+      expect(mockReportAppInteraction).not.toHaveBeenCalled();
     });
 
     it('should handle errors gracefully', async () => {
@@ -231,6 +261,15 @@ describe('SequenceManager', () => {
 
       expect(mockCheckRequirementsFromData).toHaveBeenCalledTimes(INTERACTIVE_CONFIG.maxRetries);
       expect(mockDispatchInteractiveAction).not.toHaveBeenCalled();
+      expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
+        'pathfinder_requirements',
+        { retry_count: INTERACTIVE_CONFIG.maxRetries },
+        { requirement: 'test-requirements' }
+      );
+      expect(mockReportAppInteraction).toHaveBeenCalledWith('requirements_exhausted', {
+        requirement: 'test-requirements',
+        retry_count: INTERACTIVE_CONFIG.maxRetries,
+      });
     });
 
     it('should handle errors gracefully', async () => {

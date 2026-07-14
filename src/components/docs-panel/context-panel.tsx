@@ -18,6 +18,7 @@ import { useContextPanel, Recommendation } from '../../context-engine';
 import type { ResolvedNavLink } from '../../types/context.types';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
+import { RECOMMENDATIONS_READY_EVENT } from '../../lib/event-names';
 import { getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../../constants/testIds';
@@ -1118,6 +1119,14 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const recommendationsScrollReady =
     !contextData.isLoading && !isLoadingRecommendations && hasFetchedRecommendations && hasLoadedCustomGuides;
   const scrollContainerRef = useRecommendationsScrollPosition(recommendationsScrollReady);
+
+  // Signals docs-panel's panel_lcp_ms measurement that the recommendations
+  // list (this renderer's content) is actually showing, not just mounted.
+  useEffect(() => {
+    if (hasFetchedRecommendations) {
+      document.dispatchEvent(new CustomEvent(RECOMMENDATIONS_READY_EVENT));
+    }
+  }, [hasFetchedRecommendations]);
 
   return (
     <div className={styles.container} data-testid={testIds.contextPanel.container}>

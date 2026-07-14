@@ -19,6 +19,7 @@
  */
 import * as React from 'react';
 import { PLUGIN_BASE_URL, ROUTES } from '../../../constants';
+import { PANEL_MODE_CHANGE_EVENT } from '../../../lib/event-names';
 import { panelModeManager, type PanelMode } from '../../../global-state/panel-mode';
 
 export interface UsePanelModeResult {
@@ -33,9 +34,9 @@ export function usePanelMode(): UsePanelModeResult {
     const handleModeChange = (e: CustomEvent<{ mode: PanelMode }>) => {
       setPanelMode(e.detail.mode);
     };
-    document.addEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+    document.addEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     return () => {
-      document.removeEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+      document.removeEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     };
   }, []);
 

@@ -96,7 +96,8 @@ export class GuidedHandler {
       },
       () => this.runGuidedStep(action, stepIndex, totalSteps, timeout),
       // Internal waits are bounded by `timeout`; the margin only catches a hung step.
-      timeout + 10_000
+      timeout + 10_000,
+      { critical: true }
     );
   }
 
@@ -392,7 +393,12 @@ export class GuidedHandler {
         }
 
         if (remaining <= 0) {
-          logger.error(`Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`);
+          logger.error(`Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`, {
+            selector,
+            action_type: actionType,
+            attempt_count: attemptCount,
+            elapsed_ms: elapsed,
+          });
           throw error;
         }
         // Wait before retrying, but don't exceed timeout

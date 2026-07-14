@@ -108,6 +108,11 @@ export enum UserInteraction {
   AiFixAccepted = 'ai_fix_accepted',
   AiFixApplied = 'ai_fix_applied',
   AiFixFailed = 'ai_fix_failed',
+
+  // Funnel degradation — silent failures worth alerting on
+  RecommenderFallback = 'recommender_fallback',
+  ContentFetchFallback = 'content_fetch_fallback',
+  RequirementsExhausted = 'requirements_exhausted',
 }
 
 // ============================================================================
@@ -211,7 +216,12 @@ export function reportAppInteraction(
       // each other. The finally keeps the mirror alive when reportInteraction
       // itself throws — a lost RudderStack event is exactly the divergence the
       // mirror exists to surface. pushFaroUserAction never throws.
-      pushFaroUserAction(interactionName, { ...enrichedProperties });
+      // `experiments` is dropped here — it's carried once as a session
+      // attribute (setFaroSessionAttributes after initFaro in module.tsx)
+      // instead of repeated on every mirrored action; RudderStack keeps it.
+      const faroProperties = { ...enrichedProperties };
+      delete faroProperties.experiments;
+      pushFaroUserAction(interactionName, faroProperties);
     }
   } catch (error) {
     logger.warn('Analytics reporting failed', { error });

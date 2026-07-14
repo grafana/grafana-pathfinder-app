@@ -25,6 +25,8 @@ import { interactiveCompletionStorage } from '../lib/user-storage';
 import { hashUserData } from '../lib/hash.util';
 import { logger } from '../lib/logging';
 import { withTimeout } from '../lib/async-utils';
+import { pushFaroMeasurement } from '../lib/faro';
+import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
 import {
@@ -198,7 +200,11 @@ export class ContextService {
       // Always try external recommendations when T&C are enabled, regardless of previous errors
       return this.getExternalRecommendations(contextData, pluginConfig, bundledRecommendations);
     } catch (error) {
-      logger.exception(error, { source: 'fetchRecommendations' });
+      logger.exception(error, {
+        source: 'fetchRecommendations',
+        platform: this.getCurrentPlatform(),
+        timeout_ms: DEFAULT_RECOMMENDER_TIMEOUT,
+      });
       const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData, pluginConfig);
       const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
       return {
@@ -284,17 +290,15 @@ export class ContextService {
     errorType: 'unavailable' | 'rate-limit' | 'other' | null;
     usingFallbackRecommendations: boolean;
   }> {
+    const recommenderStart = performance.now();
+    const fail = (errorType: 'unavailable' | 'rate-limit' | 'other', errorMessage: string) =>
+      this.handleRecommenderError(errorType, errorMessage, contextData, bundledRecommendations, recommenderStart);
     try {
       const configWithDefaults = getConfigWithDefaults(pluginConfig);
 
       // SECURITY: Validate recommender service URL before making request
       if (!this.validateRecommenderUrl(configWithDefaults.recommenderServiceUrl)) {
-        return this.handleRecommenderError(
-          'other',
-          'Recommender service URL failed security validation',
-          contextData,
-          bundledRecommendations
-        );
+        return fail('other', 'Recommender service URL failed security validation');
       }
 
       const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
@@ -362,33 +366,27 @@ export class ContextService {
         if (!response.ok) {
           // Handle specific HTTP error codes
           if (response.status === 404) {
-            return this.handleRecommenderError(
-              'unavailable',
-              'Recommender service not found',
-              contextData,
-              bundledRecommendations
-            );
+            return fail('unavailable', 'Recommender service not found');
           }
 
           if (response.status === 429) {
-            return this.handleRecommenderError(
-              'rate-limit',
-              'Recommender service is under strain',
-              contextData,
-              bundledRecommendations
-            );
+            return fail('rate-limit', 'Recommender service is under strain');
           }
 
           // Handle other HTTP errors
-          return this.handleRecommenderError(
-            'other',
-            `HTTP error! status: ${response.status}`,
-            contextData,
-            bundledRecommendations
-          );
+          return fail('other', `HTTP error! status: ${response.status}`);
         }
 
         const data: V1RecommenderResponse = await response.json();
+        // Measured here, not at the successful return below — the
+        // processing between them (processLearningJourneys) does its own
+        // content fetches, which would make ok durations incomparable with
+        // the error outcomes recorded in handleRecommenderError.
+        pushFaroMeasurement(
+          'pathfinder_recommender',
+          { recommender_ms: performance.now() - recommenderStart },
+          { outcome: 'ok' }
+        );
 
         const mappedExternalRecommendations = (data.recommendations ?? []).map((rec) =>
           this.sanitizeV1Recommendation(rec)
@@ -442,12 +440,7 @@ export class ContextService {
 
         // Handle AbortError (timeout)
         if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-          return this.handleRecommenderError(
-            'unavailable',
-            'Recommender service timeout',
-            contextData,
-            bundledRecommendations
-          );
+          return fail('unavailable', 'Recommender service timeout');
         }
 
         // Handle network errors (CORS, network failures, etc.)
@@ -459,21 +452,15 @@ export class ContextService {
           errorMessage.includes('NetworkError') ||
           errorMessage.includes('Failed to fetch')
         ) {
-          return this.handleRecommenderError(
-            'unavailable',
-            'Recommender service unavailable',
-            contextData,
-            bundledRecommendations
-          );
+          return fail('unavailable', 'Recommender service unavailable');
         }
 
         // Handle other errors
-        return this.handleRecommenderError('other', errorMessage, contextData, bundledRecommendations);
+        return fail('other', errorMessage);
       }
     } catch (error) {
       // Handle outer errors (hashing, payload construction, etc.)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      return this.handleRecommenderError('other', errorMessage, contextData, bundledRecommendations);
+      return fail('other', error instanceof Error ? error.message : 'Unknown error');
     }
   }
 
@@ -484,7 +471,8 @@ export class ContextService {
     errorType: 'unavailable' | 'rate-limit' | 'other',
     errorMessage: string,
     contextData: ContextData,
-    bundledRecommendations: Recommendation[]
+    bundledRecommendations: Recommendation[],
+    startTime: number
   ): Promise<{
     recommendations: Recommendation[];
     featuredRecommendations: Recommendation[];
@@ -498,6 +486,19 @@ export class ContextService {
       timestamp: Date.now(),
       message: errorMessage,
     };
+
+    pushFaroMeasurement(
+      'pathfinder_recommender',
+      { recommender_ms: performance.now() - startTime },
+      { outcome: errorType }
+    );
+    // Fallback here always merges bundled + static-link recommendations
+    // (getFallbackRecommendations); there is no separate online-packages
+    // tier to distinguish once the external recommender has failed.
+    reportAppInteraction(UserInteraction.RecommenderFallback, {
+      fallback_tier: 'bundled+static',
+      error_type: errorType,
+    });
 
     // Get fallback recommendations
     const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);

@@ -393,7 +393,7 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
         errorType,
         statusCode: response.status,
       };
-      logger.warn(`Failed to fetch from ${url}: ${lastError.message}`);
+      logger.warn(`Failed to fetch from ${url}: ${lastError.message}`, { content_url: url, error_type: errorType });
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -408,11 +408,15 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
       message: errorMessage,
       errorType: isTimeout ? 'timeout' : isNetwork ? 'network' : 'other',
     };
-    logger.warn(`Failed to fetch from ${url}`, { error });
+    logger.warn(`Failed to fetch from ${url}`, { error, content_url: url });
   }
 
   if (lastError) {
-    logger.error(`Failed to fetch content from ${url}`, { lastErrorMessage: lastError.message });
+    logger.error(`Failed to fetch content from ${url}`, {
+      lastErrorMessage: lastError.message,
+      content_url: url,
+      error_type: lastError.errorType,
+    });
   }
 
   return { html: null, error: lastError };

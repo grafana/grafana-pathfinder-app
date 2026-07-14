@@ -6,6 +6,7 @@ import { logger } from './lib/logging';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
+import { PANEL_MODE_CHANGE_EVENT } from './lib/event-names';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { panelModeManager } from './global-state/panel-mode';
@@ -60,8 +61,19 @@ const hostname = window.location.hostname;
 // is open in one of its surfaces.
 try {
   if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
-    const { initFaro } = await import('./lib/faro');
-    initFaro().catch((e) => logger.exception(e, { source: 'Faro init' }));
+    const { initFaro, setFaroSessionAttributes } = await import('./lib/faro');
+    initFaro()
+      .then(async () => {
+        // Stamped once per session instead of repeated on every mirrored
+        // Faro user action (see the `experiments` strip in
+        // analytics.ts reportAppInteraction).
+        const { getActiveExperiments } = await import('./utils/openfeature');
+        const activeExperiments = getActiveExperiments();
+        if (activeExperiments.length > 0) {
+          setFaroSessionAttributes({ experiments: JSON.stringify(activeExperiments) });
+        }
+      })
+      .catch((e) => logger.exception(e, { source: 'Faro init' }));
   }
 } catch (e) {
   logger.exception(e, { source: 'Faro init' });
@@ -265,7 +277,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       mountFloatingPanel();
     }
 
-    document.addEventListener('pathfinder-panel-mode-change', ((e: CustomEvent<{ mode: string }>) => {
+    document.addEventListener(PANEL_MODE_CHANGE_EVENT, ((e: CustomEvent<{ mode: string }>) => {
       if (e.detail.mode === 'floating') {
         mountFloatingPanel();
       }

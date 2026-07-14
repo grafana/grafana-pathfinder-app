@@ -10,6 +10,7 @@ import {
 } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
+import { pushFaroMeasurement } from '../../lib/faro';
 import type { InteractiveStepProps } from '../../types/component-props.types';
 import {
   type DetectedActionEvent,
@@ -825,6 +826,8 @@ export const InteractiveStep = forwardRef<
       }
 
       setIsDoRunning(true);
+      const stepExecStart = performance.now();
+      let stepOutcome: 'ok' | 'error' = 'error';
       try {
         // Use lazy scroll wrapper to ensure element is found before executing
         const result = await executeWithLazyScroll(
@@ -837,6 +840,7 @@ export const InteractiveStep = forwardRef<
           targetAction
         );
 
+        stepOutcome = result.success ? 'ok' : 'error';
         if (!result.success) {
           // Lazy scroll failed to find element
           setLazyScrollError(result.error || 'Element not found');
@@ -845,6 +849,11 @@ export const InteractiveStep = forwardRef<
         logger.error('Interactive do action failed', { error });
         setLazyScrollError(error instanceof Error ? error.message : 'Action failed');
       } finally {
+        pushFaroMeasurement(
+          'pathfinder_step',
+          { step_exec_ms: performance.now() - stepExecStart },
+          { target_action: targetAction, outcome: stepOutcome }
+        );
         setIsDoRunning(false);
       }
     }, [

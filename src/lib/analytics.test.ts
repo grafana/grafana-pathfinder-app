@@ -171,6 +171,21 @@ describe('reportAppInteraction experiment enrichment', () => {
     expect(props).not.toHaveProperty('variant');
   });
 
+  it('strips experiments from the Faro mirror but keeps it in the RudderStack payload', () => {
+    bindExperimentsProvider(() => [
+      { flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
+    ]);
+
+    reportAppInteraction(UserInteraction.SummaryClick, {});
+
+    const reportedProps = mockReportInteraction.mock.calls[0][1];
+    const mirroredProps = mockPushFaroUserAction.mock.calls[0][1];
+    expect(reportedProps).toHaveProperty('experiments');
+    expect(mirroredProps).not.toHaveProperty('experiments');
+    // Everything else still mirrors, including the small `variant` rollup.
+    expect(mirroredProps.variant).toBe(reportedProps.variant);
+  });
+
   it('does not enrich FeatureFlagEvaluated events (recursion guard)', () => {
     bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g' }]);
 

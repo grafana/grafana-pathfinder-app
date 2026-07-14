@@ -156,7 +156,8 @@ describe('GuidedHandler', () => {
         'pathfinder_guided_step',
         { target_action: 'highlight', ref_target: refTarget, step_index: 0, total_steps: 1 },
         expect.any(Function),
-        10_005
+        10_005,
+        { critical: true }
       );
 
       consoleErrorSpy.mockRestore();
