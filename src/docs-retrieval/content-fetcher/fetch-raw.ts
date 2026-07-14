@@ -14,6 +14,7 @@ import {
 } from '../../security';
 import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { logger } from '../../lib/logging';
+import { normalizeTelemetryUrl } from '../../lib/telemetry';
 import { isJsonContentUrl, generateInteractiveLearningVariations, getContentUrls } from './url-utils';
 
 // Internal error structure for detailed error handling
@@ -393,7 +394,10 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
         errorType,
         statusCode: response.status,
       };
-      logger.warn(`Failed to fetch from ${url}: ${lastError.message}`, { content_url: url, error_type: errorType });
+      logger.warn(`Failed to fetch from ${url}: ${lastError.message}`, {
+        content_url: normalizeTelemetryUrl(url),
+        error_type: errorType,
+      });
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -408,13 +412,13 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
       message: errorMessage,
       errorType: isTimeout ? 'timeout' : isNetwork ? 'network' : 'other',
     };
-    logger.warn(`Failed to fetch from ${url}`, { error, content_url: url });
+    logger.warn(`Failed to fetch from ${url}`, { error, content_url: normalizeTelemetryUrl(url) });
   }
 
   if (lastError) {
     logger.error(`Failed to fetch content from ${url}`, {
       lastErrorMessage: lastError.message,
-      content_url: url,
+      content_url: normalizeTelemetryUrl(url),
       error_type: lastError.errorType,
     });
   }

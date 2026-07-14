@@ -31,8 +31,8 @@ import { isDevModeEnabled } from '../../utils/dev-mode';
 
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
-import { pushFaroMeasurement, withFaroUserAction } from '../../lib/faro';
-import { RECOMMENDATIONS_READY_EVENT } from '../../lib/event-names';
+import { withGuideOpenAction, type GuideLoadOutcome } from '../../lib/telemetry';
+import { usePanelReadyMeasurement } from './hooks/usePanelReadyMeasurement';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
 import { useGuideProgressState, useAutoLaunchTutorial, type AutoLaunchTutorialDetail } from '../../hooks';
 import {
@@ -377,30 +377,22 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     url: string,
     options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo }
   ): Promise<void> {
-    // Real start/end timestamps (unlike the pushFaroUserAction mirror, which
-    // stamps and ends in the same tick) — this is the funnel action the
-    // Frontend Observability Actions tab's avg/P95 duration should reflect.
-    await withFaroUserAction(
-      'pathfinder_guide_open',
-      { content_url: url },
-      async () => {
-        const tab = this.state.tabs.find((t) => t.id === tabId);
-        const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
-        if (needsDocsLoader) {
-          await this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
-          return;
-        }
-        await this.loadTabContent(tabId, url);
-      },
-      undefined,
-      { critical: true }
-    );
+    // Loaders resolve on failure (failTab stores the error in tab state), so
+    // their returned outcome — not promise settlement — stamps the action.
+    await withGuideOpenAction(url, async () => {
+      const tab = this.state.tabs.find((t) => t.id === tabId);
+      const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
+      if (needsDocsLoader) {
+        return this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
+      }
+      return this.loadTabContent(tabId, url);
+    });
   }
 
-  private async loadTabContent(tabId: string, url: string) {
+  private async loadTabContent(tabId: string, url: string): Promise<GuideLoadOutcome> {
     // Skip loading if URL is empty
     if (!url || url.trim() === '') {
-      return;
+      return 'completed';
     }
 
     this.setTabLoading(tabId);
@@ -450,12 +442,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
           setJourneyCompletionPercentage(completionKey, progress);
         }
+        return 'completed';
       } else {
         this.failTab(tabId, result.error || 'Failed to load content');
+        return 'error';
       }
     } catch (error) {
       logger.error(`Failed to load journey content for tab ${tabId}`, { error });
       this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load content');
+      return 'error';
     }
   }
 
@@ -705,7 +700,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     url: string,
     skipReadyToBegin?: boolean,
     packageInfoArg?: PackageOpenInfo
-  ) {
+  ): Promise<GuideLoadOutcome> {
     // No early return for empty URLs — loadDocsTabContentResult handles all
     // edge cases (empty URL with packageInfo falls back to fetchPackageById;
     // empty URL without packageInfo returns a visible error). Surfacing errors
@@ -777,12 +772,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
             starting_location: pendingAlignment.startingLocation,
           });
         }
+        return 'completed';
       } else {
         this.failTab(tabId, result.error || 'Failed to load documentation');
+        return 'error';
       }
     } catch (error) {
       logger.error(`Failed to load docs content for tab ${tabId}`, { error });
       this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load documentation');
+      return 'error';
     }
   }
 }
@@ -944,32 +942,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // when other tab properties change (isLoading, error, etc.)
   const stableContent = React.useMemo(() => activeTab?.content, [activeTab?.content]);
 
-  // Panel-scoped analog of LCP: time from this component's first render to
-  // the first tab (or the recommendations list) actually showing content.
-  // Deliberately not Faro's page-level Web Vitals — those would measure
-  // Grafana core's render, not Pathfinder's. Fires once per panel mount.
-  const panelMountTimeRef = useRef<number | undefined>(undefined);
-  const panelLcpRecordedRef = useRef(false);
-  const [recommendationsReady, setRecommendationsReady] = React.useState(false);
-  React.useEffect(() => {
-    const onReady = () => setRecommendationsReady(true);
-    document.addEventListener(RECOMMENDATIONS_READY_EVENT, onReady);
-    return () => document.removeEventListener(RECOMMENDATIONS_READY_EVENT, onReady);
-  }, []);
-  React.useEffect(() => {
-    panelMountTimeRef.current ??= performance.now();
-    if (panelLcpRecordedRef.current) {
-      return;
-    }
-    if (stableContent || (isRecommendationsTab && recommendationsReady)) {
-      panelLcpRecordedRef.current = true;
-      pushFaroMeasurement(
-        'pathfinder_panel',
-        { panel_lcp_ms: performance.now() - panelMountTimeRef.current },
-        { surface: panelMode }
-      );
-    }
-  }, [stableContent, isRecommendationsTab, recommendationsReady, panelMode]);
+  usePanelReadyMeasurement({ hasContent: !!stableContent, isRecommendationsTab, surface: panelMode });
 
   // STABILITY: Memoize the AlignmentPendingContext value keyed on the two
   // underlying primitives so consumers (`useStepChecker` in every interactive

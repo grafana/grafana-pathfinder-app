@@ -71,12 +71,12 @@ jest.mock('../lib/hash.util', () => ({
   }),
 }));
 
-const mockPushFaroMeasurement = jest.fn();
-const mockPushFaroEvent = jest.fn();
-jest.mock('../lib/faro', () => ({
-  ...jest.requireActual('../lib/faro'),
-  pushFaroMeasurement: (...args: unknown[]) => mockPushFaroMeasurement(...args),
-  pushFaroEvent: (...args: unknown[]) => mockPushFaroEvent(...args),
+const mockRecordRecommenderRequest = jest.fn();
+const mockRecordRecommenderFallback = jest.fn();
+jest.mock('../lib/telemetry', () => ({
+  ...jest.requireActual('../lib/telemetry'),
+  recordRecommenderRequest: (...args: unknown[]) => mockRecordRecommenderRequest(...args),
+  recordRecommenderFallback: (...args: unknown[]) => mockRecordRecommenderFallback(...args),
 }));
 
 jest.mock('../docs-retrieval', () => ({
@@ -583,15 +583,8 @@ describe('V1 error handling and edge cases', () => {
 
     expect(result.recommendations).toBeDefined();
     expect(result.errorType).toBe('other');
-    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
-      'pathfinder_recommender',
-      { recommender_ms: expect.any(Number) },
-      { outcome: 'other' }
-    );
-    expect(mockPushFaroEvent).toHaveBeenCalledWith('recommender_fallback', {
-      fallback_tier: 'bundled+static',
-      error_type: 'other',
-    });
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledWith(expect.any(Number), 'other');
+    expect(mockRecordRecommenderFallback).toHaveBeenCalledWith('other', 'bundled+static');
   });
 
   it('should fall back gracefully when v1 returns HTTP 403', async () => {
@@ -653,15 +646,8 @@ describe('V1 error handling and edge cases', () => {
 
     expect(result.recommendations).toBeDefined();
     expect(result.errorType).toBe('unavailable');
-    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
-      'pathfinder_recommender',
-      { recommender_ms: expect.any(Number) },
-      { outcome: 'unavailable' }
-    );
-    expect(mockPushFaroEvent).toHaveBeenCalledWith('recommender_fallback', {
-      fallback_tier: 'bundled+static',
-      error_type: 'unavailable',
-    });
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledWith(expect.any(Number), 'unavailable');
+    expect(mockRecordRecommenderFallback).toHaveBeenCalledWith('unavailable', 'bundled+static');
   });
 
   it('pushes an ok-outcome measurement (no fallback event) on a successful recommend call', async () => {
@@ -672,12 +658,40 @@ describe('V1 error handling and edge cases', () => {
 
     await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
 
-    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
-      'pathfinder_recommender',
-      { recommender_ms: expect.any(Number) },
-      { outcome: 'ok' }
-    );
-    expect(mockPushFaroEvent).not.toHaveBeenCalledWith('recommender_fallback', expect.anything());
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledTimes(1);
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledWith(expect.any(Number), 'ok');
+    expect(mockRecordRecommenderFallback).not.toHaveBeenCalled();
+  });
+
+  it('settles telemetry exactly once when the response body is not valid JSON', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON')),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledTimes(1);
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledWith(expect.any(Number), 'other');
+    expect(mockRecordRecommenderFallback).toHaveBeenCalledTimes(1);
+  });
+
+  it('settles telemetry exactly once (as a failure, never ok) when post-parse processing throws', async () => {
+    // `recommendations` is not an array, so the mapping step after the
+    // successful JSON parse throws into the fail path.
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ recommendations: 'not-an-array' }),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledTimes(1);
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledWith(expect.any(Number), 'other');
+    expect(mockRecordRecommenderRequest).not.toHaveBeenCalledWith(expect.any(Number), 'ok');
+    expect(mockRecordRecommenderFallback).toHaveBeenCalledTimes(1);
   });
 });
 

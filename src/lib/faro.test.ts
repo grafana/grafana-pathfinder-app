@@ -76,6 +76,11 @@ const mockHashUserData = jest.fn(async (userId: string, email: string) => ({
 
 jest.mock('./hash.util', () => ({ hashUserData: (...args: [string, string]) => mockHashUserData(...args) }));
 
+// Dynamically imported by initFaro's cohort stamping; the mock keeps the
+// OpenFeature SDK out of these tests.
+const mockGetActiveExperiments = jest.fn((): Array<Record<string, unknown>> => []);
+jest.mock('../utils/openfeature', () => ({ getActiveExperiments: () => mockGetActiveExperiments() }));
+
 // A stable object reference, not a fresh literal per require: `freshFaro()`
 // resets the module registry (so `./faro`'s internal init/instance state
 // starts clean), and re-requiring this mock must keep resolving to the same
@@ -382,6 +387,12 @@ describe('initFaro', () => {
     const calledWith = mockInitializeFaro.mock.calls[0]![0];
     expect(calledWith.ignoreUrls).toBeDefined();
     expect(calledWith.ignoreUrls!.length).toBeGreaterThan(0);
+    // The production wiring must carry buildResourceIgnorePattern semantics:
+    // ignore (match) core/third-party hosts, allow (not match) tracked ones.
+    const pattern = calledWith.ignoreUrls![0] as RegExp;
+    expect(pattern).toBeInstanceOf(RegExp);
+    expect(pattern.test('https://foo.grafana.net/api/dashboards/uid/abc')).toBe(true);
+    expect(pattern.test('https://grafana.com/docs/x')).toBe(false);
   });
 
   it('includes PerformanceInstrumentation (filtered down in beforeSend, not excluded outright)', async () => {
@@ -441,6 +452,18 @@ describe('initFaro', () => {
     });
   });
 
+  it('falls back to the hashed analytics identifier as the primary id when the Cloud user has no email', async () => {
+    mockedConfig.bootData!.user.email = '';
+    const faro = freshFaro();
+    await faro.initFaro();
+    await flushMicrotasks();
+    // Never the shared unknown@example.com hash — it would merge all email-less users.
+    expect(mockSetUser).toHaveBeenCalledWith({
+      id: 'hashed-abc',
+      attributes: { user_id_hash: 'hashed-abc', org_role: 'Admin' },
+    });
+  });
+
   it('uses the OSS identity placeholders (not the recommender hash) outside Grafana Cloud', async () => {
     mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
     localStorage.setItem('pathfinder.faro.local', 'true');
@@ -478,6 +501,37 @@ describe('initFaro', () => {
     );
   });
 
+  it('stamps active experiment cohorts onto the session as the versioned schema', async () => {
+    mockGetActiveExperiments.mockReturnValueOnce([
+      { flag: 'pathfinder.highlighted-guide-experiment', variant: 'treatment', guideId: 'bundled:welcome', pages: [] },
+    ]);
+    const faro = freshFaro();
+    await faro.initFaro();
+    await flushMicrotasks();
+
+    expect(mockSetSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          experiments: JSON.stringify({
+            v: 1,
+            cohorts: [
+              { flag: 'pathfinder.highlighted-guide-experiment', variant: 'treatment', guideId: 'bundled:welcome' },
+            ],
+          }),
+        }),
+      })
+    );
+  });
+
+  it('does not stamp an experiments attribute when no experiments are active', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+    await flushMicrotasks();
+
+    const stamped = mockSetSession.mock.calls.some((call) => call[0]?.attributes?.experiments !== undefined);
+    expect(stamped).toBe(false);
+  });
+
   it('stamps the current surface onto the session on init', async () => {
     localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');
     const faro = freshFaro();
@@ -487,18 +541,34 @@ describe('initFaro', () => {
     );
   });
 
-  it('re-stamps the surface when a pathfinder-panel-mode-change event fires', async () => {
+  it('re-stamps the surface when the surface owner reports a change', async () => {
     const faro = freshFaro();
+    // Same module registry as freshFaro's require — initFaro subscribed to this instance.
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
     await faro.initFaro();
 
-    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'fullscreen');
-    document.dispatchEvent(new CustomEvent('pathfinder-panel-mode-change', { detail: { mode: 'fullscreen' } }));
+    surface.reportPathfinderSurface('fullscreen');
 
-    // toHaveBeenLastCalledWith (not a call-count assertion): this module's own
-    // listener is registered last among any accumulated from other tests in
-    // this file, so it fires last on dispatch — its args are what matters.
     expect(mockSetSession).toHaveBeenLastCalledWith(
       expect.objectContaining({ attributes: expect.objectContaining({ surface: 'fullscreen' }) })
+    );
+  });
+
+  it('does not clobber a destination surface when a stale unmount reports closed', async () => {
+    const faro = freshFaro();
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    await faro.initFaro();
+
+    surface.reportPathfinderSurface('floating');
+    surface.reportPathfinderSurfaceClosed('sidebar');
+
+    expect(mockSetSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ attributes: expect.objectContaining({ surface: 'floating' }) })
+    );
+
+    surface.reportPathfinderSurfaceClosed('floating');
+    expect(mockSetSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ attributes: expect.objectContaining({ surface: 'closed' }) })
     );
   });
 
@@ -811,6 +881,34 @@ describe('withFaroUserAction', () => {
 
     await faro.withFaroUserAction('pathfinder_step_do', {}, async () => 'done', undefined, { critical: false });
     expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_step_do', {}, undefined);
+  });
+
+  it('stamps the outcome produced by options.outcomeFrom instead of ok when work resolves-but-failed', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    await faro.withFaroUserAction('pathfinder_guided_step', {}, async () => 'cancelled' as const, undefined, {
+      outcomeFrom: (result) => (result === 'cancelled' ? 'cancelled' : 'ok'),
+    });
+
+    const action = mockStartUserAction.mock.results[0]!.value;
+    expect(action.attributes).toEqual({ outcome: 'cancelled' });
+    expect(mockActionEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to ok when outcomeFrom itself throws (telemetry must never break the app)', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    const result = await faro.withFaroUserAction('pathfinder_guided_step', {}, async () => 'done', undefined, {
+      outcomeFrom: () => {
+        throw new Error('mapper bug');
+      },
+    });
+
+    expect(result).toBe('done');
+    const action = mockStartUserAction.mock.results[0]!.value;
+    expect(action.attributes).toEqual({ outcome: 'ok' });
   });
 
   it('stamps outcome error and rethrows the same error instance on rejection', async () => {

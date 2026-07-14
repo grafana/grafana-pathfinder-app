@@ -22,10 +22,14 @@ import {
   derivePathSlug,
 } from '../docs-retrieval';
 import { interactiveCompletionStorage } from '../lib/user-storage';
-import { hashUserData } from '../lib/hash.util';
 import { logger } from '../lib/logging';
 import { withTimeout } from '../lib/async-utils';
-import { pushFaroEvent, pushFaroMeasurement } from '../lib/faro';
+import {
+  buildTelemetryIdentity,
+  recordRecommenderFallback,
+  recordRecommenderRequest,
+  type RecommenderOutcome,
+} from '../lib/telemetry';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
 import {
@@ -290,8 +294,25 @@ export class ContextService {
     usingFallbackRecommendations: boolean;
   }> {
     const recommenderStart = performance.now();
-    const fail = (errorType: 'unavailable' | 'rate-limit' | 'other', errorMessage: string) =>
-      this.handleRecommenderError(errorType, errorMessage, contextData, bundledRecommendations, recommenderStart);
+    // One request settles telemetry exactly once — post-parse processing can
+    // still throw into the fail path after a successful fetch.
+    let telemetrySettled = false;
+    const settleTelemetry = (outcome: RecommenderOutcome, durationMs: number) => {
+      if (telemetrySettled) {
+        return;
+      }
+      telemetrySettled = true;
+      recordRecommenderRequest(durationMs, outcome);
+      if (outcome !== 'ok') {
+        // The fallback always merges bundled + static-link recommendations;
+        // there is no finer tier to distinguish once the recommender failed.
+        recordRecommenderFallback(outcome, 'bundled+static');
+      }
+    };
+    const fail = (errorType: 'unavailable' | 'rate-limit' | 'other', errorMessage: string) => {
+      settleTelemetry(errorType, performance.now() - recommenderStart);
+      return this.handleRecommenderError(errorType, errorMessage, contextData, bundledRecommendations);
+    };
     try {
       const configWithDefaults = getConfigWithDefaults(pluginConfig);
 
@@ -327,22 +348,15 @@ export class ContextService {
 
       const hashedSource = await getHashedSource();
 
-      // Get user data for hashing
-      const userId = isCloud ? config.bootData.user.analytics.identifier || 'unknown' : 'oss-user';
-      const userEmail = isCloud
-        ? config.bootData.user.email || 'unknown@example.com' // Cloud users: use real email or unknown for anonymous
-        : 'oss-user@example.com'; // OSS users: always use generic OSS email
-
-      // Hash sensitive user data
-      const { hashedUserId, hashedEmail } = await hashUserData(userId, userEmail);
+      const identity = await buildTelemetryIdentity();
 
       const payload: ContextPayload = {
         path: contextData.currentPath,
         datasources: [...new Set(contextData.dataSources.map((ds) => ds.type.toLowerCase()))],
         tags: contextData.tags,
-        user_id: hashedUserId,
-        user_email: hashedEmail,
-        user_role: config.bootData.user.orgRole || 'Viewer',
+        user_id: identity.userIdHash,
+        user_email: identity.emailHash,
+        user_role: identity.orgRole,
         platform: this.getCurrentPlatform(),
         source: hashedSource,
         language: this.getCurrentLanguage(),
@@ -377,15 +391,9 @@ export class ContextService {
         }
 
         const data: V1RecommenderResponse = await response.json();
-        // Measured here, not at the successful return below — the
-        // processing between them (processLearningJourneys) does its own
-        // content fetches, which would make ok durations incomparable with
-        // the error outcomes recorded in handleRecommenderError.
-        pushFaroMeasurement(
-          'pathfinder_recommender',
-          { recommender_ms: performance.now() - recommenderStart },
-          { outcome: 'ok' }
-        );
+        // Captured here (processLearningJourneys does its own fetches, which
+        // would skew ok durations) but only emitted once processing succeeds.
+        const okDurationMs = performance.now() - recommenderStart;
 
         const mappedExternalRecommendations = (data.recommendations ?? []).map((rec) =>
           this.sanitizeV1Recommendation(rec)
@@ -422,6 +430,8 @@ export class ContextService {
 
         // Clear any previous errors on successful call
         this.lastExternalRecommenderError = null;
+
+        settleTelemetry('ok', okDurationMs);
 
         return {
           recommendations: sortedRecommendations,
@@ -470,8 +480,7 @@ export class ContextService {
     errorType: 'unavailable' | 'rate-limit' | 'other',
     errorMessage: string,
     contextData: ContextData,
-    bundledRecommendations: Recommendation[],
-    startTime: number
+    bundledRecommendations: Recommendation[]
   ): Promise<{
     recommendations: Recommendation[];
     featuredRecommendations: Recommendation[];
@@ -485,19 +494,6 @@ export class ContextService {
       timestamp: Date.now(),
       message: errorMessage,
     };
-
-    pushFaroMeasurement(
-      'pathfinder_recommender',
-      { recommender_ms: performance.now() - startTime },
-      { outcome: errorType }
-    );
-    // Fallback here always merges bundled + static-link recommendations
-    // (getFallbackRecommendations); there is no separate online-packages
-    // tier to distinguish once the external recommender has failed.
-    pushFaroEvent('recommender_fallback', {
-      fallback_tier: 'bundled+static',
-      error_type: errorType,
-    });
 
     // Get fallback recommendations
     const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);

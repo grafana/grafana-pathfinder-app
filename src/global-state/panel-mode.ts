@@ -1,6 +1,7 @@
 import { getAppEvents } from '@grafana/runtime';
 import { StorageKeys } from '../lib/storage-keys';
 import { PANEL_MODE_CHANGE_EVENT } from '../lib/event-names';
+import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/telemetry';
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
 import type { PackageOpenInfo } from '../types/content-panel.types';
 
@@ -80,6 +81,11 @@ class PanelModeManager {
       // instances do not collide on the __DocsPluginActiveTabId window
       // global or on tab storage writes.
       getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
+      reportPathfinderSurface(mode);
+    } else if (previous === 'floating' || previous === 'fullscreen') {
+      // 'sidebar' mode does not mean the sidebar is open — its mount reports
+      // 'sidebar' itself; until then the surface is closed.
+      reportPathfinderSurfaceClosed(previous);
     }
 
     document.dispatchEvent(

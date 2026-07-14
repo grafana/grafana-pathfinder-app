@@ -14,9 +14,12 @@ import { fetchBundledInteractive } from './content-fetcher/bundled';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
 import { enforceHttps, fetchRawHtml, generateUserFriendlyError } from './content-fetcher/fetch-raw';
 import { logger } from '../lib/logging';
-import { pushFaroEvent, pushFaroMeasurement } from '../lib/faro';
-
-type ContentFetchTier = 'bundled' | 'backend-guide' | 'content-json' | 'unstyled-html' | 'other';
+import {
+  normalizeTelemetryUrl,
+  recordContentFetch,
+  recordContentFetchFallback,
+  type ContentFetchTier,
+} from '../lib/telemetry';
 
 // Re-exported to keep the barrel surface stable: `injectJourneyExtrasIntoJsonGuide`
 // is consumed by `components/docs-panel`, and `simpleMarkdownToHtml` by the
@@ -61,11 +64,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
   const fetchStart = performance.now();
   let tier: ContentFetchTier = 'other';
   const recordFetch = (outcome: 'ok' | 'error') =>
-    pushFaroMeasurement(
-      'pathfinder_content_fetch',
-      { content_fetch_ms: performance.now() - fetchStart },
-      { tier, outcome, content_url: url }
-    );
+    recordContentFetch({ url, tier, durationMs: performance.now() - fetchStart, outcome });
 
   try {
     // Validate URL
@@ -131,6 +130,16 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     if (!fetchResult.html) {
       // Generate user-friendly error message based on error type
       const userFriendlyError = generateUserFriendlyError(fetchResult.error, cleanUrl);
+      // Terminal ladder failure: both content.json and unstyled.html were
+      // tried — classify as the deepest tier attempted, not `other`.
+      if (contentType === 'learning-journey') {
+        tier = 'unstyled-html';
+        recordContentFetchFallback({
+          url,
+          tierUsed: 'unstyled-html',
+          errorType: fetchResult.error?.errorType || 'other',
+        });
+      }
       recordFetch('error');
       return {
         content: null,
@@ -151,11 +160,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // tryGrafanaDocsContentLadder in fetch-raw.ts) — landing on the HTML
     // tier for one of them means that ladder fell back.
     if (contentType === 'learning-journey' && tier === 'unstyled-html') {
-      pushFaroEvent('content_fetch_fallback', {
-        content_url: url,
-        tier_used: 'unstyled-html',
-        error_type: 'content-json-unavailable',
-      });
+      recordContentFetchFallback({ url, tierUsed: 'unstyled-html', errorType: 'content-json-unavailable' });
     }
 
     const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType, isNativeJson);
@@ -172,11 +177,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
         // JSON.parse("null") returns the JavaScript value null
         if (parsed === null) {
           tier = 'unstyled-html';
-          pushFaroEvent('content_fetch_fallback', {
-            content_url: url,
-            tier_used: 'unstyled-html',
-            error_type: 'content-json-null',
-          });
+          recordContentFetchFallback({ url, tierUsed: 'unstyled-html', errorType: 'content-json-null' });
           const htmlUrl = finalUrl.replace('/content.json', '/unstyled.html');
           const htmlFetchResult = await fetchRawHtml(htmlUrl, options);
 
@@ -232,7 +233,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
         jsonContent = fetchResult.html; // Valid JSON guide
       } catch {
         // Invalid JSON - treat as HTML and wrap
-        logger.warn('Failed to parse native JSON, treating as HTML', { content_url: url, tier });
+        logger.warn('Failed to parse native JSON, treating as HTML', { content_url: normalizeTelemetryUrl(url), tier });
         jsonContent = wrapContentAsJsonGuide(fetchResult.html, finalUrl, metadata.title);
       }
     } else {
@@ -264,7 +265,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     recordFetch('ok');
     return { content: rawContent };
   } catch (error) {
-    logger.error(`Failed to fetch content from ${url}`, { error });
+    logger.error(`Failed to fetch content from ${normalizeTelemetryUrl(url)}`, { error });
     recordFetch('error');
     return {
       content: null,

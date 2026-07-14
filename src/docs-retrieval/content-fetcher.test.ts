@@ -3,12 +3,12 @@
  */
 import { fetchContent, simpleMarkdownToHtml } from './content-fetcher';
 
-const mockPushFaroMeasurement = jest.fn();
-const mockPushFaroEvent = jest.fn();
-jest.mock('../lib/faro', () => ({
-  ...jest.requireActual('../lib/faro'),
-  pushFaroMeasurement: (...args: unknown[]) => mockPushFaroMeasurement(...args),
-  pushFaroEvent: (...args: unknown[]) => mockPushFaroEvent(...args),
+const mockRecordContentFetch = jest.fn();
+const mockRecordContentFetchFallback = jest.fn();
+jest.mock('../lib/telemetry', () => ({
+  ...jest.requireActual('../lib/telemetry'),
+  recordContentFetch: (...args: unknown[]) => mockRecordContentFetch(...args),
+  recordContentFetchFallback: (...args: unknown[]) => mockRecordContentFetchFallback(...args),
 }));
 
 // Mock AbortSignal.timeout for Node environments that don't support it
@@ -78,16 +78,17 @@ describe('content.json → unstyled.html ladder', () => {
     expect(htmlIdx).toBeGreaterThanOrEqual(0);
     expect(jsonIdx).toBeLessThan(htmlIdx);
 
-    expect(mockPushFaroEvent).toHaveBeenCalledWith('content_fetch_fallback', {
-      content_url: journeyUrl,
-      tier_used: 'unstyled-html',
-      error_type: 'content-json-unavailable',
+    expect(mockRecordContentFetchFallback).toHaveBeenCalledWith({
+      url: journeyUrl,
+      tierUsed: 'unstyled-html',
+      errorType: 'content-json-unavailable',
     });
-    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
-      'pathfinder_content_fetch',
-      { content_fetch_ms: expect.any(Number) },
-      { tier: 'unstyled-html', outcome: 'ok', content_url: journeyUrl }
-    );
+    expect(mockRecordContentFetch).toHaveBeenCalledWith({
+      url: journeyUrl,
+      tier: 'unstyled-html',
+      durationMs: expect.any(Number),
+      outcome: 'ok',
+    });
   });
 
   it('uses content.json directly and never fetches unstyled.html when it returns a valid guide', async () => {
@@ -101,12 +102,13 @@ describe('content.json → unstyled.html ladder', () => {
 
     expect(result.content?.isNativeJson).toBe(true);
     expect(order).not.toContain('unstyled.html');
-    expect(mockPushFaroEvent).not.toHaveBeenCalledWith('content_fetch_fallback', expect.anything());
-    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
-      'pathfinder_content_fetch',
-      { content_fetch_ms: expect.any(Number) },
-      { tier: 'content-json', outcome: 'ok', content_url: journeyUrl }
-    );
+    expect(mockRecordContentFetchFallback).not.toHaveBeenCalled();
+    expect(mockRecordContentFetch).toHaveBeenCalledWith({
+      url: journeyUrl,
+      tier: 'content-json',
+      durationMs: expect.any(Number),
+      outcome: 'ok',
+    });
   });
 
   it('falls through to unstyled.html when content.json returns the null signal', async () => {
@@ -311,6 +313,33 @@ describe('null content handling for learning journeys', () => {
 
     // Verify fetch was called
     expect(global.fetch).toHaveBeenCalled();
+  });
+
+  it('classifies terminal ladder failure (both content.json and unstyled.html fail) instead of tier: other', async () => {
+    jest.clearAllMocks();
+    const milestoneUrl = 'https://grafana.com/docs/learning-paths/drilldown-logs/milestone-3/';
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      headers: new Headers(),
+    });
+
+    const result = await fetchContent(milestoneUrl);
+
+    expect(result.content).toBeNull();
+    expect(mockRecordContentFetchFallback).toHaveBeenCalledWith({
+      url: milestoneUrl,
+      tierUsed: 'unstyled-html',
+      errorType: 'not-found',
+    });
+    expect(mockRecordContentFetch).toHaveBeenCalledWith({
+      url: milestoneUrl,
+      tier: 'unstyled-html',
+      durationMs: expect.any(Number),
+      outcome: 'error',
+    });
   });
 });
 

@@ -211,9 +211,8 @@ export function reportAppInteraction(
       // each other. The finally keeps the mirror alive when reportInteraction
       // itself throws — a lost RudderStack event is exactly the divergence the
       // mirror exists to surface. pushFaroUserAction never throws.
-      // `experiments` is dropped here — it's carried once as a session
-      // attribute (setFaroSessionAttributes after initFaro in module.tsx)
-      // instead of repeated on every mirrored action; RudderStack keeps it.
+      // `experiments` is carried once per session (lib/telemetry/session)
+      // instead of on every mirrored action; RudderStack keeps it.
       const faroProperties = { ...enrichedProperties };
       delete faroProperties.experiments;
       pushFaroUserAction(interactionName, faroProperties);

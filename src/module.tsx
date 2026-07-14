@@ -18,6 +18,7 @@ import {
   isExtensionSidebarOwnedByPathfinder,
   parseExtensionSidebarDocked,
 } from './lib/storage/extension-sidebar';
+import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from './lib/telemetry';
 
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
@@ -61,19 +62,9 @@ const hostname = window.location.hostname;
 // is open in one of its surfaces.
 try {
   if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
-    const { initFaro, setFaroSessionAttributes } = await import('./lib/faro');
-    initFaro()
-      .then(async () => {
-        // Stamped once per session instead of repeated on every mirrored
-        // Faro user action (see the `experiments` strip in
-        // analytics.ts reportAppInteraction).
-        const { getActiveExperiments } = await import('./utils/openfeature');
-        const activeExperiments = getActiveExperiments();
-        if (activeExperiments.length > 0) {
-          setFaroSessionAttributes({ experiments: JSON.stringify(activeExperiments) });
-        }
-      })
-      .catch((e) => logger.exception(e, { source: 'Faro init' }));
+    // Session enrichment (identity, surface, experiment cohorts) is owned by initFaro.
+    const { initFaro } = await import('./lib/faro');
+    initFaro().catch((e) => logger.exception(e, { source: 'Faro init' }));
   }
 } catch (e) {
   logger.exception(e, { source: 'Faro init' });
@@ -162,6 +153,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       const container = document.createElement('div');
       container.id = 'pathfinder-controller-root';
       document.body.appendChild(container);
+      reportPathfinderSurface('controller');
       import('./components/guide-reader/GuideReaderOverlay')
         .then(async ({ GuideReaderOverlay }) => {
           const { createCompatRoot } = await import('./lib/create-root-compat');
@@ -234,6 +226,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           const container = document.createElement('div');
           container.id = 'pathfinder-kiosk-root';
           document.body.appendChild(container);
+          reportPathfinderSurface('kiosk');
           const root = await createCompatRoot(container);
           root.render(
             React.createElement(KioskModeManager, {
@@ -324,6 +317,9 @@ if (pathfinderEnabled) {
       // Process queued docs links when sidebar mounts
       useEffect(() => {
         sidebarState.setIsSidebarMounted(true);
+        // The docked sidebar opens via Grafana's extension bus, not setMode —
+        // this mount is the only reliable "sidebar is active" signal.
+        reportPathfinderSurface('sidebar');
 
         // Track sidebar open via component mount
         // consumePendingOpenSource() returns { source, action } set before opening
@@ -344,6 +340,7 @@ if (pathfinderEnabled) {
 
         return () => {
           sidebarState.setIsSidebarMounted(false);
+          reportPathfinderSurfaceClosed('sidebar');
 
           // Track sidebar close via component unmount
           reportAppInteraction(UserInteraction.DocsPanelInteraction, {

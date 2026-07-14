@@ -1,10 +1,51 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { InteractiveStep } from './interactive-step';
+import { InteractiveStep, executeWithLazyScroll } from './interactive-step';
 import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
 import { ControllerChannelProvider } from '../../global-state/controller-channel';
 import { TEST_PAIRING } from '../../test-utils/fake-cross-tab-transport';
 import { createPairingAcceptProof } from '../../lib/pairing-manager';
+
+describe('executeWithLazyScroll: step outcome propagation', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('propagates the action result for non-DOM actions instead of assuming success', async () => {
+    const failed = await executeWithLazyScroll('', false, undefined, async () => false, 'noop');
+    expect(failed).toEqual({ success: true, actionSucceeded: false, elementFound: true });
+
+    const passed = await executeWithLazyScroll('', false, undefined, async () => true, 'noop');
+    expect(passed).toEqual({ success: true, actionSucceeded: true, elementFound: true });
+  });
+
+  it('reports actionSucceeded: false when the element is found but the step itself fails', async () => {
+    const target = document.createElement('div');
+    target.id = 'step-target';
+    document.body.appendChild(target);
+
+    // executeStep resolves false on execution/post-verification failure —
+    // element discovery succeeding must not mask that.
+    const result = await executeWithLazyScroll('#step-target', false, undefined, async () => false, 'highlight');
+
+    expect(result.elementFound).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.actionSucceeded).toBe(false);
+  });
+
+  it('reports element-not-found failures with actionSucceeded: false and an error', async () => {
+    const action = jest.fn(async () => true);
+    const result = await executeWithLazyScroll('#missing', false, undefined, action, 'highlight');
+
+    expect(result).toEqual({
+      success: false,
+      actionSucceeded: false,
+      elementFound: false,
+      error: 'Element not found: #missing',
+    });
+    expect(action).not.toHaveBeenCalled();
+  });
+});
 
 describe('InteractiveStep: showMeText label override', () => {
   it('renders custom Show me label when showMeText is provided', () => {
