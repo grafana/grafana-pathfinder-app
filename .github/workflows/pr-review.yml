@@ -1,28 +1,47 @@
 name: Automated PR review
 
-# Runs the repo's `/review` skill against each PR via Claude Code and posts a
-# consolidated review comment. Trimmed CI profile: core concern reviewers +
-# synthesis only — the adversarial-verification pass (§4b) and tech-debt scan
-# (§6) are skipped here to bound cost/latency on every push.
+# Runs the repo's `/review` skill against a PR via Claude Code and posts a
+# consolidated review. Trimmed CI profile: core concern reviewers + synthesis
+# only — the adversarial-verification pass (§4b) and tech-debt scan (§6) are
+# skipped here to bound cost/latency.
+#
+# Triggers:
+#   - Automatically once when a PR is opened / reopened / marked ready (NOT on
+#     every push — `synchronize` is deliberately omitted).
+#   - On demand when a trusted user comments "@claude review" on a PR.
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
 
-# No token exfiltration surface for fork PRs:
-# - `pull_request` (never `pull_request_target`) does not expose secrets to forks
-# - the job is additionally gated to same-repo PRs below
 concurrency:
-  group: pr-review-${{ github.event.pull_request.number }}
+  group: pr-review-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: true
 
 permissions: {}
 
 jobs:
   review:
+    # Auto path: same-repo, non-bot, non-draft PR events (bots excluded so a
+    # poisoned dependency changelog in a Renovate/Dependabot PR body can't reach
+    # the agent). On-demand path: a "@claude review" comment on a PR from a
+    # trusted author (OWNER/MEMBER/COLLABORATOR). `pull_request` (not
+    # `pull_request_target`) plus the same-repo gate keep secrets away from forks.
+    if: >-
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.draft == false &&
+        !endsWith(github.actor, '[bot]')
+      ) || (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        contains(github.event.comment.body, '@claude review') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      )
     name: Claude review
-    # Skip fork PRs: they have no access to Vault secrets and must not run this.
-    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -34,8 +53,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # v2 exposes the secret as a step output rather than exporting it to
+      # $GITHUB_ENV, so the key is not on disk or visible to unrelated steps.
       - name: Get Anthropic API key
-        uses: grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760 # v1.1.0
+        id: vault
+        uses: grafana/shared-workflows/actions/get-vault-secrets@e46fe1e9a2bf9e618bcf8d8d32f3a7381b45c06d # get-vault-secrets/v2.0.0
         with:
           repo_secrets: |
             ANTHROPIC_API_KEY=pathfinder-anthropic-api-key:api_key
@@ -43,16 +65,16 @@ jobs:
       - name: Run review
         uses: anthropics/claude-code-action@f1bd27ca5b54584506e40e17884d90bdaaa1a9b3 # v1
         with:
-          anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
+          anthropic_api_key: ${{ fromJSON(steps.vault.outputs.secrets).ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Forces tag-mode posting for pull_request events: creates the review
-          # comment and wires up the GitHub comment tools so findings are posted.
+          # Forces tag-mode posting for these events: creates the review comment
+          # and wires up the GitHub comment tools so findings are posted.
           track_progress: true
           # The agent ingests attacker-influenceable PR content while a live
-          # Vault-issued API key is in the job env. Deny the shell + network-egress
-          # tools so injected diff/title content cannot read the key (no Bash to
-          # reach env) or exfiltrate it (no WebFetch/WebSearch). Read/Grep/Glob and
-          # the github_comment posting tools remain available.
+          # API key is in the SDK process env. Deny the shell + network-egress
+          # tools so injected content cannot read the key (no Bash to reach env)
+          # or exfiltrate it (no WebFetch/WebSearch). Read/Grep/Glob and the
+          # github_comment posting tools remain available.
           claude_args: '--model claude-opus-4-8 --max-turns 40 --disallowedTools "Bash,WebFetch,WebSearch,Write,Edit,MultiEdit"'
           prompt: >-
             Read .cursor/skills/review/SKILL.md and docs/design/CONCERNS.md, then
