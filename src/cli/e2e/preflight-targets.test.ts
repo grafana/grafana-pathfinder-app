@@ -1,8 +1,8 @@
 import type { CloudAuthPolicy } from './cloud-auth';
-import type { ColdCloudStackProvisioningConfig } from './cold-cloud-stack-environment';
+import type { CloudStackPoolManagerConfig } from './cloud-stack-pool-manager';
 import type { PackageMeta } from './e2e-results';
 import type { ExecutionPlan, PlannedGuide } from './guide-chains';
-import { preflightTargetUrlsForPlan } from './preflight-targets';
+import { assertTierHomogeneousChains, preflightTargetUrlsForPlan } from './preflight-targets';
 
 const GLOBAL_URL = 'http://localhost:3000';
 const READONLY_SHARED_URL = 'https://learn.grafana.net/';
@@ -23,11 +23,11 @@ const cloudAuth: CloudAuthPolicy = {
   },
 };
 
-const cloudStack: ColdCloudStackProvisioningConfig = {
-  accessPolicyTokenEnvVar: 'GRAFANA_CLOUD_ACCESS_POLICY_TOKEN',
-  accessPolicyToken: 'cloud-access-token',
-  region: 'prod-us-east-0',
-  slugPrefix: 'pfe2e',
+const cloudStackPoolManagerConfig: CloudStackPoolManagerConfig = {
+  managerUrl: 'https://pool.example/',
+  tokenEnvVar: 'POOL_MANAGER_TOKEN',
+  token: 'manager-token',
+  poolId: 'nightly',
 };
 
 function plannedGuide(id: string, dependencies: string[] = []): PlannedGuide {
@@ -88,31 +88,60 @@ function packageMetaWithMutatingCloudChain(): Map<string, PackageMeta> {
 }
 
 describe('e2e preflight targets', () => {
-  it('excludes guides routed through cold cloud stacks from original target preflight checks', () => {
+  it('rejects mixed-tier dependency chains before target selection', () => {
+    const plan: ExecutionPlan = {
+      chains: [[plannedGuide('local'), plannedGuide('mutating-cloud', ['local'])]],
+      autoIncludedIds: [],
+      errors: [],
+    };
+    const packageMetaById = new Map<string, PackageMeta>([
+      ['local', { packageId: 'local', tier: 'local' }],
+      ['mutating-cloud', { packageId: 'mutating-cloud', tier: 'cloud' }],
+    ]);
+
+    expect(() => assertTierHomogeneousChains(plan, packageMetaById)).toThrow(
+      'Invalid E2E execution plan: dependency chain mixes test environment tiers (local:local → mutating-cloud:cloud).'
+    );
+  });
+
+  it('allows homogeneous chains and defaults unmanaged guides to local tier', () => {
+    const plan: ExecutionPlan = {
+      chains: [[plannedGuide('local'), plannedGuide('unmanaged', ['local'])], [plannedGuide('mutating-cloud')]],
+      autoIncludedIds: [],
+      errors: [],
+    };
+    const packageMetaById = new Map<string, PackageMeta>([
+      ['local', { packageId: 'local', tier: 'local' }],
+      ['mutating-cloud', { packageId: 'mutating-cloud', tier: 'cloud' }],
+    ]);
+
+    expect(() => assertTierHomogeneousChains(plan, packageMetaById)).not.toThrow();
+  });
+  it('excludes guides routed through manager cloud stacks from original target preflight checks', () => {
     const targets = preflightTargetUrlsForPlan({
       plan: planWithMutatingCloudChain(),
       packageMetaById: packageMetaWithMutatingCloudChain(),
       cloudAuth,
-      cloudStack,
+      cloudStackPoolManagerConfig,
       globalUrl: GLOBAL_URL,
     });
 
     expect(targets).toEqual([GLOBAL_URL, READONLY_SHARED_URL]);
   });
 
-  it('excludes unsafe cloud chains when no cold cloud stack is configured', () => {
+  it('excludes unsafe cloud chains when no manager cloud stack is configured', () => {
     const targets = preflightTargetUrlsForPlan({
       plan: planWithMutatingCloudChain(),
       packageMetaById: packageMetaWithMutatingCloudChain(),
       cloudAuth,
-      cloudStack: undefined,
+      cloudStackPoolManagerConfig: undefined,
       globalUrl: GLOBAL_URL,
     });
 
     expect(targets).toEqual([GLOBAL_URL, READONLY_SHARED_URL]);
   });
 
-  it('excludes readonly cloud guides that lack shared stack auth when cold stacks are available', () => {
+  it('excludes readonly cloud guides that lack shared stack auth when manager stacks are available', () => {
     const plan: ExecutionPlan = {
       chains: [[plannedGuide('local')], [plannedGuide('readonly-no-auth-cloud')]],
       autoIncludedIds: [],
@@ -135,10 +164,22 @@ describe('e2e preflight targets', () => {
       plan,
       packageMetaById,
       cloudAuth,
-      cloudStack,
+      cloudStackPoolManagerConfig,
       globalUrl: GLOBAL_URL,
     });
 
     expect(targets).toEqual([GLOBAL_URL]);
+  });
+
+  it('excludes guides routed through pool-manager cloud stacks from original target preflight checks', () => {
+    const targets = preflightTargetUrlsForPlan({
+      plan: planWithMutatingCloudChain(),
+      packageMetaById: packageMetaWithMutatingCloudChain(),
+      cloudAuth,
+      cloudStackPoolManagerConfig,
+      globalUrl: GLOBAL_URL,
+    });
+
+    expect(targets).toEqual([GLOBAL_URL, READONLY_SHARED_URL]);
   });
 });
