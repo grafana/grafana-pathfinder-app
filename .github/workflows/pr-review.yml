@@ -104,8 +104,7 @@ jobs:
             2. If there are findings, a table with columns "Severity | Count" and
             rows Critical/High/Medium/Low using badges 🔴/🟠/🟡/🔵 (include zero rows).
 
-            3. One blockquote line: "> Trimmed profile · <N> files reviewed ·
-            ordered by severity".
+            3. One blockquote line: "> <N> files reviewed".
 
             4. Each finding, ordered by severity then confidence:
             "### <badge> <Severity> — <concise title>" then a bold location line
