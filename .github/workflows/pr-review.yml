@@ -53,7 +53,7 @@ jobs:
           # tools so injected diff/title content cannot read the key (no Bash to
           # reach env) or exfiltrate it (no WebFetch/WebSearch). Read/Grep/Glob and
           # the github_comment posting tools remain available.
-          claude_args: '--model claude-sonnet-5 --max-turns 40 --disallowedTools "Bash WebFetch WebSearch Write Edit"'
+          claude_args: '--model claude-sonnet-5 --max-turns 40 --disallowedTools "Bash,WebFetch,WebSearch,Write,Edit"'
           prompt: >-
             Read .cursor/skills/review/SKILL.md and docs/design/CONCERNS.md, then
             review this pull request's diff by following that skill's phases 1-5
