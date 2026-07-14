@@ -1,0 +1,57 @@
+name: Automated PR review
+
+# Runs the repo's `/review` skill against each PR via Claude Code and posts a
+# consolidated review comment. Trimmed CI profile: core concern reviewers +
+# synthesis only — the adversarial-verification pass (§4b) and tech-debt scan
+# (§6) are skipped here to bound cost/latency on every push.
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+# No token exfiltration surface for fork PRs:
+# - `pull_request` (never `pull_request_target`) does not expose secrets to forks
+# - the job is additionally gated to same-repo PRs below
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  review:
+    name: Claude review
+    # Skip fork PRs: they have no access to Vault secrets and must not run this.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write # Vault OIDC only
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Get Anthropic API key
+        uses: grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760 # v1.1.0
+        with:
+          repo_secrets: |
+            ANTHROPIC_API_KEY=pathfinder-anthropic-api-key:api_key
+
+      - name: Run review
+        uses: anthropics/claude-code-action@f1bd27ca5b54584506e40e17884d90bdaaa1a9b3 # v1
+        with:
+          anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: '--model claude-sonnet-5 --max-turns 40'
+          prompt: >-
+            Read .cursor/skills/review/SKILL.md and docs/design/CONCERNS.md, then
+            review this pull request's diff by following that skill's phases 1-5
+            (classify, route, run concern reviewers, synthesize). Run this as a
+            trimmed CI profile: SKIP phase 4b (adversarial verification) and
+            phase 6 (tech-debt scan). Post exactly one consolidated PR review
+            with findings ordered by severity then confidence, using the report
+            format from the skill's phase 5. If no activated concern has
+            findings, say so explicitly.
