@@ -101,6 +101,25 @@ Column key — **cat**: `AO`=always-on · `sub`=subsystem · `xcut`=cross-cuttin
 
 ---
 
+## Contract anchors
+
+A contract anchor records the deliberately established contract of a capability: its owning module, its load-bearing invariants, and the PR or issue that established it. The contract evolution scan (`.cursor/skills/review/SKILL.md` §3b) checks new PRs for **conformance** against a recorded anchor; when no anchor exists it must reconstruct the implied contract from recent PR history, which is slower and weaker. Anchors exist because contracts established in refactor PR bodies are otherwise invisible to future reviews and silently re-fracture.
+
+Rules:
+
+- Anchors are optional per concern — record one when a PR deliberately establishes or replaces a contract (a typed facade, reducer, schema, or lifecycle owner), in that same PR.
+- An anchor states invariants and ownership, not implementation detail. If the invariant is already captured in the concern's `purpose`, the anchor may simply point at it.
+- Anchors are evidence, not authority: a scan that finds the anchored contract incoherent should propose replacing it, not enforce it.
+- Name contracts after the domain, never the vendor — a telemetry contract, not a "Faro contract".
+
+| concern                   | anchor                    | contract                                                                                                                                                                                                                                                                                                                            |
+| ------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `floating-panel`          | #1298 → #1300             | The dodge-session reducer (`dodge-session.ts`) owns the compact/restore lifecycle; layout-derived values like `scrollTop` are not authoritative while a session holds saved state; `FloatingPanelEvents` owns the `pathfinder-floating-*` event names. Invariants in `purpose`.                                                     |
+| `block-editor-authoring`  | #1314 → #1331             | One mount-time path owns restoration; `useBackendSaveFlow` owns save/publish/unpublish orchestration; `useBlockPersistence` is narrowed to `clear`. Invariants in `purpose`.                                                                                                                                                        |
+| `analytics-and-telemetry` | none — accreting (#1275+) | Pre-contract. Consumers currently call vendor primitives (`pushFaro*`) directly and define event names and payload shapes locally. Intended boundary: a vendor-neutral typed telemetry facade with domain operations, Faro/OTel as internal adapters. Treat further direct vendor calls from product tiers as `contract_branching`. |
+
+---
+
 ## Footnotes
 
 ¹ `cross-cutting-architecture` related: all other concerns.

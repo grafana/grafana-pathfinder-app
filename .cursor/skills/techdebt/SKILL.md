@@ -25,7 +25,7 @@ Categories:
 
 - **A** — Local syntactic (A1–A5). Single-file, fast.
 - **B** — Cross-file structural / corpus similarity (B1–B4). Slowest — agent acts as similarity judge.
-- **C** — Delegation and architectural / graph-level (C1–C4). Uses import graph + churn.
+- **C** — Delegation and architectural / graph-level (C1–C5). Uses import graph + churn.
 - **D** — Process debt (D1 Stale Memory Drift, D2 Test-Generation Debt).
 - **E** — Operational debt / extraction seams (E1–E6). High-risk refactor targets: imperative resource managers, async state machines, singletons, module-level registries, contract-surface scatter, bootstrap orchestration. Each E finding is scoped small enough to act on in one session.
 
@@ -41,7 +41,7 @@ Categories:
 4. **Run each pattern** against the inventory:
    - **Category A**: read each file; scan for the signature.
    - **Category B**: agent is the similarity engine. Normalize bodies (strip imports, JSX scaffolding, comments) before comparing. Emit the explicit similarity claim in `Evidence` so it can be audited.
-   - **Category C**: build a minimal import graph via `grep -rn "from ['\"]" <subsystem>`. Use `git log` for churn (C3).
+   - **Category C**: build a minimal import graph via `grep -rn "from ['\"]" <subsystem>`. Use `git log` for churn (C3) and module age / fix-to-feat ratio (C5).
    - **Category D**: D1 diffs `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/` docs against current code; D2 reads test files and counts meaningful assertions.
    - **Category E**: targeted grep + read. E1 looks for paired resource APIs (`setInterval`/`addEventListener`/`*Observer`) with cleanup distance; E2 looks for `AbortController` + debounce + retry in the same function; E3 looks for `export const … = new X()` then traces importers; E4 looks for top-level `let` / `new Map()` / `new Set()` outside any function; E5 looks for repeated string literals matching CustomEvent / storage / testid / query-param patterns; E6 inspects the project's designated entry-point file(s).
 5. **Check disqualifiers BEFORE emitting**. For every candidate hit, walk the pattern's disqualifier list. If any matches → drop the candidate. If a disqualifier cannot be verified, demote to **suggestive**. Never emit high-confidence with an unchecked disqualifier. The `Disqualifiers checked` field on each finding is the audit trail.

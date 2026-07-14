@@ -5,7 +5,7 @@ description: Routed PR review orchestrator. Load for `/review` command or any PR
 
 # PR review orchestrator
 
-Conduct a **Principal Engineer level** review in seven phases.
+Conduct a **Principal Engineer level** review in the phases below.
 
 ## 1. Read the concern registry
 
@@ -35,6 +35,57 @@ Classification exists to improve routing efficiency, not to reduce safety. If un
 Route using `trigger_paths` and `trigger_keywords` from the routing table in `docs/design/CONCERNS.md`. Apply the routing defaults defined there. Never route on paths alone.
 
 Produce: `activated_concerns`, `activation_reason`, `risk_signals`, `likely_one_way_doors`, `reviewers_to_run`, `coverage_confidence`.
+
+## 3b. Contract evolution scan
+
+Diff-local correctness is not compositional: a sequence of individually clean PRs can keep branching a capability's implicit contract until no code models it (**inter-PR contract accretion**). Diff-scoped reviewers cannot see this by design — this phase gives the review a temporal axis. It evaluates whether the sequence of changes to a capability is converging on a contract or continuing to branch it, not just whether this diff is locally correct.
+
+### Gate (deterministic, runs on every PR)
+
+Run cheap git checks against the directories the diff touches. Trigger the scan when **any** of:
+
+- ≥ 2 semantic commits (`feat|fix|refactor`) touched those paths in the last **30 days**. This window is deliberately shorter than the techdebt C3 90-day drift-hub window — young capabilities can fracture in days, long before they qualify as mature drift hubs.
+- The fix-to-feat commit ratio in that history is ≥ 2:1 — the signature of an unmodeled contract being patched rather than extended.
+- The diff grows the export count or cross-tier importer fan-out of a touched Tier 1/2 module.
+- `coverage_confidence` from §3 is not `high` for the PR's center of gravity — the pre-contract stage where a capability is covered only by generic concerns.
+
+Suggested gate commands:
+
+```bash
+git log --since="30 days ago" --oneline --pretty='%s' -- <changed-dirs> | grep -cE '^(feat|fix|refactor)'
+git log --since="30 days ago" --oneline --pretty='%s' -- <changed-dirs> | grep -c '^fix'
+grep -rln "from ['\"].*<module>" src --include='*.ts' --include='*.tsx' | grep -vc test
+```
+
+If nothing fires, skip the scan and proceed to §4 at no added cost.
+
+### Scan (one sub-agent, only when gated in)
+
+Spawn a contract-evolution sub-agent with this bounded input set:
+
+- The concern's **contract anchor** from `docs/design/CONCERNS.md` (Contract anchors section), when one exists.
+- The introducing or most recent contract-establishing PR for the capability.
+- The last **3 semantic PRs** (`feat`/`fix`/`refactor`) affecting the concern — excluding icon, formatting, dependency-only, and tests-only touches. When a PR consolidated a stack, follow the superseded stack PRs identified in its body.
+- Top-level review bodies and follow-up issues from those PRs — repeated review rounds and "another interleaving" follow-ups are primary evidence — but not full comment threads.
+- The current concern entry and its contract tests.
+
+The sub-agent answers one question: **is this PR extending an established contract, or creating a new branch of an implicit one?** It emits the evolution packet defined in `docs/design/PR_REVIEW.md` (Contract evolution packet), ending in a verdict: `follows_contract | coherent_extension | contract_missing | contract_branching`.
+
+When a contract anchor is recorded, the scan checks **conformance** against it. When none exists, the scan **reconstructs** the contract implied by recent history — reconstruction is the fallback, the recorded anchor is the pin.
+
+### Routing and disposition
+
+Give the evolution packet to the activated subsystem reviewers, the cross-cutting synthesizer, and the adversarial verification pass.
+
+Verdict handling follows the accretion tripwire:
+
+1. **First use** of a concept: a concrete implementation is acceptable — do not flag prospectively.
+2. **Second independent use**: compare semantics and name the likely owner — advisory.
+3. **Third semantic extension, or second bug in the same class**: require an explicit contract — a typed facade, reducer, schema, lifecycle owner, or contract test. This need not mean a large refactor.
+
+`contract_branching` findings are **blocking** when the PR adds any of the branching conditions listed in `docs/design/PR_REVIEW.md` (Contract evolution packet). `contract_missing` on a growing surface is advisory but must be surfaced by the synthesizer even when all subsystem reviewers are clean.
+
+**History is evidence, not authority.** Do not require conformance to a poor accidental contract merely because the last three PRs used it. If the reconstructed contract is itself incoherent, the correct verdict is `contract_missing` with a proposed owner — not `follows_contract`.
 
 ## 4. Run reviewers
 
@@ -165,6 +216,8 @@ The synthesizer must:
 - note when change classification may have reduced reviewer fan-out, if that affects confidence
 - disclose when the PR's center of gravity appears only weakly covered by the current concern registry
 - suggest updating `docs/design/CONCERNS.md` when the same unowned area appears important enough to deserve subsystem-aware review
+- surface `contract_missing` and `contract_branching` verdicts from §3b even when all subsystem reviewers are clean
+- when the PR itself establishes or replaces a contract (a typed facade, reducer, schema, or lifecycle owner), require the contract anchor in `docs/design/CONCERNS.md` (Contract anchors) to be added or updated in the same PR — an unrecorded contract silently re-fractures
 
 Report findings ordered by severity, then confidence.
 

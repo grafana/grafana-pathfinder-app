@@ -208,6 +208,21 @@ The skill MUST check disqualifiers before emitting a finding. See `SKILL.md` for
   - Code reachable only via dynamic import (`await import(...)`) — grep for dynamic imports targeting the cluster.
   - CLI entry points / scripts that are invoked by build tooling, not imported.
 
+### C5 — Young Hub
+
+- **Definition**: A recently introduced (or recently contract-reset) shared module whose surface and consumer set are growing across consecutive PRs faster than any contract is being established — the early-stage counterpart to C3, which by construction cannot fire before 90 days of maturity. Young capabilities fracture in days (inter-PR contract accretion), not quarters.
+- **Severity**: 3
+- **High-confidence signature**:
+  - Module was introduced, or last had its contract deliberately re-established, within the last 30 days (`git log --follow --oneline -- <file>`).
+  - Export count or cross-tier importer count grew across ≥ 2 consecutive semantic PRs (`feat|fix|refactor`).
+  - Fix-to-feat commit ratio on the module's directory is ≥ 2:1 in that window, or consumers define the module's vocabulary (event names, payload shapes, outcome values) locally rather than importing central types.
+- **Suggestive signature**:
+  - A second product-domain consumer imports vendor-specific primitives from the module directly.
+  - The module's concern has no contract anchor in `docs/design/CONCERNS.md` (Contract anchors) despite ≥ 3 semantic PRs.
+- **Disqualifiers**:
+  - The module is a deliberate facade or barrel with a recorded contract anchor and conformant consumers — growth of a pinned contract is healthy accretion, not debt.
+  - Consumer growth is `feat`-dominated with stable exports (a stable API gaining callers).
+
 ---
 
 ## Category D — Process debt

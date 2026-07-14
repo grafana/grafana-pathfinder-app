@@ -47,6 +47,40 @@ If no findings, include:
 - `irreversible_without_cleanup`
 - `unknown`
 
+## Contract evolution packet
+
+Emitted by the contract evolution scan (`.cursor/skills/review/SKILL.md` §3b) when its deterministic gate fires. The packet gives diff-scoped reviewers and the synthesizer the temporal context they otherwise lack: whether the sequence of recent changes to a capability is converging on a contract or branching it.
+
+Fields:
+
+- `concern` — the concern id whose capability is under scan
+- `origin_or_contract_anchor` — the introducing PR, or the most recent contract-establishing PR/issue (from the Contract anchors section of `docs/design/CONCERNS.md` when recorded)
+- `recent_semantic_changes` — the last 3 `feat`/`fix`/`refactor` PRs affecting the concern, each with a one-line semantic summary
+- `current_contract_owner` — the module, hook, reducer, schema, or facade that owns the contract, or `none` if ownership is distributed across consumers
+- `new_contract_delta` — what this PR adds to or changes about the contract surface
+- `competing_owners_or_representations` — concepts this PR gives a second owner or second raw representation
+- `verdict` — one of the values below
+
+### Verdict values
+
+- `follows_contract`: the change conforms to a recorded anchor or a coherent reconstructed contract
+- `coherent_extension`: the change grows the contract surface in a way consistent with its established shape and ownership
+- `contract_missing`: the capability has no single owner; refs, events, storage, or browser state collectively implement an unmodeled contract
+- `contract_branching`: the change creates a new branch of the implicit contract — a competing owner, representation, or vocabulary
+
+### Branching conditions (blocking)
+
+A `contract_branching` verdict is blocking when the PR adds any of:
+
+- another raw representation of an existing concept
+- another state or lifecycle owner for a concept that already has one
+- a new event or payload vocabulary without central types
+- vendor-specific calls (e.g. `pushFaro*`) from an additional product-domain consumer
+- ordering-sensitive bootstrap behavior
+- another patch for a bug class already visible in the recent history
+
+`contract_missing` on a growing surface is advisory, not blocking, but the synthesizer must surface it even when all subsystem reviewers are clean.
+
 ## React reliability, security, and quality checks
 
 Scan the diff against the unified detection table below. Security rules (F1-F6) are always loaded; for any React pattern hit, load `.cursor/rules/react-antipatterns.mdc` for the canonical Do/Don't and fix.
