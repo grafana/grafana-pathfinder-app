@@ -48,7 +48,12 @@ jobs:
           # Forces tag-mode posting for pull_request events: creates the review
           # comment and wires up the GitHub comment tools so findings are posted.
           track_progress: true
-          claude_args: '--model claude-sonnet-5 --max-turns 40'
+          # The agent ingests attacker-influenceable PR content while a live
+          # Vault-issued API key is in the job env. Deny the shell + network-egress
+          # tools so injected diff/title content cannot read the key (no Bash to
+          # reach env) or exfiltrate it (no WebFetch/WebSearch). Read/Grep/Glob and
+          # the github_comment posting tools remain available.
+          claude_args: '--model claude-sonnet-5 --max-turns 40 --disallowedTools "Bash WebFetch WebSearch Write Edit"'
           prompt: >-
             Read .cursor/skills/review/SKILL.md and docs/design/CONCERNS.md, then
             review this pull request's diff by following that skill's phases 1-5
