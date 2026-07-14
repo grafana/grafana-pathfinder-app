@@ -48,7 +48,7 @@ The script is deterministic; `contract-evolution.test.mjs` is its behavioral spe
 
 Two additional router judgments may trigger an advisory scan: the diff adds a high-value contract surface to a second consumer, or `coverage_confidence` is not `high`. Label these as `discretionary_trigger` in the packet; do not describe them as deterministic gate output.
 
-If neither deterministic nor discretionary signal fires, skip the scan and proceed to §4. Run `node --test .cursor/skills/review/scripts/contract-evolution.test.mjs` when changing the gate, packet, or disposition policy.
+At current repo velocity the gate fires for most routed concerns — it is a cheap trigger, not a filter; selectivity comes from the scan verdict and the disposition policy, where clean packets create no finding. If neither deterministic nor discretionary signal fires, skip the scan and proceed to §4. Run `npm run test:review-contract` when changing the gate, packet, or disposition policy.
 
 ### Scan (one sub-agent, only when gated in)
 

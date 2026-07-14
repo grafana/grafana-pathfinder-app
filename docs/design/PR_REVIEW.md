@@ -60,9 +60,9 @@ Required fields:
 - `new_contract_delta`
 - `competing_owners_or_representations`
 - `history_status` — `complete | partial | unavailable`
-- `use_ordinal` — `first | second | third_or_later`
+- `use_ordinal` — `first | second | third_or_later`: this PR's position in the sequence of distinct PRs extending or reshaping the capability's contract surface, with the introducing PR as `first`; count PRs (the gate's distinct-PR history is the baseline evidence), not consumers or call sites
 - `same_bug_count` — total bugs observed in this class, including the one this PR addresses; `0` when this PR does not address a bug in a previously seen class
-- `has_recorded_anchor`
+- `has_recorded_anchor` — `true` only when the concern has a row in the Contract anchors table; pre-contract candidates do not count
 - `anchor_violated` — `true` only when the change contradicts an invariant stated in the recorded anchor; must be `false` when `has_recorded_anchor` is `false`
 - `branching_conditions`
 - `sources` — immutable same-repository PR, issue, and commit identifiers plus selection reasons

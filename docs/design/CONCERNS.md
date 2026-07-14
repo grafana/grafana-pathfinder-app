@@ -111,6 +111,7 @@ Rules:
 - An anchor states invariants and ownership, not implementation detail. If the invariant is already captured in the concern's `purpose`, the anchor may simply point at it.
 - Anchors are evidence, not authority: a scan that finds the anchored contract incoherent should propose replacing it, not enforce it.
 - Name contracts after the domain, never the vendor — a telemetry contract, not a "Faro contract".
+- Add a concern routing row when a capability directory is created, not when its contract is finally written — the gate cannot see a concern's history until the row exists, and rows that arrive in the contract-establishing PR miss the fracture window they were meant to watch.
 
 | concern                  | anchor        | contract                                                                                                                                                                                                                                                |
 | ------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -119,7 +120,7 @@ Rules:
 
 ### Pre-contract candidates
 
-These are advisory architecture hypotheses, not anchors. They cannot create a blocking conformance finding until an implementation PR establishes the owner and records the contract above.
+These are advisory architecture hypotheses, not anchors. They cannot create a blocking conformance finding until an implementation PR establishes the owner and records the contract above. Evolution packets for these concerns set `has_recorded_anchor: false`.
 
 | concern                   | evidence         | proposed owner                                                                                                                                                                                                      |
 | ------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
