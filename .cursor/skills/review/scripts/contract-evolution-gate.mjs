@@ -2,9 +2,22 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { parseArgs as parseCliArgs } from 'node:util';
 
 const DEFAULT_WINDOW_DAYS = 30;
-const SEMANTIC_TYPES = new Set(['feat', 'fix', 'refactor', 'perf', 'revert', 'review', 'security', 'skill']);
+const SEMANTIC_TYPES = new Set([
+  'feat',
+  'fix',
+  'refactor',
+  'perf',
+  'revert',
+  'review',
+  'security',
+  'skill',
+  'hardening',
+  'improve',
+  'enhance',
+]);
 const AI_SEMANTIC_TYPES = new Set([...SEMANTIC_TYPES, 'chore', 'docs']);
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
 const CONCERN_PATTERN = /^[a-z0-9-]+$/;
@@ -13,17 +26,24 @@ function git(args, cwd = process.cwd()) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }).trim();
 }
 
-function parseArgs(argv) {
-  const values = {};
-  for (let index = 0; index < argv.length; index += 2) {
-    const key = argv[index];
-    const value = argv[index + 1];
-    if (!key?.startsWith('--') || value === undefined) {
-      throw new Error('Expected --base, --head, --concern, and optional --window-days arguments');
-    }
-    values[key.slice(2)] = value;
+export function parseArgs(argv) {
+  try {
+    return parseCliArgs({
+      args: argv,
+      strict: true,
+      allowPositionals: false,
+      options: {
+        base: { type: 'string' },
+        head: { type: 'string' },
+        concern: { type: 'string' },
+        'window-days': { type: 'string' },
+      },
+    }).values;
+  } catch (error) {
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}. Expected --base, --head, --concern, and optional --window-days.`
+    );
   }
-  return values;
 }
 
 function assertInputs({ base, head, concern, windowDays }) {
@@ -46,19 +66,38 @@ function splitTableRow(row) {
 }
 
 export function extractConcernPaths(markdown, concern) {
-  const row = markdown
-    .split('\n')
-    .find((line) => line.startsWith(`| \`${concern}\``) || line.startsWith(`|\`${concern}\``));
+  const lines = markdown.split('\n');
+  const headerIndex = lines.findIndex((line) => {
+    if (!line.startsWith('|')) {
+      return false;
+    }
+    const cells = splitTableRow(line).map((cell) => cell.toLowerCase());
+    return cells.includes('id') && cells.includes('trigger_paths');
+  });
+  if (headerIndex === -1) {
+    throw new Error('Routing table header with id and trigger_paths columns not found in CONCERNS.md');
+  }
+
+  const header = splitTableRow(lines[headerIndex]).map((cell) => cell.toLowerCase());
+  const idColumn = header.indexOf('id');
+  const pathsColumn = header.indexOf('trigger_paths');
+
+  let row = null;
+  for (let index = headerIndex + 1; index < lines.length && lines[index].startsWith('|'); index += 1) {
+    const cells = splitTableRow(lines[index]);
+    if (cells[idColumn] === `\`${concern}\``) {
+      row = cells;
+      break;
+    }
+  }
   if (!row) {
     throw new Error(`Concern ${concern} is not present in the routing table`);
   }
-
-  const cells = splitTableRow(row);
-  if (cells.length < 8) {
+  if (row.length !== header.length) {
     throw new Error(`Concern ${concern} has an invalid routing row`);
   }
 
-  const paths = [...cells[6].matchAll(/`([^`]+)`/g)]
+  const paths = [...row[pathsColumn].matchAll(/`([^`]+)`/g)]
     .map((match) => match[1])
     .filter((path) => path.includes('/') || /\.[a-z]+$/i.test(path))
     .map((path) => (path.includes('*') ? `:(glob)${path}` : path));
@@ -70,7 +109,17 @@ export function extractConcernPaths(markdown, concern) {
 }
 
 export function conventionalType(subject) {
-  return subject.match(/^([a-z-]+)(?:\([^)]+\))?[!:]/i)?.[1].toLowerCase() ?? 'other';
+  const type = subject.match(/^([a-z-]+)(?:\([^)]+\))?[!:]/i)?.[1].toLowerCase();
+  if (type) {
+    return type === 'feature' ? 'feat' : type;
+  }
+  if (/^revert\b/i.test(subject)) {
+    return 'revert';
+  }
+  if (/^fix(e[sd])?\b/i.test(subject)) {
+    return 'fix';
+  }
+  return 'other';
 }
 
 export function pullRequestNumber(subject) {
@@ -94,12 +143,19 @@ function parseHistory(output, concern) {
         type: conventionalType(subject),
         pr: pullRequestNumber(subject),
       };
-    })
-    .filter((record) => allowedTypes.has(record.type));
+    });
 
   const unique = new Map();
   const unmapped = [];
+  const unclassified = [];
   for (const record of records) {
+    if (record.type === 'other') {
+      unclassified.push(record);
+      continue;
+    }
+    if (!allowedTypes.has(record.type)) {
+      continue;
+    }
     if (!record.pr) {
       unmapped.push(record);
       continue;
@@ -109,7 +165,7 @@ function parseHistory(output, concern) {
     }
   }
 
-  return { pullRequests: [...unique.values()], unmapped };
+  return { pullRequests: [...unique.values()], unmapped, unclassified };
 }
 
 function isAncestor(base, head, cwd) {
@@ -156,15 +212,15 @@ export function computeGate({ base, head, concern, windowDays = DEFAULT_WINDOW_D
     base_timestamp: baseTimestamp,
     cutoff_timestamp: cutoffTimestamp,
     paths,
-    history_status: history.unmapped.length === 0 ? 'complete' : 'partial',
+    history_status: history.unmapped.length === 0 && history.unclassified.length === 0 ? 'complete' : 'partial',
     prior_semantic_pr_count: history.pullRequests.length,
     fix_count: fixes,
     feat_count: features,
-    fix_to_feat_ratio: features === 0 ? null : fixes / features,
     signals,
     triggered: Object.values(signals).some(Boolean),
     recent_semantic_changes: history.pullRequests.slice(0, 3),
     unmapped_semantic_commits: history.unmapped,
+    unclassified_commits: history.unclassified,
   };
 }
 
