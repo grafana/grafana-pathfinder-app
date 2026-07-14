@@ -59,8 +59,8 @@ Required fields:
 - `current_contract_owner`
 - `new_contract_delta`
 - `competing_owners_or_representations`
-- `history_status` — `complete | partial | unavailable`
-- `use_ordinal` — `first | second | third_or_later`: this PR's position in the sequence of distinct PRs extending or reshaping the capability's contract surface, with the introducing PR as `first`; count PRs (the gate's distinct-PR history is the baseline evidence), not consumers or call sites
+- `history_status` — `complete | partial | unavailable`; defaults to the gate's value — upgrade `partial` to `complete` only after inspecting each unmapped or unclassified commit the gate reported and recording in `sources` why it is irrelevant to this capability
+- `use_ordinal` — `first | second | third_or_later`: this PR's position in the sequence of distinct PRs extending or reshaping the capability's contract surface, with the introducing PR as `first`; count PRs (the gate's distinct-PR history is the baseline evidence), not consumers or call sites. Count only PRs that extended or reshaped the specific contract surface at issue, not every semantic PR under the concern's paths — a scroll-position fix in the same directory does not advance the ordinal of an event-name contract. `third_or_later` plus a branching condition blocks, so over-counting manufactures blocking findings
 - `same_bug_count` — total bugs observed in this class, including the one this PR addresses; `0` when this PR does not address a bug in a previously seen class
 - `has_recorded_anchor` — `true` only when the concern has a row in the Contract anchors table; pre-contract candidates do not count
 - `anchor_violated` — `true` only when the change contradicts an invariant stated in the recorded anchor; must be `false` when `has_recorded_anchor` is `false`
@@ -70,6 +70,54 @@ Required fields:
 - `finding` — required for `contract_missing`, `contract_branching`, and `insufficient_history`; contains `finding_id`, `title`, `evidence`, `why_it_matters`, `suggested_action`, `reversibility`, and `applies_to_files`. When the policy downgrades a clean verdict to `insufficient_history`, `contract-evolution-policy.mjs` synthesizes the finding — packets with clean verdicts never include one.
 
 Also record the deterministic gate output or the router's explicitly labeled `discretionary_trigger`. Never present a subjective router judgment as a gate metric.
+
+### Packet example
+
+Emit exactly this shape — `contract-evolution-policy.mjs` validates strictly (field names, source `kind` enum, integer `pr`/`timestamp`, SHA-shaped `sha`, array-valued `evidence` and `applies_to_files`):
+
+```json
+{
+  "concern_id": "analytics-and-telemetry",
+  "origin_or_contract_anchor": "No recorded anchor; pre-contract candidate row proposes a typed facade owner.",
+  "recent_semantic_changes": [
+    {
+      "pr": 1275,
+      "sha": "fc9be20d282ebef45f8e1580a7279497e030e5af",
+      "timestamp": 1783698004,
+      "summary": "Introduced vendor-direct telemetry calls across product tiers."
+    }
+  ],
+  "current_contract_owner": "lib/telemetry/facade.ts domain operations; vendor adapter internal.",
+  "new_contract_delta": "Adds a second event vocabulary defined locally in a consumer.",
+  "competing_owners_or_representations": ["local event names in consumer module"],
+  "history_status": "complete",
+  "use_ordinal": "second",
+  "same_bug_count": 0,
+  "has_recorded_anchor": false,
+  "anchor_violated": false,
+  "branching_conditions": ["a new event or payload vocabulary without central types"],
+  "sources": [
+    {
+      "kind": "pr",
+      "id": 1275,
+      "sha": "fc9be20d282ebef45f8e1580a7279497e030e5af",
+      "selection_reason": "Introducing PR for the capability."
+    }
+  ],
+  "verdict": "contract_branching",
+  "finding": {
+    "finding_id": "CE-example-1",
+    "title": "Event vocabulary branches away from the central types",
+    "evidence": ["consumer defines event names locally instead of importing the central type"],
+    "why_it_matters": "Consumers can disagree about the payload shape.",
+    "suggested_action": "Centralize the event type.",
+    "reversibility": "reversible",
+    "applies_to_files": ["src/example/consumer.ts"]
+  }
+}
+```
+
+Packets with clean verdicts (`follows_contract`, `coherent_extension`) omit `finding`.
 
 ### Verdict values
 

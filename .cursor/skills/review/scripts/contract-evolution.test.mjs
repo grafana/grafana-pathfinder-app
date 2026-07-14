@@ -86,7 +86,7 @@ test('gate counts distinct prior PRs and excludes current branch commits', () =>
   commit(repo, 'fix(telemetry): repair facade (#11)', 'fix one\n');
   const base = commit(repo, 'fix(telemetry): follow-up in the same PR (#11)', 'fix two\n');
   git(repo, ['switch', '-q', '-c', 'feature']);
-  commit(repo, 'feat(telemetry): current PR part one (#12)', 'current one\n');
+  const inStackOne = commit(repo, 'feat(telemetry): current PR part one (#12)', 'current one\n');
   const head = commit(repo, 'feat(telemetry): current PR part two (#12)', 'current two\n');
 
   const result = computeGate({ base, head, concern: 'telemetry', cwd: repo });
@@ -100,7 +100,18 @@ test('gate counts distinct prior PRs and excludes current branch commits', () =>
     result.recent_semantic_changes.some((entry) => entry.pr === 12),
     false
   );
+  assert.deepEqual(result.in_stack_shas.sort(), [head, inStackOne].sort());
+  assert.equal(result.in_stack_shas.includes(base), false);
   assert.equal(result.triggered, true);
+});
+
+test('in_stack_shas is empty when base equals head', () => {
+  const repo = createRepo();
+  const base = commit(repo, 'feat(telemetry): add facade (#10)', 'feature\n');
+
+  const result = computeGate({ base, head: base, concern: 'telemetry', cwd: repo });
+
+  assert.deepEqual(result.in_stack_shas, []);
 });
 
 test('gate treats unreadable prose as an evidence gap but excluded types as noise', () => {

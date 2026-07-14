@@ -178,6 +178,9 @@ export function computeGate({ base, head, concern, windowDays = DEFAULT_WINDOW_D
     throw new Error('Base must be an ancestor of head');
   }
 
+  const inStackOutput = git(['rev-list', head, `^${base}`], cwd);
+  const inStackShas = inStackOutput ? inStackOutput.split('\n').filter(Boolean) : [];
+
   const concerns = git(['show', `${base}:docs/design/CONCERNS.md`], cwd);
   const paths = extractConcernPaths(concerns, concern);
   const baseTimestamp = Number(git(['show', '-s', '--format=%ct', base], cwd));
@@ -207,6 +210,7 @@ export function computeGate({ base, head, concern, windowDays = DEFAULT_WINDOW_D
     version: 1,
     base,
     head,
+    in_stack_shas: inStackShas,
     concern,
     window_days: windowDays,
     base_timestamp: baseTimestamp,
