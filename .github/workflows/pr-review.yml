@@ -45,6 +45,9 @@ jobs:
         with:
           anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Forces tag-mode posting for pull_request events: creates the review
+          # comment and wires up the GitHub comment tools so findings are posted.
+          track_progress: true
           claude_args: '--model claude-sonnet-5 --max-turns 40'
           prompt: >-
             Read .cursor/skills/review/SKILL.md and docs/design/CONCERNS.md, then
