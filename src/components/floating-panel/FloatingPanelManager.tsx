@@ -8,6 +8,7 @@ import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
+import { PANEL_MODE_CHANGE_EVENT } from '../../lib/event-names';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
@@ -42,9 +43,9 @@ export function FloatingPanelManager() {
       setMode(e.detail.mode);
     };
 
-    document.addEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+    document.addEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     return () => {
-      document.removeEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+      document.removeEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     };
   }, []);
 

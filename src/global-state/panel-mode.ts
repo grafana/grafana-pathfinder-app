@@ -1,5 +1,6 @@
 import { getAppEvents } from '@grafana/runtime';
 import { StorageKeys } from '../lib/storage-keys';
+import { PANEL_MODE_CHANGE_EVENT } from '../lib/event-names';
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
 import type { PackageOpenInfo } from '../types/content-panel.types';
 
@@ -82,7 +83,7 @@ class PanelModeManager {
     }
 
     document.dispatchEvent(
-      new CustomEvent('pathfinder-panel-mode-change', {
+      new CustomEvent(PANEL_MODE_CHANGE_EVENT, {
         detail: { mode, previous },
       })
     );

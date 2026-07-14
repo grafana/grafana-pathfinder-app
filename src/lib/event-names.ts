@@ -6,6 +6,8 @@ export const StorageEvents = {
 
 export type StorageEventName = (typeof StorageEvents)[keyof typeof StorageEvents];
 
+export const PANEL_MODE_CHANGE_EVENT = 'pathfinder-panel-mode-change';
+
 export const FloatingPanelEvents = {
   Dodge: 'pathfinder-floating-dodge',
   Compact: 'pathfinder-floating-compact',
