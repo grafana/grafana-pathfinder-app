@@ -1183,8 +1183,19 @@ describe('passesActivityGate', () => {
 
   it('opens on a later check after starting closed — closed does not latch', () => {
     const faro = freshFaro();
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
+    surface.reportPathfinderSurface('floating');
+    expect(faro.passesActivityGate(eventItem())).toBe(true);
+  });
+
+  it('an out-of-band localStorage write after a closed check does not open the gate — only a surface report does', () => {
+    const faro = freshFaro();
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
     expect(faro.passesActivityGate(eventItem())).toBe(false);
     localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
+    surface.reportPathfinderSurface('floating');
     expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
@@ -1216,7 +1227,8 @@ describe('beforeSend wiring', () => {
     expect(beforeSend(exceptionItem(['webpack://grafana-pathfinder-app/./src/lib/faro.ts']))).not.toBeNull();
     expect(beforeSend(exceptionItem(['webpack://grafana-core/./src/app.ts']))).toBeNull();
 
-    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    surface.reportPathfinderSurface('floating');
     expect(beforeSend(eventItem())).not.toBeNull();
   });
 });

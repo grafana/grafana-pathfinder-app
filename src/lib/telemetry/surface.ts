@@ -12,8 +12,10 @@ type SurfaceListener = (surface: PathfinderSurface) => void;
 
 // Single owner of "which Pathfinder surface is active": surfaces report
 // transitions here, telemetry subscribes. The DOM/localStorage read below is
-// only the cold-start fallback.
+// only the cold-start fallback, latched after its first read — every open
+// path reports on mount, so a report (never a re-read) supersedes it.
 let reportedSurface: PathfinderSurface | null = null;
+let latchedColdSurface: PathfinderSurface | null = null;
 const listeners = new Set<SurfaceListener>();
 
 // Mode literals mirror PanelMode in global-state/panel-mode — importing
@@ -43,7 +45,11 @@ export function readPathfinderSurface(): PathfinderSurface {
 }
 
 export function getPathfinderSurface(): PathfinderSurface {
-  return reportedSurface ?? readPathfinderSurface();
+  if (reportedSurface !== null) {
+    return reportedSurface;
+  }
+  latchedColdSurface ??= readPathfinderSurface();
+  return latchedColdSurface;
 }
 
 export function isPathfinderOpen(): boolean {
@@ -55,6 +61,7 @@ export function reportPathfinderSurface(surface: PathfinderSurface): void {
     return;
   }
   reportedSurface = surface;
+  latchedColdSurface = null;
   for (const listener of listeners) {
     try {
       listener(surface);
