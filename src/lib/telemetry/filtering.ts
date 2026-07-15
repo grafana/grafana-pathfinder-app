@@ -8,6 +8,7 @@ import {
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../../constants';
 import { isPathfinderOpen } from './surface';
+import { normalizeTelemetryUrl } from './url';
 
 const APP_NAME = packageJson.name;
 const LOCAL_OVERRIDE_KEY = 'pathfinder.faro.local';
@@ -130,6 +131,18 @@ function isTrackedResourceUrl(resourceUrl: string | undefined): boolean {
   }
 }
 
+// DOM/action failure text routinely embeds URLs with query-string secrets
+// (tokens, emails) — same leak normalizeTelemetryUrl closes for dedicated
+// URL attributes, applied here to any URL substring in free-text content.
+// Excludes quote/bracket/paren wrapping characters so an href like
+// `a[href="https://...token=x"]` doesn't swallow the closing `"]` into the
+// match and silently drop it along with the stripped query string.
+const EMBEDDED_URL_PATTERN = /https?:\/\/[^\s"'<>()[\]]+/g;
+
+function redactEmbeddedUrls(text: string): string {
+  return text.replace(EMBEDDED_URL_PATTERN, (match) => normalizeTelemetryUrl(match));
+}
+
 // Whitelist, not blocklist: Grafana core and other app plugins run their own
 // Faro instances on the same page, so exceptions/logs must be attributable to
 // Pathfinder, and PerformanceInstrumentation's resource entries must be
@@ -140,14 +153,20 @@ function isTrackedResourceUrl(resourceUrl: string | undefined): boolean {
 // through unfiltered.
 export function filterPathfinderTelemetry(item: TransportItem<APIEvent>): TransportItem<APIEvent> | null {
   if (isExceptionItem(item)) {
-    if (item.payload.context?.[EXPLICIT_REPORT_MARKER] === 'true') {
-      return item;
-    }
+    const isExplicit = item.payload.context?.[EXPLICIT_REPORT_MARKER] === 'true';
     const frames = item.payload.stacktrace?.frames ?? [];
-    return frames.some((frame) => isPathfinderStackFrame(frame.filename)) ? item : null;
+    if (!isExplicit && !frames.some((frame) => isPathfinderStackFrame(frame.filename))) {
+      return null;
+    }
+    const value = redactEmbeddedUrls(item.payload.value);
+    return value === item.payload.value ? item : { ...item, payload: { ...item.payload, value } };
   }
   if (isLogItem(item)) {
-    return item.payload.message.startsWith(LOG_PREFIX) ? item : null;
+    if (!item.payload.message.startsWith(LOG_PREFIX)) {
+      return null;
+    }
+    const message = redactEmbeddedUrls(item.payload.message);
+    return message === item.payload.message ? item : { ...item, payload: { ...item.payload, message } };
   }
   if (isEventItem(item)) {
     if (item.payload.name === 'faro.performance.navigation') {

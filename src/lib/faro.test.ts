@@ -196,13 +196,14 @@ describe('isGrafanaCloud', () => {
 
 function exceptionItem(
   filenames: Array<string | undefined>,
-  context?: Record<string, string>
+  context?: Record<string, string>,
+  value = 'boom'
 ): TransportItem<APIEvent> {
   return {
     type: 'exception',
     payload: {
       type: 'Error',
-      value: 'boom',
+      value,
       timestamp: new Date().toISOString(),
       stacktrace: { frames: filenames.map((filename) => ({ filename, function: 'fn' })) },
       ...(context && { context }),
@@ -211,10 +212,10 @@ function exceptionItem(
   } as unknown as TransportItem<APIEvent>;
 }
 
-function exceptionItemWithoutStacktrace(context?: Record<string, string>): TransportItem<APIEvent> {
+function exceptionItemWithoutStacktrace(context?: Record<string, string>, value = 'boom'): TransportItem<APIEvent> {
   return {
     type: 'exception',
-    payload: { type: 'Error', value: 'boom', timestamp: new Date().toISOString(), ...(context && { context }) },
+    payload: { type: 'Error', value, timestamp: new Date().toISOString(), ...(context && { context }) },
     meta: {},
   } as unknown as TransportItem<APIEvent>;
 }
@@ -292,6 +293,42 @@ describe('filterPathfinderTelemetry', () => {
 
   it('drops a log message without the prefix', () => {
     expect(filterPathfinderTelemetry(logItem('something happened'))).toBeNull();
+  });
+
+  it('redacts a URL embedded in an attributed exception value', () => {
+    const item = exceptionItem(
+      ['webpack://grafana-pathfinder-app/./src/lib/faro.ts'],
+      undefined,
+      'No elements found matching selector: a[href="https://grafana.example/d/abc?token=S:sk-live-9f83b2&user=jdoe@corp.com"]'
+    );
+    const result = filterPathfinderTelemetry(item);
+    expect(result).not.toBeNull();
+    expect(result).not.toBe(item);
+    expect(result?.payload).toMatchObject({
+      value: 'No elements found matching selector: a[href="grafana.example/d/abc"]',
+    });
+  });
+
+  it('redacts a URL embedded in an explicitly-reported exception value', () => {
+    const item = exceptionItemWithoutStacktrace(
+      { pathfinder_reported: 'true' },
+      'dispatch failed for https://grafana.example/d/abc?token=secret'
+    );
+    const result = filterPathfinderTelemetry(item);
+    expect(result?.payload).toMatchObject({ value: 'dispatch failed for grafana.example/d/abc' });
+  });
+
+  it('leaves an attributed exception value untouched (same reference) when it carries no URL', () => {
+    const item = exceptionItem(['webpack://grafana-pathfinder-app/./src/lib/faro.ts'], undefined, 'boom');
+    expect(filterPathfinderTelemetry(item)).toBe(item);
+  });
+
+  it('redacts a URL embedded in a kept log message', () => {
+    const item = logItem('[pathfinder] fetch failed for https://grafana.example/d/abc?token=secret&user=jdoe@corp.com');
+    const result = filterPathfinderTelemetry(item);
+    expect(result).not.toBeNull();
+    expect(result).not.toBe(item);
+    expect(result?.payload).toMatchObject({ message: '[pathfinder] fetch failed for grafana.example/d/abc' });
   });
 
   it('passes through other item types unfiltered', () => {
