@@ -161,10 +161,6 @@ const ALLOWED_CYCLES = new Set<string>([
   'components/interactive-tutorial/hooks/use-section-requirements.ts <-> components/interactive-tutorial/interactive-conditional.tsx <-> components/interactive-tutorial/interactive-section.tsx <-> components/interactive-tutorial/section-numbering.tsx',
   // docs-panel content area <-> milestone toolbar via the components barrel.
   'components/docs-panel/components/DocsPanelContentArea.tsx <-> components/docs-panel/components/LearningJourneyMilestoneToolbar.tsx <-> components/docs-panel/components/index.ts <-> components/docs-panel/docs-panel.tsx',
-  // global-state link-interception split across two mutually-importing files.
-  'global-state/link-interception.ts <-> global-state/utils.link-interception.ts',
-  // lib storage: bounded-record-storage <-> user-storage.
-  'lib/storage/bounded-record-storage.ts <-> lib/user-storage.ts',
 ]);
 
 // Violation key formatters — kept adjacent to allowlists so format changes
