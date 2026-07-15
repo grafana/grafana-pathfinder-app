@@ -455,6 +455,7 @@ describe('initFaro', () => {
     expect(mockSetUser).toHaveBeenCalledWith({
       id: 'abc',
       email: 'x@y.z',
+      username: window.location.hostname,
       attributes: { org_role: 'Admin', org_name: 'Acme Corp' },
     });
   });
@@ -467,6 +468,7 @@ describe('initFaro', () => {
     expect(mockSetUser).toHaveBeenCalledWith({
       id: 'abc',
       email: undefined,
+      username: window.location.hostname,
       attributes: { org_role: 'Admin', org_name: 'Acme Corp' },
     });
   });

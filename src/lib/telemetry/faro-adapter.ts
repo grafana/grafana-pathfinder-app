@@ -116,6 +116,10 @@ async function stampFaroUser(): Promise<void> {
     faroInstance?.api.setUser({
       id: identity.userId,
       email: identity.email || undefined,
+      // Same stack hostname as the session's `instance` attribute — Frontend
+      // O11y renders username as the session's display name, so the slug is
+      // visible without opening the session's attribute list.
+      username: window.location.hostname,
       attributes: { org_role: identity.orgRole, org_name: identity.orgName },
     });
   } catch {
