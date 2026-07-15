@@ -254,6 +254,33 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
         unsubscribe();
       }
     });
+
+    it('reports outcome action_error (not requirements_exhausted) when executeInteractiveAction resolves error', async () => {
+      setExecuteInteractiveActionOutcome('error');
+      render(
+        <InteractiveSection id="runner" title="Runner" autoCollapse={false}>
+          <InteractiveStep targetAction="highlight" refTarget=".a">
+            Step 1
+          </InteractiveStep>
+        </InteractiveSection>
+      );
+
+      await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toBeInTheDocument());
+      act(() => {
+        screen.getByTestId(doSectionBtn(SECTION_ID)).click();
+      });
+
+      // Give the orchestrator a window to settle without a completion signal.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // .mock.calls accumulates across tests in this file (withFaroUserAction
+      // is module-mocked, not reset per-test) — take the most recent
+      // pathfinder_section_run call, not the first.
+      const { withFaroUserAction } = require('../../lib/faro');
+      const sectionRunCalls = withFaroUserAction.mock.calls.filter((c: unknown[]) => c[0] === 'pathfinder_section_run');
+      const sectionRunCall = sectionRunCalls[sectionRunCalls.length - 1];
+      expect(sectionRunCall[4].outcomeFrom()).toBe('action_error');
+    });
   });
 
   describe('guided pause', () => {

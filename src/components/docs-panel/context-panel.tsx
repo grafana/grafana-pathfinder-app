@@ -1126,7 +1126,13 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   // "actually showing" definition the scroll-position hook uses.
   useEffect(() => {
     if (recommendationsScrollReady) {
-      document.dispatchEvent(new CustomEvent(RECOMMENDATIONS_READY_EVENT));
+      // React commits passive effects child-before-parent, so on first mount
+      // (recommendationsScrollReady already true, e.g. cached content) this
+      // effect can run before docs-panel's listener-registration effect
+      // attaches — dispatching synchronously here would be a lost event.
+      // Deferring to a microtask guarantees it fires after the whole
+      // same-commit effects flush (including that listener) has run.
+      queueMicrotask(() => document.dispatchEvent(new CustomEvent(RECOMMENDATIONS_READY_EVENT)));
     }
   }, [recommendationsScrollReady]);
 

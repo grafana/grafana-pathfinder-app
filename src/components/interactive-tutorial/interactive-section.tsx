@@ -771,6 +771,9 @@ export function InteractiveSection({
     startSectionBlocking(sectionId, dummyData, handleSectionCancel);
 
     let stoppedDueToRequirements = false;
+    // Distinct from stoppedDueToRequirements: the step's requirements passed but the
+    // action itself (or its post-verify) failed — a real action_error, not exhausted retries.
+    let stoppedDueToActionError = false;
     let completedStepsCount = startIndex; // Track number of completed steps for analytics (starts at startIndex since those are already done)
     // The completion store handles per-step persistence synchronously via
     // `markStepCompleted` — every write hits the store + storage immediately,
@@ -975,7 +978,7 @@ export function InteractiveSection({
             } else {
               // Step execution failed after retries - stop and don't auto-complete remaining steps
               // (cursor already at `i` via the prior COMPLETE_STEP dispatches)
-              stoppedDueToRequirements = true;
+              stoppedDueToActionError = true;
 
               // Wait for state to settle, then trigger reactive check
               // This ensures remaining steps update their eligibility based on completed steps
@@ -991,7 +994,7 @@ export function InteractiveSection({
           }
 
           // Section sequence completed or cancelled
-          if (!isCancelledRef.current && !stoppedDueToRequirements) {
+          if (!isCancelledRef.current && !stoppedDueToRequirements && !stoppedDueToActionError) {
             // Belt-and-braces bulk write so any steps that didn't go through the
             // per-step path (e.g. skipped via fix → `markSkipped` → `handleStepComplete`)
             // also end up in the store. `markStepsCompleted` is idempotent.
@@ -1014,7 +1017,7 @@ export function InteractiveSection({
           // Keep isCancelled state for UI feedback, will be reset on next run
 
           // Track "Do Section" analytics after completion (success or cancel)
-          const wasCanceled = isCancelledRef.current || stoppedDueToRequirements;
+          const wasCanceled = isCancelledRef.current || stoppedDueToRequirements || stoppedDueToActionError;
           setFaroUserActionAttributes({ steps_completed: completedStepsCount, canceled: wasCanceled });
           const docInfo = getSourceDocument(sectionId);
 
@@ -1057,7 +1060,13 @@ export function InteractiveSection({
         // and requirement-stops must be read from the refs/flags it sets,
         // not inferred from settlement.
         outcomeFrom: () =>
-          isCancelledRef.current ? 'cancelled' : stoppedDueToRequirements ? 'requirements_exhausted' : 'ok',
+          isCancelledRef.current
+            ? 'cancelled'
+            : stoppedDueToActionError
+              ? 'action_error'
+              : stoppedDueToRequirements
+                ? 'requirements_exhausted'
+                : 'ok',
       }
     );
   }, [

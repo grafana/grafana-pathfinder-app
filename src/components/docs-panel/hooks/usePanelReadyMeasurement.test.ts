@@ -1,4 +1,5 @@
-import { act, renderHook } from '@testing-library/react';
+import * as React from 'react';
+import { act, render, renderHook } from '@testing-library/react';
 import { usePanelReadyMeasurement } from './usePanelReadyMeasurement';
 import { recordPanelReady } from '../../../lib/telemetry';
 import { RECOMMENDATIONS_READY_EVENT } from '../../../lib/event-names';
@@ -66,5 +67,30 @@ describe('usePanelReadyMeasurement', () => {
 
     expect(mockRecordPanelReady).toHaveBeenCalledTimes(1);
     expect(mockRecordPanelReady).toHaveBeenCalledWith(expect.any(Number), 'sidebar');
+  });
+
+  it('is not missed when a descendant dispatches the ready event from its own mount effect (child-before-parent effect ordering)', async () => {
+    // React commits passive effects child-before-parent. A naive descendant
+    // that dispatches RECOMMENDATIONS_READY_EVENT synchronously from its own
+    // mount effect would fire before this hook's own effect (in the
+    // ancestor) has registered its listener. context-panel.tsx's real
+    // dispatch site defers via queueMicrotask for exactly this reason —
+    // mirrored here so this test would fail if that deferral regressed.
+    function ReadySignalChild() {
+      React.useEffect(() => {
+        queueMicrotask(() => document.dispatchEvent(new CustomEvent(RECOMMENDATIONS_READY_EVENT)));
+      }, []);
+      return null;
+    }
+    function Parent() {
+      usePanelReadyMeasurement({ hasContent: false, isRecommendationsTab: true, surface: 'sidebar' });
+      return React.createElement(ReadySignalChild);
+    }
+
+    await act(async () => {
+      render(React.createElement(Parent));
+    });
+
+    expect(mockRecordPanelReady).toHaveBeenCalledTimes(1);
   });
 });
