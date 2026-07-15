@@ -1266,6 +1266,36 @@ describe('setFaroView', () => {
     });
     expect(() => faro.setFaroView('https://grafana.com/docs/')).not.toThrow();
   });
+
+  it('keeps the internal scheme prefix in the view name (previously the bare slug)', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.setFaroView('bundled:welcome-to-pathfinder');
+    expect(mockSetView).toHaveBeenCalledWith({ name: 'bundled:welcome-to-pathfinder' });
+
+    faro.setFaroView('backend-guide:my-guide');
+    expect(mockSetView).toHaveBeenCalledWith({ name: 'backend-guide:my-guide' });
+  });
+
+  it('bounds the view name length', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.setFaroView(`https://grafana.com/docs/${'a'.repeat(500)}`);
+
+    const { name } = mockSetView.mock.calls[0]![0] as { name: string };
+    expect(name.length).toBeLessThanOrEqual(200);
+    expect(name.startsWith('grafana.com/docs/')).toBe(true);
+  });
+
+  it('sets the invalid-url sentinel for unparsable URLs instead of keeping the previous view', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.setFaroView('http://');
+    expect(mockSetView).toHaveBeenCalledWith({ name: 'invalid-url' });
+  });
 });
 
 describe('setFaroViewName', () => {

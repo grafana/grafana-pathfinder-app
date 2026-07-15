@@ -15,6 +15,7 @@ import { buildTelemetryIdentity } from './identity';
 import { getPathfinderSurface, onPathfinderSurfaceChange } from './surface';
 import { stampSessionExperiments } from './session';
 import { registerTelemetryBridge } from './bridge';
+import { normalizeTelemetryUrl } from './url';
 
 const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/d6ec87b657b65de6e363de05623d9c57';
 const APP_NAME = packageJson.name;
@@ -318,14 +319,13 @@ export function setFaroView(url: string): void {
     if (!url || !faroInstance) {
       return;
     }
-    const { hostname, pathname } = new URL(url, window.location.origin);
-    faroInstance.api.setView({ name: `${hostname}${pathname}` });
+    faroInstance.api.setView({ name: normalizeTelemetryUrl(url) });
   });
 }
 
 // For surfaces with no URL to derive a view name from (e.g. the
-// recommendations tab) — setFaroView's hostname+pathname derivation doesn't
-// apply there, so the view would otherwise stay unset/stale until a doc opens.
+// recommendations tab) — setFaroView's URL normalization doesn't apply
+// there, so the view would otherwise stay unset/stale until a doc opens.
 export function setFaroViewName(name: string): void {
   guardTelemetry(() => {
     if (name && faroInstance) {
