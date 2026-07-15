@@ -10,28 +10,84 @@ describe('surface owner', () => {
     document.body.innerHTML = '';
   });
 
-  it('falls back to the DOM/localStorage read until a surface is reported', () => {
-    const surface = freshSurface();
-    expect(surface.getPathfinderSurface()).toBe('closed');
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
 
+  it('falls back to the DOM/localStorage read until a surface is reported', () => {
     localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');
+    const surface = freshSurface();
     expect(surface.getPathfinderSurface()).toBe('floating');
   });
 
-  it('cold-read fallback requires the visible kiosk overlay, not just its persistent mount root', () => {
+  it('performs the cold read once and answers subsequent calls from the latch', () => {
     const surface = freshSurface();
+    const getItem = jest.spyOn(Storage.prototype, 'getItem');
+    const querySelector = jest.spyOn(document, 'querySelector');
 
+    expect(surface.getPathfinderSurface()).toBe('closed');
+    const storageReads = getItem.mock.calls.length;
+    const domQueries = querySelector.mock.calls.length;
+    expect(storageReads).toBeGreaterThan(0);
+
+    surface.getPathfinderSurface();
+    surface.isPathfinderOpen();
+    expect(getItem).toHaveBeenCalledTimes(storageReads);
+    expect(querySelector).toHaveBeenCalledTimes(domQueries);
+  });
+
+  it('latches the cold read: an out-of-band localStorage write is not re-read, only a report supersedes it', () => {
+    const surface = freshSurface();
+    expect(surface.getPathfinderSurface()).toBe('closed');
+
+    // Cross-tab writes land without a report; same-tab opens always report
+    // (setMode / sidebar mount / kiosk open), so the report path suffices.
+    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');
+    expect(surface.getPathfinderSurface()).toBe('closed');
+    expect(surface.isPathfinderOpen()).toBe(false);
+
+    surface.reportPathfinderSurface('floating');
+    expect(surface.getPathfinderSurface()).toBe('floating');
+    expect(surface.isPathfinderOpen()).toBe(true);
+  });
+
+  it('notifies listeners on the first report even when it matches the latched cold value', () => {
+    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');
+    const surface = freshSurface();
+    expect(surface.getPathfinderSurface()).toBe('floating');
+
+    const listener = jest.fn();
+    surface.onPathfinderSurfaceChange(listener);
+    surface.reportPathfinderSurface('floating');
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith('floating');
+  });
+
+  it('a later cold-path caller sees the latched value, not the changed DOM', () => {
+    const surface = freshSurface();
+    expect(surface.isPathfinderOpen()).toBe(false);
+
+    const el = document.createElement('div');
+    el.id = 'pathfinder-controller-root';
+    document.body.appendChild(el);
+    expect(surface.getPathfinderSurface()).toBe('closed');
+
+    surface.reportPathfinderSurface('controller');
+    expect(surface.getPathfinderSurface()).toBe('controller');
+  });
+
+  it('cold-read fallback requires the visible kiosk overlay, not just its persistent mount root', () => {
     const root = document.createElement('div');
     root.id = 'pathfinder-kiosk-root';
     document.body.appendChild(root);
     // The manager root mounts once kiosk mode is config-enabled and stays
     // in the DOM whether or not the overlay is actually open.
-    expect(surface.getPathfinderSurface()).toBe('closed');
+    expect(freshSurface().getPathfinderSurface()).toBe('closed');
 
     const overlay = document.createElement('div');
     overlay.setAttribute('data-testid', 'kiosk-mode-overlay');
     root.appendChild(overlay);
-    expect(surface.getPathfinderSurface()).toBe('kiosk');
+    expect(freshSurface().getPathfinderSurface()).toBe('kiosk');
   });
 
   it('prefers the reported surface over the cold-read fallback', () => {
