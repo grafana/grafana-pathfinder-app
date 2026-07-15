@@ -58,6 +58,7 @@ const SELECTOR_CONFIG = {
   maxRetargetDepth: 10,
   maxDisambiguationDepth: 15,
   maxScopingDepth: 8,
+  maxDescendantScan: 50,
   genericButtonWords: [
     'new',
     'add',
@@ -109,6 +110,23 @@ const DISAMBIGUATION_PENALTIES = {
   overlayScope: 75,
   nthMatch: 1000,
 } as const;
+
+// Added to a descendant's own score when that descendant is used to anchor a
+// `:has()` selector on an identity-less ancestor. Keeps has-descendant just
+// below a direct intrinsic selector but far above positional fallbacks.
+const HAS_DESCENDANT_PENALTY = 60;
+
+// Methods that carry no intrinsic identity of the element itself. A bare tag
+// only earns meaning from an ancestor scope, so it belongs here alongside the
+// positional methods: it must neither block :has() anchoring on identity-less
+// elements nor serve as a descendant anchor inside :has(...).
+const STRUCTURAL_METHODS: ReadonlySet<string> = new Set([
+  'compound',
+  'nth-of-type',
+  'nth-match',
+  'fallback',
+  'scoped-bare-tag',
+]);
 
 const OVERLAY_ROLES = ['dialog', 'alertdialog', 'menu', 'listbox', 'tooltip', 'combobox'] as const;
 
@@ -722,7 +740,7 @@ function candidateNthOfType(element: HTMLElement): Candidate | null {
   };
 }
 
-function generateCandidates(element: HTMLElement): Candidate[] {
+function generateIntrinsicCandidates(element: HTMLElement): Candidate[] {
   const candidates: Candidate[] = [];
   const push = (c: Candidate | null) => {
     if (c) {
@@ -746,6 +764,24 @@ function generateCandidates(element: HTMLElement): Candidate[] {
   push(candidateCompound(element));
   push(candidateBareTag(element));
   push(candidateNthOfType(element));
+
+  return candidates;
+}
+
+function generateCandidates(element: HTMLElement): Candidate[] {
+  const candidates = generateIntrinsicCandidates(element);
+
+  // Reach for a descendant-anchored :has() selector only when the element has no
+  // stable identity of its own — i.e. every intrinsic candidate is structural
+  // (compound/nth). This is the identity-less-wrapper case (a styling div around
+  // a nav link); the :has() selector borrows the descendant's identity.
+  const hasStableIntrinsic = candidates.some((c) => !STRUCTURAL_METHODS.has(c.method));
+  if (!hasStableIntrinsic) {
+    const hasDescendant = candidateHasDescendant(element);
+    if (hasDescendant) {
+      candidates.push(hasDescendant);
+    }
+  }
 
   return candidates;
 }
@@ -943,7 +979,12 @@ function admitCandidate(
   }
 
   if (matchCount === 1) {
-    if (candidate.method === 'button-text' || candidate.method === 'scoped-testid' || candidate.method === 'grafana') {
+    if (
+      candidate.method === 'button-text' ||
+      candidate.method === 'scoped-testid' ||
+      candidate.method === 'grafana' ||
+      candidate.method === 'has-descendant'
+    ) {
       return [{ ...candidate, matchCount }];
     }
     for (const scope of ancestorScopes) {
@@ -1008,6 +1049,152 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
 }
 
 // ============================================================================
+// Descendant-anchored :has() selectors
+// ============================================================================
+
+/** Pure-CSS candidate methods that are safe to embed inside `:has(...)`. */
+function isHasUsable(candidate: Candidate): boolean {
+  if (STRUCTURAL_METHODS.has(candidate.method)) {
+    return false;
+  }
+  if (candidate.method === 'grafana' || candidate.method === 'button-text') {
+    return false;
+  }
+  if (candidate.selector.includes(':text(') || candidate.selector.includes(':contains(')) {
+    return false;
+  }
+  return true;
+}
+
+function isInteractiveDescendant(element: HTMLElement): boolean {
+  const tag = element.tagName.toLowerCase();
+  if ((SELECTOR_CONFIG.interactiveTags as readonly string[]).includes(tag)) {
+    return true;
+  }
+  if ((SELECTOR_CONFIG.formControlTags as readonly string[]).includes(tag)) {
+    return true;
+  }
+  const role = element.getAttribute('role');
+  return Boolean(role && (SELECTOR_CONFIG.interactiveRoles as readonly string[]).includes(role));
+}
+
+interface DescendantPick {
+  selector: string;
+  score: number;
+  unique: boolean;
+  interactive: boolean;
+}
+
+function isBetterDescendant(pick: DescendantPick, current: DescendantPick | null): boolean {
+  if (!current) {
+    return true;
+  }
+  if (pick.unique !== current.unique) {
+    return pick.unique;
+  }
+  if (pick.interactive !== current.interactive) {
+    return pick.interactive;
+  }
+  return pick.score < current.score;
+}
+
+/**
+ * Find the strongest stable descendant to anchor a `:has()` selector on.
+ * Prefers globally unique selectors, then interactive/semantic descendants (a
+ * link beats a decorative icon), then the lowest internal score.
+ */
+function bestStableDescendant(element: HTMLElement): DescendantPick | null {
+  const descendants = Array.from(element.querySelectorAll<HTMLElement>('*')).slice(
+    0,
+    SELECTOR_CONFIG.maxDescendantScan
+  );
+  let best: DescendantPick | null = null;
+  for (const descendant of descendants) {
+    const interactive = isInteractiveDescendant(descendant);
+    for (const candidate of generateIntrinsicCandidates(descendant)) {
+      if (!isHasUsable(candidate)) {
+        continue;
+      }
+      const { matchCount, containsTarget } = testUniqueness(candidate.selector, descendant, candidate.method);
+      if (matchCount === 0 || !containsTarget) {
+        continue;
+      }
+      const pick: DescendantPick = {
+        selector: candidate.selector,
+        score: candidate.score,
+        unique: matchCount === 1,
+        interactive,
+      };
+      if (isBetterDescendant(pick, best)) {
+        best = pick;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Make `base` (a `tag:has(descendant)` selector) resolve to exactly `element`.
+ * A bare `:has()` matches every same-tag ancestor that contains the descendant,
+ * so tighten with the parent's child combinator, then escalate to stable
+ * ancestor scopes. Returns null when uniqueness can't be achieved.
+ */
+function tightenHasSelector(base: string, element: HTMLElement): string | null {
+  const isUnique = (selector: string): boolean => {
+    const { matchCount, containsTarget } = testUniqueness(selector, element, 'has-descendant');
+    return matchCount === 1 && containsTarget;
+  };
+
+  if (isUnique(base)) {
+    return base;
+  }
+
+  const parent = element.parentElement;
+  const withParent = parent ? `${parent.tagName.toLowerCase()} > ${base}` : null;
+  if (withParent && isUnique(withParent)) {
+    return withParent;
+  }
+
+  for (const scope of findAllAncestorScopes(element)) {
+    const scoped = `${scope.selector} ${base}`;
+    if (isUnique(scoped)) {
+      return scoped;
+    }
+    if (withParent) {
+      const scopedChild = `${scope.selector} ${withParent}`;
+      if (isUnique(scopedChild)) {
+        return scopedChild;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * For an identity-less element, build a selector that borrows a stable
+ * descendant's identity via `:has()` — e.g. `li > div:has(a[href='/explore'])`.
+ * Keeps the clicked element as the target (no retarget) and degrades far more
+ * gracefully than a positional `:nth-match`. Scored just below the descendant's
+ * own strength, so a direct intrinsic selector always wins when one exists.
+ */
+function candidateHasDescendant(element: HTMLElement): Candidate | null {
+  const descendant = bestStableDescendant(element);
+  if (!descendant) {
+    return null;
+  }
+
+  const tag = element.tagName.toLowerCase();
+  const base = `${tag}:has(${descendant.selector})`;
+  const tightened = tightenHasSelector(base, element);
+  if (!tightened) {
+    return null;
+  }
+
+  return { selector: tightened, score: descendant.score + HAS_DESCENDANT_PENALTY, method: 'has-descendant' };
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -1059,8 +1246,7 @@ export function getSelectorInfo(element: HTMLElement): SelectorInfo {
     contextStrategy = 'parent-context';
   }
 
-  const stabilityScore =
-    winner.score <= 20 ? 100 : winner.score <= 60 ? 90 : winner.score <= 150 ? 70 : winner.score <= 500 ? 50 : 20;
+  const stabilityScore = scoreToStability(winner.score);
   const flags = computeStabilityFlags(selector, method);
   const quality = computeQuality(stabilityScore, flags);
 
@@ -1210,4 +1396,100 @@ function computeQuality(stabilityScore: number, flags: StabilityFlag[]): Selecto
     return 'good';
   }
   return 'medium';
+}
+
+/**
+ * Map a candidate's internal score (lower = stronger) onto a 0–100 stability
+ * score (higher = better). Shared by `getSelectorInfo` and `analyzeSelectorString`
+ * so the element-based and string-based paths agree.
+ */
+function scoreToStability(score: number): number {
+  return score <= 20 ? 100 : score <= 60 ? 90 : score <= 150 ? 70 : score <= 500 ? 50 : 20;
+}
+
+export interface SelectorStringAnalysis {
+  method: string;
+  stabilityScore: number;
+  quality: SelectorQuality;
+  flags: StabilityFlag[];
+  warnings: string[];
+}
+
+/**
+ * Infer the method + internal score of a *typed* selector string, in the same
+ * priority order the candidate generators use. The strongest signal present wins;
+ * `computeStabilityFlags` then corrects for fragility (e.g. a testid-scoped
+ * selector that also uses `:nth-child` is downgraded via the structural flag).
+ */
+function inferMethodAndScore(selector: string): { method: string; score: number } {
+  if (selector.startsWith('grafana:') || selector.startsWith('panel:')) {
+    return { method: 'grafana', score: CANDIDATE_SCORES.grafana };
+  }
+  if (selector.includes(':has(')) {
+    return { method: 'has-descendant', score: CANDIDATE_SCORES.testId + HAS_DESCENDANT_PENALTY };
+  }
+  if (SELECTOR_CONFIG.testIdAttrs.some((attr) => selector.includes(attr))) {
+    return { method: 'data-testid', score: CANDIDATE_SCORES.testId };
+  }
+  if (/(^|[\s>+~])[\w-]*#[\w-]+/.test(selector)) {
+    return { method: 'id', score: CANDIDATE_SCORES.cssId };
+  }
+  if (selector.includes('[aria-label')) {
+    return { method: 'aria-label', score: CANDIDATE_SCORES.ariaLabel };
+  }
+  if (selector.includes(':text(')) {
+    return { method: 'role-text', score: CANDIDATE_SCORES.roleText };
+  }
+  if (selector.includes(':contains(')) {
+    return { method: 'role-contains', score: CANDIDATE_SCORES.roleContains };
+  }
+  if (selector.includes('[placeholder')) {
+    return { method: 'placeholder', score: CANDIDATE_SCORES.placeholder };
+  }
+  if (selector.includes('[title')) {
+    return { method: 'title', score: CANDIDATE_SCORES.title };
+  }
+  if (selector.includes('[name')) {
+    return { method: 'name', score: CANDIDATE_SCORES.name };
+  }
+  if (selector.includes('[href')) {
+    return { method: 'href', score: CANDIDATE_SCORES.href };
+  }
+  if (selector.includes(':nth-match')) {
+    return { method: 'nth-match', score: CANDIDATE_SCORES.nthMatch };
+  }
+  if (selector.includes(':nth-of-type') || selector.includes(':nth-child')) {
+    return { method: 'nth-of-type', score: CANDIDATE_SCORES.nthOfType };
+  }
+  return { method: 'compound', score: CANDIDATE_SCORES.compound };
+}
+
+/**
+ * Stability analysis for a selector STRING (no element required), so the block
+ * editor's health badge reflects the generator's own quality model
+ * (`computeStabilityFlags` + `computeQuality` + `scoreToStability`) rather than a
+ * parallel heuristic. Match-count-dependent warnings are added by the caller,
+ * which knows the live DOM.
+ */
+export function analyzeSelectorString(selector: string): SelectorStringAnalysis {
+  const { method, score } = inferMethodAndScore(selector);
+  const stabilityScore = scoreToStability(score);
+  const flags = computeStabilityFlags(selector, method);
+  const quality = computeQuality(stabilityScore, flags);
+
+  const warnings: string[] = [];
+  if (flags.includes('structural')) {
+    warnings.push('Selector depends on element position and may break if the page structure changes');
+  }
+  if (flags.includes('i18n-sensitive')) {
+    warnings.push('Selector uses translatable text — may break in different locales');
+  }
+  if (flags.includes('session-unstable')) {
+    warnings.push('Selector uses framework-generated values — may change between sessions');
+  }
+  if (flags.includes('environment-unstable')) {
+    warnings.push('Selector contains instance-specific data — may not work in different environments');
+  }
+
+  return { method, stabilityScore, quality, flags, warnings };
 }
