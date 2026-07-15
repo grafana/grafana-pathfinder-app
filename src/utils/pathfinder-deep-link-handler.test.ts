@@ -19,11 +19,13 @@ jest.mock('../plugin.json', () => ({
 const mockLocationServiceReplace = jest.fn();
 const mockHistoryListen = jest.fn().mockReturnValue(() => {});
 let mockGetHistoryImpl: () => { listen: typeof mockHistoryListen } | null = () => ({ listen: mockHistoryListen });
+let mockRouterPathname = '/';
 
 jest.mock('@grafana/runtime', () => ({
   locationService: {
     replace: (path: string) => mockLocationServiceReplace(path),
     getHistory: () => mockGetHistoryImpl(),
+    getLocation: () => ({ pathname: mockRouterPathname }),
   },
 }));
 
@@ -87,10 +89,11 @@ const setSearch = (search: string) => {
   window.history.replaceState({}, '', url.toString());
 };
 
-const setPathname = (pathname: string) => {
+const setPathname = (pathname: string, routerPathname = pathname) => {
   const url = new URL(window.location.href);
   url.pathname = pathname;
   window.history.replaceState({}, '', url.toString());
+  mockRouterPathname = routerPathname;
 };
 
 describe('handlePathfinderDeepLink', () => {
@@ -198,6 +201,24 @@ describe('handlePathfinderDeepLink', () => {
     expect(mockSetPendingOpenSource).not.toHaveBeenCalled();
     expect(deps.attemptAutoOpen).not.toHaveBeenCalled();
     // The full-screen URL's `?doc=` must survive for FullScreenPanel's rehydration.
+    expect(window.location.search).toBe('?doc=bundled%3Awelcome-to-grafana&type=docs');
+  });
+
+  it('bails out on the full-screen route when Grafana is served from a subpath', async () => {
+    setPathname(
+      '/grafana/a/grafana-pathfinder-app/fullscreen',
+      '/a/grafana-pathfinder-app/fullscreen'
+    );
+    setSearch('?doc=bundled%3Awelcome-to-grafana&type=docs');
+    const deps = mkDeps();
+
+    expect(handlePathfinderDeepLink(deps)).toBe(false);
+
+    await flushPromises();
+    expect(mockFindDocPage).not.toHaveBeenCalled();
+    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
+    expect(mockSetPendingOpenSource).not.toHaveBeenCalled();
+    expect(deps.attemptAutoOpen).not.toHaveBeenCalled();
     expect(window.location.search).toBe('?doc=bundled%3Awelcome-to-grafana&type=docs');
   });
 
@@ -389,6 +410,22 @@ describe('installDeepLinkNavListener', () => {
     const historyHandler = mockHistoryListen.mock.calls[0][0] as () => void;
 
     setPathname('/a/grafana-pathfinder-app/fullscreen');
+    setSearch('?doc=bundled%3Awelcome-to-grafana&type=docs');
+    historyHandler();
+
+    await flushPromises();
+    expect(mockFindDocPage).not.toHaveBeenCalled();
+    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
+  });
+
+  it('does not process a full-screen navigation under a Grafana subpath', async () => {
+    installDeepLinkNavListener(mkDeps());
+    const historyHandler = mockHistoryListen.mock.calls[0][0] as () => void;
+
+    setPathname(
+      '/grafana/a/grafana-pathfinder-app/fullscreen',
+      '/a/grafana-pathfinder-app/fullscreen'
+    );
     setSearch('?doc=bundled%3Awelcome-to-grafana&type=docs');
     historyHandler();
 
