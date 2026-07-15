@@ -349,7 +349,10 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
             const redirectUrl = new URL(location, originalUrl.origin);
 
             if (redirectUrl.origin !== originalUrl.origin) {
-              logger.warn(`Blocked redirect to different origin: ${redirectUrl.origin}`);
+              logger.warn('Blocked redirect to different origin', {
+                redirect_origin: redirectUrl.origin,
+                content_url: normalizeTelemetryUrl(url),
+              });
               lastError = {
                 message: `Cross-origin redirect blocked for security: ${redirectUrl.origin}`,
                 errorType: 'other',
@@ -359,6 +362,7 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
 
               if (!isRedirectTrusted) {
                 logger.warn('Redirect target not in trusted domain list', {
+                  content_url: normalizeTelemetryUrl(url),
                   final_url: normalizeTelemetryUrl(redirectUrl.href),
                 });
                 lastError = {

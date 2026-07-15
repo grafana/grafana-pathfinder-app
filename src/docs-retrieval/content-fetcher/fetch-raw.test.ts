@@ -218,6 +218,24 @@ describe('fetchRawHtml — telemetry log hygiene', () => {
     }
   });
 
+  it('normalizes both URLs in context when an ok response redirects to an untrusted URL', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(htmlResponse('<html>x</html>', 'https://evil.com/x?leak=zzz'));
+
+    await fetchRawHtml(SECRET_URL, {});
+
+    for (const message of loggedMessages()) {
+      expect(message).not.toContain('token=secret123');
+      expect(message).not.toContain('leak=zzz');
+    }
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Redirect target not in trusted domain list',
+      expect.objectContaining({
+        content_url: 'grafana.com/docs/grafana/latest/panels/',
+        final_url: 'evil.com/x',
+      })
+    );
+  });
+
   it('keeps the original URL out of the manual-redirect log message', async () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce(redirectResponse(301, 'https://evil.com/phishing'));
 
