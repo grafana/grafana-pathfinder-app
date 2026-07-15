@@ -17,9 +17,8 @@
       "type": "video",
       "id": "video-vimeo",
       "provider": "vimeo",
-      "src": "https://vimeo.com/76979871",
-      "title": "Vimeo embed",
-      "authorNote": "Placeholder Vimeo sample id (76979871). Swap for the canonical Vimeo rickroll equivalent when one is confirmed."
+      "src": "https://vimeo.com/927766087",
+      "title": "Vimeo embed (rickroll)"
     },
     {
       "type": "video",

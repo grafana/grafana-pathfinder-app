@@ -49,7 +49,7 @@ describe('video-showcase fixture', () => {
 
   it('routes the Vimeo block to a vimeo-video element', () => {
     const [el] = findByType(parseFixture(), 'vimeo-video');
-    expect(el?.props.src).toBe('https://vimeo.com/76979871');
+    expect(el?.props.src).toBe('https://vimeo.com/927766087');
   });
 
   it('keeps a fully-qualified native src untouched and threads baseUrl', () => {
