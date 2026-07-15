@@ -324,8 +324,8 @@ export function setFaroView(url: string): void {
 }
 
 // For surfaces with no URL to derive a view name from (e.g. the
-// recommendations tab) — setFaroView's hostname+pathname derivation doesn't
-// apply there, so the view would otherwise stay unset/stale until a doc opens.
+// recommendations tab) — setFaroView's URL normalization doesn't apply
+// there, so the view would otherwise stay unset/stale until a doc opens.
 export function setFaroViewName(name: string): void {
   guardTelemetry(() => {
     if (name && faroInstance) {
