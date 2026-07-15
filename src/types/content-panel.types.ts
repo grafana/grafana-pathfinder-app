@@ -83,6 +83,7 @@ export interface ContextPanelState extends SceneObjectState {
   onOpenLearningJourney?: (url: string, title: string) => void;
   onOpenDocsPage?: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
   onOpenEditor?: () => void;
+  recommendationsReady?: boolean;
 }
 
 /**

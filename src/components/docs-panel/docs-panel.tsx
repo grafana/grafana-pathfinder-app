@@ -815,6 +815,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   }, [pluginConfig]);
 
   const { tabs, activeTabId, contextPanel } = model.useState();
+  const { recommendationsReady = false } = contextPanel.useState();
   React.useEffect(() => {
     addGlobalModalStyles();
   }, []);
@@ -943,7 +944,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // when other tab properties change (isLoading, error, etc.)
   const stableContent = React.useMemo(() => activeTab?.content, [activeTab?.content]);
 
-  usePanelReadyMeasurement({ hasContent: !!stableContent, isRecommendationsTab, surface: panelMode });
+  usePanelReadyMeasurement({
+    hasContent: !!stableContent,
+    isRecommendationsTab,
+    recommendationsReady,
+    surface: panelMode,
+  });
 
   // STABILITY: Memoize the AlignmentPendingContext value keyed on the two
   // underlying primitives so consumers (`useStepChecker` in every interactive

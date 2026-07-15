@@ -1,8 +1,6 @@
-import * as React from 'react';
-import { act, render, renderHook } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import { usePanelReadyMeasurement } from './usePanelReadyMeasurement';
 import { recordPanelReady } from '../../../lib/telemetry';
-import { RECOMMENDATIONS_READY_EVENT } from '../../../lib/event-names';
 
 jest.mock('../../../lib/telemetry', () => ({
   recordPanelReady: jest.fn(),
@@ -21,7 +19,13 @@ describe('usePanelReadyMeasurement', () => {
     const nowSpy = jest.spyOn(performance, 'now').mockImplementation(() => now);
 
     const { rerender } = renderHook(
-      ({ hasContent }) => usePanelReadyMeasurement({ hasContent, isRecommendationsTab: false, surface: 'sidebar' }),
+      ({ hasContent }) =>
+        usePanelReadyMeasurement({
+          hasContent,
+          isRecommendationsTab: false,
+          recommendationsReady: false,
+          surface: 'sidebar',
+        }),
       { initialProps: { hasContent: false } }
     );
 
@@ -34,7 +38,14 @@ describe('usePanelReadyMeasurement', () => {
   });
 
   it('records a measurement for content that is already ready at mount', () => {
-    renderHook(() => usePanelReadyMeasurement({ hasContent: true, isRecommendationsTab: false, surface: 'sidebar' }));
+    renderHook(() =>
+      usePanelReadyMeasurement({
+        hasContent: true,
+        isRecommendationsTab: false,
+        recommendationsReady: false,
+        surface: 'sidebar',
+      })
+    );
 
     expect(mockRecordPanelReady).toHaveBeenCalledTimes(1);
     expect(mockRecordPanelReady).toHaveBeenCalledWith(expect.any(Number), 'sidebar');
@@ -42,7 +53,13 @@ describe('usePanelReadyMeasurement', () => {
 
   it('waits for content before recording, then records exactly once', () => {
     const { rerender } = renderHook(
-      ({ hasContent }) => usePanelReadyMeasurement({ hasContent, isRecommendationsTab: false, surface: 'floating' }),
+      ({ hasContent }) =>
+        usePanelReadyMeasurement({
+          hasContent,
+          isRecommendationsTab: false,
+          recommendationsReady: false,
+          surface: 'floating',
+        }),
       { initialProps: { hasContent: false } }
     );
 
@@ -56,37 +73,50 @@ describe('usePanelReadyMeasurement', () => {
     expect(mockRecordPanelReady).toHaveBeenCalledTimes(1);
   });
 
-  it('records for the recommendations tab only once the recommendations-ready event fires', () => {
-    renderHook(() => usePanelReadyMeasurement({ hasContent: false, isRecommendationsTab: true, surface: 'sidebar' }));
+  it('records for the recommendations tab once recommendations become ready', () => {
+    const { rerender } = renderHook(
+      ({ recommendationsReady }) =>
+        usePanelReadyMeasurement({
+          hasContent: false,
+          isRecommendationsTab: true,
+          recommendationsReady,
+          surface: 'sidebar',
+        }),
+      { initialProps: { recommendationsReady: false } }
+    );
 
     expect(mockRecordPanelReady).not.toHaveBeenCalled();
 
-    act(() => {
-      document.dispatchEvent(new CustomEvent(RECOMMENDATIONS_READY_EVENT));
-    });
+    rerender({ recommendationsReady: true });
 
     expect(mockRecordPanelReady).toHaveBeenCalledTimes(1);
     expect(mockRecordPanelReady).toHaveBeenCalledWith(expect.any(Number), 'sidebar');
   });
 
-  it('is not missed when a descendant dispatches the ready event from its own mount effect (child-before-parent effect ordering)', async () => {
-    // Mirrors context-panel.tsx's real dispatch site (microtask-deferred)
-    // so this fails if that deferral regresses.
-    function ReadySignalChild() {
-      React.useEffect(() => {
-        queueMicrotask(() => document.dispatchEvent(new CustomEvent(RECOMMENDATIONS_READY_EVENT)));
-      }, []);
-      return null;
-    }
-    function Parent() {
-      usePanelReadyMeasurement({ hasContent: false, isRecommendationsTab: true, surface: 'sidebar' });
-      return React.createElement(ReadySignalChild);
-    }
-
-    await act(async () => {
-      render(React.createElement(Parent));
-    });
+  it('records when recommendations are already ready at mount (synchronous cache hit, the previously-racy path)', () => {
+    renderHook(() =>
+      usePanelReadyMeasurement({
+        hasContent: false,
+        isRecommendationsTab: true,
+        recommendationsReady: true,
+        surface: 'sidebar',
+      })
+    );
 
     expect(mockRecordPanelReady).toHaveBeenCalledTimes(1);
+    expect(mockRecordPanelReady).toHaveBeenCalledWith(expect.any(Number), 'sidebar');
+  });
+
+  it('ignores recommendations readiness when the recommendations tab is not active', () => {
+    renderHook(() =>
+      usePanelReadyMeasurement({
+        hasContent: false,
+        isRecommendationsTab: false,
+        recommendationsReady: true,
+        surface: 'sidebar',
+      })
+    );
+
+    expect(mockRecordPanelReady).not.toHaveBeenCalled();
   });
 });
