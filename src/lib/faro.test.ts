@@ -1174,10 +1174,11 @@ describe('passesActivityGate', () => {
   });
 
   it('latches open for the rest of the page load once Pathfinder was open', () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
     const faro = freshFaro();
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    surface.reportPathfinderSurface('floating');
     expect(faro.passesActivityGate(eventItem())).toBe(true);
-    localStorage.removeItem(PANEL_MODE_KEY);
+    surface.reportPathfinderSurfaceClosed('floating');
     expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 

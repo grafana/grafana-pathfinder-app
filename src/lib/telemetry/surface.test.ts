@@ -63,7 +63,7 @@ describe('surface owner', () => {
     expect(listener).toHaveBeenCalledWith('floating');
   });
 
-  it('double init: a second consumer cold-reading after the latch sees the latched value, not the changed DOM', () => {
+  it('a later cold-path caller sees the latched value, not the changed DOM', () => {
     const surface = freshSurface();
     expect(surface.isPathfinderOpen()).toBe(false);
 
