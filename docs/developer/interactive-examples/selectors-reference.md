@@ -6,13 +6,37 @@ How to target DOM elements in interactive guides using the enhanced selector eng
 
 Follow this priority order when choosing selectors:
 
-1. **`data-testid` attributes** -- most stable, maintained by Grafana core
-2. **Semantic attributes** -- `href`, `aria-*`, `id`, `role`
-3. **`:contains()` text matching** -- reliable for buttons and labels
-4. **`:has()` structural matching** -- when you need to match by descendants
-5. **CSS class selectors** -- least stable; avoid auto-generated class names
+1. **`grafana:` selector paths** -- version-aware references to selectors maintained by Grafana core
+2. **`data-testid` attributes** -- stable when no known Grafana selector path exists
+3. **Semantic attributes** -- `href`, `aria-*`, `id`, `role`
+4. **`:contains()` text matching** -- reliable for buttons and labels
+5. **`:has()` structural matching** -- when you need to match by descendants
+6. **CSS class selectors** -- least stable; avoid auto-generated class names
 
 > Avoid selecting by auto-generated class names or deep DOM nesting. Use attributes (`data-testid`, `href`, `aria-*`, `id`) instead.
+
+### Version-aware `grafana:` selectors
+
+When the element picker recognizes a `data-testid` or `aria-label` from Grafana's E2E selector catalog, it emits a `grafana:` path instead of copying the rendered attribute value:
+
+```text
+grafana:components.RefreshPicker.runButton
+grafana:pages.Login.username
+grafana:components.Breadcrumbs.breadcrumb:Home
+```
+
+The final segment after the last colon is the argument for a parameterized selector. At runtime, Pathfinder resolves the path against the running Grafana version and queries both the resolved `data-testid` and `aria-label` forms. Reverse lookup covers both `components.*` and `pages.*`; if an attribute value maps ambiguously to multiple paths, the picker skips `grafana:` and uses its CSS strategies instead. The raw test ID remains available as an alternative selector.
+
+### Generated structural fallbacks
+
+The element picker only uses positional selectors as a last resort:
+
+- A candidate that is not unique is scoped to the nearest stable ancestor with a test ID, a non-generated ID, or a stable `data-*` attribute.
+- A bare tag such as `button` is accepted only when a stable ancestor makes the scoped form unique.
+- An identity-less wrapper can borrow a stable descendant's identity with `:has()`. The generator prefers unique interactive descendants and tightens the selector with a parent-child relationship or stable ancestor scope until it identifies only the clicked wrapper.
+- Primary and alternative selectors pass the same uniqueness and scoping checks. If no stable option exists, the picker can emit a positional fallback that Selector Health marks as structural.
+
+The recorder ignores clicks inside `[data-pathfinder-content="true"]`, which marks Pathfinder's sidebar, floating panel, and full-screen surfaces. Record against the target Grafana UI, not controls inside Pathfinder itself.
 
 ## Pseudo-selectors
 
@@ -244,17 +268,15 @@ The default hover duration is 2000 ms, configured in `INTERACTIVE_CONFIG.delays.
 
 ## Selector resilience pipeline
 
-Single-pass selector resolution is fragile against lazy-loaded UI and minor markup churn. The interactive engine ships with a resilience pipeline (`resolveSelectorPipeline`) that escalates strategies until it finds a unique match, returning a confidence score for each result.
+Single-pass selector resolution is fragile against lazy-loaded UI and minor markup churn. The interactive engine ships with a resilience pipeline (`resolveSelectorPipeline`) that retries while lazy-loaded UI mounts and reports whether the match was exact or retried.
 
-The pipeline runs through these strategies in order:
+The pipeline runs through these stages:
 
-1. **Native CSS** — `document.querySelectorAll(selector)` against the user-provided selector. Fastest path; used unchanged when the user-supplied selector is clean.
-2. **Enhanced selectors** — JavaScript fallbacks for `:contains()`, `:has()` (on older browsers), `:nth-match()`, and the `panel:` domain prefix.
-3. **`:text()` exact match** — for short button labels (under 20 characters), eliminating false positives that substring matches would produce. Prefer `:text("Save")` over `:contains("Save")` when the label is short.
-4. **`data-testid` prefix matching** — when the exact ID isn't found but a unique prefix exists, the engine matches the prefix (uniqueness-guarded — never returns multiple elements).
-5. **Retry with backoff** — `resolveWithRetry()` waits 200 ms, 600 ms, then 1.8 s between attempts to give lazy-loaded UI time to mount.
+1. **Resolve prefixes** — `grafana:` paths resolve against the running Grafana version; `panel:` paths resolve to a panel container by title.
+2. **Exact attempt** — the enhanced query engine evaluates native CSS and the `:contains()`, `:has()`, `:text()`, and `:nth-match()` extensions. Plain-text `button` actions use button-text lookup. `data-testid` prefix matching is handled inside this query step and only succeeds for a unique prefix match.
+3. **Retry with backoff** — the pipeline waits 200 ms, 600 ms, then 1.8 s between attempts. From the second retry onward, it can relax child combinators (`>`) to descendant combinators when the original selector still has no match.
 
-Each successful resolution returns a **confidence score** that the block editor surfaces as a Selector Health badge:
+Exact pipeline matches report confidence `1.0`; retried matches report `0.95`. Separately, the block editor derives the Selector Health badge from the selector's stability signals:
 
 | Badge     | Confidence | Meaning                                                                    |
 | --------- | ---------- | -------------------------------------------------------------------------- |
