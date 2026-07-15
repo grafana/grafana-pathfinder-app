@@ -16,6 +16,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import type { CloudChainEnvironment, ProvisionedCloudTarget } from './cloud-chain-environment';
 
 /** Prefix for provisioned SAs — used for identification and orphan cleanup. */
 const SA_NAME_PREFIX = 'pathfinder-e2e-';
@@ -66,7 +67,7 @@ function isStaleOrphan(name: string): boolean {
  * one SA is live at a time (chains run sequentially), tracked in `currentSaId`
  * so teardown — including from signal handlers — can always find it.
  */
-export class SharedCloudStackEnvironment {
+export class SharedCloudStackEnvironment implements CloudChainEnvironment {
   private currentSaId: number | null = null;
   private readonly runId = randomUUID().slice(0, 8);
 
@@ -105,7 +106,7 @@ export class SharedCloudStackEnvironment {
    * still leaves the SA discoverable for teardown. Throws on failure (a bad
    * admin token is a setup error, not something to silently skip).
    */
-  async provisionChain(): Promise<string> {
+  async provisionChain(): Promise<ProvisionedCloudTarget> {
     const name = serviceAccountName(this.runId);
     const sa = await this.api<CreatedServiceAccount>('POST', '/api/serviceaccounts', { name, role: SA_ROLE });
     this.currentSaId = sa.id;
@@ -117,9 +118,8 @@ export class SharedCloudStackEnvironment {
         name,
         secondsToLive: TOKEN_TTL_SECONDS,
       });
-      return token.key;
+      return { kind: 'shared', targetUrl: new URL('/', this.cloudUrl).toString(), token: token.key };
     } catch (err) {
-      // Don't leave the SA behind if token creation fails.
       await this.teardownChain();
       throw err;
     }
@@ -129,9 +129,9 @@ export class SharedCloudStackEnvironment {
    * Delete the chain's service account (and its tokens). Best-effort: the token
    * TTL bounds the damage if the delete fails, and `sweepOrphans` cleans up later.
    */
-  async teardownChain(): Promise<void> {
+  async teardownChain(): Promise<string[]> {
     if (this.currentSaId === null) {
-      return;
+      return [];
     }
     const id = this.currentSaId;
     this.currentSaId = null;
@@ -141,13 +141,16 @@ export class SharedCloudStackEnvironment {
         console.log(`   🧹 Deleted service account id ${id}`);
       }
     } catch (err) {
-      console.warn(`   ⚠ Failed to delete service account id ${id} (it will expire via TTL): ${errorMessage(err)}`);
+      const warning = `Failed to delete service account id ${id} (it will expire via TTL): ${errorMessage(err)}`;
+      console.warn(`   ⚠ ${warning}`);
+      return [warning];
     }
+    return [];
   }
 
   /** Tear down the currently live service account, if any. */
-  async teardownAll(): Promise<void> {
-    await this.teardownChain();
+  async teardownAll(): Promise<string[]> {
+    return this.teardownChain();
   }
 
   /**

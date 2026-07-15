@@ -47,7 +47,7 @@ afterEach(() => {
 });
 
 describe('SharedCloudStackEnvironment.provisionChain', () => {
-  it('creates a service account then a token and returns the key', async () => {
+  it('creates a service account then a token and returns a provisioned target', async () => {
     const calls = mockFetch((call) => {
       if (call.method === 'POST' && call.url.endsWith('/api/serviceaccounts')) {
         return { ok: true, json: { id: 42, name: 'pathfinder-e2e-abcd1234' } };
@@ -59,9 +59,9 @@ describe('SharedCloudStackEnvironment.provisionChain', () => {
     });
 
     const env = new SharedCloudStackEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
-    const token = await env.provisionChain();
+    const target = await env.provisionChain();
 
-    expect(token).toBe('glsa_minted');
+    expect(target).toEqual({ kind: 'shared', targetUrl: CLOUD_URL, token: 'glsa_minted' });
     expect(calls[0]).toMatchObject({
       method: 'POST',
       url: 'https://stack.grafana.net/api/serviceaccounts',
@@ -96,7 +96,7 @@ describe('SharedCloudStackEnvironment.teardownChain', () => {
 
     const env = new SharedCloudStackEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
     await env.provisionChain();
-    await env.teardownChain();
+    await expect(env.teardownChain()).resolves.toEqual([]);
 
     const del = calls.find((c) => c.method === 'DELETE');
     expect(del?.url).toBe('https://stack.grafana.net/api/serviceaccounts/7');
@@ -105,13 +105,13 @@ describe('SharedCloudStackEnvironment.teardownChain', () => {
   it('is a no-op when nothing was provisioned', async () => {
     const calls = mockFetch(() => ({ ok: true }));
     const env = new SharedCloudStackEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
-
-    await env.teardownChain();
+    await expect(env.teardownChain()).resolves.toEqual([]);
 
     expect(calls).toHaveLength(0);
   });
 
   it('does not throw when the delete fails (TTL is the safety net)', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     mockFetch((call) => {
       if (call.method === 'DELETE') {
         return { ok: false, status: 500 };
@@ -124,8 +124,9 @@ describe('SharedCloudStackEnvironment.teardownChain', () => {
 
     const env = new SharedCloudStackEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
     await env.provisionChain();
-
-    await expect(env.teardownChain()).resolves.toBeUndefined();
+    await expect(env.teardownChain()).resolves.toEqual([
+      'Failed to delete service account id 9 (it will expire via TTL): DELETE /api/serviceaccounts/9 failed: HTTP 500 Error',
+    ]);
   });
 });
 
@@ -158,6 +159,7 @@ describe('SharedCloudStackEnvironment.sweepOrphans', () => {
   });
 
   it('does not throw when the search request fails', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     mockFetch(() => ({ ok: false, status: 403 }));
     const env = new SharedCloudStackEnvironment(ADMIN_TOKEN, CLOUD_URL, false);
 

@@ -529,6 +529,38 @@ describe('Selector Generator — Pipeline', () => {
   });
 
   // ==========================================================================
+  // grafana e2e-selector awareness
+  // ==========================================================================
+
+  describe('grafana e2e-selector awareness', () => {
+    it('prefers a version-stable grafana: selector for a known component testid', () => {
+      const button = document.createElement('button');
+      button.setAttribute('data-testid', 'data-testid RefreshPicker run button');
+      document.body.appendChild(button);
+
+      expect(generateBestSelector(button)).toMatch(/^grafana:components\./);
+    });
+
+    it('keeps the raw testid selector available as a fallback', () => {
+      const button = document.createElement('button');
+      button.setAttribute('data-testid', 'data-testid RefreshPicker run button');
+      document.body.appendChild(button);
+
+      const primary = generateBestSelector(button);
+      const fallbacks = generateFallbackSelectors(button, primary);
+      expect(fallbacks.some((s) => s.includes("[data-testid='data-testid RefreshPicker run button']"))).toBe(true);
+    });
+
+    it('emits a grafana:pages selector as the best selector for a page-level element', () => {
+      const input = document.createElement('input');
+      input.setAttribute('data-testid', 'data-testid Username input field');
+      document.body.appendChild(input);
+
+      expect(generateBestSelector(input)).toMatch(/^grafana:pages\./);
+    });
+  });
+
+  // ==========================================================================
   // Integration
   // ==========================================================================
 

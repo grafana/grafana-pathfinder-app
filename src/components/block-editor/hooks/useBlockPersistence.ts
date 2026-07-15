@@ -42,16 +42,8 @@ export interface UseBlockPersistenceOptions {
  * Hook return type
  */
 export interface UseBlockPersistenceReturn {
-  /** Save guide to localStorage */
-  save: () => void;
-  /** Load guide from localStorage */
-  load: () => JsonGuide | null;
   /** Clear saved guide from localStorage */
   clear: () => void;
-  /** Check if there's a saved guide */
-  hasSavedGuide: () => boolean;
-  /** Get last save timestamp */
-  getLastSaveTime: () => Date | null;
 }
 
 /**
@@ -136,54 +128,12 @@ export function useBlockPersistence({
     }
   }, [guide, blockIds, viewMode, jsonModeState, storageKey, onSave]);
 
-  const load = useCallback((): JsonGuide | null => {
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (!stored) {
-        return null;
-      }
-
-      const parsed: StoredGuide = JSON.parse(stored);
-
-      if (parsed.version !== STORAGE_VERSION) {
-        logger.warn('Stored guide version mismatch, may need migration');
-      }
-
-      return parsed.guide;
-    } catch (e) {
-      logger.error('Failed to load guide from localStorage', { error: e });
-      return null;
-    }
-  }, [storageKey]);
-
   const clear = useCallback(() => {
     try {
       localStorage.removeItem(storageKey);
       lastGuideRef.current = '';
     } catch (e) {
       logger.error('Failed to clear guide from localStorage', { error: e });
-    }
-  }, [storageKey]);
-
-  const hasSavedGuide = useCallback((): boolean => {
-    try {
-      return localStorage.getItem(storageKey) !== null;
-    } catch {
-      return false;
-    }
-  }, [storageKey]);
-
-  const getLastSaveTime = useCallback((): Date | null => {
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (!stored) {
-        return null;
-      }
-
-      const parsed: StoredGuide = JSON.parse(stored);
-      return new Date(parsed.savedAt);
-    } catch {
-      return null;
     }
   }, [storageKey]);
 
@@ -248,10 +198,6 @@ export function useBlockPersistence({
   }, [viewMode, jsonModeState, autoSave, autoSavePaused, save]);
 
   return {
-    save,
-    load,
     clear,
-    hasSavedGuide,
-    getLastSaveTime,
   };
 }

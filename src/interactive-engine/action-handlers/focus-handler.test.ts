@@ -8,6 +8,12 @@ import * as elementValidator from '../../lib/dom';
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
 jest.mock('../../lib/dom');
+// Keep the real @grafana/runtime module graph out of this suite: it transitively
+// loads prismjs, whose auto-highlight callback calls the document.querySelectorAll
+// stubbed below and chokes on the mock elements it returns.
+jest.mock('@grafana/runtime', () => ({
+  config: { buildInfo: { version: '1.0' } },
+}));
 
 const mockStateManager = {
   setState: jest.fn(),

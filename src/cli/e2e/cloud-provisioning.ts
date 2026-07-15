@@ -1,47 +1,51 @@
 import { sameOrigin } from './e2e-targets';
 import { SharedCloudStackEnvironment } from './shared-cloud-stack-environment';
 import type { CloudAuthPolicy } from './cloud-auth';
+import type { CloudChainCleanupRegistry } from './cloud-chain-cleanup-registry';
+import type {
+  CloudChainTeardownContext,
+  CloudChainTeardownTarget,
+  ProvisionedCloudTarget,
+} from './cloud-chain-environment';
 import type { PackageMeta } from './e2e-results';
-import {
-  ColdCloudStackEnvironment,
-  type ColdCloudStackCleanupRegistry,
-  type ColdCloudStackProvisioningConfig,
-} from './cold-cloud-stack-environment';
+import type { CloudStackPoolManager } from './cloud-stack-pool-manager';
 
 interface PlannedGuideRef {
   id: string;
 }
-interface CloudTargetEnvironment {
-  teardownChain(): Promise<void | string[]>;
-}
 
-interface ProvisionedCloudTarget {
-  env: CloudTargetEnvironment;
-  token: string;
-  targetUrl?: string;
-  cleanupRegistry?: ColdCloudStackCleanupRegistry;
+interface TrackedCloudTarget {
+  env: CloudChainTeardownTarget;
+  target: ProvisionedCloudTarget;
+  cleanupRegistry?: CloudChainCleanupRegistry;
 }
 export class ProvisionedCloudTargets {
-  private readonly targets = new Map<string, ProvisionedCloudTarget>();
-  private readonly guideTargets = new Map<string, ProvisionedCloudTarget>();
+  private readonly targets = new Map<string, TrackedCloudTarget>();
+  private readonly guideTargets = new Map<string, TrackedCloudTarget>();
 
-  add(targetUrl: string, provisioned: ProvisionedCloudTarget): void {
-    this.targets.set(new URL(targetUrl).origin, provisioned);
+  add(target: ProvisionedCloudTarget, env: CloudChainTeardownTarget): void {
+    this.targets.set(new URL(target.targetUrl).origin, { env, target });
   }
-  addForGuides(guideIds: string[], provisioned: ProvisionedCloudTarget & { targetUrl: string }): void {
+  addForGuides(
+    guideIds: string[],
+    target: ProvisionedCloudTarget,
+    env: CloudChainTeardownTarget,
+    cleanupRegistry?: CloudChainCleanupRegistry
+  ): void {
+    const tracked: TrackedCloudTarget = cleanupRegistry ? { env, target, cleanupRegistry } : { env, target };
     for (const guideId of guideIds) {
-      this.guideTargets.set(guideId, provisioned);
+      this.guideTargets.set(guideId, tracked);
     }
   }
 
   targetUrlForGuide(guideId: string, fallbackTargetUrl: string): string {
-    return this.guideTargets.get(guideId)?.targetUrl ?? fallbackTargetUrl;
+    return this.guideTargets.get(guideId)?.target.targetUrl ?? fallbackTargetUrl;
   }
 
   tokenForGuide(guideId: string, fallbackTargetUrl: string | undefined): string | undefined {
     const guideTarget = this.guideTargets.get(guideId);
     if (guideTarget) {
-      return guideTarget.token;
+      return guideTarget.target.token;
     }
     return this.tokenFor(fallbackTargetUrl);
   }
@@ -52,26 +56,26 @@ export class ProvisionedCloudTargets {
     }
     for (const [origin, provisioned] of this.targets) {
       if (sameOrigin(origin, targetUrl)) {
-        return provisioned.token;
+        return provisioned.target.token;
       }
     }
     return undefined;
   }
 
-  async teardownAll(): Promise<string[]> {
+  async teardownAll(context?: CloudChainTeardownContext): Promise<string[]> {
     const warnings: string[] = [];
-    const tornDown = new Set<ProvisionedCloudTarget>();
+    const tornDown = new Set<TrackedCloudTarget>();
     for (const provisioned of this.guideTargets.values()) {
       if (!tornDown.has(provisioned)) {
         tornDown.add(provisioned);
-        warnings.push(...((await provisioned.env.teardownChain()) ?? []));
+        warnings.push(...((await provisioned.env.teardownChain(context)) ?? []));
         if (provisioned.cleanupRegistry) {
-          provisioned.cleanupRegistry.untrack(provisioned.env as ColdCloudStackEnvironment);
+          provisioned.cleanupRegistry.untrack(provisioned.env);
         }
       }
     }
     for (const { env } of this.targets.values()) {
-      warnings.push(...((await env.teardownChain()) ?? []));
+      warnings.push(...((await env.teardownChain(context)) ?? []));
     }
     return warnings;
   }
@@ -98,9 +102,9 @@ export function chainNeedsCloudStack(options: {
   chain: PlannedGuideRef[];
   packageMetaById: Map<string, PackageMeta>;
   cloudAuth: CloudAuthPolicy | undefined;
-  cloudStack: ColdCloudStackProvisioningConfig | undefined;
+  hasIsolatedCloudStack: boolean;
 }): boolean {
-  if (!options.cloudStack) {
+  if (!options.hasIsolatedCloudStack) {
     return false;
   }
   return options.chain.some((planned) => {
@@ -129,36 +133,33 @@ export async function provisionCloudTargetsForChain(options: {
   cloudAuth: CloudAuthPolicy | undefined;
   chain: PlannedGuideRef[];
   packageMetaById: Map<string, PackageMeta>;
-  cloudStack?: ColdCloudStackProvisioningConfig;
-  cloudStackCleanup?: ColdCloudStackCleanupRegistry;
+  cloudStackPoolManager?: CloudStackPoolManager;
+  cloudChainCleanup?: CloudChainCleanupRegistry;
   verbose: boolean;
 }): Promise<ProvisionedCloudTargets> {
   const provisionedTargets = new ProvisionedCloudTargets();
   try {
-    const cloudStack = options.cloudStack;
     if (
-      cloudStack &&
+      options.cloudStackPoolManager &&
       chainNeedsCloudStack({
         chain: options.chain,
         packageMetaById: options.packageMetaById,
         cloudAuth: options.cloudAuth,
-        cloudStack,
+        hasIsolatedCloudStack: true,
       })
     ) {
       const ids = cloudGuideIds(options.chain, options.packageMetaById);
-      console.log(`\n☁️ Provisioning an ephemeral Grafana Cloud stack for ${ids.length} guide(s)...`);
-      const env = new ColdCloudStackEnvironment(cloudStack, options.verbose);
-      options.cloudStackCleanup?.track(env);
+      console.log(`\n☁️ Leasing a Grafana Cloud stack from the E2E pool manager for ${ids.length} guide(s)...`);
+      const lease = await options.cloudStackPoolManager.leaseForChain({
+        chain: options.chain,
+        packageMetaById: options.packageMetaById,
+      });
+      options.cloudChainCleanup?.track(lease);
       try {
-        const stack = await env.provisionChain();
-        provisionedTargets.addForGuides(ids, {
-          env,
-          token: stack.token,
-          targetUrl: stack.targetUrl,
-          cleanupRegistry: options.cloudStackCleanup,
-        });
+        const stack = await lease.provisionChain();
+        provisionedTargets.addForGuides(ids, stack, lease, options.cloudChainCleanup);
       } catch (err) {
-        options.cloudStackCleanup?.untrack(env);
+        options.cloudChainCleanup?.untrack(lease);
         throw err;
       }
       return provisionedTargets;
@@ -170,7 +171,7 @@ export async function provisionCloudTargetsForChain(options: {
       }
       console.log(`\n🔑 Provisioning a service account for ${new URL(targetUrl).origin}...`);
       const env = new SharedCloudStackEnvironment(adminToken, targetUrl, options.verbose);
-      provisionedTargets.add(targetUrl, { env, token: await env.provisionChain() });
+      provisionedTargets.add(await env.provisionChain(), env);
     }
     return provisionedTargets;
   } catch (err) {
