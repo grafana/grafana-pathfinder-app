@@ -296,6 +296,60 @@ describe('resolveRemotePackage (single, recommender)', () => {
     expect(result.skipped[0]!.message).toContain('--cloud-instance-admin-token for https://play.grafana.org/');
   });
 
+  it('carries testEnvironment.plugins through to the resolved guide', async () => {
+    mockResolve({
+      ok: true,
+      id: 'knowledge-graph-guide',
+      contentUrl: 'https://cdn.test/knowledge-graph-guide/content.json',
+      manifestUrl: 'https://cdn.test/knowledge-graph-guide/manifest.json',
+      repository: 'r',
+      manifest: {
+        id: 'knowledge-graph-guide',
+        type: 'guide',
+        testEnvironment: { tier: 'cloud', instance: 'learn.grafana.net', plugins: ['grafana-asserts-app'] },
+      },
+    });
+    mockIndex([
+      {
+        id: 'knowledge-graph-guide',
+        path: 'knowledge-graph-guide/',
+        type: 'guide',
+        testEnvironment: { tier: 'cloud', instance: 'learn.grafana.net', plugins: ['grafana-asserts-app'] },
+      },
+    ]);
+    mockFetch({ ok: true, text: '{"id":"knowledge-graph-guide"}' });
+
+    const result = await resolveRemotePackage('knowledge-graph-guide', {
+      ...CLOUD_OPTIONS,
+      cloudTargetCapabilities: { sharedStackUrls: ['https://learn.grafana.net/'] },
+    });
+
+    expect(result.runnable).toHaveLength(1);
+    expect(result.runnable[0]).toMatchObject({
+      id: 'knowledge-graph-guide',
+      tier: 'cloud',
+      plugins: ['grafana-asserts-app'],
+    });
+  });
+
+  it('omits the plugins field when testEnvironment declares no plugins', async () => {
+    mockResolve({
+      ok: true,
+      id: 'alerting-101',
+      contentUrl: 'https://cdn.test/alerting-101/content.json',
+      manifestUrl: 'https://cdn.test/alerting-101/manifest.json',
+      repository: 'r',
+      manifest: { id: 'alerting-101', type: 'guide', testEnvironment: { tier: 'local' } },
+    });
+    mockIndex([{ id: 'alerting-101', path: 'alerting-101/', type: 'guide', testEnvironment: { tier: 'local' } }]);
+    mockFetch({ ok: true, text: '{"id":"alerting-101"}' });
+
+    const result = await resolveRemotePackage('alerting-101', OPTIONS);
+
+    expect(result.runnable).toHaveLength(1);
+    expect(result.runnable[0]).not.toHaveProperty('plugins');
+  });
+
   it('treats a package with no manifest as a runnable local guide', async () => {
     mockResolve({
       ok: true,
