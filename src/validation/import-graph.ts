@@ -473,6 +473,49 @@ export function findCycles(graph: ModuleGraph = buildModuleGraph()): string[][] 
     .map((component) => [...component].sort());
 }
 
+/**
+ * A grandfathered cycle in the ratchet allowlist. Beyond the SCC key, each
+ * carries a justification and a paydown tracking issue so a new cycle can't be
+ * silenced by pasting its key in with an empty rubber-stamp comment.
+ */
+export interface AllowedCycleEntry {
+  cycle: string;
+  reason: string;
+  tracking: string;
+}
+
+const CYCLE_REASON_MIN_LENGTH = 20;
+const CYCLE_TRACKING_RE = /^#\d+$/;
+const CYCLE_TRACKING_URL_RE = /github\.com\/[^/]+\/[^/]+\/issues\/\d+/;
+
+/**
+ * Validates that every allowlisted cycle is justified and tracked: unique key,
+ * a substantive `reason`, and a `tracking` issue (either `#1234` or a GitHub
+ * issues URL). Returns a list of human-readable errors (empty when all pass).
+ */
+export function validateAllowedCycleEntries(entries: readonly AllowedCycleEntry[]): string[] {
+  const errors: string[] = [];
+
+  const keys = new Set(entries.map((entry) => entry.cycle));
+  if (keys.size !== entries.length) {
+    errors.push(`Duplicate 'cycle' keys in ALLOWED_CYCLES (${entries.length} entries, ${keys.size} unique).`);
+  }
+
+  for (const entry of entries) {
+    const label = entry.cycle.split(' <-> ')[0] || '(empty cycle key)';
+    if (entry.reason.trim().length < CYCLE_REASON_MIN_LENGTH) {
+      errors.push(`${label}: 'reason' is missing or too short — explain why the cycle is tolerated.`);
+    }
+    if (!CYCLE_TRACKING_RE.test(entry.tracking) && !CYCLE_TRACKING_URL_RE.test(entry.tracking)) {
+      errors.push(
+        `${label}: 'tracking' must be an issue reference ('#1234') or a GitHub issues URL, got '${entry.tracking}'.`
+      );
+    }
+  }
+
+  return errors;
+}
+
 // ---------------------------------------------------------------------------
 // Ratchet mechanism
 // ---------------------------------------------------------------------------

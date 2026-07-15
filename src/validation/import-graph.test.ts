@@ -18,6 +18,7 @@ import {
   extractRelativeImports,
   findCycles,
   findStronglyConnectedComponents,
+  validateAllowedCycleEntries,
   getNewViolations,
   getRootLevelSourceFiles,
   getSourceTier,
@@ -595,5 +596,53 @@ describe('buildModuleGraph', () => {
     for (const [node, edges] of graph.adjacency) {
       expect(edges.has(node)).toBe(false);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateAllowedCycleEntries
+// ---------------------------------------------------------------------------
+
+describe('validateAllowedCycleEntries', () => {
+  const valid = { cycle: 'a.ts <-> b.ts', reason: 'shared type extraction pending', tracking: '#1359' };
+
+  it('accepts a well-formed entry with a #-issue', () => {
+    expect(validateAllowedCycleEntries([valid])).toEqual([]);
+  });
+
+  it('accepts a GitHub issues URL as tracking', () => {
+    const url = 'https://github.com/grafana/grafana-pathfinder-app/issues/1359';
+    expect(validateAllowedCycleEntries([{ ...valid, tracking: url }])).toEqual([]);
+  });
+
+  it('flags a reason that is missing or too short', () => {
+    const errors = validateAllowedCycleEntries([{ ...valid, reason: 'too short' }]);
+    expect(errors.some((e) => e.includes("'reason'"))).toBe(true);
+  });
+
+  it('flags whitespace-only reasons (trimmed before length check)', () => {
+    const errors = validateAllowedCycleEntries([{ ...valid, reason: '                          ' }]);
+    expect(errors.some((e) => e.includes("'reason'"))).toBe(true);
+  });
+
+  it('flags a tracking value that is neither #-issue nor issues URL', () => {
+    const errors = validateAllowedCycleEntries([{ ...valid, tracking: 'later' }]);
+    expect(errors.some((e) => e.includes("'tracking'"))).toBe(true);
+  });
+
+  it('rejects a PR URL (must be an issues URL, not pull)', () => {
+    const prUrl = 'https://github.com/grafana/grafana-pathfinder-app/pull/1358';
+    const errors = validateAllowedCycleEntries([{ ...valid, tracking: prUrl }]);
+    expect(errors.some((e) => e.includes("'tracking'"))).toBe(true);
+  });
+
+  it('flags duplicate cycle keys', () => {
+    const errors = validateAllowedCycleEntries([valid, { ...valid }]);
+    expect(errors.some((e) => e.includes('Duplicate'))).toBe(true);
+  });
+
+  it('labels errors by the first file in the offending cycle', () => {
+    const errors = validateAllowedCycleEntries([{ cycle: 'x.ts <-> y.ts', reason: 'x', tracking: 'x' }]);
+    expect(errors.every((e) => e.startsWith('x.ts:'))).toBe(true);
   });
 });
