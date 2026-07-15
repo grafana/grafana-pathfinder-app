@@ -273,9 +273,7 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
       // Give the orchestrator a window to settle without a completion signal.
       await new Promise((resolve) => setTimeout(resolve, 200));
 
-      // .mock.calls accumulates across tests in this file (withFaroUserAction
-      // is module-mocked, not reset per-test) — take the most recent
-      // pathfinder_section_run call, not the first.
+      // mock.calls accumulates across tests in this file — take the latest call.
       const { withFaroUserAction } = require('../../lib/faro');
       const sectionRunCalls = withFaroUserAction.mock.calls.filter((c: unknown[]) => c[0] === 'pathfinder_section_run');
       const sectionRunCall = sectionRunCalls[sectionRunCalls.length - 1];

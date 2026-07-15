@@ -70,12 +70,8 @@ describe('usePanelReadyMeasurement', () => {
   });
 
   it('is not missed when a descendant dispatches the ready event from its own mount effect (child-before-parent effect ordering)', async () => {
-    // React commits passive effects child-before-parent. A naive descendant
-    // that dispatches RECOMMENDATIONS_READY_EVENT synchronously from its own
-    // mount effect would fire before this hook's own effect (in the
-    // ancestor) has registered its listener. context-panel.tsx's real
-    // dispatch site defers via queueMicrotask for exactly this reason —
-    // mirrored here so this test would fail if that deferral regressed.
+    // Mirrors context-panel.tsx's real dispatch site (microtask-deferred)
+    // so this fails if that deferral regresses.
     function ReadySignalChild() {
       React.useEffect(() => {
         queueMicrotask(() => document.dispatchEvent(new CustomEvent(RECOMMENDATIONS_READY_EVENT)));

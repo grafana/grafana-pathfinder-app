@@ -1120,18 +1120,13 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     !contextData.isLoading && !isLoadingRecommendations && hasFetchedRecommendations && hasLoadedCustomGuides;
   const scrollContainerRef = useRecommendationsScrollPosition(recommendationsScrollReady);
 
-  // Signals docs-panel's panel_lcp_ms measurement that the recommendations
-  // list (this renderer's content) is actually showing, not just mounted —
-  // reuse recommendationsScrollReady so this can't drift from the same
-  // "actually showing" definition the scroll-position hook uses.
+  // Signals docs-panel's panel_lcp_ms that recommendations are actually
+  // showing (reuses the same readiness the scroll-position hook uses).
+  // Deferred to a microtask since effects commit child-before-parent —
+  // dispatching synchronously on first mount could race ahead of the
+  // ancestor's listener-registration effect.
   useEffect(() => {
     if (recommendationsScrollReady) {
-      // React commits passive effects child-before-parent, so on first mount
-      // (recommendationsScrollReady already true, e.g. cached content) this
-      // effect can run before docs-panel's listener-registration effect
-      // attaches — dispatching synchronously here would be a lost event.
-      // Deferring to a microtask guarantees it fires after the whole
-      // same-commit effects flush (including that listener) has run.
       queueMicrotask(() => document.dispatchEvent(new CustomEvent(RECOMMENDATIONS_READY_EVENT)));
     }
   }, [recommendationsScrollReady]);
