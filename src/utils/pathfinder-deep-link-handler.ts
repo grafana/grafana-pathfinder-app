@@ -11,7 +11,6 @@
 
 import { locationService } from '@grafana/runtime';
 
-import pluginJson from '../plugin.json';
 import { PLUGIN_BASE_URL, ROUTES } from '../constants';
 import { logger } from '../lib/logging';
 import { panelModeManager } from '../global-state/panel-mode';
@@ -91,7 +90,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
   } else if (panelModeParam === 'fullscreen') {
     panelModeManager.setMode('fullscreen');
     rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));
-    let target = `/a/${pluginJson.id}/fullscreen`;
+    let target = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
     if (docsParam) {
       const fullScreenParams = new URLSearchParams();
       fullScreenParams.set('doc', docsParam);

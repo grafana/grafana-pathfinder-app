@@ -201,6 +201,19 @@ describe('handlePathfinderDeepLink', () => {
     expect(window.location.search).toBe('?doc=bundled%3Awelcome-to-grafana&type=docs');
   });
 
+  it('still processes a ?doc= link on a look-alike route that is not exactly the full-screen route', async () => {
+    // Guards the exact-match strictness: a `fullscreen`-prefixed but non-equal
+    // pathname must NOT bail. A future loosening to startsWith/includes would
+    // regress normal routes and this test would catch it.
+    setPathname('/a/grafana-pathfinder-app/fullscreen-extra');
+    setSearch('?doc=bundled%3Afoo');
+    const deps = mkDeps();
+
+    expect(handlePathfinderDeepLink(deps)).toBe(true);
+    await flushPromises();
+    expect(mockFindDocPage).toHaveBeenCalledWith('bundled:foo');
+  });
+
   it('dispatches auto-launch-tutorial when the sidebar is already mounted (SPA-arrival case)', async () => {
     jest.useFakeTimers();
     try {
