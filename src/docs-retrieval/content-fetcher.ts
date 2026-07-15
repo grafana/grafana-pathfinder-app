@@ -2,7 +2,7 @@
 // This version ONLY fetches content and extracts basic metadata
 // All DOM processing is moved to React components
 import { RawContent, ContentFetchResult, ContentFetchOptions, ContentType } from '../types/content.types';
-import { parseUrlSafely, isTrustedFinalUrl } from '../security';
+import { parseUrlSafely, isTrustedFinalUrl, isInteractiveLearningUrl } from '../security';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 import { resolveRelativeUrls } from './resolve-relative-urls';
@@ -122,6 +122,12 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
 
     // Determine content type based on URL patterns
     const contentType = determineContentType(url);
+    // Whether fetchRawHtml actually attempted the content.json ↔ unstyled.html
+    // ladder for this URL. `contentType === 'learning-journey'` only matches
+    // grafana.com path patterns (/tutorials/, /milestone-N/, ...) — generic
+    // guides on the interactive-learning hostnames get the same ladder via a
+    // separate branch in fetchRawHtml, so they must be included here too.
+    const triedContentJsonLadder = contentType === 'learning-journey' || isInteractiveLearningUrl(url);
 
     // fetchRawHtml resolves the content.json ↔ unstyled.html ladder
     // internally (tryGrafanaDocsContentLadder) — the tier isn't knowable
@@ -132,7 +138,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       const userFriendlyError = generateUserFriendlyError(fetchResult.error, cleanUrl);
       // Terminal ladder failure: both content.json and unstyled.html were
       // tried — classify as the deepest tier attempted, not `other`.
-      if (contentType === 'learning-journey') {
+      if (triedContentJsonLadder) {
         tier = 'unstyled-html';
         recordContentFetchFallback({
           url,
@@ -156,10 +162,10 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     const isNativeJson = fetchResult.isNativeJson || false;
     tier = isNativeJson ? 'content-json' : 'unstyled-html';
 
-    // Learning-journey URLs always try content.json first (see
-    // tryGrafanaDocsContentLadder in fetch-raw.ts) — landing on the HTML
-    // tier for one of them means that ladder fell back.
-    if (contentType === 'learning-journey' && tier === 'unstyled-html') {
+    // These URLs always try content.json first (see tryGrafanaDocsContentLadder
+    // / the isInteractiveLearningUrl branch in fetch-raw.ts) — landing on the
+    // HTML tier for one of them means that ladder fell back.
+    if (triedContentJsonLadder && tier === 'unstyled-html') {
       recordContentFetchFallback({ url, tierUsed: 'unstyled-html', errorType: 'content-json-unavailable' });
     }
 

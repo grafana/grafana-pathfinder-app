@@ -118,6 +118,24 @@ describe('reportAppInteraction Faro mirroring', () => {
     expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
     warnSpy.mockRestore();
   });
+
+  it('normalizes *_url properties in the Faro mirror but leaves the RudderStack payload raw', () => {
+    const rawUrl = 'https://grafana.com/docs/foo/?token=secret#frag';
+    reportAppInteraction(UserInteraction.OpenResourceClick, { content_url: rawUrl });
+
+    const reportedProps = mockReportInteraction.mock.calls[0][1];
+    const mirroredProps = mockPushFaroUserAction.mock.calls[0][1];
+
+    expect(reportedProps.content_url).toBe(rawUrl);
+    expect(mirroredProps.content_url).toBe('grafana.com/docs/foo/');
+  });
+
+  it('does not touch string properties whose key does not end in url', () => {
+    reportAppInteraction(UserInteraction.OpenResourceClick, { content_title: 'https://grafana.com/looks-like-a-url' });
+
+    const mirroredProps = mockPushFaroUserAction.mock.calls[0][1];
+    expect(mirroredProps.content_title).toBe('https://grafana.com/looks-like-a-url');
+  });
 });
 
 describe('reportAppInteraction experiment enrichment', () => {

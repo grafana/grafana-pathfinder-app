@@ -1,9 +1,9 @@
 import pluginJson from '../../plugin.json';
 import { StorageKeys } from '../storage-keys';
 import { isExtensionSidebarOwnedByPathfinder } from '../storage/extension-sidebar';
+import { testIds } from '../../constants/testIds';
 
 const SIDEBAR_COMPONENT_TITLE = 'Interactive learning';
-const KIOSK_ROOT_ID = 'pathfinder-kiosk-root';
 const CONTROLLER_ROOT_ID = 'pathfinder-controller-root';
 
 export type PathfinderSurface = 'sidebar' | 'floating' | 'fullscreen' | 'kiosk' | 'controller' | 'closed';
@@ -30,7 +30,10 @@ export function readPathfinderSurface(): PathfinderSurface {
   if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, SIDEBAR_COMPONENT_TITLE)) {
     return 'sidebar';
   }
-  if (document.getElementById(KIOSK_ROOT_ID) !== null) {
+  // Query the overlay itself, not the persistent manager root — the root
+  // mounts once kiosk mode is config-enabled and stays in the DOM whether
+  // or not the overlay is actually visible.
+  if (document.querySelector(`[data-testid="${testIds.kioskMode.overlay}"]`) !== null) {
     return 'kiosk';
   }
   if (document.getElementById(CONTROLLER_ROOT_ID) !== null) {

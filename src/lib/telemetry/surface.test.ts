@@ -18,6 +18,22 @@ describe('surface owner', () => {
     expect(surface.getPathfinderSurface()).toBe('floating');
   });
 
+  it('cold-read fallback requires the visible kiosk overlay, not just its persistent mount root', () => {
+    const surface = freshSurface();
+
+    const root = document.createElement('div');
+    root.id = 'pathfinder-kiosk-root';
+    document.body.appendChild(root);
+    // The manager root mounts once kiosk mode is config-enabled and stays
+    // in the DOM whether or not the overlay is actually open.
+    expect(surface.getPathfinderSurface()).toBe('closed');
+
+    const overlay = document.createElement('div');
+    overlay.setAttribute('data-testid', 'kiosk-mode-overlay');
+    root.appendChild(overlay);
+    expect(surface.getPathfinderSurface()).toBe('kiosk');
+  });
+
   it('prefers the reported surface over the cold-read fallback', () => {
     const surface = freshSurface();
     localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');

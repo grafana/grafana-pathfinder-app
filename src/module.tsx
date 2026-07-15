@@ -228,7 +228,6 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           const container = document.createElement('div');
           container.id = 'pathfinder-kiosk-root';
           document.body.appendChild(container);
-          reportPathfinderSurface('kiosk');
           const root = await createCompatRoot(container);
           root.render(
             React.createElement(KioskModeManager, {

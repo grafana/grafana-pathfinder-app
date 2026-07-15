@@ -136,6 +136,54 @@ describe('content.json → unstyled.html ladder', () => {
     expect(order).not.toContain('content.json');
     expect(order).toContain('unstyled.html');
   });
+
+  // Generic interactive-learning URLs (matched by hostname, not by the
+  // /tutorials/ or /milestone-N/ path patterns determineContentType looks
+  // for) go through the same content.json ladder via a separate branch in
+  // fetchRawHtml — the fallback telemetry must cover them too.
+  it('records a content-fetch fallback for generic interactive-learning URLs when content.json is unavailable', async () => {
+    const genericUrl = 'https://interactive-learning.grafana.net/guide/getting-started';
+    const htmlHeaders = new Headers();
+    htmlHeaders.set('Content-Type', 'text/html; charset=utf-8');
+
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.endsWith('content.json')) {
+        return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' });
+      }
+      if (url.endsWith('unstyled.html')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () => '<html><head><title>Guide</title></head><body>unstyled</body></html>',
+          url,
+          headers: htmlHeaders,
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' });
+    });
+
+    const result = await fetchContent(genericUrl);
+
+    expect(result.content).not.toBeNull();
+    expect(mockRecordContentFetchFallback).toHaveBeenCalledWith({
+      url: genericUrl,
+      tierUsed: 'unstyled-html',
+      errorType: 'content-json-unavailable',
+    });
+  });
+
+  it('records a terminal content-fetch fallback for generic interactive-learning URLs when both tiers fail', async () => {
+    const genericUrl = 'https://interactive-learning.grafana.net/guide/missing';
+    (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 404, statusText: 'Not Found' });
+
+    const result = await fetchContent(genericUrl);
+
+    expect(result.content).toBeNull();
+    expect(mockRecordContentFetchFallback).toHaveBeenCalledWith({
+      url: genericUrl,
+      tierUsed: 'unstyled-html',
+      errorType: 'not-found',
+    });
+  });
 });
 
 describe('null content handling for learning journeys', () => {
