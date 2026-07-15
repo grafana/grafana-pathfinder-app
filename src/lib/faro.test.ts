@@ -1253,6 +1253,28 @@ describe('setFaroView', () => {
     });
     expect(() => faro.setFaroView('https://grafana.com/docs/')).not.toThrow();
   });
+
+  it('sets internal content identifiers as the view instead of dropping them', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.setFaroView('bundled:welcome-to-pathfinder');
+    expect(mockSetView).toHaveBeenCalledWith({ name: 'bundled:welcome-to-pathfinder' });
+
+    faro.setFaroView('backend-guide:my-guide');
+    expect(mockSetView).toHaveBeenCalledWith({ name: 'backend-guide:my-guide' });
+  });
+
+  it('bounds the view name length', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.setFaroView(`https://grafana.com/docs/${'a'.repeat(500)}`);
+
+    const { name } = mockSetView.mock.calls[0]![0] as { name: string };
+    expect(name.length).toBeLessThanOrEqual(200);
+    expect(name.startsWith('grafana.com/docs/')).toBe(true);
+  });
 });
 
 describe('setFaroViewName', () => {

@@ -15,6 +15,7 @@ import { buildTelemetryIdentity } from './identity';
 import { getPathfinderSurface, onPathfinderSurfaceChange } from './surface';
 import { stampSessionExperiments } from './session';
 import { registerTelemetryBridge } from './bridge';
+import { normalizeTelemetryUrl } from './url';
 
 const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/d6ec87b657b65de6e363de05623d9c57';
 const APP_NAME = packageJson.name;
@@ -318,8 +319,7 @@ export function setFaroView(url: string): void {
     if (!url || !faroInstance) {
       return;
     }
-    const { hostname, pathname } = new URL(url, window.location.origin);
-    faroInstance.api.setView({ name: `${hostname}${pathname}` });
+    faroInstance.api.setView({ name: normalizeTelemetryUrl(url) });
   });
 }
 

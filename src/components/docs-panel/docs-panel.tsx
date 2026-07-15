@@ -403,7 +403,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       const tab = this.state.tabs.find((t) => t.id === tabId);
       const result = await fetchContent(url);
 
-      // Check if fetch succeeded or failed
       if (result.content) {
         let content = result.content;
 
