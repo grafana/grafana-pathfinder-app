@@ -2,10 +2,29 @@ import { InteractiveElementData } from '../types/interactive.types';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { logger } from '../lib/logging';
-import { recordRequirementsExhausted, recordSequenceActionError, type SequenceRunResult } from '../lib/telemetry';
+import {
+  recordRequirementsExhausted,
+  recordSequenceActionError,
+  type SequenceErrorClassification,
+  type SequenceRunResult,
+} from '../lib/telemetry';
 
 const MAX_REQUIREMENT_CONTEXT_LENGTH = 200;
-const MAX_ERROR_CONTEXT_LENGTH = 200;
+const MAX_ERROR_NAME_LENGTH = 64;
+
+export function classifySequenceError(error: unknown): SequenceErrorClassification {
+  if (!(error instanceof Error)) {
+    return { name: 'UnknownError', category: 'other' };
+  }
+  const name = error.name.slice(0, MAX_ERROR_NAME_LENGTH) || 'Error';
+  if (/timeout|timed out/i.test(error.message)) {
+    return { name, category: 'timeout' };
+  }
+  if (/no elements? found|not found/i.test(error.message)) {
+    return { name, category: 'not_found' };
+  }
+  return { name, category: 'dispatch_failed' };
+}
 
 // Exhaustion is classified by what the *last* attempt failed on: an unmet
 // requirements check vs the action itself throwing.
@@ -47,7 +66,7 @@ export class SequenceManager {
   ): Promise<RetryResult> {
     let retryCount = 0;
     let lastFailure: 'requirements' | 'action' = 'requirements';
-    let lastErrorMessage = '';
+    let lastError: unknown;
 
     while (retryCount < this.MAX_RETRIES) {
       try {
@@ -63,7 +82,7 @@ export class SequenceManager {
       } catch (error) {
         this.stateManager.logError(errorContext, error as Error, context.data);
         lastFailure = 'action';
-        lastErrorMessage = error instanceof Error ? error.message : String(error);
+        lastError = error;
         retryCount++;
         if (retryCount < this.MAX_RETRIES) {
           await this.sleep(this.RETRY_DELAY);
@@ -76,7 +95,7 @@ export class SequenceManager {
     );
     const requirement = (context.data.requirements ?? '').slice(0, MAX_REQUIREMENT_CONTEXT_LENGTH);
     if (lastFailure === 'action') {
-      recordSequenceActionError(requirement, this.MAX_RETRIES, lastErrorMessage.slice(0, MAX_ERROR_CONTEXT_LENGTH));
+      recordSequenceActionError(requirement, this.MAX_RETRIES, classifySequenceError(lastError));
       return 'failed_action';
     }
     recordRequirementsExhausted(requirement, this.MAX_RETRIES);

@@ -7,6 +7,13 @@ export type StepOutcome = 'ok' | 'error';
 
 export type SequenceRunResult = 'completed' | 'requirements_exhausted' | 'action_error';
 
+export type SequenceErrorCategory = 'timeout' | 'not_found' | 'dispatch_failed' | 'other';
+
+export interface SequenceErrorClassification {
+  name: string;
+  category: SequenceErrorCategory;
+}
+
 export type RecommenderErrorType = 'unavailable' | 'rate-limit' | 'other';
 export type RecommenderOutcome = 'ok' | RecommenderErrorType;
 
