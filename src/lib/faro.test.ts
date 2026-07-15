@@ -88,6 +88,7 @@ jest.mock('../utils/openfeature', () => ({ getActiveExperiments: () => mockGetAc
 interface MockedBootDataUser {
   email: string;
   orgRole: string;
+  orgName: string;
   analytics: { identifier: string };
   language?: string;
 }
@@ -96,7 +97,12 @@ const mockedConfig = {
   buildInfo: { env: 'production', version: '13.1.0', edition: undefined as string | undefined },
   bootData: {
     settings: { buildInfo: { versionString: 'Grafana Cloud' } },
-    user: { email: 'x@y.z', orgRole: 'Admin', analytics: { identifier: 'abc' } } as MockedBootDataUser,
+    user: {
+      email: 'x@y.z',
+      orgRole: 'Admin',
+      orgName: 'Acme Corp',
+      analytics: { identifier: 'abc' },
+    } as MockedBootDataUser,
   } as { settings: { buildInfo: { versionString: string } }; user: MockedBootDataUser } | undefined,
   analytics: { enabled: true } as { enabled: boolean } | undefined,
 };
@@ -134,7 +140,7 @@ beforeEach(() => {
   mockedConfig.buildInfo = { env: 'production', version: '13.1.0', edition: undefined };
   mockedConfig.bootData = {
     settings: { buildInfo: { versionString: 'Grafana Cloud' } },
-    user: { email: 'x@y.z', orgRole: 'Admin', analytics: { identifier: 'abc' } },
+    user: { email: 'x@y.z', orgRole: 'Admin', orgName: 'Acme Corp', analytics: { identifier: 'abc' } },
   };
   mockedConfig.analytics = { enabled: true };
   mockSessionMeta = { id: 'session-1', attributes: {} };
@@ -441,26 +447,27 @@ describe('initFaro', () => {
     expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
   });
 
-  it("stamps meta.user with the recommender's hashed identity (email hash as id), never raw PII", async () => {
+  it('stamps meta.user with the raw analytics id and email — Faro is first-party, unlike the hashed recommender payload', async () => {
     const faro = freshFaro();
     await faro.initFaro();
     await flushMicrotasks();
     expect(mockHashUserData).toHaveBeenCalledWith('abc', 'x@y.z');
     expect(mockSetUser).toHaveBeenCalledWith({
-      id: 'hashed-x@y.z',
-      attributes: { user_id_hash: 'hashed-abc', org_role: 'Admin' },
+      id: 'abc',
+      email: 'x@y.z',
+      attributes: { org_role: 'Admin', org_name: 'Acme Corp' },
     });
   });
 
-  it('falls back to the hashed analytics identifier as the primary id when the Cloud user has no email', async () => {
+  it('omits the email field (instead of a placeholder) when the Cloud user has no email', async () => {
     mockedConfig.bootData!.user.email = '';
     const faro = freshFaro();
     await faro.initFaro();
     await flushMicrotasks();
-    // Never the shared unknown@example.com hash — it would merge all email-less users.
     expect(mockSetUser).toHaveBeenCalledWith({
-      id: 'hashed-abc',
-      attributes: { user_id_hash: 'hashed-abc', org_role: 'Admin' },
+      id: 'abc',
+      email: undefined,
+      attributes: { org_role: 'Admin', org_name: 'Acme Corp' },
     });
   });
 

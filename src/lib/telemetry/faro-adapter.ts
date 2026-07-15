@@ -114,9 +114,9 @@ async function stampFaroUser(): Promise<void> {
   try {
     const identity = await buildTelemetryIdentity();
     faroInstance?.api.setUser({
-      // Same hashes as the recommender payload so sessions stay joinable; no raw PII.
-      id: identity.faroUserId,
-      attributes: { user_id_hash: identity.userIdHash, org_role: identity.orgRole },
+      id: identity.userId,
+      email: identity.email || undefined,
+      attributes: { org_role: identity.orgRole, org_name: identity.orgName },
     });
   } catch {
     // Telemetry must never break the app it's observing.
