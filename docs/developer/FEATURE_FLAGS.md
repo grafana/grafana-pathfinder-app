@@ -29,6 +29,8 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 **Important**: This is the only gate on whether Pathfinder mounts. It is evaluated independently of the highlighted-guide experiment: setting `pathfinder.enabled` to `false` dismounts the plugin regardless; when `true`, the experiment applies as normal.
 
+**Failure mode**: The gate is best-effort and fails open. `src/module.tsx` guards its bootstrap dynamic imports; if the OpenFeature chunk fails to load (CDN purge after redeploy, transient network), evaluation is skipped and the flag falls back to its default (`true`), so Pathfinder mounts for that session even when the flag is set to `false` in MTFF. Failures of unrelated bootstrap chunks do not affect flag evaluation.
+
 **Tracking key**: `pathfinder_enabled`
 
 ---
@@ -323,6 +325,7 @@ const showExistingFeature = useBooleanFlag('pathfinder.existing-feature', true);
 2. MTFF not reachable (network/auth issue)
 3. Flag not registered in MTFF
 4. Flag name mismatch (check for typos)
+5. OpenFeature chunk failed to load — `src/module.tsx` logs an `OpenFeature init` exception and degrades to flag defaults instead of failing the plugin load
 
 **Solution**:
 

@@ -1,4 +1,5 @@
 import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, usePluginContext } from '@grafana/data';
+import { getAppEvents } from '@grafana/runtime';
 import React, { lazy, Suspense, useEffect, useMemo } from 'react';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
@@ -17,6 +18,7 @@ import {
   isExtensionSidebarOwnedByPathfinder,
   parseExtensionSidebarDocked,
 } from './lib/storage/extension-sidebar';
+import { PANEL_MODE_CHANGE_EVENT } from './lib/event-names';
 
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
@@ -27,30 +29,67 @@ const earlySuggestListener = ((event: CustomEvent) => {
 }) as EventListener;
 document.addEventListener('pathfinder-suggest', earlySuggestListener);
 
-// Initialize OpenFeature provider for dynamic feature flag evaluation
-// This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
-// Uses dynamic import so the SDK stays out of the entry-point bundle
+// Every top-level await below stays inside a try block: a rejected top-level
+// await fails module evaluation and Grafana reports "Could not load plugin",
+// killing Pathfinder for the whole session (enforced by
+// src/validation/module-bootstrap.test.ts). Each block degrades independently
+// so an unrelated chunk failure can't take down flag evaluation.
+let openfeature: typeof import('./utils/openfeature') | null = null;
+let bootstrapError: { error: unknown; source: string } | null = null;
+
+// OpenFeature provider for dynamic feature flag evaluation via the
+// Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud.
 try {
-  const { initializeOpenFeature, getActiveExperiments } = await import('./utils/openfeature');
-  await initializeOpenFeature();
+  openfeature = await import('./utils/openfeature');
+  await openfeature.initializeOpenFeature();
 
   // Late-bind the active-experiments provider to analytics (breaks the static import chain)
   const { bindExperimentsProvider } = await import('./lib/analytics');
-  bindExperimentsProvider(getActiveExperiments);
+  bindExperimentsProvider(openfeature.getActiveExperiments);
 } catch (e) {
+  bootstrapError = { error: e, source: 'OpenFeature init' };
   logger.exception(e, { source: 'OpenFeature init' });
 }
 
 // Highlighted-guide experiment + config-driven auto-open (dynamic imports keep
-// zod/user-storage out of module.js).
-const { createExperimentDebugger, initializeHighlightedGuideExperiment, setupHighlightedGuideAutoOpen } =
-  await import('./utils/experiments');
-const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
-  await import('./utils/sidebar-auto-open');
-const { getFeatureFlagValue } = await import('./utils/openfeature');
+// zod/user-storage out of module.js). On chunk-load failure the experiment and
+// auto-open are skipped for the session.
+let bootstrap: {
+  experiments: typeof import('./utils/experiments');
+  sidebarAutoOpen: typeof import('./utils/sidebar-auto-open');
+} | null = null;
+try {
+  const [experiments, sidebarAutoOpen] = await Promise.all([
+    import('./utils/experiments'),
+    import('./utils/sidebar-auto-open'),
+  ]);
+  bootstrap = { experiments, sidebarAutoOpen };
+} catch (e) {
+  bootstrapError = { error: e, source: 'Bootstrap chunk load' };
+  logger.exception(e, { source: 'Bootstrap chunk load' });
+}
 
-// The pathfinder.enabled kill-switch is the only gate on whether Pathfinder mounts.
-const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
+const flagValue = (flag: string, defaultValue: boolean): boolean =>
+  openfeature ? openfeature.getFeatureFlagValue(flag, defaultValue) : defaultValue;
+
+// Deep links must still open the sidebar when the sidebar-auto-open chunk
+// failed to load; mirrors attemptAutoOpen using only static imports.
+const fallbackAttemptAutoOpen = (delay = 200): void => {
+  setTimeout(() => {
+    try {
+      getAppEvents().publish({
+        type: 'open-extension-sidebar',
+        payload: { pluginId: pluginJson.id, componentTitle: 'Interactive learning' },
+      });
+    } catch (error) {
+      logger.error('Failed to auto-open Interactive learning panel', { error });
+    }
+  }, delay);
+};
+
+// The pathfinder.enabled kill-switch gates whether Pathfinder mounts. Best-effort:
+// it fails open to its default when the flag chunk itself cannot load.
+const pathfinderEnabled = flagValue('pathfinder.enabled', true);
 const hostname = window.location.hostname;
 
 // Faro frontend telemetry, behind its own remote kill-switch — default-on, so
@@ -59,9 +98,17 @@ const hostname = window.location.hostname;
 // beforeSend activity gate in lib/faro drops all telemetry until Pathfinder
 // is open in one of its surfaces.
 try {
-  if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
+  if (flagValue('pathfinder.frontend-telemetry', true)) {
     const { initFaro } = await import('./lib/faro');
-    initFaro().catch((e) => logger.exception(e, { source: 'Faro init' }));
+    initFaro()
+      .then(() => {
+        // Replay the boot failure into Faro — at catch time pushFaroError was
+        // a no-op because Faro wasn't initialized yet.
+        if (bootstrapError) {
+          logger.exception(bootstrapError.error, { source: bootstrapError.source });
+        }
+      })
+      .catch((e) => logger.exception(e, { source: 'Faro init' }));
   }
 } catch (e) {
   logger.exception(e, { source: 'Faro init' });
@@ -70,9 +117,11 @@ try {
 // Initialize highlighted-guide experiment (reads flag, processes resetCache).
 // The popout half is set up later, after the sidebar-mount decision, so it
 // short-circuits when Pathfinder is dismounted.
-const highlightedGuideConfig = initializeHighlightedGuideExperiment(hostname);
+const highlightedGuideConfig = bootstrap ? bootstrap.experiments.initializeHighlightedGuideExperiment(hostname) : null;
 
-createExperimentDebugger(highlightedGuideConfig);
+if (bootstrap && highlightedGuideConfig) {
+  bootstrap.experiments.createExperimentDebugger(highlightedGuideConfig);
+}
 
 // Check if Pathfinder was already docked (browser restore scenario).
 // If floating mode is active, clear the docked state so Grafana doesn't
@@ -87,8 +136,13 @@ if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, 'Interactive learning')) 
   }
 }
 
-// Initialize translations
-await initPluginTranslations(pluginJson.id);
+// Guarded: a rejected top-level await fails plugin load; t() falls back to
+// default messages when init is skipped.
+try {
+  await initPluginTranslations(pluginJson.id);
+} catch (e) {
+  logger.exception(e, { source: 'i18n init' });
+}
 
 const LazyApp = lazy(() => import('./components/App/App'));
 const LazyContextPanel = lazy(() => import('./components/App/ContextPanel'));
@@ -120,13 +174,24 @@ const plugin = new AppPlugin<{}>()
     id: 'interactive-features',
   });
 
-// Override init() to handle auto-open when plugin loads
+// Claims the container id synchronously, before any dynamic import, so a
+// second plugin.init (or a repeated mode-change event) can't race past the
+// guard and double-mount.
+function claimContainer(id: string): HTMLElement | null {
+  if (document.getElementById(id)) {
+    return null;
+  }
+  const container = document.createElement('div');
+  container.id = id;
+  document.body.appendChild(container);
+  return container;
+}
+
 plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const jsonData = meta?.jsonData || {};
   const config = getConfigWithDefaults(jsonData);
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
 
-  // Set global config immediately so other code can use it
   (window as any).__pathfinderPluginConfig = config;
 
   // Snapshotted before handlePathfinderDeepLink strips it from the URL.
@@ -144,12 +209,8 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // controller drives the user's authenticated Grafana, so it must not mount when
   // the plugin is disabled or the instance hasn't opted in.
   if (config.enableTwoTabController && docsParam && controllerParam && controllerPairing && pathfinderEnabled) {
-    if (!document.getElementById('pathfinder-controller-root')) {
-      // Claim the id synchronously, before the dynamic import, so a second
-      // plugin.init can't race past the guard and double-mount.
-      const container = document.createElement('div');
-      container.id = 'pathfinder-controller-root';
-      document.body.appendChild(container);
+    const container = claimContainer('pathfinder-controller-root');
+    if (container) {
       import('./components/guide-reader/GuideReaderOverlay')
         .then(async ({ GuideReaderOverlay }) => {
           const { createCompatRoot } = await import('./lib/create-root-compat');
@@ -170,10 +231,8 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // executor so a controller tab can drive this Grafana DOM. Mount the pairing
   // banner first so its challenge listener is live before the transport starts.
   if (config.enableTwoTabController && pathfinderEnabled) {
-    if (!document.getElementById('pathfinder-pairing-banner-root')) {
-      const bannerContainer = document.createElement('div');
-      bannerContainer.id = 'pathfinder-pairing-banner-root';
-      document.body.appendChild(bannerContainer);
+    const bannerContainer = claimContainer('pathfinder-pairing-banner-root');
+    if (bannerContainer) {
       Promise.all([import('./integrations/cross-tab/PairingRequestBanner'), import('./lib/create-root-compat')])
         .then(async ([{ PairingRequestBanner }, { createCompatRoot }]) => {
           const root = await createCompatRoot(bannerContainer);
@@ -192,7 +251,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const sidebarMountable = pathfinderEnabled;
   const deepLinkDeps = {
     shouldMountSidebar: sidebarMountable,
-    attemptAutoOpen,
+    attemptAutoOpen: bootstrap?.sidebarAutoOpen.attemptAutoOpen ?? fallbackAttemptAutoOpen,
     loadControlGroupDocPopup: () => import('./components/ControlGroupDocPopup'),
   };
 
@@ -212,17 +271,12 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     (window as any).__pathfinderKioskConfig = { rulesUrl: config.kioskRulesUrl };
     document.dispatchEvent(new CustomEvent('pathfinder-kiosk-ready'));
 
-    if (!document.getElementById('pathfinder-kiosk-root')) {
+    const kioskContainer = claimContainer('pathfinder-kiosk-root');
+    if (kioskContainer) {
       import('./components/kiosk/KioskModeManager')
         .then(async ({ KioskModeManager }) => {
-          if (document.getElementById('pathfinder-kiosk-root')) {
-            return;
-          }
           const { createCompatRoot } = await import('./lib/create-root-compat');
-          const container = document.createElement('div');
-          container.id = 'pathfinder-kiosk-root';
-          document.body.appendChild(container);
-          const root = await createCompatRoot(container);
+          const root = await createCompatRoot(kioskContainer);
           root.render(
             React.createElement(KioskModeManager, {
               rulesUrl: config.kioskRulesUrl,
@@ -231,6 +285,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         })
         .catch((err) => {
           logger.error('[Pathfinder] Failed to load kiosk mode', { error: err });
+          kioskContainer.remove();
         });
     }
   }
@@ -241,23 +296,19 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // This avoids unconditional chunk loads that prevent networkidle on older Grafana.
   if (pathfinderEnabled) {
     const mountFloatingPanel = () => {
-      if (document.getElementById('pathfinder-floating-root')) {
+      const container = claimContainer('pathfinder-floating-root');
+      if (!container) {
         return;
       }
       import('./components/floating-panel/FloatingPanelManager')
         .then(async ({ FloatingPanelManager }) => {
-          if (document.getElementById('pathfinder-floating-root')) {
-            return;
-          }
           const { createCompatRoot } = await import('./lib/create-root-compat');
-          const container = document.createElement('div');
-          container.id = 'pathfinder-floating-root';
-          document.body.appendChild(container);
           const root = await createCompatRoot(container);
           root.render(React.createElement(FloatingPanelManager));
         })
         .catch((err) => {
           logger.error('[Pathfinder] Failed to load floating panel', { error: err });
+          container.remove();
         });
     };
 
@@ -265,7 +316,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       mountFloatingPanel();
     }
 
-    document.addEventListener('pathfinder-panel-mode-change', ((e: CustomEvent<{ mode: string }>) => {
+    document.addEventListener(PANEL_MODE_CHANGE_EVENT, ((e: CustomEvent<{ mode: string }>) => {
       if (e.detail.mode === 'floating') {
         mountFloatingPanel();
       }
@@ -275,14 +326,16 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Skip auto-open when a ?doc= param is present — the doc-param handler (async
   // import above) owns sidebar opening and may redirect first. Running auto-open
   // here would evaluate against the pre-redirect path.
-  if (!docsParam && pathfinderEnabled) {
-    const currentPath = getCurrentPath();
-    setupConfigAutoOpen({
+  if (!docsParam && pathfinderEnabled && bootstrap) {
+    const currentPath = bootstrap.sidebarAutoOpen.getCurrentPath();
+    bootstrap.sidebarAutoOpen.setupConfigAutoOpen({
       currentPath,
-      featureFlagEnabled: getAutoOpenFeatureFlag(),
+      featureFlagEnabled: bootstrap.sidebarAutoOpen.getAutoOpenFeatureFlag(),
       pluginConfig: config,
     });
-    setupHighlightedGuideAutoOpen(highlightedGuideConfig, currentPath, hostname);
+    if (highlightedGuideConfig) {
+      bootstrap.experiments.setupHighlightedGuideAutoOpen(highlightedGuideConfig, currentPath, hostname);
+    }
   }
 };
 
@@ -295,7 +348,6 @@ if (pathfinderEnabled) {
     title: 'Interactive learning',
     description: 'Opens Interactive learning',
     component: function ContextSidebar() {
-      // Get plugin configuration
       const pluginContext = usePluginContext();
       const config = useMemo(() => {
         const rawJsonData = pluginContext?.meta?.jsonData || {};
@@ -309,12 +361,9 @@ if (pathfinderEnabled) {
         (window as any).__pathfinderPluginConfig = config;
       }, [config]);
 
-      // Process queued docs links when sidebar mounts
       useEffect(() => {
         sidebarState.setIsSidebarMounted(true);
 
-        // Track sidebar open via component mount
-        // consumePendingOpenSource() returns { source, action } set before opening
         const { source, action } = sidebarState.consumePendingOpenSource();
 
         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
@@ -322,7 +371,6 @@ if (pathfinderEnabled) {
           source,
         });
 
-        // Fire custom event when sidebar component mounts
         const mountEvent = new CustomEvent('pathfinder-sidebar-mounted', {
           detail: {
             timestamp: Date.now(),
@@ -333,7 +381,6 @@ if (pathfinderEnabled) {
         return () => {
           sidebarState.setIsSidebarMounted(false);
 
-          // Track sidebar close via component unmount
           reportAppInteraction(UserInteraction.DocsPanelInteraction, {
             action: 'close',
             source: 'sidebar_toggle',
@@ -421,10 +468,6 @@ if (pathfinderEnabled) {
   document.removeEventListener('pathfinder-suggest', earlySuggestListener);
   pendingSuggestEvents.length = 0;
 }
-
-// ============================================================================
-// PATHFINDER-SUGGEST EVENT HANDLER
-// ============================================================================
 
 /**
  * Handles external app suggestion events to open the sidebar with featured content.
