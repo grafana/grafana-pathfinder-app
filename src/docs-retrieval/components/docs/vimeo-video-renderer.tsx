@@ -9,7 +9,6 @@ export interface VimeoVideoRendererProps {
   title?: string;
   className?: string;
   start?: number;
-  [key: string]: any;
 }
 
 // Vimeo ids are numeric. Private videos carry an unlisted hash, either as a
@@ -43,9 +42,11 @@ function getVimeoEmbedUrl(src: string, start?: number): string | null {
     id = videoIdx >= 0 ? segments[videoIdx + 1] : undefined;
     hash = hash ?? segments[videoIdx + 2];
   } else {
-    // vimeo.com/<id>[/<hash>] and vimeo.com/channels/<name>/<id>
+    // vimeo.com/<id>[/<hash>], vimeo.com/channels/<name>/<id>, and collection
+    // forms like /groups/<gid>/videos/<id> or /ondemand/<oid>/<id>. The video
+    // id is the LAST numeric segment; a preceding numeric is a collection id.
     const numeric = segments.filter((s) => VIMEO_ID_PATTERN.test(s));
-    id = numeric[0];
+    id = numeric[numeric.length - 1];
     const idIdx = id ? segments.indexOf(id) : -1;
     hash = hash ?? (idIdx >= 0 ? segments[idIdx + 1] : undefined);
   }
@@ -71,7 +72,6 @@ export function VimeoVideoRenderer({
   title,
   className,
   start,
-  ...props
 }: VimeoVideoRendererProps) {
   const embedUrl = getVimeoEmbedUrl(src, start);
 
@@ -80,6 +80,8 @@ export function VimeoVideoRenderer({
     return <div style={{ padding: '1rem', color: 'var(--text-secondary)' }}>Invalid video URL provided</div>;
   }
 
+  // No prop spread onto the iframe: every rendered attribute is fixed here so
+  // untrusted attributes can never reach the DOM through this trusted embed.
   return (
     <iframe
       src={embedUrl}
@@ -90,7 +92,6 @@ export function VimeoVideoRenderer({
       style={{ border: 0 }}
       allow="autoplay; fullscreen; picture-in-picture"
       allowFullScreen
-      {...props}
     />
   );
 }

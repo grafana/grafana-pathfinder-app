@@ -311,8 +311,11 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
 
           if (src.includes('vimeo.com')) {
             hasVideos = true;
-            const iframeProps = mapHtmlAttributesToReactProps(el, errorCollector);
 
+            // Only a fixed, whitelisted set of attributes flows through — never
+            // the raw iframe attributes. VimeoVideoRenderer rebuilds the src from
+            // an allowlisted id, so untrusted `srcdoc`/`onload`/`sandbox`/`allow`
+            // from guide HTML must not reach the DOM.
             return {
               type: 'vimeo-video',
               props: {
@@ -321,7 +324,6 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
                 height: el.getAttribute('height') ?? undefined,
                 title: el.getAttribute('title') ?? undefined,
                 className: el.getAttribute('class') ?? undefined,
-                ...iframeProps,
               },
               children: [],
               originalHTML: el.outerHTML,

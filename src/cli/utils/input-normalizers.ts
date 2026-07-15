@@ -124,7 +124,10 @@ function extractVimeoEmbed(url: string): string | null {
     return null;
   }
   const segments = parsed.pathname.split('/').filter(Boolean);
-  const id = segments.find((s) => VIMEO_ID_PATTERN.test(s));
+  // The video id is the LAST numeric segment; a preceding numeric (e.g.
+  // /groups/<gid>/videos/<id>) is a collection id, not the video.
+  const numeric = segments.filter((s) => VIMEO_ID_PATTERN.test(s));
+  const id = numeric[numeric.length - 1];
   if (!id) {
     return null;
   }

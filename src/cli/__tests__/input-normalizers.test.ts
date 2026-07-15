@@ -123,6 +123,11 @@ describe('normalizeBlockInput', () => {
       expect(result.normalized.src).toBe(embed);
     });
 
+    it('picks the video id (last numeric segment) from a group URL', () => {
+      const result = normalizeBlockInput('video', { src: 'https://vimeo.com/groups/98765/videos/76979871' });
+      expect(result.normalized.src).toBe(embed);
+    });
+
     it('tolerates missing protocol and www host', () => {
       const result = normalizeBlockInput('video', { src: 'www.vimeo.com/76979871' });
       expect(result.normalized.src).toBe(embed);

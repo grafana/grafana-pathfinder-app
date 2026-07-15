@@ -1269,6 +1269,9 @@ function renderParsedElement(
         />
       );
     case 'vimeo-video':
+      // Pass only whitelisted props — deliberately NOT `{...element.props}`
+      // (unlike the youtube-video case). Untrusted iframe attributes from
+      // guide HTML must not reach the Vimeo embed.
       return (
         <VimeoVideoRenderer
           key={key}
