@@ -44,6 +44,14 @@ export function setCheckRequirementsResult(result: typeof _checkRequirementsResu
   _checkRequirementsResult = result;
 }
 
+/** Configurable resolved outcome for `executeInteractiveAction`. Override
+ *  per-test via `setExecuteInteractiveActionOutcome()`; reset in `resetSectionHarness()`. */
+let _executeInteractiveActionOutcome: 'ok' | 'error' = 'ok';
+
+export function setExecuteInteractiveActionOutcome(outcome: 'ok' | 'error') {
+  _executeInteractiveActionOutcome = outcome;
+}
+
 // Module-level reference so resetSectionHarness can clear call history between
 // tests (the factory is only called once by jest.mock, so the fn is shared).
 let _stableCheckRequirementsFromData: jest.Mock | null = null;
@@ -246,7 +254,7 @@ export function createInteractiveEngineMock() {
   const stableCheckRequirementsFromData = _stableCheckRequirementsFromData;
   return {
     useInteractiveElements: () => ({
-      executeInteractiveAction: jest.fn(async () => undefined),
+      executeInteractiveAction: jest.fn(async () => _executeInteractiveActionOutcome),
       startSectionBlocking: jest.fn(),
       stopSectionBlocking: jest.fn(),
       verifyStepResult: jest.fn(async () => true),
@@ -393,6 +401,7 @@ export function createInteractiveConfigMock() {
 export function resetSectionHarness() {
   memoryStore.clear();
   _checkRequirementsResult = { pass: true, error: [] };
+  _executeInteractiveActionOutcome = 'ok';
   _stableCheckRequirementsFromData?.mockClear();
   // The completion store keeps its own module-scope cache + hydration
   // tracking. Clear both so tests don't bleed state across runs.

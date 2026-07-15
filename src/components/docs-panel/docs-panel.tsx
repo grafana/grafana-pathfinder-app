@@ -31,6 +31,8 @@ import { isDevModeEnabled } from '../../utils/dev-mode';
 
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
+import { withGuideOpenAction, type GuideLoadOutcome } from '../../lib/telemetry';
+import { usePanelReadyMeasurement } from './hooks/usePanelReadyMeasurement';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
 import { useGuideProgressState, useAutoLaunchTutorial, type AutoLaunchTutorialDetail } from '../../hooks';
 import {
@@ -375,19 +377,24 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     url: string,
     options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo }
   ): Promise<void> {
-    const tab = this.state.tabs.find((t) => t.id === tabId);
-    const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
-    if (needsDocsLoader) {
-      await this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
-      return;
-    }
-    await this.loadTabContent(tabId, url);
+    // Loaders resolve on failure (failTab stores the error in tab state), so
+    // their returned outcome — not promise settlement — stamps the action.
+    await withGuideOpenAction(url, async () => {
+      const tab = this.state.tabs.find((t) => t.id === tabId);
+      const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
+      if (needsDocsLoader) {
+        return this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
+      }
+      return this.loadTabContent(tabId, url);
+    });
   }
 
-  private async loadTabContent(tabId: string, url: string) {
-    // Skip loading if URL is empty
+  private async loadTabContent(tabId: string, url: string): Promise<GuideLoadOutcome> {
+    // Empty/corrupted tab URL — nothing to load, and not a successful open.
     if (!url || url.trim() === '') {
-      return;
+      logger.error(`loadTabContent called with an empty URL for tab ${tabId}`);
+      this.failTab(tabId, 'This tab has no content to load.');
+      return 'error';
     }
 
     this.setTabLoading(tabId);
@@ -437,12 +444,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
           setJourneyCompletionPercentage(completionKey, progress);
         }
+        return 'completed';
       } else {
         this.failTab(tabId, result.error || 'Failed to load content');
+        return 'error';
       }
     } catch (error) {
       logger.error(`Failed to load journey content for tab ${tabId}`, { error });
       this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load content');
+      return 'error';
     }
   }
 
@@ -692,7 +702,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     url: string,
     skipReadyToBegin?: boolean,
     packageInfoArg?: PackageOpenInfo
-  ) {
+  ): Promise<GuideLoadOutcome> {
     // No early return for empty URLs — loadDocsTabContentResult handles all
     // edge cases (empty URL with packageInfo falls back to fetchPackageById;
     // empty URL without packageInfo returns a visible error). Surfacing errors
@@ -764,12 +774,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
             starting_location: pendingAlignment.startingLocation,
           });
         }
+        return 'completed';
       } else {
         this.failTab(tabId, result.error || 'Failed to load documentation');
+        return 'error';
       }
     } catch (error) {
       logger.error(`Failed to load docs content for tab ${tabId}`, { error });
       this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load documentation');
+      return 'error';
     }
   }
 }
@@ -930,6 +943,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // STABILITY: Memoize activeTab.content to prevent ContentRenderer from remounting
   // when other tab properties change (isLoading, error, etc.)
   const stableContent = React.useMemo(() => activeTab?.content, [activeTab?.content]);
+
+  usePanelReadyMeasurement({ hasContent: !!stableContent, isRecommendationsTab, surface: panelMode });
 
   // STABILITY: Memoize the AlignmentPendingContext value keyed on the two
   // underlying primitives so consumers (`useStepChecker` in every interactive

@@ -18,7 +18,7 @@
  * in unusual host environments (e.g. some sandboxed Grafana embeds).
  */
 import * as React from 'react';
-import { setFaroView } from '../../../lib/faro';
+import { setFaroView, setFaroViewName } from '../../../lib/faro';
 
 export interface UseGlobalActiveTabExposureParams {
   activeTabId: string | undefined;
@@ -38,6 +38,13 @@ export function useGlobalActiveTabExposure({
     } catch {
       // no-op
     }
-    setFaroView(activeTabCurrentUrl || activeTabBaseUrl || '');
+    const url = activeTabCurrentUrl || activeTabBaseUrl || '';
+    if (url) {
+      setFaroView(url);
+    } else {
+      // No URL to derive a view from — cold start or the recommendations
+      // tab (which has no `content.url`). Previously left the view stale.
+      setFaroViewName('recommendations');
+    }
   }, [activeTabId, activeTabCurrentUrl, activeTabBaseUrl]);
 }

@@ -8,7 +8,12 @@
 import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security/url-validator';
-import { pushFaroUserAction } from './faro';
+// Bridge, not the Faro adapter: analytics is entry-eager and a direct
+// adapter import would pull the telemetry package into module.js.
+import { pushFaroUserAction } from './telemetry/bridge';
+// url.ts is a dependency-free redactor (no Faro SDK import), safe to import
+// directly even from this entry-eager module.
+import { normalizeTelemetryUrl } from './telemetry/url';
 import { logger } from './logging';
 import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
 
@@ -211,7 +216,21 @@ export function reportAppInteraction(
       // each other. The finally keeps the mirror alive when reportInteraction
       // itself throws — a lost RudderStack event is exactly the divergence the
       // mirror exists to surface. pushFaroUserAction never throws.
-      pushFaroUserAction(interactionName, { ...enrichedProperties });
+      // `experiments` is carried once per session (lib/telemetry/session)
+      // instead of on every mirrored action; RudderStack keeps it.
+      const faroProperties = { ...enrichedProperties };
+      delete faroProperties.experiments;
+      // RudderStack properties are never redacted (first-party, same policy
+      // as identity), but the Faro mirror is the final URL boundary for this
+      // path — normalize by the `*_url` naming convention every call site
+      // already follows, so query/fragment data never reaches Faro raw.
+      for (const key of Object.keys(faroProperties)) {
+        const value = faroProperties[key];
+        if (typeof value === 'string' && /url$/i.test(key)) {
+          faroProperties[key] = normalizeTelemetryUrl(value);
+        }
+      }
+      pushFaroUserAction(interactionName, faroProperties);
     }
   } catch (error) {
     logger.warn('Analytics reporting failed', { error });

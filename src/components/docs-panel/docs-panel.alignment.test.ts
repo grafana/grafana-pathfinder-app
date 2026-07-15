@@ -136,6 +136,13 @@ jest.mock('../../global-state/link-interception', () => ({
   linkInterceptionState: { addToQueue: jest.fn() },
 }));
 
+// Pass-through that captures the loader's resolved outcome.
+const mockWithGuideOpenAction = jest.fn(async (_url: string, work: () => Promise<unknown>) => work());
+jest.mock('../../lib/telemetry', () => ({
+  withGuideOpenAction: (...args: [string, () => Promise<unknown>]) => mockWithGuideOpenAction(...args),
+  recordPanelReady: jest.fn(),
+}));
+
 jest.mock('../../global-state/panel-mode', () => ({
   panelModeManager: { getMode: jest.fn(() => 'sidebar'), setMode: jest.fn() },
 }));
@@ -765,6 +772,28 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       const tab = getTab(panel, tabId);
       expect(tab.isLoading).toBe(false);
       expect(tab.error).toBe('Failed to load documentation');
+    });
+
+    it('reports a completed guide-open outcome for successful loads', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
+      const panel = new CombinedLearningJourneyPanel();
+
+      await panel.openDocsPage('bundled:connections-guide', 'Test Guide');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(mockWithGuideOpenAction).toHaveBeenCalledWith('bundled:connections-guide', expect.any(Function));
+      await expect(mockWithGuideOpenAction.mock.results[0]!.value).resolves.toBe('completed');
+    });
+
+    it('reports an error guide-open outcome when the loader stores the failure and resolves', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue({ content: null, error: 'boom' });
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await panel.openDocsPage('bundled:connections-guide', 'Test Guide');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).error).toBe('boom');
+      await expect(mockWithGuideOpenAction.mock.results[0]!.value).resolves.toBe('error');
     });
 
     it('reaches the docs loader via the packageInfo trigger when shouldUseDocsLoader is false', async () => {

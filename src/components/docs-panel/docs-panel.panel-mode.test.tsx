@@ -26,6 +26,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { PANEL_MODE_CHANGE_EVENT } from '../../lib/event-names';
 
 const PANEL_ROOT = path.join(__dirname);
 
@@ -36,8 +37,8 @@ const PANEL_ROOT = path.join(__dirname);
 const TRACKED_FILES = ['docs-panel.tsx', 'hooks/usePanelMode.ts'];
 
 const REQUIRED_REFERENCES = {
-  listenerRegistration: "addEventListener('pathfinder-panel-mode-change'",
-  listenerCleanup: "removeEventListener('pathfinder-panel-mode-change'",
+  listenerRegistration: 'addEventListener(PANEL_MODE_CHANGE_EVENT',
+  listenerCleanup: 'removeEventListener(PANEL_MODE_CHANGE_EVENT',
   // The setter name is React-state implementation detail, but the symbol is
   // stable enough to act as a "we propagate the event into React state" pin.
   stateUpdate: 'setPanelMode(',
@@ -56,6 +57,10 @@ function loadTrackedSources(): Array<{ file: string; src: string | null }> {
 }
 
 describe('Phase 0 tripwire: pathfinder-panel-mode-change CustomEvent contract', () => {
+  it('the shared event-name constant stays pinned to the external contract value', () => {
+    expect(PANEL_MODE_CHANGE_EVENT).toBe('pathfinder-panel-mode-change');
+  });
+
   it('listener registration exists in exactly one tracked file', () => {
     const matches = loadTrackedSources().filter(
       ({ src }) => src && src.includes(REQUIRED_REFERENCES.listenerRegistration)

@@ -3,6 +3,14 @@
  */
 import { fetchContent, simpleMarkdownToHtml } from './content-fetcher';
 
+const mockRecordContentFetch = jest.fn();
+const mockRecordContentFetchFallback = jest.fn();
+jest.mock('../lib/telemetry', () => ({
+  ...jest.requireActual('../lib/telemetry'),
+  recordContentFetch: (...args: unknown[]) => mockRecordContentFetch(...args),
+  recordContentFetchFallback: (...args: unknown[]) => mockRecordContentFetchFallback(...args),
+}));
+
 // Mock AbortSignal.timeout for Node environments that don't support it
 if (!AbortSignal.timeout) {
   (AbortSignal as any).timeout = jest.fn((ms: number) => {
@@ -18,6 +26,7 @@ if (!AbortSignal.timeout) {
 // behavior-preserving. Replaces the prior `expect(true).toBe(true)` doc-tests.
 describe('content.json → unstyled.html ladder', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     global.fetch = jest.fn();
   });
 
@@ -68,6 +77,18 @@ describe('content.json → unstyled.html ladder', () => {
     expect(jsonIdx).toBeGreaterThanOrEqual(0);
     expect(htmlIdx).toBeGreaterThanOrEqual(0);
     expect(jsonIdx).toBeLessThan(htmlIdx);
+
+    expect(mockRecordContentFetchFallback).toHaveBeenCalledWith({
+      url: journeyUrl,
+      tierUsed: 'unstyled-html',
+      errorType: 'content-json-unavailable',
+    });
+    expect(mockRecordContentFetch).toHaveBeenCalledWith({
+      url: journeyUrl,
+      tier: 'unstyled-html',
+      durationMs: expect.any(Number),
+      outcome: 'ok',
+    });
   });
 
   it('uses content.json directly and never fetches unstyled.html when it returns a valid guide', async () => {
@@ -81,6 +102,13 @@ describe('content.json → unstyled.html ladder', () => {
 
     expect(result.content?.isNativeJson).toBe(true);
     expect(order).not.toContain('unstyled.html');
+    expect(mockRecordContentFetchFallback).not.toHaveBeenCalled();
+    expect(mockRecordContentFetch).toHaveBeenCalledWith({
+      url: journeyUrl,
+      tier: 'content-json',
+      durationMs: expect.any(Number),
+      outcome: 'ok',
+    });
   });
 
   it('falls through to unstyled.html when content.json returns the null signal', async () => {
@@ -107,6 +135,54 @@ describe('content.json → unstyled.html ladder', () => {
 
     expect(order).not.toContain('content.json');
     expect(order).toContain('unstyled.html');
+  });
+
+  // Generic interactive-learning URLs (matched by hostname, not by the
+  // /tutorials/ or /milestone-N/ path patterns determineContentType looks
+  // for) go through the same content.json ladder via a separate branch in
+  // fetchRawHtml — the fallback telemetry must cover them too.
+  it('records a content-fetch fallback for generic interactive-learning URLs when content.json is unavailable', async () => {
+    const genericUrl = 'https://interactive-learning.grafana.net/guide/getting-started';
+    const htmlHeaders = new Headers();
+    htmlHeaders.set('Content-Type', 'text/html; charset=utf-8');
+
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.endsWith('content.json')) {
+        return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' });
+      }
+      if (url.endsWith('unstyled.html')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () => '<html><head><title>Guide</title></head><body>unstyled</body></html>',
+          url,
+          headers: htmlHeaders,
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' });
+    });
+
+    const result = await fetchContent(genericUrl);
+
+    expect(result.content).not.toBeNull();
+    expect(mockRecordContentFetchFallback).toHaveBeenCalledWith({
+      url: genericUrl,
+      tierUsed: 'unstyled-html',
+      errorType: 'content-json-unavailable',
+    });
+  });
+
+  it('records a terminal content-fetch fallback for generic interactive-learning URLs when both tiers fail', async () => {
+    const genericUrl = 'https://interactive-learning.grafana.net/guide/missing';
+    (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 404, statusText: 'Not Found' });
+
+    const result = await fetchContent(genericUrl);
+
+    expect(result.content).toBeNull();
+    expect(mockRecordContentFetchFallback).toHaveBeenCalledWith({
+      url: genericUrl,
+      tierUsed: 'unstyled-html',
+      errorType: 'not-found',
+    });
   });
 });
 
@@ -286,6 +362,33 @@ describe('null content handling for learning journeys', () => {
     // Verify fetch was called
     expect(global.fetch).toHaveBeenCalled();
   });
+
+  it('classifies terminal ladder failure (both content.json and unstyled.html fail) instead of tier: other', async () => {
+    jest.clearAllMocks();
+    const milestoneUrl = 'https://grafana.com/docs/learning-paths/drilldown-logs/milestone-3/';
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      headers: new Headers(),
+    });
+
+    const result = await fetchContent(milestoneUrl);
+
+    expect(result.content).toBeNull();
+    expect(mockRecordContentFetchFallback).toHaveBeenCalledWith({
+      url: milestoneUrl,
+      tierUsed: 'unstyled-html',
+      errorType: 'not-found',
+    });
+    expect(mockRecordContentFetch).toHaveBeenCalledWith({
+      url: milestoneUrl,
+      tier: 'unstyled-html',
+      durationMs: expect.any(Number),
+      outcome: 'error',
+    });
+  });
 });
 
 describe('fetchContent security validation', () => {
@@ -402,5 +505,25 @@ describe('simpleMarkdownToHtml', () => {
     expect(html).not.toContain('javascript:');
     expect(html).not.toContain('<a');
     expect(html).toContain('click');
+  });
+});
+
+describe('fetchContent records a failed pathfinder_content_fetch measurement on every early-exit path', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('records outcome error for an invalid URL', async () => {
+    await fetchContent('');
+    expect(mockRecordContentFetch).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'error' }));
+  });
+
+  it('records outcome error for an untrusted source', async () => {
+    await fetchContent('https://evil.com/docs/malicious/');
+    expect(mockRecordContentFetch).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'error' }));
   });
 });
