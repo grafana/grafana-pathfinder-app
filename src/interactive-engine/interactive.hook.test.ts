@@ -684,6 +684,51 @@ describe('useInteractiveElements', () => {
       expect(result.current.interactiveSequence).toBeDefined();
     });
 
+    it('resolves ok when a sequence run completes', async () => {
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.executeInteractiveAction('sequence', 'span#test1', undefined, 'do');
+      });
+
+      expect(outcome).toBe('ok');
+    });
+
+    it('resolves error instead of ok when a sequence run stops on requirements_exhausted', async () => {
+      const { SequenceManager } = require('./sequence-manager');
+      SequenceManager.mockImplementationOnce(() => ({
+        runStepByStepSequence: jest.fn().mockResolvedValue('requirements_exhausted'),
+        runInteractiveSequence: jest.fn().mockResolvedValue('requirements_exhausted'),
+      }));
+
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.executeInteractiveAction('sequence', 'span#test1', undefined, 'do');
+      });
+
+      expect(outcome).toBe('error');
+    });
+
+    it('resolves error instead of ok when a sequence run stops on action_error', async () => {
+      const { SequenceManager } = require('./sequence-manager');
+      SequenceManager.mockImplementationOnce(() => ({
+        runStepByStepSequence: jest.fn().mockResolvedValue('action_error'),
+        runInteractiveSequence: jest.fn().mockResolvedValue('action_error'),
+      }));
+
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.executeInteractiveAction('sequence', 'span#test1', undefined, 'do');
+      });
+
+      expect(outcome).toBe('error');
+    });
+
     it('should handle unknown action', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 

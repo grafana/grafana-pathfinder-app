@@ -617,13 +617,17 @@ export function InteractiveSection({
 
       try {
         // Execute the action using existing interactive logic
-        await executeInteractiveAction(
+        const actionOutcome = await executeInteractiveAction(
           stepInfo.targetAction!,
           stepInfo.refTarget!,
           stepInfo.targetValue,
           'do',
           stepInfo.targetComment
         );
+        if (actionOutcome === 'error') {
+          logger.warn(`Sequence action did not complete for ${stepInfo.stepId}`);
+          return false;
+        }
 
         // Only run post-verification if explicitly specified
         // Don't use requirements as post-verification fallback since many actions
@@ -1047,7 +1051,14 @@ export function InteractiveSection({
         }
       },
       USER_ACTION_TIMEOUT_LONG_MS,
-      { critical: true }
+      {
+        critical: true,
+        // The work callback swallows errors and always resolves — cancellation
+        // and requirement-stops must be read from the refs/flags it sets,
+        // not inferred from settlement.
+        outcomeFrom: () =>
+          isCancelledRef.current ? 'cancelled' : stoppedDueToRequirements ? 'requirements_exhausted' : 'ok',
+      }
     );
   }, [
     disabled,

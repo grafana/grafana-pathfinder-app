@@ -395,13 +395,18 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             } // Skip to cancellation check at loop start
 
             // Do mode (actually perform the action)
-            await executeInteractiveAction(
+            const doOutcome = await executeInteractiveAction(
               action.targetAction,
               action.refTarget || '',
               action.targetValue,
               'do',
               action.targetComment
             );
+            if (doOutcome === 'error') {
+              setFailedStepIndex(i);
+              setExecutionError(`Step ${i + 1} did not complete successfully.`);
+              return false;
+            }
 
             // Wait for DOM to settle after action
             await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));

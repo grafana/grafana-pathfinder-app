@@ -207,6 +207,9 @@ export function pushFaroUserAction(name: string, attributes?: Record<string, unk
 
 const USER_ACTION_TIMEOUT_MS = 30_000;
 export const USER_ACTION_TIMEOUT_LONG_MS = 600_000;
+// For automated multi-tier work (e.g. the content-fetch ladder) that can
+// legitimately outrun the default but isn't user-paced like a sequence.
+export const USER_ACTION_TIMEOUT_MEDIUM_MS = 60_000;
 
 type StampableUserAction = UserActionInternalInterface & { attributes?: Record<string, string> };
 

@@ -21,7 +21,11 @@ export async function buildTelemetryIdentity(): Promise<TelemetryIdentity> {
   const email = isCloud ? config.bootData.user.email || '' : '';
   const hasEmail = email !== '';
   const userId = isCloud ? config.bootData.user.analytics.identifier || 'unknown' : 'oss-user';
-  const userEmailForHash = isCloud ? email || 'unknown@example.com' : 'oss-user@example.com';
+  // Email-less Cloud users must still hash to a value unique to them, not a
+  // shared placeholder literal — derive one from the analytics identifier so
+  // emailHash stays distinct per user, but suffixed so it doesn't collapse
+  // to the same hash as userIdHash.
+  const userEmailForHash = isCloud ? email || `${userId}@no-email.pathfinder` : 'oss-user@example.com';
   const { hashedUserId, hashedEmail } = await hashUserData(userId, userEmailForHash);
   return {
     isCloud,

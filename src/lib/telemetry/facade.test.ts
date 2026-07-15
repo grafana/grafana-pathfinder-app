@@ -8,12 +8,13 @@ import {
   recordSequenceActionError,
   withGuideOpenAction,
 } from './facade';
-import { pushFaroEvent, pushFaroMeasurement, withFaroUserAction } from './faro-adapter';
+import { pushFaroEvent, pushFaroMeasurement, withFaroUserAction, USER_ACTION_TIMEOUT_MEDIUM_MS } from './faro-adapter';
 
 jest.mock('./faro-adapter', () => ({
   pushFaroEvent: jest.fn(),
   pushFaroMeasurement: jest.fn(),
   withFaroUserAction: jest.fn((_name: string, _attrs: unknown, work: () => unknown) => work()),
+  USER_ACTION_TIMEOUT_MEDIUM_MS: 60_000,
 }));
 
 const mockPushFaroEvent = pushFaroEvent as jest.Mock;
@@ -32,9 +33,17 @@ describe('withGuideOpenAction', () => {
       'pathfinder_guide_open',
       { content_url: 'grafana.com/docs/page/' },
       expect.any(Function),
-      undefined,
+      USER_ACTION_TIMEOUT_MEDIUM_MS,
       expect.objectContaining({ critical: true })
     );
+  });
+
+  it('bounds guide loads by the medium timeout, not the 30s default — a multi-tier fetch can legitimately outrun it', async () => {
+    await withGuideOpenAction('bundled:welcome', async () => 'completed');
+
+    const timeoutArg = mockWithFaroUserAction.mock.calls[0][3];
+    expect(timeoutArg).toBe(USER_ACTION_TIMEOUT_MEDIUM_MS);
+    expect(timeoutArg).not.toBeUndefined();
   });
 
   it('maps resolved loader outcomes so failed opens are never stamped ok', async () => {

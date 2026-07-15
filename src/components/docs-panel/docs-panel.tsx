@@ -390,9 +390,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   private async loadTabContent(tabId: string, url: string): Promise<GuideLoadOutcome> {
-    // Skip loading if URL is empty
+    // Empty/corrupted tab URL — nothing to load, and not a successful open.
     if (!url || url.trim() === '') {
-      return 'completed';
+      logger.error(`loadTabContent called with an empty URL for tab ${tabId}`);
+      this.failTab(tabId, 'This tab has no content to load.');
+      return 'error';
     }
 
     this.setTabLoading(tabId);

@@ -65,4 +65,16 @@ describe('buildTelemetryIdentity', () => {
     expect(identity.userId).toBe('user-123');
     expect(identity.userIdHash).not.toBe(identity.emailHash);
   });
+
+  it('gives two different email-less Cloud users distinct recommender emailHash values', async () => {
+    mockUser.email = '';
+    mockUser.analytics = { identifier: 'user-123' };
+    const first = await buildTelemetryIdentity();
+
+    mockUser.email = '';
+    mockUser.analytics = { identifier: 'user-456' };
+    const second = await buildTelemetryIdentity();
+
+    expect(first.emailHash).not.toBe(second.emailHash);
+  });
 });

@@ -459,7 +459,17 @@ export const InteractiveStep = forwardRef<
         }
 
         // Execute the action using existing interactive logic
-        await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'do', targetComment);
+        const actionOutcome = await executeInteractiveAction(
+          targetAction,
+          refTarget,
+          currentTargetValue,
+          'do',
+          targetComment
+        );
+        if (actionOutcome === 'error') {
+          setPostVerifyError('Action did not complete successfully.');
+          return false;
+        }
 
         // Wait for DOM to settle after action (especially important for navigation, form fills, etc.)
         await waitForReactUpdates();

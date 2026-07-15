@@ -507,3 +507,23 @@ describe('simpleMarkdownToHtml', () => {
     expect(html).toContain('click');
   });
 });
+
+describe('fetchContent records a failed pathfinder_content_fetch measurement on every early-exit path', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('records outcome error for an invalid URL', async () => {
+    await fetchContent('');
+    expect(mockRecordContentFetch).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'error' }));
+  });
+
+  it('records outcome error for an untrusted source', async () => {
+    await fetchContent('https://evil.com/docs/malicious/');
+    expect(mockRecordContentFetch).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'error' }));
+  });
+});

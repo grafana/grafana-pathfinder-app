@@ -1121,12 +1121,14 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const scrollContainerRef = useRecommendationsScrollPosition(recommendationsScrollReady);
 
   // Signals docs-panel's panel_lcp_ms measurement that the recommendations
-  // list (this renderer's content) is actually showing, not just mounted.
+  // list (this renderer's content) is actually showing, not just mounted —
+  // reuse recommendationsScrollReady so this can't drift from the same
+  // "actually showing" definition the scroll-position hook uses.
   useEffect(() => {
-    if (hasFetchedRecommendations) {
+    if (recommendationsScrollReady) {
       document.dispatchEvent(new CustomEvent(RECOMMENDATIONS_READY_EVENT));
     }
-  }, [hasFetchedRecommendations]);
+  }, [recommendationsScrollReady]);
 
   return (
     <div className={styles.container} data-testid={testIds.contextPanel.container}>

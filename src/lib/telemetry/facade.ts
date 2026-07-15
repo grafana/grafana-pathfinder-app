@@ -1,6 +1,6 @@
 // Typed domain operations — call sites use these, never the vendor-specific
 // pushFaro* primitives, so the backing SDK stays an adapter concern.
-import { pushFaroEvent, pushFaroMeasurement, withFaroUserAction } from './faro-adapter';
+import { pushFaroEvent, pushFaroMeasurement, withFaroUserAction, USER_ACTION_TIMEOUT_MEDIUM_MS } from './faro-adapter';
 import { normalizeTelemetryUrl } from './url';
 import {
   TELEMETRY_ACTIONS,
@@ -17,10 +17,16 @@ import {
 // Loaders resolve on failure (errors live in tab state), so the resolved
 // outcome — not promise settlement — stamps the action.
 export function withGuideOpenAction(url: string, work: () => Promise<GuideLoadOutcome>): Promise<GuideLoadOutcome> {
-  return withFaroUserAction(TELEMETRY_ACTIONS.guideOpen, { content_url: normalizeTelemetryUrl(url) }, work, undefined, {
-    critical: true,
-    outcomeFrom: (result) => (result === 'completed' ? 'ok' : 'error'),
-  });
+  return withFaroUserAction(
+    TELEMETRY_ACTIONS.guideOpen,
+    { content_url: normalizeTelemetryUrl(url) },
+    work,
+    USER_ACTION_TIMEOUT_MEDIUM_MS,
+    {
+      critical: true,
+      outcomeFrom: (result) => (result === 'completed' ? 'ok' : 'error'),
+    }
+  );
 }
 
 export function recordRecommenderRequest(durationMs: number, outcome: RecommenderOutcome): void {

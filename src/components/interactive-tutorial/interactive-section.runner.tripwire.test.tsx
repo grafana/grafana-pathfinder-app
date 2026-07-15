@@ -107,7 +107,12 @@ import { InteractiveSection, resetInteractiveCounters } from './interactive-sect
 // the harness mock ignores it. Cast through `React.FC<any>` so the
 // tripwire's `<InteractiveGuided />` JSX usage is clean.
 const InteractiveGuided = InteractiveGuidedReal as unknown as React.FC<any>;
-import { memoryStore, resetSectionHarness, silenceSectionWarnings } from '../../test-utils/interactive-section-harness';
+import {
+  memoryStore,
+  resetSectionHarness,
+  setExecuteInteractiveActionOutcome,
+  silenceSectionWarnings,
+} from '../../test-utils/interactive-section-harness';
 
 const SECTION_ID = 'section-runner';
 const doSectionBtn = (id: string) => testIds.interactive.doSectionButton(id);
@@ -187,6 +192,64 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
           Set<string> | undefined;
         expect(persisted).toBeDefined();
         expect(persisted!.size).toBe(3);
+      } finally {
+        unsubscribe();
+      }
+    });
+  });
+
+  describe('pathfinder_section_run Faro outcome', () => {
+    it('reports outcome ok for a fully completed run', async () => {
+      render(
+        <InteractiveSection id="runner" title="Runner" autoCollapse={false}>
+          <InteractiveStep targetAction="highlight" refTarget=".a">
+            Step 1
+          </InteractiveStep>
+        </InteractiveSection>
+      );
+
+      await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toBeInTheDocument());
+      act(() => {
+        screen.getByTestId(doSectionBtn(SECTION_ID)).click();
+      });
+      await waitFor(() => expect(screen.getByTestId(resetBtn(SECTION_ID))).toBeInTheDocument());
+
+      const { withFaroUserAction } = require('../../lib/faro');
+      const sectionRunCall = withFaroUserAction.mock.calls.find((c: unknown[]) => c[0] === 'pathfinder_section_run');
+      expect(sectionRunCall[4].outcomeFrom).toBeInstanceOf(Function);
+      expect(sectionRunCall[4].outcomeFrom()).toBe('ok');
+    });
+  });
+
+  describe('sequence action_error / requirements_exhausted no longer persists completion', () => {
+    it('does not persist step completion when executeInteractiveAction resolves error', async () => {
+      setExecuteInteractiveActionOutcome('error');
+      const { events, unsubscribe } = recordEvents(['pathfinder:progress']);
+      try {
+        render(
+          <InteractiveSection id="runner" title="Runner" autoCollapse={false}>
+            <InteractiveStep targetAction="highlight" refTarget=".a">
+              Step 1
+            </InteractiveStep>
+          </InteractiveSection>
+        );
+
+        await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toBeInTheDocument());
+        act(() => {
+          screen.getByTestId(doSectionBtn(SECTION_ID)).click();
+        });
+
+        // Give the orchestrator a window to settle without a completion signal.
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        const sectionCompletions = events.filter(
+          (e) => e.name === 'pathfinder:progress' && e.detail.kind === 'section' && e.detail.completed
+        );
+        expect(sectionCompletions).toHaveLength(0);
+
+        const persisted = memoryStore.get(`section-steps::${NON_PREVIEW_KEY}::${SECTION_ID}`) as
+          Set<string> | undefined;
+        expect(persisted?.has(`${SECTION_ID}-step-1`)).not.toBe(true);
       } finally {
         unsubscribe();
       }

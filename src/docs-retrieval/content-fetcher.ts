@@ -70,6 +70,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // Validate URL
     if (!url || typeof url !== 'string' || url.trim() === '') {
       logger.error('fetchContent called with invalid URL', { url });
+      recordFetch('error');
       return { content: null, error: 'Invalid URL provided', errorType: 'other' };
     }
 
@@ -100,6 +101,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
         ? 'Only Grafana.com documentation, interactive learning URLs, localhost URLs, and GitHub raw URLs (dev mode) can be loaded'
         : 'Only Grafana.com documentation and interactive learning URLs can be loaded';
 
+      recordFetch('error');
       return {
         content: null,
         error: errorMessage,
@@ -113,6 +115,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
 
     // SECURITY: Enforce HTTPS to prevent MITM attacks
     if (!enforceHttps(cleanUrl)) {
+      recordFetch('error');
       return {
         content: null,
         error: 'Only HTTPS URLs are allowed for security',

@@ -4,7 +4,7 @@ import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../sty
 import { waitForReactUpdates } from '../lib/async-utils';
 import { logger } from '../lib/logging';
 import { USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../lib/faro';
-import type { SequenceRunResult } from '../lib/telemetry';
+import type { SequenceRunResult, StepOutcome } from '../lib/telemetry';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
 import { checkRequirements, checkPostconditions, RequirementsCheckOptions } from '../requirements-manager';
 import { extractInteractiveDataFromElement } from '../lib/dom';
@@ -390,7 +390,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       targetValue?: string,
       buttonType: 'show' | 'do' = 'do',
       targetComment?: string
-    ): Promise<void> => {
+    ): Promise<StepOutcome> => {
       // Create InteractiveElementData directly from parameters
       const elementData: InteractiveElementData = {
         refTarget: refTarget,
@@ -475,6 +475,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           outcomeFrom: () => (sequenceResult === undefined || sequenceResult === 'completed' ? 'ok' : sequenceResult),
         }
       );
+      // Sequence runs resolve rather than throw on requirements-exhausted/
+      // action-error, so callers must check this instead of assuming
+      // settlement means success — see the outcomeFrom mapping above.
+      return sequenceResult === undefined || sequenceResult === 'completed' ? 'ok' : 'error';
     },
     [
       interactiveFocus,
