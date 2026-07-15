@@ -68,4 +68,26 @@ describe('surface owner', () => {
     });
     expect(() => surface.reportPathfinderSurface('kiosk')).not.toThrow();
   });
+
+  it('registering the same listener reference twice still notifies it once per change', () => {
+    const surface = freshSurface();
+    const listener = jest.fn();
+    surface.onPathfinderSurfaceChange(listener);
+    surface.onPathfinderSurfaceChange(listener);
+
+    surface.reportPathfinderSurface('sidebar');
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('a second registration does not clobber or duplicate an existing subscriber', () => {
+    const surface = freshSurface();
+    const first = jest.fn();
+    const second = jest.fn();
+    surface.onPathfinderSurfaceChange(first);
+    surface.onPathfinderSurfaceChange(second);
+
+    surface.reportPathfinderSurface('floating');
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+  });
 });

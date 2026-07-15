@@ -101,6 +101,10 @@ export async function initFaro(): Promise<void> {
   void stampFaroUser();
   void stampSessionExperiments();
 
+  // Subscribing here, before React mounts anything, guarantees this listener
+  // sees every future reportPathfinderSurface call — including the one that
+  // flips passesActivityGate open — so the session attribute is never stale
+  // when a payload first clears the gate.
   const stampSurface = () => setFaroSessionAttributes({ surface: getPathfinderSurface() });
   onPathfinderSurfaceChange(stampSurface);
   stampSurface();

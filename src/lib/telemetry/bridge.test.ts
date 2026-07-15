@@ -27,4 +27,16 @@ describe('telemetry bridge', () => {
     expect(impl.pushFaroError).toHaveBeenCalledWith(error, { source: 'test' });
     expect(impl.pushFaroLog).toHaveBeenCalledWith('warn', 'msg', { k: 'v' });
   });
+
+  it('registering a second implementation replaces the first instead of dispatching to both', () => {
+    const first = { pushFaroUserAction: jest.fn(), pushFaroError: jest.fn(), pushFaroLog: jest.fn() };
+    const second = { pushFaroUserAction: jest.fn(), pushFaroError: jest.fn(), pushFaroLog: jest.fn() };
+
+    registerTelemetryBridge(first);
+    registerTelemetryBridge(second);
+    pushFaroUserAction('pathfinder_click');
+
+    expect(second.pushFaroUserAction).toHaveBeenCalledTimes(1);
+    expect(first.pushFaroUserAction).not.toHaveBeenCalled();
+  });
 });
