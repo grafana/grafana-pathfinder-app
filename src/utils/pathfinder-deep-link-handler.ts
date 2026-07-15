@@ -48,12 +48,6 @@ function rewriteCurrentUrl(mutate: (url: URL) => void): void {
   lastProcessedSearch = null;
 }
 
-/** The full-screen route (`/a/<plugin>/fullscreen`) carries its own `?doc=`
- *  which `FullScreenPanel` rehydrates from directly. The global deep-link
- *  handler must not touch navigations that land there — otherwise the
- *  sidebar→full-screen handoff (which pushes `?doc=` onto the full-screen
- *  route) is treated as a docs deep-link and `targetPage`-redirected off the
- *  route, bouncing the user back to the guide's target page. */
 function isFullScreenRoute(pathname: string): boolean {
   return pathname === `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
 }
@@ -65,8 +59,8 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
     return false;
   }
 
-  // The full-screen route owns its `?doc=` — let FullScreenPanel handle it.
-  if (isFullScreenRoute(window.location.pathname)) {
+  // FullScreenPanel owns `?doc=` on this route.
+  if (isFullScreenRoute(locationService.getLocation().pathname)) {
     return false;
   }
 

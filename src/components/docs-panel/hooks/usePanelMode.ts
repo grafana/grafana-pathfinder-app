@@ -18,6 +18,7 @@
  *   - Off-route check: `ROUTES.FullScreen` under `PLUGIN_BASE_URL`
  */
 import * as React from 'react';
+import { locationService } from '@grafana/runtime';
 import { PLUGIN_BASE_URL, ROUTES } from '../../../constants';
 import { PANEL_MODE_CHANGE_EVENT } from '../../../lib/event-names';
 import { panelModeManager, type PanelMode } from '../../../global-state/panel-mode';
@@ -44,7 +45,9 @@ export function usePanelMode(): UsePanelModeResult {
     if (panelMode !== 'fullscreen') {
       return;
     }
-    const onFullScreenRoute = window.location.pathname.startsWith(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
+    const onFullScreenRoute = locationService
+      .getLocation()
+      .pathname.startsWith(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
     if (!onFullScreenRoute) {
       panelModeManager.setMode('sidebar');
       // eslint-disable-next-line react-hooks/set-state-in-effect -- self-heal: correct stale persisted fullscreen mode when not on the fullscreen route

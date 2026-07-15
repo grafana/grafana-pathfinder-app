@@ -205,10 +205,7 @@ describe('handlePathfinderDeepLink', () => {
   });
 
   it('bails out on the full-screen route when Grafana is served from a subpath', async () => {
-    setPathname(
-      '/grafana/a/grafana-pathfinder-app/fullscreen',
-      '/a/grafana-pathfinder-app/fullscreen'
-    );
+    setPathname('/grafana/a/grafana-pathfinder-app/fullscreen', '/a/grafana-pathfinder-app/fullscreen');
     setSearch('?doc=bundled%3Awelcome-to-grafana&type=docs');
     const deps = mkDeps();
 
@@ -422,10 +419,7 @@ describe('installDeepLinkNavListener', () => {
     installDeepLinkNavListener(mkDeps());
     const historyHandler = mockHistoryListen.mock.calls[0][0] as () => void;
 
-    setPathname(
-      '/grafana/a/grafana-pathfinder-app/fullscreen',
-      '/a/grafana-pathfinder-app/fullscreen'
-    );
+    setPathname('/grafana/a/grafana-pathfinder-app/fullscreen', '/a/grafana-pathfinder-app/fullscreen');
     setSearch('?doc=bundled%3Awelcome-to-grafana&type=docs');
     historyHandler();
 

@@ -60,10 +60,7 @@ describe('usePanelMode', () => {
   });
 
   it('keeps fullscreen mode when Grafana is served from a subpath', () => {
-    setPathname(
-      `/grafana${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`,
-      `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`
-    );
+    setPathname(`/grafana${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`, `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
 
     const { result } = renderHook(() => usePanelMode());
     dispatchModeChange('fullscreen');
