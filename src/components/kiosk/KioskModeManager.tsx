@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { KioskOverlay } from './KioskOverlay';
+import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../../lib/telemetry/surface';
 
 interface KioskModeManagerProps {
   rulesUrl: string;
@@ -14,6 +15,12 @@ export const KioskModeManager: React.FC<KioskModeManagerProps> = ({ rulesUrl }) 
 
   const handleOpen = useCallback(() => {
     setIsOpen(true);
+    reportPathfinderSurface('kiosk');
+  }, []);
+
+  const handleClose = useCallback(() => {
+    setIsOpen(false);
+    reportPathfinderSurfaceClosed('kiosk');
   }, []);
 
   useEffect(() => {
@@ -27,5 +34,5 @@ export const KioskModeManager: React.FC<KioskModeManagerProps> = ({ rulesUrl }) 
     return null;
   }
 
-  return <KioskOverlay rulesUrl={rulesUrl} onClose={() => setIsOpen(false)} />;
+  return <KioskOverlay rulesUrl={rulesUrl} onClose={handleClose} />;
 };

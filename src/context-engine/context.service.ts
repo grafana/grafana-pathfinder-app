@@ -22,9 +22,14 @@ import {
   derivePathSlug,
 } from '../docs-retrieval';
 import { interactiveCompletionStorage } from '../lib/user-storage';
-import { hashUserData } from '../lib/hash.util';
 import { logger } from '../lib/logging';
 import { withTimeout } from '../lib/async-utils';
+import {
+  buildTelemetryIdentity,
+  recordRecommenderFallback,
+  recordRecommenderRequest,
+  type RecommenderOutcome,
+} from '../lib/telemetry';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
 import {
@@ -198,7 +203,11 @@ export class ContextService {
       // Always try external recommendations when T&C are enabled, regardless of previous errors
       return this.getExternalRecommendations(contextData, pluginConfig, bundledRecommendations);
     } catch (error) {
-      logger.exception(error, { source: 'fetchRecommendations' });
+      logger.exception(error, {
+        source: 'fetchRecommendations',
+        platform: this.getCurrentPlatform(),
+        timeout_ms: DEFAULT_RECOMMENDER_TIMEOUT,
+      });
       const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData, pluginConfig);
       const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
       return {
@@ -284,17 +293,32 @@ export class ContextService {
     errorType: 'unavailable' | 'rate-limit' | 'other' | null;
     usingFallbackRecommendations: boolean;
   }> {
+    const recommenderStart = performance.now();
+    // One request settles telemetry exactly once — post-parse processing can
+    // still throw into the fail path after a successful fetch.
+    let telemetrySettled = false;
+    const settleTelemetry = (outcome: RecommenderOutcome, durationMs: number) => {
+      if (telemetrySettled) {
+        return;
+      }
+      telemetrySettled = true;
+      recordRecommenderRequest(durationMs, outcome);
+      if (outcome !== 'ok') {
+        // The fallback always merges bundled + static-link recommendations;
+        // there is no finer tier to distinguish once the recommender failed.
+        recordRecommenderFallback(outcome, 'bundled+static');
+      }
+    };
+    const fail = (errorType: 'unavailable' | 'rate-limit' | 'other', errorMessage: string) => {
+      settleTelemetry(errorType, performance.now() - recommenderStart);
+      return this.handleRecommenderError(errorType, errorMessage, contextData, bundledRecommendations);
+    };
     try {
       const configWithDefaults = getConfigWithDefaults(pluginConfig);
 
       // SECURITY: Validate recommender service URL before making request
       if (!this.validateRecommenderUrl(configWithDefaults.recommenderServiceUrl)) {
-        return this.handleRecommenderError(
-          'other',
-          'Recommender service URL failed security validation',
-          contextData,
-          bundledRecommendations
-        );
+        return fail('other', 'Recommender service URL failed security validation');
       }
 
       const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
@@ -324,22 +348,15 @@ export class ContextService {
 
       const hashedSource = await getHashedSource();
 
-      // Get user data for hashing
-      const userId = isCloud ? config.bootData.user.analytics.identifier || 'unknown' : 'oss-user';
-      const userEmail = isCloud
-        ? config.bootData.user.email || 'unknown@example.com' // Cloud users: use real email or unknown for anonymous
-        : 'oss-user@example.com'; // OSS users: always use generic OSS email
-
-      // Hash sensitive user data
-      const { hashedUserId, hashedEmail } = await hashUserData(userId, userEmail);
+      const identity = await buildTelemetryIdentity();
 
       const payload: ContextPayload = {
         path: contextData.currentPath,
         datasources: [...new Set(contextData.dataSources.map((ds) => ds.type.toLowerCase()))],
         tags: contextData.tags,
-        user_id: hashedUserId,
-        user_email: hashedEmail,
-        user_role: config.bootData.user.orgRole || 'Viewer',
+        user_id: identity.userIdHash,
+        user_email: identity.emailHash,
+        user_role: identity.orgRole,
         platform: this.getCurrentPlatform(),
         source: hashedSource,
         language: this.getCurrentLanguage(),
@@ -362,33 +379,21 @@ export class ContextService {
         if (!response.ok) {
           // Handle specific HTTP error codes
           if (response.status === 404) {
-            return this.handleRecommenderError(
-              'unavailable',
-              'Recommender service not found',
-              contextData,
-              bundledRecommendations
-            );
+            return fail('unavailable', 'Recommender service not found');
           }
 
           if (response.status === 429) {
-            return this.handleRecommenderError(
-              'rate-limit',
-              'Recommender service is under strain',
-              contextData,
-              bundledRecommendations
-            );
+            return fail('rate-limit', 'Recommender service is under strain');
           }
 
           // Handle other HTTP errors
-          return this.handleRecommenderError(
-            'other',
-            `HTTP error! status: ${response.status}`,
-            contextData,
-            bundledRecommendations
-          );
+          return fail('other', `HTTP error! status: ${response.status}`);
         }
 
         const data: V1RecommenderResponse = await response.json();
+        // Captured here (processLearningJourneys does its own fetches, which
+        // would skew ok durations) but only emitted once processing succeeds.
+        const okDurationMs = performance.now() - recommenderStart;
 
         const mappedExternalRecommendations = (data.recommendations ?? []).map((rec) =>
           this.sanitizeV1Recommendation(rec)
@@ -426,6 +431,8 @@ export class ContextService {
         // Clear any previous errors on successful call
         this.lastExternalRecommenderError = null;
 
+        settleTelemetry('ok', okDurationMs);
+
         return {
           recommendations: sortedRecommendations,
           featuredRecommendations: this.injectHighlightedGuide(
@@ -442,12 +449,7 @@ export class ContextService {
 
         // Handle AbortError (timeout)
         if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-          return this.handleRecommenderError(
-            'unavailable',
-            'Recommender service timeout',
-            contextData,
-            bundledRecommendations
-          );
+          return fail('unavailable', 'Recommender service timeout');
         }
 
         // Handle network errors (CORS, network failures, etc.)
@@ -459,21 +461,15 @@ export class ContextService {
           errorMessage.includes('NetworkError') ||
           errorMessage.includes('Failed to fetch')
         ) {
-          return this.handleRecommenderError(
-            'unavailable',
-            'Recommender service unavailable',
-            contextData,
-            bundledRecommendations
-          );
+          return fail('unavailable', 'Recommender service unavailable');
         }
 
         // Handle other errors
-        return this.handleRecommenderError('other', errorMessage, contextData, bundledRecommendations);
+        return fail('other', errorMessage);
       }
     } catch (error) {
       // Handle outer errors (hashing, payload construction, etc.)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      return this.handleRecommenderError('other', errorMessage, contextData, bundledRecommendations);
+      return fail('other', error instanceof Error ? error.message : 'Unknown error');
     }
   }
 

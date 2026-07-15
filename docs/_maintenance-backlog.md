@@ -6,12 +6,14 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 <!-- Structural issues requiring dedicated effort. Format: date, description, rationale. Remove when resolved. -->
 
-- 2026-05-21: No CONCERNS.md concern covers `src/snippet-engine/`. Consider adding one or extending `package-engine` / `docs-retrieval-and-rendering` to include the new tier-1 engine. Rationale: prevent-doc-drift cannot edit `docs/design/CONCERNS.md`; surfacing here for a human review pass.
+- 2026-05-21: No CONCERNS.md concern covers `src/snippet-engine/`. Consider adding one or extending `package-engine` / `docs-retrieval-and-rendering` to include the new tier-1 engine. Rationale: prevent-doc-drift cannot edit `docs/design/CONCERNS.md`; surfacing here for a human review pass. Blocked: the maintain-docs hard constraint also excludes `docs/design/`, so this requires a human design review.
 
 ## Validated docs
 
 <!-- Docs checked against source and found accurate. Format: date, doc path. Update date on re-validation. -->
 
+- **2026-07-15**: `docs/developer/interactive-examples/selectors-reference.md` — Added version-aware `grafana:` selector guidance, stable ancestor and descendant-anchored `:has()` generation, Pathfinder-owned content exclusion, and corrected the runtime resilience pipeline stages. Validated against `grafana-selector.ts`, `selector-generator.ts`, `pathfinder-content.ts`, `action-detector.ts`, and related tests. Supersedes the 2026-04-27 entry.
+- **2026-07-15**: `docs/developer/CUSTOM_GUIDES.md` — Corrected Library access and ID-lock timing; documented JSON draft/remount recovery, session-only undo/redo, preview progress reset, collision handling, and backend-status derivation. Validated against the current block editor persistence, JSON mode, guide history, preview progress, header, library, and backend save flows. Supersedes the 2026-04-27 entry.
 - **2026-06-16**: `docs/developer/CLI_TOOLS.md` — Added a `build-snippets` command section and updated the intro command list/coverage line. Validated against `src/cli/commands/build-snippets.ts` and the `snippets:build` npm script. Supersedes the 2026-03-20 entry.
 - **2026-06-16**: `docs/developer/CODA.md` — Added a Command execution section documenting `POST /coda/exec` (raw/gated modes, active-session auth, 5s default / 120s max timeout, 32 KB output cap, per-user token-bucket rate limit, error statuses). Validated against `pkg/plugin/coda_exec.go`, `coda_exec_ratelimit.go`, and `resources.go`. Supersedes the 2026-03-20 entry.
 - **2026-06-16**: `docs/developer/MCP_SERVER.md` — Confirmed current: no structural changes in `src/cli/mcp/` since the doc's last commit (2026-05-19); already documents the Go MCP retirement (MH5).
@@ -27,9 +29,7 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 - **2026-04-27**: `docs/developer/GETTING_STARTED.md` — NEW onboarding entrypoint: 5-min quickstart, 15-min full setup, IDE setup, first-week reading list, troubleshooting.
 - **2026-04-27**: `docs/developer/LOCAL_DEV.md` — Added prerequisites table, `npm run check` documentation, IDE setup, mage installation, troubleshooting section, container port table.
 - **2026-04-27**: `docs/developer/DEV_MODE.md` — Added admonition noting block editor and kiosk mode no longer require dev mode.
-- **2026-04-27**: `docs/developer/CUSTOM_GUIDES.md` — Cross-link to user-facing block editor doc; removed dev-mode caveat from creation flow; added floating panel + popout step section.
 - **2026-04-27**: `docs/developer/interactive-examples/json-guide-format.md` — Added popout action; added schema sections for code-block, terminal, terminal-connect, grot-guide block types; updated block summary table.
-- **2026-04-27**: `docs/developer/interactive-examples/selectors-reference.md` — Added selector resilience pipeline section (retry/backoff, `:text()` exact match, `data-testid` prefix matching, `panel:` domain prefix, confidence scoring, Selector Health badge).
 - **2026-04-27**: `docs/developer/LIVE_SESSIONS.md` — Added ECDSA P-256 presenter authentication section; noted legacy unauthenticated path removed.
 - **2026-04-27**: `README.md` — Updated authoring section to point to block editor user guide; added For developers pointer to `GETTING_STARTED.md`; refreshed action type list to include `popout`.
 - **2026-03-20**: `.cursor/rules/systemPatterns.mdc` — Updated Utils description (removed stale keyboard-shortcuts/link-handling refs), added Package Engine subsystem, updated Learning Paths Critical Path for `paths-cloud.json` and `paths-data.ts`.
@@ -79,5 +79,6 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 - `.cursor/skills/plugin-bundle-size/SKILL.md` — Discovered automatically by IDE via `.cursor/skills/` glob pattern. No AGENTS.md entry needed.
 - `.cursor/skills/bugfix/SKILL.md` — Workflow skill invoked via `/bugfix`; auto-discovered by the IDE via the `.cursor/skills/` glob. Consistent with the other workflow-skill exclusions; no AGENTS.md entry needed. (Its companion reference `docs/developer/bugfix-patterns.md` is already indexed.)
 - `.cursor/skills/refactor/SKILL.md` — Workflow skill invoked via `/refactor-investigate` / `/refactor-plan` / `/refactor-execute`; auto-discovered by the IDE. No AGENTS.md entry needed.
+- `.cursor/skills/maintain-docs/intent.md` — Design rationale linked directly from `.cursor/skills/maintain-docs/SKILL.md`; it supplements that workflow rather than defining a separate task domain.
 - `docs/sources/block-editor/_index.md` — End-user documentation published to Grafana.com. Not agent-relevant for implementation tasks.
 - `docs/sources/terms-and-conditions/_index.md` — End-user data-usage notice published to Grafana.com; auto-generated from `src/components/AppConfig/terms-content.ts` via `npm run docs:sync-terms` (do not hand-edit). Not agent-relevant for implementation tasks.

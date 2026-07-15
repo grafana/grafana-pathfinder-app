@@ -4,6 +4,7 @@ import { CombinedLearningJourneyPanel } from 'components/docs-panel/docs-panel';
 import { getConfigWithDefaults } from '../../constants';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
+import { PANEL_MODE_CHANGE_EVENT } from '../../lib/event-names';
 
 export default function MemoizedContextPanel() {
   const pluginContext = usePluginContext();
@@ -14,9 +15,9 @@ export default function MemoizedContextPanel() {
     const handleModeChange = (e: CustomEvent<{ mode: PanelMode }>) => {
       setMode(e.detail.mode);
     };
-    document.addEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+    document.addEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     return () => {
-      document.removeEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+      document.removeEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     };
   }, []);
 

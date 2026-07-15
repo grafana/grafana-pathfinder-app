@@ -5,6 +5,11 @@ import GlobalInteractionBlocker from './global-interaction-blocker';
 
 export type InteractiveState = 'idle' | 'running' | 'completed' | 'error';
 
+// Handlers report with shouldThrow=true and callers catch and report again
+// (e.g. PopoutHandler → executeInteractiveAction), so the same Error can
+// reach logError twice; report it to Faro only once.
+const reportedErrors = new WeakSet<Error>();
+
 export interface StateManagerOptions {
   enableLogging?: boolean;
   enableEvents?: boolean;
@@ -55,6 +60,24 @@ export class InteractiveStateManager {
     }
 
     const errorMessage = typeof error === 'string' ? error : error.message;
+
+    // A real Error is a failure while driving Grafana core's DOM — its stack
+    // has no plugin frame, so it must be reported as an explicit Faro
+    // exception (logger.error's Error branch) or it's invisible to Faro.
+    if (error instanceof Error) {
+      if (reportedErrors.has(error)) {
+        return;
+      }
+      reportedErrors.add(error);
+      logger.error(`${context}: ${errorMessage}`, error, {
+        source: context,
+        target_action: data.targetAction ?? '',
+        ref_target: data.refTarget ?? '',
+        element_id: data.id ?? '',
+      });
+      return;
+    }
+
     logger.error(`${context}: ${errorMessage}`, { data });
   }
 

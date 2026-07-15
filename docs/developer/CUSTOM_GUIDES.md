@@ -27,9 +27,19 @@ A custom guide moves through three states:
 1. Open the Pathfinder sidebar and click the **Editor** tab in the tab bar (visible to users with editor or admin role; **no dev mode required**).
 2. Click the title field at the top and type a name for your guide. Press **Enter** or click away to confirm.
 3. On first commit the editor auto-generates a unique ID from the title (e.g. `my-guide-a3f9`). This ID is used as the backend resource name and does not change if you rename the guide later.
-4. Add blocks using the **+** button at the bottom of the editor. Available block types include markdown, interactive steps (with the new `popout` action), sections, conditionals, quizzes, terminals, code blocks, grot guides, and more — see [json-guide-format.md](interactive-examples/json-guide-format.md) for the full list.
+4. Add blocks using the **+** button at the bottom of the editor. Available block types include markdown, interactive steps (including the `popout` action), sections, conditionals, quizzes, terminals, code blocks, grot guides, and more — see [json-guide-format.md](interactive-examples/json-guide-format.md) for the full list.
 
-> **Tip:** Content is auto-saved to localStorage as you work, so a browser refresh won't lose your progress. This local save is separate from the backend — the status badge in the header reflects both.
+> **Tip:** Guide content, block identities, and the current **Edit**, **Preview**, or **JSON** view are auto-saved to localStorage as you work, so a panel remount or browser refresh won't lose your progress. Unapplied JSON text is also preserved while you remain in JSON view. This local save is separate from the backend — the status badge in the header reflects both.
+
+### JSON editing and recovery
+
+The **JSON** view edits the complete guide document. Invalid JSON or an invalid guide cannot be applied, and the editor remains in JSON view with inline validation errors. A valid change is applied when you switch to **Edit** or **Preview**; leaving JSON view clears the saved JSON draft. Loading, importing, or starting another guide also replaces the current local draft.
+
+### Undo, preview, and progress
+
+- **Undo** and **Redo** are available in Edit view for changes made during the current editor session. History is not persisted across a browser refresh and is cleared when a guide is loaded or reset.
+- **Preview** renders the full guide through the same content renderer used by the docs panel. Interactive completion is tracked against the preview guide ID. After progress is recorded, **Reset guide** appears in the header and clears the preview's interactive progress.
+- Supported blocks also have an eye button for pinned inline previews while editing. Multiple block previews can remain open at the same time.
 
 ---
 
@@ -52,13 +62,13 @@ The **•••** menu provides the alternative action:
 
 ### Collision detection
 
-When saving a new guide for the first time, if a guide with the same resource name already exists in the library, you are prompted to confirm an overwrite. To save as a separate guide instead, cancel and change the guide's title before saving.
+When saving a new guide for the first time, if a guide with the same resource name already exists in the library, you are prompted to confirm an overwrite. The editor avoids known library names when it generates an ID, but a collision can still occur if the library changed after it was loaded. To keep both guides, cancel, start a new guide, and commit a distinct title so the editor generates a new ID before saving.
 
 ---
 
 ## Editing a published guide
 
-1. Open the library (**Library** button in the header) and click **Load** next to the guide.
+1. Open **•••** → **Library** and click **Load** next to the guide.
 2. Make your changes in the editor.
 3. The status badge changes to **Published (modified)** to indicate the live version is out of date.
 4. Click **Update** to push changes to the live guide.
@@ -83,7 +93,7 @@ Draft guides are not shown in the docs panel. They can only be accessed through 
 
 ## The guide library
 
-The library (**Library** button) lists all guides stored in the Pathfinder backend — both drafts and published. From here you can:
+The library (**•••** → **Library**) lists all guides stored in the Pathfinder backend — both drafts and published. The menu item stays available while the guide list loads or if a refresh fails, and is hidden only after a successful fetch confirms there are no saved guides. From here you can:
 
 - **Load** a guide into the editor for editing.
 - **Delete** a guide permanently (requires confirmation).
@@ -112,12 +122,13 @@ See [`EXTERNAL_API.md`](EXTERNAL_API.md) for the full reference, including the K
 
 The badge in the top-right of the header reflects the backend sync state:
 
-| Badge                             | Meaning                                         |
-| --------------------------------- | ----------------------------------------------- |
-| **Draft** (purple)                | Saved to backend, in sync, not published.       |
-| **Draft (modified)** (orange)     | Local changes not yet saved to the draft.       |
-| **Published** (blue)              | Live and in sync with the backend.              |
-| **Published (modified)** (orange) | Local changes not yet pushed to the live guide. |
+| Badge                             | Meaning                                                                      |
+| --------------------------------- | ---------------------------------------------------------------------------- |
+| **Draft** (purple, not yet saved) | Exists only in localStorage. Use **Save as draft** to add it to the library. |
+| **Draft** (purple)                | Saved to backend, in sync, not published.                                    |
+| **Draft (modified)** (orange)     | Local changes not yet saved to the draft.                                    |
+| **Published** (blue)              | Live and in sync with the backend.                                           |
+| **Published (modified)** (orange) | Local changes not yet pushed to the live guide.                              |
 
 When the backend is unavailable the badge area instead shows a **Saved** / **Saving…** indicator reflecting the localStorage auto-save state.
 
@@ -125,10 +136,10 @@ When the backend is unavailable the badge area instead shows a **Saved** / **Sav
 
 ## Technical notes
 
-- Guide IDs are auto-generated as `<title-slug>-<4-char-random>` and locked after first save. Renaming a guide does not change its ID or resource name.
+- Guide IDs are auto-generated as `<title-slug>-<4-char-random>` when a new title is first committed. Later title edits do not change the ID or backend resource name.
 - The backend stores guides as `InteractiveGuide` custom resources in the `pathfinderbackend.ext.grafana.com/v1alpha1` API group.
 - `resourceVersion` is used for optimistic concurrency control — the editor always fetches the latest version after a save before allowing a subsequent write.
-- Backend tracking state (`resourceName`, `backendStatus`, `lastPublishedJson`) is persisted to localStorage so the correct button state survives a page refresh.
+- Backend tracking state (`resourceName` and the last backend-synced guide JSON) is persisted to localStorage. Draft or published status is derived from the refreshed backend guide list, so the correct button state survives a page refresh.
 
 ## Floating panel and popout step
 

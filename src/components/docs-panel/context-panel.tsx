@@ -18,6 +18,7 @@ import { useContextPanel, Recommendation } from '../../context-engine';
 import type { ResolvedNavLink } from '../../types/context.types';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
+import { RECOMMENDATIONS_READY_EVENT } from '../../lib/event-names';
 import { getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../../constants/testIds';
@@ -1118,6 +1119,17 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const recommendationsScrollReady =
     !contextData.isLoading && !isLoadingRecommendations && hasFetchedRecommendations && hasLoadedCustomGuides;
   const scrollContainerRef = useRecommendationsScrollPosition(recommendationsScrollReady);
+
+  // Signals docs-panel's panel_lcp_ms that recommendations are actually
+  // showing (reuses the same readiness the scroll-position hook uses).
+  // Deferred to a microtask since effects commit child-before-parent —
+  // dispatching synchronously on first mount could race ahead of the
+  // ancestor's listener-registration effect.
+  useEffect(() => {
+    if (recommendationsScrollReady) {
+      queueMicrotask(() => document.dispatchEvent(new CustomEvent(RECOMMENDATIONS_READY_EVENT)));
+    }
+  }, [recommendationsScrollReady]);
 
   return (
     <div className={styles.container} data-testid={testIds.contextPanel.container}>

@@ -3,6 +3,14 @@ import { InteractiveStateManager } from './interactive-state-manager';
 import { InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 
+const mockRecordRequirementsExhausted = jest.fn();
+const mockRecordSequenceActionError = jest.fn();
+jest.mock('../lib/telemetry', () => ({
+  ...jest.requireActual('../lib/telemetry'),
+  recordRequirementsExhausted: (...args: unknown[]) => mockRecordRequirementsExhausted(...args),
+  recordSequenceActionError: (...args: unknown[]) => mockRecordSequenceActionError(...args),
+}));
+
 // Mock dependencies
 const mockStateManager = {
   logError: jest.fn(),
@@ -130,10 +138,37 @@ describe('SequenceManager', () => {
     it('should stop retrying after max retries', async () => {
       mockCheckRequirementsFromData.mockResolvedValue({ pass: false });
 
-      await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
+      const result = await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
 
+      expect(result).toBe('requirements_exhausted');
       expect(mockCheckRequirementsFromData).toHaveBeenCalledTimes(INTERACTIVE_CONFIG.maxRetries);
       expect(mockDispatchInteractiveAction).not.toHaveBeenCalled();
+      expect(mockRecordRequirementsExhausted).toHaveBeenCalledWith('test-requirements', INTERACTIVE_CONFIG.maxRetries);
+      expect(mockRecordSequenceActionError).not.toHaveBeenCalled();
+    });
+
+    it('classifies persistent action exceptions as action_error, not requirements exhaustion', async () => {
+      mockDispatchInteractiveAction.mockRejectedValue(new Error('click failed'));
+
+      const result = await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
+
+      expect(result).toBe('action_error');
+      expect(mockRecordSequenceActionError).toHaveBeenCalledWith(
+        'test-requirements',
+        INTERACTIVE_CONFIG.maxRetries,
+        'click failed'
+      );
+      expect(mockRecordRequirementsExhausted).not.toHaveBeenCalled();
+    });
+
+    it('does not report exhaustion when a step eventually succeeds', async () => {
+      mockCheckRequirementsFromData.mockResolvedValueOnce({ pass: false }).mockResolvedValueOnce({ pass: true });
+
+      const result = await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
+
+      expect(result).toBe('completed');
+      expect(mockRecordRequirementsExhausted).not.toHaveBeenCalled();
+      expect(mockRecordSequenceActionError).not.toHaveBeenCalled();
     });
 
     it('should handle errors gracefully', async () => {
@@ -227,10 +262,27 @@ describe('SequenceManager', () => {
     it('should stop retrying after max retries', async () => {
       mockCheckRequirementsFromData.mockResolvedValue({ pass: false });
 
-      await sequenceManager.runStepByStepSequence([mockElements[0]!]);
+      const result = await sequenceManager.runStepByStepSequence([mockElements[0]!]);
 
+      expect(result).toBe('requirements_exhausted');
       expect(mockCheckRequirementsFromData).toHaveBeenCalledTimes(INTERACTIVE_CONFIG.maxRetries);
       expect(mockDispatchInteractiveAction).not.toHaveBeenCalled();
+      expect(mockRecordRequirementsExhausted).toHaveBeenCalledWith('test-requirements', INTERACTIVE_CONFIG.maxRetries);
+      expect(mockRecordSequenceActionError).not.toHaveBeenCalled();
+    });
+
+    it('classifies persistent action exceptions as action_error, not requirements exhaustion', async () => {
+      mockDispatchInteractiveAction.mockRejectedValue(new Error('click failed'));
+
+      const result = await sequenceManager.runStepByStepSequence([mockElements[0]!]);
+
+      expect(result).toBe('action_error');
+      expect(mockRecordSequenceActionError).toHaveBeenCalledWith(
+        'test-requirements',
+        INTERACTIVE_CONFIG.maxRetries,
+        'click failed'
+      );
+      expect(mockRecordRequirementsExhausted).not.toHaveBeenCalled();
     });
 
     it('should handle errors gracefully', async () => {

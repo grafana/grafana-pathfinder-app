@@ -2,11 +2,14 @@ import { InteractiveElementData } from '../types/interactive.types';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { logger } from '../lib/logging';
+import { recordRequirementsExhausted, recordSequenceActionError, type SequenceRunResult } from '../lib/telemetry';
 
-/**
- * Result of a retry operation
- */
-type RetryResult = 'completed' | 'failed' | 'error';
+const MAX_REQUIREMENT_CONTEXT_LENGTH = 200;
+const MAX_ERROR_CONTEXT_LENGTH = 200;
+
+// Exhaustion is classified by what the *last* attempt failed on: an unmet
+// requirements check vs the action itself throwing.
+type RetryResult = 'completed' | 'failed_requirements' | 'failed_action';
 
 /**
  * Context for retry operations
@@ -43,6 +46,8 @@ export class SequenceManager {
     errorContext: string
   ): Promise<RetryResult> {
     let retryCount = 0;
+    let lastFailure: 'requirements' | 'action' = 'requirements';
+    let lastErrorMessage = '';
 
     while (retryCount < this.MAX_RETRIES) {
       try {
@@ -50,12 +55,15 @@ export class SequenceManager {
         if (success) {
           return 'completed';
         }
+        lastFailure = 'requirements';
         retryCount++;
         if (retryCount < this.MAX_RETRIES) {
           await this.sleep(this.RETRY_DELAY);
         }
       } catch (error) {
         this.stateManager.logError(errorContext, error as Error, context.data);
+        lastFailure = 'action';
+        lastErrorMessage = error instanceof Error ? error.message : String(error);
         retryCount++;
         if (retryCount < this.MAX_RETRIES) {
           await this.sleep(this.RETRY_DELAY);
@@ -66,7 +74,13 @@ export class SequenceManager {
     logger.warn(
       `${context.stepName} ${context.stepIndex + 1} failed after ${this.MAX_RETRIES} retries, stopping sequence`
     );
-    return 'failed';
+    const requirement = (context.data.requirements ?? '').slice(0, MAX_REQUIREMENT_CONTEXT_LENGTH);
+    if (lastFailure === 'action') {
+      recordSequenceActionError(requirement, this.MAX_RETRIES, lastErrorMessage.slice(0, MAX_ERROR_CONTEXT_LENGTH));
+      return 'failed_action';
+    }
+    recordRequirementsExhausted(requirement, this.MAX_RETRIES);
+    return 'failed_requirements';
   }
 
   /**
@@ -76,7 +90,7 @@ export class SequenceManager {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async runInteractiveSequence(elements: Element[], showMode: boolean): Promise<void> {
+  async runInteractiveSequence(elements: Element[], showMode: boolean): Promise<SequenceRunResult> {
     for (let i = 0; i < elements.length; i++) {
       const element = elements[i];
       const data = this.extractInteractiveDataFromElement(element as HTMLElement);
@@ -101,13 +115,15 @@ export class SequenceManager {
         'Error processing interactive element'
       );
 
-      if (result === 'failed') {
-        return; // Stop the entire sequence
+      if (result !== 'completed') {
+        // Stop the entire sequence
+        return result === 'failed_action' ? 'action_error' : 'requirements_exhausted';
       }
     }
+    return 'completed';
   }
 
-  async runStepByStepSequence(elements: Element[]): Promise<void> {
+  async runStepByStepSequence(elements: Element[]): Promise<SequenceRunResult> {
     for (let i = 0; i < elements.length; i++) {
       const element = elements[i];
       const data = this.extractInteractiveDataFromElement(element as HTMLElement);
@@ -150,9 +166,11 @@ export class SequenceManager {
         'Error in interactive step'
       );
 
-      if (result === 'failed') {
-        return; // Stop the entire sequence
+      if (result !== 'completed') {
+        // Stop the entire sequence
+        return result === 'failed_action' ? 'action_error' : 'requirements_exhausted';
       }
     }
+    return 'completed';
   }
 }
