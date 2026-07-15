@@ -61,6 +61,7 @@ export {
   ContentParsingError,
   VideoRenderer,
   YouTubeVideoRenderer,
+  VimeoVideoRenderer,
 } from './components/docs';
 export type { CodeBlockProps } from './components/docs';
 

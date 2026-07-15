@@ -21,7 +21,9 @@ function isVideoBlock(block: JsonBlock): block is JsonVideoBlock {
   return block.type === 'video';
 }
 
-const PROVIDER_OPTIONS: Array<ComboboxOption<'youtube' | 'native'>> = VIDEO_PROVIDERS.map((p) => ({
+type VideoProvider = (typeof VIDEO_PROVIDERS)[number]['value'];
+
+const PROVIDER_OPTIONS: Array<ComboboxOption<VideoProvider>> = VIDEO_PROVIDERS.map((p) => ({
   value: p.value,
   label: p.label,
 }));
@@ -44,7 +46,7 @@ export function VideoBlockForm({
   const initialSrc = initial?.src === PLACEHOLDER_URL ? '' : (initial?.src ?? '');
   const needsUrl = initial?.src === PLACEHOLDER_URL;
   const [src, setSrc] = useState(initialSrc);
-  const [provider, setProvider] = useState<'youtube' | 'native'>(initial?.provider ?? 'youtube');
+  const [provider, setProvider] = useState<VideoProvider>(initial?.provider ?? 'youtube');
   const [title, setTitle] = useState(initial?.title ?? '');
   const [start, setStart] = useState(initial?.start?.toString() ?? '');
   const [end, setEnd] = useState(initial?.end?.toString() ?? '');
@@ -65,18 +67,20 @@ export function VideoBlockForm({
     [src, provider, title, start, end, onSubmit]
   );
 
-  const handleProviderChange = useCallback((option: ComboboxOption<'youtube' | 'native'>) => {
+  const handleProviderChange = useCallback((option: ComboboxOption<VideoProvider>) => {
     setProvider(option.value);
   }, []);
 
   const isValid = src.trim().length > 0;
 
-  // Get YouTube embed URL hint
   const getUrlHint = () => {
     if (provider === 'youtube') {
       return 'Use the embed URL format: https://www.youtube.com/embed/VIDEO_ID';
     }
-    return 'Direct URL to an MP4 or WebM video file';
+    if (provider === 'vimeo') {
+      return 'Vimeo URL (e.g. https://vimeo.com/VIDEO_ID) — converted to the player embed form';
+    }
+    return 'Fully-qualified URL to an MP4/WebM file, or a path relative to the guide (e.g. assets/demo.mp4)';
   };
 
   return (
@@ -96,7 +100,11 @@ export function VideoBlockForm({
           value={src}
           onChange={(e) => setSrc(e.currentTarget.value)}
           placeholder={
-            provider === 'youtube' ? 'https://www.youtube.com/embed/dQw4w9WgXcQ' : 'https://example.com/video.mp4'
+            provider === 'youtube'
+              ? 'https://www.youtube.com/embed/dQw4w9WgXcQ'
+              : provider === 'vimeo'
+                ? 'https://vimeo.com/76979871'
+                : 'assets/demo.mp4'
           }
           autoFocus
         />

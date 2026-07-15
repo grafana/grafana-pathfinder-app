@@ -16,7 +16,7 @@
  * Current normalizers:
  *
  * - `video.src` — YouTube watch / short / shorts URLs → embed form
- *   (hardening doc issue #2).
+ *   (hardening doc issue #2), and Vimeo watch URLs → player embed form.
  *
  * Candidates for future slices: trailing slashes on URLs; whitespace
  * trimming on titles and descriptions; slug-ification of package ids
@@ -95,6 +95,47 @@ function extractYoutubeId(url: string): string | null {
   return null;
 }
 
+// Vimeo ids are numeric; unlisted videos carry an alphanumeric hash.
+const VIMEO_ID_PATTERN = /^\d+$/;
+const VIMEO_HASH_PATTERN = /^[A-Za-z0-9]+$/;
+
+/**
+ * Recognize the common Vimeo watch URL forms and return the canonical player
+ * embed URL. Returns `null` if the URL is not a non-embed Vimeo URL (so the
+ * caller leaves it untouched).
+ *
+ * Forms recognized:
+ * - `https://vimeo.com/<id>` (and `www.vimeo.com`, missing protocol)
+ * - `https://vimeo.com/<id>/<hash>` (unlisted) → `?h=<hash>`
+ * - `https://vimeo.com/channels/<name>/<id>`
+ *
+ * Already-embed URLs (`player.vimeo.com/video/<id>`) return null here so the
+ * caller leaves them alone.
+ */
+function extractVimeoEmbed(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(/^https?:\/\//.test(url) ? url : `https://${url}`);
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname.replace(/^www\./, '');
+  if (host !== 'vimeo.com') {
+    return null;
+  }
+  const segments = parsed.pathname.split('/').filter(Boolean);
+  const id = segments.find((s) => VIMEO_ID_PATTERN.test(s));
+  if (!id) {
+    return null;
+  }
+  const hash = segments[segments.indexOf(id) + 1];
+  const embed = new URL(`https://player.vimeo.com/video/${id}`);
+  if (hash && VIMEO_HASH_PATTERN.test(hash)) {
+    embed.searchParams.set('h', hash);
+  }
+  return embed.toString();
+}
+
 function normalizeVideoFields(fields: Record<string, unknown>): {
   normalized: Record<string, unknown>;
   warnings: OutcomeWarning[];
@@ -103,16 +144,26 @@ function normalizeVideoFields(fields: Record<string, unknown>): {
   if (typeof src !== 'string' || src.length === 0) {
     return { normalized: fields, warnings: [] };
   }
-  const id = extractYoutubeId(src);
-  if (id === null) {
-    return { normalized: fields, warnings: [] };
+
+  const youtubeId = extractYoutubeId(src);
+  if (youtubeId !== null) {
+    const canonical = `https://www.youtube.com/embed/${youtubeId}`;
+    if (canonical === src) {
+      return { normalized: fields, warnings: [] };
+    }
+    return {
+      normalized: { ...fields, src: canonical },
+      warnings: [inputNormalizedWarning('src', src, canonical)],
+    };
   }
-  const canonical = `https://www.youtube.com/embed/${id}`;
-  if (canonical === src) {
-    return { normalized: fields, warnings: [] };
+
+  const vimeoEmbed = extractVimeoEmbed(src);
+  if (vimeoEmbed !== null && vimeoEmbed !== src) {
+    return {
+      normalized: { ...fields, src: vimeoEmbed },
+      warnings: [inputNormalizedWarning('src', src, vimeoEmbed)],
+    };
   }
-  return {
-    normalized: { ...fields, src: canonical },
-    warnings: [inputNormalizedWarning('src', src, canonical)],
-  };
+
+  return { normalized: fields, warnings: [] };
 }

@@ -309,7 +309,26 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
             };
           }
 
-          // For non-YouTube iframes, render as regular iframe
+          if (src.includes('vimeo.com')) {
+            hasVideos = true;
+            const iframeProps = mapHtmlAttributesToReactProps(el, errorCollector);
+
+            return {
+              type: 'vimeo-video',
+              props: {
+                src,
+                width: el.getAttribute('width') ?? undefined,
+                height: el.getAttribute('height') ?? undefined,
+                title: el.getAttribute('title') ?? undefined,
+                className: el.getAttribute('class') ?? undefined,
+                ...iframeProps,
+              },
+              children: [],
+              originalHTML: el.outerHTML,
+            };
+          }
+
+          // For non-YouTube/Vimeo iframes, render as regular iframe
           const iframeProps = mapHtmlAttributesToReactProps(el, errorCollector);
           return {
             type: 'iframe',

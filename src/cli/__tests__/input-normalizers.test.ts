@@ -100,4 +100,43 @@ describe('normalizeBlockInput', () => {
       expect(result.warnings).toEqual([]);
     });
   });
+
+  describe('video — Vimeo URL forms', () => {
+    const embed = 'https://player.vimeo.com/video/76979871';
+
+    it('rewrites a vimeo.com/<id> URL to the player embed form', () => {
+      const result = normalizeBlockInput('video', { src: 'https://vimeo.com/76979871' });
+      expect(result.normalized.src).toBe(embed);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]?.code).toBe('INPUT_NORMALIZED');
+      expect(result.warnings[0]?.path).toBe('src');
+    });
+
+    it('carries the unlisted hash into the h query param', () => {
+      const result = normalizeBlockInput('video', { src: 'https://vimeo.com/76979871/abc123def' });
+      expect(result.normalized.src).toBe('https://player.vimeo.com/video/76979871?h=abc123def');
+      expect(result.warnings).toHaveLength(1);
+    });
+
+    it('rewrites a channel URL to the player embed form', () => {
+      const result = normalizeBlockInput('video', { src: 'https://vimeo.com/channels/staffpicks/76979871' });
+      expect(result.normalized.src).toBe(embed);
+    });
+
+    it('tolerates missing protocol and www host', () => {
+      const result = normalizeBlockInput('video', { src: 'www.vimeo.com/76979871' });
+      expect(result.normalized.src).toBe(embed);
+    });
+
+    it('does NOT rewrite an already-embed player URL — no warning emitted', () => {
+      const result = normalizeBlockInput('video', { src: embed });
+      expect(result.normalized.src).toBe(embed);
+      expect(result.warnings).toEqual([]);
+    });
+
+    it('leaves a Vimeo URL without a numeric id untouched', () => {
+      const result = normalizeBlockInput('video', { src: 'https://vimeo.com/user/settings' });
+      expect(result.warnings).toEqual([]);
+    });
+  });
 });

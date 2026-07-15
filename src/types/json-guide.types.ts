@@ -133,10 +133,10 @@ export interface JsonVideoBlock extends AuthorAnnotated {
   type: 'video';
   /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
   id?: string;
-  /** Video source URL */
+  /** Video source URL. For `native`, may be a fully-qualified URL or a path relative to the guide's package root (e.g. `assets/demo.mp4`). */
   src: string;
   /** Video provider - determines embed method */
-  provider?: 'youtube' | 'native';
+  provider?: 'youtube' | 'native' | 'vimeo';
   /** Video title for accessibility */
   title?: string;
   /** Start time in seconds */
