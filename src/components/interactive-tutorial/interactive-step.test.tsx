@@ -13,13 +13,13 @@ describe('executeWithLazyScroll: step outcome propagation', () => {
 
   it('propagates the action result for non-DOM actions instead of assuming success', async () => {
     const failed = await executeWithLazyScroll('', false, undefined, async () => false, 'noop');
-    expect(failed).toEqual({ success: true, actionSucceeded: false, elementFound: true });
+    expect(failed).toEqual({ outcome: 'error', elementFound: true });
 
     const passed = await executeWithLazyScroll('', false, undefined, async () => true, 'noop');
-    expect(passed).toEqual({ success: true, actionSucceeded: true, elementFound: true });
+    expect(passed).toEqual({ outcome: 'ok', elementFound: true });
   });
 
-  it('reports actionSucceeded: false when the element is found but the step itself fails', async () => {
+  it('reports outcome: error when the element is found but the step itself fails', async () => {
     const target = document.createElement('div');
     target.id = 'step-target';
     document.body.appendChild(target);
@@ -29,17 +29,15 @@ describe('executeWithLazyScroll: step outcome propagation', () => {
     const result = await executeWithLazyScroll('#step-target', false, undefined, async () => false, 'highlight');
 
     expect(result.elementFound).toBe(true);
-    expect(result.success).toBe(true);
-    expect(result.actionSucceeded).toBe(false);
+    expect(result.outcome).toBe('error');
   });
 
-  it('reports element-not-found failures with actionSucceeded: false and an error', async () => {
+  it('reports element-not-found failures with outcome: error and an error message', async () => {
     const action = jest.fn(async () => true);
     const result = await executeWithLazyScroll('#missing', false, undefined, action, 'highlight');
 
     expect(result).toEqual({
-      success: false,
-      actionSucceeded: false,
+      outcome: 'error',
       elementFound: false,
       error: 'Element not found: #missing',
     });

@@ -10,7 +10,7 @@ import {
 } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { withFaroUserAction } from '../../lib/faro';
-import type { UserActionOutcome } from '../../lib/telemetry';
+import { type CompletionResult, outcomeFromCompletionResult } from '../outcome-classifier';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { GuidedAction } from '../../types/interactive-actions.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
@@ -18,17 +18,7 @@ import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 import { matchFormValue } from '../auto-completion/action-matcher';
 import { applyE2ECommentBoxAttributes } from '../e2e-attributes';
 
-export type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped' | 'error';
-
-// Every branch of runGuidedStep resolves, so the resolved value — not
-// promise settlement — maps to the stamped outcome.
-const GUIDED_STEP_OUTCOMES: Record<CompletionResult, UserActionOutcome> = {
-  completed: 'ok',
-  timeout: 'timeout',
-  cancelled: 'cancelled',
-  skipped: 'skipped',
-  error: 'action_error',
-};
+export type { CompletionResult };
 
 /**
  * Handler for guided interactions where users manually perform actions
@@ -108,7 +98,7 @@ export class GuidedHandler {
       () => this.runGuidedStep(action, stepIndex, totalSteps, timeout),
       // Internal waits are bounded by `timeout`; the margin only catches a hung step.
       timeout + 10_000,
-      { critical: true, outcomeFrom: (result) => GUIDED_STEP_OUTCOMES[result] }
+      { critical: true, outcomeFrom: outcomeFromCompletionResult }
     );
   }
 

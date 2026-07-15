@@ -273,6 +273,7 @@ export function createInteractiveEngineMock() {
       fixLocationRequirement: jest.fn().mockResolvedValue(undefined),
       expandParentNavigationSection: jest.fn().mockResolvedValue(undefined),
     })),
+    ...require('../interactive-engine/outcome-classifier'),
   };
 }
 
