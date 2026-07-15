@@ -439,14 +439,37 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
   });
 
   it('fails open to a stripped local check when the live tab never answers (§6.5)', async () => {
+    const transport = makeTransport();
+    // Pair under real timers first: it round-trips through actual WebCrypto
+    // verify/sign calls, whose completion is wall-clock-bound rather than
+    // timer-bound. Enabling fake timers before pairing completes races
+    // `waitFor`'s fake-timer polling loop against real crypto latency on
+    // slower runners. Only mount the step (which schedules the round-trip
+    // timeout) after switching to fake timers, so that timer is fake too.
+    const view = render(
+      <InteractiveModeContext.Provider value="controller">
+        <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+          {null}
+        </ControllerChannelProvider>
+      </InteractiveModeContext.Provider>
+    );
+    await pairWithLive(transport);
+
     jest.useFakeTimers();
     try {
-      const transport = makeTransport();
-      await renderPairedController(
-        transport,
-        <InteractiveStep targetAction="button" refTarget="#ok" requirements="exists-reftarget" stepId="ctrl-timeout">
-          Step
-        </InteractiveStep>
+      view.rerender(
+        <InteractiveModeContext.Provider value="controller">
+          <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+            <InteractiveStep
+              targetAction="button"
+              refTarget="#ok"
+              requirements="exists-reftarget"
+              stepId="ctrl-timeout"
+            >
+              Step
+            </InteractiveStep>
+          </ControllerChannelProvider>
+        </InteractiveModeContext.Provider>
       );
 
       // The controller posts the check, but no live tab ever replies. After the
