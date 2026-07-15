@@ -98,7 +98,7 @@ describe('measurement and event domain operations', () => {
 
   it('recordRequirementsExhausted and recordSequenceActionError emit distinct event names', () => {
     recordRequirementsExhausted('has-role:admin', 3);
-    recordSequenceActionError('has-role:admin', 3, 'click failed');
+    recordSequenceActionError('has-role:admin', 3, { name: 'Error', category: 'timeout' });
 
     expect(mockPushFaroEvent).toHaveBeenCalledWith('requirements_exhausted', {
       requirement: 'has-role:admin',
@@ -107,8 +107,17 @@ describe('measurement and event domain operations', () => {
     expect(mockPushFaroEvent).toHaveBeenCalledWith('sequence_action_error', {
       requirement: 'has-role:admin',
       retry_count: 3,
-      error_message: 'click failed',
+      error_name: 'Error',
+      error_category: 'timeout',
     });
+  });
+
+  it('recordSequenceActionError never ships a free-text error message attribute', () => {
+    recordSequenceActionError('exists-reftarget', 3, { name: 'TypeError', category: 'dispatch_failed' });
+
+    const [, attributes] = mockPushFaroEvent.mock.calls[0];
+    expect(attributes).not.toHaveProperty('error_message');
+    expect(Object.keys(attributes).sort()).toEqual(['error_category', 'error_name', 'requirement', 'retry_count']);
   });
 
   it('recordPanelReady emits the panel measurement with the surface context', () => {

@@ -1,4 +1,4 @@
-import { SequenceManager } from './sequence-manager';
+import { SequenceManager, classifySequenceError } from './sequence-manager';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
@@ -153,12 +153,23 @@ describe('SequenceManager', () => {
       const result = await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
 
       expect(result).toBe('action_error');
-      expect(mockRecordSequenceActionError).toHaveBeenCalledWith(
-        'test-requirements',
-        INTERACTIVE_CONFIG.maxRetries,
-        'click failed'
-      );
+      expect(mockRecordSequenceActionError).toHaveBeenCalledWith('test-requirements', INTERACTIVE_CONFIG.maxRetries, {
+        name: 'Error',
+        category: 'dispatch_failed',
+      });
       expect(mockRecordRequirementsExhausted).not.toHaveBeenCalled();
+    });
+
+    it('reports a classification instead of the raw error message', async () => {
+      mockDispatchInteractiveAction.mockRejectedValue(
+        new Error('No elements found matching selector: div[data-secret="token=abc123"]')
+      );
+
+      await sequenceManager.runInteractiveSequence([mockElements[0]!], false);
+
+      const [, , classification] = mockRecordSequenceActionError.mock.calls[0];
+      expect(classification).toEqual({ name: 'Error', category: 'not_found' });
+      expect(JSON.stringify(mockRecordSequenceActionError.mock.calls)).not.toContain('token=abc123');
     });
 
     it('does not report exhaustion when a step eventually succeeds', async () => {
@@ -277,11 +288,10 @@ describe('SequenceManager', () => {
       const result = await sequenceManager.runStepByStepSequence([mockElements[0]!]);
 
       expect(result).toBe('action_error');
-      expect(mockRecordSequenceActionError).toHaveBeenCalledWith(
-        'test-requirements',
-        INTERACTIVE_CONFIG.maxRetries,
-        'click failed'
-      );
+      expect(mockRecordSequenceActionError).toHaveBeenCalledWith('test-requirements', INTERACTIVE_CONFIG.maxRetries, {
+        name: 'Error',
+        category: 'dispatch_failed',
+      });
       expect(mockRecordRequirementsExhausted).not.toHaveBeenCalled();
     });
 
@@ -373,6 +383,52 @@ describe('SequenceManager', () => {
         testError,
         expect.any(Object)
       );
+    });
+  });
+
+  describe('classifySequenceError', () => {
+    it('maps timeout messages to the timeout category', () => {
+      expect(classifySequenceError(new Error('Timeout finding element: div.panel'))).toEqual({
+        name: 'Error',
+        category: 'timeout',
+      });
+      expect(classifySequenceError(new Error('operation timed out'))).toEqual({
+        name: 'Error',
+        category: 'timeout',
+      });
+    });
+
+    it('maps missing-element messages to the not_found category', () => {
+      expect(classifySequenceError(new Error('No elements found matching selector: #x'))).toEqual({
+        name: 'Error',
+        category: 'not_found',
+      });
+      expect(classifySequenceError(new Error('No element found for ref'))).toEqual({
+        name: 'Error',
+        category: 'not_found',
+      });
+    });
+
+    it('maps other Error instances to dispatch_failed, preserving the error name', () => {
+      expect(classifySequenceError(new TypeError('x is not a function'))).toEqual({
+        name: 'TypeError',
+        category: 'dispatch_failed',
+      });
+    });
+
+    it('maps non-Error throws to other with a stable name', () => {
+      expect(classifySequenceError('boom')).toEqual({ name: 'UnknownError', category: 'other' });
+      expect(classifySequenceError(undefined)).toEqual({ name: 'UnknownError', category: 'other' });
+    });
+
+    it('bounds the error name and never emits an empty one', () => {
+      const longName = new Error('x');
+      longName.name = 'A'.repeat(200);
+      expect(classifySequenceError(longName).name).toHaveLength(64);
+
+      const emptyName = new Error('x');
+      emptyName.name = '';
+      expect(classifySequenceError(emptyName).name).toBe('Error');
     });
   });
 

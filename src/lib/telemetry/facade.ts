@@ -11,6 +11,7 @@ import {
   type GuideLoadOutcome,
   type RecommenderErrorType,
   type RecommenderOutcome,
+  type SequenceErrorClassification,
   type StepOutcome,
 } from './types';
 
@@ -78,12 +79,19 @@ export function recordRequirementsExhausted(requirement: string, retryCount: num
   pushFaroEvent(TELEMETRY_EVENTS.requirementsExhausted, { requirement, retry_count: retryCount });
 }
 
-export function recordSequenceActionError(requirement: string, retryCount: number, errorMessage: string): void {
+// Takes a classification, not the raw error: free-text messages embed URLs,
+// selectors, and echoed input, and nothing downstream scrubs event attributes.
+export function recordSequenceActionError(
+  requirement: string,
+  retryCount: number,
+  error: SequenceErrorClassification
+): void {
   pushFaroMeasurement(TELEMETRY_MEASUREMENTS.requirements, { retry_count: retryCount }, { requirement });
   pushFaroEvent(TELEMETRY_EVENTS.sequenceActionError, {
     requirement,
     retry_count: retryCount,
-    error_message: errorMessage,
+    error_name: error.name,
+    error_category: error.category,
   });
 }
 
