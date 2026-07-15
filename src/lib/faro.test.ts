@@ -1134,20 +1134,44 @@ describe('passesActivityGate', () => {
     expect(faro.passesActivityGate(eventItem())).toBe(false);
   });
 
-  it.each(['pathfinder-controller-root', 'pathfinder-kiosk-root'])(
-    'passes events when the %s overlay is mounted in this tab',
-    (id) => {
-      const el = document.createElement('div');
-      el.id = id;
-      document.body.appendChild(el);
-      try {
-        const faro = freshFaro();
-        expect(faro.passesActivityGate(eventItem())).toBe(true);
-      } finally {
-        el.remove();
-      }
+  it('passes events when the pathfinder-controller-root overlay is mounted in this tab', () => {
+    const el = document.createElement('div');
+    el.id = 'pathfinder-controller-root';
+    document.body.appendChild(el);
+    try {
+      const faro = freshFaro();
+      expect(faro.passesActivityGate(eventItem())).toBe(true);
+    } finally {
+      el.remove();
     }
-  );
+  });
+
+  it('does not pass events merely because the kiosk manager root is mounted — the overlay may not be open', () => {
+    const el = document.createElement('div');
+    el.id = 'pathfinder-kiosk-root';
+    document.body.appendChild(el);
+    try {
+      const faro = freshFaro();
+      expect(faro.passesActivityGate(eventItem())).toBe(false);
+    } finally {
+      el.remove();
+    }
+  });
+
+  it('passes events when the kiosk overlay is actually mounted, not just its persistent root', () => {
+    const root = document.createElement('div');
+    root.id = 'pathfinder-kiosk-root';
+    document.body.appendChild(root);
+    const overlay = document.createElement('div');
+    overlay.setAttribute('data-testid', 'kiosk-mode-overlay');
+    root.appendChild(overlay);
+    try {
+      const faro = freshFaro();
+      expect(faro.passesActivityGate(eventItem())).toBe(true);
+    } finally {
+      root.remove();
+    }
+  });
 
   it('latches open for the rest of the page load once Pathfinder was open', () => {
     localStorage.setItem(PANEL_MODE_KEY, 'floating');
