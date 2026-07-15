@@ -16,6 +16,8 @@ import {
   TIER_2_ENGINES,
   EXCLUDED_TOP_LEVEL,
   extractRelativeImports,
+  findCycles,
+  findStronglyConnectedComponents,
   getNewViolations,
   getRootLevelSourceFiles,
   getSourceTier,
@@ -24,12 +26,14 @@ import {
   getTopLevelDir,
   isTestFile,
   assertRatchet,
+  buildModuleGraph,
   collectSourceFiles,
   loadTsconfigPaths,
   readJsoncFile,
   resolveImportToRelative,
   resolvePathAlias,
   toPosixPath,
+  type ModuleGraph,
 } from './import-graph';
 
 // ---------------------------------------------------------------------------
@@ -498,5 +502,98 @@ describe('assertRatchet', () => {
     const violations = new Set(['new -> one']);
     const allowlist = new Set(['stale -> old']);
     expect(() => assertRatchet(violations, allowlist, 'test', 'CONST', advice)).toThrow(/New test detected/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cycle detection: findStronglyConnectedComponents / findCycles
+// ---------------------------------------------------------------------------
+
+function graphFromAdjacency(adjacency: Record<string, string[]>): ModuleGraph {
+  const map = new Map<string, Set<string>>();
+  for (const [node, edges] of Object.entries(adjacency)) {
+    map.set(node, new Set(edges));
+  }
+  return { nodes: Object.keys(adjacency), adjacency: map };
+}
+
+function sortedComponents(components: string[][]): string[][] {
+  return components.map((c) => [...c].sort()).sort((a, b) => (a[0]! < b[0]! ? -1 : a[0]! > b[0]! ? 1 : 0));
+}
+
+describe('findStronglyConnectedComponents', () => {
+  it('returns a singleton component for each node in an acyclic graph', () => {
+    const graph = graphFromAdjacency({ a: ['b'], b: ['c'], c: [] });
+    const sccs = findStronglyConnectedComponents(graph);
+    expect(sccs.every((c) => c.length === 1)).toBe(true);
+    expect(sccs).toHaveLength(3);
+  });
+
+  it('detects a simple two-node cycle', () => {
+    const graph = graphFromAdjacency({ a: ['b'], b: ['a'] });
+    const cyclic = findStronglyConnectedComponents(graph).filter((c) => c.length >= 2);
+    expect(sortedComponents(cyclic)).toEqual([['a', 'b']]);
+  });
+
+  it('detects a longer cycle', () => {
+    const graph = graphFromAdjacency({ a: ['b'], b: ['c'], c: ['a'] });
+    const cyclic = findStronglyConnectedComponents(graph).filter((c) => c.length >= 2);
+    expect(sortedComponents(cyclic)).toEqual([['a', 'b', 'c']]);
+  });
+
+  it('separates two independent cycles', () => {
+    const graph = graphFromAdjacency({ a: ['b'], b: ['a'], c: ['d'], d: ['c'], e: [] });
+    const cyclic = findStronglyConnectedComponents(graph).filter((c) => c.length >= 2);
+    expect(sortedComponents(cyclic)).toEqual([
+      ['a', 'b'],
+      ['c', 'd'],
+    ]);
+  });
+
+  it('merges nested cycles that mutually reach into one component', () => {
+    // a->b->c->a and b->d->b: all of a,b,c,d are mutually reachable.
+    const graph = graphFromAdjacency({ a: ['b'], b: ['c', 'd'], c: ['a'], d: ['b'] });
+    const cyclic = findStronglyConnectedComponents(graph).filter((c) => c.length >= 2);
+    expect(sortedComponents(cyclic)).toEqual([['a', 'b', 'c', 'd']]);
+  });
+
+  it('does not overflow on a long acyclic chain', () => {
+    const adjacency: Record<string, string[]> = {};
+    for (let i = 0; i < 5000; i++) {
+      adjacency[`n${i}`] = i < 4999 ? [`n${i + 1}`] : [];
+    }
+    const sccs = findStronglyConnectedComponents(graphFromAdjacency(adjacency));
+    expect(sccs).toHaveLength(5000);
+    expect(sccs.every((c) => c.length === 1)).toBe(true);
+  });
+});
+
+describe('findCycles', () => {
+  it('returns only components of size >= 2, with members sorted', () => {
+    const graph = graphFromAdjacency({ b: ['a'], a: ['b'], z: [] });
+    expect(findCycles(graph)).toEqual([['a', 'b']]);
+  });
+
+  it('returns an empty array for an acyclic graph', () => {
+    expect(findCycles(graphFromAdjacency({ a: ['b'], b: [] }))).toEqual([]);
+  });
+});
+
+describe('buildModuleGraph', () => {
+  it('produces a graph whose edges are all real nodes (no dangling targets)', () => {
+    const graph = buildModuleGraph();
+    const nodeSet = new Set(graph.nodes);
+    for (const [, edges] of graph.adjacency) {
+      for (const target of edges) {
+        expect(nodeSet.has(target)).toBe(true);
+      }
+    }
+  });
+
+  it('excludes self-edges', () => {
+    const graph = buildModuleGraph();
+    for (const [node, edges] of graph.adjacency) {
+      expect(edges.has(node)).toBe(false);
+    }
   });
 });

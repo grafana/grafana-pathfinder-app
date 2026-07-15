@@ -23,6 +23,7 @@ import {
   TIER_2_ENGINES,
   TIER_MAP,
   assertRatchet,
+  findCycles,
   getAllFileImports,
   getRootLevelSourceFiles,
   getSourceTier,
@@ -137,11 +138,42 @@ const ALLOWED_LATERAL_VIOLATIONS = new Set([
  */
 const ALLOWED_BARREL_VIOLATIONS = new Set<string>([]);
 
+/**
+ * Known circular-dependency clusters (strongly-connected components of the
+ * file-level import graph). Each entry is the SCC's member files, sorted and
+ * joined by ' <-> '. This list should only shrink — breaking any edge in a
+ * cluster splits or dissolves the SCC and changes/removes its key, which the
+ * ratchet's stale-entry check surfaces.
+ *
+ * Populated with the baseline that existed when cycle detection was added, so
+ * CI stays green while we decide how to pay these down.
+ */
+const ALLOWED_CYCLES = new Set<string>([
+  // Tier 1 telemetry + OpenFeature tangle spanning lib/security/utils. Largest
+  // cluster; the telemetry bridge, url-validator, and openfeature tracking
+  // mutually reach each other.
+  'lib/analytics.ts <-> lib/logging.ts <-> lib/telemetry/bridge.ts <-> lib/telemetry/faro-adapter.ts <-> lib/telemetry/session.ts <-> security/url-validator.ts <-> utils/dev-mode.ts <-> utils/openfeature-tracking.ts <-> utils/openfeature.ts',
+  // requirements-manager check modules + shared utils reach each other.
+  'requirements-manager/checks/coda.ts <-> requirements-manager/checks/env.ts <-> requirements-manager/checks/grafana-api.ts <-> requirements-manager/checks/location.ts <-> requirements-manager/checks/terminal.ts <-> requirements-manager/checks/vars.ts <-> requirements-manager/requirements-checker.utils.ts',
+  // interactive-engine <-> requirements-manager (overlaps ALLOWED_LATERAL_VIOLATIONS cluster A).
+  'interactive-engine/index.ts <-> interactive-engine/interactive.hook.ts <-> interactive-engine/use-sequential-step-state.hook.ts <-> requirements-manager/index.ts <-> requirements-manager/step-checker.hook.ts',
+  // components/interactive-tutorial section rendering + requirements hook.
+  'components/interactive-tutorial/hooks/use-section-requirements.ts <-> components/interactive-tutorial/interactive-conditional.tsx <-> components/interactive-tutorial/interactive-section.tsx <-> components/interactive-tutorial/section-numbering.tsx',
+  // docs-panel content area <-> milestone toolbar via the components barrel.
+  'components/docs-panel/components/DocsPanelContentArea.tsx <-> components/docs-panel/components/LearningJourneyMilestoneToolbar.tsx <-> components/docs-panel/components/index.ts <-> components/docs-panel/docs-panel.tsx',
+  // global-state link-interception split across two mutually-importing files.
+  'global-state/link-interception.ts <-> global-state/utils.link-interception.ts',
+  // lib storage: bounded-record-storage <-> user-storage.
+  'lib/storage/bounded-record-storage.ts <-> lib/user-storage.ts',
+]);
+
 // Violation key formatters — kept adjacent to allowlists so format changes
 // are visible in the same diff as allowlist updates.
 const directionKey = (relPath: string, targetTopLevel: string) => `${toPosixPath(relPath)} -> ${targetTopLevel}`;
 
 const barrelKey = (relPath: string, resolved: string) => `${toPosixPath(relPath)} -> ${toPosixPath(resolved)}`;
+
+const cycleKey = (scc: string[]) => scc.join(' <-> ');
 
 // ---------------------------------------------------------------------------
 // Tests (mechanism — edit these only when adding new constraint categories)
@@ -293,12 +325,43 @@ describe('Barrel export discipline', () => {
   });
 });
 
+describe('Import graph: circular dependencies', () => {
+  it('reports the current circular-dependency footprint', () => {
+    const cycles = findCycles();
+    const filesInCycles = cycles.reduce((sum, scc) => sum + scc.length, 0);
+    const largest = cycles.reduce((max, scc) => Math.max(max, scc.length), 0);
+    console.log(
+      `[architecture-ratchet] cycles: clusters=${cycles.length} filesInCycles=${filesInCycles} largestCluster=${largest}`
+    );
+    for (const scc of [...cycles].sort((a, b) => b.length - a.length)) {
+      console.log(`  cluster(${scc.length}): ${scc.join(' <-> ')}`);
+    }
+  });
+
+  it('should not introduce new circular dependencies beyond the ratchet allowlist', () => {
+    const violations = new Set(findCycles().map(cycleKey));
+
+    assertRatchet(
+      violations,
+      ALLOWED_CYCLES,
+      'circular dependencies',
+      'ALLOWED_CYCLES',
+      `A circular dependency (strongly-connected cluster of files that mutually import each other) ` +
+        `was detected. Break at least one edge in the cluster — commonly by extracting the shared ` +
+        `symbol to a lower tier (src/types/, src/lib/), inverting a dependency, or using a dynamic ` +
+        `import at the call site. If the cycle is genuinely unavoidable, add its key to ALLOWED_CYCLES ` +
+        `with a comment explaining why. Each key is the cluster's member files joined by ' <-> '.`
+    );
+  });
+});
+
 describe('Architecture ratchet progress', () => {
   it('should report current violation counts', () => {
     console.log(
       `[architecture-ratchet] vertical=${ALLOWED_VERTICAL_VIOLATIONS.size}` +
         ` lateral=${ALLOWED_LATERAL_VIOLATIONS.size}` +
-        ` barrel=${ALLOWED_BARREL_VIOLATIONS.size}`
+        ` barrel=${ALLOWED_BARREL_VIOLATIONS.size}` +
+        ` cycles=${ALLOWED_CYCLES.size}`
     );
   });
 });
