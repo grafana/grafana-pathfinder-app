@@ -1,0 +1,40 @@
+{
+  "id": "video-showcase",
+  "title": "Video showcase",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "# Video showcase\n\nA test-only guide exercising every video provider and source form. Not shipped as a bundled guide — it is parsed by unit tests with a simulated CDN base URL."
+    },
+    {
+      "type": "video",
+      "id": "video-youtube",
+      "provider": "youtube",
+      "src": "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      "title": "YouTube embed (rickroll)"
+    },
+    {
+      "type": "video",
+      "id": "video-vimeo",
+      "provider": "vimeo",
+      "src": "https://vimeo.com/76979871",
+      "title": "Vimeo embed",
+      "authorNote": "Placeholder Vimeo sample id (76979871). Swap for the canonical Vimeo rickroll equivalent when one is confirmed."
+    },
+    {
+      "type": "video",
+      "id": "video-native-absolute",
+      "provider": "native",
+      "src": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "title": "Native video from a fully-qualified URL (tiny sample)"
+    },
+    {
+      "type": "video",
+      "id": "video-native-relative",
+      "provider": "native",
+      "src": "assets/rickroll-clip.mp4",
+      "title": "Native video from a package-relative path",
+      "authorNote": "Package-relative asset — resolves against the guide's fetched base URL. Point at a real tiny clip in the package's assets/ dir when hosting."
+    }
+  ]
+}
