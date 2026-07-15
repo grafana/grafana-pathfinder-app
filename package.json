@@ -117,6 +117,7 @@
     "@emotion/css": "^11.13.5",
     "@grafana/assistant": "^0.1.25",
     "@grafana/data": "13.1.0",
+    "@grafana/e2e-selectors": "13.1.0",
     "@grafana/faro-web-sdk": "^2.8.2",
     "@grafana/i18n": "13.1.0",
     "@grafana/runtime": "13.1.0",

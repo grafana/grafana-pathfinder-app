@@ -40,6 +40,7 @@ globs:
 
 **Frontend Runtime**:
 - `@grafana/data`, `@grafana/ui`, `@grafana/runtime`, `@grafana/scenes` (12.4.0 / 7.0.3)
+- `@grafana/e2e-selectors` — powers `grafana:` reftarget resolution and the picker's reverse lookup (`src/lib/dom/grafana-selector.ts`). Selectors resolve against the running Grafana's `config.buildInfo.version`, but only within the bundled package's version table: Grafanas newer than the bundle resolve to the bundle's latest values. Bump alongside the other pinned `@grafana/*` deps each release cycle to keep `grafana:` selector durability.
 - `react` + `react-dom` (18.3.1), `react-router-dom` (6.28.0)
 - `@emotion/css` (11.13.5) for styling
 - `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` for drag-and-drop
