@@ -596,6 +596,31 @@ describe('Selector Generator — Pipeline', () => {
       expect(analysis.method).toBe('has-descendant');
       expect(analysis.quality).toBe('medium');
     });
+
+    it('rates a grafana: reftarget as good with the top stability score', () => {
+      const analysis = analyzeSelectorString('grafana:components.RefreshPicker.runButton');
+      expect(analysis.method).toBe('grafana');
+      expect(analysis.quality).toBe('good');
+      expect(analysis.stabilityScore).toBe(100);
+    });
+
+    it('rates a panel: reftarget as good with the top stability score', () => {
+      const analysis = analyzeSelectorString('panel:CPU Usage');
+      expect(analysis.method).toBe('grafana');
+      expect(analysis.quality).toBe('good');
+      expect(analysis.stabilityScore).toBe(100);
+    });
+
+    it('recognizes a tag-attached id selector as an id method', () => {
+      const analysis = analyzeSelectorString('button#save');
+      expect(analysis.method).toBe('id');
+      expect(analysis.quality).toBe('good');
+    });
+
+    it('does not mistake a fragment href for an id selector', () => {
+      const analysis = analyzeSelectorString("a[href='#section']");
+      expect(analysis.method).toBe('href');
+    });
   });
 
   // ==========================================================================

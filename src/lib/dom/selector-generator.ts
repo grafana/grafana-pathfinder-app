@@ -1422,13 +1422,16 @@ export interface SelectorStringAnalysis {
  * selector that also uses `:nth-child` is downgraded via the structural flag).
  */
 function inferMethodAndScore(selector: string): { method: string; score: number } {
+  if (selector.startsWith('grafana:') || selector.startsWith('panel:')) {
+    return { method: 'grafana', score: CANDIDATE_SCORES.grafana };
+  }
   if (selector.includes(':has(')) {
     return { method: 'has-descendant', score: CANDIDATE_SCORES.testId + HAS_DESCENDANT_PENALTY };
   }
   if (SELECTOR_CONFIG.testIdAttrs.some((attr) => selector.includes(attr))) {
     return { method: 'data-testid', score: CANDIDATE_SCORES.testId };
   }
-  if (/(^|[\s>+~])#[\w-]+/.test(selector)) {
+  if (/(^|[\s>+~])[\w-]*#[\w-]+/.test(selector)) {
     return { method: 'id', score: CANDIDATE_SCORES.cssId };
   }
   if (selector.includes('[aria-label')) {
