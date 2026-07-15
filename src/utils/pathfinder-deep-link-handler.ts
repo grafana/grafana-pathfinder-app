@@ -59,8 +59,16 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
     return false;
   }
 
-  // FullScreenPanel owns `?doc=` on this route.
-  if (isFullScreenRoute(locationService.getLocation().pathname)) {
+  const deepLink = parsePathfinderDeepLink(search);
+  const { doc: docsParam, page: pageParam, source: sourceParam, type: typeParam } = deepLink;
+  const kioskSessionParam = deepLink.kioskSession;
+  const panelModeParam = deepLink.panelMode;
+
+  // FullScreenPanel owns `?doc=` on this route; kiosk_session/panelMode still
+  // process below. With neither present there is nothing to do — bail before
+  // the dedup gate so this search isn't latched against a later normal route.
+  const onFullScreenRoute = isFullScreenRoute(locationService.getLocation().pathname);
+  if (onFullScreenRoute && panelModeParam === undefined && kioskSessionParam === undefined) {
     return false;
   }
 
@@ -68,11 +76,6 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
     return false;
   }
   lastProcessedSearch = search;
-
-  const deepLink = parsePathfinderDeepLink(search);
-  const { doc: docsParam, page: pageParam, source: sourceParam, type: typeParam } = deepLink;
-  const kioskSessionParam = deepLink.kioskSession;
-  const panelModeParam = deepLink.panelMode;
 
   if (kioskSessionParam) {
     (window as any).__pathfinderKioskSessionId = kioskSessionParam;
@@ -98,8 +101,9 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
 
   const docOpenSource = sourceParam || 'url_param';
 
-  if (!docsParam) {
-    // panelMode-only / kiosk-only links: nothing more to dispatch.
+  if (!docsParam || onFullScreenRoute) {
+    // panelMode-only / kiosk-only links, or a full-screen-route doc owned by
+    // FullScreenPanel: nothing more to dispatch here.
     return panelModeParam !== undefined || kioskSessionParam !== undefined;
   }
 

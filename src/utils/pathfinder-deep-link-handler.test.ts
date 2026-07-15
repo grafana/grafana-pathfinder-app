@@ -219,6 +219,39 @@ describe('handlePathfinderDeepLink', () => {
     expect(window.location.search).toBe('?doc=bundled%3Awelcome-to-grafana&type=docs');
   });
 
+  it('still captures kiosk_session on the full-screen route while leaving ?doc= for FullScreenPanel', async () => {
+    setPathname('/a/grafana-pathfinder-app/fullscreen');
+    setSearch('?doc=bundled%3Awelcome&kiosk_session=sess-123');
+    mockGetMode.mockReturnValue('fullscreen');
+    const deps = mkDeps();
+
+    expect(handlePathfinderDeepLink(deps)).toBe(true);
+
+    await flushPromises();
+    expect((window as unknown as { __pathfinderKioskSessionId?: string }).__pathfinderKioskSessionId).toBe('sess-123');
+    // doc stays untouched — FullScreenPanel owns it.
+    expect(mockFindDocPage).not.toHaveBeenCalled();
+    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
+    expect(deps.attemptAutoOpen).not.toHaveBeenCalled();
+    expect(window.location.search).toBe('?doc=bundled%3Awelcome&kiosk_session=sess-123');
+  });
+
+  it('still processes floating panelMode on the full-screen route while leaving ?doc= for FullScreenPanel', async () => {
+    setPathname('/a/grafana-pathfinder-app/fullscreen');
+    setSearch('?doc=bundled%3Awelcome&panelMode=floating');
+    mockGetMode.mockReturnValue('fullscreen');
+    const deps = mkDeps();
+
+    expect(handlePathfinderDeepLink(deps)).toBe(true);
+    expect(mockSetMode).toHaveBeenCalledWith('floating');
+
+    await flushPromises();
+    // panelMode is consumed; doc survives for FullScreenPanel rehydration.
+    expect(window.location.search).toBe('?doc=bundled%3Awelcome');
+    expect(mockFindDocPage).not.toHaveBeenCalled();
+    expect(deps.attemptAutoOpen).not.toHaveBeenCalled();
+  });
+
   it('still processes a ?doc= link on a look-alike route that is not exactly the full-screen route', async () => {
     // Guards the exact-match strictness: a `fullscreen`-prefixed but non-equal
     // pathname must NOT bail. A future loosening to startsWith/includes would
