@@ -4,9 +4,9 @@ const fs = require('fs');
 const path = require('path');
 
 const root = process.env.E2E_RUNNER_ROOT || path.resolve(__dirname, '..');
-const schema = JSON.parse(fs.readFileSync(path.join(root, 'schemas/e2e-test-report.schema.json'), 'utf8'));
-const pass = JSON.parse(fs.readFileSync(path.join(root, 'schemas/fixtures/e2e-report-pass.json'), 'utf8'));
-const fail = JSON.parse(fs.readFileSync(path.join(root, 'schemas/fixtures/e2e-report-fail.json'), 'utf8'));
+const schema = JSON.parse(fs.readFileSync(path.join(root, 'src/cli/e2e/schemas/e2e-test-report.schema.json'), 'utf8'));
+const pass = JSON.parse(fs.readFileSync(path.join(root, 'src/cli/e2e/schemas/fixtures/e2e-report-pass.json'), 'utf8'));
+const fail = JSON.parse(fs.readFileSync(path.join(root, 'src/cli/e2e/schemas/fixtures/e2e-report-fail.json'), 'utf8'));
 
 if (schema.$id !== 'https://grafana.com/schemas/pathfinder/e2e-test-report-1.0.0.json') {
   throw new Error('unexpected E2E report schema id');

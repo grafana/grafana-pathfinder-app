@@ -119,9 +119,9 @@ describe('versioned report contract', () => {
   });
 
   it('keeps deterministic compatibility fixtures immutable', () => {
-    const pass = require('../../../schemas/fixtures/e2e-report-pass.json');
-    const fail = require('../../../schemas/fixtures/e2e-report-fail.json');
-    const invalid = require('../../../schemas/fixtures/e2e-report-invalid.json');
+    const pass = require('./schemas/fixtures/e2e-report-pass.json');
+    const fail = require('./schemas/fixtures/e2e-report-fail.json');
+    const invalid = require('./schemas/fixtures/e2e-report-invalid.json');
 
     expect(pass.schemaVersion).toBe(E2E_REPORT_SCHEMA_VERSION);
     expect(pass.outcome).toBe('passed');
