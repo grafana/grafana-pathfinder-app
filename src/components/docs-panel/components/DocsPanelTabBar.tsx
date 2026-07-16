@@ -265,7 +265,6 @@ export function DocsPanelTabBar({
         activeTab={activeTab}
         isDevMode={isDevMode}
         onReloadActiveTab={reloadActiveTab}
-        onNavigateToRecommendations={() => onSetActiveTab('recommendations')}
       />
     </div>
   );
