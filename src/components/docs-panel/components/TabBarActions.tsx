@@ -8,7 +8,12 @@ import React, { useState, useEffect } from 'react';
 import { IconButton, Dropdown, Menu, Tooltip } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getContentTypeForAnalytics,
+  tabTypeToContentType,
+} from '../../../lib/analytics';
 import { PLUGIN_BASE_URL } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
 import { clearExtensionSidebarDocked } from '../../../lib/storage/extension-sidebar';
@@ -57,7 +62,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
       panel_type: 'docs_panel',
       ...(contentTab && {
         content_url: contentUrl || '',
-        content_type: getContentTypeForAnalytics(contentUrl, contentTab.type || 'docs'),
+        content_type: getContentTypeForAnalytics(contentUrl, tabTypeToContentType(contentTab.type)),
       }),
     });
     setTimeout(() => {

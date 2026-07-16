@@ -15,7 +15,7 @@ import { LearningPathCard } from './LearningPathCard';
 import { BadgeIcon } from './BadgeIcon';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
-import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
 import {
   learningProgressStorage,
@@ -311,7 +311,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         reportAppInteraction(UserInteraction.OpenResourceClick, {
           content_title: title,
           content_url: resolvedGuideUrl,
-          content_type: 'learning-journey',
+          content_type: AnalyticsContentType.LearningJourney,
           interaction_location: 'my_learning_tab',
         });
 
@@ -327,7 +327,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       reportAppInteraction(UserInteraction.OpenResourceClick, {
         content_title: title,
         content_url: guideUrl,
-        content_type: 'learning-journey',
+        content_type: AnalyticsContentType.LearningJourney,
         interaction_location: 'my_learning_tab',
       });
 

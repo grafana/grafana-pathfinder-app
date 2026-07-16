@@ -44,7 +44,13 @@
 import * as React from 'react';
 import { getAppEvents, locationService } from '@grafana/runtime';
 import { PLUGIN_BASE_URL, ROUTES } from '../../../constants';
-import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getContentTypeForAnalytics,
+  tabTypeToContentType,
+  AnalyticsContentType,
+} from '../../../lib/analytics';
 import { panelModeManager } from '../../../global-state/panel-mode';
 import { buildFullScreenRouteUrl } from '../../../utils/pathfinder-search-params';
 import type { CombinedPanelState } from '../../../types/content-panel.types';
@@ -76,7 +82,7 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
         reportAppInteraction(UserInteraction.FullScreenEnter, {
           guide_url: '',
           guide_title: activeTab.title,
-          content_type: 'editor',
+          content_type: AnalyticsContentType.Editor,
         });
         // Remember where we came from so explicit Exit can land back on the
         // user's prior Grafana page instead of the plugin home.
@@ -117,7 +123,7 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
       reportAppInteraction(UserInteraction.FullScreenEnter, {
         guide_url: guideUrl,
         guide_title: activeTab.title,
-        content_type: getContentTypeForAnalytics(guideUrl, activeTab.type || 'docs'),
+        content_type: getContentTypeForAnalytics(guideUrl, tabTypeToContentType(activeTab.type)),
       });
 
       // Remember where we came from so explicit Exit can land back on the

@@ -25,7 +25,13 @@ import React from 'react';
 import { Icon, IconButton, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
-import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getContentTypeForAnalytics,
+  tabTypeToContentType,
+  AnalyticsLinkType,
+} from '../../../lib/analytics';
 import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../../docs-retrieval';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
@@ -218,10 +224,10 @@ export function LearningJourneyMilestoneToolbar({
                 onClick={() => {
                   reportAppInteraction(UserInteraction.OpenExtraResource, {
                     content_url: externalUrl,
-                    content_type: getContentTypeForAnalytics(externalUrl, activeTab.type || 'learning-journey'),
+                    content_type: getContentTypeForAnalytics(externalUrl, tabTypeToContentType(activeTab.type)),
                     link_text: activeTab.title,
                     source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
-                    link_type: 'external_browser',
+                    link_type: AnalyticsLinkType.ExternalBrowser,
                     interaction_location: openInteractionLocation,
                     current_milestone: lj.currentMilestone || 0,
                     total_milestones: lj.totalMilestones || 0,

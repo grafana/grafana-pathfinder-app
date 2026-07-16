@@ -1,4 +1,10 @@
-import { reportAppInteraction, UserInteraction, bindExperimentsProvider } from './analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  bindExperimentsProvider,
+  setupScrollTracking,
+  clearScrollTrackingCache,
+} from './analytics';
 import { reportInteraction } from '@grafana/runtime';
 import { pushFaroUserAction } from './telemetry/bridge';
 
@@ -66,13 +72,13 @@ describe('reportAppInteraction', () => {
 
     reportAppInteraction(UserInteraction.ShowMeButtonClick, {
       step_id: 'step-1',
-      content_type: 'interactive_guide',
+      content_type: 'interactive-guide',
     });
 
     const properties = mockReportInteraction.mock.calls[0][1];
     expect(properties.kiosk_session_id).toBe('kiosk-123');
     expect(properties.step_id).toBe('step-1');
-    expect(properties.content_type).toBe('interactive_guide');
+    expect(properties.content_type).toBe('interactive-guide');
     expect(properties.plugin_version).toBe('1.0.0-test');
   });
 });
@@ -218,5 +224,60 @@ describe('reportAppInteraction experiment enrichment', () => {
   it('still mirrors flag exposures to Faro (beforeSend gates delivery, not the mirror)', () => {
     reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: HIGHLIGHTED });
     expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('setupScrollTracking PanelScroll content_type', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    clearScrollTrackingCache();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function fireScroll(el: HTMLElement): void {
+    el.dispatchEvent(new Event('scroll'));
+    jest.advanceTimersByTime(150);
+  }
+
+  it('keeps content_type in sync with page_type when the tab has no type (both fall back to learning-journey)', () => {
+    const el = document.createElement('div');
+    const activeTab = { content: { url: 'https://example.com/journey' } };
+
+    const cleanup = setupScrollTracking(el, activeTab, false);
+    fireScroll(el);
+
+    const props = mockReportInteraction.mock.calls[0][1];
+    expect(props.page_type).toBe('learning-journey');
+    expect(props.content_type).toBe('learning-journey');
+    cleanup();
+  });
+
+  it('maps an interactive tab to the canonical interactive-guide content_type', () => {
+    const el = document.createElement('div');
+    const activeTab = { type: 'interactive' as const, content: { url: 'https://example.com/guide' } };
+
+    const cleanup = setupScrollTracking(el, activeTab, false);
+    fireScroll(el);
+
+    const props = mockReportInteraction.mock.calls[0][1];
+    expect(props.page_type).toBe('interactive');
+    expect(props.content_type).toBe('interactive-guide');
+    cleanup();
+  });
+
+  it('reports an empty content_type for the recommendations tab', () => {
+    const el = document.createElement('div');
+
+    const cleanup = setupScrollTracking(el, null, true);
+    fireScroll(el);
+
+    const props = mockReportInteraction.mock.calls[0][1];
+    expect(props.page_type).toBe('recommendations');
+    expect(props.content_type).toBe('');
+    cleanup();
   });
 });

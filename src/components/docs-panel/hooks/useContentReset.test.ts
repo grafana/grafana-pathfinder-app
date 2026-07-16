@@ -5,6 +5,7 @@ import {
   UserInteraction,
   getContentTypeForAnalytics,
   enrichWithStepContext,
+  AnalyticsContentType,
 } from '../../../lib/analytics';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
@@ -66,7 +67,7 @@ describe('useContentReset', () => {
 
     // Setup mocks
     mockEnrichWithStepContext.mockReturnValue({ enriched: true } as any);
-    mockGetContentTypeForAnalytics.mockReturnValue('interactive');
+    mockGetContentTypeForAnalytics.mockReturnValue(AnalyticsContentType.InteractiveGuide);
     mockInteractiveStepStorage.clearAllForContent.mockResolvedValue(undefined);
     mockInteractiveCompletionStorage.clear.mockResolvedValue(undefined);
   });
@@ -86,7 +87,7 @@ describe('useContentReset', () => {
     expect(mockReportAppInteraction).toHaveBeenCalledWith(UserInteraction.ResetProgressClick, { enriched: true });
     expect(mockEnrichWithStepContext).toHaveBeenCalledWith({
       content_url: 'https://example.com/guide',
-      content_type: 'interactive',
+      content_type: AnalyticsContentType.InteractiveGuide,
       interaction_location: 'docs_content_meta_header',
     });
 

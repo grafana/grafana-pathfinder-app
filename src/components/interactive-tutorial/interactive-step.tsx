@@ -237,10 +237,11 @@ export const InteractiveStep = forwardRef<
 
     // Update currentTargetValue when assistant block value changes
     useEffect(() => {
-      if (assistantBlockValue?.customizedValue !== null && assistantBlockValue?.customizedValue !== undefined) {
-        setCurrentTargetValue(assistantBlockValue.customizedValue);
-      } else if (assistantBlockValue?.customizedValue === null) {
-        // Revert to original value when customization is cleared
+      const customizedValue = assistantBlockValue?.customizedValue;
+      if (customizedValue !== null && customizedValue !== undefined) {
+        setCurrentTargetValue(customizedValue);
+      } else {
+        // No active customization (cleared, or no AssistantBlockWrapper context at all) - track the prop.
         setCurrentTargetValue(targetValue);
       }
     }, [assistantBlockValue?.customizedValue, targetValue]);

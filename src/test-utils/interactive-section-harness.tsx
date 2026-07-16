@@ -342,6 +342,14 @@ export function createAnalyticsMock() {
       DoItButtonClick: 'do_it_button_click',
       StepAutoCompleted: 'step_auto_completed',
     },
+    AnalyticsContentType: {
+      Docs: 'docs',
+      LearningJourney: 'learning-journey',
+      InteractiveGuide: 'interactive-guide',
+      Editor: 'editor',
+      Devtools: 'devtools',
+      PackageNavLink: 'package-nav-link',
+    },
     getSourceDocument: jest.fn(() => ({})),
     calculateStepCompletion: jest.fn(() => undefined),
   };

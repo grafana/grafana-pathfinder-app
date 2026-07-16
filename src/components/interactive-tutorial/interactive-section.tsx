@@ -71,6 +71,7 @@ import {
   UserInteraction,
   getSourceDocument,
   calculateStepCompletion,
+  AnalyticsContentType,
   createInteractionName,
 } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
@@ -1036,7 +1037,7 @@ export function InteractiveSection({
 
           reportAppInteraction(UserInteraction.DoSectionButtonClick, {
             ...docInfo,
-            content_type: 'interactive_guide',
+            content_type: AnalyticsContentType.InteractiveGuide,
             section_title: title,
             // Section-scoped
             total_steps: stepComponents.length,

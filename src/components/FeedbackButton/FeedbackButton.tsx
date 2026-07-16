@@ -1,5 +1,10 @@
 import React from 'react';
-import { reportAppInteraction, UserInteraction, calculateJourneyProgress } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  calculateJourneyProgress,
+  AnalyticsContentType,
+} from '../../lib/analytics';
 import { getFeedbackButtonStyles } from '../../styles/feedback-button.styles';
 import { useTheme2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
@@ -9,7 +14,7 @@ interface FeedbackButtonProps {
   className?: string;
   variant?: 'primary' | 'secondary';
   contentUrl?: string;
-  contentType?: string;
+  contentType?: AnalyticsContentType;
   interactionLocation?: string; // Specific location identifier for analytics
   currentMilestone?: number; // For learning journeys - current milestone user is viewing
   totalMilestones?: number; // For learning journeys - total milestones in journey
@@ -19,7 +24,7 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({
   className,
   variant = 'primary',
   contentUrl = '',
-  contentType = '',
+  contentType,
   interactionLocation = 'feedback_button', // Default fallback
   currentMilestone,
   totalMilestones,
