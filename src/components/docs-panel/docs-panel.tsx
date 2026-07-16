@@ -29,7 +29,12 @@ import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
 import { useLinkClickHandler } from './link-handler.hook';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 
-import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getContentTypeForAnalytics,
+  AnalyticsContentType,
+} from '../../lib/analytics';
 import { logger } from '../../lib/logging';
 import { withGuideOpenAction, type GuideLoadOutcome } from '../../lib/telemetry';
 import { usePanelReadyMeasurement } from './hooks/usePanelReadyMeasurement';
@@ -1170,7 +1175,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     reportAppInteraction(UserInteraction.OpenResourceClick, {
       content_title: title,
       content_url: url,
-      content_type: getContentTypeForAnalytics(url, openAsLearningJourney ? 'learning-journey' : 'docs'),
+      content_type: getContentTypeForAnalytics(
+        url,
+        openAsLearningJourney ? AnalyticsContentType.LearningJourney : AnalyticsContentType.Docs
+      ),
       trigger_source: 'auto_launch_tutorial',
       interaction_location: 'docs_panel',
       ...(openAsLearningJourney && {

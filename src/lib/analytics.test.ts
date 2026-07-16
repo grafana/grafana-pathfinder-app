@@ -66,13 +66,13 @@ describe('reportAppInteraction', () => {
 
     reportAppInteraction(UserInteraction.ShowMeButtonClick, {
       step_id: 'step-1',
-      content_type: 'interactive_guide',
+      content_type: 'interactive-guide',
     });
 
     const properties = mockReportInteraction.mock.calls[0][1];
     expect(properties.kiosk_session_id).toBe('kiosk-123');
     expect(properties.step_id).toBe('step-1');
-    expect(properties.content_type).toBe('interactive_guide');
+    expect(properties.content_type).toBe('interactive-guide');
     expect(properties.plugin_version).toBe('1.0.0-test');
   });
 });

@@ -7,6 +7,8 @@ import {
   enrichWithJourneyContext,
   enrichWithStepContext,
   getContentTypeForAnalytics,
+  AnalyticsContentType,
+  AnalyticsLinkType,
 } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
 import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
@@ -134,10 +136,10 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               UserInteraction.OpenExtraResource,
               enrichWithStepContext({
                 content_url: href,
-                content_type: getContentTypeForAnalytics(href, 'docs'),
+                content_type: getContentTypeForAnalytics(href, AnalyticsContentType.Docs),
                 link_text: linkText,
                 source_page: activeTab?.content?.url || 'unknown',
-                link_type: 'bundled_interactive',
+                link_type: AnalyticsLinkType.BundledInteractive,
                 interaction_location: 'bundled_link',
               })
             );
@@ -214,7 +216,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             }
 
             // Track analytics for opening extra resources (docs/tutorials)
-            const contentType = isLearningJourney ? 'learning-journey' : 'docs';
+            const contentType = isLearningJourney ? AnalyticsContentType.LearningJourney : AnalyticsContentType.Docs;
             const isTutorial = urlObj?.pathname.startsWith('/tutorials/');
             reportAppInteraction(
               UserInteraction.OpenExtraResource,
@@ -223,7 +225,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 content_type: getContentTypeForAnalytics(fullUrl, contentType),
                 link_text: linkText,
                 source_page: activeTab?.content?.url || 'unknown',
-                link_type: isTutorial ? 'tutorial' : 'docs',
+                link_type: isTutorial ? AnalyticsLinkType.Tutorial : AnalyticsLinkType.Docs,
                 interaction_location: 'content_link',
               })
             );
@@ -251,10 +253,10 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 enrichWithJourneyContext(
                   {
                     content_url: resolvedUrl,
-                    content_type: getContentTypeForAnalytics(resolvedUrl, 'docs'),
+                    content_type: getContentTypeForAnalytics(resolvedUrl, AnalyticsContentType.Docs),
                     link_text: linkText,
                     source_page: activeTab?.content?.url || 'unknown',
-                    link_type: 'interactive_learning',
+                    link_type: AnalyticsLinkType.InteractiveLearning,
                     interaction_location: 'interactive_learning_link',
                   },
                   activeTab?.content
@@ -278,10 +280,10 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 enrichWithJourneyContext(
                   {
                     content_url: resolvedUrl,
-                    content_type: getContentTypeForAnalytics(resolvedUrl, 'docs'),
+                    content_type: getContentTypeForAnalytics(resolvedUrl, AnalyticsContentType.Docs),
                     link_text: linkText,
                     source_page: activeTab?.content?.url || 'unknown',
-                    link_type: 'external_browser',
+                    link_type: AnalyticsLinkType.ExternalBrowser,
                     interaction_location: 'external_link',
                   },
                   activeTab?.content
@@ -363,10 +365,10 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 enrichWithJourneyContext(
                   {
                     content_url: fullUrl,
-                    content_type: getContentTypeForAnalytics(fullUrl, 'docs'),
+                    content_type: getContentTypeForAnalytics(fullUrl, AnalyticsContentType.Docs),
                     link_text: linkTitle,
                     source_page: activeTab?.content?.url || 'unknown',
-                    link_type: 'side_journey',
+                    link_type: AnalyticsLinkType.SideJourney,
                     interaction_location: 'side_journey_link',
                   },
                   activeTab?.content
@@ -382,10 +384,10 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 enrichWithJourneyContext(
                   {
                     content_url: fullUrl,
-                    content_type: getContentTypeForAnalytics(fullUrl, 'docs'),
+                    content_type: getContentTypeForAnalytics(fullUrl, AnalyticsContentType.Docs),
                     link_text: linkTitle,
                     source_page: activeTab?.content?.url || 'unknown',
-                    link_type: 'side_journey_external',
+                    link_type: AnalyticsLinkType.SideJourneyExternal,
                     interaction_location: 'side_journey_link',
                   },
                   activeTab?.content
@@ -445,10 +447,10 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 enrichWithJourneyContext(
                   {
                     content_url: fullUrl,
-                    content_type: getContentTypeForAnalytics(fullUrl, 'learning-journey'),
+                    content_type: getContentTypeForAnalytics(fullUrl, AnalyticsContentType.LearningJourney),
                     link_text: linkTitle,
                     source_page: activeTab?.content?.url || 'unknown',
-                    link_type: 'related_journey',
+                    link_type: AnalyticsLinkType.RelatedJourney,
                     interaction_location: 'related_journey_link',
                   },
                   activeTab?.content
@@ -464,10 +466,10 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 enrichWithJourneyContext(
                   {
                     content_url: fullUrl,
-                    content_type: getContentTypeForAnalytics(fullUrl, 'docs'),
+                    content_type: getContentTypeForAnalytics(fullUrl, AnalyticsContentType.Docs),
                     link_text: linkTitle,
                     source_page: activeTab?.content?.url || 'unknown',
-                    link_type: 'related_journey_external',
+                    link_type: AnalyticsLinkType.RelatedJourneyExternal,
                     interaction_location: 'related_journey_link',
                   },
                   activeTab?.content

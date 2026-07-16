@@ -66,7 +66,13 @@ function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
   }
   return STEP_TYPE_LOOKUP.get(child.type as React.ComponentType<any>);
 }
-import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getSourceDocument,
+  calculateStepCompletion,
+  AnalyticsContentType,
+} from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
@@ -1030,7 +1036,7 @@ export function InteractiveSection({
 
           reportAppInteraction(UserInteraction.DoSectionButtonClick, {
             ...docInfo,
-            content_type: 'interactive_guide',
+            content_type: AnalyticsContentType.InteractiveGuide,
             section_title: title,
             // Section-scoped
             total_steps: stepComponents.length,

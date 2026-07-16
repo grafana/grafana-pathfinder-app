@@ -28,6 +28,10 @@ jest.mock('../../../lib/analytics', () => ({
     OpenExtraResource: 'open_extra_resource',
   },
   getContentTypeForAnalytics: () => 'learning-journey',
+  tabTypeToContentType: (type?: string) => (type === 'interactive' ? 'interactive-guide' : type || 'docs'),
+  AnalyticsLinkType: {
+    ExternalBrowser: 'external_browser',
+  },
 }));
 
 jest.mock('../../../docs-retrieval', () => ({
