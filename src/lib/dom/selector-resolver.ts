@@ -4,6 +4,7 @@
  */
 
 import { logger } from '../logging';
+import { escapeCssAttributeValue } from './css-escape';
 import { toGrafanaSelector } from './grafana-selector';
 
 /**
@@ -11,16 +12,18 @@ import { toGrafanaSelector } from './grafana-selector';
  *
  * Supported formats:
  * - `grafana:components.RefreshPicker.runButton` - Grafana e2e selector path
- * - `grafana:components.NavMenu.item:Dashboards` - Grafana selector with parameter (colon-separated)
+ * - `grafana:components.NavMenu.item:Dashboards` - Grafana selector with parameter (split at the
+ *   first colon after the prefix; the parameter itself may contain colons)
  * - `button[data-testid="..."]` - Standard CSS selector (returned as-is)
  *
  * @param reftarget - The selector string from data-reftarget attribute
  * @returns Resolved CSS selector string
  *
  * @example
- * // Grafana selector
+ * // Grafana selector — one value resolved for the running Grafana version,
+ * // mirrored onto both attributes
  * resolveSelector('grafana:components.RefreshPicker.runButton')
- * // Returns: '[data-testid="data-testid RefreshPicker run button"], [aria-label="RefreshPicker run button"]'
+ * // Returns: "[data-testid='data-testid RefreshPicker run button'], [aria-label='data-testid RefreshPicker run button']"
  *
  * @example
  * // Standard CSS selector
@@ -29,8 +32,8 @@ import { toGrafanaSelector } from './grafana-selector';
  *
  * @example
  * // Grafana selector with parameter
- * resolveSelector('grafana:pages.AddDashboard.itemButton:Panel')
- * // Returns: 'button[aria-label="Add new panel Panel"]'
+ * resolveSelector('grafana:components.Panels.Panel.title:CPU Usage')
+ * // Returns: "[data-testid='data-testid Panel header CPU Usage'], [aria-label='data-testid Panel header CPU Usage']"
  */
 export function resolveSelector(reftarget: string): string {
   if (!reftarget) {
@@ -42,8 +45,9 @@ export function resolveSelector(reftarget: string): string {
     // Remove prefix
     const pathWithParam = reftarget.substring(8); // Remove 'grafana:'
 
-    // Check if there's a parameter (separated by colon)
-    const colonIndex = pathWithParam.lastIndexOf(':');
+    // Selector paths are dot-separated and never contain colons, so the first
+    // colon unambiguously separates path from parameter (which may itself contain colons)
+    const colonIndex = pathWithParam.indexOf(':');
     let selectorPath: string;
     let selectorId: string | undefined;
 
@@ -92,6 +96,6 @@ function resolvePanelSelector(reftarget: string): string {
   }
 
   // Grafana panels use [data-viz-panel-key] and have title in header
-  const baseSelector = `[data-viz-panel-key]:has([data-testid*="Panel header ${panelTitle}"])`;
+  const baseSelector = `[data-viz-panel-key]:has([data-testid*="Panel header ${escapeCssAttributeValue(panelTitle, '"')}"])`;
   return childSelector ? `${baseSelector} ${childSelector}` : baseSelector;
 }

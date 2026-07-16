@@ -14,6 +14,7 @@ import {
   analyzeSelectorString,
 } from './selector-generator';
 import { querySelectorAllEnhanced } from './enhanced-selector';
+import { resolveSelector } from './selector-resolver';
 
 describe('Selector Generator — Pipeline', () => {
   beforeEach(() => {
@@ -774,5 +775,53 @@ describe('Selector Generator — Pipeline', () => {
       const m3 = querySelectorAllEnhanced(s3);
       expect(m3.elements).toContain(inputs[2]);
     });
+  });
+});
+
+describe('Selector Generator — CSS attribute-value escaping', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('emits a valid, matching selector for a testid containing a single quote', () => {
+    const button = document.createElement('button');
+    button.setAttribute('data-testid', "Panel menu item Mark's dashboard");
+    document.body.appendChild(button);
+
+    const selector = generateBestSelector(button);
+
+    expect(selector).toContain("Mark\\'s");
+    const matches = querySelectorAllEnhanced(selector);
+    expect(matches.elements).toEqual([button]);
+  });
+
+  it('emits a resolvable, matching selector for an aria-label containing a single quote', () => {
+    const button = document.createElement('button');
+    button.setAttribute('aria-label', "Delete Mark's panel");
+    document.body.appendChild(button);
+
+    // The winner may be a grafana: path (the reverse index matches this label
+    // against the legacy `${title} panel` template) — resolve like replay does.
+    const selector = generateBestSelector(button);
+    const resolved = resolveSelector(selector);
+
+    expect(resolved).toContain("\\'");
+    const matches = querySelectorAllEnhanced(resolved);
+    expect(matches.elements).toEqual([button]);
+  });
+
+  it('escapes quote-bearing ancestor testids used as disambiguation scopes', () => {
+    document.body.innerHTML = '<div><span></span><span></span></div><section><em></em></section>';
+    const scopeParent = document.querySelector('div')!;
+    scopeParent.setAttribute('data-testid', "Mark's section");
+    const target = scopeParent.querySelector('span')!;
+
+    const selector = generateBestSelector(target as HTMLElement);
+
+    const matches = querySelectorAllEnhanced(selector);
+    expect(matches.elements).toEqual([target]);
   });
 });

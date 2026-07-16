@@ -1,17 +1,20 @@
 import { renderHook, act } from '@testing-library/react';
+import { locationService } from '@grafana/runtime';
 import { usePanelMode } from './usePanelMode';
 import { panelModeManager, type PanelMode } from '../../../global-state/panel-mode';
 import { PLUGIN_BASE_URL, ROUTES } from '../../../constants';
 
 describe('usePanelMode', () => {
   let setModeSpy: jest.SpyInstance;
+  let getLocationSpy: jest.SpyInstance;
   let originalPathname: string;
 
   beforeEach(() => {
     setModeSpy = jest.spyOn(panelModeManager, 'setMode').mockImplementation(() => {});
     jest.spyOn(panelModeManager, 'getMode').mockReturnValue('sidebar');
+    getLocationSpy = jest.spyOn(locationService, 'getLocation');
     originalPathname = window.location.pathname;
-    setPathname('/grafana/some-other-page');
+    setPathname('/grafana/some-other-page', '/some-other-page');
   });
 
   afterEach(() => {
@@ -20,10 +23,11 @@ describe('usePanelMode', () => {
     setPathname(originalPathname);
   });
 
-  function setPathname(pathname: string) {
+  function setPathname(pathname: string, routerPathname = pathname) {
     // JSDOM's Location properties are non-configurable; pushState is the
     // sanctioned way to update window.location.pathname.
     window.history.pushState({}, '', pathname);
+    getLocationSpy.mockReturnValue({ pathname: routerPathname } as ReturnType<typeof locationService.getLocation>);
   }
 
   function dispatchModeChange(mode: PanelMode) {
@@ -55,8 +59,19 @@ describe('usePanelMode', () => {
     expect(setModeSpy).not.toHaveBeenCalled();
   });
 
+  it('keeps fullscreen mode when Grafana is served from a subpath', () => {
+    setPathname(`/grafana${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`, `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
+
+    const { result } = renderHook(() => usePanelMode());
+    dispatchModeChange('fullscreen');
+
+    expect(result.current.panelMode).toBe('fullscreen');
+    expect(result.current.isFullScreenActive).toBe(true);
+    expect(setModeSpy).not.toHaveBeenCalled();
+  });
+
   it('self-heals stale fullscreen mode to sidebar when off-route', () => {
-    setPathname('/grafana/dashboards');
+    setPathname('/grafana/dashboards', '/dashboards');
 
     const { result } = renderHook(() => usePanelMode());
     dispatchModeChange('fullscreen');

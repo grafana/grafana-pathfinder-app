@@ -37,13 +37,18 @@ interface LeaseForChainOptions {
   packageMetaById: Map<string, PackageMeta>;
 }
 
+interface PluginRequirement {
+  slug: string;
+  version?: string;
+}
+
 interface CreateLeaseRequest {
   poolId: string;
   runId: string;
   chainId: string;
   packageIds: string[];
   fallbackPolicy: typeof FALLBACK_POLICY;
-  requiredPlugins: [];
+  requiredPlugins: PluginRequirement[];
   metadata: Record<string, string>;
   maxWaitSeconds?: number;
 }
@@ -185,6 +190,23 @@ function chainIdFor(packageIds: string[]): string {
   return packageIds.length > 0 ? packageIds.join('>') : randomUUID();
 }
 
+function collectRequiredPlugins(
+  chain: PlannedGuideRef[],
+  packageMetaById: Map<string, PackageMeta>
+): PluginRequirement[] {
+  const seen = new Set<string>();
+  const plugins: PluginRequirement[] = [];
+  for (const planned of chain) {
+    for (const slug of packageMetaById.get(planned.id)?.plugins ?? []) {
+      if (!seen.has(slug)) {
+        seen.add(slug);
+        plugins.push({ slug });
+      }
+    }
+  }
+  return plugins;
+}
+
 function metadataFor(packageIds: string[], packageMetaById: Map<string, PackageMeta>): Record<string, string> {
   const sourceUrls = packageIds.flatMap((id) => {
     const sourceUrl = packageMetaById.get(id)?.sourceUrl;
@@ -288,7 +310,7 @@ export class CloudStackPoolManager {
       chainId,
       packageIds,
       fallbackPolicy: FALLBACK_POLICY,
-      requiredPlugins: [],
+      requiredPlugins: collectRequiredPlugins(options.chain, options.packageMetaById),
       metadata: metadataFor(packageIds, options.packageMetaById),
       ...(this.config.maxWaitSeconds !== undefined ? { maxWaitSeconds: this.config.maxWaitSeconds } : {}),
     };

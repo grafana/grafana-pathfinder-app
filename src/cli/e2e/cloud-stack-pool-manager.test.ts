@@ -149,6 +149,34 @@ describe('CloudStackPoolManager', () => {
     expect(retireBody).not.toHaveProperty('reportUrl');
   });
 
+  it('collects requiredPlugins from packageMetaById, deduplicating across chain entries', async () => {
+    const fetchImpl = jest.fn().mockResolvedValueOnce(jsonResponse(leaseResponse(), 201, 'Created'));
+    const manager = new CloudStackPoolManager(CONFIG, false, fetchImpl as unknown as typeof fetch);
+    const packageMetaById = new Map<string, PackageMeta>([
+      ['a', { packageId: 'a', plugins: ['grafana-asserts-app', 'grafana-oncall-app'] }],
+      ['b', { packageId: 'b', plugins: ['grafana-asserts-app'] }],
+      ['c', { packageId: 'c' }],
+    ]);
+
+    await manager.leaseForChain({ chain: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], packageMetaById });
+
+    const createBody = JSON.parse((fetchImpl.mock.calls[0]![1] as RequestInit).body as string);
+    expect(createBody.requiredPlugins).toEqual([{ slug: 'grafana-asserts-app' }, { slug: 'grafana-oncall-app' }]);
+  });
+
+  it('sends empty requiredPlugins when no guide in the chain declares plugins', async () => {
+    const fetchImpl = jest.fn().mockResolvedValueOnce(jsonResponse(leaseResponse(), 201, 'Created'));
+    const manager = new CloudStackPoolManager(CONFIG, false, fetchImpl as unknown as typeof fetch);
+
+    await manager.leaseForChain({
+      chain: [{ id: 'a' }],
+      packageMetaById: new Map([['a', { packageId: 'a' }]]),
+    });
+
+    const createBody = JSON.parse((fetchImpl.mock.calls[0]![1] as RequestInit).body as string);
+    expect(createBody.requiredPlugins).toEqual([]);
+  });
+
   it('surfaces no capacity errors without leaking the manager token', async () => {
     const fetchImpl = jest
       .fn()

@@ -1,25 +1,9 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import { resolveSelector } from './selector-resolver';
-
-// Mock the grafana-selector module
-jest.mock('./grafana-selector', () => ({
-  toGrafanaSelector: jest.fn((path: string, id?: string) => {
-    if (path === 'components.RefreshPicker.runButtonV2') {
-      return "[data-testid='data-testid RefreshPicker run button'], [aria-label='data-testid RefreshPicker run button']";
-    }
-    if (path === 'pages.AddDashboard.itemButton' && id === 'Panel') {
-      return "button[aria-label='Add new panel Panel']";
-    }
-    if (path === 'invalid.path') {
-      throw new Error('Selector not found');
-    }
-    return `[data-testid='mock-${path}']`;
-  }),
-}));
 
 describe('selector-resolver', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    document.body.innerHTML = '';
   });
 
   describe('resolveSelector', () => {
@@ -31,11 +15,8 @@ describe('selector-resolver', () => {
     });
 
     it('should handle grafana: prefix with parameter', () => {
-      // The mock should handle this case
-      const result = resolveSelector('grafana:pages.AddDashboard.itemButton:Panel');
-      // Due to jest mocking issues in this context, the actual selector will be generated
-      // but this test verifies the colon-separated parameter logic works
-      expect(result).toContain('testid');
+      const result = resolveSelector('grafana:components.Breadcrumbs.breadcrumb:Home');
+      expect(result).toContain("[data-testid='data-testid Home breadcrumb']");
     });
 
     it('should return standard CSS selector unchanged', () => {
@@ -81,11 +62,39 @@ describe('selector-resolver', () => {
       expect(result).toBe(cssSelector);
     });
 
-    it('should handle multiple colons in selector path', () => {
-      const result = resolveSelector('grafana:components.Select.option:value:name');
-      // The last colon should be treated as parameter separator
-      // If the selector is invalid, it should fallback to the original selector
-      expect(result).toBe('grafana:components.Select.option:value:name');
+    it('splits path and parameter at the first colon so parameters may contain colons', () => {
+      const result = resolveSelector('grafana:components.Breadcrumbs.breadcrumb:Prod: Overview');
+      expect(result).toContain("[data-testid='data-testid Prod: Overview breadcrumb']");
+    });
+
+    it('escapes quotes in resolved values so the emitted CSS stays valid', () => {
+      const result = resolveSelector("grafana:components.Breadcrumbs.breadcrumb:Mark's dashboard");
+      expect(result).toContain("[data-testid='data-testid Mark\\'s dashboard breadcrumb']");
+
+      const el = document.createElement('span');
+      el.setAttribute('data-testid', "data-testid Mark's dashboard breadcrumb");
+      document.body.appendChild(el);
+      expect(Array.from(document.querySelectorAll(result))).toContain(el);
+    });
+  });
+
+  describe('resolveSelector with panel: prefix', () => {
+    it('resolves a panel title to a panel container selector', () => {
+      expect(resolveSelector('panel:CPU Usage')).toBe(
+        '[data-viz-panel-key]:has([data-testid*="Panel header CPU Usage"])'
+      );
+    });
+
+    it('appends the child selector after the panel container', () => {
+      expect(resolveSelector('panel:CPU Usage > .menu')).toBe(
+        '[data-viz-panel-key]:has([data-testid*="Panel header CPU Usage"]) .menu'
+      );
+    });
+
+    it('escapes double quotes in the panel title', () => {
+      expect(resolveSelector('panel:He said "hi"')).toBe(
+        '[data-viz-panel-key]:has([data-testid*="Panel header He said \\"hi\\""])'
+      );
     });
   });
 });

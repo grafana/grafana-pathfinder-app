@@ -10,7 +10,7 @@ import {
 } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
-import { recordStepExecution } from '../../lib/telemetry';
+import { recordStepExecution, type StepOutcome } from '../../lib/telemetry';
 import type { InteractiveStepProps } from '../../types/component-props.types';
 import {
   type DetectedActionEvent,
@@ -36,10 +36,8 @@ import { useControllerChannel } from '../../global-state/controller-channel';
  * Result type for lazy scroll execution wrapper
  */
 interface LazyScrollResult {
-  /** Element discovery + dispatch ran (drives the UI error state). */
-  success: boolean;
-  /** The action's own result — a found element can still fail execution or verification. */
-  actionSucceeded: boolean;
+  /** `ok` only when the element was found and the action itself succeeded. */
+  outcome: StepOutcome;
   error?: string;
   elementFound: boolean;
 }
@@ -64,7 +62,7 @@ export async function executeWithLazyScroll(
 ): Promise<LazyScrollResult> {
   // Navigate, noop, and popout actions don't target DOM elements - execute immediately without element checking
   if (targetAction === 'navigate' || targetAction === 'noop' || targetAction === 'popout') {
-    return { success: true, actionSucceeded: await action(), elementFound: true };
+    return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
   }
 
   // DOM-targeting actions: quick synchronous check if element exists (provides user feedback if missing)
@@ -75,7 +73,7 @@ export async function executeWithLazyScroll(
 
   if (elementExists) {
     // Element found - execute action immediately
-    return { success: true, actionSucceeded: await action(), elementFound: true };
+    return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
   }
 
   // Element not found - try lazy scroll discovery only if enabled
@@ -87,13 +85,12 @@ export async function executeWithLazyScroll(
 
     if (foundElement) {
       // Element discovered after scroll - execute action
-      return { success: true, actionSucceeded: await action(), elementFound: true };
+      return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
     }
 
     // Scroll completed but element still not found
     return {
-      success: false,
-      actionSucceeded: false,
+      outcome: 'error',
       elementFound: false,
       error: 'Element not found after scrolling dashboard',
     };
@@ -101,8 +98,7 @@ export async function executeWithLazyScroll(
 
   // lazyRender not enabled and element not found - return clear error
   return {
-    success: false,
-    actionSucceeded: false,
+    outcome: 'error',
     elementFound: false,
     error: `Element not found: ${refTarget}`,
   };
@@ -731,7 +727,7 @@ export const InteractiveStep = forwardRef<
           targetAction
         );
 
-        if (!result.success) {
+        if (!result.elementFound) {
           // Lazy scroll failed to find element
           setLazyScrollError(result.error || 'Element not found');
           return;
@@ -845,8 +841,8 @@ export const InteractiveStep = forwardRef<
         // Use lazy scroll wrapper to ensure element is found before executing
         const result = await executeWithLazyScroll(refTarget, lazyRender, scrollContainer, executeStep, targetAction);
 
-        stepOutcome = result.success && result.actionSucceeded ? 'ok' : 'error';
-        if (!result.success) {
+        stepOutcome = result.outcome;
+        if (!result.elementFound) {
           // Lazy scroll failed to find element
           setLazyScrollError(result.error || 'Element not found');
         }

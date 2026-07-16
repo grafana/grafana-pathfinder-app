@@ -11,7 +11,7 @@
 
 import { locationService } from '@grafana/runtime';
 
-import pluginJson from '../plugin.json';
+import { PLUGIN_BASE_URL, ROUTES } from '../constants';
 import { logger } from '../lib/logging';
 import { panelModeManager } from '../global-state/panel-mode';
 import { sidebarState } from '../global-state/sidebar';
@@ -48,6 +48,10 @@ function rewriteCurrentUrl(mutate: (url: URL) => void): void {
   lastProcessedSearch = null;
 }
 
+function isFullScreenRoute(pathname: string): boolean {
+  return pathname === `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
+}
+
 /** Process Pathfinder deep-link params from the current URL. Idempotent. */
 export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
   const search = window.location.search;
@@ -55,15 +59,23 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
     return false;
   }
 
-  if (search === lastProcessedSearch) {
-    return false;
-  }
-  lastProcessedSearch = search;
-
   const deepLink = parsePathfinderDeepLink(search);
   const { doc: docsParam, page: pageParam, source: sourceParam, type: typeParam } = deepLink;
   const kioskSessionParam = deepLink.kioskSession;
   const panelModeParam = deepLink.panelMode;
+
+  // FullScreenPanel owns `?doc=` on this route; kiosk_session/panelMode still
+  // process below. With neither present there is nothing to do — bail before
+  // the dedup gate so this search isn't latched against a later normal route.
+  const onFullScreenRoute = isFullScreenRoute(locationService.getLocation().pathname);
+  if (onFullScreenRoute && panelModeParam === undefined && kioskSessionParam === undefined) {
+    return false;
+  }
+
+  if (search === lastProcessedSearch) {
+    return false;
+  }
+  lastProcessedSearch = search;
 
   if (kioskSessionParam) {
     (window as any).__pathfinderKioskSessionId = kioskSessionParam;
@@ -75,7 +87,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
   } else if (panelModeParam === 'fullscreen') {
     panelModeManager.setMode('fullscreen');
     rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));
-    let target = `/a/${pluginJson.id}/fullscreen`;
+    let target = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
     if (docsParam) {
       const fullScreenParams = new URLSearchParams();
       fullScreenParams.set('doc', docsParam);
@@ -89,8 +101,9 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
 
   const docOpenSource = sourceParam || 'url_param';
 
-  if (!docsParam) {
-    // panelMode-only / kiosk-only links: nothing more to dispatch.
+  if (!docsParam || onFullScreenRoute) {
+    // panelMode-only / kiosk-only links, or a full-screen-route doc owned by
+    // FullScreenPanel: nothing more to dispatch here.
     return panelModeParam !== undefined || kioskSessionParam !== undefined;
   }
 

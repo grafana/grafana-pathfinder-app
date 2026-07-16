@@ -25,6 +25,7 @@
 - **Dock-to-sidebar action uses the columns icon**: Swaps the popout header's dock-to-sidebar icon from `angle-double-right` (read as navigate-forward) to `columns`, matching the layout the action produces. (#1303)
 - **Removed the redundant guide-toolbar "More options" menu**: The docs panel showed two "More options" menus at once; the toolbar's (which only duplicated "Give feedback") is gone, and its dev-only "Refresh" action moved into the tab-bar menu. (#1238)
 - **Two-tab controller formfill lands on backgrounded live tabs**: Formfill steps targeting the Monaco query editor now write through Monaco's model API instead of the hidden textarea, so they take effect on the live tab when driven from the two-tab controller. (#1181)
+- **"Full screen" button opens full screen instead of the home page**: The `panelMode=fullscreen` deep-link handoff no longer bounces back to home, and the full-screen route checks now work when Grafana is served under an `appSubUrl` sub-path — both the deep-link handler and the panel-mode self-heal compare against Grafana's basename-normalized router path instead of the raw browser pathname. (#1353)
 
 ### Security
 
