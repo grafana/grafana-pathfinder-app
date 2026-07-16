@@ -148,10 +148,11 @@ export const CodeBlockStep = forwardRef<
     const [currentCode, setCurrentCode] = useState(assistantBlockValue?.customizedValue ?? code);
 
     useEffect(() => {
-      if (assistantBlockValue?.customizedValue !== null && assistantBlockValue?.customizedValue !== undefined) {
-        setCurrentCode(assistantBlockValue.customizedValue);
-      } else if (assistantBlockValue?.customizedValue === null) {
-        // Revert to original value when customization is cleared
+      const customizedValue = assistantBlockValue?.customizedValue;
+      if (customizedValue !== null && customizedValue !== undefined) {
+        setCurrentCode(customizedValue);
+      } else {
+        // No active customization (cleared, or no AssistantBlockWrapper context at all) - track the prop.
         setCurrentCode(code);
       }
     }, [assistantBlockValue?.customizedValue, code]);
