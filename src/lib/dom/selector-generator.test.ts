@@ -599,17 +599,53 @@ describe('Selector Generator — Pipeline', () => {
     });
 
     it('rates a grafana: reftarget as good with the top stability score', () => {
-      const analysis = analyzeSelectorString('grafana:components.RefreshPicker.runButton');
+      const analysis = analyzeSelectorString('grafana:components.RefreshPicker.runButtonV2');
       expect(analysis.method).toBe('grafana');
       expect(analysis.quality).toBe('good');
       expect(analysis.stabilityScore).toBe(100);
     });
 
-    it('rates a panel: reftarget as good with the top stability score', () => {
+    it('rates a panel: reftarget as good but flags its free-text title as instance-bound', () => {
       const analysis = analyzeSelectorString('panel:CPU Usage');
       expect(analysis.method).toBe('grafana');
       expect(analysis.quality).toBe('good');
       expect(analysis.stabilityScore).toBe(100);
+      expect(analysis.flags).toContain('environment-unstable');
+    });
+
+    it('flags parameterized grafana: reftargets as instance-bound', () => {
+      const analysis = analyzeSelectorString('grafana:components.Breadcrumbs.breadcrumb:Home');
+      expect(analysis.quality).toBe('good');
+      expect(analysis.flags).toContain('environment-unstable');
+    });
+
+    it('rates an unresolvable grafana: path as poor', () => {
+      const analysis = analyzeSelectorString('grafana:components.RefreshPicker.runbutton');
+      expect(analysis.quality).toBe('poor');
+      expect(analysis.stabilityScore).toBe(0);
+      expect(analysis.warnings.some((w) => w.includes('Unknown grafana selector path'))).toBe(true);
+    });
+
+    it('rates an unresolvable embedded token as poor', () => {
+      const analysis = analyzeSelectorString("div[data-testid='panel'] {grafana:invalid.nonexistent.path}");
+      expect(analysis.quality).toBe('poor');
+      expect(analysis.stabilityScore).toBe(0);
+      expect(analysis.warnings.some((w) => w.includes('Unknown grafana selector path'))).toBe(true);
+    });
+
+    it('rates a resolvable scoped token as good', () => {
+      const analysis = analyzeSelectorString(
+        "div[data-testid='panel-B'] {grafana:components.RefreshPicker.runButtonV2}"
+      );
+      expect(analysis.method).toBe('scoped-grafana');
+      expect(analysis.quality).toBe('good');
+      expect(analysis.stabilityScore).toBe(100);
+    });
+
+    it('classifies a testid-subject :has() selector by its subject, not as has-descendant', () => {
+      const analysis = analyzeSelectorString("div[data-testid='wrapper']:has(a)");
+      expect(analysis.method).toBe('data-testid');
+      expect(analysis.quality).toBe('good');
     });
 
     it('recognizes a tag-attached id selector as an id method', () => {
@@ -808,9 +844,105 @@ describe('Selector Generator — CSS attribute-value escaping', () => {
     const selector = generateBestSelector(button);
     const resolved = resolveSelector(selector);
 
-    expect(resolved).toContain("\\'");
+    expect(resolved).toContain(`"Delete Mark's panel"`);
     const matches = querySelectorAllEnhanced(resolved);
     expect(matches.elements).toEqual([button]);
+  });
+
+  it('scopes a non-unique grafana: candidate under a stable ancestor as an embedded token', () => {
+    document.body.innerHTML = `
+      <div data-testid="panel-A"><button data-testid="data-testid RefreshPicker run button">A</button></div>
+      <div data-testid="panel-B"><button data-testid="data-testid RefreshPicker run button">B</button></div>
+    `;
+    const target = document.querySelectorAll('button')[1] as HTMLElement;
+
+    const selector = generateBestSelector(target);
+
+    expect(selector).toBe("div[data-testid='panel-B'] {grafana:components.RefreshPicker.runButtonV2}");
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([target]);
+  });
+
+  it('keeps the raw scoped testid available as a fallback alternative', () => {
+    document.body.innerHTML = `
+      <div data-testid="panel-A"><button data-testid="data-testid RefreshPicker run button">A</button></div>
+      <div data-testid="panel-B"><button data-testid="data-testid RefreshPicker run button">B</button></div>
+    `;
+    const target = document.querySelectorAll('button')[1] as HTMLElement;
+
+    const primary = generateBestSelector(target);
+    const fallbacks = generateFallbackSelectors(target, primary);
+
+    expect(primary).toContain('{grafana:');
+    expect(fallbacks).not.toContain(primary);
+    expect(fallbacks.some((s) => !s.includes('{grafana:') && s.includes('data-testid RefreshPicker run button'))).toBe(
+      true
+    );
+  });
+
+  it('drops the grafana: candidate when no ancestor scope disambiguates it', () => {
+    document.body.innerHTML = `
+      <div><button data-testid="data-testid RefreshPicker run button">A</button>
+      <button data-testid="data-testid RefreshPicker run button">B</button></div>
+    `;
+    const target = document.querySelectorAll('button')[1] as HTMLElement;
+
+    const selector = generateBestSelector(target);
+
+    expect(selector).not.toContain('{grafana:');
+    expect(selector).not.toContain('grafana:');
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([target]);
+  });
+
+  it('emits version-stable {grafana:...} ancestor scopes when the ancestor reverse-maps', () => {
+    document.body.innerHTML = `
+      <nav data-testid="data-testid Home breadcrumb"><button></button></nav>
+      <nav data-testid="data-testid Alerts breadcrumb"><button></button></nav>
+    `;
+    const target = document.querySelectorAll('button')[1] as HTMLElement;
+
+    const selector = generateBestSelector(target);
+
+    expect(selector).toBe('{grafana:components.Breadcrumbs.breadcrumb:Alerts} button');
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([target]);
+  });
+
+  it('anchors an identity-less wrapper on a descendant via a {grafana:...} token inside :has()', () => {
+    document.body.innerHTML = `
+      <li><div class="css-abc123"><a data-testid="data-testid Home breadcrumb" href="/home">Home</a></div></li>
+    `;
+    const wrapper = document.querySelector('div') as HTMLElement;
+
+    const selector = generateBestSelector(wrapper);
+
+    expect(selector).toBe('div:has({grafana:components.Breadcrumbs.breadcrumb:Home})');
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([wrapper]);
+  });
+
+  it('rescues an element via :has() when its only identity candidate dies at admission', () => {
+    // A long known aria-label value: candidateAriaLabel bails on length, so the
+    // grafana candidate is the element's ONLY identity candidate. Duplicated with
+    // no scoping ancestor it is dropped at admission — pre-rescue this element
+    // shipped as div:nth-of-type(2).
+    const longValue = `data-testid ${'X'.repeat(45)} breadcrumb`;
+    document.body.innerHTML = `
+      <div><a data-testid="unique-link-a" href="/a">A</a></div>
+      <div><a data-testid="unique-link-b" href="/b">B</a></div>
+    `;
+    const divs = document.querySelectorAll('body > div');
+    divs[0]!.setAttribute('aria-label', longValue);
+    divs[1]!.setAttribute('aria-label', longValue);
+    const target = divs[1] as HTMLElement;
+
+    const selector = generateBestSelector(target);
+
+    expect(selector).toContain(':has(');
+    expect(selector).not.toContain('nth-of-type');
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([target]);
   });
 
   it('escapes quote-bearing ancestor testids used as disambiguation scopes', () => {

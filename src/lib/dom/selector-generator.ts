@@ -110,6 +110,13 @@ const DISAMBIGUATION_PENALTIES = {
   parentStableAttr: 70,
   overlayScope: 75,
   nthMatch: 1000,
+  // Small enough that a scoped grafana: token (5 + 7 = 12) still beats a raw
+  // scoped testid (15) and a disambiguated testid (10 + 50): half its identity
+  // stays version-resolved, so it must not lose to raw-literal alternatives.
+  scopedGrafana: 7,
+  // Slightly below parentTestId so a version-resolvable ancestor scope wins
+  // when both it and a raw-testid scope would anchor uniquely.
+  parentGrafana: 45,
 } as const;
 
 // Added to a descendant's own score when that descendant is used to anchor a
@@ -833,7 +840,7 @@ function testUniqueness(
   }
 }
 
-type AncestorScopeType = 'testid' | 'id' | 'data-attr';
+type AncestorScopeType = 'grafana' | 'testid' | 'id' | 'data-attr';
 
 interface AncestorScope {
   selector: string;
@@ -852,8 +859,13 @@ function findAllAncestorScopes(element: HTMLElement): AncestorScope[] {
   let depth = 0;
 
   while (current && depth < SELECTOR_CONFIG.maxDisambiguationDepth) {
+    const grafanaPath = findGrafanaSelectorPath(current);
     const testId = getAnyTestId(current);
-    if (testId) {
+    if (grafanaPath) {
+      // The scope is often the longest-lived part of a composed selector, so a
+      // version-stable {grafana:...} token beats pinning the raw literal value.
+      scopes.push({ selector: `{${grafanaPath}}`, element: current, depth, type: 'grafana' });
+    } else if (testId) {
       const tag = current.tagName.toLowerCase();
       const attr = getTestIdAttr(current);
       scopes.push({
@@ -883,6 +895,16 @@ function findAllAncestorScopes(element: HTMLElement): AncestorScope[] {
   return scopes;
 }
 
+function scopePenalty(scope: AncestorScope): number {
+  if (scope.type === 'grafana') {
+    return DISAMBIGUATION_PENALTIES.parentGrafana;
+  }
+  if (scope.type === 'testid') {
+    return DISAMBIGUATION_PENALTIES.parentTestId;
+  }
+  return DISAMBIGUATION_PENALTIES.parentStableAttr;
+}
+
 /**
  * Find the direct child of `ancestor` that is an ancestor-or-self of `descendant`.
  */
@@ -908,11 +930,9 @@ function disambiguate(
     const scoped = `${scope.selector} ${candidate.selector}`;
     const { matchCount, containsTarget } = testUniqueness(scoped, element, candidate.method, inOverlay);
     if (matchCount === 1 && containsTarget) {
-      const penalty =
-        scope.type === 'testid' ? DISAMBIGUATION_PENALTIES.parentTestId : DISAMBIGUATION_PENALTIES.parentStableAttr;
       results.push({
         selector: cleanDynamicAttributes(scoped),
-        score: candidate.score + penalty,
+        score: candidate.score + scopePenalty(scope),
         method: candidate.method,
       });
       break;
@@ -933,11 +953,9 @@ function disambiguate(
         const nthChildScoped = `${scope.selector} > ${childTag}:nth-child(${childIndex})${suffix}`;
         const nthResult = testUniqueness(nthChildScoped, element, candidate.method, inOverlay);
         if (nthResult.matchCount === 1 && nthResult.containsTarget) {
-          const penalty =
-            scope.type === 'testid' ? DISAMBIGUATION_PENALTIES.parentTestId : DISAMBIGUATION_PENALTIES.parentStableAttr;
           results.push({
             selector: cleanDynamicAttributes(nthChildScoped),
-            score: candidate.score + penalty,
+            score: candidate.score + scopePenalty(scope),
             method: candidate.method,
           });
           break;
@@ -1037,17 +1055,66 @@ function admitCandidate(
     return candidate.method === 'scoped-bare-tag' ? [] : [{ ...candidate, matchCount }];
   }
 
-  if (candidate.method === 'button-text' || candidate.method === 'grafana') {
+  if (candidate.method === 'button-text') {
     return [];
   }
 
+  if (candidate.method === 'grafana') {
+    return admitScopedGrafana(candidate, element, ancestorScopes, inOverlay);
+  }
+
   return disambiguate(candidate, element, ancestorScopes, inOverlay).map((d) => ({ ...d, matchCount: 1 }));
+}
+
+/**
+ * A grafana: candidate that matches more than one element keeps its
+ * version-stable identity by re-emitting as an embedded token scoped under a
+ * stable ancestor: `div[data-testid='panel-A'] {grafana:components.Select.input}`.
+ * Only plain ancestor scoping is tried — positional hybrids (nth-child /
+ * nth-match around a grafana token) would undermine the stability the token
+ * exists to provide, so ranking falls through to the raw CSS candidates instead.
+ */
+function admitScopedGrafana(
+  candidate: Candidate,
+  element: HTMLElement,
+  ancestorScopes: AncestorScope[],
+  inOverlay: boolean
+): ScoredCandidate[] {
+  const token = `{${candidate.selector}}`;
+  for (const scope of ancestorScopes) {
+    const scoped = cleanDynamicAttributes(`${scope.selector} ${token}`);
+    const { matchCount, containsTarget } = testUniqueness(scoped, element, 'scoped-grafana', inOverlay);
+    if (matchCount === 1 && containsTarget) {
+      return [
+        {
+          selector: scoped,
+          score: candidate.score + DISAMBIGUATION_PENALTIES.scopedGrafana,
+          method: 'scoped-grafana',
+          matchCount: 1,
+        },
+      ];
+    }
+  }
+  return [];
 }
 
 function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCandidate {
   const ancestorScopes = findAllAncestorScopes(element);
   const inOverlay = findOverlayContext(element) !== null;
   const scored = candidates.flatMap((candidate) => admitCandidate(candidate, element, ancestorScopes, inOverlay));
+
+  // The generation-time gate only adds a :has() candidate when the element has
+  // no intrinsic identity at all. Identity candidates can also die at ADMISSION
+  // (a solitary grafana: candidate with no disambiguating ancestor, a candidate
+  // matching one element that isn't the target) — rescue those here before
+  // they degrade to a positional fallback.
+  const hasIdentitySurvivor = scored.some((s) => !STRUCTURAL_METHODS.has(s.method));
+  if (!hasIdentitySurvivor && !candidates.some((c) => c.method === 'has-descendant')) {
+    const rescue = candidateHasDescendant(element);
+    if (rescue) {
+      scored.push(...admitCandidate(rescue, element, ancestorScopes, inOverlay));
+    }
+  }
 
   if (scored.length === 0) {
     // No attribute / text / structural candidate matched — fall back to a positional
@@ -1081,18 +1148,26 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
 // Descendant-anchored :has() selectors
 // ============================================================================
 
-/** Pure-CSS candidate methods that are safe to embed inside `:has(...)`. */
+/** Candidate methods/shapes that are safe to embed inside `:has(...)`. */
 function isHasUsable(candidate: Candidate): boolean {
   if (STRUCTURAL_METHODS.has(candidate.method)) {
     return false;
   }
-  if (candidate.method === 'grafana' || candidate.method === 'button-text') {
+  if (candidate.method === 'button-text') {
     return false;
   }
   if (candidate.selector.includes(':text(') || candidate.selector.includes(':contains(')) {
     return false;
   }
   return true;
+}
+
+/** grafana: candidates embed as {grafana:...} tokens; everything else is already CSS. */
+function toHasEmbeddable(candidate: Candidate): Candidate {
+  if (candidate.method !== 'grafana') {
+    return candidate;
+  }
+  return { ...candidate, selector: `{${candidate.selector}}` };
 }
 
 function isInteractiveDescendant(element: HTMLElement): boolean {
@@ -1140,7 +1215,7 @@ function bestStableDescendant(element: HTMLElement): DescendantPick | null {
   let best: DescendantPick | null = null;
   for (const descendant of descendants) {
     const interactive = isInteractiveDescendant(descendant);
-    for (const candidate of generateIntrinsicCandidates(descendant)) {
+    for (const candidate of generateIntrinsicCandidates(descendant).map(toHasEmbeddable)) {
       if (!isHasUsable(candidate)) {
         continue;
       }
@@ -1409,12 +1484,28 @@ function computeStabilityFlags(selector: string, method: string): StabilityFlag[
     /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i.test(selector) ||
     selector.includes('/d/') ||
     selector.includes('orgId=') ||
-    selector.includes('uid=')
+    selector.includes('uid=') ||
+    isParameterizedGrafanaIdentity(selector)
   ) {
     flags.push('environment-unstable');
   }
 
   return flags;
+}
+
+/**
+ * Parameterized grafana/panel identities embed free-text display values
+ * (panel titles, item labels) — stable across Grafana versions but bound to
+ * this instance's content.
+ */
+function isParameterizedGrafanaIdentity(selector: string): boolean {
+  if (selector.startsWith('panel:')) {
+    return true;
+  }
+  if (selector.startsWith('grafana:')) {
+    return selector.substring(8).includes(':');
+  }
+  return /\{grafana:[^}]*:[^}]*\}/.test(selector);
 }
 
 function computeQuality(stabilityScore: number, flags: StabilityFlag[]): SelectorQuality {
@@ -1455,7 +1546,21 @@ function inferMethodAndScore(selector: string): { method: string; score: number 
     return { method: 'grafana', score: CANDIDATE_SCORES.grafana };
   }
   if (selector.includes(':has(')) {
+    // A hand-typed selector whose SUBJECT carries a testid is a testid selector
+    // that happens to filter with :has(); the generator's has-descendant shape
+    // always has a bare-tag subject borrowing the descendant's identity.
+    const subject =
+      selector
+        .slice(0, selector.indexOf(':has('))
+        .split(/[\s>+~]+/)
+        .pop() ?? '';
+    if (SELECTOR_CONFIG.testIdAttrs.some((attr) => subject.includes(attr))) {
+      return { method: 'data-testid', score: CANDIDATE_SCORES.testId };
+    }
     return { method: 'has-descendant', score: CANDIDATE_SCORES.testId + HAS_DESCENDANT_PENALTY };
+  }
+  if (selector.includes('{grafana:')) {
+    return { method: 'scoped-grafana', score: CANDIDATE_SCORES.grafana + DISAMBIGUATION_PENALTIES.scopedGrafana };
   }
   if (SELECTOR_CONFIG.testIdAttrs.some((attr) => selector.includes(attr))) {
     return { method: 'data-testid', score: CANDIDATE_SCORES.testId };
@@ -1505,6 +1610,21 @@ export function analyzeSelectorString(selector: string): SelectorStringAnalysis 
   const stabilityScore = scoreToStability(score);
   const flags = computeStabilityFlags(selector, method);
   const quality = computeQuality(stabilityScore, flags);
+
+  // A grafana identity that doesn't resolve against this version's selector
+  // table will never match anywhere — resolveSelector returns the input
+  // unchanged on failure, so equality means unresolvable. Without this check a
+  // typo'd path reads good/100 with a "may work on the target page" warning.
+  const hasGrafanaIdentity = selector.startsWith('grafana:') || selector.includes('{grafana:');
+  if (hasGrafanaIdentity && resolveSelector(selector) === selector) {
+    return {
+      method,
+      stabilityScore: 0,
+      quality: 'poor',
+      flags,
+      warnings: ['Unknown grafana selector path for this Grafana version'],
+    };
+  }
 
   const warnings: string[] = [];
   if (flags.includes('structural')) {
