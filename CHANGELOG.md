@@ -1,9 +1,10 @@
 # Changelog
 
-## 2.14.1
+## 2.14.2
 
 ### Fixed
 
+- **"My learning" header button opens the My Learning page again**: #1286 rewired the docs panel's header "My learning" icon to switch to the in-panel recommendations tab, leaving no way to reach the actual My Learning page from the sidebar. The header button navigates there again; the guide footer's "Return to my learning" button is unchanged. (#1368)
 - **Block editor preserves view mode and JSON drafts across remounts**: Switching to Preview or JSON mode and popping the panel out or docking it back no longer resets to Edit mode or drops an unapplied JSON draft. (#1314)
 - **Secondary step buttons size to their label**: The "Show me" and "Do it" buttons on interactive steps no longer render inside an oversized fixed-width button. (#1323)
 - **Resume/do section button uses correct singular and plural step counts**: The catch-all section action button and its tooltip no longer read "(1 steps)" when exactly one step remains. (#1325)
