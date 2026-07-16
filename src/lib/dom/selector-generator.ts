@@ -114,6 +114,9 @@ const DISAMBIGUATION_PENALTIES = {
   // scoped testid (15) and a disambiguated testid (10 + 50): half its identity
   // stays version-resolved, so it must not lose to raw-literal alternatives.
   scopedGrafana: 7,
+  // Slightly below parentTestId so a version-resolvable ancestor scope wins
+  // when both it and a raw-testid scope would anchor uniquely.
+  parentGrafana: 45,
 } as const;
 
 // Added to a descendant's own score when that descendant is used to anchor a
@@ -837,7 +840,7 @@ function testUniqueness(
   }
 }
 
-type AncestorScopeType = 'testid' | 'id' | 'data-attr';
+type AncestorScopeType = 'grafana' | 'testid' | 'id' | 'data-attr';
 
 interface AncestorScope {
   selector: string;
@@ -856,8 +859,13 @@ function findAllAncestorScopes(element: HTMLElement): AncestorScope[] {
   let depth = 0;
 
   while (current && depth < SELECTOR_CONFIG.maxDisambiguationDepth) {
+    const grafanaPath = findGrafanaSelectorPath(current);
     const testId = getAnyTestId(current);
-    if (testId) {
+    if (grafanaPath) {
+      // The scope is often the longest-lived part of a composed selector, so a
+      // version-stable {grafana:...} token beats pinning the raw literal value.
+      scopes.push({ selector: `{${grafanaPath}}`, element: current, depth, type: 'grafana' });
+    } else if (testId) {
       const tag = current.tagName.toLowerCase();
       const attr = getTestIdAttr(current);
       scopes.push({
@@ -887,6 +895,16 @@ function findAllAncestorScopes(element: HTMLElement): AncestorScope[] {
   return scopes;
 }
 
+function scopePenalty(scope: AncestorScope): number {
+  if (scope.type === 'grafana') {
+    return DISAMBIGUATION_PENALTIES.parentGrafana;
+  }
+  if (scope.type === 'testid') {
+    return DISAMBIGUATION_PENALTIES.parentTestId;
+  }
+  return DISAMBIGUATION_PENALTIES.parentStableAttr;
+}
+
 /**
  * Find the direct child of `ancestor` that is an ancestor-or-self of `descendant`.
  */
@@ -912,11 +930,9 @@ function disambiguate(
     const scoped = `${scope.selector} ${candidate.selector}`;
     const { matchCount, containsTarget } = testUniqueness(scoped, element, candidate.method, inOverlay);
     if (matchCount === 1 && containsTarget) {
-      const penalty =
-        scope.type === 'testid' ? DISAMBIGUATION_PENALTIES.parentTestId : DISAMBIGUATION_PENALTIES.parentStableAttr;
       results.push({
         selector: cleanDynamicAttributes(scoped),
-        score: candidate.score + penalty,
+        score: candidate.score + scopePenalty(scope),
         method: candidate.method,
       });
       break;
@@ -937,11 +953,9 @@ function disambiguate(
         const nthChildScoped = `${scope.selector} > ${childTag}:nth-child(${childIndex})${suffix}`;
         const nthResult = testUniqueness(nthChildScoped, element, candidate.method, inOverlay);
         if (nthResult.matchCount === 1 && nthResult.containsTarget) {
-          const penalty =
-            scope.type === 'testid' ? DISAMBIGUATION_PENALTIES.parentTestId : DISAMBIGUATION_PENALTIES.parentStableAttr;
           results.push({
             selector: cleanDynamicAttributes(nthChildScoped),
-            score: candidate.score + penalty,
+            score: candidate.score + scopePenalty(scope),
             method: candidate.method,
           });
           break;
@@ -1121,18 +1135,26 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
 // Descendant-anchored :has() selectors
 // ============================================================================
 
-/** Pure-CSS candidate methods that are safe to embed inside `:has(...)`. */
+/** Candidate methods/shapes that are safe to embed inside `:has(...)`. */
 function isHasUsable(candidate: Candidate): boolean {
   if (STRUCTURAL_METHODS.has(candidate.method)) {
     return false;
   }
-  if (candidate.method === 'grafana' || candidate.method === 'button-text') {
+  if (candidate.method === 'button-text') {
     return false;
   }
   if (candidate.selector.includes(':text(') || candidate.selector.includes(':contains(')) {
     return false;
   }
   return true;
+}
+
+/** grafana: candidates embed as {grafana:...} tokens; everything else is already CSS. */
+function toHasEmbeddable(candidate: Candidate): Candidate {
+  if (candidate.method !== 'grafana') {
+    return candidate;
+  }
+  return { ...candidate, selector: `{${candidate.selector}}` };
 }
 
 function isInteractiveDescendant(element: HTMLElement): boolean {
@@ -1180,7 +1202,7 @@ function bestStableDescendant(element: HTMLElement): DescendantPick | null {
   let best: DescendantPick | null = null;
   for (const descendant of descendants) {
     const interactive = isInteractiveDescendant(descendant);
-    for (const candidate of generateIntrinsicCandidates(descendant)) {
+    for (const candidate of generateIntrinsicCandidates(descendant).map(toHasEmbeddable)) {
       if (!isHasUsable(candidate)) {
         continue;
       }

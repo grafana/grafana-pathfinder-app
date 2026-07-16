@@ -859,6 +859,33 @@ describe('Selector Generator — CSS attribute-value escaping', () => {
     expect(matches.elements).toEqual([target]);
   });
 
+  it('emits version-stable {grafana:...} ancestor scopes when the ancestor reverse-maps', () => {
+    document.body.innerHTML = `
+      <nav data-testid="data-testid Home breadcrumb"><button></button></nav>
+      <nav data-testid="data-testid Alerts breadcrumb"><button></button></nav>
+    `;
+    const target = document.querySelectorAll('button')[1] as HTMLElement;
+
+    const selector = generateBestSelector(target);
+
+    expect(selector).toBe('{grafana:components.Breadcrumbs.breadcrumb:Alerts} button');
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([target]);
+  });
+
+  it('anchors an identity-less wrapper on a descendant via a {grafana:...} token inside :has()', () => {
+    document.body.innerHTML = `
+      <li><div class="css-abc123"><a data-testid="data-testid Home breadcrumb" href="/home">Home</a></div></li>
+    `;
+    const wrapper = document.querySelector('div') as HTMLElement;
+
+    const selector = generateBestSelector(wrapper);
+
+    expect(selector).toBe('div:has({grafana:components.Breadcrumbs.breadcrumb:Home})');
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([wrapper]);
+  });
+
   it('escapes quote-bearing ancestor testids used as disambiguation scopes', () => {
     document.body.innerHTML = '<div><span></span><span></span></div><section><em></em></section>';
     const scopeParent = document.querySelector('div')!;
