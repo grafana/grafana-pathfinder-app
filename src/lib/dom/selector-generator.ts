@@ -483,7 +483,11 @@ function candidateTestId(element: HTMLElement): Candidate | null {
   }
   const tag = element.tagName.toLowerCase();
   const attr = getTestIdAttr(element);
-  return { selector: `${tag}[${attr}='${escapeCssAttributeValue(testId)}']`, score: CANDIDATE_SCORES.testId, method: 'data-testid' };
+  return {
+    selector: `${tag}[${attr}='${escapeCssAttributeValue(testId)}']`,
+    score: CANDIDATE_SCORES.testId,
+    method: 'data-testid',
+  };
 }
 
 function candidateScopedTestId(element: HTMLElement): Candidate | null {
@@ -547,7 +551,11 @@ function candidateRoleName(element: HTMLElement): Candidate | null {
   const text = normalizeText(element.textContent || '');
   if (text.length === 0 || text.length > SELECTOR_CONFIG.maxTextLength) {
     const tag = element.tagName.toLowerCase();
-    return { selector: `${tag}[role='${escapeCssAttributeValue(role)}']`, score: CANDIDATE_SCORES.roleContains + 50, method: 'role' };
+    return {
+      selector: `${tag}[role='${escapeCssAttributeValue(role)}']`,
+      score: CANDIDATE_SCORES.roleContains + 50,
+      method: 'role',
+    };
   }
   // The :text()/:contains() arguments stay raw: the custom-pseudo parser in
   // enhanced-selector.ts reads them with a regex that cannot handle backslash
@@ -640,7 +648,11 @@ function candidateTitle(element: HTMLElement): Candidate | null {
     return null;
   }
   const tag = element.tagName.toLowerCase();
-  return { selector: `${tag}[title='${escapeCssAttributeValue(title)}']`, score: CANDIDATE_SCORES.title, method: 'title' };
+  return {
+    selector: `${tag}[title='${escapeCssAttributeValue(title)}']`,
+    score: CANDIDATE_SCORES.title,
+    method: 'title',
+  };
 }
 
 function candidateLabelText(element: HTMLElement): Candidate | null {
