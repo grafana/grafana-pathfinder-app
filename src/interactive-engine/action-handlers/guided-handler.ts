@@ -10,6 +10,7 @@ import {
 } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { withFaroUserAction } from '../../lib/faro';
+import { createInteractionName, UserInteraction } from '../../lib/analytics';
 import { type CompletionResult, outcomeFromCompletionResult } from '../outcome-classifier';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { GuidedAction } from '../../types/interactive-actions.types';
@@ -88,7 +89,7 @@ export class GuidedHandler {
     timeout: number = INTERACTIVE_CONFIG.guided.stepTimeout
   ): Promise<CompletionResult> {
     return withFaroUserAction(
-      'pathfinder_guided_step',
+      createInteractionName(UserInteraction.DoItButtonClick),
       {
         target_action: action.targetAction,
         ref_target: action.refTarget ?? '',

@@ -21,10 +21,10 @@ export type ContentFetchTier = 'bundled' | 'backend-guide' | 'content-json' | 'u
 export type ContentFetchOutcome = 'ok' | 'error';
 
 export const TELEMETRY_EVENTS = {
-  recommenderFallback: 'recommender_fallback',
-  contentFetchFallback: 'content_fetch_fallback',
-  requirementsExhausted: 'requirements_exhausted',
-  sequenceActionError: 'sequence_action_error',
+  recommenderFallback: 'pathfinder_recommender_fallback',
+  contentFetchFallback: 'pathfinder_content_fetch_fallback',
+  requirementsExhausted: 'pathfinder_requirements_exhausted',
+  sequenceActionError: 'pathfinder_sequence_action_error',
 } as const;
 
 export const TELEMETRY_MEASUREMENTS = {
@@ -35,6 +35,9 @@ export const TELEMETRY_MEASUREMENTS = {
   panel: 'pathfinder_panel',
 } as const;
 
+// Faro-only spans with no real UserInteraction counterpart (unlike guide-open,
+// step-do/show, guided-step, and section-run, which reuse the real analytics
+// interaction name via analytics.ts's createInteractionName instead).
 export const TELEMETRY_ACTIONS = {
-  guideOpen: 'pathfinder_guide_open',
+  remoteStep: 'pathfinder_remote_step',
 } as const;

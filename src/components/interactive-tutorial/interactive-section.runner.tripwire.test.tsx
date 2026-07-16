@@ -198,7 +198,7 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
     });
   });
 
-  describe('pathfinder_section_run Faro outcome', () => {
+  describe('pathfinder_do_section_button_click Faro outcome', () => {
     it('reports outcome ok for a fully completed run', async () => {
       render(
         <InteractiveSection id="runner" title="Runner" autoCollapse={false}>
@@ -215,7 +215,9 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
       await waitFor(() => expect(screen.getByTestId(resetBtn(SECTION_ID))).toBeInTheDocument());
 
       const { withFaroUserAction } = require('../../lib/faro');
-      const sectionRunCall = withFaroUserAction.mock.calls.find((c: unknown[]) => c[0] === 'pathfinder_section_run');
+      const sectionRunCall = withFaroUserAction.mock.calls.find(
+        (c: unknown[]) => c[0] === 'pathfinder_do_section_button_click'
+      );
       expect(sectionRunCall[4].outcomeFrom).toBeInstanceOf(Function);
       expect(sectionRunCall[4].outcomeFrom()).toBe('ok');
     });
@@ -275,7 +277,9 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
 
       // mock.calls accumulates across tests in this file — take the latest call.
       const { withFaroUserAction } = require('../../lib/faro');
-      const sectionRunCalls = withFaroUserAction.mock.calls.filter((c: unknown[]) => c[0] === 'pathfinder_section_run');
+      const sectionRunCalls = withFaroUserAction.mock.calls.filter(
+        (c: unknown[]) => c[0] === 'pathfinder_do_section_button_click'
+      );
       const sectionRunCall = sectionRunCalls[sectionRunCalls.length - 1];
       expect(sectionRunCall[4].outcomeFrom()).toBe('action_error');
     });

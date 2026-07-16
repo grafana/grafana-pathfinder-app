@@ -253,7 +253,7 @@ describe('useInteractiveElements', () => {
   });
 
   describe('Faro user action wiring', () => {
-    it('wraps show-mode execution in a pathfinder_step_show action', async () => {
+    it('wraps show-mode execution in a pathfinder_show_me_button_click action', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       await act(async () => {
@@ -261,7 +261,7 @@ describe('useInteractiveElements', () => {
       });
 
       expect(withFaroUserAction).toHaveBeenCalledWith(
-        'pathfinder_step_show',
+        'pathfinder_show_me_button_click',
         { target_action: 'highlight', ref_target: '#target' },
         expect.any(Function),
         undefined,
@@ -269,7 +269,7 @@ describe('useInteractiveElements', () => {
       );
     });
 
-    it('wraps do-mode execution in a pathfinder_step_do action', async () => {
+    it('wraps do-mode execution in a pathfinder_do_it_button_click action', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       await act(async () => {
@@ -277,7 +277,7 @@ describe('useInteractiveElements', () => {
       });
 
       expect(withFaroUserAction).toHaveBeenCalledWith(
-        'pathfinder_step_do',
+        'pathfinder_do_it_button_click',
         { target_action: 'button', ref_target: 'Save' },
         expect.any(Function),
         undefined,

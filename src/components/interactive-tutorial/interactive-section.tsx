@@ -66,7 +66,13 @@ function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
   }
   return STEP_TYPE_LOOKUP.get(child.type as React.ComponentType<any>);
 }
-import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getSourceDocument,
+  calculateStepCompletion,
+  createInteractionName,
+} from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
@@ -786,7 +792,7 @@ export function InteractiveSection({
     // unmount and silently lost the per-step writes.
 
     await withFaroUserAction(
-      'pathfinder_section_run',
+      createInteractionName(UserInteraction.DoSectionButtonClick),
       {
         section_id: sectionId,
         section_title: title || DEFAULT_INTERACTIVE_SECTION_TITLE,
