@@ -110,6 +110,10 @@ const DISAMBIGUATION_PENALTIES = {
   parentStableAttr: 70,
   overlayScope: 75,
   nthMatch: 1000,
+  // Small enough that a scoped grafana: token (5 + 7 = 12) still beats a raw
+  // scoped testid (15) and a disambiguated testid (10 + 50): half its identity
+  // stays version-resolved, so it must not lose to raw-literal alternatives.
+  scopedGrafana: 7,
 } as const;
 
 // Added to a descendant's own score when that descendant is used to anchor a
@@ -1037,11 +1041,47 @@ function admitCandidate(
     return candidate.method === 'scoped-bare-tag' ? [] : [{ ...candidate, matchCount }];
   }
 
-  if (candidate.method === 'button-text' || candidate.method === 'grafana') {
+  if (candidate.method === 'button-text') {
     return [];
   }
 
+  if (candidate.method === 'grafana') {
+    return admitScopedGrafana(candidate, element, ancestorScopes, inOverlay);
+  }
+
   return disambiguate(candidate, element, ancestorScopes, inOverlay).map((d) => ({ ...d, matchCount: 1 }));
+}
+
+/**
+ * A grafana: candidate that matches more than one element keeps its
+ * version-stable identity by re-emitting as an embedded token scoped under a
+ * stable ancestor: `div[data-testid='panel-A'] {grafana:components.Select.input}`.
+ * Only plain ancestor scoping is tried — positional hybrids (nth-child /
+ * nth-match around a grafana token) would undermine the stability the token
+ * exists to provide, so ranking falls through to the raw CSS candidates instead.
+ */
+function admitScopedGrafana(
+  candidate: Candidate,
+  element: HTMLElement,
+  ancestorScopes: AncestorScope[],
+  inOverlay: boolean
+): ScoredCandidate[] {
+  const token = `{${candidate.selector}}`;
+  for (const scope of ancestorScopes) {
+    const scoped = cleanDynamicAttributes(`${scope.selector} ${token}`);
+    const { matchCount, containsTarget } = testUniqueness(scoped, element, 'scoped-grafana', inOverlay);
+    if (matchCount === 1 && containsTarget) {
+      return [
+        {
+          selector: scoped,
+          score: candidate.score + DISAMBIGUATION_PENALTIES.scopedGrafana,
+          method: 'scoped-grafana',
+          matchCount: 1,
+        },
+      ];
+    }
+  }
+  return [];
 }
 
 function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCandidate {
@@ -1456,6 +1496,9 @@ function inferMethodAndScore(selector: string): { method: string; score: number 
   }
   if (selector.includes(':has(')) {
     return { method: 'has-descendant', score: CANDIDATE_SCORES.testId + HAS_DESCENDANT_PENALTY };
+  }
+  if (selector.includes('{grafana:')) {
+    return { method: 'scoped-grafana', score: CANDIDATE_SCORES.grafana + DISAMBIGUATION_PENALTIES.scopedGrafana };
   }
   if (SELECTOR_CONFIG.testIdAttrs.some((attr) => selector.includes(attr))) {
     return { method: 'data-testid', score: CANDIDATE_SCORES.testId };

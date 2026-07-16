@@ -813,6 +813,52 @@ describe('Selector Generator — CSS attribute-value escaping', () => {
     expect(matches.elements).toEqual([button]);
   });
 
+  it('scopes a non-unique grafana: candidate under a stable ancestor as an embedded token', () => {
+    document.body.innerHTML = `
+      <div data-testid="panel-A"><button data-testid="data-testid RefreshPicker run button">A</button></div>
+      <div data-testid="panel-B"><button data-testid="data-testid RefreshPicker run button">B</button></div>
+    `;
+    const target = document.querySelectorAll('button')[1] as HTMLElement;
+
+    const selector = generateBestSelector(target);
+
+    expect(selector).toBe("div[data-testid='panel-B'] {grafana:components.RefreshPicker.runButtonV2}");
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([target]);
+  });
+
+  it('keeps the raw scoped testid available as a fallback alternative', () => {
+    document.body.innerHTML = `
+      <div data-testid="panel-A"><button data-testid="data-testid RefreshPicker run button">A</button></div>
+      <div data-testid="panel-B"><button data-testid="data-testid RefreshPicker run button">B</button></div>
+    `;
+    const target = document.querySelectorAll('button')[1] as HTMLElement;
+
+    const primary = generateBestSelector(target);
+    const fallbacks = generateFallbackSelectors(target, primary);
+
+    expect(primary).toContain('{grafana:');
+    expect(fallbacks).not.toContain(primary);
+    expect(fallbacks.some((s) => !s.includes('{grafana:') && s.includes('data-testid RefreshPicker run button'))).toBe(
+      true
+    );
+  });
+
+  it('drops the grafana: candidate when no ancestor scope disambiguates it', () => {
+    document.body.innerHTML = `
+      <div><button data-testid="data-testid RefreshPicker run button">A</button>
+      <button data-testid="data-testid RefreshPicker run button">B</button></div>
+    `;
+    const target = document.querySelectorAll('button')[1] as HTMLElement;
+
+    const selector = generateBestSelector(target);
+
+    expect(selector).not.toContain('{grafana:');
+    expect(selector).not.toContain('grafana:');
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([target]);
+  });
+
   it('escapes quote-bearing ancestor testids used as disambiguation scopes', () => {
     document.body.innerHTML = '<div><span></span><span></span></div><section><em></em></section>';
     const scopeParent = document.querySelector('div')!;
