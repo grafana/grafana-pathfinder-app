@@ -412,12 +412,15 @@ function buildScrollEventProperties(
   isRecommendationsTab: boolean,
   pageIdentifier: string
 ): Record<string, string | number | boolean> {
-  const pageType = isRecommendationsTab ? 'recommendations' : activeTab?.type || AnalyticsContentType.LearningJourney;
+  // Matches determinePageIdentifier's treatment of a missing type as a learning journey,
+  // so page_type and content_type never diverge for the same tab.
+  const tabTypeFallback = activeTab?.type || AnalyticsContentType.LearningJourney;
+  const pageType = isRecommendationsTab ? 'recommendations' : tabTypeFallback;
 
   const properties: Record<string, string | number | boolean> = {
     page_type: pageType,
     content_url: pageIdentifier,
-    content_type: isRecommendationsTab ? '' : tabTypeToContentType(activeTab?.type),
+    content_type: isRecommendationsTab ? '' : tabTypeToContentType(tabTypeFallback),
   };
 
   // Add additional context for learning journeys

@@ -6,7 +6,7 @@
  * Participates in section step counting and sequential execution the same way InteractiveStep does.
  */
 
-import React, { useState, useCallback, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -18,6 +18,7 @@ import { markStepCompleted, useStepCompletion } from '../../global-state/complet
 import { CodeBlock } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 import { logger } from '../../lib/logging';
+import { useAssistantBlockValue } from '../../integrations/assistant-integration';
 
 export interface CodeBlockStepProps {
   code: string;
@@ -140,6 +141,21 @@ export const CodeBlockStep = forwardRef<
     const [isInsertRunning, setIsInsertRunning] = useState(false);
     const [insertError, setInsertError] = useState<string | null>(null);
 
+    // Check for customized value from parent AssistantBlockWrapper context
+    const assistantBlockValue = useAssistantBlockValue();
+
+    // Use the assistant's customized code if available, otherwise the original prop
+    const [currentCode, setCurrentCode] = useState(assistantBlockValue?.customizedValue ?? code);
+
+    useEffect(() => {
+      if (assistantBlockValue?.customizedValue !== null && assistantBlockValue?.customizedValue !== undefined) {
+        setCurrentCode(assistantBlockValue.customizedValue);
+      } else if (assistantBlockValue?.customizedValue === null) {
+        // Revert to original value when customization is cleared
+        setCurrentCode(code);
+      }
+    }, [assistantBlockValue?.customizedValue, code]);
+
     // Get executeInteractiveAction for "Show me" highlighting
     const { executeInteractiveAction } = useInteractiveElements();
 
@@ -194,7 +210,7 @@ export const CodeBlockStep = forwardRef<
       setIsInsertRunning(true);
       setInsertError(null);
       try {
-        const result = await clearAndInsertCode(refTarget, code);
+        const result = await clearAndInsertCode(refTarget, currentCode);
         if (result.success) {
           markComplete();
         } else {
@@ -206,7 +222,7 @@ export const CodeBlockStep = forwardRef<
       } finally {
         setIsInsertRunning(false);
       }
-    }, [code, refTarget, markComplete]);
+    }, [currentCode, refTarget, markComplete]);
 
     useImperativeHandle(
       ref,
@@ -215,7 +231,7 @@ export const CodeBlockStep = forwardRef<
           if (isCompleted) {
             return true;
           }
-          const result = await clearAndInsertCode(refTarget, code);
+          const result = await clearAndInsertCode(refTarget, currentCode);
           if (result.success) {
             markComplete();
             return true;
@@ -226,7 +242,7 @@ export const CodeBlockStep = forwardRef<
           markComplete();
         },
       }),
-      [isCompleted, code, refTarget, markComplete]
+      [isCompleted, currentCode, refTarget, markComplete]
     );
 
     const isEnabled = checker.isEnabled && !disabled;
@@ -261,7 +277,7 @@ export const CodeBlockStep = forwardRef<
         {children && <div className={styles.content}>{children}</div>}
 
         <div className={styles.codeBlockWrapper}>
-          <CodeBlock code={code} language={language} showCopy={false} />
+          <CodeBlock code={currentCode} language={language} showCopy={false} />
         </div>
 
         {!isEnabled && !isCompleted && checker.explanation && (
