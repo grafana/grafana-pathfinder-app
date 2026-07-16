@@ -5,6 +5,7 @@
  */
 
 import { logger } from '../logging';
+import { escapeCssAttributeValue } from './css-escape';
 
 export interface SelectorResult {
   elements: HTMLElement[];
@@ -671,7 +672,10 @@ function handleTestIdSelector(selector: string): SelectorResult {
     const fullTestId = testIdAttrMatch[1]!;
     const stablePrefix = extractStableTestIdPrefix(fullTestId);
     if (stablePrefix) {
-      const prefixSelector = selector.replace(/\[data-testid=['"][^'"]+['"]\]/, `[data-testid^='${stablePrefix}']`);
+      const prefixSelector = selector.replace(
+        /\[data-testid=['"][^'"]+['"]\]/,
+        `[data-testid^='${escapeCssAttributeValue(stablePrefix)}']`
+      );
       try {
         const prefixResults = document.querySelectorAll(prefixSelector);
         // Only accept if exactly 1 visible element matches

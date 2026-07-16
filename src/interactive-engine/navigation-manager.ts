@@ -3,6 +3,7 @@ import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
 import {
   describeElement,
+  escapeCssAttributeValue,
   isElementVisible,
   getScrollParent,
   getStickyHeaderOffset,
@@ -1406,7 +1407,7 @@ export class NavigationManager {
     const capitalizedName = sectionName.charAt(0).toUpperCase() + sectionName.slice(1);
 
     const expandButton = document.querySelector(
-      `button[aria-label*="Expand section: ${capitalizedName}"]`
+      `button[aria-label*="Expand section: ${escapeCssAttributeValue(capitalizedName, '"')}"]`
     ) as HTMLButtonElement;
     if (expandButton) {
       return expandButton;

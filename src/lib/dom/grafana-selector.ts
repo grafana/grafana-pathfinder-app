@@ -6,6 +6,7 @@
 
 import { resolveSelectors, versionedComponents, versionedPages } from '@grafana/e2e-selectors';
 import { config } from '@grafana/runtime';
+import { escapeCssAttributeValue } from './css-escape';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 
 type SelectorNode = { [key: string]: SelectorNode | string | ((...args: never[]) => unknown) };
@@ -81,8 +82,9 @@ export function toGrafanaSelector(selectorPath: string, selectorId?: string): st
 
   // Most Grafana selectors use data-testid, but some older ones use aria-label
   // Return a compound selector that works with both
-  const dataTestIdSelector = `[data-testid='${resolvedValue}']`;
-  const ariaLabelSelector = `[aria-label='${resolvedValue}']`;
+  const escapedValue = escapeCssAttributeValue(resolvedValue);
+  const dataTestIdSelector = `[data-testid='${escapedValue}']`;
+  const ariaLabelSelector = `[aria-label='${escapedValue}']`;
 
   return `${dataTestIdSelector}, ${ariaLabelSelector}`;
 }

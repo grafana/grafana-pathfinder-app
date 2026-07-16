@@ -15,7 +15,7 @@
  * @module action-detector
  */
 
-import { findButtonByText, isElementVisible, isPathfinderContent } from '.';
+import { escapeCssAttributeValue, findButtonByText, isElementVisible, isPathfinderContent } from '.';
 
 export type DetectedAction = 'highlight' | 'button' | 'formfill' | 'navigate' | 'hover';
 
@@ -243,7 +243,7 @@ export function extractElementSelector(element: HTMLElement): string | undefined
   if (tag === 'input' || tag === 'textarea' || tag === 'select') {
     const name = element.getAttribute('name');
     if (name) {
-      return `[name="${name}"]`;
+      return `[name="${escapeCssAttributeValue(name, '"')}"]`;
     }
   }
 
