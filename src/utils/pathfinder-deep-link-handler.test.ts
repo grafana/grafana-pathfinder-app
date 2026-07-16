@@ -19,11 +19,13 @@ jest.mock('../plugin.json', () => ({
 const mockLocationServiceReplace = jest.fn();
 const mockHistoryListen = jest.fn().mockReturnValue(() => {});
 let mockGetHistoryImpl: () => { listen: typeof mockHistoryListen } | null = () => ({ listen: mockHistoryListen });
+let mockRouterPathname = '/';
 
 jest.mock('@grafana/runtime', () => ({
   locationService: {
     replace: (path: string) => mockLocationServiceReplace(path),
     getHistory: () => mockGetHistoryImpl(),
+    getLocation: () => ({ pathname: mockRouterPathname }),
   },
 }));
 
@@ -87,10 +89,18 @@ const setSearch = (search: string) => {
   window.history.replaceState({}, '', url.toString());
 };
 
+const setPathname = (pathname: string, routerPathname = pathname) => {
+  const url = new URL(window.location.href);
+  url.pathname = pathname;
+  window.history.replaceState({}, '', url.toString());
+  mockRouterPathname = routerPathname;
+};
+
 describe('handlePathfinderDeepLink', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     __resetDeepLinkHandlerStateForTests();
+    setPathname('/');
     setSearch('');
     mockGetMode.mockReturnValue('sidebar');
     mockGetIsSidebarMounted.mockReturnValue(false);
@@ -172,6 +182,87 @@ describe('handlePathfinderDeepLink', () => {
     const params = new URLSearchParams(target.split('?')[1]);
     expect(params.get('doc')).toBe('bundled:foo');
     expect(params.get('type')).toBe('learning-journey');
+  });
+
+  it('bails out on the full-screen route so it does not hijack the sidebar→full-screen handoff', async () => {
+    // The handoff pushes `?doc=` onto the full-screen route; FullScreenPanel
+    // owns that param. The global handler must not process it — otherwise a
+    // guide with a `targetPage` gets redirected off the route (issue #1351).
+    setPathname('/a/grafana-pathfinder-app/fullscreen');
+    setSearch('?doc=bundled%3Awelcome-to-grafana&type=docs');
+    mockGetMode.mockReturnValue('fullscreen');
+    const deps = mkDeps();
+
+    expect(handlePathfinderDeepLink(deps)).toBe(false);
+
+    await flushPromises();
+    expect(mockFindDocPage).not.toHaveBeenCalled();
+    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
+    expect(mockSetPendingOpenSource).not.toHaveBeenCalled();
+    expect(deps.attemptAutoOpen).not.toHaveBeenCalled();
+    // The full-screen URL's `?doc=` must survive for FullScreenPanel's rehydration.
+    expect(window.location.search).toBe('?doc=bundled%3Awelcome-to-grafana&type=docs');
+  });
+
+  it('bails out on the full-screen route when Grafana is served from a subpath', async () => {
+    setPathname('/grafana/a/grafana-pathfinder-app/fullscreen', '/a/grafana-pathfinder-app/fullscreen');
+    setSearch('?doc=bundled%3Awelcome-to-grafana&type=docs');
+    const deps = mkDeps();
+
+    expect(handlePathfinderDeepLink(deps)).toBe(false);
+
+    await flushPromises();
+    expect(mockFindDocPage).not.toHaveBeenCalled();
+    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
+    expect(mockSetPendingOpenSource).not.toHaveBeenCalled();
+    expect(deps.attemptAutoOpen).not.toHaveBeenCalled();
+    expect(window.location.search).toBe('?doc=bundled%3Awelcome-to-grafana&type=docs');
+  });
+
+  it('still captures kiosk_session on the full-screen route while leaving ?doc= for FullScreenPanel', async () => {
+    setPathname('/a/grafana-pathfinder-app/fullscreen');
+    setSearch('?doc=bundled%3Awelcome&kiosk_session=sess-123');
+    mockGetMode.mockReturnValue('fullscreen');
+    const deps = mkDeps();
+
+    expect(handlePathfinderDeepLink(deps)).toBe(true);
+
+    await flushPromises();
+    expect((window as unknown as { __pathfinderKioskSessionId?: string }).__pathfinderKioskSessionId).toBe('sess-123');
+    // doc stays untouched — FullScreenPanel owns it.
+    expect(mockFindDocPage).not.toHaveBeenCalled();
+    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
+    expect(deps.attemptAutoOpen).not.toHaveBeenCalled();
+    expect(window.location.search).toBe('?doc=bundled%3Awelcome&kiosk_session=sess-123');
+  });
+
+  it('still processes floating panelMode on the full-screen route while leaving ?doc= for FullScreenPanel', async () => {
+    setPathname('/a/grafana-pathfinder-app/fullscreen');
+    setSearch('?doc=bundled%3Awelcome&panelMode=floating');
+    mockGetMode.mockReturnValue('fullscreen');
+    const deps = mkDeps();
+
+    expect(handlePathfinderDeepLink(deps)).toBe(true);
+    expect(mockSetMode).toHaveBeenCalledWith('floating');
+
+    await flushPromises();
+    // panelMode is consumed; doc survives for FullScreenPanel rehydration.
+    expect(window.location.search).toBe('?doc=bundled%3Awelcome');
+    expect(mockFindDocPage).not.toHaveBeenCalled();
+    expect(deps.attemptAutoOpen).not.toHaveBeenCalled();
+  });
+
+  it('still processes a ?doc= link on a look-alike route that is not exactly the full-screen route', async () => {
+    // Guards the exact-match strictness: a `fullscreen`-prefixed but non-equal
+    // pathname must NOT bail. A future loosening to startsWith/includes would
+    // regress normal routes and this test would catch it.
+    setPathname('/a/grafana-pathfinder-app/fullscreen-extra');
+    setSearch('?doc=bundled%3Afoo');
+    const deps = mkDeps();
+
+    expect(handlePathfinderDeepLink(deps)).toBe(true);
+    await flushPromises();
+    expect(mockFindDocPage).toHaveBeenCalledWith('bundled:foo');
   });
 
   it('dispatches auto-launch-tutorial when the sidebar is already mounted (SPA-arrival case)', async () => {
@@ -302,6 +393,7 @@ describe('installDeepLinkNavListener', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     __resetDeepLinkHandlerStateForTests();
+    setPathname('/');
     setSearch('');
     mockGetHistoryImpl = () => ({ listen: mockHistoryListen });
   });
@@ -341,5 +433,31 @@ describe('installDeepLinkNavListener', () => {
 
     await flushPromises();
     expect(mockFindDocPage).toHaveBeenCalledWith('bundled:foo');
+  });
+
+  it('does not process a ?doc= navigation that lands on the full-screen route (issue #1351)', async () => {
+    installDeepLinkNavListener(mkDeps());
+    const historyHandler = mockHistoryListen.mock.calls[0][0] as () => void;
+
+    setPathname('/a/grafana-pathfinder-app/fullscreen');
+    setSearch('?doc=bundled%3Awelcome-to-grafana&type=docs');
+    historyHandler();
+
+    await flushPromises();
+    expect(mockFindDocPage).not.toHaveBeenCalled();
+    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
+  });
+
+  it('does not process a full-screen navigation under a Grafana subpath', async () => {
+    installDeepLinkNavListener(mkDeps());
+    const historyHandler = mockHistoryListen.mock.calls[0][0] as () => void;
+
+    setPathname('/grafana/a/grafana-pathfinder-app/fullscreen', '/a/grafana-pathfinder-app/fullscreen');
+    setSearch('?doc=bundled%3Awelcome-to-grafana&type=docs');
+    historyHandler();
+
+    await flushPromises();
+    expect(mockFindDocPage).not.toHaveBeenCalled();
+    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
   });
 });
