@@ -80,6 +80,53 @@ describe('selector-resolver', () => {
     });
   });
 
+  describe('resolveSelector with embedded {grafana:...} tokens', () => {
+    it('resolves a token after a scope in place', () => {
+      const result = resolveSelector("div[data-testid='panel-A'] {grafana:components.RefreshPicker.runButtonV2}");
+      expect(result).toBe(
+        "div[data-testid='panel-A'] :is([data-testid='data-testid RefreshPicker run button'], [aria-label='data-testid RefreshPicker run button'])"
+      );
+    });
+
+    it('resolves parameterized tokens whose parameter contains colons', () => {
+      const result = resolveSelector('{grafana:components.Breadcrumbs.breadcrumb:Prod: Overview} button');
+      expect(result).toContain("[data-testid='data-testid Prod: Overview breadcrumb']");
+      expect(result.endsWith(' button')).toBe(true);
+    });
+
+    it('resolves multiple tokens in one selector', () => {
+      const result = resolveSelector(
+        '{grafana:components.Breadcrumbs.breadcrumb:Home} {grafana:components.RefreshPicker.runButtonV2}'
+      );
+      expect(result).toContain("[data-testid='data-testid Home breadcrumb']");
+      expect(result).toContain("[data-testid='data-testid RefreshPicker run button']");
+      expect(result).not.toContain('{grafana:');
+    });
+
+    it('resolves tokens inside :has()', () => {
+      const result = resolveSelector('li > div:has({grafana:components.RefreshPicker.runButtonV2})');
+      expect(result).toBe(
+        "li > div:has(:is([data-testid='data-testid RefreshPicker run button'], [aria-label='data-testid RefreshPicker run button']))"
+      );
+    });
+
+    it('returns the reftarget unchanged when any token fails to resolve', () => {
+      const reftarget = "div[data-testid='panel-A'] {grafana:invalid.nonexistent.path}";
+      expect(resolveSelector(reftarget)).toBe(reftarget);
+    });
+
+    it('scoped tokens match only the element inside the scope', () => {
+      document.body.innerHTML = `
+        <div data-testid="panel-A"><button data-testid="data-testid RefreshPicker run button">A</button></div>
+        <div data-testid="panel-B"><button data-testid="data-testid RefreshPicker run button">B</button></div>
+      `;
+      const resolved = resolveSelector("div[data-testid='panel-B'] {grafana:components.RefreshPicker.runButtonV2}");
+      const matches = Array.from(document.querySelectorAll(resolved));
+      expect(matches).toHaveLength(1);
+      expect(matches[0]!.textContent).toBe('B');
+    });
+  });
+
   describe('resolveSelector with panel: prefix', () => {
     it('resolves a panel title to a panel container selector', () => {
       expect(resolveSelector('panel:CPU Usage')).toBe(

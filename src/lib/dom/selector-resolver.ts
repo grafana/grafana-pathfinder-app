@@ -14,6 +14,8 @@ import { toGrafanaSelector } from './grafana-selector';
  * - `grafana:components.RefreshPicker.runButton` - Grafana e2e selector path
  * - `grafana:components.NavMenu.item:Dashboards` - Grafana selector with parameter (split at the
  *   first colon after the prefix; the parameter itself may contain colons)
+ * - `div[data-testid='panel'] {grafana:components.Select.input}` - CSS selector with embedded
+ *   grafana tokens; each `{grafana:path[:param]}` resolves in place to its :is() form
  * - `button[data-testid="..."]` - Standard CSS selector (returned as-is)
  *
  * @param reftarget - The selector string from data-reftarget attribute
@@ -40,25 +42,15 @@ export function resolveSelector(reftarget: string): string {
     return reftarget;
   }
 
+  // Embedded `{grafana:path[:param]}` tokens inside an otherwise-plain CSS
+  // selector, e.g. `div[data-testid='panel'] {grafana:components.Select.input}`
+  if (reftarget.includes('{grafana:')) {
+    return resolveEmbeddedGrafanaTokens(reftarget);
+  }
+
   // Check for grafana: prefix
   if (reftarget.startsWith('grafana:')) {
-    // Remove prefix
-    const pathWithParam = reftarget.substring(8); // Remove 'grafana:'
-
-    // Selector paths are dot-separated and never contain colons, so the first
-    // colon unambiguously separates path from parameter (which may itself contain colons)
-    const colonIndex = pathWithParam.indexOf(':');
-    let selectorPath: string;
-    let selectorId: string | undefined;
-
-    if (colonIndex !== -1 && colonIndex < pathWithParam.length - 1) {
-      // Split path and parameter
-      selectorPath = pathWithParam.substring(0, colonIndex);
-      selectorId = pathWithParam.substring(colonIndex + 1);
-    } else {
-      selectorPath = pathWithParam;
-    }
-
+    const { selectorPath, selectorId } = splitGrafanaPathParam(reftarget.substring(8));
     try {
       return toGrafanaSelector(selectorPath, selectorId);
     } catch (error) {
@@ -75,6 +67,42 @@ export function resolveSelector(reftarget: string): string {
 
   // Return as-is if it's a regular CSS selector
   return reftarget;
+}
+
+/**
+ * Selector paths are dot-separated and never contain colons, so the first
+ * colon unambiguously separates path from parameter (which may itself contain colons).
+ */
+function splitGrafanaPathParam(pathWithParam: string): { selectorPath: string; selectorId?: string } {
+  const colonIndex = pathWithParam.indexOf(':');
+  if (colonIndex !== -1 && colonIndex < pathWithParam.length - 1) {
+    return {
+      selectorPath: pathWithParam.substring(0, colonIndex),
+      selectorId: pathWithParam.substring(colonIndex + 1),
+    };
+  }
+  return { selectorPath: pathWithParam };
+}
+
+/**
+ * Replace every embedded `{grafana:path[:param]}` token with its
+ * version-resolved :is() form. Parameters may contain colons but not `}`.
+ * If any token fails to resolve, the whole reftarget is returned unchanged
+ * (same safe degradation as the grafana: prefix fallback).
+ */
+function resolveEmbeddedGrafanaTokens(reftarget: string): string {
+  let failed = false;
+  const resolved = reftarget.replace(/\{grafana:([^}]+)\}/g, (match, pathWithParam: string) => {
+    const { selectorPath, selectorId } = splitGrafanaPathParam(pathWithParam);
+    try {
+      return toGrafanaSelector(selectorPath, selectorId);
+    } catch (error) {
+      logger.error(`Failed to resolve embedded Grafana selector token: ${match}`, { error });
+      failed = true;
+      return match;
+    }
+  });
+  return failed ? reftarget : resolved;
 }
 
 /**
