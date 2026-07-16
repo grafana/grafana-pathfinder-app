@@ -15,6 +15,7 @@ import type {
   InteractiveAction,
 } from '../../types/collaboration.types';
 import { isCssSelector } from '../../lib/dom/selector-detector';
+import { escapeCssAttributeValue } from '../../lib/dom/css-escape';
 import { querySelectorAllEnhanced } from '../../lib/dom/enhanced-selector';
 import { logger } from '../../lib/logging';
 
@@ -269,14 +270,14 @@ export class ActionReplaySystem {
    */
   private findStepElement(stepId: string, action: InteractiveAction): HTMLElement | null {
     // Try by step ID first
-    const byId = document.querySelector(`[data-step-id="${stepId}"]`) as HTMLElement;
+    const byId = document.querySelector(`[data-step-id="${escapeCssAttributeValue(stepId, '"')}"]`) as HTMLElement;
     if (byId) {
       return byId;
     }
 
-    // Try by action attributes
+    // Try by action attributes; refTarget is a CSS selector or button text, so it can contain quotes
     const byAttributes = document.querySelector(
-      `[data-targetaction="${action.targetAction}"][data-reftarget="${action.refTarget}"]`
+      `[data-targetaction="${escapeCssAttributeValue(action.targetAction, '"')}"][data-reftarget="${escapeCssAttributeValue(action.refTarget, '"')}"]`
     ) as HTMLElement;
 
     return byAttributes;

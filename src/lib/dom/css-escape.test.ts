@@ -22,6 +22,21 @@ describe('escapeCssAttributeValue', () => {
     expect(escapeCssAttributeValue("a\\'b")).toBe("a\\\\\\'b");
   });
 
+  it('handles mixed and consecutive quotes', () => {
+    expect(escapeCssAttributeValue(`He said 'hello' and "goodbye"`)).toBe(`He said \\'hello\\' and "goodbye"`);
+    expect(escapeCssAttributeValue(`''`)).toBe(`\\'\\'`);
+  });
+
+  it('handles quotes at value boundaries', () => {
+    expect(escapeCssAttributeValue("'start")).toBe("\\'start");
+    expect(escapeCssAttributeValue("end'")).toBe("end\\'");
+  });
+
+  it('passes through empty strings and unicode unchanged', () => {
+    expect(escapeCssAttributeValue('')).toBe('');
+    expect(escapeCssAttributeValue('François™ Dashboard')).toBe('François™ Dashboard');
+  });
+
   it('round-trips through querySelectorAll', () => {
     const value = `quote ' double " and backslash \\ value`;
     const el = document.createElement('div');
