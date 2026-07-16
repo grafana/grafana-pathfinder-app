@@ -17,7 +17,7 @@ import {
   type ResolvedRemoteGuide,
   type SkippedPackage,
 } from './e2e-package';
-import type { PreRunSkip, TestResultsData } from './e2e-reporter';
+import { contentDigest, type PreRunSkip, type TestResultsData } from './e2e-reporter';
 import { ExitCode } from './exit-codes';
 import type { AbortReason } from './playwright-runner';
 import type { SideEffectClassification } from './side-effects';
@@ -187,7 +187,7 @@ export function applyPackageMeta(data: TestResultsData | undefined, meta: Packag
 
 interface PlannedGuideForResult {
   id: string;
-  guide: { path: string };
+  guide: { path: string; content?: string };
   autoIncluded: boolean;
 }
 
@@ -205,6 +205,7 @@ export function provisioningFailureResults(
         title: planned.id,
         path: planned.guide.path,
         targetUrl: meta?.targetUrl ?? fallbackTargetUrl,
+        ...(planned.guide.content ? { contentDigest: contentDigest(planned.guide.content) } : {}),
       },
       timestamp: new Date().toISOString(),
       results: [],

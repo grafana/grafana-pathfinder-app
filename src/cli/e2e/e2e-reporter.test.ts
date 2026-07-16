@@ -6,7 +6,13 @@
  * undercount and lose the skip reason relative to the console summary.
  */
 
-import { generateMultiGuideReport, type TestResultsData } from './e2e-reporter';
+import {
+  contentDigest,
+  generateMultiGuideReport,
+  generateReport,
+  E2E_REPORT_SCHEMA_VERSION,
+  type TestResultsData,
+} from './e2e-reporter';
 
 function ranGuide(id: string, opts: { failed?: boolean } = {}): TestResultsData {
   return {
@@ -82,5 +88,45 @@ describe('generateMultiGuideReport — dependency-skipped guides', () => {
 
     const failedResult = report.guides.find((g) => g.id === 'cloud-guide');
     expect(failedResult).toMatchObject({ abortReason: 'PROVISIONING_FAILED', success: false });
+  });
+});
+
+describe('versioned report contract', () => {
+  it('includes normalized outcome, provenance, target, timestamps, and content digest', () => {
+    const report = generateReport({
+      ...ranGuide('always-passes'),
+      guide: {
+        ...ranGuide('always-passes').guide,
+        contentDigest: contentDigest('fixture'),
+        sourceUrl: 'https://cdn.example/always-passes/content.json',
+      },
+      startedAt: '2026-01-01T00:00:00.000Z',
+      endedAt: '2026-01-01T00:00:01.000Z',
+    });
+
+    expect(report).toMatchObject({
+      schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+      outcome: 'passed',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      endedAt: '2026-01-01T00:00:01.000Z',
+      target: { url: 'http://localhost:3000' },
+      runner: { name: 'pathfinder-e2e-runner' },
+      guide: {
+        sourceUrl: 'https://cdn.example/always-passes/content.json',
+        contentDigest: 'sha256:f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d',
+      },
+    });
+  });
+
+  it('keeps deterministic compatibility fixtures immutable', () => {
+    const pass = require('../../../schemas/fixtures/e2e-report-pass.json');
+    const fail = require('../../../schemas/fixtures/e2e-report-fail.json');
+    const invalid = require('../../../schemas/fixtures/e2e-report-invalid.json');
+
+    expect(pass.schemaVersion).toBe(E2E_REPORT_SCHEMA_VERSION);
+    expect(pass.outcome).toBe('passed');
+    expect(fail.outcome).toBe('failed');
+    expect(fail.errorCode).toBe('MANDATORY_FAILURE');
+    expect(invalid.schemaVersion).not.toBe(E2E_REPORT_SCHEMA_VERSION);
   });
 });

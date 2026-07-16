@@ -11,7 +11,7 @@ import { tmpdir } from 'os';
 import { ExitCode } from './exit-codes';
 import { E2E_ENV, encodeEnvFlag } from './e2e-runner-contract';
 import type { LoadedGuide } from '../utils/file-loader';
-import type { TestResultsData } from './e2e-reporter';
+import { contentDigest, createMinimalResultsData, type E2EErrorCode, type TestResultsData } from './e2e-reporter';
 
 /**
  * Abort reason from test execution.
@@ -38,6 +38,7 @@ export interface PlaywrightResult {
   abortReason?: AbortReason;
   /** Abort message if test was aborted */
   abortMessage?: string;
+  errorCode?: E2EErrorCode;
   /** Test results data for JSON report generation */
   resultsData?: TestResultsData;
 }
@@ -122,6 +123,7 @@ function processPlaywrightResults(
       traceFile,
       abortReason: abortContent.abortReason,
       abortMessage: abortContent.message,
+      errorCode: abortContent.abortReason,
       resultsData,
     };
   }
@@ -131,6 +133,7 @@ function processPlaywrightResults(
     exitCode: success ? ExitCode.SUCCESS : ExitCode.TEST_FAILURE,
     traceFile,
     resultsData,
+    ...(!resultsData ? { errorCode: 'REPORT_MISSING' as const } : {}),
   };
 }
 
@@ -230,10 +233,34 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
 
       proc.on('error', (err) => {
         console.error(`Failed to spawn Playwright: ${err.message}`);
-        resolve({ success: false, exitCode: ExitCode.CONFIGURATION_ERROR });
+        resolve({
+          success: false,
+          exitCode: ExitCode.CONFIGURATION_ERROR,
+          errorCode: 'PLAYWRIGHT_SPAWN_FAILED',
+          abortMessage: `Failed to spawn Playwright: ${err.message}`,
+        });
       });
     });
 
+    if (!result.resultsData) {
+      const guideId =
+        guide.path
+          .split('/')
+          .pop()
+          ?.replace(/\.json$/, '') ?? 'unknown';
+      result.resultsData = createMinimalResultsData({
+        guide: {
+          id: guideId,
+          title: guideId,
+          path: guide.path,
+          targetUrl: options.targetUrl,
+          contentDigest: contentDigest(guide.content),
+        },
+        outcome: 'infrastructure_error',
+        errorCode: result.errorCode ?? 'REPORT_MISSING',
+        errorMessage: result.abortMessage ?? 'Playwright did not produce a result report.',
+      });
+    }
     return result;
   } finally {
     // Clean up temp directory

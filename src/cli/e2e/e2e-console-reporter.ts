@@ -11,12 +11,14 @@
 
 import { CLEAN_COMPOSE_PROJECT } from './clean-environment';
 import {
+  E2E_REPORT_SCHEMA_VERSION,
   generateReport,
   writeReport,
   generateMultiGuideReport,
   writeMultiGuideReport,
   formatMultiGuideSummary,
   type MultiGuideReport,
+  type RunnerProvenance,
 } from './e2e-reporter';
 import {
   countGuideStatuses,
@@ -37,9 +39,21 @@ function skipOnlyReport(
   preRunSkipped: MultiGuideReport['preRunSkipped'],
   cleanupWarnings: string[] = []
 ): MultiGuideReport {
+  const timestamp = new Date().toISOString();
+  const runner: RunnerProvenance = {
+    name: 'pathfinder-e2e-runner',
+    version: process.env.PATHFINDER_E2E_RUNNER_VERSION ?? 'source',
+    nodeVersion: process.version,
+    playwrightVersion: process.env.PLAYWRIGHT_VERSION ?? 'unknown',
+  };
   return {
+    schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+    outcome: 'skipped',
+    runner,
+    startedAt: timestamp,
+    endedAt: timestamp,
     type: 'multi-guide',
-    config: { timestamp: new Date().toISOString() },
+    config: { timestamp },
     summary: {
       totalGuides: 0,
       passedGuides: 0,

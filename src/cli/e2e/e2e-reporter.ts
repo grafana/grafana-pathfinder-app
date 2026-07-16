@@ -7,6 +7,7 @@
  * @see docs/developer/E2E_TESTING.md#json-report
  */
 
+import { createHash } from 'crypto';
 import { writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import type { SideEffectClassification } from './side-effects';
@@ -35,6 +36,8 @@ export interface GuideMetadata {
   targetUrl?: string;
   /** Source content.json URL for remotely-resolved guides. */
   sourceUrl?: string;
+  /** SHA-256 digest of the guide content tested by the runner. */
+  contentDigest?: string;
   sideEffects?: SideEffectClassification;
 }
 
@@ -46,6 +49,37 @@ export interface ReportConfig {
   grafanaVersion?: string;
   /** ISO timestamp of when the test started */
   timestamp: string;
+}
+
+export const E2E_REPORT_SCHEMA_VERSION = '1.0.0';
+
+export type E2EExecutionOutcome =
+  'passed' | 'failed' | 'aborted' | 'skipped' | 'infrastructure_error' | 'configuration_error';
+
+export type E2EErrorCode =
+  | 'AUTH_EXPIRED'
+  | 'MANDATORY_FAILURE'
+  | 'SKIPPED_PREREQ'
+  | 'PROVISIONING_FAILED'
+  | 'GRAFANA_UNREACHABLE'
+  | 'CONFIGURATION_ERROR'
+  | 'PLAYWRIGHT_SPAWN_FAILED'
+  | 'NO_CAPACITY'
+  | 'REPORT_MISSING'
+  | 'UNKNOWN';
+
+export interface RunnerProvenance {
+  name: 'pathfinder-e2e-runner';
+  version: string;
+  nodeVersion: string;
+  playwrightVersion: string;
+  image?: string;
+}
+
+export interface ReportTarget {
+  url: string;
+  tier?: string;
+  instance?: string;
 }
 
 /**
@@ -165,6 +199,14 @@ export interface PreRunSkip {
  * @see docs/developer/E2E_TESTING.md#json-report
  */
 export interface E2ETestReport {
+  schemaVersion: typeof E2E_REPORT_SCHEMA_VERSION;
+  outcome: E2EExecutionOutcome;
+  errorCode?: E2EErrorCode;
+  errorMessage?: string;
+  runner: RunnerProvenance;
+  startedAt: string;
+  endedAt: string;
+  target: ReportTarget;
   /** Guide metadata */
   guide: GuideMetadata;
   /** Test configuration */
@@ -217,6 +259,12 @@ export interface TestResultsData {
   guide: GuideMetadata;
   /** ISO timestamp when test started */
   timestamp: string;
+  startedAt?: string;
+  endedAt?: string;
+  outcome?: E2EExecutionOutcome;
+  errorCode?: E2EErrorCode;
+  errorMessage?: string;
+  runner?: Partial<RunnerProvenance>;
   /** Individual step results */
   results: TestStepResult[];
   /** Whether execution was aborted */
@@ -309,8 +357,43 @@ export function convertStepResults(results: TestStepResult[]): ReportStepResult[
 export function generateReport(data: TestResultsData, grafanaVersion?: string): E2ETestReport {
   const summary = generateSummary(data.results);
   const steps = convertStepResults(data.results);
+  const startedAt = data.startedAt ?? data.timestamp;
+  const endedAt = data.endedAt ?? data.timestamp;
+  const outcome =
+    data.outcome ??
+    (data.abortReason === 'SKIPPED_PREREQ'
+      ? 'skipped'
+      : data.abortReason
+        ? 'aborted'
+        : summary.mandatoryFailed > 0
+          ? 'failed'
+          : 'passed');
+  const errorCode =
+    data.errorCode ??
+    (data.abortReason as E2EErrorCode | undefined) ??
+    (outcome === 'failed' ? 'MANDATORY_FAILURE' : undefined);
+  const targetUrl = data.guide.targetUrl ?? 'unknown://target';
 
   const report: E2ETestReport = {
+    schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+    outcome,
+    ...(errorCode ? { errorCode } : {}),
+    ...((data.errorMessage ?? data.abortMessage) ? { errorMessage: data.errorMessage ?? data.abortMessage } : {}),
+    runner: {
+      name: 'pathfinder-e2e-runner',
+      version: process.env.PATHFINDER_E2E_RUNNER_VERSION ?? 'source',
+      nodeVersion: process.version,
+      playwrightVersion: process.env.PLAYWRIGHT_VERSION ?? 'unknown',
+      ...(process.env.PATHFINDER_E2E_RUNNER_IMAGE ? { image: process.env.PATHFINDER_E2E_RUNNER_IMAGE } : {}),
+      ...data.runner,
+    },
+    startedAt,
+    endedAt,
+    target: {
+      url: targetUrl,
+      ...(data.guide.tier ? { tier: data.guide.tier } : {}),
+      ...(data.guide.instance ? { instance: data.guide.instance } : {}),
+    },
     guide: data.guide,
     config: {
       timestamp: data.timestamp,
@@ -336,6 +419,35 @@ export function generateReport(data: TestResultsData, grafanaVersion?: string): 
   }
 
   return report;
+}
+
+export function contentDigest(content: string): string {
+  return `sha256:${createHash('sha256').update(content, 'utf8').digest('hex')}`;
+}
+
+export function createMinimalResultsData(input: {
+  guide: GuideMetadata;
+  outcome: E2EExecutionOutcome;
+  errorCode: E2EErrorCode;
+  errorMessage: string;
+  startedAt?: string;
+  endedAt?: string;
+}): TestResultsData {
+  const startedAt = input.startedAt ?? new Date().toISOString();
+  const endedAt = input.endedAt ?? new Date().toISOString();
+  return {
+    guide: input.guide,
+    timestamp: startedAt,
+    startedAt,
+    endedAt,
+    outcome: input.outcome,
+    errorCode: input.errorCode,
+    errorMessage: input.errorMessage,
+    results: [],
+    aborted: input.outcome !== 'passed',
+    ...(input.errorCode === 'SKIPPED_PREREQ' ? { abortReason: 'SKIPPED_PREREQ' as const } : {}),
+    abortMessage: input.errorMessage,
+  };
 }
 
 /**
@@ -476,6 +588,11 @@ export interface GuideResult {
  * or when multiple guide paths are provided.
  */
 export interface MultiGuideReport {
+  schemaVersion: typeof E2E_REPORT_SCHEMA_VERSION;
+  outcome: E2EExecutionOutcome;
+  runner: RunnerProvenance;
+  startedAt: string;
+  endedAt: string;
   /** Report type identifier */
   type: 'multi-guide';
   /** Test configuration */
@@ -587,12 +704,39 @@ export function generateMultiGuideReport(resultsArray: TestResultsData[], grafan
   const config: ReportConfig = {
     timestamp: new Date().toISOString(),
   };
+  const startedAt = resultsArray.map((result) => result.startedAt ?? result.timestamp).sort()[0] ?? config.timestamp;
+  const endedAt =
+    resultsArray
+      .map((result) => result.endedAt ?? result.timestamp)
+      .sort()
+      .slice(-1)[0] ?? config.timestamp;
+  const reportOutcomes = new Set<E2EExecutionOutcome>(
+    reports.map(({ outcome }) => (outcome === 'aborted' ? 'failed' : outcome))
+  );
+  const outcomePriority: E2EExecutionOutcome[] = [
+    'infrastructure_error',
+    'configuration_error',
+    'failed',
+    'skipped',
+    'passed',
+  ];
+  const outcome = outcomePriority.find((candidate) => reportOutcomes.has(candidate)) ?? 'passed';
 
   if (grafanaVersion) {
     config.grafanaVersion = grafanaVersion;
   }
 
   return {
+    schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+    outcome,
+    runner: reports[0]?.runner ?? {
+      name: 'pathfinder-e2e-runner',
+      version: process.env.PATHFINDER_E2E_RUNNER_VERSION ?? 'source',
+      nodeVersion: process.version,
+      playwrightVersion: process.env.PLAYWRIGHT_VERSION ?? 'unknown',
+    },
+    startedAt,
+    endedAt,
     type: 'multi-guide',
     config,
     summary,

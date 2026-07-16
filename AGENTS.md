@@ -117,6 +117,12 @@ The Go backend is a thin bridge between the React frontend and the **Coda VM pro
 
 When touching `pkg/`, load `.cursor/rules/coda.mdc` (agent-facing constraints) and `docs/developer/CODA.md` (full SSH / relay / credential-refresh reference). Plugin entrypoint is `pkg/main.go`.
 
+### E2E runner image and report schema
+
+The published cross-repository E2E report contract lives in `schemas/e2e-test-report.schema.json` (JSON Schema draft-07, `$id: https://grafana.com/schemas/pathfinder/e2e-test-report-1.0.0.json`). Compatibility fixtures are in `schemas/fixtures/`. The `guide-schema-and-contracts` concern in `docs/design/CONCERNS.md` routes this directory.
+
+A dedicated non-root runner image is built from `Dockerfile.e2e-runner` and published to `ghcr.io/grafana/pathfinder-e2e-runner` by `.github/workflows/e2e-runner-publish.yml`. It differs from the slim CLI image (`Dockerfile.cli`/`cli-publish.yml`) — always treat them as separate artifacts. The `build-and-ci` concern routes both Dockerfiles and runner scripts under `scripts/e2e-runner*`.
+
 ## On-demand context
 
 Load files only when working in the relevant domain — do not preload. The full routing table (engines, security, testing, CLI/MCP, design docs, skills, history) lives in **[`docs/developer/CONTEXT_INDEX.md`](docs/developer/CONTEXT_INDEX.md)**.

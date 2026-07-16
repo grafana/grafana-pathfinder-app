@@ -1,0 +1,117 @@
+name: E2E runner publish
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/cli/**'
+      - 'src/types/**'
+      - 'src/validation/**'
+      - 'tests/e2e-runner/**'
+      - 'tests/fixtures.ts'
+      - 'schemas/**'
+      - 'scripts/e2e-runner-entrypoint.sh'
+      - 'scripts/e2e-runner-contract-smoke.js'
+      - 'Dockerfile.e2e-runner'
+      - 'Dockerfile.e2e-runner.dockerignore'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.npmrc'
+      - '.github/workflows/e2e-runner-publish.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/cli/**'
+      - 'src/types/**'
+      - 'src/validation/**'
+      - 'tests/e2e-runner/**'
+      - 'tests/fixtures.ts'
+      - 'schemas/**'
+      - 'scripts/e2e-runner-entrypoint.sh'
+      - 'scripts/e2e-runner-contract-smoke.js'
+      - 'Dockerfile.e2e-runner'
+      - 'Dockerfile.e2e-runner.dockerignore'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.npmrc'
+      - '.github/workflows/e2e-runner-publish.yml'
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/grafana/pathfinder-e2e-runner
+  NODE_VERSION: '24'
+
+jobs:
+  build:
+    name: Build and smoke-test E2E runner
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - name: Build runner image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: Dockerfile.e2e-runner
+          load: true
+          push: false
+          tags: pathfinder-e2e-runner:smoke
+          build-args: |
+            RUNNER_VERSION=commit-${{ github.sha }}
+      - name: Run contract and fixture smoke test
+        run: docker run --rm --entrypoint node pathfinder-e2e-runner:smoke /app/scripts/e2e-runner-contract-smoke.js
+      - name: Verify non-root image user
+        run: test "$(docker run --rm --entrypoint id pathfinder-e2e-runner:smoke -u)" != "0"
+
+  publish:
+    name: Publish signed immutable runner image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Compute immutable tag
+        id: tag
+        run: echo "value=commit-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Build and push immutable image
+        id: push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: Dockerfile.e2e-runner
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}
+          build-args: |
+            RUNNER_VERSION=${{ steps.tag.outputs.value }}
+      - name: Sign image digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "${{ env.IMAGE_NAME }}@${DIGEST}"

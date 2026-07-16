@@ -186,6 +186,17 @@ Use `--output report.json` to generate a structured report:
 
 ```json
 {
+  "schemaVersion": "1.0.0",
+  "outcome": "passed",
+  "runner": {
+    "name": "pathfinder-e2e-runner",
+    "version": "commit-<sha>",
+    "nodeVersion": "v24.x",
+    "playwrightVersion": "1.61.1"
+  },
+  "startedAt": "2026-01-01T00:00:00.000Z",
+  "endedAt": "2026-01-01T00:00:01.000Z",
+  "target": { "url": "http://localhost:3000", "tier": "local" },
   "guide": { "id": "...", "title": "...", "path": "...", "targetUrl": "..." },
   "config": { "timestamp": "..." },
   "summary": {
@@ -199,7 +210,9 @@ Use `--output report.json` to generate a structured report:
 }
 ```
 
-For `--bundled` runs, the report includes aggregated results across all guides.
+The complete cross-repository contract is `schemas/e2e-test-report.schema.json`. `outcome` is one of `passed`, `failed`, `aborted`, `skipped`, `infrastructure_error`, or `configuration_error`; non-passing reports include a structured `errorCode`. `guide.contentDigest` is the SHA-256 digest of the exact content executed, and `guide.sourceUrl` identifies remote package content when available. Reports written for catchable setup, preflight, provisioning, and Playwright spawn failures contain zero steps but still validate against the schema. OOM, SIGKILL, and corrupt or missing output remain the worker's responsibility.
+
+For `--bundled` runs, the report includes aggregated results across all guides. The dedicated `Dockerfile.e2e-runner` image contains the matching Playwright runner and Chromium, runs as a non-root user, and is published as a signed immutable `ghcr.io/grafana/pathfinder-e2e-runner:commit-<sha>` tag. Cloud Run Jobs should pin the resulting image digest rather than a mutable tag. The deterministic `always-passes` and `always-fails` package fixtures under `tests/e2e-runner/fixtures/` exercise the contract and artifact paths.
 
 ### Failure artifacts
 

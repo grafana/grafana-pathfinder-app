@@ -1,0 +1,173 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://grafana.com/schemas/pathfinder/e2e-test-report-1.0.0.json",
+  "title": "Pathfinder E2E test report",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/singleReport"
+    },
+    {
+      "$ref": "#/$defs/multiReport"
+    }
+  ],
+  "$defs": {
+    "runner": {
+      "type": "object",
+      "required": ["name", "version", "nodeVersion", "playwrightVersion"],
+      "properties": {
+        "name": { "const": "pathfinder-e2e-runner" },
+        "version": { "type": "string", "minLength": 1 },
+        "nodeVersion": { "type": "string", "minLength": 1 },
+        "playwrightVersion": { "type": "string", "minLength": 1 },
+        "image": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": { "type": "string", "minLength": 1 },
+        "tier": { "type": "string", "minLength": 1 },
+        "instance": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "guide": {
+      "type": "object",
+      "required": ["id", "title", "path"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "packageId": { "type": "string", "minLength": 1 },
+        "tier": { "type": "string", "minLength": 1 },
+        "instance": { "type": "string", "minLength": 1 },
+        "targetUrl": { "type": "string", "minLength": 1 },
+        "sourceUrl": { "type": "string", "format": "uri" },
+        "contentDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "sideEffects": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "config": {
+      "type": "object",
+      "required": ["timestamp"],
+      "properties": {
+        "timestamp": { "type": "string", "format": "date-time" },
+        "grafanaVersion": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "total",
+        "passed",
+        "failed",
+        "skipped",
+        "notReached",
+        "duration",
+        "mandatoryFailed",
+        "skippableFailed"
+      ],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "notReached": { "type": "integer", "minimum": 0 },
+        "duration": { "type": "integer", "minimum": 0 },
+        "mandatoryFailed": { "type": "integer", "minimum": 0 },
+        "skippableFailed": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "step": {
+      "type": "object",
+      "required": ["stepId", "index", "status", "duration", "currentUrl", "consoleErrors"],
+      "properties": {
+        "stepId": { "type": "string", "minLength": 1 },
+        "index": { "type": "integer", "minimum": 0 },
+        "status": { "enum": ["passed", "failed", "skipped", "not_reached"] },
+        "duration": { "type": "integer", "minimum": 0 },
+        "currentUrl": { "type": "string" },
+        "consoleErrors": { "type": "array", "items": { "type": "string" } },
+        "skipReason": { "type": "string" },
+        "error": { "type": "string" },
+        "skippable": { "type": "boolean" },
+        "classification": { "enum": ["content-drift", "product-regression", "infrastructure", "unknown"] },
+        "artifacts": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "contractFields": {
+      "type": "object",
+      "required": ["schemaVersion", "outcome", "runner", "startedAt", "endedAt"],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "outcome": {
+          "enum": ["passed", "failed", "aborted", "skipped", "infrastructure_error", "configuration_error"]
+        },
+        "errorCode": {
+          "enum": [
+            "AUTH_EXPIRED",
+            "MANDATORY_FAILURE",
+            "SKIPPED_PREREQ",
+            "PROVISIONING_FAILED",
+            "GRAFANA_UNREACHABLE",
+            "CONFIGURATION_ERROR",
+            "PLAYWRIGHT_SPAWN_FAILED",
+            "NO_CAPACITY",
+            "REPORT_MISSING",
+            "UNKNOWN"
+          ]
+        },
+        "errorMessage": { "type": "string" },
+        "runner": { "$ref": "#/$defs/runner" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "endedAt": { "type": "string", "format": "date-time" },
+        "target": { "$ref": "#/$defs/target" }
+      },
+      "additionalProperties": true
+    },
+    "singleReport": {
+      "allOf": [
+        { "$ref": "#/$defs/contractFields" },
+        {
+          "type": "object",
+          "required": ["guide", "config", "summary", "steps", "target"],
+          "properties": {
+            "guide": { "$ref": "#/$defs/guide" },
+            "config": { "$ref": "#/$defs/config" },
+            "summary": { "$ref": "#/$defs/summary" },
+            "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+            "aborted": { "type": "boolean" },
+            "abortReason": { "enum": ["AUTH_EXPIRED", "MANDATORY_FAILURE", "SKIPPED_PREREQ", "PROVISIONING_FAILED"] },
+            "abortMessage": { "type": "string" },
+            "preRunSkipped": { "type": "array" },
+            "cleanupWarnings": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      ]
+    },
+    "multiReport": {
+      "allOf": [
+        { "$ref": "#/$defs/contractFields" },
+        {
+          "type": "object",
+          "required": ["type", "config", "summary", "guides", "reports"],
+          "properties": {
+            "type": { "const": "multi-guide" },
+            "config": { "$ref": "#/$defs/config" },
+            "summary": { "type": "object" },
+            "guides": { "type": "array" },
+            "reports": { "type": "array", "items": { "$ref": "#/$defs/singleReport" } },
+            "preRunSkipped": { "type": "array" },
+            "cleanupWarnings": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      ]
+    }
+  }
+}
