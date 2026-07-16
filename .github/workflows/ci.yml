@@ -351,11 +351,12 @@ jobs:
             ["Test backend"]="$TEST_BACKEND_RESULT"
           )
 
-          text="*CI failed on \`main\`*\n*Failed jobs:*"
+          nl=$'\n'
+          text="*CI failed on \`main\`*${nl}*Failed jobs:*"
           for name in "Lint" "Typecheck" "Prettier" "Test" "Validate packages" "Test backend"; do
             if [[ "${results[$name]}" == "failure" ]]; then
               url=$(echo "$jobs_json" | jq -r --arg n "$name" '.jobs[] | select(.name == $n) | .html_url')
-              text="${text}\n• <${url}|${name}>"
+              text="${text}${nl}• <${url}|${name}>"
             fi
           done
 
