@@ -4,6 +4,7 @@
  */
 
 // Re-export all DOM utilities
+export * from './css-escape';
 export * from './dom-utils';
 export * from './pathfinder-content';
 export * from './enhanced-selector';

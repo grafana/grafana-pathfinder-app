@@ -9,6 +9,7 @@
  * @module selector-generator
  */
 
+import { escapeCssAttributeValue } from './css-escape';
 import { findButtonByText } from './dom-utils';
 import { querySelectorAllEnhanced, querySelectorAllEnhancedVisible } from './enhanced-selector';
 import { findGrafanaSelectorPath } from './grafana-selector';
@@ -382,7 +383,7 @@ function findOverlayContext(element: HTMLElement): HTMLElement | null {
 function buildOverlayScopedSelector(overlay: HTMLElement, baseSelector: string): string {
   const role = overlay.getAttribute('role');
   if (role) {
-    return `[role="${role}"] ${baseSelector}`;
+    return `[role="${escapeCssAttributeValue(role, '"')}"] ${baseSelector}`;
   }
   if (overlay.tagName === 'DIALOG') {
     return `dialog ${baseSelector}`;
@@ -482,7 +483,7 @@ function candidateTestId(element: HTMLElement): Candidate | null {
   }
   const tag = element.tagName.toLowerCase();
   const attr = getTestIdAttr(element);
-  return { selector: `${tag}[${attr}='${testId}']`, score: CANDIDATE_SCORES.testId, method: 'data-testid' };
+  return { selector: `${tag}[${attr}='${escapeCssAttributeValue(testId)}']`, score: CANDIDATE_SCORES.testId, method: 'data-testid' };
 }
 
 function candidateScopedTestId(element: HTMLElement): Candidate | null {
@@ -492,7 +493,7 @@ function candidateScopedTestId(element: HTMLElement): Candidate | null {
   }
   const tag = element.tagName.toLowerCase();
   const attr = getTestIdAttr(element);
-  const base = `${tag}[${attr}='${testId}']`;
+  const base = `${tag}[${attr}='${escapeCssAttributeValue(testId)}']`;
 
   let current = element.parentElement;
   let depth = 0;
@@ -502,7 +503,7 @@ function candidateScopedTestId(element: HTMLElement): Candidate | null {
       const pTag = current.tagName.toLowerCase();
       const pAttr = getTestIdAttr(current);
       return {
-        selector: `${pTag}[${pAttr}='${parentTestId}'] ${base}`,
+        selector: `${pTag}[${pAttr}='${escapeCssAttributeValue(parentTestId)}'] ${base}`,
         score: CANDIDATE_SCORES.scopedTestId,
         method: 'scoped-testid',
       };
@@ -525,7 +526,7 @@ function candidateTestIdPlusHref(element: HTMLElement): Candidate | null {
   const attr = getTestIdAttr(element);
   const href = normalizeHref(rawHref);
   return {
-    selector: `a[${attr}='${testId}'][href='${href}']`,
+    selector: `a[${attr}='${escapeCssAttributeValue(testId)}'][href='${escapeCssAttributeValue(href)}']`,
     score: CANDIDATE_SCORES.testId + 2,
     method: 'testid-href',
   };
@@ -546,13 +547,20 @@ function candidateRoleName(element: HTMLElement): Candidate | null {
   const text = normalizeText(element.textContent || '');
   if (text.length === 0 || text.length > SELECTOR_CONFIG.maxTextLength) {
     const tag = element.tagName.toLowerCase();
-    return { selector: `${tag}[role='${role}']`, score: CANDIDATE_SCORES.roleContains + 50, method: 'role' };
+    return { selector: `${tag}[role='${escapeCssAttributeValue(role)}']`, score: CANDIDATE_SCORES.roleContains + 50, method: 'role' };
   }
+  // The :text()/:contains() arguments stay raw: the custom-pseudo parser in
+  // enhanced-selector.ts reads them with a regex that cannot handle backslash
+  // escapes, so only the attribute-selector part is escaped here.
   if (text.length < 20) {
-    return { selector: `[role='${role}']:text('${text}')`, score: CANDIDATE_SCORES.roleText, method: 'role-text' };
+    return {
+      selector: `[role='${escapeCssAttributeValue(role)}']:text('${text}')`,
+      score: CANDIDATE_SCORES.roleText,
+      method: 'role-text',
+    };
   }
   return {
-    selector: `[role='${role}']:contains('${text}')`,
+    selector: `[role='${escapeCssAttributeValue(role)}']:contains('${text}')`,
     score: CANDIDATE_SCORES.roleContains,
     method: 'role-contains',
   };
@@ -564,7 +572,11 @@ function candidateAriaLabel(element: HTMLElement): Candidate | null {
     return null;
   }
   const tag = element.tagName.toLowerCase();
-  return { selector: `${tag}[aria-label='${ariaLabel}']`, score: CANDIDATE_SCORES.ariaLabel, method: 'aria-label' };
+  return {
+    selector: `${tag}[aria-label='${escapeCssAttributeValue(ariaLabel)}']`,
+    score: CANDIDATE_SCORES.ariaLabel,
+    method: 'aria-label',
+  };
 }
 
 function candidateButtonText(element: HTMLElement): Candidate[] {
@@ -616,7 +628,7 @@ function candidatePlaceholder(element: HTMLElement): Candidate | null {
   }
   const tag = element.tagName.toLowerCase();
   return {
-    selector: `${tag}[placeholder='${placeholder}']`,
+    selector: `${tag}[placeholder='${escapeCssAttributeValue(placeholder)}']`,
     score: CANDIDATE_SCORES.placeholder,
     method: 'placeholder',
   };
@@ -628,7 +640,7 @@ function candidateTitle(element: HTMLElement): Candidate | null {
     return null;
   }
   const tag = element.tagName.toLowerCase();
-  return { selector: `${tag}[title='${title}']`, score: CANDIDATE_SCORES.title, method: 'title' };
+  return { selector: `${tag}[title='${escapeCssAttributeValue(title)}']`, score: CANDIDATE_SCORES.title, method: 'title' };
 }
 
 function candidateLabelText(element: HTMLElement): Candidate | null {
@@ -657,7 +669,7 @@ function candidateName(element: HTMLElement): Candidate | null {
       return null;
     }
   }
-  return { selector: `${tag}[name='${name}']`, score: CANDIDATE_SCORES.name, method: 'name' };
+  return { selector: `${tag}[name='${escapeCssAttributeValue(name)}']`, score: CANDIDATE_SCORES.name, method: 'name' };
 }
 
 function candidateHref(element: HTMLElement): Candidate | null {
@@ -669,7 +681,7 @@ function candidateHref(element: HTMLElement): Candidate | null {
     return null;
   }
   const href = normalizeHref(rawHref);
-  return { selector: `a[href='${href}']`, score: CANDIDATE_SCORES.href, method: 'href' };
+  return { selector: `a[href='${escapeCssAttributeValue(href)}']`, score: CANDIDATE_SCORES.href, method: 'href' };
 }
 
 function candidateCompound(element: HTMLElement): Candidate | null {
@@ -690,14 +702,14 @@ function candidateCompound(element: HTMLElement): Candidate | null {
       attr.value !== 'false' &&
       !/^\d+$/.test(attr.value)
     ) {
-      parts.push(`[${attr.name}='${attr.value}']`);
+      parts.push(`[${attr.name}='${escapeCssAttributeValue(attr.value)}']`);
       break;
     }
   }
 
   if (tag === 'a' && element.hasAttribute('href')) {
     const href = normalizeHref(element.getAttribute('href')!);
-    parts.push(`[href='${href}']`);
+    parts.push(`[href='${escapeCssAttributeValue(href)}']`);
   }
 
   if (parts.length <= 1) {
@@ -832,7 +844,12 @@ function findAllAncestorScopes(element: HTMLElement): AncestorScope[] {
     if (testId) {
       const tag = current.tagName.toLowerCase();
       const attr = getTestIdAttr(current);
-      scopes.push({ selector: `${tag}[${attr}='${testId}']`, element: current, depth, type: 'testid' });
+      scopes.push({
+        selector: `${tag}[${attr}='${escapeCssAttributeValue(testId)}']`,
+        element: current,
+        depth,
+        type: 'testid',
+      });
     } else if (current.id && !isAutoGeneratedId(current.id)) {
       scopes.push({ selector: `#${current.id}`, element: current, depth, type: 'id' });
     } else {
@@ -840,7 +857,7 @@ function findAllAncestorScopes(element: HTMLElement): AncestorScope[] {
       if (stableAttr) {
         const tag = current.tagName.toLowerCase();
         scopes.push({
-          selector: `${tag}[${stableAttr.name}='${stableAttr.value}']`,
+          selector: `${tag}[${stableAttr.name}='${escapeCssAttributeValue(stableAttr.value)}']`,
           element: current,
           depth,
           type: 'data-attr',
