@@ -72,6 +72,7 @@ import {
   getSourceDocument,
   calculateStepCompletion,
   AnalyticsContentType,
+  createInteractionName,
 } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
@@ -792,7 +793,7 @@ export function InteractiveSection({
     // unmount and silently lost the per-step writes.
 
     await withFaroUserAction(
-      'pathfinder_section_run',
+      createInteractionName(UserInteraction.DoSectionButtonClick),
       {
         section_id: sectionId,
         section_title: title || DEFAULT_INTERACTIVE_SECTION_TITLE,

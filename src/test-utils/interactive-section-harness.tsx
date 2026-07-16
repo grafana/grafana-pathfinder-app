@@ -335,11 +335,12 @@ export function createAlignmentContextMock() {
 export function createAnalyticsMock() {
   return {
     reportAppInteraction: jest.fn(),
+    createInteractionName: jest.fn((type: string) => `pathfinder_${type}`),
     UserInteraction: {
-      DoSectionButtonClick: 'do_section',
-      ShowMeButtonClick: 'show_me',
-      DoItButtonClick: 'do_it',
-      StepAutoCompleted: 'auto',
+      DoSectionButtonClick: 'do_section_button_click',
+      ShowMeButtonClick: 'show_me_button_click',
+      DoItButtonClick: 'do_it_button_click',
+      StepAutoCompleted: 'step_auto_completed',
     },
     AnalyticsContentType: {
       Docs: 'docs',

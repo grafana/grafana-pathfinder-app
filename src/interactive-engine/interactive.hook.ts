@@ -4,6 +4,7 @@ import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../sty
 import { waitForReactUpdates } from '../lib/async-utils';
 import { logger } from '../lib/logging';
 import { USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../lib/faro';
+import { createInteractionName, UserInteraction } from '../lib/analytics';
 import type { SequenceRunResult, StepOutcome } from '../lib/telemetry';
 import { outcomeFromSequenceRun } from './outcome-classifier';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
@@ -164,7 +165,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   const dispatchInteractiveAction = useCallback(
     async (data: InteractiveElementData, click: boolean) => {
       await withFaroUserAction(
-        click ? 'pathfinder_step_do' : 'pathfinder_step_show',
+        click
+          ? createInteractionName(UserInteraction.DoItButtonClick)
+          : createInteractionName(UserInteraction.ShowMeButtonClick),
         { target_action: data.targetAction, ref_target: data.refTarget },
         async () => {
           if (data.targetAction === 'highlight') {
@@ -411,7 +414,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       // promise settlement — stamps the action outcome.
       let sequenceResult: SequenceRunResult | undefined;
       await withFaroUserAction(
-        isShowMode ? 'pathfinder_step_show' : 'pathfinder_step_do',
+        isShowMode
+          ? createInteractionName(UserInteraction.ShowMeButtonClick)
+          : createInteractionName(UserInteraction.DoItButtonClick),
         { target_action: targetAction, ref_target: refTarget },
         async () => {
           try {
