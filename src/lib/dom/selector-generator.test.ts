@@ -599,17 +599,53 @@ describe('Selector Generator — Pipeline', () => {
     });
 
     it('rates a grafana: reftarget as good with the top stability score', () => {
-      const analysis = analyzeSelectorString('grafana:components.RefreshPicker.runButton');
+      const analysis = analyzeSelectorString('grafana:components.RefreshPicker.runButtonV2');
       expect(analysis.method).toBe('grafana');
       expect(analysis.quality).toBe('good');
       expect(analysis.stabilityScore).toBe(100);
     });
 
-    it('rates a panel: reftarget as good with the top stability score', () => {
+    it('rates a panel: reftarget as good but flags its free-text title as instance-bound', () => {
       const analysis = analyzeSelectorString('panel:CPU Usage');
       expect(analysis.method).toBe('grafana');
       expect(analysis.quality).toBe('good');
       expect(analysis.stabilityScore).toBe(100);
+      expect(analysis.flags).toContain('environment-unstable');
+    });
+
+    it('flags parameterized grafana: reftargets as instance-bound', () => {
+      const analysis = analyzeSelectorString('grafana:components.Breadcrumbs.breadcrumb:Home');
+      expect(analysis.quality).toBe('good');
+      expect(analysis.flags).toContain('environment-unstable');
+    });
+
+    it('rates an unresolvable grafana: path as poor', () => {
+      const analysis = analyzeSelectorString('grafana:components.RefreshPicker.runbutton');
+      expect(analysis.quality).toBe('poor');
+      expect(analysis.stabilityScore).toBe(0);
+      expect(analysis.warnings.some((w) => w.includes('Unknown grafana selector path'))).toBe(true);
+    });
+
+    it('rates an unresolvable embedded token as poor', () => {
+      const analysis = analyzeSelectorString("div[data-testid='panel'] {grafana:invalid.nonexistent.path}");
+      expect(analysis.quality).toBe('poor');
+      expect(analysis.stabilityScore).toBe(0);
+      expect(analysis.warnings.some((w) => w.includes('Unknown grafana selector path'))).toBe(true);
+    });
+
+    it('rates a resolvable scoped token as good', () => {
+      const analysis = analyzeSelectorString(
+        "div[data-testid='panel-B'] {grafana:components.RefreshPicker.runButtonV2}"
+      );
+      expect(analysis.method).toBe('scoped-grafana');
+      expect(analysis.quality).toBe('good');
+      expect(analysis.stabilityScore).toBe(100);
+    });
+
+    it('classifies a testid-subject :has() selector by its subject, not as has-descendant', () => {
+      const analysis = analyzeSelectorString("div[data-testid='wrapper']:has(a)");
+      expect(analysis.method).toBe('data-testid');
+      expect(analysis.quality).toBe('good');
     });
 
     it('recognizes a tag-attached id selector as an id method', () => {

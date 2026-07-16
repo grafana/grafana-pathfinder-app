@@ -11,7 +11,7 @@ import { toGrafanaSelector } from './grafana-selector';
  * Resolve a selector string that may contain special prefixes
  *
  * Supported formats:
- * - `grafana:components.RefreshPicker.runButton` - Grafana e2e selector path
+ * - `grafana:components.RefreshPicker.runButtonV2` - Grafana e2e selector path
  * - `grafana:components.NavMenu.item:Dashboards` - Grafana selector with parameter (split at the
  *   first colon after the prefix; the parameter itself may contain colons)
  * - `div[data-testid='panel'] {grafana:components.Select.input}` - CSS selector with embedded
@@ -24,7 +24,7 @@ import { toGrafanaSelector } from './grafana-selector';
  * @example
  * // Grafana selector — one value resolved for the running Grafana version,
  * // mirrored onto both attributes
- * resolveSelector('grafana:components.RefreshPicker.runButton')
+ * resolveSelector('grafana:components.RefreshPicker.runButtonV2')
  * // Returns: ":is([data-testid='data-testid RefreshPicker run button'], [aria-label='data-testid RefreshPicker run button'])"
  *
  * @example

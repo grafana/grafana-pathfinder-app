@@ -1484,12 +1484,28 @@ function computeStabilityFlags(selector: string, method: string): StabilityFlag[
     /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i.test(selector) ||
     selector.includes('/d/') ||
     selector.includes('orgId=') ||
-    selector.includes('uid=')
+    selector.includes('uid=') ||
+    isParameterizedGrafanaIdentity(selector)
   ) {
     flags.push('environment-unstable');
   }
 
   return flags;
+}
+
+/**
+ * Parameterized grafana/panel identities embed free-text display values
+ * (panel titles, item labels) — stable across Grafana versions but bound to
+ * this instance's content.
+ */
+function isParameterizedGrafanaIdentity(selector: string): boolean {
+  if (selector.startsWith('panel:')) {
+    return true;
+  }
+  if (selector.startsWith('grafana:')) {
+    return selector.substring(8).includes(':');
+  }
+  return /\{grafana:[^}]*:[^}]*\}/.test(selector);
 }
 
 function computeQuality(stabilityScore: number, flags: StabilityFlag[]): SelectorQuality {
@@ -1530,6 +1546,17 @@ function inferMethodAndScore(selector: string): { method: string; score: number 
     return { method: 'grafana', score: CANDIDATE_SCORES.grafana };
   }
   if (selector.includes(':has(')) {
+    // A hand-typed selector whose SUBJECT carries a testid is a testid selector
+    // that happens to filter with :has(); the generator's has-descendant shape
+    // always has a bare-tag subject borrowing the descendant's identity.
+    const subject =
+      selector
+        .slice(0, selector.indexOf(':has('))
+        .split(/[\s>+~]+/)
+        .pop() ?? '';
+    if (SELECTOR_CONFIG.testIdAttrs.some((attr) => subject.includes(attr))) {
+      return { method: 'data-testid', score: CANDIDATE_SCORES.testId };
+    }
     return { method: 'has-descendant', score: CANDIDATE_SCORES.testId + HAS_DESCENDANT_PENALTY };
   }
   if (selector.includes('{grafana:')) {
@@ -1583,6 +1610,21 @@ export function analyzeSelectorString(selector: string): SelectorStringAnalysis 
   const stabilityScore = scoreToStability(score);
   const flags = computeStabilityFlags(selector, method);
   const quality = computeQuality(stabilityScore, flags);
+
+  // A grafana identity that doesn't resolve against this version's selector
+  // table will never match anywhere — resolveSelector returns the input
+  // unchanged on failure, so equality means unresolvable. Without this check a
+  // typo'd path reads good/100 with a "may work on the target page" warning.
+  const hasGrafanaIdentity = selector.startsWith('grafana:') || selector.includes('{grafana:');
+  if (hasGrafanaIdentity && resolveSelector(selector) === selector) {
+    return {
+      method,
+      stabilityScore: 0,
+      quality: 'poor',
+      flags,
+      warnings: ['Unknown grafana selector path for this Grafana version'],
+    };
+  }
 
   const warnings: string[] = [];
   if (flags.includes('structural')) {

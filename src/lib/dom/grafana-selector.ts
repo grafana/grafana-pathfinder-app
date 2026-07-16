@@ -31,7 +31,7 @@ function getResolvedSelectors(): SelectorNode {
  * Convert a Grafana selector path to a CSS selector string
  * Handles both aria-label and data-testid attributes based on the selector definition
  *
- * @param selectorPath - Dot-notation path to selector (e.g., 'components.RefreshPicker.runButton')
+ * @param selectorPath - Dot-notation path to selector (e.g., 'components.RefreshPicker.runButtonV2')
  * @returns CSS selector string that can be used with querySelector
  *
  * @example
