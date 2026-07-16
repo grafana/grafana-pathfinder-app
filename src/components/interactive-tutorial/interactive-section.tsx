@@ -2,7 +2,12 @@ import React, { useState, useCallback, useMemo, useEffect, useReducer, useRef } 
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
-import { useInteractiveElements, ActionMonitor } from '../../interactive-engine';
+import {
+  useInteractiveElements,
+  ActionMonitor,
+  outcomeFromLoopExit,
+  type LoopExitReason,
+} from '../../interactive-engine';
 import { useStepChecker, stripTabLocalRequirements } from '../../requirements-manager';
 import { useIsAlignmentPaused, useAlignmentStartingLocation } from '../../global-state/alignment-pending-context';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
@@ -770,10 +775,7 @@ export function InteractiveSection({
     };
     startSectionBlocking(sectionId, dummyData, handleSectionCancel);
 
-    let stoppedDueToRequirements = false;
-    // Distinct from stoppedDueToRequirements: the step's requirements passed but the
-    // action itself (or its post-verify) failed — a real action_error, not exhausted retries.
-    let stoppedDueToActionError = false;
+    let loopExitReason: LoopExitReason = 'ok';
     let completedStepsCount = startIndex; // Track number of completed steps for analytics (starts at startIndex since those are already done)
     // The completion store handles per-step persistence synchronously via
     // `markStepCompleted` — every write hits the store + storage immediately,
@@ -871,11 +873,7 @@ export function InteractiveSection({
                           }
                           continue; // Continue to next step
                         } else {
-                          // Priority 4: Stop execution if not skippable.
-                          // (cursor is already at `i` via the prior
-                          // COMPLETE_STEP dispatches — no explicit setter
-                          // needed.)
-                          stoppedDueToRequirements = true;
+                          loopExitReason = 'requirements_exhausted';
                           break;
                         }
                       }
@@ -893,8 +891,7 @@ export function InteractiveSection({
                         }
                         continue;
                       } else {
-                        // Stop execution (cursor already at `i`)
-                        stoppedDueToRequirements = true;
+                        loopExitReason = 'requirements_exhausted';
                         break;
                       }
                     }
@@ -910,16 +907,14 @@ export function InteractiveSection({
                       }
                       continue; // Continue to next step
                     } else {
-                      // Priority 4: Stop execution if not skippable and no fix available
-                      // (cursor already at `i`)
-                      stoppedDueToRequirements = true;
+                      loopExitReason = 'requirements_exhausted';
                       break;
                     }
                   }
                 }
               } catch (error) {
                 logger.warn(`Step ${i + 1} requirements check failed, stopping section execution`, { error });
-                stoppedDueToRequirements = true;
+                loopExitReason = 'requirements_exhausted';
                 break;
               }
             }
@@ -977,8 +972,7 @@ export function InteractiveSection({
               }
             } else {
               // Step execution failed after retries - stop and don't auto-complete remaining steps
-              // (cursor already at `i` via the prior COMPLETE_STEP dispatches)
-              stoppedDueToActionError = true;
+              loopExitReason = 'action_error';
 
               // Wait for state to settle, then trigger reactive check
               // This ensures remaining steps update their eligibility based on completed steps
@@ -994,7 +988,7 @@ export function InteractiveSection({
           }
 
           // Section sequence completed or cancelled
-          if (!isCancelledRef.current && !stoppedDueToRequirements && !stoppedDueToActionError) {
+          if (!isCancelledRef.current && loopExitReason === 'ok') {
             // Belt-and-braces bulk write so any steps that didn't go through the
             // per-step path (e.g. skipped via fix → `markSkipped` → `handleStepComplete`)
             // also end up in the store. `markStepsCompleted` is idempotent.
@@ -1017,7 +1011,7 @@ export function InteractiveSection({
           // Keep isCancelled state for UI feedback, will be reset on next run
 
           // Track "Do Section" analytics after completion (success or cancel)
-          const wasCanceled = isCancelledRef.current || stoppedDueToRequirements || stoppedDueToActionError;
+          const wasCanceled = isCancelledRef.current || loopExitReason !== 'ok';
           setFaroUserActionAttributes({ steps_completed: completedStepsCount, canceled: wasCanceled });
           const docInfo = getSourceDocument(sectionId);
 
@@ -1057,16 +1051,9 @@ export function InteractiveSection({
       {
         critical: true,
         // The work callback swallows errors and always resolves — cancellation
-        // and requirement-stops must be read from the refs/flags it sets,
-        // not inferred from settlement.
-        outcomeFrom: () =>
-          isCancelledRef.current
-            ? 'cancelled'
-            : stoppedDueToActionError
-              ? 'action_error'
-              : stoppedDueToRequirements
-                ? 'requirements_exhausted'
-                : 'ok',
+        // and the loop exit reason must be read from the refs/flags it sets,
+        // not inferred from settlement. Cancellation wins over the loop reason.
+        outcomeFrom: () => outcomeFromLoopExit(isCancelledRef.current ? 'cancelled' : loopExitReason),
       }
     );
   }, [

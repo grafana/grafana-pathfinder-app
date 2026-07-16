@@ -5,6 +5,7 @@ import { waitForReactUpdates } from '../lib/async-utils';
 import { logger } from '../lib/logging';
 import { USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../lib/faro';
 import type { SequenceRunResult, StepOutcome } from '../lib/telemetry';
+import { outcomeFromSequenceRun } from './outcome-classifier';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
 import { checkRequirements, checkPostconditions, RequirementsCheckOptions } from '../requirements-manager';
 import { extractInteractiveDataFromElement } from '../lib/dom';
@@ -472,7 +473,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         targetAction === 'sequence' ? USER_ACTION_TIMEOUT_LONG_MS : undefined,
         {
           critical: !isShowMode,
-          outcomeFrom: () => (sequenceResult === undefined || sequenceResult === 'completed' ? 'ok' : sequenceResult),
+          outcomeFrom: () => outcomeFromSequenceRun(sequenceResult),
         }
       );
       // Sequence runs resolve rather than throw on requirements-exhausted/
