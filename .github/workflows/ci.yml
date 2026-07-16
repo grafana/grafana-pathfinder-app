@@ -309,7 +309,7 @@ jobs:
   # Alerts #grafana-pathfinder-alerts on main-branch CI failures only.
   notify-ci-failure:
     name: Notify CI failure
-    needs: [lint, typecheck, prettier, test, validate-packages, test-backend]
+    needs: [lint, typecheck, prettier, test, validate-packages, build, test-backend]
     if: >-
       always() &&
       github.event_name == 'push' &&
@@ -319,6 +319,7 @@ jobs:
        needs.prettier.result == 'failure' ||
        needs.test.result == 'failure' ||
        needs.validate-packages.result == 'failure' ||
+       needs.build.result == 'failure' ||
        needs.test-backend.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
@@ -335,6 +336,7 @@ jobs:
           PRETTIER_RESULT: ${{ needs.prettier.result }}
           TEST_RESULT: ${{ needs.test.result }}
           VALIDATE_RESULT: ${{ needs.validate-packages.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
           TEST_BACKEND_RESULT: ${{ needs.test-backend.result }}
           RUN_ID: ${{ github.run_id }}
           SHA: ${{ github.sha }}
@@ -348,12 +350,13 @@ jobs:
             ["Prettier"]="$PRETTIER_RESULT"
             ["Test"]="$TEST_RESULT"
             ["Validate packages"]="$VALIDATE_RESULT"
+            ["Build"]="$BUILD_RESULT"
             ["Test backend"]="$TEST_BACKEND_RESULT"
           )
 
           nl=$'\n'
           text="*CI failed on \`main\`*${nl}*Failed jobs:*"
-          for name in "Lint" "Typecheck" "Prettier" "Test" "Validate packages" "Test backend"; do
+          for name in "Lint" "Typecheck" "Prettier" "Test" "Validate packages" "Build" "Test backend"; do
             if [[ "${results[$name]}" == "failure" ]]; then
               url=$(echo "$jobs_json" | jq -r --arg n "$name" '.jobs[] | select(.name == $n) | .html_url')
               text="${text}${nl}• <${url}|${name}>"
