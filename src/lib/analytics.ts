@@ -122,7 +122,7 @@ export enum UserInteraction {
 /**
  * Creates a properly namespaced interaction name for Grafana analytics
  */
-const createInteractionName = (type: UserInteraction): string => {
+export const createInteractionName = (type: UserInteraction): string => {
   return `pathfinder_${type}`;
 };
 

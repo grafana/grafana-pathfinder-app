@@ -33,6 +33,7 @@ import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-side
 import pluginJson from '../../plugin.json';
 import { logger } from '../../lib/logging';
 import { setFaroUserActionAttributes, USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../../lib/faro';
+import { TELEMETRY_ACTIONS } from '../../lib/telemetry';
 
 // The verbs the guided handler can actually drive — narrower than the receive
 // gate's KNOWN_TARGET_ACTIONS, so runGuided checks against this before casting.
@@ -264,7 +265,7 @@ export function installLiveTabExecutor(
     const postProgress = (index: number) =>
       transport.post({ kind: 'step-progress', stepId, runId, index, total: internalActions?.length ?? 0 });
     await withFaroUserAction(
-      'pathfinder_remote_step',
+      TELEMETRY_ACTIONS.remoteStep,
       {
         target_action: command.action.targetAction,
         ref_target: command.action.refTarget ?? '',

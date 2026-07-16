@@ -153,7 +153,7 @@ describe('GuidedHandler', () => {
       );
 
       expect(withFaroUserAction).toHaveBeenCalledWith(
-        'pathfinder_guided_step',
+        'pathfinder_do_it_button_click',
         { target_action: 'highlight', ref_target: refTarget, step_index: 0, total_steps: 1 },
         expect.any(Function),
         10_005,

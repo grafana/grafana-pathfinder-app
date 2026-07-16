@@ -2,8 +2,8 @@
 // pushFaro* primitives, so the backing SDK stays an adapter concern.
 import { pushFaroEvent, pushFaroMeasurement, withFaroUserAction, USER_ACTION_TIMEOUT_MEDIUM_MS } from './faro-adapter';
 import { normalizeTelemetryUrl } from './url';
+import { createInteractionName, UserInteraction } from '../analytics';
 import {
-  TELEMETRY_ACTIONS,
   TELEMETRY_EVENTS,
   TELEMETRY_MEASUREMENTS,
   type ContentFetchOutcome,
@@ -19,8 +19,8 @@ import {
 // outcome — not promise settlement — stamps the action.
 export function withGuideOpenAction(url: string, work: () => Promise<GuideLoadOutcome>): Promise<GuideLoadOutcome> {
   return withFaroUserAction(
-    TELEMETRY_ACTIONS.guideOpen,
-    { content_url: normalizeTelemetryUrl(url) },
+    createInteractionName(UserInteraction.DocsPanelInteraction),
+    { action: 'open_guide', content_url: normalizeTelemetryUrl(url) },
     work,
     USER_ACTION_TIMEOUT_MEDIUM_MS,
     {
