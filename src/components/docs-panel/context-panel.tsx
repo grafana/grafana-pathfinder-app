@@ -18,7 +18,6 @@ import { useContextPanel, Recommendation } from '../../context-engine';
 import type { ResolvedNavLink } from '../../types/context.types';
 import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
-import { RECOMMENDATIONS_READY_EVENT } from '../../lib/event-names';
 import { getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../../constants/testIds';
@@ -1122,14 +1121,13 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
 
   // Signals docs-panel's panel_lcp_ms that recommendations are actually
   // showing (reuses the same readiness the scroll-position hook uses).
-  // Deferred to a microtask since effects commit child-before-parent —
-  // dispatching synchronously on first mount could race ahead of the
-  // ancestor's listener-registration effect.
+  // Written to scene state — a replayable observable the parent reads on
+  // any render, so it survives this renderer remounting on tab changes.
   useEffect(() => {
-    if (recommendationsScrollReady) {
-      queueMicrotask(() => document.dispatchEvent(new CustomEvent(RECOMMENDATIONS_READY_EVENT)));
+    if (recommendationsScrollReady && !model.state.recommendationsReady) {
+      model.setState({ recommendationsReady: true });
     }
-  }, [recommendationsScrollReady]);
+  }, [recommendationsScrollReady, model]);
 
   return (
     <div className={styles.container} data-testid={testIds.contextPanel.container}>

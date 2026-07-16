@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { RECOMMENDATIONS_READY_EVENT } from '../../../lib/event-names';
 import { recordPanelReady } from '../../../lib/telemetry';
 
 // Panel-scoped analog of LCP, fired once per mount. Not Faro's page-level
@@ -7,21 +6,15 @@ import { recordPanelReady } from '../../../lib/telemetry';
 export function usePanelReadyMeasurement(params: {
   hasContent: boolean;
   isRecommendationsTab: boolean;
+  recommendationsReady: boolean;
   surface: string;
 }): void {
   // Clock starts in the render pass, not the effect — effects run after
   // commit, which would measure already-ready content as ~0.
   const [renderStart] = React.useState(() => performance.now());
   const recordedRef = React.useRef(false);
-  const [recommendationsReady, setRecommendationsReady] = React.useState(false);
 
-  React.useEffect(() => {
-    const onReady = () => setRecommendationsReady(true);
-    document.addEventListener(RECOMMENDATIONS_READY_EVENT, onReady);
-    return () => document.removeEventListener(RECOMMENDATIONS_READY_EVENT, onReady);
-  }, []);
-
-  const { hasContent, isRecommendationsTab, surface } = params;
+  const { hasContent, isRecommendationsTab, recommendationsReady, surface } = params;
   React.useEffect(() => {
     if (recordedRef.current) {
       return;
