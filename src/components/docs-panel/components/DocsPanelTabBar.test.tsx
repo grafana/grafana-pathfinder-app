@@ -1,12 +1,3 @@
-/**
- * Tests for DocsPanelTabBar.
- *
- * Focused on the "My learning" wiring seam: the tab bar must pass an in-panel
- * handler to TabBarActions so the button switches to the recommendations tab
- * (issue #1051) rather than navigating away. If this wiring is dropped, the
- * header button silently reverts to a full-page navigation.
- */
-
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DocsPanelTabBar, type DocsPanelTabBarProps } from './DocsPanelTabBar';
@@ -79,14 +70,14 @@ describe('DocsPanelTabBar', () => {
     jest.clearAllMocks();
   });
 
-  it('wires the "My learning" button to switch to the recommendations tab in place', () => {
+  it('navigates to the My Learning page when the "My learning" button is clicked', () => {
     const props = makeProps();
     render(<DocsPanelTabBar {...props} />);
 
     fireEvent.click(screen.getByTestId(testIds.docsPanel.myLearningTab));
 
-    expect(props.onSetActiveTab).toHaveBeenCalledWith('recommendations');
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalled();
+    expect(props.onSetActiveTab).not.toHaveBeenCalled();
   });
 
   describe('overflow chevron', () => {

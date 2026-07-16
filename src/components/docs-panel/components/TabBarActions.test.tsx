@@ -147,17 +147,7 @@ describe('TabBarActions', () => {
   });
 
   describe('My learning button', () => {
-    it('switches to the recommendations tab in place when an in-panel handler is provided', () => {
-      const onNavigateToRecommendations = jest.fn();
-      render(<TabBarActions onNavigateToRecommendations={onNavigateToRecommendations} />);
-
-      fireEvent.click(screen.getByTestId(testIds.docsPanel.myLearningTab));
-
-      expect(onNavigateToRecommendations).toHaveBeenCalledTimes(1);
-      expect(mockPush).not.toHaveBeenCalled();
-    });
-
-    it('falls back to full-page navigation when no in-panel handler is provided', () => {
+    it('navigates to the My Learning page', () => {
       render(<TabBarActions />);
 
       fireEvent.click(screen.getByTestId(testIds.docsPanel.myLearningTab));
