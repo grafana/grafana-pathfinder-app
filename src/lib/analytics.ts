@@ -417,7 +417,7 @@ function buildScrollEventProperties(
   const properties: Record<string, string | number | boolean> = {
     page_type: pageType,
     content_url: pageIdentifier,
-    content_type: isRecommendationsTab ? '' : activeTab?.type || AnalyticsContentType.LearningJourney,
+    content_type: isRecommendationsTab ? '' : tabTypeToContentType(activeTab?.type),
   };
 
   // Add additional context for learning journeys
