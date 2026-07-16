@@ -7,10 +7,10 @@ describe('selector-resolver', () => {
   });
 
   describe('resolveSelector', () => {
-    it('should resolve grafana: prefix to CSS selector', () => {
+    it('should resolve grafana: prefix to an embeddable :is() CSS selector', () => {
       const result = resolveSelector('grafana:components.RefreshPicker.runButtonV2');
       expect(result).toBe(
-        "[data-testid='data-testid RefreshPicker run button'], [aria-label='data-testid RefreshPicker run button']"
+        ":is([data-testid='data-testid RefreshPicker run button'], [aria-label='data-testid RefreshPicker run button'])"
       );
     });
 
@@ -67,9 +67,11 @@ describe('selector-resolver', () => {
       expect(result).toContain("[data-testid='data-testid Prod: Overview breadcrumb']");
     });
 
-    it('escapes quotes in resolved values so the emitted CSS stays valid', () => {
+    it('quotes resolved values safely so the emitted CSS stays valid and matchable', () => {
       const result = resolveSelector("grafana:components.Breadcrumbs.breadcrumb:Mark's dashboard");
-      expect(result).toContain("[data-testid='data-testid Mark\\'s dashboard breadcrumb']");
+      // Single-quote-bearing values are double-quoted rather than escaped:
+      // nwsapi (jsdom) drops matches for escaped quotes inside :is().
+      expect(result).toContain('[data-testid="data-testid Mark\'s dashboard breadcrumb"]');
 
       const el = document.createElement('span');
       el.setAttribute('data-testid', "data-testid Mark's dashboard breadcrumb");

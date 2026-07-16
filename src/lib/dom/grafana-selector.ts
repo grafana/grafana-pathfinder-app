@@ -6,7 +6,7 @@
 
 import { resolveSelectors, versionedComponents, versionedPages } from '@grafana/e2e-selectors';
 import { config } from '@grafana/runtime';
-import { escapeCssAttributeValue } from './css-escape';
+import { toCssAttributeString } from './css-escape';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 
 type SelectorNode = { [key: string]: SelectorNode | string | ((...args: never[]) => unknown) };
@@ -80,13 +80,15 @@ export function toGrafanaSelector(selectorPath: string, selectorId?: string): st
     throw new Error(`Invalid selector type at ${selectorPath}: ${typeof current}`);
   }
 
-  // Most Grafana selectors use data-testid, but some older ones use aria-label
-  // Return a compound selector that works with both
-  const escapedValue = escapeCssAttributeValue(resolvedValue);
-  const dataTestIdSelector = `[data-testid='${escapedValue}']`;
-  const ariaLabelSelector = `[aria-label='${escapedValue}']`;
+  // Most Grafana selectors use data-testid, but some older ones use aria-label.
+  // :is() keeps both alternatives in ONE compound selector, so the result can be
+  // scoped, prefixed, or embedded inside :has(...) — a bare top-level comma list
+  // cannot (`scope A, B` scopes only A).
+  const cssValue = toCssAttributeString(resolvedValue);
+  const dataTestIdSelector = `[data-testid=${cssValue}]`;
+  const ariaLabelSelector = `[aria-label=${cssValue}]`;
 
-  return `${dataTestIdSelector}, ${ariaLabelSelector}`;
+  return `:is(${dataTestIdSelector}, ${ariaLabelSelector})`;
 }
 
 /**

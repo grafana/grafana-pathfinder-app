@@ -23,7 +23,7 @@ import { toGrafanaSelector } from './grafana-selector';
  * // Grafana selector — one value resolved for the running Grafana version,
  * // mirrored onto both attributes
  * resolveSelector('grafana:components.RefreshPicker.runButton')
- * // Returns: "[data-testid='data-testid RefreshPicker run button'], [aria-label='data-testid RefreshPicker run button']"
+ * // Returns: ":is([data-testid='data-testid RefreshPicker run button'], [aria-label='data-testid RefreshPicker run button'])"
  *
  * @example
  * // Standard CSS selector
@@ -33,7 +33,7 @@ import { toGrafanaSelector } from './grafana-selector';
  * @example
  * // Grafana selector with parameter
  * resolveSelector('grafana:components.Panels.Panel.title:CPU Usage')
- * // Returns: "[data-testid='data-testid Panel header CPU Usage'], [aria-label='data-testid Panel header CPU Usage']"
+ * // Returns: ":is([data-testid='data-testid Panel header CPU Usage'], [aria-label='data-testid Panel header CPU Usage'])"
  */
 export function resolveSelector(reftarget: string): string {
   if (!reftarget) {

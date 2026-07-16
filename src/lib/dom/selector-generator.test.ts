@@ -808,7 +808,7 @@ describe('Selector Generator — CSS attribute-value escaping', () => {
     const selector = generateBestSelector(button);
     const resolved = resolveSelector(selector);
 
-    expect(resolved).toContain("\\'");
+    expect(resolved).toContain(`"Delete Mark's panel"`);
     const matches = querySelectorAllEnhanced(resolved);
     expect(matches.elements).toEqual([button]);
   });

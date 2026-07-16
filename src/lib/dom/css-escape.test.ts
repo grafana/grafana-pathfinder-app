@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { escapeCssAttributeValue } from './css-escape';
+import { escapeCssAttributeValue, toCssAttributeString } from './css-escape';
 
 describe('escapeCssAttributeValue', () => {
   it('returns plain values unchanged', () => {
@@ -47,6 +47,37 @@ describe('escapeCssAttributeValue', () => {
     const doubleQuoted = `[data-testid="${escapeCssAttributeValue(value, '"')}"]`;
     expect(Array.from(document.querySelectorAll(singleQuoted))).toContain(el);
     expect(Array.from(document.querySelectorAll(doubleQuoted))).toContain(el);
+
+    el.remove();
+  });
+});
+
+describe('toCssAttributeString', () => {
+  it('single-quotes plain values', () => {
+    expect(toCssAttributeString('data-testid Select input')).toBe("'data-testid Select input'");
+  });
+
+  it('double-quotes values containing a single quote instead of escaping', () => {
+    expect(toCssAttributeString("Mark's dashboard")).toBe('"Mark\'s dashboard"');
+  });
+
+  it('escapes only when the value contains both quote styles', () => {
+    expect(toCssAttributeString(`Mark's "big" dashboard`)).toBe(`'Mark\\'s "big" dashboard'`);
+  });
+
+  it('escapes backslashes in all quote modes', () => {
+    expect(toCssAttributeString('a\\b')).toBe("'a\\\\b'");
+    expect(toCssAttributeString("a\\'b")).toBe('"a\\\\\'b"');
+  });
+
+  it('quote-bearing values match inside :is() (nwsapi cannot parse escaped quotes there)', () => {
+    const value = "data-testid Mark's dashboard breadcrumb";
+    const el = document.createElement('span');
+    el.setAttribute('data-testid', value);
+    document.body.appendChild(el);
+
+    const selector = `:is([data-testid=${toCssAttributeString(value)}], [aria-label=${toCssAttributeString(value)}])`;
+    expect(Array.from(document.querySelectorAll(selector))).toContain(el);
 
     el.remove();
   });
