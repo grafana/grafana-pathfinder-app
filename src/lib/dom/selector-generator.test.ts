@@ -886,6 +886,29 @@ describe('Selector Generator — CSS attribute-value escaping', () => {
     expect(matches.elements).toEqual([wrapper]);
   });
 
+  it('rescues an element via :has() when its only identity candidate dies at admission', () => {
+    // A long known aria-label value: candidateAriaLabel bails on length, so the
+    // grafana candidate is the element's ONLY identity candidate. Duplicated with
+    // no scoping ancestor it is dropped at admission — pre-rescue this element
+    // shipped as div:nth-of-type(2).
+    const longValue = `data-testid ${'X'.repeat(45)} breadcrumb`;
+    document.body.innerHTML = `
+      <div><a data-testid="unique-link-a" href="/a">A</a></div>
+      <div><a data-testid="unique-link-b" href="/b">B</a></div>
+    `;
+    const divs = document.querySelectorAll('body > div');
+    divs[0]!.setAttribute('aria-label', longValue);
+    divs[1]!.setAttribute('aria-label', longValue);
+    const target = divs[1] as HTMLElement;
+
+    const selector = generateBestSelector(target);
+
+    expect(selector).toContain(':has(');
+    expect(selector).not.toContain('nth-of-type');
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([target]);
+  });
+
   it('escapes quote-bearing ancestor testids used as disambiguation scopes', () => {
     document.body.innerHTML = '<div><span></span><span></span></div><section><em></em></section>';
     const scopeParent = document.querySelector('div')!;

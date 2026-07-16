@@ -1103,6 +1103,19 @@ function rankAndSelect(candidates: Candidate[], element: HTMLElement): ScoredCan
   const inOverlay = findOverlayContext(element) !== null;
   const scored = candidates.flatMap((candidate) => admitCandidate(candidate, element, ancestorScopes, inOverlay));
 
+  // The generation-time gate only adds a :has() candidate when the element has
+  // no intrinsic identity at all. Identity candidates can also die at ADMISSION
+  // (a solitary grafana: candidate with no disambiguating ancestor, a candidate
+  // matching one element that isn't the target) — rescue those here before
+  // they degrade to a positional fallback.
+  const hasIdentitySurvivor = scored.some((s) => !STRUCTURAL_METHODS.has(s.method));
+  if (!hasIdentitySurvivor && !candidates.some((c) => c.method === 'has-descendant')) {
+    const rescue = candidateHasDescendant(element);
+    if (rescue) {
+      scored.push(...admitCandidate(rescue, element, ancestorScopes, inOverlay));
+    }
+  }
+
   if (scored.length === 0) {
     // No attribute / text / structural candidate matched — fall back to a positional
     // `:nth-of-type` selector. This is brittle (any sibling reorder breaks it) but
