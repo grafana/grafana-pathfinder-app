@@ -29,4 +29,9 @@ describe('findCurrentMilestoneIndex', () => {
     expect(findCurrentMilestoneIndex(milestones, 'https://example.com/journey/step-1#hash')).toBe(0);
     expect(findCurrentMilestoneIndex(milestones, 'https://example.com/journey/step-1?q=1')).toBe(0);
   });
+
+  it('resolves end-journey pages to the last milestone', () => {
+    expect(findCurrentMilestoneIndex(milestones, 'https://example.com/journey/end-journey/content.json')).toBe(3);
+    expect(findCurrentMilestoneIndex([], 'https://example.com/journey/end-journey/content.json')).toBe(0);
+  });
 });

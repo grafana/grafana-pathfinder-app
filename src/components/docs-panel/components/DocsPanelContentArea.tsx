@@ -37,7 +37,7 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { getMilestoneSlug, markMilestoneDone, setJourneyCompletionPercentage } from '../../../docs-retrieval';
+import { getMilestoneSlug, markMilestoneDone, recordJourneyCompletion } from '../../../docs-retrieval';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
@@ -418,7 +418,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       onGuideComplete={() => {
                         const baseUrl = activeTab?.baseUrl || stableContent.url;
                         if (baseUrl?.startsWith('bundled:')) {
-                          setJourneyCompletionPercentage(baseUrl, 100);
+                          void recordJourneyCompletion(baseUrl, 100);
                         }
                         if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
                           const slug = getMilestoneSlug(activeTab.currentUrl);

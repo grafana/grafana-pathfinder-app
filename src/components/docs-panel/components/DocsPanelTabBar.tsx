@@ -26,9 +26,9 @@ import {
   reportAppInteraction,
   UserInteraction,
   getContentTypeForAnalytics,
+  getJourneyProperties,
   tabTypeToContentType,
 } from '../../../lib/analytics';
-import { getJourneyProgress } from '../../../docs-retrieval';
 
 export interface DocsPanelTabBarProps {
   styles: DocsPanelStyles;
@@ -148,12 +148,7 @@ export function DocsPanelTabBar({
                         tab_title: tab.title,
                         content_url: tab.currentUrl || tab.baseUrl,
                         interaction_location: 'tab_button',
-                        ...(tab.type === 'learning-journey' &&
-                          tab.content && {
-                            completion_percentage: getJourneyProgress(tab.content),
-                            current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                            total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                          }),
+                        ...getJourneyProperties(tab.content),
                       });
                       onCloseTab(tab.id);
                     }}
@@ -241,12 +236,7 @@ export function DocsPanelTabBar({
                         tab_title: tab.title,
                         content_url: tab.currentUrl || tab.baseUrl,
                         close_location: 'dropdown',
-                        ...(tab.type === 'learning-journey' &&
-                          tab.content && {
-                            completion_percentage: getJourneyProgress(tab.content),
-                            current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                            total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                          }),
+                        ...getJourneyProperties(tab.content),
                       });
                       onCloseTab(tab.id);
                     }}

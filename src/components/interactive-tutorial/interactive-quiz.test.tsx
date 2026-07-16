@@ -17,7 +17,10 @@ import { InteractiveQuiz, resetQuizCounter, shuffleQuizChoices, type QuizChoice 
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: { StepAutoCompleted: 'auto' },
-  buildInteractiveStepProperties: jest.fn((props) => props),
+}));
+
+jest.mock('./step-analytics', () => ({
+  buildStepEventProperties: jest.fn((props) => props),
 }));
 
 // Stateful mock so the test can exercise the full mark-complete → re-render

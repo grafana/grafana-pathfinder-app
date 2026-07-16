@@ -175,28 +175,15 @@ function rollUpVariant(experiments: ExperimentAnalyticsEntry[]): ExperimentConfi
 /**
  * Determines the appropriate content_type for analytics based on URL
  *
- * If the URL is from the interactive-learning CDN (interactive-learning.grafana.net
- * or interactive-learning.grafana-dev.net), returns 'interactive-guide'.
- * Otherwise returns the provided fallback type.
- *
- * @param url - The content URL to check
- * @param fallbackType - The type to use if URL is not from interactive-learning CDN
- * @returns 'interactive-guide' for CDN content, otherwise the fallback type
- *
- * @example
- * ```typescript
- * // Returns 'interactive-guide' for CDN URLs
- * getContentTypeForAnalytics('https://interactive-learning.grafana.net/guide/', AnalyticsContentType.Docs)
- *
- * // Returns 'learning-journey' for non-CDN URLs
- * getContentTypeForAnalytics('https://grafana.com/docs/tutorial/', AnalyticsContentType.LearningJourney)
- * ```
+ * The interactive-learning CDN heuristic only upgrades the default Docs
+ * fallback — an explicit tab/manifest-derived type (e.g. learning-journey
+ * for `-lj` packages served from the CDN) always wins.
  */
 export function getContentTypeForAnalytics(
   url: string | undefined | null,
   fallbackType: AnalyticsContentType = AnalyticsContentType.Docs
 ): AnalyticsContentType {
-  if (url && isInteractiveLearningUrl(url)) {
+  if (fallbackType === AnalyticsContentType.Docs && url && isInteractiveLearningUrl(url)) {
     return AnalyticsContentType.InteractiveGuide;
   }
   return fallbackType;
@@ -425,8 +412,8 @@ function buildScrollEventProperties(
 
   // Add additional context for learning journeys
   if (activeTab?.type === 'learning-journey' && activeTab?.content?.metadata?.learningJourney) {
-    properties.current_milestone = activeTab.content.metadata.learningJourney.currentMilestone || 0;
-    properties.total_milestones = activeTab.content.metadata.learningJourney.totalMilestones || 0;
+    const { currentMilestone, totalMilestones } = activeTab.content.metadata.learningJourney;
+    return { ...properties, ...journeyProgressProperties(currentMilestone || 0, totalMilestones || 0) };
   }
 
   return properties;
@@ -462,27 +449,36 @@ export interface JourneyContent {
 }
 
 /**
- * Calculates the completion percentage for a learning journey
+ * Canonical progress trio shared by learning journeys and interactive guides.
  *
- * @param content - The content object containing journey metadata
- * @returns Completion percentage (0-100) or 0 if not a learning journey
+ * `completion_percentage` semantics differ by content kind (journeys:
+ * position-based; guides: completed-steps based), so it is always supplied
+ * by the caller rather than derived from step/total here.
  */
-export function calculateJourneyProgress(content: JourneyContent | null | undefined): number {
-  if (!content || content.type !== 'learning-journey' || !content.metadata?.learningJourney) {
-    return 0;
+export function buildProgressProperties(
+  step?: number,
+  total?: number,
+  completionPercentage?: number
+): Record<string, number> {
+  if (step === undefined || total === undefined) {
+    return {};
   }
 
-  const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
+  return {
+    progress_step: step,
+    progress_total: total,
+    ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+  };
+}
 
-  if (!totalMilestones || totalMilestones === 0) {
-    return 0;
-  }
-
-  return Math.round(((currentMilestone || 0) / totalMilestones) * 100);
+/** Journey progress trio with position-based completion (milestone N of M). */
+export function journeyProgressProperties(currentMilestone: number, totalMilestones: number): Record<string, number> {
+  const percentage = totalMilestones > 0 ? Math.round((currentMilestone / totalMilestones) * 100) : 0;
+  return buildProgressProperties(currentMilestone, totalMilestones, percentage);
 }
 
 /**
- * Extracts journey metadata properties for analytics events
+ * Extracts journey progress properties for analytics events
  *
  * @param content - The content object containing journey metadata
  * @returns Object with journey properties or empty object if not a journey
@@ -494,11 +490,23 @@ export function getJourneyProperties(content: JourneyContent | null | undefined)
 
   const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
 
-  return {
-    completion_percentage: calculateJourneyProgress(content),
-    current_milestone: currentMilestone || 0,
-    total_milestones: totalMilestones || 0,
-  };
+  return journeyProgressProperties(currentMilestone || 0, totalMilestones || 0);
+}
+
+/**
+ * Progress properties for a milestone arrow click, computed for the
+ * destination milestone so progress_step and completion_percentage agree
+ * within the event (a forward click onto the last milestone reports 100).
+ */
+export function getJourneyNavigationProperties(
+  lj: { currentMilestone?: number; totalMilestones?: number } | undefined,
+  direction: 'forward' | 'backward'
+): Record<string, string | number> {
+  const total = lj?.totalMilestones ?? 0;
+  const current = lj?.currentMilestone ?? 0;
+  const destination = direction === 'forward' ? Math.min(total, current + 1) : Math.max(0, current - 1);
+
+  return { direction, ...journeyProgressProperties(destination, total) };
 }
 
 /**
@@ -568,31 +576,6 @@ export function getSourceDocument(stepId?: string): { source_document: string; s
 }
 
 /**
- * Calculates completion percentage for an interactive step within a document
- *
- * Converts 0-indexed step position to 1-indexed for analytics and calculates
- * percentage progress through the document's total steps.
- *
- * @param stepIndex - 0-indexed position of the step in the document
- * @param totalSteps - Total number of steps in the document
- * @returns Completion percentage (0-100) or undefined if data is incomplete
- *
- * @example
- * ```typescript
- * calculateStepCompletion(2, 10) // Returns 30 (step 3 of 10 = 30%)
- * calculateStepCompletion(9, 10) // Returns 100 (step 10 of 10 = 100%)
- * ```
- */
-export function calculateStepCompletion(stepIndex?: number, totalSteps?: number): number | undefined {
-  if (stepIndex === undefined || totalSteps === undefined || totalSteps === 0) {
-    return undefined;
-  }
-
-  // Convert 0-indexed to 1-indexed and calculate percentage
-  return Math.round(((stepIndex + 1) / totalSteps) * 100);
-}
-
-/**
  * Interface for step context used in analytics
  */
 export interface StepContext {
@@ -601,6 +584,8 @@ export interface StepContext {
   totalSteps?: number;
   sectionId?: string;
   sectionTitle?: string;
+  /** Completed-steps percentage from the completion store (monotonic), not the clicked step's position. */
+  completionPercentage?: number;
 }
 
 /**
@@ -632,22 +617,15 @@ export function buildInteractiveStepProperties(
   baseProperties: Record<string, string | number | boolean>,
   stepContext: StepContext
 ): Record<string, string | number | boolean> {
-  const { stepId, stepIndex, totalSteps, sectionId, sectionTitle } = stepContext;
+  const { stepId, stepIndex, totalSteps, sectionId, sectionTitle, completionPercentage } = stepContext;
 
-  // Get source document info
   const docInfo = getSourceDocument(stepId);
 
-  // Calculate completion percentage
-  const completionPercentage = calculateStepCompletion(stepIndex, totalSteps);
-
-  // Build complete properties object
   return {
     ...docInfo,
     ...baseProperties,
     content_type: AnalyticsContentType.InteractiveGuide,
-    ...(stepIndex !== undefined && { current_step: stepIndex + 1 }), // 1-indexed for analytics
-    ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
-    ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+    ...buildProgressProperties(stepIndex !== undefined ? stepIndex + 1 : undefined, totalSteps, completionPercentage),
     ...(sectionId && { section_id: sectionId }),
     ...(sectionTitle && { section_title: sectionTitle }),
   };
@@ -670,13 +648,7 @@ export function getCurrentStepContext(): Record<string, number> {
       return {};
     }
 
-    const completionPercentage = calculateStepCompletion(stepIndex, totalSteps);
-
-    return {
-      current_step: stepIndex + 1, // 1-indexed for analytics
-      total_document_steps: totalSteps,
-      ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
-    };
+    return buildProgressProperties(stepIndex + 1, totalSteps);
   } catch {
     return {};
   }

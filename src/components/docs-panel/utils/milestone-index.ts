@@ -7,14 +7,20 @@
  * current URL does not appear in the milestones array.
  */
 
+import { isEndJourneyUrl } from '../../../docs-retrieval';
+
 /**
  * Find the 1-indexed position of `currentUrl` within `milestones`.
  *
  * Returns 0 when the URL is the cover page (not in the milestones array)
  * or otherwise unmatched — this matches the prior behavior of treating
- * "unknown URL" and "intro page" identically.
+ * "unknown URL" and "intro page" identically. end-journey pages resolve to
+ * the last milestone so completion reads 100%.
  */
 export function findCurrentMilestoneIndex(milestones: Array<{ url: string }>, currentUrl: string): number {
   const index = milestones.findIndex((m) => m.url === currentUrl);
-  return index >= 0 ? index + 1 : 0;
+  if (index >= 0) {
+    return index + 1;
+  }
+  return isEndJourneyUrl(currentUrl) ? milestones.length : 0;
 }

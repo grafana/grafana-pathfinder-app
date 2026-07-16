@@ -11,6 +11,7 @@ import type { ResolvedNavLink } from '../../types/context.types';
 import { getPackageRenderType } from '../../types/package.types';
 import { fetchContent } from '../content-fetcher';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
+import { isEndJourneyUrl } from './url-utils';
 import { logger } from '../../lib/logging';
 
 /**
@@ -222,7 +223,10 @@ export async function fetchPackageContent(
 
     if (milestones && milestones.length > 0) {
       const milestoneIndex = milestones.findIndex((m) => m.url === contentUrl);
-      const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;
+      // end-journey pages are not in the manifest list but mean the journey
+      // finished — resolve to the last milestone so completion reads 100%.
+      const currentMilestone =
+        milestoneIndex >= 0 ? milestoneIndex + 1 : isEndJourneyUrl(contentUrl) ? milestones.length : 0;
 
       let baseUrl = contentUrl;
       if (milestoneIndex >= 0 && baseUrlResolution && baseUrlResolution.ok) {

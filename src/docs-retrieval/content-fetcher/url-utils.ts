@@ -105,3 +105,8 @@ export function urlsMatch(url1: string, url2: string): boolean {
   const normalize = (u: string) => u.replace(/\/$/, '').toLowerCase();
   return normalize(url1) === normalize(url2);
 }
+
+export function isEndJourneyUrl(url: string): boolean {
+  const cleaned = url.replace(/\/(unstyled\.html|content\.json)$/, '').replace(/\/$/, '');
+  return cleaned.endsWith('/end-journey');
+}

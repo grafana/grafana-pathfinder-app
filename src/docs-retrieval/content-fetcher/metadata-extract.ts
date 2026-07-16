@@ -8,7 +8,7 @@ import {
   SingleDocMetadata,
   Milestone,
 } from '../../types/content.types';
-import { getLearningJourneyBaseUrl, urlsMatch } from './url-utils';
+import { getLearningJourneyBaseUrl, isEndJourneyUrl, urlsMatch } from './url-utils';
 import { logger } from '../../lib/logging';
 
 /**
@@ -195,32 +195,49 @@ export async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Pro
   return [];
 }
 
+function lastPathSegment(url: string): string {
+  try {
+    return new URL(url).pathname.split('/').filter(Boolean).pop() ?? '';
+  } catch {
+    return url.split('/').filter(Boolean).pop() ?? '';
+  }
+}
+
 /**
- * Find current milestone number from URL - improved version
- * Handles /unstyled.html and /content.json suffixes added during content fetching
+ * Find current milestone number from URL.
+ * Handles /unstyled.html and /content.json suffixes added during content fetching.
  */
 export function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
-  // Strip /unstyled.html or /content.json suffixes for comparison (added during content fetching)
   const cleanUrl = url.replace(/\/(unstyled\.html|content\.json)$/, '');
 
-  // Try exact URL match first (with and without trailing slash)
   for (const milestone of milestones) {
     if (urlsMatch(cleanUrl, milestone.url)) {
       return milestone.number;
     }
   }
 
-  // Legacy pattern matching for milestone URLs
-  const milestoneMatch = cleanUrl.match(/\/milestone-(\d+)/);
-  if (milestoneMatch) {
-    const milestoneNum = parseInt(milestoneMatch[1]!, 10);
-    return milestoneNum;
+  // Suffix match covers origin/permalink drift between fetch URLs and
+  // index.json permalinks.
+  const slug = lastPathSegment(cleanUrl).toLowerCase();
+  if (slug) {
+    const suffixMatches = milestones.filter((m) => lastPathSegment(m.url).toLowerCase() === slug);
+    if (suffixMatches.length === 1) {
+      return suffixMatches[0]!.number;
+    }
   }
 
-  // Check if this URL looks like a journey base URL (cover page)
-  const baseUrl = getLearningJourneyBaseUrl(cleanUrl);
-  if (urlsMatch(cleanUrl, baseUrl) || urlsMatch(cleanUrl, baseUrl + '/')) {
-    return 0;
+  if (isEndJourneyUrl(cleanUrl)) {
+    return milestones.length;
+  }
+
+  // The raw milestone-N website numbering is only trustworthy when there is
+  // no milestone list: skip-filtered lists are renumbered, so the website
+  // number can exceed the filtered total.
+  if (milestones.length === 0) {
+    const milestoneMatch = cleanUrl.match(/\/milestone-(\d+)/);
+    if (milestoneMatch) {
+      return parseInt(milestoneMatch[1]!, 10);
+    }
   }
 
   return 0; // Default to cover page

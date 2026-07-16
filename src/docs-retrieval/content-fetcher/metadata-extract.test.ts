@@ -108,8 +108,20 @@ describe('metadata-extract', () => {
       expect(findCurrentMilestoneFromUrl(`${JOURNEY_BASE}/second/unstyled.html`, milestones)).toBe(2);
     });
 
-    it('matches the legacy /milestone-N pattern when no milestone matches', () => {
-      expect(findCurrentMilestoneFromUrl(`${JOURNEY_BASE}/milestone-7`, milestones)).toBe(7);
+    it('matches by pathname suffix when origins differ', () => {
+      expect(findCurrentMilestoneFromUrl('https://other-origin.example.com/anything/second', milestones)).toBe(2);
+    });
+
+    it('ignores the raw /milestone-N number when a milestone list exists (skip-filtered lists are renumbered)', () => {
+      expect(findCurrentMilestoneFromUrl(`${JOURNEY_BASE}/milestone-7`, milestones)).toBe(0);
+    });
+
+    it('uses the legacy /milestone-N pattern only when there is no milestone list', () => {
+      expect(findCurrentMilestoneFromUrl(`${JOURNEY_BASE}/milestone-7`, [])).toBe(7);
+    });
+
+    it('resolves end-journey pages to the last milestone', () => {
+      expect(findCurrentMilestoneFromUrl(`${JOURNEY_BASE}/end-journey/content.json`, milestones)).toBe(2);
     });
 
     it('returns 0 (cover page) for the journey base URL', () => {

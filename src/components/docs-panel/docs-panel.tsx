@@ -45,7 +45,7 @@ import {
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
   getJourneyProgress,
-  setJourneyCompletionPercentage,
+  recordJourneyCompletion,
   setPackageResolver,
   injectJourneyExtrasIntoJsonGuide,
   fetchPackageInfoFromUrl,
@@ -446,7 +446,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
           const progress = getJourneyProgress(updatedTab.content);
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
-          setJourneyCompletionPercentage(completionKey, progress);
+          void recordJourneyCompletion(completionKey, progress);
         }
         return 'completed';
       } else {
@@ -1037,10 +1037,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Expose current active tab id/url on `window` for interactive persistence
   // keys. Uses useLayoutEffect inside the hook (pinned by H4 in the
   // pre-mortem) so children's passive useEffects observe the new URL.
+  const activeJourneyMeta =
+    activeTab?.type === 'learning-journey' ? activeTab.content?.metadata?.learningJourney : undefined;
   useGlobalActiveTabExposure({
     activeTabId: activeTab?.id,
     activeTabCurrentUrl: activeTab?.currentUrl,
     activeTabBaseUrl: activeTab?.baseUrl,
+    journeyMilestone: activeJourneyMeta?.currentMilestone,
+    journeyTotalMilestones: activeJourneyMeta?.totalMilestones,
   });
 
   // Auto-complete the final milestone of a learning journey when the rendered

@@ -19,17 +19,22 @@
  */
 import * as React from 'react';
 import { setFaroView, setFaroViewName } from '../../../lib/faro';
+import { setActiveJourneyContext } from '../../../global-state/journey-context';
 
 export interface UseGlobalActiveTabExposureParams {
   activeTabId: string | undefined;
   activeTabCurrentUrl: string | undefined;
   activeTabBaseUrl: string | undefined;
+  journeyMilestone?: number;
+  journeyTotalMilestones?: number;
 }
 
 export function useGlobalActiveTabExposure({
   activeTabId,
   activeTabCurrentUrl,
   activeTabBaseUrl,
+  journeyMilestone,
+  journeyTotalMilestones,
 }: UseGlobalActiveTabExposureParams): void {
   React.useLayoutEffect(() => {
     try {
@@ -38,6 +43,15 @@ export function useGlobalActiveTabExposure({
     } catch {
       // no-op
     }
+    setActiveJourneyContext(
+      journeyTotalMilestones !== undefined
+        ? {
+            journeyUrl: activeTabBaseUrl || '',
+            milestoneNumber: journeyMilestone ?? 0,
+            totalMilestones: journeyTotalMilestones,
+          }
+        : null
+    );
     const url = activeTabCurrentUrl || activeTabBaseUrl || '';
     if (url) {
       setFaroView(url);
@@ -46,5 +60,6 @@ export function useGlobalActiveTabExposure({
       // tab (which has no `content.url`). Previously left the view stale.
       setFaroViewName('recommendations');
     }
-  }, [activeTabId, activeTabCurrentUrl, activeTabBaseUrl]);
+    return () => setActiveJourneyContext(null);
+  }, [activeTabId, activeTabCurrentUrl, activeTabBaseUrl, journeyMilestone, journeyTotalMilestones]);
 }

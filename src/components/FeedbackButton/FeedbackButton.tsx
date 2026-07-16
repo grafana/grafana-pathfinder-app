@@ -2,7 +2,7 @@ import React from 'react';
 import {
   reportAppInteraction,
   UserInteraction,
-  calculateJourneyProgress,
+  journeyProgressProperties,
   AnalyticsContentType,
 } from '../../lib/analytics';
 import { getFeedbackButtonStyles } from '../../styles/feedback-button.styles';
@@ -33,29 +33,15 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({
   const styles = getFeedbackButtonStyles(theme);
 
   const handleClick = () => {
-    // Calculate completion percentage using centralized helper
-    const completionPercentage =
-      currentMilestone !== undefined && totalMilestones !== undefined
-        ? calculateJourneyProgress({
-            type: 'learning-journey',
-            metadata: {
-              learningJourney: {
-                currentMilestone,
-                totalMilestones,
-              },
-            },
-          })
-        : undefined;
-
     // Track analytics first
     reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
       interaction_location: interactionLocation,
       panel_type: 'combined_learning_journey',
       ...(contentUrl && { content_url: contentUrl }),
       ...(contentType && { content_type: contentType }),
-      ...(currentMilestone !== undefined && { current_milestone: currentMilestone }),
-      ...(totalMilestones !== undefined && { total_milestones: totalMilestones }),
-      ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+      ...(currentMilestone !== undefined &&
+        totalMilestones !== undefined &&
+        journeyProgressProperties(currentMilestone, totalMilestones)),
     });
 
     // Add small delay to ensure analytics event is sent before opening new tab

@@ -4,6 +4,7 @@ import {
   generateInteractiveLearningVariations,
   getContentUrls,
   getLearningJourneyBaseUrl,
+  isEndJourneyUrl,
   urlsMatch,
 } from './url-utils';
 
@@ -101,6 +102,19 @@ describe('url-utils', () => {
     it('ignores trailing slashes and case', () => {
       expect(urlsMatch('https://grafana.com/docs/X/', 'https://grafana.com/docs/x')).toBe(true);
       expect(urlsMatch('https://grafana.com/a', 'https://grafana.com/b')).toBe(false);
+    });
+  });
+
+  describe('isEndJourneyUrl', () => {
+    it('matches end-journey pages regardless of content suffix', () => {
+      expect(isEndJourneyUrl('https://cdn.example.com/packages/x-lj/end-journey/content.json')).toBe(true);
+      expect(isEndJourneyUrl('https://cdn.example.com/packages/x-lj/end-journey/')).toBe(true);
+      expect(isEndJourneyUrl('https://cdn.example.com/packages/x-lj/end-journey')).toBe(true);
+    });
+
+    it('requires a path-segment boundary — package ids merely ending in end-journey do not match', () => {
+      expect(isEndJourneyUrl('https://cdn.example.com/packages/adaptive-logs-end-journey/content.json')).toBe(false);
+      expect(isEndJourneyUrl('https://cdn.example.com/packages/x-lj/content.json')).toBe(false);
     });
   });
 

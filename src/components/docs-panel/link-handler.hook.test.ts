@@ -8,6 +8,8 @@ jest.mock('../../lib/analytics', () => ({
   enrichWithJourneyContext: jest.fn((props, _content) => props), // Pass through
   enrichWithStepContext: jest.fn((props) => props), // Pass through
   getContentTypeForAnalytics: jest.fn((url, fallback) => fallback), // Pass through fallback
+  buildProgressProperties: jest.requireActual('../../lib/analytics').buildProgressProperties,
+  getJourneyNavigationProperties: jest.requireActual('../../lib/analytics').getJourneyNavigationProperties,
   UserInteraction: {
     StartLearningJourneyClick: 'start_learning_journey_click',
     OpenExtraResource: 'open_extra_resource',
@@ -248,8 +250,10 @@ describe('useLinkClickHandler', () => {
       expect(reportAppInteraction).toHaveBeenCalledWith(
         UserInteraction.MilestoneArrowInteractionClick,
         expect.objectContaining({
-          current_milestone: 3,
-          total_milestones: 6,
+          content_type: 'learning-journey',
+          progress_step: 3,
+          progress_total: 6,
+          completion_percentage: 50,
           direction: 'forward',
           interaction_location: 'bottom_navigation',
         })
@@ -297,8 +301,10 @@ describe('useLinkClickHandler', () => {
       expect(reportAppInteraction).toHaveBeenCalledWith(
         UserInteraction.MilestoneArrowInteractionClick,
         expect.objectContaining({
-          current_milestone: 2,
-          total_milestones: 6,
+          content_type: 'learning-journey',
+          progress_step: 2,
+          progress_total: 6,
+          completion_percentage: 33,
           direction: 'backward',
           interaction_location: 'bottom_navigation',
         })
@@ -585,8 +591,10 @@ describe('useLinkClickHandler', () => {
         UserInteraction.StartLearningJourneyClick,
         expect.objectContaining({
           content_title: 'Test Journey',
+          content_type: 'learning-journey',
           content_url: 'https://grafana.com/docs/test-journey',
-          total_milestones: 5,
+          progress_step: 1,
+          progress_total: 5,
         })
       );
     });

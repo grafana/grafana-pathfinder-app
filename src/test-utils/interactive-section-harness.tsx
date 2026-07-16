@@ -351,7 +351,7 @@ export function createAnalyticsMock() {
       PackageNavLink: 'package-nav-link',
     },
     getSourceDocument: jest.fn(() => ({})),
-    calculateStepCompletion: jest.fn(() => undefined),
+    buildProgressProperties: jest.fn(() => ({})),
   };
 }
 

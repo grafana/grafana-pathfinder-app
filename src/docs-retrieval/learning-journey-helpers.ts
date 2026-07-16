@@ -337,39 +337,27 @@ function appendBottomNavigationToContent(content: string, currentMilestone: numb
  * - Provides user-specific storage in Grafana database
  */
 
-export function getJourneyCompletionPercentage(journeyBaseUrl: string): number {
-  // Note: This is now async but wrapped to maintain backward compatibility
-  // The storage operation will resolve quickly from cache
-  let result = 0;
-  journeyCompletionStorage.get(journeyBaseUrl).then((percentage) => {
-    result = percentage;
-  });
-  return result;
+function clampPercentage(value: number): number {
+  return Math.min(100, Math.max(0, Math.round(value || 0)));
 }
 
+/** Clamped on read: pre-fix builds persisted values > 100 (raw website milestone numbering). */
 export async function getJourneyCompletionPercentageAsync(journeyBaseUrl: string): Promise<number> {
-  return journeyCompletionStorage.get(journeyBaseUrl);
+  return clampPercentage(await journeyCompletionStorage.get(journeyBaseUrl));
 }
 
-export function setJourneyCompletionPercentage(journeyBaseUrl: string, percentage: number): void {
-  // Fire and forget - storage handles errors internally
-  journeyCompletionStorage.set(journeyBaseUrl, percentage);
+/**
+ * Records journey progress monotonically — revisiting an earlier milestone
+ * never lowers the stored completion percentage.
+ */
+export async function recordJourneyCompletion(journeyBaseUrl: string, percentage: number): Promise<void> {
+  const previous = clampPercentage(await journeyCompletionStorage.get(journeyBaseUrl));
+  const next = Math.max(previous, clampPercentage(percentage));
+  await journeyCompletionStorage.set(journeyBaseUrl, next);
 
   // Update learning paths progress when a bundled guide reaches 100%
-  if (percentage >= 100 && journeyBaseUrl.startsWith('bundled:')) {
-    const guideId = journeyBaseUrl.replace('bundled:', '');
-    // Fire and forget - learning paths storage handles errors internally
-    markGuideCompleted(guideId);
-  }
-}
-
-export async function setJourneyCompletionPercentageAsync(journeyBaseUrl: string, percentage: number): Promise<void> {
-  await journeyCompletionStorage.set(journeyBaseUrl, percentage);
-
-  // Update learning paths progress when a bundled guide reaches 100%
-  if (percentage >= 100 && journeyBaseUrl.startsWith('bundled:')) {
-    const guideId = journeyBaseUrl.replace('bundled:', '');
-    await markGuideCompleted(guideId);
+  if (next >= 100 && journeyBaseUrl.startsWith('bundled:')) {
+    await markGuideCompleted(journeyBaseUrl.replace('bundled:', ''));
   }
 }
 
@@ -380,15 +368,6 @@ export function clearJourneyCompletion(journeyBaseUrl: string): void {
 
 export async function clearJourneyCompletionAsync(journeyBaseUrl: string): Promise<void> {
   return journeyCompletionStorage.clear(journeyBaseUrl);
-}
-
-export function getAllJourneyCompletions(): Record<string, number> {
-  // Note: This is now async but wrapped to maintain backward compatibility
-  let result: Record<string, number> = {};
-  journeyCompletionStorage.getAll().then((completions) => {
-    result = completions;
-  });
-  return result;
 }
 
 export async function getAllJourneyCompletionsAsync(): Promise<Record<string, number>> {

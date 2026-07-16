@@ -70,7 +70,7 @@ import {
   reportAppInteraction,
   UserInteraction,
   getSourceDocument,
-  calculateStepCompletion,
+  buildProgressProperties,
   AnalyticsContentType,
   createInteractionName,
 } from '../../lib/analytics';
@@ -81,6 +81,7 @@ import { getConfigWithDefaults } from '../../constants';
 import type { InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
+import { journeyContextProperties } from './step-analytics';
 import {
   analyzeAcknowledgement,
   getResumeInfo as computeResumeInfo,
@@ -95,6 +96,7 @@ import { useSectionRequirements } from './hooks/use-section-requirements';
 import { useSectionScroll } from './hooks/use-section-scroll';
 import {
   evictSectionCache,
+  getGuideProgress,
   markStepCompleted,
   markStepsCompleted,
   reconcileSection,
@@ -797,7 +799,7 @@ export function InteractiveSection({
       {
         section_id: sectionId,
         section_title: title || DEFAULT_INTERACTIVE_SECTION_TITLE,
-        total_steps: stepComponents.length,
+        section_total_steps: stepComponents.length,
         start_index: startIndex,
         resumed: startIndex > 0,
       },
@@ -1020,7 +1022,7 @@ export function InteractiveSection({
           // Track "Do Section" analytics after completion (success or cancel)
           const wasCanceled = isCancelledRef.current || loopExitReason !== 'ok';
           setFaroUserActionAttributes({ steps_completed: completedStepsCount, canceled: wasCanceled });
-          const docInfo = getSourceDocument(sectionId);
+          const { source_document } = getSourceDocument();
 
           // Section-scoped metrics (completedStepsCount is the count of steps completed in this section)
           const currentSectionStep = completedStepsCount;
@@ -1033,20 +1035,23 @@ export function InteractiveSection({
             sectionId,
             lastCompletedStepIndex
           );
-          const documentCompletionPercentage = calculateStepCompletion(documentStepIndex, documentTotalSteps);
 
           reportAppInteraction(UserInteraction.DoSectionButtonClick, {
-            ...docInfo,
+            source_document,
             content_type: AnalyticsContentType.InteractiveGuide,
+            section_id: sectionId,
             section_title: title,
             // Section-scoped
-            total_steps: stepComponents.length,
+            section_total_steps: stepComponents.length,
             current_section_step: currentSectionStep,
             current_section_percentage: currentSectionPercentage,
             // Document-scoped
-            total_document_steps: documentTotalSteps,
-            current_step: documentStepIndex + 1, // 1-indexed for analytics
-            ...(documentCompletionPercentage !== undefined && { completion_percentage: documentCompletionPercentage }),
+            ...buildProgressProperties(
+              documentStepIndex + 1,
+              documentTotalSteps,
+              getGuideProgress(getContentKey()).percentage
+            ),
+            ...journeyContextProperties(),
             // Completion status
             canceled: wasCanceled,
             resumed: startIndex > 0, // true if user resumed from a previous position

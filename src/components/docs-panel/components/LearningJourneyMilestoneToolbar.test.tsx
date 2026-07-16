@@ -28,7 +28,40 @@ jest.mock('../../../lib/analytics', () => ({
     OpenExtraResource: 'open_extra_resource',
   },
   getContentTypeForAnalytics: () => 'learning-journey',
+  getJourneyNavigationProperties: (
+    lj: { currentMilestone?: number; totalMilestones?: number } | undefined,
+    direction: 'forward' | 'backward'
+  ) => {
+    const total = lj?.totalMilestones ?? 0;
+    const current = lj?.currentMilestone ?? 0;
+    const destination = direction === 'forward' ? Math.min(total, current + 1) : Math.max(0, current - 1);
+    return {
+      direction,
+      progress_step: destination,
+      progress_total: total,
+      completion_percentage: total > 0 ? Math.round((destination / total) * 100) : 0,
+    };
+  },
+  getJourneyProperties: (content?: {
+    type?: string;
+    metadata?: { learningJourney?: { currentMilestone?: number; totalMilestones?: number } };
+  }) => {
+    const lj = content?.type === 'learning-journey' ? content?.metadata?.learningJourney : undefined;
+    if (!lj) {
+      return {};
+    }
+    const total = lj.totalMilestones ?? 0;
+    const current = lj.currentMilestone ?? 0;
+    return {
+      progress_step: current,
+      progress_total: total,
+      completion_percentage: total > 0 ? Math.round((current / total) * 100) : 0,
+    };
+  },
   tabTypeToContentType: (type?: string) => (type === 'interactive' ? 'interactive-guide' : type || 'docs'),
+  AnalyticsContentType: {
+    LearningJourney: 'learning-journey',
+  },
   AnalyticsLinkType: {
     ExternalBrowser: 'external_browser',
   },
@@ -242,7 +275,7 @@ describe('LearningJourneyMilestoneToolbar', () => {
   //
   // The arrow-click events log the milestone the user is heading TO, not the
   // one they clicked from. For a 6-milestone journey, a forward click from M5
-  // logs `current_milestone: 6` — so the analytics agrees with the toolbar's
+  // logs `progress_step: 6` — so the analytics agrees with the toolbar's
   // "Milestone 6 of 6" on the end milestone (the previous origin semantic
   // topped out at `N - 1` and never surfaced the end-milestone landing).
   describe('milestone arrow click analytics', () => {
@@ -254,8 +287,10 @@ describe('LearningJourneyMilestoneToolbar', () => {
       expect(reportAppInteractionMock).toHaveBeenCalledWith(
         'milestone_arrow_interaction_click',
         expect.objectContaining({
-          current_milestone: 2,
-          total_milestones: 3,
+          content_type: 'learning-journey',
+          progress_step: 2,
+          progress_total: 3,
+          completion_percentage: 67,
           direction: 'forward',
           interaction_location: 'milestone_progress_bar',
         })
@@ -271,15 +306,17 @@ describe('LearningJourneyMilestoneToolbar', () => {
       expect(reportAppInteractionMock).toHaveBeenCalledWith(
         'milestone_arrow_interaction_click',
         expect.objectContaining({
-          current_milestone: 1,
-          total_milestones: 3,
+          content_type: 'learning-journey',
+          progress_step: 1,
+          progress_total: 3,
+          completion_percentage: 33,
           direction: 'backward',
           interaction_location: 'milestone_progress_bar',
         })
       );
     });
 
-    it('forward click from the last content milestone logs current_milestone = totalMilestones (the end-journey value)', () => {
+    it('forward click from the last content milestone logs progress_step = progress_total and 100%', () => {
       // currentMilestone = 3 of 3 → forward click lands on M3 (clamped).
       // In practice `canNavigateNext()` returns false here, but the Math.min
       // clamp is defence-in-depth and we still document the contract.
@@ -291,14 +328,15 @@ describe('LearningJourneyMilestoneToolbar', () => {
       expect(reportAppInteractionMock).toHaveBeenCalledWith(
         'milestone_arrow_interaction_click',
         expect.objectContaining({
-          current_milestone: 3,
-          total_milestones: 3,
+          progress_step: 3,
+          progress_total: 3,
+          completion_percentage: 100,
           direction: 'forward',
         })
       );
     });
 
-    it('backward click from M1 logs current_milestone = 0 (heading back to the cover overview)', () => {
+    it('backward click from M1 logs progress_step = 0 (heading back to the cover overview)', () => {
       // The cover is `currentMilestone: 0` in the data model and is the
       // legitimate destination of a backward click from M1.
       const tab = makeJourneyTab();
@@ -309,15 +347,16 @@ describe('LearningJourneyMilestoneToolbar', () => {
       expect(reportAppInteractionMock).toHaveBeenCalledWith(
         'milestone_arrow_interaction_click',
         expect.objectContaining({
-          current_milestone: 0,
-          total_milestones: 3,
+          progress_step: 0,
+          progress_total: 3,
+          completion_percentage: 0,
           direction: 'backward',
         })
       );
     });
 
     it('OpenExtraResource (Open in new tab) keeps the origin semantic — the user is reading this milestone, not navigating', () => {
-      // currentMilestone = 1 → the Open button logs `current_milestone: 1`
+      // currentMilestone = 1 → the Open button logs `progress_step: 1`
       // (the page the user is currently viewing). This event is intentionally
       // unchanged by the destination-semantic flip on the arrow clicks.
       renderToolbar();
@@ -326,8 +365,8 @@ describe('LearningJourneyMilestoneToolbar', () => {
       expect(reportAppInteractionMock).toHaveBeenCalledWith(
         'open_extra_resource',
         expect.objectContaining({
-          current_milestone: 1,
-          total_milestones: 3,
+          progress_step: 1,
+          progress_total: 3,
         })
       );
     });

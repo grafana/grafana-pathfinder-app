@@ -4,14 +4,16 @@ import { safeEventHandler } from '../../utils/safe-event-handler.util';
 import {
   reportAppInteraction,
   UserInteraction,
+  buildProgressProperties,
   enrichWithJourneyContext,
   enrichWithStepContext,
   getContentTypeForAnalytics,
+  getJourneyNavigationProperties,
   AnalyticsContentType,
   AnalyticsLinkType,
 } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
-import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
+import { getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
@@ -79,8 +81,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
             content_title: activeTab.title,
             content_url: activeTab.baseUrl,
+            content_type: AnalyticsContentType.LearningJourney,
             interaction_location: 'ready_to_begin_button',
-            total_milestones: activeTab.content?.metadata?.learningJourney?.totalMilestones || 0,
+            ...buildProgressProperties(1, activeTab.content?.metadata?.learningJourney?.totalMilestones || 0),
           });
 
           // Navigate directly to the first milestone URL. Use the unified
@@ -96,8 +99,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
               content_title: activeTab.title,
               content_url: activeTab.baseUrl,
+              content_type: AnalyticsContentType.LearningJourney,
               interaction_location: 'ready_to_begin_button_fallback',
-              total_milestones: activeTab.content.metadata.learningJourney.milestones.length,
+              ...buildProgressProperties(1, activeTab.content.metadata.learningJourney.milestones.length),
             });
 
             model.loadTab(activeTab.id, firstMilestone.url);
@@ -498,30 +502,21 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         const activeTab = model.getActiveTab();
 
         if (navDirection === 'prev' && model.canNavigatePrevious()) {
-          // Log the destination milestone (where the user is heading TO), not
-          // the origin — mirrors the toolbar handler in
-          // LearningJourneyMilestoneToolbar.tsx so the two surfaces agree.
-          const ljPrev = activeTab?.content?.metadata.learningJourney;
           reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
             content_title: activeTab?.title || 'unknown',
             content_url: activeTab?.baseUrl || 'unknown',
-            current_milestone: Math.max(0, (ljPrev?.currentMilestone ?? 0) - 1),
-            total_milestones: ljPrev?.totalMilestones || 0,
-            direction: 'backward',
+            content_type: AnalyticsContentType.LearningJourney,
             interaction_location: 'bottom_navigation',
-            completion_percentage: activeTab?.content ? getJourneyProgress(activeTab.content) : 0,
+            ...getJourneyNavigationProperties(activeTab?.content?.metadata.learningJourney, 'backward'),
           });
           model.navigateToPreviousMilestone();
         } else if (navDirection === 'next' && model.canNavigateNext()) {
-          const ljNext = activeTab?.content?.metadata.learningJourney;
           reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
             content_title: activeTab?.title || 'unknown',
             content_url: activeTab?.baseUrl || 'unknown',
-            current_milestone: Math.min(ljNext?.totalMilestones ?? 0, (ljNext?.currentMilestone ?? 0) + 1),
-            total_milestones: ljNext?.totalMilestones || 0,
-            direction: 'forward',
+            content_type: AnalyticsContentType.LearningJourney,
             interaction_location: 'bottom_navigation',
-            completion_percentage: activeTab?.content ? getJourneyProgress(activeTab.content) : 0,
+            ...getJourneyNavigationProperties(activeTab?.content?.metadata.learningJourney, 'forward'),
           });
 
           // Mark current milestone done if it has no interactive steps

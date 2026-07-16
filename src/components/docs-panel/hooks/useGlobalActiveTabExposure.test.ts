@@ -1,5 +1,6 @@
 import { renderHook } from '@testing-library/react';
-import { useGlobalActiveTabExposure } from './useGlobalActiveTabExposure';
+import { useGlobalActiveTabExposure, type UseGlobalActiveTabExposureParams } from './useGlobalActiveTabExposure';
+import { getActiveJourneyContext, resetJourneyContextForTests } from '../../../global-state/journey-context';
 import { setFaroView, setFaroViewName } from '../../../lib/faro';
 
 jest.mock('../../../lib/faro', () => ({
@@ -20,6 +21,7 @@ describe('useGlobalActiveTabExposure', () => {
   afterEach(() => {
     delete (window as any).__DocsPluginActiveTabId;
     delete (window as any).__DocsPluginActiveTabUrl;
+    resetJourneyContextForTests();
   });
 
   it('writes activeTabId and currentUrl (or baseUrl fallback) to window globals', () => {
@@ -97,6 +99,40 @@ describe('useGlobalActiveTabExposure', () => {
     });
     expect((window as any).__DocsPluginActiveTabId).toBe('tab-b');
     expect((window as any).__DocsPluginActiveTabUrl).toBe('https://example.com/b');
+  });
+
+  it('publishes the journey context for learning-journey tabs and clears it otherwise', () => {
+    const { rerender, unmount } = renderHook(useGlobalActiveTabExposure, {
+      initialProps: {
+        activeTabId: 'tab-lj',
+        activeTabCurrentUrl: 'https://example.com/lj/m3',
+        activeTabBaseUrl: 'https://example.com/lj',
+        journeyMilestone: 3,
+        journeyTotalMilestones: 5,
+      } as UseGlobalActiveTabExposureParams,
+    });
+    expect(getActiveJourneyContext()).toEqual({
+      journeyUrl: 'https://example.com/lj',
+      milestoneNumber: 3,
+      totalMilestones: 5,
+    });
+
+    rerender({
+      activeTabId: 'tab-guide',
+      activeTabCurrentUrl: 'https://example.com/guide',
+      activeTabBaseUrl: 'https://example.com/guide',
+    });
+    expect(getActiveJourneyContext()).toBeNull();
+
+    rerender({
+      activeTabId: 'tab-lj',
+      activeTabCurrentUrl: 'https://example.com/lj/m4',
+      activeTabBaseUrl: 'https://example.com/lj',
+      journeyMilestone: 4,
+      journeyTotalMilestones: 5,
+    });
+    unmount();
+    expect(getActiveJourneyContext()).toBeNull();
   });
 
   it('uses useLayoutEffect (synchronous, before passive effects)', async () => {

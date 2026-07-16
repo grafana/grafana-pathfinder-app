@@ -9,7 +9,8 @@ import {
   type MatchResult,
 } from '../../interactive-engine';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { buildStepEventProperties } from './step-analytics';
 import { logger } from '../../lib/logging';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
@@ -561,7 +562,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           // Track auto-completion in analytics
           reportAppInteraction(
             UserInteraction.StepAutoCompleted,
-            buildInteractiveStepProperties(
+            buildStepEventProperties(
               {
                 target_action: 'multistep',
                 ref_target: renderedStepId,
@@ -605,7 +606,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       // Track "Do it" button click analytics for multi-step
       reportAppInteraction(
         UserInteraction.DoItButtonClick,
-        buildInteractiveStepProperties(
+        buildStepEventProperties(
           {
             target_action: 'multistep',
             ref_target: renderedStepId,
