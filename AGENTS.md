@@ -119,7 +119,7 @@ When touching `pkg/`, load `.cursor/rules/coda.mdc` (agent-facing constraints) a
 
 ### E2E runner image and report schema
 
-The published cross-repository E2E report contract lives in `schemas/e2e-test-report.schema.json` (JSON Schema draft-07, `$id: https://grafana.com/schemas/pathfinder/e2e-test-report-1.0.0.json`). Compatibility fixtures are in `schemas/fixtures/`. The `guide-schema-and-contracts` concern in `docs/design/CONCERNS.md` routes this directory.
+The E2E report contract is defined as a Zod schema in `src/cli/e2e/schemas/e2e-report.schema.ts`. TypeScript types are derived from it via `z.infer<>`. The `guide-schema-and-contracts` concern in `docs/design/CONCERNS.md` routes this directory.
 
 A dedicated non-root runner image is built from `Dockerfile.e2e-runner` and published to `ghcr.io/grafana/pathfinder-e2e-runner` by `.github/workflows/e2e-runner-publish.yml`. It differs from the slim CLI image (`Dockerfile.cli`/`cli-publish.yml`) — always treat them as separate artifacts. The `build-and-ci` concern routes both Dockerfiles and runner scripts under `scripts/e2e-runner*`.
 

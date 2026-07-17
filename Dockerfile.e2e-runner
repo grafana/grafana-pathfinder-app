@@ -1,6 +1,6 @@
 # Dedicated Pathfinder E2E runner image.
 # This image is separate from Dockerfile.cli because it includes Playwright,
-# Chromium, the browser runner, and deterministic contract fixtures.
+# Chromium, and the browser runner.
 
 FROM node:24-bookworm
 
@@ -17,7 +17,7 @@ RUN npm ci --no-audit --no-fund \
 
 COPY . .
 RUN npm run build:cli \
-    && chmod +x scripts/e2e-runner-entrypoint.sh scripts/e2e-runner-contract-smoke.js \
+    && chmod +x scripts/e2e-runner-entrypoint.sh \
     && chown -R node:node /app /ms-playwright
 
 USER node

@@ -11,6 +11,7 @@ import {
   generateMultiGuideReport,
   generateReport,
   E2E_REPORT_SCHEMA_VERSION,
+  E2ETestReportSchema,
   type TestResultsData,
 } from './e2e-reporter';
 
@@ -118,15 +119,14 @@ describe('versioned report contract', () => {
     });
   });
 
-  it('keeps deterministic compatibility fixtures immutable', () => {
-    const pass = require('./schemas/fixtures/e2e-report-pass.json');
-    const fail = require('./schemas/fixtures/e2e-report-fail.json');
-    const invalid = require('./schemas/fixtures/e2e-report-invalid.json');
+  it('generated reports validate against the Zod schema', () => {
+    const pass = generateReport(ranGuide('always-passes'));
+    const fail = generateReport(ranGuide('always-fails', { failed: true }));
 
-    expect(pass.schemaVersion).toBe(E2E_REPORT_SCHEMA_VERSION);
+    expect(() => E2ETestReportSchema.parse(pass)).not.toThrow();
+    expect(() => E2ETestReportSchema.parse(fail)).not.toThrow();
     expect(pass.outcome).toBe('passed');
     expect(fail.outcome).toBe('failed');
     expect(fail.errorCode).toBe('MANDATORY_FAILURE');
-    expect(invalid.schemaVersion).not.toBe(E2E_REPORT_SCHEMA_VERSION);
   });
 });

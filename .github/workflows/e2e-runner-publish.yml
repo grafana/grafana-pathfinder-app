@@ -12,7 +12,6 @@ on:
       - 'tests/fixtures.ts'
       - 'src/cli/e2e/schemas/**'
       - 'scripts/e2e-runner-entrypoint.sh'
-      - 'scripts/e2e-runner-contract-smoke.js'
       - 'Dockerfile.e2e-runner'
       - 'Dockerfile.e2e-runner.dockerignore'
       - 'package.json'
@@ -30,7 +29,6 @@ on:
       - 'tests/fixtures.ts'
       - 'src/cli/e2e/schemas/**'
       - 'scripts/e2e-runner-entrypoint.sh'
-      - 'scripts/e2e-runner-contract-smoke.js'
       - 'Dockerfile.e2e-runner'
       - 'Dockerfile.e2e-runner.dockerignore'
       - 'package.json'
@@ -73,8 +71,6 @@ jobs:
           tags: pathfinder-e2e-runner:smoke
           build-args: |
             RUNNER_VERSION=commit-${{ github.sha }}
-      - name: Run contract and fixture smoke test
-        run: docker run --rm --entrypoint node pathfinder-e2e-runner:smoke /app/scripts/e2e-runner-contract-smoke.js
       - name: Verify non-root image user
         run: test "$(docker run --rm --entrypoint id pathfinder-e2e-runner:smoke -u)" != "0"
 

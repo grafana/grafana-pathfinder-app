@@ -10,222 +10,49 @@
 import { createHash } from 'crypto';
 import { writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
-import type { SideEffectClassification } from './side-effects';
 
-// ============================================
-// Types - JSON Report Structure
-// ============================================
+export {
+  E2E_REPORT_SCHEMA_VERSION,
+  E2EExecutionOutcomeSchema,
+  E2EErrorCodeSchema,
+  E2ETestReportSchema,
+  MultiGuideReportSchema,
+} from './schemas/e2e-report.schema';
 
-/**
- * Guide metadata in the JSON report.
- */
-export interface GuideMetadata {
-  /** Guide identifier (extracted from filename or guide ID) */
-  id: string;
-  /** Human-readable guide title */
-  title: string;
-  /** Path to the guide file (relative or absolute) */
-  path: string;
-  /** Bare package ID, when the guide was resolved from a package. */
-  packageId?: string;
-  /** Declared test-environment tier (e.g. "local", "cloud"). */
-  tier?: string;
-  /** Specific Grafana instance the guide targets, if any. */
-  instance?: string;
-  /** Grafana URL the guide was tested against. */
-  targetUrl?: string;
-  /** Source content.json URL for remotely-resolved guides. */
-  sourceUrl?: string;
-  /** SHA-256 digest of the guide content tested by the runner. */
-  contentDigest?: string;
-  sideEffects?: SideEffectClassification;
-}
+export type {
+  E2EExecutionOutcome,
+  E2EErrorCode,
+  ErrorClassification,
+  RunnerProvenance,
+  ReportTarget,
+  ReportSummary,
+  ArtifactPaths,
+  ReportStepResult,
+  GuideMetadata,
+  ReportConfig,
+  PreRunSkip,
+  E2ETestReport,
+  GuideResult,
+  MultiGuideSummary,
+  MultiGuideReport,
+} from './schemas/e2e-report.schema';
 
-/**
- * Test execution configuration captured in the report.
- */
-export interface ReportConfig {
-  /** Grafana version (if available) */
-  grafanaVersion?: string;
-  /** ISO timestamp of when the test started */
-  timestamp: string;
-}
-
-export const E2E_REPORT_SCHEMA_VERSION = '1.0.0';
-
-export type E2EExecutionOutcome =
-  'passed' | 'failed' | 'aborted' | 'skipped' | 'infrastructure_error' | 'configuration_error';
-
-export type E2EErrorCode =
-  | 'AUTH_EXPIRED'
-  | 'MANDATORY_FAILURE'
-  | 'SKIPPED_PREREQ'
-  | 'PROVISIONING_FAILED'
-  | 'GRAFANA_UNREACHABLE'
-  | 'CONFIGURATION_ERROR'
-  | 'PLAYWRIGHT_SPAWN_FAILED'
-  | 'NO_CAPACITY'
-  | 'REPORT_MISSING'
-  | 'UNKNOWN';
-
-export interface RunnerProvenance {
-  name: 'pathfinder-e2e-runner';
-  version: string;
-  nodeVersion: string;
-  playwrightVersion: string;
-  image?: string;
-}
-
-export interface ReportTarget {
-  url: string;
-  tier?: string;
-  instance?: string;
-}
-
-/**
- * Summary statistics for the test run.
- */
-export interface ReportSummary {
-  /** Total number of steps */
-  total: number;
-  /** Number of passed steps */
-  passed: number;
-  /** Number of failed steps */
-  failed: number;
-  /** Number of skipped steps */
-  skipped: number;
-  /** Number of steps not reached (due to abort) */
-  notReached: number;
-  /** Total test duration in milliseconds */
-  duration: number;
-  /** Number of mandatory step failures (L3-4C) */
-  mandatoryFailed: number;
-  /** Number of skippable step failures (L3-4C) */
-  skippableFailed: number;
-}
-
-/**
- * Error classification for failure triage (L3-5C).
- *
- * Per design doc MVP approach:
- * - Only `infrastructure` can be reliably auto-classified
- * - All other failures default to `unknown` and require human triage
- */
-export type ErrorClassification =
-  | 'content-drift' // Selector/requirement issues (requires human validation)
-  | 'product-regression' // Action failures (requires human validation)
-  | 'infrastructure' // TIMEOUT, NETWORK_ERROR, AUTH_EXPIRED
-  | 'unknown'; // Default - cannot be reliably classified
-
-/**
- * Paths to captured failure artifacts (L3-5D).
- *
- * Artifacts are captured when a step fails to provide debugging context.
- */
-export interface ArtifactPaths {
-  /** Path to screenshot PNG file (POST step execution) */
-  screenshot?: string;
-  /** Path to screenshot PNG file (PRE step execution) */
-  screenshotPre?: string;
-  /** Path to DOM snapshot HTML file */
-  dom?: string;
-  /** Path to console errors JSON file */
-  console?: string;
-}
-
-/**
- * Step result in the JSON report.
- *
- * Per design doc, each step includes:
- * - stepId, index, status, duration, currentUrl, consoleErrors
- * - Optional: skipReason, error, classification, artifacts
- */
-export interface ReportStepResult {
-  /** The step identifier */
-  stepId: string;
-  /** Zero-based index in execution order */
-  index: number;
-  /** Execution outcome */
-  status: 'passed' | 'failed' | 'skipped' | 'not_reached';
-  /** Execution duration in milliseconds */
-  duration: number;
-  /** Page URL when step completed/failed */
-  currentUrl: string;
-  /** Console errors captured during step execution */
-  consoleErrors: string[];
-  /** Reason if status is 'skipped' */
-  skipReason?: string;
-  /** Error message if status is 'failed' */
-  error?: string;
-  /** Whether the step was skippable (L3-4C) */
-  skippable?: boolean;
-  /**
-   * Error classification for failure triage (L3-5C).
-   * Only present for failed or not_reached steps.
-   * Per MVP: only `infrastructure` is auto-classified, others default to `unknown`.
-   */
-  classification?: ErrorClassification;
-  /**
-   * Paths to failure artifacts (L3-5D).
-   * Only present for failed steps when artifacts were captured.
-   * Contains screenshot, DOM snapshot, and console errors file paths.
-   */
-  artifacts?: ArtifactPaths;
-}
-
-/**
- * A package skipped before execution (not fetched/run), with a structured
- * reason. Surfaced in JSON reports so batch runs record why guides were not run.
- */
-export interface PreRunSkip {
-  /** Package ID (or source URL when no ID is known). */
-  id: string;
-  /** Structured skip reason (e.g. "skipped_no_auth", "fetch_failed"). */
-  reason: string;
-  /** Human-readable explanation. */
-  message: string;
-  /** Whether this entry counts as a test failure. True for `validation_failed` */
-  failed: boolean;
-  /** Declared tier, when known. */
-  tier?: string;
-  /** Source content.json URL, when known. */
-  sourceUrl?: string;
-  sideEffects?: SideEffectClassification;
-}
-
-/**
- * Complete JSON report structure per design doc.
- *
- * @see docs/developer/E2E_TESTING.md#json-report
- */
-export interface E2ETestReport {
-  schemaVersion: typeof E2E_REPORT_SCHEMA_VERSION;
-  outcome: E2EExecutionOutcome;
-  errorCode?: E2EErrorCode;
-  errorMessage?: string;
-  runner: RunnerProvenance;
-  startedAt: string;
-  endedAt: string;
-  target: ReportTarget;
-  /** Guide metadata */
-  guide: GuideMetadata;
-  /** Test configuration */
-  config: ReportConfig;
-  /** Summary statistics */
-  summary: ReportSummary;
-  /** Individual step results */
-  steps: ReportStepResult[];
-  /** Whether test was aborted (L3-3D) */
-  aborted?: boolean;
-  /** Reason for abort if aborted is true */
-  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ' | 'PROVISIONING_FAILED';
-  /** Human-readable abort message */
-  abortMessage?: string;
-  /** Packages skipped before execution (remote modes). */
-  preRunSkipped?: PreRunSkip[];
-  /** Best-effort cleanup failures that did not replace the primary guide outcome. */
-  cleanupWarnings?: string[];
-}
+import {
+  E2E_REPORT_SCHEMA_VERSION,
+  type E2EExecutionOutcome,
+  type E2EErrorCode,
+  type ErrorClassification,
+  type RunnerProvenance,
+  type ReportSummary,
+  type ArtifactPaths,
+  type ReportStepResult,
+  type GuideMetadata,
+  type ReportConfig,
+  type E2ETestReport,
+  type GuideResult,
+  type MultiGuideSummary,
+  type MultiGuideReport,
+} from './schemas/e2e-report.schema';
 
 // ============================================
 // Types - Input from Test Execution
@@ -526,87 +353,6 @@ export function formatReportSummary(report: E2ETestReport): string {
   }
 
   return parts.join(', ');
-}
-
-// ============================================
-// Multi-Guide Report Types (L3-7B)
-// ============================================
-
-/**
- * Summary statistics for a multi-guide test run (L3-7B).
- */
-export interface MultiGuideSummary {
-  /** Total number of guides tested */
-  totalGuides: number;
-  /** Number of guides that passed (no mandatory failures) */
-  passedGuides: number;
-  /** Number of guides that failed (at least one mandatory failure) */
-  failedGuides: number;
-  /** Number of guides where auth expired during testing */
-  authExpiredGuides: number;
-  /** Number of guides skipped because a dependency-chain prerequisite failed */
-  skippedGuides: number;
-  /** Aggregated step counts across all guides */
-  steps: {
-    total: number;
-    passed: number;
-    failed: number;
-    skipped: number;
-    notReached: number;
-    mandatoryFailed: number;
-    skippableFailed: number;
-  };
-  /** Total test duration across all guides in milliseconds */
-  totalDuration: number;
-}
-
-/**
- * Individual guide result in the multi-guide report (L3-7B).
- */
-export interface GuideResult {
-  /** Guide identifier */
-  id: string;
-  /** Guide title */
-  title: string;
-  /** Path to the guide file */
-  path: string;
-  /** Whether this guide passed (no mandatory failures) */
-  success: boolean;
-  /** Reason for failure/abort if any */
-  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ' | 'PROVISIONING_FAILED';
-  /** Summary statistics for this guide */
-  summary: ReportSummary;
-  /** Duration in milliseconds */
-  duration: number;
-  sideEffects?: SideEffectClassification;
-}
-
-/**
- * Complete multi-guide E2E test report (L3-7B).
- *
- * This report aggregates results from multiple guides tested with --bundled
- * or when multiple guide paths are provided.
- */
-export interface MultiGuideReport {
-  schemaVersion: typeof E2E_REPORT_SCHEMA_VERSION;
-  outcome: E2EExecutionOutcome;
-  runner: RunnerProvenance;
-  startedAt: string;
-  endedAt: string;
-  /** Report type identifier */
-  type: 'multi-guide';
-  /** Test configuration */
-  config: ReportConfig;
-  /** Aggregated summary across all guides */
-  summary: MultiGuideSummary;
-  /** Individual guide results (condensed, without step details) */
-  guides: GuideResult[];
-  /** Full reports for each guide (includes step details) */
-  reports: E2ETestReport[];
-  /** Packages skipped before execution (remote modes). */
-  preRunSkipped?: PreRunSkip[];
-  /** Best-effort cleanup failures that did not replace the primary guide outcome. */
-  cleanupWarnings?: string[];
 }
 
 // ============================================
