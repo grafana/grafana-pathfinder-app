@@ -73,6 +73,23 @@ jobs:
             RUNNER_VERSION=commit-${{ github.sha }}
       - name: Verify non-root image user
         run: test "$(docker run --rm --entrypoint id pathfinder-e2e-runner:smoke -u)" != "0"
+      - name: Verify runner entrypoint and Playwright wiring
+        run: |
+          docker run --rm pathfinder-e2e-runner:smoke --help
+          docker run --rm --entrypoint node pathfinder-e2e-runner:smoke -e '
+            const { findRunnerRoot } = require("/app/dist/cli/cli/e2e/playwright-runner.js");
+            const root = findRunnerRoot("/app/dist/cli/cli/e2e");
+            if (root !== "/app") throw new Error(`unexpected runner root: ${root}`);
+          '
+          docker run --rm --workdir /app --entrypoint npx pathfinder-e2e-runner:smoke \
+            playwright test tests/e2e-runner/guide-runner.spec.ts \
+            --config=tests/e2e-runner/playwright.config.ts \
+            --project=chromium \
+            --list
+          docker run --rm --workdir /app --entrypoint npx pathfinder-e2e-runner:smoke \
+            playwright test tests/e2e-runner/runner-image-smoke.spec.ts \
+            --config=tests/e2e-runner/runner-image-smoke.config.ts \
+            --project=chromium
       - name: Verify image emits a valid, versioned report schema
         run: |
           docker run --rm --entrypoint node pathfinder-e2e-runner:smoke \

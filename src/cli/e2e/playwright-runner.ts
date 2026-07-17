@@ -5,7 +5,7 @@
 
 import { spawn } from 'child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { dirname, join, resolve } from 'path';
 import { tmpdir } from 'os';
 
 import { ExitCode } from './exit-codes';
@@ -13,6 +13,29 @@ import { E2E_ENV, encodeEnvFlag } from './e2e-runner-contract';
 import type { LoadedGuide } from '../utils/file-loader';
 import type { E2EErrorCode } from './schemas/e2e-report.schema';
 import { contentDigest, createMinimalResultsData, type TestResultsData } from './e2e-reporter';
+
+const PLAYWRIGHT_CONFIG_PATH = join('tests', 'e2e-runner', 'playwright.config.ts');
+const GUIDE_RUNNER_SPEC_PATH = join('tests', 'e2e-runner', 'guide-runner.spec.ts');
+
+export function findRunnerRoot(startDir: string): string {
+  let candidate = resolve(startDir);
+
+  while (true) {
+    if (
+      existsSync(join(candidate, PLAYWRIGHT_CONFIG_PATH)) &&
+      existsSync(join(candidate, GUIDE_RUNNER_SPEC_PATH)) &&
+      existsSync(join(candidate, 'package.json'))
+    ) {
+      return candidate;
+    }
+
+    const parent = dirname(candidate);
+    if (parent === candidate) {
+      throw new Error(`Could not locate the E2E runner root from ${startDir}`);
+    }
+    candidate = parent;
+  }
+}
 
 /**
  * Abort reason from test execution.
@@ -154,6 +177,7 @@ function processPlaywrightResults(
  * - Returns results data for JSON report generation
  */
 export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOptions): Promise<PlaywrightResult> {
+  const runnerRoot = findRunnerRoot(__dirname);
   // Write guide to temp file
   const tempDir = mkdtempSync(join(tmpdir(), 'pathfinder-e2e-'));
   const guidePath = join(tempDir, 'guide.json');
@@ -180,8 +204,8 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
     const playwrightArgs = [
       'playwright',
       'test',
-      'tests/e2e-runner/guide-runner.spec.ts',
-      '--config=tests/e2e-runner/playwright.config.ts',
+      join(runnerRoot, GUIDE_RUNNER_SPEC_PATH),
+      `--config=${join(runnerRoot, PLAYWRIGHT_CONFIG_PATH)}`,
       '--project=chromium',
     ];
 
@@ -197,6 +221,7 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
     // Note: shell: false for security (avoids argument escaping issues)
     const result = await new Promise<PlaywrightResult>((resolve) => {
       const proc = spawn('npx', playwrightArgs, {
+        cwd: runnerRoot,
         env: {
           ...process.env,
           [E2E_ENV.GUIDE_JSON_PATH]: guidePath,
