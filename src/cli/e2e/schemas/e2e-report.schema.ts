@@ -2,6 +2,11 @@ import { z } from 'zod';
 
 export const E2E_REPORT_SCHEMA_VERSION = '1.0.0' as const;
 
+export const E2E_REPORT_SCHEMA_ID =
+  `https://grafana.com/schemas/pathfinder/e2e-test-report-${E2E_REPORT_SCHEMA_VERSION}.json` as const;
+export const E2E_MULTI_REPORT_SCHEMA_ID =
+  `https://grafana.com/schemas/pathfinder/e2e-multi-guide-report-${E2E_REPORT_SCHEMA_VERSION}.json` as const;
+
 // ============================================
 // Enum schemas
 // ============================================
@@ -131,25 +136,30 @@ export const PreRunSkipSchema = z.object({
 // Top-level report schemas
 // ============================================
 
-export const E2ETestReportSchema = z.object({
-  schemaVersion: z.literal(E2E_REPORT_SCHEMA_VERSION),
-  outcome: E2EExecutionOutcomeSchema,
-  errorCode: E2EErrorCodeSchema.optional(),
-  errorMessage: z.string().optional(),
-  runner: RunnerProvenanceSchema,
-  startedAt: z.string(),
-  endedAt: z.string(),
-  target: ReportTargetSchema,
-  guide: GuideMetadataSchema,
-  config: ReportConfigSchema,
-  summary: ReportSummarySchema,
-  steps: z.array(ReportStepResultSchema),
-  aborted: z.boolean().optional(),
-  abortReason: AbortReasonSchema.optional(),
-  abortMessage: z.string().optional(),
-  preRunSkipped: z.array(PreRunSkipSchema).optional(),
-  cleanupWarnings: z.array(z.string()).optional(),
-});
+export const E2ETestReportSchema = z
+  .object({
+    schemaVersion: z.literal(E2E_REPORT_SCHEMA_VERSION),
+    outcome: E2EExecutionOutcomeSchema,
+    errorCode: E2EErrorCodeSchema.optional(),
+    errorMessage: z.string().optional(),
+    runner: RunnerProvenanceSchema,
+    startedAt: z.string(),
+    endedAt: z.string(),
+    target: ReportTargetSchema,
+    guide: GuideMetadataSchema,
+    config: ReportConfigSchema,
+    summary: ReportSummarySchema,
+    steps: z.array(ReportStepResultSchema),
+    aborted: z.boolean().optional(),
+    abortReason: AbortReasonSchema.optional(),
+    abortMessage: z.string().optional(),
+    preRunSkipped: z.array(PreRunSkipSchema).optional(),
+    cleanupWarnings: z.array(z.string()).optional(),
+  })
+  .meta({
+    id: E2E_REPORT_SCHEMA_ID,
+    title: 'Pathfinder E2E test report',
+  });
 
 export const GuideResultSchema = z.object({
   id: z.string(),
@@ -180,20 +190,25 @@ export const MultiGuideSummarySchema = z.object({
   totalDuration: z.number(),
 });
 
-export const MultiGuideReportSchema = z.object({
-  schemaVersion: z.literal(E2E_REPORT_SCHEMA_VERSION),
-  outcome: E2EExecutionOutcomeSchema,
-  runner: RunnerProvenanceSchema,
-  startedAt: z.string(),
-  endedAt: z.string(),
-  type: z.literal('multi-guide'),
-  config: ReportConfigSchema,
-  summary: MultiGuideSummarySchema,
-  guides: z.array(GuideResultSchema),
-  reports: z.array(E2ETestReportSchema),
-  preRunSkipped: z.array(PreRunSkipSchema).optional(),
-  cleanupWarnings: z.array(z.string()).optional(),
-});
+export const MultiGuideReportSchema = z
+  .object({
+    schemaVersion: z.literal(E2E_REPORT_SCHEMA_VERSION),
+    outcome: E2EExecutionOutcomeSchema,
+    runner: RunnerProvenanceSchema,
+    startedAt: z.string(),
+    endedAt: z.string(),
+    type: z.literal('multi-guide'),
+    config: ReportConfigSchema,
+    summary: MultiGuideSummarySchema,
+    guides: z.array(GuideResultSchema),
+    reports: z.array(E2ETestReportSchema),
+    preRunSkipped: z.array(PreRunSkipSchema).optional(),
+    cleanupWarnings: z.array(z.string()).optional(),
+  })
+  .meta({
+    id: E2E_MULTI_REPORT_SCHEMA_ID,
+    title: 'Pathfinder E2E multi-guide test report',
+  });
 
 // ============================================
 // Exported types (derived from Zod schemas)

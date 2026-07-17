@@ -10,6 +10,9 @@
 import { createHash } from 'crypto';
 import { writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
+import { z } from 'zod';
+
+import { ExitCode } from './exit-codes';
 
 export {
   E2E_REPORT_SCHEMA_VERSION,
@@ -39,6 +42,8 @@ export type {
 
 import {
   E2E_REPORT_SCHEMA_VERSION,
+  E2ETestReportSchema,
+  MultiGuideReportSchema,
   type E2EExecutionOutcome,
   type E2EErrorCode,
   type ErrorClassification,
@@ -278,6 +283,28 @@ export function createMinimalResultsData(input: {
 }
 
 /**
+ * Self-validate a report against its own schema before writing.
+ *
+ * The error boundary's core promise is that the CLI always produces a report,
+ * so a validation failure must never prevent the write. On success we return the
+ * normalized value (unknown keys stripped, so emitted output always conforms);
+ * on failure we warn and write the original object. Set
+ * PATHFINDER_E2E_STRICT_SCHEMA=1 to also flip the exit code.
+ */
+function conform<T>(schema: z.ZodType<T>, report: T, kind: string): T {
+  const result = schema.safeParse(report);
+  if (result.success) {
+    return result.data;
+  }
+  console.error(`⚠️  ${kind} failed self-validation against its schema:`);
+  console.error(z.prettifyError(result.error));
+  if (process.env.PATHFINDER_E2E_STRICT_SCHEMA === '1') {
+    process.exitCode = ExitCode.CONFIGURATION_ERROR;
+  }
+  return report;
+}
+
+/**
  * Write a JSON report to a file.
  *
  * Creates parent directories if they don't exist.
@@ -286,6 +313,8 @@ export function createMinimalResultsData(input: {
  * @param outputPath - Path to write the report to
  */
 export function writeReport(report: E2ETestReport, outputPath: string): void {
+  const conformed = conform(E2ETestReportSchema, report, 'E2E report');
+
   // Ensure parent directory exists
   const dir = dirname(outputPath);
   if (dir !== '.') {
@@ -293,7 +322,7 @@ export function writeReport(report: E2ETestReport, outputPath: string): void {
   }
 
   // Write JSON with pretty formatting
-  const json = JSON.stringify(report, null, 2);
+  const json = JSON.stringify(conformed, null, 2);
   writeFileSync(outputPath, json, 'utf-8');
 }
 
@@ -498,13 +527,15 @@ export function generateMultiGuideReport(resultsArray: TestResultsData[], grafan
  * @param outputPath - Path to write the report to
  */
 export function writeMultiGuideReport(report: MultiGuideReport, outputPath: string): void {
+  const conformed = conform(MultiGuideReportSchema, report, 'Multi-guide report');
+
   // Reuse writeReport's directory creation logic
   const dir = dirname(outputPath);
   if (dir !== '.') {
     mkdirSync(dir, { recursive: true });
   }
 
-  const json = JSON.stringify(report, null, 2);
+  const json = JSON.stringify(conformed, null, 2);
   writeFileSync(outputPath, json, 'utf-8');
 }
 

@@ -73,6 +73,16 @@ jobs:
             RUNNER_VERSION=commit-${{ github.sha }}
       - name: Verify non-root image user
         run: test "$(docker run --rm --entrypoint id pathfinder-e2e-runner:smoke -u)" != "0"
+      - name: Verify image emits a valid, versioned report schema
+        run: |
+          docker run --rm --entrypoint node pathfinder-e2e-runner:smoke \
+            /app/dist/cli/cli/index.js schema e2e-report --include-version > schema.json
+          node -e '
+            const s = require("./schema.json");
+            if (!String(s.$id || "").includes("e2e-test-report-1.0.0")) throw new Error(`unexpected $id: ${s.$id}`);
+            if (s["x-schema-version"] !== "1.0.0") throw new Error(`unexpected x-schema-version: ${s["x-schema-version"]}`);
+            console.log("E2E report schema contract verified");
+          '
 
   publish:
     name: Publish signed immutable runner image

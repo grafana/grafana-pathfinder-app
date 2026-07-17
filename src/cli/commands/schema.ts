@@ -15,11 +15,22 @@ import {
   RepositoryJsonSchema,
   DependencyGraphSchema,
 } from '../../types/package.schema';
+import {
+  E2ETestReportSchema,
+  MultiGuideReportSchema,
+  E2E_REPORT_SCHEMA_VERSION,
+  E2E_REPORT_SCHEMA_ID,
+  E2E_MULTI_REPORT_SCHEMA_ID,
+} from '../e2e/schemas/e2e-report.schema';
 
 interface SchemaRegistryEntry {
   schema: z.ZodType;
   description: string;
   refinements?: string[];
+  /** Canonical JSON Schema `$id`. Zod does not surface `.meta({ id })` as `$id` for a directly-converted schema. */
+  id?: string;
+  /** Version stamped as `x-schema-version`; defaults to the guide schema version. */
+  schemaVersion?: string;
 }
 
 /**
@@ -65,6 +76,18 @@ export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
     schema: DependencyGraphSchema,
     description: 'Dependency graph schema (D3-compatible output)',
   },
+  'e2e-report': {
+    schema: E2ETestReportSchema,
+    description: 'E2E single-guide test report',
+    id: E2E_REPORT_SCHEMA_ID,
+    schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+  },
+  'e2e-multi-report': {
+    schema: MultiGuideReportSchema,
+    description: 'E2E multi-guide aggregate test report',
+    id: E2E_MULTI_REPORT_SCHEMA_ID,
+    schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+  },
 };
 
 function convertSchema(entry: SchemaRegistryEntry, includeVersion: boolean): Record<string, unknown> {
@@ -75,12 +98,16 @@ function convertSchema(entry: SchemaRegistryEntry, includeVersion: boolean): Rec
   // tool call. Emitting $defs + $ref keeps the same output under ~35 KB.
   const jsonSchema = z.toJSONSchema(entry.schema, { reused: 'ref' }) as Record<string, unknown>;
 
+  if (entry.id) {
+    jsonSchema.$id = entry.id;
+  }
+
   if (entry.refinements && entry.refinements.length > 0) {
     jsonSchema['x-refinements'] = entry.refinements;
   }
 
   if (includeVersion) {
-    jsonSchema['x-schema-version'] = CURRENT_SCHEMA_VERSION;
+    jsonSchema['x-schema-version'] = entry.schemaVersion ?? CURRENT_SCHEMA_VERSION;
   }
 
   return jsonSchema;
