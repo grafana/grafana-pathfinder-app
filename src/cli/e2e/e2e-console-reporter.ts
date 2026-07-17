@@ -10,15 +10,13 @@
  */
 
 import { CLEAN_COMPOSE_PROJECT } from './clean-environment';
+import { E2E_REPORT_SCHEMA_VERSION, type MultiGuideReport, type RunnerProvenance } from './schemas/e2e-report.schema';
 import {
-  E2E_REPORT_SCHEMA_VERSION,
   generateReport,
   writeReport,
   generateMultiGuideReport,
   writeMultiGuideReport,
   formatMultiGuideSummary,
-  type MultiGuideReport,
-  type RunnerProvenance,
 } from './e2e-reporter';
 import {
   countGuideStatuses,

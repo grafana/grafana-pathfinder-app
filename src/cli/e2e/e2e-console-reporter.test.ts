@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 import { writeJsonReport } from './e2e-console-reporter';
 import { ExitCode } from './exit-codes';
 import type { GuideRunResult } from './e2e-results';
-import type { MultiGuideReport } from './e2e-reporter';
+import type { MultiGuideReport } from './schemas/e2e-report.schema';
 
 describe('writeJsonReport', () => {
   let tempDir: string;

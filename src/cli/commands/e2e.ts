@@ -19,13 +19,12 @@ import {
   type LoadedGuide,
 } from '../utils/file-loader';
 import { planGuideExecution, type ExecutionPlan } from '../e2e/guide-chains';
+import { type E2EErrorCode, type E2EExecutionOutcome } from '../e2e/schemas/e2e-report.schema';
 import {
   contentDigest,
   createMinimalResultsData,
   generateReport,
   writeReport,
-  type E2EErrorCode,
-  type E2EExecutionOutcome,
   type TestResultsData,
 } from '../e2e/e2e-reporter';
 import { checkTier, loadManifestFromDir, runManifestPreflight, type CurrentTier } from '../e2e/manifest-preflight';

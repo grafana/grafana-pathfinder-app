@@ -17,7 +17,8 @@ import {
   type ResolvedRemoteGuide,
   type SkippedPackage,
 } from './e2e-package';
-import { contentDigest, type PreRunSkip, type TestResultsData } from './e2e-reporter';
+import type { PreRunSkip } from './schemas/e2e-report.schema';
+import { contentDigest, type TestResultsData } from './e2e-reporter';
 import { ExitCode } from './exit-codes';
 import type { AbortReason } from './playwright-runner';
 import type { SideEffectClassification } from './side-effects';

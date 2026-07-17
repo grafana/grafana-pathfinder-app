@@ -10,14 +10,12 @@ import { mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
+import { E2E_REPORT_SCHEMA_VERSION, E2ETestReportSchema, type E2ETestReport } from './schemas/e2e-report.schema';
 import {
   contentDigest,
   generateMultiGuideReport,
   generateReport,
   writeReport,
-  E2E_REPORT_SCHEMA_VERSION,
-  E2ETestReportSchema,
-  type E2ETestReport,
   type TestResultsData,
 } from './e2e-reporter';
 

@@ -11,7 +11,8 @@ import { tmpdir } from 'os';
 import { ExitCode } from './exit-codes';
 import { E2E_ENV, encodeEnvFlag } from './e2e-runner-contract';
 import type { LoadedGuide } from '../utils/file-loader';
-import { contentDigest, createMinimalResultsData, type E2EErrorCode, type TestResultsData } from './e2e-reporter';
+import type { E2EErrorCode } from './schemas/e2e-report.schema';
+import { contentDigest, createMinimalResultsData, type TestResultsData } from './e2e-reporter';
 
 /**
  * Abort reason from test execution.

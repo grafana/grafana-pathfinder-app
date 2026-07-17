@@ -14,32 +14,6 @@ import { z } from 'zod';
 
 import { ExitCode } from './exit-codes';
 
-export {
-  E2E_REPORT_SCHEMA_VERSION,
-  E2EExecutionOutcomeSchema,
-  E2EErrorCodeSchema,
-  E2ETestReportSchema,
-  MultiGuideReportSchema,
-} from './schemas/e2e-report.schema';
-
-export type {
-  E2EExecutionOutcome,
-  E2EErrorCode,
-  ErrorClassification,
-  RunnerProvenance,
-  ReportTarget,
-  ReportSummary,
-  ArtifactPaths,
-  ReportStepResult,
-  GuideMetadata,
-  ReportConfig,
-  PreRunSkip,
-  E2ETestReport,
-  GuideResult,
-  MultiGuideSummary,
-  MultiGuideReport,
-} from './schemas/e2e-report.schema';
-
 import {
   E2E_REPORT_SCHEMA_VERSION,
   E2ETestReportSchema,
