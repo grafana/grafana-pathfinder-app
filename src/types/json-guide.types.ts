@@ -48,6 +48,24 @@ export type JsonBlock =
   | JsonGrotGuideBlock
   | JsonSnippetRefBlock;
 
+/**
+ * Block types that register as one interactive step at render time.
+ * Must stay in sync with STEP_TYPE_SCHEMAS (each schema's jsonBlockType);
+ * pinned by step-type-registry.count-parity.tripwire.test.ts.
+ */
+export const STEP_COUNTING_BLOCK_TYPES = [
+  'interactive',
+  'multistep',
+  'guided',
+  'quiz',
+  'terminal',
+  'terminal-connect',
+  'challenge',
+  'code-block',
+] as const;
+
+export type StepCountingBlockType = (typeof STEP_COUNTING_BLOCK_TYPES)[number];
+
 // ============ ASSISTANT CUSTOMIZATION PROPS ============
 
 /**

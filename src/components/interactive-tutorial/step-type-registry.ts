@@ -17,6 +17,7 @@
  */
 
 import type { StepInfo } from '../../types/component-props.types';
+import type { StepCountingBlockType } from '../../types/json-guide.types';
 
 /** Discriminant for the tracked step component types. */
 export type StepTypeKind =
@@ -70,6 +71,8 @@ export interface StepTypeSchema {
    *  Phase 1 collapses content-renderer's INTERACTIVE_STEP_TYPES and
    *  SECTION_TRACKED_STEP_TYPES into a read of this field. */
   parseTypeKey: ParseTypeKey;
+  /** JSON authoring block type that parses into this kind. */
+  jsonBlockType: StepCountingBlockType;
   /** Used to build per-type stepIds (`${sectionId}-${idPrefix}-${n}`). */
   idPrefix: 'step' | 'multistep' | 'guided' | 'quiz' | 'terminal' | 'terminal-connect' | 'codeblock' | 'challenge';
   /** Where the section stores ref callbacks for this type. */
@@ -96,6 +99,7 @@ function disabledForOrchestratedStep(ctx: EnhanceContext): boolean {
 export const INTERACTIVE_STEP_SCHEMA: StepTypeSchema = {
   kind: 'plain',
   parseTypeKey: 'interactive-step',
+  jsonBlockType: 'interactive',
   idPrefix: 'step',
   refTarget: 'stepRefs',
   toStepInfoExtension: (props) => ({
@@ -128,6 +132,7 @@ export const INTERACTIVE_STEP_SCHEMA: StepTypeSchema = {
 export const INTERACTIVE_MULTISTEP_SCHEMA: StepTypeSchema = {
   kind: 'multistep',
   parseTypeKey: 'interactive-multi-step',
+  jsonBlockType: 'multistep',
   idPrefix: 'multistep',
   refTarget: 'multiStepRefs',
   toStepInfoExtension: (props) => ({
@@ -146,6 +151,7 @@ export const INTERACTIVE_MULTISTEP_SCHEMA: StepTypeSchema = {
 export const INTERACTIVE_GUIDED_SCHEMA: StepTypeSchema = {
   kind: 'guided',
   parseTypeKey: 'interactive-guided',
+  jsonBlockType: 'guided',
   idPrefix: 'guided',
   // Guided step refs are stored in `multiStepRefs` per the pre-extraction
   // behaviour (line 1766 of the original). The ref Map is a bag of
@@ -166,6 +172,7 @@ export const INTERACTIVE_GUIDED_SCHEMA: StepTypeSchema = {
 export const INTERACTIVE_QUIZ_SCHEMA: StepTypeSchema = {
   kind: 'quiz',
   parseTypeKey: 'quiz-block',
+  jsonBlockType: 'quiz',
   idPrefix: 'quiz',
   refTarget: 'none',
   toStepInfoExtension: (props) => ({
@@ -196,6 +203,7 @@ export const INTERACTIVE_QUIZ_SCHEMA: StepTypeSchema = {
 export const TERMINAL_STEP_SCHEMA: StepTypeSchema = {
   kind: 'terminal',
   parseTypeKey: 'terminal-step',
+  jsonBlockType: 'terminal',
   idPrefix: 'terminal',
   refTarget: 'none',
   toStepInfoExtension: (props) => ({
@@ -214,6 +222,7 @@ export const TERMINAL_STEP_SCHEMA: StepTypeSchema = {
 export const TERMINAL_CONNECT_STEP_SCHEMA: StepTypeSchema = {
   kind: 'terminal-connect',
   parseTypeKey: 'terminal-connect-step',
+  jsonBlockType: 'terminal-connect',
   idPrefix: 'terminal-connect',
   refTarget: 'none',
   toStepInfoExtension: (props) => ({
@@ -231,6 +240,7 @@ export const TERMINAL_CONNECT_STEP_SCHEMA: StepTypeSchema = {
 export const CODE_BLOCK_STEP_SCHEMA: StepTypeSchema = {
   kind: 'codeblock',
   parseTypeKey: 'code-block-step',
+  jsonBlockType: 'code-block',
   idPrefix: 'codeblock',
   refTarget: 'multiStepRefs',
   toStepInfoExtension: (props) => ({
@@ -261,6 +271,7 @@ export const CODE_BLOCK_STEP_SCHEMA: StepTypeSchema = {
 export const CHALLENGE_BLOCK_SCHEMA: StepTypeSchema = {
   kind: 'challenge',
   parseTypeKey: 'challenge-block',
+  jsonBlockType: 'challenge',
   idPrefix: 'challenge',
   // Challenge runs its own setup/check lifecycle; it doesn't participate
   // in the section's ref-driven Do Section orchestration.
