@@ -16,7 +16,7 @@
 
 import React from 'react';
 
-import { ImageRenderer, VideoRenderer, YouTubeVideoRenderer } from '../../docs-retrieval';
+import { ImageRenderer, VideoRenderer, YouTubeVideoRenderer, VimeoVideoRenderer } from '../../docs-retrieval';
 import { InteractiveConditional } from './interactive-conditional';
 
 /** Returns `true` if the child should receive a step number in the
@@ -29,7 +29,13 @@ export function shouldNumberSectionChild(child: React.ReactNode): boolean {
     return false;
   }
   const t = child.type;
-  return t !== ImageRenderer && t !== VideoRenderer && t !== YouTubeVideoRenderer && t !== InteractiveConditional;
+  return (
+    t !== ImageRenderer &&
+    t !== VideoRenderer &&
+    t !== YouTubeVideoRenderer &&
+    t !== VimeoVideoRenderer &&
+    t !== InteractiveConditional
+  );
 }
 
 /**
