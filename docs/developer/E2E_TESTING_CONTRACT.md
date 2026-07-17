@@ -8,7 +8,7 @@ For prescriptive agent constraints on testing strategy, see `.cursor/rules/testi
 
 The interactive system maintains **two sets of data attributes** with distinct purposes:
 
-### Original Attributes (Internal State Machine)
+### Runtime action attributes
 
 Used by the interactive engine to coordinate action execution and state management. These are **imperative** - they describe what action should be performed.
 
@@ -16,7 +16,7 @@ Examples: `data-targetaction`, `data-reftarget`, `data-targetvalue`, `data-step-
 
 See: [`docs/developer/interactive-examples/json-guide-format.md`](./interactive-examples/json-guide-format.md)
 
-### New Attributes (E2E Testing Contract)
+### Testing contract attributes
 
 Used by E2E tests to observe the current state of the interactive system. These are **declarative** - they describe what state the component is in.
 
@@ -45,7 +45,7 @@ These attributes form a **stable contract**:
 
 ### 3. Separation of Concerns
 
-- **Original attributes** → Internal state machine (action parameters)
+- **Runtime action attributes** → Internal state machine (action parameters)
 - **Test attributes** → External testing interface (observable state)
 
 ### 4. DOM as Public Interface
@@ -68,7 +68,7 @@ Applied to `InteractiveStep`, `InteractiveMultiStep`, and `InteractiveGuided` el
 
 **Purpose**: Current execution state of the step
 
-**Values**: See `STEP_STATES` in `src/docs-retrieval/components/interactive/step-states.ts`
+**Values**: See `STEP_STATES` in `src/components/interactive-tutorial/step-states.ts`
 
 - `idle` - Ready to execute, waiting for user
 - `checking` - Verifying requirements
@@ -150,7 +150,7 @@ console.log(`Progress: ${parseInt(currentIndex) + 1}/${totalSteps}`);
 
 **Purpose**: Classification of requirement fix needed when requirements are unmet
 
-**Values**: See `FIX_TYPES` in `src/docs-retrieval/components/interactive/step-states.ts`
+**Values**: See `FIX_TYPES` in `src/components/interactive-tutorial/step-states.ts`
 
 - `none` - No fix needed or no fix available
 - `navigation` - Need to open/expand navigation menu
@@ -184,7 +184,7 @@ if (fixType === 'navigation') {
 
 **Purpose**: Status of requirement checking
 
-**Values**: See `REQUIREMENTS_STATES` in `src/docs-retrieval/components/interactive/step-states.ts`
+**Values**: See `REQUIREMENTS_STATES` in `src/components/interactive-tutorial/step-states.ts`
 
 - `met` - All requirements satisfied, step is enabled
 - `unmet` - Requirements failed, step is blocked
@@ -205,7 +205,7 @@ if (fixType === 'navigation') {
 
 **Purpose**: Validation state for formfill actions (only present on formfill steps)
 
-**Values**: See `FORM_STATES` in `src/docs-retrieval/components/interactive/step-states.ts`
+**Values**: See `FORM_STATES` in `src/components/interactive-tutorial/step-states.ts`
 
 - `idle` - No validation in progress
 - `checking` - Debouncing input, validation pending
@@ -294,7 +294,7 @@ Applied to comment box elements created by `NavigationManager` and `GuidedHandle
 
 ### Constants and Type Safety
 
-All valid attribute values are defined in `src/docs-retrieval/components/interactive/step-states.ts`:
+All valid attribute values are defined in `src/components/interactive-tutorial/step-states.ts`:
 
 ```typescript
 export const STEP_STATES = {
@@ -367,7 +367,7 @@ Contract tests enforce the stability of E2E attributes at build time, preventing
 
 ### Location
 
-- `src/docs-retrieval/components/interactive/data-attributes.contract.test.tsx` - React component attributes
+- `src/components/interactive-tutorial/data-attributes.contract.test.tsx` - React component attributes
 - `src/interactive-engine/comment-box.contract.test.ts` - DOM-created element attributes
 - `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, window globals, scroll-restoration)
 
@@ -445,7 +445,7 @@ Guided steps run a substep loop driven by the comment box. The runner uses only 
 1. **Wait for execution to start**: After clicking "Do it", wait for the step element to have `data-test-step-state="executing"`.
 2. **Read substep bounds**: From the step element, read `data-test-substep-index` (current substep, 0-based) and `data-test-substep-total` (total substeps).
 3. **Locate the comment box**: Use `.interactive-comment-box` (visible while the guided step is executing).
-4. **Read the comment box contract**: From the comment box, read `data-test-action` (e.g. `button`, `highlight`, `formfill`, `hover`, `noop`), `data-test-reftarget` (selector for the current target; see Phase 2 and Comment Boxes above — absent for noop), and `data-test-target-value` (for formfill).
+4. **Read the comment box contract**: From the comment box, read `data-test-action` (e.g. `button`, `highlight`, `formfill`, `hover`, `noop`), `data-test-reftarget` (selector for the current target; see [Comment Boxes](#comment-boxes) — absent for noop), and `data-test-target-value` (for formfill).
 5. **Perform the substep**: For noop, click the Continue button; for button/highlight, resolve the target from `data-test-reftarget` and click; for hover, resolve and hover; for formfill, resolve and fill with `data-test-target-value`.
 6. **Wait for advance**: Poll the step element until `data-test-substep-index` increases or `data-test-step-state` becomes `"completed"`. If the step becomes `"error"` or `"cancelled"`, fail.
 
@@ -606,7 +606,7 @@ console.log(`Expected: idle, Actual: ${actualState}`);
 **Debug**:
 
 1. Check component's state variables in React DevTools
-2. Trace attribute derivation in `interactive-step.tsx:824-849`
+2. Trace attribute derivation in `src/components/interactive-tutorial/interactive-step.tsx`
 3. Verify contract test covers this scenario
 
 **Prevention**: Contract tests should catch these issues, but only if they verify both attribute AND UI state.

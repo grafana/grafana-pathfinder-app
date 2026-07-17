@@ -4,11 +4,24 @@ The Pathfinder CLI includes an end-to-end test runner for interactive JSON guide
 
 For prescriptive agent constraints on testing (unit, integration, and E2E), see `.cursor/rules/testingStrategy.mdc`.
 
+This is the canonical implementation-backed reference for E2E CLI behavior. Verify behavior against this document and the source files below before changing code.
+
 ## Key concepts
 
 - **DOM-based step discovery**: Tests interact with the rendered UI, not raw JSON. The plugin handles conditional logic; the runner iterates whatever steps are visible.
 - **Sequential execution**: Steps run in order, matching the real user flow.
 - **Requirements handling**: The runner detects unmet requirements, clicks Fix buttons, and handles skip/mandatory logic.
+
+## Source map for agents
+
+- `src/cli/commands/e2e.ts` — Commander options, input resolution, dependency planning, pre-flight orchestration, clean-stack resets, cloud routing, and per-guide Playwright invocation.
+- `src/cli/e2e/e2e-runner-contract.ts` — environment-variable contract between the CLI process and Playwright runner.
+- `src/cli/e2e/e2e-package.ts` — remote package and repository resolution, content fetch, schema validation, side-effect classification, and pre-run skip reasons.
+- `src/cli/e2e/e2e-targets.ts` — manifest `testEnvironment` to concrete target URL or skip reason.
+- `src/cli/e2e/cloud-provisioning.ts` and `src/cli/e2e/cloud-stack-pool-manager.ts` — shared-stack service-account isolation and pool-manager isolated stack leasing.
+- `tests/e2e-runner/guide-runner.spec.ts` — browser-side guide loading, pre-flight checks, DOM discovery, step execution, and result file writing.
+- `tests/e2e-runner/utils/guide-runner/` — step discovery, execution, requirement fixing, artifact capture, and failure classification.
+- `docs/developer/E2E_TESTING_CONTRACT.md` — stable `data-test-*` selector contract used by the runner.
 
 ## Quick start
 
@@ -194,8 +207,9 @@ When a step fails, the runner captures:
 
 - **Screenshot**: `{stepId}-failure.png` of the viewport
 - **DOM snapshot**: `{stepId}-dom.html` for selector debugging
+- **Console errors**: `{stepId}-console.json` for JavaScript errors observed during the step
 
-Artifacts are saved to the `--artifacts` directory (or a temp directory by default).
+Artifacts are saved to the `--artifacts` directory (or a temp directory by default). `--always-screenshot` also records pre-step, success, and final screenshots; `--trace` records a Playwright trace and surfaces the trace path in CLI output.
 
 ## Guided-block test guide
 
@@ -401,7 +415,22 @@ When a step fails, the runner assigns an error classification to help with triag
 
 Only `infrastructure` failures are auto-classified. `SELECTOR_NOT_FOUND`, `ACTION_FAILED`, and `REQUIREMENT_FAILED` default to `unknown` and require human triage — they could indicate content drift, a product regression, or a missing test environment setup.
 
-For the full rationale and validation plan behind this classification approach, see [Error Classification](../design/e2e-test-runner-design.md#error-classification) in the design doc.
+The implemented classifier lives in `tests/e2e-runner/utils/guide-runner/classification.ts`.
+
+### Result triage boundary
+
+The CLI produces local execution results, JSON reports, and artifacts. It does not own fleet scheduling, guide-health aggregation, artifact retention, metrics emission, alerting, or recommendation suppression; those concerns belong to the backend guide-health platform.
+
+Use CLI output to determine where the fix belongs:
+
+| Failure type   | Typical signal                                                         | Likely owner                               |
+| -------------- | ---------------------------------------------------------------------- | ------------------------------------------ |
+| Content drift  | A selector, requirement, or guide step no longer matches Grafana UI    | Guide/content author                       |
+| Product change | Grafana behavior changed and the guide still describes valid behavior  | Product owner or shared selector contract  |
+| Runner issue   | The CLI, Playwright runner, or `data-test-*` contract misreports state | Pathfinder CLI/E2E runner implementation   |
+| Infrastructure | Grafana, auth, networking, pool capacity, or environment setup failed  | Test environment or guide-health operators |
+
+When the failure is not clearly a runner or contract bug, avoid changing Pathfinder code just to make a guide pass. Update the guide, the test environment, or the backend guide-health platform instead.
 
 ## Remote package-aware testing
 
@@ -438,22 +467,26 @@ Pool-backed run behavior:
 ### Known gaps and follow-up
 
 - Interactive SSO/Okta login (driving the identity provider's login UI) is not supported.
-- Path/journey (`milestones`) expansion is not yet implemented; `path` and `journey` packages are skipped as an unsupported type. See the [Package-aware testing](../design/e2e-test-runner-design.md#package-aware-testing) design for the full picture.
+- Path/journey (`milestones`) expansion is not yet implemented; `path` and `journey` packages are skipped as an unsupported type.
 
 ### Package outcomes
 
-In remote modes a package can end in one of these states. Only `validation_failed` counts as a test failure; the rest are logged and the batch continues:
+In remote modes a package can end in one of these states. `failed`, `provisioning_failed`, and `validation_failed` produce a non-zero test-failure exit; `auth_expired` produces the auth-failure exit. Other skipped outcomes are logged and the batch continues.
 
-| Outcome                    | Meaning                                                    | Test failure? |
-| -------------------------- | ---------------------------------------------------------- | ------------- |
-| `passed` / `failed`        | The guide ran (see step results)                           | `failed` only |
-| `skipped_tier_mismatch`    | `cloud` guide on a `local` environment                     | No            |
-| `skipped_no_auth`          | `cloud` guide with no matching cloud auth                  | No            |
-| `skipped_invalid_instance` | manifest `instance` is not a bare hostname                 | No            |
-| `resolution_failed`        | Recommender returned 404 or a network error                | No            |
-| `fetch_failed`             | Could not fetch `content.json` from the CDN                | No            |
-| `unsupported_type`         | Package is a `path` / `journey` (milestone expansion TODO) | No            |
-| `validation_failed`        | Fetched `content.json` failed guide schema validation      | **Yes**       |
+| Outcome                       | Meaning                                                    | Test failure? |
+| ----------------------------- | ---------------------------------------------------------- | ------------- |
+| `passed` / `failed`           | The guide ran (see step results)                           | `failed` only |
+| `provisioning_failed`         | Cloud target provisioning or pool-manager leasing failed   | **Yes**       |
+| `skipped_tier_mismatch`       | `cloud` guide on a `local` environment                     | No            |
+| `skipped_no_auth`             | `cloud` guide with no matching cloud auth                  | No            |
+| `skipped_invalid_instance`    | manifest `instance` is not a bare hostname                 | No            |
+| `skipped_unsafe_shared_stack` | Unsafe cloud chain had no isolated stack route             | No            |
+| `resolution_failed`           | Recommender returned 404 or a network error                | No            |
+| `fetch_failed`                | Could not fetch `content.json` from the CDN                | No            |
+| `unsupported_type`            | Package is a `path` / `journey` (milestone expansion TODO) | No            |
+| `prerequisite_failed`         | A hard prerequisite could not be resolved before execution | No            |
+| `skipped_prereq`              | A prerequisite in the same dependency chain failed         | No            |
+| `validation_failed`           | Fetched `content.json` failed guide schema validation      | **Yes**       |
 
 With `--output`, pre-run skips are recorded under a `preRunSkipped` array, and each tested guide's report carries package metadata (`packageId`, `tier`, `instance`, `targetUrl`, `sourceUrl`).
 
@@ -493,4 +526,3 @@ npx pathfinder-cli e2e --tier cloud --package play-guide \
 - [E2E Testing Contract](./E2E_TESTING_CONTRACT.md) - data-test-\* attributes for reliable E2E selectors
 - [CLI tools](./CLI_TOOLS.md) - Guide validation commands
 - [Local development](./LOCAL_DEV.md) - Setting up the development environment
-- [E2E test runner design](../design/e2e-test-runner-design.md) - Architecture, design rationale, and package-aware testing design

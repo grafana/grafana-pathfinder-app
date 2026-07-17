@@ -44,13 +44,13 @@ After the CLI completes (pass or fail), collect:
 
 For each step in the guide, examine:
 
-| Aspect           | What to look for                                                       |
-| ---------------- | ---------------------------------------------------------------------- |
-| **Status**       | passed, failed, skipped, not_reached                                   |
-| **Skip reason**  | pre_completed, no_do_it_button, requirements_not_met, skippable_failed |
-| **Requirements** | Were requirements met? Did fix buttons work?                           |
-| **Timing**       | How long did each step take? Timeouts?                                 |
-| **Screenshots**  | Visual anomalies, unexpected UI state                                  |
+| Aspect           | What to look for                                   |
+| ---------------- | -------------------------------------------------- |
+| **Status**       | passed, failed, skipped, not_reached               |
+| **Skip reason**  | pre_completed, no_do_it_button, requirements_unmet |
+| **Requirements** | Were requirements met? Did fix buttons work?       |
+| **Timing**       | How long did each step take? Timeouts?             |
+| **Screenshots**  | Visual anomalies, unexpected UI state              |
 
 ### Step 4: Identify learnings
 
@@ -126,8 +126,8 @@ Use this template:
 
 For deeper context, read these files:
 
-- `docs/design/TESTING_STRATEGY.md` - Overall testing philosophy and failure classification
-- `docs/design/e2e-test-runner-design.md` - CLI architecture and step execution logic
+- `docs/developer/E2E_TESTING.md` - CLI architecture, options, outcomes, and troubleshooting
+- `docs/developer/E2E_TESTING_CONTRACT.md` - DOM selector contract used by the runner
 
 ## Exit codes reference
 

@@ -3,7 +3,7 @@
  *
  * Validates environment before running guide tests to fail fast with clear error messages.
  *
- * @see docs/design/e2e-test-runner-design.md#pre-flight-checks
+ * @see docs/developer/E2E_TESTING.md#how-it-works
  */
 
 import type { Page } from '@playwright/test';

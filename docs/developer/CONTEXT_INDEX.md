@@ -102,18 +102,17 @@ Load these files **only when working in the relevant domain**.
 
 ## AI-authoring design docs
 
-| File                                          | When to load                                                                                                                                       | Auto-triggered by globs                               |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `docs/design/PATHFINDER-AI-AUTHORING.md`      | Top-level AI-authoring design — read first before any AI-authoring task. Design intent (may not match implementation).                             | `src/cli/*`, `src/components/block-editor/*`          |
-| `docs/design/AGENT-AUTHORING.md`              | Authoring CLI design: schema-driven help, validate-on-write, idempotent retries, agent-oriented output. Design intent.                             | `src/cli/commands/*`                                  |
-| `docs/design/HOSTED-AUTHORING-MCP.md`         | TS MCP server design — validation strategy, stdio/HTTP transports, auth. Pair with `MCP_SERVER.md` for implementation reality.                     | `src/cli/mcp/*`                                       |
-| `docs/design/AUTHORING-SESSION-ARTIFACTS.md`  | Stateless artifact-as-wire-state model for MCP tool contracts (validate-on-write, idempotency). Design intent.                                     | `src/cli/mcp/*`                                       |
-| `docs/design/APP-PLATFORM-PUBLISH-HANDOFF.md` | App Platform publish payload shape, draft vs published, `localExport` fallback. Design intent.                                                     | `src/cli/mcp/*`, `src/components/block-editor/*`      |
-| `docs/design/VIEWER-DEEP-LINK-CONTRACT.md`    | Viewer deep link format (`doc=api:<id>`), panel-mode contract, resource name stability. Design intent.                                             | `src/components/docs-panel/*`                         |
-| `docs/design/CLIENT-ORCHESTRATION-GUIDE.md`   | How AI clients use the MCP service — workflow, confirmation, publish-path selection. Design intent.                                                | `src/integrations/assistant-integration/*`            |
-| `docs/design/PATHFINDER-PACKAGE-DESIGN.md`    | Package model: two-file structure, manifest metadata, dependencies, repository structure. Canonical spec for `package-engine` and CLI tooling.     | `src/types/package.schema.ts`, `src/package-engine/*` |
-| `docs/design/TESTING_STRATEGY.md`             | E2E testing strategy with 4-layer model, test-environment routing, manifest metadata requirements. Pair with `E2E_TESTING.md` for runtime details. | `src/types/package.schema.ts`                         |
-| `docs/design/phases/*.md`                     | Phase-specific implementation plans for AI authoring (P0–P6)                                                                                       | --                                                    |
+| File                                          | When to load                                                                                                                                   | Auto-triggered by globs                               |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `docs/design/PATHFINDER-AI-AUTHORING.md`      | Top-level AI-authoring design — read first before any AI-authoring task. Design intent (may not match implementation).                         | `src/cli/*`, `src/components/block-editor/*`          |
+| `docs/design/AGENT-AUTHORING.md`              | Authoring CLI design: schema-driven help, validate-on-write, idempotent retries, agent-oriented output. Design intent.                         | `src/cli/commands/*`                                  |
+| `docs/design/HOSTED-AUTHORING-MCP.md`         | TS MCP server design — validation strategy, stdio/HTTP transports, auth. Pair with `MCP_SERVER.md` for implementation reality.                 | `src/cli/mcp/*`                                       |
+| `docs/design/AUTHORING-SESSION-ARTIFACTS.md`  | Stateless artifact-as-wire-state model for MCP tool contracts (validate-on-write, idempotency). Design intent.                                 | `src/cli/mcp/*`                                       |
+| `docs/design/APP-PLATFORM-PUBLISH-HANDOFF.md` | App Platform publish payload shape, draft vs published, `localExport` fallback. Design intent.                                                 | `src/cli/mcp/*`, `src/components/block-editor/*`      |
+| `docs/design/VIEWER-DEEP-LINK-CONTRACT.md`    | Viewer deep link format (`doc=api:<id>`), panel-mode contract, resource name stability. Design intent.                                         | `src/components/docs-panel/*`                         |
+| `docs/design/CLIENT-ORCHESTRATION-GUIDE.md`   | How AI clients use the MCP service — workflow, confirmation, publish-path selection. Design intent.                                            | `src/integrations/assistant-integration/*`            |
+| `docs/design/PATHFINDER-PACKAGE-DESIGN.md`    | Package model: two-file structure, manifest metadata, dependencies, repository structure. Canonical spec for `package-engine` and CLI tooling. | `src/types/package.schema.ts`, `src/package-engine/*` |
+| `docs/design/phases/*.md`                     | Phase-specific implementation plans for AI authoring (P0–P6)                                                                                   | --                                                    |
 
 ## Skills
 
