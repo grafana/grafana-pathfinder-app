@@ -49,7 +49,7 @@ import type {
   AllStepsResult,
   OnStepCompleteCallback,
 } from './types';
-import { resolveSelector } from '../../../../src/lib/dom';
+import { resolveSelector } from '../selector-resolver';
 import type { Locator } from '@playwright/test';
 
 // ============================================
@@ -244,7 +244,7 @@ const GUIDED_WAIT_EXECUTING_MS = 5000;
 /**
  * Resolve data-test-reftarget to a Playwright locator for the current substep.
  * Button: try getByRole('button', { name }) then locator(selector); others use locator(selector).
- * Handles grafana: prefix via resolveSelector.
+ * Handles grafana: prefix through the Node-safe E2E resolver.
  */
 async function resolveGuidedTarget(page: Page, reftarget: string, actionType: string): Promise<Locator> {
   const timeout = GUIDED_TARGET_RESOLUTION_TIMEOUT_MS;
