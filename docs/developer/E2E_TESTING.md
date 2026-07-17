@@ -58,8 +58,8 @@ npx pathfinder-cli e2e [options] [files...]
 | `--cloud-url <url>`                        | Default Grafana Cloud instance URL for cloud-tier guides without a manifest `instance`.                                                                  | `https://learn.grafana.net/`      |
 | `--cloud-stack-pool-manager-url <url>`     | Pool manager base URL for isolated Grafana Cloud stack leasing.                                                                                          | None                              |
 | `--cloud-stack-pool-manager-token <env>`   | Pool manager bearer token env var for isolated Grafana Cloud stack leasing.                                                                              | None                              |
-| `--cloud-stack-pool-id <id>`               | Pool manager pool id for isolated Grafana Cloud stack leasing.                                                                                           | `nightly`                         |
-| `--cloud-stack-max-wait-seconds <seconds>` | Maximum wait budget for pool-manager lease requests.                                                                                                     | None                              |
+| `--cloud-stack-pool-id <id>`               | Pool manager pool id for isolated Grafana Cloud stack leasing. Pass the pool id configured on the pool manager you are targeting.                        | `nightly`                         |
+| `--cloud-stack-max-wait-seconds <seconds>` | Maximum wait budget for pool-manager lease requests. The manager returns a lease within this budget or fails the chain.                                  | None                              |
 
 ### Input formats
 
@@ -418,15 +418,27 @@ Guides are routed by their manifest's `testEnvironment.tier`:
 Cloud auth:
 
 - **Admin token per cloud target.** Pass `--cloud-instance-admin-token learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN` to associate an admin service-account token env var with a cloud target. The CLI uses that admin token only to mint a fresh service account and short-lived token for each dependency chain; the browser runner receives only the minted token. Repeat the flag for each supported instance.
-- **Isolated stack leasing.** Pass `--cloud-stack-pool-manager-url <url>` and `--cloud-stack-pool-manager-token <env>` to let unsafe cloud dependency chains lease disposable Grafana Cloud stacks from the pool manager instead of the shared target. `--cloud-stack-pool-id` defaults to `nightly`. The CLI sends `POST /v1/leases` before a dependency chain, runs all cloud guides in that chain against the returned `grafanaUrl` and `runnerToken`, then sends `POST /v1/leases/{leaseId}/retire` during teardown. The CLI never receives or uses a Grafana Cloud Access Policy token.
+- **Isolated stack leasing.** Pass `--cloud-stack-pool-manager-url <url>` and `--cloud-stack-pool-manager-token <env>` to let unsafe cloud dependency chains lease disposable Grafana Cloud stacks from the pool manager instead of the shared target. Pass `--cloud-stack-pool-id <id>` matching the pool configured on the pool manager you are targeting; the CLI default is `nightly`. The CLI sends `POST /v1/leases` before a dependency chain, runs all cloud guides in that chain against the returned `grafanaUrl` and `runnerToken`, then sends `POST /v1/leases/{leaseId}/retire` during teardown.
 
 Per-chain service-account isolation mirrors how `--clean` resets the local docker stack per chain. Minted tokens carry a TTL, and accounts orphaned by crashed runs are swept on the next run. This isolates per-identity state (preferences, stars, sessions) between chains; it does **not** reset org data such as dashboards or data sources created by guides.
 
-Pool-manager stack routing is used for cloud dependency chains classified as `possibly_mutating`, `mutating`, or `unknown` when manager config is present. It is also used for cloud chains that lack matching shared-stack auth. If the manager returns `no_capacity`, the affected chain fails instead of running against a shared stack. Cold provisioning and plugin installation are manager responsibilities for a later phase.
+Pool-manager stack routing is used when pool manager config is present for any cloud dependency chain that is classified as `possibly_mutating`, `mutating`, or `unknown`, or whose target host has no matching `--cloud-instance-admin-token`. Read-only chains with a matching admin token keep using the faster shared-stack service-account path; read-only chains without one route through the pool manager rather than being skipped.
 
-Read-only cloud chains with matching `--cloud-instance-admin-token` keep using the faster shared-stack service-account path. If a cloud chain lacks shared-stack auth but isolated stack config is present, the runner can use an isolated stack for that chain.
+### Pool-backed cloud runs
 
-Interactive SSO/Okta login (driving the identity provider's login UI) is not supported. Path/journey (`milestones`) expansion is also not yet implemented; `path` and `journey` packages are skipped as an unsupported type. See the [Package-Aware Testing](../design/e2e-test-runner-design.md#package-aware-testing) design for the full picture.
+The pool manager leases from a **hot pool**: a set of pre-warmed Grafana Cloud stacks that already exist before the runner asks for one. Hot-pool leases are immediate when capacity is available because the manager returns an existing stack URL and a runner token. The runner requests leases with `fallbackPolicy: "hot_only"` and does not concern itself with how the pool manager fulfills or replenishes that pool.
+
+Pool-backed run behavior:
+
+- A configured but unreachable pool manager fails the run during setup with a pool-manager request error. The runner does not silently fall back to a shared cloud stack for unsafe chains.
+- `--cloud-stack-max-wait-seconds` is sent to the manager as the maximum lease wait budget. If the budget expires, the manager should return an error such as `no_capacity` or a timeout-specific code; the affected chain is reported as failed.
+- Each successful lease is retired with `POST /v1/leases/{leaseId}/retire` during teardown. If the runner crashes before teardown, the pool manager recovers the orphaned lease through its TTL-based expiry, currently one hour.
+- When pool capacity is exhausted, CI should treat the result as infrastructure capacity exhaustion, not content drift. Operators should increase hot-pool capacity, free stuck leases, or retry after capacity recovers.
+
+### Known gaps and follow-up
+
+- Interactive SSO/Okta login (driving the identity provider's login UI) is not supported.
+- Path/journey (`milestones`) expansion is not yet implemented; `path` and `journey` packages are skipped as an unsupported type. See the [Package-aware testing](../design/e2e-test-runner-design.md#package-aware-testing) design for the full picture.
 
 ### Package outcomes
 
@@ -463,12 +475,12 @@ npx pathfinder-cli e2e --remote --tier cloud \
   --cloud-url https://learn.grafana.net/ \
   --cloud-instance-admin-token learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN
 
-# Test unsafe cloud guides with pool-manager isolated stacks
+# Test all cloud guides with pool-manager isolated stacks
 export POOL_MANAGER_TOKEN=pool_manager_token_xxx
 npx pathfinder-cli e2e --remote --tier cloud \
   --cloud-stack-pool-manager-url https://pool-manager.example.com/ \
   --cloud-stack-pool-manager-token POOL_MANAGER_TOKEN \
-  --cloud-stack-pool-id nightly
+  --cloud-stack-pool-id <pool-id>
 
 # Test a guide whose manifest declares instance: play.grafana.org
 export GRAFANA_PLAY_ADMIN_TOKEN=glsa_play_admin_xxx
