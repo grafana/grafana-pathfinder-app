@@ -4,8 +4,7 @@
  * Functions for discovering testable steps from the rendered DOM.
  * Implements DOM-based step discovery per the E2E Test Runner design.
  *
- * @see docs/design/e2e-test-runner-design.md
- * @see docs/design/L3-phase1-verification-results.md
+ * @see docs/developer/E2E_TESTING.md#how-it-works
  */
 
 import { Page, Locator } from '@playwright/test';

@@ -4,7 +4,7 @@
  * Configuration constants for the guide test runner utilities.
  * Includes timing constants, selector patterns, and error classification patterns.
  *
- * @see docs/design/e2e-test-runner-design.md
+ * @see docs/developer/E2E_TESTING.md#timing-and-timeouts
  */
 
 // ============================================

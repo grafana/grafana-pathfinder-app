@@ -893,7 +893,7 @@ Recommendation: **(A)** by default, with **(B)** as an optional flag. Non-Grafan
 ### Pathfinder platform
 
 - [Pathfinder package design](./PATHFINDER-PACKAGE-DESIGN.md) — Authoritative source for package model, metadata, dependencies, and targeting
-- [Testing strategy](./TESTING_STRATEGY.md) — Content-as-Code vision and testing pyramid
+- [E2E testing](../developer/E2E_TESTING.md) — E2E CLI behavior and result triage
 - [Schema types](../../src/types/json-guide.types.ts) — Current TypeScript type definitions
 - [Schema validation](../../src/types/json-guide.schema.ts) — Current Zod schemas
 
