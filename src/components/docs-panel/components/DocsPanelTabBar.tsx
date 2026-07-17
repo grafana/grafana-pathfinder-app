@@ -29,6 +29,23 @@ import {
   getJourneyProperties,
   tabTypeToContentType,
 } from '../../../lib/analytics';
+import { getJourneyCompletionPercentageFor } from '../../../global-state/journey-context';
+import { getMilestoneSlug } from '../../../docs-retrieval';
+
+// Closes can target background tabs, where the active-journey supplier would
+// report the wrong journey's completion — resolve per tab instead.
+function journeyCloseProperties(tab: LearningJourneyTab): Record<string, number> {
+  const lj = tab.content?.type === 'learning-journey' ? tab.content.metadata?.learningJourney : undefined;
+  if (!lj) {
+    return {};
+  }
+  const completion = getJourneyCompletionPercentageFor(
+    tab.baseUrl,
+    lj.milestones?.map((m) => getMilestoneSlug(m.url)).filter(Boolean),
+    lj.totalMilestones ?? 0
+  );
+  return getJourneyProperties(tab.content, completion ?? undefined);
+}
 
 export interface DocsPanelTabBarProps {
   styles: DocsPanelStyles;
@@ -148,7 +165,7 @@ export function DocsPanelTabBar({
                         tab_title: tab.title,
                         content_url: tab.currentUrl || tab.baseUrl,
                         interaction_location: 'tab_button',
-                        ...getJourneyProperties(tab.content),
+                        ...journeyCloseProperties(tab),
                       });
                       onCloseTab(tab.id);
                     }}
@@ -236,7 +253,7 @@ export function DocsPanelTabBar({
                         tab_title: tab.title,
                         content_url: tab.currentUrl || tab.baseUrl,
                         close_location: 'dropdown',
-                        ...getJourneyProperties(tab.content),
+                        ...journeyCloseProperties(tab),
                       });
                       onCloseTab(tab.id);
                     }}

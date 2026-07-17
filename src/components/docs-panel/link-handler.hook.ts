@@ -13,6 +13,7 @@ import {
   AnalyticsLinkType,
 } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
+import { getActiveJourneyCompletionPercentage } from '../../global-state/journey-context';
 import { getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
 import {
   parseUrlSafely,
@@ -83,7 +84,11 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             content_url: activeTab.baseUrl,
             content_type: AnalyticsContentType.LearningJourney,
             interaction_location: 'ready_to_begin_button',
-            ...buildProgressProperties(1, activeTab.content?.metadata?.learningJourney?.totalMilestones || 0),
+            ...buildProgressProperties(
+              1,
+              activeTab.content?.metadata?.learningJourney?.totalMilestones || 0,
+              getActiveJourneyCompletionPercentage() ?? undefined
+            ),
           });
 
           // Navigate directly to the first milestone URL. Use the unified
@@ -101,7 +106,11 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               content_url: activeTab.baseUrl,
               content_type: AnalyticsContentType.LearningJourney,
               interaction_location: 'ready_to_begin_button_fallback',
-              ...buildProgressProperties(1, activeTab.content.metadata.learningJourney.milestones.length),
+              ...buildProgressProperties(
+                1,
+                activeTab.content.metadata.learningJourney.milestones.length,
+                getActiveJourneyCompletionPercentage() ?? undefined
+              ),
             });
 
             model.loadTab(activeTab.id, firstMilestone.url);
@@ -263,7 +272,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                     link_type: AnalyticsLinkType.InteractiveLearning,
                     interaction_location: 'interactive_learning_link',
                   },
-                  activeTab?.content
+                  activeTab?.content,
+                  getActiveJourneyCompletionPercentage() ?? undefined
                 )
               )
             );
@@ -290,7 +300,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                     link_type: AnalyticsLinkType.ExternalBrowser,
                     interaction_location: 'external_link',
                   },
-                  activeTab?.content
+                  activeTab?.content,
+                  getActiveJourneyCompletionPercentage() ?? undefined
                 )
               )
             );
@@ -375,7 +386,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                     link_type: AnalyticsLinkType.SideJourney,
                     interaction_location: 'side_journey_link',
                   },
-                  activeTab?.content
+                  activeTab?.content,
+                  getActiveJourneyCompletionPercentage() ?? undefined
                 )
               )
             );
@@ -394,7 +406,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                     link_type: AnalyticsLinkType.SideJourneyExternal,
                     interaction_location: 'side_journey_link',
                   },
-                  activeTab?.content
+                  activeTab?.content,
+                  getActiveJourneyCompletionPercentage() ?? undefined
                 )
               )
             );
@@ -457,7 +470,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                     link_type: AnalyticsLinkType.RelatedJourney,
                     interaction_location: 'related_journey_link',
                   },
-                  activeTab?.content
+                  activeTab?.content,
+                  getActiveJourneyCompletionPercentage() ?? undefined
                 )
               )
             );
@@ -476,7 +490,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                     link_type: AnalyticsLinkType.RelatedJourneyExternal,
                     interaction_location: 'related_journey_link',
                   },
-                  activeTab?.content
+                  activeTab?.content,
+                  getActiveJourneyCompletionPercentage() ?? undefined
                 )
               )
             );
@@ -507,19 +522,16 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             content_url: activeTab?.baseUrl || 'unknown',
             content_type: AnalyticsContentType.LearningJourney,
             interaction_location: 'bottom_navigation',
-            ...getJourneyNavigationProperties(activeTab?.content?.metadata.learningJourney, 'backward'),
+            ...getJourneyNavigationProperties(
+              activeTab?.content?.metadata.learningJourney,
+              'backward',
+              getActiveJourneyCompletionPercentage() ?? undefined
+            ),
           });
           model.navigateToPreviousMilestone();
         } else if (navDirection === 'next' && model.canNavigateNext()) {
-          reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
-            content_title: activeTab?.title || 'unknown',
-            content_url: activeTab?.baseUrl || 'unknown',
-            content_type: AnalyticsContentType.LearningJourney,
-            interaction_location: 'bottom_navigation',
-            ...getJourneyNavigationProperties(activeTab?.content?.metadata.learningJourney, 'forward'),
-          });
-
-          // Mark current milestone done if it has no interactive steps
+          // Mark a step-less milestone done BEFORE reporting so the click
+          // that completes it is reflected in its own event's completion.
           if (activeTab?.content?.type === 'learning-journey' && activeTab?.currentUrl && activeTab?.baseUrl) {
             const hasInteractiveSteps = (contentRef?.current?.querySelectorAll('[data-step-id]').length ?? 0) > 0;
             if (!hasInteractiveSteps) {
@@ -533,6 +545,18 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               }
             }
           }
+
+          reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
+            content_title: activeTab?.title || 'unknown',
+            content_url: activeTab?.baseUrl || 'unknown',
+            content_type: AnalyticsContentType.LearningJourney,
+            interaction_location: 'bottom_navigation',
+            ...getJourneyNavigationProperties(
+              activeTab?.content?.metadata.learningJourney,
+              'forward',
+              getActiveJourneyCompletionPercentage() ?? undefined
+            ),
+          });
 
           model.navigateToNextMilestone();
         }

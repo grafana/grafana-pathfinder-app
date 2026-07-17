@@ -27,6 +27,10 @@ export interface UseGlobalActiveTabExposureParams {
   activeTabBaseUrl: string | undefined;
   journeyMilestone?: number;
   journeyTotalMilestones?: number;
+  /** Must be derived with getMilestoneSlug, matching markMilestoneDone's writes, or set membership fails. */
+  journeyActiveMilestoneSlug?: string;
+  /** Roster of milestone slugs, same derivation; caller must memoize the array reference. */
+  journeyMilestoneSlugs?: string[];
 }
 
 export function useGlobalActiveTabExposure({
@@ -35,6 +39,8 @@ export function useGlobalActiveTabExposure({
   activeTabBaseUrl,
   journeyMilestone,
   journeyTotalMilestones,
+  journeyActiveMilestoneSlug,
+  journeyMilestoneSlugs,
 }: UseGlobalActiveTabExposureParams): void {
   React.useLayoutEffect(() => {
     try {
@@ -49,6 +55,8 @@ export function useGlobalActiveTabExposure({
             journeyUrl: activeTabBaseUrl || '',
             milestoneNumber: journeyMilestone ?? 0,
             totalMilestones: journeyTotalMilestones,
+            activeMilestoneSlug: journeyActiveMilestoneSlug,
+            milestoneSlugs: journeyMilestoneSlugs,
           }
         : null
     );
@@ -61,5 +69,13 @@ export function useGlobalActiveTabExposure({
       setFaroViewName('recommendations');
     }
     return () => setActiveJourneyContext(null);
-  }, [activeTabId, activeTabCurrentUrl, activeTabBaseUrl, journeyMilestone, journeyTotalMilestones]);
+  }, [
+    activeTabId,
+    activeTabCurrentUrl,
+    activeTabBaseUrl,
+    journeyMilestone,
+    journeyTotalMilestones,
+    journeyActiveMilestoneSlug,
+    journeyMilestoneSlugs,
+  ]);
 }

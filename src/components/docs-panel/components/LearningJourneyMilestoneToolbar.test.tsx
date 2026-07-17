@@ -30,7 +30,8 @@ jest.mock('../../../lib/analytics', () => ({
   getContentTypeForAnalytics: () => 'learning-journey',
   getJourneyNavigationProperties: (
     lj: { currentMilestone?: number; totalMilestones?: number } | undefined,
-    direction: 'forward' | 'backward'
+    direction: 'forward' | 'backward',
+    completionPercentage?: number
   ) => {
     const total = lj?.totalMilestones ?? 0;
     const current = lj?.currentMilestone ?? 0;
@@ -39,23 +40,24 @@ jest.mock('../../../lib/analytics', () => ({
       direction,
       progress_step: destination,
       progress_total: total,
-      completion_percentage: total > 0 ? Math.round((destination / total) * 100) : 0,
+      ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
     };
   },
-  getJourneyProperties: (content?: {
-    type?: string;
-    metadata?: { learningJourney?: { currentMilestone?: number; totalMilestones?: number } };
-  }) => {
+  getJourneyProperties: (
+    content?: {
+      type?: string;
+      metadata?: { learningJourney?: { currentMilestone?: number; totalMilestones?: number } };
+    },
+    completionPercentage?: number
+  ) => {
     const lj = content?.type === 'learning-journey' ? content?.metadata?.learningJourney : undefined;
     if (!lj) {
       return {};
     }
-    const total = lj.totalMilestones ?? 0;
-    const current = lj.currentMilestone ?? 0;
     return {
-      progress_step: current,
-      progress_total: total,
-      completion_percentage: total > 0 ? Math.round((current / total) * 100) : 0,
+      progress_step: lj.currentMilestone ?? 0,
+      progress_total: lj.totalMilestones ?? 0,
+      ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
     };
   },
   tabTypeToContentType: (type?: string) => (type === 'interactive' ? 'interactive-guide' : type || 'docs'),
@@ -68,9 +70,12 @@ jest.mock('../../../lib/analytics', () => ({
 }));
 
 jest.mock('../../../docs-retrieval', () => ({
-  getJourneyProgress: () => 0,
   getMilestoneSlug: (url: string) => url.split('/').filter(Boolean).pop() ?? null,
   markMilestoneDone: (...args: unknown[]) => markMilestoneDoneMock(...args),
+}));
+
+jest.mock('../../../global-state/journey-context', () => ({
+  getActiveJourneyCompletionPercentage: jest.fn(() => 42),
 }));
 
 jest.mock('../utils', () => ({
@@ -221,6 +226,11 @@ describe('LearningJourneyMilestoneToolbar', () => {
     fireEvent.click(screen.getByLabelText('Next milestone'));
 
     expect(markMilestoneDoneMock).toHaveBeenCalledWith('https://grafana.com/docs/learning-journeys/foo', 'm1', 3);
+    // Marked BEFORE reporting: the click that completes a step-less
+    // milestone must be included in its own event's completion.
+    expect(markMilestoneDoneMock.mock.invocationCallOrder[0]).toBeLessThan(
+      reportAppInteractionMock.mock.invocationCallOrder[0] ?? Infinity
+    );
   });
 
   it('does NOT mark the milestone done when the rendered DOM has interactive steps', () => {
@@ -290,7 +300,7 @@ describe('LearningJourneyMilestoneToolbar', () => {
           content_type: 'learning-journey',
           progress_step: 2,
           progress_total: 3,
-          completion_percentage: 67,
+          completion_percentage: 42,
           direction: 'forward',
           interaction_location: 'milestone_progress_bar',
         })
@@ -309,7 +319,7 @@ describe('LearningJourneyMilestoneToolbar', () => {
           content_type: 'learning-journey',
           progress_step: 1,
           progress_total: 3,
-          completion_percentage: 33,
+          completion_percentage: 42,
           direction: 'backward',
           interaction_location: 'milestone_progress_bar',
         })
@@ -330,7 +340,7 @@ describe('LearningJourneyMilestoneToolbar', () => {
         expect.objectContaining({
           progress_step: 3,
           progress_total: 3,
-          completion_percentage: 100,
+          completion_percentage: 42,
           direction: 'forward',
         })
       );
@@ -349,7 +359,7 @@ describe('LearningJourneyMilestoneToolbar', () => {
         expect.objectContaining({
           progress_step: 0,
           progress_total: 3,
-          completion_percentage: 0,
+          completion_percentage: 42,
           direction: 'backward',
         })
       );

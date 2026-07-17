@@ -18,6 +18,7 @@ import { journeyCompletionStorage, milestoneCompletionStorage, learningProgressS
 // `await import(...)` calls scattered through the module.
 // eslint-disable-next-line no-restricted-imports
 import { markGuideCompleted } from '../learning-paths';
+import { noteMilestoneCompleted, primeJourneyCompletedMilestones } from '../global-state/journey-context';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
 const GRAFANA_BASE = new URL('https://grafana.com');
@@ -87,18 +88,24 @@ export function getTotalMilestones(content: RawContent): number {
 /**
  * Progress tracking helpers
  */
-export function getJourneyProgress(content: RawContent): number {
-  if (content.type !== 'learning-journey' || !content.metadata.learningJourney) {
+export function computeMilestoneCompletionPercentage(completedSlugs: Set<string>, milestones: Milestone[]): number {
+  if (milestones.length === 0) {
     return 0;
   }
+  const completed = milestones.filter((m) => completedSlugs.has(getMilestoneSlug(m.url))).length;
+  return Math.min(100, Math.max(0, Math.round((completed / milestones.length) * 100)));
+}
 
-  const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
-
-  if (totalMilestones === 0) {
-    return 0;
-  }
-
-  return Math.round((currentMilestone / totalMilestones) * 100);
+/**
+ * Loads the persisted completed-milestone set, primes the synchronous
+ * journey-context cache for analytics, and returns the milestone-level
+ * completion percentage (no live step fraction — recordJourneyCompletion's
+ * monotonic max means the persisted value never regresses anyway).
+ */
+export async function syncJourneyMilestoneCompletion(journeyBaseUrl: string, milestones: Milestone[]): Promise<number> {
+  const completed = await milestoneCompletionStorage.getCompleted(journeyBaseUrl);
+  primeJourneyCompletedMilestones(journeyBaseUrl, completed);
+  return computeMilestoneCompletionPercentage(completed, milestones);
 }
 
 export function isJourneyCoverPage(content: RawContent): boolean {
@@ -405,6 +412,9 @@ export async function markMilestoneDone(
   if (!milestoneSlug) {
     return;
   }
+  // Synchronous cache update first: click handlers report analytics in the
+  // same tick and must see the milestone this very click completes.
+  noteMilestoneCompleted(journeyBaseUrl, milestoneSlug);
   await milestoneCompletionStorage.markCompleted(journeyBaseUrl, milestoneSlug);
   await markGuideCompleted(milestoneSlug);
 

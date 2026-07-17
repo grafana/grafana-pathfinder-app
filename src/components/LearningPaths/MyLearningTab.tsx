@@ -22,8 +22,10 @@ import {
   journeyCompletionStorage,
   interactiveStepStorage,
   interactiveCompletionStorage,
+  milestoneCompletionStorage,
 } from '../../lib/user-storage';
 import { evictAllContentCaches } from '../../global-state/completion-store';
+import { clearJourneyCompletedMilestonesCache } from '../../global-state/journey-context';
 import type { EarnedBadge } from '../../types';
 
 // Badge utilities extracted for testability
@@ -361,6 +363,12 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       for (const url of Object.keys(completions)) {
         await journeyCompletionStorage.clear(url);
       }
+
+      // Clear per-milestone completion too — it now drives journey
+      // completion_percentage, so surviving slugs would re-persist high
+      // percentages on the next journey load.
+      await milestoneCompletionStorage.clearAll();
+      clearJourneyCompletedMilestonesCache();
 
       // Clear all interactive guide step and completion state
       // This prevents guides from instantly re-completing when reopened

@@ -287,7 +287,7 @@ describe('setupScrollTracking PanelScroll content_type', () => {
     cleanup();
   });
 
-  it('adds the journey progress trio for learning-journey tabs', () => {
+  it('adds journey position and the supplier-provided step-driven completion for learning-journey tabs', () => {
     const el = document.createElement('div');
     const activeTab = {
       type: 'learning-journey' as const,
@@ -297,13 +297,32 @@ describe('setupScrollTracking PanelScroll content_type', () => {
       },
     };
 
-    const cleanup = setupScrollTracking(el, activeTab, false);
+    const cleanup = setupScrollTracking(el, activeTab, false, () => 40);
     fireScroll(el);
 
     const props = mockReportInteraction.mock.calls[0][1];
     expect(props.progress_step).toBe(2);
     expect(props.progress_total).toBe(4);
-    expect(props.completion_percentage).toBe(50);
+    expect(props.completion_percentage).toBe(40);
+    cleanup();
+  });
+
+  it('omits completion_percentage when no journey completion supplier is provided', () => {
+    const el = document.createElement('div');
+    const activeTab = {
+      type: 'learning-journey' as const,
+      content: {
+        url: 'https://example.com/journey/m3',
+        metadata: { learningJourney: { currentMilestone: 3, totalMilestones: 4 } },
+      },
+    };
+
+    const cleanup = setupScrollTracking(el, activeTab, false);
+    fireScroll(el);
+
+    const props = mockReportInteraction.mock.calls[0][1];
+    expect(props.progress_step).toBe(3);
+    expect(props).not.toHaveProperty('completion_percentage');
     cleanup();
   });
 });
@@ -361,30 +380,28 @@ describe('progress property helpers', () => {
     expect(journeyProgressProperties(0, 0)).toEqual({ progress_step: 0, progress_total: 0, completion_percentage: 0 });
   });
 
-  it('getJourneyNavigationProperties reports the destination milestone with a matching percentage', () => {
-    expect(getJourneyNavigationProperties({ currentMilestone: 5, totalMilestones: 6 }, 'forward')).toEqual({
+  it('getJourneyNavigationProperties reports the destination milestone with caller-supplied completion', () => {
+    expect(getJourneyNavigationProperties({ currentMilestone: 5, totalMilestones: 6 }, 'forward', 33)).toEqual({
       direction: 'forward',
       progress_step: 6,
       progress_total: 6,
-      completion_percentage: 100,
+      completion_percentage: 33,
     });
     expect(getJourneyNavigationProperties({ currentMilestone: 6, totalMilestones: 6 }, 'forward')).toEqual({
       direction: 'forward',
       progress_step: 6,
       progress_total: 6,
-      completion_percentage: 100,
     });
-    expect(getJourneyNavigationProperties({ currentMilestone: 1, totalMilestones: 6 }, 'backward')).toEqual({
+    expect(getJourneyNavigationProperties({ currentMilestone: 1, totalMilestones: 6 }, 'backward', 17)).toEqual({
       direction: 'backward',
       progress_step: 0,
       progress_total: 6,
-      completion_percentage: 0,
+      completion_percentage: 17,
     });
     expect(getJourneyNavigationProperties(undefined, 'forward')).toEqual({
       direction: 'forward',
       progress_step: 0,
       progress_total: 0,
-      completion_percentage: 0,
     });
   });
 });

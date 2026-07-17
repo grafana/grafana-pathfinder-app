@@ -20,20 +20,21 @@ jest.mock('@grafana/runtime', () => {
 jest.mock('../../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   getContentTypeForAnalytics: jest.fn((_url: string, fallback: string) => fallback ?? 'docs'),
-  getJourneyProperties: (content?: {
-    type?: string;
-    metadata?: { learningJourney?: { currentMilestone?: number; totalMilestones?: number } };
-  }) => {
+  getJourneyProperties: (
+    content?: {
+      type?: string;
+      metadata?: { learningJourney?: { currentMilestone?: number; totalMilestones?: number } };
+    },
+    completionPercentage?: number
+  ) => {
     const lj = content?.type === 'learning-journey' ? content?.metadata?.learningJourney : undefined;
     if (!lj) {
       return {};
     }
-    const total = lj.totalMilestones ?? 0;
-    const current = lj.currentMilestone ?? 0;
     return {
-      progress_step: current,
-      progress_total: total,
-      completion_percentage: total > 0 ? Math.round((current / total) * 100) : 0,
+      progress_step: lj.currentMilestone ?? 0,
+      progress_total: lj.totalMilestones ?? 0,
+      ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
     };
   },
   tabTypeToContentType: (type?: string) => (type === 'interactive' ? 'interactive-guide' : type || 'docs'),
@@ -42,6 +43,15 @@ jest.mock('../../../lib/analytics', () => ({
     GeneralPluginFeedbackButton: 'general_plugin_feedback_button',
     CloseTabClick: 'close_tab_click',
   },
+}));
+
+const getJourneyCompletionPercentageForMock = jest.fn();
+jest.mock('../../../global-state/journey-context', () => ({
+  getJourneyCompletionPercentageFor: (...args: unknown[]) => getJourneyCompletionPercentageForMock(...args),
+}));
+
+jest.mock('../../../docs-retrieval', () => ({
+  getMilestoneSlug: (url: string) => url.split('/').filter(Boolean).pop() ?? '',
 }));
 
 jest.mock('../../../lib/storage/extension-sidebar', () => ({
@@ -110,7 +120,7 @@ describe('DocsPanelTabBar', () => {
     });
   });
 
-  it('reports the journey progress trio on close_tab_click for learning-journey tabs', () => {
+  describe('close_tab_click journey completion', () => {
     const journeyTab: any = {
       id: 'journey-1',
       title: 'Journey',
@@ -119,24 +129,57 @@ describe('DocsPanelTabBar', () => {
       currentUrl: 'https://example.com/lj/m2',
       content: {
         type: 'learning-journey',
-        metadata: { learningJourney: { currentMilestone: 2, totalMilestones: 4 } },
+        metadata: {
+          learningJourney: {
+            currentMilestone: 2,
+            totalMilestones: 4,
+            milestones: [
+              { number: 1, url: 'https://example.com/lj/m1' },
+              { number: 2, url: 'https://example.com/lj/m2' },
+              { number: 3, url: 'https://example.com/lj/m3' },
+              { number: 4, url: 'https://example.com/lj/m4' },
+            ],
+          },
+        },
       },
     };
-    const props = makeProps({ tabs: [journeyTab], visibleTabs: [journeyTab], activeTabId: 'journey-1' });
-    render(<DocsPanelTabBar {...props} />);
 
-    fireEvent.click(screen.getByTestId(testIds.docsPanel.tabCloseButton('journey-1')));
+    it('resolves completion per tab (background-safe) and reports the trio', () => {
+      getJourneyCompletionPercentageForMock.mockReturnValue(25);
+      const props = makeProps({ tabs: [journeyTab], visibleTabs: [journeyTab], activeTabId: 'journey-1' });
+      render(<DocsPanelTabBar {...props} />);
 
-    const { reportAppInteraction } = jest.requireMock('../../../lib/analytics');
-    expect(reportAppInteraction).toHaveBeenCalledWith(
-      'close_tab_click',
-      expect.objectContaining({
-        content_type: 'learning-journey',
-        progress_step: 2,
-        progress_total: 4,
-        completion_percentage: 50,
-      })
-    );
-    expect(props.onCloseTab).toHaveBeenCalledWith('journey-1');
+      fireEvent.click(screen.getByTestId(testIds.docsPanel.tabCloseButton('journey-1')));
+
+      expect(getJourneyCompletionPercentageForMock).toHaveBeenCalledWith(
+        'https://example.com/lj',
+        ['m1', 'm2', 'm3', 'm4'],
+        4
+      );
+      const { reportAppInteraction } = jest.requireMock('../../../lib/analytics');
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        'close_tab_click',
+        expect.objectContaining({
+          content_type: 'learning-journey',
+          progress_step: 2,
+          progress_total: 4,
+          completion_percentage: 25,
+        })
+      );
+      expect(props.onCloseTab).toHaveBeenCalledWith('journey-1');
+    });
+
+    it('omits completion_percentage when the journey has nothing cached', () => {
+      getJourneyCompletionPercentageForMock.mockReturnValue(null);
+      const props = makeProps({ tabs: [journeyTab], visibleTabs: [journeyTab], activeTabId: 'journey-1' });
+      render(<DocsPanelTabBar {...props} />);
+
+      fireEvent.click(screen.getByTestId(testIds.docsPanel.tabCloseButton('journey-1')));
+
+      const { reportAppInteraction } = jest.requireMock('../../../lib/analytics');
+      const payload = reportAppInteraction.mock.calls.find((c: unknown[]) => c[0] === 'close_tab_click')?.[1];
+      expect(payload.progress_step).toBe(2);
+      expect(payload).not.toHaveProperty('completion_percentage');
+    });
   });
 });

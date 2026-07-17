@@ -44,8 +44,9 @@ import {
   fetchContent,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
-  getJourneyProgress,
+  getMilestoneSlug,
   recordJourneyCompletion,
+  syncJourneyMilestoneCompletion,
   setPackageResolver,
   injectJourneyExtrasIntoJsonGuide,
   fetchPackageInfoFromUrl,
@@ -440,13 +441,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
         const updatedTab = this.finishTabSuccess(tabId, () => ({ content, currentUrl: url }));
 
-        // Use learningJourney.baseUrl (the path's cover page URL) as the storage
-        // key so it matches the key used by context.service.ts when reading
-        // completion via getJourneyCompletionPercentageAsync(rec.contentUrl).
+        // Two intentionally different keys: the milestone set is keyed by
+        // tab.baseUrl (matching markMilestoneDone's writers), while the
+        // persisted percentage uses learningJourney.baseUrl so it matches
+        // context.service.ts reads via getJourneyCompletionPercentageAsync.
         if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
-          const progress = getJourneyProgress(updatedTab.content);
-          const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
-          void recordJourneyCompletion(completionKey, progress);
+          const lj = updatedTab.content.metadata.learningJourney;
+          const completionKey = lj?.baseUrl || updatedTab.baseUrl;
+          void syncJourneyMilestoneCompletion(updatedTab.baseUrl, lj?.milestones ?? []).then((pct) =>
+            recordJourneyCompletion(completionKey, pct)
+          );
         }
         return 'completed';
       } else {
@@ -1039,12 +1043,19 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // pre-mortem) so children's passive useEffects observe the new URL.
   const activeJourneyMeta =
     activeTab?.type === 'learning-journey' ? activeTab.content?.metadata?.learningJourney : undefined;
+  const journeyMilestoneSlugs = React.useMemo(
+    () => activeJourneyMeta?.milestones?.map((m) => getMilestoneSlug(m.url)).filter((s): s is string => Boolean(s)),
+    [activeJourneyMeta?.milestones]
+  );
   useGlobalActiveTabExposure({
     activeTabId: activeTab?.id,
     activeTabCurrentUrl: activeTab?.currentUrl,
     activeTabBaseUrl: activeTab?.baseUrl,
     journeyMilestone: activeJourneyMeta?.currentMilestone,
     journeyTotalMilestones: activeJourneyMeta?.totalMilestones,
+    journeyActiveMilestoneSlug:
+      activeJourneyMeta && activeTab?.currentUrl ? getMilestoneSlug(activeTab.currentUrl) || undefined : undefined,
+    journeyMilestoneSlugs,
   });
 
   // Auto-complete the final milestone of a learning journey when the rendered

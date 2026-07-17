@@ -3,6 +3,12 @@ import { useLinkClickHandler } from './link-handler.hook';
 import { UserInteraction } from '../../lib/analytics';
 
 // Mock analytics reporting
+jest.mock('../../global-state/journey-context', () => ({
+  getActiveJourneyCompletionPercentage: jest.fn(() => 42),
+  noteMilestoneCompleted: jest.fn(),
+  primeJourneyCompletedMilestones: jest.fn(),
+}));
+
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   enrichWithJourneyContext: jest.fn((props, _content) => props), // Pass through
@@ -253,7 +259,7 @@ describe('useLinkClickHandler', () => {
           content_type: 'learning-journey',
           progress_step: 3,
           progress_total: 6,
-          completion_percentage: 50,
+          completion_percentage: 42,
           direction: 'forward',
           interaction_location: 'bottom_navigation',
         })
@@ -304,7 +310,7 @@ describe('useLinkClickHandler', () => {
           content_type: 'learning-journey',
           progress_step: 2,
           progress_total: 6,
-          completion_percentage: 33,
+          completion_percentage: 42,
           direction: 'backward',
           interaction_location: 'bottom_navigation',
         })
@@ -595,6 +601,7 @@ describe('useLinkClickHandler', () => {
           content_url: 'https://grafana.com/docs/test-journey',
           progress_step: 1,
           progress_total: 5,
+          completion_percentage: 42,
         })
       );
     });

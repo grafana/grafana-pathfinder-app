@@ -102,6 +102,7 @@ describe('useGlobalActiveTabExposure', () => {
   });
 
   it('publishes the journey context for learning-journey tabs and clears it otherwise', () => {
+    const slugs = ['m1', 'm2', 'm3', 'm4', 'm5'];
     const { rerender, unmount } = renderHook(useGlobalActiveTabExposure, {
       initialProps: {
         activeTabId: 'tab-lj',
@@ -109,12 +110,16 @@ describe('useGlobalActiveTabExposure', () => {
         activeTabBaseUrl: 'https://example.com/lj',
         journeyMilestone: 3,
         journeyTotalMilestones: 5,
+        journeyActiveMilestoneSlug: 'm3',
+        journeyMilestoneSlugs: slugs,
       } as UseGlobalActiveTabExposureParams,
     });
     expect(getActiveJourneyContext()).toEqual({
       journeyUrl: 'https://example.com/lj',
       milestoneNumber: 3,
       totalMilestones: 5,
+      activeMilestoneSlug: 'm3',
+      milestoneSlugs: slugs,
     });
 
     rerender({

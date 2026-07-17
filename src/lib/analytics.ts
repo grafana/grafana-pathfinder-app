@@ -311,7 +311,8 @@ const bottomReachedPages = new Set<string>();
 export function setupScrollTracking(
   contentElement: HTMLElement | null,
   activeTab: ScrollTrackingTab | null,
-  isRecommendationsTab: boolean
+  isRecommendationsTab: boolean,
+  getJourneyCompletion?: () => number | null
 ): () => void {
   if (!contentElement) {
     return () => {}; // Return no-op cleanup if no element provided
@@ -330,10 +331,18 @@ export function setupScrollTracking(
         return;
       }
 
+      // Resolved inside the debounce so the value is live at event time.
+      const journeyCompletion = getJourneyCompletion?.() ?? undefined;
+
       // Track "started scrolling" - fires once per document with scrolled_to_bottom: false
       if (!scrolledPages.has(pageIdentifier)) {
         scrolledPages.add(pageIdentifier);
-        const properties = buildScrollEventProperties(activeTab, isRecommendationsTab, pageIdentifier);
+        const properties = buildScrollEventProperties(
+          activeTab,
+          isRecommendationsTab,
+          pageIdentifier,
+          journeyCompletion
+        );
         reportAppInteraction(UserInteraction.PanelScroll, { ...properties, scrolled_to_bottom: false });
       }
 
@@ -345,7 +354,12 @@ export function setupScrollTracking(
 
         if (isAtBottom) {
           bottomReachedPages.add(pageIdentifier);
-          const properties = buildScrollEventProperties(activeTab, isRecommendationsTab, pageIdentifier);
+          const properties = buildScrollEventProperties(
+            activeTab,
+            isRecommendationsTab,
+            pageIdentifier,
+            journeyCompletion
+          );
           reportAppInteraction(UserInteraction.PanelScroll, { ...properties, scrolled_to_bottom: true });
         }
       }
@@ -397,7 +411,8 @@ function determinePageIdentifier(activeTab: ScrollTrackingTab | null, isRecommen
 function buildScrollEventProperties(
   activeTab: ScrollTrackingTab | null,
   isRecommendationsTab: boolean,
-  pageIdentifier: string
+  pageIdentifier: string,
+  journeyCompletion?: number
 ): Record<string, string | number | boolean> {
   // Matches determinePageIdentifier's treatment of a missing type as a learning journey,
   // so page_type and content_type never diverge for the same tab.
@@ -413,7 +428,10 @@ function buildScrollEventProperties(
   // Add additional context for learning journeys
   if (activeTab?.type === 'learning-journey' && activeTab?.content?.metadata?.learningJourney) {
     const { currentMilestone, totalMilestones } = activeTab.content.metadata.learningJourney;
-    return { ...properties, ...journeyProgressProperties(currentMilestone || 0, totalMilestones || 0) };
+    return {
+      ...properties,
+      ...buildProgressProperties(currentMilestone || 0, totalMilestones || 0, journeyCompletion),
+    };
   }
 
   return properties;
@@ -471,42 +489,52 @@ export function buildProgressProperties(
   };
 }
 
-/** Journey progress trio with position-based completion (milestone N of M). */
+/**
+ * POSITION-based trio (milestone N of M as the percentage). Only valid for
+ * destination events fired before a journey is open, where no step-driven
+ * completion exists yet. Never use for an active journey — journey
+ * completion_percentage is step-driven and supplied by the caller.
+ */
 export function journeyProgressProperties(currentMilestone: number, totalMilestones: number): Record<string, number> {
   const percentage = totalMilestones > 0 ? Math.round((currentMilestone / totalMilestones) * 100) : 0;
   return buildProgressProperties(currentMilestone, totalMilestones, percentage);
 }
 
 /**
- * Extracts journey progress properties for analytics events
- *
- * @param content - The content object containing journey metadata
- * @returns Object with journey properties or empty object if not a journey
+ * Journey position trio for analytics events. completion_percentage is
+ * step-driven and must be supplied by the caller (see
+ * global-state/journey-context, not importable from this entry-eager
+ * module); when omitted, the property is omitted rather than falling back
+ * to position.
  */
-export function getJourneyProperties(content: JourneyContent | null | undefined): Record<string, number> {
+export function getJourneyProperties(
+  content: JourneyContent | null | undefined,
+  completionPercentage?: number
+): Record<string, number> {
   if (!content || content.type !== 'learning-journey' || !content.metadata?.learningJourney) {
     return {};
   }
 
   const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
 
-  return journeyProgressProperties(currentMilestone || 0, totalMilestones || 0);
+  return buildProgressProperties(currentMilestone || 0, totalMilestones || 0, completionPercentage);
 }
 
 /**
- * Progress properties for a milestone arrow click, computed for the
- * destination milestone so progress_step and completion_percentage agree
- * within the event (a forward click onto the last milestone reports 100).
+ * Progress properties for a milestone arrow click: progress_step is the
+ * DESTINATION milestone; completion_percentage is the caller-supplied
+ * step-driven value.
  */
 export function getJourneyNavigationProperties(
   lj: { currentMilestone?: number; totalMilestones?: number } | undefined,
-  direction: 'forward' | 'backward'
+  direction: 'forward' | 'backward',
+  completionPercentage?: number
 ): Record<string, string | number> {
   const total = lj?.totalMilestones ?? 0;
   const current = lj?.currentMilestone ?? 0;
   const destination = direction === 'forward' ? Math.min(total, current + 1) : Math.max(0, current - 1);
 
-  return { direction, ...journeyProgressProperties(destination, total) };
+  return { direction, ...buildProgressProperties(destination, total, completionPercentage) };
 }
 
 /**
@@ -532,9 +560,10 @@ export function getJourneyNavigationProperties(
  */
 export function enrichWithJourneyContext(
   baseProperties: Record<string, string | number | boolean>,
-  content: JourneyContent | null | undefined
+  content: JourneyContent | null | undefined,
+  completionPercentage?: number
 ): Record<string, string | number | boolean> {
-  const journeyProps = getJourneyProperties(content);
+  const journeyProps = getJourneyProperties(content, completionPercentage);
 
   // Only add journey properties if they exist (non-empty object)
   if (Object.keys(journeyProps).length > 0) {

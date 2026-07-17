@@ -27,6 +27,7 @@ import {
   milestoneCompletionStorage,
 } from '../lib/user-storage';
 import { evictContentCache } from '../global-state/completion-store';
+import { clearJourneyCompletedMilestonesCache } from '../global-state/journey-context';
 import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
@@ -371,6 +372,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
       if (path.url) {
         // URL-based path: clear milestone tracking and journey completion
         await milestoneCompletionStorage.clear(path.url);
+        clearJourneyCompletedMilestonesCache(path.url);
         await journeyCompletionStorage.clear(path.url);
 
         // Remove milestone slugs from completedGuides (path.guides contains fetched slugs)

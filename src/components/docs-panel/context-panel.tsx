@@ -20,7 +20,7 @@ import {
   reportAppInteraction,
   UserInteraction,
   getContentTypeForAnalytics,
-  journeyProgressProperties,
+  buildProgressProperties,
   AnalyticsContentType,
 } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
@@ -542,9 +542,10 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               milestone_url: milestone.url,
                                               content_url: contentUrl,
                                               interaction_location: 'featured_milestone_list',
-                                              ...journeyProgressProperties(
+                                              ...buildProgressProperties(
                                                 milestone.number,
-                                                recommendation.totalSteps || recommendation.milestones?.length || 0
+                                                recommendation.totalSteps || recommendation.milestones?.length || 0,
+                                                recommendation.completionPercentage ?? undefined
                                               ),
                                             });
                                             if (packageInfo) {
@@ -856,9 +857,10 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                             milestone_url: milestone.url,
                                             content_url: contentUrl,
                                             interaction_location: 'milestone_list',
-                                            ...journeyProgressProperties(
+                                            ...buildProgressProperties(
                                               milestone.number,
-                                              recommendation.totalSteps || recommendation.milestones?.length || 0
+                                              recommendation.totalSteps || recommendation.milestones?.length || 0,
+                                              recommendation.completionPercentage ?? undefined
                                             ),
                                           });
                                           if (packageInfo) {

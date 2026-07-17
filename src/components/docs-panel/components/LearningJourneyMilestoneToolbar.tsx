@@ -36,6 +36,7 @@ import {
   AnalyticsLinkType,
 } from '../../../lib/analytics';
 import { getMilestoneSlug, markMilestoneDone } from '../../../docs-retrieval';
+import { getActiveJourneyCompletionPercentage } from '../../../global-state/journey-context';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { CombinedLearningJourneyPanel } from '../docs-panel';
@@ -119,24 +120,19 @@ export function LearningJourneyMilestoneToolbar({
       content_url: activeTab.baseUrl,
       content_type: AnalyticsContentType.LearningJourney,
       interaction_location: 'milestone_progress_bar',
-      ...getJourneyNavigationProperties(lj, 'backward'),
+      ...getJourneyNavigationProperties(lj, 'backward', getActiveJourneyCompletionPercentage() ?? undefined),
     });
     panel.navigateToPreviousMilestone();
   };
 
   const handleNext = () => {
-    reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
-      content_title: activeTab.title,
-      content_url: activeTab.baseUrl,
-      content_type: AnalyticsContentType.LearningJourney,
-      interaction_location: 'milestone_progress_bar',
-      ...getJourneyNavigationProperties(lj, 'forward'),
-    });
     // Mirror the legacy behavior: when the current milestone has no
     // interactive steps in the rendered DOM, mark it done so progress
     // advances even though there's nothing to "complete". The DOM scope
     // comes from `contentRoot` (sidebar) or the global content attribute
     // (fullscreen) — both restrict the search to the active panel.
+    // Marked BEFORE reporting: the click that completes a step-less
+    // milestone must be reflected in its own event's completion.
     if (activeTab.currentUrl && activeTab.baseUrl) {
       const root: ParentNode =
         contentRoot?.current ?? document.querySelector('[data-pathfinder-content="true"]') ?? document;
@@ -148,6 +144,13 @@ export function LearningJourneyMilestoneToolbar({
         }
       }
     }
+    reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
+      content_title: activeTab.title,
+      content_url: activeTab.baseUrl,
+      content_type: AnalyticsContentType.LearningJourney,
+      interaction_location: 'milestone_progress_bar',
+      ...getJourneyNavigationProperties(lj, 'forward', getActiveJourneyCompletionPercentage() ?? undefined),
+    });
     panel.navigateToNextMilestone();
   };
 
@@ -216,7 +219,7 @@ export function LearningJourneyMilestoneToolbar({
                     source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
                     link_type: AnalyticsLinkType.ExternalBrowser,
                     interaction_location: openInteractionLocation,
-                    ...getJourneyProperties(activeTab.content),
+                    ...getJourneyProperties(activeTab.content, getActiveJourneyCompletionPercentage() ?? undefined),
                   });
                   setTimeout(() => {
                     window.open(externalUrl, '_blank', 'noopener,noreferrer');
