@@ -13,6 +13,7 @@ export { useSessionJoinUrlCheck } from './useSessionJoinUrlCheck';
 export { useLastMilestoneAutoComplete } from './useLastMilestoneAutoComplete';
 export { useScrollTracking } from './useScrollTracking';
 export { useGlobalActiveTabExposure } from './useGlobalActiveTabExposure';
+export { useJourneyStepWeights } from './useJourneyStepWeights';
 export { useAutoOpenListener } from './useAutoOpenListener';
 export { usePopOutHandoff } from './usePopOutHandoff';
 export { useFullScreenHandoff } from './useFullScreenHandoff';

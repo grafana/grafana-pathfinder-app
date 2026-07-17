@@ -37,6 +37,9 @@ export {
 
 export { fetchPackageInfoFromUrl, isPackageContentUrl } from './package-info-from-url';
 
+export { resolveJourneyStepWeights } from './journey-step-weights';
+export { countGuideSteps } from './count-guide-steps';
+
 export {
   getNextMilestoneUrl as getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrl as getPreviousMilestoneUrlFromContent,

@@ -97,6 +97,7 @@ import {
   useLastMilestoneAutoComplete,
   useScrollTracking,
   useGlobalActiveTabExposure,
+  useJourneyStepWeights,
   useAutoOpenListener,
   usePopOutHandoff,
   useFullScreenHandoff,
@@ -1041,6 +1042,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     activeTabId: activeTab?.id,
     activeTabCurrentUrl: activeTab?.currentUrl,
     activeTabBaseUrl: activeTab?.baseUrl,
+  });
+
+  useJourneyStepWeights({
+    journeyKey: activeTab?.baseUrl,
+    milestones:
+      activeTab?.type === 'learning-journey' ? activeTab.content?.metadata?.learningJourney?.milestones : undefined,
   });
 
   // Auto-complete the final milestone of a learning journey when the rendered
