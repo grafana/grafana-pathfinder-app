@@ -94,6 +94,8 @@ Imports flow **downward only** through these tiers. Cross-tier rules are enforce
 
 Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-interactives/`, `img/`, `locales/`. The canonical source is `TIER_MAP` in `src/validation/import-graph.ts`.
 
+**Environment reachability** (orthogonal to tiers): `src/cli/` and `tests/e2e-runner/` execute in plain Node (the pathfinder CLI; Playwright test discovery), so everything they transitively import must load without browser globals — a browser-only import reachable from those roots crashes the e2e command with `ReferenceError: window is not defined` before any browser launches. `architecture.test.ts` enforces this by walking the value-import closure from `NODE_CONTEXT_ROOTS` and checking every external package against `NODE_SAFE_EXTERNALS` (type-only imports exempt; bundler-only assets like `.css` always fail). The fix pattern is an environment-neutral `*-core.ts` module plus a thin browser adapter — see `src/lib/dom/grafana-selector-core.ts` vs `grafana-selector.ts`. Adding a genuinely Node-safe package to `NODE_SAFE_EXTERNALS` is expected maintenance, not a violation; verify with `node -e "require('<pkg>')"` first.
+
 ## Frontend subsystem reference
 
 Compact catalogue. For each subsystem: purpose, entry point (file an agent should read first), and its position in the tier model. Per-subsystem deep-dives live in `docs/developer/engines/`, `docs/developer/utils/README.md`, `docs/developer/constants/README.md`, and `docs/developer/learning-paths/README.md`.
