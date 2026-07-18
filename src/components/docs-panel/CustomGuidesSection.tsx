@@ -3,7 +3,12 @@ import { Card, Icon, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
 import { getStyles } from '../../styles/context-panel.styles';
-import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getContentTypeForAnalytics,
+  AnalyticsContentType,
+} from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
 import type { PublishedGuide } from '../../utils/usePublishedGuides';
 
@@ -34,7 +39,7 @@ export function CustomGuidesSection({
     reportAppInteraction(UserInteraction.OpenResourceClick, {
       content_title: guide.spec.title,
       content_url: guideUrl,
-      content_type: getContentTypeForAnalytics(guideUrl, 'interactive_guide'),
+      content_type: getContentTypeForAnalytics(guideUrl, AnalyticsContentType.InteractiveGuide),
       interaction_location: 'custom_guides_section',
     });
 

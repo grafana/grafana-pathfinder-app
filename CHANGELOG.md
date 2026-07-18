@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.14.2
+
+### Fixed
+
+- **"My learning" header button opens the My Learning page again**: #1286 rewired the docs panel's header "My learning" icon to switch to the in-panel recommendations tab, leaving no way to reach the actual My Learning page from the sidebar. The header button navigates there again; the guide footer's "Return to my learning" button is unchanged. (#1368)
+- **Block editor preserves view mode and JSON drafts across remounts**: Switching to Preview or JSON mode and popping the panel out or docking it back no longer resets to Edit mode or drops an unapplied JSON draft. (#1314)
+- **Secondary step buttons size to their label**: The "Show me" and "Do it" buttons on interactive steps no longer render inside an oversized fixed-width button. (#1323)
+- **Resume/do section button uses correct singular and plural step counts**: The catch-all section action button and its tooltip no longer read "(1 steps)" when exactly one step remains. (#1325)
+- **Analytics `content_type` no longer diverges for the same interactive guide**: Standardizes `content_type`/`link_type` into shared enums so the same guide kind always reports the same value regardless of which button opened it, and fixes a `source_page` property that held a UI-location string instead of a URL, plus four dead `blockType` comparisons that could never match. The interactive-guide `content_type` value also moves from `interactive_guide` to `interactive-guide` to match the separator convention used elsewhere — update any saved RudderStack dashboard/query filtering on the old value. (#1363)
+
+### Chore
+
+- **Telemetry payloads trimmed and normalized**: Sequence action-error telemetry now reports a bounded error name plus a coarse category instead of the full error message, the content fetcher's log messages and the Faro view-name adapter route through the shared URL normalizer instead of deriving URLs independently, and Faro exception/log messages trim embedded URL query strings to `hostname/path` — consistent telemetry hygiene across the interactive-step retry path and every other exception/log producer. (#1347, #1349, #1350)
+- **Selector generation anchors on stable structure and composes via a token grammar**: The element picker now emits version-stable `grafana:` selector paths and anchors identity-less wrapper elements on stable ancestors or `:has()`-scoped descendants instead of brittle positional selectors, fixes a multi-colon parameter-splitting bug and unescaped CSS attribute-value interpolation surfaced by that work, and makes the two mechanisms compose through an embeddable `{grafana:path:param}` token so scoped/anchored candidates keep their version-stable identity instead of degrading to raw testid literals. (#1156, #1157, #1360, #1361)
+- **E2E cloud stack isolation moved to the pool manager**: Cloud guide-chain isolation for unsafe or unauthenticated chains now leases stacks from an independently deployed pool manager instead of CLI-owned provisioning, and guides that declare required plugins now get them installed on the leased stack. (#1230, #1346)
+- **Telemetry facade and outcome-classification refactors**: Consolidates telemetry behind a typed facade and a single owner for user-action-outcome classification, latches the closed-panel surface read to avoid a per-event DOM/localStorage cost, and derives panel-ready readiness from scene state instead of a one-shot event. (#1338, #1357, #1348, #1356)
+- **Faro event/action names now match the analytics.ts convention**: Faro-only telemetry naming no longer diverges from RudderStack — a missing `pathfinder_` prefix on four Faro-only funnel events is added, and five call sites that invented their own duplicate event name instead of reusing the real interaction name now share it, so the same click is discoverable under one name in both pipelines. (#1362)
+- **Block editor backend save flow extracted into a dedicated hook**: Pure refactor with no behavior change. (#1331)
+- **Internal code-quality fixes**: Resolves CodeQL findings for dead error-boundary state, an import ordered after its first use, a duplicated character in a regex character class, and a test mock that dropped `IntersectionObserver` options. (#1317, #1318, #1319, #1320)
+- **E2E CLI no longer crashes on Node-side logger imports**: The shared logger lazy-loads the Faro bridge behind a browser-global guard instead of importing it eagerly. (#1321)
+- **Docs**: Refreshed the selector-authoring and custom-guide-lifecycle reference docs to match current behavior (#1340), and corrected `SCORM.md`'s core assumption from a multi-SCO manifest-driven model to the single-SCO, per-vendor-adapter reality found in real SCORM exports (#1354).
+
 ## 2.14.0
 
 ### Added
@@ -25,6 +47,7 @@
 - **Dock-to-sidebar action uses the columns icon**: Swaps the popout header's dock-to-sidebar icon from `angle-double-right` (read as navigate-forward) to `columns`, matching the layout the action produces. (#1303)
 - **Removed the redundant guide-toolbar "More options" menu**: The docs panel showed two "More options" menus at once; the toolbar's (which only duplicated "Give feedback") is gone, and its dev-only "Refresh" action moved into the tab-bar menu. (#1238)
 - **Two-tab controller formfill lands on backgrounded live tabs**: Formfill steps targeting the Monaco query editor now write through Monaco's model API instead of the hidden textarea, so they take effect on the live tab when driven from the two-tab controller. (#1181)
+- **"Full screen" button opens full screen instead of the home page**: The `panelMode=fullscreen` deep-link handoff no longer bounces back to home, and the full-screen route checks now work when Grafana is served under an `appSubUrl` sub-path — both the deep-link handler and the panel-mode self-heal compare against Grafana's basename-normalized router path instead of the raw browser pathname. (#1353)
 
 ### Security
 

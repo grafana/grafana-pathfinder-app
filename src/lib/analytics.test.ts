@@ -1,6 +1,12 @@
-import { reportAppInteraction, UserInteraction, bindExperimentsProvider } from './analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  bindExperimentsProvider,
+  setupScrollTracking,
+  clearScrollTrackingCache,
+} from './analytics';
 import { reportInteraction } from '@grafana/runtime';
-import { pushFaroUserAction } from './faro';
+import { pushFaroUserAction } from './telemetry/bridge';
 
 jest.mock('@grafana/runtime', () => ({
   reportInteraction: jest.fn(),
@@ -14,7 +20,7 @@ jest.mock('../security/url-validator', () => ({
   isInteractiveLearningUrl: jest.fn(() => false),
 }));
 
-jest.mock('./faro', () => ({
+jest.mock('./telemetry/bridge', () => ({
   pushFaroUserAction: jest.fn(),
   pushFaroLog: jest.fn(),
   pushFaroError: jest.fn(),
@@ -66,13 +72,13 @@ describe('reportAppInteraction', () => {
 
     reportAppInteraction(UserInteraction.ShowMeButtonClick, {
       step_id: 'step-1',
-      content_type: 'interactive_guide',
+      content_type: 'interactive-guide',
     });
 
     const properties = mockReportInteraction.mock.calls[0][1];
     expect(properties.kiosk_session_id).toBe('kiosk-123');
     expect(properties.step_id).toBe('step-1');
-    expect(properties.content_type).toBe('interactive_guide');
+    expect(properties.content_type).toBe('interactive-guide');
     expect(properties.plugin_version).toBe('1.0.0-test');
   });
 });
@@ -117,6 +123,24 @@ describe('reportAppInteraction Faro mirroring', () => {
     expect(() => reportAppInteraction(UserInteraction.ShowMeButtonClick, { step_id: 'step-1' })).not.toThrow();
     expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
     warnSpy.mockRestore();
+  });
+
+  it('normalizes *_url properties in the Faro mirror but leaves the RudderStack payload raw', () => {
+    const rawUrl = 'https://grafana.com/docs/foo/?token=secret#frag';
+    reportAppInteraction(UserInteraction.OpenResourceClick, { content_url: rawUrl });
+
+    const reportedProps = mockReportInteraction.mock.calls[0][1];
+    const mirroredProps = mockPushFaroUserAction.mock.calls[0][1];
+
+    expect(reportedProps.content_url).toBe(rawUrl);
+    expect(mirroredProps.content_url).toBe('grafana.com/docs/foo/');
+  });
+
+  it('does not touch string properties whose key does not end in url', () => {
+    reportAppInteraction(UserInteraction.OpenResourceClick, { content_title: 'https://grafana.com/looks-like-a-url' });
+
+    const mirroredProps = mockPushFaroUserAction.mock.calls[0][1];
+    expect(mirroredProps.content_title).toBe('https://grafana.com/looks-like-a-url');
   });
 });
 
@@ -171,6 +195,21 @@ describe('reportAppInteraction experiment enrichment', () => {
     expect(props).not.toHaveProperty('variant');
   });
 
+  it('strips experiments from the Faro mirror but keeps it in the RudderStack payload', () => {
+    bindExperimentsProvider(() => [
+      { flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
+    ]);
+
+    reportAppInteraction(UserInteraction.SummaryClick, {});
+
+    const reportedProps = mockReportInteraction.mock.calls[0][1];
+    const mirroredProps = mockPushFaroUserAction.mock.calls[0][1];
+    expect(reportedProps).toHaveProperty('experiments');
+    expect(mirroredProps).not.toHaveProperty('experiments');
+    // Everything else still mirrors, including the small `variant` rollup.
+    expect(mirroredProps.variant).toBe(reportedProps.variant);
+  });
+
   it('does not enrich FeatureFlagEvaluated events (recursion guard)', () => {
     bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g' }]);
 
@@ -185,5 +224,60 @@ describe('reportAppInteraction experiment enrichment', () => {
   it('still mirrors flag exposures to Faro (beforeSend gates delivery, not the mirror)', () => {
     reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: HIGHLIGHTED });
     expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('setupScrollTracking PanelScroll content_type', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    clearScrollTrackingCache();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function fireScroll(el: HTMLElement): void {
+    el.dispatchEvent(new Event('scroll'));
+    jest.advanceTimersByTime(150);
+  }
+
+  it('keeps content_type in sync with page_type when the tab has no type (both fall back to learning-journey)', () => {
+    const el = document.createElement('div');
+    const activeTab = { content: { url: 'https://example.com/journey' } };
+
+    const cleanup = setupScrollTracking(el, activeTab, false);
+    fireScroll(el);
+
+    const props = mockReportInteraction.mock.calls[0][1];
+    expect(props.page_type).toBe('learning-journey');
+    expect(props.content_type).toBe('learning-journey');
+    cleanup();
+  });
+
+  it('maps an interactive tab to the canonical interactive-guide content_type', () => {
+    const el = document.createElement('div');
+    const activeTab = { type: 'interactive' as const, content: { url: 'https://example.com/guide' } };
+
+    const cleanup = setupScrollTracking(el, activeTab, false);
+    fireScroll(el);
+
+    const props = mockReportInteraction.mock.calls[0][1];
+    expect(props.page_type).toBe('interactive');
+    expect(props.content_type).toBe('interactive-guide');
+    cleanup();
+  });
+
+  it('reports an empty content_type for the recommendations tab', () => {
+    const el = document.createElement('div');
+
+    const cleanup = setupScrollTracking(el, null, true);
+    fireScroll(el);
+
+    const props = mockReportInteraction.mock.calls[0][1];
+    expect(props.page_type).toBe('recommendations');
+    expect(props.content_type).toBe('');
+    cleanup();
   });
 });

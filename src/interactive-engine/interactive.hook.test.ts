@@ -68,8 +68,8 @@ jest.mock('./navigation-manager', () => ({
 
 jest.mock('./sequence-manager', () => ({
   SequenceManager: jest.fn().mockImplementation(() => ({
-    runInteractiveSequence: jest.fn().mockResolvedValue(undefined),
-    runStepByStepSequence: jest.fn().mockResolvedValue(undefined),
+    runInteractiveSequence: jest.fn().mockResolvedValue('completed'),
+    runStepByStepSequence: jest.fn().mockResolvedValue('completed'),
   })),
 }));
 
@@ -253,7 +253,7 @@ describe('useInteractiveElements', () => {
   });
 
   describe('Faro user action wiring', () => {
-    it('wraps show-mode execution in a pathfinder_step_show action', async () => {
+    it('wraps show-mode execution in a pathfinder_show_me_button_click action', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       await act(async () => {
@@ -261,14 +261,15 @@ describe('useInteractiveElements', () => {
       });
 
       expect(withFaroUserAction).toHaveBeenCalledWith(
-        'pathfinder_step_show',
+        'pathfinder_show_me_button_click',
         { target_action: 'highlight', ref_target: '#target' },
         expect.any(Function),
-        undefined
+        undefined,
+        { critical: false, outcomeFrom: expect.any(Function) }
       );
     });
 
-    it('wraps do-mode execution in a pathfinder_step_do action', async () => {
+    it('wraps do-mode execution in a pathfinder_do_it_button_click action', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       await act(async () => {
@@ -276,11 +277,16 @@ describe('useInteractiveElements', () => {
       });
 
       expect(withFaroUserAction).toHaveBeenCalledWith(
-        'pathfinder_step_do',
+        'pathfinder_do_it_button_click',
         { target_action: 'button', ref_target: 'Save' },
         expect.any(Function),
-        undefined
+        undefined,
+        { critical: true, outcomeFrom: expect.any(Function) }
       );
+
+      // Non-sequence actions have no captured sequence result → ok on resolve.
+      const options = (withFaroUserAction as jest.Mock).mock.calls.at(-1)![4];
+      expect(options.outcomeFrom()).toBe('ok');
     });
   });
 
@@ -494,10 +500,10 @@ describe('useInteractiveElements', () => {
         await result.current.interactiveSequence(data, false);
       });
 
-      // Second call with same refTarget should return early
+      // Second call with same refTarget should return early as a no-op
       await act(async () => {
         const result2 = await result.current.interactiveSequence(data, false);
-        expect(result2).toBe('span#test1');
+        expect(result2).toBe('completed');
       });
     });
   });
@@ -676,6 +682,51 @@ describe('useInteractiveElements', () => {
 
       // Should call interactiveSequence
       expect(result.current.interactiveSequence).toBeDefined();
+    });
+
+    it('resolves ok when a sequence run completes', async () => {
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.executeInteractiveAction('sequence', 'span#test1', undefined, 'do');
+      });
+
+      expect(outcome).toBe('ok');
+    });
+
+    it('resolves error instead of ok when a sequence run stops on requirements_exhausted', async () => {
+      const { SequenceManager } = require('./sequence-manager');
+      SequenceManager.mockImplementationOnce(() => ({
+        runStepByStepSequence: jest.fn().mockResolvedValue('requirements_exhausted'),
+        runInteractiveSequence: jest.fn().mockResolvedValue('requirements_exhausted'),
+      }));
+
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.executeInteractiveAction('sequence', 'span#test1', undefined, 'do');
+      });
+
+      expect(outcome).toBe('error');
+    });
+
+    it('resolves error instead of ok when a sequence run stops on action_error', async () => {
+      const { SequenceManager } = require('./sequence-manager');
+      SequenceManager.mockImplementationOnce(() => ({
+        runStepByStepSequence: jest.fn().mockResolvedValue('action_error'),
+        runInteractiveSequence: jest.fn().mockResolvedValue('action_error'),
+      }));
+
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.executeInteractiveAction('sequence', 'span#test1', undefined, 'do');
+      });
+
+      expect(outcome).toBe('error');
     });
 
     it('should handle unknown action', async () => {

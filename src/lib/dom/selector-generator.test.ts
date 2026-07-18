@@ -11,8 +11,10 @@ import {
   getSelectorInfo,
   retargetElement,
   generateFallbackSelectors,
+  analyzeSelectorString,
 } from './selector-generator';
 import { querySelectorAllEnhanced } from './enhanced-selector';
+import { resolveSelector } from './selector-resolver';
 
 describe('Selector Generator — Pipeline', () => {
   beforeEach(() => {
@@ -529,6 +531,236 @@ describe('Selector Generator — Pipeline', () => {
   });
 
   // ==========================================================================
+  // grafana e2e-selector awareness
+  // ==========================================================================
+
+  describe('grafana e2e-selector awareness', () => {
+    it('prefers a version-stable grafana: selector for a known component testid', () => {
+      const button = document.createElement('button');
+      button.setAttribute('data-testid', 'data-testid RefreshPicker run button');
+      document.body.appendChild(button);
+
+      expect(generateBestSelector(button)).toMatch(/^grafana:components\./);
+    });
+
+    it('keeps the raw testid selector available as a fallback', () => {
+      const button = document.createElement('button');
+      button.setAttribute('data-testid', 'data-testid RefreshPicker run button');
+      document.body.appendChild(button);
+
+      const primary = generateBestSelector(button);
+      const fallbacks = generateFallbackSelectors(button, primary);
+      expect(fallbacks.some((s) => s.includes("[data-testid='data-testid RefreshPicker run button']"))).toBe(true);
+    });
+
+    it('emits a grafana:pages selector as the best selector for a page-level element', () => {
+      const input = document.createElement('input');
+      input.setAttribute('data-testid', 'data-testid Username input field');
+      document.body.appendChild(input);
+
+      expect(generateBestSelector(input)).toMatch(/^grafana:pages\./);
+    });
+  });
+
+  // ==========================================================================
+  // analyzeSelectorString — single source of truth for the health badge
+  // ==========================================================================
+
+  describe('analyzeSelectorString', () => {
+    it('rates a data-testid selector as good with a high stability score', () => {
+      const analysis = analyzeSelectorString("button[data-testid='save']");
+      expect(analysis.method).toBe('data-testid');
+      expect(analysis.quality).toBe('good');
+      expect(analysis.stabilityScore).toBeGreaterThanOrEqual(80);
+    });
+
+    it('rates a bare positional selector as poor and flags it structural', () => {
+      const analysis = analyzeSelectorString('button:nth-of-type(3)');
+      expect(analysis.quality).toBe('poor');
+      expect(analysis.flags).toContain('structural');
+    });
+
+    it('flags an aria-label selector as i18n-sensitive', () => {
+      const analysis = analyzeSelectorString("button[aria-label='Save document']");
+      expect(analysis.flags).toContain('i18n-sensitive');
+      expect(analysis.quality).toBe('medium');
+    });
+
+    it('treats an ancestor-anchored structural selector as medium (testid scope + nth-child)', () => {
+      const analysis = analyzeSelectorString("section[data-testid='card'] > span:nth-child(2)");
+      expect(analysis.flags).toContain('structural');
+      expect(analysis.quality).toBe('medium');
+    });
+
+    it('rates a :has() descendant-anchored selector as medium', () => {
+      const analysis = analyzeSelectorString("li > div:has(a[data-testid='nav'][href='/explore'])");
+      expect(analysis.method).toBe('has-descendant');
+      expect(analysis.quality).toBe('medium');
+    });
+
+    it('rates a grafana: reftarget as good with the top stability score', () => {
+      const analysis = analyzeSelectorString('grafana:components.RefreshPicker.runButtonV2');
+      expect(analysis.method).toBe('grafana');
+      expect(analysis.quality).toBe('good');
+      expect(analysis.stabilityScore).toBe(100);
+    });
+
+    it('rates a panel: reftarget as good but flags its free-text title as instance-bound', () => {
+      const analysis = analyzeSelectorString('panel:CPU Usage');
+      expect(analysis.method).toBe('grafana');
+      expect(analysis.quality).toBe('good');
+      expect(analysis.stabilityScore).toBe(100);
+      expect(analysis.flags).toContain('environment-unstable');
+    });
+
+    it('flags parameterized grafana: reftargets as instance-bound', () => {
+      const analysis = analyzeSelectorString('grafana:components.Breadcrumbs.breadcrumb:Home');
+      expect(analysis.quality).toBe('good');
+      expect(analysis.flags).toContain('environment-unstable');
+    });
+
+    it('rates an unresolvable grafana: path as poor', () => {
+      const analysis = analyzeSelectorString('grafana:components.RefreshPicker.runbutton');
+      expect(analysis.quality).toBe('poor');
+      expect(analysis.stabilityScore).toBe(0);
+      expect(analysis.warnings.some((w) => w.includes('Unknown grafana selector path'))).toBe(true);
+    });
+
+    it('rates an unresolvable embedded token as poor', () => {
+      const analysis = analyzeSelectorString("div[data-testid='panel'] {grafana:invalid.nonexistent.path}");
+      expect(analysis.quality).toBe('poor');
+      expect(analysis.stabilityScore).toBe(0);
+      expect(analysis.warnings.some((w) => w.includes('Unknown grafana selector path'))).toBe(true);
+    });
+
+    it('rates a resolvable scoped token as good', () => {
+      const analysis = analyzeSelectorString(
+        "div[data-testid='panel-B'] {grafana:components.RefreshPicker.runButtonV2}"
+      );
+      expect(analysis.method).toBe('scoped-grafana');
+      expect(analysis.quality).toBe('good');
+      expect(analysis.stabilityScore).toBe(100);
+    });
+
+    it('classifies a testid-subject :has() selector by its subject, not as has-descendant', () => {
+      const analysis = analyzeSelectorString("div[data-testid='wrapper']:has(a)");
+      expect(analysis.method).toBe('data-testid');
+      expect(analysis.quality).toBe('good');
+    });
+
+    it('recognizes a tag-attached id selector as an id method', () => {
+      const analysis = analyzeSelectorString('button#save');
+      expect(analysis.method).toBe('id');
+      expect(analysis.quality).toBe('good');
+    });
+
+    it('does not mistake a fragment href for an id selector', () => {
+      const analysis = analyzeSelectorString("a[href='#section']");
+      expect(analysis.method).toBe('href');
+    });
+  });
+
+  // ==========================================================================
+  // Automatic stable-ancestor anchoring
+  // ==========================================================================
+
+  describe('ancestor anchoring', () => {
+    it('anchors a structureless element on its nearest stable ancestor instead of a global positional selector', () => {
+      document.body.innerHTML = `
+        <section data-testid="data-source-card">
+          <header>Cards</header>
+          <div><span>one</span><span>two</span></div>
+        </section>
+        <span>outside</span>
+      `;
+      const target = document.querySelectorAll('section[data-testid="data-source-card"] span')[1] as HTMLElement;
+
+      const selector = generateBestSelector(target);
+
+      expect(selector).toContain("data-testid='data-source-card'");
+      expect(selector.startsWith('span:nth-of-type')).toBe(false);
+      expect(querySelectorAllEnhanced(selector).elements).toContain(target);
+    });
+
+    it('does not anchor when the element has a stable intrinsic selector', () => {
+      document.body.innerHTML = `<div><button data-testid="save">Save</button></div>`;
+      const button = document.querySelector("button[data-testid='save']") as HTMLElement;
+
+      expect(generateBestSelector(button)).toBe("button[data-testid='save']");
+    });
+  });
+
+  // ==========================================================================
+  // has-descendant — stable descendant anchoring via :has()
+  // ==========================================================================
+
+  describe('has-descendant selectors', () => {
+    it('selects an identity-less wrapper via a stable descendant using :has()', () => {
+      document.body.innerHTML = `
+        <ul>
+          <li><div class="css-a"><div class="css-b"><a data-testid="nav-item" href="/home">Home</a></div></div></li>
+          <li><div class="css-c"><div class="css-d"><a data-testid="nav-item" href="/explore">Explore</a></div></div></li>
+        </ul>
+      `;
+      const wrapper = document.querySelectorAll('li')[1]!.querySelector('div') as HTMLElement;
+
+      const selector = generateBestSelector(wrapper);
+
+      expect(selector).toContain(':has(');
+      expect(selector).toContain("href='/explore'");
+      expect(querySelectorAllEnhanced(selector).elements).toEqual([wrapper]);
+    });
+
+    it('prefers an interactive descendant over a decorative one', () => {
+      document.body.innerHTML = `
+        <ul><li><div class="css-wrap">
+          <svg data-testid="icon-x"></svg>
+          <a data-testid="link" href="/go">Go</a>
+        </div></li></ul>
+      `;
+      const wrapper = document.querySelector('.css-wrap') as HTMLElement;
+
+      const selector = generateBestSelector(wrapper);
+
+      expect(selector).toContain(':has(');
+      expect(selector).toContain("data-testid='link'");
+      expect(selector).not.toContain('icon-x');
+    });
+
+    it('does not use :has() when the element has its own stable selector', () => {
+      document.body.innerHTML = `<div data-testid="card"><a data-testid="x" href="/y">Y</a></div>`;
+      const card = document.querySelector("[data-testid='card']") as HTMLElement;
+
+      expect(generateBestSelector(card)).toBe("div[data-testid='card']");
+    });
+
+    it('falls back to a positional selector when no stable descendant exists', () => {
+      document.body.innerHTML = `<ul><li><div class="css-wrap"><span>plain</span></div></li></ul>`;
+      const wrapper = document.querySelector('.css-wrap') as HTMLElement;
+
+      const selector = generateBestSelector(wrapper);
+
+      expect(selector).not.toContain(':has(');
+      expect(querySelectorAllEnhanced(selector).elements).toContain(wrapper);
+    });
+
+    it('uses the :has() selector as the primary for an identity-less wrapper', () => {
+      document.body.innerHTML = `
+        <ul>
+          <li><div class="css-wrap"><a data-testid="n" href="/a">A</a></div></li>
+          <li><div class="css-wrap2"><a data-testid="n" href="/b">B</a></div></li>
+        </ul>
+      `;
+      const wrapper = document.querySelector('.css-wrap') as HTMLElement;
+
+      const primary = generateBestSelector(wrapper);
+
+      expect(primary).toContain(':has(');
+      expect(primary).toContain("href='/a'");
+    });
+  });
+
+  // ==========================================================================
   // Integration
   // ==========================================================================
 
@@ -579,5 +811,149 @@ describe('Selector Generator — Pipeline', () => {
       const m3 = querySelectorAllEnhanced(s3);
       expect(m3.elements).toContain(inputs[2]);
     });
+  });
+});
+
+describe('Selector Generator — CSS attribute-value escaping', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('emits a valid, matching selector for a testid containing a single quote', () => {
+    const button = document.createElement('button');
+    button.setAttribute('data-testid', "Panel menu item Mark's dashboard");
+    document.body.appendChild(button);
+
+    const selector = generateBestSelector(button);
+
+    expect(selector).toContain("Mark\\'s");
+    const matches = querySelectorAllEnhanced(selector);
+    expect(matches.elements).toEqual([button]);
+  });
+
+  it('emits a resolvable, matching selector for an aria-label containing a single quote', () => {
+    const button = document.createElement('button');
+    button.setAttribute('aria-label', "Delete Mark's panel");
+    document.body.appendChild(button);
+
+    // The winner may be a grafana: path (the reverse index matches this label
+    // against the legacy `${title} panel` template) — resolve like replay does.
+    const selector = generateBestSelector(button);
+    const resolved = resolveSelector(selector);
+
+    expect(resolved).toContain(`"Delete Mark's panel"`);
+    const matches = querySelectorAllEnhanced(resolved);
+    expect(matches.elements).toEqual([button]);
+  });
+
+  it('scopes a non-unique grafana: candidate under a stable ancestor as an embedded token', () => {
+    document.body.innerHTML = `
+      <div data-testid="panel-A"><button data-testid="data-testid RefreshPicker run button">A</button></div>
+      <div data-testid="panel-B"><button data-testid="data-testid RefreshPicker run button">B</button></div>
+    `;
+    const target = document.querySelectorAll('button')[1] as HTMLElement;
+
+    const selector = generateBestSelector(target);
+
+    expect(selector).toBe("div[data-testid='panel-B'] {grafana:components.RefreshPicker.runButtonV2}");
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([target]);
+  });
+
+  it('keeps the raw scoped testid available as a fallback alternative', () => {
+    document.body.innerHTML = `
+      <div data-testid="panel-A"><button data-testid="data-testid RefreshPicker run button">A</button></div>
+      <div data-testid="panel-B"><button data-testid="data-testid RefreshPicker run button">B</button></div>
+    `;
+    const target = document.querySelectorAll('button')[1] as HTMLElement;
+
+    const primary = generateBestSelector(target);
+    const fallbacks = generateFallbackSelectors(target, primary);
+
+    expect(primary).toContain('{grafana:');
+    expect(fallbacks).not.toContain(primary);
+    expect(fallbacks.some((s) => !s.includes('{grafana:') && s.includes('data-testid RefreshPicker run button'))).toBe(
+      true
+    );
+  });
+
+  it('drops the grafana: candidate when no ancestor scope disambiguates it', () => {
+    document.body.innerHTML = `
+      <div><button data-testid="data-testid RefreshPicker run button">A</button>
+      <button data-testid="data-testid RefreshPicker run button">B</button></div>
+    `;
+    const target = document.querySelectorAll('button')[1] as HTMLElement;
+
+    const selector = generateBestSelector(target);
+
+    expect(selector).not.toContain('{grafana:');
+    expect(selector).not.toContain('grafana:');
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([target]);
+  });
+
+  it('emits version-stable {grafana:...} ancestor scopes when the ancestor reverse-maps', () => {
+    document.body.innerHTML = `
+      <nav data-testid="data-testid Home breadcrumb"><button></button></nav>
+      <nav data-testid="data-testid Alerts breadcrumb"><button></button></nav>
+    `;
+    const target = document.querySelectorAll('button')[1] as HTMLElement;
+
+    const selector = generateBestSelector(target);
+
+    expect(selector).toBe('{grafana:components.Breadcrumbs.breadcrumb:Alerts} button');
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([target]);
+  });
+
+  it('anchors an identity-less wrapper on a descendant via a {grafana:...} token inside :has()', () => {
+    document.body.innerHTML = `
+      <li><div class="css-abc123"><a data-testid="data-testid Home breadcrumb" href="/home">Home</a></div></li>
+    `;
+    const wrapper = document.querySelector('div') as HTMLElement;
+
+    const selector = generateBestSelector(wrapper);
+
+    expect(selector).toBe('div:has({grafana:components.Breadcrumbs.breadcrumb:Home})');
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([wrapper]);
+  });
+
+  it('rescues an element via :has() when its only identity candidate dies at admission', () => {
+    // A long known aria-label value: candidateAriaLabel bails on length, so the
+    // grafana candidate is the element's ONLY identity candidate. Duplicated with
+    // no scoping ancestor it is dropped at admission — pre-rescue this element
+    // shipped as div:nth-of-type(2).
+    const longValue = `data-testid ${'X'.repeat(45)} breadcrumb`;
+    document.body.innerHTML = `
+      <div><a data-testid="unique-link-a" href="/a">A</a></div>
+      <div><a data-testid="unique-link-b" href="/b">B</a></div>
+    `;
+    const divs = document.querySelectorAll('body > div');
+    divs[0]!.setAttribute('aria-label', longValue);
+    divs[1]!.setAttribute('aria-label', longValue);
+    const target = divs[1] as HTMLElement;
+
+    const selector = generateBestSelector(target);
+
+    expect(selector).toContain(':has(');
+    expect(selector).not.toContain('nth-of-type');
+    const matches = querySelectorAllEnhanced(resolveSelector(selector));
+    expect(matches.elements).toEqual([target]);
+  });
+
+  it('escapes quote-bearing ancestor testids used as disambiguation scopes', () => {
+    document.body.innerHTML = '<div><span></span><span></span></div><section><em></em></section>';
+    const scopeParent = document.querySelector('div')!;
+    scopeParent.setAttribute('data-testid', "Mark's section");
+    const target = scopeParent.querySelector('span')!;
+
+    const selector = generateBestSelector(target as HTMLElement);
+
+    const matches = querySelectorAllEnhanced(selector);
+    expect(matches.elements).toEqual([target]);
   });
 });

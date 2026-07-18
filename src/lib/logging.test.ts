@@ -1,7 +1,7 @@
 import { logger } from './logging';
-import { pushFaroError, pushFaroLog } from './faro';
+import { pushFaroError, pushFaroLog } from './telemetry/bridge';
 
-jest.mock('./faro', () => ({
+jest.mock('./telemetry/bridge', () => ({
   pushFaroLog: jest.fn(),
   pushFaroError: jest.fn(),
 }));

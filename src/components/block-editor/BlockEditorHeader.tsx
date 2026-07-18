@@ -15,6 +15,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import type { ViewMode } from './types';
 import { testIds } from '../../constants/testIds';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
+import { PANEL_MODE_CHANGE_EVENT } from '../../lib/event-names';
 
 export interface BlockEditorHeaderProps {
   /** Guide title to display */
@@ -286,9 +287,9 @@ export function BlockEditorHeader({
     const handleModeChange = (e: CustomEvent<{ mode: PanelMode }>) => {
       setPanelMode(e.detail.mode);
     };
-    document.addEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+    document.addEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     return () => {
-      document.removeEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+      document.removeEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     };
   }, []);
 

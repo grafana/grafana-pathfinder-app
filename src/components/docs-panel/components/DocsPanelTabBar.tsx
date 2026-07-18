@@ -22,7 +22,12 @@ import { testIds } from '../../../constants/testIds';
 type DocsPanelStyles = ReturnType<typeof getDocsPanelStyles>;
 import { PERMANENT_TAB_IDS, getTranslatedTitle } from '../utils';
 import { TabBarActions } from './TabBarActions';
-import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getContentTypeForAnalytics,
+  tabTypeToContentType,
+} from '../../../lib/analytics';
 import { getJourneyProgress } from '../../../docs-retrieval';
 
 export interface DocsPanelTabBarProps {
@@ -138,7 +143,7 @@ export function DocsPanelTabBar({
                       reportAppInteraction(UserInteraction.CloseTabClick, {
                         content_type: getContentTypeForAnalytics(
                           tab.currentUrl || tab.baseUrl,
-                          tab.type || 'learning-journey'
+                          tabTypeToContentType(tab.type)
                         ),
                         tab_title: tab.title,
                         content_url: tab.currentUrl || tab.baseUrl,
@@ -231,7 +236,7 @@ export function DocsPanelTabBar({
                       reportAppInteraction(UserInteraction.CloseTabClick, {
                         content_type: getContentTypeForAnalytics(
                           tab.currentUrl || tab.baseUrl,
-                          tab.type || 'learning-journey'
+                          tabTypeToContentType(tab.type)
                         ),
                         tab_title: tab.title,
                         content_url: tab.currentUrl || tab.baseUrl,
@@ -260,7 +265,6 @@ export function DocsPanelTabBar({
         activeTab={activeTab}
         isDevMode={isDevMode}
         onReloadActiveTab={reloadActiveTab}
-        onNavigateToRecommendations={() => onSetActiveTab('recommendations')}
       />
     </div>
   );

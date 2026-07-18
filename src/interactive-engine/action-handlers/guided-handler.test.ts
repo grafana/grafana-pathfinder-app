@@ -153,11 +153,19 @@ describe('GuidedHandler', () => {
       );
 
       expect(withFaroUserAction).toHaveBeenCalledWith(
-        'pathfinder_guided_step',
+        'pathfinder_do_it_button_click',
         { target_action: 'highlight', ref_target: refTarget, step_index: 0, total_steps: 1 },
         expect.any(Function),
-        10_005
+        10_005,
+        { critical: true, outcomeFrom: expect.any(Function) }
       );
+
+      const options = (withFaroUserAction as jest.Mock).mock.calls[0][4];
+      expect(options.outcomeFrom('completed')).toBe('ok');
+      expect(options.outcomeFrom('timeout')).toBe('timeout');
+      expect(options.outcomeFrom('cancelled')).toBe('cancelled');
+      expect(options.outcomeFrom('skipped')).toBe('skipped');
+      expect(options.outcomeFrom('error')).toBe('action_error');
 
       consoleErrorSpy.mockRestore();
     });

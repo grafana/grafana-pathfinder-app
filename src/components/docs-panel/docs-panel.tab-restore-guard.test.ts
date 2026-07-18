@@ -94,7 +94,8 @@ jest.mock('../../lib/user-storage', () => ({
 jest.mock('../../lib/analytics', () => ({
   setupScrollTracking: jest.fn(),
   reportAppInteraction: jest.fn(),
-  UserInteraction: {},
+  createInteractionName: jest.fn((type: string) => `pathfinder_${type}`),
+  UserInteraction: { DocsPanelInteraction: 'docs_panel_interaction' },
   getContentTypeForAnalytics: jest.fn(),
 }));
 

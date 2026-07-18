@@ -6,6 +6,7 @@ import { logger } from './lib/logging';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
+import { PANEL_MODE_CHANGE_EVENT } from './lib/event-names';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { panelModeManager } from './global-state/panel-mode';
@@ -17,6 +18,9 @@ import {
   isExtensionSidebarOwnedByPathfinder,
   parseExtensionSidebarDocked,
 } from './lib/storage/extension-sidebar';
+// Surgical import (not the ./lib/telemetry barrel): module.tsx is the entry
+// point, and the barrel would pull the whole telemetry package into module.js.
+import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from './lib/telemetry/surface';
 
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
@@ -60,6 +64,7 @@ const hostname = window.location.hostname;
 // is open in one of its surfaces.
 try {
   if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
+    // Session enrichment (identity, surface, experiment cohorts) is owned by initFaro.
     const { initFaro } = await import('./lib/faro');
     initFaro().catch((e) => logger.exception(e, { source: 'Faro init' }));
   }
@@ -150,6 +155,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       const container = document.createElement('div');
       container.id = 'pathfinder-controller-root';
       document.body.appendChild(container);
+      reportPathfinderSurface('controller');
       import('./components/guide-reader/GuideReaderOverlay')
         .then(async ({ GuideReaderOverlay }) => {
           const { createCompatRoot } = await import('./lib/create-root-compat');
@@ -265,7 +271,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       mountFloatingPanel();
     }
 
-    document.addEventListener('pathfinder-panel-mode-change', ((e: CustomEvent<{ mode: string }>) => {
+    document.addEventListener(PANEL_MODE_CHANGE_EVENT, ((e: CustomEvent<{ mode: string }>) => {
       if (e.detail.mode === 'floating') {
         mountFloatingPanel();
       }
@@ -312,6 +318,9 @@ if (pathfinderEnabled) {
       // Process queued docs links when sidebar mounts
       useEffect(() => {
         sidebarState.setIsSidebarMounted(true);
+        // The docked sidebar opens via Grafana's extension bus, not setMode —
+        // this mount is the only reliable "sidebar is active" signal.
+        reportPathfinderSurface('sidebar');
 
         // Track sidebar open via component mount
         // consumePendingOpenSource() returns { source, action } set before opening
@@ -332,6 +341,7 @@ if (pathfinderEnabled) {
 
         return () => {
           sidebarState.setIsSidebarMounted(false);
+          reportPathfinderSurfaceClosed('sidebar');
 
           // Track sidebar close via component unmount
           reportAppInteraction(UserInteraction.DocsPanelInteraction, {

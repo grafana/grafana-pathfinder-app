@@ -40,6 +40,7 @@ jest.mock('@grafana/i18n', () => ({
 jest.mock('../../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   getContentTypeForAnalytics: jest.fn((_url: string | undefined | null, fallback = 'docs') => fallback),
+  tabTypeToContentType: jest.fn((type?: string) => (type === 'interactive' ? 'interactive-guide' : type || 'docs')),
   UserInteraction: {
     GeneralPluginFeedbackButton: 'general_plugin_feedback_button',
     DocsPanelInteraction: 'docs_panel_interaction',
@@ -146,17 +147,7 @@ describe('TabBarActions', () => {
   });
 
   describe('My learning button', () => {
-    it('switches to the recommendations tab in place when an in-panel handler is provided', () => {
-      const onNavigateToRecommendations = jest.fn();
-      render(<TabBarActions onNavigateToRecommendations={onNavigateToRecommendations} />);
-
-      fireEvent.click(screen.getByTestId(testIds.docsPanel.myLearningTab));
-
-      expect(onNavigateToRecommendations).toHaveBeenCalledTimes(1);
-      expect(mockPush).not.toHaveBeenCalled();
-    });
-
-    it('falls back to full-page navigation when no in-panel handler is provided', () => {
+    it('navigates to the My Learning page', () => {
       render(<TabBarActions />);
 
       fireEvent.click(screen.getByTestId(testIds.docsPanel.myLearningTab));
@@ -275,7 +266,7 @@ describe('TabBarActions', () => {
           interaction_location: 'header_menu_feedback',
           panel_type: 'docs_panel',
           content_url: 'https://example.com/page',
-          content_type: 'interactive',
+          content_type: 'interactive-guide',
         })
       );
     });

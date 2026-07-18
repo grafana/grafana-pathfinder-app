@@ -291,7 +291,7 @@ function convertBlockByType(
     case 'image':
       return convertImageBlock(block, path, baseUrl);
     case 'video':
-      return convertVideoBlock(block, path);
+      return convertVideoBlock(block, path, baseUrl);
     case 'quiz':
       return convertQuizBlock(block, path, stepContext);
     case 'input':
@@ -774,8 +774,9 @@ function convertImageBlock(block: JsonImageBlock, path: string, baseUrl?: string
   };
 }
 
-function convertVideoBlock(block: JsonVideoBlock, path: string): ConversionResult {
+function convertVideoBlock(block: JsonVideoBlock, path: string, baseUrl?: string): ConversionResult {
   const isYouTube = block.provider === 'youtube' || block.src.includes('youtube.com') || block.src.includes('youtu.be');
+  const isVimeo = block.provider === 'vimeo' || block.src.includes('vimeo.com');
 
   if (isYouTube) {
     return {
@@ -793,6 +794,21 @@ function convertVideoBlock(block: JsonVideoBlock, path: string): ConversionResul
     };
   }
 
+  if (isVimeo) {
+    return {
+      element: {
+        type: 'vimeo-video',
+        props: {
+          src: block.src,
+          title: block.title,
+          start: block.start,
+        },
+        children: [],
+      },
+      hasVideo: true,
+    };
+  }
+
   return {
     element: {
       type: 'video',
@@ -801,6 +817,7 @@ function convertVideoBlock(block: JsonVideoBlock, path: string): ConversionResul
         title: block.title,
         start: block.start,
         end: block.end,
+        baseUrl,
       },
       children: [],
     },

@@ -4,6 +4,9 @@ import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../sty
 import { waitForReactUpdates } from '../lib/async-utils';
 import { logger } from '../lib/logging';
 import { USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../lib/faro';
+import { createInteractionName, UserInteraction } from '../lib/analytics';
+import type { SequenceRunResult, StepOutcome } from '../lib/telemetry';
+import { outcomeFromSequenceRun } from './outcome-classifier';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
 import { checkRequirements, checkPostconditions, RequirementsCheckOptions } from '../requirements-manager';
 import { extractInteractiveDataFromElement } from '../lib/dom';
@@ -162,7 +165,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   const dispatchInteractiveAction = useCallback(
     async (data: InteractiveElementData, click: boolean) => {
       await withFaroUserAction(
-        click ? 'pathfinder_step_do' : 'pathfinder_step_show',
+        click
+          ? createInteractionName(UserInteraction.DoItButtonClick)
+          : createInteractionName(UserInteraction.ShowMeButtonClick),
         { target_action: data.targetAction, ref_target: data.refTarget },
         async () => {
           if (data.targetAction === 'highlight') {
@@ -180,7 +185,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           } else if (data.targetAction === 'popout') {
             await interactivePopout(data, click);
           }
-        }
+        },
+        undefined,
+        // "Do it" is the funnel action; "Show me" is just a preview.
+        { critical: click }
       );
     },
     [
@@ -302,10 +310,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   );
 
   const interactiveSequence = useCallback(
-    async (data: InteractiveElementData, showOnly: boolean): Promise<string> => {
-      // This is here so recursion cannot happen
+    async (data: InteractiveElementData, showOnly: boolean): Promise<SequenceRunResult> => {
+      // Recursion guard — a re-entrant call is a no-op, not a failure.
       if (activeRefsRef.current.has(data.refTarget)) {
-        return data.refTarget;
+        return 'completed';
       }
 
       stateManager.setState(data, 'running');
@@ -340,25 +348,24 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           stateManager.handleError(msg, 'interactiveSequence', data, true);
         }
 
-        if (!showOnly) {
-          // Full sequence: Show each step, then do each step, one by one
-          await sequenceManager.runStepByStepSequence(interactiveElements);
-        } else {
-          // Show only mode
-          await sequenceManager.runInteractiveSequence(interactiveElements, true);
-        }
+        const result = !showOnly
+          ? // Full sequence: Show each step, then do each step, one by one
+            await sequenceManager.runStepByStepSequence(interactiveElements)
+          : // Show only mode
+            await sequenceManager.runInteractiveSequence(interactiveElements, true);
 
-        // Mark as completed after successful execution
-        stateManager.setState(data, 'completed');
+        // Only a fully completed run may emit interactive-action-completed —
+        // retry exhaustion resolves without throwing.
+        stateManager.setState(data, result === 'completed' ? 'completed' : 'error');
 
         activeRefsRef.current.delete(data.refTarget);
-        return data.refTarget;
+        return result;
       } catch (error) {
         stateManager.handleError(error as Error, 'interactiveSequence', data, false);
         activeRefsRef.current.delete(data.refTarget);
       }
 
-      return data.refTarget;
+      return 'action_error';
     },
     [containerRef, activeRefsRef, sequenceManager, stateManager]
   );
@@ -387,7 +394,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       targetValue?: string,
       buttonType: 'show' | 'do' = 'do',
       targetComment?: string
-    ): Promise<void> => {
+    ): Promise<StepOutcome> => {
       // Create InteractiveElementData directly from parameters
       const elementData: InteractiveElementData = {
         refTarget: refTarget,
@@ -403,8 +410,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       // No DOM element needed - React components manage their own state
       const isShowMode = buttonType === 'show';
 
+      // Sequence runs resolve on failure, so the captured result — not
+      // promise settlement — stamps the action outcome.
+      let sequenceResult: SequenceRunResult | undefined;
       await withFaroUserAction(
-        isShowMode ? 'pathfinder_step_show' : 'pathfinder_step_do',
+        isShowMode
+          ? createInteractionName(UserInteraction.ShowMeButtonClick)
+          : createInteractionName(UserInteraction.DoItButtonClick),
         { target_action: targetAction, ref_target: refTarget },
         async () => {
           try {
@@ -438,7 +450,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
                 break;
 
               case 'sequence':
-                await interactiveSequence(elementData, isShowMode);
+                sequenceResult = await interactiveSequence(elementData, isShowMode);
                 break;
 
               case 'noop':
@@ -463,8 +475,16 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);
           }
         },
-        targetAction === 'sequence' ? USER_ACTION_TIMEOUT_LONG_MS : undefined
+        targetAction === 'sequence' ? USER_ACTION_TIMEOUT_LONG_MS : undefined,
+        {
+          critical: !isShowMode,
+          outcomeFrom: () => outcomeFromSequenceRun(sequenceResult),
+        }
       );
+      // Sequence runs resolve rather than throw on requirements-exhausted/
+      // action-error, so callers must check this instead of assuming
+      // settlement means success — see the outcomeFrom mapping above.
+      return sequenceResult === undefined || sequenceResult === 'completed' ? 'ok' : 'error';
     },
     [
       interactiveFocus,

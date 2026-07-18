@@ -30,7 +30,13 @@ import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
 import { isDocsLikeTab, pickGrafanaDocsOpenAction, pickControllerTabOpenAction } from '../utils';
-import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getContentTypeForAnalytics,
+  tabTypeToContentType,
+  AnalyticsLinkType,
+} from '../../../lib/analytics';
 import { getMilestoneSlug, markMilestoneDone, setJourneyCompletionPercentage } from '../../../docs-retrieval';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
@@ -299,10 +305,10 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                           onClick={() => {
                             reportAppInteraction(UserInteraction.OpenExtraResource, {
                               content_url: cleanUrl,
-                              content_type: getContentTypeForAnalytics(cleanUrl, activeTab.type || 'docs'),
+                              content_type: getContentTypeForAnalytics(cleanUrl, tabTypeToContentType(activeTab.type)),
                               link_text: activeTab.title,
                               source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
-                              link_type: 'external_browser',
+                              link_type: AnalyticsLinkType.ExternalBrowser,
                               interaction_location: 'docs_content_meta_right',
                             });
                             setTimeout(() => {
@@ -334,10 +340,10 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                           onClick={() => {
                             reportAppInteraction(UserInteraction.OpenExtraResource, {
                               content_url: guideUrl || 'unknown',
-                              content_type: getContentTypeForAnalytics(guideUrl, activeTab.type || 'interactive'),
+                              content_type: getContentTypeForAnalytics(guideUrl, tabTypeToContentType(activeTab.type)),
                               link_text: activeTab.title,
-                              source_page: 'docs_content_meta_right',
-                              link_type: 'external_browser',
+                              source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
+                              link_type: AnalyticsLinkType.ExternalBrowser,
                               interaction_location: 'docs_content_meta_right',
                             });
                             const controllerUrl = createControllerUrl();

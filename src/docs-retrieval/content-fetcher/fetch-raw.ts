@@ -14,6 +14,7 @@ import {
 } from '../../security';
 import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { logger } from '../../lib/logging';
+import { normalizeTelemetryUrl } from '../../lib/telemetry';
 import { isJsonContentUrl, generateInteractiveLearningVariations, getContentUrls } from './url-utils';
 
 // Internal error structure for detailed error handling
@@ -110,7 +111,10 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
           const isFinalUrlTrusted = isTrustedFinalUrl(finalUrl);
 
           if (!isFinalUrlTrusted) {
-            logger.warn(`URL variation ${urlVariation} redirected to untrusted URL: ${finalUrl}`);
+            logger.warn('URL variation redirected to untrusted URL', {
+              content_url: normalizeTelemetryUrl(urlVariation),
+              final_url: normalizeTelemetryUrl(finalUrl),
+            });
             continue; // Try next variation
           }
 
@@ -284,13 +288,12 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
         const isFinalUrlTrusted = isTrustedFinalUrl(finalUrl);
 
         if (!isFinalUrlTrusted) {
-          logger.warn(
-            `Redirect target not in trusted domain list.\n` +
-              `Original URL: ${url}\n` +
-              `Final URL: ${finalUrl}\n` +
-              `response.url: ${response.url}\n` +
-              `isAllowedContentUrl: ${isAllowedContentUrl(finalUrl)}`
-          );
+          logger.warn('Redirect target not in trusted domain list', {
+            content_url: normalizeTelemetryUrl(url),
+            final_url: normalizeTelemetryUrl(finalUrl),
+            response_url_empty: !response.url,
+            is_allowed_content_url: isAllowedContentUrl(finalUrl),
+          });
           lastError = {
             message: 'Redirect target is not in trusted domain list',
             errorType: 'other',
@@ -335,7 +338,10 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
           errorType: 'other',
           statusCode: response.status,
         };
-        logger.warn(`Manual redirect detected from ${url}`, { lastErrorMessage: lastError.message });
+        logger.warn('Manual redirect detected', {
+          content_url: normalizeTelemetryUrl(url),
+          lastErrorMessage: lastError.message,
+        });
 
         if (location.startsWith('/')) {
           try {
@@ -343,7 +349,10 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
             const redirectUrl = new URL(location, originalUrl.origin);
 
             if (redirectUrl.origin !== originalUrl.origin) {
-              logger.warn(`Blocked redirect to different origin: ${redirectUrl.origin}`);
+              logger.warn('Blocked redirect to different origin', {
+                redirect_origin: redirectUrl.origin,
+                content_url: normalizeTelemetryUrl(url),
+              });
               lastError = {
                 message: `Cross-origin redirect blocked for security: ${redirectUrl.origin}`,
                 errorType: 'other',
@@ -352,7 +361,10 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
               const isRedirectTrusted = isTrustedFinalUrl(redirectUrl.href);
 
               if (!isRedirectTrusted) {
-                logger.warn(`Redirect target not in trusted domain list: ${redirectUrl.href}`);
+                logger.warn('Redirect target not in trusted domain list', {
+                  content_url: normalizeTelemetryUrl(url),
+                  final_url: normalizeTelemetryUrl(redirectUrl.href),
+                });
                 lastError = {
                   message: 'Redirect target is not in trusted domain list',
                   errorType: 'other',
@@ -393,7 +405,10 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
         errorType,
         statusCode: response.status,
       };
-      logger.warn(`Failed to fetch from ${url}: ${lastError.message}`);
+      logger.warn(`Failed to fetch content: ${lastError.message}`, {
+        content_url: normalizeTelemetryUrl(url),
+        error_type: errorType,
+      });
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -408,11 +423,15 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
       message: errorMessage,
       errorType: isTimeout ? 'timeout' : isNetwork ? 'network' : 'other',
     };
-    logger.warn(`Failed to fetch from ${url}`, { error });
+    logger.warn('Failed to fetch content', { error, content_url: normalizeTelemetryUrl(url) });
   }
 
   if (lastError) {
-    logger.error(`Failed to fetch content from ${url}`, { lastErrorMessage: lastError.message });
+    logger.error('Failed to fetch content', {
+      lastErrorMessage: lastError.message,
+      content_url: normalizeTelemetryUrl(url),
+      error_type: lastError.errorType,
+    });
   }
 
   return { html: null, error: lastError };

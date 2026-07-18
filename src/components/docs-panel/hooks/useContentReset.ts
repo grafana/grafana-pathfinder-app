@@ -14,6 +14,7 @@ import {
   reportAppInteraction,
   UserInteraction,
   getContentTypeForAnalytics,
+  tabTypeToContentType,
   enrichWithStepContext,
 } from '../../../lib/analytics';
 import { logger } from '../../../lib/logging';
@@ -49,7 +50,7 @@ export function useContentReset({ model }: UseContentResetOptions) {
           UserInteraction.ResetProgressClick,
           enrichWithStepContext({
             content_url: analyticsUrl,
-            content_type: getContentTypeForAnalytics(analyticsUrl, activeTab?.type || 'docs'),
+            content_type: getContentTypeForAnalytics(analyticsUrl, tabTypeToContentType(activeTab?.type)),
             interaction_location: 'docs_content_meta_header',
           })
         );

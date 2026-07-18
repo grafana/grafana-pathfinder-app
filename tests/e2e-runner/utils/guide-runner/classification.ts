@@ -4,7 +4,7 @@
  * Error classification logic for failure triage (L3-5C).
  * Analyzes error messages to categorize failures for routing to the appropriate team.
  *
- * @see docs/design/e2e-test-runner-design.md#error-classification
+ * @see docs/developer/E2E_TESTING.md#error-classification
  */
 
 import { AbortReason, ErrorClassification } from './types';

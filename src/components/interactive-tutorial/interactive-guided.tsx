@@ -351,6 +351,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             return false;
           } else if (result === 'cancelled') {
             return false;
+          } else if (result === 'error') {
+            setFailedStepIndex(i);
+            setExecutionError(`Step ${i + 1} failed. Click "Retry" to try again.`);
+            return false;
           }
         }
 

@@ -4,7 +4,7 @@
  * Functions for detecting and fixing step requirements (L3-4A, L3-4B).
  * Includes session validation and automatic fix button execution.
  *
- * @see docs/design/e2e-test-runner-design.md
+ * @see docs/developer/E2E_TESTING.md#requirements-and-skip-behavior
  */
 
 import { Page } from '@playwright/test';

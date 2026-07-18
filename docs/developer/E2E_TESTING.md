@@ -4,11 +4,24 @@ The Pathfinder CLI includes an end-to-end test runner for interactive JSON guide
 
 For prescriptive agent constraints on testing (unit, integration, and E2E), see `.cursor/rules/testingStrategy.mdc`.
 
+This is the canonical implementation-backed reference for E2E CLI behavior. Verify behavior against this document and the source files below before changing code.
+
 ## Key concepts
 
 - **DOM-based step discovery**: Tests interact with the rendered UI, not raw JSON. The plugin handles conditional logic; the runner iterates whatever steps are visible.
 - **Sequential execution**: Steps run in order, matching the real user flow.
 - **Requirements handling**: The runner detects unmet requirements, clicks Fix buttons, and handles skip/mandatory logic.
+
+## Source map for agents
+
+- `src/cli/commands/e2e.ts` — Commander options, input resolution, dependency planning, pre-flight orchestration, clean-stack resets, cloud routing, and per-guide Playwright invocation.
+- `src/cli/e2e/e2e-runner-contract.ts` — environment-variable contract between the CLI process and Playwright runner.
+- `src/cli/e2e/e2e-package.ts` — remote package and repository resolution, content fetch, schema validation, side-effect classification, and pre-run skip reasons.
+- `src/cli/e2e/e2e-targets.ts` — manifest `testEnvironment` to concrete target URL or skip reason.
+- `src/cli/e2e/cloud-provisioning.ts` and `src/cli/e2e/cloud-stack-pool-manager.ts` — shared-stack service-account isolation and pool-manager isolated stack leasing.
+- `tests/e2e-runner/guide-runner.spec.ts` — browser-side guide loading, pre-flight checks, DOM discovery, step execution, and result file writing.
+- `tests/e2e-runner/utils/guide-runner/` — step discovery, execution, requirement fixing, artifact capture, and failure classification.
+- `docs/developer/E2E_TESTING_CONTRACT.md` — stable `data-test-*` selector contract used by the runner.
 
 ## Quick start
 
@@ -58,8 +71,8 @@ npx pathfinder-cli e2e [options] [files...]
 | `--cloud-url <url>`                        | Default Grafana Cloud instance URL for cloud-tier guides without a manifest `instance`.                                                                  | `https://learn.grafana.net/`      |
 | `--cloud-stack-pool-manager-url <url>`     | Pool manager base URL for isolated Grafana Cloud stack leasing.                                                                                          | None                              |
 | `--cloud-stack-pool-manager-token <env>`   | Pool manager bearer token env var for isolated Grafana Cloud stack leasing.                                                                              | None                              |
-| `--cloud-stack-pool-id <id>`               | Pool manager pool id for isolated Grafana Cloud stack leasing.                                                                                           | `nightly`                         |
-| `--cloud-stack-max-wait-seconds <seconds>` | Maximum wait budget for pool-manager lease requests.                                                                                                     | None                              |
+| `--cloud-stack-pool-id <id>`               | Pool manager pool id for isolated Grafana Cloud stack leasing. Pass the pool id configured on the pool manager you are targeting.                        | `nightly`                         |
+| `--cloud-stack-max-wait-seconds <seconds>` | Maximum wait budget for pool-manager lease requests. The manager returns a lease within this budget or fails the chain.                                  | None                              |
 
 ### Input formats
 
@@ -194,8 +207,9 @@ When a step fails, the runner captures:
 
 - **Screenshot**: `{stepId}-failure.png` of the viewport
 - **DOM snapshot**: `{stepId}-dom.html` for selector debugging
+- **Console errors**: `{stepId}-console.json` for JavaScript errors observed during the step
 
-Artifacts are saved to the `--artifacts` directory (or a temp directory by default).
+Artifacts are saved to the `--artifacts` directory (or a temp directory by default). `--always-screenshot` also records pre-step, success, and final screenshots; `--trace` records a Playwright trace and surfaces the trace path in CLI output.
 
 ## Guided-block test guide
 
@@ -401,7 +415,22 @@ When a step fails, the runner assigns an error classification to help with triag
 
 Only `infrastructure` failures are auto-classified. `SELECTOR_NOT_FOUND`, `ACTION_FAILED`, and `REQUIREMENT_FAILED` default to `unknown` and require human triage — they could indicate content drift, a product regression, or a missing test environment setup.
 
-For the full rationale and validation plan behind this classification approach, see [Error Classification](../design/e2e-test-runner-design.md#error-classification) in the design doc.
+The implemented classifier lives in `tests/e2e-runner/utils/guide-runner/classification.ts`.
+
+### Result triage boundary
+
+The CLI produces local execution results, JSON reports, and artifacts. It does not own fleet scheduling, guide-health aggregation, artifact retention, metrics emission, alerting, or recommendation suppression; those concerns belong to the backend guide-health platform.
+
+Use CLI output to determine where the fix belongs:
+
+| Failure type   | Typical signal                                                         | Likely owner                               |
+| -------------- | ---------------------------------------------------------------------- | ------------------------------------------ |
+| Content drift  | A selector, requirement, or guide step no longer matches Grafana UI    | Guide/content author                       |
+| Product change | Grafana behavior changed and the guide still describes valid behavior  | Product owner or shared selector contract  |
+| Runner issue   | The CLI, Playwright runner, or `data-test-*` contract misreports state | Pathfinder CLI/E2E runner implementation   |
+| Infrastructure | Grafana, auth, networking, pool capacity, or environment setup failed  | Test environment or guide-health operators |
+
+When the failure is not clearly a runner or contract bug, avoid changing Pathfinder code just to make a guide pass. Update the guide, the test environment, or the backend guide-health platform instead.
 
 ## Remote package-aware testing
 
@@ -418,30 +447,46 @@ Guides are routed by their manifest's `testEnvironment.tier`:
 Cloud auth:
 
 - **Admin token per cloud target.** Pass `--cloud-instance-admin-token learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN` to associate an admin service-account token env var with a cloud target. The CLI uses that admin token only to mint a fresh service account and short-lived token for each dependency chain; the browser runner receives only the minted token. Repeat the flag for each supported instance.
-- **Isolated stack leasing.** Pass `--cloud-stack-pool-manager-url <url>` and `--cloud-stack-pool-manager-token <env>` to let unsafe cloud dependency chains lease disposable Grafana Cloud stacks from the pool manager instead of the shared target. `--cloud-stack-pool-id` defaults to `nightly`. The CLI sends `POST /v1/leases` before a dependency chain, runs all cloud guides in that chain against the returned `grafanaUrl` and `runnerToken`, then sends `POST /v1/leases/{leaseId}/retire` during teardown. The CLI never receives or uses a Grafana Cloud Access Policy token.
+- **Isolated stack leasing.** Pass `--cloud-stack-pool-manager-url <url>` and `--cloud-stack-pool-manager-token <env>` to let unsafe cloud dependency chains lease disposable Grafana Cloud stacks from the pool manager instead of the shared target. Pass `--cloud-stack-pool-id <id>` matching the pool configured on the pool manager you are targeting; the CLI default is `nightly`. The CLI sends `POST /v1/leases` before a dependency chain, runs all cloud guides in that chain against the returned `grafanaUrl` and `runnerToken`, then sends `POST /v1/leases/{leaseId}/retire` during teardown.
 
 Per-chain service-account isolation mirrors how `--clean` resets the local docker stack per chain. Minted tokens carry a TTL, and accounts orphaned by crashed runs are swept on the next run. This isolates per-identity state (preferences, stars, sessions) between chains; it does **not** reset org data such as dashboards or data sources created by guides.
 
-Pool-manager stack routing is used for cloud dependency chains classified as `possibly_mutating`, `mutating`, or `unknown` when manager config is present. It is also used for cloud chains that lack matching shared-stack auth. If the manager returns `no_capacity`, the affected chain fails instead of running against a shared stack. Cold provisioning and plugin installation are manager responsibilities for a later phase.
+Pool-manager stack routing is used when pool manager config is present for any cloud dependency chain that is classified as `possibly_mutating`, `mutating`, or `unknown`, or whose target host has no matching `--cloud-instance-admin-token`. Read-only chains with a matching admin token keep using the faster shared-stack service-account path; read-only chains without one route through the pool manager rather than being skipped.
 
-Read-only cloud chains with matching `--cloud-instance-admin-token` keep using the faster shared-stack service-account path. If a cloud chain lacks shared-stack auth but isolated stack config is present, the runner can use an isolated stack for that chain.
+### Pool-backed cloud runs
 
-Interactive SSO/Okta login (driving the identity provider's login UI) is not supported. Path/journey (`milestones`) expansion is also not yet implemented; `path` and `journey` packages are skipped as an unsupported type. See the [Package-Aware Testing](../design/e2e-test-runner-design.md#package-aware-testing) design for the full picture.
+The pool manager leases from a **hot pool**: a set of pre-warmed Grafana Cloud stacks that already exist before the runner asks for one. Hot-pool leases are immediate when capacity is available because the manager returns an existing stack URL and a runner token. The runner requests leases with `fallbackPolicy: "hot_only"` and does not concern itself with how the pool manager fulfills or replenishes that pool.
+
+Pool-backed run behavior:
+
+- A configured but unreachable pool manager fails the run during setup with a pool-manager request error. The runner does not silently fall back to a shared cloud stack for unsafe chains.
+- `--cloud-stack-max-wait-seconds` is sent to the manager as the maximum lease wait budget. If the budget expires, the manager should return an error such as `no_capacity` or a timeout-specific code; the affected chain is reported as failed.
+- Each successful lease is retired with `POST /v1/leases/{leaseId}/retire` during teardown. If the runner crashes before teardown, the pool manager recovers the orphaned lease through its TTL-based expiry, currently one hour.
+- When pool capacity is exhausted, CI should treat the result as infrastructure capacity exhaustion, not content drift. Operators should increase hot-pool capacity, free stuck leases, or retry after capacity recovers.
+
+### Known gaps and follow-up
+
+- Interactive SSO/Okta login (driving the identity provider's login UI) is not supported.
+- Path/journey (`milestones`) expansion is not yet implemented; `path` and `journey` packages are skipped as an unsupported type.
 
 ### Package outcomes
 
-In remote modes a package can end in one of these states. Only `validation_failed` counts as a test failure; the rest are logged and the batch continues:
+In remote modes a package can end in one of these states. `failed`, `provisioning_failed`, and `validation_failed` produce a non-zero test-failure exit; `auth_expired` produces the auth-failure exit. Other skipped outcomes are logged and the batch continues.
 
-| Outcome                    | Meaning                                                    | Test failure? |
-| -------------------------- | ---------------------------------------------------------- | ------------- |
-| `passed` / `failed`        | The guide ran (see step results)                           | `failed` only |
-| `skipped_tier_mismatch`    | `cloud` guide on a `local` environment                     | No            |
-| `skipped_no_auth`          | `cloud` guide with no matching cloud auth                  | No            |
-| `skipped_invalid_instance` | manifest `instance` is not a bare hostname                 | No            |
-| `resolution_failed`        | Recommender returned 404 or a network error                | No            |
-| `fetch_failed`             | Could not fetch `content.json` from the CDN                | No            |
-| `unsupported_type`         | Package is a `path` / `journey` (milestone expansion TODO) | No            |
-| `validation_failed`        | Fetched `content.json` failed guide schema validation      | **Yes**       |
+| Outcome                       | Meaning                                                    | Test failure? |
+| ----------------------------- | ---------------------------------------------------------- | ------------- |
+| `passed` / `failed`           | The guide ran (see step results)                           | `failed` only |
+| `provisioning_failed`         | Cloud target provisioning or pool-manager leasing failed   | **Yes**       |
+| `skipped_tier_mismatch`       | `cloud` guide on a `local` environment                     | No            |
+| `skipped_no_auth`             | `cloud` guide with no matching cloud auth                  | No            |
+| `skipped_invalid_instance`    | manifest `instance` is not a bare hostname                 | No            |
+| `skipped_unsafe_shared_stack` | Unsafe cloud chain had no isolated stack route             | No            |
+| `resolution_failed`           | Recommender returned 404 or a network error                | No            |
+| `fetch_failed`                | Could not fetch `content.json` from the CDN                | No            |
+| `unsupported_type`            | Package is a `path` / `journey` (milestone expansion TODO) | No            |
+| `prerequisite_failed`         | A hard prerequisite could not be resolved before execution | No            |
+| `skipped_prereq`              | A prerequisite in the same dependency chain failed         | No            |
+| `validation_failed`           | Fetched `content.json` failed guide schema validation      | **Yes**       |
 
 With `--output`, pre-run skips are recorded under a `preRunSkipped` array, and each tested guide's report carries package metadata (`packageId`, `tier`, `instance`, `targetUrl`, `sourceUrl`).
 
@@ -463,12 +508,12 @@ npx pathfinder-cli e2e --remote --tier cloud \
   --cloud-url https://learn.grafana.net/ \
   --cloud-instance-admin-token learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN
 
-# Test unsafe cloud guides with pool-manager isolated stacks
+# Test all cloud guides with pool-manager isolated stacks
 export POOL_MANAGER_TOKEN=pool_manager_token_xxx
 npx pathfinder-cli e2e --remote --tier cloud \
   --cloud-stack-pool-manager-url https://pool-manager.example.com/ \
   --cloud-stack-pool-manager-token POOL_MANAGER_TOKEN \
-  --cloud-stack-pool-id nightly
+  --cloud-stack-pool-id <pool-id>
 
 # Test a guide whose manifest declares instance: play.grafana.org
 export GRAFANA_PLAY_ADMIN_TOKEN=glsa_play_admin_xxx
@@ -481,4 +526,3 @@ npx pathfinder-cli e2e --tier cloud --package play-guide \
 - [E2E Testing Contract](./E2E_TESTING_CONTRACT.md) - data-test-\* attributes for reliable E2E selectors
 - [CLI tools](./CLI_TOOLS.md) - Guide validation commands
 - [Local development](./LOCAL_DEV.md) - Setting up the development environment
-- [E2E test runner design](../design/e2e-test-runner-design.md) - Architecture, design rationale, and package-aware testing design

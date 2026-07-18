@@ -10,6 +10,8 @@ import {
 } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { withFaroUserAction } from '../../lib/faro';
+import { createInteractionName, UserInteraction } from '../../lib/analytics';
+import { type CompletionResult, outcomeFromCompletionResult } from '../outcome-classifier';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { GuidedAction } from '../../types/interactive-actions.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
@@ -17,7 +19,7 @@ import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 import { matchFormValue } from '../auto-completion/action-matcher';
 import { applyE2ECommentBoxAttributes } from '../e2e-attributes';
 
-type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped';
+export type { CompletionResult };
 
 /**
  * Handler for guided interactions where users manually perform actions
@@ -87,7 +89,7 @@ export class GuidedHandler {
     timeout: number = INTERACTIVE_CONFIG.guided.stepTimeout
   ): Promise<CompletionResult> {
     return withFaroUserAction(
-      'pathfinder_guided_step',
+      createInteractionName(UserInteraction.DoItButtonClick),
       {
         target_action: action.targetAction,
         ref_target: action.refTarget ?? '',
@@ -96,7 +98,8 @@ export class GuidedHandler {
       },
       () => this.runGuidedStep(action, stepIndex, totalSteps, timeout),
       // Internal waits are bounded by `timeout`; the margin only catches a hung step.
-      timeout + 10_000
+      timeout + 10_000,
+      { critical: true, outcomeFrom: outcomeFromCompletionResult }
     );
   }
 
@@ -198,7 +201,8 @@ export class GuidedHandler {
       logger.error(`Guided step ${stepIndex + 1} failed`, { error });
       // Clean up abort controller and listeners on error to prevent resource leaks
       this.cancel();
-      return 'cancelled';
+      // An exception is an action failure, not a user cancellation.
+      return 'error';
     }
   }
 
@@ -392,7 +396,12 @@ export class GuidedHandler {
         }
 
         if (remaining <= 0) {
-          logger.error(`Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`);
+          logger.error(`Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`, {
+            selector,
+            action_type: actionType,
+            attempt_count: attemptCount,
+            elapsed_ms: elapsed,
+          });
           throw error;
         }
         // Wait before retrying, but don't exceed timeout

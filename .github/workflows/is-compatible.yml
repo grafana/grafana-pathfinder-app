@@ -11,7 +11,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup Node.js environment
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -27,7 +27,7 @@ jobs:
 
           echo "modulets=${MODULETS}" >> $GITHUB_OUTPUT
       - name: Compatibility check
-        uses: grafana/plugin-actions/is-compatible@6a283a4015776c4becd1708906b59b2e78c221ae # main
+        uses: grafana/plugin-actions/is-compatible@d0240a622e21c5321b35732d4cee961a386d2d92 # main
         with:
           module: ${{ steps.find-module-ts.outputs.modulets }}
           comment-pr: no

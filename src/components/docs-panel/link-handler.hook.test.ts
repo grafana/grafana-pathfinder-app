@@ -13,6 +13,25 @@ jest.mock('../../lib/analytics', () => ({
     OpenExtraResource: 'open_extra_resource',
     MilestoneArrowInteractionClick: 'milestone_arrow_interaction_click',
   },
+  AnalyticsContentType: {
+    Docs: 'docs',
+    LearningJourney: 'learning-journey',
+    InteractiveGuide: 'interactive-guide',
+    Editor: 'editor',
+    Devtools: 'devtools',
+    PackageNavLink: 'package-nav-link',
+  },
+  AnalyticsLinkType: {
+    BundledInteractive: 'bundled_interactive',
+    Tutorial: 'tutorial',
+    Docs: 'docs',
+    InteractiveLearning: 'interactive_learning',
+    ExternalBrowser: 'external_browser',
+    SideJourney: 'side_journey',
+    SideJourneyExternal: 'side_journey_external',
+    RelatedJourney: 'related_journey',
+    RelatedJourneyExternal: 'related_journey_external',
+  },
 }));
 
 describe('useLinkClickHandler', () => {

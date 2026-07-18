@@ -8,7 +8,12 @@ import React, { useState, useEffect } from 'react';
 import { IconButton, Dropdown, Menu, Tooltip } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getContentTypeForAnalytics,
+  tabTypeToContentType,
+} from '../../../lib/analytics';
 import { PLUGIN_BASE_URL } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
 import { clearExtensionSidebarDocked } from '../../../lib/storage/extension-sidebar';
@@ -24,13 +29,6 @@ export interface TabBarActionsProps {
   isDevMode?: boolean;
   /** Reload handler for the `Refresh (dev)` item. */
   onReloadActiveTab?: (tab: LearningJourneyTab) => void;
-  /**
-   * Switch the panel back to the recommendations tab in place. When supplied,
-   * the "My learning" button keeps the user in the sidebar instead of a
-   * full-page navigation to the plugin home. Falls back to navigation when
-   * absent (e.g. the component rendered outside the panel).
-   */
-  onNavigateToRecommendations?: () => void;
 }
 
 /**
@@ -42,7 +40,6 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
   activeTab,
   isDevMode = false,
   onReloadActiveTab,
-  onNavigateToRecommendations,
 }) => {
   const user = config.bootData?.user;
   const canAccessPluginSettings = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
@@ -57,7 +54,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
       panel_type: 'docs_panel',
       ...(contentTab && {
         content_url: contentUrl || '',
-        content_type: getContentTypeForAnalytics(contentUrl, contentTab.type || 'docs'),
+        content_type: getContentTypeForAnalytics(contentUrl, tabTypeToContentType(contentTab.type)),
       }),
     });
     setTimeout(() => {
@@ -95,13 +92,9 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
 
   const handleMyLearningClick = () => {
     reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-      action: 'navigate_to_recommendations',
+      action: 'navigate_to_my_learning',
       source: 'header_my_learning',
     });
-    if (onNavigateToRecommendations) {
-      onNavigateToRecommendations();
-      return;
-    }
     locationService.push(PLUGIN_BASE_URL);
   };
 

@@ -24,7 +24,17 @@ const mockStartUserAction = jest.fn(() => ({
 }));
 const mockGetActiveUserAction = jest.fn((): unknown => undefined);
 const mockSetView = jest.fn();
+const mockSetUser = jest.fn();
 const mockPause = jest.fn();
+let mockSessionMeta: { id: string; attributes?: Record<string, string> } | undefined = {
+  id: 'session-1',
+  attributes: {},
+};
+const mockGetSession = jest.fn(() => mockSessionMeta);
+const mockSetSession = jest.fn((session?: { id?: string; attributes?: Record<string, string> }) => {
+  mockSessionMeta = session as typeof mockSessionMeta;
+});
+const mockPushMeasurement = jest.fn();
 const mockFaroInstance = {
   api: {
     pushError: mockPushError,
@@ -33,6 +43,10 @@ const mockFaroInstance = {
     startUserAction: mockStartUserAction,
     getActiveUserAction: mockGetActiveUserAction,
     setView: mockSetView,
+    setUser: mockSetUser,
+    getSession: mockGetSession,
+    setSession: mockSetSession,
+    pushMeasurement: mockPushMeasurement,
   },
   pause: mockPause,
 };
@@ -42,6 +56,7 @@ interface CapturedFaroConfig {
   sessionTracking: { samplingRate?: number; persistent: boolean };
   instrumentations: Array<{ constructor: { name: string } }>;
   beforeSend: (item: TransportItem<APIEvent>) => TransportItem<APIEvent> | null;
+  ignoreUrls?: Array<string | RegExp>;
 }
 
 const mockInitializeFaro = jest.fn((_cfg: CapturedFaroConfig) => mockFaroInstance);
@@ -54,18 +69,52 @@ jest.mock('@grafana/faro-web-sdk', () => ({
   PerformanceInstrumentation: class PerformanceInstrumentation {},
 }));
 
+const mockHashUserData = jest.fn(async (userId: string, email: string) => ({
+  hashedUserId: `hashed-${userId}`,
+  hashedEmail: `hashed-${email}`,
+}));
+
+jest.mock('./hash.util', () => ({ hashUserData: (...args: [string, string]) => mockHashUserData(...args) }));
+
+// Dynamically imported by initFaro's cohort stamping; the mock keeps the
+// OpenFeature SDK out of these tests.
+const mockGetActiveExperiments = jest.fn((): Array<Record<string, unknown>> => []);
+jest.mock('../utils/openfeature', () => ({ getActiveExperiments: () => mockGetActiveExperiments() }));
+
 // A stable object reference, not a fresh literal per require: `freshFaro()`
 // resets the module registry (so `./faro`'s internal init/instance state
 // starts clean), and re-requiring this mock must keep resolving to the same
 // `config` object so mutations made between tests are still visible.
+interface MockedBootDataUser {
+  email: string;
+  orgRole: string;
+  orgName: string;
+  analytics: { identifier: string };
+  language?: string;
+}
+
 const mockedConfig = {
-  buildInfo: { env: 'production', version: '13.1.0' },
-  bootData: { settings: { buildInfo: { versionString: 'Grafana Cloud' } } } as
-    { settings: { buildInfo: { versionString: string } } } | undefined,
+  buildInfo: { env: 'production', version: '13.1.0', edition: undefined as string | undefined },
+  bootData: {
+    settings: { buildInfo: { versionString: 'Grafana Cloud' } },
+    user: {
+      email: 'x@y.z',
+      orgRole: 'Admin',
+      orgName: 'Acme Corp',
+      analytics: { identifier: 'abc' },
+    } as MockedBootDataUser,
+  } as { settings: { buildInfo: { versionString: string } }; user: MockedBootDataUser } | undefined,
   analytics: { enabled: true } as { enabled: boolean } | undefined,
 };
 
 jest.mock('@grafana/runtime', () => ({ config: mockedConfig }));
+
+// stampFaroUser() is fire-and-forget inside initFaro() — flush the
+// microtask queue so its `await hashUserData(...)` resolves before assertions.
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 // Loaded via `require`, not a static ES `import`: ES imports are evaluated
 // before any of this file's own top-level statements, which would trigger
@@ -76,6 +125,7 @@ const {
   isGrafanaCloud,
   filterPathfinderTelemetry,
   stringifyAttributes,
+  buildResourceIgnorePattern,
 }: typeof import('./faro') = require('./faro');
 
 function freshFaro(): typeof import('./faro') {
@@ -87,9 +137,13 @@ beforeEach(() => {
   jest.clearAllMocks();
   localStorage.clear();
   sessionStorage.clear();
-  mockedConfig.buildInfo = { env: 'production', version: '13.1.0' };
-  mockedConfig.bootData = { settings: { buildInfo: { versionString: 'Grafana Cloud' } } };
+  mockedConfig.buildInfo = { env: 'production', version: '13.1.0', edition: undefined };
+  mockedConfig.bootData = {
+    settings: { buildInfo: { versionString: 'Grafana Cloud' } },
+    user: { email: 'x@y.z', orgRole: 'Admin', orgName: 'Acme Corp', analytics: { identifier: 'abc' } },
+  };
   mockedConfig.analytics = { enabled: true };
+  mockSessionMeta = { id: 'session-1', attributes: {} };
 });
 
 describe('getEnvironment', () => {
@@ -142,13 +196,14 @@ describe('isGrafanaCloud', () => {
 
 function exceptionItem(
   filenames: Array<string | undefined>,
-  context?: Record<string, string>
+  context?: Record<string, string>,
+  value = 'boom'
 ): TransportItem<APIEvent> {
   return {
     type: 'exception',
     payload: {
       type: 'Error',
-      value: 'boom',
+      value,
       timestamp: new Date().toISOString(),
       stacktrace: { frames: filenames.map((filename) => ({ filename, function: 'fn' })) },
       ...(context && { context }),
@@ -157,10 +212,10 @@ function exceptionItem(
   } as unknown as TransportItem<APIEvent>;
 }
 
-function exceptionItemWithoutStacktrace(context?: Record<string, string>): TransportItem<APIEvent> {
+function exceptionItemWithoutStacktrace(context?: Record<string, string>, value = 'boom'): TransportItem<APIEvent> {
   return {
     type: 'exception',
-    payload: { type: 'Error', value: 'boom', timestamp: new Date().toISOString(), ...(context && { context }) },
+    payload: { type: 'Error', value, timestamp: new Date().toISOString(), ...(context && { context }) },
     meta: {},
   } as unknown as TransportItem<APIEvent>;
 }
@@ -240,6 +295,42 @@ describe('filterPathfinderTelemetry', () => {
     expect(filterPathfinderTelemetry(logItem('something happened'))).toBeNull();
   });
 
+  it('redacts a URL embedded in an attributed exception value', () => {
+    const item = exceptionItem(
+      ['webpack://grafana-pathfinder-app/./src/lib/faro.ts'],
+      undefined,
+      'No elements found matching selector: a[href="https://grafana.example/d/abc?token=S:sk-live-9f83b2&user=jdoe@corp.com"]'
+    );
+    const result = filterPathfinderTelemetry(item);
+    expect(result).not.toBeNull();
+    expect(result).not.toBe(item);
+    expect(result?.payload).toMatchObject({
+      value: 'No elements found matching selector: a[href="grafana.example/d/abc"]',
+    });
+  });
+
+  it('redacts a URL embedded in an explicitly-reported exception value', () => {
+    const item = exceptionItemWithoutStacktrace(
+      { pathfinder_reported: 'true' },
+      'dispatch failed for https://grafana.example/d/abc?token=secret'
+    );
+    const result = filterPathfinderTelemetry(item);
+    expect(result?.payload).toMatchObject({ value: 'dispatch failed for grafana.example/d/abc' });
+  });
+
+  it('leaves an attributed exception value untouched (same reference) when it carries no URL', () => {
+    const item = exceptionItem(['webpack://grafana-pathfinder-app/./src/lib/faro.ts'], undefined, 'boom');
+    expect(filterPathfinderTelemetry(item)).toBe(item);
+  });
+
+  it('redacts a URL embedded in a kept log message', () => {
+    const item = logItem('[pathfinder] fetch failed for https://grafana.example/d/abc?token=secret&user=jdoe@corp.com');
+    const result = filterPathfinderTelemetry(item);
+    expect(result).not.toBeNull();
+    expect(result).not.toBe(item);
+    expect(result?.payload).toMatchObject({ message: '[pathfinder] fetch failed for grafana.example/d/abc' });
+  });
+
   it('passes through other item types unfiltered', () => {
     const item = eventItem();
     expect(filterPathfinderTelemetry(item)).toBe(item);
@@ -285,6 +376,23 @@ describe('filterPathfinderTelemetry', () => {
   });
 });
 
+describe('buildResourceIgnorePattern', () => {
+  const pattern = buildResourceIgnorePattern(
+    new Set(['grafana.com', 'recommender.grafana.com', 'interactive-learning.grafana.net'])
+  );
+
+  it('does not match (allows) tracked hostnames', () => {
+    expect(pattern.test('https://grafana.com/docs/x')).toBe(false);
+    expect(pattern.test('https://recommender.grafana.com/api/v1/recommend')).toBe(false);
+    expect(pattern.test('https://interactive-learning.grafana.net/x')).toBe(false);
+  });
+
+  it('matches (ignores) untracked hostnames — Grafana core and third parties', () => {
+    expect(pattern.test('https://foo.grafana.net/api/dashboards/uid/abc')).toBe(true);
+    expect(pattern.test('https://cdn.jsdelivr.net/x')).toBe(true);
+  });
+});
+
 describe('initFaro', () => {
   it('does not initialize when the instance is not Grafana Cloud', async () => {
     mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
@@ -314,6 +422,20 @@ describe('initFaro', () => {
     expect(calledWith.app.name).toBe('grafana-pathfinder-app');
     expect(calledWith.app.version).toBe('9.9.9-test');
     expect(calledWith.app.version).not.toBe('%VERSION%');
+  });
+
+  it('sets a non-empty ignoreUrls so core resource noise is dropped before a payload is built', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+    const calledWith = mockInitializeFaro.mock.calls[0]![0];
+    expect(calledWith.ignoreUrls).toBeDefined();
+    expect(calledWith.ignoreUrls!.length).toBeGreaterThan(0);
+    // The production wiring must carry buildResourceIgnorePattern semantics:
+    // ignore (match) core/third-party hosts, allow (not match) tracked ones.
+    const pattern = calledWith.ignoreUrls![0] as RegExp;
+    expect(pattern).toBeInstanceOf(RegExp);
+    expect(pattern.test('https://foo.grafana.net/api/dashboards/uid/abc')).toBe(true);
+    expect(pattern.test('https://grafana.com/docs/x')).toBe(false);
   });
 
   it('includes PerformanceInstrumentation (filtered down in beforeSend, not excluded outright)', async () => {
@@ -360,6 +482,148 @@ describe('initFaro', () => {
     await faro.initFaro();
     await faro.initFaro();
     expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
+  });
+
+  it('stamps meta.user with the raw analytics id and email — Faro is first-party, unlike the hashed recommender payload', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+    await flushMicrotasks();
+    expect(mockHashUserData).toHaveBeenCalledWith('abc', 'x@y.z');
+    expect(mockSetUser).toHaveBeenCalledWith({
+      id: 'abc',
+      email: 'x@y.z',
+      username: window.location.hostname,
+      attributes: { org_role: 'Admin', org_name: 'Acme Corp' },
+    });
+  });
+
+  it('omits the email field (instead of a placeholder) when the Cloud user has no email', async () => {
+    mockedConfig.bootData!.user.email = '';
+    const faro = freshFaro();
+    await faro.initFaro();
+    await flushMicrotasks();
+    expect(mockSetUser).toHaveBeenCalledWith({
+      id: 'abc',
+      email: undefined,
+      username: window.location.hostname,
+      attributes: { org_role: 'Admin', org_name: 'Acme Corp' },
+    });
+  });
+
+  it('uses the OSS identity placeholders (not the recommender hash) outside Grafana Cloud', async () => {
+    mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
+    localStorage.setItem('pathfinder.faro.local', 'true');
+    mockedConfig.buildInfo.env = 'development';
+    const faro = freshFaro();
+    await faro.initFaro();
+    await flushMicrotasks();
+    expect(mockHashUserData).toHaveBeenCalledWith('oss-user', 'oss-user@example.com');
+  });
+
+  it('does not stamp a user when init is skipped (outside Grafana Cloud)', async () => {
+    mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
+    const faro = freshFaro();
+    await faro.initFaro();
+    await flushMicrotasks();
+    expect(mockHashUserData).not.toHaveBeenCalled();
+    expect(mockSetUser).not.toHaveBeenCalled();
+  });
+
+  it('includes edition, language, and the instance hostname in the initial session attributes', async () => {
+    mockedConfig.bootData!.user.language = 'fr-FR';
+    mockedConfig.buildInfo.edition = 'Enterprise';
+    const faro = freshFaro();
+    await faro.initFaro();
+    const calledWith = mockInitializeFaro.mock.calls[0]![0] as unknown as {
+      sessionTracking: { session: { attributes: Record<string, string> } };
+    };
+    expect(calledWith.sessionTracking.session.attributes).toEqual(
+      expect.objectContaining({
+        grafana_version: '13.1.0',
+        edition: 'Enterprise',
+        language: 'fr-FR',
+        instance: window.location.hostname,
+      })
+    );
+  });
+
+  it('stamps active experiment cohorts onto the session as the versioned schema', async () => {
+    mockGetActiveExperiments.mockReturnValueOnce([
+      { flag: 'pathfinder.highlighted-guide-experiment', variant: 'treatment', guideId: 'bundled:welcome', pages: [] },
+    ]);
+    const faro = freshFaro();
+    await faro.initFaro();
+    await flushMicrotasks();
+
+    expect(mockSetSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          experiments: JSON.stringify({
+            v: 1,
+            cohorts: [
+              { flag: 'pathfinder.highlighted-guide-experiment', variant: 'treatment', guideId: 'bundled:welcome' },
+            ],
+          }),
+        }),
+      })
+    );
+  });
+
+  it('does not stamp an experiments attribute when no experiments are active', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+    await flushMicrotasks();
+
+    const stamped = mockSetSession.mock.calls.some((call) => call[0]?.attributes?.experiments !== undefined);
+    expect(stamped).toBe(false);
+  });
+
+  it('stamps the current surface onto the session on init', async () => {
+    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');
+    const faro = freshFaro();
+    await faro.initFaro();
+    expect(mockSetSession).toHaveBeenCalledWith(
+      expect.objectContaining({ attributes: expect.objectContaining({ surface: 'floating' }) })
+    );
+  });
+
+  it('re-stamps the surface when the surface owner reports a change', async () => {
+    const faro = freshFaro();
+    // Same module registry as freshFaro's require — initFaro subscribed to this instance.
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    await faro.initFaro();
+
+    surface.reportPathfinderSurface('fullscreen');
+
+    expect(mockSetSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ attributes: expect.objectContaining({ surface: 'fullscreen' }) })
+    );
+  });
+
+  it('does not clobber a destination surface when a stale unmount reports closed', async () => {
+    const faro = freshFaro();
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    await faro.initFaro();
+
+    surface.reportPathfinderSurface('floating');
+    surface.reportPathfinderSurfaceClosed('sidebar');
+
+    expect(mockSetSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ attributes: expect.objectContaining({ surface: 'floating' }) })
+    );
+
+    surface.reportPathfinderSurfaceClosed('floating');
+    expect(mockSetSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ attributes: expect.objectContaining({ surface: 'closed' }) })
+    );
+  });
+
+  it('swallows errors from the hashing/setUser pipeline', async () => {
+    mockHashUserData.mockRejectedValueOnce(new Error('crypto unavailable'));
+    const faro = freshFaro();
+    await expect(faro.initFaro()).resolves.not.toThrow();
+    await flushMicrotasks();
+    expect(mockSetUser).not.toHaveBeenCalled();
   });
 });
 
@@ -423,6 +687,77 @@ describe('pushFaroLog', () => {
       throw new Error('transport down');
     });
     expect(() => faro.pushFaroLog('error', 'boom')).not.toThrow();
+  });
+});
+
+describe('pushFaroEvent', () => {
+  it('no-ops before initialization without throwing', () => {
+    const faro = freshFaro();
+    expect(() => faro.pushFaroEvent('recommender_fallback', { error_type: 'timeout' })).not.toThrow();
+    expect(mockPushEvent).not.toHaveBeenCalled();
+  });
+
+  it('forwards name and stringified attributes with skipDedupe once initialized', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.pushFaroEvent('requirements_exhausted', { requirement: 'has-role:admin', retry_count: 3 });
+    expect(mockPushEvent).toHaveBeenCalledWith(
+      'requirements_exhausted',
+      { requirement: 'has-role:admin', retry_count: '3' },
+      undefined,
+      { skipDedupe: true }
+    );
+  });
+
+  it('swallows errors thrown by the underlying Faro API', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockPushEvent.mockImplementationOnce(() => {
+      throw new Error('transport down');
+    });
+    expect(() => faro.pushFaroEvent('recommender_fallback')).not.toThrow();
+  });
+});
+
+describe('pushFaroMeasurement', () => {
+  it('no-ops before initialization without throwing', () => {
+    const faro = freshFaro();
+    expect(() => faro.pushFaroMeasurement('pathfinder_panel', { panel_lcp_ms: 120 })).not.toThrow();
+    expect(mockPushMeasurement).not.toHaveBeenCalled();
+  });
+
+  it('forwards type/values/context once initialized', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.pushFaroMeasurement('pathfinder_recommender', { recommender_ms: 250 }, { outcome: 'ok' });
+    expect(mockPushMeasurement).toHaveBeenCalledWith(
+      { type: 'pathfinder_recommender', values: { recommender_ms: 250 } },
+      { context: { outcome: 'ok' } }
+    );
+  });
+
+  it('omits the options object entirely when no context is passed', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.pushFaroMeasurement('pathfinder_panel', { panel_lcp_ms: 120 });
+    expect(mockPushMeasurement).toHaveBeenCalledWith(
+      { type: 'pathfinder_panel', values: { panel_lcp_ms: 120 } },
+      undefined
+    );
+  });
+
+  it('swallows errors thrown by the underlying Faro API', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockPushMeasurement.mockImplementationOnce(() => {
+      throw new Error('transport down');
+    });
+    expect(() => faro.pushFaroMeasurement('pathfinder_panel', { panel_lcp_ms: 120 })).not.toThrow();
   });
 });
 
@@ -572,10 +907,54 @@ describe('withFaroUserAction', () => {
 
     const result = await faro.withFaroUserAction('pathfinder_step_do', { step: 2 }, async () => 'done');
     expect(result).toBe('done');
-    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_step_do', { step: '2' });
+    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_step_do', { step: '2' }, undefined);
     const action = mockStartUserAction.mock.results[0]!.value;
     expect(action.attributes).toEqual({ outcome: 'ok' });
     expect(mockActionEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes importance: critical when options.critical is set', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    await faro.withFaroUserAction('pathfinder_guide_open', {}, async () => 'done', undefined, { critical: true });
+    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_guide_open', {}, { importance: 'critical' });
+  });
+
+  it('omits the options object entirely when not marked critical', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    await faro.withFaroUserAction('pathfinder_step_do', {}, async () => 'done', undefined, { critical: false });
+    expect(mockStartUserAction).toHaveBeenCalledWith('pathfinder_step_do', {}, undefined);
+  });
+
+  it('stamps the outcome produced by options.outcomeFrom instead of ok when work resolves-but-failed', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    await faro.withFaroUserAction('pathfinder_guided_step', {}, async () => 'cancelled' as const, undefined, {
+      outcomeFrom: (result) => (result === 'cancelled' ? 'cancelled' : 'ok'),
+    });
+
+    const action = mockStartUserAction.mock.results[0]!.value;
+    expect(action.attributes).toEqual({ outcome: 'cancelled' });
+    expect(mockActionEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to ok when outcomeFrom itself throws (telemetry must never break the app)', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    const result = await faro.withFaroUserAction('pathfinder_guided_step', {}, async () => 'done', undefined, {
+      outcomeFrom: () => {
+        throw new Error('mapper bug');
+      },
+    });
+
+    expect(result).toBe('done');
+    const action = mockStartUserAction.mock.results[0]!.value;
+    expect(action.attributes).toEqual({ outcome: 'ok' });
   });
 
   it('stamps outcome error and rethrows the same error instance on rejection', async () => {
@@ -710,6 +1089,37 @@ describe('setFaroUserActionAttributes', () => {
   });
 });
 
+describe('setFaroSessionAttributes', () => {
+  it('merges onto existing session attributes and preserves the session id', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+    mockSetSession.mockClear();
+    mockSessionMeta = { id: 'session-1', attributes: { grafana_version: '13.1.0' } };
+
+    faro.setFaroSessionAttributes({ experiments: '[{"flag":"x"}]' });
+
+    expect(mockSetSession).toHaveBeenCalledWith({
+      id: 'session-1',
+      attributes: { grafana_version: '13.1.0', experiments: '[{"flag":"x"}]' },
+    });
+  });
+
+  it('no-ops before initialization without throwing', () => {
+    const faro = freshFaro();
+    expect(() => faro.setFaroSessionAttributes({ surface: 'floating' })).not.toThrow();
+    expect(mockSetSession).not.toHaveBeenCalled();
+  });
+
+  it('swallows errors thrown by the underlying Faro API', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+    mockGetSession.mockImplementationOnce(() => {
+      throw new Error('transport down');
+    });
+    expect(() => faro.setFaroSessionAttributes({ surface: 'floating' })).not.toThrow();
+  });
+});
+
 describe('passesActivityGate', () => {
   const DOCKED_KEY = 'grafana.navigation.extensionSidebarDocked';
   const PANEL_MODE_KEY = 'grafana-pathfinder-app-panel-mode';
@@ -761,33 +1171,69 @@ describe('passesActivityGate', () => {
     expect(faro.passesActivityGate(eventItem())).toBe(false);
   });
 
-  it.each(['pathfinder-controller-root', 'pathfinder-kiosk-root'])(
-    'passes events when the %s overlay is mounted in this tab',
-    (id) => {
-      const el = document.createElement('div');
-      el.id = id;
-      document.body.appendChild(el);
-      try {
-        const faro = freshFaro();
-        expect(faro.passesActivityGate(eventItem())).toBe(true);
-      } finally {
-        el.remove();
-      }
+  it('passes events when the pathfinder-controller-root overlay is mounted in this tab', () => {
+    const el = document.createElement('div');
+    el.id = 'pathfinder-controller-root';
+    document.body.appendChild(el);
+    try {
+      const faro = freshFaro();
+      expect(faro.passesActivityGate(eventItem())).toBe(true);
+    } finally {
+      el.remove();
     }
-  );
+  });
+
+  it('does not pass events merely because the kiosk manager root is mounted — the overlay may not be open', () => {
+    const el = document.createElement('div');
+    el.id = 'pathfinder-kiosk-root';
+    document.body.appendChild(el);
+    try {
+      const faro = freshFaro();
+      expect(faro.passesActivityGate(eventItem())).toBe(false);
+    } finally {
+      el.remove();
+    }
+  });
+
+  it('passes events when the kiosk overlay is actually mounted, not just its persistent root', () => {
+    const root = document.createElement('div');
+    root.id = 'pathfinder-kiosk-root';
+    document.body.appendChild(root);
+    const overlay = document.createElement('div');
+    overlay.setAttribute('data-testid', 'kiosk-mode-overlay');
+    root.appendChild(overlay);
+    try {
+      const faro = freshFaro();
+      expect(faro.passesActivityGate(eventItem())).toBe(true);
+    } finally {
+      root.remove();
+    }
+  });
 
   it('latches open for the rest of the page load once Pathfinder was open', () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
     const faro = freshFaro();
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    surface.reportPathfinderSurface('floating');
     expect(faro.passesActivityGate(eventItem())).toBe(true);
-    localStorage.removeItem(PANEL_MODE_KEY);
+    surface.reportPathfinderSurfaceClosed('floating');
     expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
   it('opens on a later check after starting closed — closed does not latch', () => {
     const faro = freshFaro();
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
+    surface.reportPathfinderSurface('floating');
+    expect(faro.passesActivityGate(eventItem())).toBe(true);
+  });
+
+  it('an out-of-band localStorage write after a closed check does not open the gate — only a surface report does', () => {
+    const faro = freshFaro();
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
     expect(faro.passesActivityGate(eventItem())).toBe(false);
     localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
+    surface.reportPathfinderSurface('floating');
     expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
@@ -819,7 +1265,8 @@ describe('beforeSend wiring', () => {
     expect(beforeSend(exceptionItem(['webpack://grafana-pathfinder-app/./src/lib/faro.ts']))).not.toBeNull();
     expect(beforeSend(exceptionItem(['webpack://grafana-core/./src/app.ts']))).toBeNull();
 
-    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    surface.reportPathfinderSurface('floating');
     expect(beforeSend(eventItem())).not.toBeNull();
   });
 });
@@ -855,5 +1302,69 @@ describe('setFaroView', () => {
       throw new Error('transport down');
     });
     expect(() => faro.setFaroView('https://grafana.com/docs/')).not.toThrow();
+  });
+
+  it('keeps the internal scheme prefix in the view name (previously the bare slug)', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.setFaroView('bundled:welcome-to-pathfinder');
+    expect(mockSetView).toHaveBeenCalledWith({ name: 'bundled:welcome-to-pathfinder' });
+
+    faro.setFaroView('backend-guide:my-guide');
+    expect(mockSetView).toHaveBeenCalledWith({ name: 'backend-guide:my-guide' });
+  });
+
+  it('bounds the view name length', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.setFaroView(`https://grafana.com/docs/${'a'.repeat(500)}`);
+
+    const { name } = mockSetView.mock.calls[0]![0] as { name: string };
+    expect(name.length).toBeLessThanOrEqual(200);
+    expect(name.startsWith('grafana.com/docs/')).toBe(true);
+  });
+
+  it('sets the invalid-url sentinel for unparsable URLs instead of keeping the previous view', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.setFaroView('http://');
+    expect(mockSetView).toHaveBeenCalledWith({ name: 'invalid-url' });
+  });
+});
+
+describe('setFaroViewName', () => {
+  it('no-ops before initialization without throwing', () => {
+    const faro = freshFaro();
+    expect(() => faro.setFaroViewName('recommendations')).not.toThrow();
+    expect(mockSetView).not.toHaveBeenCalled();
+  });
+
+  it('sets the view to the literal name once initialized', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.setFaroViewName('recommendations');
+    expect(mockSetView).toHaveBeenCalledWith({ name: 'recommendations' });
+  });
+
+  it('ignores an empty name, keeping the previous view', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    faro.setFaroViewName('');
+    expect(mockSetView).not.toHaveBeenCalled();
+  });
+
+  it('swallows errors thrown by the underlying Faro API', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+
+    mockSetView.mockImplementationOnce(() => {
+      throw new Error('transport down');
+    });
+    expect(() => faro.setFaroViewName('recommendations')).not.toThrow();
   });
 });
