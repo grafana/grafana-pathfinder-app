@@ -1,4 +1,4 @@
-import { QueuedDocsLink } from 'global-state/link-interception';
+import type { QueuedDocsLink } from 'types/link-interception.types';
 import { isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from 'security/url-validator';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 

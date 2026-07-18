@@ -1,12 +1,18 @@
 import { getAppEvents } from '@grafana/runtime';
 
-import { __resetQuotaWarningForTests } from '../user-storage';
-import { createBoundedRecordStorage } from './bounded-record-storage';
+import { createUserStorage, warnQuotaExceededOnce, __resetQuotaWarningForTests } from '../user-storage';
+import { createBoundedRecordStorage, type BoundedRecordStorageConfig } from './bounded-record-storage';
 
 jest.mock('@grafana/runtime', () => ({
   usePluginUserStorage: jest.fn(),
   getAppEvents: jest.fn(),
 }));
+
+// The building block takes its storage backend and quota notifier by injection
+// (that's how the user-storage import cycle is broken). Wire in the real
+// implementations so these tests exercise the same behavior as production.
+const makeStore = (config: Omit<BoundedRecordStorageConfig, 'createStorage' | 'onQuotaExceeded'>) =>
+  createBoundedRecordStorage({ ...config, createStorage: createUserStorage, onQuotaExceeded: warnQuotaExceededOnce });
 
 describe('createBoundedRecordStorage', () => {
   const TEST_KEY = 'pathfinder.bounded-record-test';
@@ -18,18 +24,18 @@ describe('createBoundedRecordStorage', () => {
   });
 
   it('returns 0 when the underlying record is empty', async () => {
-    const store = createBoundedRecordStorage({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+    const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
     expect(await store.get('missing')).toBe(0);
   });
 
   it('round-trips a percentage value', async () => {
-    const store = createBoundedRecordStorage({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+    const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
     await store.set('a', 42);
     expect(await store.get('a')).toBe(42);
   });
 
   it('clamps values to [0, 100]', async () => {
-    const store = createBoundedRecordStorage({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+    const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
     await store.set('low', -10);
     await store.set('high', 999);
     expect(await store.get('low')).toBe(0);
@@ -37,7 +43,7 @@ describe('createBoundedRecordStorage', () => {
   });
 
   it('clear() removes a single entry without touching others', async () => {
-    const store = createBoundedRecordStorage({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+    const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
     await store.set('a', 25);
     await store.set('b', 75);
     await store.clear('a');
@@ -46,14 +52,14 @@ describe('createBoundedRecordStorage', () => {
   });
 
   it('getAll() returns the full record', async () => {
-    const store = createBoundedRecordStorage({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+    const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
     await store.set('a', 10);
     await store.set('b', 20);
     expect(await store.getAll()).toEqual({ a: 10, b: 20 });
   });
 
   it('cleanup() trims to the most-recent `limit` entries', async () => {
-    const store = createBoundedRecordStorage({ storageKey: TEST_KEY, limit: 3, label: 'test' });
+    const store = makeStore({ storageKey: TEST_KEY, limit: 3, label: 'test' });
     await store.set('a', 1);
     await store.set('b', 2);
     await store.set('c', 3);
@@ -69,7 +75,7 @@ describe('createBoundedRecordStorage', () => {
   });
 
   it('clearAll() removes the underlying storage key entirely', async () => {
-    const store = createBoundedRecordStorage({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+    const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
     await store.set('a', 10);
     await store.clearAll();
     expect(localStorage.getItem(TEST_KEY)).toBeNull();
@@ -77,7 +83,7 @@ describe('createBoundedRecordStorage', () => {
   });
 
   it('retries set() once after cleanup when the first write hits QuotaExceededError', async () => {
-    const store = createBoundedRecordStorage({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+    const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
 
     // Seed an existing entry so the test exercises the merge-then-write path.
     await store.set('seed', 50);
@@ -108,7 +114,7 @@ describe('createBoundedRecordStorage', () => {
   });
 
   it('does not loop forever when QuotaExceededError persists after cleanup', async () => {
-    const store = createBoundedRecordStorage({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+    const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
 
     const setItemSpy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       const err = new Error('Quota exceeded');
@@ -129,8 +135,8 @@ describe('createBoundedRecordStorage', () => {
   });
 
   it('isolates state between two instances with different storage keys', async () => {
-    const journeys = createBoundedRecordStorage({ storageKey: 'pathfinder.journeys-test', limit: 100, label: 'j' });
-    const interactives = createBoundedRecordStorage({
+    const journeys = makeStore({ storageKey: 'pathfinder.journeys-test', limit: 100, label: 'j' });
+    const interactives = makeStore({
       storageKey: 'pathfinder.interactives-test',
       limit: 100,
       label: 'i',
