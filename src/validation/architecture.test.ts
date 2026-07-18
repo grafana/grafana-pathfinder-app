@@ -448,23 +448,14 @@ describe('Environment reachability: Node contexts', () => {
       return;
     }
 
-    // One witness chain per (file, specifier) pair keeps the message readable
-    // when a single bad import is reachable from many entrypoints.
-    const byKey = new Map<string, (typeof scan.violations)[number]>();
-    for (const violation of scan.violations) {
-      const key = `${violation.file} -> ${violation.specifier}`;
-      if (!byKey.has(key)) {
-        byKey.set(key, violation);
-      }
-    }
-    const details = [...byKey.entries()]
-      .map(([key, v]) => `  ${key}\n    witness chain: ${v.chain.join('\n      -> ')}`)
+    const details = scan.violations
+      .map((v) => `  ${v.file} -> ${v.specifier}\n    witness chain: ${v.chain.join('\n      -> ')}`)
       .join('\n\n');
 
     throw new Error(
       `Environment reachability violation: Node-context code reaches imports that are not proven Node-safe.\n\n` +
         `${details}\n\n` +
-        `Files under ${NODE_CONTEXT_ROOTS.join(' and ')} execute in plain Node — the pathfinder CLI, and ` +
+        `Files under ${NODE_CONTEXT_ROOTS.join(', ')} execute in plain Node — the pathfinder CLI, and ` +
         `Playwright test discovery — with no browser globals. If anything they transitively import evaluates ` +
         `browser APIs (window/document) at module load, the e2e command crashes with ` +
         `"ReferenceError: window is not defined" before a browser ever launches (see PR #1377).\n\n` +
@@ -485,8 +476,8 @@ describe('Environment reachability: Node contexts', () => {
         `   and confirm the package does not touch window/document at module scope. Never add a package just ` +
         `to make CI pass: a browser-dependent entry defeats this check and moves the failure to ` +
         `\`pathfinder-cli e2e\` at runtime, which is exactly what this test exists to prevent.\n\n` +
-        `Bundler-only asset imports (.css, .scss, .svg, …) can never be made Node-safe — restructure so ` +
-        `Node-reachable code does not import them.`
+        `Bundler-only asset imports (.css, .scss, .svg, …) and relative imports the scanner cannot resolve ` +
+        `to a source file can never be made Node-safe — restructure so Node-reachable code does not import them.`
     );
   });
 

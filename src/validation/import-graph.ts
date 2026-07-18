@@ -273,8 +273,12 @@ export function extractImportRecords(content: string, aliasContext?: AliasResolu
     }
     const existing = records.get(specifier);
     if (existing) {
+      // dynamic reflects value occurrences only — a type-only occurrence
+      // neither makes the edge eager nor lazy
+      if (!typeOnly) {
+        existing.dynamic = existing.typeOnly ? dynamic : existing.dynamic && dynamic;
+      }
       existing.typeOnly = existing.typeOnly && typeOnly;
-      existing.dynamic = existing.dynamic && dynamic;
     } else {
       records.set(specifier, { specifier, typeOnly, dynamic, relative });
     }
@@ -620,46 +624,63 @@ export function assertRatchet(
 //
 // The tier model constrains which of OUR directories may import which — but
 // it cannot see that an external package requires a browser. src/cli/ and
-// tests/e2e-runner/ execute in plain Node (the pathfinder CLI, and Playwright
-// test discovery), so everything they transitively reach at module-eval time
-// must load without browser globals. This scan walks the value-import closure
-// from those roots and checks every external package against a Node-safe
-// allowlist maintained in architecture.test.ts.
+// tests/ execute in plain Node (the pathfinder CLI, and Playwright test
+// discovery for both the main suite and the e2e-runner), so everything they
+// transitively reach at module-eval time must load without browser globals.
+// This scan walks the value-import closure from those roots and checks every
+// external package against a Node-safe allowlist maintained in
+// architecture.test.ts.
 
-/** Repo-relative directories whose files execute in plain Node. */
-export const NODE_CONTEXT_ROOTS = ['src/cli', 'tests/e2e-runner'];
+/** Repo-relative directories (or files) whose contents execute in plain Node. */
+export const NODE_CONTEXT_ROOTS = ['src/cli', 'tests', 'playwright.config.ts'];
 
 /**
- * Jest (jsdom environment) only matches test files under src/ — see
- * .config/jest.config.js testMatch. Those files get emulated browser globals,
- * so they are not evidence of Node execution and are excluded from the
- * Node-context roots. Everything under tests/e2e-runner runs in real Node.
+ * Jest-managed test files (jsdom environment by default) are excluded from
+ * the Node-context roots: they get emulated browser globals and jest.mock
+ * protection, so they are not evidence of plain-Node execution. The effective
+ * testMatch is the root jest.config.js — src/ patterns from the scaffolded
+ * .config/jest.config.js plus tests/e2e-runner/utils/**\/*.test.*. Playwright
+ * loads only *.spec.ts files (see playwright.config.ts testMatch), which jest
+ * never matches outside src/.
  */
-export function isJsdomTestFile(absPath: string): boolean {
+export function isJestManagedTestFile(absPath: string): boolean {
   const rel = toPosixPath(path.relative(REPO_ROOT, absPath));
-  if (!rel.startsWith('src/')) {
-    return false;
+  if (rel.startsWith('src/')) {
+    return /\.(test|spec|jest)\.(ts|tsx)$/.test(rel) || rel.includes('/__tests__/');
   }
-  return /\.(test|spec|jest)\.(ts|tsx)$/.test(rel) || rel.includes('/__tests__/');
+  if (rel.startsWith('tests/e2e-runner/utils/')) {
+    return /\.test\.(ts|tsx)$/.test(rel);
+  }
+  return false;
 }
 
 export function collectNodeContextFiles(roots: readonly string[] = NODE_CONTEXT_ROOTS): string[] {
   const files: string[] = [];
+  const addFile = (fullPath: string) => {
+    if (/\.(ts|tsx)$/.test(fullPath) && !fullPath.endsWith('.d.ts') && !isJestManagedTestFile(fullPath)) {
+      files.push(fullPath);
+    }
+  };
   function walk(dir: string) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         walk(fullPath);
-      } else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith('.d.ts') && !isJsdomTestFile(fullPath)) {
-        files.push(fullPath);
+      } else {
+        addFile(fullPath);
       }
     }
   }
   for (const root of roots) {
     // resolve (not join) so tests can pass absolute fixture directories
     const absRoot = path.resolve(REPO_ROOT, root);
-    if (fs.existsSync(absRoot)) {
+    if (!fs.existsSync(absRoot)) {
+      continue;
+    }
+    if (fs.statSync(absRoot).isDirectory()) {
       walk(absRoot);
+    } else {
+      addFile(absRoot);
     }
   }
   return files;
@@ -675,7 +696,10 @@ export function packageNameOf(specifier: string): string {
 const NODE_BUILTIN_MODULES = new Set(builtinModules);
 
 export function isNodeBuiltin(specifier: string): boolean {
-  return specifier.startsWith('node:') || NODE_BUILTIN_MODULES.has(packageNameOf(specifier));
+  // prefix-only builtins (node:test, node:sqlite) appear in builtinModules
+  // WITH the prefix, so check both spellings
+  const name = packageNameOf(specifier);
+  return NODE_BUILTIN_MODULES.has(name) || NODE_BUILTIN_MODULES.has(`node:${name}`);
 }
 
 /**
@@ -750,9 +774,21 @@ export function scanNodeEnvReachability(
           violations.push({ file: relPath(file), specifier: record.specifier, chain: chainOf(file) });
           continue;
         }
-        const resolved = findExistingSourceFile(path.resolve(fileDir, record.specifier));
-        if (resolved && !parents.has(resolved)) {
-          queue.push({ file: resolved, via: file });
+        // ESM-style extensioned specifiers ('./helper.js') point at emitted
+        // output; map back to the TS source when no literal file matches.
+        const literal = findExistingSourceFile(path.resolve(fileDir, record.specifier));
+        const stripped = record.specifier.replace(/\.(mjs|cjs|jsx?)$/, '');
+        const resolved =
+          literal ?? (stripped !== record.specifier ? findExistingSourceFile(path.resolve(fileDir, stripped)) : null);
+        if (resolved && /\.(tsx?|jsx?)$/.test(resolved)) {
+          if (!parents.has(resolved)) {
+            queue.push({ file: resolved, via: file });
+          }
+        } else if (!resolved || !resolved.endsWith('.json')) {
+          // Unresolvable relative value imports and non-JSON/non-source
+          // targets (.md, .html, …) would crash plain Node — and silently
+          // dropping the edge would prune the whole subtree from the scan.
+          violations.push({ file: relPath(file), specifier: record.specifier, chain: chainOf(file) });
         }
         continue;
       }

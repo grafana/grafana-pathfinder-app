@@ -22,7 +22,7 @@ import {
   extractImportRecords,
   extractRelativeImports,
   findCycles,
-  isJsdomTestFile,
+  isJestManagedTestFile,
   isNodeBuiltin,
   packageNameOf,
   scanNodeEnvReachability,
@@ -732,6 +732,11 @@ describe('extractImportRecords', () => {
     expect(recordFor(content, './mod').dynamic).toBe(false);
   });
 
+  it('merges occurrences: a type-only import does not make a dynamic value edge eager', () => {
+    const content = [`import type { A } from './mod';`, `const m = await import('./mod');`].join('\n');
+    expect(recordFor(content, './mod')).toMatchObject({ typeOnly: false, dynamic: true });
+  });
+
   it('rewrites alias-resolved internal specifiers to relative and keeps externals bare', () => {
     const tsconfigPaths = { configDir: path.join(REPO_ROOT, '.config'), paths: { '*': ['../src/*'] } };
     const fileDir = path.join(SRC_DIR, 'components');
@@ -743,7 +748,7 @@ describe('extractImportRecords', () => {
 });
 
 // ---------------------------------------------------------------------------
-// packageNameOf / isNodeBuiltin / isJsdomTestFile
+// packageNameOf / isNodeBuiltin / isJestManagedTestFile
 // ---------------------------------------------------------------------------
 
 describe('packageNameOf', () => {
@@ -767,26 +772,39 @@ describe('isNodeBuiltin', () => {
     expect(isNodeBuiltin('fs/promises')).toBe(true);
   });
 
+  it('recognizes prefix-only builtins (listed in builtinModules with the node: prefix)', () => {
+    expect(isNodeBuiltin('node:test')).toBe(true);
+  });
+
+  it('rejects node:-prefixed names that are not real builtins', () => {
+    expect(isNodeBuiltin('node:notreal')).toBe(false);
+  });
+
   it('rejects third-party packages', () => {
     expect(isNodeBuiltin('commander')).toBe(false);
     expect(isNodeBuiltin('@grafana/runtime')).toBe(false);
   });
 });
 
-describe('isJsdomTestFile', () => {
+describe('isJestManagedTestFile', () => {
   it('matches jest-matched test files under src/', () => {
-    expect(isJsdomTestFile(path.join(SRC_DIR, 'cli', 'commands', 'foo.test.ts'))).toBe(true);
-    expect(isJsdomTestFile(path.join(SRC_DIR, 'cli', '__tests__', 'helpers.ts'))).toBe(true);
+    expect(isJestManagedTestFile(path.join(SRC_DIR, 'cli', 'commands', 'foo.test.ts'))).toBe(true);
+    expect(isJestManagedTestFile(path.join(SRC_DIR, 'cli', '__tests__', 'helpers.ts'))).toBe(true);
   });
 
   it('does not match production files under src/', () => {
-    expect(isJsdomTestFile(path.join(SRC_DIR, 'cli', 'index.ts'))).toBe(false);
+    expect(isJestManagedTestFile(path.join(SRC_DIR, 'cli', 'index.ts'))).toBe(false);
   });
 
-  it('does not match files outside src/ (tests/e2e-runner runs in real Node)', () => {
-    expect(isJsdomTestFile(path.join(REPO_ROOT, 'tests', 'e2e-runner', 'utils', 'selector-resolver.test.ts'))).toBe(
-      false
-    );
+  it('matches the jest testMatch extension for tests/e2e-runner/utils unit tests', () => {
+    expect(
+      isJestManagedTestFile(path.join(REPO_ROOT, 'tests', 'e2e-runner', 'utils', 'selector-resolver.test.ts'))
+    ).toBe(true);
+  });
+
+  it('does not match Playwright spec files (Playwright loads them in real Node)', () => {
+    expect(isJestManagedTestFile(path.join(REPO_ROOT, 'tests', 'e2e-runner', 'guide-runner.spec.ts'))).toBe(false);
+    expect(isJestManagedTestFile(path.join(REPO_ROOT, 'tests', 'open-close.spec.ts'))).toBe(false);
   });
 });
 
@@ -810,8 +828,11 @@ describe('scanNodeEnvReachability', () => {
         path.join(rootDir, 'entry.ts'),
         [
           `import { helper } from '../shared/helper';`,
+          `import { mid } from '../shared/mid.js';`,
           `import 'unsafe-browser-pkg';`,
           `import './theme.css';`,
+          `import './missing-module';`,
+          `import './readme.md';`,
           `import type { OnlyTypes } from 'types-only-pkg';`,
           `export const run = async () => import('../shared/lazy');`,
         ].join('\n')
@@ -820,7 +841,10 @@ describe('scanNodeEnvReachability', () => {
         path.join(sharedDir, 'helper.ts'),
         [`import 'safe-pkg';`, `export const helper = 1;`].join('\n')
       );
+      fs.writeFileSync(path.join(sharedDir, 'mid.ts'), `import { deep } from './deep';\nexport const mid = deep;`);
+      fs.writeFileSync(path.join(sharedDir, 'deep.ts'), `import 'deep-unsafe-pkg';\nexport const deep = 1;`);
       fs.writeFileSync(path.join(sharedDir, 'lazy.ts'), `import 'lazy-unsafe-pkg';\nexport const lazy = 1;`);
+      fs.writeFileSync(path.join(rootDir, 'readme.md'), `not code`);
     });
 
     afterAll(() => {
@@ -851,11 +875,21 @@ describe('scanNodeEnvReachability', () => {
       expect(result.reachedExternalPackages.has('safe-pkg')).toBe(true);
     });
 
-    it('traverses eager internal imports outside the root with a multi-hop chain', () => {
-      const result = scan();
-      const helperFile = result.violations.find((v) => v.specifier === 'safe-pkg');
-      expect(helperFile).toBeUndefined();
-      expect(result.reachableFileCount).toBeGreaterThanOrEqual(3);
+    it('traverses eager internal imports with a multi-hop witness chain, mapping .js specifiers to TS sources', () => {
+      const violation = scan().violations.find((v) => v.specifier === 'deep-unsafe-pkg');
+      expect(violation).toBeDefined();
+      expect(violation!.chain).toHaveLength(3);
+      expect(violation!.chain[0]).toMatch(/entry\.ts$/);
+      expect(violation!.chain[1]).toMatch(/mid\.ts$/);
+      expect(violation!.chain[2]).toMatch(/deep\.ts$/);
+    });
+
+    it('flags unresolvable relative value imports instead of silently pruning the subtree', () => {
+      expect(scan().violations.some((v) => v.specifier === './missing-module')).toBe(true);
+    });
+
+    it('flags relative imports that resolve to non-source, non-JSON files', () => {
+      expect(scan().violations.some((v) => v.specifier === './readme.md')).toBe(true);
     });
 
     it('follows dynamic internal imports (lazy modules still execute in Node)', () => {
@@ -874,10 +908,10 @@ describe('scanNodeEnvReachability', () => {
       expect(result.reachedExternalPackages.size).toBeGreaterThan(0);
     });
 
-    it('collectNodeContextFiles excludes jsdom test files under src/', () => {
+    it('collectNodeContextFiles excludes jest-managed test files', () => {
       const files = collectNodeContextFiles(NODE_CONTEXT_ROOTS);
       expect(files.length).toBeGreaterThan(0);
-      expect(files.some((f) => isJsdomTestFile(f))).toBe(false);
+      expect(files.some((f) => isJestManagedTestFile(f))).toBe(false);
     });
   });
 });
