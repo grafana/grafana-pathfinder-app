@@ -31,7 +31,7 @@ jest.mock('../../../lib/analytics', () => ({
 jest.mock('../../../docs-retrieval', () => ({
   getMilestoneSlug: jest.fn(),
   markMilestoneDone: jest.fn(),
-  setJourneyCompletionPercentage: jest.fn(),
+  recordJourneyCompletion: jest.fn(),
 }));
 
 // Heavy leaf children are irrelevant to the footer button — stub them out so

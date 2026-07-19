@@ -29,10 +29,14 @@ import {
   reportAppInteraction,
   UserInteraction,
   getContentTypeForAnalytics,
+  getJourneyNavigationProperties,
+  getJourneyProperties,
   tabTypeToContentType,
+  AnalyticsContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../../docs-retrieval';
+import { getMilestoneSlug, markMilestoneDone } from '../../../docs-retrieval';
+import { getActiveJourneyCompletionPercentage } from '../../../global-state/journey-context';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { CombinedLearningJourneyPanel } from '../docs-panel';
@@ -111,45 +115,24 @@ export function LearningJourneyMilestoneToolbar({
   }
 
   const handlePrev = () => {
-    // Log the destination milestone (where the user is heading TO), not the
-    // origin. For a 6-milestone journey, a backward click from M2 logs
-    // current_milestone: 1 — matching the toolbar value the user sees after
-    // navigation lands. The Math.max clamp is defence-in-depth; the
-    // `panel.canNavigatePrevious()` disabled-button gate already prevents
-    // navigating past milestone 0 (cover).
     reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
       content_title: activeTab.title,
       content_url: activeTab.baseUrl,
-      current_milestone: Math.max(0, (lj.currentMilestone ?? 0) - 1),
-      total_milestones: lj.totalMilestones || 0,
-      direction: 'backward',
+      content_type: AnalyticsContentType.LearningJourney,
       interaction_location: 'milestone_progress_bar',
-      completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
+      ...getJourneyNavigationProperties(lj, 'backward', getActiveJourneyCompletionPercentage() ?? undefined),
     });
     panel.navigateToPreviousMilestone();
   };
 
   const handleNext = () => {
-    // Log the destination milestone (where the user is heading TO), not the
-    // origin. For a 6-milestone journey, a forward click from M5 logs
-    // current_milestone: 6 — so the analytics agrees with the toolbar's
-    // "Milestone 6 of 6" on the end milestone. The Math.min clamp is
-    // defence-in-depth; `panel.canNavigateNext()` already disables the
-    // arrow on the last milestone.
-    reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
-      content_title: activeTab.title,
-      content_url: activeTab.baseUrl,
-      current_milestone: Math.min(lj.totalMilestones ?? 0, (lj.currentMilestone ?? 0) + 1),
-      total_milestones: lj.totalMilestones || 0,
-      direction: 'forward',
-      interaction_location: 'milestone_progress_bar',
-      completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
-    });
     // Mirror the legacy behavior: when the current milestone has no
     // interactive steps in the rendered DOM, mark it done so progress
     // advances even though there's nothing to "complete". The DOM scope
     // comes from `contentRoot` (sidebar) or the global content attribute
     // (fullscreen) — both restrict the search to the active panel.
+    // Marked BEFORE reporting: the click that completes a step-less
+    // milestone must be reflected in its own event's completion.
     if (activeTab.currentUrl && activeTab.baseUrl) {
       const root: ParentNode =
         contentRoot?.current ?? document.querySelector('[data-pathfinder-content="true"]') ?? document;
@@ -161,6 +144,13 @@ export function LearningJourneyMilestoneToolbar({
         }
       }
     }
+    reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
+      content_title: activeTab.title,
+      content_url: activeTab.baseUrl,
+      content_type: AnalyticsContentType.LearningJourney,
+      interaction_location: 'milestone_progress_bar',
+      ...getJourneyNavigationProperties(lj, 'forward', getActiveJourneyCompletionPercentage() ?? undefined),
+    });
     panel.navigateToNextMilestone();
   };
 
@@ -229,8 +219,7 @@ export function LearningJourneyMilestoneToolbar({
                     source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
                     link_type: AnalyticsLinkType.ExternalBrowser,
                     interaction_location: openInteractionLocation,
-                    current_milestone: lj.currentMilestone || 0,
-                    total_milestones: lj.totalMilestones || 0,
+                    ...getJourneyProperties(activeTab.content, getActiveJourneyCompletionPercentage() ?? undefined),
                   });
                   setTimeout(() => {
                     window.open(externalUrl, '_blank', 'noopener,noreferrer');

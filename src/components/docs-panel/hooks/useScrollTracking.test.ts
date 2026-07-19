@@ -50,11 +50,11 @@ describe('useScrollTracking', () => {
     expect(setupScrollTrackingMock).not.toHaveBeenCalled();
   });
 
-  it('wires setupScrollTracking when content is loaded and the target element exists', () => {
+  it('wires setupScrollTracking with the journey completion supplier when content is loaded', () => {
     const tab = makeTab();
     renderHook(() => useScrollTracking({ activeTab: tab, isRecommendationsTab: false }));
     expect(setupScrollTrackingMock).toHaveBeenCalledTimes(1);
-    expect(setupScrollTrackingMock).toHaveBeenCalledWith(expect.any(HTMLElement), tab, false);
+    expect(setupScrollTrackingMock).toHaveBeenCalledWith(expect.any(HTMLElement), tab, false, expect.any(Function));
   });
 
   it('invokes the cleanup function returned by setupScrollTracking on unmount', () => {

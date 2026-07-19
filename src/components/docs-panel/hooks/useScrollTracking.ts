@@ -10,6 +10,7 @@
  */
 import * as React from 'react';
 import { setupScrollTracking } from '../../../lib/analytics';
+import { getActiveJourneyCompletionPercentage } from '../../../global-state/journey-context';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 
 export interface UseScrollTrackingParams {
@@ -22,7 +23,12 @@ export function useScrollTracking({ activeTab, isRecommendationsTab }: UseScroll
     if (!isRecommendationsTab && activeTab && activeTab.content) {
       const scrollableElement = document.getElementById('inner-docs-content');
       if (scrollableElement) {
-        const cleanup = setupScrollTracking(scrollableElement, activeTab, isRecommendationsTab);
+        const cleanup = setupScrollTracking(
+          scrollableElement,
+          activeTab,
+          isRecommendationsTab,
+          getActiveJourneyCompletionPercentage
+        );
         return cleanup;
       }
     }

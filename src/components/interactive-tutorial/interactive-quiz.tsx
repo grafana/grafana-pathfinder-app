@@ -4,7 +4,8 @@ import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 
 import { useStepChecker } from '../../requirements-manager';
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { buildStepEventProperties } from './step-analytics';
 import { testIds } from '../../constants/testIds';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import type { ProgressReason } from '../../global-state/progress-events';
@@ -322,7 +323,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       };
 
       // Build complete analytics properties with document step context
-      return buildInteractiveStepProperties(quizProps, {
+      return buildStepEventProperties(quizProps, {
         stepId,
         stepIndex,
         totalSteps,

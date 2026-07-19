@@ -48,7 +48,10 @@ jest.mock('../../integrations/assistant-integration/use-ai-fix-enabled', () => (
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: { DoItButtonClick: 'do_it', StepAutoCompleted: 'auto' },
-  buildInteractiveStepProperties: jest.fn(() => ({})),
+}));
+
+jest.mock('./step-analytics', () => ({
+  buildStepEventProperties: jest.fn(() => ({})),
 }));
 
 jest.mock('../../lib/logging', () => ({

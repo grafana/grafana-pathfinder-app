@@ -20,6 +20,7 @@ import {
   reportAppInteraction,
   UserInteraction,
   getContentTypeForAnalytics,
+  buildProgressProperties,
   AnalyticsContentType,
 } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
@@ -435,7 +436,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 interaction_location: 'featured_card_button',
                                 match_accuracy: recommendation.matchAccuracy || 0,
                                 ...(displayType !== 'docs-page' && {
-                                  total_milestones: recommendation.totalSteps || 0,
+                                  progress_total: recommendation.totalSteps || 0,
                                   completion_percentage: recommendation.completionPercentage ?? 0,
                                 }),
                               });
@@ -470,7 +471,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                     action: recommendation.summaryExpanded ? 'collapse' : 'expand',
                                     match_accuracy: recommendation.matchAccuracy || 0,
                                     ...(displayType !== 'docs-page' && {
-                                      total_milestones: recommendation.totalSteps || 0,
+                                      progress_total: recommendation.totalSteps || 0,
                                     }),
                                   });
 
@@ -535,11 +536,17 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                           onClick={() => {
                                             reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
                                               content_title: recommendation.title,
+                                              content_type: getContentTypeForDisplayType(displayType),
                                               milestone_title: milestone.title,
                                               milestone_number: milestone.number,
                                               milestone_url: milestone.url,
                                               content_url: contentUrl,
                                               interaction_location: 'featured_milestone_list',
+                                              ...buildProgressProperties(
+                                                milestone.number,
+                                                recommendation.totalSteps || recommendation.milestones?.length || 0,
+                                                recommendation.completionPercentage ?? undefined
+                                              ),
                                             });
                                             if (packageInfo) {
                                               openDocsPage(milestone.url, recommendation.title, packageInfo);
@@ -655,7 +662,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                       interaction_location: 'featured_summary_cta_button',
                                       match_accuracy: recommendation.matchAccuracy || 0,
                                       ...(displayType !== 'docs-page' && {
-                                        total_milestones: recommendation.totalSteps || 0,
+                                        progress_total: recommendation.totalSteps || 0,
                                         completion_percentage: recommendation.completionPercentage ?? 0,
                                       }),
                                     });
@@ -736,7 +743,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                               interaction_location: 'main_card_button',
                               match_accuracy: recommendation.matchAccuracy || 0,
                               ...(displayType !== 'docs-page' && {
-                                total_milestones: recommendation.totalSteps || 0,
+                                progress_total: recommendation.totalSteps || 0,
                                 completion_percentage: recommendation.completionPercentage ?? 0,
                               }),
                             });
@@ -772,7 +779,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                   action: recommendation.summaryExpanded ? 'collapse' : 'expand',
                                   match_accuracy: recommendation.matchAccuracy || 0,
                                   ...(displayType !== 'docs-page' && {
-                                    total_milestones: recommendation.totalSteps || 0,
+                                    progress_total: recommendation.totalSteps || 0,
                                   }),
                                 });
 
@@ -844,11 +851,17 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                         onClick={() => {
                                           reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
                                             content_title: recommendation.title,
+                                            content_type: getContentTypeForDisplayType(displayType),
                                             milestone_title: milestone.title,
                                             milestone_number: milestone.number,
                                             milestone_url: milestone.url,
                                             content_url: contentUrl,
                                             interaction_location: 'milestone_list',
+                                            ...buildProgressProperties(
+                                              milestone.number,
+                                              recommendation.totalSteps || recommendation.milestones?.length || 0,
+                                              recommendation.completionPercentage ?? undefined
+                                            ),
                                           });
                                           if (packageInfo) {
                                             openDocsPage(milestone.url, recommendation.title, packageInfo);
@@ -968,7 +981,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                     interaction_location: 'summary_cta_button',
                                     match_accuracy: recommendation.matchAccuracy || 0,
                                     ...(displayType !== 'docs-page' && {
-                                      total_milestones: recommendation.totalSteps || 0,
+                                      progress_total: recommendation.totalSteps || 0,
                                       completion_percentage: recommendation.completionPercentage ?? 0,
                                     }),
                                   });
@@ -1044,7 +1057,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 interaction_location: 'other_docs_list',
                                 match_accuracy: item.matchAccuracy || 0,
                                 ...(!isDocsOnlyRecommendation(displayType) && {
-                                  total_milestones: item.totalSteps || 0,
+                                  progress_total: item.totalSteps || 0,
                                   completion_percentage: item.completionPercentage ?? 0,
                                 }),
                               });

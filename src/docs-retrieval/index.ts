@@ -37,11 +37,12 @@ export {
 
 export { fetchPackageInfoFromUrl, isPackageContentUrl } from './package-info-from-url';
 
+export { isEndJourneyUrl } from './content-fetcher/url-utils';
+
 export {
   getNextMilestoneUrl as getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrl as getPreviousMilestoneUrlFromContent,
-  getJourneyCompletionPercentage,
-  setJourneyCompletionPercentage,
+  recordJourneyCompletion,
   clearJourneyCompletion,
 } from './learning-journey-helpers';
 

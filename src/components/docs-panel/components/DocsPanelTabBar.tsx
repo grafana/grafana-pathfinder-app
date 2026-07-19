@@ -26,9 +26,26 @@ import {
   reportAppInteraction,
   UserInteraction,
   getContentTypeForAnalytics,
+  getJourneyProperties,
   tabTypeToContentType,
 } from '../../../lib/analytics';
-import { getJourneyProgress } from '../../../docs-retrieval';
+import { getJourneyCompletionPercentageFor } from '../../../global-state/journey-context';
+import { getMilestoneSlug } from '../../../docs-retrieval';
+
+// Closes can target background tabs, where the active-journey supplier would
+// report the wrong journey's completion — resolve per tab instead.
+function journeyCloseProperties(tab: LearningJourneyTab): Record<string, number> {
+  const lj = tab.content?.type === 'learning-journey' ? tab.content.metadata?.learningJourney : undefined;
+  if (!lj) {
+    return {};
+  }
+  const completion = getJourneyCompletionPercentageFor(
+    tab.baseUrl,
+    lj.milestones?.map((m) => getMilestoneSlug(m.url)).filter(Boolean),
+    lj.totalMilestones ?? 0
+  );
+  return getJourneyProperties(tab.content, completion ?? undefined);
+}
 
 export interface DocsPanelTabBarProps {
   styles: DocsPanelStyles;
@@ -148,12 +165,7 @@ export function DocsPanelTabBar({
                         tab_title: tab.title,
                         content_url: tab.currentUrl || tab.baseUrl,
                         interaction_location: 'tab_button',
-                        ...(tab.type === 'learning-journey' &&
-                          tab.content && {
-                            completion_percentage: getJourneyProgress(tab.content),
-                            current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                            total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                          }),
+                        ...journeyCloseProperties(tab),
                       });
                       onCloseTab(tab.id);
                     }}
@@ -241,12 +253,7 @@ export function DocsPanelTabBar({
                         tab_title: tab.title,
                         content_url: tab.currentUrl || tab.baseUrl,
                         close_location: 'dropdown',
-                        ...(tab.type === 'learning-journey' &&
-                          tab.content && {
-                            completion_percentage: getJourneyProgress(tab.content),
-                            current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                            total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                          }),
+                        ...journeyCloseProperties(tab),
                       });
                       onCloseTab(tab.id);
                     }}

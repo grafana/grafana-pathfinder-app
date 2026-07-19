@@ -8,7 +8,8 @@ import {
   checkPostconditions,
   validateInteractiveRequirements,
 } from '../../requirements-manager';
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { buildStepEventProperties } from './step-analytics';
 import { logger } from '../../lib/logging';
 import { recordStepExecution, type StepOutcome } from '../../lib/telemetry';
 import type { InteractiveStepProps } from '../../types/component-props.types';
@@ -570,7 +571,7 @@ export const InteractiveStep = forwardRef<
               // Track failure in analytics
               reportAppInteraction(
                 UserInteraction.StepAutoCompleteFailed,
-                buildInteractiveStepProperties(
+                buildStepEventProperties(
                   {
                     target_action: targetAction,
                     ref_target: refTarget,
@@ -587,7 +588,7 @@ export const InteractiveStep = forwardRef<
             // Track failure in analytics
             reportAppInteraction(
               UserInteraction.StepAutoCompleteFailed,
-              buildInteractiveStepProperties(
+              buildStepEventProperties(
                 {
                   target_action: targetAction,
                   ref_target: refTarget,
@@ -616,7 +617,7 @@ export const InteractiveStep = forwardRef<
         // Track auto-completion in analytics
         reportAppInteraction(
           UserInteraction.StepAutoCompleted,
-          buildInteractiveStepProperties(
+          buildStepEventProperties(
             {
               target_action: targetAction,
               ref_target: refTarget,
@@ -667,7 +668,7 @@ export const InteractiveStep = forwardRef<
       // Track "Show me" button click analytics
       reportAppInteraction(
         UserInteraction.ShowMeButtonClick,
-        buildInteractiveStepProperties(
+        buildStepEventProperties(
           {
             target_action: targetAction,
             ref_target: refTarget,
@@ -790,7 +791,7 @@ export const InteractiveStep = forwardRef<
       // Track "Do it" button click analytics
       reportAppInteraction(
         UserInteraction.DoItButtonClick,
-        buildInteractiveStepProperties(
+        buildStepEventProperties(
           {
             target_action: targetAction,
             ref_target: refTarget,

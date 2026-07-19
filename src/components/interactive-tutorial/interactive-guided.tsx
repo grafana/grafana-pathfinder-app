@@ -3,7 +3,8 @@ import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 import { getAppEvents } from '@grafana/runtime';
 
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { buildStepEventProperties } from './step-analytics';
 import {
   GuidedHandler,
   InteractiveStateManager,
@@ -512,7 +513,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         // Track auto-completion in analytics
         reportAppInteraction(
           UserInteraction.StepAutoCompleted,
-          buildInteractiveStepProperties(
+          buildStepEventProperties(
             {
               target_action: 'guided',
               ref_target: renderedStepId,
@@ -554,7 +555,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       // Track analytics
       reportAppInteraction(
         UserInteraction.DoItButtonClick,
-        buildInteractiveStepProperties(
+        buildStepEventProperties(
           {
             target_action: 'guided',
             ref_target: renderedStepId,
