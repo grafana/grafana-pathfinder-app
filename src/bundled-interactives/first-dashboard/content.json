@@ -63,7 +63,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "button[aria-label=\"Add query\"]",
+          "reftarget": "grafana:pages.Explore.General.addQueryRow",
           "requirements": ["on-page:/explore", "exists-reftarget"],
           "content": "Click **Add query** to create a second data series for Jill.",
           "tooltip": "Now let's add Jill's hiking data! In Grafana, you can display multiple queries on the same graph to compare and contrast data. This is incredibly powerful - imagine comparing CPU usage across different servers, or in our case, comparing Jack and Jill's hiking altitudes to see who climbed higher."
