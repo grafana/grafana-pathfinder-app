@@ -18,7 +18,20 @@ import { journeyCompletionStorage, milestoneCompletionStorage, learningProgressS
 // `await import(...)` calls scattered through the module.
 // eslint-disable-next-line no-restricted-imports
 import { markGuideCompleted } from '../learning-paths';
+import { recordGuideCompletion, recordJourneyCompletion, resolveCompletionIdentity } from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
+
+/**
+ * Optional manifest/display context threaded from the completion call sites so
+ * the recorder can key on `(guideSource, guideId) = (manifest.repository,
+ * manifest.id)` — never on a loader URL. Absent for plain bundled guides, which
+ * fall back to `guideSource: 'bundled'` + the slug.
+ */
+export interface CompletionContext {
+  packageManifest?: Record<string, unknown>;
+  guideTitle?: string;
+  pathId?: string;
+}
 
 const GRAFANA_BASE = new URL('https://grafana.com');
 
@@ -351,26 +364,55 @@ export async function getJourneyCompletionPercentageAsync(journeyBaseUrl: string
   return journeyCompletionStorage.get(journeyBaseUrl);
 }
 
-export function setJourneyCompletionPercentage(journeyBaseUrl: string, percentage: number): void {
+export function setJourneyCompletionPercentage(
+  journeyBaseUrl: string,
+  percentage: number,
+  context?: CompletionContext
+): void {
   // Fire and forget - storage handles errors internally
   journeyCompletionStorage.set(journeyBaseUrl, percentage);
 
   // Update learning paths progress when a bundled guide reaches 100%
   if (percentage >= 100 && journeyBaseUrl.startsWith('bundled:')) {
     const guideId = journeyBaseUrl.replace('bundled:', '');
-    // Fire and forget - learning paths storage handles errors internally
+    // Local-cache/UX duty (badges, streak) — unchanged.
     markGuideCompleted(guideId);
+    // Completion-emission boundary (Track 1/2 attach here in later PRs).
+    recordBundledGuideCompletion(guideId, context);
   }
 }
 
-export async function setJourneyCompletionPercentageAsync(journeyBaseUrl: string, percentage: number): Promise<void> {
+export async function setJourneyCompletionPercentageAsync(
+  journeyBaseUrl: string,
+  percentage: number,
+  context?: CompletionContext
+): Promise<void> {
   await journeyCompletionStorage.set(journeyBaseUrl, percentage);
 
   // Update learning paths progress when a bundled guide reaches 100%
   if (percentage >= 100 && journeyBaseUrl.startsWith('bundled:')) {
     const guideId = journeyBaseUrl.replace('bundled:', '');
     await markGuideCompleted(guideId);
+    recordBundledGuideCompletion(guideId, context);
   }
+}
+
+function recordBundledGuideCompletion(guideId: string, context?: CompletionContext): void {
+  const identity = resolveCompletionIdentity({
+    packageManifest: context?.packageManifest,
+    fallbackId: guideId,
+    fallbackSource: 'bundled',
+  });
+  recordGuideCompletion({
+    kind: 'guide',
+    ...identity,
+    guideTitle: context?.guideTitle ?? guideId,
+    guideCategory: 'interactive',
+    pathId: context?.pathId,
+    completionPercent: 100,
+    source: 'objectives',
+    completedAt: new Date().toISOString(),
+  });
 }
 
 export function clearJourneyCompletion(journeyBaseUrl: string): void {
@@ -421,15 +463,36 @@ export function getMilestoneSlug(milestoneUrl: string): string {
 export async function markMilestoneDone(
   journeyBaseUrl: string,
   milestoneSlug: string,
-  totalMilestones?: number
+  totalMilestones?: number,
+  context?: CompletionContext
 ): Promise<void> {
   if (!milestoneSlug) {
     return;
   }
   await milestoneCompletionStorage.markCompleted(journeyBaseUrl, milestoneSlug);
+  // Local-cache/UX duty (badges, streak) — unchanged.
   await markGuideCompleted(milestoneSlug);
 
-  // Award the path badge when all milestones in the journey are complete
+  // Completion-emission boundary for the milestone-as-guide path.
+  const milestoneIdentity = resolveCompletionIdentity({
+    packageManifest: context?.packageManifest,
+    fallbackId: milestoneSlug,
+    fallbackSource: 'bundled',
+  });
+  recordGuideCompletion({
+    kind: 'guide',
+    ...milestoneIdentity,
+    guideTitle: context?.guideTitle ?? milestoneSlug,
+    guideCategory: 'learning-journey',
+    pathId: context?.pathId,
+    completionPercent: 100,
+    source: 'objectives',
+    completedAt: new Date().toISOString(),
+  });
+
+  // Whole-journey completion: award the path badge and fire the journey trigger
+  // when all milestones are complete. URL-based paths have guides: [] in static
+  // data, so the normal badge flow cannot detect completion here.
   if (totalMilestones && totalMilestones > 0) {
     const completed = await milestoneCompletionStorage.getCompleted(journeyBaseUrl);
     if (completed.size >= totalMilestones) {
@@ -439,6 +502,25 @@ export async function markMilestoneDone(
       if (path?.badgeId) {
         await learningProgressStorage.awardBadge(path.badgeId);
       }
+
+      // The `journey_completed` trigger — no single function represented this
+      // before. Keyed on the journey identity; deduped exactly-once by the
+      // recorder so a re-crossed threshold does not re-emit.
+      const journeyIdentity = resolveCompletionIdentity({
+        packageManifest: context?.packageManifest,
+        fallbackId: path?.id ?? normalizedBase,
+        fallbackSource: 'bundled',
+      });
+      recordJourneyCompletion({
+        kind: 'journey',
+        ...journeyIdentity,
+        guideTitle: context?.guideTitle ?? path?.title ?? journeyIdentity.guideId,
+        guideCategory: 'learning-journey',
+        pathId: context?.pathId ?? path?.id,
+        completionPercent: 100,
+        source: 'objectives',
+        completedAt: new Date().toISOString(),
+      });
     }
   }
 }

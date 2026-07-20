@@ -157,7 +157,10 @@ export function LearningJourneyMilestoneToolbar({
       if (!hasInteractiveSteps) {
         const slug = getMilestoneSlug(activeTab.currentUrl);
         if (slug) {
-          void markMilestoneDone(activeTab.baseUrl, slug, lj.totalMilestones);
+          void markMilestoneDone(activeTab.baseUrl, slug, lj.totalMilestones, {
+            packageManifest: activeTab.content?.metadata?.packageManifest,
+            guideTitle: activeTab.title,
+          });
         }
       }
     }

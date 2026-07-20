@@ -417,8 +417,12 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       }}
                       onGuideComplete={() => {
                         const baseUrl = activeTab?.baseUrl || stableContent.url;
+                        const completionContext = {
+                          packageManifest: stableContent.metadata?.packageManifest,
+                          guideTitle: activeTab?.title,
+                        };
                         if (baseUrl?.startsWith('bundled:')) {
-                          setJourneyCompletionPercentage(baseUrl, 100);
+                          setJourneyCompletionPercentage(baseUrl, 100, completionContext);
                         }
                         if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
                           const slug = getMilestoneSlug(activeTab.currentUrl);
@@ -427,7 +431,8 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                             markMilestoneDone(
                               journeyBase,
                               slug,
-                              stableContent.metadata?.learningJourney?.totalMilestones
+                              stableContent.metadata?.learningJourney?.totalMilestones,
+                              completionContext
                             );
                           }
                         }

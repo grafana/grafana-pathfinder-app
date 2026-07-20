@@ -187,7 +187,12 @@ describe('LearningJourneyMilestoneToolbar', () => {
     renderToolbar({ contentRoot });
     fireEvent.click(screen.getByLabelText('Next milestone'));
 
-    expect(markMilestoneDoneMock).toHaveBeenCalledWith('https://grafana.com/docs/learning-journeys/foo', 'm1', 3);
+    expect(markMilestoneDoneMock).toHaveBeenCalledWith(
+      'https://grafana.com/docs/learning-journeys/foo',
+      'm1',
+      3,
+      expect.objectContaining({ packageManifest: undefined })
+    );
   });
 
   it('does NOT mark the milestone done when the rendered DOM has interactive steps', () => {
