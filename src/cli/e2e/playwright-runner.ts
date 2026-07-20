@@ -17,7 +17,7 @@ import { contentDigest, createMinimalResultsData, type TestResultsData } from '.
 const PLAYWRIGHT_CONFIG_PATH = join('tests', 'e2e-runner', 'playwright.config.ts');
 const GUIDE_RUNNER_SPEC_PATH = join('tests', 'e2e-runner', 'guide-runner.spec.ts');
 
-export function findRunnerRoot(startDir: string): string {
+function tryFindRunnerRoot(startDir: string): string | undefined {
   let candidate = resolve(startDir);
 
   while (true) {
@@ -31,10 +31,28 @@ export function findRunnerRoot(startDir: string): string {
 
     const parent = dirname(candidate);
     if (parent === candidate) {
-      throw new Error(`Could not locate the E2E runner root from ${startDir}`);
+      return undefined;
     }
     candidate = parent;
   }
+}
+
+export function findRunnerRoot(startDir: string): string {
+  const fromStart = tryFindRunnerRoot(startDir);
+  if (fromStart !== undefined) {
+    return fromStart;
+  }
+
+  const cwd = process.cwd();
+  const fromCwd = tryFindRunnerRoot(cwd);
+  if (fromCwd !== undefined) {
+    return fromCwd;
+  }
+
+  throw new Error(
+    `Could not locate the E2E runner root. Searched from '${startDir}' and cwd '${cwd}'. ` +
+      `Ensure the directory containing '${PLAYWRIGHT_CONFIG_PATH}' and '${GUIDE_RUNNER_SPEC_PATH}' is reachable.`
+  );
 }
 
 /**
@@ -163,12 +181,20 @@ export function processPlaywrightResults(
     };
   }
 
+  if (!resultsData) {
+    return {
+      success: false,
+      exitCode: ExitCode.TEST_FAILURE,
+      traceFile,
+      errorCode: 'REPORT_MISSING' as const,
+    };
+  }
+
   return {
     success,
     exitCode: success ? ExitCode.SUCCESS : ExitCode.TEST_FAILURE,
     traceFile,
     resultsData,
-    ...(!resultsData ? { errorCode: 'REPORT_MISSING' as const } : {}),
   };
 }
 
