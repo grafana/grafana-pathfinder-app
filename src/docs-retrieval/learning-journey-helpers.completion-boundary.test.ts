@@ -10,8 +10,6 @@
  * The recorder itself is the REAL module (subscribed via onCompletionRecorded);
  * only storage and the badge coordinator are mocked.
  */
-import type { CompletionFact } from '../completion-records';
-
 const journeySetMock = jest.fn();
 const milestoneMarkCompletedMock = jest.fn();
 const milestoneGetCompletedMock = jest.fn();
@@ -40,7 +38,7 @@ import {
   setJourneyCompletionPercentageAsync,
   markMilestoneDone,
 } from './learning-journey-helpers';
-import { onCompletionRecorded, __resetRecorderForTests } from '../completion-records';
+import { onCompletionRecorded, __resetRecorderForTests, type CompletionFact } from '../completion-records';
 
 let emitted: CompletionFact[];
 let unsubscribe: () => void;
