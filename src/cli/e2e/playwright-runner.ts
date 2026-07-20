@@ -198,35 +198,14 @@ export function processPlaywrightResults(
   };
 }
 
-/**
- * Spawn Playwright to test a guide.
- * Writes guide JSON to temp file, spawns Playwright with environment variables,
- * and cleans up temp file after completion.
- *
- * Session validation:
- * - Creates abort file path for test to write abort reason
- * - Reads abort file after test completes to determine exit code
- * - Returns AUTH_EXPIRED abort reason if session expired
- *
- * JSON reporting:
- * - Creates results file path for test to write step results
- * - Reads results file after test completes
- * - Returns results data for JSON report generation
- */
 export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOptions): Promise<PlaywrightResult> {
   const runnerRoot = findRunnerRoot(__dirname);
-  // Write guide to temp file
+  const artifactsDir = resolve(process.cwd(), options.artifacts);
   const tempDir = mkdtempSync(join(tmpdir(), 'pathfinder-e2e-'));
   const guidePath = join(tempDir, 'guide.json');
-  // Abort file path for session validation
   const abortFilePath = join(tempDir, 'abort.json');
-  // Results file path for JSON reporting
   const resultsFilePath = join(tempDir, 'results.json');
-  // Ephemeral auth-state file: the auth setup writes login cookies here and the
-  // test project reads them back. Lives in the per-guide temp dir, so the
-  // finally-block cleanup deletes it along with everything else.
   const authStateFile = join(tempDir, 'auth.json');
-  // Path the runner records the produced trace location to (see e2e-runner-contract).
   const traceOutputFilePath = join(tempDir, 'trace-path.txt');
 
   try {
@@ -236,8 +215,6 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
       console.log(`   📄 Temp guide file: ${guidePath}`);
     }
 
-    // Build Playwright arguments
-    // Use the dedicated e2e-runner config (main config has testIgnore for e2e-runner)
     const playwrightArgs = [
       'playwright',
       'test',
@@ -254,28 +231,22 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
       playwrightArgs.push('--headed');
     }
 
-    // Spawn Playwright with environment variables
-    // Note: shell: false for security (avoids argument escaping issues)
     const result = await new Promise<PlaywrightResult>((resolve) => {
       const proc = spawn('npx', playwrightArgs, {
         cwd: runnerRoot,
         env: {
           ...process.env,
           [E2E_ENV.GUIDE_JSON_PATH]: guidePath,
-          // The GRAFANA_URL wire key carries the resolved per-guide targetUrl;
-          // it becomes Playwright's baseURL
           [E2E_ENV.GRAFANA_URL]: options.targetUrl,
           [E2E_ENV.AUTH_STATE_FILE]: authStateFile,
-          // A minted token switches the runner to Bearer-header auth; otherwise form login is used.
           ...(options.token ? { [E2E_ENV.GRAFANA_TOKEN]: options.token } : {}),
           [E2E_ENV.TRACE]: encodeEnvFlag(options.trace),
           [E2E_ENV.VERBOSE]: encodeEnvFlag(options.verbose),
           [E2E_ENV.ABORT_FILE_PATH]: abortFilePath,
           [E2E_ENV.RESULTS_FILE_PATH]: resultsFilePath,
-          [E2E_ENV.ARTIFACTS_DIR]: options.artifacts,
+          [E2E_ENV.ARTIFACTS_DIR]: artifactsDir,
           [E2E_ENV.ALWAYS_SCREENSHOT]: encodeEnvFlag(options.alwaysScreenshot),
           [E2E_ENV.TRACE_OUTPUT_FILE]: traceOutputFilePath,
-          // Prevent Playwright from auto-opening HTML report server in CLI mode
           PLAYWRIGHT_HTML_OPEN: 'never',
         },
         stdio: 'inherit',
@@ -345,7 +316,6 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
     }
     return result;
   } finally {
-    // Clean up temp directory
     try {
       rmSync(tempDir, { recursive: true, force: true });
       if (options.verbose) {

@@ -102,6 +102,49 @@ describe('writeJsonReport', () => {
     expect(report.outcome).toBe('skipped');
   });
 
+  it('preserves an aborted outcome when a pre-run skip entry failed', () => {
+    const outputPath = join(tempDir, 'results.json');
+    const results: GuideRunResult[] = [
+      {
+        guide: 'aborted-guide/content.json',
+        id: 'aborted-guide',
+        status: 'auth_expired',
+        exitCode: ExitCode.AUTH_FAILURE,
+        autoIncluded: false,
+        resultsData: {
+          guide: {
+            id: 'aborted-guide',
+            title: 'Aborted guide',
+            path: 'aborted-guide/content.json',
+            targetUrl: 'http://localhost:3000',
+          },
+          timestamp: '2026-01-01T00:00:00.000Z',
+          outcome: 'aborted',
+          errorCode: 'AUTH_EXPIRED',
+          results: [],
+          aborted: true,
+          abortReason: 'AUTH_EXPIRED',
+          abortMessage: 'Session expired',
+        },
+      },
+      {
+        guide: 'https://cdn.test/invalid-guide/content.json',
+        id: 'invalid-guide',
+        status: 'validation_failed',
+        exitCode: ExitCode.TEST_FAILURE,
+        autoIncluded: false,
+        abortMessage: 'Fetched content.json failed guide schema validation',
+        tier: 'cloud',
+      },
+    ];
+
+    writeJsonReport(results, outputPath);
+
+    const report = JSON.parse(readFileSync(outputPath, 'utf-8')) as MultiGuideReport;
+    expect(report.outcome).toBe('aborted');
+    expect(report.preRunSkipped?.[0]?.failed).toBe(true);
+  });
+
   it('returns false after writing a report that fails schema validation', () => {
     const outputPath = join(tempDir, 'results.json');
     const invalidResults = {

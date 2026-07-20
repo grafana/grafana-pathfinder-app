@@ -145,19 +145,30 @@ jobs:
       - name: Compute immutable tag
         id: tag
         run: echo "value=commit-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-      - name: Verify tag does not exist
+      - name: Resolve immutable image digest
+        id: image
         run: |
-          if docker manifest inspect "${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}" >/dev/null 2>&1; then
-            echo "::warning::Tag already exists: ${{ steps.tag.outputs.value }}"
+          reference="${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}"
+          if inspect_error=$(docker manifest inspect "$reference" 2>&1 >/dev/null); then
+            docker pull "$reference"
+            digest_reference=$(docker image inspect "$reference" --format '{{index .RepoDigests 0}}')
+            digest="${digest_reference##*@}"
+            echo "::notice::Reusing existing immutable tag ${{ steps.tag.outputs.value }} at $digest"
+          elif printf '%s\n' "$inspect_error" | grep -qiE 'manifest unknown|no such manifest|not found'; then
+            docker tag pathfinder-e2e-runner:smoke "$reference"
+            push_output=$(docker push "$reference")
+            digest=$(printf '%s\n' "$push_output" | awk '/digest:/{print $3}' | tail -1)
+          else
+            printf '%s\n' "$inspect_error" >&2
+            echo "::error::Could not determine whether immutable tag ${{ steps.tag.outputs.value }} exists"
+            exit 1
           fi
-      - name: Tag and push immutable image
-        id: push
-        run: |
-          docker tag pathfinder-e2e-runner:smoke "${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}"
-          push_output=$(docker push "${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}")
-          digest=$(echo "$push_output" | awk '/digest:/{print $3}' | tail -1)
+          if ! [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Could not resolve a valid digest for $reference"
+            exit 1
+          fi
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
       - name: Sign image digest
         env:
-          DIGEST: ${{ steps.push.outputs.digest }}
+          DIGEST: ${{ steps.image.outputs.digest }}
         run: cosign sign --yes "${{ env.IMAGE_NAME }}@${DIGEST}"

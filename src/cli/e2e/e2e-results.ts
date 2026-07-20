@@ -262,6 +262,9 @@ export function exitCodeFromResults(results: GuideRunResult[], reportSchemaValid
   if (!reportSchemaValid) {
     return ExitCode.CONFIGURATION_ERROR;
   }
+  if (results.some((r) => r.exitCode === ExitCode.CONFIGURATION_ERROR)) {
+    return ExitCode.CONFIGURATION_ERROR;
+  }
   if (results.some((r) => r.status === 'auth_expired')) {
     return ExitCode.AUTH_FAILURE;
   }

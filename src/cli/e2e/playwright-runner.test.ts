@@ -163,6 +163,28 @@ describe('runPlaywrightTests', () => {
     );
   });
 
+  it('resolves a relative artifacts path from the caller working directory', async () => {
+    const child = new EventEmitter();
+    spawnMock.mockImplementation(() => child as never);
+
+    const resultPromise = runPlaywrightTests(
+      { path: 'fixture.json', content: '{}' },
+      {
+        targetUrl: 'http://localhost:3000',
+        verbose: false,
+        trace: false,
+        headed: false,
+        artifacts: join('output', 'artifacts'),
+        alwaysScreenshot: false,
+      }
+    );
+    const spawnOptions = spawnMock.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
+    child.emit('close', 1);
+    await resultPromise;
+
+    expect(spawnOptions.env?.ARTIFACTS_DIR).toBe(resolve(process.cwd(), 'output', 'artifacts'));
+  });
+
   it.each([
     ['AUTH_EXPIRED', 'aborted'],
     ['MANDATORY_FAILURE', 'failed'],

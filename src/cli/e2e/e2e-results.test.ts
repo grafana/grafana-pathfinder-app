@@ -346,6 +346,15 @@ describe('exitCodeFromResults', () => {
   it('prioritizes AUTH_FAILURE over a generic test failure', () => {
     expect(exitCodeFromResults([result('failed'), result('auth_expired')])).toBe(ExitCode.AUTH_FAILURE);
   });
+  it('prioritizes a guide setup error over authentication and test failures', () => {
+    expect(
+      exitCodeFromResults([
+        { ...result('failed'), exitCode: ExitCode.CONFIGURATION_ERROR },
+        result('auth_expired'),
+        result('failed'),
+      ])
+    ).toBe(ExitCode.CONFIGURATION_ERROR);
+  });
 
   it('prioritizes CONFIGURATION_ERROR when the report schema is invalid', () => {
     expect(exitCodeFromResults([result('passed')], false)).toBe(ExitCode.CONFIGURATION_ERROR);
