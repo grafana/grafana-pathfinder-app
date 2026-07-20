@@ -323,6 +323,11 @@ describe('exitCodeFromResults', () => {
   it('prioritizes AUTH_FAILURE over a generic test failure', () => {
     expect(exitCodeFromResults([result('failed'), result('auth_expired')])).toBe(ExitCode.AUTH_FAILURE);
   });
+
+  it('prioritizes CONFIGURATION_ERROR when the report schema is invalid', () => {
+    expect(exitCodeFromResults([result('passed')], false)).toBe(ExitCode.CONFIGURATION_ERROR);
+    expect(exitCodeFromResults([result('failed'), result('auth_expired')], false)).toBe(ExitCode.CONFIGURATION_ERROR);
+  });
 });
 
 describe('status label / icon tables', () => {

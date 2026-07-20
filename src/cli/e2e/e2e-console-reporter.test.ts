@@ -9,16 +9,19 @@ import type { MultiGuideReport } from './schemas/e2e-report.schema';
 
 describe('writeJsonReport', () => {
   let tempDir: string;
+  let errorSpy: jest.SpyInstance;
   let logSpy: jest.SpyInstance;
   let warnSpy: jest.SpyInstance;
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'pathfinder-report-test-'));
+    errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
     warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
+    errorSpy.mockRestore();
     logSpy.mockRestore();
     warnSpy.mockRestore();
     rmSync(tempDir, { recursive: true, force: true });
@@ -38,9 +41,10 @@ describe('writeJsonReport', () => {
       },
     ];
 
-    writeJsonReport(results, outputPath);
+    const schemaValid = writeJsonReport(results, outputPath);
 
     const report = JSON.parse(readFileSync(outputPath, 'utf-8')) as MultiGuideReport;
+    expect(schemaValid).toBe(true);
     expect(report.type).toBe('multi-guide');
     expect(report.guides).toEqual([]);
     expect(report.reports).toEqual([]);
@@ -55,5 +59,31 @@ describe('writeJsonReport', () => {
       },
     ]);
     expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('No test results available'));
+  });
+
+  it('returns false after writing a report that fails schema validation', () => {
+    const outputPath = join(tempDir, 'results.json');
+    const invalidResults = {
+      guide: { id: 42, title: 'Invalid guide', path: 'invalid/content.json', targetUrl: 'http://localhost:3000' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      results: [],
+      aborted: false,
+    } as unknown as NonNullable<GuideRunResult['resultsData']>;
+    const results: GuideRunResult[] = [
+      {
+        guide: 'invalid/content.json',
+        id: 'invalid',
+        status: 'passed',
+        exitCode: ExitCode.SUCCESS,
+        autoIncluded: false,
+        resultsData: invalidResults,
+      },
+    ];
+
+    const schemaValid = writeJsonReport(results, outputPath);
+
+    expect(schemaValid).toBe(false);
+    expect(JSON.parse(readFileSync(outputPath, 'utf-8')).guide.id).toBe(42);
+    expect(errorSpy).toHaveBeenCalled();
   });
 });

@@ -138,56 +138,39 @@ describe('versioned report contract', () => {
 describe('writeReport self-validation', () => {
   let dir: string;
   let errorSpy: jest.SpyInstance;
-  const priorStrict = process.env.PATHFINDER_E2E_STRICT_SCHEMA;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'e2e-report-'));
     errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    delete process.env.PATHFINDER_E2E_STRICT_SCHEMA;
-    process.exitCode = undefined;
   });
 
   afterEach(() => {
     errorSpy.mockRestore();
     rmSync(dir, { recursive: true, force: true });
-    if (priorStrict === undefined) {
-      delete process.env.PATHFINDER_E2E_STRICT_SCHEMA;
-    } else {
-      process.env.PATHFINDER_E2E_STRICT_SCHEMA = priorStrict;
-    }
-    process.exitCode = undefined;
   });
 
   it('writes a normalized report and strips unknown keys', () => {
     const report = { ...generateReport(ranGuide('always-passes')), bogusField: 'nope' } as unknown as E2ETestReport;
     const out = join(dir, 'report.json');
 
-    writeReport(report, out);
+    const schemaValid = writeReport(report, out);
 
     const written = JSON.parse(readFileSync(out, 'utf-8'));
     expect(written.bogusField).toBeUndefined();
     expect(written.outcome).toBe('passed');
+    expect(schemaValid).toBe(true);
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
-  it('still writes a report and warns when validation fails, without throwing', () => {
+  it('still writes a diagnostic report when validation fails', () => {
     const invalid = { schemaVersion: '1.0.0', outcome: 'not-a-real-outcome' } as unknown as E2ETestReport;
     const out = join(dir, 'report.json');
 
-    expect(() => writeReport(invalid, out)).not.toThrow();
+    const schemaValid = writeReport(invalid, out);
 
     const written = JSON.parse(readFileSync(out, 'utf-8'));
     expect(written.outcome).toBe('not-a-real-outcome');
+    expect(schemaValid).toBe(false);
     expect(errorSpy).toHaveBeenCalled();
-    expect(process.exitCode).toBeUndefined();
-  });
-
-  it('flips the exit code on invalid output only under PATHFINDER_E2E_STRICT_SCHEMA=1', () => {
-    process.env.PATHFINDER_E2E_STRICT_SCHEMA = '1';
-    const invalid = { schemaVersion: '1.0.0', outcome: 'not-a-real-outcome' } as unknown as E2ETestReport;
-
-    writeReport(invalid, join(dir, 'report.json'));
-
-    expect(process.exitCode).toBe(2);
   });
 });

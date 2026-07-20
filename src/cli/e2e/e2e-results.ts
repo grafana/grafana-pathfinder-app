@@ -246,11 +246,10 @@ export function preRunSkipsFromResults(results: GuideRunResult[]): PreRunSkip[] 
     }));
 }
 
-/**
- * Exit code implied by the final results: auth failure takes precedence over a
- * generic/validation test failure; a fully passing run yields SUCCESS.
- */
-export function exitCodeFromResults(results: GuideRunResult[]): number {
+export function exitCodeFromResults(results: GuideRunResult[], reportSchemaValid = true): number {
+  if (!reportSchemaValid) {
+    return ExitCode.CONFIGURATION_ERROR;
+  }
   if (results.some((r) => r.status === 'auth_expired')) {
     return ExitCode.AUTH_FAILURE;
   }

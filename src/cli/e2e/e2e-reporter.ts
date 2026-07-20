@@ -12,8 +12,6 @@ import { writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { z } from 'zod';
 
-import { ExitCode } from './exit-codes';
-
 import {
   E2E_REPORT_SCHEMA_VERSION,
   E2ETestReportSchema,
@@ -256,26 +254,14 @@ export function createMinimalResultsData(input: {
   };
 }
 
-/**
- * Self-validate a report against its own schema before writing.
- *
- * The error boundary's core promise is that the CLI always produces a report,
- * so a validation failure must never prevent the write. On success we return the
- * normalized value (unknown keys stripped, so emitted output always conforms);
- * on failure we warn and write the original object. Set
- * PATHFINDER_E2E_STRICT_SCHEMA=1 to also flip the exit code.
- */
-function conform<T>(schema: z.ZodType<T>, report: T, kind: string): T {
+function validateAndNormalize<T>(schema: z.ZodType<T>, report: T, kind: string): { report: T; schemaValid: boolean } {
   const result = schema.safeParse(report);
   if (result.success) {
-    return result.data;
+    return { report: result.data, schemaValid: true };
   }
   console.error(`⚠️  ${kind} failed self-validation against its schema:`);
   console.error(z.prettifyError(result.error));
-  if (process.env.PATHFINDER_E2E_STRICT_SCHEMA === '1') {
-    process.exitCode = ExitCode.CONFIGURATION_ERROR;
-  }
-  return report;
+  return { report, schemaValid: false };
 }
 
 /**
@@ -286,18 +272,15 @@ function conform<T>(schema: z.ZodType<T>, report: T, kind: string): T {
  * @param report - The report to write
  * @param outputPath - Path to write the report to
  */
-export function writeReport(report: E2ETestReport, outputPath: string): void {
-  const conformed = conform(E2ETestReportSchema, report, 'E2E report');
-
-  // Ensure parent directory exists
+export function writeReport(report: E2ETestReport, outputPath: string): boolean {
+  const validated = validateAndNormalize(E2ETestReportSchema, report, 'E2E report');
   const dir = dirname(outputPath);
   if (dir !== '.') {
     mkdirSync(dir, { recursive: true });
   }
-
-  // Write JSON with pretty formatting
-  const json = JSON.stringify(conformed, null, 2);
+  const json = JSON.stringify(validated.report, null, 2);
   writeFileSync(outputPath, json, 'utf-8');
+  return validated.schemaValid;
 }
 
 /**
@@ -500,17 +483,15 @@ export function generateMultiGuideReport(resultsArray: TestResultsData[], grafan
  * @param report - The multi-guide report to write
  * @param outputPath - Path to write the report to
  */
-export function writeMultiGuideReport(report: MultiGuideReport, outputPath: string): void {
-  const conformed = conform(MultiGuideReportSchema, report, 'Multi-guide report');
-
-  // Reuse writeReport's directory creation logic
+export function writeMultiGuideReport(report: MultiGuideReport, outputPath: string): boolean {
+  const validated = validateAndNormalize(MultiGuideReportSchema, report, 'Multi-guide report');
   const dir = dirname(outputPath);
   if (dir !== '.') {
     mkdirSync(dir, { recursive: true });
   }
-
-  const json = JSON.stringify(conformed, null, 2);
+  const json = JSON.stringify(validated.report, null, 2);
   writeFileSync(outputPath, json, 'utf-8');
+  return validated.schemaValid;
 }
 
 /**

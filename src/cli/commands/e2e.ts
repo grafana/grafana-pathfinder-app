@@ -208,11 +208,11 @@ function writeCommandFailureReport(options: E2ECommandOptions, error: unknown, g
     errorCode,
     errorMessage: message,
   });
-  writeReport(generateReport(data), outputPath);
+  const reportSchemaValid = writeReport(generateReport(data), outputPath);
   if (!options.output) {
     console.error(`📄 JSON report written to: ${outputPath}`);
   }
-  return exitCode;
+  return reportSchemaValid ? exitCode : ExitCode.CONFIGURATION_ERROR;
 }
 
 /** Format guide validation errors as an indented, file-grouped report. */
@@ -824,8 +824,8 @@ async function runChains(
  * Exit with the code implied by the final results. A fully passing run returns
  * to the caller without exiting; any other outcome exits the process.
  */
-function exitFromResults(results: GuideRunResult[]): void {
-  const code = exitCodeFromResults(results);
+function exitFromResults(results: GuideRunResult[], reportSchemaValid: boolean): void {
+  const code = exitCodeFromResults(results, reportSchemaValid);
   if (code !== ExitCode.SUCCESS) {
     process.exit(code);
   }
@@ -840,8 +840,8 @@ function reportResults(results: GuideRunResult[], options: E2ECommandOptions, cl
   printSummary(results, cleanupWarnings);
   const hasNonPassOutcome = results.length === 0 || results.some((result) => result.status !== 'passed');
   const outputPath = options.output ?? (hasNonPassOutcome ? join(options.artifacts, 'report.json') : undefined);
-  writeJsonReport(results, outputPath, cleanupWarnings);
-  exitFromResults(results);
+  const reportSchemaValid = writeJsonReport(results, outputPath, cleanupWarnings);
+  exitFromResults(results, reportSchemaValid);
 }
 
 /**

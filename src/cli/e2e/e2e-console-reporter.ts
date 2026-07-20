@@ -223,9 +223,9 @@ export function writeJsonReport(
   results: GuideRunResult[],
   outputPath: string | undefined,
   cleanupWarnings: string[] = []
-): void {
+): boolean {
   if (!outputPath) {
-    return;
+    return true;
   }
 
   const resultsWithData = results.filter((r) => r.resultsData).map((r) => r.resultsData!);
@@ -235,14 +235,17 @@ export function writeJsonReport(
   if (resultsWithData.length === 0 && preRunSkipped.length > 0) {
     try {
       const report = skipOnlyReport(preRunSkipped, cleanupWarnings);
-      writeMultiGuideReport(report, outputPath);
+      const schemaValid = writeMultiGuideReport(report, outputPath);
       console.log(`\n📄 Multi-guide JSON report written to: ${outputPath}`);
       console.log(`   ${formatMultiGuideSummary(report)}`);
+      return schemaValid;
     } catch (err) {
       console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      return true;
     }
   } else if (resultsWithData.length === 0) {
     console.warn(`   ⚠ No test results available for JSON report`);
+    return true;
   } else if (isMultiGuide) {
     try {
       const report = generateMultiGuideReport(resultsWithData);
@@ -252,11 +255,13 @@ export function writeJsonReport(
       if (cleanupWarnings.length > 0) {
         report.cleanupWarnings = cleanupWarnings;
       }
-      writeMultiGuideReport(report, outputPath);
+      const schemaValid = writeMultiGuideReport(report, outputPath);
       console.log(`\n📄 Multi-guide JSON report written to: ${outputPath}`);
       console.log(`   ${formatMultiGuideSummary(report)}`);
+      return schemaValid;
     } catch (err) {
       console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      return true;
     }
   } else {
     try {
@@ -267,10 +272,12 @@ export function writeJsonReport(
       if (cleanupWarnings.length > 0) {
         report.cleanupWarnings = cleanupWarnings;
       }
-      writeReport(report, outputPath);
+      const schemaValid = writeReport(report, outputPath);
       console.log(`\n📄 JSON report written to: ${outputPath}`);
+      return schemaValid;
     } catch (err) {
       console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      return true;
     }
   }
 }
