@@ -101,6 +101,33 @@ Column key — **cat**: `AO`=always-on · `sub`=subsystem · `xcut`=cross-cuttin
 
 ---
 
+## Contract anchors
+
+A contract anchor records the deliberately established contract of a capability: its owning module, its load-bearing invariants, and the PR or issue that established it. The contract evolution scan (`.cursor/skills/review/SKILL.md` §3b) checks new PRs for **conformance** against a recorded anchor; when no anchor exists it must reconstruct the implied contract from recent PR history, which is slower and weaker.
+
+Rules:
+
+- Anchors are optional per concern — record one when a PR deliberately establishes or replaces a contract (a typed facade, reducer, schema, or lifecycle owner), in that same PR.
+- An anchor states invariants and ownership, not implementation detail. If the invariant is already captured in the concern's `purpose`, the anchor may simply point at it.
+- Anchors are evidence, not authority: a scan that finds the anchored contract incoherent should propose replacing it, not enforce it.
+- Name contracts after the domain, never the vendor — a telemetry contract, not a "Faro contract".
+- Add a concern routing row when a capability directory is created, not when its contract is finally written — the gate cannot see a concern's history until the row exists, and rows that arrive in the contract-establishing PR miss the fracture window they were meant to watch.
+
+| concern                  | anchor        | contract                                                                                                                                                                                                                                                |
+| ------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `floating-panel`         | #1298 → #1300 | The dodge-session reducer (`dodge-session.ts`) owns the compact/restore lifecycle; layout-derived values like `scrollTop` are not authoritative while a session holds saved state; `FloatingPanelEvents` owns the event names. Invariants in `purpose`. |
+| `block-editor-authoring` | #1314 → #1331 | One mount-time path owns restoration; `useBackendSaveFlow` owns save/publish/unpublish orchestration; `useBlockPersistence` is narrowed to `clear`. Invariants in `purpose`.                                                                            |
+
+### Pre-contract candidates
+
+These are advisory architecture hypotheses, not anchors. They cannot create a blocking conformance finding until an implementation PR establishes the owner and records the contract above. Evolution packets for these concerns set `has_recorded_anchor: false`.
+
+| concern                   | evidence         | proposed owner                                                                                                                                                                                                      |
+| ------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `analytics-and-telemetry` | Accreting #1275+ | A vendor-neutral typed telemetry facade with domain operations and Faro/OTel as internal adapters. Until it lands, direct vendor consumers are evidence for `contract_missing`, not an anchored-contract violation. |
+
+---
+
 ## Footnotes
 
 ¹ `cross-cutting-architecture` related: all other concerns.
