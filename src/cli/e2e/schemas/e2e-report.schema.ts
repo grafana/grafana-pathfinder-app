@@ -24,6 +24,7 @@ export const E2EErrorCodeSchema = z.enum([
   'AUTH_EXPIRED',
   'MANDATORY_FAILURE',
   'SKIPPED_PREREQ',
+  'TIER_MISMATCH',
   'PROVISIONING_FAILED',
   'GRAFANA_UNREACHABLE',
   'CONFIGURATION_ERROR',
@@ -73,14 +74,14 @@ export const ReportTargetSchema = z.object({
 });
 
 export const ReportSummarySchema = z.object({
-  total: z.number(),
-  passed: z.number(),
-  failed: z.number(),
-  skipped: z.number(),
-  notReached: z.number(),
-  duration: z.number(),
-  mandatoryFailed: z.number(),
-  skippableFailed: z.number(),
+  total: z.number().int().nonnegative(),
+  passed: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  notReached: z.number().int().nonnegative(),
+  duration: z.number().nonnegative(),
+  mandatoryFailed: z.number().int().nonnegative(),
+  skippableFailed: z.number().int().nonnegative(),
 });
 
 export const ArtifactPathsSchema = z.object({
@@ -92,9 +93,9 @@ export const ArtifactPathsSchema = z.object({
 
 export const ReportStepResultSchema = z.object({
   stepId: z.string(),
-  index: z.number(),
+  index: z.number().int().nonnegative(),
   status: z.enum(['passed', 'failed', 'skipped', 'not_reached']),
-  duration: z.number(),
+  duration: z.number().nonnegative(),
   currentUrl: z.string(),
   consoleErrors: z.array(z.string()),
   skipReason: z.string().optional(),
@@ -119,7 +120,7 @@ export const GuideMetadataSchema = z.object({
 
 export const ReportConfigSchema = z.object({
   grafanaVersion: z.string().optional(),
-  timestamp: z.string(),
+  timestamp: z.iso.datetime(),
 });
 
 export const PreRunSkipSchema = z.object({
@@ -143,8 +144,8 @@ export const E2ETestReportSchema = z
     errorCode: E2EErrorCodeSchema.optional(),
     errorMessage: z.string().optional(),
     runner: RunnerProvenanceSchema,
-    startedAt: z.string(),
-    endedAt: z.string(),
+    startedAt: z.iso.datetime(),
+    endedAt: z.iso.datetime(),
     target: ReportTargetSchema,
     guide: GuideMetadataSchema,
     config: ReportConfigSchema,
@@ -165,26 +166,26 @@ export const GuideResultSchema = z.object({
   success: z.boolean(),
   abortReason: AbortReasonSchema.optional(),
   summary: ReportSummarySchema,
-  duration: z.number(),
+  duration: z.number().nonnegative(),
   sideEffects: SideEffectClassificationSchema.optional(),
 });
 
 export const MultiGuideSummarySchema = z.object({
-  totalGuides: z.number(),
-  passedGuides: z.number(),
-  failedGuides: z.number(),
-  authExpiredGuides: z.number(),
-  skippedGuides: z.number(),
+  totalGuides: z.number().int().nonnegative(),
+  passedGuides: z.number().int().nonnegative(),
+  failedGuides: z.number().int().nonnegative(),
+  authExpiredGuides: z.number().int().nonnegative(),
+  skippedGuides: z.number().int().nonnegative(),
   steps: z.object({
-    total: z.number(),
-    passed: z.number(),
-    failed: z.number(),
-    skipped: z.number(),
-    notReached: z.number(),
-    mandatoryFailed: z.number(),
-    skippableFailed: z.number(),
+    total: z.number().int().nonnegative(),
+    passed: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    skipped: z.number().int().nonnegative(),
+    notReached: z.number().int().nonnegative(),
+    mandatoryFailed: z.number().int().nonnegative(),
+    skippableFailed: z.number().int().nonnegative(),
   }),
-  totalDuration: z.number(),
+  totalDuration: z.number().nonnegative(),
 });
 
 export const MultiGuideReportSchema = z
@@ -192,8 +193,8 @@ export const MultiGuideReportSchema = z
     schemaVersion: z.literal(E2E_REPORT_SCHEMA_VERSION),
     outcome: E2EExecutionOutcomeSchema,
     runner: RunnerProvenanceSchema,
-    startedAt: z.string(),
-    endedAt: z.string(),
+    startedAt: z.iso.datetime(),
+    endedAt: z.iso.datetime(),
     type: z.literal('multi-guide'),
     config: ReportConfigSchema,
     summary: MultiGuideSummarySchema,

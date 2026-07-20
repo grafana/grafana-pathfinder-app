@@ -177,6 +177,7 @@ function writeCommandFailureReport(options: E2ECommandOptions, error: unknown, g
     NO_CAPACITY: 'infrastructure_error',
     REPORT_MISSING: 'infrastructure_error',
     SKIPPED_PREREQ: 'skipped',
+    TIER_MISMATCH: 'skipped',
   };
   let guideId =
     guide?.path
@@ -558,7 +559,7 @@ async function runPreflightChecks(
         failCommand(
           `Guide skipped: requires tier "${tierMsg}" but current environment is "${options.tier}".`,
           ExitCode.SUCCESS,
-          'SKIPPED_PREREQ'
+          'TIER_MISMATCH'
         );
       }
     }
@@ -616,7 +617,7 @@ async function runPreflightChecks(
         failCommand(
           `Guide skipped: requires tier "${tierMsg}" but current environment is "${options.tier}".`,
           ExitCode.SUCCESS,
-          'SKIPPED_PREREQ'
+          'TIER_MISMATCH'
         );
       }
 
@@ -1047,7 +1048,16 @@ export const e2eCommand = new Command('e2e')
 
       reportResults([...inputs.preRunSkipped, ...outcome.results], options, outcome.cleanupWarnings);
     } catch (error) {
-      console.error('❌ Error:', error instanceof Error ? error.message : 'Unknown error');
-      process.exit(writeCommandFailureReport(options, error, reportGuide));
+      const isSuccessExit = error instanceof E2ECommandError && error.exitCode === ExitCode.SUCCESS;
+      if (!isSuccessExit) {
+        console.error('❌ Error:', error instanceof Error ? error.message : 'Unknown error');
+      }
+      let exitCode: number;
+      try {
+        exitCode = writeCommandFailureReport(options, error, reportGuide);
+      } catch {
+        exitCode = ExitCode.CONFIGURATION_ERROR;
+      }
+      process.exit(exitCode);
     }
   });
