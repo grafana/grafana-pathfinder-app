@@ -31,6 +31,8 @@ interface SchemaRegistryEntry {
   id?: string;
   /** Version stamped as `x-schema-version`; defaults to the guide schema version. */
   schemaVersion?: string;
+  /** When true, strips `additionalProperties: false` from the exported JSON Schema so additive fields are non-breaking. */
+  openWorld?: boolean;
 }
 
 /**
@@ -81,14 +83,29 @@ export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
     description: 'E2E single-guide test report',
     id: E2E_REPORT_SCHEMA_ID,
     schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+    openWorld: true,
   },
   'e2e-multi-report': {
     schema: MultiGuideReportSchema,
     description: 'E2E multi-guide aggregate test report',
     id: E2E_MULTI_REPORT_SCHEMA_ID,
     schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+    openWorld: true,
   },
 };
+
+function stripAdditionalPropertiesFalse(node: unknown): void {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) {
+    return;
+  }
+  const obj = node as Record<string, unknown>;
+  if (obj['additionalProperties'] === false) {
+    delete obj['additionalProperties'];
+  }
+  for (const value of Object.values(obj)) {
+    stripAdditionalPropertiesFalse(value);
+  }
+}
 
 function convertSchema(entry: SchemaRegistryEntry, includeVersion: boolean): Record<string, unknown> {
   // reused: 'ref' is load-bearing. The block schema is recursive (sections /
@@ -97,6 +114,10 @@ function convertSchema(entry: SchemaRegistryEntry, includeVersion: boolean): Rec
   // block / guide — enough to OOM a 1 GiB Cloud Run instance during a single
   // tool call. Emitting $defs + $ref keeps the same output under ~35 KB.
   const jsonSchema = z.toJSONSchema(entry.schema, { reused: 'ref' }) as Record<string, unknown>;
+
+  if (entry.openWorld) {
+    stripAdditionalPropertiesFalse(jsonSchema);
+  }
 
   if (entry.id) {
     jsonSchema.$id = entry.id;

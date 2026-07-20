@@ -31,4 +31,19 @@ describe('schema command — e2e-report registration', () => {
     expect(() => ajv.compile(exportSchema('e2e-report', false)!)).not.toThrow();
     expect(() => ajv.compile(exportSchema('e2e-multi-report', false)!)).not.toThrow();
   });
+
+  it('exports open-world schemas (no additionalProperties: false) for independent deployability', () => {
+    const hasAdditionalPropertiesFalse = (node: unknown): boolean => {
+      if (!node || typeof node !== 'object' || Array.isArray(node)) {
+        return false;
+      }
+      const obj = node as Record<string, unknown>;
+      if (obj['additionalProperties'] === false) {
+        return true;
+      }
+      return Object.values(obj).some(hasAdditionalPropertiesFalse);
+    };
+    expect(hasAdditionalPropertiesFalse(exportSchema('e2e-report', false))).toBe(false);
+    expect(hasAdditionalPropertiesFalse(exportSchema('e2e-multi-report', false))).toBe(false);
+  });
 });
