@@ -1003,7 +1003,7 @@ export const e2eCommand = new Command('e2e')
 
     try {
       const inputs = await resolveRunInputs(files, options);
-      reportGuide = inputs.guides[0];
+      reportGuide = inputs.guides.length === 1 ? inputs.guides[0] : undefined;
 
       // Remote runs can resolve to nothing runnable (e.g. all cloud-tier guides):
       // report the skips and exit without booting Grafana or Playwright.

@@ -306,11 +306,23 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
     });
 
     if (!result.resultsData) {
-      const guideId =
+      let guideId =
         guide.path
           .split('/')
           .pop()
           ?.replace(/\.json$/, '') ?? 'unknown';
+      let guideTitle = guideId;
+      try {
+        const parsed = JSON.parse(guide.content) as { id?: unknown; title?: unknown };
+        if (typeof parsed.id === 'string' && parsed.id) {
+          guideId = parsed.id;
+        }
+        if (typeof parsed.title === 'string' && parsed.title) {
+          guideTitle = parsed.title;
+        }
+      } catch {
+        // Malformed guide content; path-derived id remains valid.
+      }
       const outcome =
         result.abortReason === 'AUTH_EXPIRED'
           ? 'aborted'
@@ -320,7 +332,7 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
       result.resultsData = createMinimalResultsData({
         guide: {
           id: guideId,
-          title: guideId,
+          title: guideTitle,
           path: guide.path,
           targetUrl: options.targetUrl,
           contentDigest: contentDigest(guide.content),
