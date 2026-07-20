@@ -156,10 +156,7 @@ export const E2ETestReportSchema = z
     preRunSkipped: z.array(PreRunSkipSchema).optional(),
     cleanupWarnings: z.array(z.string()).optional(),
   })
-  .meta({
-    id: E2E_REPORT_SCHEMA_ID,
-    title: 'Pathfinder E2E test report',
-  });
+  .meta({ title: 'Pathfinder E2E test report' });
 
 export const GuideResultSchema = z.object({
   id: z.string(),

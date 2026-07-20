@@ -4,6 +4,7 @@
  * via `pathfinder-cli schema e2e-report`.
  */
 
+import Ajv2020 from 'ajv/dist/2020';
 import { exportSchema, listSchemas } from '../commands/schema';
 
 describe('schema command — e2e-report registration', () => {
@@ -23,5 +24,11 @@ describe('schema command — e2e-report registration', () => {
   it('exports the multi-guide report schema without throwing', () => {
     expect(() => exportSchema('e2e-multi-report', false)).not.toThrow();
     expect(exportSchema('e2e-multi-report', false)).not.toBeNull();
+  });
+
+  it('produces ajv-compilable JSON Schema for e2e-report and e2e-multi-report', () => {
+    const ajv = new Ajv2020({ strict: false });
+    expect(() => ajv.compile(exportSchema('e2e-report', false)!)).not.toThrow();
+    expect(() => ajv.compile(exportSchema('e2e-multi-report', false)!)).not.toThrow();
   });
 });
