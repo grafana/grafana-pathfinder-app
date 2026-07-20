@@ -475,7 +475,6 @@ export async function markMilestoneDone(
 
   // Completion-emission boundary for the milestone-as-guide path.
   const milestoneIdentity = resolveCompletionIdentity({
-    packageManifest: context?.packageManifest,
     fallbackId: milestoneSlug,
     fallbackSource: 'bundled',
   });

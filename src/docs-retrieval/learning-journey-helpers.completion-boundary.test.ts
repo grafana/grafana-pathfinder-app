@@ -149,11 +149,11 @@ describe('learning-journey milestone completion (trigger class B / milestone-as-
     expect(emitted.filter((f) => f.kind === 'guide')).toHaveLength(1);
   });
 
-  it('keys on the resolved manifest identity when a package manifest is supplied', async () => {
+  it('keys the milestone-as-guide fact on the milestone slug even when a journey manifest is supplied', async () => {
     await markMilestoneDone('base', 'm1', undefined, {
       packageManifest: { id: 'fe-alerting-01', repository: 'app-platform' },
     });
-    expect(emitted[0]).toMatchObject({ guideSource: 'app-platform', guideId: 'fe-alerting-01' });
+    expect(emitted[0]).toMatchObject({ guideSource: 'bundled', guideId: 'm1' });
   });
 });
 
@@ -175,6 +175,22 @@ describe('whole-journey completion (trigger class D — the new journey_complete
     });
     // Local-cache parity: the path badge is still awarded.
     expect(awardBadgeMock).toHaveBeenCalledWith('linux-badge');
+  });
+
+  it('keys the journey fact on the manifest while the milestone fact keys on its slug (no collision)', async () => {
+    milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3']));
+    getPathsDataMock.mockReturnValue({
+      paths: [{ id: 'linux-path', title: 'Linux', url: 'base', badgeId: 'linux-badge' }],
+    });
+
+    await markMilestoneDone('base', 'm3', 3, {
+      packageManifest: { id: 'linux-journey', repository: 'app-platform' },
+    });
+
+    const guideEmit = emitted.find((f) => f.kind === 'guide');
+    const journeyEmit = emitted.find((f) => f.kind === 'journey');
+    expect(guideEmit).toMatchObject({ guideSource: 'bundled', guideId: 'm3' });
+    expect(journeyEmit).toMatchObject({ guideSource: 'app-platform', guideId: 'linux-journey' });
   });
 
   it('does not fire journey_completed before all milestones are complete', async () => {
