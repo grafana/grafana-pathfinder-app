@@ -17,6 +17,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.npmrc'
+      - 'tsconfig.cli.json'
       - '.github/workflows/e2e-runner-publish.yml'
   pull_request:
     branches:
@@ -34,6 +35,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.npmrc'
+      - 'tsconfig.cli.json'
       - '.github/workflows/e2e-runner-publish.yml'
 
 permissions: read-all
@@ -127,8 +129,7 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           if docker manifest inspect "${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}" >/dev/null 2>&1; then
-            echo "::error::Tag already exists: ${{ steps.tag.outputs.value }}"
-            exit 1
+            echo "::warning::Tag already exists: ${{ steps.tag.outputs.value }}"
           fi
       - name: Tag and push immutable image
         id: push

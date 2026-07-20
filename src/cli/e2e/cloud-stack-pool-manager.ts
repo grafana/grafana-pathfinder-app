@@ -23,8 +23,8 @@ export interface CloudStackPoolManagerConfigInput {
 }
 
 function retryDelayMs(attempt: number, random: () => number): number {
-  const exponential = Math.min(CAPACITY_RETRY_MAX_DELAY_MS, CAPACITY_RETRY_BASE_DELAY_MS * 2 ** attempt);
-  return Math.round(exponential * (0.5 + random()));
+  const exponential = CAPACITY_RETRY_BASE_DELAY_MS * 2 ** attempt;
+  return Math.round(Math.min(CAPACITY_RETRY_MAX_DELAY_MS, exponential * (0.5 + random())));
 }
 
 function wait(ms: number): Promise<void> {
