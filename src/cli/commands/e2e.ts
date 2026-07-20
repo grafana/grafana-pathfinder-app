@@ -1056,7 +1056,7 @@ export const e2eCommand = new Command('e2e')
       try {
         exitCode = writeCommandFailureReport(options, error, reportGuide);
       } catch {
-        exitCode = ExitCode.CONFIGURATION_ERROR;
+        exitCode = error instanceof E2ECommandError ? error.exitCode : ExitCode.CONFIGURATION_ERROR;
       }
       process.exit(exitCode);
     }
