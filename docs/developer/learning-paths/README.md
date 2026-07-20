@@ -92,7 +92,7 @@ The `BADGES` array in `badges.ts` defines 12 badges. Each badge has an `id`, `ti
 
 `getBadgesToAward()` iterates all badges, skipping already-earned ones, and checks each trigger against the current `LearningProgress` and available `LearningPath[]`.
 
-For `path-completed` triggers, `isPathCompleted()` returns `false` when `path.guides.length === 0`. This is vacuous-truth protection for URL-based paths whose guides are fetched dynamically — without this guard, `[].every(...)` would return `true` and award the badge immediately. Badge awarding for URL-based paths is instead handled in `user-storage.ts` via `markMilestoneDone`.
+For `path-completed` triggers, `isPathCompleted()` returns `false` when `path.guides.length === 0`. This is vacuous-truth protection for URL-based paths whose guides are fetched dynamically — without this guard, `[].every(...)` would return `true` and award the badge immediately. Badge awarding for URL-based paths is instead handled in `docs-retrieval/learning-journey-helpers.ts` via `markMilestoneDone`.
 
 ### Helper functions
 
@@ -229,7 +229,7 @@ The module depends on several storage instances:
 - `journeyCompletionStorage` — journey-level completion (used by `resetPath`)
 - `milestoneCompletionStorage` — milestone completion for URL-based paths (used by `resetPath`)
 
-Badge awarding for static paths is handled by `learningProgressStorage`. Badge awarding for URL-based paths is handled by `markMilestoneDone` in `user-storage.ts`.
+Badge awarding for static paths is handled by `learningProgressStorage`. Badge awarding for URL-based paths is handled by `markMilestoneDone` in `docs-retrieval/learning-journey-helpers.ts`, which also emits the completion fact (and the whole-journey `journey_completed` trigger) through the `completion-records` recorder.
 
 ### UI components (`src/components/LearningPaths/`)
 

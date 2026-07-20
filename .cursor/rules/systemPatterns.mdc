@@ -161,6 +161,7 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 | `security` (`parseUrlSafely`, `validateTutorialUrl`) | All subsystems handling URLs | Boundary validation for any URL crossing trust zones           |
 | `learning-paths` (`useGuideCompletion`) | `components/docs-panel`, `interactive-engine` | Progress events + badge unlock                          |
 | `recovery` (`evaluateAlignment`)       | `components/docs-panel`                  | One-shot alignment evaluation at guide launch                  |
+| `completion-records` (`recordGuideCompletion`, `recordJourneyCompletion`) | `docs-retrieval` (`learning-journey-helpers`) | Single completion-emission boundary; exactly-once per `(guideSource, guideId)` |
 
 ## Backend architecture (`pkg/`)
 
