@@ -46,7 +46,7 @@ function skipOnlyReport(
   };
   return {
     schemaVersion: E2E_REPORT_SCHEMA_VERSION,
-    outcome: 'skipped',
+    outcome: (preRunSkipped ?? []).some((e) => e.failed) ? 'failed' : 'skipped',
     runner,
     startedAt: timestamp,
     endedAt: timestamp,
@@ -241,7 +241,7 @@ export function writeJsonReport(
       return schemaValid;
     } catch (err) {
       console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      return true;
+      return false;
     }
   } else if (resultsWithData.length === 0) {
     console.warn(`   ⚠ No test results available for JSON report`);
@@ -261,7 +261,7 @@ export function writeJsonReport(
       return schemaValid;
     } catch (err) {
       console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      return true;
+      return false;
     }
   } else {
     try {
@@ -277,7 +277,7 @@ export function writeJsonReport(
       return schemaValid;
     } catch (err) {
       console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      return true;
+      return false;
     }
   }
 }
