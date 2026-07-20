@@ -15,7 +15,9 @@ RUN npm ci --no-audit --no-fund \
     && npx playwright install --with-deps chromium \
     && npm cache clean --force \
     && chown -R node:node /ms-playwright \
-    && chown node:node /app
+    && chown node:node /app \
+    && mkdir -p /workspace \
+    && chown node:node /workspace
 
 COPY --chown=node:node . .
 USER node
