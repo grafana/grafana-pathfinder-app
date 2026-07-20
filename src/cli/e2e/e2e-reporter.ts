@@ -234,11 +234,14 @@ export function createMinimalResultsData(input: {
   outcome: E2EExecutionOutcome;
   errorCode: E2EErrorCode;
   errorMessage: string;
+  abortReason?: TestResultsData['abortReason'];
   startedAt?: string;
   endedAt?: string;
 }): TestResultsData {
   const startedAt = input.startedAt ?? new Date().toISOString();
   const endedAt = input.endedAt ?? new Date().toISOString();
+  const abortReason =
+    input.abortReason ?? (input.errorCode === 'SKIPPED_PREREQ' ? ('SKIPPED_PREREQ' as const) : undefined);
   return {
     guide: input.guide,
     timestamp: startedAt,
@@ -249,7 +252,7 @@ export function createMinimalResultsData(input: {
     errorMessage: input.errorMessage,
     results: [],
     aborted: input.outcome !== 'passed',
-    ...(input.errorCode === 'SKIPPED_PREREQ' ? { abortReason: 'SKIPPED_PREREQ' as const } : {}),
+    ...(abortReason ? { abortReason } : {}),
     abortMessage: input.errorMessage,
   };
 }
@@ -313,7 +316,9 @@ export function generateAndWriteReport(
  * @returns true if the test passed without mandatory or provisioning failures
  */
 export function isReportSuccess(report: E2ETestReport): boolean {
-  return report.summary.mandatoryFailed === 0 && report.abortReason !== 'PROVISIONING_FAILED';
+  return (
+    report.outcome === 'passed' && report.summary.mandatoryFailed === 0 && report.abortReason !== 'PROVISIONING_FAILED'
+  );
 }
 
 /**
@@ -353,9 +358,15 @@ export function formatReportSummary(report: E2ETestReport): string {
  */
 export function generateMultiGuideSummary(reports: E2ETestReport[]): MultiGuideSummary {
   const skippedGuides = reports.filter((r) => r.abortReason === 'SKIPPED_PREREQ').length;
-  const passedGuides = reports.filter((r) => isReportSuccess(r) && r.abortReason !== 'SKIPPED_PREREQ').length;
-  const failedGuides = reports.filter((r) => !isReportSuccess(r) && r.abortReason !== 'AUTH_EXPIRED').length;
-  const authExpiredGuides = reports.filter((r) => r.abortReason === 'AUTH_EXPIRED').length;
+  const isAuthExpired = (report: E2ETestReport): boolean =>
+    report.abortReason === 'AUTH_EXPIRED' || report.errorCode === 'AUTH_EXPIRED';
+  const passedGuides = reports.filter(
+    (r) => isReportSuccess(r) && r.abortReason !== 'SKIPPED_PREREQ' && !isAuthExpired(r)
+  ).length;
+  const failedGuides = reports.filter(
+    (r) => !isReportSuccess(r) && r.abortReason !== 'SKIPPED_PREREQ' && !isAuthExpired(r)
+  ).length;
+  const authExpiredGuides = reports.filter(isAuthExpired).length;
 
   // Aggregate step counts
   const steps = reports.reduce(

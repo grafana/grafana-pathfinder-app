@@ -15,6 +15,7 @@ import {
   contentDigest,
   generateMultiGuideReport,
   generateReport,
+  isReportSuccess,
   writeReport,
   type TestResultsData,
 } from './e2e-reporter';
@@ -132,6 +133,49 @@ describe('versioned report contract', () => {
     expect(pass.outcome).toBe('passed');
     expect(fail.outcome).toBe('failed');
     expect(fail.errorCode).toBe('MANDATORY_FAILURE');
+  });
+});
+
+describe('report outcome classification', () => {
+  it('does not treat an explicit infrastructure outcome as successful', () => {
+    const report = generateReport({
+      guide: { id: 'capacity', title: 'capacity', path: 'capacity/content.json' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      outcome: 'infrastructure_error',
+      errorCode: 'NO_CAPACITY',
+      errorMessage: 'No hot stack is available',
+      results: [],
+      aborted: true,
+      abortReason: 'PROVISIONING_FAILED',
+    });
+
+    expect(report).toMatchObject({
+      outcome: 'infrastructure_error',
+      errorCode: 'NO_CAPACITY',
+      abortReason: 'PROVISIONING_FAILED',
+    });
+    expect(isReportSuccess(report)).toBe(false);
+  });
+
+  it('keeps auth-expired reports out of the passed multi-guide count', () => {
+    const report = generateMultiGuideReport([
+      {
+        guide: { id: 'auth-guide', title: 'auth-guide', path: 'auth-guide/content.json' },
+        timestamp: '2026-01-01T00:00:00.000Z',
+        outcome: 'aborted',
+        errorCode: 'AUTH_EXPIRED',
+        errorMessage: 'Session expired',
+        results: [],
+        aborted: true,
+        abortReason: 'AUTH_EXPIRED',
+      },
+    ]);
+
+    expect(report.summary).toMatchObject({
+      passedGuides: 0,
+      failedGuides: 0,
+      authExpiredGuides: 1,
+    });
   });
 });
 

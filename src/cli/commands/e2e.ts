@@ -42,6 +42,7 @@ import {
   applyPackageMeta,
   buildPackageMetaMap,
   exitCodeFromResults,
+  provisioningErrorCode,
   provisioningFailureResults,
   resolveRunMode,
   skipToResult,
@@ -701,7 +702,9 @@ async function runChains(
     } catch (err) {
       const message = `Cloud target provisioning failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
       console.error(`\n❌ ${message}`);
-      results.push(...provisioningFailureResults(chain, packageMetaById, options.grafanaUrl, message));
+      results.push(
+        ...provisioningFailureResults(chain, packageMetaById, options.grafanaUrl, message, provisioningErrorCode(err))
+      );
       allPassed = false;
       continue;
     }

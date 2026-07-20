@@ -162,4 +162,36 @@ describe('runPlaywrightTests', () => {
       })
     );
   });
+
+  it.each([
+    ['AUTH_EXPIRED', 'aborted'],
+    ['MANDATORY_FAILURE', 'failed'],
+  ] as const)('preserves %s when only an abort file is produced', async (abortReason, outcome) => {
+    const child = new EventEmitter();
+    spawnMock.mockImplementation((_command, _args, spawnOptions) => {
+      const env = (spawnOptions as { env?: NodeJS.ProcessEnv }).env;
+      writeFileSync(env?.ABORT_FILE_PATH as string, JSON.stringify({ abortReason, message: `${abortReason} message` }));
+      queueMicrotask(() => child.emit('close', 1));
+      return child as never;
+    });
+
+    const result = await runPlaywrightTests(
+      { path: 'fixture.json', content: '{}' },
+      {
+        targetUrl: 'http://localhost:3000',
+        verbose: false,
+        trace: false,
+        headed: false,
+        artifacts: 'artifacts',
+        alwaysScreenshot: false,
+      }
+    );
+
+    expect(result.resultsData).toMatchObject({
+      outcome,
+      errorCode: abortReason,
+      abortReason,
+      abortMessage: `${abortReason} message`,
+    });
+  });
 });

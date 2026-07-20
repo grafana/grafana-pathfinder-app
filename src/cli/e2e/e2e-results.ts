@@ -17,7 +17,7 @@ import {
   type ResolvedRemoteGuide,
   type SkippedPackage,
 } from './e2e-package';
-import type { PreRunSkip } from './schemas/e2e-report.schema';
+import type { E2EErrorCode, E2EExecutionOutcome, PreRunSkip } from './schemas/e2e-report.schema';
 import { contentDigest, type TestResultsData } from './e2e-reporter';
 import { ExitCode } from './exit-codes';
 import type { AbortReason } from './playwright-runner';
@@ -191,12 +191,21 @@ interface PlannedGuideForResult {
   guide: { path: string; content?: string };
   autoIncluded: boolean;
 }
+export function provisioningErrorCode(error: unknown): E2EErrorCode {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+      ? error.code.toLowerCase()
+      : undefined;
+  return code === 'no_capacity' ? 'NO_CAPACITY' : 'PROVISIONING_FAILED';
+}
 
 export function provisioningFailureResults(
   chain: PlannedGuideForResult[],
   packageMetaById: Map<string, PackageMeta>,
   fallbackTargetUrl: string,
-  message: string
+  message: string,
+  errorCode: E2EErrorCode = 'PROVISIONING_FAILED',
+  outcome: E2EExecutionOutcome = 'infrastructure_error'
 ): GuideRunResult[] {
   return chain.map((planned) => {
     const meta = packageMetaById.get(planned.id);
@@ -209,6 +218,9 @@ export function provisioningFailureResults(
         ...(planned.guide.content ? { contentDigest: contentDigest(planned.guide.content) } : {}),
       },
       timestamp: new Date().toISOString(),
+      outcome,
+      errorCode,
+      errorMessage: message,
       results: [],
       aborted: true,
       abortReason: 'PROVISIONING_FAILED',

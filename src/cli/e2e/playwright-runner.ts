@@ -285,6 +285,12 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
           .split('/')
           .pop()
           ?.replace(/\.json$/, '') ?? 'unknown';
+      const outcome =
+        result.abortReason === 'AUTH_EXPIRED'
+          ? 'aborted'
+          : result.abortReason === 'MANDATORY_FAILURE'
+            ? 'failed'
+            : 'infrastructure_error';
       result.resultsData = createMinimalResultsData({
         guide: {
           id: guideId,
@@ -293,9 +299,10 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
           targetUrl: options.targetUrl,
           contentDigest: contentDigest(guide.content),
         },
-        outcome: 'infrastructure_error',
+        outcome,
         errorCode: result.errorCode ?? 'REPORT_MISSING',
         errorMessage: result.abortMessage ?? 'Playwright did not produce a result report.',
+        abortReason: result.abortReason,
       });
     }
     return result;
