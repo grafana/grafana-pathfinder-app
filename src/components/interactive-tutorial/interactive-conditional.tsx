@@ -341,7 +341,6 @@ export function InteractiveConditional({
   );
 }
 
-// Add display name for debugging
 InteractiveConditional.displayName = 'InteractiveConditional';
 
 // Wrapper block: sits in a section's list without a step number.

@@ -18,5 +18,8 @@ export function markSkipsSectionNumbering<T extends React.ComponentType<any>>(co
 }
 
 export function skipsSectionNumbering(type: unknown): boolean {
-  return typeof type === 'function' && (type as unknown as Record<symbol, boolean>)[SKIP_SECTION_NUMBERING] === true;
+  // memo/forwardRef components are exotic objects, not functions — the marker
+  // survives wrapping only if we read it off objects too.
+  const canCarryMarker = typeof type === 'function' || (typeof type === 'object' && type !== null);
+  return canCarryMarker && (type as unknown as Record<symbol, boolean>)[SKIP_SECTION_NUMBERING] === true;
 }

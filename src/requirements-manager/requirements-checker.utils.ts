@@ -42,8 +42,6 @@ import { guideVariableCheck } from './checks/vars';
 import { terminalActiveCheck } from './checks/terminal';
 import { codaExitZeroCheck } from './checks/coda';
 
-export type { CheckResultError };
-
 export interface RequirementsCheckResult {
   requirements: string;
   pass: boolean;

@@ -120,10 +120,6 @@ export {
   getDocumentStepPosition,
 } from '../../global-state/section-registry';
 
-// Re-exports preserved for back-compat with tests and the barrel. New code
-// should import directly from `./section-titles`.
-export { DEFAULT_INTERACTIVE_SECTION_TITLE, PASSIVE_SECTION_TITLE } from './section-titles';
-
 // Reset every counter (registry + offsets + per-step-type anonymous-ID
 // counters). Called when new content loads. The registry's own state
 // lives in `./section-registry`; this function adds the step-module
