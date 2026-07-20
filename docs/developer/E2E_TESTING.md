@@ -222,6 +222,10 @@ Key contract fields:
 - `guide.contentDigest`: SHA-256 digest of the exact guide content executed
 - `guide.sourceUrl`: remote package source URL when available
 
+### Report validation
+
+The runner always attempts to write a report, even when self-validation fails, so a diagnostic artifact is not lost. A failed validation logs the schema error and writes the original object; set `PATHFINDER_E2E_STRICT_SCHEMA=1` to also set the process exit code to 2. Consumers must validate the report against the schema matching the producing runner before processing it.
+
 Catchable setup, preflight, provisioning, and Playwright spawn failures still write zero-step reports that validate against the schema. OOM, SIGKILL, and corrupt or missing output remain the worker's responsibility.
 
 Consumers that need a language-agnostic contract can extract the JSON Schema from the CLI, so the artifact always matches the binary that produced the report:

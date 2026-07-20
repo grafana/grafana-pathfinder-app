@@ -40,7 +40,7 @@ permissions: read-all
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   IMAGE_NAME: ghcr.io/grafana/pathfinder-e2e-runner
@@ -73,6 +73,15 @@ jobs:
             RUNNER_VERSION=commit-${{ github.sha }}
       - name: Verify non-root image user
         run: test "$(docker run --rm --entrypoint id pathfinder-e2e-runner:smoke -u)" != "0"
+      - name: Verify runner version metadata
+        env:
+          EXPECTED_VERSION: commit-${{ github.sha }}
+        run: |
+          version="$(docker run --rm --entrypoint printenv pathfinder-e2e-runner:smoke PATHFINDER_E2E_RUNNER_VERSION)"
+          if [ "$version" != "$EXPECTED_VERSION" ]; then
+            echo "::error::Version mismatch: got $version, expected $EXPECTED_VERSION"
+            exit 1
+          fi
       - name: Verify runner entrypoint and Playwright wiring
         run: |
           docker run --rm pathfinder-e2e-runner:smoke --help
@@ -124,6 +133,12 @@ jobs:
       - name: Compute immutable tag
         id: tag
         run: echo "value=commit-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Verify tag does not exist
+        run: |
+          if docker manifest inspect "${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}" >/dev/null 2>&1; then
+            echo "::error::Tag already exists: ${{ steps.tag.outputs.value }}"
+            exit 1
+          fi
       - name: Build and push immutable image
         id: push
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7

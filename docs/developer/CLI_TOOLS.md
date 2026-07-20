@@ -387,14 +387,16 @@ node dist/cli/cli/index.js schema <name> [options]
 
 ### Available schemas
 
-| Name         | Description                                                            |
-| ------------ | ---------------------------------------------------------------------- |
-| `guide`      | Root JSON guide schema (strict, no extra fields)                       |
-| `block`      | Union of all block types with depth-limited nesting                    |
-| `content`    | Content JSON schema (`content.json` in two-file packages)              |
-| `manifest`   | Manifest JSON schema (`manifest.json`, without cross-field refinement) |
-| `repository` | Repository index schema (`repository.json`)                            |
-| `graph`      | Dependency graph schema (D3-compatible output)                         |
+| Name               | Description                                                            |
+| ------------------ | ---------------------------------------------------------------------- |
+| `guide`            | Root JSON guide schema (strict, no extra fields)                       |
+| `block`            | Union of all block types with depth-limited nesting                    |
+| `content`          | Content JSON schema (`content.json` in two-file packages)              |
+| `manifest`         | Manifest JSON schema (`manifest.json`, without cross-field refinement) |
+| `repository`       | Repository index schema (`repository.json`)                            |
+| `graph`            | Dependency graph schema (D3-compatible output)                         |
+| `e2e-report`       | E2E single-guide test report                                           |
+| `e2e-multi-report` | E2E multi-guide aggregate test report                                  |
 
 ### Examples
 

@@ -50,6 +50,17 @@ interface AbortFileContent {
   abortReason: AbortReason;
   message: string;
 }
+function isAbortFileContent(value: unknown): value is AbortFileContent {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    (candidate.abortReason === 'AUTH_EXPIRED' || candidate.abortReason === 'MANDATORY_FAILURE') &&
+    typeof candidate.message === 'string'
+  );
+}
 
 /**
  * Result of running Playwright tests on a guide
@@ -121,7 +132,7 @@ function readJsonIfExists<T>(filePath: string): T | undefined {
  * @param filePaths - Paths to abort and results files
  * @returns PlaywrightResult with success status, exit code, and optional data
  */
-function processPlaywrightResults(
+export function processPlaywrightResults(
   exitCode: number,
   options: { trace: boolean },
   filePaths: { abortFilePath: string; resultsFilePath: string; traceOutputFilePath: string }
@@ -136,9 +147,9 @@ function processPlaywrightResults(
   const resultsData = readJsonIfExists<TestResultsData>(filePaths.resultsFilePath);
 
   // An abort file means the runner stopped early (e.g. session expiry).
-  const abortContent = readJsonIfExists<AbortFileContent>(filePaths.abortFilePath);
+  const abortValue = readJsonIfExists<unknown>(filePaths.abortFilePath);
+  const abortContent = isAbortFileContent(abortValue) ? abortValue : undefined;
   if (abortContent) {
-    // Determine exit code based on abort reason
     const abortExitCode = abortContent.abortReason === 'AUTH_EXPIRED' ? ExitCode.AUTH_FAILURE : ExitCode.TEST_FAILURE;
 
     return {
