@@ -252,7 +252,7 @@ export function writeJsonReport(
       const report = generateMultiGuideReport(resultsWithData);
       if (preRunSkipped.length > 0) {
         report.preRunSkipped = preRunSkipped;
-        const failureOutcomes: string[] = ['infrastructure_error', 'configuration_error', 'failed'];
+        const failureOutcomes: string[] = ['infrastructure_error', 'configuration_error', 'aborted', 'failed'];
         if (preRunSkipped.some((e) => e.failed) && !failureOutcomes.includes(report.outcome)) {
           report.outcome = 'failed';
         }
