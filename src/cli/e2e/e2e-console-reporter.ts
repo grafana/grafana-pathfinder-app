@@ -17,6 +17,7 @@ import {
   generateMultiGuideReport,
   writeMultiGuideReport,
   formatMultiGuideSummary,
+  resolvePlaywrightVersion,
 } from './e2e-reporter';
 import {
   countGuideStatuses,
@@ -42,7 +43,7 @@ function skipOnlyReport(
     name: 'pathfinder-e2e-runner',
     version: process.env.PATHFINDER_E2E_RUNNER_VERSION ?? 'source',
     nodeVersion: process.version,
-    playwrightVersion: process.env.PLAYWRIGHT_VERSION ?? 'unknown',
+    playwrightVersion: resolvePlaywrightVersion(),
   };
   return {
     schemaVersion: E2E_REPORT_SCHEMA_VERSION,

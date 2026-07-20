@@ -83,6 +83,14 @@ export interface TestResultsData {
 // Report Generation Functions
 // ============================================
 
+export function resolvePlaywrightVersion(): string {
+  try {
+    return (require('playwright/package.json') as { version: string }).version;
+  } catch {
+    return process.env.PLAYWRIGHT_VERSION ?? 'unknown';
+  }
+}
+
 /**
  * Generate the summary statistics from step results.
  *
@@ -187,7 +195,7 @@ export function generateReport(data: TestResultsData, grafanaVersion?: string): 
       name: 'pathfinder-e2e-runner',
       version: process.env.PATHFINDER_E2E_RUNNER_VERSION ?? 'source',
       nodeVersion: process.version,
-      playwrightVersion: process.env.PLAYWRIGHT_VERSION ?? 'unknown',
+      playwrightVersion: resolvePlaywrightVersion(),
       ...(process.env.PATHFINDER_E2E_RUNNER_IMAGE ? { image: process.env.PATHFINDER_E2E_RUNNER_IMAGE } : {}),
       ...data.runner,
     },
@@ -460,8 +468,8 @@ export function generateMultiGuideReport(resultsArray: TestResultsData[], grafan
     'infrastructure_error',
     'configuration_error',
     'failed',
-    'skipped',
     'passed',
+    'skipped',
   ];
   const outcome = outcomePriority.find((candidate) => reportOutcomes.has(candidate)) ?? 'passed';
 
@@ -476,7 +484,7 @@ export function generateMultiGuideReport(resultsArray: TestResultsData[], grafan
       name: 'pathfinder-e2e-runner',
       version: process.env.PATHFINDER_E2E_RUNNER_VERSION ?? 'source',
       nodeVersion: process.version,
-      playwrightVersion: process.env.PLAYWRIGHT_VERSION ?? 'unknown',
+      playwrightVersion: resolvePlaywrightVersion(),
     },
     startedAt,
     endedAt,
