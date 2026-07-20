@@ -5,10 +5,10 @@
 
 import React, { Component, ReactNode } from 'react';
 import { Icon, Button } from '@grafana/ui';
+import { pushFaroError } from '../../../lib/faro';
 
 interface MyLearningErrorBoundaryState {
   hasError: boolean;
-  error: Error | null;
 }
 
 interface MyLearningErrorBoundaryProps {
@@ -21,14 +21,16 @@ interface MyLearningErrorBoundaryProps {
  */
 // eslint-disable-next-line no-restricted-syntax -- Error boundaries require componentDidCatch (no hook equivalent)
 export class MyLearningErrorBoundary extends Component<MyLearningErrorBoundaryProps, MyLearningErrorBoundaryState> {
-  state: MyLearningErrorBoundaryState = { hasError: false, error: null };
+  state: MyLearningErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(error: Error): MyLearningErrorBoundaryState {
-    return { hasError: true, error };
+  static getDerivedStateFromError(): MyLearningErrorBoundaryState {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // eslint-disable-next-line no-console -- local debug output; pushFaroError below already reports to Faro
     console.error('MyLearningTab error:', error, errorInfo);
+    pushFaroError(error, { componentStack: errorInfo.componentStack ?? 'unknown', source: 'MyLearningErrorBoundary' });
   }
 
   render() {
@@ -37,7 +39,7 @@ export class MyLearningErrorBoundary extends Component<MyLearningErrorBoundaryPr
         <div style={{ padding: 16, textAlign: 'center' }}>
           <Icon name="exclamation-triangle" size="xl" />
           <p style={{ marginTop: 8 }}>Unable to load learning progress</p>
-          <Button size="sm" variant="secondary" onClick={() => this.setState({ hasError: false, error: null })}>
+          <Button size="sm" variant="secondary" onClick={() => this.setState({ hasError: false })}>
             Try again
           </Button>
         </div>

@@ -9,6 +9,8 @@ import {
   validateInteractiveRequirements,
 } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { logger } from '../../lib/logging';
+import { recordStepExecution, type StepOutcome } from '../../lib/telemetry';
 import type { InteractiveStepProps } from '../../types/component-props.types';
 import {
   type DetectedActionEvent,
@@ -34,7 +36,8 @@ import { useControllerChannel } from '../../global-state/controller-channel';
  * Result type for lazy scroll execution wrapper
  */
 interface LazyScrollResult {
-  success: boolean;
+  /** `ok` only when the element was found and the action itself succeeded. */
+  outcome: StepOutcome;
   error?: string;
   elementFound: boolean;
 }
@@ -47,20 +50,19 @@ interface LazyScrollResult {
  * @param refTarget - CSS selector for target element
  * @param lazyRender - Whether lazy scroll fallback is enabled
  * @param scrollContainer - CSS selector for scroll container
- * @param action - The action to execute once element is found
+ * @param action - The action to execute once element is found; returns whether it succeeded
  * @returns Result indicating success/failure
  */
-async function executeWithLazyScroll(
+export async function executeWithLazyScroll(
   refTarget: string,
   lazyRender: boolean,
   scrollContainer: string | undefined,
-  action: () => Promise<void>,
+  action: () => Promise<boolean>,
   targetAction?: string
 ): Promise<LazyScrollResult> {
   // Navigate, noop, and popout actions don't target DOM elements - execute immediately without element checking
   if (targetAction === 'navigate' || targetAction === 'noop' || targetAction === 'popout') {
-    await action();
-    return { success: true, elementFound: true };
+    return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
   }
 
   // DOM-targeting actions: quick synchronous check if element exists (provides user feedback if missing)
@@ -71,8 +73,7 @@ async function executeWithLazyScroll(
 
   if (elementExists) {
     // Element found - execute action immediately
-    await action();
-    return { success: true, elementFound: true };
+    return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
   }
 
   // Element not found - try lazy scroll discovery only if enabled
@@ -84,13 +85,12 @@ async function executeWithLazyScroll(
 
     if (foundElement) {
       // Element discovered after scroll - execute action
-      await action();
-      return { success: true, elementFound: true };
+      return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
     }
 
     // Scroll completed but element still not found
     return {
-      success: false,
+      outcome: 'error',
       elementFound: false,
       error: 'Element not found after scrolling dashboard',
     };
@@ -98,7 +98,7 @@ async function executeWithLazyScroll(
 
   // lazyRender not enabled and element not found - return clear error
   return {
-    success: false,
+    outcome: 'error',
     elementFound: false,
     error: `Element not found: ${refTarget}`,
   };
@@ -237,10 +237,11 @@ export const InteractiveStep = forwardRef<
 
     // Update currentTargetValue when assistant block value changes
     useEffect(() => {
-      if (assistantBlockValue?.customizedValue !== null && assistantBlockValue?.customizedValue !== undefined) {
-        setCurrentTargetValue(assistantBlockValue.customizedValue);
-      } else if (assistantBlockValue?.customizedValue === null) {
-        // Revert to original value when customization is cleared
+      const customizedValue = assistantBlockValue?.customizedValue;
+      if (customizedValue !== null && customizedValue !== undefined) {
+        setCurrentTargetValue(customizedValue);
+      } else {
+        // No active customization (cleared, or no AssistantBlockWrapper context at all) - track the prop.
         setCurrentTargetValue(targetValue);
       }
     }, [assistantBlockValue?.customizedValue, targetValue]);
@@ -352,9 +353,7 @@ export const InteractiveStep = forwardRef<
     // via the onObjectivesComplete callback passed above.
 
     const shouldShowExplanation = isPartOfSection
-      ? !isNoopAction &&
-        (!isEligibleForChecking ||
-          (isEligibleForChecking && requirements && !checker.isEnabled && !lazyScrollAvailable))
+      ? !isNoopAction && (!isEligibleForChecking || (requirements && !checker.isEnabled && !lazyScrollAvailable))
       : !checker.isEnabled && !lazyScrollAvailable;
 
     // Choose appropriate explanation text based on step state
@@ -457,7 +456,17 @@ export const InteractiveStep = forwardRef<
         }
 
         // Execute the action using existing interactive logic
-        await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'do', targetComment);
+        const actionOutcome = await executeInteractiveAction(
+          targetAction,
+          refTarget,
+          currentTargetValue,
+          'do',
+          targetComment
+        );
+        if (actionOutcome === 'error') {
+          setPostVerifyError('Action did not complete successfully.');
+          return false;
+        }
 
         // Wait for DOM to settle after action (especially important for navigation, form fills, etc.)
         await waitForReactUpdates();
@@ -508,7 +517,7 @@ export const InteractiveStep = forwardRef<
 
         return true;
       } catch (error) {
-        console.error(`Step execution failed: ${stepId}`, error);
+        logger.error(`Step execution failed: ${stepId}`, { error });
         setPostVerifyError(error instanceof Error ? error.message : 'Execution failed');
         return false;
       }
@@ -674,7 +683,7 @@ export const InteractiveStep = forwardRef<
           // F-1063-3: a controller-mode step must carry an author/parser-assigned
           // stepId. The anonymous fallback is mount-instance-derived and would
           // mis-address the live tab, so fail loud rather than dispatch a guess.
-          console.warn('[Pathfinder] controller "show" skipped: step has no stepId');
+          logger.warn('[Pathfinder] controller "show" skipped: step has no stepId');
           return;
         }
         // Cross-tab state can be stale; re-verify against the live tab and gate.
@@ -714,11 +723,12 @@ export const InteractiveStep = forwardRef<
           scrollContainer,
           async () => {
             await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'show', targetComment);
+            return true;
           },
           targetAction
         );
 
-        if (!result.success) {
+        if (!result.elementFound) {
           // Lazy scroll failed to find element
           setLazyScrollError(result.error || 'Element not found');
           return;
@@ -739,7 +749,7 @@ export const InteractiveStep = forwardRef<
           }
         }
       } catch (error) {
-        console.error('Interactive show action failed:', error);
+        logger.error('Interactive show action failed', { error });
         setLazyScrollError(error instanceof Error ? error.message : 'Action failed');
       } finally {
         setIsShowRunning(false);
@@ -796,7 +806,7 @@ export const InteractiveStep = forwardRef<
           // F-1063-3: a controller-mode step must carry an author/parser-assigned
           // stepId. The anonymous fallback is mount-instance-derived and would
           // mis-address the live tab, so fail loud rather than dispatch a guess.
-          console.warn('[Pathfinder] controller "do" skipped: step has no stepId');
+          logger.warn('[Pathfinder] controller "do" skipped: step has no stepId');
           return;
         }
         // Cross-tab state can be stale; re-verify against the live tab and gate.
@@ -826,26 +836,22 @@ export const InteractiveStep = forwardRef<
       }
 
       setIsDoRunning(true);
+      const stepExecStart = performance.now();
+      let stepOutcome: 'ok' | 'error' = 'error';
       try {
         // Use lazy scroll wrapper to ensure element is found before executing
-        const result = await executeWithLazyScroll(
-          refTarget,
-          lazyRender,
-          scrollContainer,
-          async () => {
-            await executeStep();
-          },
-          targetAction
-        );
+        const result = await executeWithLazyScroll(refTarget, lazyRender, scrollContainer, executeStep, targetAction);
 
-        if (!result.success) {
+        stepOutcome = result.outcome;
+        if (!result.elementFound) {
           // Lazy scroll failed to find element
           setLazyScrollError(result.error || 'Element not found');
         }
       } catch (error) {
-        console.error('Interactive do action failed:', error);
+        logger.error('Interactive do action failed', { error });
         setLazyScrollError(error instanceof Error ? error.message : 'Action failed');
       } finally {
+        recordStepExecution(targetAction, performance.now() - stepExecStart, stepOutcome);
         setIsDoRunning(false);
       }
     }, [
@@ -1115,8 +1121,9 @@ export const InteractiveStep = forwardRef<
                   {checker.completionReason === 'skipped' ? 'Skipped' : 'Completed'}
                 </span>
               </div>
-              <button
-                className="interactive-guided-redo-btn"
+              <Button
+                size="sm"
+                variant="secondary"
                 onClick={handleStepRedo}
                 disabled={disabled || isAnyActionRunning}
                 data-testid={testIds.interactive.redoButton(renderedStepId)}
@@ -1127,7 +1134,7 @@ export const InteractiveStep = forwardRef<
                 }
               >
                 ↻ Redo
-              </button>
+              </Button>
             </div>
           )}
         </div>

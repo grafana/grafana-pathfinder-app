@@ -6,7 +6,10 @@ class MockIntersectionObserver {
   static instances: MockIntersectionObserver[] = [];
   observe = jest.fn();
   disconnect = jest.fn();
-  constructor(public callback: IntersectionObserverCallback) {
+  constructor(
+    public callback: IntersectionObserverCallback,
+    public options?: IntersectionObserverInit
+  ) {
     MockIntersectionObserver.instances.push(this);
   }
   trigger() {

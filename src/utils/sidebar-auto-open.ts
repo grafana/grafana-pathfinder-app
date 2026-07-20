@@ -8,6 +8,7 @@ import { getAppEvents, locationService } from '@grafana/runtime';
 import pluginJson from '../plugin.json';
 import { sidebarState } from '../global-state/sidebar';
 import { isExtensionSidebarInUse } from '../lib/storage/extension-sidebar';
+import { logger } from '../lib/logging';
 import { getFeatureFlagValue } from './openfeature';
 
 export interface ConfigAutoOpenContext {
@@ -27,7 +28,7 @@ export function attemptAutoOpen(delay = 200): void {
         },
       });
     } catch (error) {
-      console.error('Failed to auto-open Interactive learning panel:', error);
+      logger.error('Failed to auto-open Interactive learning panel', { error });
     }
   }, delay);
 }

@@ -23,6 +23,7 @@ import {
   buildQuerySystemPrompt,
   buildContentSystemPrompt,
 } from './useAssistantGeneration.hook';
+import { logger } from '../../lib/logging';
 
 export interface AssistantBlockWrapperProps {
   /** Unique ID for this assistant element */
@@ -168,7 +169,7 @@ export function AssistantBlockWrapper({
 
       // For query blocks, extract just the query using shared utility
       const ctx = generationContextRef.current;
-      const isQueryBlockWorkaround = ctx?.blockType === 'interactive' || ctx?.blockType === 'code';
+      const isQueryBlockWorkaround = ctx?.blockType === 'interactive' || ctx?.blockType === 'code-block';
       if (isQueryBlockWorkaround) {
         customized = extractQueryFromResponse(customized);
       }
@@ -207,7 +208,7 @@ export function AssistantBlockWrapper({
             )
           );
         } catch (error) {
-          console.warn('[AssistantBlockWrapper] Failed to save to localStorage:', error);
+          logger.warn('[AssistantBlockWrapper] Failed to save to localStorage', { error });
         }
       }
 
@@ -238,7 +239,7 @@ export function AssistantBlockWrapper({
     const dsContext = await getDatasourceContext();
 
     if (!dsContext.currentDatasource) {
-      console.error('[AssistantBlockWrapper] No datasource available');
+      logger.error('[AssistantBlockWrapper] No datasource available');
       setGenerationError('No datasource available. Please select a datasource first.');
       return;
     }
@@ -262,7 +263,7 @@ export function AssistantBlockWrapper({
 
     // Strip @@CLEAR@@ marker from interactive block values for the prompt
     const cleanedDefaultValue = defaultValue.replace(/^@@CLEAR@@\s*/, '');
-    const isQueryBlock = blockType === 'interactive' || blockType === 'code';
+    const isQueryBlock = blockType === 'interactive' || blockType === 'code-block';
 
     // Build context section from surrounding blocks (helps AI understand purpose)
     const contextSection = surroundingContext?.before
@@ -334,7 +335,7 @@ Return only the customized content text.`;
         let customized = cleanAssistantResponse(text);
 
         // For query blocks, extract just the query using shared utility
-        const isQueryBlockInCallback = blockType === 'interactive' || blockType === 'code';
+        const isQueryBlockInCallback = blockType === 'interactive' || blockType === 'code-block';
         if (isQueryBlockInCallback) {
           customized = extractQueryFromResponse(customized);
         }
@@ -370,12 +371,12 @@ Return only the customized content text.`;
               })
             );
           } catch (error) {
-            console.warn('[AssistantBlockWrapper] Failed to save to localStorage:', error);
+            logger.warn('[AssistantBlockWrapper] Failed to save to localStorage', { error });
           }
         }
       },
       onError: (err) => {
-        console.error('[AssistantBlockWrapper] Generation failed:', err);
+        logger.error('[AssistantBlockWrapper] Generation failed', { error: err });
 
         // Set error state for UI feedback
         const errorMessage = err instanceof Error ? err.message : 'Generation failed. Please try again.';
@@ -423,7 +424,7 @@ Return only the customized content text.`;
         })
       );
     } catch (error) {
-      console.warn('[AssistantBlockWrapper] Failed to revert:', error);
+      logger.warn('[AssistantBlockWrapper] Failed to revert', { error });
     }
   }, [getStorageKey, reset, getAnalyticsContext, blockType]);
 
@@ -599,7 +600,7 @@ Return only the customized content text.`;
   // Render customized content for markdown blocks (non-interactive)
   // Interactive blocks use the context approach (InteractiveStep handles rendering)
   const renderContent = () => {
-    const isInteractiveBlock = blockType === 'interactive' || blockType === 'code';
+    const isInteractiveBlock = blockType === 'interactive' || blockType === 'code-block';
 
     // For interactive blocks, use context provider (InteractiveStep will handle rendering)
     if (isInteractiveBlock) {

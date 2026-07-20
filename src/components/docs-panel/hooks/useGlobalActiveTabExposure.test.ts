@@ -1,8 +1,18 @@
 import { renderHook } from '@testing-library/react';
 import { useGlobalActiveTabExposure } from './useGlobalActiveTabExposure';
+import { setFaroView, setFaroViewName } from '../../../lib/faro';
+
+jest.mock('../../../lib/faro', () => ({
+  setFaroView: jest.fn(),
+  setFaroViewName: jest.fn(),
+}));
+
+const mockSetFaroView = setFaroView as jest.Mock;
+const mockSetFaroViewName = setFaroViewName as jest.Mock;
 
 describe('useGlobalActiveTabExposure', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     delete (window as any).__DocsPluginActiveTabId;
     delete (window as any).__DocsPluginActiveTabUrl;
   });
@@ -45,6 +55,30 @@ describe('useGlobalActiveTabExposure', () => {
     );
     expect((window as any).__DocsPluginActiveTabId).toBe('');
     expect((window as any).__DocsPluginActiveTabUrl).toBe('');
+  });
+
+  it('mirrors the active URL (with baseUrl fallback) into the Faro view meta', () => {
+    renderHook(() =>
+      useGlobalActiveTabExposure({
+        activeTabId: 'tab-7',
+        activeTabCurrentUrl: 'https://example.com/cur',
+        activeTabBaseUrl: 'https://example.com/base',
+      })
+    );
+    expect(mockSetFaroView).toHaveBeenCalledWith('https://example.com/cur');
+    expect(mockSetFaroViewName).not.toHaveBeenCalled();
+  });
+
+  it('sets the view to "recommendations" when there is no URL to derive one from', () => {
+    renderHook(() =>
+      useGlobalActiveTabExposure({
+        activeTabId: undefined,
+        activeTabCurrentUrl: undefined,
+        activeTabBaseUrl: undefined,
+      })
+    );
+    expect(mockSetFaroViewName).toHaveBeenCalledWith('recommendations');
+    expect(mockSetFaroView).not.toHaveBeenCalled();
   });
 
   it('updates globals when props change across re-renders', () => {

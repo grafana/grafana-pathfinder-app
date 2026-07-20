@@ -57,6 +57,7 @@ jest.mock('../lib/package-recommendations-client', () => {
 
 import { ContextService } from './context.service';
 import { fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
+import { ONLINE_PACKAGES_BOOT_BUDGET_MS } from '../constants';
 
 const baseContext = {
   currentPath: '/connections',
@@ -382,5 +383,61 @@ describe('ContextService: online package recommendations (recommender-disabled b
 
     expect(fetchOnlinePackageRecommendations).toHaveBeenCalledTimes(1);
     expect(Array.isArray(result.recommendations)).toBe(true);
+  });
+});
+
+describe('ContextService: online package boot budget', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns bundled/static recommendations without error when the online fetch exceeds the boot budget', async () => {
+    (fetchOnlinePackageRecommendations as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+    const pending = ContextService.fetchRecommendations(baseContext, {
+      acceptedTermsAndConditions: false,
+    });
+    await jest.advanceTimersByTimeAsync(ONLINE_PACKAGES_BOOT_BUDGET_MS + 1);
+    const result = await pending;
+
+    expect(result.error).toBeNull();
+    expect(result.errorType).toBeNull();
+    expect(Array.isArray(result.recommendations)).toBe(true);
+    // The race abandons the await; it must not retry or cancel the request.
+    expect(fetchOnlinePackageRecommendations).toHaveBeenCalledTimes(1);
+  });
+
+  it('picks up late-arriving online packages on the next fetchRecommendations cycle', async () => {
+    const online = {
+      baseUrl: 'https://interactive-learning.grafana.net/packages/',
+      packages: [
+        {
+          id: 'prom-101',
+          path: 'prom-101/v1.0.0',
+          title: 'Prometheus 101',
+          targeting: { match: { urlPrefix: '/connections' } },
+        },
+      ],
+    };
+    (fetchOnlinePackageRecommendations as jest.Mock)
+      .mockReturnValueOnce(new Promise(() => {}))
+      // Second cycle: the client serves its now-populated module cache.
+      .mockResolvedValueOnce(online);
+
+    const first = ContextService.fetchRecommendations(baseContext, {
+      acceptedTermsAndConditions: false,
+    });
+    await jest.advanceTimersByTimeAsync(ONLINE_PACKAGES_BOOT_BUDGET_MS + 1);
+    const firstResult = await first;
+    expect(firstResult.recommendations.map((r) => r.title)).not.toContain('Prometheus 101');
+
+    const second = await ContextService.fetchRecommendations(baseContext, {
+      acceptedTermsAndConditions: false,
+    });
+    expect(second.recommendations.map((r) => r.title)).toContain('Prometheus 101');
   });
 });

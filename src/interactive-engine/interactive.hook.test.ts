@@ -1,5 +1,11 @@
 import { renderHook, act } from '@testing-library/react';
 import { useInteractiveElements } from './interactive.hook';
+import { withFaroUserAction } from '../lib/faro';
+
+jest.mock('../lib/faro', () => ({
+  withFaroUserAction: jest.fn((_name: string, _attributes: unknown, work: () => unknown) => work()),
+  USER_ACTION_TIMEOUT_LONG_MS: 600000,
+}));
 
 // Mock Grafana's location service
 jest.mock('@grafana/runtime', () => ({
@@ -62,8 +68,8 @@ jest.mock('./navigation-manager', () => ({
 
 jest.mock('./sequence-manager', () => ({
   SequenceManager: jest.fn().mockImplementation(() => ({
-    runInteractiveSequence: jest.fn().mockResolvedValue(undefined),
-    runStepByStepSequence: jest.fn().mockResolvedValue(undefined),
+    runInteractiveSequence: jest.fn().mockResolvedValue('completed'),
+    runStepByStepSequence: jest.fn().mockResolvedValue('completed'),
   })),
 }));
 
@@ -243,6 +249,44 @@ describe('useInteractiveElements', () => {
 
       // Since we're using mocked handlers, we just verify the function was called
       expect(result.current.interactiveFocus).toBeDefined();
+    });
+  });
+
+  describe('Faro user action wiring', () => {
+    it('wraps show-mode execution in a pathfinder_show_me_button_click action', async () => {
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      await act(async () => {
+        await result.current.executeInteractiveAction('highlight', '#target', undefined, 'show');
+      });
+
+      expect(withFaroUserAction).toHaveBeenCalledWith(
+        'pathfinder_show_me_button_click',
+        { target_action: 'highlight', ref_target: '#target' },
+        expect.any(Function),
+        undefined,
+        { critical: false, outcomeFrom: expect.any(Function) }
+      );
+    });
+
+    it('wraps do-mode execution in a pathfinder_do_it_button_click action', async () => {
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      await act(async () => {
+        await result.current.executeInteractiveAction('button', 'Save', undefined, 'do');
+      });
+
+      expect(withFaroUserAction).toHaveBeenCalledWith(
+        'pathfinder_do_it_button_click',
+        { target_action: 'button', ref_target: 'Save' },
+        expect.any(Function),
+        undefined,
+        { critical: true, outcomeFrom: expect.any(Function) }
+      );
+
+      // Non-sequence actions have no captured sequence result → ok on resolve.
+      const options = (withFaroUserAction as jest.Mock).mock.calls.at(-1)![4];
+      expect(options.outcomeFrom()).toBe('ok');
     });
   });
 
@@ -456,10 +500,10 @@ describe('useInteractiveElements', () => {
         await result.current.interactiveSequence(data, false);
       });
 
-      // Second call with same refTarget should return early
+      // Second call with same refTarget should return early as a no-op
       await act(async () => {
         const result2 = await result.current.interactiveSequence(data, false);
-        expect(result2).toBe('span#test1');
+        expect(result2).toBe('completed');
       });
     });
   });
@@ -640,6 +684,51 @@ describe('useInteractiveElements', () => {
       expect(result.current.interactiveSequence).toBeDefined();
     });
 
+    it('resolves ok when a sequence run completes', async () => {
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.executeInteractiveAction('sequence', 'span#test1', undefined, 'do');
+      });
+
+      expect(outcome).toBe('ok');
+    });
+
+    it('resolves error instead of ok when a sequence run stops on requirements_exhausted', async () => {
+      const { SequenceManager } = require('./sequence-manager');
+      SequenceManager.mockImplementationOnce(() => ({
+        runStepByStepSequence: jest.fn().mockResolvedValue('requirements_exhausted'),
+        runInteractiveSequence: jest.fn().mockResolvedValue('requirements_exhausted'),
+      }));
+
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.executeInteractiveAction('sequence', 'span#test1', undefined, 'do');
+      });
+
+      expect(outcome).toBe('error');
+    });
+
+    it('resolves error instead of ok when a sequence run stops on action_error', async () => {
+      const { SequenceManager } = require('./sequence-manager');
+      SequenceManager.mockImplementationOnce(() => ({
+        runStepByStepSequence: jest.fn().mockResolvedValue('action_error'),
+        runInteractiveSequence: jest.fn().mockResolvedValue('action_error'),
+      }));
+
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.executeInteractiveAction('sequence', 'span#test1', undefined, 'do');
+      });
+
+      expect(outcome).toBe('error');
+    });
+
     it('should handle unknown action', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
@@ -649,7 +738,7 @@ describe('useInteractiveElements', () => {
         await result.current.executeInteractiveAction('unknown', 'test-target', undefined, 'do');
       });
 
-      expect(consoleWarnSpy).toHaveBeenCalledWith('Unknown interactive action: unknown');
+      expect(consoleWarnSpy).toHaveBeenCalledWith('Unknown interactive action: unknown', '');
     });
 
     it('should handle errors in executeInteractiveAction', async () => {

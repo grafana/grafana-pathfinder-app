@@ -48,7 +48,7 @@ Docs partners already express inter-guide dependencies in YAML (see [alignment w
 
 ### E2E Layer 4 routing
 
-The [testing strategy](./TESTING_STRATEGY.md) requires guide-level metadata (tier, datasets, plugins, minimum version) to route guides to appropriate test environments. This metadata naturally lives alongside dependencies.
+E2E guide testing and downstream guide-health services need guide-level metadata (tier, datasets, plugins, minimum version) to route guides to appropriate test environments. This metadata naturally lives alongside dependencies.
 
 ### Content-as-Code lifecycle
 
@@ -428,7 +428,7 @@ Metadata fields live in `manifest.json`, not in `content.json`. This keeps the b
 | `description`      | Recommendations, web display, index.json generation | Consolidates `summary` from `index.json` into the package                             |
 | `language`         | i18n, SCORM import, web display                     | Minimal overhead, critical for non-English content                                    |
 | `category`         | Taxonomy, docs team alignment, recommendations      | Aligns with docs team's journey categories                                            |
-| `author`           | Failure routing, attribution, provenance            | Testing strategy identifies ownership as critical for escalation                      |
+| `author`           | Failure routing, attribution, provenance            | Guide-health triage depends on knowing the owning person or team                      |
 | `startingLocation` | Auto-recovery, e2e routing, recommender index       | Explicit contract for guide execution context; replaces implicit URL-based assumption |
 
 ### Namespace collision note
@@ -671,7 +671,6 @@ Remaining future work is tracked as GitHub issues: [#750 (Layer 4 test environme
 
 ### Internal
 
-- [Testing strategy](./TESTING_STRATEGY.md) — Content-as-Code vision and testing pyramid
 - [SCORM analysis](./SCORM.md) — SCORM import feasibility study
 - [Schema types](../../src/types/json-guide.types.ts) — Current TypeScript type definitions
 - [Schema validation](../../src/types/json-guide.schema.ts) — Current Zod schemas

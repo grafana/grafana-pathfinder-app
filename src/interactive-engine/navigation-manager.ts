@@ -1,7 +1,16 @@
 import { waitForReactUpdates } from '../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
-import { isElementVisible, getScrollParent, getStickyHeaderOffset, getVisibleHighlightTarget } from '../lib/dom';
+import {
+  describeElement,
+  escapeCssAttributeValue,
+  isElementVisible,
+  getScrollParent,
+  getStickyHeaderOffset,
+  getVisibleHighlightTarget,
+  isPathfinderContent,
+} from '../lib/dom';
+import { logger } from '../lib/logging';
 import { sanitizeDocumentationHTML } from '../security';
 import { applyE2ECommentBoxAttributes } from './e2e-attributes';
 
@@ -453,9 +462,11 @@ export class NavigationManager {
       // - The comment box
       // - The close buttons
       // - Inside the highlighted element
+      // - The Pathfinder floating panel
       if (
         target.closest('.interactive-highlight-outline') ||
         target.closest('.interactive-comment-box') ||
+        isPathfinderContent(target) ||
         target === element ||
         element.contains(target)
       ) {
@@ -497,7 +508,7 @@ export class NavigationManager {
   async ensureElementVisible(element: HTMLElement): Promise<void> {
     // 1. Check if element is visible in DOM (not hidden by CSS)
     if (!isElementVisible(element)) {
-      console.warn('Element is hidden or not visible:', element);
+      logger.warn('Element is hidden or not visible', { element: describeElement(element) });
       // Continue anyway - element might become visible during interaction
     }
 
@@ -656,7 +667,7 @@ export class NavigationManager {
     // Check if element has no valid position at all (truly invalid)
     const hasNoPosition = rect.top === 0 && rect.left === 0 && rect.width === 0 && rect.height === 0;
     if (hasNoPosition) {
-      console.warn('Cannot highlight element: invalid position or dimensions', {
+      logger.warn('Cannot highlight element: invalid position or dimensions', {
         rect,
       });
       return element;
@@ -1326,7 +1337,7 @@ export class NavigationManager {
 
       return true;
     } catch (error) {
-      console.error('Failed to expand parent navigation section:', error);
+      logger.error('Failed to expand parent navigation section', { error });
       return false;
     }
   }
@@ -1396,7 +1407,7 @@ export class NavigationManager {
     const capitalizedName = sectionName.charAt(0).toUpperCase() + sectionName.slice(1);
 
     const expandButton = document.querySelector(
-      `button[aria-label*="Expand section: ${capitalizedName}"]`
+      `button[aria-label*="Expand section: ${escapeCssAttributeValue(capitalizedName, '"')}"]`
     ) as HTMLButtonElement;
     if (expandButton) {
       return expandButton;
@@ -1481,7 +1492,7 @@ export class NavigationManager {
 
       return true;
     } catch (error) {
-      console.error('Failed to expand all navigation sections:', error);
+      logger.error('Failed to expand all navigation sections', { error });
       return false;
     }
   }
@@ -1509,7 +1520,7 @@ export class NavigationManager {
     const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
     if (!megaMenuToggle) {
       if (logWarnings) {
-        console.warn('Mega menu toggle button not found - navigation may already be open or use different structure');
+        logger.warn('Mega menu toggle button not found - navigation may already be open or use different structure');
       }
       return;
     }
@@ -1545,7 +1556,7 @@ export class NavigationManager {
         await waitForReactUpdates();
         await this.pollForNavItems();
       } else if (logWarnings) {
-        console.warn('Dock menu button not found after polling, navigation will remain in modal mode');
+        logger.warn('Dock menu button not found after polling, navigation will remain in modal mode');
       }
     }
   }

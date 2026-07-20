@@ -1,24 +1,43 @@
 import { chainNeedsCloudStack } from './cloud-provisioning';
 import { unsafeCloudGuidesInChain } from './cloud-routing';
 import type { CloudAuthPolicy } from './cloud-auth';
-import type { ColdCloudStackProvisioningConfig } from './cold-cloud-stack-environment';
+import type { CloudStackPoolManagerConfig } from './cloud-stack-pool-manager';
 import type { PackageMeta } from './e2e-results';
 import type { ExecutionPlan } from './guide-chains';
 interface PreflightTargetUrlsForPlanOptions {
   plan: ExecutionPlan;
   packageMetaById: Map<string, PackageMeta>;
   cloudAuth: CloudAuthPolicy | undefined;
-  cloudStack: ColdCloudStackProvisioningConfig | undefined;
+  cloudStackPoolManagerConfig: CloudStackPoolManagerConfig | undefined;
   globalUrl: string;
 }
 
-/** Preflight runs before cold-stack provisioning, so exclude guides that will run
- * against isolated stacks or be skipped for unsafe shared-stack access
- */
+function tierForGuide(id: string, packageMetaById: Map<string, PackageMeta>): string {
+  return packageMetaById.get(id)?.tier ?? 'local';
+}
+
+export function assertTierHomogeneousChains(plan: ExecutionPlan, packageMetaById: Map<string, PackageMeta>): void {
+  for (const chain of plan.chains) {
+    const tiers = new Set(chain.map((planned) => tierForGuide(planned.id, packageMetaById)));
+    if (tiers.size > 1) {
+      const chainSummary = chain
+        .map((planned) => `${planned.id}:${tierForGuide(planned.id, packageMetaById)}`)
+        .join(' → ');
+      throw new Error(`Invalid E2E execution plan: dependency chain mixes test environment tiers (${chainSummary}).`);
+    }
+  }
+}
+
+/** Preflight runs before manager leasing, so exclude guides that will run against isolated stacks. */
 export function preflightTargetUrlsForPlan(options: PreflightTargetUrlsForPlanOptions): string[] {
   const idsToSkip = new Set([
-    ...idsSkippedForUnsafeSharedStack(options.plan, options.packageMetaById, options.cloudStack),
-    ...idsUsingColdCloudStack(options.plan, options.packageMetaById, options.cloudAuth, options.cloudStack),
+    ...idsSkippedForUnsafeSharedStack(options.plan, options.packageMetaById, options.cloudStackPoolManagerConfig),
+    ...idsUsingCloudStack(
+      options.plan,
+      options.packageMetaById,
+      options.cloudAuth,
+      options.cloudStackPoolManagerConfig
+    ),
   ]);
 
   return targetUrlsToCheck(options.packageMetaById, options.globalUrl, idsToSkip);
@@ -27,10 +46,10 @@ export function preflightTargetUrlsForPlan(options: PreflightTargetUrlsForPlanOp
 function idsSkippedForUnsafeSharedStack(
   plan: ExecutionPlan,
   packageMetaById: Map<string, PackageMeta>,
-  cloudStack: ColdCloudStackProvisioningConfig | undefined
+  cloudStackPoolManagerConfig: CloudStackPoolManagerConfig | undefined
 ): Set<string> {
   const ids = new Set<string>();
-  if (cloudStack) {
+  if (cloudStackPoolManagerConfig) {
     return ids;
   }
   for (const chain of plan.chains) {
@@ -43,15 +62,22 @@ function idsSkippedForUnsafeSharedStack(
   return ids;
 }
 
-function idsUsingColdCloudStack(
+function idsUsingCloudStack(
   plan: ExecutionPlan,
   packageMetaById: Map<string, PackageMeta>,
   cloudAuth: CloudAuthPolicy | undefined,
-  cloudStack: ColdCloudStackProvisioningConfig | undefined
+  cloudStackPoolManagerConfig: CloudStackPoolManagerConfig | undefined
 ): Set<string> {
   const ids = new Set<string>();
   for (const chain of plan.chains) {
-    if (chainNeedsCloudStack({ chain, packageMetaById, cloudAuth, cloudStack })) {
+    if (
+      chainNeedsCloudStack({
+        chain,
+        packageMetaById,
+        cloudAuth,
+        hasIsolatedCloudStack: Boolean(cloudStackPoolManagerConfig),
+      })
+    ) {
       for (const planned of chain) {
         ids.add(planned.id);
       }

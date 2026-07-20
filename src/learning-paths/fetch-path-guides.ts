@@ -8,6 +8,7 @@
  */
 
 import type { GuideMetadataEntry } from '../types/learning-paths.types';
+import { logger } from '../lib/logging';
 
 // ============================================================================
 // TYPES
@@ -56,14 +57,14 @@ export async function fetchPathGuides(pathUrl: string, signal?: AbortSignal): Pr
     const response = await fetch(indexJsonUrl.toString(), { signal });
 
     if (!response.ok) {
-      console.warn(`[fetchPathGuides] Failed to fetch (${response.status}): ${indexJsonUrl.toString()}`);
+      logger.warn(`[fetchPathGuides] Failed to fetch (${response.status}): ${indexJsonUrl.toString()}`);
       return null;
     }
 
     const data = await response.json();
 
     if (!Array.isArray(data)) {
-      console.warn(`[fetchPathGuides] Unexpected response shape from ${indexJsonUrl.toString()}`);
+      logger.warn(`[fetchPathGuides] Unexpected response shape from ${indexJsonUrl.toString()}`);
       return null;
     }
 
@@ -98,7 +99,7 @@ export async function fetchPathGuides(pathUrl: string, signal?: AbortSignal): Pr
     if (error instanceof DOMException && error.name === 'AbortError') {
       return null;
     }
-    console.warn(`[fetchPathGuides] Failed to fetch guides from ${indexJsonUrl.toString()}:`, error);
+    logger.warn(`[fetchPathGuides] Failed to fetch guides from ${indexJsonUrl.toString()}`, { error });
     return null;
   }
 }

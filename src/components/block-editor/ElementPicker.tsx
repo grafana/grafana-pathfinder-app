@@ -12,6 +12,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { generateSelectorFromEvent, generateFullDomPath } from '../../utils/devtools';
 import { DomPathTooltip } from '../DomPathTooltip';
+import { logger } from '../../lib/logging';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   overlay: css({
@@ -165,14 +166,14 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
       const target = getElementUnderCursor(clientX, clientY);
 
       if (!target) {
-        console.warn('[ElementPicker] No element found under cursor');
+        logger.warn('[ElementPicker] No element found under cursor');
         return;
       }
 
       const result = generateSelectorFromEvent(target, event);
 
       if (result.warnings.length > 0) {
-        console.warn('[ElementPicker] Selector warnings:', result.warnings);
+        logger.warn('[ElementPicker] Selector warnings', { warnings: result.warnings });
       }
 
       onSelect(result.selector);

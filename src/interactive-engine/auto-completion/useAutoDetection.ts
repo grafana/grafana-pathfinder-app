@@ -13,6 +13,7 @@ import { matchesStepAction, type DetectedActionEvent, type StepActionConfig } fr
 import { getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
+import { logger } from '../../lib/logging';
 import { resolveSelector } from '../../lib/dom/selector-resolver';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 
@@ -108,7 +109,7 @@ export function resolveTargetElement(action: ActionToDetect): HTMLElement | null
     }
     // Note: navigate doesn't use coordinate matching
   } catch (error) {
-    console.warn('Failed to resolve target element for coordinate matching:', error);
+    logger.warn('Failed to resolve target element for coordinate matching', { error });
   }
 
   return null;

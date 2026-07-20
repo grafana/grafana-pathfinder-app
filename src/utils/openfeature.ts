@@ -5,6 +5,7 @@ import { config } from '@grafana/runtime';
 
 import { TrackingHook, reportFeatureFlagExposure } from './openfeature-tracking';
 import { StorageKeys } from '../lib/storage-keys';
+import { logger } from '../lib/logging';
 
 // ============================================================================
 // TYPES
@@ -103,6 +104,19 @@ const pathfinderFeatureFlags = {
     values: [true, false],
     defaultValue: true,
     trackingKey: 'pathfinder_enabled',
+  },
+  /**
+   * Remote kill-switch for Faro frontend telemetry (errors, sessions, and — in
+   * later phases — logs and analytics-event mirroring). Independent of
+   * `pathfinder.enabled`: this only stops the telemetry stream, not the plugin.
+   * Telemetry is already gated to Grafana Cloud; this flag exists to disable
+   * it fleet-wide without a release if the collector or filtering misbehaves.
+   */
+  'pathfinder.frontend-telemetry': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: true,
+    trackingKey: 'frontend_telemetry',
   },
   /**
    * Controls whether the sidebar automatically opens on first Grafana load per session
@@ -210,7 +224,7 @@ export async function initializeOpenFeature(): Promise<void> {
   const namespace = config.namespace;
 
   if (!namespace) {
-    console.warn('[OpenFeature] config.namespace not available, skipping initialization');
+    logger.warn('[OpenFeature] config.namespace not available, skipping initialization');
     return;
   }
 
@@ -313,7 +327,7 @@ export async function evaluateFeatureFlag<T extends FeatureFlagName>(flagName: T
         throw new Error(`Invalid flag value type for flag ${flagName}`);
     }
   } catch (error) {
-    console.error(`[OpenFeature] Error evaluating flag '${flagName}':`, error);
+    logger.error(`[OpenFeature] Error evaluating flag '${flagName}'`, { error });
     return pathfinderFeatureFlags[flagName].defaultValue as FlagValue<T>;
   }
 }
@@ -395,14 +409,14 @@ export const getFeatureFlagValue = (flagName: string, defaultValue: boolean): bo
   try {
     const overrides = getFlagOverrides();
     if (flagName in overrides && typeof overrides[flagName] === 'boolean') {
-      console.warn(`[OpenFeature] Using local override for '${flagName}':`, overrides[flagName]);
+      logger.warn(`[OpenFeature] Using local override for '${flagName}'`, { override: overrides[flagName] });
       return overrides[flagName] as boolean;
     }
 
     const client = getFeatureFlagClient();
     return client.getBooleanValue(flagName, defaultValue);
   } catch (error) {
-    console.error(`[OpenFeature] Error evaluating flag '${flagName}':`, error);
+    logger.error(`[OpenFeature] Error evaluating flag '${flagName}'`, { error });
     return defaultValue;
   }
 };
@@ -424,7 +438,7 @@ export const getStringFlagValue = (flagName: string, defaultValue: string): stri
     const client = getFeatureFlagClient();
     return client.getStringValue(flagName, defaultValue);
   } catch (error) {
-    console.error(`[OpenFeature] Error evaluating flag '${flagName}':`, error);
+    logger.error(`[OpenFeature] Error evaluating flag '${flagName}'`, { error });
     return defaultValue;
   }
 };
@@ -455,7 +469,7 @@ export const getHighlightedGuideConfig = (): HighlightedGuideConfig => {
       const override = overrides[flagName];
       const validated = validateHighlightedGuideValue(override);
       if (validated) {
-        console.warn(`[OpenFeature] Using local override for '${flagName}':`, validated);
+        logger.warn(`[OpenFeature] Using local override for '${flagName}'`, { override: validated });
         // Fire the exposure event so override-driven QA / demo runs produce
         // the same analytics as a real MTFF assignment. The dedup state is
         // shared with the OpenFeature hook path — see openfeature-tracking.ts.
@@ -468,7 +482,7 @@ export const getHighlightedGuideConfig = (): HighlightedGuideConfig => {
     const value = client.getObjectValue(flagName, DEFAULT_HIGHLIGHTED_GUIDE_CONFIG as unknown as JsonValue);
     return validateHighlightedGuideValue(value) ?? DEFAULT_HIGHLIGHTED_GUIDE_CONFIG;
   } catch (error) {
-    console.error(`[OpenFeature] Error evaluating flag '${flagName}':`, error);
+    logger.error(`[OpenFeature] Error evaluating flag '${flagName}'`, { error });
     return DEFAULT_HIGHLIGHTED_GUIDE_CONFIG;
   }
 };

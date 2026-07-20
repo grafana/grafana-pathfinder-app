@@ -319,6 +319,204 @@ export function resetCache(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Module graph & cycle detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves an import specifier to the src-relative path of the real file it
+ * points at (with extension), or null if it resolves outside src/ or to no
+ * file on disk. Unlike resolveImportToRelative (which returns an extension-
+ * less path and never touches the filesystem), this collapses `./foo`,
+ * `./foo.ts`, and `./foo/index.ts` onto the same canonical node key so the
+ * graph has one node per module.
+ */
+export function resolveImportToFileNode(fileDir: string, importPath: string): string | null {
+  const absoluteNoExt = path.resolve(fileDir, importPath);
+  const found = findExistingSourceFile(absoluteNoExt);
+  if (!found) {
+    return null;
+  }
+  const relative = path.relative(SRC_DIR, found);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    return null;
+  }
+  return toPosixPath(relative);
+}
+
+export interface ModuleGraph {
+  /** src-relative posix paths of every non-test source file (with extension). */
+  nodes: string[];
+  /** node -> set of nodes it imports (intra-src, non-test edges only). */
+  adjacency: Map<string, Set<string>>;
+}
+
+/**
+ * Builds the file-level import graph over production source (test files are
+ * excluded as both nodes and edge targets). Self-edges are dropped. Edges to
+ * unresolvable / external / test targets are dropped.
+ */
+export function buildModuleGraph(): ModuleGraph {
+  const all = getAllFileImports();
+  const adjacency = new Map<string, Set<string>>();
+
+  for (const { file, relPath, imports } of all) {
+    if (isTestFile(file)) {
+      continue;
+    }
+    let edges = adjacency.get(relPath);
+    if (!edges) {
+      edges = new Set<string>();
+      adjacency.set(relPath, edges);
+    }
+    const fileDir = path.dirname(file);
+    for (const imp of imports) {
+      const target = resolveImportToFileNode(fileDir, imp);
+      if (!target || target === relPath || isTestFile(path.join(SRC_DIR, target))) {
+        continue;
+      }
+      edges.add(target);
+    }
+  }
+
+  // Close the graph over production source: drop edges into excluded dirs
+  // (cli/, bundled-interactives/, …) which are never iterated as nodes and so
+  // are always acyclic sinks anyway. Keeps every edge target a real node.
+  const nodes = new Set(adjacency.keys());
+  for (const edges of adjacency.values()) {
+    for (const target of edges) {
+      if (!nodes.has(target)) {
+        edges.delete(target);
+      }
+    }
+  }
+
+  return { nodes: [...nodes], adjacency };
+}
+
+/**
+ * Tarjan's strongly-connected-components algorithm. Every returned component
+ * of size >= 2 is a set of files that mutually reach each other — i.e. a
+ * circular-dependency cluster. Size-1 components are acyclic singletons (self
+ * edges are already excluded by buildModuleGraph), so callers filter to
+ * length >= 2 to get the cycles.
+ *
+ * Iterative (explicit work stack) so a deep chain in a ~600-node graph can't
+ * overflow the JS call stack.
+ */
+export function findStronglyConnectedComponents(graph: ModuleGraph): string[][] {
+  const indices = new Map<string, number>();
+  const lowlink = new Map<string, number>();
+  const onStack = new Set<string>();
+  const sccStack: string[] = [];
+  const result: string[][] = [];
+  let counter = 0;
+
+  interface Frame {
+    node: string;
+    neighbors: string[];
+    next: number;
+  }
+
+  for (const start of graph.nodes) {
+    if (indices.has(start)) {
+      continue;
+    }
+    const work: Frame[] = [{ node: start, neighbors: [...(graph.adjacency.get(start) ?? [])], next: 0 }];
+    indices.set(start, counter);
+    lowlink.set(start, counter);
+    counter++;
+    sccStack.push(start);
+    onStack.add(start);
+
+    while (work.length > 0) {
+      const frame = work[work.length - 1]!;
+      if (frame.next < frame.neighbors.length) {
+        const w = frame.neighbors[frame.next]!;
+        frame.next++;
+        if (!indices.has(w)) {
+          indices.set(w, counter);
+          lowlink.set(w, counter);
+          counter++;
+          sccStack.push(w);
+          onStack.add(w);
+          work.push({ node: w, neighbors: [...(graph.adjacency.get(w) ?? [])], next: 0 });
+        } else if (onStack.has(w)) {
+          lowlink.set(frame.node, Math.min(lowlink.get(frame.node)!, indices.get(w)!));
+        }
+      } else {
+        if (lowlink.get(frame.node) === indices.get(frame.node)) {
+          const component: string[] = [];
+          let w: string;
+          do {
+            w = sccStack.pop()!;
+            onStack.delete(w);
+            component.push(w);
+          } while (w !== frame.node);
+          result.push(component);
+        }
+        work.pop();
+        const parent = work[work.length - 1];
+        if (parent) {
+          lowlink.set(parent.node, Math.min(lowlink.get(parent.node)!, lowlink.get(frame.node)!));
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+/** SCCs of size >= 2 — the circular-dependency clusters, each members sorted. */
+export function findCycles(graph: ModuleGraph = buildModuleGraph()): string[][] {
+  return findStronglyConnectedComponents(graph)
+    .filter((component) => component.length >= 2)
+    .map((component) => [...component].sort());
+}
+
+/**
+ * A grandfathered cycle in the ratchet allowlist. Beyond the SCC key, each
+ * carries a justification and a paydown tracking issue so a new cycle can't be
+ * silenced by pasting its key in with an empty rubber-stamp comment.
+ */
+export interface AllowedCycleEntry {
+  cycle: string;
+  reason: string;
+  tracking: string;
+}
+
+const CYCLE_REASON_MIN_LENGTH = 20;
+const CYCLE_TRACKING_RE = /^#\d+$/;
+const CYCLE_TRACKING_URL_RE = /github\.com\/[^/]+\/[^/]+\/issues\/\d+/;
+
+/**
+ * Validates that every allowlisted cycle is justified and tracked: unique key,
+ * a substantive `reason`, and a `tracking` issue (either `#1234` or a GitHub
+ * issues URL). Returns a list of human-readable errors (empty when all pass).
+ */
+export function validateAllowedCycleEntries(entries: readonly AllowedCycleEntry[]): string[] {
+  const errors: string[] = [];
+
+  const keys = new Set(entries.map((entry) => entry.cycle));
+  if (keys.size !== entries.length) {
+    errors.push(`Duplicate 'cycle' keys in ALLOWED_CYCLES (${entries.length} entries, ${keys.size} unique).`);
+  }
+
+  for (const entry of entries) {
+    const label = entry.cycle.split(' <-> ')[0] || '(empty cycle key)';
+    if (entry.reason.trim().length < CYCLE_REASON_MIN_LENGTH) {
+      errors.push(`${label}: 'reason' is missing or too short — explain why the cycle is tolerated.`);
+    }
+    if (!CYCLE_TRACKING_RE.test(entry.tracking) && !CYCLE_TRACKING_URL_RE.test(entry.tracking)) {
+      errors.push(
+        `${label}: 'tracking' must be an issue reference ('#1234') or a GitHub issues URL, got '${entry.tracking}'.`
+      );
+    }
+  }
+
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
 // Ratchet mechanism
 // ---------------------------------------------------------------------------
 

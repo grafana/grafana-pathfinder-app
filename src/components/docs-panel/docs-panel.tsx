@@ -29,7 +29,15 @@ import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
 import { useLinkClickHandler } from './link-handler.hook';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 
-import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getContentTypeForAnalytics,
+  AnalyticsContentType,
+} from '../../lib/analytics';
+import { logger } from '../../lib/logging';
+import { withGuideOpenAction, type GuideLoadOutcome } from '../../lib/telemetry';
+import { usePanelReadyMeasurement } from './hooks/usePanelReadyMeasurement';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
 import { useGuideProgressState, useAutoLaunchTutorial, type AutoLaunchTutorialDetail } from '../../hooks';
 import {
@@ -266,7 +274,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       // Save both tabs and active tab
       await Promise.all([tabStorage.setTabs(tabsToSave), tabStorage.setActiveTab(this.state.activeTabId)]);
     } catch (error) {
-      console.error('Failed to save tabs to storage:', error);
+      logger.error('Failed to save tabs to storage', { error });
     }
   }
 
@@ -274,7 +282,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     try {
       await tabStorage.clear();
     } catch (error) {
-      console.error('Failed to clear persisted tabs:', error);
+      logger.error('Failed to clear persisted tabs', { error });
     }
   }
 
@@ -374,19 +382,24 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     url: string,
     options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo }
   ): Promise<void> {
-    const tab = this.state.tabs.find((t) => t.id === tabId);
-    const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
-    if (needsDocsLoader) {
-      await this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
-      return;
-    }
-    await this.loadTabContent(tabId, url);
+    // Loaders resolve on failure (failTab stores the error in tab state), so
+    // their returned outcome — not promise settlement — stamps the action.
+    await withGuideOpenAction(url, async () => {
+      const tab = this.state.tabs.find((t) => t.id === tabId);
+      const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
+      if (needsDocsLoader) {
+        return this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
+      }
+      return this.loadTabContent(tabId, url);
+    });
   }
 
-  private async loadTabContent(tabId: string, url: string) {
-    // Skip loading if URL is empty
+  private async loadTabContent(tabId: string, url: string): Promise<GuideLoadOutcome> {
+    // Empty/corrupted tab URL — nothing to load, and not a successful open.
     if (!url || url.trim() === '') {
-      return;
+      logger.error(`loadTabContent called with an empty URL for tab ${tabId}`);
+      this.failTab(tabId, 'This tab has no content to load.');
+      return 'error';
     }
 
     this.setTabLoading(tabId);
@@ -395,7 +408,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       const tab = this.state.tabs.find((t) => t.id === tabId);
       const result = await fetchContent(url);
 
-      // Check if fetch succeeded or failed
       if (result.content) {
         let content = result.content;
 
@@ -436,12 +448,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
           setJourneyCompletionPercentage(completionKey, progress);
         }
+        return 'completed';
       } else {
         this.failTab(tabId, result.error || 'Failed to load content');
+        return 'error';
       }
     } catch (error) {
-      console.error(`Failed to load journey content for tab ${tabId}:`, error);
+      logger.error(`Failed to load journey content for tab ${tabId}`, { error });
       this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load content');
+      return 'error';
     }
   }
 
@@ -493,34 +508,26 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   public closeTab(tabId: string) {
     if (tabId === 'recommendations') {
-      return; // Can't close recommendations tab
+      return;
     }
 
     const currentTabs = this.state.tabs;
     const tabIndex = currentTabs.findIndex((t) => t.id === tabId);
-
-    // Remove the tab
     const newTabs = currentTabs.filter((t) => t.id !== tabId);
-
-    // Determine new active tab
     let newActiveTabId = this.state.activeTabId;
+
     if (this.state.activeTabId === tabId) {
       if (tabIndex > 0 && tabIndex < currentTabs.length - 1) {
-        // Choose the next tab if available
         newActiveTabId = currentTabs[tabIndex + 1]!.id;
       } else if (tabIndex > 0) {
-        // Choose the previous tab if at the end
         newActiveTabId = currentTabs[tabIndex - 1]!.id;
       } else {
-        // Default to recommendations if only tab
         newActiveTabId = 'recommendations';
       }
     }
 
-    // If only permanent tabs remain, fall back to recommendations — unless the
-    // user is actively on the editor tab (a first-class content tab).
     const onlyDefaultTabsRemaining = newTabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
-    if (onlyDefaultTabsRemaining && newActiveTabId !== 'recommendations' && newActiveTabId !== 'editor') {
+    if (onlyDefaultTabsRemaining && this.state.activeTabId !== 'editor') {
       newActiveTabId = 'recommendations';
     }
 
@@ -529,13 +536,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       activeTabId: newActiveTabId,
     });
 
-    // Save tabs to storage after closing
     this.saveTabsToStorage();
-
-    // Clear any persisted interactive completion state for this tab
-    // Note: Interactive step completion is now handled by interactiveStepStorage
-    // which uses a different key format and is managed within interactive components
-    // This cleanup is now handled automatically when interactive sections are unmounted
   }
 
   public setActiveTab(tabId: string) {
@@ -705,7 +706,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     url: string,
     skipReadyToBegin?: boolean,
     packageInfoArg?: PackageOpenInfo
-  ) {
+  ): Promise<GuideLoadOutcome> {
     // No early return for empty URLs — loadDocsTabContentResult handles all
     // edge cases (empty URL with packageInfo falls back to fetchPackageById;
     // empty URL without packageInfo returns a visible error). Surfacing errors
@@ -777,12 +778,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
             starting_location: pendingAlignment.startingLocation,
           });
         }
+        return 'completed';
       } else {
         this.failTab(tabId, result.error || 'Failed to load documentation');
+        return 'error';
       }
     } catch (error) {
-      console.error(`Failed to load docs content for tab ${tabId}:`, error);
+      logger.error(`Failed to load docs content for tab ${tabId}`, { error });
       this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load documentation');
+      return 'error';
     }
   }
 }
@@ -816,6 +820,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   }, [pluginConfig]);
 
   const { tabs, activeTabId, contextPanel } = model.useState();
+  const { recommendationsReady = false } = contextPanel.useState();
   React.useEffect(() => {
     addGlobalModalStyles();
   }, []);
@@ -943,6 +948,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // STABILITY: Memoize activeTab.content to prevent ContentRenderer from remounting
   // when other tab properties change (isLoading, error, etc.)
   const stableContent = React.useMemo(() => activeTab?.content, [activeTab?.content]);
+
+  usePanelReadyMeasurement({
+    hasContent: !!stableContent,
+    isRecommendationsTab,
+    recommendationsReady,
+    surface: panelMode,
+  });
 
   // STABILITY: Memoize the AlignmentPendingContext value keyed on the two
   // underlying primitives so consumers (`useStepChecker` in every interactive
@@ -1163,7 +1175,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     reportAppInteraction(UserInteraction.OpenResourceClick, {
       content_title: title,
       content_url: url,
-      content_type: getContentTypeForAnalytics(url, openAsLearningJourney ? 'learning-journey' : 'docs'),
+      content_type: getContentTypeForAnalytics(
+        url,
+        openAsLearningJourney ? AnalyticsContentType.LearningJourney : AnalyticsContentType.Docs
+      ),
       trigger_source: 'auto_launch_tutorial',
       interaction_location: 'docs_panel',
       ...(openAsLearningJourney && {

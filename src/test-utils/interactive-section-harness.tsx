@@ -44,6 +44,14 @@ export function setCheckRequirementsResult(result: typeof _checkRequirementsResu
   _checkRequirementsResult = result;
 }
 
+/** Configurable resolved outcome for `executeInteractiveAction`. Override
+ *  per-test via `setExecuteInteractiveActionOutcome()`; reset in `resetSectionHarness()`. */
+let _executeInteractiveActionOutcome: 'ok' | 'error' = 'ok';
+
+export function setExecuteInteractiveActionOutcome(outcome: 'ok' | 'error') {
+  _executeInteractiveActionOutcome = outcome;
+}
+
 // Module-level reference so resetSectionHarness can clear call history between
 // tests (the factory is only called once by jest.mock, so the fn is shared).
 let _stableCheckRequirementsFromData: jest.Mock | null = null;
@@ -246,7 +254,7 @@ export function createInteractiveEngineMock() {
   const stableCheckRequirementsFromData = _stableCheckRequirementsFromData;
   return {
     useInteractiveElements: () => ({
-      executeInteractiveAction: jest.fn(async () => undefined),
+      executeInteractiveAction: jest.fn(async () => _executeInteractiveActionOutcome),
       startSectionBlocking: jest.fn(),
       stopSectionBlocking: jest.fn(),
       verifyStepResult: jest.fn(async () => true),
@@ -265,6 +273,7 @@ export function createInteractiveEngineMock() {
       fixLocationRequirement: jest.fn().mockResolvedValue(undefined),
       expandParentNavigationSection: jest.fn().mockResolvedValue(undefined),
     })),
+    ...require('../interactive-engine/outcome-classifier'),
   };
 }
 
@@ -326,11 +335,20 @@ export function createAlignmentContextMock() {
 export function createAnalyticsMock() {
   return {
     reportAppInteraction: jest.fn(),
+    createInteractionName: jest.fn((type: string) => `pathfinder_${type}`),
     UserInteraction: {
-      DoSectionButtonClick: 'do_section',
-      ShowMeButtonClick: 'show_me',
-      DoItButtonClick: 'do_it',
-      StepAutoCompleted: 'auto',
+      DoSectionButtonClick: 'do_section_button_click',
+      ShowMeButtonClick: 'show_me_button_click',
+      DoItButtonClick: 'do_it_button_click',
+      StepAutoCompleted: 'step_auto_completed',
+    },
+    AnalyticsContentType: {
+      Docs: 'docs',
+      LearningJourney: 'learning-journey',
+      InteractiveGuide: 'interactive-guide',
+      Editor: 'editor',
+      Devtools: 'devtools',
+      PackageNavLink: 'package-nav-link',
     },
     getSourceDocument: jest.fn(() => ({})),
     calculateStepCompletion: jest.fn(() => undefined),
@@ -393,6 +411,7 @@ export function createInteractiveConfigMock() {
 export function resetSectionHarness() {
   memoryStore.clear();
   _checkRequirementsResult = { pass: true, error: [] };
+  _executeInteractiveActionOutcome = 'ok';
   _stableCheckRequirementsFromData?.mockClear();
   // The completion store keeps its own module-scope cache + hydration
   // tracking. Clear both so tests don't bleed state across runs.

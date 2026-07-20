@@ -2,7 +2,8 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { isElementVisible } from '../../lib/dom';
+import { describeElement, isElementVisible } from '../../lib/dom';
+import { logger } from '../../lib/logging';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 
 export class FocusHandler {
@@ -44,7 +45,7 @@ export class FocusHandler {
     for (const element of targetElements) {
       // Validate visibility before interaction
       if (!isElementVisible(element)) {
-        console.warn('Target element is not visible:', element);
+        logger.warn('Target element is not visible', { element: describeElement(element) });
         // Continue anyway (non-breaking)
       }
 
@@ -62,7 +63,7 @@ export class FocusHandler {
     for (const element of targetElements) {
       // Validate visibility before interaction
       if (!isElementVisible(element)) {
-        console.warn('Target element is not visible:', element);
+        logger.warn('Target element is not visible', { element: describeElement(element) });
         // Continue anyway (non-breaking)
       }
 

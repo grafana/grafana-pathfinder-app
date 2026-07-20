@@ -71,3 +71,57 @@ describe('useJsonModeHandlers — JSON paste then preview', () => {
     expect(result.current.editor.state.isDirty).toBe(true);
   });
 });
+
+describe('useJsonModeHandlers — restoreJsonMode', () => {
+  it('seeds jsonModeState from the given guide so the JSON pane has something to render', () => {
+    const { result } = renderHook(() => useEditorAndJsonMode(oldGuide));
+
+    expect(result.current.jsonMode.jsonModeState).toBeNull();
+
+    act(() => {
+      result.current.jsonMode.restoreJsonMode(newGuide, ['b1']);
+    });
+
+    expect(result.current.jsonMode.jsonModeState).toEqual({
+      json: JSON.stringify(newGuide, null, 2),
+      originalBlockIds: ['b1'],
+      originalJson: JSON.stringify(newGuide, null, 2),
+    });
+    expect(result.current.jsonMode.isJsonValid).toBe(true);
+  });
+
+  it('defaults originalBlockIds to an empty array when blockIds are omitted', () => {
+    const { result } = renderHook(() => useEditorAndJsonMode(oldGuide));
+
+    act(() => {
+      result.current.jsonMode.restoreJsonMode(newGuide);
+    });
+
+    expect(result.current.jsonMode.jsonModeState?.originalBlockIds).toEqual([]);
+  });
+
+  it('restores an invalid persisted draft and derives its validation state', () => {
+    const { result } = renderHook(() => useEditorAndJsonMode(oldGuide));
+    const savedState = {
+      json: '{ invalid',
+      originalBlockIds: ['b1'],
+      originalJson: JSON.stringify(newGuide, null, 2),
+    };
+
+    act(() => {
+      result.current.jsonMode.restoreJsonMode(newGuide, ['b1'], savedState);
+    });
+
+    expect(result.current.jsonMode.jsonModeState).toEqual(savedState);
+    expect(result.current.jsonMode.isJsonValid).toBe(false);
+    expect(result.current.jsonMode.jsonValidationErrors).not.toHaveLength(0);
+    expect(result.current.jsonMode.canUndo).toBe(true);
+
+    act(() => {
+      result.current.jsonMode.handleJsonUndo();
+    });
+
+    expect(result.current.jsonMode.jsonModeState?.json).toBe(savedState.originalJson);
+    expect(result.current.jsonMode.isJsonValid).toBe(true);
+  });
+});

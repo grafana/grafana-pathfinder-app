@@ -4,6 +4,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
 
 import { RawContent, ContentParseResult } from '../../types/content.types';
+import { logger } from '../../lib/logging';
 import {
   parseHTMLToComponents,
   ParsedElement,
@@ -16,6 +17,7 @@ import {
   ContentParsingError,
   VideoRenderer,
   YouTubeVideoRenderer,
+  VimeoVideoRenderer,
   GuideResponseProvider,
   useGuideResponses,
 } from '../../docs-retrieval';
@@ -87,10 +89,10 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
         targetElement!.classList.remove('fragment-highlight');
       }, 3000);
     } else {
-      console.warn(`Fragment element not found: #${fragment}`);
+      logger.warn(`Fragment element not found: #${fragment}`);
     }
   } catch (error) {
-    console.warn(`Error scrolling to fragment #${fragment}:`, error);
+    logger.warn(`Error scrolling to fragment #${fragment}`, { error });
   }
 }
 
@@ -679,7 +681,7 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
 
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {
-    console.error('Content parsing failed:', parseResult.errors);
+    logger.error('Content parsing failed', { errors: parseResult.errors });
     return (
       <div ref={ref}>
         <ContentParsingError
@@ -698,7 +700,7 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
   const { data: parsedContent } = parseResult;
 
   if (!parsedContent) {
-    console.error('[DocsPlugin] Parsing succeeded but no data returned');
+    logger.error('[DocsPlugin] Parsing succeeded but no data returned');
     return (
       <div ref={ref}>
         <ContentParsingError
@@ -826,7 +828,7 @@ function TabsWrapper({ element }: { element: ParsedElement }) {
   const activeTab = selectedTab || tabsData[0]?.key || '';
 
   if (!tabsBarElement || !tabContentElement) {
-    console.warn('Missing required tabs elements');
+    logger.warn('Missing required tabs elements');
     return null;
   }
 
@@ -875,7 +877,7 @@ function TabContentRenderer({ html }: { html: string }) {
 
   if (!parseResult.isValid || !parseResult.data) {
     // SECURITY: No dangerouslySetInnerHTML fallback - return null on parse failure
-    console.error('TabContentRenderer: Failed to parse content.');
+    logger.error('TabContentRenderer: Failed to parse content.');
     return null;
   }
 
@@ -1260,9 +1262,25 @@ function renderParsedElement(
           key={key}
           src={element.props.src}
           baseUrl={element.props.baseUrl}
+          title={element.props.title}
           onClick={element.props.onClick}
           start={element.props.start}
           end={element.props.end}
+        />
+      );
+    case 'vimeo-video':
+      // Pass only whitelisted props — deliberately NOT `{...element.props}`
+      // (unlike the youtube-video case). Untrusted iframe attributes from
+      // guide HTML must not reach the Vimeo embed.
+      return (
+        <VimeoVideoRenderer
+          key={key}
+          src={element.props.src}
+          width={element.props.width}
+          height={element.props.height}
+          title={element.props.title}
+          className={element.props.className}
+          start={element.props.start}
         />
       );
     case 'youtube-video':
@@ -1343,7 +1361,7 @@ function renderParsedElement(
       );
     case 'raw-html':
       // SECURITY: raw-html type is removed - all HTML must go through the parser
-      console.error('raw-html element type encountered - this should have been caught during parsing');
+      logger.error('raw-html element type encountered - this should have been caught during parsing');
       return null;
     default:
       // Handle tabs root
@@ -1400,7 +1418,7 @@ function renderParsedElement(
 
       // Standard HTML elements - strict validation
       if (!element.type || (typeof element.type !== 'string' && typeof element.type !== 'function')) {
-        console.error('Invalid element type for parsed element:', element);
+        logger.error('Invalid element type for parsed element', { element });
         throw new Error(`Invalid element type: ${element.type}. This should have been caught during parsing.`);
       }
 

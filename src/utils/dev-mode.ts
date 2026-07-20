@@ -26,6 +26,7 @@
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { DocsPluginConfig } from '../constants';
+import { logger } from '../lib/logging';
 import { updatePluginSettings } from './utils.plugin';
 import pluginJson from '../plugin.json';
 
@@ -92,7 +93,7 @@ export const enableDevMode = async (currentUserId: number, currentUserIds: numbe
       },
     });
   } catch (e: any) {
-    console.error('Failed to enable dev mode:', e);
+    logger.error('Failed to enable dev mode', { error: e });
     throw new Error('Failed to enable dev mode. You may need admin permissions to modify plugin settings.');
   }
 };
@@ -124,7 +125,7 @@ export const disableDevModeForUser = async (userId: number, currentUserIds: numb
       },
     });
   } catch (e: any) {
-    console.error('Failed to disable dev mode for user:', e);
+    logger.error('Failed to disable dev mode for user', { error: e });
     throw new Error('Failed to disable dev mode. You may need admin permissions to modify plugin settings.');
   }
 };
@@ -148,7 +149,7 @@ export const disableDevMode = async (): Promise<void> => {
       },
     });
   } catch (e: any) {
-    console.error('Failed to disable dev mode:', e);
+    logger.error('Failed to disable dev mode', { error: e });
     throw new Error('Failed to disable dev mode. You may need admin permissions to modify plugin settings.');
   }
 };

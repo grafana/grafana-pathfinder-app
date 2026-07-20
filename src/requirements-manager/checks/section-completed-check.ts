@@ -25,6 +25,7 @@
 
 import { getContentKey } from '../../global-state/content-key';
 import { sectionDoneStorage } from '../../lib/user-storage';
+import { logger } from '../../lib/logging';
 
 export async function sectionCompletedCheck(check: string): Promise<{
   requirement: string;
@@ -61,7 +62,7 @@ export async function sectionCompletedCheck(check: string): Promise<{
       },
     };
   } catch (error) {
-    console.error('Section completion check error:', error);
+    logger.error('Section completion check error', { error });
     return {
       requirement: check,
       pass: false,

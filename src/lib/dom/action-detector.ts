@@ -15,7 +15,7 @@
  * @module action-detector
  */
 
-import { findButtonByText, isElementVisible } from '.';
+import { escapeCssAttributeValue, findButtonByText, isElementVisible, isPathfinderContent } from '.';
 
 export type DetectedAction = 'highlight' | 'button' | 'formfill' | 'navigate' | 'hover';
 
@@ -162,8 +162,12 @@ export function getActionDescription(action: DetectedAction, element: HTMLElemen
  * ```
  */
 export function shouldCaptureElement(element: HTMLElement): boolean {
-  // ONLY filter out clicks within the debug panel itself
-  if (element.closest('[class*="debug"]') || element.closest('#CombinedLearningJourney')) {
+  // ONLY filter out clicks within the debug panel or Pathfinder's own panels
+  if (
+    element.closest('[class*="debug"]') ||
+    element.closest('#CombinedLearningJourney') ||
+    isPathfinderContent(element)
+  ) {
     return false;
   }
 
@@ -239,7 +243,7 @@ export function extractElementSelector(element: HTMLElement): string | undefined
   if (tag === 'input' || tag === 'textarea' || tag === 'select') {
     const name = element.getAttribute('name');
     if (name) {
-      return `[name="${name}"]`;
+      return `[name="${escapeCssAttributeValue(name, '"')}"]`;
     }
   }
 

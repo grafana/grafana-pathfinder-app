@@ -25,12 +25,18 @@ import React, { Suspense, lazy } from 'react';
 import { Button, Icon, IconButton } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { usePluginContext } from '@grafana/data';
-import { PLUGIN_BASE_URL, getConfigWithDefaults } from '../../../constants';
+import { getConfigWithDefaults } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
 import { isDocsLikeTab, pickGrafanaDocsOpenAction, pickControllerTabOpenAction } from '../utils';
-import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getContentTypeForAnalytics,
+  tabTypeToContentType,
+  AnalyticsLinkType,
+} from '../../../lib/analytics';
 import { getMilestoneSlug, markMilestoneDone, setJourneyCompletionPercentage } from '../../../docs-retrieval';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
@@ -161,7 +167,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           );
         }
 
-        if (!isRecommendationsTab && activeTab?.isLoading) {
+        if (activeTab?.isLoading) {
           const ljMeta = activeTab.content?.metadata?.learningJourney;
           const showBarWhileLoading =
             ljMeta &&
@@ -221,7 +227,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           );
         }
 
-        if (!isRecommendationsTab && activeTab?.error && !activeTab.isLoading) {
+        if (activeTab?.error && !activeTab.isLoading) {
           return (
             <ErrorDisplay
               className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}
@@ -232,7 +238,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           );
         }
 
-        if (!isRecommendationsTab && activeTab?.content && !activeTab.isLoading) {
+        if (activeTab?.content && !activeTab.isLoading) {
           const isLearningJourneyTab = activeTab.type === 'learning-journey' || !isDocsLikeTab(activeTab.type);
           const showMilestoneProgress =
             isLearningJourneyTab &&
@@ -299,10 +305,10 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                           onClick={() => {
                             reportAppInteraction(UserInteraction.OpenExtraResource, {
                               content_url: cleanUrl,
-                              content_type: getContentTypeForAnalytics(cleanUrl, activeTab.type || 'docs'),
+                              content_type: getContentTypeForAnalytics(cleanUrl, tabTypeToContentType(activeTab.type)),
                               link_text: activeTab.title,
                               source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
-                              link_type: 'external_browser',
+                              link_type: AnalyticsLinkType.ExternalBrowser,
                               interaction_location: 'docs_content_meta_right',
                             });
                             setTimeout(() => {
@@ -334,10 +340,10 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                           onClick={() => {
                             reportAppInteraction(UserInteraction.OpenExtraResource, {
                               content_url: guideUrl || 'unknown',
-                              content_type: getContentTypeForAnalytics(guideUrl, activeTab.type || 'interactive'),
+                              content_type: getContentTypeForAnalytics(guideUrl, tabTypeToContentType(activeTab.type)),
                               link_text: activeTab.title,
-                              source_page: 'docs_content_meta_right',
-                              link_type: 'external_browser',
+                              source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
+                              link_type: AnalyticsLinkType.ExternalBrowser,
                               interaction_location: 'docs_content_meta_right',
                             });
                             const controllerUrl = createControllerUrl();
@@ -437,7 +443,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                     icon="book-open"
                     size="md"
                     onClick={() => {
-                      window.location.assign(PLUGIN_BASE_URL);
+                      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                        action: 'navigate_to_recommendations',
+                        source: 'content_footer',
+                      });
+                      model.setActiveTab('recommendations');
                     }}
                   >
                     {t('docsPanel.returnToMyLearning', 'Return to my learning')}

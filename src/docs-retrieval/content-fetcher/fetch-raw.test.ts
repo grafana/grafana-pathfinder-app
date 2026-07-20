@@ -1,4 +1,5 @@
 import { fetchRawHtml, enforceHttps, generateUserFriendlyError } from './fetch-raw';
+import { logger } from '../../lib/logging';
 
 // Mock AbortSignal.timeout for Node environments that don't support it
 if (!AbortSignal.timeout) {
@@ -164,6 +165,89 @@ describe('fetchRawHtml — trust re-validation and error classification', () => 
 
     const result = await fetchRawHtml(DOC_URL, {});
     expect(result.error?.errorType).toBe('network');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// telemetry log hygiene — URL redaction has one owner (normalizeTelemetryUrl)
+// ---------------------------------------------------------------------------
+describe('fetchRawHtml — telemetry log hygiene', () => {
+  const SECRET_URL = 'https://grafana.com/docs/grafana/latest/panels/?token=secret123#fragment';
+
+  let warnSpy: jest.SpyInstance;
+  let errorSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    errorSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
+  });
+
+  const loggedMessages = () => [...warnSpy.mock.calls, ...errorSpy.mock.calls].map((call) => String(call[0]));
+
+  it('keeps query and fragment out of log messages on HTTP errors and normalizes the context URL', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      statusText: 'Server Error',
+      headers: new Headers(),
+      text: async () => '',
+    });
+
+    await fetchRawHtml(SECRET_URL, {});
+
+    expect(loggedMessages().length).toBeGreaterThan(0);
+    for (const message of loggedMessages()) {
+      expect(message).not.toContain('token=secret123');
+      expect(message).not.toContain('#fragment');
+    }
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ content_url: 'grafana.com/docs/grafana/latest/panels/' })
+    );
+  });
+
+  it('keeps query and fragment out of log messages when the fetch throws', async () => {
+    (global.fetch as jest.Mock).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    await fetchRawHtml(SECRET_URL, {});
+
+    expect(loggedMessages().length).toBeGreaterThan(0);
+    for (const message of loggedMessages()) {
+      expect(message).not.toContain('token=secret123');
+      expect(message).not.toContain('#fragment');
+    }
+  });
+
+  it('normalizes both URLs in context when an ok response redirects to an untrusted URL', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(htmlResponse('<html>x</html>', 'https://evil.com/x?leak=zzz'));
+
+    await fetchRawHtml(SECRET_URL, {});
+
+    for (const message of loggedMessages()) {
+      expect(message).not.toContain('token=secret123');
+      expect(message).not.toContain('leak=zzz');
+    }
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Redirect target not in trusted domain list',
+      expect.objectContaining({
+        content_url: 'grafana.com/docs/grafana/latest/panels/',
+        final_url: 'evil.com/x',
+      })
+    );
+  });
+
+  it('keeps the original URL out of the manual-redirect log message', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(redirectResponse(301, 'https://evil.com/phishing'));
+
+    await fetchRawHtml(SECRET_URL, {});
+
+    for (const message of loggedMessages()) {
+      expect(message).not.toContain('token=secret123');
+    }
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Manual redirect detected',
+      expect.objectContaining({ content_url: 'grafana.com/docs/grafana/latest/panels/' })
+    );
   });
 });
 

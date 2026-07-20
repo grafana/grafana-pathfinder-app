@@ -2,12 +2,11 @@ import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, use
 import React, { lazy, Suspense, useEffect, useMemo } from 'react';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
-
-// TODO: Re-enable Faro once collector CORS is configured correctly
-// import { initializeFaroMetrics } from './lib/faro';
+import { logger } from './lib/logging';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
+import { PANEL_MODE_CHANGE_EVENT } from './lib/event-names';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { panelModeManager } from './global-state/panel-mode';
@@ -19,6 +18,9 @@ import {
   isExtensionSidebarOwnedByPathfinder,
   parseExtensionSidebarDocked,
 } from './lib/storage/extension-sidebar';
+// Surgical import (not the ./lib/telemetry barrel): module.tsx is the entry
+// point, and the barrel would pull the whole telemetry package into module.js.
+import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from './lib/telemetry/surface';
 
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
@@ -28,15 +30,6 @@ const earlySuggestListener = ((event: CustomEvent) => {
   pendingSuggestEvents.push(event);
 }) as EventListener;
 document.addEventListener('pathfinder-suggest', earlySuggestListener);
-
-// TODO: Re-enable Faro once collector CORS is configured correctly
-// Initialize Faro metrics (before translations to capture early errors)
-// Wrapped in try-catch to prevent plugin load failure if Faro has issues
-// try {
-//   await initializeFaroMetrics();
-// } catch (e) {
-//   console.error('[Faro] Error initializing frontend metrics:', e);
-// }
 
 // Initialize OpenFeature provider for dynamic feature flag evaluation
 // This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
@@ -49,7 +42,7 @@ try {
   const { bindExperimentsProvider } = await import('./lib/analytics');
   bindExperimentsProvider(getActiveExperiments);
 } catch (e) {
-  console.error('[OpenFeature] Error initializing feature flags:', e);
+  logger.exception(e, { source: 'OpenFeature init' });
 }
 
 // Highlighted-guide experiment + config-driven auto-open (dynamic imports keep
@@ -63,6 +56,21 @@ const { getFeatureFlagValue } = await import('./utils/openfeature');
 // The pathfinder.enabled kill-switch is the only gate on whether Pathfinder mounts.
 const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
 const hostname = window.location.hostname;
+
+// Faro frontend telemetry, behind its own remote kill-switch — default-on, so
+// a missing flag means enabled; initFaro itself enforces the Grafana Cloud-only
+// gate. Init is eager (not awaited — the SDK chunk must not block boot); the
+// beforeSend activity gate in lib/faro drops all telemetry until Pathfinder
+// is open in one of its surfaces.
+try {
+  if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
+    // Session enrichment (identity, surface, experiment cohorts) is owned by initFaro.
+    const { initFaro } = await import('./lib/faro');
+    initFaro().catch((e) => logger.exception(e, { source: 'Faro init' }));
+  }
+} catch (e) {
+  logger.exception(e, { source: 'Faro init' });
+}
 
 // Initialize highlighted-guide experiment (reads flag, processes resetCache).
 // The popout half is set up later, after the sidebar-mount decision, so it
@@ -147,6 +155,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       const container = document.createElement('div');
       container.id = 'pathfinder-controller-root';
       document.body.appendChild(container);
+      reportPathfinderSurface('controller');
       import('./components/guide-reader/GuideReaderOverlay')
         .then(async ({ GuideReaderOverlay }) => {
           const { createCompatRoot } = await import('./lib/create-root-compat');
@@ -156,7 +165,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           );
         })
         .catch((err) => {
-          console.error('[Pathfinder] Failed to load interactive controller:', err);
+          logger.error('[Pathfinder] Failed to load interactive controller', { error: err });
           container.remove();
         });
     }
@@ -177,13 +186,13 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           root.render(React.createElement(PairingRequestBanner));
         })
         .catch((err) => {
-          console.error('[Pathfinder] Failed to load pairing banner:', err);
+          logger.error('[Pathfinder] Failed to load pairing banner', { error: err });
           bannerContainer.remove();
         });
     }
     import('./integrations/cross-tab/live-tab-executor')
       .then(({ installLiveTabExecutor }) => installLiveTabExecutor())
-      .catch((err) => console.error('[Pathfinder] Failed to load cross-tab executor:', err));
+      .catch((err) => logger.error('[Pathfinder] Failed to load cross-tab executor', { error: err }));
   }
 
   const sidebarMountable = pathfinderEnabled;
@@ -227,7 +236,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           );
         })
         .catch((err) => {
-          console.error('[Pathfinder] Failed to load kiosk mode:', err);
+          logger.error('[Pathfinder] Failed to load kiosk mode', { error: err });
         });
     }
   }
@@ -254,7 +263,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           root.render(React.createElement(FloatingPanelManager));
         })
         .catch((err) => {
-          console.error('[Pathfinder] Failed to load floating panel:', err);
+          logger.error('[Pathfinder] Failed to load floating panel', { error: err });
         });
     };
 
@@ -262,7 +271,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       mountFloatingPanel();
     }
 
-    document.addEventListener('pathfinder-panel-mode-change', ((e: CustomEvent<{ mode: string }>) => {
+    document.addEventListener(PANEL_MODE_CHANGE_EVENT, ((e: CustomEvent<{ mode: string }>) => {
       if (e.detail.mode === 'floating') {
         mountFloatingPanel();
       }
@@ -309,6 +318,9 @@ if (pathfinderEnabled) {
       // Process queued docs links when sidebar mounts
       useEffect(() => {
         sidebarState.setIsSidebarMounted(true);
+        // The docked sidebar opens via Grafana's extension bus, not setMode —
+        // this mount is the only reliable "sidebar is active" signal.
+        reportPathfinderSurface('sidebar');
 
         // Track sidebar open via component mount
         // consumePendingOpenSource() returns { source, action } set before opening
@@ -329,6 +341,7 @@ if (pathfinderEnabled) {
 
         return () => {
           sidebarState.setIsSidebarMounted(false);
+          reportPathfinderSurfaceClosed('sidebar');
 
           // Track sidebar close via component unmount
           reportAppInteraction(UserInteraction.DocsPanelInteraction, {
@@ -435,11 +448,11 @@ if (pathfinderEnabled) {
 function handlePathfinderSuggest(event: CustomEvent): void {
   const detail = event.detail;
   if (!detail) {
-    console.warn('[Pathfinder] pathfinder-suggest event missing detail');
+    logger.warn('[Pathfinder] pathfinder-suggest event missing detail');
     return;
   }
   if (!Array.isArray(detail.suggestions)) {
-    console.warn('[Pathfinder] pathfinder-suggest event missing suggestions array');
+    logger.warn('[Pathfinder] pathfinder-suggest event missing suggestions array');
     detail.status = 'rejected';
     detail.reason = 'invalid_payload';
     return;
@@ -454,7 +467,7 @@ function handlePathfinderSuggest(event: CustomEvent): void {
   );
 
   if (valid.length === 0) {
-    console.warn('[Pathfinder] pathfinder-suggest event had no valid suggestions (need title + url)');
+    logger.warn('[Pathfinder] pathfinder-suggest event had no valid suggestions (need title + url)');
     detail.status = 'rejected';
     detail.reason = 'no_valid_suggestions';
     return;
@@ -463,7 +476,7 @@ function handlePathfinderSuggest(event: CustomEvent): void {
   // Check if another plugin is occupying the sidebar
   const docked = parseExtensionSidebarDocked();
   if (docked?.pluginId && docked.pluginId !== pluginJson.id) {
-    console.warn('[Pathfinder] pathfinder-suggest rejected: sidebar occupied by', docked.pluginId);
+    logger.warn('[Pathfinder] pathfinder-suggest rejected: sidebar occupied by', { pluginId: docked.pluginId });
     detail.status = 'rejected';
     detail.reason = 'sidebar_in_use';
     return;

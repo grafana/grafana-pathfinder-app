@@ -32,6 +32,7 @@ import { stepReducer, createInitialState, toLegacyState, type StepAction } from 
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: requirements-manager -> interactive-engine
 import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
+import { logger } from '../lib/logging';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
 import { checkRequirements, type RequirementsCheckResult } from './requirements-checker.utils';
@@ -495,7 +496,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           // Timeout or unexpected error: log and fall through. The outer `catch`
           // is reserved for failures in Phase 2/3, where erroring is the correct
           // user-facing outcome.
-          console.warn('Objectives check failed; falling through to requirements:', objectivesError);
+          logger.warn('Objectives check failed; falling through to requirements', { error: objectivesError });
         }
 
         if (objectivesPassed) {
@@ -689,7 +690,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
             });
 
       if (!result.ok) {
-        console.warn('Fix failed:', result.error);
+        logger.warn('Fix failed', { error: result.error });
         if (isMountedRef.current) {
           // Preserve the existing fix metadata so the user can retry.
           // The reducer's `SET_ERROR` defaults `canFix` to `false` and clears
@@ -724,7 +725,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       );
       await checkStep();
     } catch (error) {
-      console.error('Failed to fix requirements:', error);
+      logger.error('Failed to fix requirements', { error });
       // Same preservation rationale as the `!result.ok` branch above.
       safeDispatch({
         type: 'SET_ERROR',

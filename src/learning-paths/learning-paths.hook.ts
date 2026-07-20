@@ -18,6 +18,7 @@ import type {
 } from '../types/learning-paths.types';
 
 import { StorageEvents } from '../lib/event-names';
+import { logger } from '../lib/logging';
 import {
   learningProgressStorage,
   interactiveStepStorage,
@@ -179,7 +180,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
         setIsLoading(false);
       }
     } catch (error) {
-      console.warn('Failed to load learning progress:', error);
+      logger.warn('Failed to load learning progress', { error });
       if (mounted.current) {
         setIsLoading(false);
       }

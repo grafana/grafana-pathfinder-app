@@ -54,14 +54,16 @@ import type { ManifestJson, RepositoryEntry, RepositoryJson } from '../../types/
 
 import { randomUUID } from 'crypto';
 import { createCloudAuthPolicy, type CloudAuthPolicy } from '../e2e/cloud-auth';
+import { CloudChainCleanupRegistry } from '../e2e/cloud-chain-cleanup-registry';
 import { cloudTargetsInChain, provisionCloudTargetsForChain, sweepCloudTargets } from '../e2e/cloud-provisioning';
 import { unsafeCloudGuidesInChain, unsafeSharedStackMessage, unsafeSharedStackSkipResults } from '../e2e/cloud-routing';
 import {
-  ColdCloudStackCleanupRegistry,
-  createColdCloudStackProvisioningConfig,
-  type ColdCloudStackProvisioningConfig,
-} from '../e2e/cold-cloud-stack-environment';
-import { preflightTargetUrlsForPlan } from '../e2e/preflight-targets';
+  CloudStackPoolManager,
+  createCloudStackPoolManagerConfig,
+  DEFAULT_CLOUD_STACK_POOL_ID,
+  type CloudStackPoolManagerConfig,
+} from '../e2e/cloud-stack-pool-manager';
+import { assertTierHomogeneousChains, preflightTargetUrlsForPlan } from '../e2e/preflight-targets';
 
 /**
  * CLI options for the e2e command
@@ -90,14 +92,10 @@ interface E2ECommandOptions {
   cloudInstanceAdminToken: string[];
   /** Default cloud instance URL for cloud-tier guides without an `instance`. */
   cloudUrl: string;
-  /** Env var containing a Grafana Cloud Access Policy token for cold stack provisioning. */
-  cloudStackAccessPolicyToken?: string;
-  /** Grafana Cloud region slug for cold stack provisioning. */
-  cloudStackRegion?: string;
-  /** Slug prefix for cold-provisioned Grafana Cloud stacks. */
-  cloudStackSlugPrefix?: string;
-  /** Pathfinder plugin version to install on cold-provisioned stacks. */
-  cloudStackPluginVersion?: string;
+  cloudStackPoolManagerUrl?: string;
+  cloudStackPoolManagerToken?: string;
+  cloudStackPoolId: string;
+  cloudStackMaxWaitSeconds?: number;
 }
 
 function collectOption(value: string, previous: string[]): string[] {
@@ -132,8 +130,8 @@ interface RunInputs {
   packageMetaById: Map<string, PackageMeta>;
   /** Cloud credential policy for target resolution and runner auth (remote modes). */
   cloudAuth?: CloudAuthPolicy;
-  /** Cold isolated-stack provisioning config for unsafe cloud chains. */
-  cloudStack?: ColdCloudStackProvisioningConfig;
+  /** Manager-backed isolated-stack config for unsafe cloud chains. */
+  cloudStackPoolManagerConfig?: CloudStackPoolManagerConfig;
   /** Local package directory for manifest pre-flight, when applicable. */
   localPackageDir?: string;
 }
@@ -256,7 +254,7 @@ const REPEATED_SIGNAL_FORCE_EXIT_GRACE_MS = 30_000;
  * Install exit/signal handlers that tear down owned isolated environments.
  * On SIGINT/SIGTERM, re-raise with the conventional 128+signal code.
  */
-function installTeardownHandlers(cleanEnv: CleanEnvironment, cloudStackCleanup: ColdCloudStackCleanupRegistry): void {
+function installTeardownHandlers(cleanEnv: CleanEnvironment, cloudChainCleanup: CloudChainCleanupRegistry): void {
   let cleanupStartedAtMs: number | undefined;
   const exitHandler = () => cleanEnv.teardownIfOwned();
   const exitCodeForSignal = (signal: NodeJS.Signals) => (signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 1);
@@ -277,7 +275,10 @@ function installTeardownHandlers(cleanEnv: CleanEnvironment, cloudStackCleanup: 
     }
     cleanupStartedAtMs = Date.now();
     try {
-      const warnings = await cloudStackCleanup.teardownAll();
+      const warnings = await cloudChainCleanup.teardownAll({
+        outcome: 'cancelled',
+        summary: `Interrupted by ${signal}`,
+      });
       for (const warning of warnings) {
         console.warn(`   ⚠ ${warning}`);
       }
@@ -563,8 +564,8 @@ async function runChains(
   cleanEnv: CleanEnvironment,
   packageMetaById: Map<string, PackageMeta> = new Map(),
   cloudAuth?: CloudAuthPolicy,
-  cloudStack?: ColdCloudStackProvisioningConfig,
-  cloudStackCleanup?: ColdCloudStackCleanupRegistry
+  cloudStackPoolManagerConfig?: CloudStackPoolManagerConfig,
+  cloudChainCleanup?: CloudChainCleanupRegistry
 ): Promise<ChainRunOutcome> {
   console.log('\n🎭 Running Playwright tests...\n');
 
@@ -572,6 +573,9 @@ async function runChains(
   let hasAuthExpiry = false;
   const cleanupWarnings: string[] = [];
   const results: GuideRunResult[] = [];
+  const cloudStackPoolManager = cloudStackPoolManagerConfig
+    ? new CloudStackPoolManager(cloudStackPoolManagerConfig, options.verbose)
+    : undefined;
   for (const [chainIndex, chain] of plan.chains.entries()) {
     if (options.clean && chainIndex > 0) {
       console.log(`\n🧹 Resetting docker compose between chains...`);
@@ -587,21 +591,22 @@ async function runChains(
     }
 
     const unsafeCloudGuides = unsafeCloudGuidesInChain(chain, packageMetaById);
-    if (unsafeCloudGuides.length > 0 && !cloudStack) {
+    if (unsafeCloudGuides.length > 0 && !cloudStackPoolManager) {
       const message = unsafeSharedStackMessage(unsafeCloudGuides.map((planned) => planned.id));
       console.log(`\n⊘ Skipping cloud chain: ${message}`);
       results.push(...unsafeSharedStackSkipResults(chain, packageMetaById, message));
       continue;
     }
     let provisionedTargets: Awaited<ReturnType<typeof provisionCloudTargetsForChain>>;
+    let chainHadFailure = false;
     try {
       provisionedTargets = await provisionCloudTargetsForChain({
         targetUrls: cloudTargetsInChain(chain, packageMetaById, cloudAuth),
         cloudAuth,
         chain,
         packageMetaById,
-        cloudStack,
-        cloudStackCleanup,
+        cloudStackPoolManager,
+        cloudChainCleanup,
         verbose: options.verbose,
       });
     } catch (err) {
@@ -619,6 +624,7 @@ async function runChains(
         const blockingDep = planned.dependencies.find((dep) => blocked.has(dep));
         if (blockingDep) {
           blocked.add(planned.id);
+          chainHadFailure = true;
           console.log(`
 📚 ${planned.guide.path}`);
           console.log(`   ⊘ Skipped: prerequisite "${blockingDep}" did not pass`);
@@ -693,6 +699,7 @@ async function runChains(
 
         if (!result.success) {
           allPassed = false;
+          chainHadFailure = true;
           blocked.add(planned.id);
 
           if (result.abortReason === 'AUTH_EXPIRED') {
@@ -710,7 +717,13 @@ async function runChains(
         }
       }
     } finally {
-      cleanupWarnings.push(...(await provisionedTargets.teardownAll()));
+      cleanupWarnings.push(
+        ...(await provisionedTargets.teardownAll({
+          outcome: chainHadFailure ? 'failed' : 'passed',
+          used: true,
+          summary: chainHadFailure ? 'One or more guides failed' : 'Chain completed',
+        }))
+      );
     }
   }
 
@@ -773,11 +786,11 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
   const cloudAuth = createCloudAuthPolicy({
     cloudInstanceAdminTokenSpecs: options.cloudInstanceAdminToken,
   });
-  const cloudStack = createColdCloudStackProvisioningConfig({
-    accessPolicyTokenEnvVar: options.cloudStackAccessPolicyToken,
-    region: options.cloudStackRegion,
-    slugPrefix: options.cloudStackSlugPrefix,
-    pluginVersion: options.cloudStackPluginVersion,
+  const cloudStackPoolManagerConfig = createCloudStackPoolManagerConfig({
+    managerUrl: options.cloudStackPoolManagerUrl,
+    tokenEnvVar: options.cloudStackPoolManagerToken,
+    poolId: options.cloudStackPoolId,
+    maxWaitSeconds: options.cloudStackMaxWaitSeconds,
   });
   const remoteOptions: RemoteResolveOptions = {
     grafanaUrl: options.grafanaUrl,
@@ -785,7 +798,7 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     resolverUrl: options.resolverUrl,
     repoUrl: options.repoUrl,
     cloudUrl: options.cloudUrl,
-    cloudTargetCapabilities: { ...cloudAuth.targets, isolatedStack: Boolean(cloudStack) },
+    cloudTargetCapabilities: { ...cloudAuth.targets, isolatedStack: Boolean(cloudStackPoolManagerConfig) },
   };
   const resolution =
     mode === 'remote-package'
@@ -813,7 +826,7 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     preRunSkipped: resolution.skipped.map(skipToResult),
     packageMetaById: buildPackageMetaMap(loadable),
     cloudAuth,
-    cloudStack,
+    cloudStackPoolManagerConfig,
   };
 }
 
@@ -869,18 +882,24 @@ export const e2eCommand = new Command('e2e')
     `Default cloud instance URL for cloud-tier guides without an instance (default ${DEFAULT_CLOUD_URL})`,
     DEFAULT_CLOUD_URL
   )
+  .option('--cloud-stack-pool-manager-url <url>', 'Pool manager base URL for isolated Grafana Cloud stack leasing')
   .option(
-    '--cloud-stack-access-policy-token <envVar>',
-    'Cloud Access Policy token env var for cold isolated Grafana Cloud stack provisioning'
+    '--cloud-stack-pool-manager-token <envVar>',
+    'Pool manager bearer token env var for isolated Grafana Cloud stack leasing'
   )
-  .option('--cloud-stack-region <region>', 'Grafana Cloud region slug for cold isolated stack provisioning')
-  .option('--cloud-stack-slug-prefix <prefix>', 'Slug prefix for cold-provisioned Grafana Cloud stacks')
-  .option('--cloud-stack-plugin-version <version>', 'Pathfinder plugin version to install on cold-provisioned stacks')
+  .option(
+    '--cloud-stack-pool-id <id>',
+    'Pool manager pool id for isolated Grafana Cloud stack leasing',
+    DEFAULT_CLOUD_STACK_POOL_ID
+  )
+  .option('--cloud-stack-max-wait-seconds <seconds>', 'Maximum wait budget for pool-manager lease requests', (v) =>
+    parseInt(v, 10)
+  )
   .action(async (files: string[], options: E2ECommandOptions) => {
     const cleanEnv = new CleanEnvironment(options.verbose);
-    const cloudStackCleanup = new ColdCloudStackCleanupRegistry();
+    const cloudChainCleanup = new CloudChainCleanupRegistry();
 
-    installTeardownHandlers(cleanEnv, cloudStackCleanup);
+    installTeardownHandlers(cleanEnv, cloudChainCleanup);
     if (options.clean && options.grafanaUrl === DEFAULT_GRAFANA_URL) {
       options.grafanaUrl = CLEAN_GRAFANA_URL;
     }
@@ -898,6 +917,7 @@ export const e2eCommand = new Command('e2e')
       printRunConfiguration(inputs.guides, options, inputs.mode);
 
       const plan = buildExecutionPlan(inputs.guides, options, inputs.repoSource);
+      assertTierHomogeneousChains(plan, inputs.packageMetaById);
 
       await maybeCleanStart(cleanEnv, options);
 
@@ -912,7 +932,7 @@ export const e2eCommand = new Command('e2e')
           plan,
           packageMetaById: inputs.packageMetaById,
           cloudAuth: inputs.cloudAuth,
-          cloudStack: inputs.cloudStack,
+          cloudStackPoolManagerConfig: inputs.cloudStackPoolManagerConfig,
           globalUrl: options.grafanaUrl,
         }),
         inputs.localPackageDir
@@ -924,8 +944,8 @@ export const e2eCommand = new Command('e2e')
         cleanEnv,
         inputs.packageMetaById,
         inputs.cloudAuth,
-        inputs.cloudStack,
-        cloudStackCleanup
+        inputs.cloudStackPoolManagerConfig,
+        cloudChainCleanup
       );
 
       reportResults([...inputs.preRunSkipped, ...outcome.results], options, outcome.cleanupWarnings);

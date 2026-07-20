@@ -23,6 +23,7 @@
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import { StorageEvents } from '../lib/event-names';
 import { learningProgressStorage } from '../lib/user-storage';
+import { logger } from '../lib/logging';
 
 import { getBadgeById, getBadgesToAward } from './badges';
 import { getPathsData } from './paths-data';
@@ -92,7 +93,7 @@ export async function markGuideCompleted(guideId: string): Promise<void> {
       );
     }
   } catch (error) {
-    console.error('Failed to mark guide as completed:', error);
+    logger.error('Failed to mark guide as completed', { error });
     // Still dispatch the event so UI components that wait on completion
     // are not left hanging.
     window.dispatchEvent(

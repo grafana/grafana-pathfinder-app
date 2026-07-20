@@ -16,7 +16,13 @@ import { getStyles } from '../../styles/context-panel.styles';
 import { getSkeletonStyles } from '../../styles/skeleton.styles';
 import { useContextPanel, Recommendation } from '../../context-engine';
 import type { ResolvedNavLink } from '../../types/context.types';
-import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getContentTypeForAnalytics,
+  AnalyticsContentType,
+} from '../../lib/analytics';
+import { logger } from '../../lib/logging';
 import { getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../../constants/testIds';
@@ -24,6 +30,7 @@ import { CustomGuidesSection } from './CustomGuidesSection';
 import { usePublishedGuides, PublishedGuide } from '../../utils/usePublishedGuides';
 import { ContextPanelState, PackageOpenInfo } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
+import { useRecommendationsScrollPosition } from './hooks';
 
 /**
  * Resolve the effective display type for a recommendation.
@@ -36,6 +43,17 @@ const getEffectiveDisplayType = (recommendation: Recommendation): Recommendation
     return getPackageRenderType(recommendation.manifest);
   }
   return recommendation.type;
+};
+
+/** Maps a recommendation's effective display type onto the canonical analytics content_type. */
+const getContentTypeForDisplayType = (displayType: Recommendation['type']): AnalyticsContentType => {
+  if (displayType === 'docs-page') {
+    return AnalyticsContentType.Docs;
+  }
+  if (displayType === 'interactive') {
+    return AnalyticsContentType.InteractiveGuide;
+  }
+  return AnalyticsContentType.LearningJourney;
 };
 
 /** Get icon name based on recommendation type */
@@ -110,7 +128,7 @@ const getRecommendationContentUrl = (recommendation: Recommendation): string => 
   if (recommendation.type === 'package') {
     const url = recommendation.contentUrl ?? '';
     if (!url && process.env.NODE_ENV !== 'production') {
-      console.warn('[context-panel] Package recommendation missing contentUrl:', recommendation.title);
+      logger.warn('[context-panel] Package recommendation missing contentUrl', { title: recommendation.title });
     }
     return url;
   }
@@ -200,7 +218,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     if (this.state.onOpenDocsPage) {
       this.state.onOpenDocsPage(url, title, packageInfo);
     } else {
-      console.warn('No onOpenDocsPage callback available');
+      logger.warn('No onOpenDocsPage callback available');
     }
   }
 
@@ -303,13 +321,15 @@ export const RecommendationsSection = memo(function RecommendationsSection({
             icon="book-open"
             variant="secondary"
             onClick={() => {
-              // Close the extension sidebar
+              // Empty list: unlike the header/footer "my learning" buttons (which
+              // switch to the in-panel recommendations tab), there is nothing to
+              // return to in-panel here, so close the sidebar and open the full
+              // My Learning page instead.
               const appEvents = getAppEvents();
               appEvents.publish({
                 type: 'close-extension-sidebar',
                 payload: {},
               });
-              // Navigate to the home page
               locationService.push(PLUGIN_BASE_URL);
             }}
           >
@@ -410,7 +430,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 content_url: contentUrl,
                                 content_type: getContentTypeForAnalytics(
                                   contentUrl,
-                                  displayType === 'docs-page' ? 'docs' : 'learning-journey'
+                                  getContentTypeForDisplayType(displayType)
                                 ),
                                 interaction_location: 'featured_card_button',
                                 match_accuracy: recommendation.matchAccuracy || 0,
@@ -445,7 +465,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                     content_url: contentUrl,
                                     content_type: getContentTypeForAnalytics(
                                       contentUrl,
-                                      displayType === 'docs-page' ? 'docs' : 'learning-journey'
+                                      getContentTypeForDisplayType(displayType)
                                     ),
                                     action: recommendation.summaryExpanded ? 'collapse' : 'expand',
                                     match_accuracy: recommendation.matchAccuracy || 0,
@@ -565,7 +585,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 reportAppInteraction(UserInteraction.OpenResourceClick, {
                                                   content_title: link.title,
                                                   content_url: link.contentUrl,
-                                                  content_type: 'package-nav-link',
+                                                  content_type: AnalyticsContentType.PackageNavLink,
                                                   interaction_location: 'featured_recommends_section',
                                                 });
                                                 openDocsPage(link.contentUrl, link.title, {
@@ -599,7 +619,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 reportAppInteraction(UserInteraction.OpenResourceClick, {
                                                   content_title: link.title,
                                                   content_url: link.contentUrl,
-                                                  content_type: 'package-nav-link',
+                                                  content_type: AnalyticsContentType.PackageNavLink,
                                                   interaction_location: 'featured_suggests_section',
                                                 });
                                                 openDocsPage(link.contentUrl, link.title, {
@@ -630,7 +650,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                       content_url: contentUrl,
                                       content_type: getContentTypeForAnalytics(
                                         contentUrl,
-                                        displayType === 'docs-page' ? 'docs' : 'learning-journey'
+                                        getContentTypeForDisplayType(displayType)
                                       ),
                                       interaction_location: 'featured_summary_cta_button',
                                       match_accuracy: recommendation.matchAccuracy || 0,
@@ -711,7 +731,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                               content_url: contentUrl,
                               content_type: getContentTypeForAnalytics(
                                 contentUrl,
-                                displayType === 'docs-page' ? 'docs' : 'learning-journey'
+                                getContentTypeForDisplayType(displayType)
                               ),
                               interaction_location: 'main_card_button',
                               match_accuracy: recommendation.matchAccuracy || 0,
@@ -747,7 +767,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                   content_url: contentUrl,
                                   content_type: getContentTypeForAnalytics(
                                     contentUrl,
-                                    displayType === 'docs-page' ? 'docs' : 'learning-journey'
+                                    getContentTypeForDisplayType(displayType)
                                   ),
                                   action: recommendation.summaryExpanded ? 'collapse' : 'expand',
                                   match_accuracy: recommendation.matchAccuracy || 0,
@@ -878,7 +898,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               reportAppInteraction(UserInteraction.OpenResourceClick, {
                                                 content_title: link.title,
                                                 content_url: link.contentUrl,
-                                                content_type: 'package-nav-link',
+                                                content_type: AnalyticsContentType.PackageNavLink,
                                                 interaction_location: 'recommends_section',
                                               });
                                               openDocsPage(link.contentUrl, link.title, {
@@ -912,7 +932,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               reportAppInteraction(UserInteraction.OpenResourceClick, {
                                                 content_title: link.title,
                                                 content_url: link.contentUrl,
-                                                content_type: 'package-nav-link',
+                                                content_type: AnalyticsContentType.PackageNavLink,
                                                 interaction_location: 'suggests_section',
                                               });
                                               openDocsPage(link.contentUrl, link.title, {
@@ -943,7 +963,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                     content_url: contentUrl,
                                     content_type: getContentTypeForAnalytics(
                                       contentUrl,
-                                      displayType === 'docs-page' ? 'docs' : 'learning-journey'
+                                      getContentTypeForDisplayType(displayType)
                                     ),
                                     interaction_location: 'summary_cta_button',
                                     match_accuracy: recommendation.matchAccuracy || 0,
@@ -1019,11 +1039,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 content_url: contentUrl,
                                 content_type: getContentTypeForAnalytics(
                                   contentUrl,
-                                  displayType === 'docs-page'
-                                    ? 'docs'
-                                    : displayType === 'interactive'
-                                      ? 'interactive'
-                                      : 'learning-journey'
+                                  getContentTypeForDisplayType(displayType)
                                 ),
                                 interaction_location: 'other_docs_list',
                                 match_accuracy: item.matchAccuracy || 0,
@@ -1078,6 +1094,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const {
     contextData,
     isLoadingRecommendations,
+    hasFetchedRecommendations,
     otherDocsExpanded,
     openLearningJourney,
     openDocsPage,
@@ -1087,7 +1104,11 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     onOpenLearningJourney: model.state.onOpenLearningJourney,
     onOpenDocsPage: model.state.onOpenDocsPage,
   });
-  const { guides: customGuides, isLoading: isLoadingCustomGuides } = usePublishedGuides();
+  const {
+    guides: customGuides,
+    isLoading: isLoadingCustomGuides,
+    hasLoaded: hasLoadedCustomGuides,
+  } = usePublishedGuides();
   const [customGuidesExpanded, setCustomGuidesExpanded] = useState(true);
   const [suggestedGuidesExpanded, setSuggestedGuidesExpanded] = useState(true);
 
@@ -1106,9 +1127,23 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     recommendations.length > 0 &&
     !configWithDefaults.acceptedTermsAndConditions;
 
+  const recommendationsScrollReady =
+    !contextData.isLoading && !isLoadingRecommendations && hasFetchedRecommendations && hasLoadedCustomGuides;
+  const scrollContainerRef = useRecommendationsScrollPosition(recommendationsScrollReady);
+
+  // Signals docs-panel's panel_lcp_ms that recommendations are actually
+  // showing (reuses the same readiness the scroll-position hook uses).
+  // Written to scene state — a replayable observable the parent reads on
+  // any render, so it survives this renderer remounting on tab changes.
+  useEffect(() => {
+    if (recommendationsScrollReady && !model.state.recommendationsReady) {
+      model.setState({ recommendationsReady: true });
+    }
+  }, [recommendationsScrollReady, model]);
+
   return (
     <div className={styles.container} data-testid={testIds.contextPanel.container}>
-      <div className={styles.content}>
+      <div className={styles.content} ref={scrollContainerRef} data-testid={testIds.contextPanel.scrollContainer}>
         <div className={styles.contextSections}>
           {/* User profile bar with learning stats and next action */}
           <UserProfileBar onOpenGuide={openLearningJourney} />

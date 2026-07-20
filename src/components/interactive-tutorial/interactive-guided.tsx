@@ -12,6 +12,7 @@ import {
   type DetectedActionEvent,
 } from '../../interactive-engine';
 import { waitForReactUpdates } from '../../lib/async-utils';
+import { logger } from '../../lib/logging';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
@@ -350,6 +351,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             return false;
           } else if (result === 'cancelled') {
             return false;
+          } else if (result === 'error') {
+            setFailedStepIndex(i);
+            setExecutionError(`Step ${i + 1} failed. Click "Retry" to try again.`);
+            return false;
           }
         }
 
@@ -368,7 +373,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
         return true;
       } catch (error) {
-        console.error(`Guided execution failed: ${stepId}`, error);
+        logger.error(`Guided execution failed: ${stepId}`, { error });
         const errorMessage = error instanceof Error ? error.message : 'Guided execution failed';
         setExecutionError(errorMessage);
         return false;
@@ -476,7 +481,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           }
         } catch (error) {
           // Element resolution failed, fall back to selector-based matching
-          console.warn('Failed to resolve target element for coordinate matching:', error);
+          logger.warn('Failed to resolve target element for coordinate matching', { error });
         }
 
         // Check if action matches (with coordinate support)
@@ -1021,15 +1026,16 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               </span>
               <span className="interactive-guided-completed-text">Completed</span>
             </div>
-            <button
-              className="interactive-guided-redo-btn"
+            <Button
+              size="sm"
+              variant="secondary"
               onClick={handleStepRedo}
               disabled={disabled || isAnyActionRunning}
               data-testid={testIds.interactive.redoButton(renderedStepId)}
               title="Redo this guided tour"
             >
               ↻ Redo
-            </button>
+            </Button>
           </div>
         )}
       </div>

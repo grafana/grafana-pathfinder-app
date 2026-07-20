@@ -10,6 +10,7 @@ import {
   isRecommenderEnabled,
   DocsPluginConfig,
   DEFAULT_RECOMMENDER_TIMEOUT,
+  ONLINE_PACKAGES_BOOT_BUDGET_MS,
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: context-engine -> docs-retrieval
@@ -21,7 +22,14 @@ import {
   derivePathSlug,
 } from '../docs-retrieval';
 import { interactiveCompletionStorage } from '../lib/user-storage';
-import { hashUserData } from '../lib/hash.util';
+import { logger } from '../lib/logging';
+import { withTimeout } from '../lib/async-utils';
+import {
+  buildTelemetryIdentity,
+  recordRecommenderFallback,
+  recordRecommenderRequest,
+  type RecommenderOutcome,
+} from '../lib/telemetry';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
 import {
@@ -54,6 +62,10 @@ const SUPPORTED_MATCH_PREDICATE_KEYS: ReadonlySet<string> = new Set([
   'and',
   'or',
 ]);
+
+// Sentinel used to tell an expected boot-budget timeout apart from real
+// failures in getOnlinePackageRecommendations' catch.
+export const ONLINE_PACKAGES_TIMEOUT_MESSAGE = 'Online package recommendations timed out; continuing without them';
 
 export class ContextService {
   // Error handling state
@@ -168,8 +180,11 @@ export class ContextService {
       if (!isRecommenderEnabled(pluginConfig)) {
         // When the recommender is disabled, OSS users with internet access can
         // still see guides authored on the public CDN. The fetch is gated on
-        // navigator.onLine and goes sticky-disabled on the first failure, so
-        // air-gapped installs make at most one attempt per session.
+        // navigator.onLine, goes sticky-disabled on the first failure (so
+        // air-gapped installs make at most one attempt per session), and the
+        // wait is capped so a cold backend cache never holds bundled
+        // recommendations hostage — a timed-out fetch keeps running and the
+        // next recommendations cycle picks its result up from the cache.
         const onlinePackageRecommendations = await this.getOnlinePackageRecommendations(contextData);
         const merged = [...bundledRecommendations, ...onlinePackageRecommendations];
         const fallbackResult = await this.getFallbackRecommendations(contextData, merged);
@@ -188,7 +203,11 @@ export class ContextService {
       // Always try external recommendations when T&C are enabled, regardless of previous errors
       return this.getExternalRecommendations(contextData, pluginConfig, bundledRecommendations);
     } catch (error) {
-      console.warn('Failed to fetch recommendations:', error);
+      logger.exception(error, {
+        source: 'fetchRecommendations',
+        platform: this.getCurrentPlatform(),
+        timeout_ms: DEFAULT_RECOMMENDER_TIMEOUT,
+      });
       const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData, pluginConfig);
       const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
       return {
@@ -231,7 +250,7 @@ export class ContextService {
     const parsedUrl = parseUrlSafely(url);
 
     if (!parsedUrl) {
-      console.error('Invalid recommender service URL');
+      logger.error('Invalid recommender service URL');
       return false;
     }
 
@@ -243,7 +262,7 @@ export class ContextService {
 
     // Production: Require HTTPS
     if (parsedUrl.protocol !== 'https:') {
-      console.error('Recommender service URL must use HTTPS (dev mode disabled)');
+      logger.error('Recommender service URL must use HTTPS (dev mode disabled)');
       return false;
     }
 
@@ -253,7 +272,7 @@ export class ContextService {
     });
 
     if (!isAllowedDomain) {
-      console.error('Recommender service domain not in allowlist');
+      logger.error('Recommender service domain not in allowlist');
       return false;
     }
 
@@ -274,17 +293,32 @@ export class ContextService {
     errorType: 'unavailable' | 'rate-limit' | 'other' | null;
     usingFallbackRecommendations: boolean;
   }> {
+    const recommenderStart = performance.now();
+    // One request settles telemetry exactly once — post-parse processing can
+    // still throw into the fail path after a successful fetch.
+    let telemetrySettled = false;
+    const settleTelemetry = (outcome: RecommenderOutcome, durationMs: number) => {
+      if (telemetrySettled) {
+        return;
+      }
+      telemetrySettled = true;
+      recordRecommenderRequest(durationMs, outcome);
+      if (outcome !== 'ok') {
+        // The fallback always merges bundled + static-link recommendations;
+        // there is no finer tier to distinguish once the recommender failed.
+        recordRecommenderFallback(outcome, 'bundled+static');
+      }
+    };
+    const fail = (errorType: 'unavailable' | 'rate-limit' | 'other', errorMessage: string) => {
+      settleTelemetry(errorType, performance.now() - recommenderStart);
+      return this.handleRecommenderError(errorType, errorMessage, contextData, bundledRecommendations);
+    };
     try {
       const configWithDefaults = getConfigWithDefaults(pluginConfig);
 
       // SECURITY: Validate recommender service URL before making request
       if (!this.validateRecommenderUrl(configWithDefaults.recommenderServiceUrl)) {
-        return this.handleRecommenderError(
-          'other',
-          'Recommender service URL failed security validation',
-          contextData,
-          bundledRecommendations
-        );
+        return fail('other', 'Recommender service URL failed security validation');
       }
 
       const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
@@ -307,29 +341,22 @@ export class ContextService {
 
           return hostname;
         } catch (error) {
-          console.warn('Failed to extract/hash source:', error);
+          logger.warn('Failed to extract/hash source', { error });
           return undefined;
         }
       };
 
       const hashedSource = await getHashedSource();
 
-      // Get user data for hashing
-      const userId = isCloud ? config.bootData.user.analytics.identifier || 'unknown' : 'oss-user';
-      const userEmail = isCloud
-        ? config.bootData.user.email || 'unknown@example.com' // Cloud users: use real email or unknown for anonymous
-        : 'oss-user@example.com'; // OSS users: always use generic OSS email
-
-      // Hash sensitive user data
-      const { hashedUserId, hashedEmail } = await hashUserData(userId, userEmail);
+      const identity = await buildTelemetryIdentity();
 
       const payload: ContextPayload = {
         path: contextData.currentPath,
         datasources: [...new Set(contextData.dataSources.map((ds) => ds.type.toLowerCase()))],
         tags: contextData.tags,
-        user_id: hashedUserId,
-        user_email: hashedEmail,
-        user_role: config.bootData.user.orgRole || 'Viewer',
+        user_id: identity.userIdHash,
+        user_email: identity.emailHash,
+        user_role: identity.orgRole,
         platform: this.getCurrentPlatform(),
         source: hashedSource,
         language: this.getCurrentLanguage(),
@@ -352,33 +379,21 @@ export class ContextService {
         if (!response.ok) {
           // Handle specific HTTP error codes
           if (response.status === 404) {
-            return this.handleRecommenderError(
-              'unavailable',
-              'Recommender service not found',
-              contextData,
-              bundledRecommendations
-            );
+            return fail('unavailable', 'Recommender service not found');
           }
 
           if (response.status === 429) {
-            return this.handleRecommenderError(
-              'rate-limit',
-              'Recommender service is under strain',
-              contextData,
-              bundledRecommendations
-            );
+            return fail('rate-limit', 'Recommender service is under strain');
           }
 
           // Handle other HTTP errors
-          return this.handleRecommenderError(
-            'other',
-            `HTTP error! status: ${response.status}`,
-            contextData,
-            bundledRecommendations
-          );
+          return fail('other', `HTTP error! status: ${response.status}`);
         }
 
         const data: V1RecommenderResponse = await response.json();
+        // Captured here (processLearningJourneys does its own fetches, which
+        // would skew ok durations) but only emitted once processing succeeds.
+        const okDurationMs = performance.now() - recommenderStart;
 
         const mappedExternalRecommendations = (data.recommendations ?? []).map((rec) =>
           this.sanitizeV1Recommendation(rec)
@@ -416,6 +431,8 @@ export class ContextService {
         // Clear any previous errors on successful call
         this.lastExternalRecommenderError = null;
 
+        settleTelemetry('ok', okDurationMs);
+
         return {
           recommendations: sortedRecommendations,
           featuredRecommendations: this.injectHighlightedGuide(
@@ -432,12 +449,7 @@ export class ContextService {
 
         // Handle AbortError (timeout)
         if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-          return this.handleRecommenderError(
-            'unavailable',
-            'Recommender service timeout',
-            contextData,
-            bundledRecommendations
-          );
+          return fail('unavailable', 'Recommender service timeout');
         }
 
         // Handle network errors (CORS, network failures, etc.)
@@ -449,21 +461,15 @@ export class ContextService {
           errorMessage.includes('NetworkError') ||
           errorMessage.includes('Failed to fetch')
         ) {
-          return this.handleRecommenderError(
-            'unavailable',
-            'Recommender service unavailable',
-            contextData,
-            bundledRecommendations
-          );
+          return fail('unavailable', 'Recommender service unavailable');
         }
 
         // Handle other errors
-        return this.handleRecommenderError('other', errorMessage, contextData, bundledRecommendations);
+        return fail('other', errorMessage);
       }
     } catch (error) {
       // Handle outer errors (hashing, payload construction, etc.)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      return this.handleRecommenderError('other', errorMessage, contextData, bundledRecommendations);
+      return fail('other', error instanceof Error ? error.message : 'Unknown error');
     }
   }
 
@@ -863,7 +869,7 @@ export class ContextService {
               completionPercentage,
             };
           } catch (error) {
-            console.warn(`Failed to fetch journey data for ${sanitizeForLogging(rec.title)}:`, error);
+            logger.warn(`Failed to fetch journey data for ${sanitizeForLogging(rec.title)}`, { error });
             return {
               ...rec,
               totalSteps: 0,
@@ -1010,7 +1016,7 @@ export class ContextService {
       const language = config.bootData.user.language;
       return language;
     } catch (error) {
-      console.warn('Failed to get current language:', error);
+      logger.warn('Failed to get current language', { error });
       return 'en-US';
     }
   }
@@ -1023,7 +1029,7 @@ export class ContextService {
       const dataSources = await getBackendSrv().get('/api/datasources');
       return dataSources || [];
     } catch (error) {
-      console.warn('Failed to fetch data sources:', error);
+      logger.warn('Failed to fetch data sources', { error });
       return [];
     }
   }
@@ -1036,7 +1042,7 @@ export class ContextService {
       const plugins = await getBackendSrv().get('/api/plugins');
       return plugins || [];
     } catch (error) {
-      console.warn('Failed to fetch plugins:', error);
+      logger.warn('Failed to fetch plugins', { error });
       return [];
     }
   }
@@ -1054,7 +1060,7 @@ export class ContextService {
       });
       return dashboards || [];
     } catch (error) {
-      console.warn('Failed to fetch dashboards:', error);
+      logger.warn('Failed to fetch dashboards', { error });
       return [];
     }
   }
@@ -1079,7 +1085,7 @@ export class ContextService {
       }
       return null;
     } catch (error) {
-      console.warn('Failed to fetch dashboard info:', error);
+      logger.warn('Failed to fetch dashboard info', { error });
       return null;
     }
   }
@@ -1393,11 +1399,11 @@ export class ContextService {
             });
           }
         } catch (error) {
-          console.warn(`Failed to load static links file ${filename}:`, error);
+          logger.warn(`Failed to load static links file ${filename}`, { error });
         }
       }
     } catch (error) {
-      console.warn('Failed to load static link recommendations:', error);
+      logger.warn('Failed to load static link recommendations', { error });
     }
 
     return staticRecommendations;
@@ -1648,7 +1654,15 @@ export class ContextService {
    */
   private static async getOnlinePackageRecommendations(contextData: ContextData): Promise<Recommendation[]> {
     try {
-      const { baseUrl, packages } = await fetchOnlinePackageRecommendations();
+      // The race abandons the await, not the request: the client's shared
+      // in-flight promise keeps running and populates its module cache, and
+      // its sticky `unavailable` flag is untouched by a timeout — so the next
+      // recommendations cycle returns the packages instantly.
+      const { baseUrl, packages } = await withTimeout(
+        fetchOnlinePackageRecommendations(),
+        ONLINE_PACKAGES_BOOT_BUDGET_MS,
+        ONLINE_PACKAGES_TIMEOUT_MESSAGE
+      );
       if (!packages.length) {
         return [];
       }
@@ -1685,9 +1699,14 @@ export class ContextService {
         };
       });
     } catch (error) {
+      if (error instanceof Error && error.message === ONLINE_PACKAGES_TIMEOUT_MESSAGE) {
+        // Expected on a cold backend cache or slow CDN — not a failure.
+        console.info(ONLINE_PACKAGES_TIMEOUT_MESSAGE);
+        return [];
+      }
       // The client itself never throws, but guard against future regressions
       // — a failure here must not break the bundled flow.
-      console.warn('Failed to load online package recommendations:', error);
+      logger.warn('Failed to load online package recommendations', { error });
       return [];
     }
   }
@@ -1750,7 +1769,7 @@ export class ContextService {
         bundledRecommendations.push(...recommendations);
       }
     } catch (error) {
-      console.warn('Failed to load bundled interactives index.json:', error);
+      logger.warn('Failed to load bundled interactives index.json', { error });
       // Fallback to empty array - no bundled interactives will be shown
     }
 

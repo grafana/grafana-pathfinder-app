@@ -1,6 +1,4 @@
 import { AppRootProps, GrafanaTheme2 } from '@grafana/data';
-// TODO: Re-enable Faro once collector CORS is configured correctly
-// import { faro } from '@grafana/faro-react';
 import React, { useMemo, useEffect, Component, ReactNode } from 'react';
 import { SceneApp } from '@grafana/scenes';
 import { Button, useStyles2 } from '@grafana/ui';
@@ -13,6 +11,7 @@ import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
 import { onPluginStart } from '../../context-engine';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
+import { pauseFaroBeforeReload, pushFaroError } from '../../lib/faro';
 
 /**
  * Error Boundary to catch render errors in the plugin tree (R6)
@@ -21,7 +20,6 @@ import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
-  errorInfo: React.ErrorInfo | null;
 }
 
 // eslint-disable-next-line no-restricted-syntax -- Error boundaries require componentDidCatch (no hook equivalent)
@@ -29,7 +27,6 @@ class PluginErrorBoundary extends Component<{ children: ReactNode }, ErrorBounda
   state: ErrorBoundaryState = {
     hasError: false,
     error: null,
-    errorInfo: null,
   };
 
   static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
@@ -37,25 +34,17 @@ class PluginErrorBoundary extends Component<{ children: ReactNode }, ErrorBounda
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // eslint-disable-next-line no-console -- local debug output; pushFaroError below already reports to Faro
     console.error('Pathfinder plugin error:', error, errorInfo);
-    this.setState({ errorInfo });
 
-    // TODO: Re-enable Faro once collector CORS is configured correctly
-    // Report error to Faro if available
-    // try {
-    //   faro.api?.pushError(error, {
-    //     context: {
-    //       componentStack: errorInfo.componentStack ?? 'unknown',
-    //       source: 'PluginErrorBoundary',
-    //     },
-    //   });
-    // } catch {
-    //   // Faro may not be initialized, ignore silently
-    // }
+    pushFaroError(error, {
+      componentStack: errorInfo.componentStack ?? 'unknown',
+      source: 'PluginErrorBoundary',
+    });
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: null, errorInfo: null });
+    this.setState({ hasError: false, error: null });
   };
 
   render() {
@@ -84,7 +73,14 @@ function ErrorFallback({ error, onReset }: { error: Error | null; onReset: () =>
           <Button variant="primary" onClick={onReset} data-testid={testIds.app.errorTryAgain}>
             Try Again
           </Button>
-          <Button variant="secondary" onClick={() => window.location.reload()} data-testid={testIds.app.errorRefresh}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              pauseFaroBeforeReload();
+              window.location.reload();
+            }}
+            data-testid={testIds.app.errorRefresh}
+          >
             Refresh Page
           </Button>
         </div>

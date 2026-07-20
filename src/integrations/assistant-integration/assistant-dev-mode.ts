@@ -10,6 +10,9 @@
  * - useInlineAssistant() returns a mock that logs instead of generating
  *
  * This allows developers to test the text selection and popover UI locally.
+ *
+ * Dumps go through logger.debug (console-only): prompt/context/systemPrompt
+ * must never reach Faro-backed log levels, which ship to remote telemetry.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -22,6 +25,7 @@ import {
   type InlineAssistantResult,
 } from '@grafana/assistant';
 import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
+import { logger } from '../../lib/logging';
 
 // Create a persistent BehaviorSubject for mock availability
 // This ensures the mock stays active and doesn't get overridden
@@ -44,12 +48,12 @@ const getMockOpenAssistant = (props: {
   context?: ChatContextItem[];
   autoSend?: boolean;
 }): void => {
-  console.warn('=== Assistant Dev Mode ===');
-  console.warn('Origin:', props.origin);
-  console.warn('Prompt:', props.prompt || '(no prompt)');
-  console.warn('AutoSend:', props.autoSend ?? true);
-  console.warn('Context:', props.context);
-  console.warn('=========================');
+  logger.debug('=== Assistant Dev Mode ===');
+  logger.debug('Origin', { origin: props.origin });
+  logger.debug('Prompt', { prompt: props.prompt || '(no prompt)' });
+  logger.debug('AutoSend', { autoSend: props.autoSend ?? true });
+  logger.debug('Context', { context: props.context });
+  logger.debug('=========================');
 };
 
 /**
@@ -105,11 +109,11 @@ export const useMockInlineAssistant = (): InlineAssistantResult => {
   const [error, setError] = useState<Error | null>(null);
 
   const generate = useCallback(async (options: InlineAssistantOptions) => {
-    console.warn('=== Inline Assistant Dev Mode ===');
-    console.warn('Origin:', options.origin);
-    console.warn('Prompt:', options.prompt);
-    console.warn('System Prompt:', options.systemPrompt || '(none)');
-    console.warn('=====================================');
+    logger.debug('=== Inline Assistant Dev Mode ===');
+    logger.debug('Origin', { origin: options.origin });
+    logger.debug('Prompt', { prompt: options.prompt });
+    logger.debug('System Prompt', { systemPrompt: options.systemPrompt || '(none)' });
+    logger.debug('=====================================');
 
     // Set isGenerating to true at the start
     setIsGenerating(true);
@@ -143,12 +147,12 @@ export const useMockInlineAssistant = (): InlineAssistantResult => {
   }, []);
 
   const cancel = useCallback(() => {
-    console.warn('[Dev Mode] Cancel called');
+    logger.debug('[Dev Mode] Cancel called');
     setIsGenerating(false);
   }, []);
 
   const reset = useCallback(() => {
-    console.warn('[Dev Mode] Reset called');
+    logger.debug('[Dev Mode] Reset called');
     setIsGenerating(false);
     setContent('');
     setError(null);

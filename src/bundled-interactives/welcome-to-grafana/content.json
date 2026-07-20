@@ -5,7 +5,7 @@
   "blocks": [
     {
       "type": "markdown",
-      "content": "# Welcome to Grafana!\n\nWelcome to your Grafana journey! In this interactive guide, we'll take you on a tour of key locations in Grafana. By the end, you'll be familiar with:\n\n- Navigating Grafana's main sections\n- Understanding the key areas: Dashboards, Data Sources, Explore, and Alerting\n- Finding your way around the interface"
+      "content": "Welcome to your Grafana journey! In this interactive guide, we'll take you on a tour of key locations in Grafana. By the end, you'll be familiar with:\n\n- Navigating Grafana's main sections\n- Understanding the key areas: Dashboards, Data Sources, Explore, and Alerting\n- Finding your way around the interface"
     },
     {
       "type": "markdown",

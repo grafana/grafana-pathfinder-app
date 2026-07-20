@@ -1,3 +1,5 @@
+import { logger } from '../lib/logging';
+
 export function resolveRelativeUrls(html: string, baseUrl: string): string {
   try {
     if (!baseUrl) {
@@ -30,7 +32,7 @@ export function resolveRelativeUrls(html: string, baseUrl: string): string {
             const resolvedUrl = new URL(attrValue, baseUrlObj).href;
             element.setAttribute(attr, resolvedUrl);
           } catch (urlError) {
-            console.warn(`Failed to resolve URL: ${attrValue}`, urlError);
+            logger.warn(`Failed to resolve URL: ${attrValue}`, { urlError });
           }
         }
       });
@@ -41,7 +43,7 @@ export function resolveRelativeUrls(html: string, baseUrl: string): string {
     }
     return doc.documentElement.outerHTML;
   } catch (error) {
-    console.warn('Failed to resolve relative URLs in content:', error);
+    logger.warn('Failed to resolve relative URLs in content', { error });
     return html;
   }
 }

@@ -22,6 +22,7 @@ import type { ManifestJson } from '../../types/package.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
 import { StorageKeys } from '../../lib/storage-keys';
+import { logger } from '../../lib/logging';
 
 const PR_URL_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_URL;
 const SELECTED_FILE_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_SELECTED_FILE;
@@ -293,7 +294,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         // this block must still flip us out of the loading state or path mode
         // is stranded on "Loading…" with no recovery.
         if (!cancelled && !controller.signal.aborted) {
-          console.error('[PrTester] PR metadata preload failed', error);
+          logger.error('[PrTester] PR metadata preload failed', { error });
           setAllManifests(new Map());
           setPrContentById(new Map());
         }

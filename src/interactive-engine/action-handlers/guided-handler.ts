@@ -1,7 +1,17 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import { querySelectorAllEnhanced, findButtonByText, isElementVisible, resolveSelector } from '../../lib/dom';
+import {
+  describeElement,
+  querySelectorAllEnhanced,
+  findButtonByText,
+  isElementVisible,
+  resolveSelector,
+} from '../../lib/dom';
+import { logger } from '../../lib/logging';
+import { withFaroUserAction } from '../../lib/faro';
+import { createInteractionName, UserInteraction } from '../../lib/analytics';
+import { type CompletionResult, outcomeFromCompletionResult } from '../outcome-classifier';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { GuidedAction } from '../../types/interactive-actions.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
@@ -9,7 +19,7 @@ import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 import { matchFormValue } from '../auto-completion/action-matcher';
 import { applyE2ECommentBoxAttributes } from '../e2e-attributes';
 
-type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped';
+export type { CompletionResult };
 
 /**
  * Handler for guided interactions where users manually perform actions
@@ -77,6 +87,27 @@ export class GuidedHandler {
     stepIndex: number,
     totalSteps: number,
     timeout: number = INTERACTIVE_CONFIG.guided.stepTimeout
+  ): Promise<CompletionResult> {
+    return withFaroUserAction(
+      createInteractionName(UserInteraction.DoItButtonClick),
+      {
+        target_action: action.targetAction,
+        ref_target: action.refTarget ?? '',
+        step_index: stepIndex,
+        total_steps: totalSteps,
+      },
+      () => this.runGuidedStep(action, stepIndex, totalSteps, timeout),
+      // Internal waits are bounded by `timeout`; the margin only catches a hung step.
+      timeout + 10_000,
+      { critical: true, outcomeFrom: outcomeFromCompletionResult }
+    );
+  }
+
+  private async runGuidedStep(
+    action: GuidedAction,
+    stepIndex: number,
+    totalSteps: number,
+    timeout: number
   ): Promise<CompletionResult> {
     // Clean up any stale listeners from previous cancelled sessions
     // This prevents interference when user cancels mid-session and restarts
@@ -167,10 +198,11 @@ export class GuidedHandler {
 
       return result;
     } catch (error) {
-      console.error(`Guided step ${stepIndex + 1} failed:`, error);
+      logger.error(`Guided step ${stepIndex + 1} failed`, { error });
       // Clean up abort controller and listeners on error to prevent resource leaks
       this.cancel();
-      return 'cancelled';
+      // An exception is an action failure, not a user cancellation.
+      return 'error';
     }
   }
 
@@ -364,7 +396,12 @@ export class GuidedHandler {
         }
 
         if (remaining <= 0) {
-          console.error(`Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`);
+          logger.error(`Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`, {
+            selector,
+            action_type: actionType,
+            attempt_count: attemptCount,
+            elapsed_ms: elapsed,
+          });
           throw error;
         }
         // Wait before retrying, but don't exceed timeout
@@ -419,12 +456,12 @@ export class GuidedHandler {
 
           if (targetElements.length > 0) {
             if (targetElements.length > 1) {
-              console.warn(`Multiple buttons found matching selector: ${resolvedSelector}, using first button`);
+              logger.warn(`Multiple buttons found matching selector: ${resolvedSelector}, using first button`);
             }
             return targetElements[0]!;
           }
         } catch (error) {
-          console.warn(`Button selector matching failed for "${resolvedSelector}", trying text match:`, error);
+          logger.warn(`Button selector matching failed for "${resolvedSelector}", trying text match`, { error });
         }
       }
 
@@ -433,13 +470,13 @@ export class GuidedHandler {
         targetElements = findButtonByText(resolvedSelector);
         if (targetElements.length > 0) {
           if (targetElements.length > 1) {
-            console.warn(`Multiple buttons found matching text: ${resolvedSelector}, using first button`);
+            logger.warn(`Multiple buttons found matching text: ${resolvedSelector}, using first button`);
           }
           return targetElements[0]!;
         }
       } catch (error) {
         // Fall through to enhanced selector as last resort
-        console.warn(`findButtonByText failed for "${resolvedSelector}", trying enhanced selector:`, error);
+        logger.warn(`findButtonByText failed for "${resolvedSelector}", trying enhanced selector`, { error });
       }
     }
 
@@ -453,7 +490,7 @@ export class GuidedHandler {
 
       if (formElements.length > 0) {
         if (formElements.length > 1) {
-          console.warn(`Multiple form elements found matching selector: ${resolvedSelector}, using first element`);
+          logger.warn(`Multiple form elements found matching selector: ${resolvedSelector}, using first element`);
         }
         return formElements[0]!;
       }
@@ -477,7 +514,7 @@ export class GuidedHandler {
     }
 
     if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
+      logger.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
     }
 
     return targetElements[0]!;
@@ -489,7 +526,7 @@ export class GuidedHandler {
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
     // Validate visibility before interaction
     if (!isElementVisible(targetElement)) {
-      console.warn('Target element is not visible:', targetElement);
+      logger.warn('Target element is not visible', { targetElement: describeElement(targetElement) });
       // Continue anyway (non-breaking)
     }
 

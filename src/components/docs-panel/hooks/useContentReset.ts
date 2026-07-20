@@ -14,8 +14,10 @@ import {
   reportAppInteraction,
   UserInteraction,
   getContentTypeForAnalytics,
+  tabTypeToContentType,
   enrichWithStepContext,
 } from '../../../lib/analytics';
+import { logger } from '../../../lib/logging';
 import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
 import { StorageEvents } from '../../../lib/event-names';
 import { evictContentCache } from '../../../global-state/completion-store';
@@ -48,7 +50,7 @@ export function useContentReset({ model }: UseContentResetOptions) {
           UserInteraction.ResetProgressClick,
           enrichWithStepContext({
             content_url: analyticsUrl,
-            content_type: getContentTypeForAnalytics(analyticsUrl, activeTab?.type || 'docs'),
+            content_type: getContentTypeForAnalytics(analyticsUrl, tabTypeToContentType(activeTab?.type)),
             interaction_location: 'docs_content_meta_header',
           })
         );
@@ -83,7 +85,7 @@ export function useContentReset({ model }: UseContentResetOptions) {
         model._recordAutoLaunchSource('internal_reload');
         await model.loadTab(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
       } catch (error) {
-        console.error('[DocsPanel] Failed to reset guide progress:', error);
+        logger.error('[DocsPanel] Failed to reset guide progress', { error });
         getAppEvents().publish({
           type: 'alert-error',
           payload: [

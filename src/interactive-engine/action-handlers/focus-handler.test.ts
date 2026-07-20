@@ -8,6 +8,12 @@ import * as elementValidator from '../../lib/dom';
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
 jest.mock('../../lib/dom');
+// Keep the real @grafana/runtime module graph out of this suite: it transitively
+// loads prismjs, whose auto-highlight callback calls the document.querySelectorAll
+// stubbed below and chokes on the mock elements it returns.
+jest.mock('@grafana/runtime', () => ({
+  config: { buildInfo: { version: '1.0' } },
+}));
 
 const mockStateManager = {
   setState: jest.fn(),
@@ -46,6 +52,7 @@ jest.mock('../../lib/dom', () => ({
     originalSelector: selector,
   })),
   isElementVisible: jest.fn(),
+  describeElement: jest.fn(() => 'element'),
   resolveSelector: jest.fn((selector: string) => selector), // Pass through selector as-is for tests
 }));
 
@@ -150,7 +157,7 @@ describe('FocusHandler', () => {
 
       await focusHandler.execute(mockData, false);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Target element is not visible:', mockElements[0]!);
+      expect(mockConsoleWarn).toHaveBeenCalledWith('Target element is not visible', { element: 'element' });
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalled();
       expect(mockNavigationManager.highlightWithComment).toHaveBeenCalled();
     });
@@ -160,7 +167,7 @@ describe('FocusHandler', () => {
 
       await focusHandler.execute(mockData, true);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Target element is not visible:', mockElements[0]!);
+      expect(mockConsoleWarn).toHaveBeenCalledWith('Target element is not visible', { element: 'element' });
       expect(mockElements[0]!.click).toHaveBeenCalled();
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
     });

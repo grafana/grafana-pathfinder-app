@@ -8,6 +8,7 @@
 
 import { collectKeysByPrefix } from '../../lib/storage/key-utils';
 import { StorageKeys } from '../../lib/storage-keys';
+import { logger } from '../../lib/logging';
 import {
   setFlagOverride,
   removeFlagOverride,
@@ -54,7 +55,9 @@ export function createExperimentDebugger(config: HighlightedGuideConfig): void {
 
     setOverride: (flagName: string, value: unknown) => {
       if (!(flagName in pathfinderFeatureFlags)) {
-        console.warn(`[Pathfinder] Unknown flag '${flagName}'. Known flags:`, Object.keys(pathfinderFeatureFlags));
+        logger.warn(`[Pathfinder] Unknown flag '${flagName}'. Known flags`, {
+          knownFlags: Object.keys(pathfinderFeatureFlags),
+        });
       }
       setFlagOverride(flagName, value);
       console.log(`[Pathfinder] Override set for '${flagName}':`, value);

@@ -51,6 +51,7 @@ The Block Editor exists to:
 
 - **Auto-save**: State persists to localStorage automatically
 - **Crash Recovery**: Recover work after browser refresh
+- **View state**: View mode (Edit/Preview/JSON) and unapplied JSON drafts survive panel remounts, page reloads, and browser restarts. Persisted drafts are removed after successfully leaving JSON mode or replacing the current guide
 - **Multi-guide Support**: Work on multiple guides independently
 
 ## Architecture
@@ -114,6 +115,7 @@ Custom hooks for separating concerns:
 - `useJsonModeHandlers.ts` - JSON import/export
 - `useBlockConversionHandlers.ts` - Block type conversion
 - `useGuideOperations.ts` - Guide-level operations
+- `useBackendSaveFlow.ts` - Backend draft/publish/unpublish orchestration
 
 ### Services Directory
 

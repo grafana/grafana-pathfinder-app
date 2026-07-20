@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "2.13.1",
+  "version": "2.14.2",
   "bin": {
     "pathfinder-cli": "./dist/cli/cli/index.js"
   },
@@ -99,7 +99,7 @@
     "swc-loader": "^0.2.7",
     "terser-webpack-plugin": "^5.6.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.3",
     "webpack": "^5.108.4",
     "webpack-cli": "^7.2.1",
     "webpack-livereload-plugin": "^3.0.2",
@@ -117,8 +117,8 @@
     "@emotion/css": "^11.13.5",
     "@grafana/assistant": "^0.1.25",
     "@grafana/data": "13.1.0",
-    "@grafana/faro-react": "^2.8.2",
-    "@grafana/faro-web-tracing": "^2.8.2",
+    "@grafana/e2e-selectors": "13.1.0",
+    "@grafana/faro-web-sdk": "^2.8.2",
     "@grafana/i18n": "13.1.0",
     "@grafana/runtime": "13.1.0",
     "@grafana/scenes": "^8.0.0",
@@ -168,5 +168,5 @@
   "lint-staged": {
     "*.{ts,tsx,js,json,yaml,md}": "prettier --config .prettierrc.js --write"
   },
-  "packageManager": "npm@11.18.0"
+  "packageManager": "npm@12.0.1"
 }

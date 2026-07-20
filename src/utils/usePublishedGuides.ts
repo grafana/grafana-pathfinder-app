@@ -19,6 +19,7 @@ export interface PublishedGuide {
 interface UsePublishedGuidesResult {
   guides: PublishedGuide[];
   isLoading: boolean;
+  hasLoaded: boolean;
   error: string | null;
   refreshGuides: () => Promise<void>;
 }
@@ -26,6 +27,7 @@ interface UsePublishedGuidesResult {
 export function usePublishedGuides(): UsePublishedGuidesResult {
   const [guides, setGuides] = useState<PublishedGuide[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const namespace = config.namespace;
   const isMountedRef = useRef(true);
@@ -35,12 +37,14 @@ export function usePublishedGuides(): UsePublishedGuidesResult {
       if (isMountedRef.current) {
         setGuides([]);
         setError('No namespace available');
+        setHasLoaded(true);
       }
       return;
     }
 
     if (isMountedRef.current) {
       setIsLoading(true);
+      setHasLoaded(false);
       setError(null);
     }
 
@@ -57,6 +61,7 @@ export function usePublishedGuides(): UsePublishedGuidesResult {
     } finally {
       if (isMountedRef.current) {
         setIsLoading(false);
+        setHasLoaded(true);
       }
     }
   }, [namespace]);
@@ -78,6 +83,7 @@ export function usePublishedGuides(): UsePublishedGuidesResult {
   return {
     guides,
     isLoading,
+    hasLoaded,
     error,
     refreshGuides,
   };

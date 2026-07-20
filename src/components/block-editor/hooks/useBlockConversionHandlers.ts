@@ -16,6 +16,7 @@ import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock } from '
 import { convertBlockType } from '../utils/block-conversion';
 import { stepGuidedToMultistep, stepMultistepToGuided } from '../utils/stepFieldMapping';
 import type { NestedBlockEditingState, ConditionalBranchEditingState } from './useBlockFormState';
+import { logger } from '../../../lib/logging';
 
 /**
  * Minimal interface for editor functionality needed by this hook.
@@ -207,7 +208,7 @@ export function useBlockConversionHandlers(
     (newType: BlockType) => {
       const sourceBlock = editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block;
       if (!sourceBlock) {
-        console.warn('handleSwitchBlockType called with no active block');
+        logger.warn('handleSwitchBlockType called with no active block');
         return;
       }
 
@@ -243,7 +244,7 @@ export function useBlockConversionHandlers(
         // Update block type - triggers form remount via key prop change
         setEditingBlockType(newType);
       } catch (error) {
-        console.error('Failed to convert block type:', error);
+        logger.error('Failed to convert block type', { error });
         getAppEvents().publish({
           type: 'alert-error',
           payload: ['Conversion failed', 'Could not convert to the selected block type.'],

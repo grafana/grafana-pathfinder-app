@@ -33,6 +33,7 @@ export interface PackageMeta {
   targetUrl?: string;
   sourceUrl?: string;
   sideEffects?: SideEffectClassification;
+  plugins?: string[];
 }
 
 /**
@@ -160,6 +161,7 @@ export function buildPackageMetaMap(runnable: ResolvedRemoteGuide[]): Map<string
         targetUrl: g.targetUrl,
         sourceUrl: g.sourceUrl,
         sideEffects: g.sideEffects,
+        ...(g.plugins?.length ? { plugins: g.plugins } : {}),
       },
     ])
   );

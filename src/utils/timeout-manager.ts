@@ -7,6 +7,7 @@
  */
 
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { logger } from '../lib/logging';
 
 export class TimeoutManager {
   private static instance: TimeoutManager;
@@ -50,7 +51,7 @@ export class TimeoutManager {
       try {
         await callback();
       } catch (error) {
-        console.error(`Timeout callback error for key '${key}':`, error);
+        logger.error(`Timeout callback error for key '${key}'`, { error });
       } finally {
         // Clean up after execution
         this.timeouts.delete(key);
@@ -77,7 +78,7 @@ export class TimeoutManager {
       try {
         await callback();
       } catch (error) {
-        console.error(`Timeout callback error for key '${key}':`, error);
+        logger.error(`Timeout callback error for key '${key}'`, { error });
       } finally {
         this.timeouts.delete(key);
       }
@@ -126,7 +127,7 @@ export class TimeoutManager {
       try {
         await callback();
       } catch (error) {
-        console.error(`Interval callback error for key '${key}':`, error);
+        logger.error(`Interval callback error for key '${key}'`, { error });
       }
     }, delay);
 

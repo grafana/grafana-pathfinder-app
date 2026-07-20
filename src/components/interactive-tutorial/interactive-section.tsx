@@ -2,10 +2,17 @@ import React, { useState, useCallback, useMemo, useEffect, useReducer, useRef } 
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
-import { useInteractiveElements, ActionMonitor } from '../../interactive-engine';
+import {
+  useInteractiveElements,
+  ActionMonitor,
+  outcomeFromLoopExit,
+  type LoopExitReason,
+} from '../../interactive-engine';
 import { useStepChecker, stripTabLocalRequirements } from '../../requirements-manager';
 import { useIsAlignmentPaused, useAlignmentStartingLocation } from '../../global-state/alignment-pending-context';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
+import { logger } from '../../lib/logging';
+import { setFaroUserActionAttributes, USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../../lib/faro';
 import { InteractiveStep, resetStepCounter } from './interactive-step';
 import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
 import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
@@ -14,6 +21,18 @@ import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
 import { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
+import {
+  CHALLENGE_BLOCK_SCHEMA,
+  CODE_BLOCK_STEP_SCHEMA,
+  type EnhanceContext,
+  INTERACTIVE_GUIDED_SCHEMA,
+  INTERACTIVE_MULTISTEP_SCHEMA,
+  INTERACTIVE_QUIZ_SCHEMA,
+  INTERACTIVE_STEP_SCHEMA,
+  type StepTypeSchema,
+  TERMINAL_CONNECT_STEP_SCHEMA,
+  TERMINAL_STEP_SCHEMA,
+} from './step-type-registry';
 import { wrapSectionChildrenForNumbering } from './section-numbering';
 // Re-exports preserved for back-compat with `section-numbering.test.tsx`,
 // which imports both helpers from this module. New code should import
@@ -47,7 +66,14 @@ function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
   }
   return STEP_TYPE_LOOKUP.get(child.type as React.ComponentType<any>);
 }
-import { reportAppInteraction, UserInteraction, getSourceDocument, calculateStepCompletion } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  getSourceDocument,
+  calculateStepCompletion,
+  AnalyticsContentType,
+  createInteractionName,
+} from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
@@ -85,19 +111,6 @@ import {
   registerSectionSteps,
   resetRegistry,
 } from '../../global-state/section-registry';
-import {
-  CHALLENGE_BLOCK_SCHEMA,
-  CODE_BLOCK_STEP_SCHEMA,
-  type EnhanceContext,
-  INTERACTIVE_GUIDED_SCHEMA,
-  INTERACTIVE_MULTISTEP_SCHEMA,
-  INTERACTIVE_QUIZ_SCHEMA,
-  INTERACTIVE_STEP_SCHEMA,
-  type StepTypeSchema,
-  TERMINAL_CONNECT_STEP_SCHEMA,
-  TERMINAL_STEP_SCHEMA,
-} from './step-type-registry';
-
 // Re-exports preserved for back-compat with `content-renderer.tsx`. New code
 // should import directly from `./section-registry`.
 export {
@@ -605,24 +618,28 @@ export function InteractiveSection({
           try {
             return await multiStepRef.executeStep();
           } catch (error) {
-            console.error(`Multi-step execution failed: ${stepInfo.stepId}`, error);
+            logger.error(`Multi-step execution failed: ${stepInfo.stepId}`, { error });
             return false;
           }
         } else {
-          console.error(`Multi-step ref not found for: ${stepInfo.stepId}`);
+          logger.error(`Multi-step ref not found for: ${stepInfo.stepId}`);
           return false;
         }
       }
 
       try {
         // Execute the action using existing interactive logic
-        await executeInteractiveAction(
+        const actionOutcome = await executeInteractiveAction(
           stepInfo.targetAction!,
           stepInfo.refTarget!,
           stepInfo.targetValue,
           'do',
           stepInfo.targetComment
         );
+        if (actionOutcome === 'error') {
+          logger.warn(`Sequence action did not complete for ${stepInfo.stepId}`);
+          return false;
+        }
 
         // Only run post-verification if explicitly specified
         // Don't use requirements as post-verification fallback since many actions
@@ -636,14 +653,14 @@ export function InteractiveSection({
             stepInfo.stepId
           );
           if (!result.pass) {
-            console.warn(`Post-verify failed for ${stepInfo.stepId}:`, result.error);
+            logger.warn(`Post-verify failed for ${stepInfo.stepId}`, { error: result.error });
             return false;
           }
         }
 
         return true;
       } catch (error) {
-        console.error(`Step execution failed: ${stepInfo.stepId}`, error);
+        logger.error(`Step execution failed: ${stepInfo.stepId}`, { error });
         return false;
       }
     },
@@ -661,7 +678,7 @@ export function InteractiveSection({
     // Reset user scroll tracking + set isProgrammaticScroll=true for
     // the entire section run. The hook keeps both flags consistent.
     beginProgrammaticScroll();
-    console.warn(
+    logger.warn(
       '[Section] Starting section run, reset userScrolled=false, isProgrammatic=TRUE (will stay true during execution)'
     );
 
@@ -725,27 +742,27 @@ export function InteractiveSection({
 
               if (!sectionRecheckResult.pass) {
                 // Section requirements still not met after fix attempt
-                console.warn('Section requirements could not be fixed, stopping execution');
+                logger.warn('Section requirements could not be fixed, stopping execution');
                 ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
                 setIsRunning(false);
                 return;
               }
             } catch (fixError) {
-              console.warn('Failed to fix section requirements:', fixError);
+              logger.warn('Failed to fix section requirements', { error: fixError });
               ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
               setIsRunning(false);
               return;
             }
           } else {
             // No fix available for section requirements
-            console.warn('Section requirements not met and no fix available, stopping execution');
+            logger.warn('Section requirements not met and no fix available, stopping execution');
             ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
             setIsRunning(false);
             return;
           }
         }
       } catch (error) {
-        console.warn('Section requirements check failed:', error);
+        logger.warn('Section requirements check failed', { error });
         ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
         setIsRunning(false);
         return;
@@ -765,7 +782,7 @@ export function InteractiveSection({
     };
     startSectionBlocking(sectionId, dummyData, handleSectionCancel);
 
-    let stoppedDueToRequirements = false;
+    let loopExitReason: LoopExitReason = 'ok';
     let completedStepsCount = startIndex; // Track number of completed steps for analytics (starts at startIndex since those are already done)
     // The completion store handles per-step persistence synchronously via
     // `markStepCompleted` — every write hits the store + storage immediately,
@@ -775,74 +792,118 @@ export function InteractiveSection({
     // wrapped in a functional setState updater, which React skipped on
     // unmount and silently lost the per-step writes.
 
-    try {
-      for (let i = startIndex; i < stepComponents.length; i++) {
-        // Check for cancellation before each step
-        if (isCancelledRef.current) {
-          break;
-        }
+    await withFaroUserAction(
+      createInteractionName(UserInteraction.DoSectionButtonClick),
+      {
+        section_id: sectionId,
+        section_title: title || DEFAULT_INTERACTIVE_SECTION_TITLE,
+        total_steps: stepComponents.length,
+        start_index: startIndex,
+        resumed: startIndex > 0,
+      },
+      async () => {
+        try {
+          for (let i = startIndex; i < stepComponents.length; i++) {
+            // Check for cancellation before each step
+            if (isCancelledRef.current) {
+              break;
+            }
 
-        const stepInfo = stepComponents[i]!;
+            const stepInfo = stepComponents[i]!;
 
-        // PAUSE: If this is a guided step, stop automated execution
-        // User must manually click the guided step's "Do it" button
-        // Once complete, they can click "Resume" to continue
-        if (stepInfo.isGuided) {
-          ActionMonitor.getInstance().forceEnable(); // Re-enable monitor for guided mode
-          // (cursor is already at `i` via the prior COMPLETE_STEP dispatches)
-          setIsRunning(false); // Stop the automated loop
-          stopSectionBlocking(sectionId); // Remove blocking overlay
+            // PAUSE: If this is a guided step, stop automated execution
+            // User must manually click the guided step's "Do it" button
+            // Once complete, they can click "Resume" to continue
+            if (stepInfo.isGuided) {
+              ActionMonitor.getInstance().forceEnable(); // Re-enable monitor for guided mode
+              // (cursor is already at `i` via the prior COMPLETE_STEP dispatches)
+              setIsRunning(false); // Stop the automated loop
+              stopSectionBlocking(sectionId); // Remove blocking overlay
 
-          // Don't set currentlyExecutingStep - let the guided step handle its own execution
-          return; // Exit the section execution loop
-        }
+              // Don't set currentlyExecutingStep - let the guided step handle its own execution
+              return; // Exit the section execution loop
+            }
 
-        setCurrentlyExecutingStep(stepInfo.stepId);
-        setExecutingStepNumber(i + 1); // 1-indexed for display
-        scrollToStep(stepInfo.stepId); // Auto-scroll to the step
+            setCurrentlyExecutingStep(stepInfo.stepId);
+            setExecutingStepNumber(i + 1); // 1-indexed for display
+            scrollToStep(stepInfo.stepId); // Auto-scroll to the step
 
-        // Check step requirements before attempting execution
-        if (stepInfo.requirements) {
-          const stepRequirementsData = {
-            requirements: stepInfo.requirements,
-            targetAction: stepInfo.targetAction || 'button',
-            refTarget: stepInfo.refTarget || '',
-            targetValue: stepInfo.targetValue,
-            textContent: stepInfo.stepId,
-            tagName: 'div',
-          };
+            // Check step requirements before attempting execution
+            if (stepInfo.requirements) {
+              const stepRequirementsData = {
+                requirements: stepInfo.requirements,
+                targetAction: stepInfo.targetAction || 'button',
+                refTarget: stepInfo.refTarget || '',
+                targetValue: stepInfo.targetValue,
+                textContent: stepInfo.stepId,
+                tagName: 'div',
+              };
 
-          try {
-            const requirementsResult = await checkRequirementsFromData(stepRequirementsData);
-            if (!requirementsResult.pass) {
-              // Requirements not met - apply priority logic
+              try {
+                const requirementsResult = await checkRequirementsFromData(stepRequirementsData);
+                if (!requirementsResult.pass) {
+                  // Requirements not met - apply priority logic
 
-              // Priority 2: Try to fix the requirement if possible
-              if (requirementsResult.error?.some((e: any) => e.canFix)) {
-                const fixableError = requirementsResult.error.find((e: any) => e.canFix);
+                  // Priority 2: Try to fix the requirement if possible
+                  if (requirementsResult.error?.some((e: any) => e.canFix)) {
+                    const fixableError = requirementsResult.error.find((e: any) => e.canFix);
 
-                try {
-                  // Try to fix the requirement automatically
-                  const { NavigationManager } = await import('../../interactive-engine');
-                  const navigationManager = new NavigationManager();
+                    try {
+                      // Try to fix the requirement automatically
+                      const { NavigationManager } = await import('../../interactive-engine');
+                      const navigationManager = new NavigationManager();
 
-                  if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
-                    await navigationManager.expandParentNavigationSection(fixableError.targetHref);
-                  } else if (fixableError?.fixType === 'location' && fixableError.targetHref) {
-                    await navigationManager.fixLocationRequirement(fixableError.targetHref);
-                  } else if (fixableError?.fixType === 'navigation') {
-                    await navigationManager.fixNavigationRequirements();
-                  } else if (stepInfo.requirements?.includes('navmenu-open')) {
-                    // Only fix navigation requirements if no other specific fix type is available
-                    await navigationManager.fixNavigationRequirements();
-                  }
+                      if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
+                        await navigationManager.expandParentNavigationSection(fixableError.targetHref);
+                      } else if (fixableError?.fixType === 'location' && fixableError.targetHref) {
+                        await navigationManager.fixLocationRequirement(fixableError.targetHref);
+                      } else if (fixableError?.fixType === 'navigation') {
+                        await navigationManager.fixNavigationRequirements();
+                      } else if (stepInfo.requirements?.includes('navmenu-open')) {
+                        // Only fix navigation requirements if no other specific fix type is available
+                        await navigationManager.fixNavigationRequirements();
+                      }
 
-                  // Recheck requirements after fix attempt
-                  await new Promise((resolve) => setTimeout(resolve, 200)); // Wait for UI to settle
-                  const recheckResult = await checkRequirementsFromData(stepRequirementsData);
+                      // Recheck requirements after fix attempt
+                      await new Promise((resolve) => setTimeout(resolve, 200)); // Wait for UI to settle
+                      const recheckResult = await checkRequirementsFromData(stepRequirementsData);
 
-                  if (!recheckResult.pass) {
-                    // Fix didn't work - check if step is skippable
+                      if (!recheckResult.pass) {
+                        // Fix didn't work - check if step is skippable
+                        // Priority 3: Skip if possible
+                        if (stepInfo.skippable) {
+                          // Skip this step properly using the step's own markSkipped function
+                          const stepRef = stepRefs.current.get(stepInfo.stepId);
+                          if (stepRef?.markSkipped) {
+                            stepRef.markSkipped(); // This handles the blue state properly
+                            handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
+                          }
+                          continue; // Continue to next step
+                        } else {
+                          loopExitReason = 'requirements_exhausted';
+                          break;
+                        }
+                      }
+                      // If recheck passed, continue with normal execution below
+                    } catch (fixError) {
+                      logger.warn(`Failed to fix requirements for step ${i + 1}`, { error: fixError });
+
+                      // Fix failed - check if step is skippable
+                      if (stepInfo.skippable) {
+                        // Skip this step properly using the step's own markSkipped function
+                        const stepRef = stepRefs.current.get(stepInfo.stepId);
+                        if (stepRef?.markSkipped) {
+                          stepRef.markSkipped(); // This handles the blue state properly
+                          handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
+                        }
+                        continue;
+                      } else {
+                        loopExitReason = 'requirements_exhausted';
+                        break;
+                      }
+                    }
+                  } else {
+                    // No fix available - check if step is skippable
                     // Priority 3: Skip if possible
                     if (stepInfo.skippable) {
                       // Skip this step properly using the step's own markSkipped function
@@ -853,186 +914,155 @@ export function InteractiveSection({
                       }
                       continue; // Continue to next step
                     } else {
-                      // Priority 4: Stop execution if not skippable.
-                      // (cursor is already at `i` via the prior
-                      // COMPLETE_STEP dispatches — no explicit setter
-                      // needed.)
-                      stoppedDueToRequirements = true;
+                      loopExitReason = 'requirements_exhausted';
                       break;
                     }
                   }
-                  // If recheck passed, continue with normal execution below
-                } catch (fixError) {
-                  console.warn(`Failed to fix requirements for step ${i + 1}:`, fixError);
-
-                  // Fix failed - check if step is skippable
-                  if (stepInfo.skippable) {
-                    // Skip this step properly using the step's own markSkipped function
-                    const stepRef = stepRefs.current.get(stepInfo.stepId);
-                    if (stepRef?.markSkipped) {
-                      stepRef.markSkipped(); // This handles the blue state properly
-                      handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                    }
-                    continue;
-                  } else {
-                    // Stop execution (cursor already at `i`)
-                    stoppedDueToRequirements = true;
-                    break;
-                  }
                 }
-              } else {
-                // No fix available - check if step is skippable
-                // Priority 3: Skip if possible
-                if (stepInfo.skippable) {
-                  // Skip this step properly using the step's own markSkipped function
-                  const stepRef = stepRefs.current.get(stepInfo.stepId);
-                  if (stepRef?.markSkipped) {
-                    stepRef.markSkipped(); // This handles the blue state properly
-                    handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                  }
-                  continue; // Continue to next step
-                } else {
-                  // Priority 4: Stop execution if not skippable and no fix available
-                  // (cursor already at `i`)
-                  stoppedDueToRequirements = true;
-                  break;
-                }
-              }
-            }
-          } catch (error) {
-            console.warn(`Step ${i + 1} requirements check failed, stopping section execution:`, error);
-            stoppedDueToRequirements = true;
-            break;
-          }
-        }
-
-        // First, show the step (highlight it) - skip for multi-step components OR if showMe is false
-        if (!stepInfo.isMultiStep && stepInfo.showMe !== false) {
-          await executeInteractiveAction(
-            stepInfo.targetAction!,
-            stepInfo.refTarget!,
-            stepInfo.targetValue,
-            'show',
-            stepInfo.targetComment
-          );
-
-          // Wait for highlight to be visible and animation to complete
-          // Check cancellation during wait
-          for (let j = 0; j < INTERACTIVE_CONFIG.delays.section.showPhaseIterations; j++) {
-            if (isCancelledRef.current) {
-              break;
-            }
-            await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.section.baseInterval));
-          }
-          if (isCancelledRef.current) {
-            continue;
-          } // Skip to cancellation check at loop start
-        }
-
-        // Then, execute the step (verifyStepResult already has retry logic)
-        const success = await executeStep(stepInfo);
-
-        if (success) {
-          completedStepsCount = i + 1;
-
-          // Single synchronous write to the store; survives a mid-section
-          // unmount because the store is module-scope and storage writes
-          // are fire-and-forget.
-          markStepCompleted(stepInfo.stepId, sectionId, 'manual');
-
-          // Also call the standard completion handler for other side effects (skip state update to avoid double-setting)
-          handleStepComplete(stepInfo.stepId, true);
-
-          // Wait between steps for both visual feedback AND DOM settling
-          // This ensures the next step's requirements are ready before checking
-          if (i < stepComponents.length - 1) {
-            // First: Wait for React updates to propagate
-            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
-            // Then: Wait for visual feedback with cancellation checks
-            for (let j = 0; j < INTERACTIVE_CONFIG.delays.section.betweenStepsIterations; j++) {
-              if (isCancelledRef.current) {
+              } catch (error) {
+                logger.warn(`Step ${i + 1} requirements check failed, stopping section execution`, { error });
+                loopExitReason = 'requirements_exhausted';
                 break;
               }
-              await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.section.baseInterval));
+            }
+
+            // First, show the step (highlight it) - skip for multi-step components OR if showMe is false
+            if (!stepInfo.isMultiStep && stepInfo.showMe !== false) {
+              await executeInteractiveAction(
+                stepInfo.targetAction!,
+                stepInfo.refTarget!,
+                stepInfo.targetValue,
+                'show',
+                stepInfo.targetComment
+              );
+
+              // Wait for highlight to be visible and animation to complete
+              // Check cancellation during wait
+              for (let j = 0; j < INTERACTIVE_CONFIG.delays.section.showPhaseIterations; j++) {
+                if (isCancelledRef.current) {
+                  break;
+                }
+                await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.section.baseInterval));
+              }
+              if (isCancelledRef.current) {
+                continue;
+              } // Skip to cancellation check at loop start
+            }
+
+            // Then, execute the step (verifyStepResult already has retry logic)
+            const success = await executeStep(stepInfo);
+
+            if (success) {
+              completedStepsCount = i + 1;
+
+              // Single synchronous write to the store; survives a mid-section
+              // unmount because the store is module-scope and storage writes
+              // are fire-and-forget.
+              markStepCompleted(stepInfo.stepId, sectionId, 'manual');
+
+              // Also call the standard completion handler for other side effects (skip state update to avoid double-setting)
+              handleStepComplete(stepInfo.stepId, true);
+
+              // Wait between steps for both visual feedback AND DOM settling
+              // This ensures the next step's requirements are ready before checking
+              if (i < stepComponents.length - 1) {
+                // First: Wait for React updates to propagate
+                await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+                // Then: Wait for visual feedback with cancellation checks
+                for (let j = 0; j < INTERACTIVE_CONFIG.delays.section.betweenStepsIterations; j++) {
+                  if (isCancelledRef.current) {
+                    break;
+                  }
+                  await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.section.baseInterval));
+                }
+              }
+            } else {
+              // Step execution failed after retries - stop and don't auto-complete remaining steps
+              loopExitReason = 'action_error';
+
+              // Wait for state to settle, then trigger reactive check
+              // This ensures remaining steps update their eligibility based on completed steps
+              setTimeout(() => {
+                import('../../requirements-manager').then(({ SequentialRequirementsManager }) => {
+                  const manager = SequentialRequirementsManager.getInstance();
+                  manager.triggerReactiveCheck();
+                });
+              }, 200);
+
+              break;
             }
           }
-        } else {
-          // Step execution failed after retries - stop and don't auto-complete remaining steps
-          // (cursor already at `i` via the prior COMPLETE_STEP dispatches)
-          stoppedDueToRequirements = true;
 
-          // Wait for state to settle, then trigger reactive check
-          // This ensures remaining steps update their eligibility based on completed steps
-          setTimeout(() => {
-            import('../../requirements-manager').then(({ SequentialRequirementsManager }) => {
-              const manager = SequentialRequirementsManager.getInstance();
-              manager.triggerReactiveCheck();
-            });
-          }, 200);
+          // Section sequence completed or cancelled
+          if (!isCancelledRef.current && loopExitReason === 'ok') {
+            // Belt-and-braces bulk write so any steps that didn't go through the
+            // per-step path (e.g. skipped via fix → `markSkipped` → `handleStepComplete`)
+            // also end up in the store. `markStepsCompleted` is idempotent.
+            const allStepIds = stepComponents.map((step) => step.stepId);
+            markStepsCompleted(allStepIds, sectionId, 'manual');
+          }
+        } catch (error) {
+          logger.error('Error running section sequence', { error });
+        } finally {
+          // Re-enable action monitor after section execution completes
+          ActionMonitor.getInstance().forceEnable();
 
-          break;
+          // Stop section-level blocking
+          stopSectionBlocking(sectionId);
+          setIsRunning(false);
+          setCurrentlyExecutingStep(null);
+          setExecutingStepNumber(0);
+          // Reset programmatic scroll flag now that section is done.
+          endProgrammaticScroll();
+          // Keep isCancelled state for UI feedback, will be reset on next run
+
+          // Track "Do Section" analytics after completion (success or cancel)
+          const wasCanceled = isCancelledRef.current || loopExitReason !== 'ok';
+          setFaroUserActionAttributes({ steps_completed: completedStepsCount, canceled: wasCanceled });
+          const docInfo = getSourceDocument(sectionId);
+
+          // Section-scoped metrics (completedStepsCount is the count of steps completed in this section)
+          const currentSectionStep = completedStepsCount;
+          const currentSectionPercentage = Math.round((completedStepsCount / stepComponents.length) * 100);
+
+          // Document-scoped metrics (use last completed step's index for position)
+          // If no steps completed, use 0 as the index; otherwise use completedStepsCount - 1
+          const lastCompletedStepIndex = completedStepsCount > 0 ? completedStepsCount - 1 : 0;
+          const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
+            sectionId,
+            lastCompletedStepIndex
+          );
+          const documentCompletionPercentage = calculateStepCompletion(documentStepIndex, documentTotalSteps);
+
+          reportAppInteraction(UserInteraction.DoSectionButtonClick, {
+            ...docInfo,
+            content_type: AnalyticsContentType.InteractiveGuide,
+            section_title: title,
+            // Section-scoped
+            total_steps: stepComponents.length,
+            current_section_step: currentSectionStep,
+            current_section_percentage: currentSectionPercentage,
+            // Document-scoped
+            total_document_steps: documentTotalSteps,
+            current_step: documentStepIndex + 1, // 1-indexed for analytics
+            ...(documentCompletionPercentage !== undefined && { completion_percentage: documentCompletionPercentage }),
+            // Completion status
+            canceled: wasCanceled,
+            resumed: startIndex > 0, // true if user resumed from a previous position
+            interaction_location: 'interactive_section',
+          });
         }
+      },
+      USER_ACTION_TIMEOUT_LONG_MS,
+      {
+        critical: true,
+        // The work callback swallows errors and always resolves — cancellation
+        // and the loop exit reason must be read from the refs/flags it sets,
+        // not inferred from settlement. Cancellation wins over the loop reason.
+        outcomeFrom: () => outcomeFromLoopExit(isCancelledRef.current ? 'cancelled' : loopExitReason),
       }
-
-      // Section sequence completed or cancelled
-      if (!isCancelledRef.current && !stoppedDueToRequirements) {
-        // Belt-and-braces bulk write so any steps that didn't go through the
-        // per-step path (e.g. skipped via fix → `markSkipped` → `handleStepComplete`)
-        // also end up in the store. `markStepsCompleted` is idempotent.
-        const allStepIds = stepComponents.map((step) => step.stepId);
-        markStepsCompleted(allStepIds, sectionId, 'manual');
-      }
-    } catch (error) {
-      console.error('Error running section sequence:', error);
-    } finally {
-      // Re-enable action monitor after section execution completes
-      ActionMonitor.getInstance().forceEnable();
-
-      // Stop section-level blocking
-      stopSectionBlocking(sectionId);
-      setIsRunning(false);
-      setCurrentlyExecutingStep(null);
-      setExecutingStepNumber(0);
-      // Reset programmatic scroll flag now that section is done.
-      endProgrammaticScroll();
-      // Keep isCancelled state for UI feedback, will be reset on next run
-
-      // Track "Do Section" analytics after completion (success or cancel)
-      const wasCanceled = isCancelledRef.current || stoppedDueToRequirements;
-      const docInfo = getSourceDocument(sectionId);
-
-      // Section-scoped metrics (completedStepsCount is the count of steps completed in this section)
-      const currentSectionStep = completedStepsCount;
-      const currentSectionPercentage = Math.round((completedStepsCount / stepComponents.length) * 100);
-
-      // Document-scoped metrics (use last completed step's index for position)
-      // If no steps completed, use 0 as the index; otherwise use completedStepsCount - 1
-      const lastCompletedStepIndex = completedStepsCount > 0 ? completedStepsCount - 1 : 0;
-      const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-        sectionId,
-        lastCompletedStepIndex
-      );
-      const documentCompletionPercentage = calculateStepCompletion(documentStepIndex, documentTotalSteps);
-
-      reportAppInteraction(UserInteraction.DoSectionButtonClick, {
-        ...docInfo,
-        content_type: 'interactive_guide',
-        section_title: title,
-        // Section-scoped
-        total_steps: stepComponents.length,
-        current_section_step: currentSectionStep,
-        current_section_percentage: currentSectionPercentage,
-        // Document-scoped
-        total_document_steps: documentTotalSteps,
-        current_step: documentStepIndex + 1, // 1-indexed for analytics
-        ...(documentCompletionPercentage !== undefined && { completion_percentage: documentCompletionPercentage }),
-        // Completion status
-        canceled: wasCanceled,
-        resumed: startIndex > 0, // true if user resumed from a previous position
-        interaction_location: 'interactive_section',
-      });
-    }
+    );
   }, [
     disabled,
     isRunning,
@@ -1438,9 +1468,13 @@ export function InteractiveSection({
                 return 'Reset section and clear all step completion to allow manual re-interaction';
               }
               if (resumeInfo.isResume) {
-                return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
+                const stepWord = resumeInfo.remainingSteps === 1 ? 'step' : 'steps';
+                return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} ${stepWord} remaining`;
               }
-              return hints || `Run through all ${nonNoopSteps.length} steps in sequence`;
+              return (
+                hints ||
+                `Run through all ${nonNoopSteps.length} ${nonNoopSteps.length === 1 ? 'step' : 'steps'} in sequence`
+              );
             })()}
           >
             {(() => {
@@ -1451,9 +1485,9 @@ export function InteractiveSection({
                 return 'Reset section';
               }
               if (resumeInfo.isResume) {
-                return `▶ Resume (${resumeInfo.remainingSteps} steps)`;
+                return `▶ Resume (${resumeInfo.remainingSteps} ${resumeInfo.remainingSteps === 1 ? 'step' : 'steps'})`;
               }
-              return `▶ Do Section (${nonNoopSteps.length} steps)`;
+              return `▶ Do Section (${nonNoopSteps.length} ${nonNoopSteps.length === 1 ? 'step' : 'steps'})`;
             })()}
           </Button>
         )}

@@ -72,6 +72,8 @@ export interface UseJsonModeHandlersReturn {
   handleJsonChange: (json: string) => void;
   /** Revert JSON to original state */
   handleJsonUndo: () => void;
+  /** Restore JSON mode alongside a guide loaded into the editor. */
+  restoreJsonMode: (guide: JsonGuide, blockIds?: string[], savedState?: JsonModeState) => void;
 }
 
 /**
@@ -164,6 +166,19 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
     setJsonValidationErrors(result.errors);
   }, []);
 
+  const restoreJsonMode = useCallback((guide: JsonGuide, blockIds?: string[], savedState?: JsonModeState) => {
+    const json = JSON.stringify(guide, null, 2);
+    const restoredState = savedState ?? {
+      json,
+      originalBlockIds: blockIds ?? [],
+      originalJson: json,
+    };
+    const result = parseAndValidateGuide(restoredState.json);
+    setJsonModeState(restoredState);
+    setJsonValidationErrors(result.errors);
+    setIsJsonValid(result.isValid);
+  }, []);
+
   // Handle JSON undo - revert to original and re-validate
   const handleJsonUndo = useCallback(() => {
     setJsonModeState((prev) => {
@@ -205,5 +220,6 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
     handleViewModeChange,
     handleJsonChange,
     handleJsonUndo,
+    restoreJsonMode,
   };
 }

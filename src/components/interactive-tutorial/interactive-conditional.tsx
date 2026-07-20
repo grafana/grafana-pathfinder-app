@@ -15,6 +15,7 @@ import { testIds } from '../../constants/testIds';
 import type { ConditionalDisplayMode, ConditionalSectionConfig } from '../../types/json-guide.types';
 import { InteractiveSection } from './interactive-section';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
+import { logger } from '../../lib/logging';
 
 export interface InteractiveConditionalProps {
   /** Conditions to evaluate (uses same syntax as requirements) */
@@ -143,7 +144,7 @@ export function InteractiveConditional({
         setConditionsPassed(result.pass);
         setIsChecking(false);
       } catch (error) {
-        console.warn('Failed to evaluate conditional conditions:', error);
+        logger.warn('Failed to evaluate conditional conditions', { error });
         if (!isMountedRef.current || myRunId !== runIdRef.current) {
           return;
         }

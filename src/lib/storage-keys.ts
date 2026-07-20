@@ -44,6 +44,8 @@ export const StorageKeys = {
   FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',
   // External app suggestions for the featured zone (sessionStorage)
   SUGGESTIONS: 'grafana-pathfinder-app-suggestions',
+  // Recommended list scroll position, restored on return from a guide (sessionStorage)
+  RECOMMENDATIONS_SCROLL_POSITION: 'grafana-pathfinder-app-recommendations-scroll-position',
   // Floating panel mode preference (sidebar vs floating)
   PANEL_MODE: 'grafana-pathfinder-app-panel-mode',
   // Floating panel position and size

@@ -6,7 +6,7 @@
  * Participates in section step counting and sequential execution the same way InteractiveStep does.
  */
 
-import React, { useState, useCallback, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -17,6 +17,8 @@ import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import { CodeBlock } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
+import { logger } from '../../lib/logging';
+import { useAssistantBlockValue } from '../../integrations/assistant-integration';
 
 export interface CodeBlockStepProps {
   code: string;
@@ -139,6 +141,22 @@ export const CodeBlockStep = forwardRef<
     const [isInsertRunning, setIsInsertRunning] = useState(false);
     const [insertError, setInsertError] = useState<string | null>(null);
 
+    // Check for customized value from parent AssistantBlockWrapper context
+    const assistantBlockValue = useAssistantBlockValue();
+
+    // Use the assistant's customized code if available, otherwise the original prop
+    const [currentCode, setCurrentCode] = useState(assistantBlockValue?.customizedValue ?? code);
+
+    useEffect(() => {
+      const customizedValue = assistantBlockValue?.customizedValue;
+      if (customizedValue !== null && customizedValue !== undefined) {
+        setCurrentCode(customizedValue);
+      } else {
+        // No active customization (cleared, or no AssistantBlockWrapper context at all) - track the prop.
+        setCurrentCode(code);
+      }
+    }, [assistantBlockValue?.customizedValue, code]);
+
     // Get executeInteractiveAction for "Show me" highlighting
     const { executeInteractiveAction } = useInteractiveElements();
 
@@ -183,7 +201,7 @@ export const CodeBlockStep = forwardRef<
         // Highlight the target Monaco editor using the interactive engine
         await executeInteractiveAction('highlight', refTarget, undefined, 'show');
       } catch (err) {
-        console.error('[CodeBlockStep] Show me failed:', err);
+        logger.error('[CodeBlockStep] Show me failed', { error: err });
       } finally {
         setIsShowRunning(false);
       }
@@ -193,19 +211,19 @@ export const CodeBlockStep = forwardRef<
       setIsInsertRunning(true);
       setInsertError(null);
       try {
-        const result = await clearAndInsertCode(refTarget, code);
+        const result = await clearAndInsertCode(refTarget, currentCode);
         if (result.success) {
           markComplete();
         } else {
           setInsertError(result.error || 'Failed to insert code');
         }
       } catch (err) {
-        console.error('[CodeBlockStep] Insert failed:', err);
+        logger.error('[CodeBlockStep] Insert failed', { error: err });
         setInsertError(err instanceof Error ? err.message : 'Insert failed');
       } finally {
         setIsInsertRunning(false);
       }
-    }, [code, refTarget, markComplete]);
+    }, [currentCode, refTarget, markComplete]);
 
     useImperativeHandle(
       ref,
@@ -214,7 +232,7 @@ export const CodeBlockStep = forwardRef<
           if (isCompleted) {
             return true;
           }
-          const result = await clearAndInsertCode(refTarget, code);
+          const result = await clearAndInsertCode(refTarget, currentCode);
           if (result.success) {
             markComplete();
             return true;
@@ -225,7 +243,7 @@ export const CodeBlockStep = forwardRef<
           markComplete();
         },
       }),
-      [isCompleted, code, refTarget, markComplete]
+      [isCompleted, currentCode, refTarget, markComplete]
     );
 
     const isEnabled = checker.isEnabled && !disabled;
@@ -260,7 +278,7 @@ export const CodeBlockStep = forwardRef<
         {children && <div className={styles.content}>{children}</div>}
 
         <div className={styles.codeBlockWrapper}>
-          <CodeBlock code={code} language={language} showCopy={false} />
+          <CodeBlock code={currentCode} language={language} showCopy={false} />
         </div>
 
         {!isEnabled && !isCompleted && checker.explanation && (

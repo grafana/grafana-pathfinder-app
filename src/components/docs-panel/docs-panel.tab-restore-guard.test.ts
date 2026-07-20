@@ -94,7 +94,8 @@ jest.mock('../../lib/user-storage', () => ({
 jest.mock('../../lib/analytics', () => ({
   setupScrollTracking: jest.fn(),
   reportAppInteraction: jest.fn(),
-  UserInteraction: {},
+  createInteractionName: jest.fn((type: string) => `pathfinder_${type}`),
+  UserInteraction: { DocsPanelInteraction: 'docs_panel_interaction' },
   getContentTypeForAnalytics: jest.fn(),
 }));
 
@@ -224,6 +225,7 @@ jest.mock('../../hooks', () => ({}));
 // ---------------------------------------------------------------------------
 
 import { CombinedLearningJourneyPanel } from './docs-panel';
+import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -250,6 +252,17 @@ const RESTORED_TABS = [
     type: 'learning-journey' as const,
   },
 ];
+
+const makeTab = (id: string, type?: LearningJourneyTab['type']) => ({
+  id,
+  title: id,
+  baseUrl: '',
+  currentUrl: '',
+  content: null,
+  isLoading: false,
+  error: null,
+  type,
+});
 
 function setupRestoreMocks() {
   mockRestoreTabsFromStorage.mockResolvedValue(RESTORED_TABS);
@@ -324,5 +337,36 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     const panelBActiveTab = (panelB as any).state.activeTabId;
     expect(panelBActiveTab).not.toBe('recommendations');
     expect(panelBTabs.length).toBeGreaterThan(1);
+  });
+});
+
+describe('CombinedLearningJourneyPanel — closeTab', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupRestoreMocks();
+  });
+
+  it('returns to recommendations when closing the final active guide with the editor tab present', () => {
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [makeTab('recommendations'), makeTab('editor', 'editor'), makeTab('tab-guide-1', 'learning-journey')],
+      activeTabId: 'tab-guide-1',
+    });
+
+    panel.closeTab('tab-guide-1');
+
+    expect((panel as any).state.activeTabId).toBe('recommendations');
+  });
+
+  it('keeps the current editor tab active when closing an inactive guide', () => {
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [makeTab('recommendations'), makeTab('editor', 'editor'), makeTab('tab-guide-1', 'learning-journey')],
+      activeTabId: 'editor',
+    });
+
+    panel.closeTab('tab-guide-1');
+
+    expect((panel as any).state.activeTabId).toBe('editor');
   });
 });

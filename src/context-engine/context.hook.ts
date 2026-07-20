@@ -7,6 +7,7 @@ import { ContextData, Recommendation, UseContextPanelOptions, UseContextPanelRet
 import type { PackageOpenInfo } from '../types/content-panel.types';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { StorageEvents } from '../lib/event-names';
+import { logger } from '../lib/logging';
 import { suggestionState, SUGGESTIONS_UPDATED_EVENT } from '../global-state/suggestion';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
@@ -41,6 +42,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   });
 
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  const [hasFetchedRecommendations, setHasFetchedRecommendations] = useState(false);
   const [otherDocsExpanded, setOtherDocsExpanded] = useState(false);
 
   // Track location changes with more detail
@@ -65,10 +67,11 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   const fetchContextData = useCallback(async () => {
     try {
       setContextData((prev) => ({ ...prev, isLoading: true }));
+      setHasFetchedRecommendations(false);
       const newContextData = await ContextService.getContextData();
       setContextData(newContextData);
     } catch (error) {
-      console.error('Failed to fetch context data:', error);
+      logger.error('Failed to fetch context data', { error });
       setContextData((prev) => ({ ...prev, isLoading: false }));
     }
   }, []); // Empty dependency array - setContextData is stable
@@ -89,6 +92,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       }
 
       setIsLoadingRecommendations(true);
+      setHasFetchedRecommendations(false);
       try {
         const { recommendations, featuredRecommendations, error, errorType, usingFallbackRecommendations } =
           await ContextService.fetchRecommendations(contextData, pluginConfig);
@@ -111,7 +115,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
           usingFallbackRecommendations,
         }));
       } catch (error) {
-        console.error('Failed to fetch recommendations:', error);
+        logger.error('Failed to fetch recommendations', { error });
         setContextData((prev) => ({
           ...prev,
           recommendationsError: 'Failed to fetch recommendations',
@@ -120,6 +124,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
         }));
       } finally {
         setIsLoadingRecommendations(false);
+        setHasFetchedRecommendations(true);
       }
     },
     [pluginConfig]
@@ -367,6 +372,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   return {
     contextData,
     isLoadingRecommendations,
+    hasFetchedRecommendations,
     otherDocsExpanded,
 
     // Actions

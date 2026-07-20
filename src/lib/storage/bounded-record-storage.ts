@@ -1,4 +1,5 @@
-import { createUserStorage, warnQuotaExceededOnce } from '../user-storage';
+import { logger } from '../logging';
+import type { UserStorage } from '../../types/storage.types';
 
 export interface BoundedRecordStorage {
   get(key: string): Promise<number>;
@@ -16,13 +17,23 @@ export interface BoundedRecordStorageConfig {
   limit: number;
   /** Short label used in diagnostic console messages, e.g. `'journey completion'`. */
   label: string;
+  /**
+   * Storage backend factory, injected rather than imported. This building
+   * block is a lower layer than the user-storage module that supplies the
+   * backend; importing it directly would form an import cycle
+   * (user-storage → bounded-record-storage → user-storage), so callers pass
+   * the factory in.
+   */
+  createStorage: () => UserStorage;
+  /** Quota-exceeded notifier, injected for the same reason as `createStorage`. */
+  onQuotaExceeded: () => void;
 }
 
 export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): BoundedRecordStorage {
-  const { storageKey, limit, label } = config;
+  const { storageKey, limit, label, createStorage, onQuotaExceeded } = config;
 
   const writeWithCap = async (data: Record<string, number>): Promise<void> => {
-    const storage = createUserStorage();
+    const storage = createStorage();
     const entries = Object.entries(data);
     const payload = entries.length > limit ? Object.fromEntries(entries.slice(-limit)) : data;
     await storage.setItem(storageKey, payload);
@@ -30,7 +41,7 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
 
   const setInternal = async (key: string, percentage: number, hasRetried: boolean): Promise<void> => {
     try {
-      const storage = createUserStorage();
+      const storage = createStorage();
       const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
       data[key] = Math.max(0, Math.min(100, percentage));
       await writeWithCap(data);
@@ -39,15 +50,15 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
         if (hasRetried) {
           // Quota still exceeded after cleanup — likely consumed by other keys.
           // Stop here rather than recursing forever.
-          console.warn(`Failed to save ${label} percentage after cleanup retry:`, error);
+          logger.warn(`Failed to save ${label} percentage after cleanup retry`, { error });
           return;
         }
-        console.warn(`Storage quota exceeded, clearing old ${label} data`);
-        warnQuotaExceededOnce();
+        logger.warn(`Storage quota exceeded, clearing old ${label} data`);
+        onQuotaExceeded();
         await api.cleanup();
         await setInternal(key, percentage, true);
       } else {
-        console.warn(`Failed to save ${label} percentage:`, error);
+        logger.warn(`Failed to save ${label} percentage`, { error });
       }
     }
   };
@@ -55,7 +66,7 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
   const api: BoundedRecordStorage = {
     async get(key: string): Promise<number> {
       try {
-        const storage = createUserStorage();
+        const storage = createStorage();
         const data = await storage.getItem<Record<string, number>>(storageKey);
         return data?.[key] || 0;
       } catch {
@@ -69,18 +80,18 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
 
     async clear(key: string): Promise<void> {
       try {
-        const storage = createUserStorage();
+        const storage = createStorage();
         const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
         delete data[key];
         await storage.setItem(storageKey, data);
       } catch (error) {
-        console.warn(`Failed to clear ${label}:`, error);
+        logger.warn(`Failed to clear ${label}`, { error });
       }
     },
 
     async getAll(): Promise<Record<string, number>> {
       try {
-        const storage = createUserStorage();
+        const storage = createStorage();
         return (await storage.getItem<Record<string, number>>(storageKey)) || {};
       } catch {
         return {};
@@ -89,22 +100,22 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
 
     async cleanup(): Promise<void> {
       try {
-        const storage = createUserStorage();
+        const storage = createStorage();
         const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
         if (Object.keys(data).length > limit) {
           await writeWithCap(data);
         }
       } catch (error) {
-        console.warn(`Failed to cleanup ${label} entries:`, error);
+        logger.warn(`Failed to cleanup ${label} entries`, { error });
       }
     },
 
     async clearAll(): Promise<void> {
       try {
-        const storage = createUserStorage();
+        const storage = createStorage();
         await storage.removeItem(storageKey);
       } catch (error) {
-        console.warn(`Failed to clear all ${label} entries:`, error);
+        logger.warn(`Failed to clear all ${label} entries`, { error });
       }
     },
   };

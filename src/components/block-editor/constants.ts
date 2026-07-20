@@ -247,5 +247,6 @@ export const POPOUT_TARGET_MODES = [
  */
 export const VIDEO_PROVIDERS = [
   { value: 'youtube', label: 'YouTube' },
+  { value: 'vimeo', label: 'Vimeo' },
   { value: 'native', label: 'Native HTML5' },
 ] as const;

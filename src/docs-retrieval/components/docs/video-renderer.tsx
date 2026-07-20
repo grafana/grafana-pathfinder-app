@@ -1,4 +1,6 @@
 import React, { useMemo, useEffect, useRef } from 'react';
+import { logger } from '../../../lib/logging';
+import { resolveAssetUrl } from './resolve-asset-url';
 
 export interface VideoRendererProps {
   src?: string;
@@ -48,22 +50,11 @@ export function VideoRenderer({ src, type, baseUrl, onClick, start, end, ...prop
     };
   }, [start, end]);
   const resolvedSrc = useMemo(() => {
-    const videoSrc = src;
-    if (!videoSrc) {
-      console.error('VideoRenderer: No video source found', { src });
+    if (!src) {
+      logger.error('VideoRenderer: No video source found', { src });
       return undefined;
     }
-    if (!baseUrl) {
-      console.warn('VideoRenderer: No baseUrl provided, using relative URL', {
-        videoSrc,
-      });
-      return videoSrc;
-    }
-    if (videoSrc.startsWith('/') && !videoSrc.startsWith('//')) {
-      const resolved = new URL(videoSrc, baseUrl).href;
-      return resolved;
-    }
-    return videoSrc;
+    return resolveAssetUrl(src, baseUrl);
   }, [src, baseUrl]);
 
   return <video ref={videoRef} src={resolvedSrc} controls {...props} />;

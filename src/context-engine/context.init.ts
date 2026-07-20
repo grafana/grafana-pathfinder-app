@@ -1,6 +1,7 @@
 import { getBackendSrv, config } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { initializeEchoLogging, initializeFromRecentEvents } from './context-event-bus';
+import { logger } from '../lib/logging';
 
 /**
  * Fetch interactive guides from Pathfinder backend
@@ -33,7 +34,7 @@ export async function fetchInteractiveGuidesFromBackend(): Promise<void> {
       return;
     }
 
-    console.error('[Pathfinder] Failed to fetch interactive guides:', error);
+    logger.error('[Pathfinder] Failed to fetch interactive guides', { error });
   }
 }
 
@@ -49,7 +50,7 @@ export function initializeContextServices(): void {
     // Initialize from any recent events that might have been cached
     initializeFromRecentEvents();
   } catch (error) {
-    console.error('Failed to initialize context services:', error);
+    logger.error('Failed to initialize context services', { error });
   }
 }
 

@@ -1,12 +1,7 @@
 import { getDocsLinkFromEvent } from 'global-state/utils.link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { reportAppInteraction, UserInteraction } from 'lib/analytics';
-
-export interface QueuedDocsLink {
-  url: string;
-  title: string;
-  timestamp: number;
-}
+import type { QueuedDocsLink } from 'types/link-interception.types';
 
 /**
  * Global state manager for the Pathfinder plugin's link interception.

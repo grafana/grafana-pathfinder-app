@@ -7,13 +7,12 @@
  *   - per-guide-snapshot dedup via `lastGuideRef`
  *   - `autoSavePaused` halts saves but preserves the persisted snapshot
  *   - mount-time `onLoad` receives both `guide` and `blockIds`
- *   - version mismatch logs a warning but still returns the parsed guide
- *   - clear / hasSavedGuide / getLastSaveTime contracts
+ *   - clear() contract
  */
 import { act, renderHook } from '@testing-library/react';
 
 import { StorageKeys } from '../../../lib/storage-keys';
-import type { JsonGuide } from '../types';
+import type { JsonGuide, JsonModeState } from '../types';
 
 import { useBlockPersistence } from './useBlockPersistence';
 
@@ -162,66 +161,200 @@ describe('useBlockPersistence — mount-time restore via onLoad', () => {
   });
 });
 
-describe('useBlockPersistence — load() / clear() / hasSavedGuide / getLastSaveTime', () => {
-  it('load() returns null when storage is empty', () => {
-    const { result } = renderHook(() => useBlockPersistence({ guide: guide('a') }));
-    expect(result.current.load()).toBeNull();
-  });
-
-  it('load() returns the parsed guide and warns on version mismatch', () => {
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        guide: guide('legacy'),
-        savedAt: new Date().toISOString(),
-        version: 1, // mismatch
-      })
-    );
-
-    const { result } = renderHook(() => useBlockPersistence({ guide: guide('a') }));
-    const loaded = result.current.load();
-
-    expect(loaded?.title).toBe('legacy');
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('version mismatch'));
-    warnSpy.mockRestore();
-  });
-
-  it('clear() removes the storage key', () => {
+describe('useBlockPersistence — clear()', () => {
+  it('clear() removes the storage key, and a subsequent mount finds nothing to restore', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ guide: guide('a'), savedAt: '', version: 2 }));
     const { result } = renderHook(() => useBlockPersistence({ guide: guide('a') }));
 
     act(() => result.current.clear());
 
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+
+    const onLoad = jest.fn();
+    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+    expect(onLoad).not.toHaveBeenCalled();
+  });
+});
+
+describe('useBlockPersistence — viewMode persistence (pop out/dock handoff)', () => {
+  it('persists viewMode immediately on change, without waiting for the guide debounce', () => {
+    const { rerender } = renderHook(
+      ({ vm }: { vm: 'edit' | 'preview' }) => useBlockPersistence({ guide: guide('a'), viewMode: vm }),
+      { initialProps: { vm: 'edit' } }
+    );
+
+    rerender({ vm: 'preview' });
+
+    // No advanceTimersByTime — the viewMode-change effect must save synchronously.
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(stored.viewMode).toBe('preview');
   });
 
-  it('hasSavedGuide() reflects key presence', () => {
-    const { result } = renderHook(() => useBlockPersistence({ guide: guide('a') }));
-    expect(result.current.hasSavedGuide()).toBe(false);
+  it('does not persist viewMode changes when autoSavePaused is true', () => {
+    const { rerender } = renderHook(
+      ({ vm }: { vm: 'edit' | 'preview' }) =>
+        useBlockPersistence({ guide: guide('a'), viewMode: vm, autoSavePaused: true }),
+      { initialProps: { vm: 'edit' } }
+    );
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ guide: guide('a'), savedAt: '', version: 2 }));
-    expect(result.current.hasSavedGuide()).toBe(true);
+    rerender({ vm: 'preview' });
+
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
-  it('getLastSaveTime() returns a Date when present, null when absent', () => {
-    const { result } = renderHook(() => useBlockPersistence({ guide: guide('a') }));
-    expect(result.current.getLastSaveTime()).toBeNull();
+  it('does not persist viewMode changes when autoSave is false', () => {
+    const { rerender } = renderHook(
+      ({ vm }: { vm: 'edit' | 'preview' }) => useBlockPersistence({ guide: guide('a'), viewMode: vm, autoSave: false }),
+      { initialProps: { vm: 'edit' } }
+    );
 
-    const ts = '2024-01-02T03:04:05.000Z';
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ guide: guide('a'), savedAt: ts, version: 2 }));
+    rerender({ vm: 'preview' });
 
-    const t = result.current.getLastSaveTime();
-    expect(t).toBeInstanceOf(Date);
-    expect(t!.toISOString()).toBe(ts);
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('passes the stored viewMode through to onLoad on mount', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        guide: guide('restored'),
+        blockIds: ['b1'],
+        viewMode: 'preview',
+        savedAt: new Date().toISOString(),
+        version: 2,
+      })
+    );
+
+    const onLoad = jest.fn();
+    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+
+    expect(onLoad).toHaveBeenCalledTimes(1);
+    const [, , restoredViewMode] = onLoad.mock.calls[0]!;
+    expect(restoredViewMode).toBe('preview');
+  });
+
+  it('onLoad receives undefined viewMode for older stored guides that predate this field', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        guide: guide('restored'),
+        blockIds: ['b1'],
+        savedAt: new Date().toISOString(),
+        version: 2,
+      })
+    );
+
+    const onLoad = jest.fn();
+    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+
+    const [, , restoredViewMode] = onLoad.mock.calls[0]!;
+    expect(restoredViewMode).toBeUndefined();
+  });
+
+  it('defaults invalid stored viewMode values to edit', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        guide: guide('restored'),
+        viewMode: 'invalid',
+        savedAt: new Date().toISOString(),
+        version: 2,
+      })
+    );
+
+    const onLoad = jest.fn();
+    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+
+    expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'edit', undefined);
+  });
+});
+
+describe('useBlockPersistence — JSON draft persistence', () => {
+  const originalJson = JSON.stringify(guide('original'), null, 2);
+  const jsonModeState: JsonModeState = {
+    json: '{ invalid',
+    originalBlockIds: ['b1'],
+    originalJson,
+  };
+
+  it('persists JSON draft changes immediately', () => {
+    const { rerender } = renderHook(
+      ({ draft }: { draft: JsonModeState | null }) =>
+        useBlockPersistence({ guide: guide('original'), viewMode: 'json', jsonModeState: draft }),
+      { initialProps: { draft: null as JsonModeState | null } }
+    );
+
+    rerender({ draft: jsonModeState });
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(stored.jsonModeState).toEqual(jsonModeState);
+  });
+
+  it('restores the exact persisted JSON draft', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        guide: guide('original'),
+        viewMode: 'json',
+        jsonModeState,
+        savedAt: new Date().toISOString(),
+        version: 2,
+      })
+    );
+
+    const onLoad = jest.fn();
+    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+
+    expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'json', jsonModeState);
+  });
+
+  it.each(['edit', 'preview'] as const)('does not persist a dormant JSON draft in %s mode', (viewMode) => {
+    const { rerender } = renderHook(
+      ({ mode }: { mode: 'json' | 'edit' | 'preview' }) =>
+        useBlockPersistence({
+          guide: guide('replacement'),
+          viewMode: mode,
+          jsonModeState,
+        }),
+      { initialProps: { mode: 'json' as 'json' | 'edit' | 'preview' } }
+    );
+
+    rerender({ mode: viewMode });
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(stored.viewMode).toBe(viewMode);
+    expect(stored.jsonModeState).toBeUndefined();
+  });
+
+  it.each([
+    ['non-string json', { ...jsonModeState, json: 5 }],
+    ['non-string originalJson', { ...jsonModeState, originalJson: false }],
+    ['non-array originalBlockIds', { ...jsonModeState, originalBlockIds: 'b1' }],
+    ['non-string originalBlockIds entry', { ...jsonModeState, originalBlockIds: ['b1', 2] }],
+  ])('rejects a persisted JSON draft with %s', (_description, malformedState) => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        guide: guide('original'),
+        viewMode: 'json',
+        jsonModeState: malformedState,
+        savedAt: new Date().toISOString(),
+        version: 2,
+      })
+    );
+
+    const onLoad = jest.fn();
+    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+
+    expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'json', undefined);
   });
 });
 
 describe('useBlockPersistence — custom storageKey', () => {
-  it('honors a custom storageKey for save / load', () => {
+  it('honors a custom storageKey for save and mount-time onLoad restore', () => {
     const customKey = 'custom-block-editor-state';
 
-    const { result, rerender } = renderHook(({ g }) => useBlockPersistence({ guide: g, storageKey: customKey }), {
+    const { rerender } = renderHook(({ g }) => useBlockPersistence({ guide: g, storageKey: customKey }), {
       initialProps: { g: guide('a') },
     });
 
@@ -233,6 +366,10 @@ describe('useBlockPersistence — custom storageKey', () => {
 
     expect(localStorage.getItem(customKey)).not.toBeNull();
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
-    expect(result.current.load()?.title).toBe('b');
+
+    const onLoad = jest.fn();
+    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad, storageKey: customKey }));
+    expect(onLoad).toHaveBeenCalledTimes(1);
+    expect(onLoad.mock.calls[0]![0].title).toBe('b');
   });
 });

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { FloatingPanelEvents } from '../../lib/event-names';
 import {
   type FloatingPanelGeometry,
   FLOATING_PANEL_MIN_WIDTH,
@@ -90,9 +91,13 @@ function useDrag(
     if (!dragStartRef.current) {
       return;
     }
+    const { originX, originY } = dragStartRef.current;
     dragStartRef.current = null;
     setGeometry((prev) => {
       panelModeManager.setPanelGeometry(prev);
+      if (prev.x !== originX || prev.y !== originY) {
+        document.dispatchEvent(new CustomEvent(FloatingPanelEvents.ManualMove, { detail: { x: prev.x, y: prev.y } }));
+      }
       reportAppInteraction(UserInteraction.FloatingPanelMoved, {
         trigger: 'manual_drag',
         x: prev.x,

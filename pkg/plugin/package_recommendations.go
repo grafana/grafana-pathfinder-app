@@ -25,12 +25,23 @@ const (
 	packageRepositoryMaxBytes     = 5 * 1024 * 1024
 	packageRepositoryCacheTTL     = 6 * time.Hour
 
+	// Budget-expired (partially enriched) results are still served, but cached
+	// briefly so degraded responses self-heal instead of persisting for 6 h.
+	packageRepositoryPartialCacheTTL = 15 * time.Minute
+
 	// Per-manifest fetch limits — keep manifests small and the fan-out bounded
-	// so a slow CDN can't stall the whole response or run us out of memory.
-	packageManifestFetchTimeout = 5 * time.Second
-	packageManifestMaxBytes     = 256 * 1024
-	packageManifestConcurrency  = 8
+	// so the enrichment can't run us out of memory. Latency is bounded by
+	// packageManifestEnrichTotalBudget, not per fetch.
+	packageManifestMaxBytes    = 256 * 1024
+	packageManifestConcurrency = 16
 )
+
+// packageManifestEnrichTotalBudget caps the whole manifest fan-out so the
+// first (cold-cache) request can never stall the recommendations UI behind
+// hundreds of sequential CDN round-trips. Entries that miss the budget ship
+// without a manifest — the frontend renders a stub and OnlineCdnPackageResolver
+// lazily fetches manifest.json on demand. var so tests can shrink it.
+var packageManifestEnrichTotalBudget = 3 * time.Second
 
 // allowedPackageRepositoryHosts mirrors the frontend
 // ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES allowlist (exact match).
@@ -93,7 +104,7 @@ type rawRepositoryEntry struct {
 // `maxBytes` lets the caller bound the in-memory buffer per request — the
 // repository index gets 5 MB while individual manifests get 256 KB. Without
 // this, a manifest fetch would inherit the larger repository cap and could
-// transiently allocate up to (concurrency × repo cap) — ~40 MB at 8-way
+// transiently allocate up to (concurrency × repo cap) — ~80 MB at 16-way
 // parallelism — before the post-read cap rejected the body.
 type packageRepositoryFetcher func(ctx context.Context, rawURL string, maxBytes int64) ([]byte, error)
 
@@ -101,6 +112,9 @@ type packageCacheEntry struct {
 	resp      *PackageRecommendationsResponse
 	err       error
 	fetchedAt time.Time
+	// partial marks a response whose manifest enrichment hit the total budget;
+	// it expires on the short TTL so the degraded tail gets refetched soon.
+	partial bool
 }
 
 // packageRefreshFlight is a single-flight handle for an active refresh.
@@ -174,19 +188,26 @@ func (a *App) handlePackageRecommendations(w http.ResponseWriter, r *http.Reques
 }
 
 // getCachedPackageRecommendations returns the cached index, refreshing it at
-// most once per packageRepositoryCacheTTL window. Both successful and failed
-// fetches are cached; a sticky failure prevents repeat upstream hits.
+// most once per packageRepositoryCacheTTL window (packageRepositoryPartialCacheTTL
+// for budget-expired partial results). Both successful and failed fetches are
+// cached; a sticky failure prevents repeat upstream hits.
 //
 // The mutex is held only for cache lookup and inflight-slot management — the
 // upstream fetch runs unlocked. Concurrent callers that arrive during a
 // refresh wait on the inflight channel instead of serializing on the mutex
-// (which would block them for the full ~50 s manifest fan-out window).
+// (which would block them for the index fetch plus the enrichment budget).
 func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageRecommendationsResponse, error) {
 	packageCacheMu.Lock()
-	if packageCache != nil && timeNow().Sub(packageCache.fetchedAt) < packageRepositoryCacheTTL {
-		resp, err := packageCache.resp, packageCache.err
-		packageCacheMu.Unlock()
-		return resp, err
+	if packageCache != nil {
+		ttl := packageRepositoryCacheTTL
+		if packageCache.partial {
+			ttl = packageRepositoryPartialCacheTTL
+		}
+		if timeNow().Sub(packageCache.fetchedAt) < ttl {
+			resp, err := packageCache.resp, packageCache.err
+			packageCacheMu.Unlock()
+			return resp, err
+		}
 	}
 
 	if existing := packageActiveFlight; existing != nil {
@@ -208,16 +229,17 @@ func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageReco
 
 	// Detach the upstream fetch from the request's cancellation: a canceled
 	// request (browser closed, panel collapsed mid-flight) must not poison
-	// the 6-hour cache with a "context canceled" error. The per-fetch
-	// timeouts inside fetchAndParsePackageRepository / enrichPackagesWithManifests
-	// still apply because they're added with their own context.WithTimeout.
-	resp, err := fetchAndParsePackageRepository(context.WithoutCancel(ctx), packageRepositoryURL)
+	// the 6-hour cache with a "context canceled" error. The index fetch
+	// timeout and the enrichment budget still apply because they're added
+	// with their own context.WithTimeout.
+	resp, partial, err := fetchAndParsePackageRepository(context.WithoutCancel(ctx), packageRepositoryURL)
 
 	packageCacheMu.Lock()
 	packageCache = &packageCacheEntry{
 		resp:      resp,
 		err:       err,
 		fetchedAt: timeNow(),
+		partial:   partial,
 	}
 	flight.resp = resp
 	flight.err = err
@@ -229,10 +251,11 @@ func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageReco
 }
 
 // fetchAndParsePackageRepository performs the network fetch and trims the
-// response to the slim shape the frontend consumes.
-func fetchAndParsePackageRepository(ctx context.Context, rawURL string) (*PackageRecommendationsResponse, error) {
+// response to the slim shape the frontend consumes. The bool reports whether
+// manifest enrichment was cut short by its total budget (partial result).
+func fetchAndParsePackageRepository(ctx context.Context, rawURL string) (*PackageRecommendationsResponse, bool, error) {
 	if !isAllowedInteractiveLearningHost(rawURL) {
-		return nil, fmt.Errorf("package repository host not allowed")
+		return nil, false, fmt.Errorf("package repository host not allowed")
 	}
 
 	fetch := packageRepositoryFetcherOverride
@@ -242,12 +265,12 @@ func fetchAndParsePackageRepository(ctx context.Context, rawURL string) (*Packag
 
 	body, err := fetch(ctx, rawURL, packageRepositoryMaxBytes)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	var index map[string]rawRepositoryEntry
 	if err := json.Unmarshal(body, &index); err != nil {
-		return nil, fmt.Errorf("parse repository.json: %w", err)
+		return nil, false, fmt.Errorf("parse repository.json: %w", err)
 	}
 
 	baseURL := baseURLFromRepositoryURL(rawURL)
@@ -272,34 +295,43 @@ func fetchAndParsePackageRepository(ctx context.Context, rawURL string) (*Packag
 		})
 	}
 
-	enrichPackagesWithManifests(ctx, baseURL, packages, fetch)
+	partial := enrichPackagesWithManifests(ctx, baseURL, packages, fetch)
 
 	return &PackageRecommendationsResponse{
 		BaseURL:  baseURL,
 		Packages: packages,
-	}, nil
+	}, partial, nil
 }
 
-// enrichPackagesWithManifests fetches every package's manifest.json in parallel
-// (bounded concurrency) and inlines it into each PackageEntry. Per-package
-// failures are silently skipped — the entry stays in the response without a
-// manifest, so the frontend still gets discovery + a working "Start" button
-// even when one package's manifest is unavailable.
+// enrichPackagesWithManifests fetches targeted packages' manifest.json in
+// parallel (bounded concurrency, bounded total time) and inlines it into each
+// PackageEntry. Untargeted entries are skipped: they can only surface through
+// by-ID resolution, and OnlineCdnPackageResolver.loadFromCdn fetches
+// manifest.json itself when none is inlined. Per-package failures and
+// budget misses are silently skipped — the entry stays in the response
+// without a manifest, so the frontend still gets discovery + a working
+// "Start" button. Returns true when the total budget expired (partial result).
 func enrichPackagesWithManifests(
 	ctx context.Context,
 	baseURL string,
 	packages []PackageEntry,
 	fetch packageRepositoryFetcher,
-) {
+) bool {
 	if baseURL == "" || len(packages) == 0 {
-		return
+		return false
 	}
+
+	budgetCtx, cancel := context.WithTimeout(ctx, packageManifestEnrichTotalBudget)
+	defer cancel()
 
 	sem := make(chan struct{}, packageManifestConcurrency)
 	var wg sync.WaitGroup
 
 	for i := range packages {
 		entry := &packages[i]
+		if entry.Targeting == nil {
+			continue
+		}
 		manifestURL := buildPackageFileURL(baseURL, entry.Path, "manifest.json")
 		if manifestURL == "" {
 			continue
@@ -309,20 +341,26 @@ func enrichPackagesWithManifests(
 			continue
 		}
 
+		// Acquire a slot or give up when the budget expires — blocking on the
+		// semaphore alone would keep queueing fetches past the deadline.
+		select {
+		case sem <- struct{}{}:
+		case <-budgetCtx.Done():
+		}
+		if budgetCtx.Err() != nil {
+			break
+		}
+
 		wg.Add(1)
-		sem <- struct{}{}
 		go func(target *PackageEntry, url string) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			fetchCtx, cancel := context.WithTimeout(ctx, packageManifestFetchTimeout)
-			defer cancel()
-
 			// Pass the manifest cap directly so the body is bounded at read
 			// time. Without this, a misconfigured 4 MB manifest would be
 			// fully buffered before the post-read check rejected it,
-			// transiently allocating ~32 MB across 8 in-flight goroutines.
-			body, err := fetch(fetchCtx, url, packageManifestMaxBytes)
+			// transiently allocating ~64 MB across 16 in-flight goroutines.
+			body, err := fetch(budgetCtx, url, packageManifestMaxBytes)
 			if err != nil {
 				return
 			}
@@ -334,6 +372,8 @@ func enrichPackagesWithManifests(
 		}(entry, manifestURL)
 	}
 	wg.Wait()
+
+	return budgetCtx.Err() != nil
 }
 
 // buildPackageFileURL joins the CDN base, the entry path, and a file name

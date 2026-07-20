@@ -4,18 +4,23 @@ This document analyzes importing SCORM files into the Pathfinder platform. It co
 
 ## Table of contents
 
+- [Empirical validation — real-world Articulate packages](#empirical-validation--real-world-articulate-packages)
 - [Context & assumptions](#context--assumptions)
 - [SCORM overview](#scorm-overview)
 - [Pathfinder guide format](#pathfinder-guide-format)
 - [Structural cross-walk](#structural-cross-walk)
 - [Gap analysis](#gap-analysis)
 - [Translation architecture](#translation-architecture)
+- [Authoring-tool adapter architecture](#authoring-tool-adapter-architecture)
+- [Agent migration playbook](#agent-migration-playbook)
 - [Phased implementation plan](#phased-implementation-plan)
 - [Design constraints](#design-constraints)
 - [Open questions](#open-questions)
 - [References](#references)
 
 > **Relationship to other design docs**: This document focuses on SCORM-specific analysis. For the Pathfinder package model (structure, metadata fields, dependencies, targeting), see the [Pathfinder package design](./PATHFINDER-PACKAGE-DESIGN.md), which is the authoritative source of truth.
+
+> **Reading order (2026-07 update):** The [empirical validation](#empirical-validation--real-world-articulate-packages) section below supersedes several assumptions in the original analysis. Where the two disagree, the empirical section wins — it is grounded in two real exports; the rest of this document is the pre-import hypothesis. The [authoring-tool adapter architecture](#authoring-tool-adapter-architecture) and [agent migration playbook](#agent-migration-playbook) sections define the corrected implementation path.
 
 ---
 
@@ -30,6 +35,55 @@ This analysis is informed by several current and planned developments in Pathfin
 3. **Non-Grafana content**: If Pathfinder guides can be displayed on the web outside of Grafana Cloud, the format becomes suitable for learning content (e.g., sales training, compliance). A SCORM import that produces non-interactive Pathfinder packages is a valid and useful outcome even without live Grafana UI integration.
 
 4. **Import as package decomposition**: A single SCORM course would typically map to a **set of interrelated Pathfinder packages** linked by Debian-style dependencies, not a single monolithic guide. This mirrors how SCORM's organization tree decomposes a course into SCOs, and how Debian packages decompose a system into components.
+
+> ⚠️ **Superseded — see [empirical validation](#empirical-validation--real-world-articulate-packages).** Both real-world packages we examined are **single-SCO** exports with a degenerate one-item organization. There is no organization tree to decompose. Course structure lives _inside_ a proprietary per-vendor JavaScript blob, not in `imsmanifest.xml`. The decomposition model still applies — but the tree is recovered from the blob, not the manifest.
+
+---
+
+## Empirical validation — real-world Articulate packages
+
+**Added 2026-07 after examining two real exports.** The rest of this document (below this section) was written before we had real SCORM files in hand. This section records what held up and what did not, and is the authoritative correction where it conflicts with the original analysis.
+
+### The two packages
+
+Both are real internal training exports. Their identities and subject matter are withheld — this analysis refers to them only by authoring tool and structural shape.
+
+|                | **Storyline package**                                                         | **Rise package**                                                                                                     |
+| -------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Authoring tool | Articulate **Storyline 360**                                                  | Articulate **Rise 360**                                                                                              |
+| SCORM version  | 1.2                                                                           | 1.2                                                                                                                  |
+| Content model  | **Narration-driven** — most slides audio, some video, animated on-screen text | **Text/image-driven** — clean HTML prose                                                                             |
+| Structure      | ~70 slides / 8 content scenes                                                 | ~19 lessons (mix of content lessons + section dividers), ~130+ content blocks                                        |
+| Media          | Per-slide bundled audio narration + embedded video scenarios                  | A few bundled videos + Vimeo/CDN stream references; video dominates package weight                                   |
+| Assessment     | 1 survey object + a few question slides, **no machine-readable answer key**   | 1 knowledge check (multiple-choice, correct-flags + feedback present)                                                |
+| Interactivity  | Heavy: layers, states, click-to-reveal, branching triggers, tweens            | ~11 interactive blocks (accordion, scenario, labeled-graphic, timeline, flashcard) + several empty "mondrian" blocks |
+
+### What the original analysis got right
+
+- **Format mechanics** — ZIP + `imsmanifest.xml` + XSDs; SCORM 1.2 is what ships in practice ([DC3](#dc3-scorm-12-first-2004-second) confirmed). Both files are 1.2.
+- **Lossy-by-design ([DC2](#dc2-lossy-translation-is-expected-and-acceptable))** and **no Grafana-interactive blocks in imported content ([DC1](#dc1-imported-guides-have-no-interactive-elements))** — correct; this content is informational and fits web-display mode.
+- **Target block set** — `markdown` / `image` / `video` / `quiz` is the right destination, and it maps cleanly for Rise prose.
+- **Assessment-type gap ([G3](#g3-limited-assessment-block-types))** — Pathfinder has no `matching` / `ordering` / `scale` block (confirmed in `src/types/json-guide.schema.ts`).
+- **Authoring-tool variance ([Q4](#q4-how-to-handle-scorm-packages-from-different-authoring-tools))** — correct, and far more consequential than the original framing implied (see below).
+- **HTML sanitization ([DC7](#dc7-security--html-sanitization))** — Rise text carries inline styles and editor markup; DOMPurify is genuinely required.
+- **Provenance ([DC6](#dc6-preserve-provenance)) and the package schema** — the `content.json` + `manifest.json` model with flat metadata and `source` is ready to receive imported packages.
+
+### What the original analysis got wrong or missed
+
+| #   | Original claim                                                                                                                                     | Reality in both packages                                                                                                                                                                                                                                                                                                                       | Corrected in                                                 |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| C1  | A course is an **organization tree of multiple SCOs** → decomposes into a package tree via the manifest.                                           | **Single SCO.** Each `imsmanifest.xml` has exactly one `<item>` and one `<resource scormtype="sco">`. The manifest is a near-empty shell.                                                                                                                                                                                                      | [Adapter architecture](#authoring-tool-adapter-architecture) |
+| C2  | Content is extracted by **loading each SCO's launch HTML and scraping the body** (pipeline Stage 2).                                               | Launch files are near-empty SPA bootstraps (Rise `index.html` is a sub-kilobyte shell). Content lives in a **proprietary JS data blob** — base64 JSON (Rise) or `globalProvideData` escaped JSON (Storyline).                                                                                                                                  | [Adapter architecture](#authoring-tool-adapter-architecture) |
+| C3  | Structure and metadata come from **`imsmanifest.xml`** (pipeline Stage 1; metadata mapping table).                                                 | Structure and metadata both live **inside the blob**. The manifest's LOM is placeholder or filename-derived (Rise package: empty `<title>`, `<description>` = literally "Description"; Storyline package: title = internal filename, empty `typicallearningtime`, no author).                                                                  | [Playbook step 5](#agent-migration-playbook)                 |
+| C4  | The hard assessment problem is the **10 SCORM interaction types + scoring** ([G3](#g3-limited-assessment-block-types)/[G4](#g4-no-scoring-model)). | Real courses have **almost no formal assessment** — one real quiz across both. Storyline questions have **no answer key in data** (correctness is buried in trigger logic). The real fidelity loss is **interactive _content_ blocks** (accordion, scenario, labeled-graphic, timeline), which the interaction-type table does not cover.      | [Adapter architecture](#authoring-tool-adapter-architecture) |
+| C5  | Instructional content is **on-screen text/HTML**; audio is an opaque asset.                                                                        | For Storyline the primary content channel is **spoken narration**; on-screen text is animated summary bullets. The cleanest content source is the **transcripts/captions**, not the slide vectortext. A "scrape the HTML" pipeline would drop the main content.                                                                                | [Adapter architecture](#authoring-tool-adapter-architecture) |
+| C6  | Media handling is a one-line **"CDN upload manifest"** step.                                                                                       | One package is **dominated by bundled video** (the overwhelming majority of its weight); Rise additionally references **Vimeo/Articulate CDN streams** (dual local + stream model). Re-hosting and reference-rewriting is the practical operational blocker, and Pathfinder's `video` block (`provider: youtube \| native`) has no Vimeo path. | [Playbook step 6](#agent-migration-playbook)                 |
+
+### The reframing
+
+"SCORM import" is a misnomer for modern content. SCORM is only the outer envelope; the ZIP contains a single-SCO single-page application whose real format is **the authoring tool's**, not SCORM's. The manifest tells you almost nothing. Practically, the work is:
+
+> **Build a per-authoring-tool adapter (Articulate Rise, Articulate Storyline, …), not a SCORM parser.** Detect the tool, parse its blob, and reconstruct structure + content + assessment from there. The [multi-SCO organization-tree pipeline described later](#core-concept-scorm--array-of-pathfinder-packages) remains the correct path for genuinely tree-structured legacy SCORM, but neither real file we have is that shape.
 
 ---
 
@@ -171,6 +225,8 @@ Key points relevant to SCORM import:
 
 ## Structural cross-walk
 
+> ⚠️ **The organization-tree rows below assume multi-SCO packages.** Both real files are single-SCO (see [empirical validation](#empirical-validation--real-world-articulate-packages) C1). For them, the "organization → package tree" mapping is recovered from the [authoring-tool blob](#authoring-tool-adapter-architecture), not the manifest.
+
 ### Package-level mapping
 
 | SCORM Concept                | Pathfinder Equivalent                                           | Notes                                                   |
@@ -203,6 +259,8 @@ Key points relevant to SCORM import:
 | Drag-and-drop / performance | **No equivalent**                                             | **Gap**                                                     |
 
 ### Metadata mapping
+
+> ⚠️ **In practice, LOM metadata is placeholder or absent** (see [empirical validation](#empirical-validation--real-world-articulate-packages) C3). Treat the manifest as an unreliable metadata source. Derive `title`/`description`/`language` from the [authoring-tool blob](#authoring-tool-adapter-architecture) (Rise `course.title`/`course.description`; Storyline slide titles), and queue `author`/`category`/`difficulty` for human authoring — they are not present in these files.
 
 | SCORM Metadata (LOM)   | Pathfinder Equivalent (in `package.json`)               | Notes                                                                                         |
 | ---------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -415,6 +473,8 @@ The importer writes both `content.json` (converted SCO content) and `package.jso
 
 ### Import pipeline
 
+> ⚠️ **Stages 1–2 below are written for multi-SCO, HTML-per-page packages and do not fit either real file.** For single-SCO Articulate exports, Stage 1 (`parse imsmanifest.xml → organization tree`) returns one node, and Stage 2 (`load SCO launch HTML → scrape body`) finds an empty SPA shell. Replace both with a tool-detection + blob-parse front end — see [authoring-tool adapter architecture](#authoring-tool-adapter-architecture). Stages 3–5 (transform, assemble, output) remain broadly valid once the blob is parsed into the intermediate representation.
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    SCORM Import Pipeline                     │
@@ -490,6 +550,121 @@ The importer writes both `content.json` (converted SCO content) and `package.jso
 
 ---
 
+## Authoring-tool adapter architecture
+
+This section is the corrected implementation model, grounded in the two real files. It replaces the manifest-driven front end of the pipeline (Stages 1–2) with a **tool-detection + blob-parse** front end. Stages 3–5 are unchanged.
+
+### Detection: identify the authoring tool first
+
+Before anything else, fingerprint the package. Detection is by file layout, not by the manifest (the manifest looks identical across tools).
+
+| Tool                         | Fingerprint (presence of…)                                                                | Content blob                                                |
+| ---------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Articulate **Rise 360**      | `scormcontent/lib/rise/`, `scormcontent/runtime-data.js`, org `default="articulate_rise"` | `scormcontent/runtime-data.js`                              |
+| Articulate **Storyline 360** | `html5/data/js/frame.js`, many `html5/data/js/*.js`, `story_content/`                     | `html5/data/js/data.js` + per-slide `html5/data/js/<id>.js` |
+| **Legacy / multi-SCO**       | `>1` `<resource scormtype="sco">` in `imsmanifest.xml`, real per-page HTML                | the SCO HTML files (original Stage 2 applies)               |
+
+**Single-SCO confirmation:** count `<item>` and `<resource adlcp:scormtype="sco">` in `imsmanifest.xml`. Both real files return **1 and 1**. If the count is `>1` and the resources are real HTML pages, fall back to the [original organization-tree pipeline](#core-concept-scorm--array-of-pathfinder-packages). Otherwise use the adapter for the detected tool.
+
+An unrecognized tool with a single SCO is the hard-stop case: flag for manual review — there is no generic extractor for an opaque SPA.
+
+### Adapter A — Articulate Rise 360
+
+**Blob format.** `scormcontent/runtime-data.js` is `__jsonp("runtime-data.js","<base64>")`. Strip the wrapper, base64-decode, `JSON.parse`. The result is one object: `{ course: { title, description, lessons: [...] } }`. Text fields are clean HTML strings (standard entities, inline styles) — sanitize with DOMPurify, then HTML→markdown.
+
+**Structure.** `course.lessons[]` is the outline. Each lesson has a `type` (content lesson vs `section` divider) and an `items[]` array of blocks. Section dividers become guide boundaries or `section` blocks (a [human decision](#agent-migration-playbook) — how to split).
+
+**Block-family → Pathfinder-block mapping** (families observed in the Rise package, ~130+ blocks):
+
+| Rise block family                            | Pathfinder block                                                              | Fidelity                                                                                            |
+| -------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| text (heading, paragraph, statement)         | `markdown`                                                                    | high — clean HTML                                                                                   |
+| list, quote                                  | `markdown`                                                                    | high                                                                                                |
+| image                                        | `image` (resolve `crushedKey`/`originalUrl` → `assets/<file>`)                | high                                                                                                |
+| divider ("continue" gate)                    | _drop_                                                                        | n/a — progress gate, no content                                                                     |
+| multimedia (video)                           | `video`                                                                       | needs re-hosting; see media below                                                                   |
+| multimedia (embed)                           | `html` or `markdown` link                                                     | medium                                                                                              |
+| knowledgeCheck (multiple-choice / -response) | `quiz`                                                                        | **lossless** — question HTML, all answers, `correct: true/false`, per-answer `feedback` all present |
+| accordion, tabs                              | flatten to sequential `markdown` (label as heading + body)                    | lossy — collapses structure                                                                         |
+| labeledgraphic                               | `image` + `markdown` list of hotspot descriptions                             | lossy — loses x/y hotspot positioning                                                               |
+| process, timeline                            | flatten to ordered `markdown` steps                                           | lossy — loses stepped/visual affordance                                                             |
+| scenario                                     | flatten to `markdown`; **flag** branching (responses/emotions/goTo) for human | lossy — branching is lost                                                                           |
+| flashcard                                    | `markdown` (front/back pairs)                                                 | lossy                                                                                               |
+| button                                       | `markdown` link or drop                                                       | low value                                                                                           |
+| **mondrian** (`items: []` empty)             | **skip + flag**                                                               | **unrecoverable** — content lives server-side, not in export                                        |
+
+**Assets.** Images referenced by filename in `scormcontent/assets/` — direct copy + re-host. Fonts/CSS/JS in `lib/` are ignored.
+
+### Adapter B — Articulate Storyline 360
+
+**Blob format.** Every `html5/data/js/*.js` is `window.globalProvideData('<kind>', '<JS-escaped JSON>')`. Unescape → `JSON.parse`. Kinds: `data` (outline, `data.js`), `slide` (per-slide), `caption` (URL-encoded WEBVTT). Transcripts load via `globalLoadJsAsset` as plain JSON.
+
+**Structure.** `data.js` lists scenes → slides. Scenes are untitled, but **every slide carries a clean human-readable `title`** and an `html5url` pointing to its per-slide JS. This is the usable outline. In the Storyline package: ~70 slides across ~10 scenes, of which a couple of scenes are system slides (resume/name-entry/error) → drop them.
+
+**Content source — this is the key decision.** On-screen text lives in nested vector `text` runs; it is recoverable by a recursive `text`-key walk but is duplicated across object states/animation frames and interleaved with player-chrome noise (`%_player.SectionTitle%`, LMS error strings). **Prefer transcripts/captions as the canonical content channel:** transcripts are structured JSON with speaker labels; captions are standard WEBVTT. Because Storyline courses are narration-driven, the transcript _is_ the instructional substance; the on-screen text is reinforcement bullets.
+
+**Slide → block mapping:**
+
+| Storyline slide shape                            | Pathfinder block                                | Notes                                                                                                                                                                   |
+| ------------------------------------------------ | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Narrated content slide (audio + on-screen text)  | `markdown` (from transcript) + optional `image` | transcript is primary; dedupe vectortext, fix mojibake (`â\x80\x99` → `'`)                                                                                              |
+| Video slide                                      | `video` + `markdown` (caption/transcript)       | re-host mp4                                                                                                                                                             |
+| Question slide                                   | `quiz`                                          | stem + choices extractable; **answer key is NOT a field** — it is encoded in trigger/actiongroup logic and must be reconstructed and **flagged for human confirmation** |
+| Survey object (`issurvey: true`)                 | `markdown` reflection prompt or drop            | not graded                                                                                                                                                              |
+| Animation / layer / click-to-reveal choreography | _lost_                                          | flag count in report                                                                                                                                                    |
+
+### Fidelity summary per tool
+
+- **Rise → high.** ~80% of the Rise package converts cleanly (text/image/list/quote/one quiz map 1:1). Losses: interactive blocks degrade to flattened text+image; empty mondrian blocks are unrecoverable; all video needs re-hosting.
+- **Storyline → structure good, fidelity poor.** The slide-title outline + per-slide transcript convert to text/video/image blocks, but all animation/interactivity is lost and every graded question needs manual answer-key reconstruction. Expect a mostly-automated first pass plus real human finishing.
+
+---
+
+## Agent migration playbook
+
+This is the step-by-step an agent should follow to migrate one real package, and the set of decisions it should **queue for a human** rather than guess. The objective is: automate everything determinable from the files, and surface every genuine design choice with a recommended default.
+
+### Executable steps
+
+1. **Extract** the ZIP to a temp dir. Skip large media on first pass (`-x "*.mp4" "*.mp3"`) to inspect structure cheaply; media is handled in step 6.
+2. **Detect the tool and confirm single-SCO** using the [fingerprint table](#detection-identify-the-authoring-tool-first). Branch to the matching adapter, the legacy tree pipeline, or hard-stop (unknown single-SCO SPA).
+3. **Parse the blob** (Adapter A or B) into the intermediate representation: `{ courseTitle, courseDescription, outline: [{ title, kind, blocks: [...] }] }`.
+4. **Map blocks** using the adapter's mapping table. Sanitize all HTML (DOMPurify), convert to markdown, resolve image references to `assets/`, and **emit a degradation record** for every lossy or dropped block (accordion, scenario, mondrian, animation, ungraded survey).
+5. **Derive metadata from the blob, not the manifest.** `title`/`description`/`language` come from the course object (Rise) or the org/slide titles (Storyline). Set `source` provenance (`{ format: "scorm-1.2", tool: "rise-360" | "storyline-360", originalId, importedAt }`). Leave `author`/`category`/`difficulty` empty and add them to the decision queue.
+6. **Handle media.** Catalog every referenced mp4/mp3/vtt. For bundled files, produce a CDN re-host manifest. For Rise Vimeo/CDN stream references, record the external URL and flag that Pathfinder's `video` block supports only `youtube`/`native` today. Never inline ~GB media into `content.json`.
+7. **Reconstruct assessments.** Rise knowledge checks convert losslessly. Storyline question slides get stem + choices; attempt answer-key inference from trigger logic and mark each as `needsHumanConfirmation`.
+8. **Assemble + validate** the `content.json` (+ `manifest.json`) against the Zod schema. Do not split into multiple packages automatically — see decision queue.
+9. **Emit the import report + decision queue** (below).
+
+### Decisions to queue for a human (with recommended defaults)
+
+An intelligent agent can migrate the content but should not silently make these product decisions. Present each with a default so a human can confirm quickly:
+
+| Decision                                                                                | Why it can't be auto-decided                                                                   | Recommended default                                                                                                          |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **Split strategy** — one guide, or split by section/lesson?                             | Single-SCO packages carry no manifest signal for granularity; it's a product/UX call.          | Rise: one `path` package with a `guide` per top-level section. Storyline: one guide per content scene.                       |
+| **Interactive-block degradation** — accept flattened text, or defer for a native block? | Accordion/scenario/labeled-graphic have no Pathfinder equivalent; flattening loses affordance. | Flatten now, list each in the report so a human can re-author high-value ones (e.g. the scenario) in the Block Editor later. |
+| **Mondrian blocks (Rise)** — empty in export.                                           | Content is server-side; unrecoverable from the ZIP.                                            | Skip; report each empty block with its lesson location so a human can source the content.                                    |
+| **Video hosting** — re-host bundled mp4 vs keep Vimeo embed.                            | Requires CDN target + a `video` provider decision; Vimeo unsupported today.                    | Re-host bundled mp4 to the guides CDN as `provider: native`; for Vimeo-only refs, flag for hosting decision.                 |
+| **Storyline answer keys** — inferred from trigger logic.                                | Correctness isn't a data field; inference may be wrong.                                        | Present each inferred key for confirmation; do not publish a graded quiz unconfirmed.                                        |
+| **Canonical content channel (Storyline)** — transcript vs on-screen text.               | Both exist; transcript is usually richer but is spoken register.                               | Use transcript as body text; keep on-screen headings as section titles.                                                      |
+| **Metadata authoring** — author/category/difficulty absent.                             | Not present in the files.                                                                      | Prompt the human; infer `category` from course subject as a suggestion only.                                                 |
+
+### Import report contract
+
+The report is the interface between the automated pass and the human. It must enumerate:
+
+- **Translated faithfully** — block counts by type.
+- **Degraded** — each lossy block, its source type, and what was lost (with lesson/slide location).
+- **Dropped** — dividers, system slides, empty mondrian blocks, ungraded surveys (with reasons).
+- **Media** — re-host manifest (bundled) + external-stream references (Vimeo/CDN) needing a hosting decision.
+- **Needs human confirmation** — inferred answer keys, split strategy, metadata gaps.
+- **Hard-stops** — anything the agent could not parse.
+
+Silent loss is a bug ([DC2](#dc2-lossy-translation-is-expected-and-acceptable)): every item above must appear in the report even when the agent proceeds with a default.
+
+---
+
 ## Phased implementation plan
 
 ### Phase 0: Schema foundation (prerequisite)
@@ -511,23 +686,25 @@ Before any SCORM import work begins, the following changes to the Pathfinder pac
 
 > **Note:** `difficulty` and `estimatedDuration` are already in the Phase 1 package model (`manifest.json`). `language` was also added in Phase 1. These do not need to be re-added.
 
-### Phase 1: SCORM parser + content extractor (3-4 weeks)
+### Phase 1: package detector + authoring-tool adapters (3-4 weeks)
 
-Build the core SCORM package parser. This is a standalone tool (CLI) that reads a SCORM ZIP and produces a structured intermediate representation.
+> **Reprioritized (2026-07):** Per the [empirical validation](#empirical-validation--real-world-articulate-packages), the load-bearing work is not a generic SCORM/manifest parser — it is a **tool detector plus one adapter per authoring tool**. The manifest parser and organization-tree extractor are still needed for legacy multi-SCO packages, but they are the fallback path, not the primary one. Build the Rise adapter first (highest fidelity, and it matches a real internal use case), then the Storyline adapter.
+
+Build the package detector and the first authoring-tool adapter. This is a standalone CLI that reads a SCORM ZIP and produces a structured intermediate representation.
 
 **Deliverables:**
 
 - [ ] SCORM ZIP extraction and validation
-- [ ] `imsmanifest.xml` parser (both SCORM 1.2 and 2004)
-- [ ] Organization tree extraction (items, hierarchy, resource references)
-- [ ] LOM metadata extraction
-- [ ] Resource classification (SCO vs Asset)
-- [ ] SCORM 2004 sequencing rule extraction (basic)
-- [ ] HTML content extraction from SCOs (strip SCORM API calls, extract body content)
-- [ ] Assessment interaction detection (identify quiz/question patterns in HTML/JS)
-- [ ] Intermediate representation (JSON AST of the parsed SCORM package)
+- [ ] **Tool detector** — fingerprint Rise vs Storyline vs legacy multi-SCO; confirm single-SCO (see [detection table](#detection-identify-the-authoring-tool-first))
+- [ ] **Adapter A — Articulate Rise 360**: decode `__jsonp`/base64 `runtime-data.js`; walk `course.lessons[].items[]`; map block families (see [Adapter A](#adapter-a--articulate-rise-360))
+- [ ] **Adapter B — Articulate Storyline 360**: decode `globalProvideData` slides; build outline from `data.js` slide titles; prefer transcripts/captions as content (see [Adapter B](#adapter-b--articulate-storyline-360))
+- [ ] `imsmanifest.xml` parser (fallback for legacy multi-SCO; both 1.2 and 2004)
+- [ ] Resource classification (SCO vs Asset) — legacy path
+- [ ] Metadata extraction **from the blob** (course object / slide titles), with manifest LOM as a low-priority fallback
+- [ ] Assessment detection: Rise knowledge checks (lossless); Storyline answer-key inference from trigger logic (flagged)
+- [ ] Intermediate representation (`{ courseTitle, courseDescription, outline: [{ title, kind, blocks }] }`)
 
-**Technology**: TypeScript (to align with the Pathfinder plugin codebase). Could be implemented as a Node.js CLI tool. XML parsing via a standard library (e.g., `fast-xml-parser`). HTML parsing via `cheerio` or `jsdom`.
+**Technology**: TypeScript (to align with the Pathfinder plugin codebase). Node.js CLI. Manifest XML via `fast-xml-parser`; HTML sanitize/convert via DOMPurify + `turndown`. No general HTML-scraping library needed for the adapter path — content comes from the decoded blob, not the DOM.
 
 ### Phase 2: Content transformer + guide assembler (3-4 weeks)
 
@@ -684,7 +861,7 @@ When should a SCORM course become multiple Pathfinder guides vs. one guide with 
 
 ### Q4: How to handle SCORM packages from different authoring tools?
 
-SCORM packages from Articulate Storyline, Adobe Captivate, iSpring, Lectora, and other tools have vendor-specific quirks in their HTML structure, JavaScript patterns, and manifest formatting. The parser should be tested against packages from multiple authoring tools and handle common variations.
+**Resolved as the central architecture, not a variation to tolerate.** Modern authoring tools (Articulate Storyline, Rise 360, Adobe Captivate, iSpring, Lectora) each emit a **single-SCO SPA with its own proprietary content blob**; the SCORM manifest is a near-empty envelope common to all of them. There is no generic HTML parser that works across tools — the content is not in the DOM. The design is therefore **one adapter per authoring tool** behind a detector (see [authoring-tool adapter architecture](#authoring-tool-adapter-architecture)). Rise and Storyline adapters are specified from the two real files; Captivate/iSpring/Lectora are future adapters that follow the same shape (detect → decode blob → map to intermediate representation). A truly tree-structured legacy multi-SCO package remains handled by the [original manifest-driven pipeline](#core-concept-scorm--array-of-pathfinder-packages) as the fallback.
 
 ### Q5: Should the import tool support xAPI / Tin Can?
 
@@ -716,7 +893,7 @@ Recommendation: **(A)** by default, with **(B)** as an optional flag. Non-Grafan
 ### Pathfinder platform
 
 - [Pathfinder package design](./PATHFINDER-PACKAGE-DESIGN.md) — Authoritative source for package model, metadata, dependencies, and targeting
-- [Testing strategy](./TESTING_STRATEGY.md) — Content-as-Code vision and testing pyramid
+- [E2E testing](../developer/E2E_TESTING.md) — E2E CLI behavior and result triage
 - [Schema types](../../src/types/json-guide.types.ts) — Current TypeScript type definitions
 - [Schema validation](../../src/types/json-guide.schema.ts) — Current Zod schemas
 

@@ -10,7 +10,8 @@ import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
-import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
+import { PANEL_MODE_CHANGE_EVENT } from '../../lib/event-names';
 import { buildFullScreenRouteUrl } from '../../utils/pathfinder-search-params';
 import { FloatingPanel } from './FloatingPanel';
 import { FloatingPanelContent } from './FloatingPanelContent';
@@ -42,9 +43,9 @@ export function FloatingPanelManager() {
       setMode(e.detail.mode);
     };
 
-    document.addEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+    document.addEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     return () => {
-      document.removeEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+      document.removeEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     };
   }, []);
 
@@ -226,7 +227,7 @@ function FloatingPanelInner() {
         guide_url: '',
         guide_title: title,
         source: 'floating_panel',
-        content_type: 'editor',
+        content_type: AnalyticsContentType.Editor,
       });
       // Remember where the user was so explicit Exit can land back there.
       panelModeManager.capturePriorPath(window.location.pathname + window.location.search);

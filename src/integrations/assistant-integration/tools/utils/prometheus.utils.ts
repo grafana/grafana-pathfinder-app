@@ -7,6 +7,7 @@
 
 import { getDefaultTimeRange, type DataSourceApi, type TimeRange } from '@grafana/data';
 import type { MetricsMetadata } from '../types';
+import { logger } from '../../../../lib/logging';
 
 /**
  * Prometheus datasource with language provider
@@ -124,7 +125,7 @@ const fetchLabelNames = async (ds: PrometheusDatasource, timeRange: TimeRange): 
     // Filter out internal labels (starting with __)
     return labels.filter((label) => !label.startsWith('__'));
   } catch (error) {
-    console.warn('[PrometheusUtils] Failed to fetch label names:', error);
+    logger.warn('[PrometheusUtils] Failed to fetch label names', { error });
     return [];
   }
 };
@@ -142,7 +143,7 @@ const fetchLabelValues = async (
     const values = await ds.languageProvider.queryLabelValues(timeRange, labelName);
     return Array.isArray(values) ? values.slice(0, limit) : [];
   } catch (error) {
-    console.warn(`[PrometheusUtils] Failed to fetch values for label ${labelName}:`, error);
+    logger.warn(`[PrometheusUtils] Failed to fetch values for label ${labelName}`, { error });
     return [];
   }
 };

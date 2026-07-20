@@ -1,10 +1,49 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { InteractiveStep } from './interactive-step';
+import { InteractiveStep, executeWithLazyScroll } from './interactive-step';
 import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
 import { ControllerChannelProvider } from '../../global-state/controller-channel';
 import { TEST_PAIRING } from '../../test-utils/fake-cross-tab-transport';
 import { createPairingAcceptProof } from '../../lib/pairing-manager';
+
+describe('executeWithLazyScroll: step outcome propagation', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('propagates the action result for non-DOM actions instead of assuming success', async () => {
+    const failed = await executeWithLazyScroll('', false, undefined, async () => false, 'noop');
+    expect(failed).toEqual({ outcome: 'error', elementFound: true });
+
+    const passed = await executeWithLazyScroll('', false, undefined, async () => true, 'noop');
+    expect(passed).toEqual({ outcome: 'ok', elementFound: true });
+  });
+
+  it('reports outcome: error when the element is found but the step itself fails', async () => {
+    const target = document.createElement('div');
+    target.id = 'step-target';
+    document.body.appendChild(target);
+
+    // executeStep resolves false on execution/post-verification failure —
+    // element discovery succeeding must not mask that.
+    const result = await executeWithLazyScroll('#step-target', false, undefined, async () => false, 'highlight');
+
+    expect(result.elementFound).toBe(true);
+    expect(result.outcome).toBe('error');
+  });
+
+  it('reports element-not-found failures with outcome: error and an error message', async () => {
+    const action = jest.fn(async () => true);
+    const result = await executeWithLazyScroll('#missing', false, undefined, action, 'highlight');
+
+    expect(result).toEqual({
+      outcome: 'error',
+      elementFound: false,
+      error: 'Element not found: #missing',
+    });
+    expect(action).not.toHaveBeenCalled();
+  });
+});
 
 describe('InteractiveStep: showMeText label override', () => {
   it('renders custom Show me label when showMeText is provided', () => {
@@ -398,14 +437,37 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
   });
 
   it('fails open to a stripped local check when the live tab never answers (§6.5)', async () => {
+    const transport = makeTransport();
+    // Pair under real timers first: it round-trips through actual WebCrypto
+    // verify/sign calls, whose completion is wall-clock-bound rather than
+    // timer-bound. Enabling fake timers before pairing completes races
+    // `waitFor`'s fake-timer polling loop against real crypto latency on
+    // slower runners. Only mount the step (which schedules the round-trip
+    // timeout) after switching to fake timers, so that timer is fake too.
+    const view = render(
+      <InteractiveModeContext.Provider value="controller">
+        <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+          {null}
+        </ControllerChannelProvider>
+      </InteractiveModeContext.Provider>
+    );
+    await pairWithLive(transport);
+
     jest.useFakeTimers();
     try {
-      const transport = makeTransport();
-      await renderPairedController(
-        transport,
-        <InteractiveStep targetAction="button" refTarget="#ok" requirements="exists-reftarget" stepId="ctrl-timeout">
-          Step
-        </InteractiveStep>
+      view.rerender(
+        <InteractiveModeContext.Provider value="controller">
+          <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+            <InteractiveStep
+              targetAction="button"
+              refTarget="#ok"
+              requirements="exists-reftarget"
+              stepId="ctrl-timeout"
+            >
+              Step
+            </InteractiveStep>
+          </ControllerChannelProvider>
+        </InteractiveModeContext.Provider>
       );
 
       // The controller posts the check, but no live tab ever replies. After the

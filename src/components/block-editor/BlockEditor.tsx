@@ -8,7 +8,6 @@
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useStyles2 } from '@grafana/ui';
-import { getAppEvents } from '@grafana/runtime';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
 import { useRecordingPersistence, type PersistedRecordingState } from './hooks/useRecordingPersistence';
@@ -20,7 +19,8 @@ import { useRecordingActions } from './hooks/useRecordingActions';
 import { useJsonModeHandlers } from './hooks/useJsonModeHandlers';
 import { useBlockConversionHandlers } from './hooks/useBlockConversionHandlers';
 import { useGuideOperations } from './hooks/useGuideOperations';
-import { useBackendGuides } from './hooks/useBackendGuides';
+import { useBackendGuides, hasManageableBackendGuides } from './hooks/useBackendGuides';
+import { useBackendSaveFlow } from './hooks/useBackendSaveFlow';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import { isBackendApiAvailable } from '../../utils/fetchBackendGuides';
 import { getBlockEditorStyles } from './block-editor.styles';
@@ -38,8 +38,9 @@ import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditor
 import { useGuideLint } from './lint';
 import { HealthStatusBar } from './HealthStatusBar';
 import { ConfirmModal } from './NotificationModals';
-import { BACKEND_TRACKING_STORAGE_KEY, DEFAULT_GUIDE_METADATA } from './constants';
+import { DEFAULT_GUIDE_METADATA } from './constants';
 import { testIds } from '../../constants/testIds';
+import { notify } from './notify';
 import {
   assignNestedInstanceId,
   findSectionNestedBlockByInstanceId,
@@ -70,24 +71,6 @@ function generateUniqueId(title: string, existingNames: string[]): string {
   return `${base}-${Date.now().toString(36).slice(-6)}`;
 }
 
-function notify(type: 'success' | 'error' | 'info', title: string, message?: string) {
-  const eventType = type === 'success' ? 'alert-success' : type === 'error' ? 'alert-error' : 'alert-info';
-  getAppEvents().publish({ type: eventType, payload: [title, ...(message ? [message] : [])] });
-}
-
-/**
- * Normalize a guide id or title into a Kubernetes-style resource name:
- * lowercase, hyphen-separated, no leading/trailing or repeated hyphens.
- * Returns the empty string if the input has no alphanumeric characters.
- */
-function toResourceName(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
 /**
  * Apply an author note to a block. When `note` is empty/undefined the
  * `authorNote` field is removed entirely rather than left as an empty string,
@@ -100,22 +83,6 @@ function applyAuthorNote(block: JsonBlock, note: string): JsonBlock {
   const copy = { ...(block as unknown as Record<string, unknown>) };
   delete copy.authorNote;
   return copy as unknown as JsonBlock;
-}
-
-/** Reads persisted backend tracking state from localStorage. Returns null values when nothing is stored. */
-function readBackendTracking(): { resourceName: string | null; lastPublishedJson: string | null } {
-  try {
-    const stored = localStorage.getItem(BACKEND_TRACKING_STORAGE_KEY);
-    if (stored) {
-      const { resourceName, lastPublishedJson } = JSON.parse(stored);
-      if (resourceName) {
-        return { resourceName, lastPublishedJson: lastPublishedJson ?? null };
-      }
-    }
-  } catch {
-    // ignore malformed data
-  }
-  return { resourceName: null, lastPublishedJson: null };
 }
 
 export interface BlockEditorProps {
@@ -318,49 +285,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Backend guides management
   const backendGuides = useBackendGuides();
-  const [currentGuideResourceName, setCurrentGuideResourceName] = useState<string | null>(
-    () => readBackendTracking().resourceName
-  );
-  const currentGuideMetadata = useMemo(
-    () =>
-      currentGuideResourceName
-        ? (backendGuides.guides.find((g) => g.metadata.name === currentGuideResourceName)?.metadata ?? null)
-        : null,
-    [currentGuideResourceName, backendGuides.guides]
-  );
-  const currentGuideBackendStatus = useMemo(
-    () =>
-      currentGuideResourceName
-        ? (backendGuides.guides.find((g) => g.metadata.name === currentGuideResourceName)?.spec.status ?? null)
-        : null,
-    [currentGuideResourceName, backendGuides.guides]
-  );
+  const backendSaveFlow = useBackendSaveFlow({ editor, backendGuides });
   const [isGuideLibraryOpen, setIsGuideLibraryOpen] = useState(false);
-  const [lastPublishedJson, setLastPublishedJson] = useState<string | null>(
-    () => readBackendTracking().lastPublishedJson
-  );
-
-  // Derived unified backend publish status — available throughout the component
-  const publishedStatus: 'not-saved' | 'draft' | 'published' = !currentGuideResourceName
-    ? 'not-saved'
-    : currentGuideBackendStatus === 'published'
-      ? 'published'
-      : 'draft';
-
-  // Notification modals state
-  const [confirmModal, setConfirmModal] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string | React.ReactNode;
-    variant?: 'primary' | 'destructive';
-    onConfirm: () => void;
-    onCancel?: () => void;
-  }>({
-    isOpen: false,
-    title: '',
-    message: '',
-    onConfirm: () => {},
-  });
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
   const excludeSelectors = useMemo(
@@ -635,62 +561,25 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     editor.markSaved();
   }, [editor]);
 
-  // Persistence - auto-save and restore from localStorage
-  // Auto-save is paused while block form modal is open to avoid saving on every keystroke
   const persistence = useBlockPersistence({
     guide: editor.getGuide(),
-    blockIds: editor.state.blocks.map((b) => b.id), // Store block IDs to preserve across refreshes
+    blockIds: editor.state.blocks.map((b) => b.id),
+    viewMode: state.viewMode,
+    jsonModeState: jsonMode.jsonModeState,
     autoSave: true,
     autoSavePaused: isBlockFormOpen,
-    onLoad: (savedGuide, savedBlockIds) => {
-      // Only load once on initial mount
+    onLoad: (savedGuide, savedBlockIds, savedViewMode, savedJsonModeState) => {
       if (!hasLoadedFromStorage.current && !initialGuide) {
         hasLoadedFromStorage.current = true;
-        // Pass savedBlockIds to preserve IDs (important for recording persistence)
-        editor.loadGuide(savedGuide, savedBlockIds);
-        editor.markSaved(); // Don't mark as dirty after loading
+        editor.loadGuide(savedGuide, savedBlockIds, savedViewMode);
+        if (savedViewMode === 'json') {
+          jsonMode.restoreJsonMode(savedGuide, savedBlockIds, savedJsonModeState);
+        }
+        editor.markSaved();
       }
     },
     onSave: handlePersistenceSave,
   });
-
-  // Load from localStorage on mount (if no initialGuide provided)
-  useEffect(() => {
-    if (!hasLoadedFromStorage.current && !initialGuide && persistence.hasSavedGuide()) {
-      const saved = persistence.load();
-      if (saved) {
-        hasLoadedFromStorage.current = true;
-        editor.loadGuide(saved);
-        editor.markSaved();
-      }
-    }
-  }, [initialGuide, persistence, editor]);
-
-  // Clear backend tracking when starting a new guide
-  const handleClearBackendTracking = useCallback(() => {
-    setCurrentGuideResourceName(null);
-    setLastPublishedJson(null);
-  }, []);
-
-  // Persist backend tracking state to localStorage whenever it changes.
-  useEffect(() => {
-    if (currentGuideResourceName) {
-      try {
-        localStorage.setItem(
-          BACKEND_TRACKING_STORAGE_KEY,
-          JSON.stringify({
-            resourceName: currentGuideResourceName,
-            backendStatus: currentGuideBackendStatus,
-            lastPublishedJson,
-          })
-        );
-      } catch {
-        // ignore
-      }
-    } else {
-      localStorage.removeItem(BACKEND_TRACKING_STORAGE_KEY);
-    }
-  }, [currentGuideResourceName, currentGuideBackendStatus, lastPublishedJson]);
 
   // Guide operations - extracted hook for copy/download/new/import/template
   const guideOps = useGuideOperations({
@@ -702,7 +591,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     modals,
     onCopy,
     onDownload,
-    onNewGuide: handleClearBackendTracking,
+    onNewGuide: backendSaveFlow.handleClearBackendTracking,
   });
 
   // Handle block type selection from palette
@@ -741,170 +630,14 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     selection.clearSelection();
   }, [selection, editor]);
 
-  /**
-   * Shared logic for saving a guide to the backend with a given status.
-   * Refreshes metadata and updates local tracking state afterwards.
-   */
-  const performBackendSave = useCallback(
-    async (
-      guide: JsonGuide,
-      resourceName: string | undefined,
-      metadata: any,
-      isUpdate: boolean,
-      status: 'draft' | 'published',
-      previousStatus: 'draft' | 'published' | null
-    ) => {
-      // Generate resource name if not provided
-      const generatedResourceName = resourceName || toResourceName(guide.id || guide.title);
-
-      if (!generatedResourceName || generatedResourceName.length === 0) {
-        throw new Error('Guide title or ID must contain at least one alphanumeric character');
-      }
-
-      await backendGuides.saveGuide(guide, resourceName, metadata, status);
-
-      // Track the content that was last synced to the backend
-      setLastPublishedJson(JSON.stringify(guide));
-
-      // Refresh to get the latest metadata (including updated resourceVersion)
-      const updatedGuides = await backendGuides.refreshGuides();
-
-      const savedGuide = updatedGuides.find((g) => g.metadata.name === generatedResourceName);
-      setCurrentGuideResourceName(savedGuide ? savedGuide.metadata.name : generatedResourceName);
-
-      if (status === 'published') {
-        notify('success', previousStatus === 'published' ? 'Guide updated.' : 'Guide published.');
-      } else {
-        notify('success', isUpdate ? 'Draft updated.' : 'Guide saved as draft.');
-      }
-    },
-    [backendGuides]
-  );
-
-  /**
-   * Orchestrates the save flow: validates, checks for conflicts, and calls performBackendSave.
-   * Shared by both draft and published save operations.
-   */
-  const orchestrateSave = useCallback(
-    async (status: 'draft' | 'published') => {
-      try {
-        const guide = editor.getGuide();
-
-        if (!guide.blocks || guide.blocks.length === 0) {
-          notify('error', 'Cannot save guide', 'Add at least one block before saving.');
-          return;
-        }
-
-        const isUpdate = !!currentGuideResourceName;
-
-        const resourceName = currentGuideResourceName || toResourceName(guide.id || guide.title);
-
-        if (!resourceName || resourceName.length === 0) {
-          notify('error', 'Invalid guide name', 'Guide title or ID must contain at least one alphanumeric character');
-          return;
-        }
-
-        if (!isUpdate) {
-          const existingGuide = backendGuides.guides.find((g) => g.metadata.name === resourceName);
-          if (existingGuide) {
-            return new Promise<void>((resolve) => {
-              setConfirmModal({
-                isOpen: true,
-                title: 'Overwrite existing guide?',
-                message: (
-                  <>
-                    <p>
-                      A guide named <strong>&quot;{existingGuide.spec.title}&quot;</strong> ({resourceName}) already
-                      exists.
-                    </p>
-                    <p>Do you want to overwrite it?</p>
-                    <p style={{ marginTop: '16px', fontSize: '0.9em', color: '#888' }}>
-                      Click Cancel to change your guide&apos;s title or ID to create a new guide instead.
-                    </p>
-                  </>
-                ),
-                variant: 'destructive',
-                onConfirm: async () => {
-                  setConfirmModal((prev) => ({ ...prev, isOpen: false }));
-                  setCurrentGuideResourceName(existingGuide.metadata.name);
-                  await performBackendSave(
-                    guide,
-                    existingGuide.metadata.name,
-                    existingGuide.metadata,
-                    true,
-                    status,
-                    existingGuide.spec.status ?? 'draft'
-                  );
-                  resolve();
-                },
-                onCancel: resolve,
-              });
-            });
-          }
-        }
-
-        await performBackendSave(
-          guide,
-          currentGuideResourceName || undefined,
-          currentGuideMetadata || undefined,
-          isUpdate,
-          status,
-          currentGuideBackendStatus
-        );
-      } catch (error) {
-        console.error('[BlockEditor] Failed to save guide:', error);
-        notify('error', 'Save failed', error instanceof Error ? error.message : 'Unknown error');
-      }
-    },
-    [
-      editor,
-      backendGuides,
-      currentGuideResourceName,
-      currentGuideMetadata,
-      currentGuideBackendStatus,
-      performBackendSave,
-    ]
-  );
-
-  /** Save the current guide as a draft — not visible to users */
-  const performSaveDraft = useCallback(async () => {
-    await orchestrateSave('draft');
-  }, [orchestrateSave]);
-
-  /** Unpublish a published guide — sets it back to draft, removing it from the docs panel */
-  const performUnpublish = useCallback(async () => {
-    if (!currentGuideResourceName || !currentGuideMetadata) {
-      return;
-    }
-    try {
-      await backendGuides.unpublishGuide(currentGuideResourceName, currentGuideMetadata);
-
-      await backendGuides.refreshGuides();
-      // Keep lastPublishedJson set — guide content is unchanged, only status changed.
-      // This allows change detection to work correctly for the guide now in draft state.
-      setLastPublishedJson(JSON.stringify(editor.getGuide()));
-      notify('success', 'Guide unpublished.');
-    } catch (error) {
-      console.error('[BlockEditor] Failed to unpublish guide:', error);
-      notify('error', 'Unpublish failed', error instanceof Error ? error.message : 'Unknown error');
-    }
-  }, [backendGuides, currentGuideResourceName, currentGuideMetadata, editor]);
-
-  // Publish/update guide to backend handler
-  const handlePostToBackend = useCallback(async () => {
-    await orchestrateSave('published');
-  }, [orchestrateSave]);
-
   // Load guide from backend
   const handleLoadGuideFromBackend = useCallback(
     (guide: JsonGuide, resourceName: string) => {
       editor.loadGuide(guide);
-      setCurrentGuideResourceName(resourceName);
-      // Normalize to match getGuide() output (id, title, blocks — no schemaVersion or extra fields)
-      setLastPublishedJson(JSON.stringify({ id: guide.id, title: guide.title, blocks: guide.blocks }));
+      backendSaveFlow.trackLoadedGuide(guide, resourceName);
       editor.markSaved();
     },
-    [editor]
+    [editor, backendSaveFlow]
   );
 
   // Open guide library
@@ -916,13 +649,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   // Handle new guide with smart warning logic
   const handleNewGuideClick = useCallback(() => {
     const currentGuide = editor.getGuide();
-    const currentBlocks = currentGuide.blocks && currentGuide.blocks.length > 0;
-    const currentGuideJson = JSON.stringify(currentGuide);
+    const hasBlocksNow = currentGuide.blocks && currentGuide.blocks.length > 0;
+    // Has content, and either never saved to backend or diverged from the last backend save
     const hasChanges =
-      currentBlocks && // Has content
-      (publishedStatus === 'not-saved' || // Either not saved to backend
-        (publishedStatus === 'draft' && lastPublishedJson !== null && currentGuideJson !== lastPublishedJson) || // Or draft with changes
-        (publishedStatus === 'published' && lastPublishedJson !== null && currentGuideJson !== lastPublishedJson)); // Or published with changes
+      hasBlocksNow && (backendSaveFlow.publishedStatus === 'not-saved' || backendSaveFlow.hasUnsyncedChanges);
 
     if (hasChanges) {
       // Show warning modal
@@ -931,16 +661,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       // No changes to lose, just create new guide
       guideOps.handleNewGuide();
     }
-  }, [editor, publishedStatus, lastPublishedJson, modals, guideOps]);
-
-  // Close modals
-  const closeConfirmModal = useCallback(() => {
-    setConfirmModal((prev) => {
-      const callback = prev.onCancel;
-      setTimeout(() => callback?.(), 0);
-      return { ...prev, isOpen: false };
-    });
-  }, []);
+  }, [editor, backendSaveFlow, modals, guideOps]);
 
   // Modified form submit to handle section insertions, nested block edits, and conditional branch blocks
   const handleBlockFormSubmitWithSection = useCallback(
@@ -988,11 +709,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   const hasBlocks = state.blocks.length > 0;
 
-  // hasUnsyncedChanges: local content differs from last backend save (draft or published)
-  const currentJson = JSON.stringify(editor.getGuide());
-  const hasUnsyncedChanges =
-    publishedStatus !== 'not-saved' && lastPublishedJson !== null && currentJson !== lastPublishedJson;
-
   // ID is locked once it has been set (i.e. diverged from the default placeholder)
   const isIdLocked = state.guide.id !== DEFAULT_GUIDE_METADATA.id;
 
@@ -1038,8 +754,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         guideTitle={state.guide.title}
         guideId={isIdLocked ? state.guide.id : null}
         isDirty={state.isDirty}
-        publishedStatus={publishedStatus}
-        hasUnsyncedChanges={hasUnsyncedChanges}
+        publishedStatus={backendSaveFlow.publishedStatus}
+        hasUnsyncedChanges={backendSaveFlow.hasUnsyncedChanges}
         viewMode={state.viewMode}
         onSetViewMode={jsonMode.handleViewModeChange}
         onTitleCommit={handleTitleCommit}
@@ -1049,12 +765,13 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
         onCopy={guideOps.handleCopy}
         onDownload={guideOps.handleDownload}
         onOpenGitHubPR={() => modals.open('githubPr')}
-        onSaveDraft={performSaveDraft}
-        onPostToBackend={handlePostToBackend}
-        onUnpublish={performUnpublish}
+        onSaveDraft={backendSaveFlow.performSaveDraft}
+        onPostToBackend={backendSaveFlow.handlePostToBackend}
+        onUnpublish={backendSaveFlow.performUnpublish}
         isPostingToBackend={backendGuides.isSaving}
         onNewGuide={handleNewGuideClick}
         isBackendAvailable={backendAvailable}
+        hasBackendGuides={hasManageableBackendGuides(backendGuides)}
         hasBlocks={hasBlocks}
         isSelectionMode={selection.isSelectionMode}
         onToggleSelectionMode={selection.toggleSelectionMode}
@@ -1182,12 +899,23 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
       {/* Notification Modals */}
       <ConfirmModal
-        isOpen={confirmModal.isOpen}
-        title={confirmModal.title}
-        message={confirmModal.message}
-        variant={confirmModal.variant}
-        onConfirm={confirmModal.onConfirm}
-        onCancel={closeConfirmModal}
+        isOpen={backendSaveFlow.confirmModal.isOpen}
+        title="Overwrite existing guide?"
+        message={
+          <>
+            <p>
+              A guide named <strong>&quot;{backendSaveFlow.confirmModal.existingTitle}&quot;</strong> (
+              {backendSaveFlow.confirmModal.resourceName}) already exists.
+            </p>
+            <p>Do you want to overwrite it?</p>
+            <p style={{ marginTop: '16px', fontSize: '0.9em', color: '#888' }}>
+              Click Cancel to change your guide&apos;s title or ID to create a new guide instead.
+            </p>
+          </>
+        }
+        variant="destructive"
+        onConfirm={backendSaveFlow.confirmModal.onConfirm}
+        onCancel={backendSaveFlow.closeConfirmModal}
       />
     </div>
   );

@@ -4,6 +4,7 @@ import { StorageEvents } from '../../../lib/event-names';
 import { evictContentCache } from '../../../global-state/completion-store';
 import { getContentKey } from '../../../global-state/content-key';
 import { subscribeProgressEvent } from '../../../global-state/progress-events';
+import { logger } from '../../../lib/logging';
 
 export interface GuidePreviewProgress {
   hasProgress: boolean;
@@ -83,7 +84,7 @@ export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgre
         })
       );
     } catch (error) {
-      console.error('[useGuidePreviewProgress] Failed to reset progress:', error);
+      logger.error('[useGuidePreviewProgress] Failed to reset progress', { error });
     }
   }, [progressKey]);
 

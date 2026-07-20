@@ -15,6 +15,7 @@ import { useAssistantCustomizableContext } from './AssistantCustomizableContext'
 import { reportAppInteraction, UserInteraction, buildAssistantCustomizableProperties } from '../../lib/analytics';
 import { buildAssistantStorageKey } from '../../lib/storage-keys';
 import { createDatasourceMetadataTool, type DatasourceMetadataArtifact, isSupportedDatasourceType } from './tools';
+import { logger } from '../../lib/logging';
 
 export interface AssistantCustomizableProps {
   /** Default value from the HTML */
@@ -157,7 +158,7 @@ export function AssistantCustomizable({
       const storedValue = localStorage.getItem(storageKey);
       return storedValue || defaultValue;
     } catch (error) {
-      console.warn('[AssistantCustomizable] Failed to load from localStorage:', error);
+      logger.warn('[AssistantCustomizable] Failed to load from localStorage', { error });
       return defaultValue;
     }
   }, [contentKey, assistantId, defaultValue]);
@@ -256,7 +257,7 @@ export function AssistantCustomizable({
             )
           );
         } catch (error) {
-          console.warn('[AssistantCustomizable] Failed to save (workaround):', error);
+          logger.warn('[AssistantCustomizable] Failed to save (workaround)', { error });
         }
       }
 
@@ -302,7 +303,7 @@ export function AssistantCustomizable({
           customizableContext.updateTargetValue(value);
         }
       } catch (error) {
-        console.warn('[AssistantCustomizable] Failed to save to localStorage:', error);
+        logger.warn('[AssistantCustomizable] Failed to save to localStorage', { error });
       }
     },
     [getStorageKey, customizableContext]
@@ -352,7 +353,7 @@ export function AssistantCustomizable({
           : null,
       };
     } catch (error) {
-      console.warn('[AssistantCustomizable] Failed to fetch datasources:', error);
+      logger.warn('[AssistantCustomizable] Failed to fetch datasources', { error });
       return { dataSources: [], currentDatasource: null };
     }
   }, [setPageContext]);
@@ -377,7 +378,7 @@ export function AssistantCustomizable({
     const dsContext = await getDatasourceContext();
 
     if (!dsContext.currentDatasource) {
-      console.error('[AssistantCustomizable] No datasource available');
+      logger.error('[AssistantCustomizable] No datasource available');
       return;
     }
 
@@ -472,7 +473,7 @@ Output only the content - no markdown, no explanation.`;
         }
       },
       onError: (err) => {
-        console.error('[AssistantCustomizable] Generation failed:', err);
+        logger.error('[AssistantCustomizable] Generation failed', { error: err });
 
         // Track customization error
         reportAppInteraction(
@@ -520,7 +521,7 @@ Output only the content - no markdown, no explanation.`;
         })
       );
     } catch (error) {
-      console.warn('[AssistantCustomizable] Failed to revert:', error);
+      logger.warn('[AssistantCustomizable] Failed to revert', { error });
     }
   }, [getStorageKey, defaultValue, reset, customizableContext, currentValue, getAnalyticsContext]);
 

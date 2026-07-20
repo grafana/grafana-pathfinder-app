@@ -128,3 +128,21 @@ describe('useBlockEditor updateNestedBlock', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe('loadGuide viewMode restoration', () => {
+  it('defaults to edit mode when no viewMode is passed', () => {
+    const { result } = renderHook(() => useBlockEditor());
+
+    act(() => result.current.loadGuide(initialGuide));
+
+    expect(result.current.state.viewMode).toBe('edit');
+  });
+
+  it('restores the passed-in viewMode instead of always resetting to edit', () => {
+    const { result } = renderHook(() => useBlockEditor());
+
+    act(() => result.current.loadGuide(initialGuide, undefined, 'preview'));
+
+    expect(result.current.state.viewMode).toBe('preview');
+  });
+});

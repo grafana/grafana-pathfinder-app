@@ -25,6 +25,10 @@ export { default as GlobalInteractionBlocker } from './global-interaction-blocke
 // Sequential step state hook
 export { useSequentialStepState } from './use-sequential-step-state.hook';
 
+// UserActionOutcome classification
+export { outcomeFromCompletionResult, outcomeFromSequenceRun, outcomeFromLoopExit } from './outcome-classifier';
+export type { CompletionResult, LoopExitReason } from './outcome-classifier';
+
 // Action handlers (re-export only handlers used externally)
 export {
   GuidedHandler,
@@ -77,3 +81,6 @@ export type {
   FormValidationResult,
   UseFormValidationOptions,
 } from './auto-completion';
+
+// Modal detection + watcher (companion mode)
+export { detectModalActive, getVisibleModalRects, startModalWatch, stopModalWatch } from './modal-watcher';

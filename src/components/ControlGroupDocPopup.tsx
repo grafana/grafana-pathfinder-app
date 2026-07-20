@@ -11,6 +11,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import grotDiscouragedSvg from '../img/Grot-Emotions-Discouraged.svg';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
+import { logger } from '../lib/logging';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   content: css({
@@ -87,6 +88,6 @@ export async function showControlGroupDocPopup(source = 'url_param'): Promise<vo
       source,
     });
   } catch (err) {
-    console.error('[Pathfinder] Failed to load control group popup:', err);
+    logger.error('[Pathfinder] Failed to load control group popup', { error: err });
   }
 }

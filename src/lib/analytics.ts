@@ -8,6 +8,13 @@
 import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security/url-validator';
+// Bridge, not the Faro adapter: analytics is entry-eager and a direct
+// adapter import would pull the telemetry package into module.js.
+import { pushFaroUserAction } from './telemetry/bridge';
+// url.ts is a dependency-free redactor (no Faro SDK import), safe to import
+// directly even from this entry-eager module.
+import { normalizeTelemetryUrl } from './telemetry/url';
+import { logger } from './logging';
 import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
 
 type GetActiveExperimentsFn = () => ExperimentAnalyticsEntry[];
@@ -109,13 +116,38 @@ export enum UserInteraction {
 }
 
 // ============================================================================
+// STANDARDIZED ATTRIBUTE VALUES
+// ============================================================================
+
+export enum AnalyticsContentType {
+  Docs = 'docs',
+  LearningJourney = 'learning-journey',
+  InteractiveGuide = 'interactive-guide',
+  Editor = 'editor',
+  Devtools = 'devtools',
+  PackageNavLink = 'package-nav-link',
+}
+
+export enum AnalyticsLinkType {
+  BundledInteractive = 'bundled_interactive',
+  Tutorial = 'tutorial',
+  Docs = 'docs',
+  InteractiveLearning = 'interactive_learning',
+  ExternalBrowser = 'external_browser',
+  SideJourney = 'side_journey',
+  SideJourneyExternal = 'side_journey_external',
+  RelatedJourney = 'related_journey',
+  RelatedJourneyExternal = 'related_journey_external',
+}
+
+// ============================================================================
 // CORE ANALYTICS FUNCTIONS
 // ============================================================================
 
 /**
  * Creates a properly namespaced interaction name for Grafana analytics
  */
-const createInteractionName = (type: UserInteraction): string => {
+export const createInteractionName = (type: UserInteraction): string => {
   return `pathfinder_${type}`;
 };
 
@@ -144,27 +176,48 @@ function rollUpVariant(experiments: ExperimentAnalyticsEntry[]): ExperimentConfi
  * Determines the appropriate content_type for analytics based on URL
  *
  * If the URL is from the interactive-learning CDN (interactive-learning.grafana.net
- * or interactive-learning.grafana-dev.net), returns 'interactive_guide'.
+ * or interactive-learning.grafana-dev.net), returns 'interactive-guide'.
  * Otherwise returns the provided fallback type.
  *
  * @param url - The content URL to check
  * @param fallbackType - The type to use if URL is not from interactive-learning CDN
- * @returns 'interactive_guide' for CDN content, otherwise the fallback type
+ * @returns 'interactive-guide' for CDN content, otherwise the fallback type
  *
  * @example
  * ```typescript
- * // Returns 'interactive_guide' for CDN URLs
- * getContentTypeForAnalytics('https://interactive-learning.grafana.net/guide/', 'docs')
+ * // Returns 'interactive-guide' for CDN URLs
+ * getContentTypeForAnalytics('https://interactive-learning.grafana.net/guide/', AnalyticsContentType.Docs)
  *
  * // Returns 'learning-journey' for non-CDN URLs
- * getContentTypeForAnalytics('https://grafana.com/docs/tutorial/', 'learning-journey')
+ * getContentTypeForAnalytics('https://grafana.com/docs/tutorial/', AnalyticsContentType.LearningJourney)
  * ```
  */
-export function getContentTypeForAnalytics(url: string | undefined | null, fallbackType = 'docs'): string {
+export function getContentTypeForAnalytics(
+  url: string | undefined | null,
+  fallbackType: AnalyticsContentType = AnalyticsContentType.Docs
+): AnalyticsContentType {
   if (url && isInteractiveLearningUrl(url)) {
-    return 'interactive_guide';
+    return AnalyticsContentType.InteractiveGuide;
   }
   return fallbackType;
+}
+
+const TAB_TYPE_TO_CONTENT_TYPE: Record<string, AnalyticsContentType> = {
+  docs: AnalyticsContentType.Docs,
+  'learning-journey': AnalyticsContentType.LearningJourney,
+  devtools: AnalyticsContentType.Devtools,
+  editor: AnalyticsContentType.Editor,
+  interactive: AnalyticsContentType.InteractiveGuide,
+};
+
+/**
+ * Maps a tab/content `type` string (e.g. `LearningJourneyTab.type`) onto the
+ * canonical `AnalyticsContentType` used for the `content_type` property.
+ * Centralizes the 'interactive' -> 'interactive-guide' mapping so every call
+ * site reports the same content_type for the same kind of tab.
+ */
+export function tabTypeToContentType(tabType: string | undefined): AnalyticsContentType {
+  return (tabType && TAB_TYPE_TO_CONTENT_TYPE[tabType]) || AnalyticsContentType.Docs;
 }
 
 /**
@@ -201,9 +254,32 @@ export function reportAppInteraction(
       ...(kioskSessionId && { kiosk_session_id: kioskSessionId }),
     };
 
-    reportInteraction(interactionName, enrichedProperties);
+    try {
+      reportInteraction(interactionName, enrichedProperties);
+    } finally {
+      // Mirrors every analytics event into Faro as a User Action (same name,
+      // copied properties) so the two pipelines can be cross-checked against
+      // each other. The finally keeps the mirror alive when reportInteraction
+      // itself throws — a lost RudderStack event is exactly the divergence the
+      // mirror exists to surface. pushFaroUserAction never throws.
+      // `experiments` is carried once per session (lib/telemetry/session)
+      // instead of on every mirrored action; RudderStack keeps it.
+      const faroProperties = { ...enrichedProperties };
+      delete faroProperties.experiments;
+      // RudderStack properties are never redacted (first-party, same policy
+      // as identity), but the Faro mirror is the final URL boundary for this
+      // path — normalize by the `*_url` naming convention every call site
+      // already follows, so query/fragment data never reaches Faro raw.
+      for (const key of Object.keys(faroProperties)) {
+        const value = faroProperties[key];
+        if (typeof value === 'string' && /url$/i.test(key)) {
+          faroProperties[key] = normalizeTelemetryUrl(value);
+        }
+      }
+      pushFaroUserAction(interactionName, faroProperties);
+    }
   } catch (error) {
-    console.warn('Analytics reporting failed:', error);
+    logger.warn('Analytics reporting failed', { error });
   }
 }
 
@@ -336,12 +412,15 @@ function buildScrollEventProperties(
   isRecommendationsTab: boolean,
   pageIdentifier: string
 ): Record<string, string | number | boolean> {
-  const pageType = isRecommendationsTab ? 'recommendations' : activeTab?.type || 'learning-journey';
+  // Matches determinePageIdentifier's treatment of a missing type as a learning journey,
+  // so page_type and content_type never diverge for the same tab.
+  const tabTypeFallback = activeTab?.type || AnalyticsContentType.LearningJourney;
+  const pageType = isRecommendationsTab ? 'recommendations' : tabTypeFallback;
 
   const properties: Record<string, string | number | boolean> = {
     page_type: pageType,
     content_url: pageIdentifier,
-    content_type: isRecommendationsTab ? '' : activeTab?.type || 'learning-journey',
+    content_type: isRecommendationsTab ? '' : tabTypeToContentType(tabTypeFallback),
   };
 
   // Add additional context for learning journeys
@@ -438,7 +517,7 @@ export function getJourneyProperties(content: JourneyContent | null | undefined)
  *   UserInteraction.OpenExtraResource,
  *   enrichWithJourneyContext({
  *     content_url: url,
- *     link_type: 'external',
+ *     link_type: AnalyticsLinkType.ExternalBrowser,
  *   }, activeTab?.content)
  * );
  * ```
@@ -565,7 +644,7 @@ export function buildInteractiveStepProperties(
   return {
     ...docInfo,
     ...baseProperties,
-    content_type: 'interactive_guide',
+    content_type: AnalyticsContentType.InteractiveGuide,
     ...(stepIndex !== undefined && { current_step: stepIndex + 1 }), // 1-indexed for analytics
     ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
     ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
@@ -618,7 +697,7 @@ export function getCurrentStepContext(): Record<string, number> {
  *   UserInteraction.OpenExtraResource,
  *   enrichWithStepContext({
  *     content_url: url,
- *     link_type: 'external',
+ *     link_type: AnalyticsLinkType.ExternalBrowser,
  *   })
  * );
  * ```

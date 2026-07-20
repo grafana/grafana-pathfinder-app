@@ -71,6 +71,14 @@ jest.mock('../lib/hash.util', () => ({
   }),
 }));
 
+const mockRecordRecommenderRequest = jest.fn();
+const mockRecordRecommenderFallback = jest.fn();
+jest.mock('../lib/telemetry', () => ({
+  ...jest.requireActual('../lib/telemetry'),
+  recordRecommenderRequest: (...args: unknown[]) => mockRecordRecommenderRequest(...args),
+  recordRecommenderFallback: (...args: unknown[]) => mockRecordRecommenderFallback(...args),
+}));
+
 jest.mock('../docs-retrieval', () => ({
   fetchContent: jest.fn().mockResolvedValue({
     content: { metadata: { learningJourney: { milestones: [], summary: '' } } },
@@ -575,6 +583,8 @@ describe('V1 error handling and edge cases', () => {
 
     expect(result.recommendations).toBeDefined();
     expect(result.errorType).toBe('other');
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledWith(expect.any(Number), 'other');
+    expect(mockRecordRecommenderFallback).toHaveBeenCalledWith('other', 'bundled+static');
   });
 
   it('should fall back gracefully when v1 returns HTTP 403', async () => {
@@ -636,6 +646,52 @@ describe('V1 error handling and edge cases', () => {
 
     expect(result.recommendations).toBeDefined();
     expect(result.errorType).toBe('unavailable');
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledWith(expect.any(Number), 'unavailable');
+    expect(mockRecordRecommenderFallback).toHaveBeenCalledWith('unavailable', 'bundled+static');
+  });
+
+  it('pushes an ok-outcome measurement (no fallback event) on a successful recommend call', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(makeV1Response()),
+    });
+
+    await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledTimes(1);
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledWith(expect.any(Number), 'ok');
+    expect(mockRecordRecommenderFallback).not.toHaveBeenCalled();
+  });
+
+  it('settles telemetry exactly once when the response body is not valid JSON', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON')),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledTimes(1);
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledWith(expect.any(Number), 'other');
+    expect(mockRecordRecommenderFallback).toHaveBeenCalledTimes(1);
+  });
+
+  it('settles telemetry exactly once (as a failure, never ok) when post-parse processing throws', async () => {
+    // `recommendations` is not an array, so the mapping step after the
+    // successful JSON parse throws into the fail path.
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ recommendations: 'not-an-array' }),
+    });
+
+    const result = await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+
+    expect(result.recommendations).toBeDefined();
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledTimes(1);
+    expect(mockRecordRecommenderRequest).toHaveBeenCalledWith(expect.any(Number), 'other');
+    expect(mockRecordRecommenderRequest).not.toHaveBeenCalledWith(expect.any(Number), 'ok');
+    expect(mockRecordRecommenderFallback).toHaveBeenCalledTimes(1);
   });
 });
 

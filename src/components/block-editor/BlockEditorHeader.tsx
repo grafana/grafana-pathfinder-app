@@ -15,6 +15,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import type { ViewMode } from './types';
 import { testIds } from '../../constants/testIds';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
+import { PANEL_MODE_CHANGE_EVENT } from '../../lib/event-names';
 
 export interface BlockEditorHeaderProps {
   /** Guide title to display */
@@ -62,6 +63,8 @@ export interface BlockEditorHeaderProps {
   onNewGuide: () => void;
   /** Whether the Pathfinder backend API is available; hides Library and Publish controls when false */
   isBackendAvailable: boolean;
+  /** Whether the guide Library entry should be offered (stays hidden until the user has a saved guide) */
+  hasBackendGuides: boolean;
   /** Whether the guide has any blocks (drives selection-mode trigger visibility) */
   hasBlocks: boolean;
   /** Whether selection mode is currently active */
@@ -251,6 +254,7 @@ export function BlockEditorHeader({
   isPostingToBackend = false,
   onNewGuide,
   isBackendAvailable,
+  hasBackendGuides,
   hasBlocks,
   isSelectionMode,
   onToggleSelectionMode,
@@ -283,9 +287,9 @@ export function BlockEditorHeader({
     const handleModeChange = (e: CustomEvent<{ mode: PanelMode }>) => {
       setPanelMode(e.detail.mode);
     };
-    document.addEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+    document.addEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     return () => {
-      document.removeEventListener('pathfinder-panel-mode-change', handleModeChange as EventListener);
+      document.removeEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     };
   }, []);
 
@@ -369,7 +373,7 @@ export function BlockEditorHeader({
         onClick={onNewGuide}
         data-testid={testIds.blockEditor.newGuideButton}
       />
-      {isBackendAvailable && (
+      {isBackendAvailable && hasBackendGuides && (
         <Menu.Item
           label="Library"
           icon="book-open"

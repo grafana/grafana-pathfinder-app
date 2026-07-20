@@ -58,6 +58,8 @@ export interface ResolvedRemoteGuide {
   sourceUrl: string;
   /** Conservative side-effect classification for the fetched content. */
   sideEffects: SideEffectClassification;
+  /** Plugin IDs required by this guide, from testEnvironment.plugins. */
+  plugins?: string[];
 }
 
 /** A remote package that will not be run, with a structured reason. */
@@ -195,6 +197,7 @@ async function buildGuideOrSkip(
       targetUrl: target.targetUrl!,
       sourceUrl: contentUrl,
       sideEffects,
+      ...(testEnvironment.plugins?.length ? { plugins: testEnvironment.plugins } : {}),
     },
   };
 }
