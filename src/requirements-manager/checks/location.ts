@@ -6,7 +6,7 @@
  */
 
 import { locationService } from '@grafana/runtime';
-import type { CheckResultError } from '../requirements-checker.utils';
+import type { CheckResultError } from '../../types/requirements.types';
 
 export async function onPageCheck(check: string): Promise<CheckResultError> {
   try {

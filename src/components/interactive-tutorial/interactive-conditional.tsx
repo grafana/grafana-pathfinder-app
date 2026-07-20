@@ -16,6 +16,7 @@ import type { ConditionalDisplayMode, ConditionalSectionConfig } from '../../typ
 import { InteractiveSection } from './interactive-section';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { logger } from '../../lib/logging';
+import { markSkipsSectionNumbering } from './skip-section-numbering';
 
 export interface InteractiveConditionalProps {
   /** Conditions to evaluate (uses same syntax as requirements) */
@@ -342,3 +343,6 @@ export function InteractiveConditional({
 
 // Add display name for debugging
 InteractiveConditional.displayName = 'InteractiveConditional';
+
+// Wrapper block: sits in a section's list without a step number.
+markSkipsSectionNumbering(InteractiveConditional);

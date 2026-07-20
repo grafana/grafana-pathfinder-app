@@ -48,8 +48,7 @@ import { LoadingIndicator } from './LoadingIndicator';
 import { LearningJourneyMilestoneToolbar } from './LearningJourneyMilestoneToolbar';
 import { PanelModeActionButtons } from './PanelModeActionButtons';
 import type { SceneObject } from '@grafana/scenes';
-import type { OpenDocsOptions } from '../types';
-import type { CombinedLearningJourneyPanel } from '../docs-panel';
+import type { DocsPanelModelOperations, OpenDocsOptions } from '../types';
 
 // Kept inside the component file so webpack sees the same dynamic-import
 // module specifiers used pre-refactor. See pre-mortem H8.
@@ -74,7 +73,7 @@ export interface DocsPanelContentAreaProps {
   interactiveStyles: string;
   prismStyles: string;
 
-  model: CombinedLearningJourneyPanel;
+  model: DocsPanelModelOperations;
   contextPanel: SceneObject<ContextPanelState>;
 
   isFullScreenActive: boolean;

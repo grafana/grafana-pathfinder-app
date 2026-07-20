@@ -4,7 +4,7 @@
  */
 
 import { config } from '@grafana/runtime';
-import type { CheckResultError } from '../requirements-checker.utils';
+import type { CheckResultError } from '../../types/requirements.types';
 
 /**
  * Feature toggle: `has-feature:<name>`.

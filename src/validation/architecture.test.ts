@@ -164,30 +164,9 @@ const ALLOWED_CYCLES: readonly AllowedCycleEntry[] = [
   },
   {
     cycle:
-      'requirements-manager/checks/coda.ts <-> requirements-manager/checks/env.ts <-> requirements-manager/checks/grafana-api.ts <-> requirements-manager/checks/location.ts <-> requirements-manager/checks/terminal.ts <-> requirements-manager/checks/vars.ts <-> requirements-manager/requirements-checker.utils.ts',
-    reason:
-      'requirements-manager check modules and their shared utils mutually reach each other; needs a shared-seam extraction.',
-    tracking: '#1359',
-  },
-  {
-    cycle:
       'interactive-engine/index.ts <-> interactive-engine/interactive.hook.ts <-> interactive-engine/use-sequential-step-state.hook.ts <-> requirements-manager/index.ts <-> requirements-manager/step-checker.hook.ts',
     reason:
       'Cross-engine interactive-engine <-> requirements-manager coupling; already tracked in ALLOWED_LATERAL_VIOLATIONS cluster A, structural.',
-    tracking: '#1359',
-  },
-  {
-    cycle:
-      'components/interactive-tutorial/hooks/use-section-requirements.ts <-> components/interactive-tutorial/interactive-conditional.tsx <-> components/interactive-tutorial/interactive-section.tsx <-> components/interactive-tutorial/section-numbering.tsx',
-    reason:
-      'interactive-tutorial section rendering and its requirements hook cross-reference; contained within one component subtree.',
-    tracking: '#1359',
-  },
-  {
-    cycle:
-      'components/docs-panel/components/DocsPanelContentArea.tsx <-> components/docs-panel/components/LearningJourneyMilestoneToolbar.tsx <-> components/docs-panel/components/index.ts <-> components/docs-panel/docs-panel.tsx',
-    reason:
-      'Barrel-routed docs-panel cluster; back-edges are the shared CombinedLearningJourneyPanel type, likely a shared-type extraction.',
     tracking: '#1359',
   },
 ];

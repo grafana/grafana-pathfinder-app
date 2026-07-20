@@ -35,13 +35,13 @@ import {
 import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../../docs-retrieval';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
-import type { CombinedLearningJourneyPanel } from '../docs-panel';
+import type { DocsPanelModelOperations } from '../types';
 import { cleanDocsUrl } from '../utils';
 
 export type MilestoneToolbarSurface = 'sidebar' | 'fullscreen' | 'floating';
 
 export interface LearningJourneyMilestoneToolbarProps {
-  panel: CombinedLearningJourneyPanel;
+  panel: DocsPanelModelOperations;
   activeTab: LearningJourneyTab;
   /**
    * Where this toolbar lives — drives the analytics `interaction_location`

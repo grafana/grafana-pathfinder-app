@@ -88,6 +88,12 @@ export interface DocsPanelModelOperations {
   /** Get the currently active tab */
   getActiveTab(): LearningJourneyTab | null;
 
+  /** Accept the implied-0th-step alignment prompt for a tab */
+  confirmAlignment(tabId: string): Promise<void>;
+
+  /** Dismiss the implied-0th-step alignment prompt for a tab */
+  dismissAlignment(tabId: string): void;
+
   /**
    * Record the launch source for the next `loadDocsTabContent` call so the
    * implied-0th-step evaluator classifies it correctly. Consumed once by the
