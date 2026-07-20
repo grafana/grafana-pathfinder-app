@@ -306,6 +306,93 @@ jobs:
 
           echo "All required jobs passed!"
 
+  # Alerts #grafana-pathfinder-alerts on main-branch CI failures only.
+  notify-ci-failure:
+    name: Notify CI failure
+    needs: [lint, typecheck, prettier, test, validate-packages, build, test-backend]
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      (needs.lint.result == 'failure' ||
+       needs.typecheck.result == 'failure' ||
+       needs.prettier.result == 'failure' ||
+       needs.test.result == 'failure' ||
+       needs.validate-packages.result == 'failure' ||
+       needs.build.result == 'failure' ||
+       needs.test-backend.result == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # required by the shared action's checkout step
+      id-token: write # required by get-vault-secrets for OIDC auth to Vault
+      actions: read   # required to fetch job URLs from the GitHub API
+    steps:
+      - name: Build Slack payload
+        id: payload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
+          PRETTIER_RESULT: ${{ needs.prettier.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          VALIDATE_RESULT: ${{ needs.validate-packages.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          TEST_BACKEND_RESULT: ${{ needs.test-backend.result }}
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          jobs_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs")
+
+          declare -A results=(
+            ["Lint"]="$LINT_RESULT"
+            ["Typecheck"]="$TYPECHECK_RESULT"
+            ["Prettier"]="$PRETTIER_RESULT"
+            ["Test"]="$TEST_RESULT"
+            ["Validate packages"]="$VALIDATE_RESULT"
+            ["Build"]="$BUILD_RESULT"
+            ["Test backend"]="$TEST_BACKEND_RESULT"
+          )
+
+          nl=$'\n'
+          text="*CI failed on \`main\`*${nl}*Failed jobs:*"
+          for name in "Lint" "Typecheck" "Prettier" "Test" "Validate packages" "Build" "Test backend"; do
+            if [[ "${results[$name]}" == "failure" ]]; then
+              url=$(echo "$jobs_json" | jq -r --arg n "$name" '.jobs[] | select(.name == $n) | .html_url')
+              text="${text}${nl}• <${url}|${name}>"
+            fi
+          done
+
+          payload=$(jq -n \
+            --arg text "$text" \
+            --arg run_url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" \
+            --arg sha "${SHA}" \
+            --arg actor "${ACTOR}" \
+            '{
+              channel: "C0A2VAPHCBT",
+              text: "CI failed on main",
+              blocks: [
+                {
+                  type: "section",
+                  text: { type: "mrkdwn", text: $text }
+                },
+                {
+                  type: "section",
+                  text: { type: "mrkdwn", text: "<\($run_url)|Open CI run>\nCommit: `\($sha)` \u00b7 triggered by `\($actor)`" }
+                }
+              ]
+            }')
+
+          echo "payload<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$payload" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack
+        uses: grafana/shared-workflows/actions/send-slack-message@551bc8d50017d3e95d5da3f8a4826e733a208dc0 # send-slack-message/v3.0.2
+        with:
+          method: chat.postMessage
+          payload: ${{ steps.payload.outputs.payload }}
+
   # Resolve E2E versions runs in parallel (no dependency on build)
   resolve-versions:
     name: Resolve e2e images
