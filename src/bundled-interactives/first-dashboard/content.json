@@ -54,7 +54,7 @@
         {
           "type": "interactive",
           "action": "formfill",
-          "reftarget": "grafana:components.DataSource.TestData.QueryTab.labelsInput:A",
+          "reftarget": "input[data-testid^=\"data-testid Test Data Query labels input \"]:nth-match(1)",
           "targetvalue": "walker=jack",
           "requirements": ["on-page:/explore", "exists-reftarget"],
           "content": "Add the label **walker=jack** to identify Jack's hiking data.",
@@ -71,7 +71,7 @@
         {
           "type": "interactive",
           "action": "formfill",
-          "reftarget": "grafana:components.DataSource.TestData.QueryTab.labelsInput:B",
+          "reftarget": "input[data-testid^=\"data-testid Test Data Query labels input \"]:nth-match(2)",
           "targetvalue": "walker=jill",
           "requirements": ["on-page:/explore", "exists-reftarget"],
           "content": "Add the label **walker=jill** to identify Jill's hiking data.",
