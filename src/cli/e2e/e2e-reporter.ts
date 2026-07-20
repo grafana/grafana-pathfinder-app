@@ -461,12 +461,11 @@ export function generateMultiGuideReport(resultsArray: TestResultsData[], grafan
       .map((result) => result.endedAt ?? result.timestamp)
       .sort()
       .slice(-1)[0] ?? config.timestamp;
-  const reportOutcomes = new Set<E2EExecutionOutcome>(
-    reports.map(({ outcome }) => (outcome === 'aborted' ? 'failed' : outcome))
-  );
+  const reportOutcomes = new Set<E2EExecutionOutcome>(reports.map(({ outcome }) => outcome));
   const outcomePriority: E2EExecutionOutcome[] = [
     'infrastructure_error',
     'configuration_error',
+    'aborted',
     'failed',
     'passed',
     'skipped',
