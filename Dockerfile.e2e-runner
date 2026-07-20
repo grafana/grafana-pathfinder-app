@@ -13,14 +13,15 @@ WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci --no-audit --no-fund \
     && npx playwright install --with-deps chromium \
-    && npm cache clean --force
+    && npm cache clean --force \
+    && chown -R node:node /ms-playwright \
+    && chown node:node /app
 
-COPY . .
-RUN npm run build:cli \
-    && chmod +x scripts/e2e-runner-entrypoint.sh \
-    && chown -R node:node /app /ms-playwright
-
+COPY --chown=node:node . .
 USER node
+RUN npm run build:cli \
+    && chmod +x scripts/e2e-runner-entrypoint.sh
+
 WORKDIR /workspace
 
 ENTRYPOINT ["/app/scripts/e2e-runner-entrypoint.sh"]
