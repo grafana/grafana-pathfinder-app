@@ -61,8 +61,11 @@ export function getNextMilestoneUrl(content: RawContent): string | null {
 
   const { currentMilestone, milestones } = content.metadata.learningJourney;
 
-  // Since milestones are now sequentially numbered from 1, we can use simple logic
-  const nextMilestone = milestones.find((m) => m.number === currentMilestone + 1);
+  // Milestones are sequentially numbered from 1. Locked (unresolved) entries
+  // aren't navigable, so skip forward past any run of them to the next
+  // resolved milestone — a path whose next member hasn't published yet
+  // shouldn't dead-end the toolbar (RFC CUSTOM-GUIDE-PACKAGES.md §6.5).
+  const nextMilestone = milestones.find((m) => m.number > currentMilestone && !m.isLocked);
   return nextMilestone ? nextMilestone.url : null;
 }
 
@@ -73,16 +76,19 @@ export function getPreviousMilestoneUrl(content: RawContent): string | null {
 
   const { currentMilestone, milestones, baseUrl } = content.metadata.learningJourney;
 
-  // Since milestones are now sequentially numbered from 1, we can use simple logic
-  if (currentMilestone > 1) {
-    const prevMilestone = milestones.find((m) => m.number === currentMilestone - 1);
-    return prevMilestone ? prevMilestone.url : null;
-  } else if (currentMilestone === 1) {
-    // Go back to cover page (milestone 0)
-    return baseUrl;
+  if (currentMilestone < 1) {
+    return null;
   }
 
-  return null;
+  // Skip backward past any locked entries to the nearest resolved milestone.
+  const candidates = milestones.filter((m) => m.number < currentMilestone && !m.isLocked);
+  if (candidates.length > 0) {
+    const prevMilestone = candidates.reduce((latest, m) => (m.number > latest.number ? m : latest));
+    return prevMilestone.url;
+  }
+
+  // Nothing resolved before this one — go back to the cover page (milestone 0).
+  return baseUrl;
 }
 
 export function getCurrentMilestone(content: RawContent): Milestone | null {
