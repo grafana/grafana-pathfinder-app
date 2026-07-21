@@ -440,6 +440,16 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     fontWeight: theme.typography.fontWeightRegular,
     marginLeft: theme.spacing(0.5),
   }),
+  // A member referenced by a path/journey manifest that hasn't resolved yet
+  // (not yet published, or a transient error) — visibly present but inert,
+  // rather than silently missing from the list (RFC CUSTOM-GUIDE-PACKAGES.md §6.5).
+  milestoneItemLocked: css({
+    cursor: 'not-allowed',
+    opacity: 0.55,
+    '&:hover': {
+      backgroundColor: 'transparent',
+    },
+  }),
 });
 
 // Skeleton placeholders shown while deferred milestones/nav links resolve
@@ -722,6 +732,14 @@ export const getCustomGuidesStyles = (theme: GrafanaTheme2) => ({
     borderRadius: '12px',
     border: 'none',
     opacity: 0.8,
+  }),
+  // Sub-heading above the orphan-guide fallback list when a stack has both
+  // path/journey cards and standalone guides that belong to no path.
+  orphanGuidesHeading: css({
+    margin: theme.spacing(1.5, 0, 0.75, 0),
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
   }),
 });
 
