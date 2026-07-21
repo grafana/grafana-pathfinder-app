@@ -92,7 +92,13 @@ describe('useLearningPaths — App Platform path ingestion', () => {
   it('resolves App Platform guide metadata (title + backend-guide: url) via getGuideUrlForPath', async () => {
     mockFetchAppPlatformLearningPaths.mockResolvedValue({
       paths: [
-        { id: 'fe-alerting-path', title: 'Alerting enablement', description: '', guides: ['fe-alerting-01'], badgeId: '' },
+        {
+          id: 'fe-alerting-path',
+          title: 'Alerting enablement',
+          description: '',
+          guides: ['fe-alerting-01'],
+          badgeId: '',
+        },
       ],
       guideMetadata: {
         'fe-alerting-01': { title: 'Alerting module 1', estimatedMinutes: 5, url: 'backend-guide:fe-alerting-01' },
