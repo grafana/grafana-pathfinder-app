@@ -36,21 +36,19 @@ describe('resolveJourneyStepWeights', () => {
     await resolveJourneyStepWeights(JOURNEY, [milestone('m1'), milestone('m2', 2)]);
 
     expect(mockFetchContent).toHaveBeenCalledTimes(2);
+    expect(mockFetchContent).toHaveBeenCalledWith(expect.any(String), { skipJourneyMetadata: true });
     const weights = getJourneyStepWeights(JOURNEY);
     expect(weights?.get('m1')).toBe(4);
     expect(weights?.get('m2')).toBe(2);
   });
 
-  it('weighs passive, failed, and html-wrapped milestones as 1', async () => {
+  it('weighs passive, html-wrapped, and malformed milestones as a deterministic 1', async () => {
     mockFetchContent.mockImplementation((url: string) => {
       if (url.includes('passive')) {
         return Promise.resolve(guideResult(0));
       }
-      if (url.includes('broken')) {
-        return Promise.reject(new Error('network'));
-      }
-      if (url.includes('nullcontent')) {
-        return Promise.resolve({ content: null, error: 'not found' });
+      if (url.includes('malformed')) {
+        return Promise.resolve({ content: { content: 'not json {' } });
       }
       return Promise.resolve({
         content: { content: JSON.stringify({ id: 'g', title: 'g', blocks: [{ type: 'html', content: '<p/>' }] }) },
@@ -59,23 +57,54 @@ describe('resolveJourneyStepWeights', () => {
 
     await resolveJourneyStepWeights(JOURNEY, [
       milestone('passive'),
-      milestone('broken', 2),
-      milestone('nullcontent', 3),
-      milestone('htmlwrapped', 4),
+      milestone('malformed', 2),
+      milestone('htmlwrapped', 3),
     ]);
 
     const weights = getJourneyStepWeights(JOURNEY);
     expect(weights?.get('passive')).toBe(1);
-    expect(weights?.get('broken')).toBe(1);
-    expect(weights?.get('nullcontent')).toBe(1);
+    expect(weights?.get('malformed')).toBe(1);
     expect(weights?.get('htmlwrapped')).toBe(1);
   });
 
-  it('makes no further fetches once a journey is resolved, including failures', async () => {
+  it('leaves the journey unresolved when any milestone fetch fails, so consumers fall back to milestone-equal', async () => {
+    mockFetchContent.mockImplementation((url: string) => {
+      if (url.includes('broken')) {
+        return Promise.reject(new Error('network'));
+      }
+      if (url.includes('nullcontent')) {
+        return Promise.resolve({ content: null, error: 'not found' });
+      }
+      return Promise.resolve(guideResult(3));
+    });
+
+    await resolveJourneyStepWeights(JOURNEY, [milestone('m1'), milestone('broken', 2), milestone('nullcontent', 3)]);
+
+    expect(getJourneyStepWeights(JOURNEY)).toBeNull();
+  });
+
+  it('retries only failed milestones on the next resolve and publishes once all succeed', async () => {
+    let brokenFails = true;
     mockFetchContent.mockImplementation((url: string) =>
-      url.includes('broken') ? Promise.reject(new Error('network')) : Promise.resolve(guideResult(3))
+      url.includes('broken') && brokenFails ? Promise.reject(new Error('network')) : Promise.resolve(guideResult(3))
     );
     const roster = [milestone('m1'), milestone('broken', 2)];
+
+    await resolveJourneyStepWeights(JOURNEY, roster);
+    expect(mockFetchContent).toHaveBeenCalledTimes(2);
+    expect(getJourneyStepWeights(JOURNEY)).toBeNull();
+
+    brokenFails = false;
+    await resolveJourneyStepWeights(JOURNEY, roster);
+    expect(mockFetchContent).toHaveBeenCalledTimes(3);
+    const weights = getJourneyStepWeights(JOURNEY);
+    expect(weights?.get('m1')).toBe(3);
+    expect(weights?.get('broken')).toBe(3);
+  });
+
+  it('makes no further fetches once a journey is fully resolved', async () => {
+    mockFetchContent.mockImplementation(() => Promise.resolve(guideResult(3)));
+    const roster = [milestone('m1'), milestone('m2', 2)];
 
     await resolveJourneyStepWeights(JOURNEY, roster);
     await resolveJourneyStepWeights(JOURNEY, roster);

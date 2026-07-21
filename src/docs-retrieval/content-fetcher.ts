@@ -172,7 +172,12 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       recordContentFetchFallback({ url, tierUsed: 'unstyled-html', errorType: 'content-json-unavailable' });
     }
 
-    const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType, isNativeJson);
+    const metadata = await extractMetadata(
+      fetchResult.html,
+      finalUrl,
+      options.skipJourneyMetadata ? 'single-doc' : contentType,
+      isNativeJson
+    );
 
     let jsonContent: string;
 
