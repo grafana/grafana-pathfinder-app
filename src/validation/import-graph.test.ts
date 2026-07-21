@@ -5,9 +5,12 @@
  * ensuring the boundary enforcement logic itself is correct.
  */
 
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 import {
+  NODE_CONTEXT_ROOTS,
   REPO_ROOT,
   ROOT_LEVEL_ALLOWED_FILES,
   ROOT_LEVEL_TIER_MAP,
@@ -15,7 +18,16 @@ import {
   TIER_MAP,
   TIER_2_ENGINES,
   EXCLUDED_TOP_LEVEL,
+  collectNodeContextFiles,
+  extractImportRecords,
   extractRelativeImports,
+  findCycles,
+  isJestManagedTestFile,
+  isNodeBuiltin,
+  packageNameOf,
+  scanNodeEnvReachability,
+  findStronglyConnectedComponents,
+  validateAllowedCycleEntries,
   getNewViolations,
   getRootLevelSourceFiles,
   getSourceTier,
@@ -24,12 +36,14 @@ import {
   getTopLevelDir,
   isTestFile,
   assertRatchet,
+  buildModuleGraph,
   collectSourceFiles,
   loadTsconfigPaths,
   readJsoncFile,
   resolveImportToRelative,
   resolvePathAlias,
   toPosixPath,
+  type ModuleGraph,
 } from './import-graph';
 
 // ---------------------------------------------------------------------------
@@ -498,5 +512,406 @@ describe('assertRatchet', () => {
     const violations = new Set(['new -> one']);
     const allowlist = new Set(['stale -> old']);
     expect(() => assertRatchet(violations, allowlist, 'test', 'CONST', advice)).toThrow(/New test detected/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cycle detection: findStronglyConnectedComponents / findCycles
+// ---------------------------------------------------------------------------
+
+function graphFromAdjacency(adjacency: Record<string, string[]>): ModuleGraph {
+  const map = new Map<string, Set<string>>();
+  for (const [node, edges] of Object.entries(adjacency)) {
+    map.set(node, new Set(edges));
+  }
+  return { nodes: Object.keys(adjacency), adjacency: map };
+}
+
+function sortedComponents(components: string[][]): string[][] {
+  return components.map((c) => [...c].sort()).sort((a, b) => (a[0]! < b[0]! ? -1 : a[0]! > b[0]! ? 1 : 0));
+}
+
+describe('findStronglyConnectedComponents', () => {
+  it('returns a singleton component for each node in an acyclic graph', () => {
+    const graph = graphFromAdjacency({ a: ['b'], b: ['c'], c: [] });
+    const sccs = findStronglyConnectedComponents(graph);
+    expect(sccs.every((c) => c.length === 1)).toBe(true);
+    expect(sccs).toHaveLength(3);
+  });
+
+  it('detects a simple two-node cycle', () => {
+    const graph = graphFromAdjacency({ a: ['b'], b: ['a'] });
+    const cyclic = findStronglyConnectedComponents(graph).filter((c) => c.length >= 2);
+    expect(sortedComponents(cyclic)).toEqual([['a', 'b']]);
+  });
+
+  it('detects a longer cycle', () => {
+    const graph = graphFromAdjacency({ a: ['b'], b: ['c'], c: ['a'] });
+    const cyclic = findStronglyConnectedComponents(graph).filter((c) => c.length >= 2);
+    expect(sortedComponents(cyclic)).toEqual([['a', 'b', 'c']]);
+  });
+
+  it('separates two independent cycles', () => {
+    const graph = graphFromAdjacency({ a: ['b'], b: ['a'], c: ['d'], d: ['c'], e: [] });
+    const cyclic = findStronglyConnectedComponents(graph).filter((c) => c.length >= 2);
+    expect(sortedComponents(cyclic)).toEqual([
+      ['a', 'b'],
+      ['c', 'd'],
+    ]);
+  });
+
+  it('merges nested cycles that mutually reach into one component', () => {
+    // a->b->c->a and b->d->b: all of a,b,c,d are mutually reachable.
+    const graph = graphFromAdjacency({ a: ['b'], b: ['c', 'd'], c: ['a'], d: ['b'] });
+    const cyclic = findStronglyConnectedComponents(graph).filter((c) => c.length >= 2);
+    expect(sortedComponents(cyclic)).toEqual([['a', 'b', 'c', 'd']]);
+  });
+
+  it('does not overflow on a long acyclic chain', () => {
+    const adjacency: Record<string, string[]> = {};
+    for (let i = 0; i < 5000; i++) {
+      adjacency[`n${i}`] = i < 4999 ? [`n${i + 1}`] : [];
+    }
+    const sccs = findStronglyConnectedComponents(graphFromAdjacency(adjacency));
+    expect(sccs).toHaveLength(5000);
+    expect(sccs.every((c) => c.length === 1)).toBe(true);
+  });
+});
+
+describe('findCycles', () => {
+  it('returns only components of size >= 2, with members sorted', () => {
+    const graph = graphFromAdjacency({ b: ['a'], a: ['b'], z: [] });
+    expect(findCycles(graph)).toEqual([['a', 'b']]);
+  });
+
+  it('returns an empty array for an acyclic graph', () => {
+    expect(findCycles(graphFromAdjacency({ a: ['b'], b: [] }))).toEqual([]);
+  });
+});
+
+describe('buildModuleGraph', () => {
+  it('produces a graph whose edges are all real nodes (no dangling targets)', () => {
+    const graph = buildModuleGraph();
+    const nodeSet = new Set(graph.nodes);
+    for (const [, edges] of graph.adjacency) {
+      for (const target of edges) {
+        expect(nodeSet.has(target)).toBe(true);
+      }
+    }
+  });
+
+  it('excludes self-edges', () => {
+    const graph = buildModuleGraph();
+    for (const [node, edges] of graph.adjacency) {
+      expect(edges.has(node)).toBe(false);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateAllowedCycleEntries
+// ---------------------------------------------------------------------------
+
+describe('validateAllowedCycleEntries', () => {
+  const valid = { cycle: 'a.ts <-> b.ts', reason: 'shared type extraction pending', tracking: '#1359' };
+
+  it('accepts a well-formed entry with a #-issue', () => {
+    expect(validateAllowedCycleEntries([valid])).toEqual([]);
+  });
+
+  it('accepts a GitHub issues URL as tracking', () => {
+    const url = 'https://github.com/grafana/grafana-pathfinder-app/issues/1359';
+    expect(validateAllowedCycleEntries([{ ...valid, tracking: url }])).toEqual([]);
+  });
+
+  it('flags a reason that is missing or too short', () => {
+    const errors = validateAllowedCycleEntries([{ ...valid, reason: 'too short' }]);
+    expect(errors.some((e) => e.includes("'reason'"))).toBe(true);
+  });
+
+  it('flags whitespace-only reasons (trimmed before length check)', () => {
+    const errors = validateAllowedCycleEntries([{ ...valid, reason: '                          ' }]);
+    expect(errors.some((e) => e.includes("'reason'"))).toBe(true);
+  });
+
+  it('flags a tracking value that is neither #-issue nor issues URL', () => {
+    const errors = validateAllowedCycleEntries([{ ...valid, tracking: 'later' }]);
+    expect(errors.some((e) => e.includes("'tracking'"))).toBe(true);
+  });
+
+  it('rejects a PR URL (must be an issues URL, not pull)', () => {
+    const prUrl = 'https://github.com/grafana/grafana-pathfinder-app/pull/1358';
+    const errors = validateAllowedCycleEntries([{ ...valid, tracking: prUrl }]);
+    expect(errors.some((e) => e.includes("'tracking'"))).toBe(true);
+  });
+
+  it('flags duplicate cycle keys', () => {
+    const errors = validateAllowedCycleEntries([valid, { ...valid }]);
+    expect(errors.some((e) => e.includes('Duplicate'))).toBe(true);
+  });
+
+  it('labels errors by the first file in the offending cycle', () => {
+    const errors = validateAllowedCycleEntries([{ cycle: 'x.ts <-> y.ts', reason: 'x', tracking: 'x' }]);
+    expect(errors.every((e) => e.startsWith('x.ts:'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractImportRecords (environment reachability)
+// ---------------------------------------------------------------------------
+
+describe('extractImportRecords', () => {
+  const recordFor = (content: string, specifier: string) => {
+    const record = extractImportRecords(content).find((r) => r.specifier === specifier);
+    if (!record) {
+      throw new Error(`No record extracted for '${specifier}'`);
+    }
+    return record;
+  };
+
+  it('marks external bare specifiers as non-relative', () => {
+    expect(recordFor(`import { config } from '@grafana/runtime';`, '@grafana/runtime')).toMatchObject({
+      relative: false,
+      typeOnly: false,
+      dynamic: false,
+    });
+  });
+
+  it('marks relative specifiers as relative', () => {
+    expect(recordFor(`import { a } from './utils';`, './utils')).toMatchObject({ relative: true });
+  });
+
+  it('detects `import type` clauses as typeOnly', () => {
+    expect(recordFor(`import type { Config } from '@grafana/runtime';`, '@grafana/runtime').typeOnly).toBe(true);
+  });
+
+  it('detects all-type-only named specifiers as typeOnly', () => {
+    expect(recordFor(`import { type A, type B } from 'react';`, 'react').typeOnly).toBe(true);
+  });
+
+  it('treats mixed type/value named specifiers as a value import', () => {
+    expect(recordFor(`import { type A, useState } from 'react';`, 'react').typeOnly).toBe(false);
+  });
+
+  it('treats namespace and default imports as value imports', () => {
+    expect(recordFor(`import * as React from 'react';`, 'react').typeOnly).toBe(false);
+    expect(recordFor(`import React from 'react';`, 'react').typeOnly).toBe(false);
+  });
+
+  it('treats side-effect imports as value imports', () => {
+    expect(recordFor(`import './polyfills';`, './polyfills').typeOnly).toBe(false);
+  });
+
+  it('detects `export type { X } from` as typeOnly', () => {
+    expect(recordFor(`export type { X } from './types';`, './types').typeOnly).toBe(true);
+  });
+
+  it('detects all-type-only named re-exports as typeOnly', () => {
+    expect(recordFor(`export { type X } from './types';`, './types').typeOnly).toBe(true);
+  });
+
+  it('treats `export * from` as a value edge', () => {
+    expect(recordFor(`export * from './barrel';`, './barrel').typeOnly).toBe(false);
+  });
+
+  it('flags dynamic import() as dynamic', () => {
+    expect(recordFor(`const m = await import('./lazy');`, './lazy').dynamic).toBe(true);
+  });
+
+  it('treats require() as an eager value edge', () => {
+    expect(recordFor(`const m = require('./eager');`, './eager')).toMatchObject({ dynamic: false, typeOnly: false });
+  });
+
+  it('merges occurrences: a single value import outweighs type-only imports', () => {
+    const content = [`import type { A } from './mod';`, `import { b } from './mod';`].join('\n');
+    expect(recordFor(content, './mod')).toMatchObject({ typeOnly: false, dynamic: false });
+  });
+
+  it('merges occurrences: a static import outweighs a dynamic one', () => {
+    const content = [`import { a } from './mod';`, `const m = await import('./mod');`].join('\n');
+    expect(recordFor(content, './mod').dynamic).toBe(false);
+  });
+
+  it('merges occurrences: a type-only import does not make a dynamic value edge eager', () => {
+    const content = [`import type { A } from './mod';`, `const m = await import('./mod');`].join('\n');
+    expect(recordFor(content, './mod')).toMatchObject({ typeOnly: false, dynamic: true });
+  });
+
+  it('rewrites alias-resolved internal specifiers to relative and keeps externals bare', () => {
+    const tsconfigPaths = { configDir: path.join(REPO_ROOT, '.config'), paths: { '*': ['../src/*'] } };
+    const fileDir = path.join(SRC_DIR, 'components');
+    const content = [`import { foo } from 'validation/import-graph';`, `import React from 'react';`].join('\n');
+    const records = extractImportRecords(content, { fileDir, tsconfigPaths });
+    expect(records.find((r) => r.specifier === '../validation/import-graph')).toMatchObject({ relative: true });
+    expect(records.find((r) => r.specifier === 'react')).toMatchObject({ relative: false });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// packageNameOf / isNodeBuiltin / isJestManagedTestFile
+// ---------------------------------------------------------------------------
+
+describe('packageNameOf', () => {
+  it('returns scoped package names including the scope', () => {
+    expect(packageNameOf('@modelcontextprotocol/sdk/client/index.js')).toBe('@modelcontextprotocol/sdk');
+  });
+
+  it('returns the first segment for unscoped deep imports', () => {
+    expect(packageNameOf('commander/esm.mjs')).toBe('commander');
+  });
+
+  it('strips the node: prefix', () => {
+    expect(packageNameOf('node:fs/promises')).toBe('fs');
+  });
+});
+
+describe('isNodeBuiltin', () => {
+  it('recognizes bare and node:-prefixed builtins, including deep paths', () => {
+    expect(isNodeBuiltin('fs')).toBe(true);
+    expect(isNodeBuiltin('node:path')).toBe(true);
+    expect(isNodeBuiltin('fs/promises')).toBe(true);
+  });
+
+  it('recognizes prefix-only builtins (listed in builtinModules with the node: prefix)', () => {
+    expect(isNodeBuiltin('node:test')).toBe(true);
+  });
+
+  it('rejects node:-prefixed names that are not real builtins', () => {
+    expect(isNodeBuiltin('node:notreal')).toBe(false);
+  });
+
+  it('rejects third-party packages', () => {
+    expect(isNodeBuiltin('commander')).toBe(false);
+    expect(isNodeBuiltin('@grafana/runtime')).toBe(false);
+  });
+});
+
+describe('isJestManagedTestFile', () => {
+  it('matches jest-matched test files under src/', () => {
+    expect(isJestManagedTestFile(path.join(SRC_DIR, 'cli', 'commands', 'foo.test.ts'))).toBe(true);
+    expect(isJestManagedTestFile(path.join(SRC_DIR, 'cli', '__tests__', 'helpers.ts'))).toBe(true);
+  });
+
+  it('does not match production files under src/', () => {
+    expect(isJestManagedTestFile(path.join(SRC_DIR, 'cli', 'index.ts'))).toBe(false);
+  });
+
+  it('matches the jest testMatch extension for tests/e2e-runner/utils unit tests', () => {
+    expect(
+      isJestManagedTestFile(path.join(REPO_ROOT, 'tests', 'e2e-runner', 'utils', 'selector-resolver.test.ts'))
+    ).toBe(true);
+  });
+
+  it('does not match Playwright spec files (Playwright loads them in real Node)', () => {
+    expect(isJestManagedTestFile(path.join(REPO_ROOT, 'tests', 'e2e-runner', 'guide-runner.spec.ts'))).toBe(false);
+    expect(isJestManagedTestFile(path.join(REPO_ROOT, 'tests', 'open-close.spec.ts'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scanNodeEnvReachability
+// ---------------------------------------------------------------------------
+
+describe('scanNodeEnvReachability', () => {
+  describe('on synthetic fixtures', () => {
+    let fixtureDir: string;
+    let rootDir: string;
+
+    beforeAll(() => {
+      fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'env-reachability-'));
+      rootDir = path.join(fixtureDir, 'node-root');
+      const sharedDir = path.join(fixtureDir, 'shared');
+      fs.mkdirSync(rootDir);
+      fs.mkdirSync(sharedDir);
+
+      fs.writeFileSync(
+        path.join(rootDir, 'entry.ts'),
+        [
+          `import { helper } from '../shared/helper';`,
+          `import { mid } from '../shared/mid.js';`,
+          `import 'unsafe-browser-pkg';`,
+          `import './theme.css';`,
+          `import './missing-module';`,
+          `import './readme.md';`,
+          `import type { OnlyTypes } from 'types-only-pkg';`,
+          `export const run = async () => import('../shared/lazy');`,
+        ].join('\n')
+      );
+      fs.writeFileSync(
+        path.join(sharedDir, 'helper.ts'),
+        [`import 'safe-pkg';`, `export const helper = 1;`].join('\n')
+      );
+      fs.writeFileSync(path.join(sharedDir, 'mid.ts'), `import { deep } from './deep';\nexport const mid = deep;`);
+      fs.writeFileSync(path.join(sharedDir, 'deep.ts'), `import 'deep-unsafe-pkg';\nexport const deep = 1;`);
+      fs.writeFileSync(path.join(sharedDir, 'lazy.ts'), `import 'lazy-unsafe-pkg';\nexport const lazy = 1;`);
+      fs.writeFileSync(path.join(rootDir, 'readme.md'), `not code`);
+    });
+
+    afterAll(() => {
+      fs.rmSync(fixtureDir, { recursive: true, force: true });
+    });
+
+    const scan = () => scanNodeEnvReachability(new Set(['safe-pkg']), [path.join(fixtureDir, 'node-root')]);
+
+    it('flags external packages missing from the safe list, with witness chains', () => {
+      const violation = scan().violations.find((v) => v.specifier === 'unsafe-browser-pkg');
+      expect(violation).toBeDefined();
+      expect(violation!.chain[violation!.chain.length - 1]).toMatch(/entry\.ts$/);
+    });
+
+    it('flags bundler-only asset imports', () => {
+      expect(scan().violations.some((v) => v.specifier === './theme.css')).toBe(true);
+    });
+
+    it('exempts type-only imports', () => {
+      const result = scan();
+      expect(result.violations.some((v) => v.specifier === 'types-only-pkg')).toBe(false);
+      expect(result.reachedExternalPackages.has('types-only-pkg')).toBe(false);
+    });
+
+    it('accepts safe-listed externals but records them as reached', () => {
+      const result = scan();
+      expect(result.violations.some((v) => v.specifier === 'safe-pkg')).toBe(false);
+      expect(result.reachedExternalPackages.has('safe-pkg')).toBe(true);
+    });
+
+    it('traverses eager internal imports with a multi-hop witness chain, mapping .js specifiers to TS sources', () => {
+      const violation = scan().violations.find((v) => v.specifier === 'deep-unsafe-pkg');
+      expect(violation).toBeDefined();
+      expect(violation!.chain).toHaveLength(3);
+      expect(violation!.chain[0]).toMatch(/entry\.ts$/);
+      expect(violation!.chain[1]).toMatch(/mid\.ts$/);
+      expect(violation!.chain[2]).toMatch(/deep\.ts$/);
+    });
+
+    it('flags unresolvable relative value imports instead of silently pruning the subtree', () => {
+      expect(scan().violations.some((v) => v.specifier === './missing-module')).toBe(true);
+    });
+
+    it('flags relative imports that resolve to non-source, non-JSON files', () => {
+      expect(scan().violations.some((v) => v.specifier === './readme.md')).toBe(true);
+    });
+
+    it('follows dynamic internal imports (lazy modules still execute in Node)', () => {
+      const violation = scan().violations.find((v) => v.specifier === 'lazy-unsafe-pkg');
+      expect(violation).toBeDefined();
+      expect(violation!.chain.length).toBe(2);
+      expect(violation!.chain[0]).toMatch(/entry\.ts$/);
+      expect(violation!.chain[1]).toMatch(/lazy\.ts$/);
+    });
+  });
+
+  describe('on the real repository', () => {
+    it('reaches a non-trivial closure from the default Node-context roots', () => {
+      const result = scanNodeEnvReachability(new Set());
+      expect(result.reachableFileCount).toBeGreaterThan(50);
+      expect(result.reachedExternalPackages.size).toBeGreaterThan(0);
+    });
+
+    it('collectNodeContextFiles excludes jest-managed test files', () => {
+      const files = collectNodeContextFiles(NODE_CONTEXT_ROOTS);
+      expect(files.length).toBeGreaterThan(0);
+      expect(files.some((f) => isJestManagedTestFile(f))).toBe(false);
+    });
   });
 });

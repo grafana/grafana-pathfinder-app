@@ -17,12 +17,15 @@ import * as path from 'path';
 
 import {
   EXCLUDED_TOP_LEVEL,
+  NODE_CONTEXT_ROOTS,
   REPO_ROOT,
   ROOT_LEVEL_ALLOWED_FILES,
   SRC_DIR,
   TIER_2_ENGINES,
   TIER_MAP,
   assertRatchet,
+  findCycles,
+  validateAllowedCycleEntries,
   getAllFileImports,
   getRootLevelSourceFiles,
   getSourceTier,
@@ -30,7 +33,9 @@ import {
   isTestFile,
   readJsoncFile,
   resolveImportToRelative,
+  scanNodeEnvReachability,
   toPosixPath,
+  type AllowedCycleEntry,
 } from './import-graph';
 
 interface ResolvedImportContext {
@@ -137,11 +142,95 @@ const ALLOWED_LATERAL_VIOLATIONS = new Set([
  */
 const ALLOWED_BARREL_VIOLATIONS = new Set<string>([]);
 
+/**
+ * Known circular-dependency clusters (strongly-connected components of the
+ * file-level import graph). This list should only shrink — breaking any edge in
+ * a cluster splits or dissolves the SCC and changes/removes its key, which the
+ * ratchet's stale-entry check surfaces.
+ *
+ * Each entry must carry a real `reason` and a `tracking` issue: a sibling test
+ * ('every ALLOWED_CYCLES entry is justified and tracked') enforces both so a new
+ * cycle can't be silenced with an empty rubber-stamp. `cycle` is the SCC's
+ * member files, sorted and joined by ' <-> ' (must match findCycles() output).
+ *
+ * Populated with the baseline that existed when cycle detection was added, so
+ * CI stays green while these are paid down opportunistically. See #1359.
+ */
+const ALLOWED_CYCLES: readonly AllowedCycleEntry[] = [
+  {
+    cycle:
+      'lib/analytics.ts <-> lib/logging.ts <-> lib/telemetry/bridge.ts <-> lib/telemetry/faro-adapter.ts <-> lib/telemetry/session.ts <-> security/url-validator.ts <-> utils/dev-mode.ts <-> utils/openfeature-tracking.ts <-> utils/openfeature.ts',
+    reason:
+      'Tier 1 telemetry + OpenFeature tangle spanning lib/security/utils; largest cluster, needs a dedicated extraction pass rather than a one-edge fix.',
+    tracking: '#1359',
+  },
+  {
+    cycle:
+      'requirements-manager/checks/coda.ts <-> requirements-manager/checks/env.ts <-> requirements-manager/checks/grafana-api.ts <-> requirements-manager/checks/location.ts <-> requirements-manager/checks/terminal.ts <-> requirements-manager/checks/vars.ts <-> requirements-manager/requirements-checker.utils.ts',
+    reason:
+      'requirements-manager check modules and their shared utils mutually reach each other; needs a shared-seam extraction.',
+    tracking: '#1359',
+  },
+  {
+    cycle:
+      'interactive-engine/index.ts <-> interactive-engine/interactive.hook.ts <-> interactive-engine/use-sequential-step-state.hook.ts <-> requirements-manager/index.ts <-> requirements-manager/step-checker.hook.ts',
+    reason:
+      'Cross-engine interactive-engine <-> requirements-manager coupling; already tracked in ALLOWED_LATERAL_VIOLATIONS cluster A, structural.',
+    tracking: '#1359',
+  },
+  {
+    cycle:
+      'components/interactive-tutorial/hooks/use-section-requirements.ts <-> components/interactive-tutorial/interactive-conditional.tsx <-> components/interactive-tutorial/interactive-section.tsx <-> components/interactive-tutorial/section-numbering.tsx',
+    reason:
+      'interactive-tutorial section rendering and its requirements hook cross-reference; contained within one component subtree.',
+    tracking: '#1359',
+  },
+  {
+    cycle:
+      'components/docs-panel/components/DocsPanelContentArea.tsx <-> components/docs-panel/components/LearningJourneyMilestoneToolbar.tsx <-> components/docs-panel/components/index.ts <-> components/docs-panel/docs-panel.tsx',
+    reason:
+      'Barrel-routed docs-panel cluster; back-edges are the shared CombinedLearningJourneyPanel type, likely a shared-type extraction.',
+    tracking: '#1359',
+  },
+];
+
+const ALLOWED_CYCLE_KEYS = new Set(ALLOWED_CYCLES.map((entry) => entry.cycle));
+
+/**
+ * External packages proven safe to load and execute in plain Node — no
+ * browser globals (window/document) touched at module-evaluation time.
+ *
+ * INTENT: this is an allowlist, not a ratchet. It cannot anticipate every
+ * future dependency, so GROWING it is a normal, expected maintenance action —
+ * provided the package is genuinely Node-safe. Before adding an entry, prove
+ * it loads in plain Node:
+ *
+ *     node -e "require('<package>')"
+ *     node --input-type=module -e "import '<package>'"   (ESM-only packages)
+ *
+ * and confirm it does not access browser globals at module scope. Adding a
+ * browser-dependent package (e.g. @grafana/runtime, @grafana/ui, react-dom)
+ * to silence the test defeats the check: the CLI and Playwright discovery
+ * would then crash at runtime instead of failing CI. Node builtins are
+ * auto-allowed and do not belong here.
+ */
+const NODE_SAFE_EXTERNALS = new Set([
+  '@grafana/e2e-selectors', // selector catalog built for Playwright/Node e2e use
+  '@grafana/plugin-e2e', // Playwright fixtures for Grafana plugins, Node-only
+  '@modelcontextprotocol/sdk', // MCP server/client SDK, Node-only
+  '@playwright/test', // Playwright test runner, Node-only
+  'commander', // CLI argument parser, Node-only
+  'prettier', // used by the CLI for output formatting, Node API
+  'zod', // schema validation, environment-neutral
+]);
+
 // Violation key formatters — kept adjacent to allowlists so format changes
 // are visible in the same diff as allowlist updates.
 const directionKey = (relPath: string, targetTopLevel: string) => `${toPosixPath(relPath)} -> ${targetTopLevel}`;
 
 const barrelKey = (relPath: string, resolved: string) => `${toPosixPath(relPath)} -> ${toPosixPath(resolved)}`;
+
+const cycleKey = (scc: string[]) => scc.join(' <-> ');
 
 // ---------------------------------------------------------------------------
 // Tests (mechanism — edit these only when adding new constraint categories)
@@ -293,12 +382,124 @@ describe('Barrel export discipline', () => {
   });
 });
 
+describe('Import graph: circular dependencies', () => {
+  it('reports the current circular-dependency footprint', () => {
+    const cycles = findCycles();
+    const filesInCycles = cycles.reduce((sum, scc) => sum + scc.length, 0);
+    const largest = cycles.reduce((max, scc) => Math.max(max, scc.length), 0);
+    console.log(
+      `[architecture-ratchet] cycles: clusters=${cycles.length} filesInCycles=${filesInCycles} largestCluster=${largest}`
+    );
+    for (const scc of [...cycles].sort((a, b) => b.length - a.length)) {
+      console.log(`  cluster(${scc.length}): ${scc.join(' <-> ')}`);
+    }
+  });
+
+  it('should not introduce new circular dependencies beyond the ratchet allowlist', () => {
+    const violations = new Set(findCycles().map(cycleKey));
+
+    assertRatchet(
+      violations,
+      ALLOWED_CYCLE_KEYS,
+      'circular dependencies',
+      'ALLOWED_CYCLES',
+      `A circular dependency (strongly-connected cluster of files that mutually import each other) ` +
+        `was detected. Prefer breaking an edge over allowlisting — two worked examples live in this repo:\n` +
+        `  • Extract the shared type to a Tier-0 leaf when the closing edge is a type/interface — see\n` +
+        `    src/types/link-interception.types.ts (imported by global-state/link-interception.ts and\n` +
+        `    global-state/utils.link-interception.ts instead of them importing each other).\n` +
+        `  • Inject the dependency when a lower-level module reaches up to a higher one — see\n` +
+        `    createBoundedRecordStorage in src/lib/storage/bounded-record-storage.ts (its callers in\n` +
+        `    src/lib/user-storage.ts pass the storage backend in rather than it importing user-storage).\n` +
+        `  Other options: invert the dependency, or use a dynamic import at the call site.\n\n` +
+        `Only if the cycle is genuinely unavoidable, add an entry to ALLOWED_CYCLES. A sibling test ` +
+        `requires a substantive 'reason' and a 'tracking' issue on every entry, so an empty rubber-stamp ` +
+        `will not pass. 'cycle' is the cluster's member files joined by ' <-> '.`
+    );
+  });
+
+  it('every ALLOWED_CYCLES entry is justified and tracked', () => {
+    const errors = validateAllowedCycleEntries(ALLOWED_CYCLES);
+
+    if (errors.length > 0) {
+      throw new Error(
+        `ALLOWED_CYCLES entries must each carry a justification and a paydown tracking issue:\n` +
+          errors.map((e) => `  - ${e}`).join('\n') +
+          `\n\nThis exists so a new cycle can't be silenced by pasting its key in with an empty comment. ` +
+          `Fill in a real 'reason' and 'tracking' issue, or — better — break the cycle instead (see the ` +
+          `worked examples referenced by the sibling ratchet test).`
+      );
+    }
+  });
+});
+
+describe('Environment reachability: Node contexts', () => {
+  const scan = scanNodeEnvReachability(NODE_SAFE_EXTERNALS);
+
+  it('reports the current Node-context footprint', () => {
+    console.log(
+      `[architecture-ratchet] node-env: reachableFiles=${scan.reachableFileCount}` +
+        ` externals=${scan.reachedExternalPackages.size} safeList=${NODE_SAFE_EXTERNALS.size}`
+    );
+  });
+
+  it('Node-context code must not reach browser-only imports', () => {
+    if (scan.violations.length === 0) {
+      return;
+    }
+
+    const details = scan.violations
+      .map((v) => `  ${v.file} -> ${v.specifier}\n    witness chain: ${v.chain.join('\n      -> ')}`)
+      .join('\n\n');
+
+    throw new Error(
+      `Environment reachability violation: Node-context code reaches imports that are not proven Node-safe.\n\n` +
+        `${details}\n\n` +
+        `Files under ${NODE_CONTEXT_ROOTS.join(', ')} execute in plain Node — the pathfinder CLI, and ` +
+        `Playwright test discovery — with no browser globals. If anything they transitively import evaluates ` +
+        `browser APIs (window/document) at module load, the e2e command crashes with ` +
+        `"ReferenceError: window is not defined" before a browser ever launches (see PR #1377).\n\n` +
+        `How to resolve, in order of preference:\n\n` +
+        `1. Break the chain. Import a narrower Node-safe module instead of a barrel. If the symbol you need ` +
+        `lives in a browser-coupled module, split it: move the environment-neutral logic into a sibling ` +
+        `'*-core.ts' module with no environment-specific imports and keep the browser wiring in a thin ` +
+        `adapter. Worked example: src/lib/dom/grafana-selector-core.ts (neutral) vs ` +
+        `src/lib/dom/grafana-selector.ts (browser adapter over @grafana/runtime).\n\n` +
+        `2. If you only need types, use \`import type { ... }\` — type-only imports are erased at compile ` +
+        `time and are exempt from this check.\n\n` +
+        `3. If the flagged external package genuinely loads and runs in plain Node, add it to ` +
+        `NODE_SAFE_EXTERNALS in src/validation/architecture.test.ts. Growing that list with a genuinely ` +
+        `Node-safe package is a normal, expected maintenance action — NOT an architecture violation — because ` +
+        `the list cannot anticipate future dependencies. You MUST prove Node-safety first:\n` +
+        `     node -e "require('<package>')"\n` +
+        `     node --input-type=module -e "import '<package>'"   (ESM-only packages)\n` +
+        `   and confirm the package does not touch window/document at module scope. Never add a package just ` +
+        `to make CI pass: a browser-dependent entry defeats this check and moves the failure to ` +
+        `\`pathfinder-cli e2e\` at runtime, which is exactly what this test exists to prevent.\n\n` +
+        `Bundler-only asset imports (.css, .scss, .svg, …) and relative imports the scanner cannot resolve ` +
+        `to a source file can never be made Node-safe — restructure so Node-reachable code does not import them.`
+    );
+  });
+
+  it('NODE_SAFE_EXTERNALS has no stale entries', () => {
+    const stale = [...NODE_SAFE_EXTERNALS].filter((pkg) => !scan.reachedExternalPackages.has(pkg));
+    if (stale.length > 0) {
+      throw new Error(
+        `Stale entries in NODE_SAFE_EXTERNALS (package no longer reachable from any Node context — ` +
+          `remove the entry so the list stays an accurate record of what Node-side code depends on):\n` +
+          stale.map((pkg) => `  - ${pkg}`).join('\n')
+      );
+    }
+  });
+});
+
 describe('Architecture ratchet progress', () => {
   it('should report current violation counts', () => {
     console.log(
       `[architecture-ratchet] vertical=${ALLOWED_VERTICAL_VIOLATIONS.size}` +
         ` lateral=${ALLOWED_LATERAL_VIOLATIONS.size}` +
-        ` barrel=${ALLOWED_BARREL_VIOLATIONS.size}`
+        ` barrel=${ALLOWED_BARREL_VIOLATIONS.size}` +
+        ` cycles=${ALLOWED_CYCLES.length}`
     );
   });
 });

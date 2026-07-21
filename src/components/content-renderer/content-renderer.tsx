@@ -17,6 +17,7 @@ import {
   ContentParsingError,
   VideoRenderer,
   YouTubeVideoRenderer,
+  VimeoVideoRenderer,
   GuideResponseProvider,
   useGuideResponses,
 } from '../../docs-retrieval';
@@ -1261,9 +1262,25 @@ function renderParsedElement(
           key={key}
           src={element.props.src}
           baseUrl={element.props.baseUrl}
+          title={element.props.title}
           onClick={element.props.onClick}
           start={element.props.start}
           end={element.props.end}
+        />
+      );
+    case 'vimeo-video':
+      // Pass only whitelisted props — deliberately NOT `{...element.props}`
+      // (unlike the youtube-video case). Untrusted iframe attributes from
+      // guide HTML must not reach the Vimeo embed.
+      return (
+        <VimeoVideoRenderer
+          key={key}
+          src={element.props.src}
+          width={element.props.width}
+          height={element.props.height}
+          title={element.props.title}
+          className={element.props.className}
+          start={element.props.start}
         />
       );
     case 'youtube-video':

@@ -56,15 +56,16 @@ Load these files **only when working in the relevant domain**.
 
 ## Dev mode, local dev, live sessions
 
-| File                       | When to load                                                                                          | Auto-triggered by globs                                                   |
-| -------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `DEV_MODE.md`              | Dev mode configuration and debugging tools                                                            | `src/utils/dev-mode.ts`                                                   |
-| `LOCAL_DEV.md`             | Local development setup, prerequisites, Docker workflow                                               | --                                                                        |
-| `LIVE_SESSIONS.md`         | Live sessions feature (WebRTC, PeerJS)                                                                | `src/components/LiveSession/*`                                            |
-| `KNOWN_ISSUES.md`          | Known bugs and workarounds                                                                            | --                                                                        |
-| `integrations/workshop.md` | Workshop mode, action capture and replay                                                              | `src/integrations/workshop/*`                                             |
-| `CROSS_TAB_CONTROLLER.md`  | Two-tab interactive controller — a popped-out guide drives the live Grafana tab over BroadcastChannel | `src/integrations/cross-tab/*`, `src/global-state/controller-channel.tsx` |
-| `SCALE_TESTING.md`         | Live session scale testing procedures                                                                 | --                                                                        |
+| File                       | When to load                                                                                                                                 | Auto-triggered by globs                                                   |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `DEV_MODE.md`              | Dev mode configuration and debugging tools                                                                                                   | `src/utils/dev-mode.ts`                                                   |
+| `LOCAL_DEV.md`             | Local development setup, prerequisites, Docker workflow                                                                                      | --                                                                        |
+| `GRAFT_TESTING.md`         | Testing the local build against a live Grafana Cloud stack via Graft (internal, Grafanista-only) instead of the Docker `npm run server` flow | --                                                                        |
+| `LIVE_SESSIONS.md`         | Live sessions feature (WebRTC, PeerJS)                                                                                                       | `src/components/LiveSession/*`                                            |
+| `KNOWN_ISSUES.md`          | Known bugs and workarounds                                                                                                                   | --                                                                        |
+| `integrations/workshop.md` | Workshop mode, action capture and replay                                                                                                     | `src/integrations/workshop/*`                                             |
+| `CROSS_TAB_CONTROLLER.md`  | Two-tab interactive controller — a popped-out guide drives the live Grafana tab over BroadcastChannel                                        | `src/integrations/cross-tab/*`, `src/global-state/controller-channel.tsx` |
+| `SCALE_TESTING.md`         | Live session scale testing procedures                                                                                                        | --                                                                        |
 
 ## Subsystem references
 
@@ -102,18 +103,17 @@ Load these files **only when working in the relevant domain**.
 
 ## AI-authoring design docs
 
-| File                                          | When to load                                                                                                                                       | Auto-triggered by globs                               |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `docs/design/PATHFINDER-AI-AUTHORING.md`      | Top-level AI-authoring design — read first before any AI-authoring task. Design intent (may not match implementation).                             | `src/cli/*`, `src/components/block-editor/*`          |
-| `docs/design/AGENT-AUTHORING.md`              | Authoring CLI design: schema-driven help, validate-on-write, idempotent retries, agent-oriented output. Design intent.                             | `src/cli/commands/*`                                  |
-| `docs/design/HOSTED-AUTHORING-MCP.md`         | TS MCP server design — validation strategy, stdio/HTTP transports, auth. Pair with `MCP_SERVER.md` for implementation reality.                     | `src/cli/mcp/*`                                       |
-| `docs/design/AUTHORING-SESSION-ARTIFACTS.md`  | Stateless artifact-as-wire-state model for MCP tool contracts (validate-on-write, idempotency). Design intent.                                     | `src/cli/mcp/*`                                       |
-| `docs/design/APP-PLATFORM-PUBLISH-HANDOFF.md` | App Platform publish payload shape, draft vs published, `localExport` fallback. Design intent.                                                     | `src/cli/mcp/*`, `src/components/block-editor/*`      |
-| `docs/design/VIEWER-DEEP-LINK-CONTRACT.md`    | Viewer deep link format (`doc=api:<id>`), panel-mode contract, resource name stability. Design intent.                                             | `src/components/docs-panel/*`                         |
-| `docs/design/CLIENT-ORCHESTRATION-GUIDE.md`   | How AI clients use the MCP service — workflow, confirmation, publish-path selection. Design intent.                                                | `src/integrations/assistant-integration/*`            |
-| `docs/design/PATHFINDER-PACKAGE-DESIGN.md`    | Package model: two-file structure, manifest metadata, dependencies, repository structure. Canonical spec for `package-engine` and CLI tooling.     | `src/types/package.schema.ts`, `src/package-engine/*` |
-| `docs/design/TESTING_STRATEGY.md`             | E2E testing strategy with 4-layer model, test-environment routing, manifest metadata requirements. Pair with `E2E_TESTING.md` for runtime details. | `src/types/package.schema.ts`                         |
-| `docs/design/phases/*.md`                     | Phase-specific implementation plans for AI authoring (P0–P6)                                                                                       | --                                                    |
+| File                                          | When to load                                                                                                                                   | Auto-triggered by globs                               |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `docs/design/PATHFINDER-AI-AUTHORING.md`      | Top-level AI-authoring design — read first before any AI-authoring task. Design intent (may not match implementation).                         | `src/cli/*`, `src/components/block-editor/*`          |
+| `docs/design/AGENT-AUTHORING.md`              | Authoring CLI design: schema-driven help, validate-on-write, idempotent retries, agent-oriented output. Design intent.                         | `src/cli/commands/*`                                  |
+| `docs/design/HOSTED-AUTHORING-MCP.md`         | TS MCP server design — validation strategy, stdio/HTTP transports, auth. Pair with `MCP_SERVER.md` for implementation reality.                 | `src/cli/mcp/*`                                       |
+| `docs/design/AUTHORING-SESSION-ARTIFACTS.md`  | Stateless artifact-as-wire-state model for MCP tool contracts (validate-on-write, idempotency). Design intent.                                 | `src/cli/mcp/*`                                       |
+| `docs/design/APP-PLATFORM-PUBLISH-HANDOFF.md` | App Platform publish payload shape, draft vs published, `localExport` fallback. Design intent.                                                 | `src/cli/mcp/*`, `src/components/block-editor/*`      |
+| `docs/design/VIEWER-DEEP-LINK-CONTRACT.md`    | Viewer deep link format (`doc=api:<id>`), panel-mode contract, resource name stability. Design intent.                                         | `src/components/docs-panel/*`                         |
+| `docs/design/CLIENT-ORCHESTRATION-GUIDE.md`   | How AI clients use the MCP service — workflow, confirmation, publish-path selection. Design intent.                                            | `src/integrations/assistant-integration/*`            |
+| `docs/design/PATHFINDER-PACKAGE-DESIGN.md`    | Package model: two-file structure, manifest metadata, dependencies, repository structure. Canonical spec for `package-engine` and CLI tooling. | `src/types/package.schema.ts`, `src/package-engine/*` |
+| `docs/design/phases/*.md`                     | Phase-specific implementation plans for AI authoring (P0–P6)                                                                                   | --                                                    |
 
 ## Skills
 

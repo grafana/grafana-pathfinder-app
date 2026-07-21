@@ -1,20 +1,9 @@
-/**
- * UserProfileBar Tests
- *
- * Tests rendering states, click handlers, loading, and all-complete scenarios.
- * Mocks useNextLearningAction at module level to isolate component behavior.
- */
-
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { UserProfileBar } from './UserProfileBar';
 import { useNextLearningAction, type LearningProfileSummary } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
-
-// ============================================================================
-// MOCKS
-// ============================================================================
 
 jest.mock('../../learning-paths', () => ({
   useNextLearningAction: jest.fn(),
@@ -37,10 +26,6 @@ const mockSummary: LearningProfileSummary = {
   },
   isLoading: false,
 };
-
-// ============================================================================
-// TESTS
-// ============================================================================
 
 describe('UserProfileBar', () => {
   const onOpenGuide = jest.fn();
@@ -68,6 +53,17 @@ describe('UserProfileBar', () => {
 
     expect(screen.getByText('3')).toBeInTheDocument();
     expect(screen.getByText('days')).toBeInTheDocument();
+  });
+
+  it('renders singular count labels', () => {
+    mockHook.mockReturnValue({ ...mockSummary, guidesCompleted: 1, streakDays: 1 });
+
+    render(<UserProfileBar onOpenGuide={onOpenGuide} />);
+
+    expect(screen.getByText('guide')).toBeInTheDocument();
+    expect(screen.getByText('day')).toBeInTheDocument();
+    expect(screen.getByLabelText('1 learning guide completed')).toBeInTheDocument();
+    expect(screen.getByLabelText('1-day learning streak — keep it going!')).toBeInTheDocument();
   });
 
   it('hides streak when 0', () => {

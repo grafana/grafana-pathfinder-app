@@ -57,11 +57,19 @@
     "allCompleteTooltip": "You've completed every learning path — nice work!",
     "badgesTooltip": "{{- earned}} of {{- total}} badges earned",
     "days": "days",
+    "days_one": "day",
+    "days_other": "days",
     "guides": "guides",
+    "guides_one": "guide",
+    "guides_other": "guides",
     "guidesTooltip": "{{- count}} learning guides completed",
+    "guidesTooltip_one": "{{- count}} learning guide completed",
+    "guidesTooltip_other": "{{- count}} learning guides completed",
     "nextGuide": "Next: {{- title}}",
     "nextTooltip": "Continue \"{{- pathTitle}}\" — {{- percent}}% done",
-    "streakTooltip": "{{- days}}-day learning streak — keep it going!"
+    "streakTooltip": "{{- days}}-day learning streak — keep it going!",
+    "streakTooltip_one": "{{- days}}-day learning streak — keep it going!",
+    "streakTooltip_other": "{{- days}}-day learning streak — keep it going!"
   },
   "feedbackButton": {
     "ariaLabel": "Give feedback about this plugin",

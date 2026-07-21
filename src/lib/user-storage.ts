@@ -753,6 +753,8 @@ export const journeyCompletionStorage = createBoundedRecordStorage({
   storageKey: StorageKeys.JOURNEY_COMPLETION,
   limit: LIMITS.MAX_JOURNEY_COMPLETIONS,
   label: 'journey completion',
+  createStorage: createUserStorage,
+  onQuotaExceeded: warnQuotaExceededOnce,
 });
 
 /**
@@ -813,6 +815,8 @@ export const interactiveCompletionStorage = createBoundedRecordStorage({
   storageKey: StorageKeys.INTERACTIVE_COMPLETION,
   limit: LIMITS.MAX_INTERACTIVE_COMPLETIONS,
   label: 'interactive completion',
+  createStorage: createUserStorage,
+  onQuotaExceeded: warnQuotaExceededOnce,
 });
 
 /**

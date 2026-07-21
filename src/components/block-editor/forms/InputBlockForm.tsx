@@ -36,6 +36,18 @@ function isValidVariableName(name: string): boolean {
 }
 
 /**
+ * Validate regex pattern
+ */
+function isValidRegexPattern(pattern: string): boolean {
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Input block form component
  */
 export function InputBlockForm({
@@ -49,6 +61,12 @@ export function InputBlockForm({
 
   // Initialize from existing data or defaults
   const initial = initialData && isInputBlock(initialData) ? initialData : null;
+
+  // Blur-gate inline errors (regex is often temporarily invalid while typing); seed when editing bad data.
+  const [patternBlurred, setPatternBlurred] = useState(() => {
+    const initialPattern = initial?.pattern?.trim() ?? '';
+    return initialPattern.length > 0 && !isValidRegexPattern(initialPattern);
+  });
 
   const [prompt, setPrompt] = useState(initial?.prompt ?? '');
   const [inputType, setInputType] = useState<'text' | 'boolean' | 'datasource'>(initial?.inputType ?? 'text');
@@ -77,6 +95,11 @@ export function InputBlockForm({
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
+
+      if (inputType === 'text' && pattern.trim().length > 0 && !isValidRegexPattern(pattern.trim())) {
+        setPatternBlurred(true);
+        return;
+      }
 
       // Parse requirements
       const reqArray = requirements
@@ -126,7 +149,9 @@ export function InputBlockForm({
   // Validation
   const hasPrompt = prompt.trim().length > 0;
   const hasValidVariableName = variableName.trim().length > 0 && isValidVariableName(variableName.trim());
-  const isValid = hasPrompt && hasValidVariableName;
+  const hasValidRegexPattern =
+    inputType !== 'text' || pattern.trim().length === 0 || isValidRegexPattern(pattern.trim());
+  const isValid = hasPrompt && hasValidVariableName && hasValidRegexPattern;
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
@@ -195,10 +220,16 @@ export function InputBlockForm({
             />
           </Field>
 
-          <Field label="Validation pattern" description="Regex pattern for validating input (optional)">
+          <Field
+            label="Validation pattern"
+            description="Regex pattern for validating input (optional)"
+            invalid={patternBlurred && !hasValidRegexPattern}
+            error={patternBlurred && !hasValidRegexPattern ? 'Invalid regex pattern' : undefined}
+          >
             <Input
               value={pattern}
               onChange={(e) => setPattern(e.currentTarget.value)}
+              onBlur={() => setPatternBlurred(true)}
               placeholder="e.g., ^[a-z][a-z0-9-]*$"
             />
           </Field>
