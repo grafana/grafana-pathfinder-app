@@ -6,7 +6,7 @@
  * dependency between requirements-manager and integrations/coda).
  */
 
-import type { CheckResultError } from '../requirements-checker.utils';
+import type { CheckResultError } from '../../types/requirements.types';
 
 export async function terminalActiveCheck(check: string): Promise<CheckResultError> {
   try {

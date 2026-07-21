@@ -16,7 +16,7 @@ import {
   type LearningJourneyMilestoneToolbarProps,
 } from './LearningJourneyMilestoneToolbar';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
-import type { CombinedLearningJourneyPanel } from '../docs-panel';
+import type { DocsPanelModelOperations } from '../types';
 
 const reportAppInteractionMock = jest.fn();
 const markMilestoneDoneMock = jest.fn();
@@ -78,7 +78,7 @@ function makePanel() {
     navigateToNextMilestone: jest.fn(),
     canNavigatePrevious: jest.fn(() => true),
     canNavigateNext: jest.fn(() => true),
-  } as unknown as CombinedLearningJourneyPanel & {
+  } as unknown as DocsPanelModelOperations & {
     navigateToPreviousMilestone: jest.Mock;
     navigateToNextMilestone: jest.Mock;
     canNavigatePrevious: jest.Mock;

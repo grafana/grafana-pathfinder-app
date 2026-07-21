@@ -57,6 +57,24 @@ export const isValidRequirement = (req: string): req is ValidRequirement => {
   return isFixedRequirement(req) || isParameterizedRequirement(req);
 };
 
+/**
+ * Result of a single requirement check. Lives here (Tier 0) so
+ * `requirements-manager/checks/*` and the check router can share it without
+ * importing each other (#1359).
+ */
+export interface CheckResultError {
+  requirement: string;
+  pass: boolean;
+  error?: string;
+  /** Diagnostic context for debugging. Should be included when available. */
+  context?: Record<string, unknown> | null;
+  canFix?: boolean;
+  fixType?: string;
+  targetHref?: string;
+  /** Scroll container selector for lazy-scroll fixes */
+  scrollContainer?: string;
+}
+
 // Type-safe requirement checker options
 export interface TypeSafeRequirementsCheckOptions {
   requirements: string; // We keep this as string for backward compatibility, but validate at runtime
