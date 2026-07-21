@@ -58,8 +58,14 @@ export function derivePathSlug(manifestId: string): string {
 /**
  * Resolve manifest milestone IDs into rich Milestone objects via the injected
  * PackageResolver. Each milestone ID is resolved to obtain its contentUrl (used
- * as the navigation URL) and its manifest title. Unresolvable milestones are
- * silently skipped so partial data still renders.
+ * as the navigation URL) and its manifest title.
+ *
+ * Unresolvable milestones (not yet published, or a transient resolver
+ * failure) are kept in the list as locked placeholders rather than dropped —
+ * a path's members can land at different times (RFC CUSTOM-GUIDE-PACKAGES.md
+ * §6.5), so silently vanishing entries would misrepresent the path's real
+ * size and break "N of totalMilestones" counters. Traversal (getNextMilestoneUrl
+ * / getPreviousMilestoneUrl) skips locked entries.
  *
  * @param milestoneIds - Bare package IDs from a path manifest's `milestones` array
  * @param pathSlug - Optional path slug for building website URLs
@@ -75,27 +81,29 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
   );
 
   const milestones: Milestone[] = [];
-  let sequenceNumber = 1;
 
   for (let i = 0; i < milestoneIds.length; i++) {
     const result = settled[i]!;
     const id = milestoneIds[i]!;
+    const number = i + 1;
 
     if (result.status === 'rejected') {
-      logger.warn(`[resolvePackageMilestones] Error resolving milestone ${id}`, { reason: result.reason });
+      logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone ${id}`, { reason: result.reason });
+      milestones.push({ number, title: id, duration: '5-10 min', url: '', isActive: false, isLocked: true });
       continue;
     }
 
     const resolution = result.value;
     if (!resolution.ok) {
-      logger.warn(`[resolvePackageMilestones] Skipping unresolvable milestone: ${id}`);
+      logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone: ${id}`);
+      milestones.push({ number, title: id, duration: '5-10 min', url: '', isActive: false, isLocked: true });
       continue;
     }
 
     const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
 
     milestones.push({
-      number: sequenceNumber++,
+      number,
       title,
       duration: '5-10 min',
       url: resolution.contentUrl,

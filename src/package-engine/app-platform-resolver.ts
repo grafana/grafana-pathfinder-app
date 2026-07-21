@@ -49,7 +49,11 @@ interface InteractiveGuideResource {
   };
 }
 
-function failure(id: string, code: PackageResolutionFailure['error']['code'], message: string): PackageResolutionFailure {
+function failure(
+  id: string,
+  code: PackageResolutionFailure['error']['code'],
+  message: string
+): PackageResolutionFailure {
   return { ok: false, id, error: { code, message } };
 }
 
