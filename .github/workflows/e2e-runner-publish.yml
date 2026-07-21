@@ -1,0 +1,174 @@
+name: E2E runner publish
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/cli/**'
+      - 'src/types/**'
+      - 'src/validation/**'
+      - 'tests/e2e-runner/**'
+      - 'tests/fixtures.ts'
+      - 'src/cli/e2e/schemas/**'
+      - 'scripts/e2e-runner-entrypoint.sh'
+      - 'Dockerfile.e2e-runner'
+      - 'Dockerfile.e2e-runner.dockerignore'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.npmrc'
+      - 'tsconfig.cli.json'
+      - '.github/workflows/e2e-runner-publish.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/cli/**'
+      - 'src/types/**'
+      - 'src/validation/**'
+      - 'tests/e2e-runner/**'
+      - 'tests/fixtures.ts'
+      - 'src/cli/e2e/schemas/**'
+      - 'scripts/e2e-runner-entrypoint.sh'
+      - 'Dockerfile.e2e-runner'
+      - 'Dockerfile.e2e-runner.dockerignore'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.npmrc'
+      - 'tsconfig.cli.json'
+      - '.github/workflows/e2e-runner-publish.yml'
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  IMAGE_NAME: ghcr.io/grafana/pathfinder-e2e-runner
+  NODE_VERSION: '24'
+
+jobs:
+  build-test:
+    name: Build and smoke-test E2E runner
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - name: Build runner image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: Dockerfile.e2e-runner
+          load: true
+          push: false
+          tags: pathfinder-e2e-runner:smoke
+          build-args: |
+            RUNNER_VERSION=commit-${{ github.sha }}
+      - name: Verify non-root image user
+        run: test "$(docker run --rm --entrypoint id pathfinder-e2e-runner:smoke -u)" != "0"
+      - name: Verify runner version metadata
+        env:
+          EXPECTED_VERSION: commit-${{ github.sha }}
+        run: |
+          version="$(docker run --rm --entrypoint printenv pathfinder-e2e-runner:smoke PATHFINDER_E2E_RUNNER_VERSION)"
+          if [ "$version" != "$EXPECTED_VERSION" ]; then
+            echo "::error::Version mismatch: got $version, expected $EXPECTED_VERSION"
+            exit 1
+          fi
+      - name: Verify runner entrypoint and Playwright wiring
+        run: |
+          docker run --rm pathfinder-e2e-runner:smoke --help
+          docker run --rm --entrypoint node pathfinder-e2e-runner:smoke -e '
+            const { findRunnerRoot } = require("/app/dist/cli/cli/e2e/playwright-runner.js");
+            const root = findRunnerRoot("/app/dist/cli/cli/e2e");
+            if (root !== "/app") throw new Error(`unexpected runner root: ${root}`);
+          '
+          docker run --rm --workdir /app --entrypoint npx pathfinder-e2e-runner:smoke \
+            playwright test tests/e2e-runner/guide-runner.spec.ts \
+            --config=tests/e2e-runner/playwright.config.ts \
+            --project=chromium \
+            --list
+          docker run --rm --workdir /app --entrypoint npx pathfinder-e2e-runner:smoke \
+            playwright test tests/e2e-runner/runner-image-smoke.spec.ts \
+            --config=tests/e2e-runner/runner-image-smoke.config.ts \
+            --project=chromium
+      - name: Verify image emits a valid, versioned report schema
+        run: |
+          docker run --rm --entrypoint node pathfinder-e2e-runner:smoke \
+            /app/dist/cli/cli/index.js schema e2e-report --include-version > schema.json
+          node -e '
+            const s = require("./schema.json");
+            if (!String(s.$id || "").includes("e2e-test-report-1.0.0")) throw new Error(`unexpected $id: ${s.$id}`);
+            if (s["x-schema-version"] !== "1.0.0") throw new Error(`unexpected x-schema-version: ${s["x-schema-version"]}`);
+            console.log("E2E report schema contract verified");
+          '
+      - name: Export tested image for publish job
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker save pathfinder-e2e-runner:smoke | gzip > runner-image.tar.gz
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: runner-image
+          path: runner-image.tar.gz
+          retention-days: 1
+
+  publish:
+    name: Publish signed immutable runner image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: runner-image
+      - name: Load tested image
+        run: docker load < runner-image.tar.gz
+      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Compute immutable tag
+        id: tag
+        run: echo "value=commit-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Resolve immutable image digest
+        id: image
+        run: |
+          reference="${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}"
+          if inspect_error=$(docker manifest inspect "$reference" 2>&1 >/dev/null); then
+            docker pull "$reference"
+            digest_reference=$(docker image inspect "$reference" --format '{{index .RepoDigests 0}}')
+            digest="${digest_reference##*@}"
+            echo "::notice::Reusing existing immutable tag ${{ steps.tag.outputs.value }} at $digest"
+          elif printf '%s\n' "$inspect_error" | grep -qiE 'manifest unknown|no such manifest|not found'; then
+            docker tag pathfinder-e2e-runner:smoke "$reference"
+            push_output=$(docker push "$reference")
+            digest=$(printf '%s\n' "$push_output" | awk '/digest:/{print $3}' | tail -1)
+          else
+            printf '%s\n' "$inspect_error" >&2
+            echo "::error::Could not determine whether immutable tag ${{ steps.tag.outputs.value }} exists"
+            exit 1
+          fi
+          if ! [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Could not resolve a valid digest for $reference"
+            exit 1
+          fi
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+      - name: Sign image digest
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: cosign sign --yes "${{ env.IMAGE_NAME }}@${DIGEST}"

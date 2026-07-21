@@ -5,13 +5,55 @@
 
 import { spawn } from 'child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { dirname, join, resolve } from 'path';
 import { tmpdir } from 'os';
 
 import { ExitCode } from './exit-codes';
 import { E2E_ENV, encodeEnvFlag } from './e2e-runner-contract';
 import type { LoadedGuide } from '../utils/file-loader';
-import type { TestResultsData } from './e2e-reporter';
+import type { E2EErrorCode } from './schemas/e2e-report.schema';
+import { contentDigest, createMinimalResultsData, type TestResultsData } from './e2e-reporter';
+
+const PLAYWRIGHT_CONFIG_PATH = join('tests', 'e2e-runner', 'playwright.config.ts');
+const GUIDE_RUNNER_SPEC_PATH = join('tests', 'e2e-runner', 'guide-runner.spec.ts');
+
+function tryFindRunnerRoot(startDir: string): string | undefined {
+  let candidate = resolve(startDir);
+
+  while (true) {
+    if (
+      existsSync(join(candidate, PLAYWRIGHT_CONFIG_PATH)) &&
+      existsSync(join(candidate, GUIDE_RUNNER_SPEC_PATH)) &&
+      existsSync(join(candidate, 'package.json'))
+    ) {
+      return candidate;
+    }
+
+    const parent = dirname(candidate);
+    if (parent === candidate) {
+      return undefined;
+    }
+    candidate = parent;
+  }
+}
+
+export function findRunnerRoot(startDir: string): string {
+  const fromStart = tryFindRunnerRoot(startDir);
+  if (fromStart !== undefined) {
+    return fromStart;
+  }
+
+  const cwd = process.cwd();
+  const fromCwd = tryFindRunnerRoot(cwd);
+  if (fromCwd !== undefined) {
+    return fromCwd;
+  }
+
+  throw new Error(
+    `Could not locate the E2E runner root. Searched from '${startDir}' and cwd '${cwd}'. ` +
+      `Ensure the directory containing '${PLAYWRIGHT_CONFIG_PATH}' and '${GUIDE_RUNNER_SPEC_PATH}' is reachable.`
+  );
+}
 
 /**
  * Abort reason from test execution.
@@ -26,6 +68,17 @@ interface AbortFileContent {
   abortReason: AbortReason;
   message: string;
 }
+function isAbortFileContent(value: unknown): value is AbortFileContent {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    (candidate.abortReason === 'AUTH_EXPIRED' || candidate.abortReason === 'MANDATORY_FAILURE') &&
+    typeof candidate.message === 'string'
+  );
+}
 
 /**
  * Result of running Playwright tests on a guide
@@ -38,6 +91,7 @@ export interface PlaywrightResult {
   abortReason?: AbortReason;
   /** Abort message if test was aborted */
   abortMessage?: string;
+  errorCode?: E2EErrorCode;
   /** Test results data for JSON report generation */
   resultsData?: TestResultsData;
 }
@@ -96,7 +150,7 @@ function readJsonIfExists<T>(filePath: string): T | undefined {
  * @param filePaths - Paths to abort and results files
  * @returns PlaywrightResult with success status, exit code, and optional data
  */
-function processPlaywrightResults(
+export function processPlaywrightResults(
   exitCode: number,
   options: { trace: boolean },
   filePaths: { abortFilePath: string; resultsFilePath: string; traceOutputFilePath: string }
@@ -111,9 +165,9 @@ function processPlaywrightResults(
   const resultsData = readJsonIfExists<TestResultsData>(filePaths.resultsFilePath);
 
   // An abort file means the runner stopped early (e.g. session expiry).
-  const abortContent = readJsonIfExists<AbortFileContent>(filePaths.abortFilePath);
+  const abortValue = readJsonIfExists<unknown>(filePaths.abortFilePath);
+  const abortContent = isAbortFileContent(abortValue) ? abortValue : undefined;
   if (abortContent) {
-    // Determine exit code based on abort reason
     const abortExitCode = abortContent.abortReason === 'AUTH_EXPIRED' ? ExitCode.AUTH_FAILURE : ExitCode.TEST_FAILURE;
 
     return {
@@ -122,7 +176,17 @@ function processPlaywrightResults(
       traceFile,
       abortReason: abortContent.abortReason,
       abortMessage: abortContent.message,
+      errorCode: abortContent.abortReason,
       resultsData,
+    };
+  }
+
+  if (!resultsData) {
+    return {
+      success: false,
+      exitCode: ExitCode.TEST_FAILURE,
+      traceFile,
+      errorCode: 'REPORT_MISSING' as const,
     };
   }
 
@@ -134,34 +198,14 @@ function processPlaywrightResults(
   };
 }
 
-/**
- * Spawn Playwright to test a guide.
- * Writes guide JSON to temp file, spawns Playwright with environment variables,
- * and cleans up temp file after completion.
- *
- * Session validation:
- * - Creates abort file path for test to write abort reason
- * - Reads abort file after test completes to determine exit code
- * - Returns AUTH_EXPIRED abort reason if session expired
- *
- * JSON reporting:
- * - Creates results file path for test to write step results
- * - Reads results file after test completes
- * - Returns results data for JSON report generation
- */
 export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOptions): Promise<PlaywrightResult> {
-  // Write guide to temp file
+  const runnerRoot = findRunnerRoot(__dirname);
+  const artifactsDir = resolve(process.cwd(), options.artifacts);
   const tempDir = mkdtempSync(join(tmpdir(), 'pathfinder-e2e-'));
   const guidePath = join(tempDir, 'guide.json');
-  // Abort file path for session validation
   const abortFilePath = join(tempDir, 'abort.json');
-  // Results file path for JSON reporting
   const resultsFilePath = join(tempDir, 'results.json');
-  // Ephemeral auth-state file: the auth setup writes login cookies here and the
-  // test project reads them back. Lives in the per-guide temp dir, so the
-  // finally-block cleanup deletes it along with everything else.
   const authStateFile = join(tempDir, 'auth.json');
-  // Path the runner records the produced trace location to (see e2e-runner-contract).
   const traceOutputFilePath = join(tempDir, 'trace-path.txt');
 
   try {
@@ -171,13 +215,11 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
       console.log(`   📄 Temp guide file: ${guidePath}`);
     }
 
-    // Build Playwright arguments
-    // Use the dedicated e2e-runner config (main config has testIgnore for e2e-runner)
     const playwrightArgs = [
       'playwright',
       'test',
-      'tests/e2e-runner/guide-runner.spec.ts',
-      '--config=tests/e2e-runner/playwright.config.ts',
+      join(runnerRoot, GUIDE_RUNNER_SPEC_PATH),
+      `--config=${join(runnerRoot, PLAYWRIGHT_CONFIG_PATH)}`,
       '--project=chromium',
     ];
 
@@ -189,27 +231,22 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
       playwrightArgs.push('--headed');
     }
 
-    // Spawn Playwright with environment variables
-    // Note: shell: false for security (avoids argument escaping issues)
     const result = await new Promise<PlaywrightResult>((resolve) => {
       const proc = spawn('npx', playwrightArgs, {
+        cwd: runnerRoot,
         env: {
           ...process.env,
           [E2E_ENV.GUIDE_JSON_PATH]: guidePath,
-          // The GRAFANA_URL wire key carries the resolved per-guide targetUrl;
-          // it becomes Playwright's baseURL
           [E2E_ENV.GRAFANA_URL]: options.targetUrl,
           [E2E_ENV.AUTH_STATE_FILE]: authStateFile,
-          // A minted token switches the runner to Bearer-header auth; otherwise form login is used.
           ...(options.token ? { [E2E_ENV.GRAFANA_TOKEN]: options.token } : {}),
           [E2E_ENV.TRACE]: encodeEnvFlag(options.trace),
           [E2E_ENV.VERBOSE]: encodeEnvFlag(options.verbose),
           [E2E_ENV.ABORT_FILE_PATH]: abortFilePath,
           [E2E_ENV.RESULTS_FILE_PATH]: resultsFilePath,
-          [E2E_ENV.ARTIFACTS_DIR]: options.artifacts,
+          [E2E_ENV.ARTIFACTS_DIR]: artifactsDir,
           [E2E_ENV.ALWAYS_SCREENSHOT]: encodeEnvFlag(options.alwaysScreenshot),
           [E2E_ENV.TRACE_OUTPUT_FILE]: traceOutputFilePath,
-          // Prevent Playwright from auto-opening HTML report server in CLI mode
           PLAYWRIGHT_HTML_OPEN: 'never',
         },
         stdio: 'inherit',
@@ -230,13 +267,55 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
 
       proc.on('error', (err) => {
         console.error(`Failed to spawn Playwright: ${err.message}`);
-        resolve({ success: false, exitCode: ExitCode.CONFIGURATION_ERROR });
+        resolve({
+          success: false,
+          exitCode: ExitCode.CONFIGURATION_ERROR,
+          errorCode: 'PLAYWRIGHT_SPAWN_FAILED',
+          abortMessage: `Failed to spawn Playwright: ${err.message}`,
+        });
       });
     });
 
+    if (!result.resultsData) {
+      let guideId =
+        guide.path
+          .split('/')
+          .pop()
+          ?.replace(/\.json$/, '') ?? 'unknown';
+      let guideTitle = guideId;
+      try {
+        const parsed = JSON.parse(guide.content) as { id?: unknown; title?: unknown };
+        if (typeof parsed.id === 'string' && parsed.id) {
+          guideId = parsed.id;
+        }
+        if (typeof parsed.title === 'string' && parsed.title) {
+          guideTitle = parsed.title;
+        }
+      } catch {
+        // Malformed guide content; path-derived id remains valid.
+      }
+      const outcome =
+        result.abortReason === 'AUTH_EXPIRED'
+          ? 'aborted'
+          : result.abortReason === 'MANDATORY_FAILURE'
+            ? 'failed'
+            : 'infrastructure_error';
+      result.resultsData = createMinimalResultsData({
+        guide: {
+          id: guideId,
+          title: guideTitle,
+          path: guide.path,
+          targetUrl: options.targetUrl,
+          contentDigest: contentDigest(guide.content),
+        },
+        outcome,
+        errorCode: result.errorCode ?? 'REPORT_MISSING',
+        errorMessage: result.abortMessage ?? 'Playwright did not produce a result report.',
+        abortReason: result.abortReason,
+      });
+    }
     return result;
   } finally {
-    // Clean up temp directory
     try {
       rmSync(tempDir, { recursive: true, force: true });
       if (options.verbose) {

@@ -10,13 +10,14 @@
  */
 
 import { CLEAN_COMPOSE_PROJECT } from './clean-environment';
+import { E2E_REPORT_SCHEMA_VERSION, type MultiGuideReport, type RunnerProvenance } from './schemas/e2e-report.schema';
 import {
   generateReport,
   writeReport,
   generateMultiGuideReport,
   writeMultiGuideReport,
   formatMultiGuideSummary,
-  type MultiGuideReport,
+  resolvePlaywrightVersion,
 } from './e2e-reporter';
 import {
   countGuideStatuses,
@@ -37,9 +38,21 @@ function skipOnlyReport(
   preRunSkipped: MultiGuideReport['preRunSkipped'],
   cleanupWarnings: string[] = []
 ): MultiGuideReport {
+  const timestamp = new Date().toISOString();
+  const runner: RunnerProvenance = {
+    name: 'pathfinder-e2e-runner',
+    version: process.env.PATHFINDER_E2E_RUNNER_VERSION ?? 'source',
+    nodeVersion: process.version,
+    playwrightVersion: resolvePlaywrightVersion(),
+  };
   return {
+    schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+    outcome: (preRunSkipped ?? []).some((e) => e.failed) ? 'failed' : 'skipped',
+    runner,
+    startedAt: timestamp,
+    endedAt: timestamp,
     type: 'multi-guide',
-    config: { timestamp: new Date().toISOString() },
+    config: { timestamp },
     summary: {
       totalGuides: 0,
       passedGuides: 0,
@@ -211,9 +224,9 @@ export function writeJsonReport(
   results: GuideRunResult[],
   outputPath: string | undefined,
   cleanupWarnings: string[] = []
-): void {
+): boolean {
   if (!outputPath) {
-    return;
+    return true;
   }
 
   const resultsWithData = results.filter((r) => r.resultsData).map((r) => r.resultsData!);
@@ -223,28 +236,37 @@ export function writeJsonReport(
   if (resultsWithData.length === 0 && preRunSkipped.length > 0) {
     try {
       const report = skipOnlyReport(preRunSkipped, cleanupWarnings);
-      writeMultiGuideReport(report, outputPath);
+      const schemaValid = writeMultiGuideReport(report, outputPath);
       console.log(`\n📄 Multi-guide JSON report written to: ${outputPath}`);
       console.log(`   ${formatMultiGuideSummary(report)}`);
+      return schemaValid;
     } catch (err) {
       console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      return false;
     }
   } else if (resultsWithData.length === 0) {
     console.warn(`   ⚠ No test results available for JSON report`);
+    return true;
   } else if (isMultiGuide) {
     try {
       const report = generateMultiGuideReport(resultsWithData);
       if (preRunSkipped.length > 0) {
         report.preRunSkipped = preRunSkipped;
+        const failureOutcomes: string[] = ['infrastructure_error', 'configuration_error', 'aborted', 'failed'];
+        if (preRunSkipped.some((e) => e.failed) && !failureOutcomes.includes(report.outcome)) {
+          report.outcome = 'failed';
+        }
       }
       if (cleanupWarnings.length > 0) {
         report.cleanupWarnings = cleanupWarnings;
       }
-      writeMultiGuideReport(report, outputPath);
+      const schemaValid = writeMultiGuideReport(report, outputPath);
       console.log(`\n📄 Multi-guide JSON report written to: ${outputPath}`);
       console.log(`   ${formatMultiGuideSummary(report)}`);
+      return schemaValid;
     } catch (err) {
       console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      return false;
     }
   } else {
     try {
@@ -255,10 +277,12 @@ export function writeJsonReport(
       if (cleanupWarnings.length > 0) {
         report.cleanupWarnings = cleanupWarnings;
       }
-      writeReport(report, outputPath);
+      const schemaValid = writeReport(report, outputPath);
       console.log(`\n📄 JSON report written to: ${outputPath}`);
+      return schemaValid;
     } catch (err) {
       console.warn(`   ⚠ Failed to write JSON report: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      return false;
     }
   }
 }

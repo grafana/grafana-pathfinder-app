@@ -23,6 +23,7 @@ import {
   exitCodeFromResults,
   guideResultReason,
   preRunSkipsFromResults,
+  provisioningErrorCode,
   provisioningFailureResults,
   resolveRunMode,
   skipToResult,
@@ -32,7 +33,7 @@ import {
   type GuideRunResult,
 } from './e2e-results';
 import type { ResolvedRemoteGuide, SkippedPackage } from './e2e-package';
-import type { TestResultsData } from './e2e-reporter';
+import { generateReport, type TestResultsData } from './e2e-reporter';
 import { ExitCode } from './exit-codes';
 
 const READONLY_SIDE_EFFECTS = { level: 'readonly' as const, reasons: [] };
@@ -182,6 +183,22 @@ describe('applyPackageMeta', () => {
 });
 
 describe('provisioningFailureResults', () => {
+  it('normalizes pool-manager capacity errors to the report contract', () => {
+    const results = provisioningFailureResults(
+      [{ id: 'capacity-guide', guide: { path: 'capacity/content.json' }, autoIncluded: false }],
+      new Map(),
+      'https://learn.grafana.net/',
+      'Cloud target provisioning failed: no_capacity',
+      provisioningErrorCode({ code: 'no_capacity' })
+    );
+
+    const report = generateReport(results[0]!.resultsData!);
+    expect(report).toMatchObject({
+      outcome: 'infrastructure_error',
+      errorCode: 'NO_CAPACITY',
+      abortReason: 'PROVISIONING_FAILED',
+    });
+  });
   it('builds failed aborted guide results with package metadata', () => {
     const results = provisioningFailureResults(
       [{ id: 'cloud-guide', guide: { path: 'https://cdn.test/cloud-guide/content.json' }, autoIncluded: true }],
@@ -230,6 +247,12 @@ describe('provisioningFailureResults', () => {
       aborted: true,
       abortReason: 'PROVISIONING_FAILED',
       abortMessage: 'Cloud target provisioning failed: terraform apply failed',
+    });
+
+    const report = generateReport(results[0]!.resultsData!);
+    expect(report).toMatchObject({
+      outcome: 'infrastructure_error',
+      errorCode: 'PROVISIONING_FAILED',
     });
   });
 });
@@ -322,6 +345,20 @@ describe('exitCodeFromResults', () => {
 
   it('prioritizes AUTH_FAILURE over a generic test failure', () => {
     expect(exitCodeFromResults([result('failed'), result('auth_expired')])).toBe(ExitCode.AUTH_FAILURE);
+  });
+  it('prioritizes a guide setup error over authentication and test failures', () => {
+    expect(
+      exitCodeFromResults([
+        { ...result('failed'), exitCode: ExitCode.CONFIGURATION_ERROR },
+        result('auth_expired'),
+        result('failed'),
+      ])
+    ).toBe(ExitCode.CONFIGURATION_ERROR);
+  });
+
+  it('prioritizes CONFIGURATION_ERROR when the report schema is invalid', () => {
+    expect(exitCodeFromResults([result('passed')], false)).toBe(ExitCode.CONFIGURATION_ERROR);
+    expect(exitCodeFromResults([result('failed'), result('auth_expired')], false)).toBe(ExitCode.CONFIGURATION_ERROR);
   });
 });
 
