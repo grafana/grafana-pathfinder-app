@@ -125,6 +125,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
 
     // Determine content type based on URL patterns
     const contentType = determineContentType(url);
+    const metadataContentType = options.skipJourneyMetadata ? 'single-doc' : contentType;
     // Whether fetchRawHtml actually attempted the content.json ↔ unstyled.html
     // ladder for this URL. `contentType === 'learning-journey'` only matches
     // grafana.com path patterns (/tutorials/, /milestone-N/, ...) — generic
@@ -172,12 +173,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       recordContentFetchFallback({ url, tierUsed: 'unstyled-html', errorType: 'content-json-unavailable' });
     }
 
-    const metadata = await extractMetadata(
-      fetchResult.html,
-      finalUrl,
-      options.skipJourneyMetadata ? 'single-doc' : contentType,
-      isNativeJson
-    );
+    const metadata = await extractMetadata(fetchResult.html, finalUrl, metadataContentType, isNativeJson);
 
     let jsonContent: string;
 
@@ -204,7 +200,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
             };
           }
 
-          const htmlMetadata = await extractMetadata(htmlFetchResult.html, htmlUrl, contentType, false);
+          const htmlMetadata = await extractMetadata(htmlFetchResult.html, htmlUrl, metadataContentType, false);
           let processedHtml = htmlFetchResult.html;
 
           if (contentType === 'learning-journey' && htmlMetadata.learningJourney) {

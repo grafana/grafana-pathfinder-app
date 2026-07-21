@@ -1044,11 +1044,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     activeTabBaseUrl: activeTab?.baseUrl,
   });
 
-  useJourneyStepWeights({
-    journeyKey: activeTab?.baseUrl,
-    milestones:
-      activeTab?.type === 'learning-journey' ? activeTab.content?.metadata?.learningJourney?.milestones : undefined,
-  });
+  useJourneyStepWeights(activeTab);
 
   // Auto-complete the final milestone of a learning journey when the rendered
   // content has no interactive steps to drive completion from clicks.

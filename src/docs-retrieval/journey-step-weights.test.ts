@@ -36,7 +36,10 @@ describe('resolveJourneyStepWeights', () => {
     await resolveJourneyStepWeights(JOURNEY, [milestone('m1'), milestone('m2', 2)]);
 
     expect(mockFetchContent).toHaveBeenCalledTimes(2);
-    expect(mockFetchContent).toHaveBeenCalledWith(expect.any(String), { skipJourneyMetadata: true });
+    expect(mockFetchContent).toHaveBeenCalledWith(expect.any(String), {
+      skipJourneyMetadata: true,
+      timeout: expect.any(Number),
+    });
     const weights = getJourneyStepWeights(JOURNEY);
     expect(weights?.get('m1')).toBe(4);
     expect(weights?.get('m2')).toBe(2);
@@ -83,7 +86,8 @@ describe('resolveJourneyStepWeights', () => {
     expect(getJourneyStepWeights(JOURNEY)).toBeNull();
   });
 
-  it('retries only failed milestones on the next resolve and publishes once all succeed', async () => {
+  it('backs off after failure, then retries only failed milestones and publishes once all succeed', async () => {
+    jest.useFakeTimers();
     let brokenFails = true;
     mockFetchContent.mockImplementation((url: string) =>
       url.includes('broken') && brokenFails ? Promise.reject(new Error('network')) : Promise.resolve(guideResult(3))
@@ -94,12 +98,20 @@ describe('resolveJourneyStepWeights', () => {
     expect(mockFetchContent).toHaveBeenCalledTimes(2);
     expect(getJourneyStepWeights(JOURNEY)).toBeNull();
 
-    brokenFails = false;
-    await resolveJourneyStepWeights(JOURNEY, roster);
-    expect(mockFetchContent).toHaveBeenCalledTimes(3);
-    const weights = getJourneyStepWeights(JOURNEY);
-    expect(weights?.get('m1')).toBe(3);
-    expect(weights?.get('broken')).toBe(3);
+    try {
+      brokenFails = false;
+      await resolveJourneyStepWeights(JOURNEY, roster);
+      expect(mockFetchContent).toHaveBeenCalledTimes(2);
+
+      await jest.advanceTimersByTimeAsync(30_000);
+      await resolveJourneyStepWeights(JOURNEY, roster);
+      expect(mockFetchContent).toHaveBeenCalledTimes(3);
+      const weights = getJourneyStepWeights(JOURNEY);
+      expect(weights?.get('m1')).toBe(3);
+      expect(weights?.get('broken')).toBe(3);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('makes no further fetches once a journey is fully resolved', async () => {
@@ -137,6 +149,87 @@ describe('resolveJourneyStepWeights', () => {
     const weights = getJourneyStepWeights(JOURNEY);
     expect(weights?.get('m1')).toBe(2);
     expect(weights?.get('m2')).toBe(2);
+  });
+
+  it('clears a previously published roster when an expanded roster cannot fully resolve', async () => {
+    mockFetchContent.mockResolvedValue(guideResult(2));
+    await resolveJourneyStepWeights(JOURNEY, [milestone('m1')]);
+
+    mockFetchContent.mockRejectedValue(new Error('network'));
+    await resolveJourneyStepWeights(JOURNEY, [milestone('m1'), milestone('m2', 2)]);
+
+    expect(getJourneyStepWeights(JOURNEY)).toBeNull();
+  });
+
+  it('rechecks a concurrent superset roster after the narrower resolution settles', async () => {
+    let releaseFirst: ((value: ReturnType<typeof guideResult>) => void) | undefined;
+    mockFetchContent.mockImplementation((url: string) => {
+      if (url.includes('m1')) {
+        return new Promise((resolve) => {
+          releaseFirst = resolve;
+        });
+      }
+      return Promise.resolve(guideResult(4));
+    });
+
+    const narrow = resolveJourneyStepWeights(JOURNEY, [milestone('m1')]);
+    const superset = resolveJourneyStepWeights(JOURNEY, [milestone('m1'), milestone('m2', 2)]);
+    releaseFirst?.(guideResult(2));
+    await Promise.all([narrow, superset]);
+
+    expect(mockFetchContent).toHaveBeenCalledTimes(2);
+    expect(getJourneyStepWeights(JOURNEY)).toEqual(
+      new Map([
+        ['m1', 2],
+        ['m2', 4],
+      ])
+    );
+  });
+
+  it('caps concurrent milestone fetches at six', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const releases: Array<() => void> = [];
+    mockFetchContent.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          releases.push(() => {
+            active -= 1;
+            resolve(guideResult(1));
+          });
+        })
+    );
+    const roster = Array.from({ length: 8 }, (_, index) => milestone(`m${index + 1}`, index + 1));
+
+    const resolution = resolveJourneyStepWeights(JOURNEY, roster);
+    await Promise.resolve();
+    expect(mockFetchContent).toHaveBeenCalledTimes(6);
+
+    releases.splice(0, 6).forEach((release) => release());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockFetchContent).toHaveBeenCalledTimes(8);
+
+    releases.forEach((release) => release());
+    await resolution;
+    expect(maxActive).toBe(6);
+  });
+
+  it('ends an unresolved burst at the aggregate time budget', async () => {
+    jest.useFakeTimers();
+    mockFetchContent.mockImplementation(() => new Promise(() => undefined));
+
+    try {
+      const resolution = resolveJourneyStepWeights(JOURNEY, [milestone('m1')]);
+      await jest.advanceTimersByTimeAsync(3_000);
+      await resolution;
+
+      expect(getJourneyStepWeights(JOURNEY)).toBeNull();
+      expect(mockFetchContent).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('does nothing for an empty roster', async () => {

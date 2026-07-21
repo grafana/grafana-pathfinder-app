@@ -1,16 +1,9 @@
-/**
- * Count-parity tripwire — pins the static step counter's block-type set
- * (`STEP_COUNTING_BLOCK_TYPES`, Tier 0) to the tracked step registry and
- * the JSON parser's emitted element types. A new step kind must land in
- * all three places or this fails.
- */
-
 import { STEP_TYPE_SCHEMAS, STEP_TYPE_PARSE_KEYS } from './step-type-registry';
-import { STEP_COUNTING_BLOCK_TYPES, type JsonBlock } from '../../types/json-guide.types';
+import { STEP_COUNTING_BLOCK_TYPES, type JsonBlock, type StepCountingBlockType } from '../../types/json-guide.types';
 import { countGuideSteps } from '../../docs-retrieval/count-guide-steps';
 import { parseJsonGuide } from '../../docs-retrieval/json-parser';
 
-const MINIMAL_BLOCK_BY_TYPE: Record<(typeof STEP_COUNTING_BLOCK_TYPES)[number], JsonBlock> = {
+const MINIMAL_BLOCK_BY_TYPE: { [K in StepCountingBlockType]: Extract<JsonBlock, { type: K }> } = {
   interactive: { type: 'interactive', action: 'noop', content: 'read' },
   multistep: { type: 'multistep', content: 'multi', steps: [{ action: 'noop' }] },
   guided: { type: 'guided', content: 'guided', steps: [{ action: 'noop' }] },
@@ -42,5 +35,15 @@ describe('step-count parity', () => {
     expect(emittedTypes).toEqual([...STEP_TYPE_PARSE_KEYS].sort());
 
     expect(countGuideSteps(guide)).toBe(STEP_COUNTING_BLOCK_TYPES.length);
+  });
+
+  it.each(STEP_TYPE_SCHEMAS)('$jsonBlockType parses as $parseTypeKey and counts as one step', (schema) => {
+    const block = MINIMAL_BLOCK_BY_TYPE[schema.jsonBlockType];
+    const guide = { id: 'mapping-fixture', title: 'Mapping fixture', blocks: [block] };
+
+    const result = parseJsonGuide(JSON.stringify(guide));
+    expect(result.isValid).toBe(true);
+    expect(result.data?.elements.map((element) => element.type)).toEqual([schema.parseTypeKey]);
+    expect(countGuideSteps(guide)).toBe(1);
   });
 });

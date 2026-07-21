@@ -2,13 +2,7 @@ import { STEP_COUNTING_BLOCK_TYPES, type JsonBlock, type JsonGuide } from '../ty
 
 const STEP_BLOCK_TYPES: ReadonlySet<string> = new Set(STEP_COUNTING_BLOCK_TYPES);
 
-/**
- * Static step count matching the render-time registry total
- * (`getTotalDocumentSteps`) without mounting the guide. Known
- * approximations where render is dynamic: `conditional` branches count 0,
- * unresolved `snippet-ref` counts 0, and an `assistantEnabled` step inside
- * a section counts 0 (the render wrapper hides it from section extraction).
- */
+/** Environment-neutral step-count approximation; Node and CLI callers must deep-import this module, not the barrel. */
 export function countGuideSteps(guide: Pick<JsonGuide, 'blocks'>): number {
   return countBlocks(guide.blocks, false);
 }
