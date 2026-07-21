@@ -58,11 +58,23 @@ beforeEach(() => {
 describe('MyLearningTab — App Platform guide launch', () => {
   it('opens an App Platform path member via its resolved backend-guide: URL', () => {
     mockPaths = [
-      { id: 'fe-alerting-path', title: 'Alerting enablement', description: '', guides: ['fe-alerting-01'], badgeId: '' },
+      {
+        id: 'fe-alerting-path',
+        title: 'Alerting enablement',
+        description: '',
+        guides: ['fe-alerting-01'],
+        badgeId: '',
+      },
     ];
     mockGetGuideUrlForPath.mockReturnValue('backend-guide:fe-alerting-01');
     mockGetPathGuides.mockReturnValue([
-      { id: 'fe-alerting-01', title: 'Alerting module 1', completed: false, isCurrent: true, url: 'backend-guide:fe-alerting-01' },
+      {
+        id: 'fe-alerting-01',
+        title: 'Alerting module 1',
+        completed: false,
+        isCurrent: true,
+        url: 'backend-guide:fe-alerting-01',
+      },
     ]);
 
     const onOpenGuide = jest.fn();
@@ -75,7 +87,9 @@ describe('MyLearningTab — App Platform guide launch', () => {
   });
 
   it('falls back to bundled:<id> when getGuideUrlForPath resolves nothing (pure bundled guide)', () => {
-    mockPaths = [{ id: 'bundled-path', title: 'Bundled path', description: '', guides: ['bundled-guide'], badgeId: '' }];
+    mockPaths = [
+      { id: 'bundled-path', title: 'Bundled path', description: '', guides: ['bundled-guide'], badgeId: '' },
+    ];
     mockGetGuideUrlForPath.mockReturnValue(undefined);
     mockGetPathGuides.mockReturnValue([
       { id: 'bundled-guide', title: 'Bundled guide', completed: false, isCurrent: true, url: undefined },

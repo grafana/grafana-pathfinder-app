@@ -15,6 +15,7 @@ import {
   setPackageResolver,
   resolvePackageMilestones,
   resolvePackageNavLinks,
+  ensureNonEmptyCoverContent,
 } from './content-fetcher/package-content';
 import { fetchContent } from './content-fetcher';
 import type { PackageResolver, PackageResolution } from '../types';
@@ -608,6 +609,39 @@ describe('fetchPackageContent path-type enrichment', () => {
       expect(result.content.metadata.packageManifest).toEqual(manifest);
       expect(result.content.metadata.learningJourney).toBeDefined();
     }
+  });
+});
+
+describe('ensureNonEmptyCoverContent (RFC Appendix A F15)', () => {
+  it('substitutes a friendly placeholder when blocks is empty', () => {
+    const result = ensureNonEmptyCoverContent(JSON.stringify({ id: 'fe-path', title: 'FE path', blocks: [] }));
+    const parsed = JSON.parse(result);
+
+    expect(parsed.id).toBe('fe-path');
+    expect(parsed.title).toBe('FE path');
+    expect(parsed.blocks).toHaveLength(1);
+    expect(parsed.blocks[0].type).toBe('markdown');
+    expect(parsed.blocks[0].content).toContain('Cover content is missing');
+  });
+
+  it('leaves non-empty blocks unchanged', () => {
+    const original = JSON.stringify({
+      id: 'fe-path',
+      title: 'FE path',
+      blocks: [{ type: 'markdown', content: 'Real cover content' }],
+    });
+    expect(ensureNonEmptyCoverContent(original)).toBe(original);
+  });
+
+  it('leaves content unchanged when blocks is missing entirely', () => {
+    const original = JSON.stringify({ id: 'fe-path', title: 'FE path' });
+    expect(ensureNonEmptyCoverContent(original)).toBe(original);
+  });
+
+  it('returns the input unchanged on malformed JSON rather than throwing', () => {
+    const malformed = '{not json';
+    expect(() => ensureNonEmptyCoverContent(malformed)).not.toThrow();
+    expect(ensureNonEmptyCoverContent(malformed)).toBe(malformed);
   });
 });
 

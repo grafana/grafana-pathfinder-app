@@ -179,6 +179,37 @@ function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
 }
 
 /**
+ * Substitutes a friendly placeholder when a path/journey's own cover content
+ * has empty blocks. Without this, the journey chrome gets injected onto
+ * nothing and the guide parses to zero elements — a broken cover instead of
+ * a milestone list (RFC CUSTOM-GUIDE-PACKAGES.md Appendix A F15).
+ *
+ * Bundled/CDN packages are additionally guarded at load time (see
+ * nonEmptyCoverBlocksError in package-engine) — this is the only gate for
+ * App Platform content, which has no equivalent schema-level enforcement
+ * (the intended CUE constraint didn't survive codegen).
+ */
+export function ensureNonEmptyCoverContent(jsonContent: string): string {
+  try {
+    const parsed = JSON.parse(jsonContent) as { blocks?: unknown[]; [key: string]: unknown };
+    if (Array.isArray(parsed.blocks) && parsed.blocks.length === 0) {
+      return JSON.stringify({
+        ...parsed,
+        blocks: [
+          {
+            type: 'markdown',
+            content: 'Cover content is missing for this path. Check back soon, or contact whoever published it.',
+          },
+        ],
+      });
+    }
+  } catch {
+    // Malformed JSON — leave it to the existing downstream error handling.
+  }
+  return jsonContent;
+}
+
+/**
  * Fetch package content from a pre-resolved contentUrl (CDN or bundled).
  *
  * This is the primary fetch path for package-backed recommendations.
@@ -249,7 +280,7 @@ export async function fetchPackageContent(
       };
 
       if (currentMilestone === 0) {
-        contentString = injectJourneyExtrasIntoJsonGuide(contentString, learningJourney);
+        contentString = injectJourneyExtrasIntoJsonGuide(ensureNonEmptyCoverContent(contentString), learningJourney);
       }
     }
   }
