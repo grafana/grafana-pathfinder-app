@@ -36,6 +36,8 @@ describe('RecommendationsSection', () => {
         recommendations={[]}
         featuredRecommendations={[]}
         customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
         isLoadingCustomGuides={false}
         customGuidesExpanded
         suggestedGuidesExpanded
@@ -79,6 +81,8 @@ describe('RecommendationsSection', () => {
         ]}
         featuredRecommendations={[]}
         customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
         isLoadingCustomGuides={false}
         customGuidesExpanded
         suggestedGuidesExpanded
@@ -123,6 +127,8 @@ describe('RecommendationsSection', () => {
         ]}
         featuredRecommendations={[]}
         customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
         isLoadingCustomGuides={false}
         customGuidesExpanded
         suggestedGuidesExpanded
@@ -162,6 +168,8 @@ describe('RecommendationsSection', () => {
         ]}
         featuredRecommendations={[]}
         customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
         isLoadingCustomGuides={false}
         customGuidesExpanded
         suggestedGuidesExpanded
@@ -207,6 +215,8 @@ describe('RecommendationsSection', () => {
         ]}
         featuredRecommendations={[]}
         customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
         isLoadingCustomGuides={false}
         customGuidesExpanded
         suggestedGuidesExpanded
@@ -247,6 +257,8 @@ describe('RecommendationsSection', () => {
         ]}
         featuredRecommendations={[]}
         customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
         isLoadingCustomGuides={false}
         customGuidesExpanded
         suggestedGuidesExpanded
@@ -363,6 +375,8 @@ describe('RecommendationsSection', () => {
         ]}
         featuredRecommendations={[]}
         customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
         isLoadingCustomGuides={false}
         customGuidesExpanded
         suggestedGuidesExpanded
@@ -399,6 +413,8 @@ describe('RecommendationsSection', () => {
         ]}
         featuredRecommendations={[]}
         customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
         isLoadingCustomGuides={false}
         customGuidesExpanded
         suggestedGuidesExpanded
@@ -442,6 +458,8 @@ describe('RecommendationsSection', () => {
         ]}
         featuredRecommendations={[]}
         customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
         isLoadingCustomGuides={false}
         customGuidesExpanded
         suggestedGuidesExpanded
@@ -509,6 +527,8 @@ describe('RecommendationsSection', () => {
         ]}
         featuredRecommendations={[]}
         customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
         isLoadingCustomGuides={false}
         customGuidesExpanded
         suggestedGuidesExpanded
