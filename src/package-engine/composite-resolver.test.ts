@@ -16,11 +16,19 @@ jest.mock('./recommender-resolver', () => ({
   RecommenderPackageResolver: jest.fn().mockImplementation(() => mockRecommenderResolver),
 }));
 
+jest.mock('./app-platform-resolver', () => ({
+  AppPlatformPackageResolver: jest.fn().mockImplementation(() => mockAppPlatformResolver),
+}));
+
 const mockBundledResolver: PackageResolver = {
   resolve: jest.fn(),
 };
 
 const mockRecommenderResolver: PackageResolver = {
+  resolve: jest.fn(),
+};
+
+const mockAppPlatformResolver: PackageResolver = {
   resolve: jest.fn(),
 };
 
@@ -179,6 +187,70 @@ describe('CompositePackageResolver', () => {
       expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('app-platform cache bypass (§6.8)', () => {
+    const SUCCESS_APP_PLATFORM: PackageResolution = {
+      ok: true,
+      id: 'fe-alerting-01',
+      contentUrl: 'backend-guide:fe-alerting-01',
+      manifestUrl: 'app-platform:stacks-123/fe-alerting-01',
+      repository: 'app-platform',
+    };
+
+    it('never caches successful app-platform resolutions — each call re-fetches', async () => {
+      (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_APP_PLATFORM);
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      const first = await composite.resolve('fe-alerting-01');
+      const second = await composite.resolve('fe-alerting-01');
+
+      expect(first).toEqual(second);
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(2);
+    });
+
+    it('still caches successful bundled/CDN resolutions (regression guard)', async () => {
+      (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_BUNDLED);
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      await composite.resolve('test-guide');
+      await composite.resolve('test-guide');
+
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
+    });
+
+    it('still caches app-platform failures (not-found should not hammer the backend)', async () => {
+      const appPlatformFailure: PackageResolution = {
+        ok: false,
+        id: 'fe-missing',
+        error: { code: 'not-found', message: 'not found' },
+      };
+      (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(appPlatformFailure);
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      await composite.resolve('fe-missing');
+      await composite.resolve('fe-missing');
+
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
+    });
+
+    it('truly concurrent calls still share one in-flight resolution (dedup preserved)', async () => {
+      let resolveFn!: (value: PackageResolution) => void;
+      (mockBundledResolver.resolve as jest.Mock).mockReturnValue(
+        new Promise<PackageResolution>((resolve) => {
+          resolveFn = resolve;
+        })
+      );
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      const first = composite.resolve('fe-alerting-01');
+      const second = composite.resolve('fe-alerting-01');
+
+      resolveFn(SUCCESS_APP_PLATFORM);
+      await Promise.all([first, second]);
+
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe('CompositePackageResolver degradation', () => {
@@ -255,6 +327,43 @@ describe('createCompositeResolver', () => {
 
     const { RecommenderPackageResolver } = require('./recommender-resolver');
     expect(RecommenderPackageResolver).toHaveBeenCalledWith('https://recommender.grafana.com');
+  });
+
+  it('always creates an AppPlatformPackageResolver, appended last (bundled-first precedence, §6.6)', async () => {
+    (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
+    (mockRecommenderResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
+    const SUCCESS_APP_PLATFORM: PackageResolution = {
+      ok: true,
+      id: 'fe-alerting-01',
+      contentUrl: 'backend-guide:fe-alerting-01',
+      manifestUrl: 'app-platform:stacks-123/fe-alerting-01',
+      repository: 'app-platform',
+    };
+    (mockAppPlatformResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_APP_PLATFORM);
+
+    const resolver = createCompositeResolver({ acceptedTermsAndConditions: true });
+    const result = await resolver.resolve('fe-alerting-01');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.repository).toBe('app-platform');
+    }
+    // Bundled and recommender were tried first and missed before app-platform answered.
+    expect(mockBundledResolver.resolve).toHaveBeenCalled();
+    expect(mockRecommenderResolver.resolve).toHaveBeenCalled();
+  });
+
+  it('bundled still wins over app-platform on an ID collision (§6.6)', async () => {
+    (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_BUNDLED);
+
+    const resolver = createCompositeResolver({ acceptedTermsAndConditions: true });
+    const result = await resolver.resolve('test-guide');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.repository).toBe('bundled');
+    }
+    expect(mockAppPlatformResolver.resolve).not.toHaveBeenCalled();
   });
 
   it('should use custom recommender URL from config', () => {
