@@ -113,10 +113,6 @@ function isCollapsibleSummary(summary?: string): boolean {
 
 /** Whether unresolved or resolved content exists for the expansion panel. */
 function hasExpandableDetails(recommendation: Recommendation): boolean {
-  if (recommendation.type !== 'package') {
-    return false;
-  }
-
   const hasPendingDetails =
     Boolean(recommendation.pendingMilestoneIds?.length) ||
     Boolean(recommendation.pendingRecommendIds?.length) ||
