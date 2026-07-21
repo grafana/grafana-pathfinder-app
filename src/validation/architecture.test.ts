@@ -17,6 +17,7 @@ import * as path from 'path';
 
 import {
   EXCLUDED_TOP_LEVEL,
+  NODE_CONTEXT_ROOTS,
   REPO_ROOT,
   ROOT_LEVEL_ALLOWED_FILES,
   SRC_DIR,
@@ -32,6 +33,7 @@ import {
   isTestFile,
   readJsoncFile,
   resolveImportToRelative,
+  scanNodeEnvReachability,
   toPosixPath,
   type AllowedCycleEntry,
 } from './import-graph';
@@ -193,6 +195,34 @@ const ALLOWED_CYCLES: readonly AllowedCycleEntry[] = [
 ];
 
 const ALLOWED_CYCLE_KEYS = new Set(ALLOWED_CYCLES.map((entry) => entry.cycle));
+
+/**
+ * External packages proven safe to load and execute in plain Node — no
+ * browser globals (window/document) touched at module-evaluation time.
+ *
+ * INTENT: this is an allowlist, not a ratchet. It cannot anticipate every
+ * future dependency, so GROWING it is a normal, expected maintenance action —
+ * provided the package is genuinely Node-safe. Before adding an entry, prove
+ * it loads in plain Node:
+ *
+ *     node -e "require('<package>')"
+ *     node --input-type=module -e "import '<package>'"   (ESM-only packages)
+ *
+ * and confirm it does not access browser globals at module scope. Adding a
+ * browser-dependent package (e.g. @grafana/runtime, @grafana/ui, react-dom)
+ * to silence the test defeats the check: the CLI and Playwright discovery
+ * would then crash at runtime instead of failing CI. Node builtins are
+ * auto-allowed and do not belong here.
+ */
+const NODE_SAFE_EXTERNALS = new Set([
+  '@grafana/e2e-selectors', // selector catalog built for Playwright/Node e2e use
+  '@grafana/plugin-e2e', // Playwright fixtures for Grafana plugins, Node-only
+  '@modelcontextprotocol/sdk', // MCP server/client SDK, Node-only
+  '@playwright/test', // Playwright test runner, Node-only
+  'commander', // CLI argument parser, Node-only
+  'prettier', // used by the CLI for output formatting, Node API
+  'zod', // schema validation, environment-neutral
+]);
 
 // Violation key formatters — kept adjacent to allowlists so format changes
 // are visible in the same diff as allowlist updates.
@@ -398,6 +428,66 @@ describe('Import graph: circular dependencies', () => {
           `\n\nThis exists so a new cycle can't be silenced by pasting its key in with an empty comment. ` +
           `Fill in a real 'reason' and 'tracking' issue, or — better — break the cycle instead (see the ` +
           `worked examples referenced by the sibling ratchet test).`
+      );
+    }
+  });
+});
+
+describe('Environment reachability: Node contexts', () => {
+  const scan = scanNodeEnvReachability(NODE_SAFE_EXTERNALS);
+
+  it('reports the current Node-context footprint', () => {
+    console.log(
+      `[architecture-ratchet] node-env: reachableFiles=${scan.reachableFileCount}` +
+        ` externals=${scan.reachedExternalPackages.size} safeList=${NODE_SAFE_EXTERNALS.size}`
+    );
+  });
+
+  it('Node-context code must not reach browser-only imports', () => {
+    if (scan.violations.length === 0) {
+      return;
+    }
+
+    const details = scan.violations
+      .map((v) => `  ${v.file} -> ${v.specifier}\n    witness chain: ${v.chain.join('\n      -> ')}`)
+      .join('\n\n');
+
+    throw new Error(
+      `Environment reachability violation: Node-context code reaches imports that are not proven Node-safe.\n\n` +
+        `${details}\n\n` +
+        `Files under ${NODE_CONTEXT_ROOTS.join(', ')} execute in plain Node — the pathfinder CLI, and ` +
+        `Playwright test discovery — with no browser globals. If anything they transitively import evaluates ` +
+        `browser APIs (window/document) at module load, the e2e command crashes with ` +
+        `"ReferenceError: window is not defined" before a browser ever launches (see PR #1377).\n\n` +
+        `How to resolve, in order of preference:\n\n` +
+        `1. Break the chain. Import a narrower Node-safe module instead of a barrel. If the symbol you need ` +
+        `lives in a browser-coupled module, split it: move the environment-neutral logic into a sibling ` +
+        `'*-core.ts' module with no environment-specific imports and keep the browser wiring in a thin ` +
+        `adapter. Worked example: src/lib/dom/grafana-selector-core.ts (neutral) vs ` +
+        `src/lib/dom/grafana-selector.ts (browser adapter over @grafana/runtime).\n\n` +
+        `2. If you only need types, use \`import type { ... }\` — type-only imports are erased at compile ` +
+        `time and are exempt from this check.\n\n` +
+        `3. If the flagged external package genuinely loads and runs in plain Node, add it to ` +
+        `NODE_SAFE_EXTERNALS in src/validation/architecture.test.ts. Growing that list with a genuinely ` +
+        `Node-safe package is a normal, expected maintenance action — NOT an architecture violation — because ` +
+        `the list cannot anticipate future dependencies. You MUST prove Node-safety first:\n` +
+        `     node -e "require('<package>')"\n` +
+        `     node --input-type=module -e "import '<package>'"   (ESM-only packages)\n` +
+        `   and confirm the package does not touch window/document at module scope. Never add a package just ` +
+        `to make CI pass: a browser-dependent entry defeats this check and moves the failure to ` +
+        `\`pathfinder-cli e2e\` at runtime, which is exactly what this test exists to prevent.\n\n` +
+        `Bundler-only asset imports (.css, .scss, .svg, …) and relative imports the scanner cannot resolve ` +
+        `to a source file can never be made Node-safe — restructure so Node-reachable code does not import them.`
+    );
+  });
+
+  it('NODE_SAFE_EXTERNALS has no stale entries', () => {
+    const stale = [...NODE_SAFE_EXTERNALS].filter((pkg) => !scan.reachedExternalPackages.has(pkg));
+    if (stale.length > 0) {
+      throw new Error(
+        `Stale entries in NODE_SAFE_EXTERNALS (package no longer reachable from any Node context — ` +
+          `remove the entry so the list stays an accurate record of what Node-side code depends on):\n` +
+          stale.map((pkg) => `  - ${pkg}`).join('\n')
       );
     }
   });
