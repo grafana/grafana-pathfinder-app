@@ -92,6 +92,7 @@ The store handles completion writes; the reducer coordinates the ack bit. Call s
 
 - `kind` — runtime discriminant
 - `parseTypeKey` — the `ParsedElement.type` string the JSON parser emits
+- `jsonBlockType` — the JSON authoring block `type` that parses into this kind; must stay 1:1 with `STEP_COUNTING_BLOCK_TYPES` in `src/types/json-guide.types.ts` (the set `countGuideSteps` treats as one step), pinned by `step-type-registry.count-parity.tripwire.test.ts`
 - `idPrefix` — stepId numbering prefix
 - `refTarget` — where the section stores ref callbacks
 - `toStepInfoExtension(props)` / `toEnhancedProps(ctx)` — section orchestration glue
