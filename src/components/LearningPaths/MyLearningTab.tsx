@@ -319,10 +319,16 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         return;
       }
 
-      // Static guide — open the individual guide content
-      const guideMetadata = getPathsData().guideMetadata[guideId];
-      const title = guideMetadata?.title || guideId;
-      const guideUrl = guideMetadata?.url ?? `bundled:${guideId}`;
+      // Static or App Platform guide — resolve via the path-scoped metadata
+      // hook exposes (covers App Platform member guides too, RFC §6.11),
+      // falling back to the static bundled catalogue as before.
+      const resolvedGuideUrl = parentPath ? getGuideUrlForPath(guideId, parentPath.id) : undefined;
+      const staticGuideMetadata = getPathsData().guideMetadata[guideId];
+      const title =
+        (parentPath && getPathGuides(parentPath.id).find((g) => g.id === guideId)?.title) ||
+        staticGuideMetadata?.title ||
+        guideId;
+      const guideUrl = resolvedGuideUrl ?? staticGuideMetadata?.url ?? `bundled:${guideId}`;
 
       reportAppInteraction(UserInteraction.OpenResourceClick, {
         content_title: title,
