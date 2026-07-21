@@ -15,9 +15,9 @@ import {
   onCompletionRecorded,
   __resetRecorderForTests,
 } from './completion-recorder';
-import type { CompletionFact } from './types';
+import type { CompletionFact, GuideCompletionFact, JourneyCompletionFact } from './types';
 
-function guideFact(overrides: Partial<CompletionFact> = {}): CompletionFact {
+function guideFact(overrides: Partial<GuideCompletionFact> = {}): GuideCompletionFact {
   return {
     kind: 'guide',
     guideSource: 'bundled',
@@ -29,6 +29,10 @@ function guideFact(overrides: Partial<CompletionFact> = {}): CompletionFact {
     completedAt: '2026-07-20T00:00:00.000Z',
     ...overrides,
   };
+}
+
+function journeyFact(overrides: Partial<Omit<JourneyCompletionFact, 'kind'>> = {}): JourneyCompletionFact {
+  return { ...guideFact(), ...overrides, kind: 'journey' };
 }
 
 beforeEach(() => {
@@ -50,7 +54,7 @@ describe('completion recorder — emitter seam', () => {
     const seen: CompletionFact[] = [];
     onCompletionRecorded((fact) => seen.push(fact));
 
-    recordJourneyCompletion(guideFact({ kind: 'journey', guideId: 'linux-journey' }));
+    recordJourneyCompletion(journeyFact({ guideId: 'linux-journey' }));
 
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({ kind: 'journey', guideId: 'linux-journey' });
@@ -108,7 +112,7 @@ describe('completion recorder — exactly-once (double-fire guard, brief §4)', 
     onCompletionRecorded((fact) => seen.push(fact));
 
     recordGuideCompletion(guideFact({ guideId: 'x' }));
-    recordJourneyCompletion(guideFact({ kind: 'journey', guideId: 'x' }));
+    recordJourneyCompletion(journeyFact({ guideId: 'x' }));
 
     expect(seen.map((f) => f.kind)).toEqual(['guide', 'journey']);
   });
@@ -117,8 +121,8 @@ describe('completion recorder — exactly-once (double-fire guard, brief §4)', 
     const seen: CompletionFact[] = [];
     onCompletionRecorded((fact) => seen.push(fact));
 
-    recordJourneyCompletion(guideFact({ kind: 'journey', guideId: 'j' }));
-    recordJourneyCompletion(guideFact({ kind: 'journey', guideId: 'j' }));
+    recordJourneyCompletion(journeyFact({ guideId: 'j' }));
+    recordJourneyCompletion(journeyFact({ guideId: 'j' }));
 
     expect(seen.filter((f) => f.kind === 'journey')).toHaveLength(1);
   });

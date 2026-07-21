@@ -110,6 +110,16 @@ describe('bundled guide reaching 100% (trigger class A)', () => {
     expect(emitted).toHaveLength(1);
   });
 
+  it('does not emit a guide fact for a journey-shaped bundled package (journey trigger owns it)', () => {
+    setJourneyCompletionPercentage('bundled:linux-journey', 100, {
+      packageManifest: { id: 'linux-journey', repository: 'app-platform', type: 'journey' },
+    });
+
+    expect(emitted).toHaveLength(0);
+    // Local-cache/UX duty is unchanged — only emission is gated.
+    expect(markGuideCompletedMock).toHaveBeenCalledWith('linux-journey');
+  });
+
   it('does not emit for a non-bundled key at 100% (current behavior preserved)', () => {
     setJourneyCompletionPercentage('https://grafana.com/docs/foo/', 100);
     expect(emitted).toHaveLength(0);
@@ -189,6 +199,17 @@ describe('whole-journey completion (trigger class D — the new journey_complete
     const journeyEmit = emitted.find((f) => f.kind === 'journey');
     expect(guideEmit).toMatchObject({ guideSource: 'bundled', guideId: 'm3' });
     expect(journeyEmit).toMatchObject({ guideSource: 'app-platform', guideId: 'linux-journey' });
+  });
+
+  it('fails closed when neither a manifest id nor a curated path id resolves (never keys on the loader URL)', async () => {
+    milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3']));
+    getPathsDataMock.mockReturnValue({ paths: [] });
+
+    await markMilestoneDone('https://grafana.com/docs/learning-journeys/unregistered/', 'm3', 3);
+
+    expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(0);
+    // The milestone-as-guide fact still emits; only the journey fact is skipped.
+    expect(emitted.filter((f) => f.kind === 'guide')).toHaveLength(1);
   });
 
   it('does not fire journey_completed before all milestones are complete', async () => {

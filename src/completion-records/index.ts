@@ -9,7 +9,7 @@ export {
   onCompletionRecorded,
   __resetRecorderForTests,
 } from './completion-recorder';
-export { resolveCompletionIdentity } from './completion-identity';
+export { resolveCompletionIdentity, manifestGuideId } from './completion-identity';
 export type { ResolveCompletionIdentityInput } from './completion-identity';
 export type {
   CompletionKey,
@@ -17,5 +17,7 @@ export type {
   CompletionSource,
   CompletionCategory,
   CompletionFact,
+  GuideCompletionFact,
+  JourneyCompletionFact,
   CompletionListener,
 } from './types';

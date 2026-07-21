@@ -18,7 +18,12 @@ import { journeyCompletionStorage, milestoneCompletionStorage, learningProgressS
 // `await import(...)` calls scattered through the module.
 // eslint-disable-next-line no-restricted-imports
 import { markGuideCompleted } from '../learning-paths';
-import { recordGuideCompletion, recordJourneyCompletion, resolveCompletionIdentity } from '../completion-records';
+import {
+  recordGuideCompletion,
+  recordJourneyCompletion,
+  resolveCompletionIdentity,
+  manifestGuideId,
+} from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
 /**
@@ -398,6 +403,13 @@ export async function setJourneyCompletionPercentageAsync(
 }
 
 function recordBundledGuideCompletion(guideId: string, context?: CompletionContext): void {
+  // A journey-shaped package ('path'/'journey' manifests render as
+  // learning-journey tabs) completes via markMilestoneDone's journey trigger;
+  // emitting a second, guide-kind fact here would double-count it.
+  const manifestType = context?.packageManifest?.type;
+  if (manifestType === 'path' || manifestType === 'journey') {
+    return;
+  }
   const identity = resolveCompletionIdentity({
     packageManifest: context?.packageManifest,
     fallbackId: guideId,
@@ -505,21 +517,28 @@ export async function markMilestoneDone(
       // The `journey_completed` trigger — no single function represented this
       // before. Keyed on the journey identity; deduped exactly-once by the
       // recorder so a re-crossed threshold does not re-emit.
-      const journeyIdentity = resolveCompletionIdentity({
-        packageManifest: context?.packageManifest,
-        fallbackId: path?.id ?? normalizedBase,
-        fallbackSource: 'bundled',
-      });
-      recordJourneyCompletion({
-        kind: 'journey',
-        ...journeyIdentity,
-        guideTitle: context?.guideTitle ?? path?.title ?? journeyIdentity.guideId,
-        guideCategory: 'learning-journey',
-        pathId: context?.pathId ?? path?.id,
-        completionPercent: 100,
-        source: 'objectives',
-        completedAt: new Date().toISOString(),
-      });
+      // Fail closed when neither a manifest id nor a curated path id resolves:
+      // a loader URL is never an acceptable identity (types.ts contract), and a
+      // URL-keyed fact would become a permanently wrong durable key once the
+      // Track 1/2 subscribers attach.
+      const stableJourneyId = manifestGuideId(context?.packageManifest) ?? path?.id;
+      if (stableJourneyId) {
+        const journeyIdentity = resolveCompletionIdentity({
+          packageManifest: context?.packageManifest,
+          fallbackId: stableJourneyId,
+          fallbackSource: 'bundled',
+        });
+        recordJourneyCompletion({
+          kind: 'journey',
+          ...journeyIdentity,
+          guideTitle: context?.guideTitle ?? path?.title ?? journeyIdentity.guideId,
+          guideCategory: 'learning-journey',
+          pathId: context?.pathId ?? path?.id,
+          completionPercent: 100,
+          source: 'objectives',
+          completedAt: new Date().toISOString(),
+        });
+      }
     }
   }
 }

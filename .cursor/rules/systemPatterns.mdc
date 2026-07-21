@@ -114,7 +114,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 - `utils/` — Business logic and utilities. Files: `dev-mode.ts`, `openfeature.ts`, `timeout-manager.ts`, `variable-substitution.ts`, `experiments.ts`, `find-doc-page.ts`. See `docs/developer/utils/README.md`.
 - `validation/` — Zod schemas + condition validators. Entry: `validate-guide.ts`. Architecture rules enforced by `architecture.test.ts`.
 - `recovery/` — Auto-recovery: decides whether the user is in the right place for a guide. Entry: `alignment-evaluator.ts` (`evaluateAlignment`).
-- `completion-records/` — The single completion-recorder boundary every terminal guide/journey completion flows through. Entry: `completion-recorder.ts` (`recordGuideCompletion`, `recordJourneyCompletion`, `onCompletionRecorded` seam). Keyed on `(guideSource, guideId)` from the resolved manifest.
+- `completion-records/` — The single completion-recorder boundary every terminal guide/journey completion flows through. Entry: `completion-recorder.ts` (`recordGuideCompletion`, `recordJourneyCompletion`, `onCompletionRecorded` seam). Deduped exactly-once per `(kind, guideSource, guideId)`; identity comes from the resolved manifest when available, otherwise a stable slug (milestone facts deliberately key on the milestone slug; emission is skipped when no stable identity resolves — never keyed on a loader URL).
 
 **Tier 2 — engines & hooks:**
 
@@ -161,7 +161,7 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 | `security` (`parseUrlSafely`, `validateTutorialUrl`) | All subsystems handling URLs | Boundary validation for any URL crossing trust zones           |
 | `learning-paths` (`useGuideCompletion`) | `components/docs-panel`, `interactive-engine` | Progress events + badge unlock                          |
 | `recovery` (`evaluateAlignment`)       | `components/docs-panel`                  | One-shot alignment evaluation at guide launch                  |
-| `completion-records` (`recordGuideCompletion`, `recordJourneyCompletion`) | `docs-retrieval` (`learning-journey-helpers`) | Single completion-emission boundary; exactly-once per `(guideSource, guideId)` |
+| `completion-records` (`recordGuideCompletion`, `recordJourneyCompletion`) | `docs-retrieval` (`learning-journey-helpers`) | Single completion-emission boundary; exactly-once per `(kind, guideSource, guideId)` |
 
 ## Backend architecture (`pkg/`)
 

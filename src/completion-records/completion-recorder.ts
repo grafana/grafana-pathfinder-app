@@ -22,7 +22,7 @@
 
 import { logger } from '../lib/logging';
 
-import type { CompletionFact, CompletionListener } from './types';
+import type { CompletionFact, CompletionListener, GuideCompletionFact, JourneyCompletionFact } from './types';
 
 const listeners = new Set<CompletionListener>();
 
@@ -58,7 +58,7 @@ function emit(fact: CompletionFact): void {
  * guides reaching 100% and the milestone-as-guide bridge. Never blocks, never
  * throws on the completion path. Idempotent per `(kind, guideSource, guideId)`.
  */
-export function recordGuideCompletion(fact: CompletionFact): void {
+export function recordGuideCompletion(fact: GuideCompletionFact): void {
   record(fact);
 }
 
@@ -67,7 +67,7 @@ export function recordGuideCompletion(fact: CompletionFact): void {
  * that has no single home in the codebase today. Fired when the final milestone
  * crosses the all-milestones-complete threshold. Same exactly-once guarantee.
  */
-export function recordJourneyCompletion(fact: CompletionFact): void {
+export function recordJourneyCompletion(fact: JourneyCompletionFact): void {
   record(fact);
 }
 

@@ -30,6 +30,15 @@ function asNonEmptyString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
+/**
+ * The manifest-resolved guide id, when present. Callers that have no other
+ * stable identity use this to fail closed (skip recording) rather than key a
+ * completion on a loader URL.
+ */
+export function manifestGuideId(packageManifest?: Record<string, unknown>): string | undefined {
+  return asNonEmptyString(packageManifest?.id);
+}
+
 export function resolveCompletionIdentity(input: ResolveCompletionIdentityInput): CompletionKey {
   const { packageManifest, repository, fallbackId, fallbackSource } = input;
 

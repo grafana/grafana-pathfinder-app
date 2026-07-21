@@ -47,5 +47,11 @@ export interface CompletionFact extends CompletionKey {
   durationMs?: number;
 }
 
+/** A fact whose `kind` is pinned to 'guide' — the only shape `recordGuideCompletion` accepts. */
+export type GuideCompletionFact = CompletionFact & { kind: 'guide' };
+
+/** A fact whose `kind` is pinned to 'journey' — the only shape `recordJourneyCompletion` accepts. */
+export type JourneyCompletionFact = CompletionFact & { kind: 'journey' };
+
 /** Subscriber signature for the emitter seam (Track 1 / Track 2 attach here in later PRs). */
 export type CompletionListener = (fact: CompletionFact) => void;

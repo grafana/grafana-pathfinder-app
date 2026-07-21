@@ -3,7 +3,7 @@
  * shared with the Custom Guide Packages RFC: `(guideSource, guideId) =
  * (manifest.repository, manifest.id)`, never derived from a loader URL.
  */
-import { resolveCompletionIdentity } from './completion-identity';
+import { resolveCompletionIdentity, manifestGuideId } from './completion-identity';
 
 describe('resolveCompletionIdentity', () => {
   it('keys on manifest.repository / manifest.id when present', () => {
@@ -60,5 +60,18 @@ describe('resolveCompletionIdentity', () => {
         fallbackSource: 'bundled',
       })
     ).toEqual({ guideSource: 'bundled', guideId: 'slug' });
+  });
+});
+
+describe('manifestGuideId', () => {
+  it('returns the manifest id when present and non-empty', () => {
+    expect(manifestGuideId({ id: 'fe-alerting-01' })).toBe('fe-alerting-01');
+  });
+
+  it('returns undefined for a missing manifest, missing id, empty id, or non-string id', () => {
+    expect(manifestGuideId(undefined)).toBeUndefined();
+    expect(manifestGuideId({})).toBeUndefined();
+    expect(manifestGuideId({ id: '' })).toBeUndefined();
+    expect(manifestGuideId({ id: 42 })).toBeUndefined();
   });
 });
