@@ -1,7 +1,12 @@
 /**
- * Tests for the MyLearningTab launch flow: the pending affordance while
- * `prepareGuideLaunch` runs, and the unmount guard that stops a resolved
- * launch from navigating the user after they've left the page.
+ * Tests for MyLearningTab:
+ *  - the launch flow: the pending affordance while `prepareGuideLaunch` runs,
+ *    and the unmount guard that stops a resolved launch from navigating the
+ *    user after they've left the page;
+ *  - guide-open URL resolution — App Platform path members (RFC
+ *    CUSTOM-GUIDE-PACKAGES.md §6.11) launch via their `backend-guide:` URL
+ *    (resolved through getGuideUrlForPath), falling through to `bundled:<id>`
+ *    only when nothing else resolves.
  * Badge/path presentation is covered by badge-utils tests.
  */
 
@@ -30,24 +35,24 @@ jest.mock('@grafana/ui', () => ({
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
 }));
 
+// Mutable so individual tests can shape the paths and URL resolution the
+// component reads through the learning-paths hook.
+let mockPaths: any[] = [];
+let mockGuideMetadata: Record<string, any> = {};
+const mockGetPathGuides = jest.fn();
+const mockGetGuideUrlForPath = jest.fn();
+
 jest.mock('../../learning-paths', () => ({
   BADGES: [],
-  getPathsData: () => ({ guideMetadata: {} }),
+  getPathsData: () => ({ guideMetadata: mockGuideMetadata }),
   useLearningPaths: () => ({
-    paths: [
-      {
-        id: 'path-1',
-        title: 'First path',
-        guides: ['guide-1'],
-        url: 'https://grafana.com/docs/learning-paths/path-1/',
-      },
-    ],
+    paths: mockPaths,
     badgesWithStatus: [],
     progress: { completedGuides: [], earnedBadges: [], streakDays: 0 },
-    getPathGuides: () => [{ id: 'guide-1', title: 'Guide one', completed: false, isCurrent: true }],
+    getPathGuides: mockGetPathGuides,
     getPathProgress: () => 0,
     isPathCompleted: () => false,
-    getGuideUrlForPath: () => 'https://grafana.com/docs/learning-paths/path-1/guide-1/',
+    getGuideUrlForPath: mockGetGuideUrlForPath,
     resetPath: jest.fn(),
     streakInfo: { days: 0 },
     isLoading: false,
@@ -97,11 +102,23 @@ const okResult: PrepareGuideLaunchResult = {
   },
 } as PrepareGuideLaunchResult;
 
-describe('MyLearningTab launch flow', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
+beforeEach(() => {
+  jest.clearAllMocks();
+  // Default: a single URL-based path, matching the launch-flow suite below.
+  mockPaths = [
+    {
+      id: 'path-1',
+      title: 'First path',
+      guides: ['guide-1'],
+      url: 'https://grafana.com/docs/learning-paths/path-1/',
+    },
+  ];
+  mockGuideMetadata = {};
+  mockGetPathGuides.mockReturnValue([{ id: 'guide-1', title: 'Guide one', completed: false, isCurrent: true }]);
+  mockGetGuideUrlForPath.mockReturnValue('https://grafana.com/docs/learning-paths/path-1/guide-1/');
+});
 
+describe('MyLearningTab launch flow', () => {
   it('shows a pending affordance on the launching card and re-enables after resolve', async () => {
     const { promise, resolve } = deferred();
     prepareMock.mockReturnValue(promise);
@@ -146,5 +163,40 @@ describe('MyLearningTab launch flow', () => {
     await waitFor(() => expect(publishMock).toHaveBeenCalledTimes(1));
     expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'alert-error' }));
     expect(onOpenGuide).not.toHaveBeenCalled();
+  });
+});
+
+describe('MyLearningTab — App Platform guide launch', () => {
+  it('launches an App Platform path member via its resolved backend-guide: URL', async () => {
+    mockPaths = [{ id: 'ap-path', title: 'Alerting enablement', guides: ['fe-alerting-01'] }];
+    mockGetPathGuides.mockReturnValue([
+      { id: 'fe-alerting-01', title: 'Alerting module 1', completed: false, isCurrent: true },
+    ]);
+    mockGetGuideUrlForPath.mockReturnValue('backend-guide:fe-alerting-01');
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('ap-path')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    expect(prepareMock).toHaveBeenCalledWith(
+      'backend-guide:fe-alerting-01',
+      expect.objectContaining({ source: 'home_page' })
+    );
+  });
+
+  it('falls back to bundled:<id> when no App Platform or static URL resolves', async () => {
+    mockPaths = [{ id: 'bundled-path', title: 'Bundled path', guides: ['bundled-guide'] }];
+    mockGetPathGuides.mockReturnValue([
+      { id: 'bundled-guide', title: 'Bundled guide', completed: false, isCurrent: true },
+    ]);
+    mockGetGuideUrlForPath.mockReturnValue(undefined);
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('bundled-path')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    expect(prepareMock).toHaveBeenCalledWith('bundled:bundled-guide', expect.objectContaining({ source: 'home_page' }));
   });
 });
