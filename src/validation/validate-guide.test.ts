@@ -795,19 +795,26 @@ describe('JsonGuideSchema', () => {
     });
   });
 
-  describe('collapsible block - non-container restriction', () => {
+  describe('collapsible block - presentational-only restriction', () => {
     const wrap = (blocks: unknown[]) =>
       JSON.stringify({ id: 'test', title: 'Test', blocks: [{ type: 'collapsible', title: 'More', blocks }] });
 
-    it('accepts leaf and step blocks inside a collapsible', () => {
+    it('accepts content blocks inside a collapsible', () => {
       const result = validateGuideFromString(
         wrap([
           { type: 'markdown', content: 'note' },
-          { type: 'interactive', action: 'highlight', reftarget: 'button', content: 'do it' },
+          { type: 'image', src: 'https://example.com/x.png' },
         ])
       );
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
+    });
+
+    it('rejects an interactive step nested inside a collapsible', () => {
+      const result = validateGuideFromString(
+        wrap([{ type: 'interactive', action: 'highlight', reftarget: 'button', content: 'do it' }])
+      );
+      expect(result.isValid).toBe(false);
     });
 
     it('rejects a section nested inside a collapsible', () => {

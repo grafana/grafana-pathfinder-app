@@ -766,6 +766,19 @@ const NonRecursiveBlockSchemaNoRef = z.union([
   JsonGrotGuideBlockSchema,
 ]);
 
+/**
+ * Blocks a collapsible may hold: pure content only — no interactive/step
+ * types and no containers. Keeps the collapsible presentational (see
+ * `JsonCollapsibleBlock`), which is why nested-step completion never arises.
+ * @coupling Type: PresentationalBlock in json-guide.types.ts
+ */
+export const PresentationalBlockSchema = z.union([
+  JsonMarkdownBlockSchema,
+  JsonHtmlBlockSchema,
+  JsonImageBlockSchema,
+  JsonVideoBlockSchema,
+]);
+
 // ============ RECURSIVE BLOCK SCHEMAS ============
 
 // Common properties for recursive blocks to avoid duplication
@@ -855,12 +868,11 @@ function createBlockSchemaWithDepth(currentDepth: number): z.ZodType {
       ...SectionProps,
       blocks: z.array(nestedBlockSchema),
     }),
-    // Collapsible is presentational: it may hold leaf/step blocks but not
-    // other containers (section, collapsible, conditional). Using the
-    // non-recursive union enforces that and keeps its subtree shallow.
+    // Collapsible is presentational: it holds only content blocks (no
+    // interactive/step types, no containers). See PresentationalBlockSchema.
     z.object({
       ...CollapsibleProps,
-      blocks: z.array(NonRecursiveBlockSchema),
+      blocks: z.array(PresentationalBlockSchema),
     }),
     z.object({
       ...AssistantProps,
@@ -896,11 +908,11 @@ function createBlockSchemaWithDepthNoRef(currentDepth: number): z.ZodType {
       ...SectionProps,
       blocks: z.array(nestedBlockSchema),
     }),
-    // See the non-NoRef variant above: collapsible holds only non-container
-    // blocks (here, the snippet-ref-free union).
+    // Collapsible holds only content blocks (PresentationalBlockSchema has no
+    // snippet-ref, so the NoRef variant needs no separate union here).
     z.object({
       ...CollapsibleProps,
-      blocks: z.array(NonRecursiveBlockSchemaNoRef),
+      blocks: z.array(PresentationalBlockSchema),
     }),
     z.object({
       ...AssistantProps,
@@ -932,14 +944,13 @@ export const JsonSectionBlockSchema = z.object({
 });
 
 /**
- * Schema for collapsible block. Presentational container — holds only
- * non-container blocks (no section/collapsible/conditional), so it does not
- * recurse through JsonBlockSchema.
+ * Schema for collapsible block. Presentational container — holds only content
+ * blocks (see PresentationalBlockSchema), so it does not recurse.
  * @coupling Type: JsonCollapsibleBlock
  */
 export const JsonCollapsibleBlockSchema = z.object({
   ...CollapsibleProps,
-  blocks: z.array(NonRecursiveBlockSchema),
+  blocks: z.array(PresentationalBlockSchema),
   ...AuthorAnnotatedSchema.shape,
 });
 

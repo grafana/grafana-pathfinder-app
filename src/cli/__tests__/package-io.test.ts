@@ -5,6 +5,7 @@ import * as path from 'path';
 import type {
   JsonBlock,
   JsonInteractiveBlock,
+  JsonMarkdownBlock,
   JsonMultistepBlock,
   JsonQuizBlock,
   JsonSectionBlock,
@@ -69,7 +70,7 @@ function baseManifest(): ManifestJson {
   } as ManifestJson;
 }
 
-const markdown = (id?: string): JsonBlock => ({ type: 'markdown', content: 'hi', ...(id ? { id } : {}) });
+const markdown = (id?: string): JsonMarkdownBlock => ({ type: 'markdown', content: 'hi', ...(id ? { id } : {}) });
 const interactiveBlock = (overrides: Partial<JsonInteractiveBlock> = {}): JsonInteractiveBlock => ({
   type: 'interactive',
   action: 'navigate',
@@ -213,6 +214,23 @@ describe('walkBlocks / findBlockById / findContainerById / collectAllIds', () =>
       }
     }
     expect(seen).toEqual(['cond', 'a', 'b']);
+  });
+
+  it('walks into a collapsible container', () => {
+    const content = baseContent([{ type: 'collapsible', id: 'panel', title: 'More', blocks: [markdown('hidden')] }]);
+    const seen: string[] = [];
+    for (const { block } of walkBlocks(content)) {
+      if (typeof block.id === 'string') {
+        seen.push(block.id);
+      }
+    }
+    expect(seen).toEqual(['panel', 'hidden']);
+  });
+
+  it('findBlockById and collectAllIds see blocks nested in a collapsible', () => {
+    const content = baseContent([{ type: 'collapsible', id: 'panel', blocks: [markdown('answer')] }]);
+    expect(findBlockById(content, 'answer')).not.toBeNull();
+    expect(collectAllIds(content)).toEqual(new Set(['panel', 'answer']));
   });
 
   it('findBlockById returns null when no match', () => {

@@ -1324,7 +1324,12 @@ function renderParsedElement(
       );
     case 'collapsible':
       return (
-        <CollapsibleBlock key={key} title={sub(element.props.title)} collapsed={element.props.collapsed}>
+        <CollapsibleBlock
+          key={key}
+          id={element.props.id}
+          title={sub(element.props.title)}
+          collapsed={element.props.collapsed}
+        >
           {renderChildren(element.children)}
         </CollapsibleBlock>
       );

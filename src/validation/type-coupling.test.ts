@@ -10,6 +10,7 @@ import {
   JsonGuidedBlockSchema,
   JsonSectionBlockSchema,
   JsonCollapsibleBlockSchema,
+  PresentationalBlockSchema,
   JsonQuizBlockSchema,
   JsonAssistantBlockSchema,
   JsonInputBlockSchema,
@@ -140,6 +141,37 @@ describe('KNOWN_FIELDS sync', () => {
 
   it('should match collapsible schema fields', () => {
     verifyFields(JsonCollapsibleBlockSchema, 'collapsible');
+  });
+
+  // Drift guard: PresentationalBlockSchema (collapsible children) and the
+  // PresentationalBlock type must list the same block types. If the union
+  // gains/loses a member on one side only, one of these assertions fails.
+  describe('PresentationalBlockSchema membership', () => {
+    it('accepts the content block types', () => {
+      const accepted: unknown[] = [
+        { type: 'markdown', content: 'x' },
+        { type: 'html', content: '<p>x</p>' },
+        { type: 'image', src: 'https://example.com/x.png' },
+        { type: 'video', src: 'https://example.com/x.mp4', provider: 'native' },
+      ];
+      for (const block of accepted) {
+        expect(PresentationalBlockSchema.safeParse(block).success).toBe(true);
+      }
+    });
+
+    it('rejects interactive, step, and container types', () => {
+      const rejected: unknown[] = [
+        { type: 'interactive', action: 'highlight', reftarget: 'x', content: 'y' },
+        { type: 'code-block', reftarget: 'x', code: 'y' },
+        { type: 'quiz', question: 'q', choices: [{ id: 'a', text: 'a', correct: true }] },
+        { type: 'section', blocks: [] },
+        { type: 'collapsible', blocks: [] },
+        { type: 'conditional', conditions: ['is-admin'], whenTrue: [], whenFalse: [] },
+      ];
+      for (const block of rejected) {
+        expect(PresentationalBlockSchema.safeParse(block).success).toBe(false);
+      }
+    });
   });
 
   it('should match quiz schema fields', () => {

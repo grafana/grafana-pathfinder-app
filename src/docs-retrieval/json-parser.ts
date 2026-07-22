@@ -548,11 +548,9 @@ function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: st
 
 /**
  * Convert a collapsible block to a ParsedElement.
- * Presentational container — children render as ordinary content with no step
- * context. ContentProcessor's document-layout pass does not descend into
- * collapsibles, so nested interactive steps are excluded from the guide step
- * total and skew the completion percentage; content is expected to be
- * presentational. `collapsed` defaults to true.
+ * Presentational container — children are content blocks (the schema forbids
+ * interactive/step and container types), so there is no completion state to
+ * track. `collapsed` defaults to true.
  */
 function convertCollapsibleBlock(block: JsonCollapsibleBlock, path: string, baseUrl?: string): ConversionResult {
   const children: ParsedElement[] = [];

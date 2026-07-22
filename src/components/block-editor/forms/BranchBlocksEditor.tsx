@@ -336,11 +336,20 @@ export interface BranchBlocksEditorProps {
   blocks: JsonBlock[];
   /** Called when blocks change */
   onChange: (blocks: JsonBlock[]) => void;
+  /** Block types offered in the add menu. Defaults to ALLOWED_BRANCH_BLOCK_TYPES. */
+  addableBlockTypes?: BlockType[];
   /** Called to start/stop the element picker */
   onPickerModeChange?: BlockFormProps['onPickerModeChange'];
 }
 
-export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerModeChange }: BranchBlocksEditorProps) {
+export function BranchBlocksEditor({
+  label,
+  variant,
+  blocks,
+  onChange,
+  addableBlockTypes = ALLOWED_BRANCH_BLOCK_TYPES,
+  onPickerModeChange,
+}: BranchBlocksEditorProps) {
   const styles = useStyles2(getStyles);
 
   // Expansion state
@@ -846,7 +855,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
               <div className={styles.addBlockForm}>
                 <Field label="Block type">
                   <Combobox
-                    options={ALLOWED_BRANCH_BLOCK_TYPES.map((t) => ({
+                    options={addableBlockTypes.map((t) => ({
                       value: t,
                       label: BLOCK_TYPE_METADATA[t]?.name ?? t,
                       description: BLOCK_TYPE_METADATA[t]?.description,

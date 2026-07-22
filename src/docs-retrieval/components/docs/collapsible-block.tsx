@@ -1,6 +1,8 @@
 import React, { useId, useState } from 'react';
 
 export interface CollapsibleBlockProps {
+  /** Author-supplied HTML id, emitted on the wrapper for deep-linking */
+  id?: string;
   /** Label shown on the toggle control */
   title?: string;
   /** Whether the block starts collapsed. Defaults to true. */
@@ -15,12 +17,12 @@ const DEFAULT_TITLE = 'Show more';
  * guide authors can gate solutions or answers until a learner reveals them.
  * Reuses the shared `journey-collapse` styles (see content-html.styles.ts).
  */
-export function CollapsibleBlock({ title, collapsed = true, children }: CollapsibleBlockProps) {
+export function CollapsibleBlock({ id, title, collapsed = true, children }: CollapsibleBlockProps) {
   const [isCollapsed, setIsCollapsed] = useState(collapsed);
   const contentId = useId();
 
   return (
-    <div className="journey-collapse" data-testid="collapsible-block">
+    <div className="journey-collapse" id={id} data-testid="collapsible-block">
       <button
         onClick={() => setIsCollapsed((prev) => !prev)}
         className="journey-collapse-trigger"

@@ -340,14 +340,14 @@ Hides its nested blocks behind a toggle. Use it to gate solutions or example out
 }
 ````
 
-| Field       | Type        | Required | Description                                         |
-| ----------- | ----------- | -------- | --------------------------------------------------- |
-| `id`        | string      | ❌       | HTML id for the collapsible                         |
-| `title`     | string      | ❌       | Label shown on the toggle (defaults to "Show more") |
-| `collapsed` | boolean     | ❌       | Whether it starts collapsed (defaults to `true`)    |
-| `blocks`    | JsonBlock[] | ✅       | Nested content hidden behind the toggle             |
+| Field       | Type                | Required | Description                                         |
+| ----------- | ------------------- | -------- | --------------------------------------------------- |
+| `id`        | string              | ❌       | HTML id for the collapsible (usable as a deep-link) |
+| `title`     | string              | ❌       | Label shown on the toggle (defaults to "Show more") |
+| `collapsed` | boolean             | ❌       | Whether it starts collapsed (defaults to `true`)    |
+| `blocks`    | content block array | ✅       | Content hidden behind the toggle                    |
 
-> Use presentational blocks (markdown — including fenced code — and images). Avoid nesting interactive steps for now: the guide-completion counter does not descend into collapsibles, so a nested step still records its own completion but is excluded from the guide's step total, skewing the progress percentage. Counting nested steps is planned as a follow-up.
+> A collapsible is presentational: it accepts content blocks only — `markdown` (including fenced code), `html`, `image`, and `video`. Interactive steps and containers (`section`, `collapsible`, `conditional`) are rejected, so a collapsible never carries completion state. To gate interactive steps, use a `section`.
 
 #### Conditional Block
 
