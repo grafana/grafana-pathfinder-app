@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,6 +21,10 @@ import (
 // (package_recommendations_test.go), makeIDToken (app_platform_identity_test.go),
 // testNamespace + testGrafanaConfig (completion_records_test.go), newTestApp
 // (helpers_test.go).
+//
+// This proxy has no cross-request cache (see the deviation note in
+// custom_guide_repository.go): every request performs its own identity-scoped
+// LIST, so the tests assert per-request behavior, not caching.
 
 // fakeGuideLister is an injectable customGuideLister. respond maps an incoming
 // continue token to a page or error; calls counts invocations.
@@ -54,13 +57,9 @@ func singlePageGuideLister(entries ...customGuideRepositoryEntry) *fakeGuideList
 
 func withGuideLister(t *testing.T, l customGuideLister) {
 	t.Helper()
-	resetCustomGuideRepositoryCache()
 	prev := customGuideListerOverride
 	customGuideListerOverride = l
-	t.Cleanup(func() {
-		customGuideListerOverride = prev
-		resetCustomGuideRepositoryCache()
-	})
+	t.Cleanup(func() { customGuideListerOverride = prev })
 }
 
 // customGuideRequestWithConfig builds a GET request carrying an ID-token
@@ -144,25 +143,6 @@ func TestCustomGuide_SubjectlessTokenStillServes(t *testing.T) {
 	}
 }
 
-// Two different callers share one upstream LIST — the shared-blob model: the
-// catalogue is identity-invariant, so a warm entry serves every authorized
-// caller in the namespace.
-func TestCustomGuide_SharedBlobServesAllCallers(t *testing.T) {
-	withFrozenTime(t, time.Unix(1_700_000_000, 0))
-	l := singlePageGuideLister(guideEntry("fe-01", "One", "published", "guide"))
-	withGuideLister(t, l)
-
-	_, b1 := doCustomGuide(t, "/custom-guide-repository", "user:1")
-	_, b2 := doCustomGuide(t, "/custom-guide-repository", "user:2")
-
-	if len(b1.Guides) != 1 || len(b2.Guides) != 1 {
-		t.Fatalf("both callers should see the catalogue; got %d and %d", len(b1.Guides), len(b2.Guides))
-	}
-	if l.callCount() != 1 {
-		t.Errorf("expected one shared upstream LIST for two callers, got %d", l.callCount())
-	}
-}
-
 func TestCustomGuide_EmptyNamespaceIsAvailableNotUnavailable(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	withGuideLister(t, singlePageGuideLister())
@@ -177,6 +157,51 @@ func TestCustomGuide_EmptyNamespaceIsAvailableNotUnavailable(t *testing.T) {
 	}
 	if len(body.Guides) != 0 {
 		t.Errorf("expected 0 guides, got %d", len(body.Guides))
+	}
+}
+
+// --- No cross-request / cross-caller sharing (the safety property) -----------
+
+// Each request performs its own identity-scoped LIST — there is no shared
+// cache, so two callers produce two upstream LISTs and neither is ever served
+// data fetched under the other's identity.
+func TestCustomGuide_EachRequestListsIndependently(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	l := singlePageGuideLister(guideEntry("fe-01", "One", "published", "guide"))
+	withGuideLister(t, l)
+
+	doCustomGuide(t, "/custom-guide-repository", "user:1")
+	doCustomGuide(t, "/custom-guide-repository", "user:2")
+	doCustomGuide(t, "/custom-guide-repository", "user:1") // even the same caller re-LISTs
+
+	if l.callCount() != 3 {
+		t.Errorf("expected one upstream LIST per request (no cross-request cache), got %d", l.callCount())
+	}
+}
+
+// An identity-scoped (401/403) failure for one caller is a per-request terminal
+// result and cannot affect another caller: there is no shared negative cache to
+// poison, so a later authorized caller is served normally.
+func TestCustomGuide_IdentityScopedFailureIsPerRequest(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	var calls int32
+	l := &fakeGuideLister{respond: func(string) (*customGuidePage, error) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			return nil, &appPlatformUpstreamError{status: http.StatusForbidden, msg: "403 for this caller"}
+		}
+		return &customGuidePage{Entries: []customGuideRepositoryEntry{guideEntry("a", "A", "published", "guide")}, Continue: ""}, nil
+	}}
+	withGuideLister(t, l)
+
+	// Caller 1 is denied by the aggregator → soft-200 capability false.
+	rr1, b1 := doCustomGuide(t, "/custom-guide-repository", "user:1")
+	if rr1.Code != http.StatusOK || b1.Capability.Available || b1.Capability.Reason != reasonBackendUnavailable {
+		t.Fatalf("denied caller should get soft-200 backend-unavailable; status=%d cap=%+v", rr1.Code, b1.Capability)
+	}
+	// Caller 2 is authorized and served normally — no poisoning from caller 1.
+	_, b2 := doCustomGuide(t, "/custom-guide-repository", "user:2")
+	if !b2.Capability.Available || len(b2.Guides) != 1 {
+		t.Fatalf("authorized caller should be served; cap=%+v guides=%d", b2.Capability, len(b2.Guides))
 	}
 }
 
@@ -224,97 +249,18 @@ func TestCustomGuide_AggregateBudgetStopsDrain(t *testing.T) {
 
 	_, body := doCustomGuide(t, "/custom-guide-repository", "user:1")
 
-	if len(body.Guides) < 2 {
-		t.Fatalf("expected the budget to stop the drain with >=2 entries, got %d", len(body.Guides))
+	// Strict budget: the result is capped exactly at the limit, never overshot.
+	if len(body.Guides) != 2 {
+		t.Fatalf("expected the budget to cap the drain at exactly 2 entries, got %d", len(body.Guides))
 	}
 	if l.callCount() > 5 {
 		t.Errorf("budget did not stop the drain: %d page fetches", l.callCount())
 	}
 }
 
-// --- Cache -------------------------------------------------------------------
+// --- Failure classification --------------------------------------------------
 
-func TestCustomGuide_WithinTTLServesFromCache(t *testing.T) {
-	withFrozenTime(t, time.Unix(1_700_000_000, 0))
-	l := singlePageGuideLister(guideEntry("a", "A", "published", "guide"))
-	withGuideLister(t, l)
-
-	doCustomGuide(t, "/custom-guide-repository", "user:1")
-	doCustomGuide(t, "/custom-guide-repository", "user:1")
-
-	if l.callCount() != 1 {
-		t.Errorf("expected 1 upstream LIST within TTL, got %d", l.callCount())
-	}
-}
-
-func TestCustomGuide_TTLExpiryTriggersRefresh(t *testing.T) {
-	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
-	l := singlePageGuideLister(guideEntry("a", "A", "published", "guide"))
-	withGuideLister(t, l)
-
-	doCustomGuide(t, "/custom-guide-repository", "user:1")
-	advance(customGuideCacheTTL + time.Second)
-	doCustomGuide(t, "/custom-guide-repository", "user:1")
-
-	if l.callCount() != 2 {
-		t.Errorf("expected a refresh after TTL expiry, got %d LISTs", l.callCount())
-	}
-}
-
-func TestCustomGuide_Singleflight(t *testing.T) {
-	withFrozenTime(t, time.Unix(1_700_000_000, 0))
-	release := make(chan struct{})
-	var calls int32
-	l := &fakeGuideLister{respond: func(string) (*customGuidePage, error) {
-		atomic.AddInt32(&calls, 1)
-		<-release
-		return &customGuidePage{Entries: []customGuideRepositoryEntry{guideEntry("a", "A", "published", "guide")}, Continue: ""}, nil
-	}}
-	withGuideLister(t, l)
-
-	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			doCustomGuide(t, "/custom-guide-repository", "user:1")
-		}()
-	}
-	time.Sleep(50 * time.Millisecond)
-	close(release)
-	wg.Wait()
-
-	if got := atomic.LoadInt32(&calls); got != 1 {
-		t.Errorf("expected concurrent callers to single-flight one LIST, got %d", got)
-	}
-}
-
-func TestCustomGuide_ForcedRefreshBypassAndRateLimit(t *testing.T) {
-	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
-	l := singlePageGuideLister(guideEntry("a", "A", "published", "guide"))
-	withGuideLister(t, l)
-
-	doCustomGuide(t, "/custom-guide-repository", "user:1")           // 1: cold
-	doCustomGuide(t, "/custom-guide-repository?refresh=1", "user:1") // 2: forced bypass
-	if l.callCount() != 2 {
-		t.Fatalf("refresh=1 should bypass the fresh cache; got %d LISTs", l.callCount())
-	}
-	// Second forced refresh within the rate-limit window is suppressed (cache hit).
-	doCustomGuide(t, "/custom-guide-repository?refresh=1", "user:1")
-	if l.callCount() != 2 {
-		t.Errorf("forced refresh should be rate-limited within the window; got %d LISTs", l.callCount())
-	}
-	// After the window, a forced refresh is permitted again.
-	advance(customGuideForcedRefreshInterval + time.Second)
-	doCustomGuide(t, "/custom-guide-repository?refresh=1", "user:1")
-	if l.callCount() != 3 {
-		t.Errorf("forced refresh after the window should LIST again; got %d", l.callCount())
-	}
-}
-
-// --- Failure matrix ----------------------------------------------------------
-
-func TestCustomGuide_ColdTransientReturns503WithRetryAfter(t *testing.T) {
+func TestCustomGuide_TransientReturns503WithRetryAfter(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	withGuideLister(t, &fakeGuideLister{respond: func(string) (*customGuidePage, error) {
 		return nil, &appPlatformUpstreamError{status: http.StatusServiceUnavailable, msg: "upstream 503"}
@@ -323,109 +269,26 @@ func TestCustomGuide_ColdTransientReturns503WithRetryAfter(t *testing.T) {
 	rr, _ := doCustomGuide(t, "/custom-guide-repository", "user:1")
 
 	if rr.Code != http.StatusServiceUnavailable {
-		t.Fatalf("cold transient failure = %d, want 503", rr.Code)
+		t.Fatalf("transient failure = %d, want 503", rr.Code)
 	}
 	if rr.Header().Get("Retry-After") == "" {
-		t.Error("expected Retry-After header on cold 503")
+		t.Error("expected Retry-After header on a transient 503")
 	}
 }
 
-func TestCustomGuide_ColdTerminalReturnsCapabilityFalse(t *testing.T) {
+func TestCustomGuide_TerminalReturnsCapabilityFalse(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	withGuideLister(t, &fakeGuideLister{respond: func(string) (*customGuidePage, error) {
-		return nil, &appPlatformUpstreamError{status: http.StatusForbidden, msg: "upstream 403"}
+		return nil, &appPlatformUpstreamError{status: http.StatusNotFound, msg: "upstream 404"}
 	}})
 
 	rr, body := doCustomGuide(t, "/custom-guide-repository", "user:1")
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("cold terminal failure should be soft-200, got %d", rr.Code)
+		t.Fatalf("terminal failure should be soft-200, got %d", rr.Code)
 	}
 	if body.Capability.Available || body.Capability.Reason != reasonBackendUnavailable {
 		t.Errorf("expected capability false/backend-unavailable, got %+v", body.Capability)
-	}
-}
-
-func TestCustomGuide_WarmCacheServesStaleOnUpstreamFailure(t *testing.T) {
-	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
-	fail := false
-	l := &fakeGuideLister{respond: func(string) (*customGuidePage, error) {
-		if fail {
-			return nil, &appPlatformUpstreamError{status: http.StatusServiceUnavailable, msg: "hiccup"}
-		}
-		return &customGuidePage{Entries: []customGuideRepositoryEntry{guideEntry("a", "A", "published", "guide")}, Continue: ""}, nil
-	}}
-	withGuideLister(t, l)
-
-	_, warm := doCustomGuide(t, "/custom-guide-repository", "user:1")
-	warmAsOf := warm.AsOf
-
-	fail = true
-	advance(customGuideCacheTTL + time.Second)
-	rr, stale := doCustomGuide(t, "/custom-guide-repository", "user:1")
-
-	if rr.Code != http.StatusOK || len(stale.Guides) != 1 {
-		t.Fatalf("warm failure should serve stale 200 with data; got %d / %d guides", rr.Code, len(stale.Guides))
-	}
-	if stale.AsOf != warmAsOf {
-		t.Errorf("stale serve asOf should reflect the original (stale) fill time: got %q want %q", stale.AsOf, warmAsOf)
-	}
-}
-
-func TestCustomGuide_ColdOutageThrottledByCooldown(t *testing.T) {
-	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
-	l := &fakeGuideLister{respond: func(string) (*customGuidePage, error) {
-		return nil, &appPlatformUpstreamError{status: http.StatusServiceUnavailable, msg: "down"}
-	}}
-	withGuideLister(t, l)
-
-	rr, _ := doCustomGuide(t, "/custom-guide-repository", "user:1")
-	if rr.Code != http.StatusServiceUnavailable {
-		t.Fatalf("first cold failure = %d, want 503", rr.Code)
-	}
-	// Sequential requests INSIDE the cooldown window must not re-probe, yet
-	// still return the sticky 503 so the client keeps its Retry-After semantics.
-	for i := 0; i < 3; i++ {
-		advance(time.Second)
-		rr, _ := doCustomGuide(t, "/custom-guide-repository", "user:1")
-		if rr.Code != http.StatusServiceUnavailable {
-			t.Fatalf("throttled status = %d, want 503", rr.Code)
-		}
-	}
-	if l.callCount() != 1 {
-		t.Errorf("cooldown should suppress re-probes; got %d LISTs", l.callCount())
-	}
-	// After the cooldown, a re-probe is allowed.
-	advance(customGuideFailureCooldown + time.Second)
-	doCustomGuide(t, "/custom-guide-repository", "user:1")
-	if l.callCount() != 2 {
-		t.Errorf("expected a re-probe after the cooldown; got %d", l.callCount())
-	}
-}
-
-// An identity-scoped (401/403) failure must NOT enter the shared negative
-// cache: the next request still attempts upstream rather than replaying a
-// sticky error that belongs to one caller's token.
-func TestCustomGuide_IdentityScopedFailureNotCachedShared(t *testing.T) {
-	withFrozenTime(t, time.Unix(1_700_000_000, 0))
-	var calls int32
-	l := &fakeGuideLister{respond: func(string) (*customGuidePage, error) {
-		n := atomic.AddInt32(&calls, 1)
-		if n == 1 {
-			return nil, &appPlatformUpstreamError{status: http.StatusForbidden, msg: "403 for this caller"}
-		}
-		return &customGuidePage{Entries: []customGuideRepositoryEntry{guideEntry("a", "A", "published", "guide")}, Continue: ""}, nil
-	}}
-	withGuideLister(t, l)
-
-	doCustomGuide(t, "/custom-guide-repository", "user:1") // 403, must not be cached
-	_, body := doCustomGuide(t, "/custom-guide-repository", "user:2")
-
-	if !body.Capability.Available || len(body.Guides) != 1 {
-		t.Fatalf("second caller should get a fresh attempt, not a cached 403; cap=%+v guides=%d", body.Capability, len(body.Guides))
-	}
-	if atomic.LoadInt32(&calls) != 2 {
-		t.Errorf("expected the second request to re-attempt upstream, got %d LISTs", calls)
 	}
 }
 
