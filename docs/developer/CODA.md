@@ -140,19 +140,19 @@ The `CodaClient` struct handles all communication with Coda's REST API.
 
 All routes are prefixed by Grafana as `/api/plugins/grafana-pathfinder-app/resources/`.
 
-| Route              | Method | Handler                | Purpose                                   |
-| ------------------ | ------ | ---------------------- | ----------------------------------------- |
-| `/coda/register`   | POST   | `handleCodaRegister`   | Register with Coda using enrollment key   |
-| `/vms`             | POST   | `handleCreateVM`       | Create VM (template + optional config)    |
-| `/vms`             | GET    | `handleListVMs`        | List user's VMs                           |
-| `/vms/{id}`        | GET    | `handleGetVM`          | Get VM details                            |
-| `/vms/{id}`        | DELETE | `handleDeleteVM`       | Destroy VM                                |
-| `/sample-apps`     | GET    | `handleSampleApps`     | Proxy to Coda's sample-apps endpoint      |
-| `/alloy-scenarios` | GET    | `handleAlloyScenarios` | Proxy to Coda's alloy-scenarios endpoint  |
-| `/coda/exec`       | POST   | `handleCodaExec`       | Run one command on the caller's active VM |
-| `/completion-records/my`         | GET | `handleMyCompletions`        | Per-user collated completion-record summary (App Platform read proxy, not Coda) |
-| `/completion-records/capability` | GET | `handleCompletionCapability` | Cheap identity + upstream-reachability probe |
-| `/health`          | GET    | `handleHealth`         | Plugin health (includes `codaRegistered`) |
+| Route                            | Method | Handler                      | Purpose                                                                         |
+| -------------------------------- | ------ | ---------------------------- | ------------------------------------------------------------------------------- |
+| `/coda/register`                 | POST   | `handleCodaRegister`         | Register with Coda using enrollment key                                         |
+| `/vms`                           | POST   | `handleCreateVM`             | Create VM (template + optional config)                                          |
+| `/vms`                           | GET    | `handleListVMs`              | List user's VMs                                                                 |
+| `/vms/{id}`                      | GET    | `handleGetVM`                | Get VM details                                                                  |
+| `/vms/{id}`                      | DELETE | `handleDeleteVM`             | Destroy VM                                                                      |
+| `/sample-apps`                   | GET    | `handleSampleApps`           | Proxy to Coda's sample-apps endpoint                                            |
+| `/alloy-scenarios`               | GET    | `handleAlloyScenarios`       | Proxy to Coda's alloy-scenarios endpoint                                        |
+| `/coda/exec`                     | POST   | `handleCodaExec`             | Run one command on the caller's active VM                                       |
+| `/completion-records/my`         | GET    | `handleMyCompletions`        | Per-user collated completion-record summary (App Platform read proxy, not Coda) |
+| `/completion-records/capability` | GET    | `handleCompletionCapability` | Cheap identity + upstream-reachability probe                                    |
+| `/health`                        | GET    | `handleHealth`               | Plugin health (includes `codaRegistered`)                                       |
 
 ### Command execution (`pkg/plugin/coda_exec.go`)
 
