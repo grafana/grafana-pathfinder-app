@@ -86,12 +86,13 @@ Load these files **only when working in the relevant domain**.
 
 ## Go backend
 
-| File               | When to load                                            | Auto-triggered by globs                                                                           |
-| ------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `go.mod`, `go.sum` | Go backend dependencies, version updates                | `pkg/**/*.go`                                                                                     |
-| `magefile.go`      | Go build tasks (mage targets)                           | `pkg/**/*.go`                                                                                     |
-| `coda.mdc`         | Coda VM system, terminal integration, backend SSH/relay | `src/integrations/coda/*`, `pkg/plugin/coda.go`, `pkg/plugin/stream.go`, `pkg/plugin/terminal.go` |
-| `CODA.md`          | Coda VM system, terminal integration (comprehensive)    | `src/integrations/coda/*`, `pkg/plugin/coda.go`, `pkg/plugin/stream.go`                           |
+| File                                   | When to load                                                                                                                                                   | Auto-triggered by globs                                                                           |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `go.mod`, `go.sum`                     | Go backend dependencies, version updates                                                                                                                       | `pkg/**/*.go`                                                                                     |
+| `magefile.go`                          | Go build tasks (mage targets)                                                                                                                                  | `pkg/**/*.go`                                                                                     |
+| `coda.mdc`                             | Coda VM system, terminal integration, backend SSH/relay                                                                                                        | `src/integrations/coda/*`, `pkg/plugin/coda.go`, `pkg/plugin/stream.go`, `pkg/plugin/terminal.go` |
+| `CODA.md`                              | Coda VM system, terminal integration (comprehensive)                                                                                                           | `src/integrations/coda/*`, `pkg/plugin/coda.go`, `pkg/plugin/stream.go`                           |
+| `docs/design/BACKEND_PROXY_PATTERN.md` | Canonical pattern for plugin-backend proxies to the App Platform aggregator: identity forwarding, caching, pagination, failure semantics, capability envelopes | `pkg/plugin/*.go`                                                                                 |
 
 ## History and onboarding
 
