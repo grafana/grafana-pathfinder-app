@@ -180,7 +180,7 @@ The Go backend is a **thin bridge** between the React frontend and the **Coda VM
 | `plugin/package_recommendations.go` | CDN package-index cache (6h TTL, single-flight dedup, 8-way parallel manifest fetch, bounded memory).            |
 | `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`). Per-user collation of a full-namespace LIST, 5-min TTL cache with single-flight refresh + negative-cache cooldown, stale-serve/503/capability=false error paths. |
 | `plugin/completion_records_client.go` | Per-kind wrapper over the shared App Platform LIST client for `completionrecords`: supplies group/version + resource and decodes each `items[].spec`. |
-| `plugin/app_platform_client.go`     | Shared paginated LIST client for App Platform proxies (`docs/design/BACKEND_PROXY_PATTERN.md` §1): `buildAppPlatformURL`, per-page byte cap + timeout, transient/terminal/identity-scoped error classification, first-request credential diagnostics. |
+| `plugin/app_platform_client.go`     | Shared paginated LIST client for App Platform proxies (backend proxy pattern §1, PR #1401): `buildAppPlatformURL`, per-page byte cap + timeout, transient/terminal/identity-scoped error classification, first-request credential diagnostics. |
 | `plugin/app_platform_identity.go`   | Shared identity helpers (§3): `validIDToken`, `subjectFromIDToken`, `forwardIdentityHeaders` — fail-closed structural JWT validation; `deriveCompletionUserID` (the epic's canonical identity contract) delegates here. Trust boundary documented in `docs/developer/CODA.md`. |
 
 **HTTP request flow (e.g., `POST /vms`):**
