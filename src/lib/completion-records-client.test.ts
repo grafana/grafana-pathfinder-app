@@ -188,6 +188,28 @@ describe('buildCompletionContext', () => {
     });
   });
 
+  it('skips non-object completion entries without throwing', () => {
+    const context = buildCompletionContext({
+      capability: { available: true },
+      completions: [null, undefined, 'nope', 42, HEALTHY_ENVELOPE.completions[0]] as never,
+    });
+
+    expect(context).toEqual({
+      as_of: undefined,
+      items: [
+        {
+          guide_source: 'grafana-cloud',
+          guide_id: 'alerting-101',
+          guide_category: 'alerting',
+          path_id: 'observability-path',
+          count: 3,
+          latest_completed_at: '2026-07-20T09:30:00Z',
+          max_completion_percent: 100,
+        },
+      ],
+    });
+  });
+
   it('returns null when the proxy reports the feature unavailable', () => {
     expect(
       buildCompletionContext({
@@ -225,5 +247,11 @@ describe('fetchCompletionContextForRecommend', () => {
     });
 
     expect(await fetchCompletionContextForRecommend()).toBeNull();
+  });
+
+  it('resolves without rejecting when the body has non-object completion entries', async () => {
+    mockGet.mockResolvedValueOnce({ capability: { available: true }, completions: [null] });
+
+    await expect(fetchCompletionContextForRecommend()).resolves.toEqual({ as_of: undefined, items: [] });
   });
 });

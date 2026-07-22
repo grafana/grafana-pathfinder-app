@@ -132,15 +132,17 @@ export function buildCompletionContext(response: MyCompletionsResponse | null): 
   }
   return {
     as_of: response.asOf,
-    items: response.completions.map((c) => ({
-      guide_source: c.guideSource,
-      guide_id: c.guideId,
-      guide_category: c.guideCategory || undefined,
-      path_id: c.pathId || undefined,
-      count: c.count,
-      latest_completed_at: c.latestCompletedAt || undefined,
-      max_completion_percent: c.maxCompletionPercent,
-    })),
+    items: response.completions
+      .filter((c): c is CollatedCompletion => typeof c === 'object' && c !== null)
+      .map((c) => ({
+        guide_source: c.guideSource,
+        guide_id: c.guideId,
+        guide_category: c.guideCategory || undefined,
+        path_id: c.pathId || undefined,
+        count: c.count,
+        latest_completed_at: c.latestCompletedAt || undefined,
+        max_completion_percent: c.maxCompletionPercent,
+      })),
   };
 }
 
