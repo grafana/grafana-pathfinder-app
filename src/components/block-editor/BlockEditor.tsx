@@ -630,14 +630,17 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     selection.clearSelection();
   }, [selection, editor]);
 
-  // Load guide from backend
+  // Load guide from backend. `trackLoadedGuide` is a stable useCallback, so
+  // destructuring it keeps this callback from being recreated every render
+  // (the whole backendSaveFlow return is a fresh object literal per render).
+  const { trackLoadedGuide } = backendSaveFlow;
   const handleLoadGuideFromBackend = useCallback(
     (guide: JsonGuide, resourceName: string) => {
       editor.loadGuide(guide);
-      backendSaveFlow.trackLoadedGuide(guide, resourceName);
+      trackLoadedGuide(guide, resourceName);
       editor.markSaved();
     },
-    [editor, backendSaveFlow]
+    [editor, trackLoadedGuide]
   );
 
   // Open guide library
@@ -661,7 +664,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       // No changes to lose, just create new guide
       guideOps.handleNewGuide();
     }
-  }, [editor, backendSaveFlow, modals, guideOps]);
+  }, [editor, backendSaveFlow.publishedStatus, backendSaveFlow.hasUnsyncedChanges, modals, guideOps]);
 
   // Modified form submit to handle section insertions, nested block edits, and conditional branch blocks
   const handleBlockFormSubmitWithSection = useCallback(
