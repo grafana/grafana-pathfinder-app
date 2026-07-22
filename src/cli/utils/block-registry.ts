@@ -77,12 +77,16 @@ export const BLOCK_SCHEMA_MAP = {
  * flow for snippet refs is a follow-up — for v1, authors who want to insert
  * a snippet should use the editor's Reusable palette group.
  *
+ * `collapsible` is a presentational container authored through the block
+ * editor (Structure palette group). A CLI flow for its nested content is a
+ * follow-up; for now authors should use the editor.
+ *
  * The completeness test asserts that this set, unioned with the keys of
  * `BLOCK_SCHEMA_MAP`, exactly matches `VALID_BLOCK_TYPES`. Adding a new block
  * type to `VALID_BLOCK_TYPES` therefore forces a deliberate decision: register
  * it for CLI authoring or document why it's excluded.
  */
-export const CLI_EXCLUDED_BLOCK_TYPES: ReadonlySet<string> = new Set(['grot-guide', 'snippet-ref']);
+export const CLI_EXCLUDED_BLOCK_TYPES: ReadonlySet<string> = new Set(['grot-guide', 'snippet-ref', 'collapsible']);
 
 /**
  * Block-type discriminator strings the CLI knows how to create. Sourced
