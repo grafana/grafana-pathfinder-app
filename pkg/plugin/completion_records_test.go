@@ -412,6 +412,123 @@ func TestErrors_WarmCacheServesStaleOnUpstreamFailure(t *testing.T) {
 	}
 }
 
+func TestErrors_ColdOutageThrottledByCooldown(t *testing.T) {
+	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		return nil, &completionUpstreamError{status: http.StatusServiceUnavailable, msg: "down"}
+	}}
+	withLister(t, l)
+
+	// First cold request probes upstream and 503s.
+	rr, _ := doMyCompletions(t, "/completion-records/my", "user:1")
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("first status = %d, want 503", rr.Code)
+	}
+	if l.callCount() != 1 {
+		t.Fatalf("expected 1 upstream LIST, got %d", l.callCount())
+	}
+
+	// Sequential requests inside the cooldown must NOT re-probe upstream, yet
+	// still return 503 (the sticky transient error) so the client keeps its
+	// Retry-After semantics.
+	for i := 0; i < 3; i++ {
+		advance(time.Second)
+		rr, _ := doMyCompletions(t, "/completion-records/my", "user:1")
+		if rr.Code != http.StatusServiceUnavailable {
+			t.Fatalf("throttled status = %d, want 503", rr.Code)
+		}
+	}
+	if l.callCount() != 1 {
+		t.Fatalf("cooldown should suppress re-probes, got %d LIST calls", l.callCount())
+	}
+
+	// After the cooldown elapses, the next request probes again.
+	advance(completionFailureCooldown + time.Second)
+	doMyCompletions(t, "/completion-records/my", "user:1")
+	if l.callCount() != 2 {
+		t.Fatalf("expected a re-probe after cooldown, got %d LIST calls", l.callCount())
+	}
+}
+
+func TestErrors_ColdTerminalThrottledStaysCapabilityFalse(t *testing.T) {
+	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		return nil, &completionUpstreamError{status: http.StatusForbidden, msg: "403"}
+	}}
+	withLister(t, l)
+
+	rr, body := doMyCompletions(t, "/completion-records/my", "user:1")
+	if rr.Code != http.StatusOK || body.Capability.CompletionRecordingAvailable {
+		t.Fatalf("first terminal cold error should yield capability=false 200, got %d %+v", rr.Code, body.Capability)
+	}
+
+	// A throttled re-request must replay the terminal error (capability=false),
+	// not degrade to a transient 503, and must not re-probe upstream.
+	advance(time.Second)
+	rr, body = doMyCompletions(t, "/completion-records/my", "user:1")
+	if rr.Code != http.StatusOK || body.Capability.CompletionRecordingAvailable {
+		t.Fatalf("throttled terminal error should stay capability=false 200, got %d %+v", rr.Code, body.Capability)
+	}
+	if body.Capability.Reason != reasonBackendUnavailable {
+		t.Errorf("reason = %q, want %q", body.Capability.Reason, reasonBackendUnavailable)
+	}
+	if l.callCount() != 1 {
+		t.Fatalf("cooldown should suppress re-probes, got %d LIST calls", l.callCount())
+	}
+}
+
+func TestErrors_WarmStaleOutageThrottledByCooldown(t *testing.T) {
+	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	var fail atomic.Bool
+	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		if fail.Load() {
+			return nil, &completionUpstreamError{status: http.StatusServiceUnavailable, msg: "hiccup"}
+		}
+		return &completionRecordPage{Records: []completionRecordSpec{
+			rec("user:1", "bundled", "a", "A", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100),
+		}}, nil
+	}}
+	withLister(t, l)
+
+	// Warm the cache, then expire it and start the outage.
+	doMyCompletions(t, "/completion-records/my", "user:1")
+	if l.callCount() != 1 {
+		t.Fatalf("warm-up expected 1 call, got %d", l.callCount())
+	}
+	fail.Store(true)
+	advance(completionCacheTTL + time.Second)
+
+	// First expired request probes once, fails, and serves stale.
+	_, stale := doMyCompletions(t, "/completion-records/my", "user:1")
+	if len(stale.Completions) != 1 {
+		t.Fatalf("expected stale serve of 1 entry, got %d", len(stale.Completions))
+	}
+	if l.callCount() != 2 {
+		t.Fatalf("expected the outage probe, got %d LIST calls", l.callCount())
+	}
+
+	// Subsequent requests inside the cooldown keep serving stale without
+	// re-probing the struggling upstream.
+	for i := 0; i < 3; i++ {
+		advance(time.Second)
+		_, s := doMyCompletions(t, "/completion-records/my", "user:1")
+		if len(s.Completions) != 1 {
+			t.Fatalf("throttled stale serve should return cached entries, got %d", len(s.Completions))
+		}
+	}
+	if l.callCount() != 2 {
+		t.Fatalf("cooldown should suppress re-probes during a warm outage, got %d LIST calls", l.callCount())
+	}
+
+	// Once the cooldown elapses and upstream recovers, a normal refresh resumes.
+	fail.Store(false)
+	advance(completionFailureCooldown + time.Second)
+	doMyCompletions(t, "/completion-records/my", "user:1")
+	if l.callCount() != 3 {
+		t.Fatalf("expected a successful refresh after cooldown, got %d LIST calls", l.callCount())
+	}
+}
+
 // --- Identity at the route level --------------------------------------------
 
 func TestMyCompletions_IdentityUnavailableEnvelope(t *testing.T) {

@@ -32,6 +32,12 @@ const (
 	// a load lever.
 	completionForcedRefreshInterval = 30 * time.Second
 
+	// completionFailureCooldown is a negative-cache window: after an upstream
+	// refresh fails, TTL-expired re-attempts are suppressed for this long so a
+	// sustained outage doesn't re-trigger a full-namespace LIST on every
+	// sequential request. Mirrors package_recommendations.go's sticky failure.
+	completionFailureCooldown = 30 * time.Second
+
 	// completionRetryAfterSeconds is the Retry-After hint on a cold 503.
 	completionRetryAfterSeconds = 30
 
@@ -80,6 +86,14 @@ type completionCacheEntry struct {
 	index *completionIndex
 }
 
+// completionFailure records the most recent upstream refresh failure for a
+// namespace so the cooldown can suppress re-probes and cold callers can still
+// distinguish a terminal (4xx) from a transient error while throttled.
+type completionFailure struct {
+	at  time.Time
+	err error
+}
+
 // completionRefreshFlight is a single-flight handle: concurrent cache-miss
 // callers for a namespace wait on `done` and share one upstream LIST.
 type completionRefreshFlight struct {
@@ -93,6 +107,7 @@ var (
 	completionCacheEntries map[string]*completionCacheEntry
 	completionFlights      map[string]*completionRefreshFlight
 	completionLastForced   map[string]time.Time
+	completionLastFailure  map[string]completionFailure
 
 	// completionListerOverride injects a fake lister in tests. nil selects the
 	// real per-request HTTP client.
@@ -109,6 +124,9 @@ func completionCacheInit() {
 	if completionLastForced == nil {
 		completionLastForced = map[string]time.Time{}
 	}
+	if completionLastFailure == nil {
+		completionLastFailure = map[string]completionFailure{}
+	}
 }
 
 // resetCompletionRecordsCache clears all cached state. Test-only.
@@ -118,12 +136,15 @@ func resetCompletionRecordsCache() {
 	completionCacheEntries = nil
 	completionFlights = nil
 	completionLastForced = nil
+	completionLastFailure = nil
 }
 
 // getCompletionIndex returns the collated index for a namespace, refreshing at
 // most once per TTL (or immediately when a rate-limit-permitted forced refresh
 // is requested). On refresh failure it serves a warm (stale) index when one
-// exists; a cold failure returns (nil, err). Concurrent refreshes single-flight.
+// exists; a cold failure returns (nil, err). After a failure a short cooldown
+// suppresses TTL-driven re-attempts so a sustained outage isn't re-probed on
+// every request. Concurrent refreshes single-flight.
 func getCompletionIndex(ctx context.Context, namespace string, lister completionRecordLister, forced bool) (*completionIndex, error) {
 	completionCacheMu.Lock()
 	completionCacheInit()
@@ -143,6 +164,23 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 		idx := entry.index
 		completionCacheMu.Unlock()
 		return idx, nil
+	}
+
+	// Negative-cache cooldown: after a recent refresh failure, don't re-probe a
+	// struggling upstream on every TTL-expired request. Serve the stale index
+	// when warm, or replay the sticky error when cold, until the cooldown
+	// elapses. A rate-limit-permitted forced refresh (?refresh=1) bypasses this.
+	if !effectiveForced {
+		if fail, ok := completionLastFailure[namespace]; ok && timeNow().Sub(fail.at) < completionFailureCooldown {
+			if entry != nil {
+				idx := entry.index
+				completionCacheMu.Unlock()
+				return idx, nil
+			}
+			err := fail.err
+			completionCacheMu.Unlock()
+			return nil, err
+		}
 	}
 
 	if fl := completionFlights[namespace]; fl != nil {
@@ -166,13 +204,17 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 	completionCacheMu.Lock()
 	if err == nil {
 		completionCacheEntries[namespace] = &completionCacheEntry{index: idx}
+		delete(completionLastFailure, namespace)
 		fl.index = idx
-	} else if entry != nil {
-		// Warm cache + upstream failure: serve stale. asOf reflects true age.
-		fl.index = entry.index
-		fl.err = err
 	} else {
-		fl.err = err
+		completionLastFailure[namespace] = completionFailure{at: timeNow(), err: err}
+		if entry != nil {
+			// Warm cache + upstream failure: serve stale. asOf reflects true age.
+			fl.index = entry.index
+			fl.err = err
+		} else {
+			fl.err = err
+		}
 	}
 	delete(completionFlights, namespace)
 	completionCacheMu.Unlock()
