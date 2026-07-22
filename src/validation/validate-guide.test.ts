@@ -794,4 +794,37 @@ describe('JsonGuideSchema', () => {
       expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(true);
     });
   });
+
+  describe('collapsible block - non-container restriction', () => {
+    const wrap = (blocks: unknown[]) =>
+      JSON.stringify({ id: 'test', title: 'Test', blocks: [{ type: 'collapsible', title: 'More', blocks }] });
+
+    it('accepts leaf and step blocks inside a collapsible', () => {
+      const result = validateGuideFromString(
+        wrap([
+          { type: 'markdown', content: 'note' },
+          { type: 'interactive', action: 'highlight', reftarget: 'button', content: 'do it' },
+        ])
+      );
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('rejects a section nested inside a collapsible', () => {
+      const result = validateGuideFromString(wrap([{ type: 'section', title: 'S', blocks: [] }]));
+      expect(result.isValid).toBe(false);
+    });
+
+    it('rejects a collapsible nested inside a collapsible', () => {
+      const result = validateGuideFromString(wrap([{ type: 'collapsible', title: 'Inner', blocks: [] }]));
+      expect(result.isValid).toBe(false);
+    });
+
+    it('rejects a conditional nested inside a collapsible', () => {
+      const result = validateGuideFromString(
+        wrap([{ type: 'conditional', conditions: ['is-admin'], whenTrue: [], whenFalse: [] }])
+      );
+      expect(result.isValid).toBe(false);
+    });
+  });
 });

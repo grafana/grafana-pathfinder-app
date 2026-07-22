@@ -9,6 +9,7 @@ import {
   JsonMultistepBlockSchema,
   JsonGuidedBlockSchema,
   JsonSectionBlockSchema,
+  JsonCollapsibleBlockSchema,
   JsonQuizBlockSchema,
   JsonAssistantBlockSchema,
   JsonInputBlockSchema,
@@ -135,6 +136,10 @@ describe('KNOWN_FIELDS sync', () => {
 
   it('should match section schema fields', () => {
     verifyFields(JsonSectionBlockSchema, 'section');
+  });
+
+  it('should match collapsible schema fields', () => {
+    verifyFields(JsonCollapsibleBlockSchema, 'collapsible');
   });
 
   it('should match quiz schema fields', () => {

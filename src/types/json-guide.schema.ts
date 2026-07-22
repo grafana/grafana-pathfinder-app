@@ -855,9 +855,12 @@ function createBlockSchemaWithDepth(currentDepth: number): z.ZodType {
       ...SectionProps,
       blocks: z.array(nestedBlockSchema),
     }),
+    // Collapsible is presentational: it may hold leaf/step blocks but not
+    // other containers (section, collapsible, conditional). Using the
+    // non-recursive union enforces that and keeps its subtree shallow.
     z.object({
       ...CollapsibleProps,
-      blocks: z.array(nestedBlockSchema),
+      blocks: z.array(NonRecursiveBlockSchema),
     }),
     z.object({
       ...AssistantProps,
@@ -893,9 +896,11 @@ function createBlockSchemaWithDepthNoRef(currentDepth: number): z.ZodType {
       ...SectionProps,
       blocks: z.array(nestedBlockSchema),
     }),
+    // See the non-NoRef variant above: collapsible holds only non-container
+    // blocks (here, the snippet-ref-free union).
     z.object({
       ...CollapsibleProps,
-      blocks: z.array(nestedBlockSchema),
+      blocks: z.array(NonRecursiveBlockSchemaNoRef),
     }),
     z.object({
       ...AssistantProps,
@@ -927,13 +932,14 @@ export const JsonSectionBlockSchema = z.object({
 });
 
 /**
- * Schema for collapsible block (contains nested blocks).
- * Uses JsonBlockSchema which enforces depth limit globally.
+ * Schema for collapsible block. Presentational container — holds only
+ * non-container blocks (no section/collapsible/conditional), so it does not
+ * recurse through JsonBlockSchema.
  * @coupling Type: JsonCollapsibleBlock
  */
 export const JsonCollapsibleBlockSchema = z.object({
   ...CollapsibleProps,
-  blocks: z.lazy(() => z.array(JsonBlockSchema)),
+  blocks: z.array(NonRecursiveBlockSchema),
   ...AuthorAnnotatedSchema.shape,
 });
 
@@ -1185,6 +1191,7 @@ export const VALID_BLOCK_TYPES = new Set([
   'multistep',
   'guided',
   'section',
+  'collapsible',
   'conditional',
   'quiz',
   'input',

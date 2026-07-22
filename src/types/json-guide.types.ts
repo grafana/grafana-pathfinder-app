@@ -203,9 +203,19 @@ export interface JsonCollapsibleBlock extends AuthorAnnotated {
   title?: string;
   /** Whether the block starts collapsed. Defaults to true. */
   collapsed?: boolean;
-  /** Nested blocks hidden behind the toggle */
-  blocks: JsonBlock[];
+  /** Nested blocks hidden behind the toggle. Non-container blocks only. */
+  blocks: NonContainerBlock[];
 }
+
+/**
+ * Blocks that are not containers — the only blocks a collapsible may hold.
+ * Mirrors `NonRecursiveBlockSchema` in json-guide.schema.ts: everything in
+ * `JsonBlock` except the block types that nest other blocks.
+ */
+export type NonContainerBlock = Exclude<
+  JsonBlock,
+  JsonSectionBlock | JsonCollapsibleBlock | JsonConditionalBlock | JsonAssistantBlock
+>;
 
 // ============ CONDITIONAL BLOCK ============
 

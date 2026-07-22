@@ -12,7 +12,7 @@ import { getBlockFormStyles } from '../block-editor.styles';
 import { BranchBlocksEditor } from './BranchBlocksEditor';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
-import type { JsonCollapsibleBlock } from '../../../types/json-guide.types';
+import type { JsonCollapsibleBlock, NonContainerBlock } from '../../../types/json-guide.types';
 
 function isCollapsibleBlock(block: JsonBlock): block is JsonCollapsibleBlock {
   return block.type === 'collapsible';
@@ -36,7 +36,9 @@ export function CollapsibleBlockForm({
   const buildBlock = useCallback((): JsonCollapsibleBlock => {
     return {
       type: 'collapsible',
-      blocks,
+      // BranchBlocksEditor's add menu (ALLOWED_BRANCH_BLOCK_TYPES) excludes all
+      // container types, so the edited list only ever holds non-container blocks.
+      blocks: blocks as NonContainerBlock[],
       ...(title.trim() && { title: title.trim() }),
       // Persist only when it differs from the `true` default.
       ...(collapsed === false && { collapsed: false }),
