@@ -178,6 +178,9 @@ The Go backend is a **thin bridge** between the React frontend and the **Coda VM
 | `plugin/wsconn.go`                  | `WSConn` — adapts gorilla/websocket as `net.Conn` for SSH-over-WebSocket. Pong-based read-deadline reset (90s).    |
 | `plugin/coda.go`                    | `CodaClient` — JWT-authenticated REST. VM CRUD, sample apps, alloy scenarios. Token refresh under `RWMutex`. Per-user quota: 3 VMs. |
 | `plugin/package_recommendations.go` | CDN package-index cache (6h TTL, single-flight dedup, 8-way parallel manifest fetch, bounded memory).            |
+| `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`). Per-user collation of a full-namespace LIST, 5-min TTL cache with single-flight refresh + negative-cache cooldown, stale-serve/503/capability=false error paths. |
+| `plugin/completion_records_client.go` | App Platform LIST client for the `completionrecords` kind. Drains pagination, forwards the caller's own identity headers (least privilege), bounds page size/body. |
+| `plugin/completion_identity.go`     | `deriveCompletionUserID` — fail-closed identity from the `X-Grafana-Id` ID-token `sub` claim. Canonical identity contract reused by the epic's write hook.        |
 
 **HTTP request flow (e.g., `POST /vms`):**
 
