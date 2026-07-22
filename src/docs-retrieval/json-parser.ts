@@ -19,6 +19,7 @@ import {
   type JsonMarkdownBlock,
   type JsonHtmlBlock,
   type JsonSectionBlock,
+  type JsonCollapsibleBlock,
   type JsonConditionalBlock,
   type JsonInteractiveBlock,
   type JsonMultistepBlock,
@@ -280,6 +281,8 @@ function convertBlockByType(
       return convertHtmlBlock(block, path, baseUrl);
     case 'section':
       return convertSectionBlock(block, path, baseUrl);
+    case 'collapsible':
+      return convertCollapsibleBlock(block, path, baseUrl);
     case 'conditional':
       return convertConditionalBlock(block, path, baseUrl);
     case 'interactive':
@@ -540,6 +543,38 @@ function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: st
       children,
     },
     hasInteractive: true,
+  };
+}
+
+/**
+ * Convert a collapsible block to a ParsedElement.
+ * Presentational container — children render as ordinary content with no step
+ * context. ContentProcessor's document-layout pass does not descend into
+ * collapsibles, so nested interactive steps are excluded from the guide step
+ * total and skew the completion percentage; content is expected to be
+ * presentational. `collapsed` defaults to true.
+ */
+function convertCollapsibleBlock(block: JsonCollapsibleBlock, path: string, baseUrl?: string): ConversionResult {
+  const children: ParsedElement[] = [];
+
+  for (let i = 0; i < block.blocks.length; i++) {
+    const childBlock = block.blocks[i]!;
+    const result = convertBlockToParsedElement(childBlock, `${path}.blocks[${i}]`, baseUrl);
+    if (result.element) {
+      children.push(result.element);
+    }
+  }
+
+  return {
+    element: {
+      type: 'collapsible',
+      props: {
+        title: block.title,
+        id: block.id,
+        collapsed: block.collapsed ?? true,
+      },
+      children,
+    },
   };
 }
 

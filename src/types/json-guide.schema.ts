@@ -778,6 +778,13 @@ const SectionProps = {
   autoCollapse: z.boolean().optional().describe('Collapse the section after the user completes its contents'),
 };
 
+const CollapsibleProps = {
+  type: z.literal('collapsible'),
+  id: z.string().optional().describe('Stable identifier for the collapsible (required for container blocks via CLI)'),
+  title: z.string().optional().describe('Label shown on the toggle control'),
+  collapsed: z.boolean().optional().describe('Whether the block starts collapsed'),
+};
+
 const AssistantProps = {
   type: z.literal('assistant'),
   id: z
@@ -849,6 +856,10 @@ function createBlockSchemaWithDepth(currentDepth: number): z.ZodType {
       blocks: z.array(nestedBlockSchema),
     }),
     z.object({
+      ...CollapsibleProps,
+      blocks: z.array(nestedBlockSchema),
+    }),
+    z.object({
       ...AssistantProps,
       blocks: z.array(nestedBlockSchema),
     }),
@@ -883,6 +894,10 @@ function createBlockSchemaWithDepthNoRef(currentDepth: number): z.ZodType {
       blocks: z.array(nestedBlockSchema),
     }),
     z.object({
+      ...CollapsibleProps,
+      blocks: z.array(nestedBlockSchema),
+    }),
+    z.object({
       ...AssistantProps,
       blocks: z.array(nestedBlockSchema),
     }),
@@ -907,6 +922,17 @@ export const JsonBlockSchemaNoRef = createBlockSchemaWithDepthNoRef(0);
  */
 export const JsonSectionBlockSchema = z.object({
   ...SectionProps,
+  blocks: z.lazy(() => z.array(JsonBlockSchema)),
+  ...AuthorAnnotatedSchema.shape,
+});
+
+/**
+ * Schema for collapsible block (contains nested blocks).
+ * Uses JsonBlockSchema which enforces depth limit globally.
+ * @coupling Type: JsonCollapsibleBlock
+ */
+export const JsonCollapsibleBlockSchema = z.object({
+  ...CollapsibleProps,
   blocks: z.lazy(() => z.array(JsonBlockSchema)),
   ...AuthorAnnotatedSchema.shape,
 });
@@ -1041,6 +1067,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'authorNote',
   ]),
   section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives', 'autoCollapse', 'authorNote']),
+  collapsible: new Set(['type', 'id', 'title', 'collapsed', 'blocks', 'authorNote']),
   conditional: new Set([
     'type',
     'id',

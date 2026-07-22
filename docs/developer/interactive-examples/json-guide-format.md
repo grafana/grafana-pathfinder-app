@@ -322,6 +322,33 @@ Groups related interactive steps into a sequence with "Do Section" functionality
 | `requirements` | string[]    | ❌       | Section-level requirements          |
 | `objectives`   | string[]    | ❌       | Objectives for the entire section   |
 
+#### Collapsible Block
+
+Hides its nested blocks behind a toggle. Use it to gate solutions or example outputs so learners attempt an exercise before revealing the answer. Unlike a section, it is purely presentational and tracks no completion state.
+
+````json
+{
+  "type": "collapsible",
+  "title": "Show solution",
+  "collapsed": true,
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Here's one approach:\n\n```logql\n{app=\"foo\"} |= \"error\" | json\n```"
+    }
+  ]
+}
+````
+
+| Field       | Type        | Required | Description                                         |
+| ----------- | ----------- | -------- | --------------------------------------------------- |
+| `id`        | string      | ❌       | HTML id for the collapsible                         |
+| `title`     | string      | ❌       | Label shown on the toggle (defaults to "Show more") |
+| `collapsed` | boolean     | ❌       | Whether it starts collapsed (defaults to `true`)    |
+| `blocks`    | JsonBlock[] | ✅       | Nested content hidden behind the toggle             |
+
+> Use presentational blocks (markdown — including fenced code — and images). Avoid nesting interactive steps for now: the guide-completion counter does not descend into collapsibles, so a nested step still records its own completion but is excluded from the guide's step total, skewing the progress percentage. Counting nested steps is planned as a follow-up.
+
 #### Conditional Block
 
 Shows different content based on runtime condition evaluation. Conditions use the same syntax as requirements (e.g., `has-datasource:prometheus`, `is-admin`). When ALL conditions pass, the `whenTrue` branch is shown; otherwise, the `whenFalse` branch is shown.
@@ -896,6 +923,7 @@ Each screen has `id`, `title`, `body` (markdown), and an `options[]` array. Each
 | `video`            | Content     | YouTube or native HTML5 video embeds                                            |
 | `code-block`       | Content     | Code snippet with copy and optional Monaco-editor insert                        |
 | `section`          | Structure   | Container for grouped interactive steps with "Do Section"                       |
+| `collapsible`      | Structure   | Hides nested content behind a toggle                                            |
 | `conditional`      | Structure   | Shows different content based on runtime conditions                             |
 | `assistant`        | Structure   | Wraps blocks with AI-powered customization                                      |
 | `interactive`      | Interactive | Single-action step (highlight, button, formfill, navigate, hover, noop, popout) |

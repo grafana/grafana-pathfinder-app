@@ -32,6 +32,7 @@ export type JsonBlock =
   | JsonMarkdownBlock
   | JsonHtmlBlock
   | JsonSectionBlock
+  | JsonCollapsibleBlock
   | JsonConditionalBlock
   | JsonInteractiveBlock
   | JsonMultistepBlock
@@ -183,6 +184,27 @@ export interface JsonSectionBlock extends AuthorAnnotated {
   objectives?: string[];
   /** Whether to auto-collapse this section on completion. Defaults to true. */
   autoCollapse?: boolean;
+}
+
+/**
+ * Collapsible content block.
+ * A presentational container that hides its nested blocks behind a toggle —
+ * used to gate solutions or answers until a learner chooses to reveal them.
+ * Content should stay presentational: the guide-completion counter does not
+ * descend into collapsibles, so a nested interactive step still records its
+ * own completion but is excluded from the guide's step total, skewing the
+ * progress percentage.
+ */
+export interface JsonCollapsibleBlock extends AuthorAnnotated {
+  type: 'collapsible';
+  /** Optional HTML id for the collapsible */
+  id?: string;
+  /** Label shown on the toggle control */
+  title?: string;
+  /** Whether the block starts collapsed. Defaults to true. */
+  collapsed?: boolean;
+  /** Nested blocks hidden behind the toggle */
+  blocks: JsonBlock[];
 }
 
 // ============ CONDITIONAL BLOCK ============
@@ -811,6 +833,13 @@ export function isHtmlBlock(block: JsonBlock): block is JsonHtmlBlock {
  */
 export function isSectionBlock(block: JsonBlock): block is JsonSectionBlock {
   return block.type === 'section';
+}
+
+/**
+ * Type guard for JsonCollapsibleBlock
+ */
+export function isCollapsibleBlock(block: JsonBlock): block is JsonCollapsibleBlock {
+  return block.type === 'collapsible';
 }
 
 /**

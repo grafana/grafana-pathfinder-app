@@ -272,8 +272,10 @@ function createDefaultBlock(type: BlockType): JsonBlock {
   }
 }
 
-// Block types allowed in conditional branches (no sections or conditionals)
-const ALLOWED_BRANCH_BLOCK_TYPES: BlockType[] = BLOCK_TYPE_ORDER.filter((t) => t !== 'section' && t !== 'conditional');
+// Block types allowed in conditional branches (no nested containers)
+const ALLOWED_BRANCH_BLOCK_TYPES: BlockType[] = BLOCK_TYPE_ORDER.filter(
+  (t) => t !== 'section' && t !== 'collapsible' && t !== 'conditional'
+);
 
 // Block types that support inline form editing in BranchBlocksEditor
 // quiz, multistep, and guided require the dedicated editors and cannot be edited inline
