@@ -45,6 +45,7 @@ The Context Engine monitors user activity in Grafana by tracking location change
 - **`context-event-bus.test.ts`** - Unit tests for the event bus (idempotent backend registration, event routing, listener wiring, buffer replay)
 - **`context-security.test.ts`** - Security test suite (URL validation, sanitization, fallback behavior)
 - **`context.service.completion.test.ts`** - Completion percentage storage selection tests (verifies learning paths use journeyCompletionStorage, interactives use interactiveCompletionStorage)
+- **`context.service.completion-context.test.ts`** - Verifies the caller's completion history is attached to the recommend payload when the read proxy is healthy, and that the request goes out unchanged (no `completions` field) when the proxy returns null
 
 ## Main Service
 
@@ -184,11 +185,12 @@ The recommendation system follows a three-tier approach with automatic fallback:
 2. **Tag Generation** - Create semantic tags from URL, events, and API data
 3. **Security Validation** - Validate recommender service URL against domain allowlist
 4. **User Privacy** - Hash user identifiers and email for Cloud users (OSS users use generic identifiers)
-5. **API Request** - POST context payload to external recommender service with 5-second timeout
-6. **XSS Protection** - Sanitize recommendations using explicit allowlist to prevent prototype pollution
-7. **Completion Processing** - Fetch metadata and completion percentages for learning paths and interactive guides. Uses type-specific storage: learning paths read from `journeyCompletionStorage` (via `getJourneyCompletionPercentageAsync`), interactives read from `interactiveCompletionStorage`. Bundled interactives (URLs starting with `bundled:`) are skipped here and handled by `buildBundledInteractiveRecommendations` instead.
-8. **Filtering** - Remove low-confidence recommendations (below 0.5 threshold)
-9. **Sorting** - Prioritize by type (interactive > learning-journey > docs-page), then by accuracy
+5. **Completion Context (optional)** - Fetch the caller's own collated completion history from the plugin-backend read proxy (`GET /completion-records/my`) via `fetchCompletionContextForRecommend()` and attach it to the payload as `completions` so the recommender can weight suggestions by what the user has already finished. This is an enhancement, never a prerequisite: `completion-records-client.ts` fails soft to `null` on every adverse path (offline, 500ms timeout, 4xx/5xx, cold 503, malformed body, or `capability.available === false`), and the request then goes out unchanged with the field absent. The fetch is kicked off in parallel with the other pre-request work and shares a single in-flight request across overlapping recommend cycles (no client-side cache or retry — staleness is bounded by the proxy's own TTL).
+6. **API Request** - POST context payload to external recommender service with 5-second timeout
+7. **XSS Protection** - Sanitize recommendations using explicit allowlist to prevent prototype pollution
+8. **Completion Processing** - Fetch metadata and completion percentages for learning paths and interactive guides. Uses type-specific storage: learning paths read from `journeyCompletionStorage` (via `getJourneyCompletionPercentageAsync`), interactives read from `interactiveCompletionStorage`. Bundled interactives (URLs starting with `bundled:`) are skipped here and handled by `buildBundledInteractiveRecommendations` instead.
+9. **Filtering** - Remove low-confidence recommendations (below 0.5 threshold)
+10. **Sorting** - Prioritize by type (interactive > learning-journey > docs-page), then by accuracy
 
 ### Tier 2: Bundled Interactives (on external service failure)
 
@@ -250,6 +252,7 @@ The Context Engine integrates with multiple systems:
 **Internal Dependencies**:
 
 - **Content Fetcher** (`docs-retrieval/content-fetcher.ts`) - Fetches learning path metadata and content
+- **Completion Records Client** (`lib/completion-records-client.ts`) - Fetches the caller's own completion history from the plugin-backend read proxy for the recommend payload's optional `completions` field
 - **Context Panel** (`components/docs-panel/context-panel.tsx`) - Primary UI consumer using `useContextPanel()` hook
 - **Timeout Manager** (`utils/timeout-manager.ts`) - Centralized debouncing and timeout management
 - **User Storage** (`lib/user-storage.ts`) - Stores interactive and learning path completion percentages
@@ -392,6 +395,7 @@ Configuration is managed through plugin settings (`DocsPluginConfig`):
 **Network Timeouts**:
 
 - `DEFAULT_RECOMMENDER_TIMEOUT` - 5 seconds for API requests (prevents hanging in air-gapped environments)
+- `COMPLETION_RECORDS_TIMEOUT_MS` - 500 ms for the optional completion-context fetch, bounding the worst-case added recommend-request delay
 - Automatic fallback to bundled content on timeout or network errors
 
 **Platform Detection**:
@@ -411,6 +415,7 @@ Configuration is managed through plugin settings (`DocsPluginConfig`):
 - `src/context-engine/context-event-bus.test.ts` - Event bus unit tests
 - `src/context-engine/context-security.test.ts` - Security test suite
 - `src/context-engine/context.service.completion.test.ts` - Completion storage selection tests
+- `src/context-engine/context.service.completion-context.test.ts` - Recommend-payload completion-context attachment tests
 - `src/types/context.types.ts` - TypeScript type definitions
 
 **Bundled Content**:
@@ -423,6 +428,7 @@ Configuration is managed through plugin settings (`DocsPluginConfig`):
 
 - `src/utils/timeout-manager.ts` - Centralized debouncing and timeout management
 - `src/docs-retrieval/content-fetcher.ts` - Content fetching for learning paths
+- `src/lib/completion-records-client.ts` - Fail-soft client for the plugin-backend `/completion-records/my` read proxy; supplies the recommend payload's optional `completions` context
 - `src/components/docs-panel/context-panel.tsx` - Primary UI consumer
 - `src/constants.ts` - Configuration constants and security allowlists
 
