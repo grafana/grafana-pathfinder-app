@@ -230,6 +230,8 @@ describe('RecommendationsSection', () => {
 
   it('calls toggleSummaryExpansion with contentUrl for package-backed recommendations', () => {
     const toggleSummaryExpansion = jest.fn();
+    // 21+ words — above SUMMARY_COLLAPSE_WORD_THRESHOLD (20) so the Summary control appears.
+    const longSummary = '1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21';
 
     render(
       <RecommendationsSection
@@ -239,7 +241,7 @@ describe('RecommendationsSection', () => {
             url: '',
             contentUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
             type: 'package',
-            summary: 'Learn alerting basics.',
+            summary: longSummary,
             manifest: { id: 'alerting-101', type: 'guide' },
           },
         ]}
@@ -267,6 +269,82 @@ describe('RecommendationsSection', () => {
     expect(toggleSummaryExpansion).toHaveBeenCalledWith(
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json'
     );
+  });
+
+  it('renders short summaries inline without a Summary collapse button', () => {
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Alerting 101',
+            url: '',
+            contentUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+            type: 'package',
+            summary: 'Learn alerting basics.',
+            manifest: { id: 'alerting-101', type: 'guide' },
+            completionPercentage: 10,
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: 'Summary' })).not.toBeInTheDocument();
+    expect(screen.getByText('Learn alerting basics.')).toBeInTheDocument();
+    expect(screen.getByText('{{percent}}% complete')).toBeInTheDocument();
+  });
+
+  it('keeps the Summary collapse button when short summary has expandable milestone details', () => {
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Alerting 101',
+            url: '',
+            contentUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+            type: 'package',
+            summary: 'Learn alerting basics.',
+            totalSteps: 3,
+            pendingMilestoneIds: ['intro', 'configure', 'verify'],
+            manifest: { id: 'alerting-101', type: 'guide' },
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Summary' })).toBeInTheDocument();
+    expect(screen.queryByText('Learn alerting basics.')).not.toBeInTheDocument();
   });
 
   it('shows completion percentage for package with completionPercentage set', () => {
