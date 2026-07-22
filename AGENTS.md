@@ -100,7 +100,7 @@ Dev server runs at http://localhost:3000 (admin/admin). For the complete command
 Imports flow **downward only** to avoid cycles. Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; exceptions require an explicit allowlist entry with justification.
 
 - **Tier 0 — Types & constants**: `types/`, `constants/`
-- **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`
+- **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`, `completion-records/`
 - **Tier 2 — Engines & hooks**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `snippet-engine/`, `hooks/`
 - **Tier 3 — Integrations**: `integrations/`
 - **Tier 4 — UI**: `components/`, `pages/`

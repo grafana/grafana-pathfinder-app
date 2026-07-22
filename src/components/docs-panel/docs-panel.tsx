@@ -446,7 +446,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
           const progress = getJourneyProgress(updatedTab.content);
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
-          setJourneyCompletionPercentage(completionKey, progress);
+          setJourneyCompletionPercentage(completionKey, progress, {
+            packageManifest: updatedTab.content.metadata.packageManifest,
+            guideTitle: updatedTab.title,
+          });
         }
         return 'completed';
       } else {
