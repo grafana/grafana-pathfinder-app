@@ -28,7 +28,9 @@ export function CollapsibleBlock({ id, title, collapsed = true, children }: Coll
         className="journey-collapse-trigger"
         type="button"
         aria-expanded={!isCollapsed}
-        aria-controls={contentId}
+        // Only reference the content region while it's in the DOM (it's
+        // unmounted when collapsed) so the IDREF never dangles.
+        aria-controls={isCollapsed ? undefined : contentId}
         data-testid="collapsible-toggle"
       >
         <span>{title || DEFAULT_TITLE}</span>

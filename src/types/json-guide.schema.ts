@@ -793,7 +793,7 @@ const SectionProps = {
 
 const CollapsibleProps = {
   type: z.literal('collapsible'),
-  id: z.string().optional().describe('Stable identifier for the collapsible (required for container blocks via CLI)'),
+  id: z.string().optional().describe('HTML id for the collapsible (usable as a deep-link anchor)'),
   title: z.string().optional().describe('Label shown on the toggle control'),
   collapsed: z.boolean().optional().describe('Whether the block starts collapsed'),
 };

@@ -24,6 +24,22 @@ describe('CollapsibleBlock', () => {
     expect(screen.getByTestId('collapsible-toggle')).toHaveAttribute('aria-expanded', 'true');
   });
 
+  it('only sets aria-controls while the content region is in the DOM', () => {
+    render(
+      <CollapsibleBlock title="Show solution">
+        <p>secret answer</p>
+      </CollapsibleBlock>
+    );
+    const toggle = screen.getByTestId('collapsible-toggle');
+    // Collapsed: content is unmounted, so aria-controls must not dangle
+    expect(toggle).not.toHaveAttribute('aria-controls');
+    fireEvent.click(toggle);
+    // Expanded: aria-controls points at the rendered content region
+    const controls = toggle.getAttribute('aria-controls');
+    expect(controls).toBeTruthy();
+    expect(document.getElementById(controls!)).toBeInTheDocument();
+  });
+
   it('renders children immediately when collapsed=false', () => {
     render(
       <CollapsibleBlock title="Notes" collapsed={false}>
