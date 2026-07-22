@@ -11,13 +11,19 @@ The Interactive Engine provides the core automation and interaction capabilities
 ### Core Components
 
 - **`interactive.hook.ts`** - Main React hook (`useInteractiveElements`) that orchestrates all interactive functionality
-- **`action-handlers/`** - Specialized handlers for each action type (highlight, button, formfill, navigate, hover, guided)
+- **`action-handlers/`** - Specialized handlers for each action type (highlight, button, formfill, navigate, hover, guided, popout) plus shared Monaco code insertion
 - **`navigation-manager.ts`** - Manages element visibility, scrolling, navigation menu state, and highlight rendering
 - **`sequence-manager.ts`** - Coordinates sequential multi-step execution with retry logic
-- **`interactive-state-manager.ts`** - Tracks execution state and dispatches completion events
+- **`interactive-state-manager.ts`** - Dispatches completion events and coordinates error handling and interaction blocking
 - **`global-interaction-blocker.ts`** - Singleton that blocks user interactions during section execution using overlays
+- **`modal-watcher.ts`** - Shared modal detection and geometry watcher used by blocking and floating-panel dodge behavior
+- **`outcome-classifier.ts`** - Maps interactive completion and sequence results to telemetry outcomes
 - **`auto-completion/`** - Optional system for detecting and auto-completing user-performed actions
 - **`use-sequential-step-state.hook.ts`** - React 18 hook for subscribing to sequential step state changes
+
+### Module boundary
+
+`src/interactive-engine/index.ts` is the consumer-facing barrel. It exports the hook and managers; the focus, button, form-fill, hover, navigate, and guided handlers; the code insertion helper; telemetry outcome classifiers; and modal watcher functions. `PopoutHandler` is owned by the hook's internal action routing and is exported only from `action-handlers/index.ts`.
 
 ## Main Hook
 
@@ -39,7 +45,7 @@ The Interactive Engine provides the core automation and interaction capabilities
 
 **High-level API** (preferred for most consumers):
 
-- `executeInteractiveAction()` - Execute any interactive action programmatically (routes to the appropriate handler)
+- `executeInteractiveAction()` - Execute any interactive action programmatically (routes to the appropriate handler and returns an `ok` or `error` step outcome)
 - `checkRequirementsFromData()` - Validate pre-conditions from step data before action execution
 - `checkElementRequirements()` - Validate pre-conditions from a DOM element's `data-*` attributes
 - `verifyStepResult()` - Validate post-conditions after action execution
@@ -59,7 +65,7 @@ The Interactive Engine provides the core automation and interaction capabilities
 
 ## Action Handlers
 
-Located in `src/interactive-engine/action-handlers/`, these specialized classes execute specific types of interactive actions. All handlers follow a consistent pattern and share common infrastructure.
+Located in `src/interactive-engine/action-handlers/`, these specialized handlers and helpers execute specific types of interactive actions. The class-based handlers follow a consistent pattern and share common infrastructure.
 
 ### Handler Types
 
@@ -69,6 +75,8 @@ Located in `src/interactive-engine/action-handlers/`, these specialized classes 
 - **`navigate-handler.ts`** - Navigates to internal Grafana routes or external URLs using locationService; validates external URLs via `parseUrlSafely` to block `javascript:` and `data:` scheme injection
 - **`hover-handler.ts`** - Simulates hover states by dispatching mouse events and applying programmatic hover classes (specifically handles Tailwind `group-hover` patterns)
 - **`guided-handler.ts`** - Coordinates guided interactions where users manually perform actions while the system highlights targets and waits for completion
+- **`popout-handler.ts`** - Toggles the Pathfinder panel between sidebar and floating modes by dispatching document-level dock/pop-out events
+- **`code-block-handler.ts`** - Inserts code into the matching Monaco model, with a textarea/event fallback; the Monaco model helper is also used by the form-fill handler
 
 ### Common Handler Pattern
 
@@ -141,20 +149,19 @@ The special `sequence` action type (handled directly in `interactive.hook.ts`) e
 
 **Location**: `src/interactive-engine/interactive-state-manager.ts`
 
-**Purpose**: Central state coordinator that tracks interactive action lifecycle and manages integration with the global interaction blocker.
+**Purpose**: Event, error, and blocking coordinator for interactive actions. It does not retain per-step execution state; action handlers own their transient flow, while guide completion is owned by the completion store described in `docs/developer/STEP_MODEL.md`.
 
 **Key Features**:
 
-- Manages state transitions: idle → running → completed/error
-- Dispatches `interactive-action-completed` custom events to DOM for step completion tracking
+- Dispatches `interactive-action-completed` custom events when handlers report completion
 - Error logging with context and structured error handling
 - Section-level blocking coordination via `startSectionBlocking()` / `stopSectionBlocking()`
 - Configurable options for logging, events, and global blocking
 - Emergency `forceUnblock()` method for safety
 
-**State Lifecycle**:
+**Handler lifecycle**:
 
-1. `setState(data, 'running')` - Action starts
+1. `setState(data, 'running')` - Handler signals that the action starts; no state is retained
 2. Action handler executes
 3. `setState(data, 'completed')` - Dispatches completion event
 4. React components listening for `interactive-action-completed` event update UI
@@ -171,14 +178,19 @@ The special `sequence` action type (handled directly in `interactive.hook.ts`) e
   - **Main content overlay** - Blocks page content area
   - **Header overlay** - Blocks top navigation bar (spans full viewport width)
   - **Full-screen overlay** - Activates when modals are detected (initially hidden)
-- Modal detection system with MutationObserver and polling fallback
-- Automatic overlay switching based on modal state (ARIA dialogs, `data-overlay-container`, and the plugin's own `.journey-image-modal` lightbox)
+- Automatic overlay switching based on shared modal detection (ARIA dialogs, `data-overlay-container`, and the plugin's own `.journey-image-modal` lightbox)
 - Position synchronization using ResizeObserver and window resize/scroll handlers
 - Status indicator with spinner and cancel button (always visible, z-index 10001+)
 - Keyboard shortcut support (Ctrl/Cmd+C to cancel running section)
 - Intelligent event blocking that allows interactions within WYSIWYG editor
 - Automatic cleanup of all resources (observers, listeners, timers) on unblock
 - Uses TimeoutManager singleton to prevent interval stacking and memory leaks
+
+### Modal Watcher
+
+**Location**: `src/interactive-engine/modal-watcher.ts`
+
+**Purpose**: Provides one definition of a visible modal for both the interaction blocker and floating-panel positioning. It excludes Pathfinder-owned content, returns modal rectangles for dodge calculations, and exposes a reference-counted watcher that dispatches `pathfinder-modal-state-changed` when modal visibility or geometry changes.
 
 ## Auto-Completion System
 
@@ -268,6 +280,7 @@ The Interactive Engine supports the following action types via the `targetAction
 - **navigate** - Navigates to internal routes or external URLs
 - **hover** - Simulates hover interactions
 - **guided** - Guided mode where user manually performs actions
+- **popout** - Docks the Pathfinder panel in the sidebar or opens it in floating mode
 - **sequence** - Executes multiple child actions sequentially
 - **noop** - Informational step with no interaction (displays comment only)
 
@@ -282,7 +295,7 @@ Custom DOM event `interactive-action-completed` dispatched with:
 ```typescript
 {
   data: InteractiveElementData, // Step configuration
-  state: 'completed' | 'error'  // Final state
+  state: 'completed'            // Completion state
 }
 ```
 
@@ -301,12 +314,17 @@ Custom DOM event `user-action-detected` dispatched with:
 
 ### State Tracking
 
-The Interactive State Manager tracks:
+The Interactive State Manager coordinates:
 
-- Current execution state per step (idle, running, completed, error)
 - Section blocking state (active, inactive)
 - Error context and messages
 - Cancel callbacks for in-progress sections
+
+Per-step completion state is owned by `src/global-state/completion-store.ts`, not the Interactive State Manager.
+
+### Telemetry Outcome Classification
+
+`outcome-classifier.ts` centralizes the mapping from guided completion results, sequence results, and section loop exits to `UserActionOutcome` values such as `ok`, `cancelled`, `requirements_exhausted`, and `action_error`. These helpers are exported from the Interactive Engine barrel for the hook, guided handler, and interactive section UI.
 
 ## Usage Example
 
