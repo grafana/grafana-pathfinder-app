@@ -59,8 +59,10 @@ the fixed internal aggregator.
 
 ### Inbound (browser → plugin)
 
-- Fail closed: absent or structurally invalid identity → refuse cleanly. Never guess, never fall
-  back to `X-Grafana-User` or a numeric id, never use a service account.
+- Fail closed: absent or structurally invalid identity → serve no data. Never guess, never fall
+  back to `X-Grafana-User` or a numeric id, never use a service account. On GET reads the refusal
+  is expressed as the §7 capability envelope (soft-200), not a 401 — "fail closed" constrains
+  _what_ is served (nothing), not the status code.
 - **Every proxy structurally validates the ID token** before spending an upstream call:
   well-formed JWT, `exp` **present and** unexpired. **Reject `exp == 0`** — a forwarded Grafana
   ID token always carries `exp`, and accepting its absence weakens the one structural check we
@@ -81,7 +83,10 @@ the fixed internal aggregator.
 - The only runtime-verified configuration (dev-stack smoke, commit `89d6bd5e` on
   `feat/external-import-api`) is `Authorization: Bearer <id-token>` **+** `X-Grafana-Id`, both
   synthesized from the inbound ID token, with the `idForwarding` toggle on (standard on Cloud).
-  Start there; if a live smoke proves `X-Grafana-Id` alone suffices, narrow to that and record it.
+  That evidence is from the sibling guides-import proxy — same aggregator, different kind — not
+  from these routes themselves; extrapolating is reasonable, but each new proxy confirms the
+  header set via its own §10 runtime smoke. Start with both headers; if a live smoke proves
+  `X-Grafana-Id` alone suffices, narrow to that and record it.
 - **Never forward `Cookie`.** No branch in this repo's history has ever needed it against the
   aggregator; the caller's full session is the broadest possible ambient grant and the classic
   confused-deputy shape.
@@ -156,9 +161,12 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
   **transient hiccup**.
 - Structural unavailability is signaled **in-band**: HTTP 200 with
   `capability: { available: false, reason: "identity-unavailable" | "backend-unavailable" }`.
-  A bare 503 conflates "never works here" with "blip", and the front-end's session-latching 503
-  heuristics will turn a hiccup into a feature that stays dark. This is also why missing identity
-  on a GET read is soft-200, not 401: these routes gate whether a feature renders at all.
+  A bare 503 conflates "never works here" with "blip": the front-end already lumps 503 into its
+  not-rolled-out status set (`UNAVAILABLE_STATUSES` in `src/utils/fetchBackendGuides.ts`, mirrored
+  in `src/context-engine/context.init.ts`) and silently renders empty with no retry, so a
+  transient 503 darkens the feature for that load exactly as if it were structurally absent. This
+  is also why missing identity on a GET read is soft-200, not 401: these routes gate whether a
+  feature renders at all.
 - **"Unavailable" ≠ "empty result."** `{items: []}` must mean the user genuinely has none.
 - A capability probe route makes the same transient/terminal distinction as the data route — a
   probe that flips `false` during a 30-second blip greys out UI for everyone.
@@ -241,6 +249,10 @@ Delete this section once both PRs conform. Line references are to the PR diffs a
 - Namespace from trusted context; delete `?namespace=` + `isValidNamespace` (§2)
 - Structurally validate the ID token via the shared helper; fail closed before the upstream call
   (§3) — today the token is forwarded verbatim with only a presence check
+- Outbound: add `Authorization: Bearer <id-token>` alongside `X-Grafana-Id` via the shared
+  `forwardIdentityHeaders` helper (§3) — today it sends `X-Grafana-Id` only
+  (`custom_guide_repository.go:285`), half the runtime-verified shape, and may not authenticate
+  against the aggregator on a real stack. Both PRs must terminate at the same helper output
 - Missing/invalid identity → soft-200 `identity-unavailable` capability envelope, not 401 (§7)
 - Paginate (`limit` + `continue`) + aggregate budget + aggregate deadline (§1) — today a single
   request ignores `metadata.continue` entirely
@@ -257,8 +269,9 @@ Delete this section once both PRs conform. Line references are to the PR diffs a
 - Outbound headers: drop `Cookie`; replace the verbatim `Authorization` replay (Grafana strips
   the inbound header, so it forwards nothing) with `Bearer <id-token>` derived from
   `X-Grafana-Id` — the runtime-verified shape — via the shared helper (§3)
-- Reject `exp == 0` in `subjectFromIDToken`; flip the test that currently locks acceptance in
-  (§3, §10)
+- Reject `exp == 0` in `subjectFromIDToken`; the `typed prefix preserved verbatim` case in
+  `completion_identity_test.go` builds its token with no `exp` claim and asserts success — give
+  it a real `exp` and add an explicit missing-`exp` rejection case (§3, §10)
 - Aggregate budget across pages + aggregate deadline bounding the detached drain — today the
   8 MiB cap is per-page with unbounded page count, and the `WithoutCancel` drain has no overall
   deadline (§1)
