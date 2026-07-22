@@ -154,6 +154,27 @@ All routes are prefixed by Grafana as `/api/plugins/grafana-pathfinder-app/resou
 | `/completion-records/capability` | GET    | `handleCompletionCapability` | Cheap identity + upstream-reachability probe                                    |
 | `/health`                        | GET    | `handleHealth`               | Plugin health (includes `codaRegistered`)                                       |
 
+### App Platform proxies — identity trust boundary
+
+The `/completion-records/*` routes (and any future plugin-backend proxy of the App Platform
+aggregator — see `docs/design/BACKEND_PROXY_PATTERN.md`) authenticate callers by **structural
+(non-signature) validation** of the Grafana-forwarded ID token (`X-Grafana-Id`, via the SDK
+constant `backend.GrafanaUserSignInTokenHeaderName`): well-formed JWT, `exp` present and
+unexpired, with the `sub` claim extracted verbatim only on routes that serve per-user data
+(`pkg/plugin/app_platform_identity.go`). This is defensible **only** because requests reach the
+plugin exclusively via Grafana's trusted server→plugin forwarding, and the plugin backend is not
+independently reachable with a client-set `X-Grafana-Id`.
+
+Outbound, proxies forward identity derived from the ID token only — `Authorization: Bearer
+<id-token>` plus `X-Grafana-Id`, both synthesized from the inbound token via
+`forwardIdentityHeaders` — never the caller's `Cookie`, and never a replay of the inbound
+`Authorization` header (Grafana strips it before plugin resource handlers reach the plugin).
+
+The single future-hardening item is cryptographic verification of the ID token against
+Grafana's JWKS via `github.com/grafana/authlib`; it is not wired today because it needs runtime
+key-endpoint configuration. Do not re-argue this trade-off per PR — this section is the
+canonical statement for all App Platform proxies.
+
 ### Command execution (`pkg/plugin/coda_exec.go`)
 
 `POST /coda/exec` runs a single non-interactive shell command against the caller's **active** VM — the one already driving their terminal stream — and returns stdout, stderr, exit code, and duration. Challenge blocks use it to run setup commands and to verify success criteria.

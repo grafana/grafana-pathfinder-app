@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/config"
 )
 
-// Completion Records read proxy.
+// Completion Records read proxy (docs/design/BACKEND_PROXY_PATTERN.md).
 //
 // Two routes answer "what has this user completed?" cheaply and repeatedly, so
 // completion records can follow a user around (epic PR 7 attaches them to
@@ -32,25 +33,51 @@ const (
 	// a load lever.
 	completionForcedRefreshInterval = 30 * time.Second
 
-	// completionFailureCooldown is a negative-cache window: after an upstream
-	// refresh fails, TTL-expired re-attempts are suppressed for this long so a
-	// sustained outage doesn't re-trigger a full-namespace LIST on every
-	// sequential request. Mirrors package_recommendations.go's sticky failure.
+	// completionFailureCooldown is a negative-cache window, deliberately a
+	// separate constant from the success TTL: after an upstream refresh fails,
+	// TTL-expired re-attempts are suppressed for this long so a sustained
+	// outage doesn't re-trigger a full-namespace LIST on every sequential
+	// request. Identity-scoped (401/403) failures never enter this shared
+	// negative cache — see getCompletionIndex.
 	completionFailureCooldown = 30 * time.Second
 
 	// completionRetryAfterSeconds is the Retry-After hint on a cold 503.
 	completionRetryAfterSeconds = 30
 
+	// completionAggregateDeadline bounds a whole multi-page drain. The refresh
+	// runs detached from the request (context.WithoutCancel), so without this
+	// an N-page drain would be bounded only by N × per-page timeout — detached
+	// must not mean unkillable.
+	completionAggregateDeadline = 60 * time.Second
+
 	reasonIdentityUnavailable = "identity-unavailable"
 	reasonBackendUnavailable  = "backend-unavailable"
 )
 
+// completionListMaxTotalRecords is the aggregate budget across all LIST pages
+// of one drain (the per-page byte cap alone does not bound total memory).
+// When the budget trips, the drain stops and logs the truncation — never
+// silently. A var so tests can exercise the budget path.
+var completionListMaxTotalRecords = 50_000
+
+// deriveCompletionUserID is the canonical identity contract for the whole
+// Completion Records epic: the caller's ID-token `sub` claim VERBATIM, typed
+// prefix included (e.g. "user:abc123"). Reads and writes must join on the
+// same key — epic PR 4's write hook MUST stamp `spec.userId` with this exact
+// helper. Fail closed with no login/numeric fallback; see
+// app_platform_identity.go and the trust boundary in docs/developer/CODA.md.
+func deriveCompletionUserID(r *http.Request) (string, bool) {
+	return subjectFromIDToken(r)
+}
+
 // completionCapability is the availability signal the front-end and epic PRs
-// 4/5 gate UX on. It answers "can this instance do durable completion records
-// for this caller?" without status-code archaeology.
+// 4/5 gate UX on. `available` is read-derived — it measures identity presence
+// plus read-path reachability of the completionrecords API on this stack; it
+// does not verify write permission (the write hook must not treat it as a
+// write guarantee).
 type completionCapability struct {
-	CompletionRecordingAvailable bool   `json:"completionRecordingAvailable"`
-	Reason                       string `json:"reason"`
+	Available bool   `json:"available"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 // collatedCompletion is one entry per (guideSource, guideId) for a single user.
@@ -76,7 +103,9 @@ type myCompletionsResponse struct {
 
 // completionIndex is the collated, per-user view of a namespace's records.
 // Raw records are dropped after collation, so the footprint is bounded by
-// distinct (user, guide) pairs, not completion volume.
+// distinct (user, guide) pairs, not completion volume. Serving reads only
+// idx.byUser[caller] — a cache hit is structurally incapable of exposing
+// another user's slice.
 type completionIndex struct {
 	byUser map[string][]collatedCompletion
 	asOf   time.Time
@@ -86,8 +115,8 @@ type completionCacheEntry struct {
 	index *completionIndex
 }
 
-// completionFailure records the most recent upstream refresh failure for a
-// namespace so the cooldown can suppress re-probes and cold callers can still
+// completionFailure records the most recent namespace-global upstream refresh
+// failure so the cooldown can suppress re-probes and cold callers can still
 // distinguish a terminal (4xx) from a transient error while throttled.
 type completionFailure struct {
 	at  time.Time
@@ -102,15 +131,31 @@ type completionRefreshFlight struct {
 	err   error
 }
 
+// completionCacheStats are per-namespace vital signs, included in refresh-time
+// structured logs so the cache is diagnosable on-call.
+type completionCacheStats struct {
+	hits            int
+	misses          int
+	staleServes     int
+	refreshes       int
+	refreshFailures int
+}
+
+// All maps below are keyed by the trusted-context namespace (never
+// caller-supplied), so on hosted Grafana the key space is one entry per
+// process — the maps need no eviction.
 var (
 	completionCacheMu      sync.Mutex
 	completionCacheEntries map[string]*completionCacheEntry
 	completionFlights      map[string]*completionRefreshFlight
 	completionLastForced   map[string]time.Time
 	completionLastFailure  map[string]completionFailure
+	completionStats        map[string]*completionCacheStats
 
 	// completionListerOverride injects a fake lister in tests. nil selects the
-	// real per-request HTTP client.
+	// real per-request HTTP client. Config resolution (feature toggle, app
+	// URL, namespace) is checked BEFORE this override so the structural-
+	// unavailability path stays testable.
 	completionListerOverride completionRecordLister
 )
 
@@ -127,6 +172,18 @@ func completionCacheInit() {
 	if completionLastFailure == nil {
 		completionLastFailure = map[string]completionFailure{}
 	}
+	if completionStats == nil {
+		completionStats = map[string]*completionCacheStats{}
+	}
+}
+
+func completionStatsFor(namespace string) *completionCacheStats {
+	s := completionStats[namespace]
+	if s == nil {
+		s = &completionCacheStats{}
+		completionStats[namespace] = s
+	}
+	return s
 }
 
 // resetCompletionRecordsCache clears all cached state. Test-only.
@@ -137,19 +194,23 @@ func resetCompletionRecordsCache() {
 	completionFlights = nil
 	completionLastForced = nil
 	completionLastFailure = nil
+	completionStats = nil
 }
 
 // getCompletionIndex returns the collated index for a namespace, refreshing at
 // most once per TTL (or immediately when a rate-limit-permitted forced refresh
 // is requested). On refresh failure it serves a warm (stale) index when one
-// exists; a cold failure returns (nil, err). After a failure a short cooldown
-// suppresses TTL-driven re-attempts so a sustained outage isn't re-probed on
-// every request. Concurrent refreshes single-flight.
-func getCompletionIndex(ctx context.Context, namespace string, lister completionRecordLister, forced bool) (*completionIndex, error) {
+// exists; a cold failure returns (nil, err). After a namespace-global failure
+// a short cooldown suppresses TTL-driven re-attempts; identity-scoped (401/403)
+// failures are per-request and never enter that shared negative cache — caller
+// A's denied token must not become a cached error served to caller B.
+// Concurrent refreshes single-flight.
+func getCompletionIndex(ctx context.Context, namespace string, lister completionRecordLister, forced bool, logger log.Logger) (*completionIndex, error) {
 	completionCacheMu.Lock()
 	completionCacheInit()
 
 	entry := completionCacheEntries[namespace]
+	stats := completionStatsFor(namespace)
 
 	effectiveForced := false
 	if forced {
@@ -161,18 +222,21 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 	}
 
 	if entry != nil && !effectiveForced && timeNow().Sub(entry.index.asOf) < completionCacheTTL {
+		stats.hits++
 		idx := entry.index
 		completionCacheMu.Unlock()
 		return idx, nil
 	}
+	stats.misses++
 
-	// Negative-cache cooldown: after a recent refresh failure, don't re-probe a
-	// struggling upstream on every TTL-expired request. Serve the stale index
-	// when warm, or replay the sticky error when cold, until the cooldown
-	// elapses. A rate-limit-permitted forced refresh (?refresh=1) bypasses this.
+	// Negative-cache cooldown: after a recent namespace-global refresh failure,
+	// don't re-probe a struggling upstream on every TTL-expired request. Serve
+	// the stale index when warm, or replay the sticky error when cold, until
+	// the cooldown elapses. A rate-limit-permitted ?refresh=1 bypasses this.
 	if !effectiveForced {
 		if fail, ok := completionLastFailure[namespace]; ok && timeNow().Sub(fail.at) < completionFailureCooldown {
 			if entry != nil {
+				stats.staleServes++
 				idx := entry.index
 				completionCacheMu.Unlock()
 				return idx, nil
@@ -198,18 +262,41 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 	completionCacheMu.Unlock()
 
 	// Detach from the caller's cancellation so a canceled request (panel
-	// closed mid-flight) doesn't abort a refresh other waiters depend on.
-	idx, err := buildCompletionIndex(context.WithoutCancel(ctx), namespace, lister)
+	// closed mid-flight) doesn't abort a refresh other waiters depend on,
+	// bounded by the aggregate deadline so detached never means unkillable.
+	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), completionAggregateDeadline)
+	idx, pages, err := buildCompletionIndex(fetchCtx, namespace, lister, logger)
+	cancel()
 
 	completionCacheMu.Lock()
+	stats = completionStatsFor(namespace)
 	if err == nil {
+		stats.refreshes++
+		if _, hadFailure := completionLastFailure[namespace]; hadFailure {
+			logger.Info("completion index recovered", "namespace", namespace)
+		}
 		completionCacheEntries[namespace] = &completionCacheEntry{index: idx}
 		delete(completionLastFailure, namespace)
 		fl.index = idx
+		logger.Debug("completion index refreshed",
+			"namespace", namespace, "pages", pages, "users", len(idx.byUser),
+			"hits", stats.hits, "misses", stats.misses,
+			"staleServes", stats.staleServes, "refreshFailures", stats.refreshFailures)
 	} else {
-		completionLastFailure[namespace] = completionFailure{at: timeNow(), err: err}
+		stats.refreshFailures++
+		identityScoped := isIdentityScopedCompletionError(err)
+		if !identityScoped {
+			completionLastFailure[namespace] = completionFailure{at: timeNow(), err: err}
+		}
+		// Refresh attempts are throttled by TTL + cooldown, so this logs state
+		// transitions, not every request.
+		logger.Info("completion index refresh failed",
+			"namespace", namespace, "error", err,
+			"identityScoped", identityScoped, "servingStale", entry != nil,
+			"refreshFailures", stats.refreshFailures)
 		if entry != nil {
 			// Warm cache + upstream failure: serve stale. asOf reflects true age.
+			stats.staleServes++
 			fl.index = entry.index
 			fl.err = err
 		} else {
@@ -223,17 +310,24 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 	return fl.index, fl.err
 }
 
-// buildCompletionIndex drains the namespace LIST across all pages and collates
-// the records into a per-user index.
-func buildCompletionIndex(ctx context.Context, namespace string, lister completionRecordLister) (*completionIndex, error) {
+// buildCompletionIndex drains the namespace LIST across pages — up to the
+// aggregate record budget — and collates the records into a per-user index.
+func buildCompletionIndex(ctx context.Context, namespace string, lister completionRecordLister, logger log.Logger) (*completionIndex, int, error) {
 	var records []completionRecordSpec
 	continueToken := ""
+	pages := 0
 	for {
 		page, err := lister.ListPage(ctx, namespace, continueToken)
 		if err != nil {
-			return nil, err
+			return nil, pages, err
 		}
+		pages++
 		records = append(records, page.Records...)
+		if len(records) >= completionListMaxTotalRecords && page.Continue != "" {
+			logger.Warn("completion records LIST truncated at aggregate budget",
+				"namespace", namespace, "maxTotalRecords", completionListMaxTotalRecords, "pages", pages)
+			break
+		}
 		if page.Continue == "" {
 			break
 		}
@@ -243,7 +337,7 @@ func buildCompletionIndex(ctx context.Context, namespace string, lister completi
 	return &completionIndex{
 		byUser: collateByUser(records),
 		asOf:   timeNow(),
-	}, nil
+	}, pages, nil
 }
 
 // collateByUser groups records by userId, then collapses each user's records to
@@ -362,10 +456,15 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Identity gate first — cache hit or miss, warm bytes are never served to
+	// an unauthenticated caller. Missing identity on a GET read is a soft-200
+	// capability envelope (not 401): these routes gate whether a feature
+	// renders at all, and a bare error status conflates "never works here"
+	// with a transient blip.
 	userID, ok := deriveCompletionUserID(r)
 	if !ok {
 		a.writeMyCompletions(w, myCompletionsResponse{
-			Capability:  completionCapability{CompletionRecordingAvailable: false, Reason: reasonIdentityUnavailable},
+			Capability:  completionCapability{Available: false, Reason: reasonIdentityUnavailable},
 			Completions: []collatedCompletion{},
 		})
 		return
@@ -374,20 +473,20 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	lister, namespace, available, reason := a.resolveCompletionBackend(r)
 	if !available {
 		a.writeMyCompletions(w, myCompletionsResponse{
-			Capability:  completionCapability{CompletionRecordingAvailable: false, Reason: reason},
+			Capability:  completionCapability{Available: false, Reason: reason},
 			Completions: []collatedCompletion{},
 		})
 		return
 	}
 
 	forced := r.URL.Query().Get("refresh") == "1"
-	idx, err := getCompletionIndex(r.Context(), namespace, lister, forced)
+	idx, err := getCompletionIndex(r.Context(), namespace, lister, forced, a.ctxLogger(r.Context()))
 	if idx == nil {
 		// Cold failure: no cache to fall back on.
 		if isTerminalCompletionError(err) {
 			// Structurally can't serve for this caller ("never works here").
 			a.writeMyCompletions(w, myCompletionsResponse{
-				Capability:  completionCapability{CompletionRecordingAvailable: false, Reason: reasonBackendUnavailable},
+				Capability:  completionCapability{Available: false, Reason: reasonBackendUnavailable},
 				Completions: []collatedCompletion{},
 			})
 			return
@@ -403,7 +502,7 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 		entries = []collatedCompletion{}
 	}
 	a.writeMyCompletions(w, myCompletionsResponse{
-		Capability:  completionCapability{CompletionRecordingAvailable: true},
+		Capability:  completionCapability{Available: true},
 		UserID:      userID,
 		Completions: entries,
 		AsOf:        idx.asOf.UTC().Format(time.RFC3339),
@@ -411,7 +510,10 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCompletionCapability serves GET /completion-records/capability: a cheap
-// probe of identity + (cached) upstream reachability, with no record data.
+// probe of identity + (cached) upstream reachability, with no record data. It
+// makes the same transient/terminal distinction as the data route — a probe
+// that flips available=false during a 30-second blip would grey out UI for
+// everyone, so a cold transient failure is a 503 hiccup, not capability=false.
 func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -419,24 +521,29 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 	}
 
 	if _, ok := deriveCompletionUserID(r); !ok {
-		a.writeJSON(w, completionCapability{CompletionRecordingAvailable: false, Reason: reasonIdentityUnavailable}, http.StatusOK)
+		a.writeJSON(w, completionCapability{Available: false, Reason: reasonIdentityUnavailable}, http.StatusOK)
 		return
 	}
 
 	lister, namespace, available, reason := a.resolveCompletionBackend(r)
 	if !available {
-		a.writeJSON(w, completionCapability{CompletionRecordingAvailable: false, Reason: reason}, http.StatusOK)
+		a.writeJSON(w, completionCapability{Available: false, Reason: reason}, http.StatusOK)
 		return
 	}
 
 	// Reuse the cache (never a per-call forced LIST): a usable index — fresh or
-	// stale-on-error — means the CRUD API answered recently, so recording works.
-	idx, _ := getCompletionIndex(r.Context(), namespace, lister, false)
+	// stale-on-error — means the CRUD API answered recently.
+	idx, err := getCompletionIndex(r.Context(), namespace, lister, false, a.ctxLogger(r.Context()))
 	if idx == nil {
-		a.writeJSON(w, completionCapability{CompletionRecordingAvailable: false, Reason: reasonBackendUnavailable}, http.StatusOK)
+		if isTerminalCompletionError(err) {
+			a.writeJSON(w, completionCapability{Available: false, Reason: reasonBackendUnavailable}, http.StatusOK)
+			return
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(completionRetryAfterSeconds))
+		a.writeError(w, "completion-records-unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	a.writeJSON(w, completionCapability{CompletionRecordingAvailable: true}, http.StatusOK)
+	a.writeJSON(w, completionCapability{Available: true}, http.StatusOK)
 }
 
 func (a *App) writeMyCompletions(w http.ResponseWriter, resp myCompletionsResponse) {
@@ -447,13 +554,11 @@ func (a *App) writeMyCompletions(w http.ResponseWriter, resp myCompletionsRespon
 // structurally reachable for this request and returns a lister to use.
 // "Structurally unavailable" (feature toggle off, no app URL, no namespace) is
 // a "never works here" condition surfaced as capability=false, distinct from a
-// transient LIST failure.
+// transient LIST failure. The namespace comes from the trusted plugin context,
+// never from a query parameter. Config resolution runs before the test-only
+// lister override so the structural-unavailability branch stays testable.
 func (a *App) resolveCompletionBackend(r *http.Request) (lister completionRecordLister, namespace string, available bool, reason string) {
 	namespace = backend.PluginConfigFromContext(r.Context()).Namespace
-
-	if completionListerOverride != nil {
-		return completionListerOverride, namespace, true, ""
-	}
 
 	cfg := config.GrafanaConfigFromContext(r.Context())
 	if cfg == nil {
@@ -466,21 +571,32 @@ func (a *App) resolveCompletionBackend(r *http.Request) (lister completionRecord
 	if err != nil || appURL == "" || namespace == "" {
 		return nil, namespace, false, reasonBackendUnavailable
 	}
-	return newCompletionHTTPClient(appURL, r.Header), namespace, true, ""
-}
 
-// pathfinderBackendAggregationToggle mirrors the front-end availability check
-// in src/utils/fetchBackendGuides.ts: the boot-time toggle the aggregation
-// layer sets when the pathfinderbackend API is served on this instance.
-const pathfinderBackendAggregationToggle = "aggregation.pathfinderbackend-ext-grafana-com.enabled"
+	if completionListerOverride != nil {
+		return completionListerOverride, namespace, true, ""
+	}
+
+	idToken := r.Header.Get(backend.GrafanaUserSignInTokenHeaderName)
+	return newCompletionHTTPClient(appURL, idToken, a.ctxLogger(r.Context())), namespace, true, ""
+}
 
 // isTerminalCompletionError reports whether an upstream failure is terminal
 // (a non-transient 4xx per RFC §6.9). Network/timeout/decoding errors have no
 // HTTP status and are treated as transient (retryable).
 func isTerminalCompletionError(err error) bool {
-	var ue *completionUpstreamError
+	var ue *appPlatformUpstreamError
 	if errors.As(err, &ue) {
 		return !isTransientUpstreamStatus(ue.status)
+	}
+	return false
+}
+
+// isIdentityScopedCompletionError reports whether an upstream failure means
+// the aggregator rejected this caller's forwarded identity (401/403).
+func isIdentityScopedCompletionError(err error) bool {
+	var ue *appPlatformUpstreamError
+	if errors.As(err, &ue) {
+		return isIdentityScopedUpstreamStatus(ue.status)
 	}
 	return false
 }

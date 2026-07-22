@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	sdkconfig "github.com/grafana/grafana-plugin-sdk-go/config"
+	"github.com/grafana/grafana-plugin-sdk-go/experimental/featuretoggles"
 )
 
 const testNamespace = "stacks-1"
@@ -65,23 +68,43 @@ func rec(userID, guideSource, guideID, title, category, pathID, source, complete
 	}
 }
 
-// completionRequest builds a GET request carrying an ID-token identity and a
-// namespace in the plugin context.
-func completionRequest(t *testing.T, target, sub string) *http.Request {
+// testGrafanaConfig is the healthy config: aggregation toggle on, app URL set.
+func testGrafanaConfig() map[string]string {
+	return map[string]string{
+		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle,
+		sdkconfig.AppURL:               "http://grafana.example",
+	}
+}
+
+// completionRequestWithConfig builds a GET request carrying an ID-token
+// identity (with a valid future exp), a namespace in the plugin context, and
+// the given Grafana config.
+func completionRequestWithConfig(t *testing.T, target, sub string, cfg map[string]string) *http.Request {
 	t.Helper()
 	r, _ := http.NewRequest(http.MethodGet, target, nil)
 	if sub != "" {
-		r.Header.Set(grafanaIDTokenHeader, makeIDToken(t, sub, 0))
+		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeIDToken(t, sub, timeNow().Add(time.Hour).Unix()))
 	}
 	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: testNamespace})
+	ctx = sdkconfig.WithGrafanaConfig(ctx, sdkconfig.NewGrafanaCfg(cfg))
 	return r.WithContext(ctx)
+}
+
+func completionRequest(t *testing.T, target, sub string) *http.Request {
+	t.Helper()
+	return completionRequestWithConfig(t, target, sub, testGrafanaConfig())
 }
 
 func doMyCompletions(t *testing.T, target, sub string) (*httptest.ResponseRecorder, myCompletionsResponse) {
 	t.Helper()
+	return doMyCompletionsReq(t, completionRequest(t, target, sub))
+}
+
+func doMyCompletionsReq(t *testing.T, r *http.Request) (*httptest.ResponseRecorder, myCompletionsResponse) {
+	t.Helper()
 	app := newTestApp(t)
 	rec := httptest.NewRecorder()
-	app.handleMyCompletions(rec, completionRequest(t, target, sub))
+	app.handleMyCompletions(rec, r)
 	var body myCompletionsResponse
 	if rec.Body.Len() > 0 {
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
@@ -103,7 +126,7 @@ func TestCollation_MultipleRecordsSameGuide(t *testing.T) {
 
 	_, body := doMyCompletions(t, "/completion-records/my", "user:1")
 
-	if !body.Capability.CompletionRecordingAvailable {
+	if !body.Capability.Available {
 		t.Fatalf("expected capability available, got %+v", body.Capability)
 	}
 	if len(body.Completions) != 1 {
@@ -198,7 +221,7 @@ func TestMyCompletions_UnknownUserEmptyList(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
 	}
-	if !body.Capability.CompletionRecordingAvailable {
+	if !body.Capability.Available {
 		t.Errorf("capability should be available even with no records")
 	}
 	if body.Completions == nil {
@@ -239,6 +262,36 @@ func TestPagination_DrainsAllPages(t *testing.T) {
 	}
 	if l.callCount() != 3 {
 		t.Errorf("expected 3 ListPage calls, got %d", l.callCount())
+	}
+}
+
+// The aggregate budget bounds a drain across pages — the per-page byte cap
+// alone does not bound total memory. Truncation stops the drain (loudly, via
+// a Warn log) instead of listing forever.
+func TestPagination_AggregateBudgetStopsDrain(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	prevMax := completionListMaxTotalRecords
+	completionListMaxTotalRecords = 2
+	t.Cleanup(func() { completionListMaxTotalRecords = prevMax })
+
+	page := 0
+	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		page++
+		return &completionRecordPage{
+			Records: []completionRecordSpec{
+				rec("user:1", "bundled", fmt.Sprintf("g%d", page), "G", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100),
+			},
+			Continue: fmt.Sprintf("tok-%d", page+1), // never drains naturally
+		}, nil
+	}}
+	withLister(t, l)
+
+	_, body := doMyCompletions(t, "/completion-records/my", "user:1")
+	if l.callCount() != 2 {
+		t.Fatalf("expected the drain to stop at the aggregate budget (2 pages), got %d calls", l.callCount())
+	}
+	if len(body.Completions) != 2 {
+		t.Fatalf("expected the truncated index to serve 2 entries, got %d", len(body.Completions))
 	}
 }
 
@@ -292,7 +345,7 @@ func TestCache_Singleflight(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _ = getCompletionIndex(context.Background(), testNamespace, l, false)
+			_, _ = getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
 		}()
 	}
 	<-started
@@ -341,7 +394,7 @@ func TestCache_ForcedRefreshBypassAndRateLimit(t *testing.T) {
 func TestErrors_ColdTransientReturns503WithRetryAfter(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
-		return nil, &completionUpstreamError{status: http.StatusServiceUnavailable, msg: "upstream 503"}
+		return nil, &appPlatformUpstreamError{status: http.StatusServiceUnavailable, msg: "upstream 503"}
 	}}
 	withLister(t, l)
 
@@ -357,7 +410,7 @@ func TestErrors_ColdTransientReturns503WithRetryAfter(t *testing.T) {
 func TestErrors_ColdTerminalReturnsCapabilityFalse(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
-		return nil, &completionUpstreamError{status: http.StatusForbidden, msg: "upstream 403"}
+		return nil, &appPlatformUpstreamError{status: http.StatusForbidden, msg: "upstream 403"}
 	}}
 	withLister(t, l)
 
@@ -365,7 +418,7 @@ func TestErrors_ColdTerminalReturnsCapabilityFalse(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 for terminal cold error", rr.Code)
 	}
-	if body.Capability.CompletionRecordingAvailable {
+	if body.Capability.Available {
 		t.Errorf("expected capability false for terminal cold error")
 	}
 	if body.Capability.Reason != reasonBackendUnavailable {
@@ -378,7 +431,7 @@ func TestErrors_WarmCacheServesStaleOnUpstreamFailure(t *testing.T) {
 	var fail atomic.Bool
 	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
 		if fail.Load() {
-			return nil, &completionUpstreamError{status: http.StatusServiceUnavailable, msg: "hiccup"}
+			return nil, &appPlatformUpstreamError{status: http.StatusServiceUnavailable, msg: "hiccup"}
 		}
 		return &completionRecordPage{Records: []completionRecordSpec{
 			rec("user:1", "bundled", "a", "A", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100),
@@ -401,7 +454,7 @@ func TestErrors_WarmCacheServesStaleOnUpstreamFailure(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (stale serve)", rr.Code)
 	}
-	if !stale.Capability.CompletionRecordingAvailable {
+	if !stale.Capability.Available {
 		t.Errorf("stale serve should still report capability available")
 	}
 	if len(stale.Completions) != 1 {
@@ -415,7 +468,7 @@ func TestErrors_WarmCacheServesStaleOnUpstreamFailure(t *testing.T) {
 func TestErrors_ColdOutageThrottledByCooldown(t *testing.T) {
 	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
-		return nil, &completionUpstreamError{status: http.StatusServiceUnavailable, msg: "down"}
+		return nil, &appPlatformUpstreamError{status: http.StatusServiceUnavailable, msg: "down"}
 	}}
 	withLister(t, l)
 
@@ -450,15 +503,17 @@ func TestErrors_ColdOutageThrottledByCooldown(t *testing.T) {
 	}
 }
 
+// A namespace-global terminal error (404: the kind isn't served here) IS
+// eligible for the shared cooldown — unlike identity-scoped 401/403.
 func TestErrors_ColdTerminalThrottledStaysCapabilityFalse(t *testing.T) {
 	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
-		return nil, &completionUpstreamError{status: http.StatusForbidden, msg: "403"}
+		return nil, &appPlatformUpstreamError{status: http.StatusNotFound, msg: "404"}
 	}}
 	withLister(t, l)
 
 	rr, body := doMyCompletions(t, "/completion-records/my", "user:1")
-	if rr.Code != http.StatusOK || body.Capability.CompletionRecordingAvailable {
+	if rr.Code != http.StatusOK || body.Capability.Available {
 		t.Fatalf("first terminal cold error should yield capability=false 200, got %d %+v", rr.Code, body.Capability)
 	}
 
@@ -466,7 +521,7 @@ func TestErrors_ColdTerminalThrottledStaysCapabilityFalse(t *testing.T) {
 	// not degrade to a transient 503, and must not re-probe upstream.
 	advance(time.Second)
 	rr, body = doMyCompletions(t, "/completion-records/my", "user:1")
-	if rr.Code != http.StatusOK || body.Capability.CompletionRecordingAvailable {
+	if rr.Code != http.StatusOK || body.Capability.Available {
 		t.Fatalf("throttled terminal error should stay capability=false 200, got %d %+v", rr.Code, body.Capability)
 	}
 	if body.Capability.Reason != reasonBackendUnavailable {
@@ -477,12 +532,42 @@ func TestErrors_ColdTerminalThrottledStaysCapabilityFalse(t *testing.T) {
 	}
 }
 
+// An identity-scoped failure (401/403 for one caller's forwarded token) must
+// never enter the shared negative cache: caller A's denied token must not
+// become a cached error served to caller B (or throttle B's own probe).
+func TestErrors_IdentityScopedFailureNotCachedShared(t *testing.T) {
+	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		return nil, &appPlatformUpstreamError{status: http.StatusForbidden, msg: "403 for this caller"}
+	}}
+	withLister(t, l)
+
+	rr, body := doMyCompletions(t, "/completion-records/my", "user:a")
+	if rr.Code != http.StatusOK || body.Capability.Available {
+		t.Fatalf("caller A: expected capability=false 200, got %d %+v", rr.Code, body.Capability)
+	}
+	if l.callCount() != 1 {
+		t.Fatalf("expected 1 upstream LIST, got %d", l.callCount())
+	}
+
+	// Caller B one second later: the 403 was per-request, so B gets its own
+	// upstream probe rather than A's cached denial.
+	advance(time.Second)
+	rr, body = doMyCompletions(t, "/completion-records/my", "user:b")
+	if rr.Code != http.StatusOK || body.Capability.Available {
+		t.Fatalf("caller B: expected capability=false 200, got %d %+v", rr.Code, body.Capability)
+	}
+	if l.callCount() != 2 {
+		t.Fatalf("identity-scoped failure must not be cached shared: expected a fresh probe for caller B, got %d LIST calls", l.callCount())
+	}
+}
+
 func TestErrors_WarmStaleOutageThrottledByCooldown(t *testing.T) {
 	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	var fail atomic.Bool
 	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
 		if fail.Load() {
-			return nil, &completionUpstreamError{status: http.StatusServiceUnavailable, msg: "hiccup"}
+			return nil, &appPlatformUpstreamError{status: http.StatusServiceUnavailable, msg: "hiccup"}
 		}
 		return &completionRecordPage{Records: []completionRecordSpec{
 			rec("user:1", "bundled", "a", "A", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100),
@@ -539,7 +624,7 @@ func TestMyCompletions_IdentityUnavailableEnvelope(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
 	}
-	if body.Capability.CompletionRecordingAvailable {
+	if body.Capability.Available {
 		t.Errorf("expected capability false with no identity")
 	}
 	if body.Capability.Reason != reasonIdentityUnavailable {
@@ -553,6 +638,47 @@ func TestMyCompletions_IdentityUnavailableEnvelope(t *testing.T) {
 	}
 }
 
+// --- Config resolution (structural unavailability) ---------------------------
+
+// The feature toggle and app URL are resolved BEFORE the test-only lister
+// override, so these branches stay real: toggle off / missing app URL is a
+// structural "never works here", served in-band with no upstream call.
+func TestMyCompletions_ToggleOffStructurallyUnavailable(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	l := singlePageLister()
+	withLister(t, l)
+
+	cfg := map[string]string{sdkconfig.AppURL: "http://grafana.example"} // toggle absent
+	rr, body := doMyCompletionsReq(t, completionRequestWithConfig(t, "/completion-records/my", "user:1", cfg))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if body.Capability.Available || body.Capability.Reason != reasonBackendUnavailable {
+		t.Fatalf("expected capability=false %q, got %+v", reasonBackendUnavailable, body.Capability)
+	}
+	if l.callCount() != 0 {
+		t.Fatalf("structural unavailability must not hit upstream, got %d calls", l.callCount())
+	}
+}
+
+func TestMyCompletions_NoAppURLStructurallyUnavailable(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	l := singlePageLister()
+	withLister(t, l)
+
+	cfg := map[string]string{featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle} // no app URL
+	rr, body := doMyCompletionsReq(t, completionRequestWithConfig(t, "/completion-records/my", "user:1", cfg))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if body.Capability.Available || body.Capability.Reason != reasonBackendUnavailable {
+		t.Fatalf("expected capability=false %q, got %+v", reasonBackendUnavailable, body.Capability)
+	}
+	if l.callCount() != 0 {
+		t.Fatalf("structural unavailability must not hit upstream, got %d calls", l.callCount())
+	}
+}
+
 // --- Capability probe --------------------------------------------------------
 
 func doCapability(t *testing.T, sub string) (*httptest.ResponseRecorder, completionCapability) {
@@ -561,8 +687,10 @@ func doCapability(t *testing.T, sub string) (*httptest.ResponseRecorder, complet
 	rr := httptest.NewRecorder()
 	app.handleCompletionCapability(rr, completionRequest(t, "/completion-records/capability", sub))
 	var cap completionCapability
-	if err := json.Unmarshal(rr.Body.Bytes(), &cap); err != nil {
-		t.Fatalf("decode: %v (raw %s)", err, rr.Body.String())
+	if rr.Body.Len() > 0 && rr.Code == http.StatusOK {
+		if err := json.Unmarshal(rr.Body.Bytes(), &cap); err != nil {
+			t.Fatalf("decode: %v (raw %s)", err, rr.Body.String())
+		}
 	}
 	return rr, cap
 }
@@ -574,7 +702,7 @@ func TestCapability_AvailableWhenUpstreamAnswers(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
 	}
-	if !cap.CompletionRecordingAvailable {
+	if !cap.Available {
 		t.Errorf("expected available, got %+v", cap)
 	}
 }
@@ -583,7 +711,7 @@ func TestCapability_IdentityUnavailable(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	withLister(t, singlePageLister())
 	_, cap := doCapability(t, "")
-	if cap.CompletionRecordingAvailable {
+	if cap.Available {
 		t.Errorf("expected unavailable with no identity")
 	}
 	if cap.Reason != reasonIdentityUnavailable {
@@ -591,15 +719,36 @@ func TestCapability_IdentityUnavailable(t *testing.T) {
 	}
 }
 
-func TestCapability_BackendUnavailableOnColdUpstreamFailure(t *testing.T) {
+// The probe makes the same transient/terminal distinction as the data route:
+// a cold transient blip is a 503 hiccup, NOT available=false — otherwise a
+// 30-second hiccup would grey out the feature for everyone.
+func TestCapability_ColdTransientFailureIs503NotUnavailable(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
-		return nil, &completionUpstreamError{status: http.StatusServiceUnavailable, msg: "down"}
+		return nil, &appPlatformUpstreamError{status: http.StatusServiceUnavailable, msg: "down"}
 	}}
 	withLister(t, l)
-	_, cap := doCapability(t, "user:1")
-	if cap.CompletionRecordingAvailable {
-		t.Errorf("expected unavailable when upstream cold-fails")
+	rr, _ := doCapability(t, "user:1")
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 for a cold transient blip", rr.Code)
+	}
+	if rr.Header().Get("Retry-After") == "" {
+		t.Errorf("expected Retry-After header on transient probe failure")
+	}
+}
+
+func TestCapability_ColdTerminalFailureUnavailable(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		return nil, &appPlatformUpstreamError{status: http.StatusNotFound, msg: "not served here"}
+	}}
+	withLister(t, l)
+	rr, cap := doCapability(t, "user:1")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 for terminal probe failure", rr.Code)
+	}
+	if cap.Available {
+		t.Errorf("expected unavailable when upstream terminally fails")
 	}
 	if cap.Reason != reasonBackendUnavailable {
 		t.Errorf("reason = %q, want %q", cap.Reason, reasonBackendUnavailable)
