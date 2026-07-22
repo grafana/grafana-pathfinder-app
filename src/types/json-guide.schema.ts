@@ -862,26 +862,33 @@ function createBlockSchemaWithDepth(currentDepth: number): z.ZodType {
 
   const nestedBlockSchema = z.lazy(() => createBlockSchemaWithDepth(currentDepth + 1));
 
+  // Each container arm spreads AuthorAnnotatedSchema.shape so `authorNote`
+  // survives validation (Zod's default strip would otherwise drop it — leaf
+  // block schemas already include it, so containers must too).
   return z.union([
     NonRecursiveBlockSchema,
     z.object({
       ...SectionProps,
       blocks: z.array(nestedBlockSchema),
+      ...AuthorAnnotatedSchema.shape,
     }),
     // Collapsible is presentational: it holds only content blocks (no
     // interactive/step types, no containers). See PresentationalBlockSchema.
     z.object({
       ...CollapsibleProps,
       blocks: z.array(PresentationalBlockSchema),
+      ...AuthorAnnotatedSchema.shape,
     }),
     z.object({
       ...AssistantProps,
       blocks: z.array(nestedBlockSchema),
+      ...AuthorAnnotatedSchema.shape,
     }),
     z.object({
       ...ConditionalProps,
       whenTrue: z.array(nestedBlockSchema),
       whenFalse: z.array(nestedBlockSchema),
+      ...AuthorAnnotatedSchema.shape,
     }),
   ]);
 }
@@ -902,26 +909,32 @@ function createBlockSchemaWithDepthNoRef(currentDepth: number): z.ZodType {
 
   const nestedBlockSchema = z.lazy(() => createBlockSchemaWithDepthNoRef(currentDepth + 1));
 
+  // See createBlockSchemaWithDepth: container arms spread
+  // AuthorAnnotatedSchema.shape so `authorNote` is preserved, not stripped.
   return z.union([
     NonRecursiveBlockSchemaNoRef,
     z.object({
       ...SectionProps,
       blocks: z.array(nestedBlockSchema),
+      ...AuthorAnnotatedSchema.shape,
     }),
     // Collapsible holds only content blocks (PresentationalBlockSchema has no
     // snippet-ref, so the NoRef variant needs no separate union here).
     z.object({
       ...CollapsibleProps,
       blocks: z.array(PresentationalBlockSchema),
+      ...AuthorAnnotatedSchema.shape,
     }),
     z.object({
       ...AssistantProps,
       blocks: z.array(nestedBlockSchema),
+      ...AuthorAnnotatedSchema.shape,
     }),
     z.object({
       ...ConditionalProps,
       whenTrue: z.array(nestedBlockSchema),
       whenFalse: z.array(nestedBlockSchema),
+      ...AuthorAnnotatedSchema.shape,
     }),
   ]);
 }

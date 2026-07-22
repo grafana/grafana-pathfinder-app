@@ -834,4 +834,31 @@ describe('JsonGuideSchema', () => {
       expect(result.isValid).toBe(false);
     });
   });
+
+  describe('authorNote is preserved on container blocks', () => {
+    const firstBlock = (json: string) => {
+      const result = validateGuideFromString(json);
+      expect(result.isValid).toBe(true);
+      return (result.guide?.blocks?.[0] ?? {}) as { authorNote?: string };
+    };
+    const guideWith = (block: unknown) => JSON.stringify({ id: 'g', title: 't', blocks: [block] });
+
+    it('preserves authorNote on section, collapsible, assistant, and conditional', () => {
+      expect(firstBlock(guideWith({ type: 'section', title: 'S', authorNote: 'n', blocks: [] })).authorNote).toBe('n');
+      expect(
+        firstBlock(
+          guideWith({ type: 'collapsible', title: 'C', authorNote: 'n', blocks: [{ type: 'markdown', content: 'x' }] })
+        ).authorNote
+      ).toBe('n');
+      expect(
+        firstBlock(guideWith({ type: 'assistant', authorNote: 'n', blocks: [{ type: 'markdown', content: 'x' }] }))
+          .authorNote
+      ).toBe('n');
+      expect(
+        firstBlock(
+          guideWith({ type: 'conditional', conditions: ['is-admin'], authorNote: 'n', whenTrue: [], whenFalse: [] })
+        ).authorNote
+      ).toBe('n');
+    });
+  });
 });
