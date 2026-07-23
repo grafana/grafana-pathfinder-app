@@ -37,6 +37,7 @@ export default defineConfig<PluginOptions>({
   retries: 0, // No retries - failures should be investigated
   reporter: isEnvFlagEnabled(process.env[E2E_ENV.VERBOSE]) ? 'list' : 'line',
   use: {
+    channel: 'chromium',
     baseURL: process.env[E2E_ENV.GRAFANA_URL] || 'http://localhost:3000',
     trace: isEnvFlagEnabled(process.env[E2E_ENV.TRACE]) ? 'on' : 'off',
   },
