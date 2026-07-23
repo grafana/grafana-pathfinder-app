@@ -53,6 +53,13 @@ const (
 
 	// completionWriteMaxBodyBytes bounds the decoded request body.
 	completionWriteMaxBodyBytes = 64 * 1024
+
+	// Per-field byte caps on client-supplied free text. The CRD enforces field
+	// presence, not content, so this writer is the only bound between a hostile
+	// body and a durable record — and oversized stored strings can push read-path
+	// LIST pages past their byte cap, wedging reads for the whole namespace.
+	completionMaxIDLen    = 256
+	completionMaxTitleLen = 1024
 )
 
 var (
@@ -178,6 +185,20 @@ func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, u
 	if req.GuideID == "" || req.GuideSource == "" {
 		return completionRecordWriteSpec{}, fmt.Errorf("guideId and guideSource are required")
 	}
+	for _, f := range []struct {
+		name  string
+		value string
+		max   int
+	}{
+		{"guideId", req.GuideID, completionMaxIDLen},
+		{"guideSource", req.GuideSource, completionMaxIDLen},
+		{"pathId", req.PathID, completionMaxIDLen},
+		{"guideTitle", req.GuideTitle, completionMaxTitleLen},
+	} {
+		if err := validateBoundedText(f.name, f.value, f.max); err != nil {
+			return completionRecordWriteSpec{}, err
+		}
+	}
 	if !completionValidSources[req.Source] {
 		return completionRecordWriteSpec{}, fmt.Errorf("invalid source")
 	}
@@ -223,6 +244,20 @@ func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, u
 		StackNamespace: namespace,
 		SchemaVersion:  completionWriteSchemaVersion,
 	}, nil
+}
+
+// validateBoundedText rejects oversized or control-character content in a
+// client-supplied free-text field (→ terminal 400).
+func validateBoundedText(field, value string, maxBytes int) error {
+	if len(value) > maxBytes {
+		return fmt.Errorf("%s exceeds %d bytes", field, maxBytes)
+	}
+	for _, r := range value {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("%s contains control characters", field)
+		}
+	}
+	return nil
 }
 
 // validateCompletedAt enforces the client-observed completion time is a valid

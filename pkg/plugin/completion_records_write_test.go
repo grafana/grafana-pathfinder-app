@@ -262,6 +262,12 @@ func TestCompletionWrite_Validation(t *testing.T) {
 		{"invalid platform", func(b map[string]any) { b["platform"] = "mainframe" }},
 		{"percent over 100", func(b map[string]any) { b["completionPercent"] = 101 }},
 		{"percent negative", func(b map[string]any) { b["completionPercent"] = -1 }},
+		{"oversized guideId", func(b map[string]any) { b["guideId"] = strings.Repeat("a", completionMaxIDLen+1) }},
+		{"oversized guideSource", func(b map[string]any) { b["guideSource"] = strings.Repeat("a", completionMaxIDLen+1) }},
+		{"oversized pathId", func(b map[string]any) { b["pathId"] = strings.Repeat("a", completionMaxIDLen+1) }},
+		{"oversized guideTitle", func(b map[string]any) { b["guideTitle"] = strings.Repeat("a", completionMaxTitleLen+1) }},
+		{"control characters in guideTitle", func(b map[string]any) { b["guideTitle"] = "First\x00dashboard" }},
+		{"newline in guideId", func(b map[string]any) { b["guideId"] = "first\ndashboard" }},
 		{"malformed completedAt", func(b map[string]any) { b["completedAt"] = "last tuesday" }},
 		{"future completedAt", func(b map[string]any) {
 			b["completedAt"] = timeNow().Add(time.Hour).UTC().Format(time.RFC3339)
