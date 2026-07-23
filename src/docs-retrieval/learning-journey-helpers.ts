@@ -23,6 +23,7 @@ import {
   recordJourneyCompletion,
   resolveCompletionIdentity,
   manifestGuideId,
+  manifestGuideSource,
 } from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
@@ -36,12 +37,6 @@ export interface CompletionContext {
   packageManifest?: Record<string, unknown>;
   guideTitle?: string;
   pathId?: string;
-  /**
-   * The milestone path owns the single guide-kind fact for this event; when set,
-   * setJourneyCompletionPercentage suppresses its redundant interactive-category
-   * emission (but keeps its local-cache/badge duties). See markMilestoneDone.
-   */
-  suppressGuideEmission?: boolean;
 }
 
 const GRAFANA_BASE = new URL('https://grafana.com');
@@ -380,17 +375,27 @@ export function setJourneyCompletionPercentage(
   percentage: number,
   context?: CompletionContext
 ): void {
+  const guideId = persistJourneyCompletionPercentage(journeyBaseUrl, percentage);
+  if (guideId) {
+    recordBundledGuideCompletion(guideId, context);
+  }
+}
+
+export function setMilestoneCompletionPercentage(journeyBaseUrl: string, percentage: number): void {
+  persistJourneyCompletionPercentage(journeyBaseUrl, percentage);
+}
+
+function persistJourneyCompletionPercentage(journeyBaseUrl: string, percentage: number): string | undefined {
   // Fire and forget - storage handles errors internally
   journeyCompletionStorage.set(journeyBaseUrl, percentage);
 
   // Update learning paths progress when a bundled guide reaches 100%
   if (percentage >= 100 && journeyBaseUrl.startsWith('bundled:')) {
     const guideId = journeyBaseUrl.replace('bundled:', '');
-    // Local-cache/UX duty (badges, streak) — unchanged.
     markGuideCompleted(guideId);
-    // Completion-emission boundary (Track 1/2 attach here in later PRs).
-    recordBundledGuideCompletion(guideId, context);
+    return guideId;
   }
+  return undefined;
 }
 
 export async function setJourneyCompletionPercentageAsync(
@@ -409,14 +414,8 @@ export async function setJourneyCompletionPercentageAsync(
 }
 
 function recordBundledGuideCompletion(guideId: string, context?: CompletionContext): void {
-  // A journey-shaped package ('path'/'journey' manifests render as
-  // learning-journey tabs) completes via markMilestoneDone's journey trigger;
-  // emitting a second, guide-kind fact here would double-count it. Likewise,
-  // suppressGuideEmission means the milestone path owns the guide-kind fact for
-  // this completion — skip EMISSION only; the caller's storage/badge duties ran
-  // before this call and are unaffected.
   const manifestType = context?.packageManifest?.type;
-  if (manifestType === 'path' || manifestType === 'journey' || context?.suppressGuideEmission) {
+  if (manifestType === 'path' || manifestType === 'journey') {
     return;
   }
   const identity = resolveCompletionIdentity({
@@ -430,6 +429,27 @@ function recordBundledGuideCompletion(guideId: string, context?: CompletionConte
     guideTitle: context?.guideTitle ?? guideId,
     guideCategory: 'interactive',
     pathId: context?.pathId,
+    completionPercent: 100,
+    source: 'objectives',
+    completedAt: new Date().toISOString(),
+  });
+}
+
+export function recordStandaloneGuideCompletion(context: CompletionContext): void {
+  const guideId = manifestGuideId(context.packageManifest);
+  if (!guideId) {
+    return;
+  }
+  const identity = resolveCompletionIdentity({
+    packageManifest: context.packageManifest,
+    fallbackId: guideId,
+  });
+  recordGuideCompletion({
+    kind: 'guide',
+    ...identity,
+    guideTitle: context.guideTitle ?? guideId,
+    guideCategory: 'interactive',
+    pathId: context.pathId,
     completionPercent: 100,
     source: 'objectives',
     completedAt: new Date().toISOString(),
@@ -496,6 +516,7 @@ export async function markMilestoneDone(
 
   // Completion-emission boundary for the milestone-as-guide path.
   const milestoneIdentity = resolveCompletionIdentity({
+    repository: manifestGuideSource(context?.packageManifest),
     fallbackId: milestoneSlug,
     fallbackSource: 'bundled',
   });

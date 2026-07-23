@@ -31,16 +31,22 @@ jest.mock('../../../lib/analytics', () => ({
 jest.mock('../../../docs-retrieval', () => ({
   getMilestoneSlug: jest.fn(),
   markMilestoneDone: jest.fn(),
+  recordStandaloneGuideCompletion: jest.fn(),
   setJourneyCompletionPercentage: jest.fn(),
+  setMilestoneCompletionPercentage: jest.fn(),
 }));
 
-// Heavy leaf children are irrelevant to the footer button — stub them out so
-// the branch renders without their dependency trees.
-jest.mock('../../content-renderer/content-renderer', () => ({ ContentRenderer: () => null }));
+jest.mock('../../content-renderer/content-renderer', () => ({
+  ContentRenderer: ({ onGuideComplete }: { onGuideComplete?: () => void }) => (
+    <button onClick={onGuideComplete}>Complete rendered guide</button>
+  ),
+}));
 jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestoneToolbar: () => null }));
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));
 
 const { reportAppInteraction } = jest.requireMock('../../../lib/analytics');
+const { getMilestoneSlug, markMilestoneDone, recordStandaloneGuideCompletion, setMilestoneCompletionPercentage } =
+  jest.requireMock('../../../docs-retrieval');
 
 function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPanelContentAreaProps {
   const activeTab: any = {
@@ -113,6 +119,69 @@ describe('DocsPanelContentArea', () => {
         action: 'navigate_to_recommendations',
         source: 'content_footer',
       });
+    });
+  });
+
+  describe('completion boundary', () => {
+    it('records an ordinary remote interactive guide from its manifest', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          type: 'docs',
+          baseUrl: 'https://example.com/remote-guide',
+          currentUrl: 'https://example.com/remote-guide/content.json',
+        },
+        stableContent: {
+          url: 'https://example.com/remote-guide/content.json',
+          type: 'docs',
+          content: '',
+          metadata: { packageManifest: { id: 'remote-guide', repository: 'app-platform' } },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Complete rendered guide' }));
+
+      expect(recordStandaloneGuideCompletion).toHaveBeenCalledWith({
+        packageManifest: { id: 'remote-guide', repository: 'app-platform' },
+        guideTitle: 'My guide',
+      });
+    });
+
+    it('uses milestone-owned progress and fact paths for a learning journey', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          baseUrl: 'bundled:select-platform',
+          currentUrl: 'https://example.com/select-platform/content.json',
+        },
+        stableContent: {
+          url: 'bundled:select-platform',
+          type: 'learning-journey',
+          content: '',
+          metadata: {
+            packageManifest: { id: 'linux-journey', repository: 'app-platform' },
+            learningJourney: { totalMilestones: 3 },
+          },
+        } as any,
+      });
+      getMilestoneSlug.mockReturnValue('select-platform');
+
+      render(<DocsPanelContentArea {...props} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Complete rendered guide' }));
+
+      expect(setMilestoneCompletionPercentage).toHaveBeenCalledWith('bundled:select-platform', 100);
+      expect(markMilestoneDone).toHaveBeenCalledWith(
+        'bundled:select-platform',
+        'select-platform',
+        3,
+        expect.objectContaining({
+          packageManifest: { id: 'linux-journey', repository: 'app-platform' },
+        })
+      );
+      expect(recordStandaloneGuideCompletion).not.toHaveBeenCalled();
     });
   });
 });

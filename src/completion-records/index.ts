@@ -9,7 +9,7 @@ export {
   onCompletionRecorded,
   __resetRecorderForTests,
 } from './completion-recorder';
-export { resolveCompletionIdentity, manifestGuideId } from './completion-identity';
+export { resolveCompletionIdentity, manifestGuideId, manifestGuideSource } from './completion-identity';
 export type { ResolveCompletionIdentityInput } from './completion-identity';
 export { armCompletionWriteHook } from './completion-write-hook';
 export type {

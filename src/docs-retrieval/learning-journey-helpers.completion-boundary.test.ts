@@ -34,8 +34,10 @@ jest.mock('../learning-paths', () => ({
 }));
 
 import {
+  recordStandaloneGuideCompletion,
   setJourneyCompletionPercentage,
   setJourneyCompletionPercentageAsync,
+  setMilestoneCompletionPercentage,
   markMilestoneDone,
 } from './learning-journey-helpers';
 import { onCompletionRecorded, __resetRecorderForTests, type CompletionFact } from '../completion-records';
@@ -120,21 +122,32 @@ describe('bundled guide reaching 100% (trigger class A)', () => {
     expect(markGuideCompletedMock).toHaveBeenCalledWith('linux-journey');
   });
 
-  it('suppresses the interactive guide fact when the milestone path owns emission, keeping local-cache duties', () => {
-    // The bundled milestone completion path (DocsPanelContentArea) also fires
-    // markMilestoneDone, which emits the single canonical learning-journey fact;
-    // setJourneyCompletionPercentage must suppress its redundant interactive one.
-    setJourneyCompletionPercentage('bundled:select-platform', 100, { suppressGuideEmission: true });
+  it('keeps milestone progress duties separate from milestone emission', () => {
+    setMilestoneCompletionPercentage('bundled:select-platform', 100);
 
     expect(emitted).toHaveLength(0);
     expect(markGuideCompletedMock).toHaveBeenCalledWith('select-platform');
     expect(journeySetMock).toHaveBeenCalledWith('bundled:select-platform', 100);
   });
 
-  it('does not emit for a non-bundled key at 100% (current behavior preserved)', () => {
-    setJourneyCompletionPercentage('https://grafana.com/docs/foo/', 100);
+  it('records a remote standalone guide from its manifest identity', () => {
+    recordStandaloneGuideCompletion({
+      packageManifest: { id: 'remote-guide', repository: 'app-platform' },
+      guideTitle: 'Remote guide',
+    });
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({
+      guideSource: 'app-platform',
+      guideId: 'remote-guide',
+      guideTitle: 'Remote guide',
+      guideCategory: 'interactive',
+    });
+  });
+
+  it('does not key a remote standalone guide on its loader URL when no manifest identity resolves', () => {
+    recordStandaloneGuideCompletion({ guideTitle: 'Unknown guide' });
     expect(emitted).toHaveLength(0);
-    expect(markGuideCompletedMock).not.toHaveBeenCalled();
   });
 
   it('async twin emits once and preserves local-cache behavior', async () => {
@@ -168,11 +181,11 @@ describe('learning-journey milestone completion (trigger class B / milestone-as-
     expect(emitted.filter((f) => f.kind === 'guide')).toHaveLength(1);
   });
 
-  it('keys the milestone-as-guide fact on the milestone slug even when a journey manifest is supplied', async () => {
+  it('keys the milestone-as-guide fact on the milestone slug and manifest source', async () => {
     await markMilestoneDone('base', 'm1', undefined, {
       packageManifest: { id: 'fe-alerting-01', repository: 'app-platform' },
     });
-    expect(emitted[0]).toMatchObject({ guideSource: 'bundled', guideId: 'm1' });
+    expect(emitted[0]).toMatchObject({ guideSource: 'app-platform', guideId: 'm1' });
   });
 });
 
@@ -208,7 +221,7 @@ describe('whole-journey completion (trigger class D — the new journey_complete
 
     const guideEmit = emitted.find((f) => f.kind === 'guide');
     const journeyEmit = emitted.find((f) => f.kind === 'journey');
-    expect(guideEmit).toMatchObject({ guideSource: 'bundled', guideId: 'm3' });
+    expect(guideEmit).toMatchObject({ guideSource: 'app-platform', guideId: 'm3' });
     expect(journeyEmit).toMatchObject({ guideSource: 'app-platform', guideId: 'linux-journey' });
   });
 
