@@ -211,17 +211,19 @@ The doc-drift check is **non-blocking** — guidance drift does not block merge,
 
 After synthesis, for PRs classified `product-runtime` or `mixed` that **add feature behavior** (new user-facing actions, new async/fetch/fallback paths, or new panel surfaces), assess instrumentation coverage against the decision rule and free-channel table in `docs/developer/TELEMETRY.md`. Skip this check for `tests-only`, `docs-only`, and `infra-build-ci` changes, and for pure refactors or bug fixes of existing behavior.
 
-Answer three questions:
+Answer these questions:
 
 1. Does the PR add a new user-visible action with no `reportAppInteraction` event? (The Faro mirror makes every analytics event operationally observable for free.)
-2. Does the PR add an async, fallback, or retry path that neither logs through `lib/logging.ts` nor records a typed facade op — i.e., would we be blind if it silently degraded in production?
-3. Does the PR add a new panel surface with no view name (`setFaroView` / `setFaroViewName`) or surface report?
+2. Does the PR add a fallback or degradation ladder with no typed facade event? A log does not replace the countable, alertable event required by `TELEMETRY.md`.
+3. Does the PR add an async operation with a latency budget but no typed facade measurement, or an ordinary async/retry failure path with neither a stable `src/lib/logging.ts` signal nor a typed facade op?
+4. Does the PR add a critical multi-step operation with no outcome-stamped `withFaroUserAction` span?
+5. Does the PR add a panel with no URL-derived view and no `setFaroViewName` call? Separately, does a new Pathfinder surface omit `reportPathfinderSurface`?
 
 Report gaps under an **Instrumentation** section in the review output, citing the relevant `TELEMETRY.md` rule. If coverage is adequate, emit:
 
 > Instrumentation: new behavior is covered by the free telemetry channels (or existing facade ops); no gaps found.
 
-The instrumentation check is **non-blocking** — instrumentation is a judgment call, not a gate. Do not request instrumentation for trivial UI states, and never suggest attributes that would violate the privacy invariants in `TELEMETRY.md` (high-cardinality values, raw error text, unnormalized URLs). Findings here belong to the `analytics-and-telemetry` concern for deduplication purposes.
+The instrumentation check is **non-blocking** — instrumentation is a judgment call, not a gate. Do not request instrumentation for trivial UI states, and never suggest attributes that would violate the privacy invariants in `TELEMETRY.md` (high-cardinality values, raw error text, unnormalized URLs). Before emitting this section, deduplicate its observations against synthesized `analytics-and-telemetry` findings.
 
 ## Pattern catalog and reporting
 
