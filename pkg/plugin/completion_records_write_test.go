@@ -293,6 +293,41 @@ func TestCompletionWrite_Validation(t *testing.T) {
 	}
 }
 
+// TestCompletionWrite_AcceptsEveryFrontendValue pins the FE↔BE value-domain
+// contract: every enum value the frontend can emit (CompletionSource /
+// CompletionCategory in src/completion-records/types.ts, CompletionPlatform in
+// completion-write-client.ts) and its real millisecond-RFC3339 completedAt wire
+// format must be accepted. Drift here fails silently in production — a value
+// the backend rejects becomes a terminal 400 the retry queue drops.
+func TestCompletionWrite_AcceptsEveryFrontendValue(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+
+	frontendSources := []string{"objectives", "manual", "skipped"}
+	frontendCategories := []string{"interactive", "documentation", "learning-journey"}
+	frontendPlatforms := []string{"oss", "cloud"}
+
+	for _, source := range frontendSources {
+		for _, category := range frontendCategories {
+			for _, platform := range frontendPlatforms {
+				t.Run(source+"/"+category+"/"+platform, func(t *testing.T) {
+					creator := &fakeCreator{}
+					withCreator(t, creator)
+					body := validWriteBody()
+					body["source"] = source
+					body["guideCategory"] = category
+					body["platform"] = platform
+					// The frontend sends new Date().toISOString() — millisecond precision.
+					body["completedAt"] = timeNow().UTC().Format("2006-01-02T15:04:05.000Z07:00")
+					rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+					if rec.Code != http.StatusCreated {
+						t.Fatalf("status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestDecodeCompletionWriteRequest_RejectsTrailingAndOversizedBodies(t *testing.T) {
 	tests := []struct {
 		name string
