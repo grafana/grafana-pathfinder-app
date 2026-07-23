@@ -97,9 +97,10 @@ jobs:
             --config=tests/e2e-runner/playwright.config.ts \
             --project=chromium \
             --list
-          docker run --rm --workdir /app --entrypoint npx pathfinder-e2e-runner:smoke \
+          docker run --rm --workdir /app --entrypoint npx \
+            -e GRAFANA_TOKEN=runner-image-smoke pathfinder-e2e-runner:smoke \
             playwright test tests/e2e-runner/runner-image-smoke.spec.ts \
-            --config=tests/e2e-runner/runner-image-smoke.config.ts \
+            --config=tests/e2e-runner/playwright.config.ts \
             --project=chromium
       - name: Verify image emits a valid, versioned report schema
         run: |
