@@ -1,5 +1,6 @@
 import { config } from '@grafana/runtime';
 
+import { collectKeysByPrefix, clearKeysByPrefix } from '../lib/storage/key-utils';
 import { StorageKeys } from '../lib/storage-keys';
 
 import type { CompletionWriteBody } from './completion-write-client';
@@ -53,11 +54,7 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
   function list(): QueuedWrite[] {
     const result = new Map(volatileItems);
     try {
-      for (let index = 0; index < localStorage.length; index++) {
-        const key = localStorage.key(index);
-        if (!key?.startsWith(itemPrefix)) {
-          continue;
-        }
+      for (const key of collectKeysByPrefix(localStorage, itemPrefix)) {
         const item = parseQueuedWrite(localStorage.getItem(key));
         if (item) {
           result.set(item.id, item);
@@ -90,14 +87,7 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
   function clear(): void {
     volatileItems.clear();
     try {
-      const keys: string[] = [];
-      for (let index = 0; index < localStorage.length; index++) {
-        const key = localStorage.key(index);
-        if (key?.startsWith(ownerPrefix)) {
-          keys.push(key);
-        }
-      }
-      keys.forEach((key) => localStorage.removeItem(key));
+      clearKeysByPrefix(localStorage, ownerPrefix);
     } catch {
       return;
     }

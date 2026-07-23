@@ -1,13 +1,15 @@
-import { getBackendSrv, config } from '@grafana/runtime';
+import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
 import { PLUGIN_BACKEND_URL } from '../constants';
+import { extractFetchErrorStatus } from '../lib/fetch-error';
+import { currentPlatform, type GrafanaPlatform } from '../lib/platform';
 
 import type { CompletionCategory, CompletionSource } from './types';
 
 const WRITE_URL = `${PLUGIN_BACKEND_URL}/completion-records`;
 
-export type CompletionPlatform = 'oss' | 'cloud';
+export type CompletionPlatform = GrafanaPlatform;
 
 /**
  * The wire payload POSTed to the write proxy. Client fact fields only; the
@@ -64,20 +66,10 @@ export async function postCompletionRecord(body: CompletionWriteBody): Promise<W
   }
 }
 
-/**
- * The current platform, mirroring ContextService.getCurrentPlatform: Grafana
- * Cloud builds report a "Grafana Cloud" version string. Fails soft to 'oss'.
- */
-export function currentCompletionPlatform(): CompletionPlatform {
-  try {
-    return config.bootData?.settings?.buildInfo?.versionString?.startsWith('Grafana Cloud') ? 'cloud' : 'oss';
-  } catch {
-    return 'oss';
-  }
-}
+export const currentCompletionPlatform = currentPlatform;
 
 function classifyWriteError(err: unknown): WriteOutcome {
-  const status = extractStatus(err);
+  const status = extractFetchErrorStatus(err);
   // 404 is the reserved structural "route not deployed here" signal (route
   // absent, toggle off, no App Platform aggregation on this stack); the backend
   // remaps upstream per-record 404s to 422 so they can never land here. The
@@ -91,9 +83,4 @@ function classifyWriteError(err: unknown): WriteOutcome {
   // 401 (expired session/token — recovers after re-auth), 429, any 5xx, or no
   // status at all (network / abort) — retryable.
   return { kind: 'transient' };
-}
-
-function extractStatus(err: unknown): number | undefined {
-  const e = err as { status?: number; statusCode?: number; data?: { statusCode?: number } } | undefined;
-  return e?.status ?? e?.statusCode ?? e?.data?.statusCode;
 }

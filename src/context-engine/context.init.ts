@@ -1,6 +1,7 @@
 import { getBackendSrv, config } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { initializeEchoLogging, initializeFromRecentEvents } from './context-event-bus';
+import { extractFetchErrorStatus } from '../lib/fetch-error';
 import { logger } from '../lib/logging';
 import { armCompletionWriteHook } from '../completion-records';
 
@@ -25,10 +26,7 @@ export async function fetchInteractiveGuidesFromBackend(): Promise<void> {
       })
     );
   } catch (error) {
-    const status =
-      (error as { status?: number; statusCode?: number; data?: { statusCode?: number } })?.status ??
-      (error as { statusCode?: number })?.statusCode ??
-      (error as { data?: { statusCode?: number } })?.data?.statusCode;
+    const status = extractFetchErrorStatus(error);
     const unavailableStatuses = new Set([400, 403, 404, 405, 501, 503]);
 
     if (status && unavailableStatuses.has(status)) {
