@@ -1,6 +1,6 @@
 /**
- * Unit tests for the Track 2 write hook: capability-gated arming, a provably
- * non-blocking completion path, direct-enqueue with durable-key dedupe, the
+ * Unit tests for the Track 2 write hook: synchronous arming, a provably
+ * non-blocking completion path, direct enqueue, the
  * concurrent-drain guard, terminal-drop / transient-retry, and the
  * deployment-skew missing-route matrix. The recorder is the REAL module; all
  * client/timer/clock deps are injected so the drain state machine is driven
@@ -28,7 +28,6 @@ let clock = 0;
 let sent: CompletionWriteBody[] = [];
 let sendResults: WriteOutcome[] = [];
 let sendIdx = 0;
-let capabilityCalls = 0;
 
 function guideFact(over: Partial<GuideCompletionFact> = {}): GuideCompletionFact {
   return {
@@ -60,10 +59,6 @@ function journeyFact(over: Partial<JourneyCompletionFact> = {}): JourneyCompleti
 
 function deps(over: Partial<WriteHookDeps> = {}): Partial<WriteHookDeps> {
   return {
-    fetchCapability: async () => {
-      capabilityCalls += 1;
-      return true;
-    },
     send: async (b) => {
       sent.push(b);
       const r = sendResults[Math.min(sendIdx, sendResults.length - 1)] ?? { kind: 'created' };
@@ -110,20 +105,11 @@ beforeEach(() => {
   sent = [];
   sendResults = [];
   sendIdx = 0;
-  capabilityCalls = 0;
 });
 
-describe('arming is capability-gated', () => {
-  it('does not arm when capability is unavailable — no subscriber, no writes', async () => {
-    await armCompletionWriteHook(deps({ fetchCapability: async () => false }));
-    recordGuideCompletion(guideFact());
-    await runTimer();
-    expect(sent).toHaveLength(0);
-  });
-
-  it('arms when available and writes an enqueued completion', async () => {
+describe('arming', () => {
+  it('subscribes immediately and writes an enqueued completion', async () => {
     await armCompletionWriteHook(deps());
-    await runTimer(); // initial (empty) persisted drain
 
     recordGuideCompletion(guideFact({ guideId: 'dash' }));
     await runTimer();
@@ -132,10 +118,12 @@ describe('arming is capability-gated', () => {
     expect(sent[0]).toMatchObject({ guideId: 'dash', platform: 'cloud' });
   });
 
-  it('is idempotent: a second arm does not re-probe or double-subscribe', async () => {
+  it('is idempotent and does not double-subscribe', async () => {
     await armCompletionWriteHook(deps());
     await armCompletionWriteHook(deps());
-    expect(capabilityCalls).toBe(1);
+    recordGuideCompletion(guideFact());
+    await runTimer();
+    expect(sent).toHaveLength(1);
   });
 });
 
@@ -152,7 +140,7 @@ describe('completion path is non-blocking', () => {
   });
 });
 
-describe('direct enqueue with durable-key dedupe', () => {
+describe('direct enqueue', () => {
   it('enqueues each distinct completion as its own record', async () => {
     await armCompletionWriteHook(deps());
     await runTimer();
@@ -180,18 +168,16 @@ describe('direct enqueue with durable-key dedupe', () => {
     expect(journeys[0]).toMatchObject({ guideId: 'linux-journey', kind: 'journey' });
   });
 
-  it('drops a same-durable-key re-enqueue while the first is still pending', async () => {
+  it('keeps guide and journey events with the same source and id distinct', async () => {
     await armCompletionWriteHook(deps());
     await runTimer();
 
-    // Same (guideSource, guideId) enqueued twice before the drain sends it:
-    // the second is deduped by the queue's durable-key guard.
-    recordGuideCompletion(guideFact({ guideId: 'dup' }));
-    recordGuideCompletion(guideFact({ guideId: 'dup' }));
+    recordGuideCompletion(guideFact({ guideId: 'shared' }));
+    recordJourneyCompletion(journeyFact({ guideId: 'shared' }));
     await runTimer();
 
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ guideId: 'dup' });
+    expect(sent).toHaveLength(2);
+    expect(sent.map((body) => body.kind).sort()).toEqual(['guide', 'journey']);
   });
 });
 
@@ -249,7 +235,6 @@ describe('concurrent drains (regression: no double-send)', () => {
     };
 
     await armCompletionWriteHook(deps({ send }));
-    await runTimer(); // initial empty drain
 
     recordGuideCompletion(guideFact({ guideId: 'first' }));
 
@@ -287,7 +272,6 @@ describe('drain timer preemption (regression: fresh completion not stranded behi
     // drain timer is scheduled far into the future.
     sendResults = [{ kind: 'transient', retryAfterMs: 5 * 60 * 1000 }, { kind: 'created' }, { kind: 'created' }];
     await armCompletionWriteHook(deps({ setTimer }));
-    await runTimer(); // initial empty drain
 
     recordGuideCompletion(guideFact({ guideId: 'stuck' }));
     await runTimer(); // attempt 1 → transient, reschedules ~5min out
@@ -307,14 +291,6 @@ describe('drain timer preemption (regression: fresh completion not stranded behi
 });
 
 describe('deployment-skew: missing route matrix', () => {
-  it('capability 404 (route family absent) never arms', async () => {
-    // fetchCompletionCapability maps 404 → false; the hook sees `false`.
-    await armCompletionWriteHook(deps({ fetchCapability: async () => false }));
-    recordGuideCompletion(guideFact());
-    await runTimer();
-    expect(sent).toHaveLength(0);
-  });
-
   it('write 404 mid-session (skew) disarms silently with no retry storm', async () => {
     sendResults = [{ kind: 'route-missing' }];
     await armCompletionWriteHook(deps());

@@ -4,14 +4,11 @@
  * Design contract:
  *   - Bounded (oldest-first eviction at the cap) so a wedged backend can't grow
  *     localStorage without limit.
- *   - Exponential backoff + jitter between transient retries; honors an
- *     upstream Retry-After hint when present.
+ *   - Exponential backoff + jitter between transient retries; an upstream
+ *     Retry-After hint is honored exactly.
  *   - Terminal outcomes drop the item (debug-logged, never Faro-spammed).
  *   - A route-missing outcome disarms the whole queue: it clears itself and
  *     stops, since the feature is unavailable on this deployment.
- *   - Dedupe on the durable key (guideSource, guideId): emission is normalized
- *     upstream to one guide-kind fact per completion, so this guards the
- *     resume/re-completion case — a reload re-enqueue of a still-pending item.
  *
  * Durability boundary (RFC §6.9): a record is durable only once its POST lands.
  * The queue is a best-effort session-lifetime buffer — persisted so it survives
@@ -31,7 +28,6 @@ import type { CompletionWriteBody, WriteOutcome } from './completion-write-clien
 
 export interface QueuedWrite {
   id: string;
-  durableKey: string;
   body: CompletionWriteBody;
   attempts: number;
   /** Epoch ms; the item is eligible to send once now >= nextAttemptAt. */
@@ -45,7 +41,6 @@ export interface WriteQueueDeps {
   read?: () => string | null;
   write?: (value: string) => void;
   maxSize?: number;
-  maxAttempts?: number;
   baseBackoffMs?: number;
   maxBackoffMs?: number;
 }
@@ -58,7 +53,7 @@ export interface ProcessResult {
 }
 
 export interface WriteQueue {
-  enqueue(body: CompletionWriteBody, durableKey: string): boolean;
+  enqueue(body: CompletionWriteBody): boolean;
   processDue(): Promise<ProcessResult>;
   size(): number;
   isDisarmed(): boolean;
@@ -66,7 +61,6 @@ export interface WriteQueue {
 }
 
 const DEFAULT_MAX_SIZE = 100;
-const DEFAULT_MAX_ATTEMPTS = 8;
 const DEFAULT_BASE_BACKOFF_MS = 1000;
 const DEFAULT_MAX_BACKOFF_MS = 5 * 60 * 1000;
 
@@ -95,7 +89,6 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   const read = deps.read ?? defaultRead;
   const write = deps.write ?? defaultWrite;
   const maxSize = deps.maxSize ?? DEFAULT_MAX_SIZE;
-  const maxAttempts = deps.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const baseBackoffMs = deps.baseBackoffMs ?? DEFAULT_BASE_BACKOFF_MS;
   const maxBackoffMs = deps.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
 
@@ -137,32 +130,23 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   }
 
   function backoffMs(attempts: number, retryAfterMs?: number): number {
-    const base =
-      retryAfterMs !== undefined && retryAfterMs >= 0
-        ? Math.min(maxBackoffMs, retryAfterMs)
-        : Math.min(maxBackoffMs, baseBackoffMs * Math.pow(2, Math.max(0, attempts - 1)));
-    // ±25% jitter to avoid a synchronized retry stampede across queued items.
+    if (retryAfterMs !== undefined && retryAfterMs >= 0) {
+      return retryAfterMs;
+    }
+    const base = Math.min(maxBackoffMs, baseBackoffMs * Math.pow(2, Math.max(0, attempts - 1)));
     const jitter = base * 0.25 * (random() * 2 - 1);
     return Math.max(0, Math.round(base + jitter));
   }
 
-  function enqueue(body: CompletionWriteBody, durableKey: string): boolean {
+  function enqueue(body: CompletionWriteBody): boolean {
     if (disarmed) {
       return false;
     }
-    // Dedupe on the durable key: emission is normalized upstream to one
-    // guide-kind fact per completion, so this guards the resume/re-completion
-    // case — a reload re-enqueue of an item still pending from an earlier load.
-    if (items.some((i) => i.durableKey === durableKey)) {
-      logger.debug('completion write: dropped duplicate for durable key', { durableKey });
-      return false;
-    }
     if (items.length >= maxSize) {
-      // Oldest-first eviction at the cap.
       const evicted = items.shift();
-      logger.debug('completion write: queue full, evicted oldest', { evictedKey: evicted?.durableKey });
+      logger.debug('completion write: queue full, evicted oldest', { evictedId: evicted?.id });
     }
-    items.push({ id: nextId(), durableKey, body, attempts: 0, nextAttemptAt: now() });
+    items.push({ id: nextId(), body, attempts: 0, nextAttemptAt: now() });
     persist();
     return true;
   }
@@ -200,19 +184,10 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
       }
       if (outcome.kind === 'terminal') {
         remove(item);
-        logger.debug('completion write: dropped terminal (non-retryable) record', { durableKey: item.durableKey });
+        logger.debug('completion write: dropped terminal (non-retryable) record', { id: item.id });
         continue;
       }
-      // transient
       item.attempts += 1;
-      if (item.attempts >= maxAttempts) {
-        remove(item);
-        logger.debug('completion write: dropped after max retry attempts', {
-          durableKey: item.durableKey,
-          attempts: item.attempts,
-        });
-        continue;
-      }
       item.nextAttemptAt = now() + backoffMs(item.attempts, outcome.retryAfterMs);
     }
 
@@ -240,7 +215,6 @@ function isQueuedWrite(v: unknown): v is QueuedWrite {
   const o = v as Record<string, unknown>;
   return (
     typeof o.id === 'string' &&
-    typeof o.durableKey === 'string' &&
     typeof o.attempts === 'number' &&
     typeof o.nextAttemptAt === 'number' &&
     typeof o.body === 'object' &&

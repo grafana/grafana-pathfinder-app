@@ -22,10 +22,6 @@ function body(overrides: Partial<CompletionWriteBody> = {}): CompletionWriteBody
   };
 }
 
-function key(b: CompletionWriteBody): string {
-  return `${b.guideSource}␟${b.guideId}`;
-}
-
 interface Sender {
   send: (b: CompletionWriteBody) => Promise<WriteOutcome>;
   calls: CompletionWriteBody[];
@@ -67,11 +63,11 @@ function makeStorage() {
   };
 }
 
-describe('write queue — enqueue, dedupe, eviction', () => {
+describe('write queue — enqueue and eviction', () => {
   it('enqueues and, on created, removes the item', async () => {
     const s = makeSender([{ kind: 'created' }]);
     const q = createWriteQueue({ now: () => 0, send: s.send });
-    expect(q.enqueue(body(), key(body()))).toBe(true);
+    expect(q.enqueue(body())).toBe(true);
     expect(q.size()).toBe(1);
 
     const r = await q.processDue();
@@ -81,26 +77,25 @@ describe('write queue — enqueue, dedupe, eviction', () => {
     expect(r.disarmed).toBe(false);
   });
 
-  it('dedupes on the durable key (bundled-journey double-emit → one record)', async () => {
+  it('keeps repeated completions as distinct events', async () => {
     const s = makeSender([{ kind: 'created' }]);
     const q = createWriteQueue({ now: () => 0, send: s.send });
-    const b1 = body({ guideCategory: 'interactive' });
-    const b2 = body({ guideCategory: 'learning-journey' }); // same (guideSource, guideId)
+    const first = body({ completedAt: '2026-07-20T00:00:00.000Z' });
+    const replay = body({ completedAt: '2026-07-20T01:00:00.000Z' });
 
-    expect(q.enqueue(b1, key(b1))).toBe(true);
-    expect(q.enqueue(b2, key(b2))).toBe(false); // deduped
-    expect(q.size()).toBe(1);
+    expect(q.enqueue(first)).toBe(true);
+    expect(q.enqueue(replay)).toBe(true);
+    expect(q.size()).toBe(2);
   });
 
   it('evicts oldest-first at the cap', () => {
     const s = makeSender([{ kind: 'created' }]);
     const q = createWriteQueue({ now: () => 0, send: s.send, maxSize: 2 });
-    q.enqueue(body({ guideId: 'a' }), 'bundled␟a');
-    q.enqueue(body({ guideId: 'b' }), 'bundled␟b');
-    q.enqueue(body({ guideId: 'c' }), 'bundled␟c');
+    q.enqueue(body({ guideId: 'a' }));
+    q.enqueue(body({ guideId: 'b' }));
+    q.enqueue(body({ guideId: 'c' }));
     expect(q.size()).toBe(2);
-    const keys = q.snapshot().map((i) => i.durableKey);
-    expect(keys).toEqual(['bundled␟b', 'bundled␟c']); // 'a' evicted
+    expect(q.snapshot().map((i) => i.body.guideId)).toEqual(['b', 'c']);
   });
 });
 
@@ -114,7 +109,7 @@ describe('write queue — retry/backoff/terminal/disarm', () => {
       random: () => 0.5, // zero jitter
       baseBackoffMs: 1000,
     });
-    q.enqueue(body(), key(body()));
+    q.enqueue(body());
 
     const r1 = await q.processDue();
     expect(q.size()).toBe(1);
@@ -137,7 +132,7 @@ describe('write queue — retry/backoff/terminal/disarm', () => {
   it('honors an upstream Retry-After hint over exponential backoff', async () => {
     const s = makeSender([{ kind: 'transient', retryAfterMs: 12_000 }]);
     const q = createWriteQueue({ now: () => 0, send: s.send, random: () => 0.5 });
-    q.enqueue(body(), key(body()));
+    q.enqueue(body());
     const r = await q.processDue();
     expect(r.nextDelayMs).toBe(12_000);
   });
@@ -145,42 +140,41 @@ describe('write queue — retry/backoff/terminal/disarm', () => {
   it('drops a terminal record without retry', async () => {
     const s = makeSender([{ kind: 'terminal' }]);
     const q = createWriteQueue({ now: () => 0, send: s.send });
-    q.enqueue(body(), key(body()));
+    q.enqueue(body());
     const r = await q.processDue();
     expect(q.size()).toBe(0);
     expect(r.disarmed).toBe(false);
   });
 
-  it('drops after max attempts', async () => {
+  it('retains a transient write beyond eight attempts', async () => {
     let clock = 0;
     const s = makeSender([{ kind: 'transient' }]);
     const q = createWriteQueue({
       now: () => clock,
       send: s.send,
       random: () => 0.5,
-      maxAttempts: 3,
       baseBackoffMs: 1,
       maxBackoffMs: 10,
     });
-    q.enqueue(body(), key(body()));
-    for (let i = 0; i < 5 && q.size() > 0; i++) {
+    q.enqueue(body());
+    for (let i = 0; i < 9; i++) {
       await q.processDue();
       clock += 100; // always past the next backoff
     }
-    expect(q.size()).toBe(0);
-    expect(s.calls.length).toBe(3); // maxAttempts sends, then dropped
+    expect(q.size()).toBe(1);
+    expect(s.calls).toHaveLength(9);
   });
 
   it('route-missing disarms: clears the queue and refuses further enqueue', async () => {
     const s = makeSender([{ kind: 'route-missing' }]);
     const q = createWriteQueue({ now: () => 0, send: s.send });
-    q.enqueue(body({ guideId: 'a' }), 'bundled␟a');
-    q.enqueue(body({ guideId: 'b' }), 'bundled␟b');
+    q.enqueue(body({ guideId: 'a' }));
+    q.enqueue(body({ guideId: 'b' }));
     const r = await q.processDue();
     expect(r.disarmed).toBe(true);
     expect(q.isDisarmed()).toBe(true);
     expect(q.size()).toBe(0);
-    expect(q.enqueue(body({ guideId: 'c' }), 'bundled␟c')).toBe(false);
+    expect(q.enqueue(body({ guideId: 'c' }))).toBe(false);
   });
 
   it('a rejecting sender is treated as transient, never bubbling', async () => {
@@ -191,7 +185,7 @@ describe('write queue — retry/backoff/terminal/disarm', () => {
       },
       random: () => 0.5,
     });
-    q.enqueue(body(), key(body()));
+    q.enqueue(body());
     await expect(q.processDue()).resolves.toEqual(expect.objectContaining({ disarmed: false }));
     expect(q.size()).toBe(1); // retained for retry
   });
@@ -208,15 +202,15 @@ describe('write queue — persistence', () => {
       write: storage.write,
       random: () => 0.5,
     });
-    q1.enqueue(body(), key(body()));
+    q1.enqueue(body());
     await q1.processDue(); // transient → still queued, persisted
     expect(q1.size()).toBe(1);
 
     const s2 = makeSender([{ kind: 'created' }]);
     const q2 = createWriteQueue({ now: () => 1_000_000, send: s2.send, read: storage.read, write: storage.write });
     expect(q2.size()).toBe(1); // reloaded
-    // Reload also re-seeds dedupe: the same durable key won't double-enqueue.
-    expect(q2.enqueue(body(), key(body()))).toBe(false);
+    expect(q2.enqueue(body({ completedAt: '2026-07-20T01:00:00.000Z' }))).toBe(true);
+    expect(q2.size()).toBe(2);
   });
 
   it('tolerates corrupt persisted state', () => {

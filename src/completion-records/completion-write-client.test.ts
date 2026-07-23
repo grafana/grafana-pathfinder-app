@@ -1,7 +1,7 @@
 /**
- * Unit tests for the fail-soft write client: capability probe, POST outcome
- * classification (created / terminal / transient / route-missing), Retry-After
- * extraction, and the platform derivation. getBackendSrv().fetch is mocked to
+ * Unit tests for the fail-soft write client: POST outcome classification
+ * (created / terminal / transient / route-missing), Retry-After extraction,
+ * and the platform derivation. getBackendSrv().fetch is mocked to
  * return rxjs observables so lastValueFrom resolves/rejects deterministically.
  */
 import { of, throwError } from 'rxjs';
@@ -18,12 +18,7 @@ jest.mock('@grafana/runtime', () => ({
   },
 }));
 
-import {
-  fetchCompletionCapability,
-  postCompletionRecord,
-  currentCompletionPlatform,
-  type CompletionWriteBody,
-} from './completion-write-client';
+import { postCompletionRecord, currentCompletionPlatform, type CompletionWriteBody } from './completion-write-client';
 
 function body(): CompletionWriteBody {
   return {
@@ -42,28 +37,6 @@ function body(): CompletionWriteBody {
 beforeEach(() => {
   fetchMock.mockReset();
   versionString = 'Grafana Cloud v11.0.0';
-});
-
-describe('fetchCompletionCapability', () => {
-  it('returns true only on explicit available:true', async () => {
-    fetchMock.mockReturnValue(of({ data: { available: true } }));
-    await expect(fetchCompletionCapability()).resolves.toBe(true);
-  });
-
-  it('returns false on available:false', async () => {
-    fetchMock.mockReturnValue(of({ data: { available: false } }));
-    await expect(fetchCompletionCapability()).resolves.toBe(false);
-  });
-
-  it('returns false on a 404 (route missing) — never throws', async () => {
-    fetchMock.mockReturnValue(throwError(() => ({ status: 404 })));
-    await expect(fetchCompletionCapability()).resolves.toBe(false);
-  });
-
-  it('returns false on a transient error', async () => {
-    fetchMock.mockReturnValue(throwError(() => ({ status: 503 })));
-    await expect(fetchCompletionCapability()).resolves.toBe(false);
-  });
 });
 
 describe('postCompletionRecord — outcome classification', () => {

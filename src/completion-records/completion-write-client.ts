@@ -1,12 +1,8 @@
 /**
  * Front-end client for the durable completion-write proxy (Track 2).
  *
- * Two calls against the plugin backend added in this epic:
- *   - GET  /completion-records/capability — does this stack support durable
- *     completion recording? (App Platform aggregation present + identity).
- *   - POST /completion-records — persist one completion fact.
- *
- * Both fail SOFT and never throw: a completion must never be disturbed by the
+ * POSTs completion facts to the plugin backend. It fails soft and never throws:
+ * a completion must never be disturbed by the
  * write path. Every failure is classified into the outcome the retry queue acts
  * on. Per the captain's deployment-skew tolerance, a MISSING route (404 / route
  * not registered on an older plugin backend, or the whole family absent) is a
@@ -20,7 +16,6 @@ import { PLUGIN_BACKEND_URL } from '../constants';
 
 import type { CompletionCategory, CompletionKind, CompletionSource } from './types';
 
-const CAPABILITY_URL = `${PLUGIN_BACKEND_URL}/completion-records/capability`;
 const WRITE_URL = `${PLUGIN_BACKEND_URL}/completion-records`;
 
 export type CompletionPlatform = 'oss' | 'cloud';
@@ -56,29 +51,6 @@ export interface CompletionWriteBody {
  */
 export type WriteOutcome =
   { kind: 'created' } | { kind: 'terminal' } | { kind: 'transient'; retryAfterMs?: number } | { kind: 'route-missing' };
-
-/**
- * Probe whether durable completion recording is available on this stack. Returns
- * true ONLY on an explicit `{ available: true }`. Anything else — a missing
- * route (404), a transient blip, or `available: false` — returns false, so the
- * queue never arms. Never throws. Re-probed on a later session (no in-session
- * polling), so a stack that later gains the backend starts recording then.
- */
-export async function fetchCompletionCapability(): Promise<boolean> {
-  try {
-    const resp = await lastValueFrom(
-      getBackendSrv().fetch<{ available?: boolean }>({
-        url: CAPABILITY_URL,
-        method: 'GET',
-        showErrorAlert: false,
-        showSuccessAlert: false,
-      })
-    );
-    return resp?.data?.available === true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * POST one completion fact. Never throws — returns a classified WriteOutcome.

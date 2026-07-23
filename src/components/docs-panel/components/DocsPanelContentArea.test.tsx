@@ -131,7 +131,7 @@ describe('DocsPanelContentArea', () => {
           type: 'docs',
           baseUrl: 'https://example.com/remote-guide',
           currentUrl: 'https://example.com/remote-guide/content.json',
-        },
+        } as any,
         stableContent: {
           url: 'https://example.com/remote-guide/content.json',
           type: 'docs',
@@ -156,7 +156,7 @@ describe('DocsPanelContentArea', () => {
           ...base.activeTab,
           baseUrl: 'bundled:select-platform',
           currentUrl: 'https://example.com/select-platform/content.json',
-        },
+        } as any,
         stableContent: {
           url: 'bundled:select-platform',
           type: 'learning-journey',
