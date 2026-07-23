@@ -252,6 +252,37 @@ describe('TabBarActions', () => {
     });
   });
 
+  describe('kiosk mode menu item', () => {
+    const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+
+    afterEach(() => {
+      delete (window as any).__pathfinderKioskConfig;
+    });
+
+    it('is not rendered when kiosk is disabled', () => {
+      render(<TabBarActions />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: /kiosk mode/i })).not.toBeInTheDocument();
+    });
+
+    it('is rendered in the overflow menu when kiosk is enabled and opens kiosk on click', () => {
+      (window as any).__pathfinderKioskConfig = { rulesUrl: '' };
+      const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
+
+      render(<TabBarActions />);
+      openMenu();
+
+      const item = screen.getByRole('menuitem', { name: /kiosk mode/i });
+      expect(item).toBeInTheDocument();
+      expect(screen.queryByTestId(testIds.kioskMode.button)).not.toBeInTheDocument();
+
+      fireEvent.click(item);
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'pathfinder-open-kiosk' }));
+
+      dispatchSpy.mockRestore();
+    });
+  });
+
   describe('feedback analytics', () => {
     it('enriches the payload with content context for a content tab', () => {
       const { reportAppInteraction } = require('../../../lib/analytics');

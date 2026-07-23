@@ -1,7 +1,7 @@
 /**
  * Tab bar actions component for docs-panel.
- * Contains the menu dropdown with feedback and settings options,
- * plus the close sidebar button.
+ * Contains My learning, the overflow menu (kiosk when enabled, feedback,
+ * settings, and optional Refresh (dev)), plus the close sidebar button.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -32,8 +32,8 @@ export interface TabBarActionsProps {
 }
 
 /**
- * Renders the tab bar action buttons: menu dropdown and close sidebar button.
- * Menu contains feedback and settings options.
+ * Renders the tab bar action buttons: My learning, overflow menu, and close.
+ * Overflow menu hosts kiosk (when enabled), feedback, settings, and optional Refresh (dev).
  */
 export const TabBarActions: React.FC<TabBarActionsProps> = ({
   className,
@@ -112,16 +112,6 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
 
   return (
     <div className={className}>
-      {kioskEnabled && (
-        <IconButton
-          name="presentation-play"
-          size="sm"
-          tooltip="Kiosk mode"
-          onClick={handleKioskClick}
-          aria-label="Open kiosk mode"
-          data-testid={testIds.kioskMode.button}
-        />
-      )}
       <IconButton
         name="book-open"
         size="sm"
@@ -134,6 +124,13 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
         placement="bottom-end"
         overlay={
           <Menu>
+            {kioskEnabled && (
+              <Menu.Item
+                label={t('docsPanel.kioskMode', 'Kiosk mode')}
+                icon="presentation-play"
+                onClick={handleKioskClick}
+              />
+            )}
             {isDevMode && reloadContentTab && (
               <Menu.Item label={t('docsPanel.refreshDev', 'Refresh (dev)')} icon="sync" onClick={reloadContentTab} />
             )}
