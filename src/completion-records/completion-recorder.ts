@@ -4,7 +4,9 @@ import type { CompletionFact, CompletionListener, GuideCompletionFact, JourneyCo
 
 const listeners = new Set<CompletionListener>();
 
-// Prevents re-entrant completion paths from emitting the same fact twice per app load.
+// Prevents re-entrant completion paths from emitting the same fact twice per app
+// load. Cross-session replays are deliberate — dedup is a query-time concern
+// downstream, never this module's.
 const emitted = new Set<string>();
 
 function dedupeKey(fact: CompletionFact): string {

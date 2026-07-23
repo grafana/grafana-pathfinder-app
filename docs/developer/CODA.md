@@ -153,6 +153,8 @@ All routes are prefixed by Grafana as `/api/plugins/grafana-pathfinder-app/resou
 | `/completion-records`            | POST   | `handleCreateCompletionRecord` | Durable write proxy: persists one completion as a `CompletionRecord` upstream, identity/org/stack stamped server-side, per-user rate limited (App Platform write proxy, not Coda) |
 | `/completion-records/my`         | GET    | `handleMyCompletions`          | Per-user collated completion-record summary (App Platform read proxy, not Coda)                                                                                                   |
 | `/completion-records/capability` | GET    | `handleCompletionCapability`   | Cheap identity + upstream-reachability probe                                                                                                                                      |
+| `/package-recommendations`       | GET    | `handlePackageRecommendations` | Cached package index (not Coda)                                                                                                                                                   |
+| `/custom-guide-repository`       | GET    | `handleCustomGuideRepository`  | Custom guide catalogue (App Platform read proxy, not Coda)                                                                                                                        |
 | `/health`                        | GET    | `handleHealth`                 | Plugin health (includes `codaRegistered`)                                                                                                                                         |
 
 ### App Platform proxies — identity trust boundary
@@ -176,10 +178,17 @@ same inbound gate but fails **closed with a terminal 401** rather than a soft-20
 verifiable caller can never succeed. Every identity field written into the record (`userId` from the
 ID-token `sub`, `userLogin`, `userDisplayName`, `orgId`, `stackNamespace`, `recordedAt`) is stamped
 **server-side from the verified request context**; body-supplied identity is never read (the typed
-request struct has nowhere to put it). Writes route through the plugin backend because a live RBAC
-probe showed Viewer tokens are rejected (403) on direct aggregated-API creates while reads succeed.
-The request body is limited to one 64 KiB JSON value. A successful write invalidates the read cache
-with a generation fence so an older in-flight LIST cannot make stale data fresh again.
+request struct has nowhere to put it). `userLogin`/`userDisplayName` are best-effort display
+snapshots only (ID-token claims, then the `X-Grafana-User` header) — they gate nothing, and the
+read path joins exclusively on `userId`. Authorization is delegated to App Platform RBAC on the
+caller's own forwarded identity, so the proxy adds no privilege. **Interim:** a live RBAC probe
+showed Viewer tokens are rejected (403) on aggregated-API creates while reads succeed; because the
+proxy forwards the same Viewer identity, Viewer completions currently fail terminal upstream and
+are silently dropped by the client — resolving live Viewer attribution is a tracked merge gate for
+un-darking the feature.
+The request body is limited to one 64 KiB JSON value with per-field byte caps on free text. A
+successful write invalidates the read cache with a generation fence so an older in-flight LIST
+cannot make stale data fresh again, and clears the negative-cache cooldown.
 
 The single future-hardening item is cryptographic verification of the ID token against
 Grafana's JWKS via `github.com/grafana/authlib`; it is not wired today because it needs runtime

@@ -76,10 +76,10 @@ export function currentCompletionPlatform(): CompletionPlatform {
 
 function classifyWriteError(err: unknown): WriteOutcome {
   const status = extractStatus(err);
-  // TODO: this 404 -> whole-feature session disarm tolerates deployment skew
-  // (main may deploy to environments without the App Platform endpoints / backend
-  // proxy routes yet). Needed for this PR's review/merge window; strip once wide
-  // deployment of those endpoints and proxy routes is verified.
+  // 404 is the reserved structural "route not deployed here" signal (route
+  // absent, toggle off, no App Platform aggregation on this stack); the backend
+  // remaps upstream per-record 404s to 422 so they can never land here. The
+  // resulting disarm is session-only — persisted items survive for the next load.
   if (status === 404) {
     return { kind: 'route-missing' };
   }

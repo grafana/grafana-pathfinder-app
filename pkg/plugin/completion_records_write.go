@@ -17,13 +17,18 @@ import (
 // Completion Records durable write proxy (docs/design/BACKEND_PROXY_PATTERN.md).
 //
 // POST /completion-records persists one terminal completion as a CompletionRecord
-// in the stack's aggregated App Platform store. A live RBAC probe (2026-07-23)
-// showed Viewer service-account tokens get 403 on direct creates against this API
-// group while reads succeed, so the front end cannot write for Viewers — writes
-// route through here and talk to App Platform with the caller's forwarded
-// identity. Identity/org/stack are stamped SERVER-SIDE from the verified request
-// context and never trusted from the body (the CRD's manifest-only posture means
-// it enforces field PRESENCE but not TRUTHFULNESS — that is this writer's job).
+// in the stack's aggregated App Platform store. Identity/org/stack are stamped
+// SERVER-SIDE from the verified request context and never trusted from the body
+// (the CRD's manifest-only posture means it enforces field PRESENCE but not
+// TRUTHFULNESS — that is this writer's job). Authorization is delegated to App
+// Platform RBAC on the caller's own forwarded identity; the proxy adds no
+// privilege beyond what that token gets upstream.
+//
+// INTERIM: a live RBAC probe (2026-07-23) showed Viewer tokens get 403 on
+// creates against this API group while reads succeed. Because this proxy
+// forwards the same Viewer identity, Viewer completions currently fail terminal
+// upstream and are silently dropped by the client. Live Viewer attribution is a
+// tracked merge gate for un-darking this feature.
 //
 // Response contract for the front-end retry queue (RFC §6.9):
 //   - 201  created (durable).
@@ -122,9 +127,9 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 
 	creator, namespace, available, reason := a.resolveCompletionWriteBackend(r)
 	if !available {
-		// Structurally can't write here ("never works here"). Terminal for the
-		// client this session; the front end re-probes capability on a later load,
-		// so a stack that gains the backend later starts recording then.
+		// Structurally can't write here ("never works here"). Disarms the client
+		// for this session; the front end re-arms on a later app load and
+		// re-attempts, so a stack that gains the backend later starts recording then.
 		a.writeError(w, reason, http.StatusNotFound)
 		return
 	}

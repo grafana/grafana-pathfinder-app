@@ -64,8 +64,8 @@ export function onPluginStart(): void {
   // Dev mode is lazily initialized to avoid unnecessary API calls for anonymous users
   initializeContextServices();
 
-  // Arm the durable completion-write hook (Track 2). Capability-gated and
-  // fire-and-forget: it never blocks startup and never throws — on stacks
-  // without App Platform aggregation it no-ops and behavior is unchanged.
+  // Arm the durable completion-write hook (Track 2). Fire-and-forget: it
+  // no-ops without a resolvable user/org identity, and on stacks without the
+  // write route the first POST's 404 disarms it for the session.
   void armCompletionWriteHook();
 }
