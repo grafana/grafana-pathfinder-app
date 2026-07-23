@@ -56,6 +56,7 @@ let attempted = false;
 let queue: WriteQueue | null = null;
 let unsubscribe: (() => void) | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
+let draining = false;
 
 // Facts buffered within one synchronous completion burst, flushed together so
 // the burst can be normalized to a single durable record (see flushBurst).
@@ -166,15 +167,24 @@ function scheduleDrain(delayMs: number): void {
 }
 
 async function drain(): Promise<void> {
-  if (!queue) {
+  // Single-drain re-entrancy guard: a completion enqueued during processDue's
+  // `await send()` schedules a fresh timer (timer is nulled before the async
+  // drain runs), which would start a second concurrent processDue and re-POST
+  // the still-in-flight item. Only one drain runs at a time; work enqueued
+  // during it is picked up by the reschedule below (processDue's result
+  // reflects the full queue at completion).
+  if (!queue || draining) {
     return;
   }
+  draining = true;
   let result;
   try {
     result = await queue.processDue();
   } catch (error) {
     logger.debug('completion write: drain failed (ignored)', { error: String(error) });
     return;
+  } finally {
+    draining = false;
   }
   if (result.disarmed) {
     teardown();
@@ -247,6 +257,7 @@ export function __resetCompletionWriteHookForTests(): void {
   queue = null;
   unsubscribe = null;
   timer = null;
+  draining = false;
   burst = [];
   burstScheduled = false;
 }

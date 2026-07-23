@@ -213,6 +213,57 @@ describe('error handling', () => {
   });
 });
 
+describe('concurrent drains (regression: no double-send)', () => {
+  function fireTimer(): void {
+    const cb = timerCb;
+    timerCb = null;
+    cb?.();
+  }
+
+  it('does not re-POST an in-flight item when a second drain fires mid-send', async () => {
+    const releases: Array<(o: WriteOutcome) => void> = [];
+    const sendCalls: CompletionWriteBody[] = [];
+    const send = (b: CompletionWriteBody): Promise<WriteOutcome> => {
+      sendCalls.push(b);
+      // Hold the first send open so a second drain can start while it is in
+      // flight; resolve later sends immediately.
+      if (sendCalls.length === 1) {
+        return new Promise<WriteOutcome>((resolve) => {
+          releases.push(resolve);
+        });
+      }
+      return Promise.resolve({ kind: 'created' });
+    };
+
+    await armCompletionWriteHook(deps({ send }));
+    await runTimer(); // initial empty drain
+
+    recordGuideCompletion(guideFact({ guideId: 'first' }));
+    runDefer();
+
+    // Fire the drain: processDue starts and suspends on the first send's await.
+    fireTimer();
+    await flushMicro();
+    expect(sendCalls).toHaveLength(1);
+
+    // A second completion arrives mid-send and schedules a fresh timer. Firing
+    // it must NOT start a concurrent processDue that re-sends the in-flight item.
+    recordGuideCompletion(guideFact({ guideId: 'second' }));
+    runDefer();
+    fireTimer();
+    await flushMicro();
+    expect(sendCalls).toHaveLength(1); // still only the first item
+
+    // Release the first send; the reschedule then drains the second item once.
+    releases[0]?.({ kind: 'created' });
+    await flushMicro();
+    await runTimer();
+
+    const ids = sendCalls.map((b) => b.guideId).sort();
+    expect(ids).toEqual(['first', 'second']);
+  });
+});
+
 describe('deployment-skew: missing route matrix', () => {
   it('capability 404 (route family absent) never arms', async () => {
     // fetchCompletionCapability maps 404 → false; the hook sees `false`.
