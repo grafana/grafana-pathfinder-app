@@ -156,6 +156,11 @@ var (
 	// URL, namespace) is checked BEFORE this override so the structural-
 	// unavailability path stays testable.
 	completionListerOverride completionRecordLister
+
+	// completionCreatorOverride injects a fake creator in tests (write path),
+	// mirroring completionListerOverride. Config resolution is checked BEFORE
+	// this override so the structural-unavailability path stays testable.
+	completionCreatorOverride completionRecordCreator
 )
 
 func completionCacheInit() {
@@ -194,6 +199,19 @@ func resetCompletionRecordsCache() {
 	completionLastForced = nil
 	completionLastFailure = nil
 	completionStats = nil
+}
+
+// invalidateCompletionIndex drops a namespace's collated read cache so the next
+// GET /completion-records/my refreshes from upstream. Called after a successful
+// write so the new record surfaces promptly rather than after the TTL. The
+// failure/forced/stats bookkeeping is left intact — only the served index is
+// dropped, which forces exactly one refresh on the next read.
+func invalidateCompletionIndex(namespace string) {
+	completionCacheMu.Lock()
+	defer completionCacheMu.Unlock()
+	if completionCacheEntries != nil {
+		delete(completionCacheEntries, namespace)
+	}
 }
 
 // getCompletionIndex returns the collated index for a namespace, refreshing at
@@ -557,26 +575,50 @@ func (a *App) writeMyCompletions(w http.ResponseWriter, resp myCompletionsRespon
 // never from a query parameter. Config resolution runs before the test-only
 // lister override so the structural-unavailability branch stays testable.
 func (a *App) resolveCompletionBackend(r *http.Request) (lister completionRecordLister, namespace string, available bool, reason string) {
+	appURL, namespace, idToken, available, reason := a.resolveCompletionConfig(r)
+	if !available {
+		return nil, namespace, false, reason
+	}
+	if completionListerOverride != nil {
+		return completionListerOverride, namespace, true, ""
+	}
+	return newCompletionHTTPClient(appURL, idToken, a.ctxLogger(r.Context())), namespace, true, ""
+}
+
+// resolveCompletionWriteBackend is the write-path companion to
+// resolveCompletionBackend: same structural-availability gate, but it returns a
+// creator (POST) and honors completionCreatorOverride for tests.
+func (a *App) resolveCompletionWriteBackend(r *http.Request) (creator completionRecordCreator, namespace string, available bool, reason string) {
+	appURL, namespace, idToken, available, reason := a.resolveCompletionConfig(r)
+	if !available {
+		return nil, namespace, false, reason
+	}
+	if completionCreatorOverride != nil {
+		return completionCreatorOverride, namespace, true, ""
+	}
+	return newCompletionHTTPClient(appURL, idToken, a.ctxLogger(r.Context())), namespace, true, ""
+}
+
+// resolveCompletionConfig resolves the shared "is the aggregated CRUD API
+// structurally reachable?" gate for both the read and write proxies: feature
+// toggle on, an app URL, and a trusted-context namespace (never a query param).
+// Returns available=false with a machine reason when any is missing.
+func (a *App) resolveCompletionConfig(r *http.Request) (appURL, namespace, idToken string, available bool, reason string) {
 	namespace = backend.PluginConfigFromContext(r.Context()).Namespace
 
 	cfg := config.GrafanaConfigFromContext(r.Context())
 	if cfg == nil {
-		return nil, namespace, false, reasonBackendUnavailable
+		return "", namespace, "", false, reasonBackendUnavailable
 	}
 	if !cfg.FeatureToggles().IsEnabled(pathfinderBackendAggregationToggle) {
-		return nil, namespace, false, reasonBackendUnavailable
+		return "", namespace, "", false, reasonBackendUnavailable
 	}
 	appURL, err := cfg.AppURL()
 	if err != nil || appURL == "" || namespace == "" {
-		return nil, namespace, false, reasonBackendUnavailable
+		return "", namespace, "", false, reasonBackendUnavailable
 	}
-
-	if completionListerOverride != nil {
-		return completionListerOverride, namespace, true, ""
-	}
-
-	idToken := r.Header.Get(backend.GrafanaUserSignInTokenHeaderName)
-	return newCompletionHTTPClient(appURL, idToken, a.ctxLogger(r.Context())), namespace, true, ""
+	idToken = r.Header.Get(backend.GrafanaUserSignInTokenHeaderName)
+	return appURL, namespace, idToken, true, ""
 }
 
 // isTerminalCompletionError reports whether an upstream failure is terminal

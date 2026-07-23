@@ -41,6 +41,9 @@ type App struct {
 
 	// Per-user rate limiter for POST /coda/exec
 	execRateLimiter *execRateLimiter
+
+	// Per-user rate limiter for POST /completion-records (RFC §9 flood guard)
+	completionWriteRateLimiter *completionWriteRateLimiter
 }
 
 // NewApp creates a new App instance.
@@ -55,11 +58,12 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 	}
 
 	app := &App{
-		settings:        settings,
-		logger:          logger,
-		streamSessions:  make(map[string]*streamSession),
-		userVMs:         make(map[string]string),
-		execRateLimiter: newExecRateLimiter(),
+		settings:                   settings,
+		logger:                     logger,
+		streamSessions:             make(map[string]*streamSession),
+		userVMs:                    make(map[string]string),
+		execRateLimiter:            newExecRateLimiter(),
+		completionWriteRateLimiter: newCompletionWriteRateLimiter(),
 	}
 
 	if settings.RefreshToken != "" && settings.CodaAPIURL != "" {

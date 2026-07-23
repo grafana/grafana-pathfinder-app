@@ -1,0 +1,228 @@
+/**
+ * Unit tests for the durable-write retry queue state machine. All dependencies
+ * (clock, sender, storage, RNG) are injected, so these exercise the transitions
+ * directly with no real time or network. `import type` keeps the @grafana/runtime
+ * client module out of this suite entirely.
+ */
+import { createWriteQueue } from './completion-write-queue';
+import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
+
+function body(overrides: Partial<CompletionWriteBody> = {}): CompletionWriteBody {
+  return {
+    guideSource: 'bundled',
+    guideId: 'g1',
+    kind: 'guide',
+    guideTitle: 'G1',
+    guideCategory: 'interactive',
+    completionPercent: 100,
+    source: 'objectives',
+    completedAt: '2026-07-20T00:00:00.000Z',
+    platform: 'cloud',
+    ...overrides,
+  };
+}
+
+function key(b: CompletionWriteBody): string {
+  return `${b.guideSource}␟${b.guideId}`;
+}
+
+interface Sender {
+  send: (b: CompletionWriteBody) => Promise<WriteOutcome>;
+  calls: CompletionWriteBody[];
+}
+
+// sender replays `outcomes` in order, repeating the last one once exhausted.
+function makeSender(outcomes: WriteOutcome[]): Sender {
+  const calls: CompletionWriteBody[] = [];
+  let i = 0;
+  return {
+    calls,
+    send: async (b) => {
+      calls.push(b);
+      const out = outcomes[Math.min(i, outcomes.length - 1)] ?? { kind: 'created' };
+      i += 1;
+      return out;
+    },
+  };
+}
+
+// Tests that don't inject storage fall through to the real jsdom localStorage,
+// which persists across tests in a file — clear it so cases stay isolated.
+beforeEach(() => {
+  try {
+    localStorage.clear();
+  } catch {
+    // no-op
+  }
+});
+
+function makeStorage() {
+  let store: string | null = null;
+  return {
+    read: () => store,
+    write: (v: string) => {
+      store = v;
+    },
+    raw: () => store,
+  };
+}
+
+describe('write queue — enqueue, dedupe, eviction', () => {
+  it('enqueues and, on created, removes the item', async () => {
+    const s = makeSender([{ kind: 'created' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send });
+    expect(q.enqueue(body(), key(body()))).toBe(true);
+    expect(q.size()).toBe(1);
+
+    const r = await q.processDue();
+    expect(s.calls).toHaveLength(1);
+    expect(q.size()).toBe(0);
+    expect(r.nextDelayMs).toBeNull();
+    expect(r.disarmed).toBe(false);
+  });
+
+  it('dedupes on the durable key (bundled-journey double-emit → one record)', async () => {
+    const s = makeSender([{ kind: 'created' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send });
+    const b1 = body({ guideCategory: 'interactive' });
+    const b2 = body({ guideCategory: 'learning-journey' }); // same (guideSource, guideId)
+
+    expect(q.enqueue(b1, key(b1))).toBe(true);
+    expect(q.enqueue(b2, key(b2))).toBe(false); // deduped
+    expect(q.size()).toBe(1);
+  });
+
+  it('evicts oldest-first at the cap', () => {
+    const s = makeSender([{ kind: 'created' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send, maxSize: 2 });
+    q.enqueue(body({ guideId: 'a' }), 'bundled␟a');
+    q.enqueue(body({ guideId: 'b' }), 'bundled␟b');
+    q.enqueue(body({ guideId: 'c' }), 'bundled␟c');
+    expect(q.size()).toBe(2);
+    const keys = q.snapshot().map((i) => i.durableKey);
+    expect(keys).toEqual(['bundled␟b', 'bundled␟c']); // 'a' evicted
+  });
+});
+
+describe('write queue — retry/backoff/terminal/disarm', () => {
+  it('transient increments attempts and reschedules with backoff', async () => {
+    let clock = 0;
+    const s = makeSender([{ kind: 'transient' }, { kind: 'created' }]);
+    const q = createWriteQueue({
+      now: () => clock,
+      send: s.send,
+      random: () => 0.5, // zero jitter
+      baseBackoffMs: 1000,
+    });
+    q.enqueue(body(), key(body()));
+
+    const r1 = await q.processDue();
+    expect(q.size()).toBe(1);
+    expect(r1.nextDelayMs).toBe(1000); // base * 2^0
+    expect(q.snapshot()[0]!.attempts).toBe(1);
+
+    // Not yet due.
+    clock = 999;
+    await q.processDue();
+    expect(s.calls).toHaveLength(1);
+
+    // Due → retried and, on created, removed.
+    clock = 1000;
+    const r2 = await q.processDue();
+    expect(s.calls).toHaveLength(2);
+    expect(q.size()).toBe(0);
+    expect(r2.nextDelayMs).toBeNull();
+  });
+
+  it('honors an upstream Retry-After hint over exponential backoff', async () => {
+    const s = makeSender([{ kind: 'transient', retryAfterMs: 12_000 }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send, random: () => 0.5 });
+    q.enqueue(body(), key(body()));
+    const r = await q.processDue();
+    expect(r.nextDelayMs).toBe(12_000);
+  });
+
+  it('drops a terminal record without retry', async () => {
+    const s = makeSender([{ kind: 'terminal' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send });
+    q.enqueue(body(), key(body()));
+    const r = await q.processDue();
+    expect(q.size()).toBe(0);
+    expect(r.disarmed).toBe(false);
+  });
+
+  it('drops after max attempts', async () => {
+    let clock = 0;
+    const s = makeSender([{ kind: 'transient' }]);
+    const q = createWriteQueue({
+      now: () => clock,
+      send: s.send,
+      random: () => 0.5,
+      maxAttempts: 3,
+      baseBackoffMs: 1,
+      maxBackoffMs: 10,
+    });
+    q.enqueue(body(), key(body()));
+    for (let i = 0; i < 5 && q.size() > 0; i++) {
+      await q.processDue();
+      clock += 100; // always past the next backoff
+    }
+    expect(q.size()).toBe(0);
+    expect(s.calls.length).toBe(3); // maxAttempts sends, then dropped
+  });
+
+  it('route-missing disarms: clears the queue and refuses further enqueue', async () => {
+    const s = makeSender([{ kind: 'route-missing' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send });
+    q.enqueue(body({ guideId: 'a' }), 'bundled␟a');
+    q.enqueue(body({ guideId: 'b' }), 'bundled␟b');
+    const r = await q.processDue();
+    expect(r.disarmed).toBe(true);
+    expect(q.isDisarmed()).toBe(true);
+    expect(q.size()).toBe(0);
+    expect(q.enqueue(body({ guideId: 'c' }), 'bundled␟c')).toBe(false);
+  });
+
+  it('a rejecting sender is treated as transient, never bubbling', async () => {
+    const q = createWriteQueue({
+      now: () => 0,
+      send: async () => {
+        throw new Error('boom');
+      },
+      random: () => 0.5,
+    });
+    q.enqueue(body(), key(body()));
+    await expect(q.processDue()).resolves.toEqual(expect.objectContaining({ disarmed: false }));
+    expect(q.size()).toBe(1); // retained for retry
+  });
+});
+
+describe('write queue — persistence', () => {
+  it('persists pending items and reloads them into a fresh queue', async () => {
+    const storage = makeStorage();
+    const s1 = makeSender([{ kind: 'transient' }]);
+    const q1 = createWriteQueue({
+      now: () => 0,
+      send: s1.send,
+      read: storage.read,
+      write: storage.write,
+      random: () => 0.5,
+    });
+    q1.enqueue(body(), key(body()));
+    await q1.processDue(); // transient → still queued, persisted
+    expect(q1.size()).toBe(1);
+
+    const s2 = makeSender([{ kind: 'created' }]);
+    const q2 = createWriteQueue({ now: () => 1_000_000, send: s2.send, read: storage.read, write: storage.write });
+    expect(q2.size()).toBe(1); // reloaded
+    // Reload also re-seeds dedupe: the same durable key won't double-enqueue.
+    expect(q2.enqueue(body(), key(body()))).toBe(false);
+  });
+
+  it('tolerates corrupt persisted state', () => {
+    const storage = makeStorage();
+    storage.write('not json at all');
+    const q = createWriteQueue({ now: () => 0, send: makeSender([]).send, read: storage.read, write: storage.write });
+    expect(q.size()).toBe(0);
+  });
+});

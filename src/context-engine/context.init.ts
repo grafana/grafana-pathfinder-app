@@ -2,6 +2,7 @@ import { getBackendSrv, config } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { initializeEchoLogging, initializeFromRecentEvents } from './context-event-bus';
 import { logger } from '../lib/logging';
+import { armCompletionWriteHook } from '../completion-records';
 
 /**
  * Fetch interactive guides from Pathfinder backend
@@ -62,4 +63,9 @@ export function onPluginStart(): void {
   // Initialize context services only
   // Dev mode is lazily initialized to avoid unnecessary API calls for anonymous users
   initializeContextServices();
+
+  // Arm the durable completion-write hook (Track 2). Capability-gated and
+  // fire-and-forget: it never blocks startup and never throws — on stacks
+  // without App Platform aggregation it no-ops and behavior is unchanged.
+  void armCompletionWriteHook();
 }

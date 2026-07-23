@@ -33,6 +33,7 @@ describe('StorageKeys — stable string contract', () => {
       FULLSCREEN_SECTION_INFO: 'grafana-pathfinder-app-fullscreen-section-info',
       MILESTONE_COMPLETION: 'grafana-pathfinder-app-milestone-completion',
       LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
+      COMPLETION_WRITE_QUEUE: 'grafana-pathfinder-app-completion-write-queue',
       GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
 
       // Experiment / feature-flag state

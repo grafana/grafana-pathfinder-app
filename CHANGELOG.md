@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.14.3
+
+### Added
+
+- **Durable completion records**: Terminal guide and journey completions are now persisted as `CompletionRecord`s in the stack's Grafana App Platform store, so a learner's completion history survives beyond browser local storage — reliably for every role including Viewers, whose writes route through the plugin backend (which talks to App Platform with the plugin's own identity) rather than the aggregated API that rejects Viewer creates. The write never disturbs the completion moment: each completion is enqueued to a browser-persisted, bounded retry queue (backoff with jitter, oldest-first eviction at the cap) and drained in the background, so badges, toasts, and streaks paint exactly as before. The feature is gated on a capability probe, so on instances without App Platform aggregation nothing arms and behavior is byte-for-byte unchanged. Durability boundary: a completion is durable only once its write lands; a session that ends with the queue non-empty may lose those not-yet-persisted writes, and localStorage remains the user's own local completion view regardless. As a temporary deployment-skew measure, a missing write route resolves silently to "feature unavailable" and is re-probed on a later session. (Epic #1411)
+
 ## 2.14.2
 
 ### Fixed
