@@ -26,7 +26,7 @@ import (
 // it enforces field PRESENCE but not TRUTHFULNESS — that is this writer's job).
 //
 // Response contract for the front-end retry queue (RFC §6.9):
-//   - 2xx  created (durable).
+//   - 201  created (durable).
 //   - 4xx  terminal — validation / auth / schema; the write will never succeed
 //          as posted, so the client must drop it (no retry).
 //   - 429 / 5xx / network — transient; the client should retry with backoff,
@@ -119,7 +119,7 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	req, err := decodeCompletionWriteRequest(r)
+	req, err := decodeCompletionWriteRequest(w, r)
 	if err != nil {
 		a.writeError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -161,10 +161,13 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 // struct. Unknown fields (including any smuggled identity) are ignored rather
 // than rejected — the typed struct simply has nowhere to put them, which is how
 // "never trust client identity" is enforced without brittle skew failures.
-func decodeCompletionWriteRequest(r *http.Request) (completionWriteRequest, error) {
+func decodeCompletionWriteRequest(w http.ResponseWriter, r *http.Request) (completionWriteRequest, error) {
 	var req completionWriteRequest
-	dec := json.NewDecoder(io.LimitReader(r.Body, completionWriteMaxBodyBytes+1))
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, completionWriteMaxBodyBytes))
 	if err := dec.Decode(&req); err != nil {
+		return req, fmt.Errorf("invalid request body")
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
 		return req, fmt.Errorf("invalid request body")
 	}
 	return req, nil
@@ -262,7 +265,11 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 		}
 		w.Header().Set("Retry-After", retryAfter)
 		logger.Debug("completion write transient upstream failure", "status", status, "error", err)
-		a.writeError(w, "completion-write-unavailable", status)
+		responseStatus := status
+		if status >= 200 && status < 300 {
+			responseStatus = http.StatusBadGateway
+		}
+		a.writeError(w, "completion-write-unavailable", responseStatus)
 		return
 	}
 	// Terminal 4xx: schema/validation rejected upstream, or identity-scoped

@@ -125,9 +125,10 @@ type completionFailure struct {
 // completionRefreshFlight is a single-flight handle: concurrent cache-miss
 // callers for a namespace wait on `done` and share one upstream LIST.
 type completionRefreshFlight struct {
-	done  chan struct{}
-	index *completionIndex
-	err   error
+	done       chan struct{}
+	generation uint64
+	index      *completionIndex
+	err        error
 }
 
 // completionCacheStats are per-namespace vital signs, included in refresh-time
@@ -150,6 +151,7 @@ var (
 	completionLastForced   map[string]time.Time
 	completionLastFailure  map[string]completionFailure
 	completionStats        map[string]*completionCacheStats
+	completionGenerations  map[string]uint64
 
 	// completionListerOverride injects a fake lister in tests. nil selects the
 	// real per-request HTTP client. Config resolution (feature toggle, app
@@ -179,6 +181,9 @@ func completionCacheInit() {
 	if completionStats == nil {
 		completionStats = map[string]*completionCacheStats{}
 	}
+	if completionGenerations == nil {
+		completionGenerations = map[string]uint64{}
+	}
 }
 
 func completionStatsFor(namespace string) *completionCacheStats {
@@ -199,6 +204,7 @@ func resetCompletionRecordsCache() {
 	completionLastForced = nil
 	completionLastFailure = nil
 	completionStats = nil
+	completionGenerations = nil
 }
 
 // invalidateCompletionIndex drops a namespace's collated read cache so the next
@@ -209,9 +215,9 @@ func resetCompletionRecordsCache() {
 func invalidateCompletionIndex(namespace string) {
 	completionCacheMu.Lock()
 	defer completionCacheMu.Unlock()
-	if completionCacheEntries != nil {
-		delete(completionCacheEntries, namespace)
-	}
+	completionCacheInit()
+	completionGenerations[namespace]++
+	delete(completionCacheEntries, namespace)
 }
 
 // getCompletionIndex returns the collated index for a namespace, refreshing at
@@ -264,7 +270,8 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 		}
 	}
 
-	if fl := completionFlights[namespace]; fl != nil {
+	generation := completionGenerations[namespace]
+	if fl := completionFlights[namespace]; fl != nil && fl.generation == generation {
 		completionCacheMu.Unlock()
 		select {
 		case <-fl.done:
@@ -274,7 +281,7 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 		}
 	}
 
-	fl := &completionRefreshFlight{done: make(chan struct{})}
+	fl := &completionRefreshFlight{done: make(chan struct{}), generation: generation}
 	completionFlights[namespace] = fl
 	completionCacheMu.Unlock()
 
@@ -287,6 +294,22 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 
 	completionCacheMu.Lock()
 	stats = completionStatsFor(namespace)
+	if completionGenerations[namespace] != fl.generation {
+		if err == nil {
+			fl.index = idx
+		} else if entry != nil {
+			fl.index = entry.index
+			fl.err = err
+		} else {
+			fl.err = err
+		}
+		if completionFlights[namespace] == fl {
+			delete(completionFlights, namespace)
+		}
+		completionCacheMu.Unlock()
+		close(fl.done)
+		return fl.index, fl.err
+	}
 	if err == nil {
 		stats.refreshes++
 		if _, hadFailure := completionLastFailure[namespace]; hadFailure {
@@ -320,7 +343,9 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 			fl.err = err
 		}
 	}
-	delete(completionFlights, namespace)
+	if completionFlights[namespace] == fl {
+		delete(completionFlights, namespace)
+	}
 	completionCacheMu.Unlock()
 	close(fl.done)
 

@@ -153,7 +153,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 }
 
 // create POSTs a single object to a namespace collection (the write companion
-// to listPage). It returns the created object body on 2xx, or an
+// to listPage). It returns the created object body on 200/201, or an
 // appPlatformUpstreamError carrying the upstream status (and Retry-After, when
 // present) so the caller can classify transient/terminal/identity-scoped and
 // echo the upstream backpressure hint. Body is bounded by maxBytes.
@@ -233,10 +233,11 @@ func upstreamRetryAfterOf(err error) string {
 	return ""
 }
 
-// isTransientUpstreamStatus reports whether an HTTP status should be treated
-// as transient (retryable): 429 and any 5xx. All other non-2xx are terminal.
+// isTransientUpstreamStatus reports whether an HTTP status should be retried:
+// 429, 5xx, and unexpected 2xx responses that did not satisfy an operation's
+// narrower success contract.
 func isTransientUpstreamStatus(status int) bool {
-	return status == http.StatusTooManyRequests || status >= 500
+	return status == http.StatusTooManyRequests || status >= 500 || (status >= 200 && status < 300)
 }
 
 // isIdentityScopedUpstreamStatus reports whether a status means the upstream

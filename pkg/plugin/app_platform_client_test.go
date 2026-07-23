@@ -3,8 +3,10 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -87,6 +89,7 @@ func TestAppPlatformListClient_UpstreamErrorClassification(t *testing.T) {
 		{http.StatusUnauthorized, false, true},
 		{http.StatusForbidden, false, true},
 		{http.StatusNotFound, false, false},
+		{http.StatusAccepted, true, false},
 	}
 	for _, tt := range cases {
 		if got := isTransientUpstreamStatus(tt.status); got != tt.transient {
@@ -95,5 +98,87 @@ func TestAppPlatformListClient_UpstreamErrorClassification(t *testing.T) {
 		if got := isIdentityScopedUpstreamStatus(tt.status); got != tt.identityScoped {
 			t.Errorf("isIdentityScopedUpstreamStatus(%d) = %v, want %v", tt.status, got, tt.identityScoped)
 		}
+	}
+}
+
+func TestAppPlatformCreateClient_RequestContract(t *testing.T) {
+	const payload = `{"apiVersion":"g/v1","kind":"Thing"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/apis/g/v1/namespaces/stacks-1/things" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer id-token-abc" {
+			t.Errorf("Authorization = %q", got)
+		}
+		if got := r.Header.Get(backend.GrafanaUserSignInTokenHeaderName); got != "id-token-abc" {
+			t.Errorf("%s = %q", backend.GrafanaUserSignInTokenHeaderName, got)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Errorf("Content-Type = %q", got)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if string(body) != payload {
+			t.Errorf("body = %q", body)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"metadata":{"name":"created"}}`))
+	}))
+	defer srv.Close()
+
+	client := newAppPlatformListClient(srv.URL, "id-token-abc", log.DefaultLogger)
+	body, err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(payload), 1024)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if string(body) != `{"metadata":{"name":"created"}}` {
+		t.Fatalf("response body = %q", body)
+	}
+}
+
+func TestAppPlatformCreateClient_ResponseContract(t *testing.T) {
+	tests := []struct {
+		name           string
+		status         int
+		response       string
+		maxBytes       int64
+		retryAfter     string
+		wantErr        bool
+		wantStatus     int
+		wantRetryAfter string
+	}{
+		{"200 accepted", http.StatusOK, `{}`, 16, "", false, 0, ""},
+		{"201 accepted", http.StatusCreated, `{}`, 16, "", false, 0, ""},
+		{"202 rejected", http.StatusAccepted, `{}`, 16, "", true, http.StatusAccepted, ""},
+		{"429 preserves retry-after", http.StatusTooManyRequests, `{}`, 16, "12", true, http.StatusTooManyRequests, "12"},
+		{"oversized response", http.StatusCreated, strings.Repeat("x", 17), 16, "", true, 0, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tc.retryAfter != "" {
+					w.Header().Set("Retry-After", tc.retryAfter)
+				}
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.response))
+			}))
+			defer srv.Close()
+
+			client := newAppPlatformListClient(srv.URL, "id-token-abc", log.DefaultLogger)
+			_, err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(`{}`), tc.maxBytes)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if tc.wantStatus != 0 {
+				if got, ok := upstreamStatusOf(err); !ok || got != tc.wantStatus {
+					t.Fatalf("upstream status = %d, %v; want %d", got, ok, tc.wantStatus)
+				}
+			}
+			if got := upstreamRetryAfterOf(err); got != tc.wantRetryAfter {
+				t.Fatalf("Retry-After = %q, want %q", got, tc.wantRetryAfter)
+			}
+		})
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -287,6 +288,24 @@ func TestCompletionWrite_Validation(t *testing.T) {
 	}
 }
 
+func TestDecodeCompletionWriteRequest_RejectsTrailingAndOversizedBodies(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"trailing JSON value", `{"guideId":"a"} {"guideId":"b"}`},
+		{"oversized", `{"guideTitle":"` + strings.Repeat("x", completionWriteMaxBodyBytes) + `"}`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/completion-records", strings.NewReader(tc.body))
+			if _, err := decodeCompletionWriteRequest(httptest.NewRecorder(), r); err == nil {
+				t.Fatal("expected invalid request body")
+			}
+		})
+	}
+}
+
 // completedAt legitimately delayed by days (offline queue) must be accepted.
 func TestCompletionWrite_ToleratesDelayedOfflineRetry(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
@@ -317,6 +336,7 @@ func TestCompletionWrite_UpstreamErrorTaxonomy(t *testing.T) {
 		{"terminal 400 schema", &appPlatformUpstreamError{status: 400, msg: "bad spec"}, http.StatusBadRequest, "-"},
 		{"terminal 422 schema", &appPlatformUpstreamError{status: 422, msg: "unprocessable"}, 422, "-"},
 		{"identity-scoped 403", &appPlatformUpstreamError{status: 403, msg: "forbidden"}, http.StatusForbidden, "-"},
+		{"unexpected success status", &appPlatformUpstreamError{status: 202, msg: "not created"}, http.StatusBadGateway, ""},
 		{"network error is transient", fmt.Errorf("dial tcp: connection refused"), http.StatusServiceUnavailable, ""},
 	}
 	for _, tc := range cases {
