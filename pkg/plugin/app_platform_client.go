@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -170,4 +171,27 @@ func isTransientUpstreamStatus(status int) bool {
 // condition. Identity-scoped failures must never enter a shared cache (§4).
 func isIdentityScopedUpstreamStatus(status int) bool {
 	return status == http.StatusUnauthorized || status == http.StatusForbidden
+}
+
+// isTerminalUpstreamError reports whether an upstream failure is terminal (a
+// non-transient 4xx per §5). Network/timeout/decode errors carry no HTTP
+// status and are treated as transient (retryable). Error-level companion to
+// isTransientUpstreamStatus, shared by every proxy route.
+func isTerminalUpstreamError(err error) bool {
+	var ue *appPlatformUpstreamError
+	if errors.As(err, &ue) {
+		return !isTransientUpstreamStatus(ue.status)
+	}
+	return false
+}
+
+// isIdentityScopedUpstreamError reports whether an upstream failure means the
+// aggregator rejected this caller's forwarded identity (401/403). Error-level
+// companion to isIdentityScopedUpstreamStatus, shared by every proxy route.
+func isIdentityScopedUpstreamError(err error) bool {
+	var ue *appPlatformUpstreamError
+	if errors.As(err, &ue) {
+		return isIdentityScopedUpstreamStatus(ue.status)
+	}
+	return false
 }
