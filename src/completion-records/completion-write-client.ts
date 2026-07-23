@@ -114,6 +114,10 @@ export function currentCompletionPlatform(): CompletionPlatform {
 
 function classifyWriteError(err: unknown): WriteOutcome {
   const status = extractStatus(err);
+  // TODO: this 404 -> whole-feature session disarm tolerates deployment skew
+  // (main may deploy to environments without the App Platform endpoints / backend
+  // proxy routes yet). Needed for this PR's review/merge window; strip once wide
+  // deployment of those endpoints and proxy routes is verified.
   if (status === 404) {
     return { kind: 'route-missing' };
   }
