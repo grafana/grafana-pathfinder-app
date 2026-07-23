@@ -630,10 +630,11 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     selection.clearSelection();
   }, [selection, editor]);
 
-  // Load guide from backend. `trackLoadedGuide` is a stable useCallback, so
-  // destructuring it keeps this callback from being recreated every render
-  // (the whole backendSaveFlow return is a fresh object literal per render).
-  const { trackLoadedGuide } = backendSaveFlow;
+  // useBackendSaveFlow returns a fresh object literal every render, so depending
+  // on `backendSaveFlow` directly defeats the memoization below. Destructure the
+  // stable pieces (trackLoadedGuide is a []-stable useCallback; the others are
+  // primitives) and depend on those instead.
+  const { trackLoadedGuide, publishedStatus, hasUnsyncedChanges } = backendSaveFlow;
   const handleLoadGuideFromBackend = useCallback(
     (guide: JsonGuide, resourceName: string) => {
       editor.loadGuide(guide);
@@ -654,8 +655,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     const currentGuide = editor.getGuide();
     const hasBlocksNow = currentGuide.blocks && currentGuide.blocks.length > 0;
     // Has content, and either never saved to backend or diverged from the last backend save
-    const hasChanges =
-      hasBlocksNow && (backendSaveFlow.publishedStatus === 'not-saved' || backendSaveFlow.hasUnsyncedChanges);
+    const hasChanges = hasBlocksNow && (publishedStatus === 'not-saved' || hasUnsyncedChanges);
 
     if (hasChanges) {
       // Show warning modal
@@ -664,7 +664,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       // No changes to lose, just create new guide
       guideOps.handleNewGuide();
     }
-  }, [editor, backendSaveFlow.publishedStatus, backendSaveFlow.hasUnsyncedChanges, modals, guideOps]);
+  }, [editor, publishedStatus, hasUnsyncedChanges, modals, guideOps]);
 
   // Modified form submit to handle section insertions, nested block edits, and conditional branch blocks
   const handleBlockFormSubmitWithSection = useCallback(
