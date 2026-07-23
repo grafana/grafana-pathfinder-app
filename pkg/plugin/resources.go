@@ -18,6 +18,9 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/sample-apps", a.handleSampleApps)
 	mux.HandleFunc("/alloy-scenarios", a.handleAlloyScenarios)
 	mux.HandleFunc("/package-recommendations", a.handlePackageRecommendations)
+	mux.HandleFunc("/completion-records/my", a.handleMyCompletions)
+	mux.HandleFunc("/completion-records/capability", a.handleCompletionCapability)
+	mux.HandleFunc("/custom-guide-repository", a.handleCustomGuideRepository)
 	mux.HandleFunc("/health", a.handleHealth)
 }
 

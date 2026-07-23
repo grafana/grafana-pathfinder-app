@@ -1,0 +1,30 @@
+# Dedicated Pathfinder E2E runner image.
+# This image is separate from Dockerfile.cli because it includes Playwright,
+# Chromium, and the browser runner.
+
+FROM node:24-bookworm@sha256:5711a0d445a1af54af9589066c646df387d1831a608226f4cd694fc59e745059
+
+ARG RUNNER_VERSION=source
+ENV PATHFINDER_E2E_RUNNER_VERSION=${RUNNER_VERSION}
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+WORKDIR /app
+
+COPY package.json package-lock.json .npmrc ./
+RUN npm ci --no-audit --no-fund \
+    && npx playwright install --with-deps chromium \
+    && npm cache clean --force \
+    && chown -R node:node /ms-playwright \
+    && chown node:node /app \
+    && mkdir -p /workspace \
+    && chown node:node /workspace
+
+COPY --chown=node:node . .
+USER node
+RUN npm run build:cli \
+    && chmod +x scripts/e2e-runner-entrypoint.sh
+
+WORKDIR /workspace
+
+ENTRYPOINT ["/app/scripts/e2e-runner-entrypoint.sh"]
+CMD ["--help"]

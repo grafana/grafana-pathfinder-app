@@ -35,13 +35,13 @@ import {
 import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../../docs-retrieval';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
-import type { CombinedLearningJourneyPanel } from '../docs-panel';
+import type { DocsPanelModelOperations } from '../types';
 import { cleanDocsUrl } from '../utils';
 
 export type MilestoneToolbarSurface = 'sidebar' | 'fullscreen' | 'floating';
 
 export interface LearningJourneyMilestoneToolbarProps {
-  panel: CombinedLearningJourneyPanel;
+  panel: DocsPanelModelOperations;
   activeTab: LearningJourneyTab;
   /**
    * Where this toolbar lives — drives the analytics `interaction_location`
@@ -157,7 +157,10 @@ export function LearningJourneyMilestoneToolbar({
       if (!hasInteractiveSteps) {
         const slug = getMilestoneSlug(activeTab.currentUrl);
         if (slug) {
-          void markMilestoneDone(activeTab.baseUrl, slug, lj.totalMilestones);
+          void markMilestoneDone(activeTab.baseUrl, slug, lj.totalMilestones, {
+            packageManifest: activeTab.content?.metadata?.packageManifest,
+            guideTitle: activeTab.title,
+          });
         }
       }
     }

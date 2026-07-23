@@ -41,7 +41,7 @@ import {
   printPreflightChecks,
   printDiscoveryResults,
 } from './utils/console-reporter';
-import type { TestResultsData } from '../../src/cli/e2e/e2e-reporter';
+import { contentDigest, type TestResultsData } from '../../src/cli/e2e/e2e-reporter';
 import { E2E_ENV, isEnvFlagEnabled } from '../../src/cli/e2e/e2e-runner-contract';
 import {
   createScopedBearerTokenAuthStrategy,
@@ -78,7 +78,9 @@ function writeResultsFile(
   guide: { id: string; title: string; path: string },
   targetUrl: string,
   timestamp: string,
-  allStepsResult: AllStepsResult
+  allStepsResult: AllStepsResult,
+  guideContent: string,
+  outcome: TestResultsData['outcome']
 ): void {
   const resultsFilePath = process.env[E2E_ENV.RESULTS_FILE_PATH];
   if (!resultsFilePath) {
@@ -86,8 +88,13 @@ function writeResultsFile(
   }
 
   const data: TestResultsData = {
-    guide: { ...guide, targetUrl },
+    guide: { ...guide, targetUrl, contentDigest: contentDigest(guideContent) },
     timestamp,
+    startedAt: timestamp,
+    endedAt: new Date().toISOString(),
+    outcome,
+    errorCode: allStepsResult.abortReason,
+    errorMessage: allStepsResult.abortMessage,
     results: results.map((r) => ({
       stepId: r.stepId,
       status: r.status,
@@ -293,7 +300,19 @@ test.describe('Guide Runner', () => {
       title: guideTitle,
       path: guidePath ?? 'unknown',
     };
-    writeResultsFile(executionResult.results, guideMetadata, targetUrl, testStartTimestamp, executionResult);
+    writeResultsFile(
+      executionResult.results,
+      guideMetadata,
+      targetUrl,
+      testStartTimestamp,
+      executionResult,
+      guideJson,
+      executionResult.abortReason === 'AUTH_EXPIRED'
+        ? 'aborted'
+        : executionResult.abortReason === 'MANDATORY_FAILURE' || summary.mandatoryFailed > 0
+          ? 'failed'
+          : 'passed'
+    );
 
     // L3-3D: Handle session expiry with specific exit code
     if (executionResult.aborted && executionResult.abortReason === 'AUTH_EXPIRED') {

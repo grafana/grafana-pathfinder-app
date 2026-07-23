@@ -75,17 +75,6 @@ const getRecommendationButtonText = (type?: string, completionPercentage?: numbe
   return t('contextPanel.start', 'Start');
 };
 
-/** Get long CTA button text based on recommendation type */
-const getRecommendationCtaText = (type?: string): string => {
-  if (type === 'docs-page') {
-    return t('contextPanel.viewDocumentation', 'View documentation');
-  }
-  if (type === 'interactive') {
-    return t('contextPanel.startInteractiveGuide', 'Start interactive guide');
-  }
-  return t('contextPanel.startLearningJourney', 'Start learning path');
-};
-
 /** Get category label for display as a tag below the title */
 const getCategoryLabel = (type?: string): string => {
   if (type === 'interactive') {
@@ -110,6 +99,36 @@ const getCategoryTagStyle = (styles: ReturnType<typeof getStyles>, type?: string
 
 /** Check if recommendation type is docs-only (static documentation, not action-oriented) */
 const isDocsOnlyRecommendation = (type?: string): boolean => type === 'docs-page';
+
+/**
+ * Approximate two lines of bodySmall text in the recommendation card.
+ */
+const SUMMARY_COLLAPSE_WORD_THRESHOLD = 20;
+
+/** Whether the summary text alone is long enough to warrant a collapse control. */
+function isCollapsibleSummary(summary?: string): boolean {
+  const words = summary?.trim().split(/\s+/).filter(Boolean) ?? [];
+  return words.length > SUMMARY_COLLAPSE_WORD_THRESHOLD;
+}
+
+/** Whether unresolved or resolved content exists for the expansion panel. */
+function hasExpandableDetails(recommendation: Recommendation): boolean {
+  const hasPendingDetails =
+    Boolean(recommendation.pendingMilestoneIds?.length) ||
+    Boolean(recommendation.pendingRecommendIds?.length) ||
+    Boolean(recommendation.pendingSuggestIds?.length);
+  if (hasPendingDetails || Boolean(recommendation.milestones?.length)) {
+    return true;
+  }
+
+  const nav = getManifestNavigation(recommendation);
+  return nav.recommends.length > 0 || nav.suggests.length > 0;
+}
+
+/** Whether this card should render the Summary collapse control. */
+function isSummaryExpandable(recommendation: Recommendation): boolean {
+  return isCollapsibleSummary(recommendation.summary) || hasExpandableDetails(recommendation);
+}
 
 /**
  * Check if recommendation should use openDocsPage.
@@ -397,6 +416,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                 const contentUrl = getRecommendationContentUrl(recommendation);
                 const packageInfo = getRecommendationPackageInfo(recommendation);
                 const displayType = getEffectiveDisplayType(recommendation);
+                const isExpandable = isSummaryExpandable(recommendation);
+                const isExpanded = isExpandable && Boolean(recommendation.summaryExpanded);
                 return (
                   <Card
                     key={`featured-${index}`}
@@ -420,9 +441,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                             {getCategoryLabel(displayType)}
                           </span>
                         </div>
-                        <div
-                          className={`${styles.cardActions} ${recommendation.summaryExpanded ? styles.hiddenActions : ''}`}
-                        >
+                        <div className={styles.cardActions}>
                           <button
                             onClick={() => {
                               reportAppInteraction(UserInteraction.OpenResourceClick, {
@@ -458,30 +477,36 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                         <>
                           <div className={styles.cardMetadata}>
                             <div className={styles.summaryInfo}>
-                              <button
-                                onClick={() => {
-                                  reportAppInteraction(UserInteraction.SummaryClick, {
-                                    content_title: recommendation.title,
-                                    content_url: contentUrl,
-                                    content_type: getContentTypeForAnalytics(
-                                      contentUrl,
-                                      getContentTypeForDisplayType(displayType)
-                                    ),
-                                    action: recommendation.summaryExpanded ? 'collapse' : 'expand',
-                                    match_accuracy: recommendation.matchAccuracy || 0,
-                                    ...(displayType !== 'docs-page' && {
-                                      total_milestones: recommendation.totalSteps || 0,
-                                    }),
-                                  });
+                              {isExpandable ? (
+                                <button
+                                  onClick={() => {
+                                    reportAppInteraction(UserInteraction.SummaryClick, {
+                                      content_title: recommendation.title,
+                                      content_url: contentUrl,
+                                      content_type: getContentTypeForAnalytics(
+                                        contentUrl,
+                                        getContentTypeForDisplayType(displayType)
+                                      ),
+                                      action: isExpanded ? 'collapse' : 'expand',
+                                      match_accuracy: recommendation.matchAccuracy || 0,
+                                      ...(displayType !== 'docs-page' && {
+                                        total_milestones: recommendation.totalSteps || 0,
+                                      }),
+                                    });
 
-                                  toggleSummaryExpansion(contentUrl);
-                                }}
-                                className={styles.summaryButton}
-                              >
-                                <Icon name="info-circle" size="sm" />
-                                <span>{t('contextPanel.summary', 'Summary')}</span>
-                                <Icon name={recommendation.summaryExpanded ? 'angle-up' : 'angle-down'} size="sm" />
-                              </button>
+                                    toggleSummaryExpansion(contentUrl);
+                                  }}
+                                  className={styles.summaryButton}
+                                >
+                                  <Icon name="info-circle" size="sm" />
+                                  <span>{t('contextPanel.summary', 'Summary')}</span>
+                                  <Icon name={isExpanded ? 'angle-up' : 'angle-down'} size="sm" />
+                                </button>
+                              ) : (
+                                recommendation.summary && (
+                                  <p className={styles.inlineSummary}>{recommendation.summary}</p>
+                                )
+                              )}
                               {!isDocsOnlyRecommendation(displayType) &&
                                 typeof recommendation.completionPercentage === 'number' && (
                                   <div className={styles.completionInfo}>
@@ -498,7 +523,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                             </div>
                           </div>
 
-                          {recommendation.summaryExpanded && (
+                          {isExpanded && (
                             <div className={styles.summaryExpansion}>
                               {recommendation.summary && (
                                 <div className={styles.summaryContent}>
@@ -641,37 +666,6 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                   </div>
                                 );
                               })()}
-
-                              <div className={styles.summaryCta}>
-                                <button
-                                  onClick={() => {
-                                    reportAppInteraction(UserInteraction.OpenResourceClick, {
-                                      content_title: recommendation.title,
-                                      content_url: contentUrl,
-                                      content_type: getContentTypeForAnalytics(
-                                        contentUrl,
-                                        getContentTypeForDisplayType(displayType)
-                                      ),
-                                      interaction_location: 'featured_summary_cta_button',
-                                      match_accuracy: recommendation.matchAccuracy || 0,
-                                      ...(displayType !== 'docs-page' && {
-                                        total_milestones: recommendation.totalSteps || 0,
-                                        completion_percentage: recommendation.completionPercentage ?? 0,
-                                      }),
-                                    });
-
-                                    if (shouldUseDocsPageOpener(recommendation.type)) {
-                                      openDocsPage(contentUrl, recommendation.title, packageInfo);
-                                    } else {
-                                      openLearningJourney(contentUrl, recommendation.title);
-                                    }
-                                  }}
-                                  className={styles.summaryCtaButton}
-                                >
-                                  <Icon name={getRecommendationIcon(displayType)} size="sm" />
-                                  {getRecommendationCtaText(displayType)}
-                                </button>
-                              </div>
                             </div>
                           )}
                         </>
@@ -691,6 +685,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
               const contentUrl = getRecommendationContentUrl(recommendation);
               const packageInfo = getRecommendationPackageInfo(recommendation);
               const displayType = getEffectiveDisplayType(recommendation);
+              const isExpandable = isSummaryExpandable(recommendation);
+              const isExpanded = isExpandable && Boolean(recommendation.summaryExpanded);
               return (
                 <Card
                   key={contentUrl || `rec-${index}`}
@@ -721,9 +717,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                           {getCategoryLabel(displayType)}
                         </span>
                       </div>
-                      <div
-                        className={`${styles.cardActions} ${recommendation.summaryExpanded ? styles.hiddenActions : ''}`}
-                      >
+                      <div className={styles.cardActions}>
                         <button
                           onClick={() => {
                             reportAppInteraction(UserInteraction.OpenResourceClick, {
@@ -760,31 +754,35 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                       <>
                         <div className={styles.cardMetadata}>
                           <div className={styles.summaryInfo}>
-                            <button
-                              onClick={() => {
-                                reportAppInteraction(UserInteraction.SummaryClick, {
-                                  content_title: recommendation.title,
-                                  content_url: contentUrl,
-                                  content_type: getContentTypeForAnalytics(
-                                    contentUrl,
-                                    getContentTypeForDisplayType(displayType)
-                                  ),
-                                  action: recommendation.summaryExpanded ? 'collapse' : 'expand',
-                                  match_accuracy: recommendation.matchAccuracy || 0,
-                                  ...(displayType !== 'docs-page' && {
-                                    total_milestones: recommendation.totalSteps || 0,
-                                  }),
-                                });
+                            {isExpandable ? (
+                              <button
+                                onClick={() => {
+                                  reportAppInteraction(UserInteraction.SummaryClick, {
+                                    content_title: recommendation.title,
+                                    content_url: contentUrl,
+                                    content_type: getContentTypeForAnalytics(
+                                      contentUrl,
+                                      getContentTypeForDisplayType(displayType)
+                                    ),
+                                    action: isExpanded ? 'collapse' : 'expand',
+                                    match_accuracy: recommendation.matchAccuracy || 0,
+                                    ...(displayType !== 'docs-page' && {
+                                      total_milestones: recommendation.totalSteps || 0,
+                                    }),
+                                  });
 
-                                toggleSummaryExpansion(contentUrl);
-                              }}
-                              className={styles.summaryButton}
-                              data-testid={testIds.contextPanel.recommendationSummaryButton(index)}
-                            >
-                              <Icon name="info-circle" size="sm" />
-                              <span>{t('contextPanel.summary', 'Summary')}</span>
-                              <Icon name={recommendation.summaryExpanded ? 'angle-up' : 'angle-down'} size="sm" />
-                            </button>
+                                  toggleSummaryExpansion(contentUrl);
+                                }}
+                                className={styles.summaryButton}
+                                data-testid={testIds.contextPanel.recommendationSummaryButton(index)}
+                              >
+                                <Icon name="info-circle" size="sm" />
+                                <span>{t('contextPanel.summary', 'Summary')}</span>
+                                <Icon name={isExpanded ? 'angle-up' : 'angle-down'} size="sm" />
+                              </button>
+                            ) : (
+                              recommendation.summary && <p className={styles.inlineSummary}>{recommendation.summary}</p>
+                            )}
                             {!isDocsOnlyRecommendation(displayType) &&
                               typeof recommendation.completionPercentage === 'number' && (
                                 <div className={styles.completionInfo}>
@@ -801,7 +799,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                           </div>
                         </div>
 
-                        {recommendation.summaryExpanded && (
+                        {isExpanded && (
                           <div
                             className={styles.summaryExpansion}
                             data-testid={testIds.contextPanel.recommendationSummaryContent(index)}
@@ -954,37 +952,6 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 </div>
                               );
                             })()}
-
-                            <div className={styles.summaryCta}>
-                              <button
-                                onClick={() => {
-                                  reportAppInteraction(UserInteraction.OpenResourceClick, {
-                                    content_title: recommendation.title,
-                                    content_url: contentUrl,
-                                    content_type: getContentTypeForAnalytics(
-                                      contentUrl,
-                                      getContentTypeForDisplayType(displayType)
-                                    ),
-                                    interaction_location: 'summary_cta_button',
-                                    match_accuracy: recommendation.matchAccuracy || 0,
-                                    ...(displayType !== 'docs-page' && {
-                                      total_milestones: recommendation.totalSteps || 0,
-                                      completion_percentage: recommendation.completionPercentage ?? 0,
-                                    }),
-                                  });
-
-                                  if (shouldUseDocsPageOpener(recommendation.type)) {
-                                    openDocsPage(contentUrl, recommendation.title, packageInfo);
-                                  } else {
-                                    openLearningJourney(contentUrl, recommendation.title);
-                                  }
-                                }}
-                                className={styles.summaryCtaButton}
-                              >
-                                <Icon name={getRecommendationIcon(displayType)} size="sm" />
-                                {getRecommendationCtaText(displayType)}
-                              </button>
-                            </div>
                           </div>
                         )}
                       </>

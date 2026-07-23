@@ -7,6 +7,7 @@
  */
 
 import * as fs from 'fs';
+import { builtinModules } from 'module';
 import * as path from 'path';
 import * as ts from 'typescript';
 
@@ -28,6 +29,7 @@ export const TIER_MAP: Record<string, number> = {
   utils: 1,
   validation: 1,
   recovery: 1,
+  'completion-records': 1,
   'context-engine': 2,
   'docs-retrieval': 2,
   'interactive-engine': 2,
@@ -204,8 +206,51 @@ export interface AliasResolutionContext {
   tsconfigPaths: TsconfigPathsConfig;
 }
 
-export function extractRelativeImports(content: string, aliasContext?: AliasResolutionContext): string[] {
-  const specifiers = new Set<string>();
+export interface ImportRecord {
+  /** Specifier as written; alias-resolved internal imports are rewritten to a relative specifier. */
+  specifier: string;
+  /** True when every occurrence is erased at compile time (`import type` / all-type-only specifiers). */
+  typeOnly: boolean;
+  /** True when every occurrence is a lazy `import()` expression (never evaluated at module load). */
+  dynamic: boolean;
+  /** True for relative specifiers and alias-resolved internal files; false for external packages. */
+  relative: boolean;
+}
+
+function isTypeOnlyImportDeclaration(node: ts.ImportDeclaration): boolean {
+  const clause = node.importClause;
+  if (!clause) {
+    return false;
+  }
+  if (clause.isTypeOnly) {
+    return true;
+  }
+  if (clause.name || !clause.namedBindings || !ts.isNamedImports(clause.namedBindings)) {
+    return false;
+  }
+  const elements = clause.namedBindings.elements;
+  return elements.length > 0 && elements.every((element) => element.isTypeOnly);
+}
+
+function isTypeOnlyExportDeclaration(node: ts.ExportDeclaration): boolean {
+  if (node.isTypeOnly) {
+    return true;
+  }
+  if (!node.exportClause || !ts.isNamedExports(node.exportClause)) {
+    return false;
+  }
+  const elements = node.exportClause.elements;
+  return elements.length > 0 && elements.every((element) => element.isTypeOnly);
+}
+
+/**
+ * Parses every import/export/require/dynamic-import specifier in a module.
+ * Occurrences of the same specifier are merged: the record is typeOnly or
+ * dynamic only when ALL occurrences are (a single value import makes the
+ * whole edge a value edge — that is what module evaluation sees).
+ */
+export function extractImportRecords(content: string, aliasContext?: AliasResolutionContext): ImportRecord[] {
+  const records = new Map<string, ImportRecord>();
   const sourceFile = ts.createSourceFile(
     'import-graph-input.tsx',
     content,
@@ -215,21 +260,29 @@ export function extractRelativeImports(content: string, aliasContext?: AliasReso
   );
 
   const isRelativeSpecifier = (value: string): boolean => value.startsWith('./') || value.startsWith('../');
-  const addSpecifier = (value: string): void => {
-    if (isRelativeSpecifier(value)) {
-      specifiers.add(value);
-      return;
+  const addSpecifier = (value: string, typeOnly: boolean, dynamic: boolean): void => {
+    let specifier = value;
+    let relative = isRelativeSpecifier(value);
+    if (!relative && aliasContext) {
+      const resolved = resolvePathAlias(value, aliasContext.tsconfigPaths);
+      if (resolved) {
+        const withoutExt = resolved.replace(/\/index\.tsx?$/, '').replace(/\.tsx?$/, '');
+        const rel = toPosixPath(path.relative(aliasContext.fileDir, withoutExt));
+        specifier = rel.startsWith('.') ? rel : `./${rel}`;
+        relative = true;
+      }
     }
-    if (!aliasContext) {
-      return;
+    const existing = records.get(specifier);
+    if (existing) {
+      // dynamic reflects value occurrences only — a type-only occurrence
+      // neither makes the edge eager nor lazy
+      if (!typeOnly) {
+        existing.dynamic = existing.typeOnly ? dynamic : existing.dynamic && dynamic;
+      }
+      existing.typeOnly = existing.typeOnly && typeOnly;
+    } else {
+      records.set(specifier, { specifier, typeOnly, dynamic, relative });
     }
-    const resolved = resolvePathAlias(value, aliasContext.tsconfigPaths);
-    if (!resolved) {
-      return;
-    }
-    const withoutExt = resolved.replace(/\/index\.tsx?$/, '').replace(/\.tsx?$/, '');
-    const relative = toPosixPath(path.relative(aliasContext.fileDir, withoutExt));
-    specifiers.add(relative.startsWith('.') ? relative : `./${relative}`);
   };
 
   const visit = (node: ts.Node): void => {
@@ -238,7 +291,10 @@ export function extractRelativeImports(content: string, aliasContext?: AliasReso
       node.moduleSpecifier &&
       ts.isStringLiteralLike(node.moduleSpecifier)
     ) {
-      addSpecifier(node.moduleSpecifier.text);
+      const typeOnly = ts.isImportDeclaration(node)
+        ? isTypeOnlyImportDeclaration(node)
+        : isTypeOnlyExportDeclaration(node);
+      addSpecifier(node.moduleSpecifier.text, typeOnly, false);
     }
 
     if (ts.isCallExpression(node)) {
@@ -249,9 +305,9 @@ export function extractRelativeImports(content: string, aliasContext?: AliasReso
       }
 
       if (ts.isIdentifier(node.expression) && node.expression.text === 'require') {
-        addSpecifier(firstArg.text);
+        addSpecifier(firstArg.text, false, false);
       } else if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-        addSpecifier(firstArg.text);
+        addSpecifier(firstArg.text, false, true);
       }
     }
 
@@ -260,7 +316,13 @@ export function extractRelativeImports(content: string, aliasContext?: AliasReso
 
   visit(sourceFile);
 
-  return [...specifiers];
+  return [...records.values()];
+}
+
+export function extractRelativeImports(content: string, aliasContext?: AliasResolutionContext): string[] {
+  return extractImportRecords(content, aliasContext)
+    .filter((record) => record.relative)
+    .map((record) => record.specifier);
 }
 
 export function resolveImportToRelative(fileDir: string, importPath: string): string | null {
@@ -555,4 +617,192 @@ export function assertRatchet(
         staleEntries.map((e) => `  - ${e}`).join('\n')
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Environment reachability (Node contexts)
+// ---------------------------------------------------------------------------
+//
+// The tier model constrains which of OUR directories may import which — but
+// it cannot see that an external package requires a browser. src/cli/ and
+// tests/ execute in plain Node (the pathfinder CLI, and Playwright test
+// discovery for both the main suite and the e2e-runner), so everything they
+// transitively reach at module-eval time must load without browser globals.
+// This scan walks the value-import closure from those roots and checks every
+// external package against a Node-safe allowlist maintained in
+// architecture.test.ts.
+
+/** Repo-relative directories (or files) whose contents execute in plain Node. */
+export const NODE_CONTEXT_ROOTS = ['src/cli', 'tests', 'playwright.config.ts'];
+
+/**
+ * Jest-managed test files (jsdom environment by default) are excluded from
+ * the Node-context roots: they get emulated browser globals and jest.mock
+ * protection, so they are not evidence of plain-Node execution. The effective
+ * testMatch is the root jest.config.js — src/ patterns from the scaffolded
+ * .config/jest.config.js plus tests/e2e-runner/utils/**\/*.test.*. Playwright
+ * loads only *.spec.ts files (see playwright.config.ts testMatch), which jest
+ * never matches outside src/.
+ */
+export function isJestManagedTestFile(absPath: string): boolean {
+  const rel = toPosixPath(path.relative(REPO_ROOT, absPath));
+  if (rel.startsWith('src/')) {
+    return /\.(test|spec|jest)\.(ts|tsx)$/.test(rel) || rel.includes('/__tests__/');
+  }
+  if (rel.startsWith('tests/e2e-runner/utils/')) {
+    return /\.test\.(ts|tsx)$/.test(rel);
+  }
+  return false;
+}
+
+export function collectNodeContextFiles(roots: readonly string[] = NODE_CONTEXT_ROOTS): string[] {
+  const files: string[] = [];
+  const addFile = (fullPath: string) => {
+    if (/\.(ts|tsx)$/.test(fullPath) && !fullPath.endsWith('.d.ts') && !isJestManagedTestFile(fullPath)) {
+      files.push(fullPath);
+    }
+  };
+  function walk(dir: string) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else {
+        addFile(fullPath);
+      }
+    }
+  }
+  for (const root of roots) {
+    // resolve (not join) so tests can pass absolute fixture directories
+    const absRoot = path.resolve(REPO_ROOT, root);
+    if (!fs.existsSync(absRoot)) {
+      continue;
+    }
+    if (fs.statSync(absRoot).isDirectory()) {
+      walk(absRoot);
+    } else {
+      addFile(absRoot);
+    }
+  }
+  return files;
+}
+
+/** `@scope/name/deep/path` -> `@scope/name`; `pkg/deep` -> `pkg`; strips a `node:` prefix. */
+export function packageNameOf(specifier: string): string {
+  const spec = specifier.startsWith('node:') ? specifier.slice('node:'.length) : specifier;
+  const segments = spec.split('/');
+  return (spec.startsWith('@') ? segments.slice(0, 2).join('/') : segments[0]) || spec;
+}
+
+const NODE_BUILTIN_MODULES = new Set(builtinModules);
+
+export function isNodeBuiltin(specifier: string): boolean {
+  // prefix-only builtins (node:test, node:sqlite) appear in builtinModules
+  // WITH the prefix, so check both spellings
+  const name = packageNameOf(specifier);
+  return NODE_BUILTIN_MODULES.has(name) || NODE_BUILTIN_MODULES.has(`node:${name}`);
+}
+
+/**
+ * Relative imports that only a bundler can load — importing one from
+ * Node-executed code crashes at module evaluation.
+ */
+const BUNDLER_ONLY_ASSET_RE = /\.(css|scss|sass|less|svg|png|jpe?g|gif|woff2?)$/;
+
+export interface EnvReachabilityViolation {
+  /** Repo-relative posix path of the importing file. */
+  file: string;
+  /** The offending import specifier as written. */
+  specifier: string;
+  /** Witness chain from a Node entrypoint to `file` (repo-relative posix paths). */
+  chain: string[];
+}
+
+export interface EnvReachabilityScan {
+  violations: EnvReachabilityViolation[];
+  /** Non-builtin external packages reachable via value imports (for stale-entry checks). */
+  reachedExternalPackages: Set<string>;
+  reachableFileCount: number;
+}
+
+/**
+ * BFS over value imports (type-only edges are erased at compile time and
+ * skipped; dynamic `import()` edges ARE followed — the CLI lazy-loads its
+ * commands, so lazy modules still execute in Node eventually). Every external
+ * package encountered must be in `nodeSafeExternals` or be a Node builtin;
+ * bundler-only asset imports (css/svg/…) are always violations.
+ */
+export function scanNodeEnvReachability(
+  nodeSafeExternals: ReadonlySet<string>,
+  rootDirs: readonly string[] = NODE_CONTEXT_ROOTS
+): EnvReachabilityScan {
+  const tsconfigPaths = loadTsconfigPaths(path.join(REPO_ROOT, '.config', 'tsconfig.json'));
+  const roots = collectNodeContextFiles(rootDirs);
+
+  const parents = new Map<string, string | null>();
+  const queue: Array<{ file: string; via: string | null }> = roots.map((file) => ({ file, via: null }));
+  const violations: EnvReachabilityViolation[] = [];
+  const reachedExternalPackages = new Set<string>();
+
+  const relPath = (absPath: string) => toPosixPath(path.relative(REPO_ROOT, absPath));
+  const chainOf = (absPath: string): string[] => {
+    const chain: string[] = [];
+    let current: string | null = absPath;
+    while (current) {
+      chain.unshift(relPath(current));
+      current = parents.get(current) ?? null;
+    }
+    return chain;
+  };
+
+  while (queue.length > 0) {
+    const { file, via } = queue.shift()!;
+    if (parents.has(file)) {
+      continue;
+    }
+    parents.set(file, via);
+
+    const content = fs.readFileSync(file, 'utf-8');
+    const fileDir = path.dirname(file);
+    const records = extractImportRecords(content, { fileDir, tsconfigPaths });
+
+    for (const record of records) {
+      if (record.typeOnly) {
+        continue;
+      }
+      if (record.relative) {
+        if (BUNDLER_ONLY_ASSET_RE.test(record.specifier)) {
+          violations.push({ file: relPath(file), specifier: record.specifier, chain: chainOf(file) });
+          continue;
+        }
+        // ESM-style extensioned specifiers ('./helper.js') point at emitted
+        // output; map back to the TS source when no literal file matches.
+        const literal = findExistingSourceFile(path.resolve(fileDir, record.specifier));
+        const stripped = record.specifier.replace(/\.(mjs|cjs|jsx?)$/, '');
+        const resolved =
+          literal ?? (stripped !== record.specifier ? findExistingSourceFile(path.resolve(fileDir, stripped)) : null);
+        if (resolved && /\.(tsx?|jsx?)$/.test(resolved)) {
+          if (!parents.has(resolved)) {
+            queue.push({ file: resolved, via: file });
+          }
+        } else if (!resolved || !resolved.endsWith('.json')) {
+          // Unresolvable relative value imports and non-JSON/non-source
+          // targets (.md, .html, …) would crash plain Node — and silently
+          // dropping the edge would prune the whole subtree from the scan.
+          violations.push({ file: relPath(file), specifier: record.specifier, chain: chainOf(file) });
+        }
+        continue;
+      }
+      if (isNodeBuiltin(record.specifier)) {
+        continue;
+      }
+      const pkg = packageNameOf(record.specifier);
+      reachedExternalPackages.add(pkg);
+      if (!nodeSafeExternals.has(pkg)) {
+        violations.push({ file: relPath(file), specifier: record.specifier, chain: chainOf(file) });
+      }
+    }
+  }
+
+  return { violations, reachedExternalPackages, reachableFileCount: parents.size };
 }

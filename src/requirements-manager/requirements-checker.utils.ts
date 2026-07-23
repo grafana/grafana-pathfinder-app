@@ -17,7 +17,7 @@
 
 import { reftargetExistsCheck, navmenuOpenCheck, formValidCheck } from '../lib/dom';
 import { sectionCompletedCheck } from './checks/section-completed-check';
-import { isValidRequirement } from '../types/requirements.types';
+import { isValidRequirement, type CheckResultError } from '../types/requirements.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { logger } from '../lib/logging';
 import { TimeoutManager } from '../utils/timeout-manager';
@@ -42,24 +42,10 @@ import { guideVariableCheck } from './checks/vars';
 import { terminalActiveCheck } from './checks/terminal';
 import { codaExitZeroCheck } from './checks/coda';
 
-// Re-export types for convenience
 export interface RequirementsCheckResult {
   requirements: string;
   pass: boolean;
   error: CheckResultError[];
-}
-
-export interface CheckResultError {
-  requirement: string;
-  pass: boolean;
-  error?: string;
-  /** Diagnostic context for debugging. Should be included when available. */
-  context?: Record<string, unknown> | null;
-  canFix?: boolean;
-  fixType?: string;
-  targetHref?: string;
-  /** Scroll container selector for lazy-scroll fixes */
-  scrollContainer?: string;
 }
 
 export interface RequirementsCheckOptions {

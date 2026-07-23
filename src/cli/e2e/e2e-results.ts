@@ -17,7 +17,8 @@ import {
   type ResolvedRemoteGuide,
   type SkippedPackage,
 } from './e2e-package';
-import type { PreRunSkip, TestResultsData } from './e2e-reporter';
+import type { E2EErrorCode, E2EExecutionOutcome, PreRunSkip } from './schemas/e2e-report.schema';
+import { contentDigest, type TestResultsData } from './e2e-reporter';
 import { ExitCode } from './exit-codes';
 import type { AbortReason } from './playwright-runner';
 import type { SideEffectClassification } from './side-effects';
@@ -187,15 +188,24 @@ export function applyPackageMeta(data: TestResultsData | undefined, meta: Packag
 
 interface PlannedGuideForResult {
   id: string;
-  guide: { path: string };
+  guide: { path: string; content?: string };
   autoIncluded: boolean;
+}
+export function provisioningErrorCode(error: unknown): E2EErrorCode {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+      ? error.code.toLowerCase()
+      : undefined;
+  return code === 'no_capacity' ? 'NO_CAPACITY' : 'PROVISIONING_FAILED';
 }
 
 export function provisioningFailureResults(
   chain: PlannedGuideForResult[],
   packageMetaById: Map<string, PackageMeta>,
   fallbackTargetUrl: string,
-  message: string
+  message: string,
+  errorCode: E2EErrorCode = 'PROVISIONING_FAILED',
+  outcome: E2EExecutionOutcome = 'infrastructure_error'
 ): GuideRunResult[] {
   return chain.map((planned) => {
     const meta = packageMetaById.get(planned.id);
@@ -205,8 +215,12 @@ export function provisioningFailureResults(
         title: planned.id,
         path: planned.guide.path,
         targetUrl: meta?.targetUrl ?? fallbackTargetUrl,
+        ...(planned.guide.content ? { contentDigest: contentDigest(planned.guide.content) } : {}),
       },
       timestamp: new Date().toISOString(),
+      outcome,
+      errorCode,
+      errorMessage: message,
       results: [],
       aborted: true,
       abortReason: 'PROVISIONING_FAILED',
@@ -244,11 +258,13 @@ export function preRunSkipsFromResults(results: GuideRunResult[]): PreRunSkip[] 
     }));
 }
 
-/**
- * Exit code implied by the final results: auth failure takes precedence over a
- * generic/validation test failure; a fully passing run yields SUCCESS.
- */
-export function exitCodeFromResults(results: GuideRunResult[]): number {
+export function exitCodeFromResults(results: GuideRunResult[], reportSchemaValid = true): number {
+  if (!reportSchemaValid) {
+    return ExitCode.CONFIGURATION_ERROR;
+  }
+  if (results.some((r) => r.exitCode === ExitCode.CONFIGURATION_ERROR)) {
+    return ExitCode.CONFIGURATION_ERROR;
+  }
   if (results.some((r) => r.status === 'auth_expired')) {
     return ExitCode.AUTH_FAILURE;
   }

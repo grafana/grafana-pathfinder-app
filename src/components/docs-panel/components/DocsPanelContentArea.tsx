@@ -48,8 +48,7 @@ import { LoadingIndicator } from './LoadingIndicator';
 import { LearningJourneyMilestoneToolbar } from './LearningJourneyMilestoneToolbar';
 import { PanelModeActionButtons } from './PanelModeActionButtons';
 import type { SceneObject } from '@grafana/scenes';
-import type { OpenDocsOptions } from '../types';
-import type { CombinedLearningJourneyPanel } from '../docs-panel';
+import type { DocsPanelModelOperations, OpenDocsOptions } from '../types';
 
 // Kept inside the component file so webpack sees the same dynamic-import
 // module specifiers used pre-refactor. See pre-mortem H8.
@@ -74,7 +73,7 @@ export interface DocsPanelContentAreaProps {
   interactiveStyles: string;
   prismStyles: string;
 
-  model: CombinedLearningJourneyPanel;
+  model: DocsPanelModelOperations;
   contextPanel: SceneObject<ContextPanelState>;
 
   isFullScreenActive: boolean;
@@ -417,8 +416,12 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       }}
                       onGuideComplete={() => {
                         const baseUrl = activeTab?.baseUrl || stableContent.url;
+                        const completionContext = {
+                          packageManifest: stableContent.metadata?.packageManifest,
+                          guideTitle: activeTab?.title,
+                        };
                         if (baseUrl?.startsWith('bundled:')) {
-                          setJourneyCompletionPercentage(baseUrl, 100);
+                          setJourneyCompletionPercentage(baseUrl, 100, completionContext);
                         }
                         if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
                           const slug = getMilestoneSlug(activeTab.currentUrl);
@@ -427,7 +430,8 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                             markMilestoneDone(
                               journeyBase,
                               slug,
-                              stableContent.metadata?.learningJourney?.totalMilestones
+                              stableContent.metadata?.learningJourney?.totalMilestones,
+                              completionContext
                             );
                           }
                         }

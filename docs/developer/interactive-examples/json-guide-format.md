@@ -322,6 +322,33 @@ Groups related interactive steps into a sequence with "Do Section" functionality
 | `requirements` | string[]    | ❌       | Section-level requirements          |
 | `objectives`   | string[]    | ❌       | Objectives for the entire section   |
 
+#### Collapsible Block
+
+Hides its nested blocks behind a toggle. Use it to gate solutions or example outputs so learners attempt an exercise before revealing the answer. Unlike a section, it is purely presentational and tracks no completion state.
+
+````json
+{
+  "type": "collapsible",
+  "title": "Show solution",
+  "collapsed": true,
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Here's one approach:\n\n```logql\n{app=\"foo\"} |= \"error\" | json\n```"
+    }
+  ]
+}
+````
+
+| Field       | Type                | Required | Description                                         |
+| ----------- | ------------------- | -------- | --------------------------------------------------- |
+| `id`        | string              | ❌       | HTML id for the collapsible (usable as a deep-link) |
+| `title`     | string              | ❌       | Label shown on the toggle (defaults to "Show more") |
+| `collapsed` | boolean             | ❌       | Whether it starts collapsed (defaults to `true`)    |
+| `blocks`    | content block array | ✅       | Content hidden behind the toggle                    |
+
+> A collapsible is presentational: it accepts content blocks only — `markdown` (including fenced code), `html`, `image`, and `video`. Interactive steps and containers (`section`, `collapsible`, `conditional`) are rejected, so a collapsible never carries completion state. To gate interactive steps, use a `section`.
+
 #### Conditional Block
 
 Shows different content based on runtime condition evaluation. Conditions use the same syntax as requirements (e.g., `has-datasource:prometheus`, `is-admin`). When ALL conditions pass, the `whenTrue` branch is shown; otherwise, the `whenFalse` branch is shown.
@@ -896,6 +923,7 @@ Each screen has `id`, `title`, `body` (markdown), and an `options[]` array. Each
 | `video`            | Content     | YouTube or native HTML5 video embeds                                            |
 | `code-block`       | Content     | Code snippet with copy and optional Monaco-editor insert                        |
 | `section`          | Structure   | Container for grouped interactive steps with "Do Section"                       |
+| `collapsible`      | Structure   | Hides nested content behind a toggle                                            |
 | `conditional`      | Structure   | Shows different content based on runtime conditions                             |
 | `assistant`        | Structure   | Wraps blocks with AI-powered customization                                      |
 | `interactive`      | Interactive | Single-action step (highlight, button, formfill, navigate, hover, noop, popout) |

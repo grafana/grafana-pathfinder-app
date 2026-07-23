@@ -100,12 +100,14 @@ Dev server runs at http://localhost:3000 (admin/admin). For the complete command
 Imports flow **downward only** to avoid cycles. Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; exceptions require an explicit allowlist entry with justification.
 
 - **Tier 0 — Types & constants**: `types/`, `constants/`
-- **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`
+- **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`, `completion-records/`
 - **Tier 2 — Engines & hooks**: `context-engine/`, `docs-retrieval/`, `interactive-engine/`, `requirements-manager/`, `learning-paths/`, `package-engine/`, `snippet-engine/`, `hooks/`
 - **Tier 3 — Integrations**: `integrations/`
 - **Tier 4 — UI**: `components/`, `pages/`
 
 Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-interactives/`, `img/`, `locales/`. The canonical source is `TIER_MAP` in `src/validation/import-graph.ts`; this list must stay in sync with it (enforced by `src/validation/architecture.test.ts`).
+
+**Environment reachability** (orthogonal to tiers): `src/cli/` and `tests/` execute in plain Node — the pathfinder CLI, and Playwright discovery of both the main suite and the e2e-runner — so everything they transitively import must load without browser globals. `architecture.test.ts` walks the value-import closure from those roots and fails on any external package not in its `NODE_SAFE_EXTERNALS` allowlist (and on bundler-only asset imports). Type-only imports are exempt. Shared logic that both the app and the CLI need lives in environment-neutral `*-core.ts` modules with thin browser adapters on top (see `src/lib/dom/grafana-selector-core.ts`). Growing `NODE_SAFE_EXTERNALS` with a genuinely Node-safe dependency is normal maintenance — prove it loads in plain Node first; the test's failure message documents the procedure.
 
 For the annotated tier definitions, the per-subsystem reference, and the key dependency-edges table (load-bearing producer → consumer wiring), load `.cursor/rules/systemPatterns.mdc`.
 

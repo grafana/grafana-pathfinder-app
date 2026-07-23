@@ -1,4 +1,5 @@
-import { validateCrossTabMessage } from './cross-tab.types';
+import { validateCrossTabMessage, type RemoteRequirementError } from './cross-tab.types';
+import type { CheckResultError } from './requirements.types';
 
 function envelope(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return { source: 'pathfinder', senderId: 'sender-1', timestamp: 1, ...overrides };
@@ -199,5 +200,18 @@ describe('validateCrossTabMessage', () => {
     expect(
       validateCrossTabMessage(envelope({ kind: 'requirement-result', requestId: 'req-1', stepId: 's1', result }))
     ).toBeNull();
+  });
+});
+
+describe('RemoteRequirementError wire mirror', () => {
+  // Compile-time guard for the deliberate re-statement in cross-tab.types.ts:
+  // if CheckResultError and the wire type stop being mutually assignable
+  // (field added/removed/retyped on either side), these lines stop compiling
+  // and force a conscious decision about the wire contract.
+  it('stays mutually assignable with CheckResultError', () => {
+    const local: CheckResultError = { requirement: 'r', pass: true };
+    const wire: RemoteRequirementError = local;
+    const back: CheckResultError = wire;
+    expect(back).toBe(local);
   });
 });

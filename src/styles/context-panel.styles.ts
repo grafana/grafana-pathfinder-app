@@ -203,11 +203,6 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
     flexShrink: 0,
     width: '80px',
   }),
-  hiddenActions: css({
-    opacity: 0,
-    visibility: 'hidden',
-    transition: 'opacity 0.2s ease, visibility 0.2s ease',
-  }),
   startButton: css({
     display: 'flex',
     alignItems: 'center',
@@ -278,6 +273,7 @@ export const getCardMetadataStyles = (theme: GrafanaTheme2) => ({
   completionInfo: css({
     display: 'flex',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     marginLeft: 'auto',
   }),
   completionPercentage: css({
@@ -315,6 +311,15 @@ export const getCardMetadataStyles = (theme: GrafanaTheme2) => ({
       cursor: 'not-allowed',
       color: theme.colors.text.secondary,
     },
+  }),
+  inlineSummary: css({
+    flex: 1,
+    margin: 0,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightRegular,
+    lineHeight: 1.4,
+    color: theme.colors.text.primary,
   }),
   stepsCount: css({
     display: 'flex',
@@ -354,11 +359,8 @@ export const getCardMetadataStyles = (theme: GrafanaTheme2) => ({
 // Summary and content expansion styles
 export const getSummaryStyles = (theme: GrafanaTheme2) => ({
   summaryExpansion: css({
-    marginTop: theme.spacing(1.5),
-    padding: theme.spacing(1.5),
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.border.weak}`,
+    padding: theme.spacing(0.5),
+    paddingLeft: theme.spacing(3),
     position: 'relative',
   }),
   summaryContent: css({
@@ -369,51 +371,6 @@ export const getSummaryStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.text.primary,
     lineHeight: 1.4,
     margin: 0,
-  }),
-  summaryCta: css({
-    position: 'sticky',
-    bottom: 0,
-    marginTop: theme.spacing(2),
-    padding: theme.spacing(1.5),
-    backgroundColor: 'transparent',
-    borderTop: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: `0 0 ${theme.shape.radius.default}px ${theme.shape.radius.default}px`,
-    display: 'flex',
-    justifyContent: 'center',
-    boxShadow: `0 -2px 8px ${theme.colors.background.secondary}`,
-    zIndex: 10,
-  }),
-  summaryCtaButton: css({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.spacing(0.75),
-    padding: `${theme.spacing(1)} ${theme.spacing(2.5)}`,
-    backgroundColor: theme.colors.primary.main,
-    color: theme.colors.primary.contrastText,
-    border: 'none',
-    borderRadius: theme.shape.radius.default,
-    cursor: 'pointer',
-    fontSize: theme.typography.body.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    transition: 'all 0.2s ease',
-    minWidth: '120px',
-    boxShadow: theme.shadows.z1,
-
-    '&:hover': {
-      backgroundColor: theme.colors.primary.shade,
-      transform: 'translateY(-1px)',
-      boxShadow: theme.shadows.z2,
-    },
-
-    '&:active': {
-      transform: 'translateY(0)',
-      boxShadow: theme.shadows.z1,
-    },
-
-    '& svg': {
-      flexShrink: 0,
-    },
   }),
 });
 
