@@ -124,6 +124,19 @@ describe('content.json → unstyled.html ladder', () => {
     expect(result.content?.isNativeJson).toBe(false);
   });
 
+  it('does not fetch journey metadata after a null fallback when metadata is skipped', async () => {
+    installFetch({
+      page: () => '<html><body>styled</body></html>',
+      json: () => 'null',
+      html: () => '<html><head><title>M1</title></head><body>unstyled</body></html>',
+    });
+
+    await fetchContent(`${journeyUrl}content.json`, { skipJourneyMetadata: true });
+
+    const fetchedUrls = (global.fetch as jest.Mock).mock.calls.map(([url]) => url as string);
+    expect(fetchedUrls.some((url) => url.endsWith('/index.json'))).toBe(false);
+  });
+
   it('skips content.json for regular docs pages that do not support it', async () => {
     const order = installFetch({
       page: () => '<html><body>styled</body></html>',

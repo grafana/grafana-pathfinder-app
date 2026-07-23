@@ -29,13 +29,13 @@ Assume you're adding a `FooStep` component:
 
 1. **Component file** — create `src/components/interactive-tutorial/foo-step.tsx`. Copy the closest existing sibling (`terminal-step.tsx` for a self-contained step; `interactive-multi-step.tsx` for one that orchestrates sub-actions).
 
-2. **JSON schema** — add `JsonFooBlock` to `src/types/json-guide.types.ts` and its Zod counterpart to `src/types/json-guide.schema.ts`. See `.cursor/rules/schema-coupling.mdc` for the type/schema coupling contract.
+2. **JSON schema** — add `JsonFooBlock` to `src/types/json-guide.types.ts` and its Zod counterpart to `src/types/json-guide.schema.ts`. See `.cursor/rules/schema-coupling.mdc` for the type/schema coupling contract. If the block counts as one completable step, also append its authoring `type` to `STEP_COUNTING_BLOCK_TYPES` in `src/types/json-guide.types.ts` (drives `countGuideSteps`).
 
 3. **Parser** — add a `case 'foo':` in `src/docs-retrieval/json-parser.ts` that emits a `ParsedElement` with `type: 'foo-step'`.
 
 4. **Renderer case** — in `src/components/content-renderer/content-renderer.tsx` `renderParsedElement`, add a `case 'foo-step':` that produces `<FooStep ... />`. Forward `stepId={element.props.stepId}` so the parser-derived stable ID survives through to the component (required for completion persistence across guide edits).
 
-5. **Registry site 1** — in `step-type-registry.ts`, add `FOO_STEP_SCHEMA` with the right `kind`, `parseTypeKey: 'foo-step'`, `idPrefix`, `refTarget`, `toStepInfoExtension`, `toEnhancedProps`. Append to `STEP_TYPE_SCHEMAS` and `STEP_TYPE_KIND_KEYS`. Add the `ParseTypeKey` literal. Wire `FooStep` into the `getStepTypeLookup()` map in `interactive-section.tsx`.
+5. **Registry site 1** — in `step-type-registry.ts`, add `FOO_STEP_SCHEMA` with the right `kind`, `parseTypeKey: 'foo-step'`, `jsonBlockType: 'foo'` (must match the counting type added in step 2), `idPrefix`, `refTarget`, `toStepInfoExtension`, `toEnhancedProps`. Append to `STEP_TYPE_SCHEMAS` and `STEP_TYPE_KIND_KEYS`. Add the `ParseTypeKey` literal. Wire `FooStep` into the `getStepTypeLookup()` map in `interactive-section.tsx`.
 
 6. **Registry site 2** — add `FooStep` to `INTERACTIVE_STEP_COMPONENT_TYPES` in `section-child-classifier.ts`. Add a test case in `section-child-classifier.test.tsx`.
 

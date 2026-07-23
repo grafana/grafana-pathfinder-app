@@ -135,6 +135,10 @@ export interface ContentFetchOptions {
 
   /** Skip the "Ready to begin?" button on learning journey cover pages */
   skipReadyToBegin?: boolean;
+
+  /** Skip learning-journey milestone metadata extraction (and its per-call
+   *  index.json fetch); for background fetches that only need the content body. */
+  skipJourneyMetadata?: boolean;
 }
 
 export interface ContentFetchResult {
