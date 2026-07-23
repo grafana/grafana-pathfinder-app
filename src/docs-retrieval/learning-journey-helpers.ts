@@ -436,6 +436,12 @@ function recordBundledGuideCompletion(guideId: string, context?: CompletionConte
 }
 
 export function recordStandaloneGuideCompletion(context: CompletionContext): void {
+  // Journey-shaped packages complete via markMilestoneDone's journey trigger;
+  // a guide-kind fact here would double-count them (same guard as the bundled path).
+  const manifestType = context.packageManifest?.type;
+  if (manifestType === 'path' || manifestType === 'journey') {
+    return;
+  }
   const guideId = manifestGuideId(context.packageManifest);
   if (!guideId) {
     return;

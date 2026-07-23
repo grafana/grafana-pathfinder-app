@@ -150,6 +150,14 @@ describe('bundled guide reaching 100% (trigger class A)', () => {
     expect(emitted).toHaveLength(0);
   });
 
+  it('does not emit a guide fact for a journey-shaped remote package (journey trigger owns it)', () => {
+    recordStandaloneGuideCompletion({
+      packageManifest: { id: 'remote-journey', repository: 'app-platform', type: 'journey' },
+      guideTitle: 'Remote journey',
+    });
+    expect(emitted).toHaveLength(0);
+  });
+
   it('async twin emits once and preserves local-cache behavior', async () => {
     await setJourneyCompletionPercentageAsync('bundled:foo', 100);
     expect(emitted).toHaveLength(1);
