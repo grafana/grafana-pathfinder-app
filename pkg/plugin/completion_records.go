@@ -2,7 +2,6 @@ package plugin
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"sort"
 	"strconv"
@@ -582,21 +581,15 @@ func (a *App) resolveCompletionBackend(r *http.Request) (lister completionRecord
 
 // isTerminalCompletionError reports whether an upstream failure is terminal
 // (a non-transient 4xx per RFC §6.9). Network/timeout/decoding errors have no
-// HTTP status and are treated as transient (retryable).
+// HTTP status and are treated as transient (retryable). Thin domain alias over
+// the shared classifier so both proxies share one definition of the logic.
 func isTerminalCompletionError(err error) bool {
-	var ue *appPlatformUpstreamError
-	if errors.As(err, &ue) {
-		return !isTransientUpstreamStatus(ue.status)
-	}
-	return false
+	return isTerminalUpstreamError(err)
 }
 
 // isIdentityScopedCompletionError reports whether an upstream failure means
-// the aggregator rejected this caller's forwarded identity (401/403).
+// the aggregator rejected this caller's forwarded identity (401/403). Thin
+// domain alias over the shared classifier.
 func isIdentityScopedCompletionError(err error) bool {
-	var ue *appPlatformUpstreamError
-	if errors.As(err, &ue) {
-		return isIdentityScopedUpstreamStatus(ue.status)
-	}
-	return false
+	return isIdentityScopedUpstreamError(err)
 }
