@@ -268,29 +268,21 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
               {isLearningJourneyTab && !showMilestoneProgress && (
                 <div className={styles.contentMeta}>
                   <div className={styles.metaInfo}>
-                    <span>{t('docsPanel.learningJourney', 'Learning path')}</span>
+                    <small>
+                      {(activeTab.content?.metadata.learningJourney?.totalMilestones || 0) > 0
+                        ? t('docsPanel.milestonesCount', '{{count}} milestones', {
+                            count: activeTab.content?.metadata.learningJourney?.totalMilestones,
+                          })
+                        : t('docsPanel.interactiveJourney', 'Interactive journey')}
+                    </small>
                   </div>
-                  <small>
-                    {(activeTab.content?.metadata.learningJourney?.totalMilestones || 0) > 0
-                      ? t('docsPanel.milestonesCount', '{{count}} milestones', {
-                          count: activeTab.content?.metadata.learningJourney?.totalMilestones,
-                        })
-                      : t('docsPanel.interactiveJourney', 'Interactive journey')}
-                  </small>
                 </div>
               )}
 
-              {/* Content Meta for docs/interactive - label left, primary actions + kebab right */}
+              {/* Content Meta for docs/interactive — actions right-aligned */}
               {isDocsLikeTab(activeTab.type) && (
                 <div className={styles.contentMeta}>
-                  <div className={styles.metaInfo}>
-                    <span>
-                      {activeTab.type === 'interactive'
-                        ? t('docsPanel.interactiveGuide', 'Interactive guide')
-                        : t('docsPanel.documentation', 'Documentation')}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
                     {(() => {
                       const action = pickGrafanaDocsOpenAction(activeTab.content?.url || activeTab.baseUrl);
                       if (!action.shouldShow || !action.cleanUrl) {
