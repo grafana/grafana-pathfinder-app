@@ -1,20 +1,9 @@
-/**
- * Front-end client for the durable completion-write proxy (Track 2).
- *
- * POSTs completion facts to the plugin backend. It fails soft and never throws:
- * a completion must never be disturbed by the
- * write path. Every failure is classified into the outcome the retry queue acts
- * on. Per the captain's deployment-skew tolerance, a MISSING route (404 / route
- * not registered on an older plugin backend, or the whole family absent) is a
- * terminal "feature unavailable" signal — never a transient to retry.
- */
-
 import { getBackendSrv, config } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
 import { PLUGIN_BACKEND_URL } from '../constants';
 
-import type { CompletionCategory, CompletionKind, CompletionSource } from './types';
+import type { CompletionCategory, CompletionSource } from './types';
 
 const WRITE_URL = `${PLUGIN_BACKEND_URL}/completion-records`;
 
@@ -29,7 +18,6 @@ export type CompletionPlatform = 'oss' | 'cloud';
 export interface CompletionWriteBody {
   guideSource: string;
   guideId: string;
-  kind: CompletionKind;
   guideTitle: string;
   guideCategory: CompletionCategory;
   pathId?: string;
@@ -42,7 +30,7 @@ export interface CompletionWriteBody {
 
 /**
  * The outcome of a write attempt, mirroring the Layer A response contract:
- *   - created:       2xx, durable — remove from queue.
+ *   - created:       successful backend response, durable — remove from queue.
  *   - terminal:      4xx (not 404/429) — the write can never succeed; drop it.
  *   - transient:     429 / 5xx / network — retry with backoff (honoring
  *                    retryAfterMs when the upstream provided Retry-After).

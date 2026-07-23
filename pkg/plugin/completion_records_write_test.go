@@ -45,7 +45,6 @@ func validWriteBody() map[string]any {
 	return map[string]any{
 		"guideSource":       "bundled",
 		"guideId":           "first-dashboard",
-		"kind":              "guide",
 		"guideTitle":        "First dashboard",
 		"guideCategory":     "interactive",
 		"pathId":            "",

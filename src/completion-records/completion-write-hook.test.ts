@@ -167,10 +167,7 @@ describe('direct enqueue', () => {
     expect(sent.map((b) => b.guideId).sort()).toEqual(['guide-a', 'guide-b']);
   });
 
-  it('records exactly one journey-kind record per completed bundled journey', async () => {
-    // Emission is normalized upstream: a completed bundled journey emits one
-    // guide-kind fact (the milestone) plus one journey-kind fact. Distinct
-    // durable keys, so both persist — one journey record per journey.
+  it('records the milestone and completed bundled journey once each', async () => {
     await armCompletionWriteHook(deps());
     await runTimer();
 
@@ -178,12 +175,12 @@ describe('direct enqueue', () => {
     recordJourneyCompletion(journeyFact({ guideId: 'linux-journey' }));
     await runTimer();
 
-    const journeys = sent.filter((b) => b.kind === 'journey');
+    const journeys = sent.filter((b) => b.guideId === 'linux-journey');
     expect(journeys).toHaveLength(1);
-    expect(journeys[0]).toMatchObject({ guideId: 'linux-journey', kind: 'journey' });
+    expect(journeys[0]).toMatchObject({ guideId: 'linux-journey', guideCategory: 'learning-journey' });
   });
 
-  it('keeps guide and journey events with the same source and id distinct', async () => {
+  it('keeps separately recorded guide and journey facts', async () => {
     await armCompletionWriteHook(deps());
     await runTimer();
 
@@ -192,7 +189,7 @@ describe('direct enqueue', () => {
     await runTimer();
 
     expect(sent).toHaveLength(2);
-    expect(sent.map((body) => body.kind).sort()).toEqual(['guide', 'journey']);
+    expect(sent.map((body) => body.guideCategory).sort()).toEqual(['interactive', 'learning-journey']);
   });
 });
 

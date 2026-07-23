@@ -39,10 +39,11 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
   const ownerPrefix = `${StorageKeys.COMPLETION_WRITE_QUEUE_PREFIX}${ownerKey}:`;
   const itemPrefix = `${ownerPrefix}item:`;
   const leaseKey = `${ownerPrefix}lease`;
+  const volatileItems = new Map<string, QueuedWrite>();
 
   function list(): QueuedWrite[] {
+    const result = new Map(volatileItems);
     try {
-      const result: QueuedWrite[] = [];
       for (let index = 0; index < localStorage.length; index++) {
         const key = localStorage.key(index);
         if (!key?.startsWith(itemPrefix)) {
@@ -50,32 +51,35 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
         }
         const item = parseQueuedWrite(localStorage.getItem(key));
         if (item) {
-          result.push(item);
+          result.set(item.id, item);
         }
       }
-      return result;
     } catch {
-      return [];
+      return Array.from(result.values());
     }
+    return Array.from(result.values());
   }
 
   function put(item: QueuedWrite): void {
     try {
       localStorage.setItem(`${itemPrefix}${item.id}`, JSON.stringify(item));
+      volatileItems.delete(item.id);
     } catch {
-      // Storage failure must not reach the completion path.
+      volatileItems.set(item.id, { ...item });
     }
   }
 
   function remove(id: string): void {
+    volatileItems.delete(id);
     try {
       localStorage.removeItem(`${itemPrefix}${id}`);
     } catch {
-      // Storage failure must not reach the completion path.
+      return;
     }
   }
 
   function clear(): void {
+    volatileItems.clear();
     try {
       const keys: string[] = [];
       for (let index = 0; index < localStorage.length; index++) {
@@ -86,7 +90,7 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
       }
       keys.forEach((key) => localStorage.removeItem(key));
     } catch {
-      // Storage failure must not reach the completion path.
+      return;
     }
   }
 
@@ -114,7 +118,7 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
         localStorage.removeItem(leaseKey);
       }
     } catch {
-      // A stale lease expires and is recoverable by another tab.
+      return;
     }
   }
 

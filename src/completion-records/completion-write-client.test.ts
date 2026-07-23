@@ -24,7 +24,6 @@ function body(): CompletionWriteBody {
   return {
     guideSource: 'bundled',
     guideId: 'g1',
-    kind: 'guide',
     guideTitle: 'G1',
     guideCategory: 'interactive',
     completionPercent: 100,

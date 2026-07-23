@@ -1,26 +1,3 @@
-/**
- * Browser-persisted retry queue for durable completion writes (Track 2).
- *
- * Design contract:
- *   - Bounded (oldest-first eviction at the cap) so a wedged backend can't grow
- *     localStorage without limit.
- *   - Exponential backoff + jitter between transient retries; an upstream
- *     Retry-After hint is honored exactly.
- *   - Terminal outcomes drop the item (debug-logged, never Faro-spammed).
- *   - A route-missing outcome disarms the whole queue: it clears itself and
- *     stops, since the feature is unavailable on this deployment.
- *
- * Durability boundary (RFC §6.9): a record is durable only once its POST lands.
- * The queue is a best-effort session-lifetime buffer — persisted so it survives
- * reloads within a session, but a session that ends with items still queued may
- * lose those not-yet-persisted writes. localStorage remains the user's own local
- * completion view regardless.
- *
- * The queue is a pure state machine driven by `processDue()`; the timer that
- * calls it lives in the hook. Every dependency (clock, sender, storage, RNG) is
- * injectable so the state machine is unit-testable without real time or network.
- */
-
 import { logger } from '../lib/logging';
 
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';

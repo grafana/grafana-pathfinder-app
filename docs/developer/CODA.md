@@ -178,6 +178,8 @@ ID-token `sub`, `userLogin`, `userDisplayName`, `orgId`, `stackNamespace`, `reco
 **server-side from the verified request context**; body-supplied identity is never read (the typed
 request struct has nowhere to put it). Writes route through the plugin backend because a live RBAC
 probe showed Viewer tokens are rejected (403) on direct aggregated-API creates while reads succeed.
+The request body is limited to one 64 KiB JSON value. A successful write invalidates the read cache
+with a generation fence so an older in-flight LIST cannot make stale data fresh again.
 
 The single future-hardening item is cryptographic verification of the ID token against
 Grafana's JWKS via `github.com/grafana/authlib`; it is not wired today because it needs runtime

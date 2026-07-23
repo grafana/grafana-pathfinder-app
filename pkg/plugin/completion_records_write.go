@@ -68,13 +68,10 @@ var (
 //
 // IDENTITY IS NEVER READ FROM THE BODY: this struct has no
 // userId/userLogin/orgId/... fields, so any identity value a client smuggles in
-// is dropped on decode and cannot influence the written record. `kind` is
-// accepted for parity with the fact but is not a CRD spec field — bundled-journey
-// dedupe uses it on the client only.
+// is dropped on decode and cannot influence the written record.
 type completionWriteRequest struct {
 	GuideSource       string `json:"guideSource"`
 	GuideID           string `json:"guideId"`
-	Kind              string `json:"kind"`
 	GuideTitle        string `json:"guideTitle"`
 	GuideCategory     string `json:"guideCategory"`
 	PathID            string `json:"pathId"`

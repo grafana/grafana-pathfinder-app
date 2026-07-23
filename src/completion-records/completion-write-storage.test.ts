@@ -19,7 +19,6 @@ function item(id: string): QueuedWrite {
     body: {
       guideSource: 'bundled',
       guideId: id,
-      kind: 'guide',
       guideTitle: id,
       guideCategory: 'interactive',
       completionPercent: 100,
@@ -69,6 +68,18 @@ describe('completion write cross-tab storage', () => {
         .map((entry) => entry.id)
         .sort()
     ).toEqual(['a', 'b']);
+  });
+
+  it('retains an in-memory retry when localStorage rejects a write', () => {
+    const store = createCompletionWriteStorage('user-7:org-3', 'tab-a');
+    const write = item('volatile');
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+      throw new Error('quota exceeded');
+    });
+
+    store.put(write);
+
+    expect(store.list()).toEqual([write]);
   });
 
   it('allows one owner-scoped lease holder and recovers after expiry', () => {

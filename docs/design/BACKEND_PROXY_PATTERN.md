@@ -238,11 +238,13 @@ where a create differs from a read:
   backdating; any violation is a terminal 400.
 - **A per-user token-bucket write rate limit** (`completion_records_write_ratelimit.go`, §9 flood
   guard) runs before any upstream work; exhaustion returns 429 with `Retry-After`.
-- **A successful create invalidates the namespace read cache** (§4) so the next GET reflects the new
-  record promptly.
-- **Outcomes map onto the front-end retry-queue contract:** 2xx created (durable); 4xx terminal
-  (validation / auth / schema — the client drops it, no retry); 429 / 5xx / network transient (the
-  client retries with backoff, echoing the upstream `Retry-After` when present).
+- **A successful create invalidates the namespace read cache** (§4) and advances its generation.
+  Any LIST that began before the write may finish for its caller but cannot repopulate that cache;
+  a post-write GET starts a new refresh.
+- **Outcomes map onto the front-end retry-queue contract:** 201 created (durable); non-429 4xx
+  terminal (validation / auth / schema — the client drops it); 429 / 5xx / network transient (the
+  client retries with backoff and honors `Retry-After`). The App Platform create accepts only
+  200/201; any other 2xx is treated as an invalid upstream response and mapped to a retryable 502.
 
 ---
 

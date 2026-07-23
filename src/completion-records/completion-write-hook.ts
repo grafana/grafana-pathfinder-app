@@ -101,7 +101,6 @@ class CompletionWriteController {
     return {
       guideSource: fact.guideSource,
       guideId: fact.guideId,
-      kind: fact.kind,
       guideTitle: fact.guideTitle,
       guideCategory: fact.guideCategory,
       pathId: fact.pathId,
