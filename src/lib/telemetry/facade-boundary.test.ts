@@ -88,13 +88,19 @@ function importsFaroAdapterDirectly(source: string, fileName: string): boolean {
 
 describe('telemetry facade boundary', () => {
   it.each([
-    ["import { pushFaroEvent } from './lib/faro';", 'named import'],
-    ["import * as faro from './lib/faro'; faro.pushFaroEvent('custom');", 'namespace import'],
-    ["export { pushFaroMeasurement } from './lib/faro';", 're-export'],
-    ["const { pushFaroEvent } = require('./lib/faro');", 'CommonJS import'],
-    ["void import('./lib/faro').then((faro) => faro.pushFaroMeasurement('custom', {}));", 'dynamic import'],
-    ["const faro = require('./lib/faro'); faro['pushFaroEvent']('custom');", 'computed property access'],
-  ])('detects a restricted primitive used through a %s', (source) => {
+    { label: 'named import', source: "import { pushFaroEvent } from './lib/faro';" },
+    { label: 'namespace import', source: "import * as faro from './lib/faro'; faro.pushFaroEvent('custom');" },
+    { label: 're-export', source: "export { pushFaroMeasurement } from './lib/faro';" },
+    { label: 'CommonJS import', source: "const { pushFaroEvent } = require('./lib/faro');" },
+    {
+      label: 'dynamic import',
+      source: "void import('./lib/faro').then((faro) => faro.pushFaroMeasurement('custom', {}));",
+    },
+    {
+      label: 'computed property access',
+      source: "const faro = require('./lib/faro'); faro['pushFaroEvent']('custom');",
+    },
+  ])('detects a restricted primitive used through a $label', ({ source }) => {
     expect(findRestrictedPrimitiveReferences(source)).not.toEqual([]);
   });
 
