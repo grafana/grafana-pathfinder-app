@@ -36,8 +36,10 @@ import (
 //          front end disarms writes for the session (pending items persist for
 //          the next load). Upstream per-record 404s are remapped to 422 so
 //          they can never trigger that disarm.
-//   - other 4xx  terminal — validation / auth / schema; the write will never
-//          succeed as posted, so the client drops it (no retry).
+//   - other 4xx  terminal — validation / schema / 403; the write will never
+//          succeed as posted, so the client drops it (no retry). 401 is the
+//          exception: an expired session or forwarded token recovers after
+//          re-auth, so the client retries it as transient.
 //   - 429 / 5xx / network — transient; the client retries with exponential
 //          backoff. Retry-After is set as a standard backpressure hint, though
 //          Grafana's backendSrv does not expose response headers to the
@@ -108,8 +110,8 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Identity is REQUIRED for a write and fails closed: unlike the soft-200 read
-	// routes, a write with no verifiable caller is a terminal 401 — it can never
-	// succeed, so the client must drop it rather than retry.
+	// routes, a write with no verifiable caller is a 401. The client retries it
+	// with backoff — an expired forwarded token is time-recoverable after re-auth.
 	userID, userLogin, userDisplayName, ok := completionWriterIdentity(r)
 	if !ok {
 		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
@@ -290,7 +292,7 @@ func validateCompletedAt(s string) error {
 
 // writeCompletionUpstreamError maps an upstream create failure onto the front-end
 // contract: transient (429/5xx/network → retryable, echoing Retry-After) vs
-// terminal (other 4xx, including identity-scoped 401/403 → drop).
+// terminal (other 4xx → drop; an echoed 401 is retried client-side as transient).
 func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Request, err error) {
 	logger := a.ctxLogger(r.Context())
 	status, hasStatus := upstreamStatusOf(err)
@@ -316,8 +318,9 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	// Terminal 4xx: schema/validation rejected upstream, or identity-scoped
-	// 401/403. Echo the upstream status; the client must not retry. A 404 is the
-	// one exception — the front end reserves 404 for the structural "route not
+	// 401/403. Echo the upstream status; the client drops these (except 401,
+	// which it retries as transient — an expired token recovers). A 404 is the
+	// other exception — the front end reserves 404 for the structural "route not
 	// deployed" whole-feature disarm, so an upstream create 404 (this record only)
 	// is remapped to 422 to avoid disarming the entire session.
 	responseStatus := status

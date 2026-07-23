@@ -115,7 +115,7 @@ beforeEach(() => {
 
 describe('arming', () => {
   it('subscribes immediately and writes an enqueued completion', async () => {
-    await armCompletionWriteHook(deps());
+    armCompletionWriteHook(deps());
 
     recordGuideCompletion(guideFact({ guideId: 'dash' }));
     await runTimer();
@@ -125,15 +125,15 @@ describe('arming', () => {
   });
 
   it('is idempotent and does not double-subscribe', async () => {
-    await armCompletionWriteHook(deps());
-    await armCompletionWriteHook(deps());
+    armCompletionWriteHook(deps());
+    armCompletionWriteHook(deps());
     recordGuideCompletion(guideFact());
     await runTimer();
     expect(sent).toHaveLength(1);
   });
 
   it('does not subscribe or persist when the user and org identity is unavailable', async () => {
-    await armCompletionWriteHook(deps({ ownerKey: () => null }));
+    armCompletionWriteHook(deps({ ownerKey: () => null }));
 
     recordGuideCompletion(guideFact({ guideId: 'unowned' }));
     await runTimer();
@@ -145,7 +145,7 @@ describe('arming', () => {
 
 describe('completion path is non-blocking', () => {
   it('recording returns synchronously without invoking the sender', async () => {
-    await armCompletionWriteHook(deps());
+    armCompletionWriteHook(deps());
     await runTimer();
 
     // Even if the send would reject, recording must not throw or await it.
@@ -158,7 +158,7 @@ describe('completion path is non-blocking', () => {
 
 describe('direct enqueue', () => {
   it('enqueues each distinct completion as its own record', async () => {
-    await armCompletionWriteHook(deps());
+    armCompletionWriteHook(deps());
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'guide-a' }));
@@ -169,7 +169,7 @@ describe('direct enqueue', () => {
   });
 
   it('records the milestone and completed bundled journey once each', async () => {
-    await armCompletionWriteHook(deps());
+    armCompletionWriteHook(deps());
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'select-platform', guideCategory: 'learning-journey' }));
@@ -182,7 +182,7 @@ describe('direct enqueue', () => {
   });
 
   it('keeps separately recorded guide and journey facts', async () => {
-    await armCompletionWriteHook(deps());
+    armCompletionWriteHook(deps());
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'shared' }));
@@ -197,7 +197,7 @@ describe('direct enqueue', () => {
 describe('error handling', () => {
   it('drops a terminal write without retrying', async () => {
     sendResults = [{ kind: 'terminal' }];
-    await armCompletionWriteHook(deps());
+    armCompletionWriteHook(deps());
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'bad' }));
@@ -212,7 +212,7 @@ describe('error handling', () => {
 
   it('retries a transient write until it lands', async () => {
     sendResults = [{ kind: 'transient' }, { kind: 'created' }];
-    await armCompletionWriteHook(deps());
+    armCompletionWriteHook(deps());
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'flaky' }));
@@ -247,7 +247,7 @@ describe('concurrent drains (regression: no double-send)', () => {
       return Promise.resolve({ kind: 'created' });
     };
 
-    await armCompletionWriteHook(deps({ send }));
+    armCompletionWriteHook(deps({ send }));
 
     recordGuideCompletion(guideFact({ guideId: 'first' }));
 
@@ -284,7 +284,7 @@ describe('drain timer preemption (regression: fresh completion not stranded behi
     // First send is transient, so the stuck item's drain timer is scheduled a
     // full backoff into the future (1s base, zero jitter with random()=0.5).
     sendResults = [{ kind: 'transient' }, { kind: 'created' }, { kind: 'created' }];
-    await armCompletionWriteHook(deps({ setTimer }));
+    armCompletionWriteHook(deps({ setTimer }));
 
     recordGuideCompletion(guideFact({ guideId: 'stuck' }));
     await runTimer(); // attempt 1 → transient, reschedules a backoff out
@@ -325,7 +325,7 @@ describe('startup drain (reload durability)', () => {
     });
 
     sendResults = [{ kind: 'created' }];
-    await armCompletionWriteHook(deps());
+    armCompletionWriteHook(deps());
     expect(drainCb).not.toBeNull(); // arming alone schedules the drain
 
     await runTimer();
@@ -336,7 +336,7 @@ describe('startup drain (reload durability)', () => {
 describe('deployment-skew: missing route matrix', () => {
   it('write 404 mid-session (skew) disarms silently with no retry storm', async () => {
     sendResults = [{ kind: 'route-missing' }];
-    await armCompletionWriteHook(deps());
+    armCompletionWriteHook(deps());
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'a' }));

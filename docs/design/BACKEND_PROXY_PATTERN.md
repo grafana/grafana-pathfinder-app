@@ -237,8 +237,8 @@ where a create differs from a read:
   snapshots** (ID-token claims, then the `X-Grafana-User` header) — a documented exception to §3's
   no-`X-Grafana-User` rule that is acceptable only because they gate nothing and the read path
   joins exclusively on `userId`. The inbound gate (§3) still applies, but a write **fails
-  closed with a terminal 401**, not the read path's soft-200 — a write with no verifiable caller can
-  never succeed.
+  closed with a 401**, not the read path's soft-200; the client retries 401s as transient, since
+  an expired session or forwarded token recovers after re-auth.
 - **`metadata.name` is server-generated** (random, DNS-safe) per create. Client-supplied names are
   not accepted and there is **no 409 idempotency by design** — every accepted POST is a new record.
   Delivery is therefore **at-least-once** (a retry after an upstream success that failed to report

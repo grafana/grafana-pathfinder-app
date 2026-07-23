@@ -114,8 +114,10 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     const due = items.filter((i) => i.nextAttemptAt <= startNow);
 
     for (const item of due) {
-      // The item may have been removed by a concurrent pass; skip if gone.
-      if (!items.includes(item)) {
+      // A mid-drain enqueue() refresh() replaces `items` with freshly parsed
+      // copies; match by id so still-pending items are neither skipped nor
+      // ghosted after removal.
+      if (!items.some((i) => i.id === item.id)) {
         continue;
       }
       if (!storage.renewLease(now())) {
@@ -154,7 +156,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   }
 
   function remove(item: QueuedWrite): void {
-    items = items.filter((i) => i !== item);
+    items = items.filter((i) => i.id !== item.id);
     storage.remove(item.id);
   }
 

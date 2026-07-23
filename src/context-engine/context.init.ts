@@ -67,5 +67,5 @@ export function onPluginStart(): void {
   // Arm the durable completion-write hook (Track 2). Fire-and-forget: it
   // no-ops without a resolvable user/org identity, and on stacks without the
   // write route the first POST's 404 disarms it for the session.
-  void armCompletionWriteHook();
+  armCompletionWriteHook();
 }

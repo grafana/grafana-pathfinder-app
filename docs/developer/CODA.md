@@ -174,8 +174,9 @@ Outbound, proxies forward identity derived from the ID token only — `Authoriza
 `Authorization` header (Grafana strips it before plugin resource handlers reach the plugin).
 
 The write proxy (`POST /completion-records`, `pkg/plugin/completion_records_write.go`) applies the
-same inbound gate but fails **closed with a terminal 401** rather than a soft-200 — a write with no
-verifiable caller can never succeed. Every identity field written into the record (`userId` from the
+same inbound gate but fails **closed with a 401** rather than a soft-200; the front-end client
+retries 401s as transient, since an expired session or forwarded token recovers after re-auth.
+Every identity field written into the record (`userId` from the
 ID-token `sub`, `userLogin`, `userDisplayName`, `orgId`, `stackNamespace`, `recordedAt`) is stamped
 **server-side from the verified request context**; body-supplied identity is never read (the typed
 request struct has nowhere to put it). `userLogin`/`userDisplayName` are best-effort display

@@ -31,8 +31,10 @@ export interface CompletionWriteBody {
 /**
  * The outcome of a write attempt, mirroring the Layer A response contract:
  *   - created:       successful backend response, durable — remove from queue.
- *   - terminal:      4xx (not 404/429) — the write can never succeed; drop it.
- *   - transient:     429 / 5xx / network — retry with exponential backoff. The
+ *   - terminal:      4xx (not 401/404/429) — the write can never succeed; drop it.
+ *   - transient:     401 / 429 / 5xx / network — retry with exponential backoff
+ *                    (401 = expired session or forwarded token, which recovers
+ *                    after re-auth). The
  *                    backend sets Retry-After as a standard hint, but Grafana's
  *                    backendSrv strips response headers from its FetchError, so
  *                    the client cannot honor it.
@@ -83,10 +85,11 @@ function classifyWriteError(err: unknown): WriteOutcome {
   if (status === 404) {
     return { kind: 'route-missing' };
   }
-  if (status !== undefined && status >= 400 && status < 500 && status !== 429) {
+  if (status !== undefined && status >= 400 && status < 500 && status !== 401 && status !== 429) {
     return { kind: 'terminal' };
   }
-  // 429, any 5xx, or no status at all (network / abort) — retryable.
+  // 401 (expired session/token — recovers after re-auth), 429, any 5xx, or no
+  // status at all (network / abort) — retryable.
   return { kind: 'transient' };
 }
 

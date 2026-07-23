@@ -59,6 +59,11 @@ describe('postCompletionRecord — outcome classification', () => {
     await expect(postCompletionRecord(body())).resolves.toEqual({ kind: 'terminal' });
   });
 
+  it('transient on 401 (expired session/token recovers after re-auth)', async () => {
+    fetchMock.mockReturnValue(throwError(() => ({ status: 401 })));
+    await expect(postCompletionRecord(body())).resolves.toEqual({ kind: 'transient' });
+  });
+
   it('transient on 429', async () => {
     fetchMock.mockReturnValue(throwError(() => ({ status: 429 })));
     await expect(postCompletionRecord(body())).resolves.toEqual({ kind: 'transient' });

@@ -154,7 +154,7 @@ class CompletionWriteController {
 
 let controller: CompletionWriteController | null = null;
 
-export async function armCompletionWriteHook(overrides?: Partial<WriteHookDeps>): Promise<void> {
+export function armCompletionWriteHook(overrides?: Partial<WriteHookDeps>): void {
   if (controller) {
     return;
   }
