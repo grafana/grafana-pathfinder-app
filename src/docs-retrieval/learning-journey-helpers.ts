@@ -36,6 +36,12 @@ export interface CompletionContext {
   packageManifest?: Record<string, unknown>;
   guideTitle?: string;
   pathId?: string;
+  /**
+   * The milestone path owns the single guide-kind fact for this event; when set,
+   * setJourneyCompletionPercentage suppresses its redundant interactive-category
+   * emission (but keeps its local-cache/badge duties). See markMilestoneDone.
+   */
+  suppressGuideEmission?: boolean;
 }
 
 const GRAFANA_BASE = new URL('https://grafana.com');
@@ -405,9 +411,12 @@ export async function setJourneyCompletionPercentageAsync(
 function recordBundledGuideCompletion(guideId: string, context?: CompletionContext): void {
   // A journey-shaped package ('path'/'journey' manifests render as
   // learning-journey tabs) completes via markMilestoneDone's journey trigger;
-  // emitting a second, guide-kind fact here would double-count it.
+  // emitting a second, guide-kind fact here would double-count it. Likewise,
+  // suppressGuideEmission means the milestone path owns the guide-kind fact for
+  // this completion — skip EMISSION only; the caller's storage/badge duties ran
+  // before this call and are unaffected.
   const manifestType = context?.packageManifest?.type;
-  if (manifestType === 'path' || manifestType === 'journey') {
+  if (manifestType === 'path' || manifestType === 'journey' || context?.suppressGuideEmission) {
     return;
   }
   const identity = resolveCompletionIdentity({

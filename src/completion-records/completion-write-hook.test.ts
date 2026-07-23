@@ -1,11 +1,10 @@
 /**
  * Unit tests for the Track 2 write hook: capability-gated arming, a provably
- * non-blocking completion path, bundled-journey window normalization (exactly one
- * record), terminal-drop / transient-retry, and the deployment-skew missing-route
- * matrix. The recorder is the REAL module; all client/timer/clock deps are
- * injected so the coalescing-window + drain state machine is driven
- * deterministically. The harness routes injected timers by delay: the 2000ms
- * coalescing window and the 0/backoff drain timers are tracked separately.
+ * non-blocking completion path, direct-enqueue with durable-key dedupe, the
+ * concurrent-drain guard, terminal-drop / transient-retry, and the
+ * deployment-skew missing-route matrix. The recorder is the REAL module; all
+ * client/timer/clock deps are injected so the drain state machine is driven
+ * deterministically.
  */
 
 // The hook imports the client module (for defaults); mock @grafana/runtime so
@@ -24,11 +23,6 @@ import {
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
 import type { GuideCompletionFact, JourneyCompletionFact } from './types';
 
-const COALESCE_WINDOW_MS = 2000;
-const WINDOW_HANDLE = 2 as unknown as ReturnType<typeof setTimeout>;
-const DRAIN_HANDLE = 1 as unknown as ReturnType<typeof setTimeout>;
-
-let windowCb: (() => void) | null = null;
 let drainCb: (() => void) | null = null;
 let clock = 0;
 let sent: CompletionWriteBody[] = [];
@@ -79,20 +73,12 @@ function deps(over: Partial<WriteHookDeps> = {}): Partial<WriteHookDeps> {
     platform: () => 'cloud',
     now: () => clock,
     random: () => 0.5,
-    setTimer: (fn, ms) => {
-      if (ms === COALESCE_WINDOW_MS) {
-        windowCb = fn;
-        return WINDOW_HANDLE;
-      }
+    setTimer: (fn) => {
       drainCb = fn;
-      return DRAIN_HANDLE;
+      return 1 as unknown as ReturnType<typeof setTimeout>;
     },
-    clearTimer: (handle) => {
-      if (handle === WINDOW_HANDLE) {
-        windowCb = null;
-      } else {
-        drainCb = null;
-      }
+    clearTimer: () => {
+      drainCb = null;
     },
     ...over,
   };
@@ -101,12 +87,6 @@ function deps(over: Partial<WriteHookDeps> = {}): Partial<WriteHookDeps> {
 async function flushMicro(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
-}
-
-function runWindow(): void {
-  const cb = windowCb;
-  windowCb = null;
-  cb?.();
 }
 
 async function runTimer(): Promise<void> {
@@ -125,7 +105,6 @@ beforeEach(() => {
   } catch {
     // no-op
   }
-  windowCb = null;
   drainCb = null;
   clock = 0;
   sent = [];
@@ -138,7 +117,6 @@ describe('arming is capability-gated', () => {
   it('does not arm when capability is unavailable — no subscriber, no writes', async () => {
     await armCompletionWriteHook(deps({ fetchCapability: async () => false }));
     recordGuideCompletion(guideFact());
-    runWindow();
     await runTimer();
     expect(sent).toHaveLength(0);
   });
@@ -148,7 +126,6 @@ describe('arming is capability-gated', () => {
     await runTimer(); // initial (empty) persisted drain
 
     recordGuideCompletion(guideFact({ guideId: 'dash' }));
-    runWindow();
     await runTimer();
 
     expect(sent).toHaveLength(1);
@@ -170,88 +147,51 @@ describe('completion path is non-blocking', () => {
     // Even if the send would reject, recording must not throw or await it.
     sendResults = [{ kind: 'transient' }];
     expect(() => recordGuideCompletion(guideFact({ guideId: 'x' }))).not.toThrow();
-    // The send is deferred (coalescing window + drain timer), so nothing has
-    // been sent yet.
+    // The send is deferred to the drain timer, so nothing has been sent yet.
     expect(sent).toHaveLength(0);
   });
 });
 
-describe('bundled-journey normalization (regression: exactly one record)', () => {
-  it('collapses the interactive + learning-journey facts of one window to a single record', async () => {
+describe('direct enqueue with durable-key dedupe', () => {
+  it('enqueues each distinct completion as its own record', async () => {
     await armCompletionWriteHook(deps());
     await runTimer();
 
-    // One completed bundled learning-journey drives both branches:
-    // an interactive-category guide fact (journey base id) and a learning-journey
-    // guide fact (milestone slug id) — distinct facts at the recorder.
-    recordGuideCompletion(guideFact({ guideId: 'linux-journey', guideCategory: 'interactive' }));
-    recordGuideCompletion(guideFact({ guideId: 'select-platform', guideCategory: 'learning-journey' }));
-    runWindow(); // flush the coalescing window → normalize to one
-    await runTimer();
-
-    expect(sent).toHaveLength(1);
-    // The learning-journey fact outranks the interactive duplicate.
-    expect(sent[0]).toMatchObject({ guideId: 'select-platform', guideCategory: 'learning-journey' });
-  });
-
-  it('collapses the bundled-journey triplet emitted across SEPARATE async ticks to one journey record', async () => {
-    await armCompletionWriteHook(deps());
-    await runTimer();
-
-    // The real emission order is NOT synchronous: onGuideComplete emits the
-    // interactive fact synchronously, then calls markMilestoneDone un-awaited,
-    // which emits the learning-journey fact and finally the journey fact only
-    // after several awaits. Simulate that with microtask gaps between facts —
-    // all still land inside the single fixed window opened by the first fact.
-    recordGuideCompletion(guideFact({ guideId: 'linux-journey', guideCategory: 'interactive' }));
-    await flushMicro();
-    recordGuideCompletion(guideFact({ guideId: 'select-platform', guideCategory: 'learning-journey' }));
-    await flushMicro();
-    recordJourneyCompletion(journeyFact({ guideId: 'linux-journey' }));
-    await flushMicro();
-
-    runWindow(); // fixed window fires once, spanning all three ticks
-    await runTimer();
-
-    expect(sent).toHaveLength(1);
-    // The whole-journey fact outranks both guide facts.
-    expect(sent[0]).toMatchObject({ guideId: 'linux-journey', kind: 'journey' });
-  });
-
-  it('a standalone completion in its own window still produces one record', async () => {
-    await armCompletionWriteHook(deps());
-    await runTimer();
-
-    recordGuideCompletion(guideFact({ guideId: 'solo' }));
-    runWindow();
-    await runTimer();
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ guideId: 'solo' });
-  });
-
-  it('blanket-window tradeoff: distinct completions in one window coalesce; a later window records separately', async () => {
-    await armCompletionWriteHook(deps());
-    await runTimer();
-
-    // Two DISTINCT completions inside the same fixed window collapse to ONE
-    // record. This is the documented blanket-window tradeoff: the window is not
-    // keyed to a journey (no reliable relation key rides on the fact), so it
-    // relies on distinct completions being user-paced beyond COALESCE_WINDOW_MS.
     recordGuideCompletion(guideFact({ guideId: 'guide-a' }));
     recordGuideCompletion(guideFact({ guideId: 'guide-b' }));
-    runWindow();
     await runTimer();
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ guideId: 'guide-a' });
 
-    // A completion emitted AFTER the window has flushed opens a fresh window and
-    // is recorded separately — proving separate windows yield separate records.
-    clock += COALESCE_WINDOW_MS + 1;
-    recordGuideCompletion(guideFact({ guideId: 'guide-c' }));
-    runWindow();
+    expect(sent.map((b) => b.guideId).sort()).toEqual(['guide-a', 'guide-b']);
+  });
+
+  it('records exactly one journey-kind record per completed bundled journey', async () => {
+    // Emission is normalized upstream: a completed bundled journey emits one
+    // guide-kind fact (the milestone) plus one journey-kind fact. Distinct
+    // durable keys, so both persist — one journey record per journey.
+    await armCompletionWriteHook(deps());
     await runTimer();
-    expect(sent).toHaveLength(2);
-    expect(sent[1]).toMatchObject({ guideId: 'guide-c' });
+
+    recordGuideCompletion(guideFact({ guideId: 'select-platform', guideCategory: 'learning-journey' }));
+    recordJourneyCompletion(journeyFact({ guideId: 'linux-journey' }));
+    await runTimer();
+
+    const journeys = sent.filter((b) => b.kind === 'journey');
+    expect(journeys).toHaveLength(1);
+    expect(journeys[0]).toMatchObject({ guideId: 'linux-journey', kind: 'journey' });
+  });
+
+  it('drops a same-durable-key re-enqueue while the first is still pending', async () => {
+    await armCompletionWriteHook(deps());
+    await runTimer();
+
+    // Same (guideSource, guideId) enqueued twice before the drain sends it:
+    // the second is deduped by the queue's durable-key guard.
+    recordGuideCompletion(guideFact({ guideId: 'dup' }));
+    recordGuideCompletion(guideFact({ guideId: 'dup' }));
+    await runTimer();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ guideId: 'dup' });
   });
 });
 
@@ -262,7 +202,6 @@ describe('error handling', () => {
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'bad' }));
-    runWindow();
     await runTimer();
     expect(sent).toHaveLength(1);
 
@@ -278,7 +217,6 @@ describe('error handling', () => {
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'flaky' }));
-    runWindow();
     await runTimer(); // attempt 1 → transient, reschedules ~1000ms out
     expect(sent).toHaveLength(1);
 
@@ -314,7 +252,6 @@ describe('concurrent drains (regression: no double-send)', () => {
     await runTimer(); // initial empty drain
 
     recordGuideCompletion(guideFact({ guideId: 'first' }));
-    runWindow();
 
     // Fire the drain: processDue starts and suspends on the first send's await.
     fireTimer();
@@ -324,7 +261,6 @@ describe('concurrent drains (regression: no double-send)', () => {
     // A second completion arrives mid-send and schedules a fresh timer. Firing
     // it must NOT start a concurrent processDue that re-sends the in-flight item.
     recordGuideCompletion(guideFact({ guideId: 'second' }));
-    runWindow();
     fireTimer();
     await flushMicro();
     expect(sendCalls).toHaveLength(1); // still only the first item
@@ -344,7 +280,6 @@ describe('deployment-skew: missing route matrix', () => {
     // fetchCompletionCapability maps 404 → false; the hook sees `false`.
     await armCompletionWriteHook(deps({ fetchCapability: async () => false }));
     recordGuideCompletion(guideFact());
-    runWindow();
     await runTimer();
     expect(sent).toHaveLength(0);
   });
@@ -355,13 +290,11 @@ describe('deployment-skew: missing route matrix', () => {
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'a' }));
-    runWindow();
     await runTimer(); // route-missing → disarm + teardown
     expect(sent).toHaveLength(1);
 
     // Subsequent completions do not enqueue or send, and there is no retry loop.
     recordGuideCompletion(guideFact({ guideId: 'b' }));
-    runWindow();
     clock += 10 * 60 * 1000;
     await runTimer();
     expect(sent).toHaveLength(1);

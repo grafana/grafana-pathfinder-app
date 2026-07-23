@@ -120,6 +120,17 @@ describe('bundled guide reaching 100% (trigger class A)', () => {
     expect(markGuideCompletedMock).toHaveBeenCalledWith('linux-journey');
   });
 
+  it('suppresses the interactive guide fact when the milestone path owns emission, keeping local-cache duties', () => {
+    // The bundled milestone completion path (DocsPanelContentArea) also fires
+    // markMilestoneDone, which emits the single canonical learning-journey fact;
+    // setJourneyCompletionPercentage must suppress its redundant interactive one.
+    setJourneyCompletionPercentage('bundled:select-platform', 100, { suppressGuideEmission: true });
+
+    expect(emitted).toHaveLength(0);
+    expect(markGuideCompletedMock).toHaveBeenCalledWith('select-platform');
+    expect(journeySetMock).toHaveBeenCalledWith('bundled:select-platform', 100);
+  });
+
   it('does not emit for a non-bundled key at 100% (current behavior preserved)', () => {
     setJourneyCompletionPercentage('https://grafana.com/docs/foo/', 100);
     expect(emitted).toHaveLength(0);

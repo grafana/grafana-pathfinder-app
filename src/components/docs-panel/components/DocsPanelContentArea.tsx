@@ -408,24 +408,30 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       }}
                       onGuideComplete={() => {
                         const baseUrl = activeTab?.baseUrl || stableContent.url;
+                        const journeyBase = activeTab?.baseUrl;
+                        const slug =
+                          stableContent.type === 'learning-journey' && activeTab?.currentUrl
+                            ? getMilestoneSlug(activeTab.currentUrl)
+                            : '';
+                        // When the milestone path fires it emits the single
+                        // canonical guide-kind fact, so suppress the redundant
+                        // interactive fact from setJourneyCompletionPercentage.
+                        const willMarkMilestone = Boolean(slug && journeyBase);
                         const completionContext = {
                           packageManifest: stableContent.metadata?.packageManifest,
                           guideTitle: activeTab?.title,
+                          suppressGuideEmission: willMarkMilestone,
                         };
                         if (baseUrl?.startsWith('bundled:')) {
                           setJourneyCompletionPercentage(baseUrl, 100, completionContext);
                         }
-                        if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
-                          const slug = getMilestoneSlug(activeTab.currentUrl);
-                          const journeyBase = activeTab.baseUrl;
-                          if (slug && journeyBase) {
-                            markMilestoneDone(
-                              journeyBase,
-                              slug,
-                              stableContent.metadata?.learningJourney?.totalMilestones,
-                              completionContext
-                            );
-                          }
+                        if (willMarkMilestone && journeyBase) {
+                          markMilestoneDone(
+                            journeyBase,
+                            slug,
+                            stableContent.metadata?.learningJourney?.totalMilestones,
+                            completionContext
+                          );
                         }
                       }}
                     />

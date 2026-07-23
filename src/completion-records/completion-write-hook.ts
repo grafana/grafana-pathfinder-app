@@ -45,14 +45,6 @@ const defaultDeps: WriteHookDeps = {
   clearTimer: (handle) => clearTimeout(handle),
 };
 
-// A bundled journey's sibling facts do NOT arrive in one synchronous burst:
-// onGuideComplete calls markMilestoneDone un-awaited, and that helper emits its
-// learning-journey and journey facts only after several awaits. A microtask
-// flush would therefore only ever see the first (synchronous) fact. A fixed
-// time window from the first fact is the smallest mechanism that spans those
-// async ticks and collapses the triplet to one record.
-const COALESCE_WINDOW_MS = 2000;
-
 // Module-level session state. A single arm per session; reset only for tests.
 let deps: WriteHookDeps = defaultDeps;
 let armed = false;
@@ -63,64 +55,10 @@ let unsubscribe: (() => void) | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let draining = false;
 
-// Facts buffered within one coalescing window, flushed together so a bundled
-// journey's siblings normalize to a single durable record (see flushWindow).
-let windowBuffer: CompletionFact[] = [];
-let windowTimer: ReturnType<typeof setTimeout> | null = null;
-
 function durableKeyOf(fact: CompletionFact): string {
   // U+241F (SYMBOL FOR UNIT SEPARATOR) can't appear in an id, so it's a safe
   // joiner for the durable (guideSource, guideId) key.
   return `${fact.guideSource}␟${fact.guideId}`;
-}
-
-// completionRank orders facts by how canonical they are as the single record for
-// a completion: a whole-journey completion outranks a milestone/learning-journey
-// guide, which outranks the interactive-category duplicate, which outranks docs.
-function completionRank(fact: CompletionFact): number {
-  if (fact.kind === 'journey') {
-    return 3;
-  }
-  if (fact.guideCategory === 'learning-journey') {
-    return 2;
-  }
-  if (fact.guideCategory === 'interactive') {
-    return 1;
-  }
-  return 0;
-}
-
-/**
- * Normalize one coalescing window to a single canonical fact.
- *
- * A completed bundled learning-journey drives BOTH branches of
- * DocsPanelContentArea.onGuideComplete: setJourneyCompletionPercentage emits an
- * interactive-category guide fact synchronously, while markMilestoneDone is
- * called UN-AWAITED and emits its learning-journey fact (and, on the final
- * milestone, a journey fact) only after several awaits. The recorder keeps these
- * distinct (different guide ids), which is deliberate parity for other consumers
- * — but Track 2 must persist exactly ONE durable record per completed bundled
- * journey (captain decision 2026-07-23).
- *
- * The window is intentionally BLANKET-scoped (not keyed to a journey): no
- * reliable relation key rides on the emitted CompletionFact — pathId is
- * undefined at the bundled onGuideComplete call sites, the package manifest is
- * not carried on the fact, and guideTitle is denormalized. This is safe because
- * distinct completions are user-paced (a user cannot finish two different guides
- * within COALESCE_WINDOW_MS) while a journey's triplet fires within
- * milliseconds; and the backend read-side collateByUser dedups per
- * (userId, guideSource, guideId) regardless.
- */
-function flushWindow(): void {
-  windowTimer = null;
-  const facts = windowBuffer;
-  windowBuffer = [];
-  if (facts.length === 0 || !queue || queue.isDisarmed()) {
-    return;
-  }
-  const canonical = facts.reduce((best, f) => (completionRank(f) > completionRank(best) ? f : best));
-  queue.enqueue(toBody(canonical), durableKeyOf(canonical));
-  scheduleDrain(0);
 }
 
 function toBody(fact: CompletionFact): CompletionWriteBody {
@@ -140,25 +78,16 @@ function toBody(fact: CompletionFact): CompletionWriteBody {
 }
 
 function onFact(fact: CompletionFact): void {
-  // NEVER block or throw on the completion path: buffer and return. The window
-  // is flushed on a later timer so a bundled journey's sibling facts (emitted
-  // across separate async ticks) are normalized to one record before enqueue.
+  // NEVER block or throw on the completion path: enqueue to the persisted queue
+  // and return. Emission is normalized upstream (the milestone path owns the
+  // single guide-kind fact per completion), so the queue's durable-key dedupe is
+  // the only dedupe needed.
   try {
     if (!queue || queue.isDisarmed()) {
       return;
     }
-    windowBuffer.push(fact);
-    // Fixed window from the FIRST fact: never restarted on later facts, so it
-    // stays bounded regardless of how many siblings arrive.
-    if (windowTimer === null) {
-      windowTimer = deps.setTimer(() => {
-        try {
-          flushWindow();
-        } catch (error) {
-          logger.debug('completion write: window flush failed (ignored)', { error: String(error) });
-        }
-      }, COALESCE_WINDOW_MS);
-    }
+    queue.enqueue(toBody(fact), durableKeyOf(fact));
+    scheduleDrain(0);
   } catch (error) {
     logger.debug('completion write: enqueue failed (ignored)', { error: String(error) });
   }
@@ -211,17 +140,12 @@ function teardown(): void {
     deps.clearTimer(timer);
     timer = null;
   }
-  if (windowTimer !== null) {
-    deps.clearTimer(windowTimer);
-    windowTimer = null;
-  }
   if (unsubscribe) {
     unsubscribe();
     unsubscribe = null;
   }
   queue = null;
   armed = false;
-  windowBuffer = [];
 }
 
 /**
@@ -261,9 +185,6 @@ export function __resetCompletionWriteHookForTests(): void {
   if (timer !== null) {
     defaultDeps.clearTimer(timer);
   }
-  if (windowTimer !== null) {
-    defaultDeps.clearTimer(windowTimer);
-  }
   if (unsubscribe) {
     unsubscribe();
   }
@@ -274,7 +195,5 @@ export function __resetCompletionWriteHookForTests(): void {
   queue = null;
   unsubscribe = null;
   timer = null;
-  windowTimer = null;
   draining = false;
-  windowBuffer = [];
 }

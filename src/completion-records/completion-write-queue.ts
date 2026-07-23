@@ -9,9 +9,9 @@
  *   - Terminal outcomes drop the item (debug-logged, never Faro-spammed).
  *   - A route-missing outcome disarms the whole queue: it clears itself and
  *     stops, since the feature is unavailable on this deployment.
- *   - Dedupe on the durable key (guideSource, guideId): a completed bundled
- *     journey emits two facts through the recorder (interactive + learning-
- *     journey category) sharing that key; only ONE durable record is enqueued.
+ *   - Dedupe on the durable key (guideSource, guideId): emission is normalized
+ *     upstream to one guide-kind fact per completion, so this guards the
+ *     resume/re-completion case — a reload re-enqueue of a still-pending item.
  *
  * Durability boundary (RFC §6.9): a record is durable only once its POST lands.
  * The queue is a best-effort session-lifetime buffer — persisted so it survives
@@ -150,8 +150,9 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     if (disarmed) {
       return false;
     }
-    // Dedupe on the durable key: the two facts of a completed bundled journey
-    // arrive synchronously, so the first is still queued when the second checks.
+    // Dedupe on the durable key: emission is normalized upstream to one
+    // guide-kind fact per completion, so this guards the resume/re-completion
+    // case — a reload re-enqueue of an item still pending from an earlier load.
     if (items.some((i) => i.durableKey === durableKey)) {
       logger.debug('completion write: dropped duplicate for durable key', { durableKey });
       return false;
