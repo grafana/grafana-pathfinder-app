@@ -50,6 +50,7 @@ import {
   type OnlinePackageEntry,
   type PackageMatchExpr,
 } from '../lib/package-recommendations-client';
+import { fetchCompletionContextForRecommend } from '../lib/completion-records-client';
 import { getHighlightedGuideConfig } from '../utils/openfeature';
 import { buildSyntheticFeaturedRecommendation, matchesHighlightedGuidePage } from '../utils/experiments';
 
@@ -346,9 +347,16 @@ export class ContextService {
         }
       };
 
+      // Kick the optional completion-context fetch off in parallel with the
+      // other pre-request work. It has its own small timeout and never throws,
+      // so it can only enrich the payload, never block or fail the request.
+      const completionContextPromise = fetchCompletionContextForRecommend();
+
       const hashedSource = await getHashedSource();
 
       const identity = await buildTelemetryIdentity();
+
+      const completionContext = await completionContextPromise;
 
       const payload: ContextPayload = {
         path: contextData.currentPath,
@@ -360,6 +368,7 @@ export class ContextService {
         platform: this.getCurrentPlatform(),
         source: hashedSource,
         language: this.getCurrentLanguage(),
+        ...(completionContext ? { completions: completionContext } : {}),
       };
 
       // Add timeout to prevent hanging in air-gapped or slow connection scenarios
