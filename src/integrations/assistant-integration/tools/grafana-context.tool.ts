@@ -11,6 +11,7 @@ import { config, locationService, getBackendSrv, getDataSourceSrv } from '@grafa
 import type { GrafanaContextArtifact, DatasourceInfo } from './types';
 import { getDetectedDatasourceType, getDetectedVisualizationType } from '../../../context-engine';
 import { logger } from '../../../lib/logging';
+import { currentPlatform } from '../../../lib/platform';
 
 /**
  * Tool input schema - no input required
@@ -22,17 +23,6 @@ const toolInputSchema = {
 };
 
 type ToolInput = Record<string, never>;
-
-/**
- * Get current platform
- */
-const getCurrentPlatform = (): 'cloud' | 'oss' => {
-  try {
-    return config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud') ? 'cloud' : 'oss';
-  } catch {
-    return 'oss';
-  }
-};
 
 /**
  * Get Grafana version
@@ -219,7 +209,7 @@ export const createGrafanaContextTool = (
         currentUrl,
         searchParams,
         grafanaVersion: getGrafanaVersion(),
-        platform: getCurrentPlatform(),
+        platform: currentPlatform(),
         theme: getCurrentTheme(),
         datasources: getDatasourcesInfo(),
         dashboard,

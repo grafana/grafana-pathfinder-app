@@ -1,7 +1,9 @@
 import { getBackendSrv, config } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { initializeEchoLogging, initializeFromRecentEvents } from './context-event-bus';
+import { extractFetchErrorStatus } from '../lib/fetch-error';
 import { logger } from '../lib/logging';
+import { armCompletionWriteHook } from '../completion-records';
 
 /**
  * Fetch interactive guides from Pathfinder backend
@@ -24,10 +26,7 @@ export async function fetchInteractiveGuidesFromBackend(): Promise<void> {
       })
     );
   } catch (error) {
-    const status =
-      (error as { status?: number; statusCode?: number; data?: { statusCode?: number } })?.status ??
-      (error as { statusCode?: number })?.statusCode ??
-      (error as { data?: { statusCode?: number } })?.data?.statusCode;
+    const status = extractFetchErrorStatus(error);
     const unavailableStatuses = new Set([400, 403, 404, 405, 501, 503]);
 
     if (status && unavailableStatuses.has(status)) {
@@ -62,4 +61,9 @@ export function onPluginStart(): void {
   // Initialize context services only
   // Dev mode is lazily initialized to avoid unnecessary API calls for anonymous users
   initializeContextServices();
+
+  // Arm the durable completion-write hook (Track 2). Fire-and-forget: it
+  // no-ops without a resolvable user/org identity, and on stacks without the
+  // write route the first POST's 404 disarms it for the session.
+  armCompletionWriteHook();
 }

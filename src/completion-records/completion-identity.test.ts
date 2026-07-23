@@ -3,7 +3,7 @@
  * shared with the Custom Guide Packages RFC: `(guideSource, guideId) =
  * (manifest.repository, manifest.id)`, never derived from a loader URL.
  */
-import { resolveCompletionIdentity, manifestGuideId } from './completion-identity';
+import { resolveCompletionIdentity, manifestGuideId, manifestGuideSource } from './completion-identity';
 
 describe('resolveCompletionIdentity', () => {
   it('keys on manifest.repository / manifest.id when present', () => {
@@ -73,5 +73,14 @@ describe('manifestGuideId', () => {
     expect(manifestGuideId({})).toBeUndefined();
     expect(manifestGuideId({ id: '' })).toBeUndefined();
     expect(manifestGuideId({ id: 42 })).toBeUndefined();
+  });
+});
+
+describe('manifestGuideSource', () => {
+  it('returns only a non-empty repository string', () => {
+    expect(manifestGuideSource({ repository: 'app-platform' })).toBe('app-platform');
+    expect(manifestGuideSource({ repository: '' })).toBeUndefined();
+    expect(manifestGuideSource({ repository: 42 })).toBeUndefined();
+    expect(manifestGuideSource()).toBeUndefined();
   });
 });

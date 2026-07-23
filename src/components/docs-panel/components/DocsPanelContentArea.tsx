@@ -37,7 +37,13 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { getMilestoneSlug, markMilestoneDone, setJourneyCompletionPercentage } from '../../../docs-retrieval';
+import {
+  getMilestoneSlug,
+  markMilestoneDone,
+  recordStandaloneGuideCompletion,
+  setJourneyCompletionPercentage,
+  setMilestoneCompletionPercentage,
+} from '../../../docs-retrieval';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
@@ -408,24 +414,32 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       }}
                       onGuideComplete={() => {
                         const baseUrl = activeTab?.baseUrl || stableContent.url;
+                        const journeyBase = activeTab?.baseUrl;
+                        const slug =
+                          stableContent.type === 'learning-journey' && activeTab?.currentUrl
+                            ? getMilestoneSlug(activeTab.currentUrl)
+                            : '';
+                        const willMarkMilestone = Boolean(slug && journeyBase);
                         const completionContext = {
                           packageManifest: stableContent.metadata?.packageManifest,
                           guideTitle: activeTab?.title,
                         };
                         if (baseUrl?.startsWith('bundled:')) {
-                          setJourneyCompletionPercentage(baseUrl, 100, completionContext);
-                        }
-                        if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
-                          const slug = getMilestoneSlug(activeTab.currentUrl);
-                          const journeyBase = activeTab.baseUrl;
-                          if (slug && journeyBase) {
-                            markMilestoneDone(
-                              journeyBase,
-                              slug,
-                              stableContent.metadata?.learningJourney?.totalMilestones,
-                              completionContext
-                            );
+                          if (willMarkMilestone) {
+                            setMilestoneCompletionPercentage(baseUrl, 100);
+                          } else {
+                            setJourneyCompletionPercentage(baseUrl, 100, completionContext);
                           }
+                        }
+                        if (willMarkMilestone && journeyBase) {
+                          void markMilestoneDone(
+                            journeyBase,
+                            slug,
+                            stableContent.metadata?.learningJourney?.totalMilestones,
+                            completionContext
+                          );
+                        } else if (!baseUrl?.startsWith('bundled:')) {
+                          recordStandaloneGuideCompletion(completionContext);
                         }
                       }}
                     />

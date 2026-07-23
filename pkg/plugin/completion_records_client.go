@@ -57,6 +57,62 @@ type completionRecordLister interface {
 	ListPage(ctx context.Context, namespace, continueToken string) (*completionRecordPage, error)
 }
 
+// completionWriteMaxBytes bounds the created-object response body. A single
+// CompletionRecord is small; this is a generous ceiling against a pathological
+// upstream.
+const completionWriteMaxBytes = 256 * 1024
+
+// completionRecordWriteSpec is the FULL CompletionRecord spec written on create.
+// Every field is required by the CRD (kinds/completionrecord.cue enforces
+// presence on all fields — it is the only enforcement surface that ships under
+// the manifest-only posture), so the handler must populate all of them. Field
+// names track the generated Go spec (pkg/generated/completionrecord). The first
+// block is client-supplied (WHAT was completed); the second is stamped by this
+// trusted writer from its verified request context (never from the body).
+type completionRecordWriteSpec struct {
+	GuideID           string `json:"guideId"`
+	GuideSource       string `json:"guideSource"`
+	GuideTitle        string `json:"guideTitle"`
+	PathID            string `json:"pathId"`
+	Source            string `json:"source"`
+	CompletedAt       string `json:"completedAt"`
+	DurationSeconds   int64  `json:"durationSeconds"`
+	CompletionPercent int64  `json:"completionPercent"`
+	GuideCategory     string `json:"guideCategory"`
+	Platform          string `json:"platform"`
+
+	UserID          string `json:"userId"`
+	UserLogin       string `json:"userLogin"`
+	UserDisplayName string `json:"userDisplayName"`
+	RecordedAt      string `json:"recordedAt"`
+	OrgID           int64  `json:"orgId"`
+	StackNamespace  string `json:"stackNamespace"`
+	SchemaVersion   int64  `json:"schemaVersion"`
+}
+
+// completionRecordObjectMeta is the subset of Kubernetes object metadata the
+// writer sets. A unique name is server-generated per create (no client-supplied
+// name; no 409 idempotency mechanism by design).
+type completionRecordObjectMeta struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+}
+
+// completionRecordObject is the full aggregated-API object POSTed on create.
+type completionRecordObject struct {
+	APIVersion string                     `json:"apiVersion"`
+	Kind       string                     `json:"kind"`
+	Metadata   completionRecordObjectMeta `json:"metadata"`
+	Spec       completionRecordWriteSpec  `json:"spec"`
+}
+
+// completionRecordCreator abstracts a single upstream create so the write
+// handler can be unit-tested with a fake that captures the object without an
+// HTTP server. The production implementation is completionHTTPClient.
+type completionRecordCreator interface {
+	Create(ctx context.Context, namespace string, obj completionRecordObject) error
+}
+
 // completionHTTPClient is the per-kind wrapper over the shared App Platform
 // LIST client: it supplies the completionrecords coordinates and decodes each
 // `items[].spec` into a completionRecordSpec.
@@ -91,4 +147,25 @@ func (c *completionHTTPClient) ListPage(ctx context.Context, namespace, continue
 		records = append(records, spec)
 	}
 	return &completionRecordPage{Records: records, Continue: page.Continue}, nil
+}
+
+// Create POSTs one fully-stamped CompletionRecord to the namespace collection.
+// The apiVersion/kind coordinates come from this package; the object's identity
+// and spec are supplied by the caller (the write handler stamps them). The
+// returned error, when non-nil, carries the upstream status for
+// transient/terminal/identity-scoped classification.
+func (c *completionHTTPClient) Create(ctx context.Context, namespace string, obj completionRecordObject) error {
+	obj.APIVersion = completionRecordsGroupVersion
+	obj.Kind = "CompletionRecord"
+	obj.Metadata.Namespace = namespace
+
+	body, err := json.Marshal(obj)
+	if err != nil {
+		return fmt.Errorf("completion records: encode object: %w", err)
+	}
+	if _, err := c.inner.create(ctx, completionRecordsGroupVersion, namespace,
+		completionRecordsResource, body, completionWriteMaxBytes); err != nil {
+		return err
+	}
+	return nil
 }

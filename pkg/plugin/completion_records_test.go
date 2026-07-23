@@ -357,6 +357,57 @@ func TestCache_Singleflight(t *testing.T) {
 	}
 }
 
+func TestCache_InvalidationFencesInFlightRefresh(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var calls atomic.Int32
+	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		if calls.Add(1) == 1 {
+			close(firstStarted)
+			<-releaseFirst
+			return &completionRecordPage{Records: []completionRecordSpec{
+				rec("user:1", "bundled", "old", "Old", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100),
+			}}, nil
+		}
+		return &completionRecordPage{Records: []completionRecordSpec{
+			rec("user:1", "bundled", "new", "New", "interactive", "", "objectives", "2026-07-10T01:00:00Z", 100),
+		}}, nil
+	}}
+	resetCompletionRecordsCache()
+	t.Cleanup(resetCompletionRecordsCache)
+
+	firstDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		_, _ = getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	}()
+	<-firstStarted
+
+	invalidateCompletionIndex(testNamespace)
+	fresh, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	if err != nil {
+		t.Fatalf("post-invalidation refresh: %v", err)
+	}
+	if got := fresh.byUser["user:1"][0].GuideID; got != "new" {
+		t.Fatalf("post-invalidation guide = %q, want new", got)
+	}
+
+	close(releaseFirst)
+	<-firstDone
+
+	cached, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	if err != nil {
+		t.Fatalf("cached read: %v", err)
+	}
+	if got := cached.byUser["user:1"][0].GuideID; got != "new" {
+		t.Fatalf("stale in-flight refresh replaced the cache with %q", got)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("LIST calls = %d, want 2", got)
+	}
+}
+
 func TestCache_ForcedRefreshBypassAndRateLimit(t *testing.T) {
 	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	l := singlePageLister(rec("user:1", "bundled", "a", "A", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100))

@@ -114,7 +114,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 - `utils/` — Business logic and utilities. Files: `dev-mode.ts`, `openfeature.ts`, `timeout-manager.ts`, `variable-substitution.ts`, `experiments.ts`, `find-doc-page.ts`. See `docs/developer/utils/README.md`.
 - `validation/` — Zod schemas + condition validators. Entry: `validate-guide.ts`. Architecture rules enforced by `architecture.test.ts`.
 - `recovery/` — Auto-recovery: decides whether the user is in the right place for a guide. Entry: `alignment-evaluator.ts` (`evaluateAlignment`).
-- `completion-records/` — The single completion-recorder boundary every terminal guide/journey completion flows through. Entry: `completion-recorder.ts` (`recordGuideCompletion`, `recordJourneyCompletion`, `onCompletionRecorded` seam). Deduped exactly-once per `(kind, guideSource, guideId)`; identity comes from the resolved manifest when available, otherwise a stable slug (milestone facts deliberately key on the milestone slug; emission is skipped when no stable identity resolves — never keyed on a loader URL).
+- `completion-records/` — The single completion-recorder boundary every terminal guide/journey completion flows through. Entry: `completion-recorder.ts` (`recordGuideCompletion`, `recordJourneyCompletion`, `onCompletionRecorded`). Emission is once per `(kind, guideSource, guideId)` for the current app load; identity comes from the manifest when available, otherwise a stable slug. `completion-write-hook.ts`, armed from `onPluginStart`, subscribes immediately and enqueues each emitted fact without blocking completion UI. `completion-write-queue.ts` stores bounded, per-event retries under a user/org-scoped localStorage prefix; tabs coordinate drains with a recoverable lease. A missing POST route disarms writes until the next app load.
 
 **Tier 2 — engines & hooks:**
 
@@ -162,6 +162,7 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 | `learning-paths` (`useGuideCompletion`) | `components/docs-panel`, `interactive-engine` | Progress events + badge unlock                          |
 | `recovery` (`evaluateAlignment`)       | `components/docs-panel`                  | One-shot alignment evaluation at guide launch                  |
 | `completion-records` (`recordGuideCompletion`, `recordJourneyCompletion`) | `docs-retrieval` (`learning-journey-helpers`) | Single completion-emission boundary; exactly-once per `(kind, guideSource, guideId)` |
+| `context-engine` (`onPluginStart`) | `completion-records` (`armCompletionWriteHook`) | Fire-and-forget arm of the durable-write subscriber at startup (Tier 2 → Tier 1, downward) |
 
 ## Backend architecture (`pkg/`)
 
@@ -180,9 +181,11 @@ The Go backend is a **thin bridge** between the React frontend and the **Coda VM
 | `plugin/wsconn.go`                  | `WSConn` — adapts gorilla/websocket as `net.Conn` for SSH-over-WebSocket. Pong-based read-deadline reset (90s).    |
 | `plugin/coda.go`                    | `CodaClient` — JWT-authenticated REST. VM CRUD, sample apps, alloy scenarios. Token refresh under `RWMutex`. Per-user quota: 3 VMs. |
 | `plugin/package_recommendations.go` | CDN package-index cache (6h TTL, single-flight dedup, 8-way parallel manifest fetch, bounded memory).            |
-| `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`). Per-user collation of a full-namespace LIST, 5-min TTL cache with single-flight refresh + negative-cache cooldown, stale-serve/503/capability=false error paths. |
-| `plugin/completion_records_client.go` | Per-kind wrapper over the shared App Platform LIST client for `completionrecords`: supplies group/version + resource and decodes each `items[].spec`. |
-| `plugin/app_platform_client.go`     | Shared paginated LIST client for App Platform proxies (backend proxy pattern §1, PR #1401): `buildAppPlatformURL`, per-page byte cap + timeout, transient/terminal/identity-scoped error classification, first-request credential diagnostics. |
+| `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`). Per-user collation of a full-namespace LIST, 5-min TTL cache with single-flight refresh, invalidation generations, negative-cache cooldown, and stale-serve/503/capability=false error paths. |
+| `plugin/completion_records_client.go` | Per-kind wrapper over the shared App Platform client for `completionrecords`: supplies group/version + resource, decodes each `items[].spec` for LISTs, and issues the create (POST) for the write path. |
+| `plugin/completion_records_write.go` | Completion Records durable write proxy (`POST /completion-records`). Fails closed (terminal 401) on missing identity; server-stamps identity/org/stack/`recordedAt`/`schemaVersion`; validates a single bounded JSON fact; builds the CRD spec; invalidates the read cache on success; maps outcomes onto the retry contract (201 created / non-429 4xx terminal / 429+5xx+network transient). |
+| `plugin/completion_records_write_ratelimit.go` | Per-user token-bucket rate limiter (`newCompletionWriteRateLimiter`, held on `App`) guarding `POST /completion-records` (backend proxy pattern §9 flood guard). |
+| `plugin/app_platform_client.go`     | Shared LIST/create client for App Platform proxies: `buildAppPlatformURL`, response caps and timeouts, transient/terminal/identity-scoped error classification, first-request LIST diagnostics. |
 | `plugin/app_platform_identity.go`   | Shared identity helpers (§3): `validIDToken`, `subjectFromIDToken`, `forwardIdentityHeaders` — fail-closed structural JWT validation; `deriveCompletionUserID` (the epic's canonical identity contract) delegates here. Trust boundary documented in `docs/developer/CODA.md`. |
 
 **HTTP request flow (e.g., `POST /vms`):**

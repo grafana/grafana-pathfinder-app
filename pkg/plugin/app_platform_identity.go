@@ -48,6 +48,61 @@ func forwardIdentityHeaders(dst http.Header, idToken string) {
 	dst.Set(backend.GrafanaUserSignInTokenHeaderName, idToken)
 }
 
+// completionWriterIdentity derives the server-stamped identity for a completion
+// write from the caller's forwarded Grafana context. The stable user id (the
+// ID-token `sub`) is REQUIRED and fails closed — client-supplied identity is
+// never trusted. Login and display name are best-effort denormalized snapshots
+// (an empty string is a valid, schema-permitted value): login prefers the
+// ID-token `login`/`preferred_username` claim, then the X-Grafana-User header;
+// display name prefers the token `name` claim, then the login.
+func completionWriterIdentity(r *http.Request) (userID, userLogin, userDisplayName string, ok bool) {
+	userID, ok = subjectFromIDToken(r)
+	if !ok {
+		return "", "", "", false
+	}
+	login, name := idTokenProfile(r.Header.Get(backend.GrafanaUserSignInTokenHeaderName))
+	userLogin = firstNonEmpty(login, strings.TrimSpace(r.Header.Get("X-Grafana-User")))
+	userDisplayName = firstNonEmpty(name, userLogin)
+	return userID, userLogin, userDisplayName, true
+}
+
+// idTokenProfile best-effort reads the login and display-name claims from a
+// forwarded ID token. It gates nothing (the subject already did) and returns
+// ("", "") on any decode failure — the fields are denormalized snapshots, not
+// authorization inputs.
+func idTokenProfile(token string) (login, name string) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", ""
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return "", ""
+	}
+	payload, err := decodeJWTSegment(parts[1])
+	if err != nil {
+		return "", ""
+	}
+	var claims struct {
+		Login             string `json:"login"`
+		PreferredUsername string `json:"preferred_username"`
+		Name              string `json:"name"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return "", ""
+	}
+	return firstNonEmpty(claims.Login, claims.PreferredUsername), claims.Name
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // parseIDToken structurally validates a JWT and returns its `sub` claim.
 // A forwarded Grafana ID token always carries `exp`, so a missing (or zero)
 // `exp` is rejected rather than treated as non-expiring.

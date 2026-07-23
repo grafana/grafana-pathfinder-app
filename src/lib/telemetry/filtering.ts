@@ -7,6 +7,7 @@ import {
   ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES,
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../../constants';
+import { currentPlatform } from '../platform';
 import { isPathfinderOpen } from './surface';
 import { normalizeTelemetryUrl } from './url';
 
@@ -42,11 +43,7 @@ export function getEnvironment(hostname: string): FaroEnvironment | null {
 }
 
 export function isGrafanaCloud(): boolean {
-  try {
-    return config.bootData?.settings?.buildInfo?.versionString?.startsWith('Grafana Cloud') ?? false;
-  } catch {
-    return false;
-  }
+  return currentPlatform() === 'cloud';
 }
 
 export function resolveFaroEnvironment(): { environment: FaroEnvironment; isLocalOverride: boolean } | null {

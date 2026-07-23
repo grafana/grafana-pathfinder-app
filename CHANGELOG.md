@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Durable completion records**: Terminal bundled, remote, milestone, and journey completions are persisted as `CompletionRecord`s in the stack's Grafana App Platform store. Writes pass through the plugin backend so user attribution and stack scope are stamped server-side from the request context; whether a role may write is decided by upstream App Platform RBAC on the caller's own forwarded identity. Completion UI remains synchronous: each fact enters a bounded background retry queue, persisted as user/org-scoped localStorage events so reloads and concurrent tabs do not overwrite pending work. A record is durable only after the POST succeeds; clearing browser storage or evicting the bounded queue can still lose pending events. Instances without the write route disarm writes for the session after the first 404; pending events stay persisted and are retried on the next app load. (Epic #1411, #1415)
+
 ## 2.14.2
 
 ### Fixed
