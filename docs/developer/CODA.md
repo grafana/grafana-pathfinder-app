@@ -150,6 +150,7 @@ All routes are prefixed by Grafana as `/api/plugins/grafana-pathfinder-app/resou
 | `/sample-apps`                   | GET    | `handleSampleApps`           | Proxy to Coda's sample-apps endpoint                                            |
 | `/alloy-scenarios`               | GET    | `handleAlloyScenarios`       | Proxy to Coda's alloy-scenarios endpoint                                        |
 | `/coda/exec`                     | POST   | `handleCodaExec`             | Run one command on the caller's active VM                                       |
+| `/completion-records`            | POST   | `handleCreateCompletionRecord` | Durable write proxy: persists one completion as a `CompletionRecord` upstream, identity/org/stack stamped server-side, per-user rate limited (App Platform write proxy, not Coda) |
 | `/completion-records/my`         | GET    | `handleMyCompletions`        | Per-user collated completion-record summary (App Platform read proxy, not Coda) |
 | `/completion-records/capability` | GET    | `handleCompletionCapability` | Cheap identity + upstream-reachability probe                                    |
 | `/health`                        | GET    | `handleHealth`               | Plugin health (includes `codaRegistered`)                                       |
@@ -169,6 +170,14 @@ Outbound, proxies forward identity derived from the ID token only — `Authoriza
 <id-token>` plus `X-Grafana-Id`, both synthesized from the inbound token via
 `forwardIdentityHeaders` — never the caller's `Cookie`, and never a replay of the inbound
 `Authorization` header (Grafana strips it before plugin resource handlers reach the plugin).
+
+The write proxy (`POST /completion-records`, `pkg/plugin/completion_records_write.go`) applies the
+same inbound gate but fails **closed with a terminal 401** rather than a soft-200 — a write with no
+verifiable caller can never succeed. Every identity field written into the record (`userId` from the
+ID-token `sub`, `userLogin`, `userDisplayName`, `orgId`, `stackNamespace`, `recordedAt`) is stamped
+**server-side from the verified request context**; body-supplied identity is never read (the typed
+request struct has nowhere to put it). Writes route through the plugin backend because a live RBAC
+probe showed Viewer tokens are rejected (403) on direct aggregated-API creates while reads succeed.
 
 The single future-hardening item is cryptographic verification of the ID token against
 Grafana's JWKS via `github.com/grafana/authlib`; it is not wired today because it needs runtime
