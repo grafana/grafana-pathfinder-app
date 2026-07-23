@@ -210,14 +210,17 @@ func resetCompletionRecordsCache() {
 // invalidateCompletionIndex drops a namespace's collated read cache so the next
 // GET /completion-records/my refreshes from upstream. Called after a successful
 // write so the new record surfaces promptly rather than after the TTL. The
-// failure/forced/stats bookkeeping is left intact — only the served index is
-// dropped, which forces exactly one refresh on the next read.
+// failure cooldown is cleared too: a successful create is fresh proof the
+// upstream is reachable, and a lingering cooldown would replay a stale error
+// to exactly the post-write read this invalidation serves. Forced/stats
+// bookkeeping is left intact.
 func invalidateCompletionIndex(namespace string) {
 	completionCacheMu.Lock()
 	defer completionCacheMu.Unlock()
 	completionCacheInit()
 	completionGenerations[namespace]++
 	delete(completionCacheEntries, namespace)
+	delete(completionLastFailure, namespace)
 }
 
 // getCompletionIndex returns the collated index for a namespace, refreshing at

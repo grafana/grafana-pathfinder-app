@@ -445,3 +445,39 @@ func TestCompletionWrite_InvalidatesReadCache(t *testing.T) {
 		t.Fatalf("expected a refresh after invalidation (2 LISTs), got %d", lister.callCount())
 	}
 }
+
+func TestCompletionWrite_ClearsFailureCooldown(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	fail := true
+	lister := &fakeLister{respond: func(string) (*completionRecordPage, error) {
+		if fail {
+			return nil, fmt.Errorf("upstream down")
+		}
+		return &completionRecordPage{Records: []completionRecordSpec{
+			rec("user:abc", "bundled", "linux", "Linux", "interactive", "", "objectives", "2026-07-20T10:00:00Z", 100),
+		}}, nil
+	}}
+	withLister(t, lister)
+	withCreator(t, &fakeCreator{})
+
+	// A cold read fails and stamps the failure cooldown.
+	doMyCompletions(t, "/completion-records/my", "user:abc")
+	if lister.callCount() != 1 {
+		t.Fatalf("expected 1 LIST after failing read, got %d", lister.callCount())
+	}
+
+	// Upstream recovers and a write succeeds inside the cooldown window. The
+	// invalidation must clear the cooldown so the post-write read refreshes
+	// instead of replaying the stale error.
+	fail = false
+	if rec := doWrite(t, nil, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())); rec.Code != http.StatusCreated {
+		t.Fatalf("write status = %d, want 201", rec.Code)
+	}
+	rr, body := doMyCompletions(t, "/completion-records/my", "user:abc")
+	if lister.callCount() != 2 {
+		t.Fatalf("expected post-write read to refresh (2 LISTs), got %d", lister.callCount())
+	}
+	if rr.Code != http.StatusOK || len(body.Completions) != 1 {
+		t.Fatalf("post-write read = %d with %d completions, want 200 with 1", rr.Code, len(body.Completions))
+	}
+}
