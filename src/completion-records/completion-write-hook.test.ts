@@ -11,7 +11,12 @@
 // that import loads. Injected deps mean the real client is never called.
 jest.mock('@grafana/runtime', () => ({
   getBackendSrv: () => ({ fetch: jest.fn() }),
-  config: { bootData: { settings: { buildInfo: { versionString: 'Grafana Cloud' } } } },
+  config: {
+    bootData: {
+      user: { id: 7, orgId: 3 },
+      settings: { buildInfo: { versionString: 'Grafana Cloud' } },
+    },
+  },
 }));
 
 import { recordGuideCompletion, recordJourneyCompletion, __resetRecorderForTests } from './completion-recorder';
@@ -124,6 +129,16 @@ describe('arming', () => {
     recordGuideCompletion(guideFact());
     await runTimer();
     expect(sent).toHaveLength(1);
+  });
+
+  it('does not subscribe or persist when the user and org identity is unavailable', async () => {
+    await armCompletionWriteHook(deps({ ownerKey: () => null }));
+
+    recordGuideCompletion(guideFact({ guideId: 'unowned' }));
+    await runTimer();
+
+    expect(sent).toHaveLength(0);
+    expect(localStorage.length).toBe(0);
   });
 });
 

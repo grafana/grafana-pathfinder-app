@@ -22,14 +22,15 @@
  */
 
 import { logger } from '../lib/logging';
-import { StorageKeys } from '../lib/storage-keys';
 
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
+import { createCompletionEventId, type CompletionWriteStorage } from './completion-write-storage';
 
 export interface QueuedWrite {
   id: string;
   body: CompletionWriteBody;
   attempts: number;
+  createdAt: number;
   /** Epoch ms; the item is eligible to send once now >= nextAttemptAt. */
   nextAttemptAt: number;
 }
@@ -37,9 +38,9 @@ export interface QueuedWrite {
 export interface WriteQueueDeps {
   now: () => number;
   send: (body: CompletionWriteBody) => Promise<WriteOutcome>;
+  storage: CompletionWriteStorage;
+  nextId?: () => string;
   random?: () => number;
-  read?: () => string | null;
-  write?: (value: string) => void;
   maxSize?: number;
   baseBackoffMs?: number;
   maxBackoffMs?: number;
@@ -58,68 +59,38 @@ export interface WriteQueue {
   size(): number;
   isDisarmed(): boolean;
   snapshot(): QueuedWrite[];
+  subscribe(listener: () => void): () => void;
 }
 
 const DEFAULT_MAX_SIZE = 100;
 const DEFAULT_BASE_BACKOFF_MS = 1000;
 const DEFAULT_MAX_BACKOFF_MS = 5 * 60 * 1000;
 
-function defaultRead(): string | null {
-  try {
-    return typeof localStorage === 'undefined' ? null : localStorage.getItem(StorageKeys.COMPLETION_WRITE_QUEUE);
-  } catch {
-    return null;
-  }
-}
-
-function defaultWrite(value: string): void {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(StorageKeys.COMPLETION_WRITE_QUEUE, value);
-    }
-  } catch {
-    // A full or unavailable localStorage must never break the completion path.
-  }
-}
-
 export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   const now = deps.now;
   const send = deps.send;
+  const storage = deps.storage;
+  const nextId = deps.nextId ?? createCompletionEventId;
   const random = deps.random ?? Math.random;
-  const read = deps.read ?? defaultRead;
-  const write = deps.write ?? defaultWrite;
   const maxSize = deps.maxSize ?? DEFAULT_MAX_SIZE;
   const baseBackoffMs = deps.baseBackoffMs ?? DEFAULT_BASE_BACKOFF_MS;
   const maxBackoffMs = deps.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
 
-  let items: QueuedWrite[] = load();
+  let items: QueuedWrite[] = [];
   let disarmed = false;
-  let seq = 0;
 
-  function load(): QueuedWrite[] {
-    const raw = read();
-    if (!raw) {
-      return [];
-    }
-    try {
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) {
-        return [];
+  function refresh(): void {
+    const loaded = storage.list().filter(isQueuedWrite).sort(compareQueuedWrites);
+    while (loaded.length > maxSize) {
+      const evicted = loaded.shift();
+      if (evicted) {
+        storage.remove(evicted.id);
       }
-      return parsed.filter(isQueuedWrite).slice(0, maxSize);
-    } catch {
-      return [];
     }
+    items = loaded;
   }
 
-  function persist(): void {
-    write(JSON.stringify(items));
-  }
-
-  function nextId(): string {
-    seq += 1;
-    return `${now()}-${seq}`;
-  }
+  refresh();
 
   function computeNextDelay(): number | null {
     if (items.length === 0) {
@@ -142,12 +113,18 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     if (disarmed) {
       return false;
     }
+    refresh();
     if (items.length >= maxSize) {
       const evicted = items.shift();
-      logger.debug('completion write: queue full, evicted oldest', { evictedId: evicted?.id });
+      if (evicted) {
+        storage.remove(evicted.id);
+        logger.debug('completion write: queue full, evicted oldest', { evictedId: evicted.id });
+      }
     }
-    items.push({ id: nextId(), body, attempts: 0, nextAttemptAt: now() });
-    persist();
+    const createdAt = now();
+    const item = { id: nextId(), body, attempts: 0, createdAt, nextAttemptAt: createdAt };
+    items.push(item);
+    storage.put(item);
     return true;
   }
 
@@ -155,6 +132,19 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     if (disarmed) {
       return { nextDelayMs: null, disarmed: true };
     }
+    const lease = storage.acquireLease(now());
+    if (!lease.acquired) {
+      return { nextDelayMs: lease.retryAfterMs, disarmed: false };
+    }
+    try {
+      refresh();
+      return await processDueWithLease();
+    } finally {
+      storage.releaseLease();
+    }
+  }
+
+  async function processDueWithLease(): Promise<ProcessResult> {
     const startNow = now();
     const due = items.filter((i) => i.nextAttemptAt <= startNow);
 
@@ -178,7 +168,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
       if (outcome.kind === 'route-missing') {
         disarmed = true;
         items = [];
-        persist();
+        storage.clear();
         logger.debug('completion write: route missing, feature unavailable this session');
         return { nextDelayMs: null, disarmed: true };
       }
@@ -189,14 +179,15 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
       }
       item.attempts += 1;
       item.nextAttemptAt = now() + backoffMs(item.attempts, outcome.retryAfterMs);
+      storage.put(item);
     }
 
-    persist();
     return { nextDelayMs: computeNextDelay(), disarmed: false };
   }
 
   function remove(item: QueuedWrite): void {
     items = items.filter((i) => i !== item);
+    storage.remove(item.id);
   }
 
   return {
@@ -205,6 +196,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     size: () => items.length,
     isDisarmed: () => disarmed,
     snapshot: () => items.map((i) => ({ ...i })),
+    subscribe: (listener) => storage.subscribe(listener),
   };
 }
 
@@ -218,6 +210,11 @@ function isQueuedWrite(v: unknown): v is QueuedWrite {
     typeof o.attempts === 'number' &&
     typeof o.nextAttemptAt === 'number' &&
     typeof o.body === 'object' &&
-    o.body !== null
+    o.body !== null &&
+    typeof o.createdAt === 'number'
   );
+}
+
+function compareQueuedWrites(a: QueuedWrite, b: QueuedWrite): number {
+  return a.createdAt - b.createdAt || a.id.localeCompare(b.id);
 }

@@ -9,10 +9,17 @@ import {
   type WriteOutcome,
 } from './completion-write-client';
 import { createWriteQueue, type WriteQueue } from './completion-write-queue';
+import {
+  createCompletionWriteStorage,
+  currentCompletionQueueOwnerKey,
+  type CompletionWriteStorage,
+} from './completion-write-storage';
 import type { CompletionFact } from './types';
 
 export interface WriteHookDeps {
   send: (body: CompletionWriteBody) => Promise<WriteOutcome>;
+  ownerKey: () => string | null;
+  storage: (ownerKey: string) => CompletionWriteStorage;
   platform: () => CompletionPlatform;
   now: () => number;
   random: () => number;
@@ -22,6 +29,8 @@ export interface WriteHookDeps {
 
 const defaultDeps: WriteHookDeps = {
   send: postCompletionRecord,
+  ownerKey: currentCompletionQueueOwnerKey,
+  storage: createCompletionWriteStorage,
   platform: currentCompletionPlatform,
   now: () => Date.now(),
   random: Math.random,
@@ -30,8 +39,9 @@ const defaultDeps: WriteHookDeps = {
 };
 
 class CompletionWriteController {
-  private readonly queue: WriteQueue;
+  private readonly queue: WriteQueue | null;
   private unsubscribe: (() => void) | null = null;
+  private unsubscribeStorage: (() => void) | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private timerFireAt: number | null = null;
   private draining = false;
@@ -39,19 +49,24 @@ class CompletionWriteController {
   private disposed = false;
 
   constructor(private readonly deps: WriteHookDeps) {
-    this.queue = createWriteQueue({
-      now: deps.now,
-      send: deps.send,
-      random: deps.random,
-    });
+    const ownerKey = deps.ownerKey();
+    this.queue = ownerKey
+      ? createWriteQueue({
+          now: deps.now,
+          send: deps.send,
+          random: deps.random,
+          storage: deps.storage(ownerKey),
+        })
+      : null;
   }
 
   start(): void {
-    if (this.started || this.disposed) {
+    if (this.started || this.disposed || !this.queue) {
       return;
     }
     this.started = true;
     this.unsubscribe = onCompletionRecorded((fact) => this.onFact(fact));
+    this.unsubscribeStorage = this.queue.subscribe(() => this.scheduleDrain(0));
     if (this.queue.size() > 0) {
       this.scheduleDrain(0);
     }
@@ -65,12 +80,14 @@ class CompletionWriteController {
     this.timerFireAt = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.unsubscribeStorage?.();
+    this.unsubscribeStorage = null;
     this.disposed = true;
   }
 
   private onFact(fact: CompletionFact): void {
     try {
-      if (this.disposed || this.queue.isDisarmed()) {
+      if (this.disposed || !this.queue || this.queue.isDisarmed()) {
         return;
       }
       this.queue.enqueue(this.toBody(fact));
@@ -117,7 +134,7 @@ class CompletionWriteController {
   }
 
   private async drain(): Promise<void> {
-    if (this.disposed || this.draining) {
+    if (this.disposed || this.draining || !this.queue) {
       return;
     }
     this.draining = true;

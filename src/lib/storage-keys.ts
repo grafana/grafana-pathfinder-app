@@ -29,10 +29,7 @@ export const StorageKeys = {
   MILESTONE_COMPLETION: 'grafana-pathfinder-app-milestone-completion',
   // Learning paths and badges progress
   LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
-  // Durable completion-write retry queue (Track 2). Browser-persisted, bounded,
-  // best-effort session-lifetime buffer — durability is guaranteed only once the
-  // POST lands (RFC §6.9).
-  COMPLETION_WRITE_QUEUE: 'grafana-pathfinder-app-completion-write-queue',
+  COMPLETION_WRITE_QUEUE_PREFIX: 'grafana-pathfinder-app-completion-write-queue-v2:',
   // Guide responses from input blocks (user-entered values for variables)
   GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
   // Persistent dedup for experiment exposure events. Used with `{hostname}:{flagKey}:{variant}`

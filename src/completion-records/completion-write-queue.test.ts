@@ -4,8 +4,13 @@
  * directly with no real time or network. `import type` keeps the @grafana/runtime
  * client module out of this suite entirely.
  */
-import { createWriteQueue } from './completion-write-queue';
+import {
+  createWriteQueue as createRawWriteQueue,
+  type QueuedWrite,
+  type WriteQueueDeps,
+} from './completion-write-queue';
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
+import type { CompletionWriteStorage } from './completion-write-storage';
 
 function body(overrides: Partial<CompletionWriteBody> = {}): CompletionWriteBody {
   return {
@@ -52,15 +57,38 @@ beforeEach(() => {
   }
 });
 
-function makeStorage() {
-  let store: string | null = null;
-  return {
-    read: () => store,
-    write: (v: string) => {
-      store = v;
+function makeStorage(items = new Map<string, QueuedWrite>()) {
+  const listeners = new Set<() => void>();
+  const storage: CompletionWriteStorage = {
+    list: () => Array.from(items.values()).map((item) => ({ ...item })),
+    put: (item) => {
+      items.set(item.id, { ...item });
+      listeners.forEach((listener) => listener());
     },
-    raw: () => store,
+    remove: (id) => {
+      items.delete(id);
+      listeners.forEach((listener) => listener());
+    },
+    clear: () => {
+      items.clear();
+      listeners.forEach((listener) => listener());
+    },
+    acquireLease: () => ({ acquired: true, retryAfterMs: 0 }),
+    releaseLease: () => undefined,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
   };
+  return {
+    storage,
+    items,
+  };
+}
+
+function createWriteQueue(deps: Omit<WriteQueueDeps, 'storage'> & { storage?: CompletionWriteStorage }) {
+  const { storage = makeStorage().storage, ...rest } = deps;
+  return createRawWriteQueue({ ...rest, storage });
 }
 
 describe('write queue — enqueue and eviction', () => {
@@ -90,7 +118,8 @@ describe('write queue — enqueue and eviction', () => {
 
   it('evicts oldest-first at the cap', () => {
     const s = makeSender([{ kind: 'created' }]);
-    const q = createWriteQueue({ now: () => 0, send: s.send, maxSize: 2 });
+    const ids = ['a', 'b', 'c'];
+    const q = createWriteQueue({ now: () => 0, send: s.send, maxSize: 2, nextId: () => ids.shift()! });
     q.enqueue(body({ guideId: 'a' }));
     q.enqueue(body({ guideId: 'b' }));
     q.enqueue(body({ guideId: 'c' }));
@@ -192,14 +221,25 @@ describe('write queue — retry/backoff/terminal/disarm', () => {
 });
 
 describe('write queue — persistence', () => {
+  it('waits for another tab lease without sending', async () => {
+    const memory = makeStorage();
+    memory.storage.acquireLease = () => ({ acquired: false, retryAfterMs: 12_000 });
+    const sender = makeSender([{ kind: 'created' }]);
+    const queue = createWriteQueue({ now: () => 0, send: sender.send, storage: memory.storage });
+    queue.enqueue(body());
+
+    await expect(queue.processDue()).resolves.toEqual({ nextDelayMs: 12_000, disarmed: false });
+    expect(sender.calls).toHaveLength(0);
+    expect(queue.size()).toBe(1);
+  });
+
   it('persists pending items and reloads them into a fresh queue', async () => {
     const storage = makeStorage();
     const s1 = makeSender([{ kind: 'transient' }]);
     const q1 = createWriteQueue({
       now: () => 0,
       send: s1.send,
-      read: storage.read,
-      write: storage.write,
+      storage: storage.storage,
       random: () => 0.5,
     });
     q1.enqueue(body());
@@ -207,7 +247,7 @@ describe('write queue — persistence', () => {
     expect(q1.size()).toBe(1);
 
     const s2 = makeSender([{ kind: 'created' }]);
-    const q2 = createWriteQueue({ now: () => 1_000_000, send: s2.send, read: storage.read, write: storage.write });
+    const q2 = createWriteQueue({ now: () => 1_000_000, send: s2.send, storage: storage.storage });
     expect(q2.size()).toBe(1); // reloaded
     expect(q2.enqueue(body({ completedAt: '2026-07-20T01:00:00.000Z' }))).toBe(true);
     expect(q2.size()).toBe(2);
@@ -215,8 +255,34 @@ describe('write queue — persistence', () => {
 
   it('tolerates corrupt persisted state', () => {
     const storage = makeStorage();
-    storage.write('not json at all');
-    const q = createWriteQueue({ now: () => 0, send: makeSender([]).send, read: storage.read, write: storage.write });
+    storage.items.set('bad', {} as never);
+    const q = createWriteQueue({ now: () => 0, send: makeSender([]).send, storage: storage.storage });
     expect(q.size()).toBe(0);
+  });
+
+  it('merges independently enqueued events from two tabs before draining', async () => {
+    const shared = new Map<string, QueuedWrite>();
+    const storageA = makeStorage(shared);
+    const storageB = makeStorage(shared);
+    const sender = makeSender([{ kind: 'created' }]);
+    const queueA = createWriteQueue({
+      now: () => 0,
+      send: sender.send,
+      storage: storageA.storage,
+      nextId: () => 'a',
+    });
+    const queueB = createWriteQueue({
+      now: () => 0,
+      send: sender.send,
+      storage: storageB.storage,
+      nextId: () => 'b',
+    });
+
+    queueA.enqueue(body({ guideId: 'a' }));
+    queueB.enqueue(body({ guideId: 'b' }));
+    await queueA.processDue();
+
+    expect(sender.calls.map((entry) => entry.guideId).sort()).toEqual(['a', 'b']);
+    expect(shared.size).toBe(0);
   });
 });
