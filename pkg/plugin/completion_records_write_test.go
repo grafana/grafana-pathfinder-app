@@ -252,7 +252,7 @@ func TestCompletionWrite_Validation(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 
 	cases := []struct {
-		name  string
+		name   string
 		mutate func(map[string]any)
 	}{
 		{"missing guideId", func(b map[string]any) { delete(b, "guideId") }},
