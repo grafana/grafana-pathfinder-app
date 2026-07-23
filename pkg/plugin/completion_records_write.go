@@ -27,10 +27,16 @@ import (
 //
 // Response contract for the front-end retry queue (RFC §6.9):
 //   - 201  created (durable).
-//   - 4xx  terminal — validation / auth / schema; the write will never succeed
-//          as posted, so the client must drop it (no retry).
-//   - 429 / 5xx / network — transient; the client should retry with backoff,
-//          honoring Retry-After when present.
+//   - 404  reserved for the structural "route not deployed here" signal; the
+//          front end disarms writes for the session (pending items persist for
+//          the next load). Upstream per-record 404s are remapped to 422 so
+//          they can never trigger that disarm.
+//   - other 4xx  terminal — validation / auth / schema; the write will never
+//          succeed as posted, so the client drops it (no retry).
+//   - 429 / 5xx / network — transient; the client retries with exponential
+//          backoff. Retry-After is set as a standard backpressure hint, though
+//          Grafana's backendSrv does not expose response headers to the
+//          front-end client.
 
 const (
 	// completionWriteSchemaVersion is the CompletionRecord spec schemaVersion this

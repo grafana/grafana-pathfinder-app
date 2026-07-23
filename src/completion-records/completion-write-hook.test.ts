@@ -273,24 +273,24 @@ describe('concurrent drains (regression: no double-send)', () => {
 });
 
 describe('drain timer preemption (regression: fresh completion not stranded behind backoff)', () => {
-  it('reschedules a far-future backoff timer sooner when a fresh completion is due', async () => {
+  it('reschedules a pending backoff timer sooner when a fresh completion is due', async () => {
     let scheduledMs: number[] = [];
     const setTimer = (fn: () => void, ms: number): ReturnType<typeof setTimeout> => {
       drainCb = fn;
       scheduledMs.push(ms);
       return 1 as unknown as ReturnType<typeof setTimeout>;
     };
-    // First send is transient with a 5-minute Retry-After, so the stuck item's
-    // drain timer is scheduled far into the future.
-    sendResults = [{ kind: 'transient', retryAfterMs: 5 * 60 * 1000 }, { kind: 'created' }, { kind: 'created' }];
+    // First send is transient, so the stuck item's drain timer is scheduled a
+    // full backoff into the future (1s base, zero jitter with random()=0.5).
+    sendResults = [{ kind: 'transient' }, { kind: 'created' }, { kind: 'created' }];
     await armCompletionWriteHook(deps({ setTimer }));
 
     recordGuideCompletion(guideFact({ guideId: 'stuck' }));
-    await runTimer(); // attempt 1 → transient, reschedules ~5min out
+    await runTimer(); // attempt 1 → transient, reschedules a backoff out
     expect(sent).toHaveLength(1);
-    expect(scheduledMs[scheduledMs.length - 1]).toBeGreaterThan(60 * 1000);
+    expect(scheduledMs[scheduledMs.length - 1]).toBeGreaterThanOrEqual(1000);
 
-    // A fresh, immediately-due completion must preempt the far-future timer and
+    // A fresh, immediately-due completion must preempt the pending timer and
     // reschedule it to fire now rather than waiting out the stuck item's backoff.
     scheduledMs = [];
     recordGuideCompletion(guideFact({ guideId: 'fresh' }));

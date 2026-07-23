@@ -154,14 +154,6 @@ describe('write queue — retry/backoff/terminal/disarm', () => {
     expect(r2.nextDelayMs).toBeNull();
   });
 
-  it('honors an upstream Retry-After hint over exponential backoff', async () => {
-    const s = makeSender([{ kind: 'transient', retryAfterMs: 12_000 }]);
-    const q = createWriteQueue({ now: () => 0, send: s.send, random: () => 0.5 });
-    q.enqueue(body());
-    const r = await q.processDue();
-    expect(r.nextDelayMs).toBe(12_000);
-  });
-
   it('drops a terminal record without retry', async () => {
     const s = makeSender([{ kind: 'terminal' }]);
     const q = createWriteQueue({ now: () => 0, send: s.send });

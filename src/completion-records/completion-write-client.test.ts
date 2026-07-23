@@ -1,8 +1,8 @@
 /**
  * Unit tests for the fail-soft write client: POST outcome classification
- * (created / terminal / transient / route-missing), Retry-After extraction,
- * and the platform derivation. getBackendSrv().fetch is mocked to
- * return rxjs observables so lastValueFrom resolves/rejects deterministically.
+ * (created / terminal / transient / route-missing) and the platform
+ * derivation. getBackendSrv().fetch is mocked to return rxjs observables so
+ * lastValueFrom resolves/rejects deterministically.
  */
 import { of, throwError } from 'rxjs';
 
@@ -59,21 +59,19 @@ describe('postCompletionRecord — outcome classification', () => {
     await expect(postCompletionRecord(body())).resolves.toEqual({ kind: 'terminal' });
   });
 
-  it('transient on 429, echoing Retry-After as ms', async () => {
-    fetchMock.mockReturnValue(
-      throwError(() => ({ status: 429, headers: { get: (n: string) => (n === 'Retry-After' ? '15' : null) } }))
-    );
-    await expect(postCompletionRecord(body())).resolves.toEqual({ kind: 'transient', retryAfterMs: 15000 });
+  it('transient on 429', async () => {
+    fetchMock.mockReturnValue(throwError(() => ({ status: 429 })));
+    await expect(postCompletionRecord(body())).resolves.toEqual({ kind: 'transient' });
   });
 
   it('transient on 5xx', async () => {
     fetchMock.mockReturnValue(throwError(() => ({ status: 503 })));
-    await expect(postCompletionRecord(body())).resolves.toEqual({ kind: 'transient', retryAfterMs: undefined });
+    await expect(postCompletionRecord(body())).resolves.toEqual({ kind: 'transient' });
   });
 
   it('transient on a network error with no status', async () => {
     fetchMock.mockReturnValue(throwError(() => new Error('network down')));
-    await expect(postCompletionRecord(body())).resolves.toEqual({ kind: 'transient', retryAfterMs: undefined });
+    await expect(postCompletionRecord(body())).resolves.toEqual({ kind: 'transient' });
   });
 });
 

@@ -32,13 +32,15 @@ export interface CompletionWriteBody {
  * The outcome of a write attempt, mirroring the Layer A response contract:
  *   - created:       successful backend response, durable — remove from queue.
  *   - terminal:      4xx (not 404/429) — the write can never succeed; drop it.
- *   - transient:     429 / 5xx / network — retry with backoff (honoring
- *                    retryAfterMs when the upstream provided Retry-After).
+ *   - transient:     429 / 5xx / network — retry with exponential backoff. The
+ *                    backend sets Retry-After as a standard hint, but Grafana's
+ *                    backendSrv strips response headers from its FetchError, so
+ *                    the client cannot honor it.
  *   - route-missing: 404 / route not registered — the feature is unavailable on
  *                    this deployment; disarm silently (no retries).
  */
 export type WriteOutcome =
-  { kind: 'created' } | { kind: 'terminal' } | { kind: 'transient'; retryAfterMs?: number } | { kind: 'route-missing' };
+  { kind: 'created' } | { kind: 'terminal' } | { kind: 'transient' } | { kind: 'route-missing' };
 
 /**
  * POST one completion fact. Never throws — returns a classified WriteOutcome.
@@ -85,23 +87,10 @@ function classifyWriteError(err: unknown): WriteOutcome {
     return { kind: 'terminal' };
   }
   // 429, any 5xx, or no status at all (network / abort) — retryable.
-  return { kind: 'transient', retryAfterMs: extractRetryAfterMs(err) };
+  return { kind: 'transient' };
 }
 
 function extractStatus(err: unknown): number | undefined {
   const e = err as { status?: number; statusCode?: number; data?: { statusCode?: number } } | undefined;
   return e?.status ?? e?.statusCode ?? e?.data?.statusCode;
-}
-
-function extractRetryAfterMs(err: unknown): number | undefined {
-  const headers = (err as { headers?: { get?: (name: string) => string | null } } | undefined)?.headers;
-  const raw = headers?.get?.('Retry-After');
-  if (!raw) {
-    return undefined;
-  }
-  const seconds = Number(raw);
-  if (!Number.isFinite(seconds) || seconds < 0) {
-    return undefined;
-  }
-  return Math.round(seconds * 1000);
 }

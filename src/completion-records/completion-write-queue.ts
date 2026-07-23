@@ -68,10 +68,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     return Math.max(0, soonest - now());
   }
 
-  function backoffMs(attempts: number, retryAfterMs?: number): number {
-    if (retryAfterMs !== undefined && retryAfterMs >= 0) {
-      return retryAfterMs;
-    }
+  function backoffMs(attempts: number): number {
     const base = Math.min(maxBackoffMs, baseBackoffMs * Math.pow(2, Math.max(0, attempts - 1)));
     const jitter = base * 0.25 * (random() * 2 - 1);
     return Math.max(0, Math.round(base + jitter));
@@ -149,7 +146,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
         continue;
       }
       item.attempts += 1;
-      item.nextAttemptAt = now() + backoffMs(item.attempts, outcome.retryAfterMs);
+      item.nextAttemptAt = now() + backoffMs(item.attempts);
       storage.put(item);
     }
 
