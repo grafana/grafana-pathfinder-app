@@ -25,6 +25,7 @@ import {
   __resetCompletionWriteHookForTests,
   type WriteHookDeps,
 } from './completion-write-hook';
+import { createCompletionWriteStorage } from './completion-write-storage';
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
 import type { GuideCompletionFact, JourneyCompletionFact } from './types';
 
@@ -299,6 +300,36 @@ describe('drain timer preemption (regression: fresh completion not stranded behi
     // The clock has NOT advanced past the backoff, yet the fresh item drains.
     await runTimer();
     expect(sent.map((b) => b.guideId)).toContain('fresh');
+  });
+});
+
+describe('startup drain (reload durability)', () => {
+  it('drains items persisted by a previous session as soon as the hook arms', async () => {
+    // Seed the real per-owner storage (bootData mock: user 7, org 3) with a
+    // due item, as if a prior session enqueued it and reloaded before sending.
+    createCompletionWriteStorage('user-7:org-3').put({
+      id: 'leftover-1',
+      body: {
+        guideSource: 'bundled',
+        guideId: 'leftover',
+        guideTitle: 'Leftover',
+        guideCategory: 'interactive',
+        completionPercent: 100,
+        source: 'objectives',
+        completedAt: '2026-07-20T00:00:00.000Z',
+        platform: 'cloud',
+      },
+      attempts: 1,
+      createdAt: 0,
+      nextAttemptAt: 0,
+    });
+
+    sendResults = [{ kind: 'created' }];
+    await armCompletionWriteHook(deps());
+    expect(drainCb).not.toBeNull(); // arming alone schedules the drain
+
+    await runTimer();
+    expect(sent.map((b) => b.guideId)).toEqual(['leftover']);
   });
 });
 
