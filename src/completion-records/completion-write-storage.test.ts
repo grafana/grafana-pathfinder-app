@@ -10,8 +10,11 @@ jest.mock('@grafana/runtime', () => ({
   },
 }));
 
-import { createCompletionWriteStorage, currentCompletionQueueOwnerKey } from './completion-write-storage';
-import type { QueuedWrite } from './completion-write-queue';
+import {
+  createCompletionWriteStorage,
+  currentCompletionQueueOwnerKey,
+  type QueuedWrite,
+} from './completion-write-storage';
 
 function item(id: string): QueuedWrite {
   return {

@@ -1,16 +1,7 @@
 import { logger } from '../lib/logging';
 
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
-import { createCompletionEventId, type CompletionWriteStorage } from './completion-write-storage';
-
-export interface QueuedWrite {
-  id: string;
-  body: CompletionWriteBody;
-  attempts: number;
-  createdAt: number;
-  /** Epoch ms; the item is eligible to send once now >= nextAttemptAt. */
-  nextAttemptAt: number;
-}
+import { createCompletionEventId, type CompletionWriteStorage, type QueuedWrite } from './completion-write-storage';
 
 export interface WriteQueueDeps {
   now: () => number;

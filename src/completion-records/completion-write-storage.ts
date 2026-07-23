@@ -2,7 +2,15 @@ import { config } from '@grafana/runtime';
 
 import { StorageKeys } from '../lib/storage-keys';
 
-import type { QueuedWrite } from './completion-write-queue';
+import type { CompletionWriteBody } from './completion-write-client';
+
+export interface QueuedWrite {
+  id: string;
+  body: CompletionWriteBody;
+  attempts: number;
+  createdAt: number;
+  nextAttemptAt: number;
+}
 
 export interface LeaseResult {
   acquired: boolean;

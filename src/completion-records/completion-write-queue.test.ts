@@ -4,13 +4,9 @@
  * directly with no real time or network. `import type` keeps the @grafana/runtime
  * client module out of this suite entirely.
  */
-import {
-  createWriteQueue as createRawWriteQueue,
-  type QueuedWrite,
-  type WriteQueueDeps,
-} from './completion-write-queue';
+import { createWriteQueue as createRawWriteQueue, type WriteQueueDeps } from './completion-write-queue';
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
-import type { CompletionWriteStorage } from './completion-write-storage';
+import type { CompletionWriteStorage, QueuedWrite } from './completion-write-storage';
 
 function body(overrides: Partial<CompletionWriteBody> = {}): CompletionWriteBody {
   return {
