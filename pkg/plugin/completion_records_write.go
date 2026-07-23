@@ -270,9 +270,16 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	// Terminal 4xx: schema/validation rejected upstream, or identity-scoped
-	// 401/403. Echo the upstream status; the client must not retry.
+	// 401/403. Echo the upstream status; the client must not retry. A 404 is the
+	// one exception — the front end reserves 404 for the structural "route not
+	// deployed" whole-feature disarm, so an upstream create 404 (this record only)
+	// is remapped to 422 to avoid disarming the entire session.
+	responseStatus := status
+	if responseStatus == http.StatusNotFound {
+		responseStatus = http.StatusUnprocessableEntity
+	}
 	logger.Info("completion write terminal upstream failure", "status", status, "error", err)
-	a.writeError(w, "completion-write-rejected", status)
+	a.writeError(w, "completion-write-rejected", responseStatus)
 }
 
 // generateCompletionRecordName mints a unique, DNS-safe object name for each

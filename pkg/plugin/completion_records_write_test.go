@@ -334,6 +334,7 @@ func TestCompletionWrite_UpstreamErrorTaxonomy(t *testing.T) {
 		{"transient 429 echoes retry-after", &appPlatformUpstreamError{status: 429, retryAfter: "12", msg: "slow down"}, http.StatusTooManyRequests, "12"},
 		{"terminal 400 schema", &appPlatformUpstreamError{status: 400, msg: "bad spec"}, http.StatusBadRequest, "-"},
 		{"terminal 422 schema", &appPlatformUpstreamError{status: 422, msg: "unprocessable"}, 422, "-"},
+		{"upstream 404 remapped off the disarm signal", &appPlatformUpstreamError{status: 404, msg: "not found"}, http.StatusUnprocessableEntity, "-"},
 		{"identity-scoped 403", &appPlatformUpstreamError{status: 403, msg: "forbidden"}, http.StatusForbidden, "-"},
 		{"unexpected success status", &appPlatformUpstreamError{status: 202, msg: "not created"}, http.StatusBadGateway, ""},
 		{"network error is transient", fmt.Errorf("dial tcp: connection refused"), http.StatusServiceUnavailable, ""},

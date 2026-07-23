@@ -23,6 +23,7 @@ export interface CompletionWriteStorage {
   remove(id: string): void;
   clear(): void;
   acquireLease(now: number): LeaseResult;
+  renewLease(now: number): boolean;
   releaseLease(): void;
   subscribe(listener: () => void): () => void;
 }
@@ -120,6 +121,20 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
     }
   }
 
+  function renewLease(now: number): boolean {
+    try {
+      const existing = parseLease(localStorage.getItem(leaseKey));
+      if (existing && existing.tabId !== tabId) {
+        return false;
+      }
+      const candidate: StoredLease = { tabId, expiresAt: now + LEASE_TTL_MS };
+      localStorage.setItem(leaseKey, JSON.stringify(candidate));
+      return parseLease(localStorage.getItem(leaseKey))?.tabId === tabId;
+    } catch {
+      return true;
+    }
+  }
+
   function releaseLease(): void {
     try {
       if (parseLease(localStorage.getItem(leaseKey))?.tabId === tabId) {
@@ -143,7 +158,7 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
     return () => window.removeEventListener('storage', onStorage);
   }
 
-  return { list, put, remove, clear, acquireLease, releaseLease, subscribe };
+  return { list, put, remove, clear, acquireLease, renewLease, releaseLease, subscribe };
 }
 
 export function createCompletionEventId(): string {

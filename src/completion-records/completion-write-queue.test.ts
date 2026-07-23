@@ -69,6 +69,7 @@ function makeStorage(items = new Map<string, QueuedWrite>()) {
       listeners.forEach((listener) => listener());
     },
     acquireLease: () => ({ acquired: true, retryAfterMs: 0 }),
+    renewLease: () => true,
     releaseLease: () => undefined,
     subscribe: (listener) => {
       listeners.add(listener);
@@ -226,6 +227,41 @@ describe('write queue — persistence', () => {
     await expect(queue.processDue()).resolves.toEqual({ nextDelayMs: 12_000, disarmed: false });
     expect(sender.calls).toHaveLength(0);
     expect(queue.size()).toBe(1);
+  });
+
+  it('stops draining when the lease is lost mid-drain', async () => {
+    const storage = makeStorage();
+    let held = true;
+    storage.storage.renewLease = () => held;
+    const sender = makeSender([{ kind: 'created' }]);
+    const queue = createWriteQueue({ now: () => 0, send: sender.send, storage: storage.storage });
+    queue.enqueue(body({ guideId: 'a' }));
+    queue.enqueue(body({ guideId: 'b' }));
+    held = false;
+
+    await queue.processDue();
+
+    expect(sender.calls).toHaveLength(0);
+    expect(queue.size()).toBe(2);
+  });
+
+  it('renews the lease before each drained item', async () => {
+    const storage = makeStorage();
+    let renewals = 0;
+    storage.storage.renewLease = () => {
+      renewals += 1;
+      return true;
+    };
+    const sender = makeSender([{ kind: 'created' }]);
+    const queue = createWriteQueue({ now: () => 0, send: sender.send, storage: storage.storage });
+    queue.enqueue(body({ guideId: 'a' }));
+    queue.enqueue(body({ guideId: 'b' }));
+
+    await queue.processDue();
+
+    expect(renewals).toBe(2);
+    expect(sender.calls).toHaveLength(2);
+    expect(queue.size()).toBe(0);
   });
 
   it('persists pending items and reloads them into a fresh queue', async () => {

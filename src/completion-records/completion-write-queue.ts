@@ -121,6 +121,9 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
       if (!items.includes(item)) {
         continue;
       }
+      if (!storage.renewLease(now())) {
+        return { nextDelayMs: computeNextDelay(), disarmed: false };
+      }
       let outcome: WriteOutcome;
       try {
         outcome = await send(item.body);

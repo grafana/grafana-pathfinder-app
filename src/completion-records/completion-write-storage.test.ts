@@ -94,6 +94,24 @@ describe('completion write cross-tab storage', () => {
     expect(tabB.acquireLease(30_001).acquired).toBe(true);
   });
 
+  it('renews the holder lease and extends its expiry', () => {
+    const tabA = createCompletionWriteStorage('user-7:org-3', 'tab-a');
+    const tabB = createCompletionWriteStorage('user-7:org-3', 'tab-b');
+
+    expect(tabA.acquireLease(0).acquired).toBe(true);
+    expect(tabA.renewLease(25_000)).toBe(true);
+    expect(tabB.acquireLease(35_000)).toEqual({ acquired: false, retryAfterMs: 20_000 });
+  });
+
+  it('refuses to renew a lease another tab has taken over', () => {
+    const tabA = createCompletionWriteStorage('user-7:org-3', 'tab-a');
+    const tabB = createCompletionWriteStorage('user-7:org-3', 'tab-b');
+
+    tabA.acquireLease(0);
+    expect(tabB.acquireLease(30_001).acquired).toBe(true);
+    expect(tabA.renewLease(30_002)).toBe(false);
+  });
+
   it('does not let an old holder release a newer lease', () => {
     const tabA = createCompletionWriteStorage('user-7:org-3', 'tab-a');
     const tabB = createCompletionWriteStorage('user-7:org-3', 'tab-b');
