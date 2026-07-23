@@ -268,6 +268,7 @@ The Context Engine integrates with multiple systems:
 - `onPluginStart()` in `App.tsx` calls `initializeContextServices()` during plugin mount
 - `initializeContextServices()` invokes the event bus's `initializeEchoLogging()` (registers the EchoSrv backend) and `initializeFromRecentEvents()` (replays buffered context)
 - Registering the EchoSrv backend immediately ensures events are captured even when the plugin UI is closed
+- `onPluginStart()` also calls `armCompletionWriteHook()` (`completion-records`) — a fire-and-forget, capability-gated arm of the durable completion-write subscriber that never blocks startup and no-ops on stacks without App Platform aggregation
 
 ## Security Measures
 
