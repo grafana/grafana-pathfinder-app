@@ -1,9 +1,11 @@
 /**
  * Unit tests for the Track 2 write hook: capability-gated arming, a provably
- * non-blocking completion path, bundled-journey burst normalization (exactly one
+ * non-blocking completion path, bundled-journey window normalization (exactly one
  * record), terminal-drop / transient-retry, and the deployment-skew missing-route
- * matrix. The recorder is the REAL module; all client/timer/clock/defer deps are
- * injected so the burst + drain state machine is driven deterministically.
+ * matrix. The recorder is the REAL module; all client/timer/clock deps are
+ * injected so the coalescing-window + drain state machine is driven
+ * deterministically. The harness routes injected timers by delay: the 2000ms
+ * coalescing window and the 0/backoff drain timers are tracked separately.
  */
 
 // The hook imports the client module (for defaults); mock @grafana/runtime so
@@ -13,17 +15,21 @@ jest.mock('@grafana/runtime', () => ({
   config: { bootData: { settings: { buildInfo: { versionString: 'Grafana Cloud' } } } },
 }));
 
-import { recordGuideCompletion, __resetRecorderForTests } from './completion-recorder';
+import { recordGuideCompletion, recordJourneyCompletion, __resetRecorderForTests } from './completion-recorder';
 import {
   armCompletionWriteHook,
   __resetCompletionWriteHookForTests,
   type WriteHookDeps,
 } from './completion-write-hook';
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
-import type { GuideCompletionFact } from './types';
+import type { GuideCompletionFact, JourneyCompletionFact } from './types';
 
-let timerCb: (() => void) | null = null;
-let deferCb: (() => void) | null = null;
+const COALESCE_WINDOW_MS = 2000;
+const WINDOW_HANDLE = 2 as unknown as ReturnType<typeof setTimeout>;
+const DRAIN_HANDLE = 1 as unknown as ReturnType<typeof setTimeout>;
+
+let windowCb: (() => void) | null = null;
+let drainCb: (() => void) | null = null;
 let clock = 0;
 let sent: CompletionWriteBody[] = [];
 let sendResults: WriteOutcome[] = [];
@@ -37,6 +43,20 @@ function guideFact(over: Partial<GuideCompletionFact> = {}): GuideCompletionFact
     guideId: 'g1',
     guideTitle: 'G1',
     guideCategory: 'interactive',
+    completionPercent: 100,
+    source: 'objectives',
+    completedAt: '2026-07-20T00:00:00.000Z',
+    ...over,
+  };
+}
+
+function journeyFact(over: Partial<JourneyCompletionFact> = {}): JourneyCompletionFact {
+  return {
+    kind: 'journey',
+    guideSource: 'bundled',
+    guideId: 'linux-journey',
+    guideTitle: 'Linux journey',
+    guideCategory: 'learning-journey',
     completionPercent: 100,
     source: 'objectives',
     completedAt: '2026-07-20T00:00:00.000Z',
@@ -59,15 +79,20 @@ function deps(over: Partial<WriteHookDeps> = {}): Partial<WriteHookDeps> {
     platform: () => 'cloud',
     now: () => clock,
     random: () => 0.5,
-    setTimer: (fn) => {
-      timerCb = fn;
-      return 1 as unknown as ReturnType<typeof setTimeout>;
+    setTimer: (fn, ms) => {
+      if (ms === COALESCE_WINDOW_MS) {
+        windowCb = fn;
+        return WINDOW_HANDLE;
+      }
+      drainCb = fn;
+      return DRAIN_HANDLE;
     },
-    clearTimer: () => {
-      timerCb = null;
-    },
-    defer: (fn) => {
-      deferCb = fn;
+    clearTimer: (handle) => {
+      if (handle === WINDOW_HANDLE) {
+        windowCb = null;
+      } else {
+        drainCb = null;
+      }
     },
     ...over,
   };
@@ -78,15 +103,15 @@ async function flushMicro(): Promise<void> {
   await Promise.resolve();
 }
 
-function runDefer(): void {
-  const cb = deferCb;
-  deferCb = null;
+function runWindow(): void {
+  const cb = windowCb;
+  windowCb = null;
   cb?.();
 }
 
 async function runTimer(): Promise<void> {
-  const cb = timerCb;
-  timerCb = null;
+  const cb = drainCb;
+  drainCb = null;
   cb?.();
   await flushMicro();
   await flushMicro();
@@ -100,8 +125,8 @@ beforeEach(() => {
   } catch {
     // no-op
   }
-  timerCb = null;
-  deferCb = null;
+  windowCb = null;
+  drainCb = null;
   clock = 0;
   sent = [];
   sendResults = [];
@@ -113,7 +138,7 @@ describe('arming is capability-gated', () => {
   it('does not arm when capability is unavailable — no subscriber, no writes', async () => {
     await armCompletionWriteHook(deps({ fetchCapability: async () => false }));
     recordGuideCompletion(guideFact());
-    runDefer();
+    runWindow();
     await runTimer();
     expect(sent).toHaveLength(0);
   });
@@ -123,7 +148,7 @@ describe('arming is capability-gated', () => {
     await runTimer(); // initial (empty) persisted drain
 
     recordGuideCompletion(guideFact({ guideId: 'dash' }));
-    runDefer();
+    runWindow();
     await runTimer();
 
     expect(sent).toHaveLength(1);
@@ -145,22 +170,23 @@ describe('completion path is non-blocking', () => {
     // Even if the send would reject, recording must not throw or await it.
     sendResults = [{ kind: 'transient' }];
     expect(() => recordGuideCompletion(guideFact({ guideId: 'x' }))).not.toThrow();
-    // The send is deferred (burst + timer), so nothing has been sent yet.
+    // The send is deferred (coalescing window + drain timer), so nothing has
+    // been sent yet.
     expect(sent).toHaveLength(0);
   });
 });
 
 describe('bundled-journey normalization (regression: exactly one record)', () => {
-  it('collapses the interactive + learning-journey facts of one burst to a single record', async () => {
+  it('collapses the interactive + learning-journey facts of one window to a single record', async () => {
     await armCompletionWriteHook(deps());
     await runTimer();
 
-    // One completed bundled learning-journey drives both branches synchronously:
+    // One completed bundled learning-journey drives both branches:
     // an interactive-category guide fact (journey base id) and a learning-journey
     // guide fact (milestone slug id) — distinct facts at the recorder.
     recordGuideCompletion(guideFact({ guideId: 'linux-journey', guideCategory: 'interactive' }));
     recordGuideCompletion(guideFact({ guideId: 'select-platform', guideCategory: 'learning-journey' }));
-    runDefer(); // flush the burst → normalize to one
+    runWindow(); // flush the coalescing window → normalize to one
     await runTimer();
 
     expect(sent).toHaveLength(1);
@@ -168,15 +194,64 @@ describe('bundled-journey normalization (regression: exactly one record)', () =>
     expect(sent[0]).toMatchObject({ guideId: 'select-platform', guideCategory: 'learning-journey' });
   });
 
-  it('a standalone completion in its own burst still produces one record', async () => {
+  it('collapses the bundled-journey triplet emitted across SEPARATE async ticks to one journey record', async () => {
+    await armCompletionWriteHook(deps());
+    await runTimer();
+
+    // The real emission order is NOT synchronous: onGuideComplete emits the
+    // interactive fact synchronously, then calls markMilestoneDone un-awaited,
+    // which emits the learning-journey fact and finally the journey fact only
+    // after several awaits. Simulate that with microtask gaps between facts —
+    // all still land inside the single fixed window opened by the first fact.
+    recordGuideCompletion(guideFact({ guideId: 'linux-journey', guideCategory: 'interactive' }));
+    await flushMicro();
+    recordGuideCompletion(guideFact({ guideId: 'select-platform', guideCategory: 'learning-journey' }));
+    await flushMicro();
+    recordJourneyCompletion(journeyFact({ guideId: 'linux-journey' }));
+    await flushMicro();
+
+    runWindow(); // fixed window fires once, spanning all three ticks
+    await runTimer();
+
+    expect(sent).toHaveLength(1);
+    // The whole-journey fact outranks both guide facts.
+    expect(sent[0]).toMatchObject({ guideId: 'linux-journey', kind: 'journey' });
+  });
+
+  it('a standalone completion in its own window still produces one record', async () => {
     await armCompletionWriteHook(deps());
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'solo' }));
-    runDefer();
+    runWindow();
     await runTimer();
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ guideId: 'solo' });
+  });
+
+  it('blanket-window tradeoff: distinct completions in one window coalesce; a later window records separately', async () => {
+    await armCompletionWriteHook(deps());
+    await runTimer();
+
+    // Two DISTINCT completions inside the same fixed window collapse to ONE
+    // record. This is the documented blanket-window tradeoff: the window is not
+    // keyed to a journey (no reliable relation key rides on the fact), so it
+    // relies on distinct completions being user-paced beyond COALESCE_WINDOW_MS.
+    recordGuideCompletion(guideFact({ guideId: 'guide-a' }));
+    recordGuideCompletion(guideFact({ guideId: 'guide-b' }));
+    runWindow();
+    await runTimer();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ guideId: 'guide-a' });
+
+    // A completion emitted AFTER the window has flushed opens a fresh window and
+    // is recorded separately — proving separate windows yield separate records.
+    clock += COALESCE_WINDOW_MS + 1;
+    recordGuideCompletion(guideFact({ guideId: 'guide-c' }));
+    runWindow();
+    await runTimer();
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toMatchObject({ guideId: 'guide-c' });
   });
 });
 
@@ -187,7 +262,7 @@ describe('error handling', () => {
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'bad' }));
-    runDefer();
+    runWindow();
     await runTimer();
     expect(sent).toHaveLength(1);
 
@@ -203,7 +278,7 @@ describe('error handling', () => {
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'flaky' }));
-    runDefer();
+    runWindow();
     await runTimer(); // attempt 1 → transient, reschedules ~1000ms out
     expect(sent).toHaveLength(1);
 
@@ -215,8 +290,8 @@ describe('error handling', () => {
 
 describe('concurrent drains (regression: no double-send)', () => {
   function fireTimer(): void {
-    const cb = timerCb;
-    timerCb = null;
+    const cb = drainCb;
+    drainCb = null;
     cb?.();
   }
 
@@ -239,7 +314,7 @@ describe('concurrent drains (regression: no double-send)', () => {
     await runTimer(); // initial empty drain
 
     recordGuideCompletion(guideFact({ guideId: 'first' }));
-    runDefer();
+    runWindow();
 
     // Fire the drain: processDue starts and suspends on the first send's await.
     fireTimer();
@@ -249,7 +324,7 @@ describe('concurrent drains (regression: no double-send)', () => {
     // A second completion arrives mid-send and schedules a fresh timer. Firing
     // it must NOT start a concurrent processDue that re-sends the in-flight item.
     recordGuideCompletion(guideFact({ guideId: 'second' }));
-    runDefer();
+    runWindow();
     fireTimer();
     await flushMicro();
     expect(sendCalls).toHaveLength(1); // still only the first item
@@ -269,7 +344,7 @@ describe('deployment-skew: missing route matrix', () => {
     // fetchCompletionCapability maps 404 → false; the hook sees `false`.
     await armCompletionWriteHook(deps({ fetchCapability: async () => false }));
     recordGuideCompletion(guideFact());
-    runDefer();
+    runWindow();
     await runTimer();
     expect(sent).toHaveLength(0);
   });
@@ -280,13 +355,13 @@ describe('deployment-skew: missing route matrix', () => {
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'a' }));
-    runDefer();
+    runWindow();
     await runTimer(); // route-missing → disarm + teardown
     expect(sent).toHaveLength(1);
 
     // Subsequent completions do not enqueue or send, and there is no retry loop.
     recordGuideCompletion(guideFact({ guideId: 'b' }));
-    runDefer();
+    runWindow();
     clock += 10 * 60 * 1000;
     await runTimer();
     expect(sent).toHaveLength(1);

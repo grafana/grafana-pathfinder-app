@@ -33,8 +33,6 @@ export interface WriteHookDeps {
   random: () => number;
   setTimer: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
   clearTimer: (handle: ReturnType<typeof setTimeout>) => void;
-  /** Defers the burst flush to a later microtask; injected for deterministic tests. */
-  defer: (fn: () => void) => void;
 }
 
 const defaultDeps: WriteHookDeps = {
@@ -45,8 +43,15 @@ const defaultDeps: WriteHookDeps = {
   random: Math.random,
   setTimer: (fn, ms) => setTimeout(fn, ms),
   clearTimer: (handle) => clearTimeout(handle),
-  defer: (fn) => queueMicrotask(fn),
 };
+
+// A bundled journey's sibling facts do NOT arrive in one synchronous burst:
+// onGuideComplete calls markMilestoneDone un-awaited, and that helper emits its
+// learning-journey and journey facts only after several awaits. A microtask
+// flush would therefore only ever see the first (synchronous) fact. A fixed
+// time window from the first fact is the smallest mechanism that spans those
+// async ticks and collapses the triplet to one record.
+const COALESCE_WINDOW_MS = 2000;
 
 // Module-level session state. A single arm per session; reset only for tests.
 let deps: WriteHookDeps = defaultDeps;
@@ -58,10 +63,10 @@ let unsubscribe: (() => void) | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let draining = false;
 
-// Facts buffered within one synchronous completion burst, flushed together so
-// the burst can be normalized to a single durable record (see flushBurst).
-let burst: CompletionFact[] = [];
-let burstScheduled = false;
+// Facts buffered within one coalescing window, flushed together so a bundled
+// journey's siblings normalize to a single durable record (see flushWindow).
+let windowBuffer: CompletionFact[] = [];
+let windowTimer: ReturnType<typeof setTimeout> | null = null;
 
 function durableKeyOf(fact: CompletionFact): string {
   // U+241F (SYMBOL FOR UNIT SEPARATOR) can't appear in an id, so it's a safe
@@ -86,25 +91,30 @@ function completionRank(fact: CompletionFact): number {
 }
 
 /**
- * Normalize one synchronous completion burst to a single canonical fact.
+ * Normalize one coalescing window to a single canonical fact.
  *
  * A completed bundled learning-journey drives BOTH branches of
- * DocsPanelContentArea.onGuideComplete in one synchronous call:
- * setJourneyCompletionPercentage emits an interactive-category guide fact and
- * markMilestoneDone emits a learning-journey fact (and, on the final milestone, a
- * journey fact). The recorder keeps these distinct (different guide ids), which
- * is deliberate parity for other consumers — but Track 2 must persist exactly ONE
- * durable record per completed bundled journey (captain decision 2026-07-23).
+ * DocsPanelContentArea.onGuideComplete: setJourneyCompletionPercentage emits an
+ * interactive-category guide fact synchronously, while markMilestoneDone is
+ * called UN-AWAITED and emits its learning-journey fact (and, on the final
+ * milestone, a journey fact) only after several awaits. The recorder keeps these
+ * distinct (different guide ids), which is deliberate parity for other consumers
+ * — but Track 2 must persist exactly ONE durable record per completed bundled
+ * journey (captain decision 2026-07-23).
  *
- * Because every such fact arrives in the same synchronous burst (one completion
- * event), collapsing a multi-fact burst to its highest-ranked fact yields exactly
- * one record without touching the recorder. Single-fact bursts (standalone guide
- * completions) pass through unchanged.
+ * The window is intentionally BLANKET-scoped (not keyed to a journey): no
+ * reliable relation key rides on the emitted CompletionFact — pathId is
+ * undefined at the bundled onGuideComplete call sites, the package manifest is
+ * not carried on the fact, and guideTitle is denormalized. This is safe because
+ * distinct completions are user-paced (a user cannot finish two different guides
+ * within COALESCE_WINDOW_MS) while a journey's triplet fires within
+ * milliseconds; and the backend read-side collateByUser dedups per
+ * (userId, guideSource, guideId) regardless.
  */
-function flushBurst(): void {
-  burstScheduled = false;
-  const facts = burst;
-  burst = [];
+function flushWindow(): void {
+  windowTimer = null;
+  const facts = windowBuffer;
+  windowBuffer = [];
   if (facts.length === 0 || !queue || queue.isDisarmed()) {
     return;
   }
@@ -130,23 +140,24 @@ function toBody(fact: CompletionFact): CompletionWriteBody {
 }
 
 function onFact(fact: CompletionFact): void {
-  // NEVER block or throw on the completion path: buffer and return. The burst is
-  // flushed on a later microtask so a bundled journey's sibling facts (emitted in
-  // the same synchronous call) are normalized to one record before enqueue.
+  // NEVER block or throw on the completion path: buffer and return. The window
+  // is flushed on a later timer so a bundled journey's sibling facts (emitted
+  // across separate async ticks) are normalized to one record before enqueue.
   try {
     if (!queue || queue.isDisarmed()) {
       return;
     }
-    burst.push(fact);
-    if (!burstScheduled) {
-      burstScheduled = true;
-      deps.defer(() => {
+    windowBuffer.push(fact);
+    // Fixed window from the FIRST fact: never restarted on later facts, so it
+    // stays bounded regardless of how many siblings arrive.
+    if (windowTimer === null) {
+      windowTimer = deps.setTimer(() => {
         try {
-          flushBurst();
+          flushWindow();
         } catch (error) {
-          logger.debug('completion write: burst flush failed (ignored)', { error: String(error) });
+          logger.debug('completion write: window flush failed (ignored)', { error: String(error) });
         }
-      });
+      }, COALESCE_WINDOW_MS);
     }
   } catch (error) {
     logger.debug('completion write: enqueue failed (ignored)', { error: String(error) });
@@ -200,14 +211,17 @@ function teardown(): void {
     deps.clearTimer(timer);
     timer = null;
   }
+  if (windowTimer !== null) {
+    deps.clearTimer(windowTimer);
+    windowTimer = null;
+  }
   if (unsubscribe) {
     unsubscribe();
     unsubscribe = null;
   }
   queue = null;
   armed = false;
-  burst = [];
-  burstScheduled = false;
+  windowBuffer = [];
 }
 
 /**
@@ -247,6 +261,9 @@ export function __resetCompletionWriteHookForTests(): void {
   if (timer !== null) {
     defaultDeps.clearTimer(timer);
   }
+  if (windowTimer !== null) {
+    defaultDeps.clearTimer(windowTimer);
+  }
   if (unsubscribe) {
     unsubscribe();
   }
@@ -257,7 +274,7 @@ export function __resetCompletionWriteHookForTests(): void {
   queue = null;
   unsubscribe = null;
   timer = null;
+  windowTimer = null;
   draining = false;
-  burst = [];
-  burstScheduled = false;
+  windowBuffer = [];
 }
