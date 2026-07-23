@@ -275,6 +275,37 @@ describe('concurrent drains (regression: no double-send)', () => {
   });
 });
 
+describe('drain timer preemption (regression: fresh completion not stranded behind backoff)', () => {
+  it('reschedules a far-future backoff timer sooner when a fresh completion is due', async () => {
+    let scheduledMs: number[] = [];
+    const setTimer = (fn: () => void, ms: number): ReturnType<typeof setTimeout> => {
+      drainCb = fn;
+      scheduledMs.push(ms);
+      return 1 as unknown as ReturnType<typeof setTimeout>;
+    };
+    // First send is transient with a 5-minute Retry-After, so the stuck item's
+    // drain timer is scheduled far into the future.
+    sendResults = [{ kind: 'transient', retryAfterMs: 5 * 60 * 1000 }, { kind: 'created' }, { kind: 'created' }];
+    await armCompletionWriteHook(deps({ setTimer }));
+    await runTimer(); // initial empty drain
+
+    recordGuideCompletion(guideFact({ guideId: 'stuck' }));
+    await runTimer(); // attempt 1 → transient, reschedules ~5min out
+    expect(sent).toHaveLength(1);
+    expect(scheduledMs[scheduledMs.length - 1]).toBeGreaterThan(60 * 1000);
+
+    // A fresh, immediately-due completion must preempt the far-future timer and
+    // reschedule it to fire now rather than waiting out the stuck item's backoff.
+    scheduledMs = [];
+    recordGuideCompletion(guideFact({ guideId: 'fresh' }));
+    expect(scheduledMs).toEqual([0]);
+
+    // The clock has NOT advanced past the backoff, yet the fresh item drains.
+    await runTimer();
+    expect(sent.map((b) => b.guideId)).toContain('fresh');
+  });
+});
+
 describe('deployment-skew: missing route matrix', () => {
   it('capability 404 (route family absent) never arms', async () => {
     // fetchCompletionCapability maps 404 → false; the hook sees `false`.

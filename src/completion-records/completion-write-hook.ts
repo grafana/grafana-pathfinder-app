@@ -53,6 +53,7 @@ let attempted = false;
 let queue: WriteQueue | null = null;
 let unsubscribe: (() => void) | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
+let timerFireAt: number | null = null;
 let draining = false;
 
 function durableKeyOf(fact: CompletionFact): string {
@@ -94,16 +95,27 @@ function onFact(fact: CompletionFact): void {
 }
 
 function scheduleDrain(delayMs: number): void {
-  if (!armed || timer !== null) {
+  if (!armed) {
     return;
   }
-  timer = deps.setTimer(
-    () => {
-      timer = null;
-      void drain();
-    },
-    Math.max(0, delayMs)
-  );
+  const ms = Math.max(0, delayMs);
+  const fireAt = deps.now() + ms;
+  // A pending timer must never strand a sooner (immediately-due) completion
+  // behind an in-backoff item's far-future delay: preempt and reschedule to the
+  // earlier time. A sooner-or-equal timer is left as-is (single-timer invariant).
+  if (timer !== null) {
+    if (timerFireAt !== null && fireAt >= timerFireAt) {
+      return;
+    }
+    deps.clearTimer(timer);
+    timer = null;
+  }
+  timerFireAt = fireAt;
+  timer = deps.setTimer(() => {
+    timer = null;
+    timerFireAt = null;
+    void drain();
+  }, ms);
 }
 
 async function drain(): Promise<void> {
@@ -140,6 +152,7 @@ function teardown(): void {
     deps.clearTimer(timer);
     timer = null;
   }
+  timerFireAt = null;
   if (unsubscribe) {
     unsubscribe();
     unsubscribe = null;
@@ -195,5 +208,6 @@ export function __resetCompletionWriteHookForTests(): void {
   queue = null;
   unsubscribe = null;
   timer = null;
+  timerFireAt = null;
   draining = false;
 }
