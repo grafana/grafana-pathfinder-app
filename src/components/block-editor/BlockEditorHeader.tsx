@@ -176,9 +176,9 @@ export function BlockEditorHeader({
 
   return (
     <div className={styles.header}>
-      {/* Single-row toolbar: title (flex 1) + actions on the right.
-          New / Library moved into the kebab menu; selection-mode
-          trigger is a small icon button next to the view-mode toggle. */}
+      {/* Single-row toolbar: title area on the left, right-aligned actions
+          cluster (status, selection toggle, undo/redo, view-mode rocker, save,
+          pop out / full screen, more-actions kebab) on the right. */}
       <div className={styles.row}>
         <HeaderTitleRow guideTitle={guideTitle} guideId={guideId} viewMode={viewMode} onTitleCommit={onTitleCommit} />
 

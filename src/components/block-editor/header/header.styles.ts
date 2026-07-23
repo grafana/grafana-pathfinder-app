@@ -17,9 +17,9 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     flexShrink: 0,
   }),
   // Single-row toolbar: title (flex 1) + actions cluster on the right.
-  // `containerType: inline-size` lets the `@container` rule on `actions`
-  // collapse button labels to icon-only when the row gets narrow. Wraps
-  // to a second line when the cluster still doesn't fit.
+  // `containerType: inline-size` lets the per-button `@container` rule in
+  // `collapsibleLabel` collapse button labels to icon-only when the row gets
+  // narrow. Wraps to a second line when the cluster still doesn't fit.
   row: css({
     display: 'flex',
     alignItems: 'center',
@@ -110,8 +110,8 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
       },
     },
   }),
-  // Subtler "Saved" indicator (replaces the green chip) — small
-  // check-circle icon. Tooltip preserved for context.
+  // Subtler "Saved" indicator (replaces the green chip) — small floppy
+  // `save` icon. Tooltip preserved for context.
   savedIndicator: css({
     display: 'inline-flex',
     alignItems: 'center',
