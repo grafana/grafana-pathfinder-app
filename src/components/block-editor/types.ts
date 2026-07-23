@@ -21,6 +21,7 @@ export type BlockType =
   | 'image'
   | 'video'
   | 'section'
+  | 'collapsible'
   | 'conditional'
   | 'interactive'
   | 'multistep'

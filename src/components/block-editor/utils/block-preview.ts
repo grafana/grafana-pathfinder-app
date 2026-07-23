@@ -11,6 +11,7 @@ import {
   isImageBlock,
   isVideoBlock,
   isSectionBlock,
+  isCollapsibleBlock,
   isInteractiveBlock,
   isMultistepBlock,
   isGuidedBlock,
@@ -76,6 +77,10 @@ export function getBlockPreview(block: JsonBlock, options: BlockPreviewOptions =
 
   if (isSectionBlock(block)) {
     return block.title || block.id || `${block.blocks.length} blocks`;
+  }
+
+  if (isCollapsibleBlock(block)) {
+    return block.title || `${block.blocks.length} hidden blocks`;
   }
 
   if (isInteractiveBlock(block)) {

@@ -48,6 +48,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Section',
     description: 'Container for grouped interactive steps',
   },
+  collapsible: {
+    type: 'collapsible',
+    icon: '📖',
+    grafanaIcon: 'angle-down',
+    name: 'Collapsible',
+    description: 'Hide content behind a toggle',
+  },
   conditional: {
     type: 'conditional',
     icon: '🔀',
@@ -143,6 +150,7 @@ export const BLOCK_TYPE_ORDER: BlockType[] = [
   'image',
   'video',
   'section',
+  'collapsible',
   'conditional',
   'interactive',
   'multistep',
@@ -184,7 +192,7 @@ export const BLOCK_TYPE_GROUPS: ReadonlyArray<{
   {
     id: 'structure',
     label: 'Structure',
-    types: ['section', 'conditional', 'grot-guide'],
+    types: ['section', 'collapsible', 'conditional', 'grot-guide'],
   },
   {
     id: 'reusable',
