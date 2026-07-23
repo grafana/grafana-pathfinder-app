@@ -137,9 +137,9 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
         continue;
       }
       if (outcome.kind === 'route-missing') {
+        // Session-only disarm: items stay persisted so the next app load can
+        // drain them once the route exists (deployment skew is transient).
         disarmed = true;
-        items = [];
-        storage.clear();
         logger.debug('completion write: route missing, feature unavailable this session');
         return { nextDelayMs: null, disarmed: true };
       }

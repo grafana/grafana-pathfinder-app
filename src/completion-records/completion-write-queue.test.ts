@@ -190,16 +190,19 @@ describe('write queue — retry/backoff/terminal/disarm', () => {
     expect(s.calls).toHaveLength(9);
   });
 
-  it('route-missing disarms: clears the queue and refuses further enqueue', async () => {
+  it('route-missing disarms the session but retains persisted items for the next load', async () => {
+    const memory = makeStorage();
     const s = makeSender([{ kind: 'route-missing' }]);
-    const q = createWriteQueue({ now: () => 0, send: s.send });
+    const q = createWriteQueue({ now: () => 0, send: s.send, storage: memory.storage });
     q.enqueue(body({ guideId: 'a' }));
     q.enqueue(body({ guideId: 'b' }));
     const r = await q.processDue();
     expect(r.disarmed).toBe(true);
     expect(q.isDisarmed()).toBe(true);
-    expect(q.size()).toBe(0);
     expect(q.enqueue(body({ guideId: 'c' }))).toBe(false);
+    // Pending items survive for a later session's startup drain.
+    expect(memory.storage.list()).toHaveLength(2);
+    expect(s.calls).toHaveLength(1);
   });
 
   it('a rejecting sender is treated as transient, never bubbling', async () => {
