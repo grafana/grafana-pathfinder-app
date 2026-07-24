@@ -44,7 +44,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "button:contains(\"Add new data source\")",
+          "reftarget": "grafana:pages.DataSources.dataSourceAddButton",
           "content": "Click **Add new data source** to create a new TestData instance.",
           "tooltip": "This creates a new instance of the TestData data source in your Grafana Cloud environment.",
           "requirements": ["on-page:/connections/datasources/grafana-testdata-datasource", "exists-reftarget"]
@@ -99,7 +99,7 @@
         {
           "type": "interactive",
           "action": "formfill",
-          "reftarget": "input[id=\"test-data-scenario-select-A\"]",
+          "reftarget": "grafana:components.DataSource.TestData.QueryTab.scenarioSelect",
           "targetvalue": "Random Walk",
           "content": "Choose **Random Walk** to simulate Jack's hiking altitude data.",
           "tooltip": "Random Walk generates time series data that changes randomly over time, similar to how real metrics behave. Imagine tracking Jack's altitude as he climbs up and down hills - it goes up and down, but with natural variation. This type of data is perfect for simulating real-world metrics like CPU usage, temperature readings, or in our case, hiking altitude.",
@@ -108,7 +108,7 @@
         {
           "type": "interactive",
           "action": "formfill",
-          "reftarget": "input[id=\"labels-A\"]",
+          "reftarget": "grafana:components.DataSource.TestData.QueryTab.labelsInput:A",
           "targetvalue": "walker=jack",
           "content": "Add the label **walker=jack** to identify Jack's hiking data.",
           "tooltip": "Labels are key-value pairs that add context to your data. Think of them as tags that help you identify and filter your metrics. In our hiking story, we'll use labels to distinguish between Jack and Jill's individual altitude measurements. This is exactly how you'd use labels in production - to distinguish between different servers, applications, or users.",
@@ -117,7 +117,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "button:contains(\"Add query\")",
+          "reftarget": "grafana:pages.Explore.General.addQueryRow",
           "content": "Click **Add query** to create a second data series for Jill.",
           "tooltip": "Now let's add Jill's hiking data! In Grafana, you can display multiple queries on the same graph to compare and contrast data. This is incredibly powerful - imagine comparing CPU usage across different servers, or in our case, comparing Jack and Jill's hiking altitudes to see who climbed higher.",
           "requirements": ["on-page:/explore", "exists-reftarget"]
@@ -125,7 +125,7 @@
         {
           "type": "interactive",
           "action": "formfill",
-          "reftarget": "input[id=\"labels-B\"]",
+          "reftarget": "grafana:components.DataSource.TestData.QueryTab.labelsInput:B",
           "targetvalue": "walker=jill",
           "content": "Add the label **walker=jill** to identify Jill's hiking data.",
           "tooltip": "Now we'll add Jill's label to the second query. By using the same label key (`walker`) but different values (`jack` vs `jill`), Grafana can automatically differentiate between the two data series in visualizations. This labeling strategy is a best practice in observability - it keeps your data organized and queryable.",
@@ -149,17 +149,17 @@
           "steps": [
             {
               "action": "highlight",
-              "reftarget": "button[aria-label=\"Add\"]",
+              "reftarget": "grafana:pages.Explore.toolbar.addTo",
               "requirements": ["exists-reftarget"]
             },
             {
               "action": "highlight",
-              "reftarget": "button:contains(\"Add to dashboard\")",
+              "reftarget": "grafana:pages.Explore.toolbar.add:Add to dashboard",
               "requirements": ["exists-reftarget"]
             },
             {
               "action": "highlight",
-              "reftarget": "button:contains(\"Open dashboard\")",
+              "reftarget": "grafana:components.AddToDashboard.confirmButton",
               "requirements": ["exists-reftarget"],
               "tooltip": "One of Grafana's best features is the seamless transition from Explore to dashboards. Instead of manually recreating your queries, you can send them directly from Explore to a new or existing dashboard. This workflow saves time and ensures your carefully crafted queries make it to your dashboard exactly as you tested them."
             }
@@ -219,7 +219,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "div[data-testid='input-wrapper'] #unit",
+          "reftarget": "grafana:components.UnitPicker.container",
           "content": "We can give our walking data meaning by setting a unit.",
           "tooltip": "Units give meaning to numbers. Is that value 42 seconds, bytes, requests, or meters? Without units, numbers are just numbers. Grafana can automatically format values based on their units - bytes become KB/MB/GB, seconds become ms/s/m, and so on. This polish makes your dashboards professional and removes ambiguity.",
           "requirements": ["exists-reftarget"],
@@ -231,18 +231,18 @@
           "steps": [
             {
               "action": "highlight",
-              "reftarget": "button[data-testid='data-testid Save dashboard button']",
+              "reftarget": "grafana:components.NavToolbar.editDashboard.saveButton",
               "requirements": ["exists-reftarget"]
             },
             {
               "action": "formfill",
-              "reftarget": "input[aria-label=\"Save dashboard title field\"]",
+              "reftarget": "grafana:components.Drawer.DashboardSaveDrawer.saveAsTitleInput",
               "targetvalue": "Walking adventure",
               "requirements": ["exists-reftarget"]
             },
             {
               "action": "highlight",
-              "reftarget": "button[data-testid=\"data-testid Save dashboard drawer button\"]",
+              "reftarget": "grafana:components.Drawer.DashboardSaveDrawer.saveButton",
               "requirements": ["exists-reftarget"]
             }
           ]
