@@ -45,7 +45,7 @@
         {
           "type": "interactive",
           "action": "formfill",
-          "reftarget": "input[id=\"test-data-scenario-select-A\"]",
+          "reftarget": "grafana:components.DataSource.TestData.QueryTab.scenarioSelect",
           "targetvalue": "Random Walk",
           "requirements": ["on-page:/explore", "exists-reftarget"],
           "content": "Choose **Random Walk** to simulate Jack's hiking altitude data.",
@@ -54,7 +54,7 @@
         {
           "type": "interactive",
           "action": "formfill",
-          "reftarget": "input[id=\"labels-A\"]",
+          "reftarget": "grafana:components.DataSource.TestData.QueryTab.labelsInput:A",
           "targetvalue": "walker=jack",
           "requirements": ["on-page:/explore", "exists-reftarget"],
           "content": "Add the label **walker=jack** to identify Jack's hiking data.",
@@ -63,7 +63,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "button:contains(\"Add query\")",
+          "reftarget": "grafana:pages.Explore.General.addQueryRow",
           "requirements": ["on-page:/explore", "exists-reftarget"],
           "content": "Click **Add query** to create a second data series for Jill.",
           "tooltip": "Now let's add Jill's hiking data! In Grafana, you can display multiple queries on the same graph to compare and contrast data. This is incredibly powerful - imagine comparing CPU usage across different servers, or in our case, comparing Jack and Jill's hiking altitudes to see who climbed higher."
@@ -71,7 +71,7 @@
         {
           "type": "interactive",
           "action": "formfill",
-          "reftarget": "input[id=\"labels-B\"]",
+          "reftarget": "grafana:components.DataSource.TestData.QueryTab.labelsInput:B",
           "targetvalue": "walker=jill",
           "requirements": ["on-page:/explore", "exists-reftarget"],
           "content": "Add the label **walker=jill** to identify Jill's hiking data.",
@@ -96,17 +96,17 @@
           "steps": [
             {
               "action": "highlight",
-              "reftarget": "button[aria-label=\"Add\"]",
+              "reftarget": "grafana:pages.Explore.toolbar.addTo",
               "requirements": ["exists-reftarget"]
             },
             {
               "action": "highlight",
-              "reftarget": "button:contains(\"Add to dashboard\")",
+              "reftarget": "grafana:pages.Explore.toolbar.add:Add to dashboard",
               "requirements": ["exists-reftarget"]
             },
             {
               "action": "highlight",
-              "reftarget": "button:contains(\"Open dashboard\")",
+              "reftarget": "grafana:components.AddToDashboard.confirmButton",
               "requirements": ["exists-reftarget"],
               "tooltip": "One of Grafana's best features is the seamless transition from Explore to dashboards. Instead of manually recreating your queries, you can send them directly from Explore to a new or existing dashboard. This workflow saves time and ensures your carefully crafted queries make it to your dashboard exactly as you tested them."
             }
@@ -165,7 +165,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "input[id=\"barchart-unit\"]",
+          "reftarget": "grafana:components.UnitPicker.container",
           "targetvalue": "ALT",
           "requirements": ["exists-reftarget"],
           "content": "We can give our walking data meaning by setting a unit.",
@@ -177,18 +177,18 @@
           "steps": [
             {
               "action": "highlight",
-              "reftarget": "button[data-testid='data-testid Save dashboard button']",
+              "reftarget": "grafana:components.NavToolbar.editDashboard.saveButton",
               "requirements": ["exists-reftarget"]
             },
             {
               "action": "formfill",
-              "reftarget": "input[aria-label=\"Save dashboard title field\"]",
+              "reftarget": "grafana:components.Drawer.DashboardSaveDrawer.saveAsTitleInput",
               "targetvalue": "Walking adventure",
               "requirements": ["exists-reftarget"]
             },
             {
               "action": "highlight",
-              "reftarget": "button[data-testid=\"data-testid Save dashboard drawer button\"]",
+              "reftarget": "grafana:components.Drawer.DashboardSaveDrawer.saveButton",
               "requirements": ["exists-reftarget"]
             }
           ]
