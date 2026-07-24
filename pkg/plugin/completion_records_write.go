@@ -17,18 +17,18 @@ import (
 // Completion Records durable write proxy (docs/design/BACKEND_PROXY_PATTERN.md).
 //
 // POST /completion-records persists one terminal completion as a CompletionRecord
-// in the stack's aggregated App Platform store. Identity/org/stack are stamped
-// SERVER-SIDE from the verified request context and never trusted from the body
-// (the CRD's manifest-only posture means it enforces field PRESENCE but not
-// TRUTHFULNESS — that is this writer's job). Authorization is delegated to App
-// Platform RBAC on the caller's own forwarded identity; the proxy adds no
-// privilege beyond what that token gets upstream.
+// in the stack's aggregated App Platform store. Authorization is delegated to
+// App Platform RBAC on the caller's own forwarded identity — on the served
+// group the basic viewer role grants write on CompletionRecord, so the proxy
+// adds no privilege beyond what that token already gets upstream.
 //
-// INTERIM: a live RBAC probe (2026-07-23) showed Viewer tokens get 403 on
-// creates against this API group while reads succeed. Because this proxy
-// forwards the same Viewer identity, Viewer completions currently fail terminal
-// upstream and are silently dropped by the client. Live Viewer attribution is a
-// tracked merge gate for un-darking this feature.
+// The proxy is retained for reasons a direct client write cannot satisfy:
+//   - Identity TRUTHFULNESS: the CRD validates field PRESENCE, not truth. Only a
+//     server can stamp userId/userLogin/userDisplayName/orgId/stackNamespace/
+//     recordedAt trustworthily from the verified request context, never the body.
+//   - Per-user rate limiting (completion_records_write_ratelimit.go).
+//   - Read-cache invalidation on a successful create.
+//   - The transient/terminal retry taxonomy the front-end queue depends on.
 //
 // Response contract for the front-end retry queue (RFC §6.9):
 //   - 201  created (durable).

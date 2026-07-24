@@ -182,11 +182,12 @@ ID-token `sub`, `userLogin`, `userDisplayName`, `orgId`, `stackNamespace`, `reco
 request struct has nowhere to put it). `userLogin`/`userDisplayName` are best-effort display
 snapshots only (ID-token claims, then the `X-Grafana-User` header) — they gate nothing, and the
 read path joins exclusively on `userId`. Authorization is delegated to App Platform RBAC on the
-caller's own forwarded identity, so the proxy adds no privilege. **Interim:** a live RBAC probe
-showed Viewer tokens are rejected (403) on aggregated-API creates while reads succeed; because the
-proxy forwards the same Viewer identity, Viewer completions currently fail terminal upstream and
-are silently dropped by the client — resolving live Viewer attribution is a tracked merge gate for
-un-darking the feature.
+caller's own forwarded identity, so the proxy adds no privilege — on the served `.app` group the
+basic viewer role grants write on `CompletionRecord` (verified with a real Viewer user, 2026-07-24:
+POST → 201, RBAC enforced). The proxy is retained because a direct client write cannot stamp
+trustworthy identity, rate-limit per user, invalidate the read cache, or classify failures for the
+retry queue. The residual merge gate is a live Viewer-attributed write through the deployed plugin
+proxy — proving identity forwarding end-to-end, not the (now-cleared) RBAC layer.
 The request body is limited to one 64 KiB JSON value with per-field byte caps on free text. A
 successful write invalidates the read cache with a generation fence so an older in-flight LIST
 cannot make stale data fresh again, and clears the negative-cache cooldown.

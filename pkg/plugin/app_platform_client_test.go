@@ -14,8 +14,8 @@ import (
 )
 
 func TestBuildAppPlatformURL(t *testing.T) {
-	got := buildAppPlatformURL("http://grafana.example/", "pathfinderbackend.ext.grafana.com/v1alpha1", "stacks-1", "completionrecords")
-	want := "http://grafana.example/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/stacks-1/completionrecords"
+	got := buildAppPlatformURL("http://grafana.example/", "pathfinderbackend.ext.grafana.app/v1alpha1", "stacks-1", "completionrecords")
+	want := "http://grafana.example/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-1/completionrecords"
 	if got != want {
 		t.Fatalf("url = %q, want %q", got, want)
 	}

@@ -10,12 +10,22 @@ import (
 
 // completionRecordsGroupVersion is the App Platform API group/version that
 // serves the CompletionRecord kind. The plural resource name is
-// "completionrecords". Verified against grafana-pathfinder-backend
-// kinds/completionrecord.cue and its generated CRD (groupOverride
-// pathfinderbackend.ext.grafana.com).
+// "completionrecords". Completion data lives exclusively on the .app group, so
+// the read and write proxies must both address it — a record written to one
+// store would never surface in "my completions" if reads hit another.
 const (
-	completionRecordsGroupVersion = "pathfinderbackend.ext.grafana.com/v1alpha1"
+	completionRecordsGroupVersion = "pathfinderbackend.ext.grafana.app/v1alpha1"
 	completionRecordsResource     = "completionrecords"
+
+	// completionRecordsAggregationToggle is the boot feature toggle the
+	// aggregation layer sets when the .app pathfinderbackend group is served on
+	// this instance. The completion routes (read, write, capability) gate on
+	// this alone: completion data lives only on the .app group, so where it is
+	// not served the feature is correctly unavailable (the front end handles
+	// unavailable/404 gracefully). Distinct from the old-group
+	// pathfinderBackendAggregationToggle, which still gates the
+	// separately-migrated custom-guide surface.
+	completionRecordsAggregationToggle = "aggregation.pathfinderbackend-ext-grafana-app.enabled"
 
 	// completionListPageSize bounds each upstream LIST page. The proxy drains
 	// all pages, so this only trades round-trips against per-response size.

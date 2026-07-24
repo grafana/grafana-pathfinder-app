@@ -638,7 +638,7 @@ func (a *App) resolveCompletionConfig(r *http.Request) (appURL, namespace, idTok
 	if cfg == nil {
 		return "", namespace, "", false, reasonBackendUnavailable
 	}
-	if !cfg.FeatureToggles().IsEnabled(pathfinderBackendAggregationToggle) {
+	if !cfg.FeatureToggles().IsEnabled(completionRecordsAggregationToggle) {
 		return "", namespace, "", false, reasonBackendUnavailable
 	}
 	appURL, err := cfg.AppURL()

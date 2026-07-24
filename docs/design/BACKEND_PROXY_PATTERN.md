@@ -1,7 +1,10 @@
 # Backend App Platform proxy pattern
 
 **Scope:** plugin-backend (`pkg/plugin/`) routes that proxy a paginated App Platform CRUD
-endpoint served by the pathfinder-backend aggregator (`pathfinderbackend.ext.grafana.com/v1alpha1`).
+endpoint served by the pathfinder-backend aggregator. Completion records live on
+`pathfinderbackend.ext.grafana.app/v1alpha1`; the custom-guide catalogue is served on the older
+`pathfinderbackend.ext.grafana.com/v1alpha1` group and is migrated separately by its owner. Each
+group is advertised by its own boot toggle (below), so the two surfaces gate independently.
 
 **Why this doc exists:** pathfinder-backend is CRD-only — only its manifest deploys, custom
 server code never runs — so every piece of intelligence (identity, caching, collation, failure
@@ -177,9 +180,11 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
 
 One definition each, package-wide:
 
-- the aggregation feature-toggle name — no Go constant exists on main today; the string
-  `aggregation.pathfinderbackend-ext-grafana-com.enabled` lives only as scattered literals. Two
-  constants with the same string is a rename bug waiting;
+- the aggregation feature-toggle name — one Go constant per served group, never a scattered
+  literal: `completionRecordsAggregationToggle`
+  (`aggregation.pathfinderbackend-ext-grafana-app.enabled`) gates the completion routes, and the
+  older `pathfinderBackendAggregationToggle` (`…-grafana-com.enabled`) gates the custom-guide
+  surface. Distinct groups take distinct toggles; do not collapse them onto one constant;
 - the identity helpers (§3): `validIDToken`, `subjectFromIDToken`, `forwardIdentityHeaders`;
 - the paginated LIST client + `buildAppPlatformURL` (§1);
 - the single-flight + cache scaffolding (done-channel, `WithoutCancel`, per-namespace map);
@@ -218,12 +223,14 @@ The read shape above is a GET LIST proxy; the same aggregator kind also needs a 
 proxy (`pkg/plugin/completion_records_write.go`, epic
 [#1411](https://github.com/grafana/grafana-pathfinder-app/issues/1411)), which routes writes through
 plugin-backend so authoritative identity is stamped server-side. Authorization is delegated to App
-Platform RBAC on the caller's own forwarded identity — the proxy adds no privilege. **Interim
-reality:** a live RBAC probe (2026-07-23) showed Viewer tokens are rejected (403) on direct
-aggregated-API creates while their reads succeed; because the proxy forwards the same Viewer
-identity, Viewer completions currently fail terminal upstream and are dropped by the client. Live
-Viewer attribution is a tracked merge gate for un-darking, and its resolution must not regress to
-a service-account write credential (§3). The proxy reuses the read
+Platform RBAC on the caller's own forwarded identity — the proxy adds no privilege. On the served
+`.app` group the basic viewer role grants write on `CompletionRecord` (verified with a real Viewer
+user, 2026-07-24: POST → 201, RBAC enforced), so the proxy exists not to lend privilege but for
+what a direct client write cannot do: stamp trustworthy identity (the CRD validates field presence,
+not truth), enforce a per-user rate limit, invalidate the read cache on create, and classify
+failures into the transient/terminal taxonomy the front-end queue consumes. The residual merge gate
+is a live Viewer-attributed write through the *deployed* plugin proxy — proving the proxy's identity
+forwarding end-to-end, not the RBAC layer, which is now cleared. The proxy reuses the read
 shape's shared machinery — the URL builder (§1), trusted-context namespace (§2), the identity
 helpers and unsigned-JWT trust boundary (§3), and the in-process cache (§4) — and diverges only
 where a create differs from a read:

@@ -68,10 +68,13 @@ func rec(userID, guideSource, guideID, title, category, pathID, source, complete
 	}
 }
 
-// testGrafanaConfig is the healthy config: aggregation toggle on, app URL set.
+// testGrafanaConfig is the healthy config shared by the completion and
+// custom-guide proxy tests: both aggregation toggles on (they gate on different
+// group-derived toggles — completion on the .app group, custom guides on the
+// .com group) and an app URL set.
 func testGrafanaConfig() map[string]string {
 	return map[string]string{
-		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle,
+		featuretoggles.EnabledFeatures: completionRecordsAggregationToggle + "," + pathfinderBackendAggregationToggle,
 		sdkconfig.AppURL:               "http://grafana.example",
 	}
 }
@@ -717,7 +720,7 @@ func TestMyCompletions_NoAppURLStructurallyUnavailable(t *testing.T) {
 	l := singlePageLister()
 	withLister(t, l)
 
-	cfg := map[string]string{featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle} // no app URL
+	cfg := map[string]string{featuretoggles.EnabledFeatures: completionRecordsAggregationToggle} // no app URL
 	rr, body := doMyCompletionsReq(t, completionRequestWithConfig(t, "/completion-records/my", "user:1", cfg))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
