@@ -29,6 +29,7 @@ import { runPlaywrightPreflightChecks, formatPreflightResults } from './utils/pr
 import {
   discoverStepsFromDOM,
   executeAllSteps,
+  ensureDocsPanelOpen,
   summarizeResults,
   AllStepsResult,
   AbortReason,
@@ -210,21 +211,21 @@ test.describe('Guide Runner', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Inject guide into localStorage BEFORE opening the panel
-    await page.evaluate(
-      ({ key, json }) => {
-        localStorage.setItem(key, json);
+    const injectGuide = () =>
+      page.evaluate(
+        ({ key, json }) => {
+          localStorage.setItem(key, json);
+        },
+        { key: StorageKeys.E2E_TEST_GUIDE, json: guideJson }
+      );
+    await injectGuide();
+
+    await ensureDocsPanelOpen(page, {
+      beforeRetry: async () => {
+        await page.reload({ waitUntil: 'networkidle', timeout: 10_000 });
+        await injectGuide();
       },
-      { key: StorageKeys.E2E_TEST_GUIDE, json: guideJson }
-    );
-
-    // Open the docs panel first via Help button (panel must be mounted for event listener)
-    const helpButton = page.locator('button[aria-label="Help"]');
-    await helpButton.click();
-
-    // Verify panel is visible
-    const panel = page.getByTestId(testIds.docsPanel.container);
-    await expect(panel).toBeVisible({ timeout: 10000 });
+    });
 
     // Now dispatch the event to load the specific guide content
     // The event listener is only active when the docs panel is mounted
