@@ -298,6 +298,8 @@ describe('RecommendationsSection', () => {
           },
         ]}
         featuredRecommendations={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
         customGuides={[]}
         isLoadingCustomGuides={false}
         customGuidesExpanded
@@ -337,6 +339,8 @@ describe('RecommendationsSection', () => {
           },
         ]}
         featuredRecommendations={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
         customGuides={[]}
         isLoadingCustomGuides={false}
         customGuidesExpanded
