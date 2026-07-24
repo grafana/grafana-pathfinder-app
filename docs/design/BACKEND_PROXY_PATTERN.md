@@ -229,7 +229,7 @@ user, 2026-07-24: POST → 201, RBAC enforced), so the proxy exists not to lend 
 what a direct client write cannot do: stamp trustworthy identity (the CRD validates field presence,
 not truth), enforce a per-user rate limit, invalidate the read cache on create, and classify
 failures into the transient/terminal taxonomy the front-end queue consumes. The residual merge gate
-is a live Viewer-attributed write through the *deployed* plugin proxy — proving the proxy's identity
+is a live Viewer-attributed write through the _deployed_ plugin proxy — proving the proxy's identity
 forwarding end-to-end, not the RBAC layer, which is now cleared. The proxy reuses the read
 shape's shared machinery — the URL builder (§1), trusted-context namespace (§2), the identity
 helpers and unsigned-JWT trust boundary (§3), and the in-process cache (§4) — and diverges only
