@@ -18,6 +18,7 @@ export function ViewModeRocker({ viewMode, onSetViewMode }: ViewModeRockerProps)
         icon="pen"
         onClick={() => onSetViewMode('edit')}
         tooltip="Edit"
+        aria-label="Edit"
       />
       <Button
         variant={viewMode === 'preview' ? 'primary' : 'secondary'}
@@ -25,6 +26,7 @@ export function ViewModeRocker({ viewMode, onSetViewMode }: ViewModeRockerProps)
         icon="eye"
         onClick={() => onSetViewMode('preview')}
         tooltip="Preview"
+        aria-label="Preview"
       />
       <Button
         variant={viewMode === 'json' ? 'primary' : 'secondary'}
@@ -32,6 +34,7 @@ export function ViewModeRocker({ viewMode, onSetViewMode }: ViewModeRockerProps)
         icon="brackets-curly"
         onClick={() => onSetViewMode('json')}
         tooltip="JSON"
+        aria-label="JSON"
       />
     </ButtonGroup>
   );

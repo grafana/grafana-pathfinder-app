@@ -14,7 +14,7 @@ import { panelModeManager, type PanelMode } from './panel-mode';
 
 export interface PanelModeControls {
   panelMode: PanelMode;
-  /** Pop out to a floating window (from sidebar) or dock back (from floating). */
+  /** Pop out to a floating window (from sidebar) or dock back (from floating or full screen). */
   handleTogglePanelMode: () => void;
   /** Request a switch to the full-screen surface. */
   handleGoFullScreen: () => void;
@@ -34,7 +34,7 @@ export function usePanelModeControls(): PanelModeControls {
   }, []);
 
   // The sidebar's docs-panel handler picks up pop-out for the editor tab; the
-  // FloatingPanelManager handles dock requests.
+  // FloatingPanelManager handles dock requests (from floating or full screen).
   const handleTogglePanelMode = React.useCallback(() => {
     if (panelMode === 'sidebar') {
       document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));

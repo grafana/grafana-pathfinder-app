@@ -22,8 +22,9 @@ export interface SaveActionsProps {
 }
 
 /**
- * Single smart primary action button whose label/variant follow the backend
- * publish state: Save as draft / Update draft / Publish / Update.
+ * Single smart save/publish action button whose label and variant follow the
+ * backend publish state: Save as draft / Update draft (secondary) or
+ * Publish / Update (primary).
  */
 export function SaveActions({
   publishedStatus,
@@ -43,6 +44,7 @@ export function SaveActions({
         onClick={onSaveDraft}
         disabled={isPosting}
         tooltip="Save as draft without publishing"
+        aria-label="Save as draft"
         className={styles.collapsibleLabel}
         data-testid={testIds.blockEditor.saveDraftButton}
       >
@@ -61,6 +63,7 @@ export function SaveActions({
           onClick={onSaveDraft}
           disabled={isPosting}
           tooltip="Save current changes to library draft"
+          aria-label="Update draft"
           className={styles.collapsibleLabel}
           data-testid={testIds.blockEditor.saveDraftButton}
         >
@@ -76,6 +79,7 @@ export function SaveActions({
         onClick={onPostToBackend}
         disabled={isPosting}
         tooltip="Publish and make visible to users"
+        aria-label="Publish"
         className={styles.collapsibleLabel}
         data-testid={testIds.blockEditor.publishButton}
       >
@@ -93,6 +97,7 @@ export function SaveActions({
       onClick={onPostToBackend}
       disabled={isPosting}
       tooltip="Save changes and keep published"
+      aria-label="Update"
       className={styles.collapsibleLabel}
       data-testid={testIds.blockEditor.publishButton}
     >

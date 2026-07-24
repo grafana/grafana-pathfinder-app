@@ -47,7 +47,7 @@ export function HeaderKebab({
 }: HeaderKebabProps) {
   const styles = useStyles2(getHeaderStyles);
 
-  // Context-sensitive item at the top of the more menu
+  // Context-sensitive publish/unpublish shortcut, rendered after the New/Library section.
   const moreMenuContextItem = () => {
     if (!isBackendAvailable) {
       return null;
@@ -56,7 +56,7 @@ export function HeaderKebab({
       return <Menu.Item label="Publish" icon="cloud-upload" onClick={onPostToBackend} disabled={isPosting} />;
     }
     if (publishedStatus === 'draft' && hasUnsyncedChanges) {
-      // Primary = "Update draft" → offer "Publish" as shortcut
+      // Main save action is "Update draft" → offer "Publish" as a shortcut here
       return <Menu.Item label="Publish" icon="cloud-upload" onClick={onPostToBackend} disabled={isPosting} />;
     }
     if (publishedStatus === 'draft' && !hasUnsyncedChanges) {
@@ -118,6 +118,7 @@ export function HeaderKebab({
           size="sm"
           icon="ellipsis-v"
           tooltip="More actions"
+          aria-label="More actions"
           data-testid={testIds.blockEditor.moreActionsButton}
         />
       </Dropdown>
