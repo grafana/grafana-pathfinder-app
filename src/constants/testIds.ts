@@ -85,6 +85,13 @@ export const testIds = {
     customGuidesList: 'context-panel-custom-guides-list',
     customGuideItem: (index: number) => `context-panel-custom-guide-item-${index}`,
     customGuideStartButton: (index: number) => `context-panel-custom-guide-start-${index}`,
+    customGuidePathCard: (index: number) => `context-panel-custom-guide-path-card-${index}`,
+    customGuidePathStartButton: (index: number) => `context-panel-custom-guide-path-start-${index}`,
+    customGuidePathDrillInButton: (index: number) => `context-panel-custom-guide-path-drillin-${index}`,
+    customGuidePathMembers: (index: number) => `context-panel-custom-guide-path-members-${index}`,
+    customGuidePathMemberItem: (index: number, memberIndex: number) =>
+      `context-panel-custom-guide-path-member-${index}-${memberIndex}`,
+    customGuideOrphanSection: 'context-panel-custom-guide-orphan-section',
     suggestedGuidesToggle: 'context-panel-suggested-guides-toggle',
     otherDocsSection: 'context-panel-other-docs-section',
     otherDocsToggle: 'context-panel-other-docs-toggle',

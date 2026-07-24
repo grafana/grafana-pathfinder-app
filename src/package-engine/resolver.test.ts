@@ -209,6 +209,29 @@ describe('BundledPackageResolver', () => {
       expect(mockLoadContent).not.toHaveBeenCalled();
       expect(mockLoadManifest).not.toHaveBeenCalled();
     });
+
+    it('should return validation-error for a path manifest with empty cover blocks (RFC Appendix A F15)', async () => {
+      mockLoadContent.mockReturnValue({ ok: true, data: { ...FIXTURE_CONTENT, blocks: [] } });
+      mockLoadManifest.mockReturnValue({ ok: true, data: { ...FIXTURE_MANIFEST, type: 'path', milestones: ['a'] } });
+
+      const result = await resolver.resolve('test-guide', { loadContent: true });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        return;
+      }
+      expect(result.error.code).toBe('validation-error');
+      expect(result.error.message).toContain('no cover content');
+    });
+
+    it('should succeed for a guide-type manifest with empty blocks (not a metapackage)', async () => {
+      mockLoadContent.mockReturnValue({ ok: true, data: { ...FIXTURE_CONTENT, blocks: [] } });
+      mockLoadManifest.mockReturnValue({ ok: true, data: FIXTURE_MANIFEST });
+
+      const result = await resolver.resolve('test-guide', { loadContent: true });
+
+      expect(result.ok).toBe(true);
+    });
   });
 
   // ============ has() ============

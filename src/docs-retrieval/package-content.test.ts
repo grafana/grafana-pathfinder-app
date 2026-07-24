@@ -15,6 +15,7 @@ import {
   setPackageResolver,
   resolvePackageMilestones,
   resolvePackageNavLinks,
+  ensureNonEmptyCoverContent,
 } from './content-fetcher/package-content';
 import { fetchContent } from './content-fetcher';
 import type { PackageResolver, PackageResolution } from '../types';
@@ -358,7 +359,17 @@ describe('resolvePackageMilestones', () => {
   });
 
   it('returns empty array when no resolver is configured', async () => {
-    const result = await resolvePackageMilestones(['milestone-1', 'milestone-2']);
+    // _packageResolver is a module-level singleton that other describe
+    // blocks in this file have already set by this point — isolate a fresh
+    // module instance so this genuinely exercises the "never configured"
+    // guard clause rather than incidentally relying on a leftover
+    // always-fails resolver (which, before locked-milestone placeholders
+    // existed, happened to produce the same `[]` result either way).
+    let fresh: typeof import('./content-fetcher/package-content');
+    jest.isolateModules(() => {
+      fresh = require('./content-fetcher/package-content');
+    });
+    const result = await fresh!.resolvePackageMilestones(['milestone-1', 'milestone-2']);
     expect(result).toEqual([]);
   });
 
@@ -398,7 +409,7 @@ describe('resolvePackageMilestones', () => {
     expect(result[2]!.number).toBe(3);
   });
 
-  it('skips unresolvable milestones and continues with remaining', async () => {
+  it('keeps unresolvable milestones as locked placeholders rather than dropping them (§6.5)', async () => {
     const resolver: PackageResolver = {
       resolve: jest.fn().mockImplementation((id: string) => {
         if (id === 'missing') {
@@ -423,11 +434,14 @@ describe('resolvePackageMilestones', () => {
 
     const result = await resolvePackageMilestones(['first', 'missing', 'third']);
 
-    expect(result).toHaveLength(2);
-    expect(result[0]!.number).toBe(1);
-    expect(result[0]!.title).toBe('Title: first');
-    expect(result[1]!.number).toBe(2);
-    expect(result[1]!.title).toBe('Title: third');
+    // All three positions are preserved — the locked entry keeps numbering
+    // and the "N of total" count accurate to the path's real member count.
+    expect(result).toHaveLength(3);
+    expect(result[0]).toMatchObject({ number: 1, title: 'Title: first' });
+    expect(result[0]!.isLocked).toBeUndefined();
+    expect(result[1]).toMatchObject({ number: 2, title: 'missing', url: '', isLocked: true });
+    expect(result[2]).toMatchObject({ number: 3, title: 'Title: third' });
+    expect(result[2]!.isLocked).toBeUndefined();
   });
 
   it('falls back to description then ID when content title is missing', async () => {
@@ -464,7 +478,7 @@ describe('resolvePackageMilestones', () => {
     expect(result[0]!.title).toBe('bare-id');
   });
 
-  it('skips milestones that throw during resolution', async () => {
+  it('locks milestones that throw during resolution rather than dropping them', async () => {
     const resolver: PackageResolver = {
       resolve: jest.fn().mockImplementation((id: string) => {
         if (id === 'exploder') {
@@ -485,9 +499,10 @@ describe('resolvePackageMilestones', () => {
 
     const result = await resolvePackageMilestones(['good', 'exploder', 'also-good']);
 
-    expect(result).toHaveLength(2);
-    expect(result[0]!.title).toBe('Title: good');
-    expect(result[1]!.title).toBe('Title: also-good');
+    expect(result).toHaveLength(3);
+    expect(result[0]).toMatchObject({ number: 1, title: 'Title: good' });
+    expect(result[1]).toMatchObject({ number: 2, title: 'exploder', url: '', isLocked: true });
+    expect(result[2]).toMatchObject({ number: 3, title: 'Title: also-good' });
   });
 });
 
@@ -594,6 +609,39 @@ describe('fetchPackageContent path-type enrichment', () => {
       expect(result.content.metadata.packageManifest).toEqual(manifest);
       expect(result.content.metadata.learningJourney).toBeDefined();
     }
+  });
+});
+
+describe('ensureNonEmptyCoverContent (RFC Appendix A F15)', () => {
+  it('substitutes a friendly placeholder when blocks is empty', () => {
+    const result = ensureNonEmptyCoverContent(JSON.stringify({ id: 'fe-path', title: 'FE path', blocks: [] }));
+    const parsed = JSON.parse(result);
+
+    expect(parsed.id).toBe('fe-path');
+    expect(parsed.title).toBe('FE path');
+    expect(parsed.blocks).toHaveLength(1);
+    expect(parsed.blocks[0].type).toBe('markdown');
+    expect(parsed.blocks[0].content).toContain('Cover content is missing');
+  });
+
+  it('leaves non-empty blocks unchanged', () => {
+    const original = JSON.stringify({
+      id: 'fe-path',
+      title: 'FE path',
+      blocks: [{ type: 'markdown', content: 'Real cover content' }],
+    });
+    expect(ensureNonEmptyCoverContent(original)).toBe(original);
+  });
+
+  it('leaves content unchanged when blocks is missing entirely', () => {
+    const original = JSON.stringify({ id: 'fe-path', title: 'FE path' });
+    expect(ensureNonEmptyCoverContent(original)).toBe(original);
+  });
+
+  it('returns the input unchanged on malformed JSON rather than throwing', () => {
+    const malformed = '{not json';
+    expect(() => ensureNonEmptyCoverContent(malformed)).not.toThrow();
+    expect(ensureNonEmptyCoverContent(malformed)).toBe(malformed);
   });
 });
 

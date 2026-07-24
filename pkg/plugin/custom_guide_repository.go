@@ -2,6 +2,8 @@ package plugin
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,6 +11,19 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/config"
+)
+
+// Granular unavailability reasons. The shared reasonBackendUnavailable lumps
+// four distinct structural causes plus every upstream error under one token,
+// which is undiagnosable from the capability envelope alone (the only signal
+// available without backend log access). These split it so the reason field
+// pinpoints the cause from the client. Machine tokens; the frontend gates on
+// capability.available and ignores the specific string.
+const (
+	reasonGrafanaConfigUnavailable = "grafana-config-unavailable"
+	reasonFeatureToggleDisabled    = "feature-toggle-disabled"
+	reasonAppURLUnavailable        = "app-url-unavailable"
+	reasonNamespaceUnavailable     = "namespace-unavailable"
 )
 
 // Custom guide repository catalogue proxy (docs/design/BACKEND_PROXY_PATTERN.md).
@@ -126,10 +141,18 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		if isTerminalUpstreamError(err) {
 			// Structurally can't serve for this caller ("never works here") —
-			// includes identity-scoped 401/403 for this caller's token.
+			// includes identity-scoped 401/403 for this caller's token. Surface
+			// the upstream HTTP status in the reason (e.g. "upstream-403") so the
+			// failure is diagnosable from the capability envelope without backend
+			// log access.
+			reason := reasonBackendUnavailable
+			var upErr *appPlatformUpstreamError
+			if errors.As(err, &upErr) {
+				reason = fmt.Sprintf("upstream-%d", upErr.status)
+			}
 			logger.Info("custom guide catalogue unavailable (terminal)", "namespace", namespace, "error", err)
 			a.writeJSON(w, customGuideRepositoryResponse{
-				Capability: customGuideCapability{Available: false, Reason: reasonBackendUnavailable},
+				Capability: customGuideCapability{Available: false, Reason: reason},
 				Guides:     []customGuideRepositoryEntry{},
 			}, http.StatusOK)
 			return
@@ -198,14 +221,17 @@ func (a *App) resolveCustomGuideBackend(r *http.Request) (lister customGuideList
 
 	cfg := config.GrafanaConfigFromContext(r.Context())
 	if cfg == nil {
-		return nil, namespace, false, reasonBackendUnavailable
+		return nil, namespace, false, reasonGrafanaConfigUnavailable
 	}
 	if !cfg.FeatureToggles().IsEnabled(pathfinderBackendAggregationToggle) {
-		return nil, namespace, false, reasonBackendUnavailable
+		return nil, namespace, false, reasonFeatureToggleDisabled
+	}
+	if namespace == "" {
+		return nil, namespace, false, reasonNamespaceUnavailable
 	}
 	appURL, err := cfg.AppURL()
-	if err != nil || appURL == "" || namespace == "" {
-		return nil, namespace, false, reasonBackendUnavailable
+	if err != nil || appURL == "" {
+		return nil, namespace, false, reasonAppURLUnavailable
 	}
 
 	if customGuideListerOverride != nil {

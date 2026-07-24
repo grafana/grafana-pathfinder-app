@@ -86,6 +86,13 @@ export interface Milestone {
   duration: string;
   url: string;
   isActive: boolean;
+  /**
+   * True when this milestone's package ID couldn't be resolved (not yet
+   * published, or a transient resolver failure) — rendered as visibly
+   * unavailable rather than silently dropped from the list, and skipped by
+   * next/previous traversal. See RFC CUSTOM-GUIDE-PACKAGES.md §6.5.
+   */
+  isLocked?: boolean;
   /** Canonical website URL for this milestone (e.g., grafana.com/docs/learning-paths/.../milestone-slug/) */
   websiteUrl?: string;
   sideJourneys?: SideJourneys;

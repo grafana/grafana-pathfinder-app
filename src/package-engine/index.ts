@@ -17,6 +17,8 @@
 // Resolvers
 export { BundledPackageResolver, createBundledResolver } from './resolver';
 export { RecommenderPackageResolver } from './recommender-resolver';
+export { OnlineCdnPackageResolver } from './online-cdn-resolver';
+export { AppPlatformPackageResolver } from './app-platform-resolver';
 export { CompositePackageResolver, createCompositeResolver } from './composite-resolver';
 
 // Loader
