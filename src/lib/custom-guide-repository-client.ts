@@ -33,18 +33,31 @@ export interface CustomGuideRepositoryEntry {
   manifest?: CustomGuideManifest;
 }
 
+/**
+ * Availability signal the catalogue surfaces gate on. `available` is false with
+ * a machine `reason` (`identity-unavailable` / `backend-unavailable`) when the
+ * proxy can't serve; the response is still a soft-200 in that case.
+ */
+interface CustomGuideCapability {
+  available: boolean;
+  reason?: string;
+}
+
 interface CustomGuideRepositoryResponse {
-  namespace: string;
+  capability: CustomGuideCapability;
   guides: CustomGuideRepositoryEntry[];
+  asOf?: string;
 }
 
 const CUSTOM_GUIDE_REPOSITORY_URL = `${PLUGIN_BACKEND_URL}/custom-guide-repository`;
 
 /**
- * Fetch the caller's custom guide catalogue for the current namespace.
- * Returns an empty array when the backend API isn't rolled out, the caller
- * has no namespace, or the request fails for any reason — this is a
- * best-effort listing, not a hard dependency (mirrors fetchBackendGuides).
+ * Fetch the caller's custom guide catalogue. The proxy derives the namespace
+ * from the trusted plugin context, so none is sent here; `namespace` is only a
+ * client-side gate for "am I on a provisioned stack". Returns an empty array
+ * when the backend API isn't rolled out, there's no namespace, the proxy
+ * reports itself unavailable, or the request fails — a best-effort listing, not
+ * a hard dependency (mirrors fetchBackendGuides).
  */
 export async function fetchCustomGuideRepository(namespace: string): Promise<CustomGuideRepositoryEntry[]> {
   if (!isBackendApiAvailable() || !namespace) {
@@ -54,11 +67,14 @@ export async function fetchCustomGuideRepository(namespace: string): Promise<Cus
   try {
     const response = await getBackendSrv().get<CustomGuideRepositoryResponse>(
       CUSTOM_GUIDE_REPOSITORY_URL,
-      { namespace },
+      undefined,
       undefined,
       { showErrorAlert: false, showSuccessAlert: false }
     );
-    return Array.isArray(response?.guides) ? response.guides : [];
+    if (!response?.capability?.available) {
+      return [];
+    }
+    return Array.isArray(response.guides) ? response.guides : [];
   } catch {
     return [];
   }

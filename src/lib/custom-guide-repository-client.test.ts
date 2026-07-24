@@ -21,20 +21,32 @@ beforeEach(() => {
 describe('fetchCustomGuideRepository', () => {
   it('returns the guides array on success', async () => {
     mockGet.mockResolvedValue({
-      namespace: 'stacks-123',
-      guides: [{ id: 'fe-alerting-path', title: 'Alerting enablement', status: 'published', manifest: { type: 'path' } }],
+      capability: { available: true },
+      guides: [
+        { id: 'fe-alerting-path', title: 'Alerting enablement', status: 'published', manifest: { type: 'path' } },
+      ],
+      asOf: '2026-07-23T00:00:00Z',
     });
 
     const result = await fetchCustomGuideRepository('stacks-123');
 
     expect(result).toHaveLength(1);
     expect(result[0]!.id).toBe('fe-alerting-path');
-    expect(mockGet).toHaveBeenCalledWith(
-      expect.stringContaining('/custom-guide-repository'),
-      { namespace: 'stacks-123' },
-      undefined,
-      { showErrorAlert: false, showSuccessAlert: false }
-    );
+    expect(mockGet).toHaveBeenCalledWith(expect.stringContaining('/custom-guide-repository'), undefined, undefined, {
+      showErrorAlert: false,
+      showSuccessAlert: false,
+    });
+  });
+
+  it('returns an empty array when the proxy reports itself unavailable', async () => {
+    mockGet.mockResolvedValue({
+      capability: { available: false, reason: 'backend-unavailable' },
+      guides: [],
+    });
+
+    const result = await fetchCustomGuideRepository('stacks-123');
+
+    expect(result).toEqual([]);
   });
 
   it('returns an empty array when the backend API is unavailable, without fetching', async () => {
@@ -54,7 +66,7 @@ describe('fetchCustomGuideRepository', () => {
   });
 
   it('returns an empty array when the response is malformed', async () => {
-    mockGet.mockResolvedValue({ namespace: 'stacks-123' });
+    mockGet.mockResolvedValue({ capability: { available: true } });
 
     const result = await fetchCustomGuideRepository('stacks-123');
 
