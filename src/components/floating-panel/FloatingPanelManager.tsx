@@ -5,7 +5,7 @@ import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { useContentReset } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
-import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
+import { hasOnlyNonContentTabs, isNonContentTab, RECOMMENDATIONS_TAB_ID } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
@@ -164,13 +164,9 @@ function FloatingPanelInner() {
     // synchronously in the same commit, before this render's snapshot
     // updates — restoring on top of the just-opened guide would await
     // tabStorage and clobber it. Mirrors FullScreenPanel's gate.
-    // Permanent system tabs (`recommendations`, `devtools`, `editor`) don't
-    // count as user content — restoring on top of them is safe. Mirrors the
-    // sidebar's gate at `docs-panel.tsx` so all three surfaces agree on
-    // when "the panel is empty".
+    // Only restore when no content tabs are open (editor chrome alone is OK).
     const liveTabs = panel.state.tabs;
-    const hasOnlyDefaultTabs = liveTabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
-    const restore = hasOnlyDefaultTabs ? panel.restoreTabsAsync() : Promise.resolve();
+    const restore = hasOnlyNonContentTabs(liveTabs) ? panel.restoreTabsAsync() : Promise.resolve();
     restore.then(() => setRestorationDone(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
@@ -187,9 +183,9 @@ function FloatingPanelInner() {
   const isEditorTab = activeTab?.type === 'editor';
   const content = activeTab?.content ?? null;
   const title = isEditorTab ? EDITOR_FLOATING_TITLE : activeTab?.title || 'Interactive learning';
-  // hasActiveGuide drives the dock pill pulse and step-progress polling. The editor
-  // tab is its own kind of "active content" but isn't a guide, so leave it false.
-  const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations' && !isEditorTab;
+  // hasActiveGuide drives the dock pill pulse and step-progress polling. Chrome
+  // tabs (recommendations, Dev Tools, editor) are not guides.
+  const hasActiveGuide = activeTab != null && !isNonContentTab(activeTab);
 
   // Track interactive step progress via the `pathfinder-step-progress`
   // event — shared subscription with FullScreenPanel via the hook.
@@ -212,7 +208,7 @@ function FloatingPanelInner() {
     tabs,
     activeTabId,
     activeTab: activeTab ?? null,
-    isRecommendationsTab: activeTabId === 'recommendations',
+    isRecommendationsTab: activeTabId === RECOMMENDATIONS_TAB_ID,
     model: panel,
   });
   // Prefer `currentUrl` (the milestone the user is reading) so when the user

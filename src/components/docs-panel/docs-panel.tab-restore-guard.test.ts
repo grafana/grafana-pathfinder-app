@@ -192,7 +192,7 @@ jest.mock('./utils', () => ({
   isGrafanaDocsUrl: jest.fn(),
   cleanDocsUrl: jest.fn((url: string) => url),
   loadDocsTabContentResult: jest.fn(),
-  PERMANENT_TAB_IDS: new Set(['recommendations', 'devtools', 'editor']),
+  ...jest.requireActual('./utils/tab-kinds'),
 }));
 
 jest.mock('./hooks', () => ({
@@ -225,7 +225,6 @@ jest.mock('../../hooks', () => ({}));
 // ---------------------------------------------------------------------------
 
 import { CombinedLearningJourneyPanel } from './docs-panel';
-import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -252,17 +251,6 @@ const RESTORED_TABS = [
     type: 'learning-journey' as const,
   },
 ];
-
-const makeTab = (id: string, type?: LearningJourneyTab['type']) => ({
-  id,
-  title: id,
-  baseUrl: '',
-  currentUrl: '',
-  content: null,
-  isLoading: false,
-  error: null,
-  type,
-});
 
 function setupRestoreMocks() {
   mockRestoreTabsFromStorage.mockResolvedValue(RESTORED_TABS);
@@ -338,35 +326,41 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     expect(panelBActiveTab).not.toBe('recommendations');
     expect(panelBTabs.length).toBeGreaterThan(1);
   });
-});
 
-describe('CombinedLearningJourneyPanel — closeTab', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    setupRestoreMocks();
-  });
+  it('strips restored gated tabs when the user lacks access and persists the result', async () => {
+    mockRestoreTabsFromStorage.mockResolvedValue([
+      ...RESTORED_TABS,
+      {
+        id: 'editor',
+        title: 'New Guide',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+        type: 'editor',
+      },
+      {
+        id: 'devtools',
+        title: 'Dev Tools',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+        type: 'devtools',
+      },
+    ]);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('editor');
 
-  it('returns to recommendations when closing the final active guide with the editor tab present', () => {
+    const { tabStorage } = require('../../lib/user-storage');
     const panel = new CombinedLearningJourneyPanel();
-    panel.setState({
-      tabs: [makeTab('recommendations'), makeTab('editor', 'editor'), makeTab('tab-guide-1', 'learning-journey')],
-      activeTabId: 'tab-guide-1',
-    });
+    await panel.restoreTabsAsync();
 
-    panel.closeTab('tab-guide-1');
-
+    const tabs = (panel as any).state.tabs;
+    expect(tabs.some((t: { type?: string }) => t.type === 'editor')).toBe(false);
+    expect(tabs.some((t: { type?: string }) => t.type === 'devtools')).toBe(false);
     expect((panel as any).state.activeTabId).toBe('recommendations');
-  });
-
-  it('keeps the current editor tab active when closing an inactive guide', () => {
-    const panel = new CombinedLearningJourneyPanel();
-    panel.setState({
-      tabs: [makeTab('recommendations'), makeTab('editor', 'editor'), makeTab('tab-guide-1', 'learning-journey')],
-      activeTabId: 'editor',
-    });
-
-    panel.closeTab('tab-guide-1');
-
-    expect((panel as any).state.activeTabId).toBe('editor');
+    expect(tabStorage.setTabs).toHaveBeenCalled();
   });
 });

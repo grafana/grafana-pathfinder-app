@@ -29,7 +29,14 @@ import { getConfigWithDefaults } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
-import { isDocsLikeTab, pickGrafanaDocsOpenAction, pickControllerTabOpenAction } from '../utils';
+import {
+  isDocsLikeTab,
+  pickGrafanaDocsOpenAction,
+  pickControllerTabOpenAction,
+  DEVTOOLS_TAB_ID,
+  EDITOR_TAB_ID,
+  RECOMMENDATIONS_TAB_ID,
+} from '../utils';
 import {
   reportAppInteraction,
   UserInteraction,
@@ -134,7 +141,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           return <contextPanel.Component model={contextPanel} />;
         }
 
-        if (activeTabId === 'devtools') {
+        if (activeTabId === DEVTOOLS_TAB_ID) {
           return (
             <div className={styles.devToolsContent} data-testid="devtools-tab-content">
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
@@ -156,7 +163,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           );
         }
 
-        if (activeTabId === 'editor' && isEditorUser) {
+        if (activeTabId === EDITOR_TAB_ID && isEditorUser) {
           return (
             <div className={styles.devToolsContent} data-testid="editor-tab-content">
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
@@ -443,7 +450,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         action: 'navigate_to_recommendations',
                         source: 'content_footer',
                       });
-                      model.setActiveTab('recommendations');
+                      model.setActiveTab(RECOMMENDATIONS_TAB_ID);
                     }}
                   >
                     {t('docsPanel.returnToMyLearning', 'Return to my learning')}

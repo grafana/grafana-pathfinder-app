@@ -22,19 +22,19 @@ const tab = (id: string) =>
   }) as any;
 
 describe('useTabRestoration', () => {
-  it('calls restoreTabsAsync on initial mount when only permanent tabs exist', () => {
+  it('calls restoreTabsAsync on initial mount when no guide-strip tabs exist', () => {
     const model = makeModel();
     renderHook(() => useTabRestoration({ model, panelMode: 'sidebar', tabs: [tab('recommendations')] }));
     expect(model.restoreTabsAsync).toHaveBeenCalledTimes(1);
   });
 
-  it('treats devtools and editor as permanent (still restores)', () => {
+  it('calls restoreTabsAsync when only the editor tab is open (handoff-safe)', () => {
     const model = makeModel();
     renderHook(() =>
       useTabRestoration({
         model,
         panelMode: 'sidebar',
-        tabs: [tab('recommendations'), tab('devtools'), tab('editor')],
+        tabs: [tab('recommendations'), { ...tab('editor'), type: 'editor' }],
       })
     );
     expect(model.restoreTabsAsync).toHaveBeenCalledTimes(1);

@@ -61,6 +61,8 @@ function makeProps(overrides: Partial<DocsPanelTabBarProps> = {}): DocsPanelTabB
     onSetActiveTab: jest.fn(),
     onCloseTab: jest.fn(),
     reloadActiveTab: jest.fn(),
+    onOpenEditorTab: jest.fn(),
+    onOpenDevToolsTab: jest.fn(),
     ...overrides,
   };
 }

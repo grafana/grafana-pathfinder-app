@@ -82,7 +82,11 @@ import {
   restoreTabsFromStorage,
   restoreActiveTabFromStorage,
   loadDocsTabContentResult,
-  PERMANENT_TAB_IDS,
+  RECOMMENDATIONS_TAB_ID,
+  DEVTOOLS_TAB_ID,
+  EDITOR_TAB_ID,
+  hasNoGuideStripTabs,
+  isNonContentTab,
   findCurrentMilestoneIndex,
 } from './utils';
 // Import extracted hooks
@@ -100,7 +104,6 @@ import {
   useAutoOpenListener,
   usePopOutHandoff,
   useFullScreenHandoff,
-  usePermanentTabs,
   useTabRestoration,
 } from './hooks';
 
@@ -163,10 +166,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public constructor(pluginConfig: DocsPluginConfig = {}) {
-    // Initialize with default tabs first
+    // Initialize with the recommendations home tab
     const defaultTabs: LearningJourneyTab[] = [
       {
-        id: 'recommendations',
+        id: RECOMMENDATIONS_TAB_ID,
         title: 'Recommendations',
         baseUrl: '',
         currentUrl: '',
@@ -193,7 +196,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     super({
       tabs: defaultTabs,
-      activeTabId: 'recommendations',
+      activeTabId: RECOMMENDATIONS_TAB_ID,
       contextPanel,
       pluginConfig,
     });
@@ -221,16 +224,74 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     const pluginConfig = this.state.pluginConfig || {};
     const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
 
-    const restoredTabs = await restoreTabsFromStorage(tabStorage, { isDevMode });
-    const activeTabId = await restoreActiveTabFromStorage(tabStorage, restoredTabs);
+    let restoredTabs = await restoreTabsFromStorage(tabStorage, { isDevMode });
+    let activeTabId = await restoreActiveTabFromStorage(tabStorage, restoredTabs);
+
+    // Drop gated chrome tabs the current user is no longer allowed to see
+    // (editor role downgrade, or leaving pathfinder-dev-mode).
+    const pruned = this.withoutUnauthorizedGatedTabs(restoredTabs, activeTabId);
+    restoredTabs = pruned.tabs;
+    activeTabId = pruned.activeTabId;
 
     this.setState({
       tabs: restoredTabs,
       activeTabId,
     });
 
+    if (pruned.didPrune) {
+      await this.saveTabsToStorage();
+    }
+
     // Initialize the active tab if needed
     this.initializeRestoredActiveTab();
+  }
+
+  /**
+   * Remove editor / devtools tabs when their gates are off.
+   * Used after restore and when live flags flip so stale tabs cannot linger
+   * in the strip or tabStorage.
+   */
+  public pruneGatedTabs(): void {
+    const pruned = this.withoutUnauthorizedGatedTabs(this.state.tabs, this.state.activeTabId);
+    if (!pruned.didPrune) {
+      return;
+    }
+    this.setState({ tabs: pruned.tabs, activeTabId: pruned.activeTabId });
+    void this.saveTabsToStorage();
+  }
+
+  private isCurrentUserEditor(): boolean {
+    const user = config.bootData?.user;
+    return user?.orgRole === 'Editor' || user?.orgRole === 'Admin' || user?.isGrafanaAdmin === true;
+  }
+
+  private withoutUnauthorizedGatedTabs(
+    tabs: LearningJourneyTab[],
+    activeTabId: string
+  ): { tabs: LearningJourneyTab[]; activeTabId: string; didPrune: boolean } {
+    const allowEditor = this.isCurrentUserEditor();
+    const allowDevTools = isDevModeEnabled(this.state.pluginConfig || {}, config.bootData?.user?.id);
+
+    const nextTabs = tabs.filter((t) => {
+      if (t.type === 'editor' && !allowEditor) {
+        return false;
+      }
+      if (t.type === 'devtools' && !allowDevTools) {
+        return false;
+      }
+      return true;
+    });
+
+    if (nextTabs.length === tabs.length) {
+      return { tabs, activeTabId, didPrune: false };
+    }
+
+    const removedActive = !nextTabs.some((t) => t.id === activeTabId);
+    return {
+      tabs: nextTabs,
+      activeTabId: removedActive ? RECOMMENDATIONS_TAB_ID : activeTabId,
+      didPrune: true,
+    };
   }
 
   private generateTabId(): string {
@@ -239,7 +300,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   private initializeRestoredActiveTab(): void {
     const activeTab = this.state.tabs.find((t) => t.id === this.state.activeTabId);
-    if (!activeTab || PERMANENT_TAB_IDS.has(activeTab.id)) {
+    if (!activeTab || isNonContentTab(activeTab)) {
       return;
     }
 
@@ -259,10 +320,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   public async saveTabsToStorage(): Promise<void> {
     try {
-      // Save user-opened tabs and devtools tab (devtools persists across refreshes)
-      // Recommendations is a permanent tab and doesn't need persistence
+      // Save user-opened tabs (recommendations home is always present and not persisted)
       const tabsToSave: PersistedTabData[] = this.state.tabs
-        .filter((tab) => tab.id !== 'recommendations')
+        .filter((tab) => tab.id !== RECOMMENDATIONS_TAB_ID)
         .map((tab) => ({
           id: tab.id,
           title: tab.title,
@@ -519,7 +579,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public closeTab(tabId: string) {
-    if (tabId === 'recommendations') {
+    if (tabId === RECOMMENDATIONS_TAB_ID) {
       return;
     }
 
@@ -534,13 +594,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       } else if (tabIndex > 0) {
         newActiveTabId = currentTabs[tabIndex - 1]!.id;
       } else {
-        newActiveTabId = 'recommendations';
+        newActiveTabId = RECOMMENDATIONS_TAB_ID;
       }
     }
 
-    const onlyDefaultTabsRemaining = newTabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
-    if (onlyDefaultTabsRemaining && this.state.activeTabId !== 'editor') {
-      newActiveTabId = 'recommendations';
+    if (hasNoGuideStripTabs(newTabs)) {
+      newActiveTabId = RECOMMENDATIONS_TAB_ID;
     }
 
     this.setState({
@@ -557,9 +616,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Save active tab to storage
     this.saveTabsToStorage();
 
-    // Permanent tabs (recommendations, devtools, editor) render their own
-    // content and have no URL to load — skip the content-loading path.
-    if (PERMANENT_TAB_IDS.has(tabId)) {
+    // Tabs without a content URL skip the fetch path.
+    const switchedTab = this.state.tabs.find((t) => t.id === tabId);
+    if (!switchedTab || isNonContentTab(switchedTab)) {
       return;
     }
 
@@ -607,23 +666,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   /**
-   * Open the Dev Tools tab (or switch to it if already open)
-   * The devtools tab is now persisted to storage to survive page refreshes.
+   * Open the Dev Tools view (or switch to it if already open).
+   * Singleton lives in tab state for routing but is excluded from the guide strip.
    */
   public openDevToolsTab(): void {
-    // Check if devtools tab already exists
-    const existingTab = this.state.tabs.find((t) => t.id === 'devtools');
+    const existingTab = this.state.tabs.find((t) => t.id === DEVTOOLS_TAB_ID);
     if (existingTab) {
-      // Just switch to it
-      this.setState({ activeTabId: 'devtools' });
-      // Still save to storage to persist the active tab change
+      this.setState({ activeTabId: DEVTOOLS_TAB_ID });
       this.saveTabsToStorage();
       return;
     }
 
-    // Create new devtools tab
     const newTab: LearningJourneyTab = {
-      id: 'devtools',
+      id: DEVTOOLS_TAB_ID,
       title: 'Dev Tools',
       baseUrl: '',
       currentUrl: '',
@@ -635,10 +690,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     this.setState({
       tabs: [...this.state.tabs, newTab],
-      activeTabId: 'devtools',
+      activeTabId: DEVTOOLS_TAB_ID,
     });
 
-    // Save tabs to storage so devtools tab persists across page refreshes
     this.saveTabsToStorage();
   }
 
@@ -646,16 +700,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
    * Open the Editor tab (or switch to it if already open)
    */
   public openEditorTab(): void {
-    const existingTab = this.state.tabs.find((t) => t.id === 'editor');
+    const existingTab = this.state.tabs.find((t) => t.id === EDITOR_TAB_ID);
     if (existingTab) {
-      this.setState({ activeTabId: 'editor' });
+      this.setState({ activeTabId: EDITOR_TAB_ID });
       this.saveTabsToStorage();
       return;
     }
 
     const newTab: LearningJourneyTab = {
-      id: 'editor',
-      title: 'Guide editor',
+      id: EDITOR_TAB_ID,
+      title: 'New Guide',
       baseUrl: '',
       currentUrl: '',
       content: null,
@@ -666,7 +720,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     this.setState({
       tabs: [...this.state.tabs, newTab],
-      activeTabId: 'editor',
+      activeTabId: EDITOR_TAB_ID,
     });
 
     this.saveTabsToStorage();
@@ -953,8 +1007,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Restore tabs after storage is initialized (fixes race condition)
   useTabRestoration({ model, panelMode, tabs });
 
-  // Ensure permanent tabs (devtools, editor) exist when their gate is active.
-  usePermanentTabs({ model, isDevMode, isEditorUser, tabs });
+  // Strip editor/devtools tabs when their gates flip off.
+  React.useEffect(() => {
+    model.pruneGatedTabs();
+  }, [isEditorUser, isDevMode, model, tabs]);
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
@@ -962,7 +1018,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // removed — using restored custom overflow state below
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
-  const isRecommendationsTab = activeTabId === 'recommendations';
+  const isRecommendationsTab = activeTabId === RECOMMENDATIONS_TAB_ID;
   // Detect WYSIWYG preview tab to show "Return to editor" banner
   const isWysiwygPreview =
     activeTab?.baseUrl === 'bundled:wysiwyg-preview' || activeTab?.content?.url === 'bundled:wysiwyg-preview';
@@ -1020,11 +1076,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     chevronButtonRef,
     dropdownOpenTimeRef,
   } = useTabOverflow(tabs, activeTabId);
-
-  const overflowGuideTabs = React.useMemo(
-    () => overflowedTabs.filter((t) => !PERMANENT_TAB_IDS.has(t.id)),
-    [overflowedTabs]
-  );
 
   // Content styles are applied at the component level via CSS classes
 
@@ -1287,7 +1338,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         activeTabId={activeTabId}
         activeTab={activeTab}
         visibleTabs={visibleTabs}
-        overflowGuideTabs={overflowGuideTabs}
+        overflowGuideTabs={overflowedTabs}
         isEditorUser={isEditorUser}
         isDevMode={isDevMode}
         isDropdownOpen={isDropdownOpen}
@@ -1300,6 +1351,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         onSetActiveTab={(tabId) => model.setActiveTab(tabId)}
         onCloseTab={(tabId) => model.closeTab(tabId)}
         reloadActiveTab={reloadActiveTab}
+        onOpenEditorTab={() => model.openEditorTab()}
+        onOpenDevToolsTab={() => model.openDevToolsTab()}
       />
 
       <DocsPanelContentArea

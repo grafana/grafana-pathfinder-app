@@ -1,7 +1,7 @@
 /**
  * Tab bar actions component for docs-panel.
  * Contains My learning, the overflow menu (kiosk when enabled, feedback,
- * settings, and optional Refresh (dev)), plus the close sidebar button.
+ * settings, optional Refresh (dev), Create guide, Dev tools), plus close.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -17,7 +17,7 @@ import {
 import { PLUGIN_BASE_URL } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
 import { clearExtensionSidebarDocked } from '../../../lib/storage/extension-sidebar';
-import { PERMANENT_TAB_IDS } from '../utils';
+import { isNonContentTab } from '../utils';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 
 export interface TabBarActionsProps {
@@ -25,26 +25,34 @@ export interface TabBarActionsProps {
   className?: string;
   /** Active tab; when it is a content tab, enriches feedback analytics and enables the dev-only refresh item. */
   activeTab?: LearningJourneyTab | null;
-  /** Whether the dev-only `Refresh (dev)` item is rendered. */
+  /** Whether the dev-only menu items are rendered. */
   isDevMode?: boolean;
   /** Reload handler for the `Refresh (dev)` item. */
   onReloadActiveTab?: (tab: LearningJourneyTab) => void;
+  /** Whether the current user can open the guide editor (editor/admin). */
+  isEditorUser?: boolean;
+  /** Opens (or focuses) the guide editor tab. */
+  onOpenEditorTab?: () => void;
+  /** Focuses (or opens once) the Dev Tools tab. */
+  onOpenDevToolsTab?: () => void;
 }
 
 /**
  * Renders the tab bar action buttons: My learning, overflow menu, and close.
- * Overflow menu hosts kiosk (when enabled), feedback, settings, and optional Refresh (dev).
  */
 export const TabBarActions: React.FC<TabBarActionsProps> = ({
   className,
   activeTab,
   isDevMode = false,
   onReloadActiveTab,
+  isEditorUser = false,
+  onOpenEditorTab,
+  onOpenDevToolsTab,
 }) => {
   const user = config.bootData?.user;
   const canAccessPluginSettings = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
 
-  const contentTab = activeTab && !PERMANENT_TAB_IDS.has(activeTab.id) ? activeTab : null;
+  const contentTab = activeTab && !isNonContentTab(activeTab) ? activeTab : null;
   const reloadContentTab = contentTab && onReloadActiveTab ? () => onReloadActiveTab(contentTab) : null;
 
   const handleFeedbackClick = () => {
@@ -110,6 +118,22 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
     document.dispatchEvent(new CustomEvent('pathfinder-open-kiosk'));
   };
 
+  const handleEditorClick = () => {
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'open_editor',
+      source: 'header_menu_editor',
+    });
+    onOpenEditorTab?.();
+  };
+
+  const handleDevToolsClick = () => {
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'open_devtools',
+      source: 'header_menu_devtools',
+    });
+    onOpenDevToolsTab?.();
+  };
+
   return (
     <div className={className}>
       <IconButton
@@ -124,6 +148,9 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
         placement="bottom-end"
         overlay={
           <Menu>
+            {isEditorUser && onOpenEditorTab && (
+              <Menu.Item label={t('docsPanel.createGuide', 'Create guide')} icon="plus" onClick={handleEditorClick} />
+            )}
             {kioskEnabled && (
               <Menu.Item
                 label={t('docsPanel.kioskMode', 'Kiosk mode')}
@@ -150,6 +177,9 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
                   <Menu.Item label={t('docsPanel.settings', 'Settings')} icon="cog" disabled />
                 </span>
               </Tooltip>
+            )}
+            {isDevMode && onOpenDevToolsTab && (
+              <Menu.Item label={t('docsPanel.devTools', 'Dev tools')} icon="bug" onClick={handleDevToolsClick} />
             )}
           </Menu>
         }
