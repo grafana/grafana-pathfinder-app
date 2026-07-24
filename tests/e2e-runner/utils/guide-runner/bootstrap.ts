@@ -7,6 +7,8 @@ import pluginJson from '../../../../src/plugin.json';
 const PATHFINDER_COMPONENT_TITLE = 'Interactive learning';
 const DEFAULT_PANEL_OPEN_TIMEOUT_MS = 10_000;
 const OPEN_CONFIRMATION_TIMEOUT_MS = 2_000;
+const MAX_DOCKED_VALUE_PARSE_DEPTH = 2;
+const MAX_HELP_OPEN_ATTEMPTS = 2;
 
 interface PanelBootstrapOptions {
   beforeRetry?: () => Promise<void>;
@@ -18,7 +20,7 @@ interface BootstrapState {
   sidebarMounted: boolean;
 }
 
-function parseDockedValue(value: unknown, remainingDepth = 2): unknown {
+function parseDockedValue(value: unknown, remainingDepth = MAX_DOCKED_VALUE_PARSE_DEPTH): unknown {
   if (typeof value !== 'string' || remainingDepth === 0) {
     return value;
   }
@@ -97,8 +99,7 @@ async function waitForOpenSignal(page: Page, timeout: number): Promise<void> {
 }
 
 async function isGenericHelpMenuVisible(page: Page): Promise<boolean> {
-  const menu = page.getByRole('menu').last();
-  return menu.isVisible().catch(() => false);
+  return (await page.getByRole('menu').count()) > 0;
 }
 
 async function dismissGenericHelpMenu(page: Page): Promise<void> {
@@ -130,7 +131,7 @@ async function openDocsPanelAttempt(page: Page, timeoutMs: number): Promise<Loca
   );
 
   const helpButton = page.locator('button[aria-label="Help"]');
-  for (let openAttempt = 0; openAttempt < 2; openAttempt++) {
+  for (let openAttempt = 0; openAttempt < MAX_HELP_OPEN_ATTEMPTS; openAttempt++) {
     if (await panel.isVisible()) {
       return panel;
     }
@@ -151,7 +152,7 @@ async function openDocsPanelAttempt(page: Page, timeoutMs: number): Promise<Loca
       if (hasOpenSignal(state)) {
         break;
       }
-      if (openAttempt === 1) {
+      if (openAttempt === MAX_HELP_OPEN_ATTEMPTS - 1) {
         throw error;
       }
       await dismissGenericHelpMenu(page);
