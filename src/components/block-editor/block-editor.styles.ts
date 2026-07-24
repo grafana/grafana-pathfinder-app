@@ -51,10 +51,6 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(0.5),
   }),
 
-  viewModeToggle: css({
-    marginRight: theme.spacing(1.5),
-  }),
-
   guideTitle: css({
     fontSize: theme.typography.h4.fontSize,
     fontWeight: theme.typography.fontWeightMedium,

@@ -110,6 +110,28 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
       },
     },
   }),
+  // View-mode rocker wrapper: holds the labeled + icon-only RadioButtonGroups
+  // and carries the viewModeToggle testid (the tour anchors on it). Exactly one
+  // group is visible at a time — see the two classes below.
+  viewModeRocker: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+  }),
+  // Labeled group is the default; it collapses to the icon-only sibling below
+  // the toolbar's collapse breakpoint. The `@container` rule fires off `row`'s
+  // `containerType: inline-size`.
+  viewModeRockerLabeled: css({
+    '@container (max-width: 640px)': {
+      display: 'none',
+    },
+  }),
+  // Icon-only fallback: hidden until the toolbar is too narrow for labels.
+  viewModeRockerIconOnly: css({
+    display: 'none',
+    '@container (max-width: 640px)': {
+      display: 'inline-flex',
+    },
+  }),
   // Subtler "Saved" indicator (replaces the green chip) — small floppy
   // `save` icon. Tooltip preserved for context.
   savedIndicator: css({

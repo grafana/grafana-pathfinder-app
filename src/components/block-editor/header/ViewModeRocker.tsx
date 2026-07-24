@@ -1,42 +1,58 @@
 import React from 'react';
-import { Button, ButtonGroup } from '@grafana/ui';
+import { RadioButtonGroup, useStyles2 } from '@grafana/ui';
+import type { SelectableValue } from '@grafana/data';
 import type { ViewMode } from '../types';
 import { testIds } from '../../../constants/testIds';
+import { getHeaderStyles } from './header.styles';
 
 export interface ViewModeRockerProps {
   viewMode: ViewMode;
   onSetViewMode: (mode: ViewMode) => void;
 }
 
-/** Edit / Preview / JSON view-mode toggle. */
+const LABELED_OPTIONS: Array<SelectableValue<ViewMode>> = [
+  { value: 'edit', label: 'Edit', icon: 'pen' },
+  { value: 'preview', label: 'Preview', icon: 'eye' },
+  { value: 'json', label: 'JSON', icon: 'brackets-curly' },
+];
+
+// Same options without visible labels. `ariaLabel` keeps each radio named for
+// screen readers and e2e locators when the labeled group is collapsed away.
+const ICON_ONLY_OPTIONS: Array<SelectableValue<ViewMode>> = [
+  { value: 'edit', icon: 'pen', ariaLabel: 'Edit' },
+  { value: 'preview', icon: 'eye', ariaLabel: 'Preview' },
+  { value: 'json', icon: 'brackets-curly', ariaLabel: 'JSON' },
+];
+
+/**
+ * Edit / Preview / JSON view-mode toggle.
+ *
+ * Renders two sibling `RadioButtonGroup`s — one labeled, one icon-only — inside a
+ * single testid wrapper, and swaps between them purely with a container query
+ * (see `getHeaderStyles`). `RadioButtonGroup` has no built-in label collapse, and
+ * hiding its internal label spans via CSS would couple us to `@grafana/ui`'s
+ * markup; two groups toggled by `display: none` keep that decoupled and drop the
+ * hidden group from the accessibility tree, so only one set of radios is exposed.
+ */
 export function ViewModeRocker({ viewMode, onSetViewMode }: ViewModeRockerProps) {
+  const styles = useStyles2(getHeaderStyles);
   return (
-    <ButtonGroup data-testid={testIds.blockEditor.viewModeToggle}>
-      <Button
-        variant={viewMode === 'edit' ? 'primary' : 'secondary'}
+    <div className={styles.viewModeRocker} data-testid={testIds.blockEditor.viewModeToggle}>
+      <RadioButtonGroup
+        className={styles.viewModeRockerLabeled}
         size="sm"
-        icon="pen"
-        onClick={() => onSetViewMode('edit')}
-        tooltip="Edit"
-        aria-label="Edit"
+        options={LABELED_OPTIONS}
+        value={viewMode}
+        onChange={onSetViewMode}
       />
-      <Button
-        variant={viewMode === 'preview' ? 'primary' : 'secondary'}
+      <RadioButtonGroup
+        className={styles.viewModeRockerIconOnly}
         size="sm"
-        icon="eye"
-        onClick={() => onSetViewMode('preview')}
-        tooltip="Preview"
-        aria-label="Preview"
+        options={ICON_ONLY_OPTIONS}
+        value={viewMode}
+        onChange={onSetViewMode}
       />
-      <Button
-        variant={viewMode === 'json' ? 'primary' : 'secondary'}
-        size="sm"
-        icon="brackets-curly"
-        onClick={() => onSetViewMode('json')}
-        tooltip="JSON"
-        aria-label="JSON"
-      />
-    </ButtonGroup>
+    </div>
   );
 }
 
