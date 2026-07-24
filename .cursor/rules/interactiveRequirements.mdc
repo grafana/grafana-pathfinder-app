@@ -7,7 +7,7 @@ description: This document describes the requirements and design constraints of 
 
 This document describes the requirements and objectives system for interactive elements in the Grafana Documentation Plugin.
 
-For full reference on interactive guide authoring (JSON format, action types, selectors, guided interactions), see `docs/developer/interactive-examples/`.
+For full reference on interactive guide authoring (JSON format, action types, selectors, guided interactions), see `docs/developer/interactive-examples/`. For the requirements manager implementation, see `docs/developer/engines/requirements-manager.md`.
 
 ## Overview
 
@@ -132,6 +132,13 @@ The CLI validates condition strings (requirements and objectives) at build time.
 2. Add handler in `src/requirements-manager/requirements-checker.utils.ts`
 3. The validator automatically recognizes new types via enum imports
 4. Add test coverage in `src/validation/condition-validator.test.ts` (coupling test will fail otherwise)
+
+### Controller mode
+
+- Treat `exists-reftarget`, `navmenu-open`, `on-page`, and `form-valid` as tab-local requirements because they inspect the live Grafana tab's DOM, URL, or navigation state.
+- When adding another tab-local requirement, update `TAB_LOCAL_REQUIREMENTS` in `src/requirements-manager/controller-requirements.ts` and its drift-guard test.
+- Do not strip session, permission, role, data source, plugin, dashboard, or other Grafana API requirements; they must continue to gate execution from the controller tab.
+- Keep per-step controller checks on the paired live tab. Section-level eligibility may strip tab-local requirements because each step enforces them when it runs.
 
 ## Guide-Specific Objectives
 

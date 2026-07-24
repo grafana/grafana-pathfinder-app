@@ -27,11 +27,15 @@ The requirements manager is organized into several specialized modules:
 
 - **`step-checker.hook.ts`** - Main React hook for unified requirements and objectives checking
 - **`requirements-checker.hook.ts`** - SequentialRequirementsManager class for cross-step state coordination
-- **`requirements-checker.utils.ts`** - Pure functions for checking individual requirement types
+- **`requirements-checker.utils.ts`** - Requirement router, retry harness, and public checking functions
+- **`checks/`** - Domain-specific check implementations for Grafana APIs, environment, location, guide variables, terminal state, Coda commands, and section completion
+- **`controller-requirements.ts`** - Filters requirements that cannot be evaluated safely from a controller tab
 - **`requirements-explanations.ts`** - User-friendly error messages and explanations
 - **`check-phases.ts`** - State creation functions for different check phases
 - **`step-state.ts`** - State machine implementation for explicit step state management
 - **`requirements-context.tsx`** - React Context provider for manager instance access
+- **`src/types/requirements.types.ts`** - Canonical requirement tokens, validation helpers, authoring metadata, and the shared `CheckResultError` result type
+- **`index.ts`** - Public barrel for the manager, hooks, checking APIs, result types, fixes, and controller filtering
 
 ## Main Hook: `useStepChecker()`
 
@@ -87,7 +91,7 @@ The hook returns a comprehensive state object including:
 
 **Location**: `src/requirements-manager/requirements-checker.utils.ts`
 
-**Purpose**: Pure requirement checking functions that validate Grafana state, user permissions, plugins, data sources, and UI state without DOM manipulation (except for specific DOM checks).
+**Purpose**: Routes requirement strings to domain-specific implementations under `checks/` (or DOM helpers under `src/lib/dom/`), runs the shared retry harness, and exposes the public checking APIs.
 
 **Core Functions**:
 
@@ -131,6 +135,8 @@ The hook returns a comprehensive state object including:
 - `has-feature:<toggle>` - Feature toggle is enabled
 - `in-environment:<env>` - Running in specific environment
 - `min-version:<version>` - Minimum Grafana version requirement met
+- `is-terminal-active` - A terminal session is connected
+- `coda-exit-zero:<command>` - Command exits successfully against the user's active Coda challenge VM
 
 **Workflow & Dependencies:**
 
@@ -141,9 +147,15 @@ The hook returns a comprehensive state object including:
 **Retry Logic**:
 
 - Configurable retry attempts (default from INTERACTIVE_CONFIG)
-- Exponential backoff for transient failures
-- Per-check timeout management via TimeoutManager
+- Fixed-delay retry for transient failures, configured by `INTERACTIVE_CONFIG.delays.requirements.retryDelay`
+- Retry timer management via TimeoutManager
 - Retry state feedback (retryCount, isRetrying) for UI display
+
+### Controller-mode requirements
+
+Controller tabs cannot reliably evaluate requirements that inspect the live Grafana tab's DOM, URL, or navigation state. `controller-requirements.ts` classifies `exists-reftarget`, `navmenu-open`, `on-page`, and `form-valid` as tab-local and exports `stripTabLocalRequirements()` through the requirements-manager barrel.
+
+Individual step checks send the full requirement string to the paired live tab. If that round trip does not return a result, the controller strips the tab-local requirements and checks the remaining session, permission, and Grafana API requirements locally. Section-level eligibility strips tab-local requirements immediately because each step performs its own precise live-tab check when it runs. Tests in `controller-requirements.test.ts` pin the tab-local allowlist and verify that non-tab-local requirements continue to gate execution.
 
 ## Objectives vs Requirements
 
