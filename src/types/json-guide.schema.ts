@@ -1199,6 +1199,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'replaces',
     'targeting',
     'testEnvironment',
+    'stats',
   ]),
 };
 
