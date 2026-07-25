@@ -3,7 +3,7 @@
  *
  * Header section of the block editor. Orchestrates the title row, view-mode
  * rocker, smart save action, and the "more actions" kebab (each extracted into
- * its own component under `header/`), plus the inline status/undo/redo/panel
+ * its own component under `header/`), plus the inline status and undo/redo
  * controls that live directly on the toolbar.
  */
 
@@ -11,7 +11,6 @@ import React from 'react';
 import { Button, Badge, Icon, IconButton, Tooltip, useStyles2 } from '@grafana/ui';
 import type { ViewMode } from './types';
 import { testIds } from '../../constants/testIds';
-import { usePanelModeControls } from '../../global-state/use-panel-mode';
 import { getHeaderStyles } from './header/header.styles';
 import { HeaderTitleRow } from './header/HeaderTitleRow';
 import { ViewModeRocker } from './header/ViewModeRocker';
@@ -133,9 +132,6 @@ export function BlockEditorHeader({
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 
-  // Panel mode drives the Pop out / Dock swap and the full-screen affordance.
-  const { panelMode, handleTogglePanelMode, handleGoFullScreen } = usePanelModeControls();
-
   // Derive backend status badge
   const backendBadge = () => {
     if (publishedStatus === 'not-saved') {
@@ -177,17 +173,12 @@ export function BlockEditorHeader({
   return (
     <div className={styles.header}>
       {/* Single-row toolbar: title area on the left, right-aligned actions
-          cluster (status, selection toggle, undo/redo, view-mode rocker, save,
-          pop out / full screen, more-actions kebab) on the right. */}
+          cluster on the right. */}
       <div className={styles.row}>
         <HeaderTitleRow guideTitle={guideTitle} guideId={guideId} viewMode={viewMode} onTitleCommit={onTitleCommit} />
 
         <div className={styles.actions}>
-          {/* Local-save indicator — subtle icon (replaces the green
-              chip). Only shown when backend isn't available. The icon
-              is deliberately a floppy `save` so it doesn't visually
-              clash with the `check-square` selection trigger that
-              follows. */}
+          {/* Local-save indicator, shown only when the backend is unavailable. */}
           {!isBackendAvailable &&
             (isDirty ? (
               <Tooltip content="Saving changes to local storage">
@@ -221,26 +212,6 @@ export function BlockEditorHeader({
             >
               Reset guide
             </Button>
-          )}
-
-          {/* Selection-mode trigger — only meaningful in edit mode
-              with at least one block. The preceding divider exists
-              specifically to break the visual pairing between the
-              status icon and this `check-square` button, so it only
-              appears when the trigger does. */}
-          {viewMode === 'edit' && hasBlocks && (
-            <>
-              <div className={styles.divider} />
-              <IconButton
-                name="check-square"
-                size="sm"
-                variant={isSelectionMode ? 'primary' : 'secondary'}
-                onClick={onToggleSelectionMode}
-                aria-label={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
-                tooltip={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
-                data-testid={testIds.blockEditor.toggleSelectionButton}
-              />
-            </>
           )}
 
           {/* Undo / redo for the in-session history ring buffer. The
@@ -286,46 +257,16 @@ export function BlockEditorHeader({
             />
           )}
 
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={panelMode === 'sidebar' ? 'corner-up-right' : 'corner-down-right-alt'}
-            onClick={handleTogglePanelMode}
-            tooltip={
-              panelMode === 'sidebar'
-                ? 'Pop out the editor into a floating window'
-                : 'Dock the editor back into the sidebar'
-            }
-            aria-label={panelMode === 'sidebar' ? 'Pop out editor' : 'Dock editor'}
-            className={styles.collapsibleLabel}
-            data-testid="pathfinder-block-editor-toggle-popout"
-          >
-            {panelMode === 'sidebar' ? 'Pop out' : 'Dock'}
-          </Button>
-
-          {/* Full-screen affordance — hidden when already in fullscreen
-              because the FullScreenLayout's back-arrow handles the inverse. */}
-          {panelMode !== 'fullscreen' && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="expand-arrows"
-              onClick={handleGoFullScreen}
-              tooltip="Open the editor in full screen"
-              aria-label="Open editor in full screen"
-              className={styles.collapsibleLabel}
-              data-testid="pathfinder-block-editor-go-fullscreen"
-            >
-              Full screen
-            </Button>
-          )}
-
           <HeaderKebab
             isBackendAvailable={isBackendAvailable}
             hasBackendGuides={hasBackendGuides}
             publishedStatus={publishedStatus}
             hasUnsyncedChanges={hasUnsyncedChanges}
             isPosting={isPostingToBackend}
+            viewMode={viewMode}
+            hasBlocks={hasBlocks}
+            isSelectionMode={isSelectionMode}
+            onToggleSelectionMode={onToggleSelectionMode}
             onNewGuide={onNewGuide}
             onOpenGuideLibrary={onOpenGuideLibrary}
             onOpenImport={onOpenImport}

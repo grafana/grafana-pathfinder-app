@@ -1,6 +1,8 @@
 import React from 'react';
 import { Button, Dropdown, Menu, useStyles2 } from '@grafana/ui';
+import type { ViewMode } from '../types';
 import { testIds } from '../../../constants/testIds';
+import { usePanelModeControls } from '../../../global-state/use-panel-mode';
 import { getHeaderStyles } from './header.styles';
 
 export interface HeaderKebabProps {
@@ -14,6 +16,13 @@ export interface HeaderKebabProps {
   hasUnsyncedChanges: boolean;
   /** Whether a backend operation is in progress. */
   isPosting: boolean;
+  /** Current view mode — the selection-mode item only shows in edit mode. */
+  viewMode: ViewMode;
+  /** Whether the guide has any blocks — gates the selection-mode item. */
+  hasBlocks: boolean;
+  /** Whether block-selection mode is currently active. */
+  isSelectionMode: boolean;
+  onToggleSelectionMode: () => void;
   onNewGuide: () => void;
   onOpenGuideLibrary: () => void;
   onOpenImport: () => void;
@@ -26,8 +35,9 @@ export interface HeaderKebabProps {
 }
 
 /**
- * "More actions" kebab menu for less-used editor actions (New, Library, Import,
- * Copy/Download JSON, GitHub PR, tour) plus a context-sensitive publish shortcut.
+ * "More actions" kebab menu: guide actions (New, Library, block selection), a
+ * context-sensitive publish shortcut, view controls (pop out / dock, full
+ * screen), and file actions (import, copy/download JSON, GitHub PR, tour).
  */
 export function HeaderKebab({
   isBackendAvailable,
@@ -35,6 +45,10 @@ export function HeaderKebab({
   publishedStatus,
   hasUnsyncedChanges,
   isPosting,
+  viewMode,
+  hasBlocks,
+  isSelectionMode,
+  onToggleSelectionMode,
   onNewGuide,
   onOpenGuideLibrary,
   onOpenImport,
@@ -46,6 +60,8 @@ export function HeaderKebab({
   onUnpublish,
 }: HeaderKebabProps) {
   const styles = useStyles2(getHeaderStyles);
+
+  const { panelMode, handleTogglePanelMode, handleGoFullScreen } = usePanelModeControls();
 
   // Context-sensitive publish/unpublish shortcut, rendered after the New/Library section.
   const moreMenuContextItem = () => {
@@ -70,39 +86,58 @@ export function HeaderKebab({
         icon="times-circle"
         onClick={onUnpublish}
         disabled={isPosting}
-        data-testid={testIds.blockEditor.unpublishButton}
+        testId={testIds.blockEditor.unpublishButton}
       />
     );
   };
 
-  // New + Library live here (moved from the toolbar) — both are infrequent and
-  // "New" is destructive, so it's an improvement to guard them behind a menu.
   // The context item can return null (backend available, draft, no unsynced
   // changes) — gate its trailing divider on the item itself, not on backend
   // availability, to avoid an orphan double-divider.
   const contextItem = moreMenuContextItem();
+  const showSelectionItem = viewMode === 'edit' && hasBlocks;
   const moreMenu = (
     <Menu>
-      <Menu.Item
-        label="New guide"
-        icon="file-blank"
-        onClick={onNewGuide}
-        data-testid={testIds.blockEditor.newGuideButton}
-      />
+      <Menu.Item label="New guide" icon="file-blank" onClick={onNewGuide} testId={testIds.blockEditor.newGuideButton} />
+      {showSelectionItem && (
+        <Menu.Item
+          label={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
+          icon="check-square"
+          onClick={onToggleSelectionMode}
+          testId={testIds.blockEditor.toggleSelectionButton}
+        />
+      )}
       {isBackendAvailable && hasBackendGuides && (
         <Menu.Item
           label="Library"
           icon="book-open"
           onClick={onOpenGuideLibrary}
-          data-testid={testIds.blockEditor.libraryButton}
+          testId={testIds.blockEditor.libraryButton}
         />
       )}
       <Menu.Divider />
       {contextItem}
       {contextItem && <Menu.Divider />}
+      {/* Full screen is hidden when already fullscreen (the FullScreenLayout
+          back-arrow handles the inverse). */}
+      <Menu.Item
+        label={panelMode === 'sidebar' ? 'Pop out' : 'Dock'}
+        icon={panelMode === 'sidebar' ? 'corner-up-right' : 'corner-down-right-alt'}
+        onClick={handleTogglePanelMode}
+        testId="pathfinder-block-editor-toggle-popout"
+      />
+      {panelMode !== 'fullscreen' && (
+        <Menu.Item
+          label="Full screen"
+          icon="expand-arrows"
+          onClick={handleGoFullScreen}
+          testId="pathfinder-block-editor-go-fullscreen"
+        />
+      )}
+      <Menu.Divider />
       <Menu.Item label="Import" icon="upload" onClick={onOpenImport} />
       <Menu.Divider />
-      <Menu.Item label="Copy JSON" icon="copy" onClick={onCopy} data-testid={testIds.blockEditor.copyJsonButton} />
+      <Menu.Item label="Copy JSON" icon="copy" onClick={onCopy} testId={testIds.blockEditor.copyJsonButton} />
       <Menu.Item label="Download JSON" icon="download-alt" onClick={onDownload} />
       <Menu.Item label="Create GitHub PR" icon="github" onClick={onOpenGitHubPR} />
       <Menu.Divider />

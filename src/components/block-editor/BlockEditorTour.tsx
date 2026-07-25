@@ -42,7 +42,7 @@ const TOUR_STEPS: TourStep[] = [
     target: `[data-testid="${testIds.blockEditor.moreActionsButton}"]`,
     title: 'More actions',
     content:
-      'This menu contains import, export, and sharing options. Use it to copy or download the guide JSON, create a GitHub PR, or import an existing guide.',
+      'This menu holds panel and file actions: pop out or go full screen, toggle block-selection mode, import a guide, copy or download the guide JSON, and create a GitHub PR.',
   },
   {
     target: `[data-testid="${testIds.blockEditor.content}"]`,
