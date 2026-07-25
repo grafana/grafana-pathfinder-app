@@ -122,6 +122,7 @@ export function HeaderKebab({
           back-arrow handles the inverse). */}
       <Menu.Item
         label={panelMode === 'sidebar' ? 'Pop out' : 'Dock'}
+        ariaLabel={panelMode === 'sidebar' ? 'Pop out editor' : 'Dock editor'}
         icon={panelMode === 'sidebar' ? 'corner-up-right' : 'corner-down-right-alt'}
         onClick={handleTogglePanelMode}
         testId="pathfinder-block-editor-toggle-popout"
@@ -129,6 +130,7 @@ export function HeaderKebab({
       {panelMode !== 'fullscreen' && (
         <Menu.Item
           label="Full screen"
+          ariaLabel="Open editor in full screen"
           icon="expand-arrows"
           onClick={handleGoFullScreen}
           testId="pathfinder-block-editor-go-fullscreen"

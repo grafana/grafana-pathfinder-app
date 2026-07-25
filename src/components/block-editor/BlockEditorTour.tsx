@@ -42,7 +42,7 @@ const TOUR_STEPS: TourStep[] = [
     target: `[data-testid="${testIds.blockEditor.moreActionsButton}"]`,
     title: 'More actions',
     content:
-      'This menu holds panel and file actions: pop out or go full screen, toggle block-selection mode, import a guide, copy or download the guide JSON, and create a GitHub PR.',
+      "This menu holds the editor's secondary actions — create or load a guide, pop out or go full screen, toggle block selection, and import, export, or share the guide JSON.",
   },
   {
     target: `[data-testid="${testIds.blockEditor.content}"]`,
