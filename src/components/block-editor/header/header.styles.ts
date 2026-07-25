@@ -53,10 +53,9 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
       display: 'none',
     },
   }),
-  // Title is guaranteed at least ~180px so the actions cluster has to wrap
-  // to a new row when the row gets narrow, instead of crushing the title to
-  // zero. The input inside still keeps `minWidth: 0 + flex: 1` so long
-  // titles ellipsis within the reserved 180px rather than overflowing.
+  // Reserves ~180px min and grows to fill the title row. The input inside keeps
+  // `minWidth: 0 + flex: 1` so long titles ellipsis within the reserved space
+  // rather than overflowing.
   titleArea: css({
     display: 'flex',
     alignItems: 'center',
@@ -99,14 +98,14 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     flexShrink: 0,
   }),
   // Opt-in collapse for Grafana `Button` components that carry a text label.
-  // Under 640px we hide Button's content `<span>` (its direct child) and
+  // Under 500px we hide Button's content `<span>` (its direct child) and
   // tighten horizontal padding, leaving the icon visible. Tooltips and
   // aria-labels carry the meaning. Targets `& > span` so it only affects
   // the labeled span that Grafana renders as a direct child of the
   // `<button>` element this class is applied to — never any descendants.
   // Container query fires off `toolbarRow`'s `containerType: inline-size`.
   collapsibleLabel: css({
-    '@container (max-width: 640px)': {
+    '@container (max-width: 500px)': {
       paddingLeft: theme.spacing(0.75),
       paddingRight: theme.spacing(0.75),
       '& > span': {
@@ -125,14 +124,14 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
   // the toolbar's collapse breakpoint. The `@container` rule fires off
   // `toolbarRow`'s `containerType: inline-size`.
   viewModeRockerLabeled: css({
-    '@container (max-width: 640px)': {
+    '@container (max-width: 500px)': {
       display: 'none',
     },
   }),
   // Icon-only fallback: hidden until the toolbar is too narrow for labels.
   viewModeRockerIconOnly: css({
     display: 'none',
-    '@container (max-width: 640px)': {
+    '@container (max-width: 500px)': {
       display: 'inline-flex',
     },
   }),
