@@ -168,55 +168,68 @@ export function BlockEditorHeader({
     );
   };
 
+  const localSaveIndicator = !isBackendAvailable && (
+    <>
+      {isDirty ? (
+        <Tooltip content="Saving changes to local storage">
+          <span className={styles.savingIndicator} aria-label="Saving">
+            <Icon name="fa fa-spinner" size="sm" />
+          </span>
+        </Tooltip>
+      ) : (
+        <Tooltip content="All changes saved to local storage">
+          <span className={styles.savedIndicator} aria-label="Saved">
+            <Icon name="save" size="sm" />
+          </span>
+        </Tooltip>
+      )}
+    </>
+  );
+
+  const previewResetButton = viewMode === 'preview' && hasPreviewProgress && onResetPreviewProgress && (
+    <Button
+      variant="secondary"
+      size="sm"
+      icon="history-alt"
+      onClick={onResetPreviewProgress}
+      tooltip="Resets all interactive steps"
+      data-testid={testIds.blockEditor.previewResetButton}
+    >
+      Reset guide
+    </Button>
+  );
+
   return (
     <div className={styles.header}>
-      <div className={styles.row}>
-        <HeaderTitleRow guideTitle={guideTitle} guideId={guideId} viewMode={viewMode} onTitleCommit={onTitleCommit} />
+      {/* Title row: editable title + guide id on the left, publish status on the
+          right. Hidden in preview — the rendered guide shows its own <h1>, and
+          the badge moves to the toolbar row so publish status stays visible. */}
+      {viewMode !== 'preview' && (
+        <div className={styles.titleRow}>
+          <HeaderTitleRow guideTitle={guideTitle} guideId={guideId} viewMode={viewMode} onTitleCommit={onTitleCommit} />
+          <div className={styles.rightCluster}>
+            {localSaveIndicator}
+            {isBackendAvailable && backendBadge()}
+          </div>
+        </div>
+      )}
 
-        <div className={styles.actions}>
-          {!isBackendAvailable &&
-            (isDirty ? (
-              <Tooltip content="Saving changes to local storage">
-                <span className={styles.savingIndicator} aria-label="Saving">
-                  <Icon name="fa fa-spinner" size="sm" />
-                </span>
-              </Tooltip>
-            ) : (
-              <Tooltip content="All changes saved to local storage">
-                <span className={styles.savedIndicator} aria-label="Saved">
-                  <Icon name="save" size="sm" />
-                </span>
-              </Tooltip>
-            ))}
+      {/* Toolbar row: view-mode rocker on the left, actions on the right.
+          Single-line, never wraps (see toolbarRow / the container-query tiers). */}
+      <div className={styles.toolbarRow}>
+        <ViewModeRocker viewMode={viewMode} onSetViewMode={onSetViewMode} />
 
-          {/* Backend publish status — kept as a Badge since the
-              Draft/Published distinction is genuinely informative. */}
-          {isBackendAvailable && backendBadge()}
+        <div className={styles.rightCluster}>
+          {/* Preview mode: badge lives here (titleRow is hidden) alongside the
+              "Reset guide" affordance lifted out of the preview content area. */}
+          {viewMode === 'preview' && isBackendAvailable && backendBadge()}
+          {previewResetButton}
 
-          {/* Preview-mode "Reset guide" trigger. Mirrors the affordance that
-              previously lived inside the preview content area, but lifted into
-              the header so the rendered guide stays free of editor chrome. */}
-          {viewMode === 'preview' && hasPreviewProgress && onResetPreviewProgress && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="history-alt"
-              onClick={onResetPreviewProgress}
-              tooltip="Resets all interactive steps"
-              data-testid={testIds.blockEditor.previewResetButton}
-            >
-              Reset guide
-            </Button>
-          )}
-
-          {/* Undo / redo for the in-session history ring buffer. The
-              labels (when present) describe the next operation in the
-              stack — useful for tooltip-driven discoverability. The
-              `corner-up-left` / `corner-up-right` icons are the
-              conventional curved-arrow glyphs every word processor /
-              editor uses for undo/redo. */}
+          {/* Undo / redo — edit mode only; hidden below the narrow tier (still
+              reachable via keyboard). The curved-arrow glyphs are the
+              conventional undo/redo icons. */}
           {viewMode === 'edit' && (
-            <>
+            <div className={styles.undoRedo}>
               <IconButton
                 name="corner-up-left"
                 size="sm"
@@ -237,10 +250,8 @@ export function BlockEditorHeader({
                 tooltip={redoLabel ? `Redo: ${redoLabel}` : 'Redo'}
                 data-testid="pathfinder-block-editor-redo"
               />
-            </>
+            </div>
           )}
-
-          <ViewModeRocker viewMode={viewMode} onSetViewMode={onSetViewMode} />
 
           {isBackendAvailable && (
             <SaveActions
