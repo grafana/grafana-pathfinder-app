@@ -24,6 +24,7 @@ import {
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { logger } from '../lib/logging';
 import { withTimeout } from '../lib/async-utils';
+import { currentPlatform } from '../lib/platform';
 import {
   buildTelemetryIdentity,
   recordRecommenderFallback,
@@ -321,7 +322,7 @@ export class ContextService {
         return fail('other', 'Recommender service URL failed security validation');
       }
 
-      const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
+      const isCloud = currentPlatform() === 'cloud';
 
       // Extract and hash source hostname for privacy
       // OSS play.grafana.org is left unhashed (public demo site)

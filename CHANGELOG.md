@@ -4,6 +4,7 @@
 
 ### Added
 
+- **Durable completion records**: Terminal bundled, remote, milestone, and journey completions are persisted as `CompletionRecord`s in the stack's Grafana App Platform store. Writes pass through the plugin backend so user attribution and stack scope are stamped server-side from the request context; whether a role may write is decided by upstream App Platform RBAC on the caller's own forwarded identity. Completion UI remains synchronous: each fact enters a bounded background retry queue, persisted as user/org-scoped localStorage events so reloads and concurrent tabs do not overwrite pending work. A record is durable only after the POST succeeds; clearing browser storage or evicting the bounded queue can still lose pending events. Instances without the write route disarm writes for the session after the first 404; pending events stay persisted and are retried on the next app load. (Epic #1411, #1415)
 - **Interactive guides API moved to the new Grafana App Platform group**: The plugin now reads and writes custom `InteractiveGuide` resources against the `pathfinderbackend.ext.grafana.app` group, gated by its aggregation feature toggle, ahead of the old Cloud App Platform group being retired. (#1430)
 - **Collapsible blocks for gating solutions in guides**: Guide authors can add a collapsible block that hides a solution or answer until the reader chooses to reveal it. (#1396)
 - **Self-hosted video assets and a first-class Vimeo provider**: Guides can embed self-hosted videos and Vimeo content directly. (#1355)

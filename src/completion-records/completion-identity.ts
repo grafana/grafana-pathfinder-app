@@ -39,6 +39,10 @@ export function manifestGuideId(packageManifest?: Record<string, unknown>): stri
   return asNonEmptyString(packageManifest?.id);
 }
 
+export function manifestGuideSource(packageManifest?: Record<string, unknown>): string | undefined {
+  return asNonEmptyString(packageManifest?.repository);
+}
+
 export function resolveCompletionIdentity(input: ResolveCompletionIdentityInput): CompletionKey {
   const { packageManifest, repository, fallbackId, fallbackSource } = input;
 
