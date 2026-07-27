@@ -25,8 +25,8 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
   }),
   // Toolbar row (bottom): view-mode rocker on the left, action cluster on the
   // right. Single-line — never wraps. `containerType: inline-size` drives the
-  // rocker's icon-only swap, the `collapsibleLabel` save collapse, and the
-  // undo/redo narrow-tier hide, all keyed off this row's width.
+  // rocker's icon-only swap and the `saveButton` label/icon collapse, both
+  // keyed off this row's width.
   toolbarRow: css({
     display: 'flex',
     alignItems: 'center',
@@ -42,16 +42,6 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(0.5),
     marginLeft: 'auto',
     flexShrink: 0,
-  }),
-  // Undo/redo disappear entirely below the narrow tier (still reachable via
-  // keyboard shortcuts). Keyed off `toolbarRow`'s container width.
-  undoRedo: css({
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    '@container (max-width: 420px)': {
-      display: 'none',
-    },
   }),
   // Reserves ~180px min and grows to fill the title row. The input inside keeps
   // `minWidth: 0 + flex: 1` so long titles ellipsis within the reserved space
@@ -98,7 +88,7 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     flexShrink: 0,
   }),
   // Save/publish button: label-only at full width, icon-only once the toolbar
-  // collapses below 500px (mirrors the rocker's collapse). Grafana's Button
+  // collapses below 420px (mirrors the rocker's collapse). Grafana's Button
   // renders the icon as its only `<svg>` and the label as a direct-child
   // `<span>`, so we toggle those directly. Container query fires off
   // `toolbarRow`'s `containerType: inline-size`; the aria-label carries the
@@ -108,7 +98,7 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     '& svg': {
       display: 'none',
     },
-    '@container (max-width: 500px)': {
+    '@container (max-width: 420px)': {
       // Collapsed: icon-only — show the icon, hide the label, tighten padding.
       paddingLeft: theme.spacing(0.75),
       paddingRight: theme.spacing(0.75),
@@ -131,14 +121,14 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
   // the toolbar's collapse breakpoint. The `@container` rule fires off
   // `toolbarRow`'s `containerType: inline-size`.
   viewModeRockerLabeled: css({
-    '@container (max-width: 500px)': {
+    '@container (max-width: 420px)': {
       display: 'none',
     },
   }),
   // Icon-only fallback: hidden until the toolbar is too narrow for labels.
   viewModeRockerIconOnly: css({
     display: 'none',
-    '@container (max-width: 500px)': {
+    '@container (max-width: 420px)': {
       display: 'inline-flex',
     },
   }),

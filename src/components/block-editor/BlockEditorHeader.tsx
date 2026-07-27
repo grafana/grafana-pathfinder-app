@@ -225,11 +225,11 @@ export function BlockEditorHeader({
           {viewMode === 'preview' && isBackendAvailable && backendBadge()}
           {previewResetButton}
 
-          {/* Undo / redo — edit mode only; hidden below the narrow tier (still
-              reachable via keyboard). The curved-arrow glyphs are the
-              conventional undo/redo icons. */}
+          {/* Undo / redo — edit mode only. Always visible (no keyboard fallback
+              exists, and they fit even at the floating minimum width). The
+              curved-arrow glyphs are the conventional undo/redo icons. */}
           {viewMode === 'edit' && (
-            <div className={styles.undoRedo}>
+            <>
               <IconButton
                 name="corner-up-left"
                 size="sm"
@@ -250,7 +250,7 @@ export function BlockEditorHeader({
                 tooltip={redoLabel ? `Redo: ${redoLabel}` : 'Redo'}
                 data-testid="pathfinder-block-editor-redo"
               />
-            </div>
+            </>
           )}
 
           {isBackendAvailable && (
