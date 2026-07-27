@@ -72,7 +72,8 @@ export function HeaderKebab({
       return <Menu.Item label="Publish" icon="cloud-upload" onClick={onPostToBackend} disabled={isPosting} />;
     }
     if (publishedStatus === 'draft' && hasUnsyncedChanges) {
-      // Main save action is "Save" → offer "Publish" as a shortcut here
+      // Draft with unsynced changes: the toolbar's primary button saves the
+      // draft, so surface Publish here as a shortcut.
       return <Menu.Item label="Publish" icon="cloud-upload" onClick={onPostToBackend} disabled={isPosting} />;
     }
     if (publishedStatus === 'draft' && !hasUnsyncedChanges) {

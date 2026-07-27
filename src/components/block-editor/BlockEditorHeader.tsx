@@ -202,17 +202,17 @@ export function BlockEditorHeader({
   return (
     <div className={styles.header}>
       {/* Title row: editable title + guide id on the left, publish status on the
-          right. Hidden in preview — the rendered guide shows its own <h1>, and
-          the badge moves to the toolbar row so publish status stays visible. */}
-      {viewMode !== 'preview' && (
-        <div className={styles.titleRow}>
-          <HeaderTitleRow guideTitle={guideTitle} guideId={guideId} viewMode={viewMode} onTitleCommit={onTitleCommit} />
-          <div className={styles.rightCluster}>
-            {localSaveIndicator}
-            {isBackendAvailable && backendBadge()}
-          </div>
+          right. In preview HeaderTitleRow renders a spacer instead of the input
+          (the rendered guide shows its own <h1>), so the row stays put without
+          duplicating the title. Fully hiding the row in preview is deferred to
+          the title-row PR. */}
+      <div className={styles.titleRow}>
+        <HeaderTitleRow guideTitle={guideTitle} guideId={guideId} viewMode={viewMode} onTitleCommit={onTitleCommit} />
+        <div className={styles.rightCluster}>
+          {localSaveIndicator}
+          {isBackendAvailable && backendBadge()}
         </div>
-      )}
+      </div>
 
       {/* Toolbar row: view-mode rocker on the left, actions on the right.
           Single-line, never wraps (see toolbarRow / the container-query tiers). */}
@@ -220,14 +220,11 @@ export function BlockEditorHeader({
         <ViewModeRocker viewMode={viewMode} onSetViewMode={onSetViewMode} />
 
         <div className={styles.rightCluster}>
-          {/* Preview mode: badge lives here (titleRow is hidden) alongside the
-              "Reset guide" affordance lifted out of the preview content area. */}
-          {viewMode === 'preview' && isBackendAvailable && backendBadge()}
+          {/* "Reset guide" affordance, lifted out of the preview content area. */}
           {previewResetButton}
 
-          {/* Undo / redo — edit mode only. Always visible (no keyboard fallback
-              exists, and they fit even at the floating minimum width). The
-              curved-arrow glyphs are the conventional undo/redo icons. */}
+          {/* Undo / redo — edit mode only. Kept visible at all widths: there's no
+              keyboard shortcut, so hiding them would strand the action. */}
           {viewMode === 'edit' && (
             <>
               <IconButton
