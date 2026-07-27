@@ -183,8 +183,9 @@ request struct has nowhere to put it). `userLogin`/`userDisplayName` are best-ef
 snapshots only (ID-token claims, then the `X-Grafana-User` header) — they gate nothing, and the
 read path joins exclusively on `userId`. Authorization is delegated to App Platform RBAC on the
 caller's own forwarded identity, so the proxy adds no privilege — on the served `.app` group the
-basic viewer role grants write on `CompletionRecord` (verified with a real Viewer user, 2026-07-24:
-POST → 201, RBAC enforced). The proxy is retained because a direct client write cannot stamp
+basic viewer role grants write on `CompletionRecord` (verified 2026-07-24 with a real Viewer user
+via a **direct** App Platform write — POST → 201, RBAC enforced — NOT through the deployed plugin
+proxy). The proxy is retained because a direct client write cannot stamp
 trustworthy identity, rate-limit per user, invalidate the read cache, or classify failures for the
 retry queue. The residual merge gate is a live Viewer-attributed write through the deployed plugin
 proxy — proving identity forwarding end-to-end, not the (now-cleared) RBAC layer.

@@ -224,8 +224,9 @@ proxy (`pkg/plugin/completion_records_write.go`, epic
 [#1411](https://github.com/grafana/grafana-pathfinder-app/issues/1411)), which routes writes through
 plugin-backend so authoritative identity is stamped server-side. Authorization is delegated to App
 Platform RBAC on the caller's own forwarded identity — the proxy adds no privilege. On the served
-`.app` group the basic viewer role grants write on `CompletionRecord` (verified with a real Viewer
-user, 2026-07-24: POST → 201, RBAC enforced), so the proxy exists not to lend privilege but for
+`.app` group the basic viewer role grants write on `CompletionRecord` (verified 2026-07-24 with a
+real Viewer user via a **direct** App Platform write — POST → 201, RBAC enforced — NOT through the
+deployed plugin proxy), so the proxy exists not to lend privilege but for
 what a direct client write cannot do: stamp trustworthy identity (the CRD validates field presence,
 not truth), enforce a per-user rate limit, invalidate the read cache on create, and classify
 failures into the transient/terminal taxonomy the front-end queue consumes. The residual merge gate

@@ -190,13 +190,17 @@ func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namesp
 		}
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("app platform create: read body: %w", err)
-	}
+	// 200/201 means the record is already durable upstream, and the caller does
+	// not use the response body. So a body read error or an over-cap body must
+	// NEVER become a retryable failure — a retry mints a fresh record name and
+	// creates a durable duplicate. Read best-effort, swallow read/size errors,
+	// and drain so the connection can be reused; the success is not undone by a
+	// body that failed to arrive intact.
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if int64(len(body)) > maxBytes {
-		return nil, fmt.Errorf("app platform create: response exceeded %d bytes", maxBytes)
+		body = body[:maxBytes]
 	}
+	_, _ = io.Copy(io.Discard, resp.Body)
 	return body, nil
 }
 

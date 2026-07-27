@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -9,7 +10,9 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
@@ -30,20 +33,29 @@ import (
 //   - Read-cache invalidation on a successful create.
 //   - The transient/terminal retry taxonomy the front-end queue depends on.
 //
-// Response contract for the front-end retry queue (RFC §6.9):
+// Response contract for the front-end retry queue (RFC §6.9). The taxonomy is
+// stated identically here, in the PR body, and in .cursor/rules/{systemPatterns,
+// coda}.mdc — divergence re-creates the split-review bug:
 //   - 201  created (durable).
-//   - 404  reserved for the structural "route not deployed here" signal; the
-//          front end disarms writes for the session (pending items persist for
-//          the next load). Upstream per-record 404s are remapped to 422 so
-//          they can never trigger that disarm.
-//   - other 4xx  terminal — validation / schema / 403; the write will never
-//          succeed as posted, so the client drops it (no retry). 401 is the
-//          exception: an expired session or forwarded token recovers after
-//          re-auth, so the client retries it as transient.
+//   - 401  transient: an expired session or forwarded token recovers after
+//          re-auth, so the client retries it with backoff.
+//   - 404  structural "route not served on this stack" signal; the front end
+//          disarms writes for the session (pending items persist for the next
+//          load) rather than dropping. The create POSTs to the completionrecords
+//          COLLECTION, so an upstream 404 means the whole group/route is absent
+//          — it is never a per-record miss and is never remapped away.
 //   - 429 / 5xx / network — transient; the client retries with exponential
 //          backoff. Retry-After is set as a standard backpressure hint, though
 //          Grafana's backendSrv does not expose response headers to the
 //          front-end client.
+//   - other 4xx  terminal — validation / schema / 403; the write will never
+//          succeed as posted, so the client drops it (no retry).
+//
+// Idempotency: when the client supplies a stable idempotencyKey (the completion
+// event's id, see #1434), the record name is derived DETERMINISTICALLY from it,
+// so a retried POST targets the same object and an upstream "already exists"
+// (409) is treated as success — a committed-but-unacknowledged write cannot
+// duplicate. Without a key the name is random (every POST is a new record).
 
 const (
 	// completionWriteSchemaVersion is the CompletionRecord spec schemaVersion this
@@ -73,6 +85,13 @@ const (
 	// LIST pages past their byte cap, wedging reads for the whole namespace.
 	completionMaxIDLen    = 256
 	completionMaxTitleLen = 1024
+
+	// completionMaxDisplayLen bounds the server-derived login/display-name
+	// snapshots before persistence. They are trusted for attribution, not
+	// storage-bounded: an external identity-provider profile value can be
+	// unusually large, and an oversized stored string pushes read-path LIST
+	// pages past their byte cap (same hazard the client-fact caps guard).
+	completionMaxDisplayLen = 256
 )
 
 var (
@@ -100,6 +119,12 @@ type completionWriteRequest struct {
 	CompletedAt       string `json:"completedAt"`
 	DurationMs        *int64 `json:"durationMs"`
 	Platform          string `json:"platform"`
+
+	// IdempotencyKey is the completion event's stable client id (#1434). When
+	// present it makes the write idempotent by deriving the record name
+	// deterministically; it is never persisted. Optional: an absent key falls
+	// back to a fresh random name.
+	IdempotencyKey string `json:"idempotencyKey"`
 }
 
 // handleCreateCompletionRecord serves POST /completion-records.
@@ -148,7 +173,7 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	name, err := generateCompletionRecordName()
+	name, err := completionRecordName(req.IdempotencyKey)
 	if err != nil {
 		a.ctxLogger(r.Context()).Error("completion write: name generation failed", "error", err)
 		a.writeError(w, "internal-error", http.StatusInternalServerError)
@@ -162,7 +187,10 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 		Spec:       spec,
 	}
 
-	if err := creator.Create(r.Context(), namespace, obj); err != nil {
+	// An "already exists" (409) from a deterministically-named idempotent retry
+	// means the write already committed — treat it as success, never a duplicate
+	// or a failure.
+	if err := creator.Create(r.Context(), namespace, obj); err != nil && !isAlreadyExistsUpstream(err) {
 		a.writeCompletionUpstreamError(w, r, err)
 		return
 	}
@@ -207,6 +235,7 @@ func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, u
 		{"guideSource", req.GuideSource, completionMaxIDLen},
 		{"pathId", req.PathID, completionMaxIDLen},
 		{"guideTitle", req.GuideTitle, completionMaxTitleLen},
+		{"idempotencyKey", req.IdempotencyKey, completionMaxIDLen},
 	} {
 		if err := validateBoundedText(f.name, f.value, f.max); err != nil {
 			return completionRecordWriteSpec{}, err
@@ -246,8 +275,8 @@ func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, u
 		Platform:          req.Platform,
 
 		UserID:          userID,
-		UserLogin:       userLogin,
-		UserDisplayName: userDisplayName,
+		UserLogin:       boundedIdentityField(userLogin, completionMaxDisplayLen),
+		UserDisplayName: boundedIdentityField(userDisplayName, completionMaxDisplayLen),
 		RecordedAt:      timeNow().UTC().Format(time.RFC3339),
 		// The CRD requires a numeric orgId (RFC §7.1); PluginContext.OrgID is the
 		// only source of it. The SDK deprecates OrgID for request *scoping* (use
@@ -318,26 +347,60 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	// Terminal 4xx: schema/validation rejected upstream, or identity-scoped
-	// 401/403. Echo the upstream status; the client drops these (except 401,
-	// which it retries as transient — an expired token recovers). A 404 is the
-	// other exception — the front end reserves 404 for the structural "route not
-	// deployed" whole-feature disarm, so an upstream create 404 (this record only)
-	// is remapped to 422 to avoid disarming the entire session.
-	responseStatus := status
-	if responseStatus == http.StatusNotFound {
-		responseStatus = http.StatusUnprocessableEntity
-	}
+	// 401/403. Echo the upstream status VERBATIM; the client drops these (except
+	// 401, which it retries as transient — an expired token recovers). A 404 is
+	// preserved, not remapped: the create POSTs to the completionrecords
+	// COLLECTION, so an upstream 404 means the group/route is not served on this
+	// stack. That is the structural "route not deployed here" signal — the front
+	// end disarms writes for the session and keeps the queued item — never a
+	// per-record drop.
 	logger.Info("completion write terminal upstream failure", "status", status, "error", err)
-	a.writeError(w, "completion-write-rejected", responseStatus)
+	a.writeError(w, "completion-write-rejected", status)
 }
 
-// generateCompletionRecordName mints a unique, DNS-safe object name for each
-// create. Names are server-generated (client-supplied names are rejected) and
-// carry no idempotency semantics by design — every accepted POST is a new record.
-func generateCompletionRecordName() (string, error) {
+// completionRecordName mints the DNS-safe object name for a create. When the
+// client supplies a stable idempotencyKey the name is DETERMINISTIC — a SHA-256
+// of the key — so a retried POST targets the same record and cannot duplicate a
+// committed-but-unacknowledged write (an upstream 409 is then treated as
+// success). Hashing keeps the name DNS-safe for any key content, sidestepping
+// CRD naming constraints. Absent a key the name is random (every POST is a new
+// record); client-supplied names are never accepted.
+func completionRecordName(idempotencyKey string) (string, error) {
+	if key := strings.TrimSpace(idempotencyKey); key != "" {
+		sum := sha256.Sum256([]byte(key))
+		return "completion-" + hex.EncodeToString(sum[:16]), nil
+	}
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}
 	return "completion-" + hex.EncodeToString(buf), nil
+}
+
+// isAlreadyExistsUpstream reports whether an upstream create failed only because
+// the (deterministically named) record already exists — an idempotent retry to
+// treat as success, not a duplicate or an error. Returns false for a nil error.
+func isAlreadyExistsUpstream(err error) bool {
+	status, ok := upstreamStatusOf(err)
+	return ok && status == http.StatusConflict
+}
+
+// boundedIdentityField normalizes a server-derived login/display-name snapshot
+// for durable storage: it strips control characters (which have no place in an
+// identity value and could corrupt read-path rendering) and truncates to
+// maxBytes on a rune boundary. Unlike client-fact fields these are trusted for
+// attribution, so an unusual identity-provider value is sanitized rather than
+// rejected — a write must never fail on an oversized or odd profile string.
+func boundedIdentityField(s string, maxBytes int) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			continue
+		}
+		if b.Len()+utf8.RuneLen(r) > maxBytes {
+			break
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }

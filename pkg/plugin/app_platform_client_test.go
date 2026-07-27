@@ -138,6 +138,87 @@ func TestAppPlatformCreateClient_RequestContract(t *testing.T) {
 	}
 }
 
+// TestCompletionHTTPClient_Create_WireComposition composes the production
+// completionHTTPClient.Create over the real HTTP adapter and pins the on-the-wire
+// contract the CRD sees: the completionrecords collection URL, the forwarded
+// identity headers, and the COMPLETE serialized CompletionRecord object
+// (apiVersion/kind/metadata + full spec). The handler and adapter layers can each
+// pass in isolation while this composition drifts — finding 5.
+func TestCompletionHTTPClient_Create_WireComposition(t *testing.T) {
+	var gotPath string
+	var gotHeaders http.Header
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotHeaders = r.Header.Clone()
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"metadata":{"name":"completion-abc"}}`))
+	}))
+	defer srv.Close()
+
+	client := newCompletionHTTPClient(srv.URL, "id-token-abc", log.DefaultLogger)
+	spec := completionRecordWriteSpec{
+		GuideID: "first-dashboard", GuideSource: "bundled", GuideTitle: "First dashboard",
+		PathID: "", Source: "objectives", CompletedAt: "2026-07-20T10:00:00Z",
+		DurationSeconds: 4, CompletionPercent: 100, GuideCategory: "interactive", Platform: "cloud",
+		UserID: "user:abc", UserLogin: "alice", UserDisplayName: "Alice",
+		RecordedAt: "2026-07-20T10:00:01Z", OrgID: 7, StackNamespace: "stacks-1", SchemaVersion: 1,
+	}
+	obj := completionRecordObject{Metadata: completionRecordObjectMeta{Name: "completion-abc"}, Spec: spec}
+	if err := client.Create(context.Background(), "stacks-1", obj); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	wantPath := "/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-1/completionrecords"
+	if gotPath != wantPath {
+		t.Errorf("path = %q, want %q", gotPath, wantPath)
+	}
+	if got := gotHeaders.Get("Authorization"); got != "Bearer id-token-abc" {
+		t.Errorf("Authorization = %q, want Bearer id-token-abc", got)
+	}
+	if got := gotHeaders.Get(backend.GrafanaUserSignInTokenHeaderName); got != "id-token-abc" {
+		t.Errorf("%s = %q, want id-token-abc", backend.GrafanaUserSignInTokenHeaderName, got)
+	}
+	if got := gotHeaders.Get("Content-Type"); got != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", got)
+	}
+
+	// The wire object must carry the coordinates the client stamps plus the full
+	// spec — decode and compare the whole object, not a substring.
+	var wire completionRecordObject
+	if err := json.Unmarshal(gotBody, &wire); err != nil {
+		t.Fatalf("wire body is not a CompletionRecord: %v (body: %s)", err, gotBody)
+	}
+	if wire.APIVersion != completionRecordsGroupVersion || wire.Kind != "CompletionRecord" {
+		t.Errorf("coordinates = %s/%s, want %s/CompletionRecord", wire.APIVersion, wire.Kind, completionRecordsGroupVersion)
+	}
+	if wire.Metadata.Name != "completion-abc" || wire.Metadata.Namespace != "stacks-1" {
+		t.Errorf("metadata = %+v, want name=completion-abc namespace=stacks-1", wire.Metadata)
+	}
+	if wire.Spec != spec {
+		t.Errorf("wire spec = %+v, want %+v", wire.Spec, spec)
+	}
+}
+
+// TestCompletionHTTPClient_Create_OversizedSuccessBodyIsNotRetryable pins
+// finding 1 through the production wrapper: a 201 whose body exceeds the write
+// cap is a success, never a retryable error — the record is already durable and
+// a retry would mint a fresh name and duplicate it.
+func TestCompletionHTTPClient_Create_OversizedSuccessBodyIsNotRetryable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(strings.Repeat("x", completionWriteMaxBytes+1)))
+	}))
+	defer srv.Close()
+
+	client := newCompletionHTTPClient(srv.URL, "id-token-abc", log.DefaultLogger)
+	obj := completionRecordObject{Metadata: completionRecordObjectMeta{Name: "completion-abc"}}
+	if err := client.Create(context.Background(), "stacks-1", obj); err != nil {
+		t.Fatalf("Create returned error on an over-cap 201 body: %v (must be treated as success)", err)
+	}
+}
+
 func TestAppPlatformCreateClient_ResponseContract(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -153,7 +234,10 @@ func TestAppPlatformCreateClient_ResponseContract(t *testing.T) {
 		{"201 accepted", http.StatusCreated, `{}`, 16, "", false, 0, ""},
 		{"202 rejected", http.StatusAccepted, `{}`, 16, "", true, http.StatusAccepted, ""},
 		{"429 preserves retry-after", http.StatusTooManyRequests, `{}`, 16, "12", true, http.StatusTooManyRequests, "12"},
-		{"oversized response", http.StatusCreated, strings.Repeat("x", 17), 16, "", true, 0, ""},
+		// A 201 whose body exceeds the cap is NOT an error: the record is already
+		// durable, the body is unused, and turning it into a retryable failure
+		// would mint a fresh name on retry and duplicate the record (finding 1).
+		{"oversized body on 201 is still success", http.StatusCreated, strings.Repeat("x", 17), 16, "", false, 0, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

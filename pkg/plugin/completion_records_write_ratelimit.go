@@ -22,23 +22,26 @@ const (
 // completionWriteRateLimiter manages per-user token buckets for the write path.
 // Buckets are created lazily and never evicted — memory grows by a small
 // constant per distinct caller, acceptable for a single-tenant plugin instance.
+//
+// Time is read through the package-wide timeNow seam (the repository's single
+// clock invariant), so a test that freezes/advances timeNow drives refill and
+// Retry-After deterministically — the handler's validation clock and the
+// limiter's clock never diverge.
 type completionWriteRateLimiter struct {
 	mu      sync.Mutex
 	buckets map[string]*tokenBucket
-	now     func() time.Time // injectable for tests
 }
 
 func newCompletionWriteRateLimiter() *completionWriteRateLimiter {
 	return &completionWriteRateLimiter{
 		buckets: map[string]*tokenBucket{},
-		now:     time.Now,
 	}
 }
 
 // allow returns (true, 0) if the user's bucket had a token, or
 // (false, retryAfter) when the request should be rejected.
 func (r *completionWriteRateLimiter) allow(user string) (bool, time.Duration) {
-	now := r.now()
+	now := timeNow()
 	r.mu.Lock()
 	b, ok := r.buckets[user]
 	if !ok {

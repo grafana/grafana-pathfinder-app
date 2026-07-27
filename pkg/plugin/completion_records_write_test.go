@@ -360,6 +360,81 @@ func TestCompletionWrite_ToleratesDelayedOfflineRetry(t *testing.T) {
 	}
 }
 
+// --- Idempotency (finding 1) ------------------------------------------------
+
+// A stable idempotencyKey must derive a DETERMINISTIC record name, so a retried
+// POST targets the same object instead of minting a duplicate.
+func TestCompletionWrite_IdempotencyKeyDeterministicName(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	body := validWriteBody()
+	body["idempotencyKey"] = "event-123"
+	doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	name1 := creator.last.Metadata.Name
+	doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	name2 := creator.last.Metadata.Name
+
+	if name1 == "" || name1 != name2 {
+		t.Fatalf("same idempotencyKey must derive the same name: %q vs %q", name1, name2)
+	}
+
+	// A different key derives a different name; the key is never persisted.
+	body["idempotencyKey"] = "event-456"
+	doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	if creator.last.Metadata.Name == name1 {
+		t.Fatalf("distinct idempotencyKey must derive a distinct name, both %q", name1)
+	}
+}
+
+// An upstream "already exists" (409) on a deterministically-named retry means
+// the write already committed — it must surface as success, not a failure.
+func TestCompletionWrite_AlreadyExistsTreatedAsSuccess(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{err: &appPlatformUpstreamError{status: http.StatusConflict, msg: "already exists"}}
+	withCreator(t, creator)
+
+	body := validWriteBody()
+	body["idempotencyKey"] = "event-123"
+	rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (409 is an idempotent success)", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "completion-") {
+		t.Fatalf("expected the record name in the body, got %q", rec.Body.String())
+	}
+}
+
+// --- Durable display-identity bounds (finding 6) ----------------------------
+
+func TestCompletionWrite_DisplayIdentityBounded(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	// A hostile / oversized identity-provider value arrives via X-Grafana-User
+	// (no login/name claims in the test token, so login falls back to it).
+	r := writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())
+	r.Header.Set("X-Grafana-User", strings.Repeat("a", completionMaxDisplayLen+50)+"\x00\x07bob")
+	rec := doWrite(t, nil, r)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (odd identity is sanitized, not rejected)", rec.Code)
+	}
+	s := creator.last.Spec
+	if len(s.UserLogin) > completionMaxDisplayLen {
+		t.Errorf("userLogin len = %d, want <= %d", len(s.UserLogin), completionMaxDisplayLen)
+	}
+	for _, ru := range s.UserLogin + s.UserDisplayName {
+		if ru < 0x20 || ru == 0x7f {
+			t.Fatalf("control character survived normalization in %q / %q", s.UserLogin, s.UserDisplayName)
+		}
+	}
+	if len(s.UserDisplayName) > completionMaxDisplayLen {
+		t.Errorf("userDisplayName len = %d, want <= %d", len(s.UserDisplayName), completionMaxDisplayLen)
+	}
+}
+
 // --- Upstream error taxonomy ------------------------------------------------
 
 func TestCompletionWrite_UpstreamErrorTaxonomy(t *testing.T) {
@@ -375,7 +450,7 @@ func TestCompletionWrite_UpstreamErrorTaxonomy(t *testing.T) {
 		{"transient 429 echoes retry-after", &appPlatformUpstreamError{status: 429, retryAfter: "12", msg: "slow down"}, http.StatusTooManyRequests, "12"},
 		{"terminal 400 schema", &appPlatformUpstreamError{status: 400, msg: "bad spec"}, http.StatusBadRequest, "-"},
 		{"terminal 422 schema", &appPlatformUpstreamError{status: 422, msg: "unprocessable"}, 422, "-"},
-		{"upstream 404 remapped off the disarm signal", &appPlatformUpstreamError{status: 404, msg: "not found"}, http.StatusUnprocessableEntity, "-"},
+		{"collection 404 preserved as structural disarm signal", &appPlatformUpstreamError{status: 404, msg: "not found"}, http.StatusNotFound, "-"},
 		{"identity-scoped 403", &appPlatformUpstreamError{status: 403, msg: "forbidden"}, http.StatusForbidden, "-"},
 		{"unexpected success status", &appPlatformUpstreamError{status: 202, msg: "not created"}, http.StatusBadGateway, ""},
 		{"network error is transient", fmt.Errorf("dial tcp: connection refused"), http.StatusServiceUnavailable, ""},
@@ -444,6 +519,41 @@ func TestCompletionWrite_RateLimitIsPerUser(t *testing.T) {
 	rec := doWrite(t, app, writeRequest(t, "user:b", validWriteBody(), testGrafanaConfig()))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("user B got %d, want 201 (rate limit must be per-user)", rec.Code)
+	}
+}
+
+// The limiter reads the package-wide timeNow seam (finding 7), so freezing then
+// advancing the clock drives refill deterministically: exhaust the burst → 429
+// with a Retry-After, advance past one refill interval → the next request is
+// admitted again.
+func TestCompletionWrite_RateLimitRefillsAfterClockAdvance(t *testing.T) {
+	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	withCreator(t, &fakeCreator{})
+	app := &App{logger: log.DefaultLogger, completionWriteRateLimiter: newCompletionWriteRateLimiter()}
+
+	// Drain the whole burst, then one more to hit the limit.
+	for i := 0; i < int(completionWriteRateBurst); i++ {
+		if rec := doWrite(t, app, writeRequest(t, "user:flood", validWriteBody(), testGrafanaConfig())); rec.Code != http.StatusCreated {
+			t.Fatalf("request %d within burst got %d, want 201", i, rec.Code)
+		}
+	}
+	rec := doWrite(t, app, writeRequest(t, "user:flood", validWriteBody(), testGrafanaConfig()))
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("over-budget request got %d, want 429", rec.Code)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("429 must carry a Retry-After hint")
+	}
+
+	// Without advancing the clock, still limited.
+	if rec := doWrite(t, app, writeRequest(t, "user:flood", validWriteBody(), testGrafanaConfig())); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("still-exhausted request got %d, want 429", rec.Code)
+	}
+
+	// Advance past one refill interval (1/refillPerSec seconds) → one token back.
+	advance(time.Duration(float64(time.Second) / completionWriteRateRefillPerSec))
+	if rec := doWrite(t, app, writeRequest(t, "user:flood", validWriteBody(), testGrafanaConfig())); rec.Code != http.StatusCreated {
+		t.Fatalf("after clock advance got %d, want 201 (token refilled)", rec.Code)
 	}
 }
 
