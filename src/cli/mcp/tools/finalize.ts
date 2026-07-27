@@ -37,7 +37,9 @@ import { resolveReadOnlyInput } from './read-input';
 import { textResult, withToolErrorEnvelope } from './result';
 import { ArtifactInputBase, SessionTokenBase } from './two-mode-input';
 
-const APP_PLATFORM_API_VERSION = 'pathfinderbackend.ext.grafana.com/v1alpha1';
+const APP_PLATFORM_API_VERSION = 'pathfinderbackend.ext.grafana.app/v1alpha1';
+// Legacy Cloud App Platform group, still served during the CAP→GAP migration.
+const APP_PLATFORM_API_VERSION_LEGACY = 'pathfinderbackend.ext.grafana.com/v1alpha1';
 const APP_PLATFORM_KIND = 'InteractiveGuide';
 const APP_PLATFORM_RESOURCE = 'interactiveguides';
 const NAMESPACE_PLACEHOLDER = '{namespace}';
@@ -119,6 +121,8 @@ async function finalizeImpl(args: {
   const title = String(content.title ?? '');
   const collectionPathTemplate = `/apis/${APP_PLATFORM_API_VERSION}/namespaces/${NAMESPACE_PLACEHOLDER}/${APP_PLATFORM_RESOURCE}`;
   const itemPathTemplate = `${collectionPathTemplate}/${id}`;
+  const legacyCollectionPathTemplate = `/apis/${APP_PLATFORM_API_VERSION_LEGACY}/namespaces/${NAMESPACE_PLACEHOLDER}/${APP_PLATFORM_RESOURCE}`;
+  const legacyItemPathTemplate = `${legacyCollectionPathTemplate}/${id}`;
   const docParam = `api:${id}`;
   const encodedDoc = encodeURIComponent(docParam);
   const viewerPath = `${PLUGIN_VIEWER_BASE}?doc=${encodedDoc}`;
@@ -144,6 +148,11 @@ async function finalizeImpl(args: {
       itemPathTemplate,
       createMethod: 'POST',
       updateMethod: 'PUT',
+      legacyApiVersion: APP_PLATFORM_API_VERSION_LEGACY,
+      legacyCollectionPathTemplate,
+      legacyItemPathTemplate,
+      errorHandling:
+        'During the CAP→GAP migration an instance may serve only the legacy group. On a 404 from the collection POST or item PUT against apiVersion, retry once against legacyApiVersion / legacyCollectionPathTemplate / legacyItemPathTemplate (swap resource.apiVersion to legacyApiVersion too) before falling through to grafanaOss.',
     },
     resource: {
       apiVersion: APP_PLATFORM_API_VERSION,
@@ -164,7 +173,7 @@ async function finalizeImpl(args: {
     clientGuidance: {
       grafanaAppPlatform: {
         appliesWhen:
-          'You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-com.enabled"] === true). If you are unsure, try this branch first; on a 404 from the collection POST or from pathfinder_manage_guide_drafts, switch to grafanaOss.',
+          'You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-app.enabled"] === true, or the legacy featureToggles["aggregation.pathfinderbackend-ext-grafana-com.enabled"] during the CAP→GAP migration). If you are unsure, try this branch first; on a 404 from the collection POST or from pathfinder_manage_guide_drafts, retry against appPlatform.legacyApiVersion, then switch to grafanaOss.',
         confirmationPrompt,
         preferredTools: {
           drafts: {
