@@ -92,10 +92,6 @@ export interface BlockEditorHeaderProps {
   redoLabel: string | null;
 }
 
-/**
- * Header component for the block editor.
- * Compact single-row design with better organization.
- */
 export function BlockEditorHeader({
   guideTitle,
   guideId,
@@ -214,8 +210,8 @@ export function BlockEditorHeader({
         </div>
       </div>
 
-      {/* Toolbar row: view-mode rocker on the left, actions on the right.
-          Single-line, never wraps (see toolbarRow / the container-query tiers). */}
+      {/* Single-line — never wraps; the rocker and Save collapse to icons via
+          the container-query tiers instead (see toolbarRow). */}
       <div className={styles.toolbarRow}>
         <ViewModeRocker viewMode={viewMode} onSetViewMode={onSetViewMode} />
 
