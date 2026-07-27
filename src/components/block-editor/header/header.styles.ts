@@ -124,13 +124,6 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.warning.text,
     flexShrink: 0,
   }),
-  divider: css({
-    width: '1px',
-    height: '20px',
-    backgroundColor: theme.colors.border.weak,
-    margin: `0 ${theme.spacing(0.25)}`,
-    flexShrink: 0,
-  }),
   moreButton: css({
     '& > button': {
       padding: '4px 8px',
