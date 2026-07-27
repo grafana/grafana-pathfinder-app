@@ -380,6 +380,10 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 // rejects a blank one with a 400); client-supplied names are never accepted.
 func completionRecordName(userID, idempotencyKey string) string {
 	h := sha256.New()
+	// CORRECTNESS: userID MUST remain in this derivation. Dropping it collapses
+	// the name back to the client key alone in a namespace shared across users,
+	// re-opening the cross-user collision where one caller's 409 falsely
+	// acknowledges another's write (pinned by TestCompletionWrite_CrossUserSameKeyDistinctRecords).
 	h.Write([]byte(userID))
 	// A zero byte separates the trusted identity from the client key. The key is
 	// validated to contain no control characters (validateBoundedText), so it can
