@@ -1,7 +1,10 @@
 # Backend App Platform proxy pattern
 
 **Scope:** plugin-backend (`pkg/plugin/`) routes that proxy a paginated App Platform CRUD
-endpoint served by the pathfinder-backend aggregator (`pathfinderbackend.ext.grafana.com/v1alpha1`).
+endpoint served by the pathfinder-backend aggregator. Completion records live on
+`pathfinderbackend.ext.grafana.app/v1alpha1`; the custom-guide catalogue is served on the older
+`pathfinderbackend.ext.grafana.com/v1alpha1` group and is migrated separately by its owner. Each
+group is advertised by its own boot toggle (below), so the two surfaces gate independently.
 
 **Why this doc exists:** pathfinder-backend is CRD-only — only its manifest deploys, custom
 server code never runs — so every piece of intelligence (identity, caching, collation, failure
@@ -177,9 +180,11 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
 
 One definition each, package-wide:
 
-- the aggregation feature-toggle name — no Go constant exists on main today; the string
-  `aggregation.pathfinderbackend-ext-grafana-com.enabled` lives only as scattered literals. Two
-  constants with the same string is a rename bug waiting;
+- the aggregation feature-toggle name — one Go constant per served group, never a scattered
+  literal: `completionRecordsAggregationToggle`
+  (`aggregation.pathfinderbackend-ext-grafana-app.enabled`) gates the completion routes, and the
+  older `pathfinderBackendAggregationToggle` (`…-grafana-com.enabled`) gates the custom-guide
+  surface. Distinct groups take distinct toggles; do not collapse them onto one constant;
 - the identity helpers (§3): `validIDToken`, `subjectFromIDToken`, `forwardIdentityHeaders`;
 - the paginated LIST client + `buildAppPlatformURL` (§1);
 - the single-flight + cache scaffolding (done-channel, `WithoutCancel`, per-namespace map);
@@ -211,6 +216,61 @@ One definition each, package-wide:
   smoke procedure** in its body (create a resource upstream, hit the route, see it shaped) and
   treats that smoke as a **gate before dependent work binds to the route** — doubly so where the
   outbound header set itself (§3) is smoke-dependent.
+
+## 11. The write variant (POST create)
+
+The read shape above is a GET LIST proxy; the same aggregator kind also needs a **POST create**
+proxy (`pkg/plugin/completion_records_write.go`, epic
+[#1411](https://github.com/grafana/grafana-pathfinder-app/issues/1411)), which routes writes through
+plugin-backend so authoritative identity is stamped server-side. Authorization is delegated to App
+Platform RBAC on the caller's own forwarded identity — the proxy adds no privilege. On the served
+`.app` group the basic viewer role grants write on `CompletionRecord` (verified with a real Viewer
+user, 2026-07-24: POST → 201, RBAC enforced), so the proxy exists not to lend privilege but for
+what a direct client write cannot do: stamp trustworthy identity (the CRD validates field presence,
+not truth), enforce a per-user rate limit, invalidate the read cache on create, and classify
+failures into the transient/terminal taxonomy the front-end queue consumes. The residual merge gate
+is a live Viewer-attributed write through the _deployed_ plugin proxy — proving the proxy's identity
+forwarding end-to-end, not the RBAC layer, which is now cleared. The proxy reuses the read
+shape's shared machinery — the URL builder (§1), trusted-context namespace (§2), the identity
+helpers and unsigned-JWT trust boundary (§3), and the in-process cache (§4) — and diverges only
+where a create differs from a read:
+
+- **Identity/org/stack are stamped server-side**, never trusted from the body. The typed request
+  struct carries only client facts (guide id/source/title, category, `pathId`, `completedAt`,
+  duration, `completionPercent`, `platform`), so any identity a client smuggles in is dropped on
+  decode; `userId` (from the ID-token
+  `sub`), `userLogin`, `userDisplayName`, `orgId`, `stackNamespace`, `recordedAt`, and `schemaVersion`
+  come from the verified request context. `userLogin`/`userDisplayName` are best-effort **display
+  snapshots** (ID-token claims, then the `X-Grafana-User` header) — a documented exception to §3's
+  no-`X-Grafana-User` rule that is acceptable only because they gate nothing and the read path
+  joins exclusively on `userId`. The inbound gate (§3) still applies, but a write **fails
+  closed with a 401**, not the read path's soft-200; the client retries 401s as transient, since
+  an expired session or forwarded token recovers after re-auth.
+- **`metadata.name` is server-generated** (random, DNS-safe) per create. Client-supplied names are
+  not accepted and there is **no 409 idempotency by design** — every accepted POST is a new record.
+  Delivery is therefore **at-least-once** (a retry after an upstream success that failed to report
+  mints a duplicate); duplicates are absorbed by the read path's per-`(userId, guideSource,
+guideId)` collation.
+- **Client fact fields are validated against the CRD's value domains** (source, category, and
+  platform enums; `completionPercent` bounds; per-field byte caps and a control-character reject on
+  the free-text fields) and `completedAt` is bounded to a sane window
+  (`[now − 30d, now + 5m]`) to tolerate delayed offline/queued retries while rejecting gross
+  backdating; any violation is a terminal 400.
+- **A per-user token-bucket write rate limit** (`completion_records_write_ratelimit.go`, §9 flood
+  guard) runs before any upstream work; exhaustion returns 429 with `Retry-After`.
+- **A successful create invalidates the namespace read cache** (§4), advances its generation, and
+  clears the negative-cache cooldown (a create is fresh proof the upstream is reachable).
+  Any LIST that began before the write may finish for its caller but cannot repopulate that cache;
+  a post-write GET starts a new refresh.
+- **Outcomes map onto the front-end retry-queue contract (four-way):** 201 created (durable);
+  **404 reserved** for the structural "route not deployed here" signal — the client disarms writes
+  for the session (persisted items survive for the next load), so an upstream per-record 404 is
+  remapped to 422; other non-429 4xx
+  terminal (validation / auth / schema — the client drops it); 429 / 5xx / network transient (the
+  client retries with capped exponential backoff — the proxy sets `Retry-After` as a standard
+  hint, but Grafana's `backendSrv` strips response headers from its thrown `FetchError`, so the
+  front-end client cannot honor it). The App Platform create accepts only
+  200/201; any other 2xx is treated as an invalid upstream response and mapped to a retryable 502.
 
 ---
 

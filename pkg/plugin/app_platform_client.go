@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -118,8 +119,9 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return nil, &appPlatformUpstreamError{
-			status: resp.StatusCode,
-			msg:    fmt.Sprintf("app platform list %s: status %d: %s", resource, resp.StatusCode, strings.TrimSpace(string(body))),
+			status:     resp.StatusCode,
+			retryAfter: resp.Header.Get("Retry-After"),
+			msg:        fmt.Sprintf("app platform list %s: status %d: %s", resource, resp.StatusCode, strings.TrimSpace(string(body))),
 		}
 	}
 
@@ -150,20 +152,92 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 	return &appPlatformListPage{Specs: specs, Continue: list.Metadata.Continue}, nil
 }
 
+// create POSTs a single object to a namespace collection (the write companion
+// to listPage). It returns the created object body on 200/201, or an
+// appPlatformUpstreamError carrying the upstream status (and Retry-After, when
+// present) so the caller can classify transient/terminal/identity-scoped and
+// echo the upstream backpressure hint. Body is bounded by maxBytes.
+func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namespace, resource string, obj []byte, maxBytes int64) ([]byte, error) {
+	if namespace == "" {
+		return nil, fmt.Errorf("app platform create: empty namespace")
+	}
+
+	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource)
+
+	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(obj))
+	if err != nil {
+		return nil, fmt.Errorf("app platform create: build request: %w", err)
+	}
+	forwardIdentityHeaders(req.Header, c.idToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("app platform create: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, &appPlatformUpstreamError{
+			status:     resp.StatusCode,
+			retryAfter: resp.Header.Get("Retry-After"),
+			msg:        fmt.Sprintf("app platform create %s: status %d: %s", resource, resp.StatusCode, strings.TrimSpace(string(body))),
+		}
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("app platform create: read body: %w", err)
+	}
+	if int64(len(body)) > maxBytes {
+		return nil, fmt.Errorf("app platform create: response exceeded %d bytes", maxBytes)
+	}
+	return body, nil
+}
+
 // appPlatformUpstreamError carries the upstream HTTP status so error handling
 // can classify failures once (§1): transient (429/5xx), terminal (other 4xx),
-// and identity-scoped (401/403 for this caller's forwarded identity).
+// and identity-scoped (401/403 for this caller's forwarded identity). retryAfter
+// preserves the upstream Retry-After header verbatim so a proxy can echo the
+// backpressure hint rather than inventing one.
 type appPlatformUpstreamError struct {
-	status int
-	msg    string
+	status     int
+	retryAfter string
+	msg        string
 }
 
 func (e *appPlatformUpstreamError) Error() string { return e.msg }
 
-// isTransientUpstreamStatus reports whether an HTTP status should be treated
-// as transient (retryable): 429 and any 5xx. All other non-2xx are terminal.
+// upstreamStatusOf returns the HTTP status carried by an upstream error, or
+// (0, false) when the failure has no status (network/timeout/decode).
+func upstreamStatusOf(err error) (int, bool) {
+	var ue *appPlatformUpstreamError
+	if errors.As(err, &ue) {
+		return ue.status, true
+	}
+	return 0, false
+}
+
+// upstreamRetryAfterOf returns the upstream Retry-After header carried by an
+// error, or "" when none was present.
+func upstreamRetryAfterOf(err error) string {
+	var ue *appPlatformUpstreamError
+	if errors.As(err, &ue) {
+		return ue.retryAfter
+	}
+	return ""
+}
+
+// isTransientUpstreamStatus reports whether an HTTP status should be retried:
+// 429, 5xx, and unexpected 2xx responses that did not satisfy an operation's
+// narrower success contract.
 func isTransientUpstreamStatus(status int) bool {
-	return status == http.StatusTooManyRequests || status >= 500
+	return status == http.StatusTooManyRequests || status >= 500 || (status >= 200 && status < 300)
 }
 
 // isIdentityScopedUpstreamStatus reports whether a status means the upstream

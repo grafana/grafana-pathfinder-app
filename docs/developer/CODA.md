@@ -140,19 +140,22 @@ The `CodaClient` struct handles all communication with Coda's REST API.
 
 All routes are prefixed by Grafana as `/api/plugins/grafana-pathfinder-app/resources/`.
 
-| Route                            | Method | Handler                      | Purpose                                                                         |
-| -------------------------------- | ------ | ---------------------------- | ------------------------------------------------------------------------------- |
-| `/coda/register`                 | POST   | `handleCodaRegister`         | Register with Coda using enrollment key                                         |
-| `/vms`                           | POST   | `handleCreateVM`             | Create VM (template + optional config)                                          |
-| `/vms`                           | GET    | `handleListVMs`              | List user's VMs                                                                 |
-| `/vms/{id}`                      | GET    | `handleGetVM`                | Get VM details                                                                  |
-| `/vms/{id}`                      | DELETE | `handleDeleteVM`             | Destroy VM                                                                      |
-| `/sample-apps`                   | GET    | `handleSampleApps`           | Proxy to Coda's sample-apps endpoint                                            |
-| `/alloy-scenarios`               | GET    | `handleAlloyScenarios`       | Proxy to Coda's alloy-scenarios endpoint                                        |
-| `/coda/exec`                     | POST   | `handleCodaExec`             | Run one command on the caller's active VM                                       |
-| `/completion-records/my`         | GET    | `handleMyCompletions`        | Per-user collated completion-record summary (App Platform read proxy, not Coda) |
-| `/completion-records/capability` | GET    | `handleCompletionCapability` | Cheap identity + upstream-reachability probe                                    |
-| `/health`                        | GET    | `handleHealth`               | Plugin health (includes `codaRegistered`)                                       |
+| Route                            | Method | Handler                        | Purpose                                                                                                                                                                           |
+| -------------------------------- | ------ | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/coda/register`                 | POST   | `handleCodaRegister`           | Register with Coda using enrollment key                                                                                                                                           |
+| `/vms`                           | POST   | `handleCreateVM`               | Create VM (template + optional config)                                                                                                                                            |
+| `/vms`                           | GET    | `handleListVMs`                | List user's VMs                                                                                                                                                                   |
+| `/vms/{id}`                      | GET    | `handleGetVM`                  | Get VM details                                                                                                                                                                    |
+| `/vms/{id}`                      | DELETE | `handleDeleteVM`               | Destroy VM                                                                                                                                                                        |
+| `/sample-apps`                   | GET    | `handleSampleApps`             | Proxy to Coda's sample-apps endpoint                                                                                                                                              |
+| `/alloy-scenarios`               | GET    | `handleAlloyScenarios`         | Proxy to Coda's alloy-scenarios endpoint                                                                                                                                          |
+| `/coda/exec`                     | POST   | `handleCodaExec`               | Run one command on the caller's active VM                                                                                                                                         |
+| `/completion-records`            | POST   | `handleCreateCompletionRecord` | Durable write proxy: persists one completion as a `CompletionRecord` upstream, identity/org/stack stamped server-side, per-user rate limited (App Platform write proxy, not Coda) |
+| `/completion-records/my`         | GET    | `handleMyCompletions`          | Per-user collated completion-record summary (App Platform read proxy, not Coda)                                                                                                   |
+| `/completion-records/capability` | GET    | `handleCompletionCapability`   | Cheap identity + upstream-reachability probe                                                                                                                                      |
+| `/package-recommendations`       | GET    | `handlePackageRecommendations` | Cached package index (not Coda)                                                                                                                                                   |
+| `/custom-guide-repository`       | GET    | `handleCustomGuideRepository`  | Custom guide catalogue (App Platform read proxy, not Coda)                                                                                                                        |
+| `/health`                        | GET    | `handleHealth`                 | Plugin health (includes `codaRegistered`)                                                                                                                                         |
 
 ### App Platform proxies — identity trust boundary
 
@@ -169,6 +172,25 @@ Outbound, proxies forward identity derived from the ID token only — `Authoriza
 <id-token>` plus `X-Grafana-Id`, both synthesized from the inbound token via
 `forwardIdentityHeaders` — never the caller's `Cookie`, and never a replay of the inbound
 `Authorization` header (Grafana strips it before plugin resource handlers reach the plugin).
+
+The write proxy (`POST /completion-records`, `pkg/plugin/completion_records_write.go`) applies the
+same inbound gate but fails **closed with a 401** rather than a soft-200; the front-end client
+retries 401s as transient, since an expired session or forwarded token recovers after re-auth.
+Every identity field written into the record (`userId` from the
+ID-token `sub`, `userLogin`, `userDisplayName`, `orgId`, `stackNamespace`, `recordedAt`) is stamped
+**server-side from the verified request context**; body-supplied identity is never read (the typed
+request struct has nowhere to put it). `userLogin`/`userDisplayName` are best-effort display
+snapshots only (ID-token claims, then the `X-Grafana-User` header) — they gate nothing, and the
+read path joins exclusively on `userId`. Authorization is delegated to App Platform RBAC on the
+caller's own forwarded identity, so the proxy adds no privilege — on the served `.app` group the
+basic viewer role grants write on `CompletionRecord` (verified with a real Viewer user, 2026-07-24:
+POST → 201, RBAC enforced). The proxy is retained because a direct client write cannot stamp
+trustworthy identity, rate-limit per user, invalidate the read cache, or classify failures for the
+retry queue. The residual merge gate is a live Viewer-attributed write through the deployed plugin
+proxy — proving identity forwarding end-to-end, not the (now-cleared) RBAC layer.
+The request body is limited to one 64 KiB JSON value with per-field byte caps on free text. A
+successful write invalidates the read cache with a generation fence so an older in-flight LIST
+cannot make stale data fresh again, and clears the negative-cache cooldown.
 
 The single future-hardening item is cryptographic verification of the ID token against
 Grafana's JWKS via `github.com/grafana/authlib`; it is not wired today because it needs runtime
