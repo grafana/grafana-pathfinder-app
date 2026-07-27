@@ -132,7 +132,6 @@ export function BlockEditorHeader({
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 
-  // Derive backend status badge
   const backendBadge = () => {
     if (publishedStatus === 'not-saved') {
       return (
@@ -155,7 +154,6 @@ export function BlockEditorHeader({
         </Tooltip>
       );
     }
-    // published
     if (hasUnsyncedChanges) {
       return (
         <Tooltip content="Published guide has unsaved changes">
