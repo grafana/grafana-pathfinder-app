@@ -192,10 +192,10 @@ func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namesp
 
 	// 200/201 means the record is already durable upstream, and the caller does
 	// not use the response body. So a body read error or an over-cap body must
-	// NEVER become a retryable failure — a retry mints a fresh record name and
-	// creates a durable duplicate. Read best-effort, swallow read/size errors,
-	// and drain so the connection can be reused; the success is not undone by a
-	// body that failed to arrive intact.
+	// NEVER become a retryable failure: the write has already committed, and
+	// surfacing an error would mask a durable success as failed. Read best-effort,
+	// swallow read/size errors, and drain so the connection can be reused; the
+	// success is not undone by a body that failed to arrive intact.
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if int64(len(body)) > maxBytes {
 		body = body[:maxBytes]

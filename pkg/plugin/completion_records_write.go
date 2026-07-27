@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -51,11 +50,18 @@ import (
 //   - other 4xx  terminal — validation / schema / 403; the write will never
 //          succeed as posted, so the client drops it (no retry).
 //
-// Idempotency: when the client supplies a stable idempotencyKey (the completion
-// event's id, see #1434), the record name is derived DETERMINISTICALLY from it,
+// Idempotency: a non-blank idempotencyKey (the completion event's stable client
+// id, see #1434) is REQUIRED — a blank/missing key is a terminal 400, never a
+// random-name fallback. The record name is derived DETERMINISTICALLY from the
+// trusted server-stamped userID AND the exact key — hash(userID || sep || key) —
 // so a retried POST targets the same object and an upstream "already exists"
-// (409) is treated as success — a committed-but-unacknowledged write cannot
-// duplicate. Without a key the name is random (every POST is a new record).
+// (409) is treated as idempotent success: a committed-but-unacknowledged write
+// cannot duplicate. The name is scoped to the trusted userID, so two users
+// submitting the same key target DIFFERENT objects — one caller's key can never
+// collide with, or be acknowledged against, another caller's record in the
+// shared namespace. The contract is first-write-wins per (userID, key): the key
+// must be stable per completion event (which is exactly what #1434 sends), so a
+// reused key with different content resolves to the first record for that key.
 
 const (
 	// completionWriteSchemaVersion is the CompletionRecord spec schemaVersion this
@@ -120,10 +126,10 @@ type completionWriteRequest struct {
 	DurationMs        *int64 `json:"durationMs"`
 	Platform          string `json:"platform"`
 
-	// IdempotencyKey is the completion event's stable client id (#1434). When
-	// present it makes the write idempotent by deriving the record name
-	// deterministically; it is never persisted. Optional: an absent key falls
-	// back to a fresh random name.
+	// IdempotencyKey is the completion event's stable client id (#1434). REQUIRED
+	// and non-blank: it makes the write idempotent by deriving the record name
+	// deterministically from the trusted userID and this key. It is never
+	// persisted. A blank/missing key is a terminal 400 (no random-name fallback).
 	IdempotencyKey string `json:"idempotencyKey"`
 }
 
@@ -173,12 +179,10 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	name, err := completionRecordName(req.IdempotencyKey)
-	if err != nil {
-		a.ctxLogger(r.Context()).Error("completion write: name generation failed", "error", err)
-		a.writeError(w, "internal-error", http.StatusInternalServerError)
-		return
-	}
+	// Identity-scoped deterministic name (userID guaranteed present at :140, key
+	// validated non-blank in buildCompletionSpec). Every create carries this name,
+	// which is the invariant that makes an upstream 409 provably our own record.
+	name := completionRecordName(userID, req.IdempotencyKey)
 
 	obj := completionRecordObject{
 		APIVersion: completionRecordsGroupVersion,
@@ -187,9 +191,9 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 		Spec:       spec,
 	}
 
-	// An "already exists" (409) from a deterministically-named idempotent retry
-	// means the write already committed — treat it as success, never a duplicate
-	// or a failure.
+	// An "already exists" (409) on the identity-scoped deterministic name means
+	// this caller's own write already committed — treat it as idempotent success,
+	// never a duplicate or a failure.
 	if err := creator.Create(r.Context(), namespace, obj); err != nil && !isAlreadyExistsUpstream(err) {
 		a.writeCompletionUpstreamError(w, r, err)
 		return
@@ -225,6 +229,12 @@ func decodeCompletionWriteRequest(w http.ResponseWriter, r *http.Request) (compl
 func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, userID, userLogin, userDisplayName, namespace string) (completionRecordWriteSpec, error) {
 	if req.GuideID == "" || req.GuideSource == "" {
 		return completionRecordWriteSpec{}, fmt.Errorf("guideId and guideSource are required")
+	}
+	// A non-blank idempotency key is REQUIRED: the record name is derived from it
+	// (with the trusted userID), so a blank key has no safe deterministic identity
+	// and must not fall back to a random name. Reject before any upstream work.
+	if strings.TrimSpace(req.IdempotencyKey) == "" {
+		return completionRecordWriteSpec{}, fmt.Errorf("idempotencyKey is required")
 	}
 	for _, f := range []struct {
 		name  string
@@ -358,28 +368,35 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 	a.writeError(w, "completion-write-rejected", status)
 }
 
-// completionRecordName mints the DNS-safe object name for a create. When the
-// client supplies a stable idempotencyKey the name is DETERMINISTIC — a SHA-256
-// of the key — so a retried POST targets the same record and cannot duplicate a
-// committed-but-unacknowledged write (an upstream 409 is then treated as
-// success). Hashing keeps the name DNS-safe for any key content, sidestepping
-// CRD naming constraints. Absent a key the name is random (every POST is a new
-// record); client-supplied names are never accepted.
-func completionRecordName(idempotencyKey string) (string, error) {
-	if key := strings.TrimSpace(idempotencyKey); key != "" {
-		sum := sha256.Sum256([]byte(key))
-		return "completion-" + hex.EncodeToString(sum[:16]), nil
-	}
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return "completion-" + hex.EncodeToString(buf), nil
+// completionRecordName mints the DNS-safe object name for a create. The name is
+// DETERMINISTIC and IDENTITY-SCOPED: a SHA-256 over the trusted server-stamped
+// userID and the exact (validated, non-blank) idempotencyKey, domain-separated
+// so the two components cannot run together ambiguously. Scoping to userID means
+// two users submitting the same key target DIFFERENT objects — one caller's key
+// can never collide with another's in the shared namespace, so an upstream 409
+// is provably the caller's own committed record and is treated as idempotent
+// success. Hashing keeps the name DNS-safe for any key content, sidestepping CRD
+// naming constraints. The caller guarantees a non-blank key (buildCompletionSpec
+// rejects a blank one with a 400); client-supplied names are never accepted.
+func completionRecordName(userID, idempotencyKey string) string {
+	h := sha256.New()
+	h.Write([]byte(userID))
+	// A zero byte separates the trusted identity from the client key. The key is
+	// validated to contain no control characters (validateBoundedText), so it can
+	// never contain this separator — the boundary is unambiguous regardless of
+	// key content, defeating a (userID, key) ambiguity across callers.
+	h.Write([]byte{0})
+	h.Write([]byte(idempotencyKey))
+	sum := h.Sum(nil)
+	return "completion-" + hex.EncodeToString(sum[:16])
 }
 
 // isAlreadyExistsUpstream reports whether an upstream create failed only because
-// the (deterministically named) record already exists — an idempotent retry to
-// treat as success, not a duplicate or an error. Returns false for a nil error.
+// the record already exists (409). Every create supplies an identity-scoped
+// deterministic name (completionRecordName), so a 409 is unambiguously the
+// caller's OWN prior committed record for this key — never another caller's or
+// an unrelated object — and is an idempotent retry to treat as success, not a
+// duplicate or an error. Returns false for a nil error.
 func isAlreadyExistsUpstream(err error) bool {
 	status, ok := upstreamStatusOf(err)
 	return ok && status == http.StatusConflict

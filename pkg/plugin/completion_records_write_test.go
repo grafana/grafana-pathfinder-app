@@ -41,6 +41,8 @@ func withCreator(t *testing.T, c completionRecordCreator) {
 }
 
 // validWriteBody is a well-formed client fact (all CRD value domains satisfied).
+// idempotencyKey is required, so a well-formed body always carries one; tests
+// that exercise the key contract override or delete it.
 func validWriteBody() map[string]any {
 	return map[string]any{
 		"guideSource":       "bundled",
@@ -52,6 +54,7 @@ func validWriteBody() map[string]any {
 		"source":            "objectives",
 		"completedAt":       timeNow().UTC().Format(time.RFC3339),
 		"platform":          "cloud",
+		"idempotencyKey":    "evt-default",
 	}
 }
 
@@ -134,21 +137,28 @@ func TestCompletionWrite_Created_StampsServerFields(t *testing.T) {
 	}
 }
 
-func TestCompletionWrite_GeneratesUniqueNames(t *testing.T) {
+// Distinct completion events (distinct keys) from the same user derive distinct
+// record names, so separate completions never collapse into one object.
+func TestCompletionWrite_DistinctKeysDistinctNames(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	creator := &fakeCreator{}
 	withCreator(t, creator)
 
-	rec1 := doWrite(t, nil, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
+	body1 := validWriteBody()
+	body1["idempotencyKey"] = "event-1"
+	rec1 := doWrite(t, nil, writeRequest(t, "user:abc", body1, testGrafanaConfig()))
 	name1 := creator.last.Metadata.Name
-	rec2 := doWrite(t, nil, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
+
+	body2 := validWriteBody()
+	body2["idempotencyKey"] = "event-2"
+	rec2 := doWrite(t, nil, writeRequest(t, "user:abc", body2, testGrafanaConfig()))
 	name2 := creator.last.Metadata.Name
 
 	if rec1.Code != http.StatusCreated || rec2.Code != http.StatusCreated {
 		t.Fatalf("both writes should succeed: %d, %d", rec1.Code, rec2.Code)
 	}
 	if name1 == "" || name1 == name2 {
-		t.Fatalf("names must be non-empty and unique: %q, %q", name1, name2)
+		t.Fatalf("distinct keys must derive non-empty, distinct names: %q, %q", name1, name2)
 	}
 }
 
@@ -257,6 +267,10 @@ func TestCompletionWrite_Validation(t *testing.T) {
 	}{
 		{"missing guideId", func(b map[string]any) { delete(b, "guideId") }},
 		{"missing guideSource", func(b map[string]any) { delete(b, "guideSource") }},
+		{"missing idempotencyKey", func(b map[string]any) { delete(b, "idempotencyKey") }},
+		{"blank idempotencyKey", func(b map[string]any) { b["idempotencyKey"] = "" }},
+		{"whitespace idempotencyKey", func(b map[string]any) { b["idempotencyKey"] = "   " }},
+		{"oversized idempotencyKey", func(b map[string]any) { b["idempotencyKey"] = strings.Repeat("a", completionMaxIDLen+1) }},
 		{"invalid source", func(b map[string]any) { b["source"] = "teleport" }},
 		{"invalid guideCategory", func(b map[string]any) { b["guideCategory"] = "podcast" }},
 		{"invalid platform", func(b map[string]any) { b["platform"] = "mainframe" }},
@@ -406,6 +420,85 @@ func TestCompletionWrite_AlreadyExistsTreatedAsSuccess(t *testing.T) {
 	}
 }
 
+// Two users submitting the SAME idempotency key must target DIFFERENT records:
+// the name is scoped to the trusted userID. This is the cross-user integrity
+// invariant — user B can never receive a 409 for user A's record, so B is never
+// falsely acknowledged as durable when nothing was written for B.
+func TestCompletionWrite_CrossUserSameKeyDistinctRecords(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	body := validWriteBody()
+	body["idempotencyKey"] = "shared-event-key"
+
+	recA := doWrite(t, nil, writeRequest(t, "user:alice", body, testGrafanaConfig()))
+	if recA.Code != http.StatusCreated {
+		t.Fatalf("user A status = %d, want 201", recA.Code)
+	}
+	nameA, userA := creator.last.Metadata.Name, creator.last.Spec.UserID
+
+	recB := doWrite(t, nil, writeRequest(t, "user:bob", body, testGrafanaConfig()))
+	if recB.Code != http.StatusCreated {
+		t.Fatalf("user B status = %d, want 201", recB.Code)
+	}
+	nameB, userB := creator.last.Metadata.Name, creator.last.Spec.UserID
+
+	if userA != "user:alice" || userB != "user:bob" {
+		t.Fatalf("identity not stamped per caller: %q, %q", userA, userB)
+	}
+	if nameA == nameB {
+		t.Fatalf("same key from different users must derive DIFFERENT names, both %q", nameA)
+	}
+}
+
+// A keyless request is a terminal 400 BEFORE any upstream work, so a keyless
+// caller never reaches the create path and can never have an upstream 409
+// blindly acknowledged as success — even when the upstream would report one.
+func TestCompletionWrite_KeylessNeverReachesUpstream(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{err: &appPlatformUpstreamError{status: http.StatusConflict, msg: "already exists"}}
+	withCreator(t, creator)
+
+	body := validWriteBody()
+	delete(body, "idempotencyKey")
+	rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (keyless is terminal, never a 409-ack)", rec.Code)
+	}
+	if creator.n != 0 {
+		t.Fatalf("keyless request must not reach upstream")
+	}
+}
+
+// Same user replaying the SAME key with the SAME payload is idempotent: the
+// derived name is stable, and an upstream 409 on the replay surfaces as success
+// (201) — no duplicate, no false failure.
+func TestCompletionWrite_SameUserReplayIdempotent(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	body := validWriteBody()
+	body["idempotencyKey"] = "event-replay"
+
+	rec1 := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	if rec1.Code != http.StatusCreated {
+		t.Fatalf("first write status = %d, want 201", rec1.Code)
+	}
+	name1 := creator.last.Metadata.Name
+
+	// The replay now finds the record already committed upstream.
+	creator.err = &appPlatformUpstreamError{status: http.StatusConflict, msg: "already exists"}
+	rec2 := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	if rec2.Code != http.StatusCreated {
+		t.Fatalf("replay status = %d, want 201 (idempotent success)", rec2.Code)
+	}
+	if creator.last.Metadata.Name != name1 {
+		t.Fatalf("replay name = %q, want stable %q", creator.last.Metadata.Name, name1)
+	}
+}
+
 // --- Durable display-identity bounds (finding 6) ----------------------------
 
 func TestCompletionWrite_DisplayIdentityBounded(t *testing.T) {
@@ -414,9 +507,11 @@ func TestCompletionWrite_DisplayIdentityBounded(t *testing.T) {
 	withCreator(t, creator)
 
 	// A hostile / oversized identity-provider value arrives via X-Grafana-User
-	// (no login/name claims in the test token, so login falls back to it).
+	// (no login/name claims in the test token, so login falls back to it). Control
+	// characters appear BEFORE the truncation boundary so stripping is exercised
+	// independently of the length cap, not merely truncated away.
 	r := writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())
-	r.Header.Set("X-Grafana-User", strings.Repeat("a", completionMaxDisplayLen+50)+"\x00\x07bob")
+	r.Header.Set("X-Grafana-User", "\x00\x07"+strings.Repeat("a", 10)+"\x01"+strings.Repeat("b", completionMaxDisplayLen+50)+"tail")
 	rec := doWrite(t, nil, r)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201 (odd identity is sanitized, not rejected)", rec.Code)

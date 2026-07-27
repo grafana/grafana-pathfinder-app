@@ -101,8 +101,10 @@ type completionRecordWriteSpec struct {
 }
 
 // completionRecordObjectMeta is the subset of Kubernetes object metadata the
-// writer sets. A unique name is server-generated per create (no client-supplied
-// name; no 409 idempotency mechanism by design).
+// writer sets. The name is server-derived deterministically from the trusted
+// userID and the required idempotency key (completionRecordName), never supplied
+// by the client, so a retried create targets the same object and an upstream 409
+// is an idempotent success.
 type completionRecordObjectMeta struct {
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`

@@ -247,11 +247,17 @@ where a create differs from a read:
   joins exclusively on `userId`. The inbound gate (§3) still applies, but a write **fails
   closed with a 401**, not the read path's soft-200; the client retries 401s as transient, since
   an expired session or forwarded token recovers after re-auth.
-- **`metadata.name` is server-generated** (random, DNS-safe) per create. Client-supplied names are
-  not accepted and there is **no 409 idempotency by design** — every accepted POST is a new record.
-  Delivery is therefore **at-least-once** (a retry after an upstream success that failed to report
-  mints a duplicate); duplicates are absorbed by the read path's per-`(userId, guideSource,
-guideId)` collation.
+- **`metadata.name` is server-derived, deterministic, and identity-scoped.** A non-blank
+  `idempotencyKey` (the completion event's stable client id, #1434) is **required** — a blank or
+  missing key is a terminal 400, never a random-name fallback. The name is a DNS-safe
+  `hash(userId || sep || key)` over the trusted server-stamped `userId` and the exact key, so a
+  retried POST targets the same object and an upstream **409 "already exists" is an idempotent
+  success**, not a duplicate or a failure. Scoping the name to `userId` means two callers submitting
+  the same key hit **different** objects, so one caller's key can never collide with — or be
+  acknowledged against — another's record in the shared namespace. The contract is
+  **first-write-wins per `(userId, key)`**: the key must be stable per completion event (which is
+  what #1434 sends), so reusing a key for different content resolves to the first record for that
+  key. Client-supplied names are never accepted.
 - **Client fact fields are validated against the CRD's value domains** (source, category, and
   platform enums; `completionPercent` bounds; per-field byte caps and a control-character reject on
   the free-text fields) and `completedAt` is bounded to a sane window
@@ -264,9 +270,11 @@ guideId)` collation.
   Any LIST that began before the write may finish for its caller but cannot repopulate that cache;
   a post-write GET starts a new refresh.
 - **Outcomes map onto the front-end retry-queue contract (four-way):** 201 created (durable);
-  **404 reserved** for the structural "route not deployed here" signal — the client disarms writes
-  for the session (persisted items survive for the next load), so an upstream per-record 404 is
-  remapped to 422; other non-429 4xx
+  **404 preserved verbatim** as the structural "route not deployed here" signal — the create POSTs
+  to the completionrecords **collection**, so an upstream 404 means the whole group/route is absent
+  (never a per-record miss). The client disarms writes for the session (persisted items survive for
+  the next load); the 404 is never a per-record drop and is never remapped to another status; other
+  non-429 4xx
   terminal (validation / auth / schema — the client drops it); 429 / 5xx / network transient (the
   client retries with capped exponential backoff — the proxy sets `Retry-After` as a standard
   hint, but Grafana's `backendSrv` strips response headers from its thrown `FetchError`, so the

@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -199,6 +200,30 @@ func TestCompletionHTTPClient_Create_WireComposition(t *testing.T) {
 	if wire.Spec != spec {
 		t.Errorf("wire spec = %+v, want %+v", wire.Spec, spec)
 	}
+
+	// Decoding into the Go struct cannot distinguish an omitted key from an empty
+	// one, so pin the raw spec key set: every CRD-required field must be present
+	// on the wire, including zero-valued ones. pathId is the specific empty field
+	// finding 5 flagged — it must serialize as an explicit "" key, not be dropped.
+	var envelope struct {
+		Spec map[string]json.RawMessage `json:"spec"`
+	}
+	if err := json.Unmarshal(gotBody, &envelope); err != nil {
+		t.Fatalf("wire spec not decodable as an object: %v (body: %s)", err, gotBody)
+	}
+	for _, key := range []string{
+		"guideId", "guideSource", "guideTitle", "pathId", "source", "completedAt",
+		"durationSeconds", "completionPercent", "guideCategory", "platform",
+		"userId", "userLogin", "userDisplayName", "recordedAt", "orgId",
+		"stackNamespace", "schemaVersion",
+	} {
+		if _, ok := envelope.Spec[key]; !ok {
+			t.Errorf("wire spec missing required key %q (zero-valued fields must still be present)", key)
+		}
+	}
+	if got := string(envelope.Spec["pathId"]); got != `""` {
+		t.Errorf("pathId on the wire = %s, want an explicit empty string", got)
+	}
 }
 
 // TestCompletionHTTPClient_Create_OversizedSuccessBodyIsNotRetryable pins
@@ -216,6 +241,42 @@ func TestCompletionHTTPClient_Create_OversizedSuccessBodyIsNotRetryable(t *testi
 	obj := completionRecordObject{Metadata: completionRecordObjectMeta{Name: "completion-abc"}}
 	if err := client.Create(context.Background(), "stacks-1", obj); err != nil {
 		t.Fatalf("Create returned error on an over-cap 201 body: %v (must be treated as success)", err)
+	}
+}
+
+// errAfterStatusBody returns a non-EOF read error, simulating a body that fails
+// to arrive intact AFTER the success status line was received.
+type errAfterStatusBody struct{}
+
+func (errAfterStatusBody) Read([]byte) (int, error) { return 0, fmt.Errorf("simulated body read failure") }
+func (errAfterStatusBody) Close() error             { return nil }
+
+// successThenBodyReadErrorTransport answers every request with a bare 201 whose
+// body errors on the first Read.
+type successThenBodyReadErrorTransport struct{}
+
+func (successThenBodyReadErrorTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusCreated,
+		Status:     "201 Created",
+		Header:     make(http.Header),
+		Body:       errAfterStatusBody{},
+	}, nil
+}
+
+// TestAppPlatformCreateClient_SuccessBodyReadErrorIsNotRetryable pins the other
+// half of finding 1: a body-read error AFTER a 200/201 must still return success.
+// The record is already durable and the body is unused, so surfacing the read
+// error would mask a committed write as a retryable failure.
+func TestAppPlatformCreateClient_SuccessBodyReadErrorIsNotRetryable(t *testing.T) {
+	client := &appPlatformListClient{
+		appURL:     "http://example.invalid",
+		idToken:    "id-token-abc",
+		httpClient: &http.Client{Transport: successThenBodyReadErrorTransport{}},
+		logger:     log.DefaultLogger,
+	}
+	if _, err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(`{}`), 1024); err != nil {
+		t.Fatalf("create returned error on a post-201 body read failure: %v (must be treated as success)", err)
 	}
 }
 
