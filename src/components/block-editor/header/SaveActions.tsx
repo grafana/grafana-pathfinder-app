@@ -22,9 +22,10 @@ export interface SaveActionsProps {
 }
 
 /**
- * Single smart save/publish action button whose label and variant follow the
- * backend publish state: Save as draft / Update draft (secondary) or
- * Publish / Update (primary).
+ * Single smart save/publish button whose label and variant follow the backend
+ * publish state: "Save" (secondary — an unsaved guide or a draft with local
+ * changes) or "Publish" / "Update" (primary). Label-only at full width;
+ * collapses to icon-only when the toolbar narrows (see `saveButton`).
  */
 export function SaveActions({
   publishedStatus,
@@ -44,11 +45,11 @@ export function SaveActions({
         onClick={onSaveDraft}
         disabled={isPosting}
         tooltip="Save as draft without publishing"
-        aria-label="Save as draft"
-        className={styles.collapsibleLabel}
+        aria-label="Save"
+        className={styles.saveButton}
         data-testid={testIds.blockEditor.saveDraftButton}
       >
-        Save as draft
+        Save
       </Button>
     );
   }
@@ -62,12 +63,12 @@ export function SaveActions({
           icon="save"
           onClick={onSaveDraft}
           disabled={isPosting}
-          tooltip="Save current changes to library draft"
-          aria-label="Update draft"
-          className={styles.collapsibleLabel}
+          tooltip="Save current changes to the library draft"
+          aria-label="Save"
+          className={styles.saveButton}
           data-testid={testIds.blockEditor.saveDraftButton}
         >
-          Update draft
+          Save
         </Button>
       );
     }
@@ -80,7 +81,7 @@ export function SaveActions({
         disabled={isPosting}
         tooltip="Publish and make visible to users"
         aria-label="Publish"
-        className={styles.collapsibleLabel}
+        className={styles.saveButton}
         data-testid={testIds.blockEditor.publishButton}
       >
         Publish
@@ -98,7 +99,7 @@ export function SaveActions({
       disabled={isPosting}
       tooltip="Save changes and keep published"
       aria-label="Update"
-      className={styles.collapsibleLabel}
+      className={styles.saveButton}
       data-testid={testIds.blockEditor.publishButton}
     >
       Update

@@ -72,7 +72,7 @@ export function HeaderKebab({
       return <Menu.Item label="Publish" icon="cloud-upload" onClick={onPostToBackend} disabled={isPosting} />;
     }
     if (publishedStatus === 'draft' && hasUnsyncedChanges) {
-      // Main save action is "Update draft" → offer "Publish" as a shortcut here
+      // Main save action is "Save" → offer "Publish" as a shortcut here
       return <Menu.Item label="Publish" icon="cloud-upload" onClick={onPostToBackend} disabled={isPosting} />;
     }
     if (publishedStatus === 'draft' && !hasUnsyncedChanges) {

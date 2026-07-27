@@ -97,17 +97,24 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     padding: '0 2px',
     flexShrink: 0,
   }),
-  // Opt-in collapse for Grafana `Button` components that carry a text label.
-  // Under 500px we hide Button's content `<span>` (its direct child) and
-  // tighten horizontal padding, leaving the icon visible. Tooltips and
-  // aria-labels carry the meaning. Targets `& > span` so it only affects
-  // the labeled span that Grafana renders as a direct child of the
-  // `<button>` element this class is applied to — never any descendants.
-  // Container query fires off `toolbarRow`'s `containerType: inline-size`.
-  collapsibleLabel: css({
+  // Save/publish button: label-only at full width, icon-only once the toolbar
+  // collapses below 500px (mirrors the rocker's collapse). Grafana's Button
+  // renders the icon as its only `<svg>` and the label as a direct-child
+  // `<span>`, so we toggle those directly. Container query fires off
+  // `toolbarRow`'s `containerType: inline-size`; the aria-label carries the
+  // action name when the label is hidden.
+  saveButton: css({
+    // Full width: show the label, hide the icon glyph.
+    '& svg': {
+      display: 'none',
+    },
     '@container (max-width: 500px)': {
+      // Collapsed: icon-only — show the icon, hide the label, tighten padding.
       paddingLeft: theme.spacing(0.75),
       paddingRight: theme.spacing(0.75),
+      '& svg': {
+        display: 'inline-block',
+      },
       '& > span': {
         display: 'none',
       },
