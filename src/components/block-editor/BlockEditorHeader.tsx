@@ -172,13 +172,10 @@ export function BlockEditorHeader({
 
   return (
     <div className={styles.header}>
-      {/* Single-row toolbar: title area on the left, right-aligned actions
-          cluster on the right. */}
       <div className={styles.row}>
         <HeaderTitleRow guideTitle={guideTitle} guideId={guideId} viewMode={viewMode} onTitleCommit={onTitleCommit} />
 
         <div className={styles.actions}>
-          {/* Local-save indicator, shown only when the backend is unavailable. */}
           {!isBackendAvailable &&
             (isDirty ? (
               <Tooltip content="Saving changes to local storage">
