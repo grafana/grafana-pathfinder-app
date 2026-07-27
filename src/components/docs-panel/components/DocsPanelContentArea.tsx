@@ -437,6 +437,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         const willMarkMilestone = Boolean(slug && journeyBase);
                         const completionContext = {
                           packageManifest: stableContent.metadata?.packageManifest,
+                          repository: stableContent.metadata?.repository,
                           guideTitle: activeTab?.title,
                         };
                         if (baseUrl?.startsWith('bundled:')) {

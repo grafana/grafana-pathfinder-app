@@ -197,6 +197,54 @@ describe('learning-journey milestone completion (trigger class B / milestone-as-
   });
 });
 
+describe('real V1 recommendation shape (finding 1 — repository is a manifest sibling)', () => {
+  // V1PackageManifest carries `id`/`type` but NOT `repository`; the recommender
+  // returns `repository` as a SIBLING of `manifest`. The completion context must
+  // thread that sibling separately, or non-default guides corrupt the durable key.
+  it('keys a bundled guide on the sibling repository, not a manifest default', () => {
+    setJourneyCompletionPercentage('bundled:linux-01', 100, {
+      packageManifest: { id: 'linux-01', type: 'guide' },
+      repository: 'online-cdn',
+      guideTitle: 'Linux',
+    });
+
+    expect(emitted[0]).toMatchObject({ guideSource: 'online-cdn', guideId: 'linux-01' });
+  });
+
+  it('keys a remote standalone guide on the sibling repository', () => {
+    recordStandaloneGuideCompletion({
+      packageManifest: { id: 'fe-alerting-01', type: 'guide' },
+      repository: 'app-platform',
+      guideTitle: 'Alerting',
+    });
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ guideSource: 'app-platform', guideId: 'fe-alerting-01' });
+  });
+
+  it('keys a milestone-as-guide fact on the sibling repository with no manifest repository', async () => {
+    await markMilestoneDone('base', 'm1', undefined, {
+      packageManifest: { id: 'linux-journey', type: 'journey' },
+      repository: 'app-platform',
+    });
+
+    expect(emitted[0]).toMatchObject({ guideSource: 'app-platform', guideId: 'm1' });
+  });
+
+  it('keys the journey fact on the sibling repository from a real V1 shape', async () => {
+    milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3']));
+    getPathsDataMock.mockReturnValue({ paths: [] });
+
+    await markMilestoneDone('base', 'm3', 3, {
+      packageManifest: { id: 'linux-journey', type: 'journey' },
+      repository: 'app-platform',
+    });
+
+    const journeyEmit = emitted.find((f) => f.kind === 'journey');
+    expect(journeyEmit).toMatchObject({ guideSource: 'app-platform', guideId: 'linux-journey' });
+  });
+});
+
 describe('whole-journey completion (trigger class D — the new journey_completed)', () => {
   it('fires journey_completed once when the final milestone crosses the threshold, and awards the badge', async () => {
     milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3']));

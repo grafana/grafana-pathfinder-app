@@ -85,6 +85,24 @@ describe('completion write cross-tab storage', () => {
     expect(store.list()).toEqual([write]);
   });
 
+  it('overlays a failed-persist update over its stale persisted twin (finding 5)', () => {
+    const store = createCompletionWriteStorage('user-7:org-3', 'tab-a');
+    const original = item('evt'); // attempts: 0, persisted successfully
+    store.put(original);
+    expect(store.list()).toEqual([original]);
+
+    // Advance retry state, but the persisting setItem fails → volatile fallback.
+    const updated: QueuedWrite = { ...original, attempts: 1, nextAttemptAt: 5000 };
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+      throw new Error('quota exceeded');
+    });
+    store.put(updated);
+
+    // list() must return the NEWER volatile copy, never revert to the old
+    // persisted one (which would reset backoff to attempts: 0).
+    expect(store.list()).toEqual([updated]);
+  });
+
   it('allows one owner-scoped lease holder and recovers after expiry', () => {
     const tabA = createCompletionWriteStorage('user-7:org-3', 'tab-a');
     const tabB = createCompletionWriteStorage('user-7:org-3', 'tab-b');

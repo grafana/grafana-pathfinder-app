@@ -334,19 +334,46 @@ describe('startup drain (reload durability)', () => {
 });
 
 describe('deployment-skew: missing route matrix', () => {
-  it('write 404 mid-session (skew) disarms silently with no retry storm', async () => {
+  it('write 404 mid-session disarms network drains with no retry storm', async () => {
     sendResults = [{ kind: 'route-missing' }];
     armCompletionWriteHook(deps());
     await runTimer();
 
     recordGuideCompletion(guideFact({ guideId: 'a' }));
-    await runTimer(); // route-missing → disarm + teardown
+    await runTimer(); // route-missing → suppress network drains this session
     expect(sent).toHaveLength(1);
 
-    // Subsequent completions do not enqueue or send, and there is no retry loop.
+    // A later completion no longer SENDS this session, and there is no retry loop.
     recordGuideCompletion(guideFact({ guideId: 'b' }));
     clock += 10 * 60 * 1000;
     await runTimer();
     expect(sent).toHaveLength(1);
+  });
+
+  it('keeps persisting later facts after a structural 404 and drains all on the next arm (finding 2)', async () => {
+    sendResults = [{ kind: 'route-missing' }];
+    armCompletionWriteHook(deps());
+    await runTimer();
+
+    recordGuideCompletion(guideFact({ guideId: 'a' }));
+    await runTimer(); // 'a' send → route-missing → network disarmed; 'a' stays persisted
+    expect(sent).toHaveLength(1);
+
+    // A later same-session completion still enqueues + persists (no send now).
+    recordGuideCompletion(guideFact({ guideId: 'b' }));
+    await runTimer();
+    expect(sent).toHaveLength(1);
+    // Both facts are durably persisted for a future load.
+    expect(createCompletionWriteStorage('user-7:org-3').list()).toHaveLength(2);
+
+    // Reload / rearm on a session where the route now exists: both drain.
+    __resetCompletionWriteHookForTests();
+    sent = [];
+    sendResults = [{ kind: 'created' }];
+    sendIdx = 0;
+    armCompletionWriteHook(deps());
+    await runTimer();
+    await runTimer();
+    expect(sent.map((b) => b.guideId).sort()).toEqual(['a', 'b']);
   });
 });

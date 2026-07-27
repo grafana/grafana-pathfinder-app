@@ -23,18 +23,22 @@ function body(overrides: Partial<CompletionWriteBody> = {}): CompletionWriteBody
 }
 
 interface Sender {
-  send: (b: CompletionWriteBody) => Promise<WriteOutcome>;
+  send: (b: CompletionWriteBody, idempotencyKey: string) => Promise<WriteOutcome>;
   calls: CompletionWriteBody[];
+  keys: string[];
 }
 
 // sender replays `outcomes` in order, repeating the last one once exhausted.
 function makeSender(outcomes: WriteOutcome[]): Sender {
   const calls: CompletionWriteBody[] = [];
+  const keys: string[] = [];
   let i = 0;
   return {
     calls,
-    send: async (b) => {
+    keys,
+    send: async (b, idempotencyKey) => {
       calls.push(b);
+      keys.push(idempotencyKey);
       const out = outcomes[Math.min(i, outcomes.length - 1)] ?? { kind: 'created' };
       i += 1;
       return out;
@@ -182,7 +186,7 @@ describe('write queue — retry/backoff/terminal/disarm', () => {
     expect(s.calls).toHaveLength(9);
   });
 
-  it('route-missing disarms the session but retains persisted items for the next load', async () => {
+  it('route-missing disarms network drains but keeps persisting later facts (finding 2)', async () => {
     const memory = makeStorage();
     const s = makeSender([{ kind: 'route-missing' }]);
     const q = createWriteQueue({ now: () => 0, send: s.send, storage: memory.storage });
@@ -191,9 +195,12 @@ describe('write queue — retry/backoff/terminal/disarm', () => {
     const r = await q.processDue();
     expect(r.disarmed).toBe(true);
     expect(q.isDisarmed()).toBe(true);
-    expect(q.enqueue(body({ guideId: 'c' }))).toBe(false);
-    // Pending items survive for a later session's startup drain.
-    expect(memory.storage.list()).toHaveLength(2);
+    // A later fact in the same session STILL enqueues and persists — a structural
+    // 404 suppresses network drains, it is never a per-item drop.
+    expect(q.enqueue(body({ guideId: 'c' }))).toBe(true);
+    // All three items survive for a later session's startup drain.
+    expect(memory.storage.list()).toHaveLength(3);
+    // Network stays off: no further send this session.
     expect(s.calls).toHaveLength(1);
   });
 
@@ -310,5 +317,148 @@ describe('write queue — persistence', () => {
 
     expect(sender.calls.map((entry) => entry.guideId).sort()).toEqual(['a', 'b']);
     expect(shared.size).toBe(0);
+  });
+});
+
+// A lease-aware in-memory storage modeling the real 30s TTL so a genuinely
+// expired lease can be taken over by another tab.
+function makeLeasedStorage(
+  items: Map<string, QueuedWrite>,
+  leaseRef: { lease: { tabId: string; expiresAt: number } | null },
+  tabId: string
+): CompletionWriteStorage {
+  const LEASE_TTL = 30_000;
+  const listeners = new Set<() => void>();
+  return {
+    list: () => Array.from(items.values()).map((i) => ({ ...i })),
+    put: (item) => {
+      items.set(item.id, { ...item });
+      listeners.forEach((l) => l());
+    },
+    remove: (id) => {
+      items.delete(id);
+      listeners.forEach((l) => l());
+    },
+    clear: () => items.clear(),
+    acquireLease: (now) => {
+      const cur = leaseRef.lease;
+      if (cur && cur.tabId !== tabId && cur.expiresAt > now) {
+        return { acquired: false, retryAfterMs: cur.expiresAt - now };
+      }
+      leaseRef.lease = { tabId, expiresAt: now + LEASE_TTL };
+      return { acquired: true, retryAfterMs: 0 };
+    },
+    renewLease: (now) => {
+      const cur = leaseRef.lease;
+      if (cur && cur.tabId !== tabId) {
+        return false;
+      }
+      leaseRef.lease = { tabId, expiresAt: now + LEASE_TTL };
+      return true;
+    },
+    releaseLease: () => {
+      if (leaseRef.lease?.tabId === tabId) {
+        leaseRef.lease = null;
+      }
+    },
+    subscribe: (l) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+  };
+}
+
+describe('write queue — idempotency (finding 3, two-tab in-flight lease expiry)', () => {
+  it('a re-POST after lease expiry carries the same stable idempotency key', async () => {
+    const items = new Map<string, QueuedWrite>();
+    const leaseRef: { lease: { tabId: string; expiresAt: number } | null } = { lease: null };
+    const storageA = makeLeasedStorage(items, leaseRef, 'tab-a');
+    const storageB = makeLeasedStorage(items, leaseRef, 'tab-b');
+
+    // Tab A acquires the lease at t=0 and its send hangs in flight.
+    const keysA: string[] = [];
+    let releaseA: ((o: WriteOutcome) => void) | undefined;
+    const qA = createRawWriteQueue({
+      now: () => 0,
+      storage: storageA,
+      send: (_b, key) => {
+        keysA.push(key);
+        return new Promise<WriteOutcome>((resolve) => {
+          releaseA = resolve;
+        });
+      },
+    });
+    qA.enqueue(body({ guideId: 'x' }));
+    const inFlightId = qA.snapshot()[0]!.id;
+
+    const pA = qA.processDue();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(keysA).toEqual([inFlightId]);
+
+    // 30s+ later tab A's lease has expired; tab B acquires and drains the same
+    // still-persisted item. Both POST the same stable id, so the backend dedupes.
+    const keysB: string[] = [];
+    const qB = createRawWriteQueue({
+      now: () => 30_001,
+      storage: storageB,
+      send: (_b, key) => {
+        keysB.push(key);
+        return Promise.resolve<WriteOutcome>({ kind: 'created' });
+      },
+    });
+    await qB.processDue();
+
+    expect(keysB).toEqual([inFlightId]);
+    expect(keysA[0]).toBe(keysB[0]);
+
+    releaseA?.({ kind: 'created' });
+    await pA;
+  });
+});
+
+describe('write queue — emission path does not enumerate storage (finding 4)', () => {
+  it('enqueue does not scan stored keys; the async drain reconciles off that stack', async () => {
+    const base = makeStorage();
+    const listSpy = jest.fn(() => Array.from(base.items.values()).map((i) => ({ ...i })));
+    const storage: CompletionWriteStorage = { ...base.storage, list: listSpy };
+    const q = createWriteQueue({ now: () => 0, send: makeSender([{ kind: 'created' }]).send, storage });
+
+    listSpy.mockClear(); // ignore the constructor's initial refresh()
+    q.enqueue(body());
+    expect(listSpy).not.toHaveBeenCalled();
+
+    await q.processDue();
+    expect(listSpy).toHaveBeenCalled();
+  });
+});
+
+describe('write queue — backoff cap is a true ceiling (finding 6)', () => {
+  it('clamps the +25% jitter endpoint back to maxBackoffMs', async () => {
+    const s = makeSender([{ kind: 'transient' }]);
+    const q = createWriteQueue({
+      now: () => 0,
+      send: s.send,
+      random: () => 1, // +25% jitter endpoint → base+jitter = 1250 before clamp
+      baseBackoffMs: 1000,
+      maxBackoffMs: 1000,
+    });
+    q.enqueue(body());
+    const r = await q.processDue();
+    expect(r.nextDelayMs).toBe(1000);
+  });
+
+  it('stays non-negative and under the cap at the -25% jitter endpoint', async () => {
+    const s = makeSender([{ kind: 'transient' }]);
+    const q = createWriteQueue({
+      now: () => 0,
+      send: s.send,
+      random: () => 0, // -25% jitter endpoint → base+jitter = 750
+      baseBackoffMs: 1000,
+      maxBackoffMs: 1000,
+    });
+    q.enqueue(body());
+    const r = await q.processDue();
+    expect(r.nextDelayMs).toBe(750);
   });
 });

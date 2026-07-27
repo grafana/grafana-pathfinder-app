@@ -18,7 +18,14 @@ jest.mock('@grafana/runtime', () => ({
   },
 }));
 
-import { postCompletionRecord, currentCompletionPlatform, type CompletionWriteBody } from './completion-write-client';
+import {
+  postCompletionRecord,
+  currentCompletionPlatform,
+  WRITE_REQUEST_TIMEOUT_MS,
+  IDEMPOTENCY_KEY_FIELD,
+  type CompletionWriteBody,
+} from './completion-write-client';
+import { LEASE_TTL_MS } from './completion-write-storage';
 
 function body(): CompletionWriteBody {
   return {
@@ -77,6 +84,31 @@ describe('postCompletionRecord — outcome classification', () => {
   it('transient on a network error with no status', async () => {
     fetchMock.mockReturnValue(throwError(() => new Error('network down')));
     await expect(postCompletionRecord(body())).resolves.toEqual({ kind: 'transient' });
+  });
+});
+
+describe('idempotency key (finding 3 — end-to-end dedupe backstop)', () => {
+  it('sends the stable id as a body field so the backend can dedupe a retried POST', async () => {
+    fetchMock.mockReturnValue(of({ data: { name: 'completion-abc' } }));
+    await postCompletionRecord(body(), 'event-123');
+
+    const sent = fetchMock.mock.calls[0]![0];
+    expect(sent.data[IDEMPOTENCY_KEY_FIELD]).toBe('event-123');
+    // The fact fields are still present alongside the key.
+    expect(sent.data).toMatchObject({ guideId: 'g1', platform: 'cloud' });
+  });
+
+  it('omits the key field entirely when no idempotency key is supplied', async () => {
+    fetchMock.mockReturnValue(of({ data: { name: 'completion-abc' } }));
+    await postCompletionRecord(body());
+
+    const sent = fetchMock.mock.calls[0]![0];
+    expect(IDEMPOTENCY_KEY_FIELD in sent.data).toBe(false);
+  });
+
+  it('bounds the request strictly below the drain lease TTL so a POST cannot outlive its lease', () => {
+    expect(WRITE_REQUEST_TIMEOUT_MS).toBeLessThan(LEASE_TTL_MS);
+    expect(WRITE_REQUEST_TIMEOUT_MS).toBeGreaterThan(0);
   });
 });
 

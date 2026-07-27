@@ -537,6 +537,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                   activeTab.content?.metadata?.learningJourney?.totalMilestones,
                   {
                     packageManifest: activeTab.content?.metadata?.packageManifest,
+                    repository: activeTab.content?.metadata?.repository,
                     guideTitle: activeTab.title,
                   }
                 );

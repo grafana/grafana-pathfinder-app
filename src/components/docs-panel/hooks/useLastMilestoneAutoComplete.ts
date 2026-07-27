@@ -55,6 +55,7 @@ export function useLastMilestoneAutoComplete({
         if (slug) {
           void markMilestoneDone(journey.baseUrl, slug, journey.totalMilestones, {
             packageManifest: stableContent.metadata.packageManifest,
+            repository: stableContent.metadata.repository,
             guideTitle: activeTab.title,
           });
         }

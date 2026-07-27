@@ -159,6 +159,7 @@ export function LearningJourneyMilestoneToolbar({
         if (slug) {
           void markMilestoneDone(lj.baseUrl, slug, lj.totalMilestones, {
             packageManifest: activeTab.content?.metadata?.packageManifest,
+            repository: activeTab.content?.metadata?.repository,
             guideTitle: activeTab.title,
           });
         }

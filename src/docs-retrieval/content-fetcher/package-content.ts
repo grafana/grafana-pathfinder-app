@@ -188,7 +188,8 @@ function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
 export async function fetchPackageContent(
   contentUrl: string,
   packageManifest?: Record<string, unknown>,
-  preResolvedMilestones?: Milestone[]
+  preResolvedMilestones?: Milestone[],
+  repository?: string
 ): Promise<ContentFetchResult> {
   const renderType = getPackageRenderType(packageManifest);
   const needsMilestones = renderType === 'learning-journey' && isPathManifest(packageManifest);
@@ -255,6 +256,7 @@ export async function fetchPackageContent(
       metadata: {
         ...result.content.metadata,
         ...(packageManifest !== undefined && { packageManifest }),
+        ...(repository !== undefined && { repository }),
         ...(learningJourney !== undefined && { learningJourney }),
       },
     },
@@ -272,7 +274,8 @@ export async function fetchPackageContent(
  */
 export async function fetchPackageById(
   packageId: string,
-  packageManifest?: Record<string, unknown>
+  packageManifest?: Record<string, unknown>,
+  repository?: string
 ): Promise<ContentFetchResult> {
   if (!_packageResolver) {
     return {
@@ -292,5 +295,5 @@ export async function fetchPackageById(
     };
   }
 
-  return fetchPackageContent(resolution.contentUrl, packageManifest);
+  return fetchPackageContent(resolution.contentUrl, packageManifest, undefined, repository);
 }

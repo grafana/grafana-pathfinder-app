@@ -542,6 +542,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
               ...(tab.packageInfo?.packageManifest != null && {
                 packageManifest: tab.packageInfo.packageManifest,
               }),
+              ...(tab.packageInfo?.repository != null && {
+                repository: tab.packageInfo.repository,
+              }),
             },
           };
         }
@@ -556,6 +559,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
           setJourneyCompletionPercentage(completionKey, progress, {
             packageManifest: updatedTab.content.metadata.packageManifest,
+            repository: updatedTab.content.metadata.repository,
             guideTitle: updatedTab.title,
           });
         }

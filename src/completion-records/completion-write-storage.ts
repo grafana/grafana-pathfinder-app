@@ -4,6 +4,9 @@ import { collectKeysByPrefix, clearKeysByPrefix } from '../lib/storage/key-utils
 import { StorageKeys } from '../lib/storage-keys';
 
 import type { CompletionWriteBody } from './completion-write-client';
+import { LEASE_TTL_MS } from './completion-write-timing';
+
+export { LEASE_TTL_MS } from './completion-write-timing';
 
 export interface QueuedWrite {
   id: string;
@@ -34,8 +37,6 @@ interface StoredLease {
   expiresAt: number;
 }
 
-const LEASE_TTL_MS = 30_000;
-
 export function currentCompletionQueueOwnerKey(): string | null {
   const userId = config.bootData?.user?.id;
   const orgId = config.bootData?.user?.orgId;
@@ -52,7 +53,12 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
   const volatileItems = new Map<string, QueuedWrite>();
 
   function list(): QueuedWrite[] {
-    const result = new Map(volatileItems);
+    // Load the persisted copies first, then overlay volatile entries so a newer
+    // in-memory item (e.g. one whose backoff `put` failed and fell back to
+    // volatile) wins over its stale persisted twin — never the reverse. Seeding
+    // from volatile and letting localStorage overwrite would revert a fresher
+    // retry state (attempts/nextAttemptAt) to the old persisted one.
+    const result = new Map<string, QueuedWrite>();
     try {
       for (const key of collectKeysByPrefix(localStorage, itemPrefix)) {
         const item = parseQueuedWrite(localStorage.getItem(key));
@@ -61,7 +67,10 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
         }
       }
     } catch {
-      return Array.from(result.values());
+      // Fall through — the volatile overlay below is still applied.
+    }
+    for (const [id, item] of volatileItems) {
+      result.set(id, item);
     }
     return Array.from(result.values());
   }

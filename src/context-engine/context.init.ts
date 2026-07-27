@@ -58,12 +58,12 @@ export function initializeContextServices(): void {
  * SECURITY: Dev mode is now lazily initialized when user visits config with ?dev=true
  */
 export function onPluginStart(): void {
-  // Initialize context services only
   // Dev mode is lazily initialized to avoid unnecessary API calls for anonymous users
   initializeContextServices();
 
   // Arm the durable completion-write hook (Track 2). Fire-and-forget: it
-  // no-ops without a resolvable user/org identity, and on stacks without the
-  // write route the first POST's 404 disarms it for the session.
+  // no-ops without a resolvable user/org identity. On a stack without the write
+  // route the first POST's structural 404 suppresses network drains for the
+  // session but keeps persisting later facts, which drain on a future load.
   armCompletionWriteHook();
 }

@@ -5,7 +5,7 @@ import { createCompletionEventId, type CompletionWriteStorage, type QueuedWrite 
 
 export interface WriteQueueDeps {
   now: () => number;
-  send: (body: CompletionWriteBody) => Promise<WriteOutcome>;
+  send: (body: CompletionWriteBody, idempotencyKey: string) => Promise<WriteOutcome>;
   storage: CompletionWriteStorage;
   nextId?: () => string;
   random?: () => number;
@@ -71,14 +71,21 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   function backoffMs(attempts: number): number {
     const base = Math.min(maxBackoffMs, baseBackoffMs * Math.pow(2, Math.max(0, attempts - 1)));
     const jitter = base * 0.25 * (random() * 2 - 1);
-    return Math.max(0, Math.round(base + jitter));
+    // Clamp AFTER jitter so `maxBackoffMs` is a true ceiling — adding ±25% to an
+    // already-capped base would otherwise let a delay reach 1.25× the cap.
+    return Math.max(0, Math.min(maxBackoffMs, Math.round(base + jitter)));
   }
 
   function enqueue(body: CompletionWriteBody): boolean {
-    if (disarmed) {
-      return false;
-    }
-    refresh();
+    // A structural-404 disarm suppresses network drains for the session but must
+    // NOT stop persistence: later facts still enqueue and survive to the next
+    // load, where they drain once the route exists. Never gate enqueue on it.
+    //
+    // No refresh() here: reconciling against every stored item is an
+    // origin-wide localStorage scan, and this runs inline on the completion
+    // emission path. Eviction is enforced against the in-memory queue (bounded
+    // by maxSize) and the O(1) put persists the fact; the async drain does the
+    // full cross-tab refresh off this stack.
     if (items.length >= maxSize) {
       const evicted = items.shift();
       if (evicted) {
@@ -125,7 +132,12 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
       }
       let outcome: WriteOutcome;
       try {
-        outcome = await send(item.body);
+        // Renew right before the send and pass the item's stable id as the
+        // idempotency key. With the request bounded below the lease TTL
+        // (WRITE_REQUEST_TIMEOUT_MS), the POST cannot outlive this lease, so no
+        // other tab can acquire and re-POST it while it is in flight; the key is
+        // the end-to-end backstop if a succeeded POST's response is lost.
+        outcome = await send(item.body, item.id);
       } catch {
         // A sender that rejects is treated as transient — it must never bubble.
         outcome = { kind: 'transient' };

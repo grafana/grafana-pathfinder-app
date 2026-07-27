@@ -31,12 +31,16 @@ export { getMilestoneSlug } from '../lib/learning-journey-url';
 
 /**
  * Optional manifest/display context threaded from the completion call sites so
- * the recorder can key on `(guideSource, guideId) = (manifest.repository,
- * manifest.id)` — never on a loader URL. Absent for plain bundled guides, which
- * fall back to `guideSource: 'bundled'` + the slug.
+ * the recorder can key on `(guideSource, guideId) = (repository, manifest.id)`
+ * — never on a loader URL. `repository` is the recommendation-level field: real
+ * V1 shapes carry it as a sibling of `manifest`, not inside it (V1PackageManifest
+ * has no repository field), so it must be threaded separately. Absent for plain
+ * bundled guides, which fall back to `guideSource: 'bundled'` + the slug.
  */
 export interface CompletionContext {
   packageManifest?: Record<string, unknown>;
+  /** Recommendation-level repository (sibling of manifest in the V1 wire shape). */
+  repository?: string;
   guideTitle?: string;
   pathId?: string;
 }
@@ -422,6 +426,7 @@ function recordBundledGuideCompletion(guideId: string, context?: CompletionConte
   }
   const identity = resolveCompletionIdentity({
     packageManifest: context?.packageManifest,
+    repository: context?.repository,
     fallbackId: guideId,
     fallbackSource: 'bundled',
   });
@@ -450,6 +455,7 @@ export function recordStandaloneGuideCompletion(context: CompletionContext): voi
   }
   const identity = resolveCompletionIdentity({
     packageManifest: context.packageManifest,
+    repository: context.repository,
     fallbackId: guideId,
   });
   recordGuideCompletion({
@@ -512,7 +518,7 @@ export async function markMilestoneDone(
 
   // Completion-emission boundary for the milestone-as-guide path.
   const milestoneIdentity = resolveCompletionIdentity({
-    repository: manifestGuideSource(context?.packageManifest),
+    repository: context?.repository ?? manifestGuideSource(context?.packageManifest),
     fallbackId: milestoneSlug,
     fallbackSource: 'bundled',
   });
@@ -551,6 +557,7 @@ export async function markMilestoneDone(
       if (stableJourneyId) {
         const journeyIdentity = resolveCompletionIdentity({
           packageManifest: context?.packageManifest,
+          repository: context?.repository,
           fallbackId: stableJourneyId,
           fallbackSource: 'bundled',
         });

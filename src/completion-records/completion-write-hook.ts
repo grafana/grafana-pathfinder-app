@@ -17,7 +17,7 @@ import {
 import type { CompletionFact } from './types';
 
 export interface WriteHookDeps {
-  send: (body: CompletionWriteBody) => Promise<WriteOutcome>;
+  send: (body: CompletionWriteBody, idempotencyKey: string) => Promise<WriteOutcome>;
   ownerKey: () => string | null;
   storage: (ownerKey: string) => CompletionWriteStorage;
   platform: () => CompletionPlatform;
@@ -85,13 +85,35 @@ class CompletionWriteController {
     this.disposed = true;
   }
 
+  /**
+   * A structural 404 means the write route is not served on this stack. Stop all
+   * network draining for the session — clear the pending timer and drop the
+   * cross-tab storage listener whose only job is to trigger drains — but keep
+   * the recorder subscription so later completions still enqueue and persist.
+   * Those persisted facts drain on the next load once the route exists.
+   */
+  private suppressNetworkForSession(): void {
+    if (this.timer !== null) {
+      this.deps.clearTimer(this.timer);
+      this.timer = null;
+    }
+    this.timerFireAt = null;
+    this.unsubscribeStorage?.();
+    this.unsubscribeStorage = null;
+  }
+
   private onFact(fact: CompletionFact): void {
     try {
-      if (this.disposed || !this.queue || this.queue.isDisarmed()) {
+      if (this.disposed || !this.queue) {
         return;
       }
+      // Always enqueue+persist, even after a structural-404 disarm: the fact
+      // survives to the next load and drains once the route exists. Only skip
+      // scheduling a drain that would immediately no-op while network-disarmed.
       this.queue.enqueue(this.toBody(fact));
-      this.scheduleDrain(0);
+      if (!this.queue.isDisarmed()) {
+        this.scheduleDrain(0);
+      }
     } catch (error) {
       logger.debug('completion write: enqueue failed (ignored)', { error: String(error) });
     }
@@ -140,7 +162,7 @@ class CompletionWriteController {
     try {
       const result = await this.queue.processDue();
       if (result.disarmed) {
-        this.dispose();
+        this.suppressNetworkForSession();
       } else if (result.nextDelayMs !== null) {
         this.scheduleDrain(result.nextDelayMs);
       }
