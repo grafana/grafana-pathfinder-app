@@ -101,6 +101,7 @@ afterEach(() => {
   jest.restoreAllMocks();
   delete (window as Window & { __pathfinderE2ESidebarMounted?: boolean }).__pathfinderE2ESidebarMounted;
   localStorage.clear();
+  document.body.innerHTML = '';
 });
 
 describe('isPathfinderDockedValue', () => {
@@ -155,6 +156,18 @@ describe('ensureDocsPanelOpen', () => {
     await expect(ensureDocsPanelOpen(page)).resolves.toBe(panel);
 
     expect(helpButton.click).not.toHaveBeenCalled();
+    expect(panelWaitFor).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not treat an expanded generic Help menu as an open Pathfinder panel', async () => {
+    const { page, helpButton, panelWaitFor } = createHarness({
+      helpExpanded: true,
+      helpMenuVisible: true,
+    });
+
+    await ensureDocsPanelOpen(page);
+
+    expect(helpButton.click).toHaveBeenCalledTimes(1);
     expect(panelWaitFor).toHaveBeenCalledTimes(1);
   });
 
@@ -217,6 +230,37 @@ describe('ensureDocsPanelOpen', () => {
     expect(panelWaitFor).toHaveBeenCalledTimes(1);
   });
 
+  it('propagates the second confirmation error after exactly two Help clicks', async () => {
+    const secondError = new Error('Second confirmation failed');
+    const { page, helpButton, panelWaitFor } = createHarness({
+      helpMenuVisible: true,
+      openConfirmationResults: [new Error('First confirmation failed'), secondError],
+    });
+
+    await expect(ensureDocsPanelOpen(page)).rejects.toBe(secondError);
+
+    expect(helpButton.click).toHaveBeenCalledTimes(2);
+    expect(panelWaitFor).not.toHaveBeenCalled();
+  });
+
+  it('accepts panel DOM presence as the only open signal', async () => {
+    const { page, helpButton, panelWaitFor } = createHarness({
+      evaluateInBrowser: true,
+      executeOpenSignalPredicate: true,
+      onHelpClick: () => {
+        const panel = document.createElement('div');
+        panel.dataset.testid = 'docs-panel-container';
+        document.body.appendChild(panel);
+      },
+    });
+
+    await ensureDocsPanelOpen(page);
+
+    expect(helpButton.click).toHaveBeenCalledTimes(1);
+    expect(panelWaitFor).toHaveBeenCalledTimes(1);
+    expect((window as Window & { __pathfinderE2ESidebarMounted?: boolean }).__pathfinderE2ESidebarMounted).toBe(false);
+  });
+
   it('runs one setup-only recovery callback after an initial bootstrap failure', async () => {
     const beforeRetry = jest.fn().mockResolvedValue(undefined);
     const { page, helpButton, panelWaitFor } = createHarness({
@@ -247,23 +291,27 @@ describe('ensureDocsPanelOpen', () => {
 
   it('propagates a custom timeout to every wait in one bootstrap attempt', async () => {
     jest.spyOn(Date, 'now').mockReturnValue(1_000);
-    const { page, panelWaitFor, waitForFunction } = createHarness();
+    const { page, helpButton, panelWaitFor, waitForFunction } = createHarness();
 
     await ensureDocsPanelOpen(page, { timeoutMs: 250 });
 
     const waitTimeouts = waitForFunction.mock.calls.map((call) => call[2]?.timeout);
     expect(waitTimeouts).toEqual([250, 250]);
+    expect(helpButton.getAttribute).toHaveBeenCalledWith('aria-expanded', { timeout: 250 });
+    expect(helpButton.click).toHaveBeenCalledWith({ timeout: 250 });
     expect(panelWaitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 250 });
   });
 
   it('clamps expired deadline waits to one millisecond', async () => {
     jest.spyOn(Date, 'now').mockReturnValueOnce(1_000).mockReturnValue(1_200);
-    const { page, panelWaitFor, waitForFunction } = createHarness();
+    const { page, helpButton, panelWaitFor, waitForFunction } = createHarness();
 
     await ensureDocsPanelOpen(page, { timeoutMs: 100 });
 
     const waitTimeouts = waitForFunction.mock.calls.map((call) => call[2]?.timeout);
     expect(waitTimeouts).toEqual([1, 1]);
+    expect(helpButton.getAttribute).toHaveBeenCalledWith('aria-expanded', { timeout: 1 });
+    expect(helpButton.click).toHaveBeenCalledWith({ timeout: 1 });
     expect(panelWaitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 1 });
   });
 

@@ -107,8 +107,10 @@ async function dismissGenericHelpMenu(page: Page): Promise<void> {
     await page.keyboard.press('Escape');
   }
 }
-async function isExpandedPathfinderToggle(page: Page, helpButton: Locator): Promise<boolean> {
-  return (await helpButton.getAttribute('aria-expanded')) === 'true' && !(await isGenericHelpMenuVisible(page));
+async function isExpandedPathfinderToggle(page: Page, helpButton: Locator, timeout: number): Promise<boolean> {
+  return (
+    (await helpButton.getAttribute('aria-expanded', { timeout })) === 'true' && !(await isGenericHelpMenuVisible(page))
+  );
 }
 
 async function openDocsPanelAttempt(page: Page, timeoutMs: number): Promise<Locator> {
@@ -139,11 +141,11 @@ async function openDocsPanelAttempt(page: Page, timeoutMs: number): Promise<Loca
     if (hasOpenSignal(state)) {
       break;
     }
-    if (await isExpandedPathfinderToggle(page, helpButton)) {
+    if (await isExpandedPathfinderToggle(page, helpButton, remainingTimeout(deadline))) {
       break;
     }
 
-    await helpButton.click();
+    await helpButton.click({ timeout: remainingTimeout(deadline) });
     try {
       await waitForOpenSignal(page, Math.min(OPEN_CONFIRMATION_TIMEOUT_MS, remainingTimeout(deadline)));
       break;
