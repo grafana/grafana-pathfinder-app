@@ -1,6 +1,6 @@
-import { getBackendSrv, config } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
+import { config } from '@grafana/runtime';
 import { initializeEchoLogging, initializeFromRecentEvents } from './context-event-bus';
+import { collectionUrl, readListMerged } from '../utils/interactive-guides-api';
 import { logger } from '../lib/logging';
 
 /**
@@ -14,26 +14,10 @@ export async function fetchInteractiveGuidesFromBackend(): Promise<void> {
   }
 
   try {
-    const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides`;
-    await lastValueFrom(
-      getBackendSrv().fetch({
-        url,
-        method: 'GET',
-        // Optional rollout endpoint: don't show global toast when absent.
-        showErrorAlert: false,
-      })
-    );
+    // Dormant warm/probe: result discarded. readListMerged swallows
+    // "not rolled out" statuses and re-throws only genuine errors.
+    await readListMerged((apiVersion) => collectionUrl(apiVersion, namespace));
   } catch (error) {
-    const status =
-      (error as { status?: number; statusCode?: number; data?: { statusCode?: number } })?.status ??
-      (error as { statusCode?: number })?.statusCode ??
-      (error as { data?: { statusCode?: number } })?.data?.statusCode;
-    const unavailableStatuses = new Set([400, 403, 404, 405, 501, 503]);
-
-    if (status && unavailableStatuses.has(status)) {
-      return;
-    }
-
     logger.error('[Pathfinder] Failed to fetch interactive guides', { error });
   }
 }

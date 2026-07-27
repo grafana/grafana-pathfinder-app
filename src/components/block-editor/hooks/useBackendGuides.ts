@@ -3,10 +3,10 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { getBackendSrv, config } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
+import { config } from '@grafana/runtime';
 import type { JsonGuide } from '../types';
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
+import { collectionUrl, dualWrite, itemUrl } from '../../../utils/interactive-guides-api';
 import { stripAuthorNotes } from '../utils/block-export';
 import { logger } from '../../../lib/logging';
 
@@ -156,9 +156,10 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         // resource.
         const exportable = stripAuthorNotes(guide);
 
-        // Wrap guide in Kubernetes resource format
-        const k8sResource = {
-          apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
+        // Wrap guide in Kubernetes resource format. apiVersion is injected per
+        // target group by dualWrite so the body always matches its destination.
+        const buildBody = (apiVersion: string) => ({
+          apiVersion,
           kind: 'InteractiveGuide',
           metadata,
           spec: {
@@ -168,31 +169,12 @@ export function useBackendGuides(): UseBackendGuidesReturn {
             blocks: exportable.blocks,
             status,
           },
-        };
-
-        const baseUrl = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides`;
+        });
 
         if (existingResourceName) {
-          // Update existing guide (PUT)
-          const url = `${baseUrl}/${existingResourceName}`;
-          await lastValueFrom(
-            getBackendSrv().fetch({
-              url,
-              method: 'PUT',
-              data: k8sResource,
-              showErrorAlert: false,
-            })
-          );
+          await dualWrite({ method: 'PUT', buildUrl: (v) => itemUrl(v, namespace, existingResourceName), buildBody });
         } else {
-          // Create new guide (POST)
-          await lastValueFrom(
-            getBackendSrv().fetch({
-              url: baseUrl,
-              method: 'POST',
-              data: k8sResource,
-              showErrorAlert: false,
-            })
-          );
+          await dualWrite({ method: 'POST', buildUrl: (v) => collectionUrl(v, namespace), buildBody });
         }
 
         // Refresh the list after saving
@@ -226,25 +208,16 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           resourceVersion: currentMetadata.resourceVersion,
         };
 
-        const k8sResource = {
-          apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
-          kind: 'InteractiveGuide',
-          metadata,
-          spec: {
-            ...existing.spec,
-            status: 'published' as const,
-          },
-        };
-
-        const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
-        await lastValueFrom(
-          getBackendSrv().fetch({
-            url,
-            method: 'PUT',
-            data: k8sResource,
-            showErrorAlert: false,
-          })
-        );
+        await dualWrite({
+          method: 'PUT',
+          buildUrl: (v) => itemUrl(v, namespace, resourceName),
+          buildBody: (apiVersion) => ({
+            apiVersion,
+            kind: 'InteractiveGuide',
+            metadata,
+            spec: { ...existing.spec, status: 'published' as const },
+          }),
+        });
 
         await refreshGuides();
       } finally {
@@ -276,25 +249,16 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           resourceVersion: currentMetadata.resourceVersion,
         };
 
-        const k8sResource = {
-          apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
-          kind: 'InteractiveGuide',
-          metadata,
-          spec: {
-            ...existing.spec,
-            status: 'draft' as const,
-          },
-        };
-
-        const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
-        await lastValueFrom(
-          getBackendSrv().fetch({
-            url,
-            method: 'PUT',
-            data: k8sResource,
-            showErrorAlert: false,
-          })
-        );
+        await dualWrite({
+          method: 'PUT',
+          buildUrl: (v) => itemUrl(v, namespace, resourceName),
+          buildBody: (apiVersion) => ({
+            apiVersion,
+            kind: 'InteractiveGuide',
+            metadata,
+            spec: { ...existing.spec, status: 'draft' as const },
+          }),
+        });
 
         await refreshGuides();
       } finally {
@@ -314,15 +278,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
       }
 
       try {
-        const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
-
-        await lastValueFrom(
-          getBackendSrv().fetch({
-            url,
-            method: 'DELETE',
-            showErrorAlert: false,
-          })
-        );
+        await dualWrite({ method: 'DELETE', buildUrl: (v) => itemUrl(v, namespace, resourceName) });
 
         // Refresh the list after deleting
         await refreshGuides();

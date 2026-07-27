@@ -2,8 +2,8 @@
 // by the Pathfinder backend's Kubernetes-style resource API, scoped to the
 // current Grafana namespace.
 import { ContentFetchResult } from '../../types/content.types';
-import { config, getBackendSrv } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
+import { config } from '@grafana/runtime';
+import { itemUrl, readItemWithFallback } from '../../utils/interactive-guides-api';
 import { validateGuide } from '../../validation';
 
 interface BackendGuideResource {
@@ -31,17 +31,17 @@ export async function fetchBackendInteractive(url: string): Promise<ContentFetch
   }
 
   try {
-    // SECURITY: Encode resourceName to prevent path traversal (F3)
-    const endpoint = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${encodeURIComponent(resourceName)}`;
-    const response = await lastValueFrom(
-      getBackendSrv().fetch<BackendGuideResource>({
-        url: endpoint,
-        method: 'GET',
-        // Optional rollout endpoint: don't show a global toast when unavailable.
-        showErrorAlert: false,
-      })
+    // itemUrl encodes resourceName to prevent path traversal (F3). Reads the new
+    // App Platform group first, falling back to the legacy group during migration.
+    const result = await readItemWithFallback<BackendGuideResource>((apiVersion) =>
+      itemUrl(apiVersion, namespace, resourceName)
     );
-    const guideResource = response.data;
+
+    if (!result.ok) {
+      return { content: null, error: `Failed to load custom guide: ${resourceName}`, errorType: 'other' };
+    }
+
+    const guideResource = result.data;
 
     if (!guideResource?.spec?.blocks || !guideResource.spec.title) {
       return {
