@@ -197,6 +197,26 @@ describe('ensureDocsPanelOpen', () => {
     expect((window as Window & { __pathfinderE2ESidebarMounted?: boolean }).__pathfinderE2ESidebarMounted).toBe(true);
   });
 
+  it('does not confirm a retry from a stale sidebar mount flag without panel DOM', async () => {
+    let clickCount = 0;
+    const { page, helpButton, panelWaitFor } = createHarness({
+      evaluateInBrowser: true,
+      executeOpenSignalPredicate: true,
+      helpMenuVisible: true,
+      onHelpClick: () => {
+        clickCount++;
+        if (clickCount === 2) {
+          window.dispatchEvent(new Event('pathfinder-sidebar-mounted'));
+        }
+      },
+    });
+
+    await expect(ensureDocsPanelOpen(page)).rejects.toThrow('Open signal not observed');
+
+    expect(helpButton.click).toHaveBeenCalledTimes(2);
+    expect(panelWaitFor).not.toHaveBeenCalled();
+  });
+
   it('recognizes dock ownership that appears after an unconfirmed Help click', async () => {
     const pathfinderDocked = JSON.stringify({
       pluginId: 'grafana-pathfinder-app',

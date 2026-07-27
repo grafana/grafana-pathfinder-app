@@ -31,7 +31,7 @@ Examples: `data-test-step-state`, `data-test-substep-index`, `data-test-action`
 The guide runner must establish a ready Pathfinder panel before it can load guide content or discover steps. These signals form the stable contract between the plugin surface and `tests/e2e-runner/`:
 
 - **Plugin readiness**: `window.__pathfinderPluginConfig` is assigned when Pathfinder initialization completes. The runner waits for this before treating Grafana's Help control as a Pathfinder open action.
-- **Sidebar mount**: the outer Pathfinder sidebar dispatches `pathfinder-sidebar-mounted` on `window` after Grafana accepts the extension-sidebar open request.
+- **Sidebar mount**: the outer Pathfinder sidebar dispatches `pathfinder-sidebar-mounted` on `window` after Grafana accepts the extension-sidebar open request. The runner uses this event to avoid a duplicate Help click; because it is an edge signal rather than current mounted state, post-click readiness still requires the panel DOM.
 - **Panel readiness**: the inner panel renders `data-testid="docs-panel-container"` when it is ready for guide content. Once this container is visible, the panel must be able to receive the content-open event below.
 - **Content open**: the panel listens for `pathfinder-auto-open-docs` on `document` with detail `{ url: string; title: string; source?: string }`.
 

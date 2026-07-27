@@ -84,14 +84,10 @@ function hasOpenSignal(state: BootstrapState): boolean {
   return state.pathfinderDocked || state.sidebarMounted;
 }
 
-async function waitForOpenSignal(page: Page, timeout: number): Promise<void> {
+async function waitForPanelDom(page: Page, timeout: number): Promise<void> {
   await page.waitForFunction(
     ({ panelTestId }) => {
-      const runtimeWindow = window as Window & { __pathfinderE2ESidebarMounted?: boolean };
-      return (
-        runtimeWindow.__pathfinderE2ESidebarMounted === true ||
-        document.querySelector(`[data-testid="${panelTestId}"]`) !== null
-      );
+      return document.querySelector(`[data-testid="${panelTestId}"]`) !== null;
     },
     { panelTestId: testIds.docsPanel.container },
     { timeout }
@@ -147,11 +143,11 @@ async function openDocsPanelAttempt(page: Page, timeoutMs: number): Promise<Loca
 
     await helpButton.click({ timeout: remainingTimeout(deadline) });
     try {
-      await waitForOpenSignal(page, Math.min(OPEN_CONFIRMATION_TIMEOUT_MS, remainingTimeout(deadline)));
+      await waitForPanelDom(page, Math.min(OPEN_CONFIRMATION_TIMEOUT_MS, remainingTimeout(deadline)));
       break;
     } catch (error) {
       state = await readBootstrapState(page, false);
-      if (hasOpenSignal(state)) {
+      if (state.pathfinderDocked) {
         break;
       }
       if (openAttempt === MAX_HELP_OPEN_ATTEMPTS - 1) {
