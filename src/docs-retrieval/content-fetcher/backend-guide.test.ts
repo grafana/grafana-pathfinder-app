@@ -10,7 +10,6 @@ jest.mock('@grafana/runtime', () => ({
     get namespace() {
       return mockNamespace;
     },
-    featureToggles: { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true },
   },
   getBackendSrv: () => ({ fetch: mockFetch }),
 }));
@@ -155,14 +154,14 @@ describe('fetchBackendInteractive — path traversal guard (F3)', () => {
 });
 
 describe('fetchBackendInteractive — transport failure', () => {
-  it('maps a genuine (non-"unavailable") thrown request to a load error and surfaces the status code', async () => {
-    mockFetch.mockReturnValue(throwError(() => ({ status: 500 })));
+  it('maps a thrown request to a load error and surfaces the status code', async () => {
+    mockFetch.mockReturnValue(throwError(() => ({ status: 503 })));
 
     const result = await fetchBackendInteractive('backend-guide:my-guide');
 
     expect(result.content).toBeNull();
     expect(result.error).toBe('Failed to load custom guide: my-guide');
     expect(result.errorType).toBe('other');
-    expect(result.statusCode).toBe(500);
+    expect(result.statusCode).toBe(503);
   });
 });

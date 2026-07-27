@@ -107,12 +107,8 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
           "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
           "collectionPathTemplate": "/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/interactiveguides",
           "createMethod": "POST",
-          "errorHandling": "During the CAP→GAP migration an instance may serve only the legacy group. On a 404 from the collection POST or item PUT against apiVersion, retry once against legacyApiVersion / legacyCollectionPathTemplate / legacyItemPathTemplate (swap resource.apiVersion to legacyApiVersion too) before falling through to grafanaOss.",
           "itemPathTemplate": "/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/interactiveguides/snapshot-fixture",
           "kind": "InteractiveGuide",
-          "legacyApiVersion": "pathfinderbackend.ext.grafana.com/v1alpha1",
-          "legacyCollectionPathTemplate": "/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/{namespace}/interactiveguides",
-          "legacyItemPathTemplate": "/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/{namespace}/interactiveguides/snapshot-fixture",
           "namespacePlaceholder": "{namespace}",
           "resource": "interactiveguides",
           "updateMethod": "PUT",
@@ -140,7 +136,7 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
         },
         "clientGuidance": {
           "grafanaAppPlatform": {
-            "appliesWhen": "You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-app.enabled"] === true, or the legacy featureToggles["aggregation.pathfinderbackend-ext-grafana-com.enabled"] during the CAP→GAP migration). If you are unsure, try this branch first; on a 404 from the collection POST or from pathfinder_manage_guide_drafts, retry against appPlatform.legacyApiVersion, then switch to grafanaOss.",
+            "appliesWhen": "You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-app.enabled"] === true). If you are unsure, try this branch first; on a 404 from the collection POST or from pathfinder_manage_guide_drafts, switch to grafanaOss.",
             "confirmationPrompt": "Publish guide "Snapshot Fixture" to <namespace> as <status>?",
             "errorHandling": [
               "pathfinder_manage_guide_drafts conflict response (concurrent edit): the tool returns the current server-side resourceVersion in its conflict artifact. Re-read it, ask the user to confirm overwrite, then call op=apply again. A second conflict means concurrent edits are racing — tell the user and offer localExport.",

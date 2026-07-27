@@ -3,10 +3,11 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { config } from '@grafana/runtime';
+import { getBackendSrv, config } from '@grafana/runtime';
+import { lastValueFrom } from 'rxjs';
 import type { JsonGuide } from '../types';
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
-import { collectionUrl, dualWrite, itemUrl } from '../../../utils/interactive-guides-api';
+import { APP_PLATFORM_API_VERSION, collectionUrl, itemUrl } from '../../../utils/interactive-guides-api';
 import { stripAuthorNotes } from '../utils/block-export';
 import { logger } from '../../../lib/logging';
 
@@ -156,10 +157,9 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         // resource.
         const exportable = stripAuthorNotes(guide);
 
-        // Wrap guide in Kubernetes resource format. apiVersion is injected per
-        // target group by dualWrite so the body always matches its destination.
-        const buildBody = (apiVersion: string) => ({
-          apiVersion,
+        // Wrap guide in Kubernetes resource format
+        const k8sResource = {
+          apiVersion: APP_PLATFORM_API_VERSION,
           kind: 'InteractiveGuide',
           metadata,
           spec: {
@@ -169,13 +169,16 @@ export function useBackendGuides(): UseBackendGuidesReturn {
             blocks: exportable.blocks,
             status,
           },
-        });
+        };
 
-        if (existingResourceName) {
-          await dualWrite({ method: 'PUT', buildUrl: (v) => itemUrl(v, namespace, existingResourceName), buildBody });
-        } else {
-          await dualWrite({ method: 'POST', buildUrl: (v) => collectionUrl(v, namespace), buildBody });
-        }
+        await lastValueFrom(
+          getBackendSrv().fetch({
+            url: existingResourceName ? itemUrl(namespace, existingResourceName) : collectionUrl(namespace),
+            method: existingResourceName ? 'PUT' : 'POST',
+            data: k8sResource,
+            showErrorAlert: false,
+          })
+        );
 
         // Refresh the list after saving
         await refreshGuides();
@@ -208,16 +211,19 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           resourceVersion: currentMetadata.resourceVersion,
         };
 
-        await dualWrite({
-          method: 'PUT',
-          buildUrl: (v) => itemUrl(v, namespace, resourceName),
-          buildBody: (apiVersion) => ({
-            apiVersion,
-            kind: 'InteractiveGuide',
-            metadata,
-            spec: { ...existing.spec, status: 'published' as const },
-          }),
-        });
+        await lastValueFrom(
+          getBackendSrv().fetch({
+            url: itemUrl(namespace, resourceName),
+            method: 'PUT',
+            data: {
+              apiVersion: APP_PLATFORM_API_VERSION,
+              kind: 'InteractiveGuide',
+              metadata,
+              spec: { ...existing.spec, status: 'published' as const },
+            },
+            showErrorAlert: false,
+          })
+        );
 
         await refreshGuides();
       } finally {
@@ -249,16 +255,19 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           resourceVersion: currentMetadata.resourceVersion,
         };
 
-        await dualWrite({
-          method: 'PUT',
-          buildUrl: (v) => itemUrl(v, namespace, resourceName),
-          buildBody: (apiVersion) => ({
-            apiVersion,
-            kind: 'InteractiveGuide',
-            metadata,
-            spec: { ...existing.spec, status: 'draft' as const },
-          }),
-        });
+        await lastValueFrom(
+          getBackendSrv().fetch({
+            url: itemUrl(namespace, resourceName),
+            method: 'PUT',
+            data: {
+              apiVersion: APP_PLATFORM_API_VERSION,
+              kind: 'InteractiveGuide',
+              metadata,
+              spec: { ...existing.spec, status: 'draft' as const },
+            },
+            showErrorAlert: false,
+          })
+        );
 
         await refreshGuides();
       } finally {
@@ -278,7 +287,13 @@ export function useBackendGuides(): UseBackendGuidesReturn {
       }
 
       try {
-        await dualWrite({ method: 'DELETE', buildUrl: (v) => itemUrl(v, namespace, resourceName) });
+        await lastValueFrom(
+          getBackendSrv().fetch({
+            url: itemUrl(namespace, resourceName),
+            method: 'DELETE',
+            showErrorAlert: false,
+          })
+        );
 
         // Refresh the list after deleting
         await refreshGuides();
