@@ -161,9 +161,12 @@ describe('panelModeManager', () => {
   });
 
   describe('setModeTransient', () => {
-    // Clear any in-memory transient override left by a test (the manager is a
-    // singleton) so the next test reads its persisted preference.
+    // The manager is a singleton: end any open round-trip and clear the
+    // in-memory override so the next test reads a clean localStorage state. The
+    // first setMode ends the round-trip (keeps 'sidebar' as the override); the
+    // second, no longer in a round-trip, clears the override.
     afterEach(() => {
+      panelModeManager.setMode('sidebar');
       panelModeManager.setMode('sidebar');
       localStorage.clear();
     });
@@ -187,11 +190,9 @@ describe('panelModeManager', () => {
       expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'close-extension-sidebar' }));
     });
 
-    it('keeps a subsequent setMode non-persisting while the transient session is active', () => {
+    it('does not persist the base sidebar teardown of a round-trip', () => {
       localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
       panelModeManager.setModeTransient('fullscreen');
-      // A teardown/exit still calls setMode, but must not persist during a
-      // transient session — the stored preference stays 'floating'.
       panelModeManager.setMode('sidebar');
       expect(panelModeManager.getMode()).toBe('sidebar');
       expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
@@ -226,6 +227,31 @@ describe('panelModeManager', () => {
         expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
       }
     );
+
+    it('resumes persistence for a deliberate surface change after a round-trip ends', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+
+      // Auto-launch a reading-only guide (transient) and exit to sidebar.
+      manager.setModeTransient('fullscreen');
+      manager.setMode('sidebar');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+
+      // A deliberate change AFTER the round-trip persists as normal.
+      manager.setMode('fullscreen');
+      expect(manager.getMode()).toBe('fullscreen');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('fullscreen');
+    });
+
+    it('persists a deliberate non-base surface change made mid-round-trip', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'sidebar');
+
+      manager.setModeTransient('fullscreen');
+      // User deliberately pops out to floating before the base teardown.
+      manager.setMode('floating');
+
+      expect(manager.getMode()).toBe('floating');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+    });
 
     it('persists a manually entered surface on exit (no transient session)', () => {
       localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');

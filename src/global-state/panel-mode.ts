@@ -55,19 +55,26 @@ class PanelModeManager {
   private _pendingGuide: PendingGuide | null = null;
   private _priorPath: string | null = null;
   /**
-   * In-memory surface override for an automatic launch (see `setModeTransient`).
-   * When set, a transient session is active: it wins over the persisted
-   * preference for `getMode()`, is never written to localStorage, and
-   * suppresses persistence for every subsequent `setMode` (so no teardown /
-   * exit path can overwrite the user's durable preference). Does not survive a
-   * page reload.
+   * In-memory current surface. When non-null it wins over the persisted
+   * preference for `getMode()` and mount decisions; it is never written to
+   * localStorage. Set by an automatic launch (`setModeTransient`) and updated
+   * by its non-persisting teardown; cleared once persistence resumes so
+   * localStorage governs again. Does not survive a page reload.
    */
   private _transientMode: PanelMode | null = null;
+  /**
+   * Whether an auto-launch round-trip is in progress. Gates ONLY persistence:
+   * while active, the round-trip's teardown does not overwrite the user's
+   * stored preference (locked decision 2). The first `setMode` after entry
+   * ends the round-trip, so genuine, deliberate surface changes made afterwards
+   * persist as normal.
+   */
+  private _transientActive = false;
 
   /**
-   * Get the current panel mode. A transient (automatic-launch) override wins
-   * over the persisted preference; otherwise read from localStorage.
-   * Defaults to 'sidebar' for backward compatibility.
+   * Get the current panel mode. The in-memory surface override wins over the
+   * persisted preference; otherwise read from localStorage. Defaults to
+   * 'sidebar' for backward compatibility.
    */
   public getMode(): PanelMode {
     if (this._transientMode) {
@@ -90,17 +97,22 @@ class PanelModeManager {
    * When switching to 'floating', closes the extension sidebar.
    * When switching to 'sidebar', notifies the floating panel to unmount.
    *
-   * Persistence is the single enforcement point for locked decision 2: outside
-   * a transient session this writes the user's durable choice to localStorage;
-   * while a transient (auto-launch) session is active it updates the in-memory
-   * surface only, so no teardown / exit path can overwrite the stored
-   * preference. The session stays transient until a page reload.
+   * Persistence is the single enforcement point for locked decision 2:
+   * - Outside an auto-launch round-trip this writes the user's durable choice
+   *   to localStorage and drops any in-memory override.
+   * - The first call during a round-trip ENDS it. The base 'sidebar' teardown
+   *   is non-persisting (the stored preference is preserved and 'sidebar' is
+   *   kept as the in-memory current surface); any other, deliberate choice
+   *   (e.g. the user pops out to floating/fullscreen mid-round-trip) persists.
    */
   public setMode(mode: PanelMode): void {
     this.applyModeChange(mode, (next) => {
-      if (this._transientMode !== null) {
-        this._transientMode = next;
+      const endingRoundTrip = this._transientActive;
+      this._transientActive = false;
+      if (endingRoundTrip && next === 'sidebar') {
+        this._transientMode = 'sidebar';
       } else {
+        this._transientMode = null;
         localStorage.setItem(StorageKeys.PANEL_MODE, next);
       }
     });
@@ -111,11 +123,13 @@ class PanelModeManager {
    * same side effects as `setMode` (close sidebar, telemetry, mode-change
    * event) but records the choice in memory only, so the user's stored
    * preference is untouched (locked decision: an automatic launch selection
-   * must not overwrite the persisted preference). Cleared by the next explicit
-   * `setMode` (e.g. exit / auto-dock) and does not survive a reload.
+   * must not overwrite the persisted preference). Opens an auto-launch
+   * round-trip that the next `setMode` (exit / auto-dock / close) ends; does
+   * not survive a reload.
    */
   public setModeTransient(mode: PanelMode): void {
     this.applyModeChange(mode, (next) => {
+      this._transientActive = true;
       this._transientMode = next;
     });
   }
