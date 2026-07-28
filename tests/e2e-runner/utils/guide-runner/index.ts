@@ -58,7 +58,7 @@ export {
 // ============================================
 // Discovery
 // ============================================
-export { discoverStepsFromDOM, logDiscoveryResults } from './discovery';
+export { discoverStepsFromDOM, logDiscoveryResults, resolveEffectiveSkippable } from './discovery';
 export { ensureDocsPanelOpen } from './bootstrap';
 
 // ============================================
@@ -79,10 +79,12 @@ export {
 // ============================================
 export {
   scrollStepIntoView,
-  waitForDoItButtonEnabled,
-  waitForDoItButtonToAppear,
   calculateGuideTimeout,
   calculateStepTimeout,
+  determineUnmetRequirementOutcome,
+  isGuidedExecutionActive,
+  parseNthMatchSelector,
+  selectStepAction,
   waitForStepCompletion,
   checkObjectiveCompletion,
   waitForCompletionWithObjectivePolling,
