@@ -16,27 +16,43 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     zIndex: theme.zIndex.navbarFixed,
     flexShrink: 0,
   }),
-  // Single-row toolbar: title (flex 1) + actions cluster on the right.
-  // `containerType: inline-size` lets the per-button `@container` rule in
-  // `collapsibleLabel` collapse button labels to icon-only when the row gets
-  // narrow. Wraps to a second line when the cluster still doesn't fit.
-  row: css({
+  // Title row (top): editable title + guide id, then status/badge on the right.
+  titleRow: css({
     display: 'flex',
     alignItems: 'center',
-    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
+    padding: `${theme.spacing(1)} ${theme.spacing(1.5)} ${theme.spacing(0.5)}`,
     gap: theme.spacing(1),
-    flexWrap: 'wrap',
+  }),
+  // Toolbar row (bottom): view-mode rocker on the left, action cluster on the
+  // right. Single-line — never wraps. `containerType: inline-size` drives the
+  // rocker's icon-only swap and the `saveButton` label/icon collapse, both
+  // keyed off this row's width.
+  toolbarRow: css({
+    display: 'flex',
+    alignItems: 'center',
+    padding: `0 ${theme.spacing(1.5)} ${theme.spacing(1)}`,
+    gap: theme.spacing(0.5),
+    flexWrap: 'nowrap',
     containerType: 'inline-size',
   }),
-  // Title is guaranteed at least ~180px so the actions cluster has to wrap
-  // to a new row when the row gets narrow, instead of crushing the title to
-  // zero. The input inside still keeps `minWidth: 0 + flex: 1` so long
-  // titles ellipsis within the reserved 180px rather than overflowing.
+  // Right-aligned cluster (used on both rows).
+  rightCluster: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    marginLeft: 'auto',
+    flexShrink: 0,
+  }),
+  // Grows to fill the title row but can shrink below its ~180px preferred width
+  // when space is tight (e.g. the 320px floating-panel minimum), so the status
+  // badge in `rightCluster` stays visible instead of overflowing the row. The
+  // input inside keeps `minWidth: 0` so long titles truncate rather than push
+  // the row wider.
   titleArea: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
-    minWidth: 180,
+    minWidth: 0,
     flex: '1 1 180px',
     '&:hover .guide-id': {
       opacity: 1,
@@ -73,41 +89,49 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     padding: '0 2px',
     flexShrink: 0,
   }),
-  // Right-side action cluster.
-  // - `marginLeft: auto` pushes the cluster to the right edge of the row,
-  //   and — when the cluster wraps onto its own line — keeps it right-aligned
-  //   on that line as well.
-  // - `flexWrap` + `rowGap` let the buttons inside the cluster spill onto a
-  //   second line once even the icon-only collapse can't keep them on one row.
-  // - Label collapse below 640px is opt-in via the `collapsibleLabel` class
-  //   on each Button that wants it (rather than a broad `& button > span`
-  //   rule scoped to the whole cluster). That avoids accidentally hiding
-  //   spans nested inside Badges, IconButtons, or future Grafana `Button`
-  //   internals that might add their own child `<span>`s.
-  actions: css({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: theme.spacing(0.5),
-    flexShrink: 0,
-    flexWrap: 'wrap',
-    rowGap: theme.spacing(0.5),
-    marginLeft: 'auto',
-  }),
-  // Opt-in collapse for Grafana `Button` components that carry a text label.
-  // Under 640px we hide Button's content `<span>` (its direct child) and
-  // tighten horizontal padding, leaving the icon visible. Tooltips and
-  // aria-labels carry the meaning. Targets `& > span` so it only affects
-  // the labeled span that Grafana renders as a direct child of the
-  // `<button>` element this class is applied to — never any descendants.
-  // Container query fires off `row`'s `containerType: inline-size`.
-  collapsibleLabel: css({
-    '@container (max-width: 640px)': {
+  // Save/publish button: label-only at full width, icon-only once the toolbar
+  // collapses below 420px (mirrors the rocker's collapse). Grafana's Button
+  // renders the icon as its only `<svg>` and the label as a direct-child
+  // `<span>`, so we toggle those directly. Container query fires off
+  // `toolbarRow`'s `containerType: inline-size`; the aria-label carries the
+  // action name when the label is hidden.
+  saveButton: css({
+    // Full width: show the label, hide the icon glyph.
+    '& svg': {
+      display: 'none',
+    },
+    '@container (max-width: 420px)': {
+      // Collapsed: icon-only — show the icon, hide the label, tighten padding.
       paddingLeft: theme.spacing(0.75),
       paddingRight: theme.spacing(0.75),
+      '& svg': {
+        display: 'inline-block',
+      },
       '& > span': {
         display: 'none',
       },
+    },
+  }),
+  // View-mode rocker wrapper: holds the labeled + icon-only RadioButtonGroups
+  // and carries the viewModeToggle testid (the tour anchors on it). Exactly one
+  // group is visible at a time — see the two classes below.
+  viewModeRocker: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+  }),
+  // Labeled group is the default; it collapses to the icon-only sibling below
+  // the toolbar's collapse breakpoint. The `@container` rule fires off
+  // `toolbarRow`'s `containerType: inline-size`.
+  viewModeRockerLabeled: css({
+    '@container (max-width: 420px)': {
+      display: 'none',
+    },
+  }),
+  // Icon-only fallback: hidden until the toolbar is too narrow for labels.
+  viewModeRockerIconOnly: css({
+    display: 'none',
+    '@container (max-width: 420px)': {
+      display: 'inline-flex',
     },
   }),
   // Subtler "Saved" indicator (replaces the green chip) — small floppy

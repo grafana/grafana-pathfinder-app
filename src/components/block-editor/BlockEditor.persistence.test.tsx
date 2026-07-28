@@ -31,7 +31,7 @@ describe('BlockEditor persistence', () => {
   it('writes preview mode immediately when selected', () => {
     render(<BlockEditor />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Preview' }));
 
     expect(screen.queryByTestId(testIds.blockEditor.palette)).not.toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!).viewMode).toBe('preview');
@@ -40,7 +40,7 @@ describe('BlockEditor persistence', () => {
   it('restores preview mode after a remount', () => {
     const { unmount } = render(<BlockEditor />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Preview' }));
     unmount();
     render(<BlockEditor />);
 

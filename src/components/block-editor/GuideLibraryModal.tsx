@@ -225,7 +225,7 @@ export function GuideLibraryModal({
             <div className={styles.emptyState}>
               <div className={styles.emptyStateIcon}>📚</div>
               <p>No guides in library.</p>
-              <p>Use &ldquo;Save as draft&rdquo; in the editor to save your first guide.</p>
+              <p>Use &ldquo;Save&rdquo; in the editor to save your first guide.</p>
             </div>
           ) : (
             guides.map((guide) => {
