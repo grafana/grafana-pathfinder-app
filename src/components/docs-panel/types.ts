@@ -43,6 +43,8 @@ export interface OpenLearningJourneyOptions {
   source?: LaunchSource;
   /** @see OpenDocsOptions.preparedContent */
   preparedContent?: RawContent;
+  /** @see OpenDocsOptions.packageInfo */
+  packageInfo?: PackageOpenInfo;
 }
 
 /**

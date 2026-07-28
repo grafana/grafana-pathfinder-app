@@ -1,4 +1,5 @@
 import type { RawContent } from './content.types';
+import type { PackageOpenInfo } from './content-panel.types';
 
 /**
  * A docs link captured from an intercepted navigation event, queued for the
@@ -17,4 +18,11 @@ export interface QueuedDocsLink {
    * persisted, so this never reaches storage.
    */
   preparedContent?: RawContent;
+  /**
+   * Package context derived by `prepareGuideLaunch`, carried through the queue
+   * so a package-backed guide keeps its milestone toolbar / package render type
+   * on the cold-sidebar path (the destination loader skips re-derivation for
+   * prefetched launches). One-shot memory state — never persisted.
+   */
+  packageInfo?: PackageOpenInfo;
 }

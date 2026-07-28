@@ -27,6 +27,7 @@ import { linkInterceptionState } from '../../../global-state/link-interception';
 import { coerceLaunchSource } from '../../../recovery';
 import { parseUrlSafely } from '../../../security';
 import type { RawContent } from '../../../types/content.types';
+import type { PackageOpenInfo } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 
 export function useAutoOpenListener(model: DocsPanelModelOperations): void {
@@ -37,8 +38,9 @@ export function useAutoOpenListener(model: DocsPanelModelOperations): void {
         title: string;
         source?: string;
         preparedContent?: RawContent;
+        packageInfo?: PackageOpenInfo;
       }>;
-      const { url, title, source, preparedContent } = customEvent.detail;
+      const { url, title, source, preparedContent, packageInfo } = customEvent.detail;
 
       // Coerce the untrusted event.detail.source to a typed LaunchSource at
       // the boundary. Unknown literals fall through to `null` ("needs check"),
@@ -55,9 +57,9 @@ export function useAutoOpenListener(model: DocsPanelModelOperations): void {
       // `preparedContent`, when present (My Learning launch), lets the tab open
       // without a second fetch.
       if (isLearningJourney) {
-        model.openLearningJourney(url, title, { source: typedSource ?? undefined, preparedContent });
+        model.openLearningJourney(url, title, { source: typedSource ?? undefined, preparedContent, packageInfo });
       } else {
-        model.openDocsPage(url, title, { source: typedSource ?? undefined, preparedContent });
+        model.openDocsPage(url, title, { source: typedSource ?? undefined, preparedContent, packageInfo });
       }
     };
 

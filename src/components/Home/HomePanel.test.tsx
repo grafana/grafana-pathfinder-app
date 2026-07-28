@@ -16,6 +16,7 @@ import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-side
 import { locationService } from '@grafana/runtime';
 import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import type { RawContent } from '../../types/content.types';
+import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
 
 // ---------------------------------------------------------------------------
@@ -175,7 +176,8 @@ describe('HomePanelRenderer', () => {
           }),
         })
       );
-      expect(panelModeManager.setModeTransient).not.toHaveBeenCalled();
+      expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('sidebar');
+      expect(panelModeManager.setModeTransient).not.toHaveBeenCalledWith('fullscreen');
       dispatchSpy.mockRestore();
     });
 
@@ -206,6 +208,52 @@ describe('HomePanelRenderer', () => {
       );
       expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('floating');
       expect(sidebarState.openSidebar).not.toHaveBeenCalled();
+    });
+
+    it('carries packageInfo on both the dispatched event and the queued link', () => {
+      const packageInfo: PackageOpenInfo = { packageId: 'pkg-1', packageManifest: { kind: 'package' } };
+
+      (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(true);
+      const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
+      render(<HomePanelRenderer />);
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: true, packageInfo }));
+
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ detail: expect.objectContaining({ packageInfo }) })
+      );
+      dispatchSpy.mockRestore();
+
+      jest.clearAllMocks();
+      (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
+      (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(false);
+      render(<HomePanelRenderer />);
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: true, packageInfo }));
+
+      expect(linkInterceptionState.addToQueue).toHaveBeenCalledWith(expect.objectContaining({ packageInfo }));
+    });
+  });
+
+  describe('launches are independent — no cross-launch surface leakage', () => {
+    it('reading-only then interactive: the interactive launch resets the surface to sidebar (A→B)', () => {
+      (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(true);
+      render(<HomePanelRenderer />);
+
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: false }));
+      expect(panelModeManager.setModeTransient).toHaveBeenLastCalledWith('fullscreen');
+
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: true }));
+      expect(panelModeManager.setModeTransient).toHaveBeenLastCalledWith('sidebar');
+    });
+
+    it('interactive then reading-only: the reading-only launch still enters full screen (B→A)', () => {
+      (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(true);
+      render(<HomePanelRenderer />);
+
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: true }));
+      expect(panelModeManager.setModeTransient).toHaveBeenLastCalledWith('sidebar');
+
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: false }));
+      expect(panelModeManager.setModeTransient).toHaveBeenLastCalledWith('fullscreen');
     });
   });
 });

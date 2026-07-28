@@ -74,11 +74,14 @@ export function HomePanelRenderer() {
       return;
     }
 
+    panelModeManager.setModeTransient('sidebar');
+
     const detail = {
       url: launch.url,
       title: launch.title,
       source: launch.source,
       preparedContent: launch.preparedContent,
+      packageInfo: launch.packageInfo,
     };
     if (sidebarState.getIsSidebarMounted()) {
       document.dispatchEvent(new CustomEvent('pathfinder-auto-open-docs', { detail }));
@@ -94,6 +97,7 @@ export function HomePanelRenderer() {
         title: launch.title,
         timestamp: Date.now(),
         preparedContent: launch.preparedContent,
+        packageInfo: launch.packageInfo,
       });
     }
   }, []);
