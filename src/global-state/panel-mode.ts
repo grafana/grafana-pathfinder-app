@@ -56,10 +56,11 @@ class PanelModeManager {
   private _priorPath: string | null = null;
   /**
    * In-memory surface override for an automatic launch (see `setModeTransient`).
-   * When set, it wins over the persisted preference for `getMode()` but is
-   * never written to localStorage, so an automatic surface choice does not
-   * overwrite the user's durable preference. Cleared by any explicit
-   * (persisting) `setMode` and does not survive a page reload.
+   * When set, a transient session is active: it wins over the persisted
+   * preference for `getMode()`, is never written to localStorage, and
+   * suppresses persistence for every subsequent `setMode` (so no teardown /
+   * exit path can overwrite the user's durable preference). Does not survive a
+   * page reload.
    */
   private _transientMode: PanelMode | null = null;
 
@@ -83,29 +84,25 @@ class PanelModeManager {
   }
 
   /**
-   * Whether an automatic-launch surface override is currently active. Exit
-   * paths use this to keep a transiently-entered surface's teardown
-   * non-persisting, so an automatic launch never overwrites the user's
-   * durable preference at exit (locked decision 2).
-   */
-  public isTransientMode(): boolean {
-    return this._transientMode !== null;
-  }
-
-  /**
-   * Switch panel mode. Persists to localStorage and dispatches a
-   * `pathfinder-panel-mode-change` event so both the sidebar and
-   * floating panel can react.
+   * Switch panel mode. Dispatches a `pathfinder-panel-mode-change` event so
+   * both the sidebar and floating panel can react.
    *
    * When switching to 'floating', closes the extension sidebar.
    * When switching to 'sidebar', notifies the floating panel to unmount.
+   *
+   * Persistence is the single enforcement point for locked decision 2: outside
+   * a transient session this writes the user's durable choice to localStorage;
+   * while a transient (auto-launch) session is active it updates the in-memory
+   * surface only, so no teardown / exit path can overwrite the stored
+   * preference. The session stays transient until a page reload.
    */
   public setMode(mode: PanelMode): void {
-    // An explicit mode change is the user's durable choice: persist it and drop
-    // any transient launch override.
     this.applyModeChange(mode, (next) => {
-      this._transientMode = null;
-      localStorage.setItem(StorageKeys.PANEL_MODE, next);
+      if (this._transientMode !== null) {
+        this._transientMode = next;
+      } else {
+        localStorage.setItem(StorageKeys.PANEL_MODE, next);
+      }
     });
   }
 
@@ -125,11 +122,17 @@ class PanelModeManager {
 
   private applyModeChange(mode: PanelMode, commit: (mode: PanelMode) => void): void {
     const previous = this.getMode();
+
+    // Record the new state first (idempotent) so a transient session is marked
+    // even when the surface does not visibly change — e.g. an auto-launch to the
+    // surface that already matches the stored preference. Otherwise the session
+    // would not be flagged transient and a later teardown would persist over the
+    // user's preference.
+    commit(mode);
+
     if (mode === previous) {
       return;
     }
-
-    commit(mode);
 
     if (mode === 'floating' || mode === 'fullscreen') {
       // Close the Grafana extension sidebar to free the slot. Full screen

@@ -245,11 +245,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       guide_url: guideUrl || '',
       guide_title: title,
     });
-    if (panelModeManager.isTransientMode()) {
-      panelModeManager.setModeTransient('sidebar');
-    } else {
-      panelModeManager.setMode('sidebar');
-    }
+    panelModeManager.setMode('sidebar');
     sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');
     sidebarState.openSidebar('Interactive learning');
     // Land the user back on the page they were on before they entered full

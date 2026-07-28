@@ -187,62 +187,54 @@ describe('panelModeManager', () => {
       expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'close-extension-sidebar' }));
     });
 
-    it('is cleared by a subsequent explicit setMode, which then persists', () => {
-      panelModeManager.setModeTransient('fullscreen');
-      panelModeManager.setMode('sidebar');
-      expect(panelModeManager.getMode()).toBe('sidebar');
-      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
-    });
-  });
-
-  describe('isTransientMode', () => {
-    afterEach(() => {
-      panelModeManager.setMode('sidebar');
-      localStorage.clear();
-    });
-
-    it('is false with no override active', () => {
-      expect(panelModeManager.isTransientMode()).toBe(false);
-    });
-
-    it('is true after a transient launch and false after an explicit setMode', () => {
-      panelModeManager.setModeTransient('fullscreen');
-      expect(panelModeManager.isTransientMode()).toBe(true);
-      panelModeManager.setMode('sidebar');
-      expect(panelModeManager.isTransientMode()).toBe(false);
-    });
-  });
-
-  describe('auto-launch round-trip (entry + transient exit)', () => {
-    afterEach(() => {
-      panelModeManager.setMode('sidebar');
-      localStorage.clear();
-    });
-
-    it('never overwrites a non-default persisted preference across a transient full-screen round-trip', () => {
+    it('keeps a subsequent setMode non-persisting while the transient session is active', () => {
       localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
-
-      // Entry: My Learning auto-launches a reading-only guide full screen.
       panelModeManager.setModeTransient('fullscreen');
-      expect(panelModeManager.getMode()).toBe('fullscreen');
-
-      // Exit: a transient full screen must dock via the non-persisting path.
-      expect(panelModeManager.isTransientMode()).toBe(true);
-      panelModeManager.setModeTransient('sidebar');
-
+      // A teardown/exit still calls setMode, but must not persist during a
+      // transient session — the stored preference stays 'floating'.
+      panelModeManager.setMode('sidebar');
       expect(panelModeManager.getMode()).toBe('sidebar');
-      // The user's durable preference is still 'floating' — never rewritten.
       expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
     });
+  });
 
-    it('a manually entered full screen still persists sidebar on exit (fix stays scoped)', () => {
+  describe('transient-session persistence suppression (locked decision 2)', () => {
+    // A transient session only ends on page reload, so the singleton would leak
+    // its in-memory override across tests. Load a fresh instance per test to
+    // simulate a clean page load.
+    let manager!: typeof panelModeManager;
+    beforeEach(() => {
+      jest.isolateModules(() => {
+        manager = jest.requireActual('./panel-mode').panelModeManager;
+      });
+    });
+
+    // Each surface: stored pref = floating → auto-launch enter → teardown via the
+    // real, persistence-agnostic setMode('sidebar') exit call (as every exit /
+    // close / restoration site does) → stored pref STILL floating.
+    it.each(['fullscreen', 'floating', 'sidebar'] as const)(
+      'never overwrites a non-default preference across a transient %s launch round-trip',
+      (surface) => {
+        localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+
+        manager.setModeTransient(surface);
+        expect(manager.getMode()).toBe(surface);
+
+        manager.setMode('sidebar');
+
+        expect(manager.getMode()).toBe('sidebar');
+        expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+      }
+    );
+
+    it('persists a manually entered surface on exit (no transient session)', () => {
       localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
 
-      panelModeManager.setMode('fullscreen');
-      expect(panelModeManager.isTransientMode()).toBe(false);
-      panelModeManager.setMode('sidebar');
+      manager.setMode('fullscreen');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('fullscreen');
+      manager.setMode('sidebar');
 
-      expect(panelModeManager.getMode()).toBe('sidebar');
+      expect(manager.getMode()).toBe('sidebar');
       expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
     });
   });
