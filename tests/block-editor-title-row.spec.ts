@@ -22,14 +22,9 @@ const WIDEST_BADGE_PX = 150;
 const STANDIN_TESTID = 'title-row-status-standin';
 
 test.describe('Block editor header — title row responsive', () => {
-  // Ensure the plugin is enabled. Keep devMode on so this doesn't clobber the
-  // parallel block-editor spec, which needs it for its recording test.
-  test.beforeAll(async ({ request }) => {
-    await request.post('/api/plugins/grafana-pathfinder-app/settings', {
-      data: { enabled: true, jsonData: { devMode: true, devModeUserIds: [1] } },
-    });
-  });
-
+  // No plugin-settings mutation here: the app is provisioned enabled
+  // (provisioning/plugins/app.yaml) and the editor tab isn't dev-mode gated, so
+  // POSTing settings would only race the parallel block-editor spec.
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await clearBlockEditorState(page);

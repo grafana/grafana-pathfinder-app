@@ -16,9 +16,7 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     zIndex: theme.zIndex.navbarFixed,
     flexShrink: 0,
   }),
-  // Title row (top): editable title, then the status badge — left-aligned and
-  // content-sized so the badge flows right after the title. A hairline divider
-  // separates it from the toolbar row below.
+  // Title row (top): editable title + status badge, above the toolbar row.
   titleRow: css({
     display: 'flex',
     alignItems: 'center',
@@ -39,13 +37,31 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     flexWrap: 'nowrap',
     containerType: 'inline-size',
   }),
-  // Right-aligned cluster (used on both rows).
+  // Right-aligned action cluster on the toolbar row.
   rightCluster: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
     marginLeft: 'auto',
     flexShrink: 0,
+  }),
+  // Status cluster (publish badge, or local-save indicator when there's no
+  // backend). `flexShrink: 0` + `nowrap` so a long title can't shrink or wrap
+  // the badge in the title row — the title input absorbs the shrink instead.
+  statusWrap: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+  }),
+  // In preview the status cluster sits in the non-shrinking, no-wrap toolbar;
+  // hide it below the collapse tier so a wide badge can't overflow the row.
+  // Status still shows in edit/JSON and at wider preview widths.
+  previewStatusWrap: css({
+    '@container (max-width: 420px)': {
+      display: 'none',
+    },
   }),
   // Wraps the title input so it can carry a persistent gradient underline
   // (an <input> cannot host a ::after). The bar is always on — it marks the
@@ -80,6 +96,12 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     maxWidth: '100%',
     '&:focus': {
       background: theme.colors.background.secondary,
+    },
+    // Keyboard focus indicator: the always-on gradient underline doesn't signal
+    // focus and `outline: none` above removes the default (WCAG 2.4.7).
+    '&:focus-visible': {
+      outline: `2px solid ${theme.colors.primary.main}`,
+      outlineOffset: 1,
     },
   }),
   // Save/publish button: label-only at full width, icon-only once the toolbar

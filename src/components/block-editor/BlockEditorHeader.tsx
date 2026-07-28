@@ -192,9 +192,7 @@ export function BlockEditorHeader({
     </Button>
   );
 
-  // Local-save indicator (no backend) or publish-status badge (backend) — the
-  // two are mutually exclusive on `isBackendAvailable`. Lives in the title row
-  // in edit/JSON mode and relocates to the toolbar row in preview.
+  // Publish-status badge, or the local-save indicator when there's no backend.
   const statusCluster = (
     <>
       {localSaveIndicator}
@@ -210,17 +208,19 @@ export function BlockEditorHeader({
       {viewMode !== 'preview' && (
         <div className={styles.titleRow} data-testid={testIds.blockEditor.titleRow}>
           <HeaderTitleRow guideTitle={guideTitle} onTitleCommit={onTitleCommit} />
-          {statusCluster}
+          <div className={styles.statusWrap}>{statusCluster}</div>
         </div>
       )}
 
       {/* Single-line — never wraps; the rocker and Save collapse to icons via
           the container-query tiers instead (see toolbarRow). */}
-      <div className={styles.toolbarRow}>
+      <div className={styles.toolbarRow} data-testid={testIds.blockEditor.toolbarRow}>
         <ViewModeRocker viewMode={viewMode} onSetViewMode={onSetViewMode} />
 
         <div className={styles.rightCluster}>
-          {viewMode === 'preview' && statusCluster}
+          {viewMode === 'preview' && (
+            <div className={`${styles.statusWrap} ${styles.previewStatusWrap}`}>{statusCluster}</div>
+          )}
 
           {/* "Reset guide" affordance, lifted out of the preview content area. */}
           {previewResetButton}

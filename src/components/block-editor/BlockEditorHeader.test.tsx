@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, act, fireEvent } from '@testing-library/react';
+import { render, screen, act, fireEvent, within } from '@testing-library/react';
 import { BlockEditorHeader } from './BlockEditorHeader';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { testIds } from '../../constants/testIds';
@@ -240,6 +240,9 @@ describe('BlockEditorHeader: preview mode', () => {
   it('hides the editable title input in preview (title row is not rendered)', () => {
     render(<BlockEditorHeader {...baseProps} viewMode="preview" />);
     expect(screen.queryByLabelText('Guide title')).not.toBeInTheDocument();
+    // The whole row is gone in preview, not just the input (regression guard for
+    // the old aria-hidden spacer, which left the row present).
+    expect(screen.queryByTestId(testIds.blockEditor.titleRow)).not.toBeInTheDocument();
   });
 
   it('keeps the local-save indicator visible in preview when the backend is unavailable', () => {
@@ -250,16 +253,20 @@ describe('BlockEditorHeader: preview mode', () => {
     expect(screen.getByLabelText('Saved')).toBeInTheDocument();
   });
 
-  it('relocates the publish-status badge to the toolbar in preview', () => {
+  it('relocates the publish-status badge into the toolbar row in preview', () => {
     render(<BlockEditorHeader {...baseProps} viewMode="preview" isBackendAvailable={true} publishedStatus="draft" />);
-    expect(screen.getByText('Draft')).toBeInTheDocument();
+    // Assert LOCATION, not just presence: the badge must be inside the toolbar
+    // row (the title row is gone in preview).
+    const toolbar = screen.getByTestId(testIds.blockEditor.toolbarRow);
+    expect(within(toolbar).getByText('Draft')).toBeInTheDocument();
   });
 });
 
 describe('BlockEditorHeader: publish-status badge', () => {
-  it('shows the Draft badge in edit mode when the backend is available', () => {
+  it('shows the Draft badge in the title row in edit mode when the backend is available', () => {
     render(<BlockEditorHeader {...baseProps} viewMode="edit" isBackendAvailable={true} publishedStatus="draft" />);
-    expect(screen.getByText('Draft')).toBeInTheDocument();
+    const titleRow = screen.getByTestId(testIds.blockEditor.titleRow);
+    expect(within(titleRow).getByText('Draft')).toBeInTheDocument();
   });
 
   it('shows the Published badge for a published guide with no unsynced changes', () => {
@@ -273,6 +280,32 @@ describe('BlockEditorHeader: publish-status badge', () => {
       />
     );
     expect(screen.getByText('Published')).toBeInTheDocument();
+  });
+
+  it('shows the "Draft (modified)" variant for a draft with unsynced changes', () => {
+    render(
+      <BlockEditorHeader
+        {...baseProps}
+        viewMode="edit"
+        isBackendAvailable={true}
+        publishedStatus="draft"
+        hasUnsyncedChanges={true}
+      />
+    );
+    expect(screen.getByText('Draft (modified)')).toBeInTheDocument();
+  });
+
+  it('shows the "Published (modified)" variant for a published guide with unsynced changes', () => {
+    render(
+      <BlockEditorHeader
+        {...baseProps}
+        viewMode="edit"
+        isBackendAvailable={true}
+        publishedStatus="published"
+        hasUnsyncedChanges={true}
+      />
+    );
+    expect(screen.getByText('Published (modified)')).toBeInTheDocument();
   });
 
   it('hides the badge entirely when the backend is unavailable', () => {

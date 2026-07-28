@@ -219,6 +219,7 @@ export const testIds = {
     container: 'block-editor-container',
     content: 'block-editor-content',
     titleRow: 'block-editor-title-row',
+    toolbarRow: 'block-editor-toolbar-row',
     palette: 'block-editor-palette',
     jsonEditor: 'block-editor-json-editor',
     // Modals

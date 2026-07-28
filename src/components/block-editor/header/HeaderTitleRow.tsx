@@ -8,6 +8,13 @@ export interface HeaderTitleRowProps {
   onTitleCommit: (title: string) => void;
 }
 
+// The input's `size` (character count) content-sizes it so the gradient
+// underline hugs the title. Approximate under a proportional font; clamped so
+// it stays usable when empty and bounded when the title is long (the row shrinks
+// it further at narrow widths).
+const MIN_TITLE_CHARS = 8;
+const MAX_TITLE_CHARS = 60;
+
 export function HeaderTitleRow({ guideTitle, onTitleCommit }: HeaderTitleRowProps) {
   const styles = useStyles2(getHeaderStyles);
 
@@ -47,7 +54,7 @@ export function HeaderTitleRow({ guideTitle, onTitleCommit }: HeaderTitleRowProp
         ref={titleInputRef}
         className={styles.guideTitleInput}
         value={titleDraft}
-        size={Math.min(Math.max(titleDraft.length + 1, 8), 60)}
+        size={Math.min(Math.max(titleDraft.length + 1, MIN_TITLE_CHARS), MAX_TITLE_CHARS)}
         onChange={(e) => setTitleDraft(e.target.value)}
         onBlur={commitTitle}
         onKeyDown={handleTitleKeyDown}
