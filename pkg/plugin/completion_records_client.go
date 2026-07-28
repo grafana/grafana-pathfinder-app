@@ -14,18 +14,10 @@ import (
 // the read and write proxies must both address it — a record written to one
 // store would never surface in "my completions" if reads hit another.
 const (
-	completionRecordsGroupVersion = "pathfinderbackend.ext.grafana.app/v1alpha1"
+	// completionRecordsGroupVersion is derived from appPlatformGroup
+	// (app_platform_client.go) so it cannot drift from the group name.
+	completionRecordsGroupVersion = appPlatformGroup + "/v1alpha1"
 	completionRecordsResource     = "completionrecords"
-
-	// completionRecordsAggregationToggle is the boot feature toggle the
-	// aggregation layer sets when the .app pathfinderbackend group is served on
-	// this instance. The completion routes (read, write, capability) gate on
-	// this alone: completion data lives only on the .app group, so where it is
-	// not served the feature is correctly unavailable (the front end handles
-	// unavailable/404 gracefully). Distinct from the old-group
-	// pathfinderBackendAggregationToggle, which still gates the
-	// separately-migrated custom-guide surface.
-	completionRecordsAggregationToggle = "aggregation.pathfinderbackend-ext-grafana-app.enabled"
 
 	// completionListPageSize bounds each upstream LIST page. The proxy drains
 	// all pages, so this only trades round-trips against per-response size.
@@ -36,6 +28,17 @@ const (
 	// is completionListMaxTotalRecords (completion_records.go).
 	completionListMaxBytes = 8 * 1024 * 1024
 )
+
+// completionRecordsAggregationToggle is the boot feature toggle the
+// aggregation layer sets when the .app pathfinderbackend group is served on
+// this instance. The completion routes (read, write, capability) gate on
+// this alone: completion data lives only on the .app group, so where it is
+// not served the feature is correctly unavailable (the front end handles
+// unavailable/404 gracefully). Distinct from the old-group
+// pathfinderBackendAggregationToggle, which still gates the
+// separately-migrated custom-guide surface. Derived from appPlatformGroup so
+// it cannot drift from the group name.
+var completionRecordsAggregationToggle = aggregationToggle(appPlatformGroup)
 
 // completionRecordSpec mirrors the fields of the CompletionRecord `spec` that
 // this read proxy consumes. Unlisted spec fields (durationSeconds, userLogin,

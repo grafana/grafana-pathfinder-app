@@ -22,9 +22,25 @@ import (
 // callers supply the group/version + resource and decode each `items[].spec`
 // through a per-kind callback.
 
+// appPlatformGroup is the single source of truth for Pathfinder's Grafana
+// App Platform (GAP) API group. Every resource client and derived toggle
+// reference it so they cannot drift; mirrors the frontend's
+// src/utils/interactive-guides-api.ts APP_PLATFORM_GROUP.
+const appPlatformGroup = "pathfinderbackend.ext.grafana.app"
+
+// aggregationToggle derives the boot feature-toggle name Grafana sets when a
+// group's aggregation layer is served: "aggregation." + the group with dots
+// replaced by dashes + ".enabled". Mirrors the frontend derivation so the two
+// layers name the toggle identically.
+func aggregationToggle(group string) string {
+	return "aggregation." + strings.ReplaceAll(group, ".", "-") + ".enabled"
+}
+
 // pathfinderBackendAggregationToggle mirrors the front-end availability check
 // in src/utils/fetchBackendGuides.ts: the boot-time toggle the aggregation
 // layer sets when the pathfinderbackend API is served on this instance.
+// Still hand-written on the legacy .com group (issues #1431/#1432); a future
+// consumer of aggregationToggle once that group is migrated.
 const pathfinderBackendAggregationToggle = "aggregation.pathfinderbackend-ext-grafana-com.enabled"
 
 // appPlatformUpstreamTimeout caps a single LIST page fetch. The aggregate
