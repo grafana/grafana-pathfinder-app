@@ -1245,7 +1245,7 @@ export function summarizeResults(results: StepTestResult[]): {
 
   return {
     ...counts,
-    success: mandatoryFailed === 0,
+    success: mandatoryFailed === 0 && (counts.passed > 0 || counts.failed === 0),
     totalDurationMs: results.reduce((sum, r) => sum + r.durationMs, 0),
   };
 }

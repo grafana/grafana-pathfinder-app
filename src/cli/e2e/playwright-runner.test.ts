@@ -187,6 +187,7 @@ describe('runPlaywrightTests', () => {
         join(runnerRoot, 'tests/e2e-runner/guide-runner.spec.ts'),
         `--config=${join(runnerRoot, 'tests/e2e-runner/playwright.config.ts')}`,
         '--project=chromium',
+        expect.stringMatching(/^--output=/),
       ],
       expect.objectContaining({
         cwd: runnerRoot,
@@ -246,6 +247,31 @@ describe('runPlaywrightTests', () => {
     } finally {
       rmSpy.mockRestore();
     }
+  });
+
+  it('disables Playwright tracing when bearer-token authentication is active', async () => {
+    const child = new EventEmitter();
+    spawnMock.mockImplementation(() => child as never);
+
+    const resultPromise = runPlaywrightTests(
+      { path: 'fixture.json', content: '{}' },
+      {
+        targetUrl: 'https://play.grafana.org',
+        verbose: false,
+        trace: true,
+        headed: false,
+        artifacts: 'artifacts',
+        alwaysScreenshot: false,
+        token: 'test-token',
+      }
+    );
+    const args = spawnMock.mock.calls[0]?.[1] as string[];
+    const spawnOptions = spawnMock.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
+    child.emit('close', 1);
+    await resultPromise;
+
+    expect(args).not.toContain('--trace');
+    expect(spawnOptions.env?.E2E_TRACE).toBe('false');
   });
 
   it.each([

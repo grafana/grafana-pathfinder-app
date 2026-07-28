@@ -46,6 +46,8 @@ describe('writeJsonReport', () => {
     const report = JSON.parse(readFileSync(outputPath, 'utf-8')) as MultiGuideReport;
     expect(schemaValid).toBe(true);
     expect(report.type).toBe('multi-guide');
+    expect(report.summary.totalGuides).toBe(1);
+    expect(report.summary.skippedGuides).toBe(1);
     expect(report.guides).toEqual([]);
     expect(report.reports).toEqual([]);
     expect(report.preRunSkipped).toEqual([

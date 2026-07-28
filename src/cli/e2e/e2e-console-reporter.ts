@@ -39,6 +39,8 @@ function skipOnlyReport(
   cleanupWarnings: string[] = []
 ): MultiGuideReport {
   const timestamp = new Date().toISOString();
+  const failedGuides = (preRunSkipped ?? []).filter((entry) => entry.failed).length;
+  const skippedGuides = (preRunSkipped ?? []).length - failedGuides;
   const runner: RunnerProvenance = {
     name: 'pathfinder-e2e-runner',
     version: process.env.PATHFINDER_E2E_RUNNER_VERSION ?? 'source',
@@ -54,11 +56,11 @@ function skipOnlyReport(
     type: 'multi-guide',
     config: { timestamp },
     summary: {
-      totalGuides: 0,
+      totalGuides: (preRunSkipped ?? []).length,
       passedGuides: 0,
-      failedGuides: 0,
+      failedGuides,
       authExpiredGuides: 0,
-      skippedGuides: 0,
+      skippedGuides,
       steps: {
         total: 0,
         passed: 0,

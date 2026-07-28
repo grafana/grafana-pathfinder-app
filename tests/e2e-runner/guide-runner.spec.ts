@@ -97,7 +97,7 @@ function writeResultsFile(
     startedAt: timestamp,
     endedAt: new Date().toISOString(),
     outcome,
-    errorCode: allStepsResult.abortReason,
+    errorCode: allStepsResult.abortReason ?? (outcome === 'failed' ? 'UNKNOWN' : undefined),
     errorMessage: allStepsResult.abortMessage,
     results: results.map((r) => ({
       stepId: r.stepId,
@@ -218,7 +218,6 @@ test.describe('Guide Runner', () => {
         { key: StorageKeys.E2E_TEST_GUIDE, json: guideJson }
       );
     await injectGuide();
-
     await ensureDocsPanelOpen(page, {
       beforeRetry: async () => {
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
@@ -312,7 +311,7 @@ test.describe('Guide Runner', () => {
       guideJson,
       executionResult.abortReason === 'AUTH_EXPIRED'
         ? 'aborted'
-        : executionResult.abortReason === 'MANDATORY_FAILURE' || summary.mandatoryFailed > 0
+        : executionResult.abortReason === 'MANDATORY_FAILURE' || !summary.success
           ? 'failed'
           : 'passed'
     );
@@ -326,8 +325,6 @@ test.describe('Guide Runner', () => {
       throw new Error(`AUTH_EXPIRED: ${executionResult.abortMessage}`);
     }
 
-    // L3-4C: Verify no mandatory failures occurred
-    // Per design doc: skippable step failures do NOT fail the overall test
-    expect(summary.mandatoryFailed).toBe(0);
+    expect(summary.success).toBe(true);
   });
 });

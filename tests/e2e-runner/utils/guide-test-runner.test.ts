@@ -363,6 +363,15 @@ describe('summarizeResults', () => {
     expect(summary.mandatoryFailed).toBe(0);
   });
 
+  it('does not pass when no step was verified and a skippable step failed', () => {
+    const results = [
+      createStepResult({ stepId: 'step-1', status: 'failed', skippable: true }),
+      createStepResult({ stepId: 'step-2', status: 'skipped', skipReason: 'requirements_unmet' }),
+    ];
+
+    expect(summarizeResults(results).success).toBe(false);
+  });
+
   it('success is false when any mandatory step fails', () => {
     const results = [
       createStepResult({ stepId: 'step-1', status: 'passed' }),
