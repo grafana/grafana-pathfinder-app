@@ -17,9 +17,14 @@ jest.mock('@playwright/test', () => ({
 
 import {
   calculateStepTimeout,
+  determineUnmetRequirementOutcome,
   summarizeResults,
   logStepResult,
   logExecutionSummary,
+  isGuidedExecutionActive,
+  parseNthMatchSelector,
+  resolveEffectiveSkippable,
+  selectStepAction,
   DEFAULT_STEP_TIMEOUT_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
   TIMEOUT_PER_GUIDED_SUBSTEP_MS,
@@ -40,6 +45,7 @@ function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep
     index: 0,
     skippable: false,
     hasDoItButton: true,
+    hasShowMeButton: false,
     isPreCompleted: false,
     isMultistep: false,
     internalActionCount: 0,
@@ -179,6 +185,67 @@ describe('calculateStepTimeout', () => {
   });
 });
 
+describe('selectStepAction', () => {
+  it('prefers Do it when both controls are available', () => {
+    expect(selectStepAction({ hasDoItButton: true, hasShowMeButton: true })).toBe('do-it');
+  });
+
+  it('uses Show me for doIt:false steps', () => {
+    expect(selectStepAction({ hasDoItButton: false, hasShowMeButton: true })).toBe('show-me');
+  });
+
+  it('returns no action when neither control is available', () => {
+    expect(selectStepAction({ hasDoItButton: false, hasShowMeButton: false })).toBeUndefined();
+  });
+});
+
+describe('determineUnmetRequirementOutcome', () => {
+  it('skips explicitly skippable steps', () => {
+    expect(determineUnmetRequirementOutcome(true)).toBe('skip');
+  });
+
+  it('fails mandatory steps', () => {
+    expect(determineUnmetRequirementOutcome(false)).toBe('fail');
+  });
+});
+
+describe('resolveEffectiveSkippable', () => {
+  it('does not make guided steps skippable unless the UI exposes Skip', () => {
+    expect(resolveEffectiveSkippable(false, true)).toBe(false);
+  });
+
+  it('preserves explicit skippability for guided steps', () => {
+    expect(resolveEffectiveSkippable(true, true)).toBe(true);
+  });
+});
+
+describe('isGuidedExecutionActive', () => {
+  it('treats deployed completeEarly state as active while a substep index is present', () => {
+    expect(isGuidedExecutionActive('completed', '0')).toBe(true);
+  });
+
+  it('treats completed without a substep index as terminal', () => {
+    expect(isGuidedExecutionActive('completed', null)).toBe(false);
+  });
+});
+
+describe('parseNthMatchSelector', () => {
+  it('splits Pathfinder nth-match syntax into a zero-based locator index and trailing selector', () => {
+    expect(
+      parseNthMatchSelector(
+        "section[data-testid='data-testid Panel header Main Origin/Destination']:nth-match(2) svg[data-testid='icon-ellipsis-v']"
+      )
+    ).toEqual({
+      baseSelector: "section[data-testid='data-testid Panel header Main Origin/Destination']",
+      index: 1,
+      trailingSelector: "svg[data-testid='icon-ellipsis-v']",
+    });
+  });
+
+  it('returns undefined for native selectors', () => {
+    expect(parseNthMatchSelector("button[data-testid='save']")).toBeUndefined();
+  });
+});
 // ============================================
 // summarizeResults Tests
 // ============================================

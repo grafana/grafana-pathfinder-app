@@ -152,6 +152,61 @@ export function calculateStepTimeout(step: TestableStep): number {
   return DEFAULT_STEP_TIMEOUT_MS;
 }
 
+export type StepAction = 'do-it' | 'show-me';
+
+export function selectStepAction(
+  step: Pick<TestableStep, 'hasDoItButton' | 'hasShowMeButton'>
+): StepAction | undefined {
+  if (step.hasDoItButton) {
+    return 'do-it';
+  }
+  if (step.hasShowMeButton) {
+    return 'show-me';
+  }
+  return undefined;
+}
+
+export function determineUnmetRequirementOutcome(skippable: boolean): 'skip' | 'fail' {
+  return skippable ? 'skip' : 'fail';
+}
+
+function stepActionButton(page: Page, stepId: string, action: StepAction): Locator {
+  const testId = action === 'do-it' ? testIds.interactive.doItButton(stepId) : testIds.interactive.showMeButton(stepId);
+  return page.getByTestId(testId);
+}
+
+async function currentStepAction(page: Page, stepId: string): Promise<StepAction | undefined> {
+  return selectStepAction({
+    hasDoItButton: (await stepActionButton(page, stepId, 'do-it').count()) > 0,
+    hasShowMeButton: (await stepActionButton(page, stepId, 'show-me').count()) > 0,
+  });
+}
+
+async function waitForStepActionToAppear(
+  page: Page,
+  stepId: string,
+  timeout = BUTTON_APPEAR_TIMEOUT_MS
+): Promise<StepAction | undefined> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const action = await currentStepAction(page, stepId);
+    if (action) {
+      return action;
+    }
+    await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
+  }
+  return undefined;
+}
+
+async function waitForStepActionEnabled(
+  page: Page,
+  stepId: string,
+  action: StepAction,
+  timeout = BUTTON_ENABLE_TIMEOUT_MS
+): Promise<void> {
+  await expect(stepActionButton(page, stepId, action)).toBeEnabled({ timeout });
+}
+
 /**
  * Wait for a step to reach completed state (E2E contract).
  *
@@ -184,6 +239,18 @@ export async function checkObjectiveCompletion(page: Page, stepId: string): Prom
   const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
   const state = await stepLocator.getAttribute('data-test-step-state');
   return state === 'completed';
+}
+
+async function readStepError(page: Page, stepId: string): Promise<string | undefined> {
+  const errorElement = page.getByTestId(testIds.interactive.errorMessage(stepId));
+  if ((await errorElement.count()) > 0) {
+    return (await errorElement.first().textContent())?.trim() || undefined;
+  }
+  const deployedError = page
+    .getByTestId(testIds.interactive.step(stepId))
+    .locator('.interactive-lazy-error-text, .interactive-step-execution-error')
+    .first();
+  return (await deployedError.count()) > 0 ? (await deployedError.textContent())?.trim() || undefined : undefined;
 }
 
 /**
@@ -223,10 +290,20 @@ export async function waitForCompletionWithObjectivePolling(
         return { completedViaObjectives: false };
       }
     }
+    const errorMessage = await readStepError(page, stepId);
+    if (errorMessage) {
+      throw new Error(errorMessage);
+    }
     if (state === 'completed') {
       const elapsed = Date.now() - startTime;
       const likelyObjectiveCompletion = elapsed < COMPLETION_POLL_INTERVAL_MS * 2;
       return { completedViaObjectives: likelyObjectiveCompletion };
+    }
+    if (state === 'error') {
+      throw new Error((await readStepError(page, stepId)) ?? `Step ${stepId} entered error state`);
+    }
+    if (state === 'cancelled' || state === 'requirements-unmet') {
+      throw new Error(`Step ${stepId} entered ${state} state`);
     }
     await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
   }
@@ -241,6 +318,79 @@ export async function waitForCompletionWithObjectivePolling(
 
 const GUIDED_WAIT_EXECUTING_MS = 5000;
 
+export function isGuidedExecutionActive(state: string | null, substepIndex: string | null): boolean {
+  return state === 'executing' || (state === 'completed' && substepIndex !== null);
+}
+
+async function waitForGuidedExecutionStart(page: Page, stepLocator: Locator, timeout: number): Promise<void> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const state = await stepLocator.getAttribute('data-test-step-state');
+    const substepIndex = await stepLocator.getAttribute('data-test-substep-index');
+    if (isGuidedExecutionActive(state, substepIndex) || (state === 'completed' && substepIndex === null)) {
+      return;
+    }
+    if (state === 'error' || state === 'cancelled') {
+      throw new Error(`Guided step entered ${state} state before execution`);
+    }
+    await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
+  }
+  throw new Error('Guided step did not enter executing state');
+}
+
+interface ParsedNthMatchSelector {
+  baseSelector: string;
+  index: number;
+  trailingSelector: string;
+}
+
+export function parseNthMatchSelector(selector: string): ParsedNthMatchSelector | undefined {
+  const match = selector.match(/^(.+?):nth-match\((\d+)\)(.*)$/);
+  if (!match) {
+    return undefined;
+  }
+  const oneBasedIndex = Number.parseInt(match[2]!, 10);
+  if (oneBasedIndex < 1) {
+    return undefined;
+  }
+  return {
+    baseSelector: match[1]!,
+    index: oneBasedIndex - 1,
+    trailingSelector: match[3]!.trim(),
+  };
+}
+
+function guidedSelectorLocator(page: Page, selector: string): Locator {
+  const parsed = parseNthMatchSelector(selector);
+  if (!parsed) {
+    return page.locator(selector).first();
+  }
+  const matched = page.locator(parsed.baseSelector).nth(parsed.index);
+  return parsed.trailingSelector ? matched.locator(parsed.trailingSelector).first() : matched;
+}
+
+async function revealGuidedTarget(target: Locator, timeout: number): Promise<Locator> {
+  if (await target.isVisible()) {
+    return target;
+  }
+  if ((await target.count()) > 0) {
+    const panel = target.locator('xpath=ancestor::section[1]');
+    if ((await panel.count()) > 0) {
+      await panel.scrollIntoViewIfNeeded().catch(() => {});
+      await panel.hover({ timeout }).catch(() => {});
+      if (await target.isVisible()) {
+        return target;
+      }
+      const menuButton = panel.locator('button[data-testid^="data-testid Panel menu "]').first();
+      if ((await menuButton.count()) > 0 && (await menuButton.isVisible())) {
+        return menuButton;
+      }
+    }
+  }
+  await target.waitFor({ state: 'visible', timeout });
+  return target;
+}
+
 /**
  * Resolve data-test-reftarget to a Playwright locator for the current substep.
  * Button: try getByRole('button', { name }) then locator(selector); others use locator(selector).
@@ -254,20 +404,18 @@ async function resolveGuidedTarget(page: Page, reftarget: string, actionType: st
     const byRole = page.getByRole('button', { name: reftarget });
     const n = await byRole.count();
     if (n > 0) {
-      return byRole.first();
+      return revealGuidedTarget(byRole.first(), timeout);
     }
-    const bySelector = page.locator(selector);
+    const bySelector = guidedSelectorLocator(page, selector);
     const hasButton = bySelector.filter({ has: page.getByRole('button') });
     const hasCount = await hasButton.count();
     if (hasCount > 0) {
-      return hasButton.first();
+      return revealGuidedTarget(hasButton.first(), timeout);
     }
-    return bySelector.first();
+    return revealGuidedTarget(bySelector.first(), timeout);
   }
 
-  const loc = page.locator(selector).first();
-  await loc.waitFor({ state: 'visible', timeout });
-  return loc;
+  return revealGuidedTarget(guidedSelectorLocator(page, selector), timeout);
 }
 
 /**
@@ -313,11 +461,11 @@ async function waitForSubstepAdvance(
     if (lastState === 'cancelled') {
       throw new Error('Guided step was cancelled');
     }
-    if (lastState === 'completed') {
-      return;
-    }
     const index = lastIndex != null ? parseInt(lastIndex, 10) : 0;
     if (!Number.isNaN(index) && index > previousSubstepIndex) {
+      return;
+    }
+    if (lastState === 'completed' && lastIndex === null) {
       return;
     }
 
@@ -433,7 +581,8 @@ async function runGuidedSubstepLoop(
     }
 
     const state = await stepLocator.getAttribute('data-test-step-state');
-    if (state === 'completed') {
+    const indexStr = await stepLocator.getAttribute('data-test-substep-index');
+    if (state === 'completed' && indexStr === null) {
       return { completed: true };
     }
     if (state === 'error') {
@@ -444,12 +593,11 @@ async function runGuidedSubstepLoop(
       await captureLoopArtifacts('cancelled-state');
       throw new Error('Guided step was cancelled');
     }
-    if (state !== 'executing') {
+    if (!isGuidedExecutionActive(state, indexStr)) {
       await captureLoopArtifacts(`unexpected-state-${state}`);
       throw new Error(`Unexpected guided step state: ${state}`);
     }
 
-    const indexStr = await stepLocator.getAttribute('data-test-substep-index');
     const currentIndex = indexStr != null ? parseInt(indexStr, 10) : 0;
     const safeIndex = Number.isNaN(currentIndex) ? 0 : currentIndex;
     if (safeIndex >= guidedStepCount) {
@@ -644,71 +792,38 @@ export async function executeStep(
 
     // If requirements are not met after fix attempts
     if (!requirements.requirementsMet && requirements.status === 'unmet') {
-      if (step.skippable) {
-        // Skippable steps: skip with reason logged
+      if (determineUnmetRequirementOutcome(step.skippable) === 'skip') {
         if (verbose) {
           console.log(`   ⊘ Step ${step.stepId} skipped due to unmet requirements (skippable)`);
         }
         return createSkippedResult(step, page, startTime, consoleErrors, 'requirements_unmet');
       }
-
-      // Mandatory steps: if fix was attempted and failed, report failure
-      if (fixResult && !fixResult.success) {
-        if (verbose) {
-          console.log(
-            `   ✗ Step ${step.stepId} failed: requirements not met after ${fixResult.totalAttempts} fix attempts`
-          );
-        }
-        const errorMsg = `Requirements not met after ${fixResult.totalAttempts} fix attempt(s): ${fixResult.failureReason || 'unknown reason'}`;
-
-        // L3-5D: Capture artifacts on failure
-        let artifacts: ArtifactPaths | undefined;
-        if (artifactsDir) {
-          artifacts = await captureFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir);
-          // Include PRE screenshot if captured
-          if (artifacts && preScreenshotPath) {
-            artifacts.screenshotPre = preScreenshotPath;
-          } else if (preScreenshotPath) {
-            artifacts = { screenshotPre: preScreenshotPath };
-          }
-          if (verbose && artifacts) {
-            console.log(`   📸 Artifacts captured to ${artifactsDir}`);
-          }
-        }
-
-        return {
-          stepId: step.stepId,
-          status: 'failed',
-          durationMs: Date.now() - startTime,
-          currentUrl: page.url(),
-          consoleErrors,
-          error: errorMsg,
-          skippable: step.skippable,
-          // L3-5C: Classify the error - requirements failures are typically 'unknown'
-          classification: classifyError(errorMsg),
-          // L3-5D: Include artifact paths
-          artifacts,
-        };
-      }
-
-      // Mandatory steps without fix button available - proceed to try "Do it"
-      // (button may still become enabled via sequential dependencies)
+      const errorMsg = fixResult
+        ? `Requirements not met after ${fixResult.totalAttempts} fix attempt(s): ${fixResult.failureReason || 'unknown reason'}`
+        : `Requirements not met: ${requirements.explanationText || 'no automatic fix is available'}`;
       if (verbose) {
-        console.log(`   ⚠ Step ${step.stepId} has unmet requirements but no fix available, attempting execution`);
+        console.log(`   ✗ Step ${step.stepId} failed: ${errorMsg}`);
       }
-    }
-
-    // Wait for "Do it" button to appear (handles sequential dependencies)
-    // Button may not exist at discovery time but appears after previous step completes
-    if (verbose) {
-      console.log(`   ⏳ Waiting for "Do it" button to appear...`);
-    }
-    const buttonAppeared = await waitForDoItButtonToAppear(page, step.stepId);
-    if (!buttonAppeared) {
-      if (verbose) {
-        console.log(`   ⊘ Step ${step.stepId} has no "Do it" button (timeout waiting for appearance), skipping`);
+      let artifacts: ArtifactPaths | undefined;
+      if (artifactsDir) {
+        artifacts = await captureFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir);
+        if (artifacts && preScreenshotPath) {
+          artifacts.screenshotPre = preScreenshotPath;
+        } else if (preScreenshotPath) {
+          artifacts = { screenshotPre: preScreenshotPath };
+        }
       }
-      return createSkippedResult(step, page, startTime, consoleErrors, 'no_do_it_button');
+      return {
+        stepId: step.stepId,
+        status: 'failed',
+        durationMs: Date.now() - startTime,
+        currentUrl: page.url(),
+        consoleErrors,
+        error: errorMsg,
+        skippable: false,
+        classification: classifyError(errorMsg),
+        artifacts,
+      };
     }
 
     // L3-3C: Check for objective-based auto-completion BEFORE clicking
@@ -745,22 +860,50 @@ export async function executeStep(
       };
     }
 
-    // L3-3C: Wait for "Do it" button to be enabled (U3: sequential dependencies)
-    // Uses dedicated timeout constant for button enablement
+    const discoveredAction = selectStepAction(step);
+    let action = await currentStepAction(page, step.stepId);
+    if (!action) {
+      if (verbose) {
+        console.log(`   ⏳ Waiting for a step action to appear...`);
+      }
+      action = await waitForStepActionToAppear(page, step.stepId, discoveredAction ? 1000 : BUTTON_APPEAR_TIMEOUT_MS);
+    }
+    if (!action) {
+      if (await checkObjectiveCompletion(page, step.stepId)) {
+        let artifacts: ArtifactPaths | undefined;
+        if (artifactsDir && alwaysScreenshot) {
+          artifacts = await captureSuccessArtifacts(page, step.stepId, artifactsDir);
+          if (artifacts && preScreenshotPath) {
+            artifacts.screenshotPre = preScreenshotPath;
+          } else if (preScreenshotPath) {
+            artifacts = { screenshotPre: preScreenshotPath };
+          }
+        }
+        return {
+          stepId: step.stepId,
+          status: 'passed',
+          durationMs: Date.now() - startTime,
+          currentUrl: page.url(),
+          consoleErrors,
+          skippable: step.skippable,
+          artifacts,
+        };
+      }
+      if (step.skippable) {
+        return createSkippedResult(step, page, startTime, consoleErrors, 'no_do_it_button');
+      }
+      throw new Error(`No executable Do it or Show me control appeared for mandatory step ${step.stepId}`);
+    }
     if (verbose && step.isMultistep) {
       console.log(
         `   ⏱ Multistep detected (${step.internalActionCount} actions), timeout: ${Math.round(timeout / 1000)}s`
       );
     }
-
-    await waitForDoItButtonEnabled(page, step.stepId, BUTTON_ENABLE_TIMEOUT_MS);
-
-    // Click "Do it" button
-    const doItButton = page.getByTestId(testIds.interactive.doItButton(step.stepId));
-    await doItButton.click();
+    await waitForStepActionEnabled(page, step.stepId, action);
+    await stepActionButton(page, step.stepId, action).click();
 
     if (verbose) {
-      console.log(`   → Clicked "Do it" for step ${step.stepId}`);
+      console.log(`   → Clicked "${action === 'do-it' ? 'Do it' : 'Show me'}" for step ${step.stepId}`);
     }
 
     // Allow the reactive system to settle after click (debounced rechecks).
@@ -769,9 +912,7 @@ export async function executeStep(
     // Phase 3: Guided step — wait for executing, run substep loop, then wait for completion
     if (step.isGuided && step.guidedStepCount != null && step.guidedStepCount > 0) {
       const stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
-      await expect(stepLocator).toHaveAttribute('data-test-step-state', 'executing', {
-        timeout: GUIDED_WAIT_EXECUTING_MS,
-      });
+      await waitForGuidedExecutionStart(page, stepLocator, GUIDED_WAIT_EXECUTING_MS);
       const { completed } = await runGuidedSubstepLoop(page, step, {
         stepLocator,
         perSubstepTimeoutMs: TIMEOUT_PER_GUIDED_SUBSTEP_MS,
@@ -1145,8 +1286,6 @@ export function summarizeResults(results: StepTestResult[]): {
 
   return {
     ...counts,
-    // L3-4C: Only mandatory failures count against overall success
-    // Per design doc: "Skippable step failures do NOT fail the overall test"
     success: mandatoryFailed === 0,
     totalDurationMs: results.reduce((sum, r) => sum + r.durationMs, 0),
   };

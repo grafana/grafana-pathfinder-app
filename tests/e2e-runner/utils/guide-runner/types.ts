@@ -38,6 +38,8 @@ export interface TestableStep {
 
   /** Whether a "Do it" button exists for this step (U1) */
   hasDoItButton: boolean;
+  /** Whether a "Show me" button exists for this step */
+  hasShowMeButton: boolean;
 
   /** Whether the step is already completed (U2 - objectives/noop) */
   isPreCompleted: boolean;

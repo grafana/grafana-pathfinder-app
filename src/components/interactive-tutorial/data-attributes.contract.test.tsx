@@ -24,7 +24,7 @@
 
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { InteractiveStep } from './interactive-step';
+import { deriveInteractiveStepState, InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
 import { testIds } from '../../constants/testIds';
@@ -80,6 +80,17 @@ const mockGuidedActions: GuidedAction[] = [
 // ============================================================================
 
 describe('E2E Contract: data-test-step-state', () => {
+  it('maps interactive action errors to the stable error state', () => {
+    expect(
+      deriveInteractiveStepState({
+        isCompleted: false,
+        isRunning: false,
+        hasError: true,
+        isChecking: false,
+        isEnabled: true,
+      })
+    ).toBe(STEP_STATES.ERROR);
+  });
   describe('InteractiveStep', () => {
     it('has data-test-step-state attribute', () => {
       render(
