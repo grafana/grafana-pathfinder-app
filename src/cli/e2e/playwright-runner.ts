@@ -13,6 +13,9 @@ import { E2E_ENV, encodeEnvFlag } from './e2e-runner-contract';
 import type { LoadedGuide } from '../utils/file-loader';
 import type { E2EErrorCode } from './schemas/e2e-report.schema';
 import { contentDigest, createMinimalResultsData, type TestResultsData } from './e2e-reporter';
+import { resolveStartingPath } from './starting-location';
+
+export { resolveStartingUrl } from './starting-location';
 
 const PLAYWRIGHT_CONFIG_PATH = join('tests', 'e2e-runner', 'playwright.config.ts');
 const GUIDE_RUNNER_SPEC_PATH = join('tests', 'e2e-runner', 'guide-runner.spec.ts');
@@ -35,18 +38,6 @@ function tryFindRunnerRoot(startDir: string): string | undefined {
     }
     candidate = parent;
   }
-}
-
-export function resolveStartingUrl(targetUrl: string, startingLocation: string): string {
-  const target = new URL(targetUrl);
-  const resolved = new URL(startingLocation || '/', target);
-  if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') {
-    throw new Error(`Guide starting location protocol must be HTTP or HTTPS, received ${resolved.protocol}`);
-  }
-  if (resolved.origin !== target.origin) {
-    throw new Error(`Guide starting location must use the same origin as ${target.origin}`);
-  }
-  return resolved.toString();
 }
 
 export function findRunnerRoot(startDir: string): string {
@@ -222,8 +213,7 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
   const traceOutputFilePath = join(tempDir, 'trace-path.txt');
 
   try {
-    const startingUrl = new URL(resolveStartingUrl(options.targetUrl, options.startingLocation));
-    const startingPath = `${startingUrl.pathname}${startingUrl.search}${startingUrl.hash}`;
+    const startingPath = resolveStartingPath(options.targetUrl, options.startingLocation);
     writeFileSync(guidePath, guide.content);
 
     if (options.verbose) {

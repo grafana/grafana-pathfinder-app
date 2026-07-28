@@ -45,6 +45,7 @@ import {
   provisioningErrorCode,
   provisioningFailureResults,
   resolveRunMode,
+  runnerFailureResult,
   skipToResult,
   type GuideRunResult,
   type GuideStatus,
@@ -773,7 +774,18 @@ async function runChains(
           token: isCloudTarget ? provisionedTargets.tokenForGuide(planned.id, meta?.targetUrl) : undefined,
         };
 
-        const result = await runPlaywrightTests(planned.guide, runGuideOptions);
+        let result: Awaited<ReturnType<typeof runPlaywrightTests>>;
+        try {
+          result = await runPlaywrightTests(planned.guide, runGuideOptions);
+        } catch (error) {
+          const failure = runnerFailureResult(planned, meta, targetUrl, error);
+          results.push(failure);
+          allPassed = false;
+          chainHadFailure = true;
+          blocked.add(planned.id);
+          console.error(`   ❌ ${failure.abortMessage}`);
+          continue;
+        }
         applyPackageMeta(result.resultsData, meta);
         const status: GuideStatus = result.success
           ? 'passed'

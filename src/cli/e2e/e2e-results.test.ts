@@ -25,6 +25,7 @@ import {
   preRunSkipsFromResults,
   provisioningErrorCode,
   provisioningFailureResults,
+  runnerFailureResult,
   resolveRunMode,
   skipToResult,
   summarizeSteps,
@@ -257,6 +258,40 @@ describe('provisioningFailureResults', () => {
     expect(report).toMatchObject({
       outcome: 'infrastructure_error',
       errorCode: 'PROVISIONING_FAILED',
+    });
+  });
+});
+
+describe('runnerFailureResult', () => {
+  it('converts a thrown runner error into a retained per-guide configuration failure', () => {
+    const result = runnerFailureResult(
+      {
+        id: 'bad-guide',
+        guide: { path: 'https://cdn.test/bad-guide/content.json', content: '{"id":"bad-guide"}' },
+        autoIncluded: false,
+      },
+      {
+        packageId: 'bad-guide',
+        tier: 'cloud',
+        targetUrl: 'https://play.grafana.org/',
+        sourceUrl: 'https://cdn.test/bad-guide/content.json',
+      },
+      'http://localhost:3000',
+      new Error('Invalid starting location')
+    );
+
+    expect(result).toMatchObject({
+      id: 'bad-guide',
+      status: 'failed',
+      exitCode: ExitCode.CONFIGURATION_ERROR,
+      abortMessage: 'Runner setup failed: Invalid starting location',
+      resultsData: {
+        outcome: 'configuration_error',
+        errorCode: 'CONFIGURATION_ERROR',
+        errorMessage: 'Runner setup failed: Invalid starting location',
+        guide: { targetUrl: 'http://localhost:3000' },
+        results: [],
+      },
     });
   });
 });

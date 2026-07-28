@@ -18,7 +18,7 @@ import {
   type SkippedPackage,
 } from './e2e-package';
 import type { E2EErrorCode, E2EExecutionOutcome, PreRunSkip } from './schemas/e2e-report.schema';
-import { contentDigest, type TestResultsData } from './e2e-reporter';
+import { contentDigest, createMinimalResultsData, type TestResultsData } from './e2e-reporter';
 import { ExitCode } from './exit-codes';
 import type { AbortReason } from './playwright-runner';
 import type { SideEffectClassification } from './side-effects';
@@ -193,6 +193,39 @@ interface PlannedGuideForResult {
   id: string;
   guide: { path: string; content?: string };
   autoIncluded: boolean;
+}
+
+export function runnerFailureResult(
+  planned: PlannedGuideForResult,
+  meta: PackageMeta | undefined,
+  fallbackTargetUrl: string,
+  error: unknown
+): GuideRunResult {
+  const message = `Runner setup failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+  const resultsData = createMinimalResultsData({
+    guide: {
+      id: planned.id,
+      title: planned.id,
+      path: planned.guide.path,
+      targetUrl: fallbackTargetUrl,
+      ...(planned.guide.content ? { contentDigest: contentDigest(planned.guide.content) } : {}),
+    },
+    outcome: 'configuration_error',
+    errorCode: 'CONFIGURATION_ERROR',
+    errorMessage: message,
+  });
+  applyPackageMeta(resultsData, meta);
+  return {
+    guide: planned.guide.path,
+    id: planned.id,
+    status: 'failed',
+    exitCode: ExitCode.CONFIGURATION_ERROR,
+    autoIncluded: planned.autoIncluded,
+    abortMessage: message,
+    tier: meta?.tier,
+    sideEffects: meta?.sideEffects,
+    resultsData,
+  };
 }
 export function provisioningErrorCode(error: unknown): E2EErrorCode {
   const code =
