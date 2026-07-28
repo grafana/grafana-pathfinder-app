@@ -69,6 +69,12 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
   // pending `await markAsCompleted()` chain can settle first.
   const deferred = (fn: () => void) => setTimeout(fn, 0);
 
+  // A transiently-entered full screen (automatic My Learning launch) must
+  // dock without persisting, so the auto-launch never overwrites the user's
+  // durable preference; a manually-entered full screen persists as before.
+  const dockTo = (mode: 'sidebar' | 'floating') =>
+    panelModeManager.isTransientMode() ? panelModeManager.setModeTransient(mode) : panelModeManager.setMode(mode);
+
   if (isExtensionSidebarOwnedByOther(myPluginId)) {
     // Sidebar is taken — pop out as a floating overlay so we co-exist
     // with whatever plugin owns the sidebar instead of stealing it.
@@ -78,7 +84,7 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
       guide_title: title,
       reason: 'navigation_away_sidebar_occupied',
     });
-    deferred(() => panelModeManager.setMode('floating'));
+    deferred(() => dockTo('floating'));
     return 'floating';
   }
 
@@ -93,7 +99,7 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
   // latest milestone URL full-screen wrote during the session, not the
   // pre-fullscreen position.
   deferred(() => {
-    panelModeManager.setMode('sidebar');
+    dockTo('sidebar');
     sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');
     sidebarState.openSidebar('Interactive learning');
   });

@@ -14,6 +14,8 @@ jest.mock('../../global-state/panel-mode', () => ({
   panelModeManager: {
     getMode: jest.fn(),
     setMode: jest.fn(),
+    setModeTransient: jest.fn(),
+    isTransientMode: jest.fn(),
     setPendingGuide: jest.fn(),
   },
 }));
@@ -64,6 +66,7 @@ describe('dockOnLeavingFullScreen', () => {
     // side effects in the same test.
     jest.useFakeTimers();
     (panelModeManager.getMode as jest.Mock).mockReturnValue('fullscreen');
+    (panelModeManager.isTransientMode as jest.Mock).mockReturnValue(false);
     (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
   });
 
@@ -165,6 +168,32 @@ describe('dockOnLeavingFullScreen', () => {
         guide_title: baseTab.title,
         reason: 'navigation_away_sidebar_occupied',
       });
+    });
+  });
+
+  describe('transient full screen (automatic My Learning launch) docks without persisting', () => {
+    beforeEach(() => {
+      (panelModeManager.isTransientMode as jest.Mock).mockReturnValue(true);
+    });
+
+    it('docks to sidebar via the non-persisting setModeTransient', () => {
+      const outcome = dockOnLeavingFullScreen(defaultInputs());
+      jest.runAllTimers();
+
+      expect(outcome).toBe('sidebar');
+      expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('sidebar');
+      expect(panelModeManager.setMode).not.toHaveBeenCalled();
+    });
+
+    it('docks to floating via the non-persisting setModeTransient when the sidebar is occupied', () => {
+      (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(true);
+
+      const outcome = dockOnLeavingFullScreen(defaultInputs());
+      jest.runAllTimers();
+
+      expect(outcome).toBe('floating');
+      expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('floating');
+      expect(panelModeManager.setMode).not.toHaveBeenCalled();
     });
   });
 });

@@ -83,6 +83,16 @@ class PanelModeManager {
   }
 
   /**
+   * Whether an automatic-launch surface override is currently active. Exit
+   * paths use this to keep a transiently-entered surface's teardown
+   * non-persisting, so an automatic launch never overwrites the user's
+   * durable preference at exit (locked decision 2).
+   */
+  public isTransientMode(): boolean {
+    return this._transientMode !== null;
+  }
+
+  /**
    * Switch panel mode. Persists to localStorage and dispatches a
    * `pathfinder-panel-mode-change` event so both the sidebar and
    * floating panel can react.

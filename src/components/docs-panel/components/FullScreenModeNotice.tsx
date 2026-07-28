@@ -80,7 +80,11 @@ export function FullScreenModeNotice() {
     // re-mount the extension sidebar; that's what triggers the sidebar's
     // panel restoration from storage (without the re-mount, `setMode`
     // alone won't bring the user's tab back).
-    panelModeManager.setMode('sidebar');
+    if (panelModeManager.isTransientMode()) {
+      panelModeManager.setModeTransient('sidebar');
+    } else {
+      panelModeManager.setMode('sidebar');
+    }
     sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');
     sidebarState.openSidebar('Interactive learning');
     const priorPath = panelModeManager.consumePriorPath();
