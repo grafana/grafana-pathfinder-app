@@ -54,11 +54,11 @@ export function deriveInteractiveStepState(input: InteractiveStepStateInput): St
   if (input.isRunning) {
     return STEP_STATES.EXECUTING;
   }
-  if (input.hasError) {
-    return STEP_STATES.ERROR;
-  }
   if (input.isCompleted) {
     return STEP_STATES.COMPLETED;
+  }
+  if (input.hasError) {
+    return STEP_STATES.ERROR;
   }
   if (input.isChecking) {
     return STEP_STATES.CHECKING;

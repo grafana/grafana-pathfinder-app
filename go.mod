@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/gorilla/websocket v1.5.3
-	github.com/grafana/grafana-plugin-sdk-go v0.293.0
+	github.com/grafana/grafana-plugin-sdk-go v0.294.0
 	golang.org/x/crypto v0.54.0
 )
 
@@ -83,7 +83,7 @@ require (
 	golang.org/x/text v0.40.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260622175928-b703f567277d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260622175928-b703f567277d // indirect
-	google.golang.org/grpc v1.82.0 // indirect
+	google.golang.org/grpc v1.82.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
 )

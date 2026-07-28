@@ -91,6 +91,18 @@ describe('E2E Contract: data-test-step-state', () => {
       })
     ).toBe(STEP_STATES.ERROR);
   });
+
+  it('reports completed when a stale error remains after objective completion', () => {
+    expect(
+      deriveInteractiveStepState({
+        isCompleted: true,
+        isRunning: false,
+        hasError: true,
+        isChecking: false,
+        isEnabled: true,
+      })
+    ).toBe(STEP_STATES.COMPLETED);
+  });
   describe('InteractiveStep', () => {
     it('has data-test-step-state attribute', () => {
       render(
