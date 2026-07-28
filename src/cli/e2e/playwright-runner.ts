@@ -13,6 +13,9 @@ import { E2E_ENV, encodeEnvFlag } from './e2e-runner-contract';
 import type { LoadedGuide } from '../utils/file-loader';
 import type { E2EErrorCode } from './schemas/e2e-report.schema';
 import { contentDigest, createMinimalResultsData, type TestResultsData } from './e2e-reporter';
+import { resolveStartingPath } from './starting-location';
+
+export { resolveStartingUrl } from './starting-location';
 
 const PLAYWRIGHT_CONFIG_PATH = join('tests', 'e2e-runner', 'playwright.config.ts');
 const GUIDE_RUNNER_SPEC_PATH = join('tests', 'e2e-runner', 'guide-runner.spec.ts');
@@ -103,6 +106,7 @@ export interface PlaywrightResult {
 export interface RunGuideOptions {
   /** Resolved Grafana base URL this guide is tested against. */
   targetUrl: string;
+  startingLocation: string;
   verbose: boolean;
   trace: boolean;
   headed: boolean;
@@ -209,6 +213,7 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
   const traceOutputFilePath = join(tempDir, 'trace-path.txt');
 
   try {
+    const startingPath = resolveStartingPath(options.targetUrl, options.startingLocation);
     writeFileSync(guidePath, guide.content);
 
     if (options.verbose) {
@@ -238,6 +243,7 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
           ...process.env,
           [E2E_ENV.GUIDE_JSON_PATH]: guidePath,
           [E2E_ENV.GRAFANA_URL]: options.targetUrl,
+          [E2E_ENV.STARTING_LOCATION]: startingPath,
           [E2E_ENV.AUTH_STATE_FILE]: authStateFile,
           ...(options.token ? { [E2E_ENV.GRAFANA_TOKEN]: options.token } : {}),
           [E2E_ENV.TRACE]: encodeEnvFlag(options.trace),
