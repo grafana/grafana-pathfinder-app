@@ -4,12 +4,14 @@
  *
  * A guide "requires the Grafana UI" when any reachable step performs one of the
  * five Grafana-driving actions — `highlight`, `button`, `formfill`, `navigate`,
- * `hover`. Those actions manipulate or point at the real Grafana page, so the
- * guide must render beside Grafana (sidebar / floating), not full screen.
+ * `hover` — or is a `code-block`, whose required `reftarget` points at a live
+ * Monaco editor that "Show me" highlights and "Insert" mutates. Those blocks
+ * manipulate or point at the real Grafana page, so the guide must render
+ * beside Grafana (sidebar / floating), not full screen.
  *
  * Deliberately NARROWER than `ParsedContent.hasInteractiveElements`: `noop`,
- * `popout`, quizzes, inputs, terminals, challenges, code blocks, and grot guides
- * are interactive inside Pathfinder but do not need the Grafana main area, so
+ * `popout`, quizzes, inputs, terminals, challenges, and grot guides are
+ * interactive inside Pathfinder but do not need the Grafana main area, so
  * they do not force the sidebar.
  *
  * Operates on the snippet-EXPANDED guide so actions hidden inside snippets are
@@ -56,6 +58,10 @@ function blockRequiresGrafanaUi(block: JsonBlock): boolean {
       return blocksRequireGrafanaUi(block.blocks);
     case 'conditional':
       return blocksRequireGrafanaUi(block.whenTrue) || blocksRequireGrafanaUi(block.whenFalse);
+    case 'code-block':
+      // `reftarget` is schema-required and targets a live Grafana Monaco
+      // editor; without the Grafana UI both "Show me" and "Insert" are dead.
+      return true;
     case 'snippet-ref':
       return true;
     default:

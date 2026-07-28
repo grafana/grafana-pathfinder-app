@@ -38,7 +38,7 @@ describe('requiresGrafanaUi', () => {
       expect(requiresGrafanaUi(guide([{ type: 'interactive', action, content: 'x' }]))).toBe(false);
     });
 
-    it('quiz / input / terminal / challenge / code-block / grot-guide do not trigger it', () => {
+    it('quiz / input / terminal / challenge / grot-guide do not trigger it', () => {
       expect(
         requiresGrafanaUi(
           guide([
@@ -47,7 +47,6 @@ describe('requiresGrafanaUi', () => {
             { type: 'terminal', command: 'ls', content: 'run it' },
             { type: 'terminal-connect', content: 'connect' },
             { type: 'challenge', title: 't', brief: 'b', successCriteria: 'coda-exit-zero:true' },
-            { type: 'code-block', reftarget: '#editor', code: 'x = 1' },
             {
               type: 'grot-guide',
               welcome: { title: 'w', body: 'b', ctas: [] },
@@ -56,6 +55,24 @@ describe('requiresGrafanaUi', () => {
           ])
         )
       ).toBe(false);
+    });
+  });
+
+  describe('code-block drives the Grafana UI', () => {
+    // Regression for PR #1446 review finding 2: reftarget is schema-required
+    // and targets a live Monaco editor ("Show me" highlights it, "Insert"
+    // mutates it), so a guide that is ONLY a code block must still open
+    // beside Grafana, never full screen.
+    it('a guide containing only a code block opens beside Grafana', () => {
+      expect(requiresGrafanaUi(guide([{ type: 'code-block', reftarget: '#editor', code: 'x = 1' }]))).toBe(true);
+    });
+
+    it('detects a code block nested in a section', () => {
+      expect(
+        requiresGrafanaUi(
+          guide([{ type: 'section', title: 's', blocks: [{ type: 'code-block', reftarget: '#editor', code: 'y' }] }])
+        )
+      ).toBe(true);
     });
   });
 
