@@ -137,8 +137,9 @@ class PanelModeManager {
    * event) but records the choice in memory only, so the user's stored
    * preference is untouched (locked decision: an automatic launch selection
    * must not overwrite the persisted preference). Opens an auto-launch
-   * round-trip that the next `setMode` (exit / auto-dock / close) ends; does
-   * not survive a reload.
+   * round-trip during which every plain `setMode` (exit / auto-dock / close) is
+   * non-persisting; the round-trip ends only when a deliberate
+   * `setModePersisted` runs or the page reloads. Does not survive a reload.
    */
   public setModeTransient(mode: PanelMode): void {
     this.applyModeChange(mode, (next) => {

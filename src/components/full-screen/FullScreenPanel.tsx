@@ -271,7 +271,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
         guide_title: title,
       });
       panelModeManager.setPendingGuide({ title, type: 'editor' });
-      panelModeManager.setMode('floating');
+      panelModeManager.setModePersisted('floating');
       locationService.push(PLUGIN_BASE_URL);
       return;
     }
@@ -296,7 +296,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       // direction: raw GitHub URLs aren't recognised package URLs.
       packageInfo: activeTab?.packageInfo,
     });
-    panelModeManager.setMode('floating');
+    panelModeManager.setModePersisted('floating');
     locationService.push(PLUGIN_BASE_URL);
   }, [isEditorTab, guideUrl, title, activeTab?.type, activeTab?.packageInfo]);
 
@@ -353,7 +353,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // In-fullscreen swap: when something dispatches `pathfinder-request-full-screen`
   // while we're already on the fullscreen route (e.g. the BlockEditor toolbar
   // in a sidebar that's still mounted alongside fullscreen, see Issue 3), the
-  // host-side handler's `setMode('fullscreen')` is a no-op and the route push
+  // host-side handler's `setModePersisted('fullscreen')` is a no-op and the route push
   // doesn't remount us. Consume any pending guide here too so the swap still
   // happens — typically used to replace a journey with the editor or vice versa.
   useEffect(() => {

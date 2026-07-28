@@ -232,7 +232,7 @@ function FloatingPanelInner() {
       // Remember where the user was so explicit Exit can land back there.
       panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
       panelModeManager.setPendingGuide({ title, type: 'editor' });
-      panelModeManager.setMode('fullscreen');
+      panelModeManager.setModePersisted('fullscreen');
       locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
       return;
     }
@@ -258,7 +258,7 @@ function FloatingPanelInner() {
     });
     // Remember where the user was so explicit Exit can land back there.
     panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
-    panelModeManager.setMode('fullscreen');
+    panelModeManager.setModePersisted('fullscreen');
     // Include type in the URL so refresh/share rehydrates as a journey
     // even if findDocPage's URL-based classification can't tell.
     locationService.push(
