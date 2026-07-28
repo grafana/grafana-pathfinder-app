@@ -22,7 +22,7 @@ import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { sanitizeDocumentationHTML } from '../../security';
-import { STEP_STATES } from './step-states';
+import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
@@ -116,6 +116,34 @@ interface InteractiveGuidedProps {
   // Guided-specific configuration
   stepTimeout?: number; // Timeout per step in milliseconds (default: 120000ms = 2min)
   resetTrigger?: number;
+}
+
+interface GuidedUiStateInput {
+  isCompleted: boolean;
+  isExecuting: boolean;
+  hasError: boolean;
+  wasCancelled: boolean;
+  isChecking: boolean;
+  isEnabled: boolean;
+}
+
+export function deriveGuidedUiState(input: GuidedUiStateInput): StepStateValue {
+  if (input.isExecuting) {
+    return STEP_STATES.EXECUTING;
+  }
+  if (input.hasError) {
+    return STEP_STATES.ERROR;
+  }
+  if (input.wasCancelled) {
+    return STEP_STATES.CANCELLED;
+  }
+  if (input.isCompleted) {
+    return STEP_STATES.COMPLETED;
+  }
+  if (input.isChecking) {
+    return STEP_STATES.CHECKING;
+  }
+  return input.isEnabled ? STEP_STATES.IDLE : STEP_STATES.REQUIREMENTS_UNMET;
 }
 
 let anonymousGuidedCounter = 0;
@@ -710,28 +738,14 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     const currentAction = internalActions[currentStepIndex];
     const currentActionComment = currentAction?.targetComment || 'Complete this step';
 
-    // Determine the current UI state for cleaner rendering
-    const uiState = (() => {
-      if (isCompletedWithObjectives) {
-        return 'completed';
-      }
-      if (executionError) {
-        return 'error';
-      }
-      if (wasCancelled) {
-        return 'cancelled';
-      }
-      if (isExecuting) {
-        return 'executing';
-      }
-      if (checker.isChecking) {
-        return 'checking';
-      }
-      if (!checker.isEnabled) {
-        return STEP_STATES.REQUIREMENTS_UNMET;
-      }
-      return 'idle';
-    })();
+    const uiState = deriveGuidedUiState({
+      isCompleted: isCompletedWithObjectives,
+      isExecuting,
+      hasError: Boolean(executionError),
+      wasCancelled,
+      isChecking: checker.isChecking,
+      isEnabled: checker.isEnabled,
+    });
 
     return (
       <div
@@ -933,7 +947,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               <div className="interactive-guided-error-content">
                 <span className="interactive-guided-error-title">Step {failedStepIndex + 1} didn&apos;t complete</span>
                 <span className="interactive-guided-error-detail">
-                  {currentStepStatus === 'timeout' ? 'Timed out waiting for action' : 'Something went wrong'}
+                  {executionError ||
+                    (currentStepStatus === 'timeout' ? 'Timed out waiting for action' : 'Something went wrong')}
                 </span>
               </div>
             </div>

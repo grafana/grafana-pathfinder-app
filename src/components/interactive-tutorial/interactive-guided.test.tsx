@@ -10,7 +10,7 @@
 
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { InteractiveGuided } from './interactive-guided';
+import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { testIds } from '../../constants/testIds';
@@ -224,6 +224,34 @@ describe('InteractiveGuided — double skip button (issue #786)', () => {
     const skipButtons = screen.queryAllByTestId(/interactive-skip/);
     expect(skipButtons).toHaveLength(1);
     expect(skipButtons[0]).toHaveTextContent('Skip');
+  });
+});
+
+describe('deriveGuidedUiState', () => {
+  it('exposes executing while completeEarly actions are still running', () => {
+    expect(
+      deriveGuidedUiState({
+        isCompleted: true,
+        isExecuting: true,
+        hasError: false,
+        wasCancelled: false,
+        isChecking: false,
+        isEnabled: true,
+      })
+    ).toBe('executing');
+  });
+
+  it('exposes completed after execution settles', () => {
+    expect(
+      deriveGuidedUiState({
+        isCompleted: true,
+        isExecuting: false,
+        hasError: false,
+        wasCancelled: false,
+        isChecking: false,
+        isEnabled: true,
+      })
+    ).toBe('completed');
   });
 });
 
