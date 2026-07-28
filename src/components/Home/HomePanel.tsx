@@ -25,6 +25,7 @@ import { locationService } from '@grafana/runtime';
 import { useStyles2 } from '@grafana/ui';
 
 import { sidebarState } from '../../global-state/sidebar';
+import { guideLaunchStore } from '../../global-state/guide-launch';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
@@ -77,28 +78,31 @@ export function HomePanelRenderer() {
 
     panelModeManager.setModeTransient('sidebar');
 
-    const detail = {
+    // The event and the cold-sidebar queue are public channels — stage the
+    // prepared payload in module-owned memory and send only the opaque key.
+    const launchKey = guideLaunchStore.stage({
       url: launch.url,
-      title: launch.title,
-      source: launch.source,
       preparedContent: launch.preparedContent,
       packageInfo: launch.packageInfo,
-    };
+    });
     if (sidebarState.getIsSidebarMounted()) {
-      document.dispatchEvent(new CustomEvent('pathfinder-auto-open-docs', { detail }));
+      document.dispatchEvent(
+        new CustomEvent('pathfinder-auto-open-docs', {
+          detail: { url: launch.url, title: launch.title, source: launch.source, launchKey },
+        })
+      );
     } else {
       sidebarState.setPendingOpenSource('home_page');
       sidebarState.openSidebar('Interactive learning', {
-        url: detail.url,
-        title: detail.title,
+        url: launch.url,
+        title: launch.title,
         timestamp: Date.now(),
       });
       linkInterceptionState.addToQueue({
         url: launch.url,
         title: launch.title,
         timestamp: Date.now(),
-        preparedContent: launch.preparedContent,
-        packageInfo: launch.packageInfo,
+        launchKey,
       });
     }
   }, []);

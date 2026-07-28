@@ -18,16 +18,18 @@
  * Contract surfaces preserved (Pattern J — pinned by
  * docs-panel.auto-open-event.test.tsx):
  *   - CustomEvent name: `pathfinder-auto-open-docs`
- *   - Detail shape: `{ url: string; title: string; source?: string }`
+ *   - Detail shape: `{ url: string; title: string; source?: string }`,
+ *     plus an optional opaque `launchKey` redeeming a prepared launch from
+ *     the module-owned `guideLaunchStore` (the payload itself never rides
+ *     this forgeable event)
  *   - Routing predicate: `/learning-journeys/` or `/learning-paths/` pathname
  *   - Source coercion via `coerceLaunchSource`
  */
 import * as React from 'react';
+import { guideLaunchStore } from '../../../global-state/guide-launch';
 import { linkInterceptionState } from '../../../global-state/link-interception';
 import { coerceLaunchSource } from '../../../recovery';
 import { parseUrlSafely } from '../../../security';
-import type { RawContent } from '../../../types/content.types';
-import type { PackageOpenInfo } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 
 export function useAutoOpenListener(model: DocsPanelModelOperations): void {
@@ -37,15 +39,20 @@ export function useAutoOpenListener(model: DocsPanelModelOperations): void {
         url: string;
         title: string;
         source?: string;
-        preparedContent?: RawContent;
-        packageInfo?: PackageOpenInfo;
+        launchKey?: string;
       }>;
-      const { url, title, source, preparedContent, packageInfo } = customEvent.detail;
+      const { url, title, source, launchKey } = customEvent.detail;
 
       // Coerce the untrusted event.detail.source to a typed LaunchSource at
       // the boundary. Unknown literals fall through to `null` ("needs check"),
       // which is the safer default than passing typo'd strings into the model.
       const typedSource = coerceLaunchSource(source);
+
+      // Redeem a prepared (one-fetch) launch at the trusted boundary. The
+      // document-level event is forgeable, so it carries only an opaque key;
+      // the payload never crosses it. A forged/replayed/mismatched key
+      // redeems to null and the loader runs its normal validated fetch.
+      const staged = guideLaunchStore.consume(launchKey, url);
 
       // Always create a new tab for each intercepted link
       // Call the model method directly to ensure new tabs are created
@@ -54,12 +61,18 @@ export function useAutoOpenListener(model: DocsPanelModelOperations): void {
       const isLearningJourney =
         urlObj?.pathname.includes('/learning-journeys/') || urlObj?.pathname.includes('/learning-paths/');
 
-      // `preparedContent`, when present (My Learning launch), lets the tab open
-      // without a second fetch.
       if (isLearningJourney) {
-        model.openLearningJourney(url, title, { source: typedSource ?? undefined, preparedContent, packageInfo });
+        model.openLearningJourney(url, title, {
+          source: typedSource ?? undefined,
+          preparedContent: staged?.preparedContent,
+          packageInfo: staged?.packageInfo,
+        });
       } else {
-        model.openDocsPage(url, title, { source: typedSource ?? undefined, preparedContent, packageInfo });
+        model.openDocsPage(url, title, {
+          source: typedSource ?? undefined,
+          preparedContent: staged?.preparedContent,
+          packageInfo: staged?.packageInfo,
+        });
       }
     };
 

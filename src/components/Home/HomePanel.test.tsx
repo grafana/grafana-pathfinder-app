@@ -10,6 +10,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { HomePanelRenderer } from './HomePanel';
 import { sidebarState } from '../../global-state/sidebar';
+import { guideLaunchStore } from '../../global-state/guide-launch';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
@@ -158,7 +159,7 @@ describe('HomePanelRenderer', () => {
   });
 
   describe('content that drives the Grafana UI opens beside Grafana', () => {
-    it('dispatches pathfinder-auto-open-docs (with prepared content) when the sidebar is mounted', () => {
+    it('dispatches pathfinder-auto-open-docs with a redeemable launch key (payload stays off the event) when the sidebar is mounted', () => {
       (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(true);
       const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
 
@@ -172,16 +173,28 @@ describe('HomePanelRenderer', () => {
             url: 'bundled:first-dashboard',
             title: 'Create your first dashboard',
             source: 'home_page',
-            preparedContent: rawContent,
+            launchKey: expect.any(String),
           }),
         })
+      );
+      // The forgeable event never carries the payload itself…
+      const detail = (
+        dispatchSpy.mock.calls.find(
+          (c) => (c[0] as CustomEvent).type === 'pathfinder-auto-open-docs'
+        )![0] as CustomEvent
+      ).detail;
+      expect(detail.preparedContent).toBeUndefined();
+      expect(detail.packageInfo).toBeUndefined();
+      // …but the key redeems it from the module-owned store.
+      expect(guideLaunchStore.consume(detail.launchKey, 'bundled:first-dashboard')).toEqual(
+        expect.objectContaining({ preparedContent: rawContent })
       );
       expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('sidebar');
       expect(panelModeManager.setModeTransient).not.toHaveBeenCalledWith('fullscreen');
       dispatchSpy.mockRestore();
     });
 
-    it('opens the sidebar and queues the prepared link when the sidebar is NOT mounted', () => {
+    it('opens the sidebar and queues a redeemable launch key when the sidebar is NOT mounted', () => {
       (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(false);
 
       render(<HomePanelRenderer />);
@@ -193,7 +206,12 @@ describe('HomePanelRenderer', () => {
         expect.objectContaining({ url: 'bundled:first-dashboard', title: 'Create your first dashboard' })
       );
       expect(linkInterceptionState.addToQueue).toHaveBeenCalledWith(
-        expect.objectContaining({ url: 'bundled:first-dashboard', preparedContent: rawContent })
+        expect.objectContaining({ url: 'bundled:first-dashboard', launchKey: expect.any(String) })
+      );
+      const queued = (linkInterceptionState.addToQueue as jest.Mock).mock.calls[0][0];
+      expect(queued.preparedContent).toBeUndefined();
+      expect(guideLaunchStore.consume(queued.launchKey, 'bundled:first-dashboard')).toEqual(
+        expect.objectContaining({ preparedContent: rawContent })
       );
     });
 
@@ -210,7 +228,7 @@ describe('HomePanelRenderer', () => {
       expect(sidebarState.openSidebar).not.toHaveBeenCalled();
     });
 
-    it('carries packageInfo on both the dispatched event and the queued link', () => {
+    it('carries packageInfo through the staged payload on both the event and the queued-link paths', () => {
       const packageInfo: PackageOpenInfo = { packageId: 'pkg-1', packageManifest: { kind: 'package' } };
 
       (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(true);
@@ -218,8 +236,14 @@ describe('HomePanelRenderer', () => {
       render(<HomePanelRenderer />);
       capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: true, packageInfo }));
 
-      expect(dispatchSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ detail: expect.objectContaining({ packageInfo }) })
+      const detail = (
+        dispatchSpy.mock.calls.find(
+          (c) => (c[0] as CustomEvent).type === 'pathfinder-auto-open-docs'
+        )![0] as CustomEvent
+      ).detail;
+      expect(detail.packageInfo).toBeUndefined();
+      expect(guideLaunchStore.consume(detail.launchKey, 'bundled:first-dashboard')).toEqual(
+        expect.objectContaining({ packageInfo })
       );
       dispatchSpy.mockRestore();
 
@@ -229,7 +253,11 @@ describe('HomePanelRenderer', () => {
       render(<HomePanelRenderer />);
       capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: true, packageInfo }));
 
-      expect(linkInterceptionState.addToQueue).toHaveBeenCalledWith(expect.objectContaining({ packageInfo }));
+      const queued = (linkInterceptionState.addToQueue as jest.Mock).mock.calls[0][0];
+      expect(queued.packageInfo).toBeUndefined();
+      expect(guideLaunchStore.consume(queued.launchKey, 'bundled:first-dashboard')).toEqual(
+        expect.objectContaining({ packageInfo })
+      );
     });
   });
 
