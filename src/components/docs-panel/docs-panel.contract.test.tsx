@@ -28,6 +28,18 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { testIds } from '../../constants/testIds';
+const moduleSource = fs.readFileSync(path.join(__dirname, '..', '..', 'module.tsx'), 'utf-8');
+
+describe('E2E Contract: Docs panel bootstrap signals', () => {
+  it('exposes Pathfinder plugin readiness', () => {
+    expect(moduleSource).toContain('__pathfinderPluginConfig');
+  });
+
+  it('publishes the sidebar-mounted event', () => {
+    expect(moduleSource).toContain("new CustomEvent('pathfinder-sidebar-mounted'");
+    expect(moduleSource).toContain('window.dispatchEvent(mountEvent)');
+  });
+});
 
 // Test ID constants contract: values must match what e2e and docs-panel use
 describe('E2E Contract: Docs panel test IDs', () => {

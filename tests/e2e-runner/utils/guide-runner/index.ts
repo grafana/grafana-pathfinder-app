@@ -52,6 +52,7 @@ export {
 // Discovery
 // ============================================
 export { discoverStepsFromDOM, logDiscoveryResults } from './discovery';
+export { ensureDocsPanelOpen } from './bootstrap';
 
 // ============================================
 // Requirements
