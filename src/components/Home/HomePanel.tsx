@@ -58,6 +58,7 @@ function pendingGuideFrom(launch: PreparedGuideLaunch): PendingGuide {
     type: launch.type,
     packageInfo: launch.packageInfo,
     preparedContent: launch.preparedContent,
+    source: launch.source,
   };
 }
 

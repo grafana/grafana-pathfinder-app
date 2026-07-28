@@ -7,6 +7,7 @@ import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/t
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
 import type { PackageOpenInfo } from '../types/content-panel.types';
 import type { RawContent } from '../types/content.types';
+import type { LaunchSource } from '../recovery';
 
 export type PanelMode = 'sidebar' | 'floating' | 'fullscreen';
 
@@ -42,6 +43,14 @@ export interface PendingGuide {
    * persisted to tab storage.
    */
   preparedContent?: RawContent;
+  /**
+   * Launch source of the ORIGINAL launch, carried so alignment semantics
+   * survive the surface handoff — a `home_page` launch needs the same
+   * starting-location check whether it lands in the sidebar (event path)
+   * or a floating overlay (this path). Consumers fall back to their legacy
+   * handoff source when absent.
+   */
+  source?: LaunchSource;
 }
 
 /**

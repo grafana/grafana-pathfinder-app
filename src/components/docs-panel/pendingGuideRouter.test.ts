@@ -10,9 +10,10 @@
  * journeys whose URL is a raw GitHub URL).
  */
 
-import { openPendingGuide } from './pendingGuideRouter';
+import { consumePendingGuideOnMount, openPendingGuide } from './pendingGuideRouter';
 import type { CombinedLearningJourneyPanel } from './docs-panel';
-import type { PendingGuide } from '../../global-state/panel-mode';
+import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';
+import type { RawContent } from '../../types/content.types';
 
 function makePanel() {
   return {
@@ -121,5 +122,85 @@ describe('openPendingGuide', () => {
       pending.title,
       expect.objectContaining({ source: 'fullscreen_handoff' })
     );
+  });
+});
+
+describe('consumePendingGuideOnMount (PR #1446 review finding 3)', () => {
+  // State-level test of the occupied-sidebar launch: HomePanel sets a
+  // prepared pending guide and flips to transient floating; the floating
+  // surface must consume it on mount or the launch is silently dropped
+  // (stale restored tabs, or the empty-state fallback bouncing back to
+  // sidebar mode). Mounting FloatingPanelInner itself is not feasible in
+  // Jest (Scenes + theme provider), so this exercises the shared consume
+  // step against the real panelModeManager singleton.
+  const preparedContent: RawContent = {
+    content: '{"id":"g","title":"g","blocks":[]}',
+    metadata: { title: 'g' },
+    type: 'interactive',
+    url: 'bundled:first-dashboard',
+    lastFetched: '2026-07-28T00:00:00.000Z',
+  };
+
+  afterEach(() => {
+    // Drain any pending guide a test left behind (consume-once slot).
+    panelModeManager.consumePendingGuide();
+  });
+
+  it('consumes the prepared guide exactly once, marking in-flight BEFORE routing', () => {
+    const order: string[] = [];
+    const panel = makePanel();
+    panel.openDocsPage.mockImplementation(() => order.push('open'));
+    const markInFlight = jest.fn(() => order.push('in-flight'));
+
+    panelModeManager.setPendingGuide({
+      url: 'bundled:first-dashboard',
+      title: 'Create your first dashboard',
+      type: 'docs',
+      preparedContent,
+      source: 'home_page',
+    });
+
+    expect(consumePendingGuideOnMount(asPanel(panel), 'floating_panel_dock', markInFlight)).toBe(true);
+
+    // The original launch source wins over the surface's fallback so the
+    // starting-location alignment check behaves the same as it would have
+    // in the sidebar; the prepared content survives so no second fetch runs.
+    expect(panel.openDocsPage).toHaveBeenCalledWith(
+      'bundled:first-dashboard',
+      'Create your first dashboard',
+      expect.objectContaining({ source: 'home_page', preparedContent })
+    );
+    // In-flight must be marked before the open so the empty-state fallback
+    // and restoration gates can never observe "nothing happening".
+    expect(order).toEqual(['in-flight', 'open']);
+
+    // Consume-once: a second mount (or another surface) gets nothing.
+    expect(consumePendingGuideOnMount(asPanel(panel), 'floating_panel_dock', markInFlight)).toBe(false);
+    expect(panel.openDocsPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the surface handoff source when the pending guide carries none', () => {
+    const panel = makePanel();
+    panelModeManager.setPendingGuide({ url: 'bundled:foo', title: 'Foo', type: 'docs' });
+
+    consumePendingGuideOnMount(asPanel(panel), 'floating_panel_dock', jest.fn());
+
+    expect(panel.openDocsPage).toHaveBeenCalledWith(
+      'bundled:foo',
+      'Foo',
+      expect.objectContaining({ source: 'floating_panel_dock' })
+    );
+  });
+
+  it('is a no-op when no guide is pending', () => {
+    const panel = makePanel();
+    const markInFlight = jest.fn();
+
+    expect(consumePendingGuideOnMount(asPanel(panel), 'floating_panel_dock', markInFlight)).toBe(false);
+
+    expect(markInFlight).not.toHaveBeenCalled();
+    expect(panel.openDocsPage).not.toHaveBeenCalled();
+    expect(panel.openLearningJourney).not.toHaveBeenCalled();
+    expect(panel.openEditorTab).not.toHaveBeenCalled();
   });
 });

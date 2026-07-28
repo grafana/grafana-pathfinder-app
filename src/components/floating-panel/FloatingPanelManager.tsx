@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRe
 import { ThemeContext } from '@grafana/data';
 import { config, locationService } from '@grafana/runtime';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
+import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { useContentReset } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
@@ -116,6 +117,14 @@ function FloatingPanelInner() {
     document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted', { detail: { timestamp: Date.now() } }));
     sidebarState.setIsSidebarMounted(true);
 
+    // Handoff from HomePanel's occupied-sidebar launch path (and any other
+    // setPendingGuide caller targeting the floating surface): consume the
+    // pending guide and mark the open in-flight BEFORE the restoration and
+    // empty-state-fallback effects below can run. Mirrors FullScreenPanel.
+    consumePendingGuideOnMount(panel, 'floating_panel_dock', () => {
+      guideOpenInFlightRef.current = true;
+    });
+
     return () => {
       document.removeEventListener('pathfinder-auto-launch-pending', handlePending);
       // Only clear if we're still the active owner — during dock-back the
@@ -134,11 +143,17 @@ function FloatingPanelInner() {
   const [restorationDone, setRestorationDone] = useState(false);
 
   useEffect(() => {
+    // Read live model state instead of closure'd `tabs`: the pending-guide
+    // consumption in the mount effect above mutates `panel.state.tabs`
+    // synchronously in the same commit, before this render's snapshot
+    // updates — restoring on top of the just-opened guide would await
+    // tabStorage and clobber it. Mirrors FullScreenPanel's gate.
     // Permanent system tabs (`recommendations`, `devtools`, `editor`) don't
     // count as user content — restoring on top of them is safe. Mirrors the
     // sidebar's gate at `docs-panel.tsx` so all three surfaces agree on
     // when "the panel is empty".
-    const hasOnlyDefaultTabs = tabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
+    const liveTabs = panel.state.tabs;
+    const hasOnlyDefaultTabs = liveTabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
     const restore = hasOnlyDefaultTabs ? panel.restoreTabsAsync() : Promise.resolve();
     restore.then(() => setRestorationDone(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -10,12 +10,15 @@
  * `packageInfo`, breaking the milestone toolbar for synthetic PR-tester
  * journeys whose URL is a raw GitHub URL rather than a recognised package URL).
  *
- * The receiving surface still owns the in-flight bookkeeping
- * (`guideOpenInFlightRef`) and reads `panelModeManager.consumePendingGuide()`
- * itself; this helper is just the routing decision so it stays consistent.
+ * `consumePendingGuideOnMount` bundles the full consume step (consume →
+ * mark in-flight → route) for surface mount effects, so a surface cannot
+ * forget one of the three parts — the floating panel shipped exactly that
+ * bug once: it set pending guides but never consumed them, so an
+ * occupied-sidebar launch showed stale restored tabs or fell back to
+ * sidebar mode (PR #1446 review finding 3).
  */
 
-import type { PendingGuide } from '../../global-state/panel-mode';
+import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';
 import type { CombinedLearningJourneyPanel } from './docs-panel';
 import type { LaunchSource } from '../../recovery';
 
@@ -52,4 +55,30 @@ export function openPendingGuide(
   } else {
     panel.openDocsPage(pending.url, pending.title, { source, preparedContent });
   }
+}
+
+/**
+ * Consume any pending guide at surface mount: consume-once read → mark the
+ * open as in-flight (BEFORE routing, so the surface's empty-state fallback
+ * and tab restoration cannot race the open) → route via `openPendingGuide`.
+ *
+ * The guide's own `source` (carried from the original launch so alignment
+ * semantics survive the handoff) wins over `fallbackSource`, which is the
+ * surface's legacy handoff source for pending guides set before the field
+ * existed.
+ *
+ * Returns true when a pending guide was consumed.
+ */
+export function consumePendingGuideOnMount(
+  panel: CombinedLearningJourneyPanel,
+  fallbackSource: LaunchSource,
+  markInFlight: () => void
+): boolean {
+  const pending = panelModeManager.consumePendingGuide();
+  if (!pending) {
+    return false;
+  }
+  markInFlight();
+  openPendingGuide(panel, pending, pending.source ?? fallbackSource);
+  return true;
 }
