@@ -26,13 +26,19 @@ import * as React from 'react';
 import { linkInterceptionState } from '../../../global-state/link-interception';
 import { coerceLaunchSource } from '../../../recovery';
 import { parseUrlSafely } from '../../../security';
+import type { RawContent } from '../../../types/content.types';
 import type { DocsPanelModelOperations } from '../types';
 
 export function useAutoOpenListener(model: DocsPanelModelOperations): void {
   React.useEffect(() => {
     const handleAutoOpen = (event: Event) => {
-      const customEvent = event as CustomEvent<{ url: string; title: string; source?: string }>;
-      const { url, title, source } = customEvent.detail;
+      const customEvent = event as CustomEvent<{
+        url: string;
+        title: string;
+        source?: string;
+        preparedContent?: RawContent;
+      }>;
+      const { url, title, source, preparedContent } = customEvent.detail;
 
       // Coerce the untrusted event.detail.source to a typed LaunchSource at
       // the boundary. Unknown literals fall through to `null` ("needs check"),
@@ -46,10 +52,12 @@ export function useAutoOpenListener(model: DocsPanelModelOperations): void {
       const isLearningJourney =
         urlObj?.pathname.includes('/learning-journeys/') || urlObj?.pathname.includes('/learning-paths/');
 
+      // `preparedContent`, when present (My Learning launch), lets the tab open
+      // without a second fetch.
       if (isLearningJourney) {
-        model.openLearningJourney(url, title, { source: typedSource ?? undefined });
+        model.openLearningJourney(url, title, { source: typedSource ?? undefined, preparedContent });
       } else {
-        model.openDocsPage(url, title, { source: typedSource ?? undefined });
+        model.openDocsPage(url, title, { source: typedSource ?? undefined, preparedContent });
       }
     };
 

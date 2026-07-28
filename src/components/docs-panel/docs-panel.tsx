@@ -112,6 +112,7 @@ import {
   PackageOpenInfo,
 } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
+import type { RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
@@ -342,7 +343,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Route through the unified dispatcher so future docs-like or
     // package-backed learning-journey openings pick the docs loader
     // without an extra branch here.
-    this.loadTab(tabId, url);
+    this.loadTab(tabId, url, { prefetched: options?.preparedContent });
 
     return tabId;
   }
@@ -380,7 +381,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   public async loadTab(
     tabId: string,
     url: string,
-    options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo }
+    options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo; prefetched?: RawContent }
   ): Promise<void> {
     // Loaders resolve on failure (failTab stores the error in tab state), so
     // their returned outcome — not promise settlement — stamps the action.
@@ -388,13 +389,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       const tab = this.state.tabs.find((t) => t.id === tabId);
       const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
       if (needsDocsLoader) {
-        return this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
+        return this.loadDocsTabContent(
+          tabId,
+          url,
+          options?.skipReadyToBegin,
+          options?.packageInfo,
+          options?.prefetched
+        );
       }
-      return this.loadTabContent(tabId, url);
+      return this.loadTabContent(tabId, url, options?.prefetched);
     });
   }
 
-  private async loadTabContent(tabId: string, url: string): Promise<GuideLoadOutcome> {
+  private async loadTabContent(tabId: string, url: string, prefetched?: RawContent): Promise<GuideLoadOutcome> {
     // Empty/corrupted tab URL — nothing to load, and not a successful open.
     if (!url || url.trim() === '') {
       logger.error(`loadTabContent called with an empty URL for tab ${tabId}`);
@@ -406,7 +413,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     try {
       const tab = this.state.tabs.find((t) => t.id === tabId);
-      const result = await fetchContent(url);
+      // Prefetched content skips the network fetch (one-fetch launch) but runs
+      // the identical finalization below so journey/completion parity holds.
+      const result = prefetched ? { content: prefetched } : await fetchContent(url);
 
       if (result.content) {
         let content = result.content;
@@ -664,7 +673,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public async openDocsPage(url: string, title?: string, options?: OpenDocsOptions): Promise<string> {
-    const { source, skipReadyToBegin, packageInfo } = options ?? {};
+    const { source, skipReadyToBegin, packageInfo, preparedContent } = options ?? {};
 
     // Make the launch source explicit at the call site if provided. This
     // narrows the surface area of the legacy `_recordAutoLaunchSource` flag —
@@ -699,7 +708,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Save tabs to storage immediately after creating
     this.saveTabsToStorage();
 
-    this.loadTab(tabId, url, { skipReadyToBegin, packageInfo });
+    this.loadTab(tabId, url, { skipReadyToBegin, packageInfo, prefetched: preparedContent });
 
     return tabId;
   }
@@ -708,7 +717,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     tabId: string,
     url: string,
     skipReadyToBegin?: boolean,
-    packageInfoArg?: PackageOpenInfo
+    packageInfoArg?: PackageOpenInfo,
+    prefetched?: RawContent
   ): Promise<GuideLoadOutcome> {
     // No early return for empty URLs — loadDocsTabContentResult handles all
     // edge cases (empty URL with packageInfo falls back to fetchPackageById;
@@ -723,11 +733,17 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       // Auto-derive packageInfo when opening a package URL via deep-link or
       // handoff (no recommender). Without the manifest, downstream rendering
       // falls through to plain fetchContent and the milestone toolbar never
-      // appears. See package-info-from-url.ts for the URL pattern.
-      if (!packageInfo && isPackageContentUrl(url)) {
+      // appears. See package-info-from-url.ts for the URL pattern. Skipped for
+      // prefetched launches — `prepareGuideLaunch` already derived it.
+      if (!prefetched && !packageInfo && isPackageContentUrl(url)) {
         packageInfo = await fetchPackageInfoFromUrl(url);
       }
-      const result = await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo });
+      // Prefetched content skips the network fetch (one-fetch launch) but runs
+      // the identical finalization below so alignment / journey / package
+      // parity holds.
+      const result = prefetched
+        ? { content: prefetched }
+        : await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo });
 
       // Check if fetch succeeded or failed
       if (result.content) {

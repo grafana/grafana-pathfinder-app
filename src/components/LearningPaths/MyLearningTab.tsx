@@ -5,10 +5,12 @@
  * Provides a unified experience for users to explore and track their learning journey.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
+import { getAppEvents } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
+import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { useLearningPaths, BADGES, getPathsData } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { LearningPathCard } from './LearningPathCard';
@@ -34,7 +36,13 @@ import { getBadgeDetailStyles } from './BadgeDetailCard.styles';
 import { getMyLearningStyles } from './MyLearningTab.styles';
 
 interface MyLearningTabProps {
-  onOpenGuide: (url: string, title: string) => void;
+  /**
+   * Called once the guide has been fetched, snippet-expanded, and classified,
+   * so the host can choose the display surface (full-screen for reading-only
+   * content, sidebar/floating when it drives the Grafana UI) and open the tab
+   * without a second fetch.
+   */
+  onOpenGuide: (launch: PreparedGuideLaunch) => void;
 }
 
 // ============================================================================
@@ -212,6 +220,8 @@ function BadgeGridItem({ badge, index, completedGuides, streakDays, paths, style
 
 export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   const styles = useStyles2(getMyLearningStyles);
+  // Guards against a second launch while the first is still fetching/classifying.
+  const launchInFlightRef = useRef(false);
   const [showAllBadges, setShowAllBadges] = useState(false);
   const [showAllPaths, setShowAllPaths] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
@@ -293,6 +303,33 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     );
   }, [selectedBadge, progress.completedGuides, progress.streakDays, paths]);
 
+  // Fetch + snippet-expand + classify the target, then hand the prepared
+  // launch to the host so it can pick the surface without re-fetching. The
+  // fetch happens while My Learning stays mounted; on failure My Learning stays
+  // visible and the error is surfaced rather than committing a surface.
+  const launch = useCallback(
+    async (url: string, title: string) => {
+      if (launchInFlightRef.current) {
+        return;
+      }
+      launchInFlightRef.current = true;
+      try {
+        const result = await prepareGuideLaunch(url, { title, source: 'home_page' });
+        if (result.ok) {
+          onOpenGuide(result.launch);
+        } else {
+          getAppEvents().publish({
+            type: 'alert-error',
+            payload: ['Could not open the guide', result.error],
+          });
+        }
+      } finally {
+        launchInFlightRef.current = false;
+      }
+    },
+    [onOpenGuide]
+  );
+
   // Handle opening a guide
   const handleOpenGuide = useCallback(
     (guideId: string, pathId: string) => {
@@ -315,7 +352,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           interaction_location: 'my_learning_tab',
         });
 
-        onOpenGuide(resolvedGuideUrl, title);
+        void launch(resolvedGuideUrl, title);
         return;
       }
 
@@ -346,9 +383,9 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         });
       }
 
-      onOpenGuide(guideUrl, title);
+      void launch(guideUrl, title);
     },
-    [onOpenGuide, paths, getPathProgress, getPathGuides, getGuideUrlForPath]
+    [launch, paths, getPathProgress, getPathGuides, getGuideUrlForPath]
   );
 
   // Handle reset all progress (for testing)

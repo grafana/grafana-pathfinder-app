@@ -44,11 +44,12 @@ export function openPendingGuide(
   if (!pending.url) {
     return;
   }
+  const preparedContent = pending.preparedContent;
   if (pending.packageInfo) {
-    panel.openDocsPage(pending.url, pending.title, { source, packageInfo: pending.packageInfo });
+    panel.openDocsPage(pending.url, pending.title, { source, packageInfo: pending.packageInfo, preparedContent });
   } else if (pending.type === 'learning-journey') {
-    panel.openLearningJourney(pending.url, pending.title, { source });
+    panel.openLearningJourney(pending.url, pending.title, { source, preparedContent });
   } else {
-    panel.openDocsPage(pending.url, pending.title, { source });
+    panel.openDocsPage(pending.url, pending.title, { source, preparedContent });
   }
 }

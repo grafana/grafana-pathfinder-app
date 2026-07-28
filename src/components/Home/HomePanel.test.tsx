@@ -1,6 +1,8 @@
 /**
- * Tests for HomePanelRenderer (composition root).
- * Verifies that MyLearningTab is rendered and guide-open callbacks work correctly.
+ * Tests for HomePanelRenderer (composition root + launch-surface selection).
+ * Verifies that MyLearningTab is rendered and that a prepared guide launch is
+ * routed to the right surface (full screen for reading-only content, sidebar /
+ * floating for content that drives the Grafana UI) without a second fetch.
  * MyLearningTab internals are tested separately in the LearningPaths domain.
  */
 
@@ -9,23 +11,29 @@ import { render, screen } from '@testing-library/react';
 import { HomePanelRenderer } from './HomePanel';
 import { sidebarState } from '../../global-state/sidebar';
 import { linkInterceptionState } from '../../global-state/link-interception';
+import { panelModeManager } from '../../global-state/panel-mode';
+import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
+import { locationService } from '@grafana/runtime';
+import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
+import type { RawContent } from '../../types/content.types';
 import { testIds } from '../../constants/testIds';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
-// Mock @grafana/scenes to avoid transitive @grafana/runtime dependency
 jest.mock('@grafana/scenes', () => ({
   SceneObjectBase: class SceneObjectBase {},
 }));
 
-// Mock @grafana/ui - provide simple stand-ins
+jest.mock('@grafana/runtime', () => ({
+  locationService: { push: jest.fn() },
+}));
+
 jest.mock('@grafana/ui', () => ({
   useStyles2: (fn: any) => fn(mockTheme),
 }));
 
-// Minimal GrafanaTheme2-shaped object for style functions
 const mockTheme = {
   isDark: false,
   spacing: (n: number) => `${n * 8}px`,
@@ -48,11 +56,10 @@ const mockTheme = {
   zIndex: { modal: 1000 },
 };
 
-// Capture onOpenGuide prop passed to MyLearningTab
-let capturedOnOpenGuide: ((url: string, title: string) => void) | undefined;
+let capturedOnOpenGuide: ((launch: PreparedGuideLaunch) => void) | undefined;
 
 jest.mock('../LearningPaths', () => ({
-  MyLearningTab: ({ onOpenGuide }: { onOpenGuide: (url: string, title: string) => void }) => {
+  MyLearningTab: ({ onOpenGuide }: { onOpenGuide: (launch: PreparedGuideLaunch) => void }) => {
     capturedOnOpenGuide = onOpenGuide;
     return <div data-testid="my-learning-tab">MyLearningTab</div>;
   },
@@ -62,7 +69,6 @@ jest.mock('../docs-panel/components', () => ({
   MyLearningErrorBoundary: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
-// Mock global state
 jest.mock('../../global-state/sidebar', () => ({
   sidebarState: {
     getIsSidebarMounted: jest.fn(),
@@ -77,6 +83,42 @@ jest.mock('../../global-state/link-interception', () => ({
   },
 }));
 
+jest.mock('../../global-state/panel-mode', () => ({
+  panelModeManager: {
+    setPendingGuide: jest.fn(),
+    setModeTransient: jest.fn(),
+    capturePriorPath: jest.fn(),
+  },
+}));
+
+jest.mock('../../lib/storage/extension-sidebar', () => ({
+  isExtensionSidebarOwnedByOther: jest.fn(),
+}));
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const rawContent: RawContent = {
+  content: '{"id":"g","title":"g","blocks":[]}',
+  metadata: { title: 'g' },
+  type: 'interactive',
+  url: 'bundled:first-dashboard',
+  lastFetched: '2026-07-28T00:00:00.000Z',
+};
+
+function preparedLaunch(overrides: Partial<PreparedGuideLaunch> = {}): PreparedGuideLaunch {
+  return {
+    url: 'bundled:first-dashboard',
+    title: 'Create your first dashboard',
+    type: 'docs',
+    source: 'home_page',
+    preparedContent: rawContent,
+    requiresGrafanaUi: false,
+    ...overrides,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -85,9 +127,8 @@ describe('HomePanelRenderer', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     capturedOnOpenGuide = undefined;
+    (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
   });
-
-  // ---------- Composition ---------------------------------------------------
 
   describe('composition', () => {
     it('renders MyLearningTab', () => {
@@ -101,33 +142,48 @@ describe('HomePanelRenderer', () => {
     });
   });
 
-  // ---------- Guide opening -----------------------------------------------
+  describe('reading-only content opens full screen', () => {
+    it('carries the prepared content into a pending guide and enters full screen transiently', () => {
+      render(<HomePanelRenderer />);
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: false }));
 
-  describe('opening a guide', () => {
-    it('dispatches pathfinder-auto-open-docs when sidebar is mounted', () => {
+      expect(panelModeManager.setPendingGuide).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'bundled:first-dashboard', preparedContent: rawContent })
+      );
+      expect(panelModeManager.capturePriorPath).toHaveBeenCalled();
+      expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('fullscreen');
+      expect(locationService.push).toHaveBeenCalledWith(expect.stringContaining('doc=bundled'));
+    });
+  });
+
+  describe('content that drives the Grafana UI opens beside Grafana', () => {
+    it('dispatches pathfinder-auto-open-docs (with prepared content) when the sidebar is mounted', () => {
       (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(true);
       const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
 
       render(<HomePanelRenderer />);
-      expect(capturedOnOpenGuide).toBeDefined();
-      capturedOnOpenGuide!('bundled:first-dashboard', 'Create your first dashboard');
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: true }));
 
       expect(dispatchSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'pathfinder-auto-open-docs',
-          detail: { url: 'bundled:first-dashboard', title: 'Create your first dashboard', source: 'home_page' },
+          detail: expect.objectContaining({
+            url: 'bundled:first-dashboard',
+            title: 'Create your first dashboard',
+            source: 'home_page',
+            preparedContent: rawContent,
+          }),
         })
       );
-
+      expect(panelModeManager.setModeTransient).not.toHaveBeenCalled();
       dispatchSpy.mockRestore();
     });
 
-    it('opens sidebar and queues link when sidebar is NOT mounted', () => {
+    it('opens the sidebar and queues the prepared link when the sidebar is NOT mounted', () => {
       (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(false);
 
       render(<HomePanelRenderer />);
-      expect(capturedOnOpenGuide).toBeDefined();
-      capturedOnOpenGuide!('bundled:first-dashboard', 'Create your first dashboard');
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: true }));
 
       expect(sidebarState.setPendingOpenSource).toHaveBeenCalledWith('home_page');
       expect(sidebarState.openSidebar).toHaveBeenCalledWith(
@@ -135,28 +191,21 @@ describe('HomePanelRenderer', () => {
         expect.objectContaining({ url: 'bundled:first-dashboard', title: 'Create your first dashboard' })
       );
       expect(linkInterceptionState.addToQueue).toHaveBeenCalledWith(
-        expect.objectContaining({ url: 'bundled:first-dashboard', title: 'Create your first dashboard' })
+        expect.objectContaining({ url: 'bundled:first-dashboard', preparedContent: rawContent })
       );
     });
 
-    it('supports URL-based (remote) guides', () => {
-      (sidebarState.getIsSidebarMounted as jest.Mock).mockReturnValue(true);
-      const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
+    it('falls back to a floating overlay when another plugin owns the sidebar', () => {
+      (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(true);
 
       render(<HomePanelRenderer />);
-      expect(capturedOnOpenGuide).toBeDefined();
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: true }));
 
-      const remoteUrl = 'https://interactive-learning.grafana.net/guides/prometheus-lj/add-data-source/content.json';
-      capturedOnOpenGuide!(remoteUrl, 'Add the Prometheus data source');
-
-      expect(dispatchSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'pathfinder-auto-open-docs',
-          detail: { url: remoteUrl, title: 'Add the Prometheus data source', source: 'home_page' },
-        })
+      expect(panelModeManager.setPendingGuide).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'bundled:first-dashboard', preparedContent: rawContent })
       );
-
-      dispatchSpy.mockRestore();
+      expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('floating');
+      expect(sidebarState.openSidebar).not.toHaveBeenCalled();
     });
   });
 });

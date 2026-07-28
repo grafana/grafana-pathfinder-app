@@ -91,6 +91,8 @@ class GlobalLinkInterceptionState {
               url: docsLink.url,
               title: docsLink.title,
               source: 'queued_link',
+              // Preserve a prepared (one-fetch) launch through the cold-sidebar queue.
+              preparedContent: docsLink.preparedContent,
             },
           })
         );

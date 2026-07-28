@@ -159,4 +159,39 @@ describe('panelModeManager', () => {
       expect(panelModeManager.consumePriorPath()).toBe('/connections');
     });
   });
+
+  describe('setModeTransient', () => {
+    // Clear any in-memory transient override left by a test (the manager is a
+    // singleton) so the next test reads its persisted preference.
+    afterEach(() => {
+      panelModeManager.setMode('sidebar');
+      localStorage.clear();
+    });
+
+    it('does NOT persist the mode to localStorage (user preference untouched)', () => {
+      panelModeManager.setModeTransient('fullscreen');
+      expect(panelModeManager.getMode()).toBe('fullscreen');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBeNull();
+    });
+
+    it('preserves an existing persisted preference under the transient override', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+      panelModeManager.setModeTransient('fullscreen');
+      expect(panelModeManager.getMode()).toBe('fullscreen');
+      // The stored preference is still 'floating' — only the in-memory override changed.
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+    });
+
+    it('runs the same side effects as setMode (close-extension-sidebar)', () => {
+      panelModeManager.setModeTransient('fullscreen');
+      expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'close-extension-sidebar' }));
+    });
+
+    it('is cleared by a subsequent explicit setMode, which then persists', () => {
+      panelModeManager.setModeTransient('fullscreen');
+      panelModeManager.setMode('sidebar');
+      expect(panelModeManager.getMode()).toBe('sidebar');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
+    });
+  });
 });

@@ -6,6 +6,7 @@ import { PANEL_MODE_CHANGE_EVENT } from '../lib/event-names';
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/telemetry/surface';
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
 import type { PackageOpenInfo } from '../types/content-panel.types';
+import type { RawContent } from '../types/content.types';
 
 export type PanelMode = 'sidebar' | 'floating' | 'fullscreen';
 
@@ -34,6 +35,13 @@ export interface PendingGuide {
    * milestone toolbar / Alt+arrow navigation never appear.
    */
   packageInfo?: PackageOpenInfo;
+  /**
+   * Content already fetched + snippet-expanded by `prepareGuideLaunch`, carried
+   * so the receiving surface renders it without a second fetch (one-fetch
+   * launch). One-shot memory state — consumed with the pending guide, never
+   * persisted to tab storage.
+   */
+  preparedContent?: RawContent;
 }
 
 /**
@@ -47,10 +55,23 @@ class PanelModeManager {
   private _pendingGuide: PendingGuide | null = null;
   private _priorPath: string | null = null;
   /**
-   * Get the current panel mode from localStorage.
+   * In-memory surface override for an automatic launch (see `setModeTransient`).
+   * When set, it wins over the persisted preference for `getMode()` but is
+   * never written to localStorage, so an automatic surface choice does not
+   * overwrite the user's durable preference. Cleared by any explicit
+   * (persisting) `setMode` and does not survive a page reload.
+   */
+  private _transientMode: PanelMode | null = null;
+
+  /**
+   * Get the current panel mode. A transient (automatic-launch) override wins
+   * over the persisted preference; otherwise read from localStorage.
    * Defaults to 'sidebar' for backward compatibility.
    */
   public getMode(): PanelMode {
+    if (this._transientMode) {
+      return this._transientMode;
+    }
     const stored = localStorage.getItem(StorageKeys.PANEL_MODE);
     if (stored === 'floating') {
       return 'floating';
@@ -70,12 +91,35 @@ class PanelModeManager {
    * When switching to 'sidebar', notifies the floating panel to unmount.
    */
   public setMode(mode: PanelMode): void {
+    // An explicit mode change is the user's durable choice: persist it and drop
+    // any transient launch override.
+    this.applyModeChange(mode, (next) => {
+      this._transientMode = null;
+      localStorage.setItem(StorageKeys.PANEL_MODE, next);
+    });
+  }
+
+  /**
+   * Switch panel mode for an automatic launch WITHOUT persisting it. Runs the
+   * same side effects as `setMode` (close sidebar, telemetry, mode-change
+   * event) but records the choice in memory only, so the user's stored
+   * preference is untouched (locked decision: an automatic launch selection
+   * must not overwrite the persisted preference). Cleared by the next explicit
+   * `setMode` (e.g. exit / auto-dock) and does not survive a reload.
+   */
+  public setModeTransient(mode: PanelMode): void {
+    this.applyModeChange(mode, (next) => {
+      this._transientMode = next;
+    });
+  }
+
+  private applyModeChange(mode: PanelMode, commit: (mode: PanelMode) => void): void {
     const previous = this.getMode();
     if (mode === previous) {
       return;
     }
 
-    localStorage.setItem(StorageKeys.PANEL_MODE, mode);
+    commit(mode);
 
     if (mode === 'floating' || mode === 'fullscreen') {
       // Close the Grafana extension sidebar to free the slot. Full screen
