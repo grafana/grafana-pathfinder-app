@@ -4,17 +4,17 @@ import { testIds } from '../src/constants/testIds';
 
 /**
  * Title-row responsive regression: at the 320px floating-panel minimum the
- * title row must not overflow horizontally when a wide status badge is shown,
- * and the status must stay visible. Guards the title-area shrink behavior in
- * `header.styles.ts` — `titleArea` must shrink below its ~180px preferred width
- * so a non-shrinking status cluster fits instead of pushing the row into
+ * title row must not overflow horizontally when the title is long and a wide
+ * status badge is shown, and the status must stay visible. Guards the
+ * content-sized, shrinkable title input in `header.styles.ts` — the input must
+ * shrink so a non-shrinking status badge fits instead of pushing the row into
  * overflow.
  *
  * The real "Published (modified)" badge only renders with a live backend, which
- * isn't available in e2e, so the test injects a stand-in the width of that
- * badge into the real status cluster. The title-row / titleArea / rightCluster
- * flex layout under test is exercised for real; only the badge's content is
- * synthetic.
+ * isn't available in e2e, so the test gives the title width pressure and injects
+ * a stand-in the width of that badge as a flowing, non-shrinking sibling in the
+ * title row. The real title-row flex layout under test is exercised; only the
+ * badge's content is synthetic.
  */
 
 // Approximate rendered width of the widest status badge ("Published (modified)").
@@ -41,26 +41,23 @@ test.describe('Block editor header — title row responsive', () => {
     const titleRow = page.getByTestId(testIds.blockEditor.titleRow);
     await expect(titleRow).toBeVisible();
 
-    // Inject a stand-in the width of the widest status badge into the real
-    // status cluster (rightCluster = the title row's last element child).
-    const injected = await titleRow.evaluate(
+    // Give the title width pressure so the input must shrink to fit the row.
+    await page.getByLabel('Guide title').fill('A deliberately long guide title that wants plenty of horizontal room');
+
+    // Inject a stand-in the width of the widest status badge as a flowing,
+    // non-shrinking sibling in the title row (mirrors the inline status cluster).
+    await titleRow.evaluate(
       (row, args) => {
-        const cluster = row.lastElementChild as HTMLElement | null;
-        if (!cluster) {
-          return false;
-        }
         const standin = document.createElement('span');
         standin.setAttribute('data-testid', args.testId);
         standin.textContent = 'Published (modified)';
         standin.style.flexShrink = '0';
         standin.style.width = `${args.widthPx}px`;
         standin.style.whiteSpace = 'nowrap';
-        cluster.appendChild(standin);
-        return true;
+        row.appendChild(standin);
       },
       { widthPx: WIDEST_BADGE_PX, testId: STANDIN_TESTID }
     );
-    expect(injected).toBe(true);
 
     // Constrain the editor to the 320px floating-panel minimum.
     await page.getByTestId(testIds.blockEditor.container).evaluate((container) => {

@@ -755,7 +755,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       {/* Header */}
       <BlockEditorHeader
         guideTitle={state.guide.title}
-        guideId={isIdLocked ? state.guide.id : null}
         isDirty={state.isDirty}
         publishedStatus={backendSaveFlow.publishedStatus}
         hasUnsyncedChanges={backendSaveFlow.hasUnsyncedChanges}

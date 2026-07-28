@@ -6,7 +6,6 @@ import { testIds } from '../../constants/testIds';
 
 const baseProps = {
   guideTitle: 'Test guide',
-  guideId: 'test-guide',
   isDirty: false,
   publishedStatus: 'not-saved' as const,
   hasUnsyncedChanges: false,
@@ -238,15 +237,46 @@ describe('BlockEditorHeader: toolbar row + undo/redo', () => {
 });
 
 describe('BlockEditorHeader: preview mode', () => {
-  it('renders a spacer instead of the editable title input in preview', () => {
+  it('hides the editable title input in preview (title row is not rendered)', () => {
     render(<BlockEditorHeader {...baseProps} viewMode="preview" />);
     expect(screen.queryByLabelText('Guide title')).not.toBeInTheDocument();
   });
 
   it('keeps the local-save indicator visible in preview when the backend is unavailable', () => {
     render(<BlockEditorHeader {...baseProps} viewMode="preview" isBackendAvailable={false} isDirty={false} />);
-    // The Saved-to-local-storage indicator lives in the title row, which stays
-    // rendered in preview — no-backend users don't lose save-state feedback.
+    // The title row is hidden in preview, so the Saved-to-local-storage
+    // indicator relocates to the toolbar row — no-backend users keep save-state
+    // feedback.
     expect(screen.getByLabelText('Saved')).toBeInTheDocument();
+  });
+
+  it('relocates the publish-status badge to the toolbar in preview', () => {
+    render(<BlockEditorHeader {...baseProps} viewMode="preview" isBackendAvailable={true} publishedStatus="draft" />);
+    expect(screen.getByText('Draft')).toBeInTheDocument();
+  });
+});
+
+describe('BlockEditorHeader: publish-status badge', () => {
+  it('shows the Draft badge in edit mode when the backend is available', () => {
+    render(<BlockEditorHeader {...baseProps} viewMode="edit" isBackendAvailable={true} publishedStatus="draft" />);
+    expect(screen.getByText('Draft')).toBeInTheDocument();
+  });
+
+  it('shows the Published badge for a published guide with no unsynced changes', () => {
+    render(
+      <BlockEditorHeader
+        {...baseProps}
+        viewMode="edit"
+        isBackendAvailable={true}
+        publishedStatus="published"
+        hasUnsyncedChanges={false}
+      />
+    );
+    expect(screen.getByText('Published')).toBeInTheDocument();
+  });
+
+  it('hides the badge entirely when the backend is unavailable', () => {
+    render(<BlockEditorHeader {...baseProps} viewMode="edit" isBackendAvailable={false} publishedStatus="draft" />);
+    expect(screen.queryByText('Draft')).not.toBeInTheDocument();
   });
 });

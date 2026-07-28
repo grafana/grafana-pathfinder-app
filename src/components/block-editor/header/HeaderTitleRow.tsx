@@ -1,23 +1,14 @@
 import React, { useRef, useState } from 'react';
 import { useStyles2 } from '@grafana/ui';
-import type { ViewMode } from '../types';
 import { getHeaderStyles } from './header.styles';
 
 export interface HeaderTitleRowProps {
   guideTitle: string;
-  /** Guide ID — null means not yet assigned (hides the ID display). */
-  guideId: string | null;
-  viewMode: ViewMode;
   /** Called when the title is committed (blur or Enter). */
   onTitleCommit: (title: string) => void;
 }
 
-/**
- * Editable guide title + id. In preview mode the rendered content already shows
- * the guide title as an `<h1>` (matching production), so the editable input is
- * replaced by a flex spacer to avoid duplicating that heading.
- */
-export function HeaderTitleRow({ guideTitle, guideId, viewMode, onTitleCommit }: HeaderTitleRowProps) {
+export function HeaderTitleRow({ guideTitle, onTitleCommit }: HeaderTitleRowProps) {
   const styles = useStyles2(getHeaderStyles);
 
   const [titleDraft, setTitleDraft] = useState(guideTitle);
@@ -50,22 +41,18 @@ export function HeaderTitleRow({ guideTitle, guideId, viewMode, onTitleCommit }:
     }
   };
 
-  if (viewMode === 'preview') {
-    return <div className={styles.titleArea} aria-hidden="true" />;
-  }
-
   return (
-    <div className={styles.titleArea}>
+    <div className={styles.titleInputWrap}>
       <input
         ref={titleInputRef}
         className={styles.guideTitleInput}
         value={titleDraft}
+        size={Math.min(Math.max(titleDraft.length + 1, 8), 60)}
         onChange={(e) => setTitleDraft(e.target.value)}
         onBlur={commitTitle}
         onKeyDown={handleTitleKeyDown}
         aria-label="Guide title"
       />
-      {guideId && <div className={`${styles.guideId} guide-id`}>({guideId})</div>}
     </div>
   );
 }

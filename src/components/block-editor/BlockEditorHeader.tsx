@@ -20,8 +20,6 @@ import { HeaderKebab } from './header/HeaderKebab';
 export interface BlockEditorHeaderProps {
   /** Guide title to display */
   guideTitle: string;
-  /** Guide ID — null means not yet assigned (hides the ID display) */
-  guideId: string | null;
   /** Whether there are unsaved local changes */
   isDirty: boolean;
   /**
@@ -94,7 +92,6 @@ export interface BlockEditorHeaderProps {
 
 export function BlockEditorHeader({
   guideTitle,
-  guideId,
   isDirty,
   publishedStatus,
   hasUnsyncedChanges,
@@ -132,7 +129,7 @@ export function BlockEditorHeader({
     if (publishedStatus === 'not-saved') {
       return (
         <Tooltip content="Not yet saved to library">
-          <Badge text="Draft" color="purple" icon="circle" />
+          <Badge text="Draft" color="blue" icon="circle" />
         </Tooltip>
       );
     }
@@ -146,7 +143,7 @@ export function BlockEditorHeader({
       }
       return (
         <Tooltip content="Saved to library but not published to users">
-          <Badge text="Draft" color="purple" icon="circle" />
+          <Badge text="Draft" color="blue" icon="circle" />
         </Tooltip>
       );
     }
@@ -159,7 +156,7 @@ export function BlockEditorHeader({
     }
     return (
       <Tooltip content="Published and visible to users">
-        <Badge text="Published" color="blue" icon="cloud-upload" />
+        <Badge text="Published" color="green" icon="cloud-upload" />
       </Tooltip>
     );
   };
@@ -195,20 +192,27 @@ export function BlockEditorHeader({
     </Button>
   );
 
+  // Local-save indicator (no backend) or publish-status badge (backend) — the
+  // two are mutually exclusive on `isBackendAvailable`. Lives in the title row
+  // in edit/JSON mode and relocates to the toolbar row in preview.
+  const statusCluster = (
+    <>
+      {localSaveIndicator}
+      {isBackendAvailable && backendBadge()}
+    </>
+  );
+
   return (
     <div className={styles.header}>
-      {/* Title row: editable title + guide id on the left, publish status on the
-          right. In preview HeaderTitleRow renders a spacer instead of the input
-          (the rendered guide shows its own <h1>), so the row stays put without
-          duplicating the title. Fully hiding the row in preview is deferred to
-          the title-row PR. */}
-      <div className={styles.titleRow} data-testid={testIds.blockEditor.titleRow}>
-        <HeaderTitleRow guideTitle={guideTitle} guideId={guideId} viewMode={viewMode} onTitleCommit={onTitleCommit} />
-        <div className={styles.rightCluster}>
-          {localSaveIndicator}
-          {isBackendAvailable && backendBadge()}
+      {/* Title row is hidden entirely in preview — the rendered guide shows its
+          own <h1>, so an editable title would duplicate it; the status cluster
+          moves to the toolbar row (below) to keep publish state visible. */}
+      {viewMode !== 'preview' && (
+        <div className={styles.titleRow} data-testid={testIds.blockEditor.titleRow}>
+          <HeaderTitleRow guideTitle={guideTitle} onTitleCommit={onTitleCommit} />
+          {statusCluster}
         </div>
-      </div>
+      )}
 
       {/* Single-line — never wraps; the rocker and Save collapse to icons via
           the container-query tiers instead (see toolbarRow). */}
@@ -216,6 +220,8 @@ export function BlockEditorHeader({
         <ViewModeRocker viewMode={viewMode} onSetViewMode={onSetViewMode} />
 
         <div className={styles.rightCluster}>
+          {viewMode === 'preview' && statusCluster}
+
           {/* "Reset guide" affordance, lifted out of the preview content area. */}
           {previewResetButton}
 
