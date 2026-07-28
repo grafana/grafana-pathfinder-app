@@ -22,6 +22,7 @@ import {
   logStepResult,
   logExecutionSummary,
   DEFAULT_STEP_TIMEOUT_MS,
+  GUIDE_INITIAL_TIMEOUT_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
   TIMEOUT_PER_GUIDED_SUBSTEP_MS,
 } from './guide-runner';
@@ -181,6 +182,9 @@ describe('calculateStepTimeout', () => {
 });
 
 describe('calculateGuideTimeout', () => {
+  it('preserves the full initial setup allowance after discovery', () => {
+    expect(calculateGuideTimeout([])).toBe(GUIDE_INITIAL_TIMEOUT_MS);
+  });
   it('allows the aggregate budget for multiple simple steps to exceed two minutes', () => {
     const steps = Array.from({ length: 5 }, (_, index) => createTestableStep({ stepId: `step-${index}`, index }));
 

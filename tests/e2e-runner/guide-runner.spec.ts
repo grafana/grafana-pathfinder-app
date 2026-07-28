@@ -30,7 +30,7 @@ import {
   discoverStepsFromDOM,
   executeAllSteps,
   calculateGuideTimeout,
-  GUIDE_SETUP_TIMEOUT_MS,
+  GUIDE_INITIAL_TIMEOUT_MS,
   ensureDocsPanelOpen,
   summarizeResults,
   AllStepsResult,
@@ -136,7 +136,7 @@ function writeTracePathFile(outputDir: string): void {
 
 test.describe('Guide Runner', () => {
   test('loads and displays guide from JSON', async ({ page }, testInfo) => {
-    test.setTimeout(GUIDE_SETUP_TIMEOUT_MS * 2);
+    test.setTimeout(GUIDE_INITIAL_TIMEOUT_MS);
 
     // L3-5B: Capture timestamp at test start for JSON report
     const testStartTimestamp = new Date().toISOString();

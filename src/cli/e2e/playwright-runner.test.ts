@@ -218,6 +218,36 @@ describe('runPlaywrightTests', () => {
     expect(spawnOptions.env?.STARTING_LOCATION).toBe('/d/example/example');
   });
 
+  it('cleans up the temp directory when starting-location validation rejects', async () => {
+    const fsModule = jest.requireActual<typeof import('fs')>('fs');
+    const rmSpy = jest.spyOn(fsModule, 'rmSync');
+
+    try {
+      await expect(
+        runPlaywrightTests(
+          { path: 'fixture.json', content: '{}' },
+          {
+            targetUrl: 'https://play.grafana.org',
+            startingLocation: 'https://example.com',
+            verbose: false,
+            trace: false,
+            headed: false,
+            artifacts: 'artifacts',
+            alwaysScreenshot: false,
+          }
+        )
+      ).rejects.toThrow(/same origin/i);
+
+      expect(spawnMock).not.toHaveBeenCalled();
+      expect(rmSpy).toHaveBeenCalledWith(
+        expect.stringContaining('pathfinder-e2e-'),
+        expect.objectContaining({ recursive: true, force: true })
+      );
+    } finally {
+      rmSpy.mockRestore();
+    }
+  });
+
   it.each([
     ['AUTH_EXPIRED', 'aborted'],
     ['MANDATORY_FAILURE', 'failed'],

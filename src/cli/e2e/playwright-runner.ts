@@ -220,10 +220,10 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
   const resultsFilePath = join(tempDir, 'results.json');
   const authStateFile = join(tempDir, 'auth.json');
   const traceOutputFilePath = join(tempDir, 'trace-path.txt');
-  const startingUrl = new URL(resolveStartingUrl(options.targetUrl, options.startingLocation));
-  const startingPath = `${startingUrl.pathname}${startingUrl.search}${startingUrl.hash}`;
 
   try {
+    const startingUrl = new URL(resolveStartingUrl(options.targetUrl, options.startingLocation));
+    const startingPath = `${startingUrl.pathname}${startingUrl.search}${startingUrl.hash}`;
     writeFileSync(guidePath, guide.content);
 
     if (options.verbose) {
