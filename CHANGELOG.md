@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.15.0
+
+### Added
+
+- **Interactive guides API moved to the new Grafana App Platform group**: The plugin now reads and writes custom `InteractiveGuide` resources against the `pathfinderbackend.ext.grafana.app` group, gated by its aggregation feature toggle, ahead of the old Cloud App Platform group being retired. (#1430)
+- **Collapsible blocks for gating solutions in guides**: Guide authors can add a collapsible block that hides a solution or answer until the reader chooses to reveal it. (#1396)
+- **Self-hosted video assets and a first-class Vimeo provider**: Guides can embed self-hosted videos and Vimeo content directly. (#1355)
+- **Block editor consolidates pop out, full screen, and selection into a kebab menu**: The block editor header groups these actions under a single overflow menu for a cleaner toolbar. (#1428)
+- **Custom guide repository catalogue proxy**: A backend proxy that serves a slim, per-namespace catalogue of a stack's private guide packages, following the App Platform proxy pattern. (#1400)
+- **"My completions" read proxy**: A backend proxy that exposes a caller's own guide-completion records from the App Platform. (#1398)
+- **New E2E runner image with a schema-backed report contract and capacity retries**: Reworks the end-to-end runner for more reliable guide-chain testing. (#1372)
+
+### Fixed
+
+- **Content type labels removed from the docs panel meta bar**: The meta bar no longer shows redundant content-type labels. (#1405)
+- **Input block form validates its pattern field**: The block editor's input block now validates the `pattern` field, with unit tests. (#1302)
+- **Recommendation summary expansion simplified**: The recommendations list summary expands more predictably. (#1395)
+- **E2E headless runs use full Chromium in containers**: Fixes headless browser failures in the containerized E2E runner. (#1413)
+- **E2E selector resolution isolated from the browser runtime**: Selector resolution no longer depends on browser globals. (#1377)
+
+### Chore
+
+- **Completion recording routed through a single recorder boundary**: Consolidates guide and journey completion behind one recorder seam (behavior-neutral) ahead of the completion-records backend work. (#1386)
+- **Import-cycle clusters dissolved and ratcheted**: Breaks three import-cycle clusters via leaf extractions, and adds a file-level circular-dependency ratchet plus a Node-context environment-reachability check. (#1391, #1358, #1378)
+- **Block editor header extracted into focused components**: Pure refactor of the header into smaller pieces. (#1406)
+- **Translations completed across all 20 locales**: Full localization coverage refreshed. (#1277)
+- **Cross-tab test flake fixed**: Closes a controller-binding race in the `pairOverBus` cross-tab test. (#1410)
+- **CI alerts on main-branch failures**: Routes main-branch CI failures to #grafana-pathfinder-alerts. (#1367)
+- **Docs**: Documented the backend App Platform proxy pattern (#1401) and the telemetry instrumentation policy + facade-boundary ratchet (#1412), added agent context for the Graft dev workflow (#1384), refreshed E2E CLI guidance (#1375), and documented pool-manager integration in E2E testing (#1371).
+
 ## 2.14.2
 
 ### Fixed
