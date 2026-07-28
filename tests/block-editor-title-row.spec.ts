@@ -3,17 +3,16 @@ import { openBlockEditor, clearBlockEditorState } from './helpers/block-editor.h
 import { testIds } from '../src/constants/testIds';
 
 /**
- * Title-row responsive regression (header redesign, #1256 / PR #1429).
- *
- * At the 320px floating-panel minimum the title row must not overflow
- * horizontally when the widest status badge ("Published (modified)") is shown,
- * and the status must stay visible. Regression guard for the title-area shrink
- * fix in `header.styles.ts`.
+ * Title-row responsive regression: at the 320px floating-panel minimum the
+ * title row must not overflow horizontally when the widest status badge
+ * ("Published (modified)") is shown, and the status must stay visible. Guards
+ * the title-area shrink behavior in `header.styles.ts`.
  *
  * The "published (modified)" backend state can't be reached without a live
- * backend, so we (1) force the optional-backend feature toggle client-side so
- * the status badge renders at all, and (2) rewrite the rendered badge's label to
- * the widest value. The real title-row flex layout is what's under test.
+ * backend, so the test (1) forces the optional-backend feature toggle
+ * client-side so the status badge renders at all, and (2) rewrites the rendered
+ * badge's label to the widest value. The real title-row flex layout is what's
+ * under test.
  */
 
 // Forces the aggregation backend toggle on before boot so `isBackendApiAvailable()`
