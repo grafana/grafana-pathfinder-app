@@ -50,11 +50,11 @@ async function dispatchPopOut() {
 }
 
 describe('usePopOutHandoff', () => {
-  let setModeSpy: jest.SpyInstance;
+  let setModePersistedSpy: jest.SpyInstance;
   let publishMock: jest.Mock;
 
   beforeEach(() => {
-    setModeSpy = jest.spyOn(panelModeManager, 'setMode').mockImplementation(() => {});
+    setModePersistedSpy = jest.spyOn(panelModeManager, 'setModePersisted').mockImplementation(() => {});
     publishMock = jest.fn();
     (getAppEvents as jest.Mock).mockReturnValue({ publish: publishMock });
     (reportAppInteraction as jest.Mock).mockClear();
@@ -83,7 +83,7 @@ describe('usePopOutHandoff', () => {
     await dispatchPopOut();
 
     expect(saveTabsToStorage).toHaveBeenCalledTimes(1);
-    expect(setModeSpy).toHaveBeenCalledWith('floating');
+    expect(setModePersistedSpy).toHaveBeenCalledWith('floating');
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.FloatingPanelPopOut, {
       guide_url: 'https://example.com/a/milestone-3',
       guide_title: 'Journey A',
@@ -115,9 +115,9 @@ describe('usePopOutHandoff', () => {
       document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
     });
 
-    // Without resolving the save, setMode must not have fired.
+    // Without resolving the save, the mode flip must not have fired.
     await Promise.resolve();
-    expect(setModeSpy).not.toHaveBeenCalled();
+    expect(setModePersistedSpy).not.toHaveBeenCalled();
 
     await act(async () => {
       resolveSave();
@@ -125,7 +125,7 @@ describe('usePopOutHandoff', () => {
       await Promise.resolve();
     });
 
-    expect(setModeSpy).toHaveBeenCalledWith('floating');
+    expect(setModePersistedSpy).toHaveBeenCalledWith('floating');
   });
 
   it('editor branch: flushes storage and switches to floating with empty guide_url', async () => {
@@ -138,7 +138,7 @@ describe('usePopOutHandoff', () => {
     await dispatchPopOut();
 
     expect(saveTabsToStorage).toHaveBeenCalledTimes(1);
-    expect(setModeSpy).toHaveBeenCalledWith('floating');
+    expect(setModePersistedSpy).toHaveBeenCalledWith('floating');
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.FloatingPanelPopOut, {
       guide_url: '',
       guide_title: 'Block editor',
@@ -159,7 +159,7 @@ describe('usePopOutHandoff', () => {
       payload: ['Open a guide before popping out the panel.'],
     });
     expect(saveTabsToStorage).not.toHaveBeenCalled();
-    expect(setModeSpy).not.toHaveBeenCalled();
+    expect(setModePersistedSpy).not.toHaveBeenCalled();
   });
 
   it('refuses pop-out when there is no active tab', async () => {
@@ -172,7 +172,7 @@ describe('usePopOutHandoff', () => {
       type: 'alert-info',
       payload: ['Open a guide before popping out the panel.'],
     });
-    expect(setModeSpy).not.toHaveBeenCalled();
+    expect(setModePersistedSpy).not.toHaveBeenCalled();
   });
 
   it('H1 — re-reads model.state inside the handler (tab switched after mount)', async () => {

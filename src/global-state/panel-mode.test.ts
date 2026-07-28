@@ -161,13 +161,11 @@ describe('panelModeManager', () => {
   });
 
   describe('setModeTransient', () => {
-    // The manager is a singleton: end any open round-trip and clear the
-    // in-memory override so the next test reads a clean localStorage state. The
-    // first setMode ends the round-trip (keeps 'sidebar' as the override); the
-    // second, no longer in a round-trip, clears the override.
+    // The manager is a singleton: end any open round-trip (only the deliberate
+    // setModePersisted does that) and clear the in-memory override so the next
+    // test reads a clean localStorage state.
     afterEach(() => {
-      panelModeManager.setMode('sidebar');
-      panelModeManager.setMode('sidebar');
+      panelModeManager.setModePersisted('sidebar');
       localStorage.clear();
     });
 
@@ -200,9 +198,10 @@ describe('panelModeManager', () => {
   });
 
   describe('transient-session persistence suppression (locked decision 2)', () => {
-    // A transient session only ends on page reload, so the singleton would leak
-    // its in-memory override across tests. Load a fresh instance per test to
-    // simulate a clean page load.
+    // An auto-launch round-trip's automatic teardown never ends the session
+    // (only a deliberate setModePersisted or a reload does), so the singleton
+    // would leak its in-memory override across tests. Load a fresh instance per
+    // test to simulate a clean page load.
     let manager!: typeof panelModeManager;
     beforeEach(() => {
       jest.isolateModules(() => {
@@ -211,8 +210,8 @@ describe('panelModeManager', () => {
     });
 
     // Each surface: stored pref = floating → auto-launch enter → teardown via the
-    // real, persistence-agnostic setMode('sidebar') exit call (as every exit /
-    // close / restoration site does) → stored pref STILL floating.
+    // persistence-agnostic setMode('sidebar') exit call (as every exit / close /
+    // restoration site does) → stored pref STILL floating.
     it.each(['fullscreen', 'floating', 'sidebar'] as const)(
       'never overwrites a non-default preference across a transient %s launch round-trip',
       (surface) => {
@@ -228,7 +227,21 @@ describe('panelModeManager', () => {
       }
     );
 
-    it('resumes persistence for a deliberate surface change after a round-trip ends', () => {
+    it('never persists an automatic auto-dock to FLOATING (full-screen → floating when sidebar occupied)', () => {
+      // review-4: stored pref = sidebar; a reading-only guide auto-launches
+      // full screen; navigating away auto-docks to FLOATING (another plugin owns
+      // the extension sidebar). That automatic teardown must not overwrite the
+      // stored 'sidebar' preference with 'floating'.
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'sidebar');
+
+      manager.setModeTransient('fullscreen');
+      manager.setMode('floating');
+
+      expect(manager.getMode()).toBe('floating');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
+    });
+
+    it('resumes persistence for a deliberate surface change after a round-trip', () => {
       localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
 
       // Auto-launch a reading-only guide (transient) and exit to sidebar.
@@ -236,21 +249,25 @@ describe('panelModeManager', () => {
       manager.setMode('sidebar');
       expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
 
-      // A deliberate change AFTER the round-trip persists as normal.
-      manager.setMode('fullscreen');
+      // A deliberate change goes through the persisting path and persists.
+      manager.setModePersisted('fullscreen');
       expect(manager.getMode()).toBe('fullscreen');
       expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('fullscreen');
     });
 
-    it('persists a deliberate non-base surface change made mid-round-trip', () => {
+    it('setModePersisted persists, ends the session, and lets subsequent setMode persist', () => {
       localStorage.setItem(StorageKeys.PANEL_MODE, 'sidebar');
 
+      // Deliberate pop-out mid-round-trip persists and ends the session.
       manager.setModeTransient('fullscreen');
-      // User deliberately pops out to floating before the base teardown.
-      manager.setMode('floating');
-
+      manager.setModePersisted('floating');
       expect(manager.getMode()).toBe('floating');
       expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+
+      // Session ended → a plain setMode now persists as a normal user choice.
+      manager.setMode('fullscreen');
+      expect(manager.getMode()).toBe('fullscreen');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('fullscreen');
     });
 
     it('persists a manually entered surface on exit (no transient session)', () => {

@@ -30,10 +30,12 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 const mockSetMode = jest.fn();
+const mockSetModePersisted = jest.fn();
 const mockGetMode = jest.fn().mockReturnValue('sidebar');
 jest.mock('../global-state/panel-mode', () => ({
   panelModeManager: {
     setMode: (mode: string) => mockSetMode(mode),
+    setModePersisted: (mode: string) => mockSetModePersisted(mode),
     getMode: () => mockGetMode(),
   },
 }));
@@ -166,7 +168,7 @@ describe('handlePathfinderDeepLink', () => {
     const deps = mkDeps();
 
     expect(handlePathfinderDeepLink(deps)).toBe(true);
-    expect(mockSetMode).toHaveBeenCalledWith('floating');
+    expect(mockSetModePersisted).toHaveBeenCalledWith('floating');
     expect(window.location.search).toBe('?keep=this');
   });
 
@@ -175,7 +177,7 @@ describe('handlePathfinderDeepLink', () => {
     const deps = mkDeps();
 
     expect(handlePathfinderDeepLink(deps)).toBe(true);
-    expect(mockSetMode).toHaveBeenCalledWith('fullscreen');
+    expect(mockSetModePersisted).toHaveBeenCalledWith('fullscreen');
 
     const target = mockLocationServiceReplace.mock.calls[0][0] as string;
     expect(target).toContain('/a/grafana-pathfinder-app/fullscreen?');
@@ -243,7 +245,7 @@ describe('handlePathfinderDeepLink', () => {
     const deps = mkDeps();
 
     expect(handlePathfinderDeepLink(deps)).toBe(true);
-    expect(mockSetMode).toHaveBeenCalledWith('floating');
+    expect(mockSetModePersisted).toHaveBeenCalledWith('floating');
 
     await flushPromises();
     // panelMode is consumed; doc survives for FullScreenPanel rehydration.

@@ -56,18 +56,19 @@ class PanelModeManager {
   private _priorPath: string | null = null;
   /**
    * In-memory current surface. When non-null it wins over the persisted
-   * preference for `getMode()` and mount decisions; it is never written to
-   * localStorage. Set by an automatic launch (`setModeTransient`) and updated
-   * by its non-persisting teardown; cleared once persistence resumes so
-   * localStorage governs again. Does not survive a page reload.
+   * preference for `getMode()` and mount decisions and is never written to
+   * localStorage. Set by an automatic launch (`setModeTransient`) and updated by
+   * each non-persisting `setMode` during the round-trip; cleared when a
+   * persisting write (`setModePersisted`, or `setMode` outside a round-trip)
+   * takes over so localStorage governs again. Does not survive a page reload.
    */
   private _transientMode: PanelMode | null = null;
   /**
    * Whether an auto-launch round-trip is in progress. Gates ONLY persistence:
-   * while active, the round-trip's teardown does not overwrite the user's
-   * stored preference (locked decision 2). The first `setMode` after entry
-   * ends the round-trip, so genuine, deliberate surface changes made afterwards
-   * persist as normal.
+   * while active, plain `setMode` (every automatic teardown / exit / auto-dock,
+   * to sidebar OR floating) does not overwrite the user's stored preference
+   * (locked decision 2). The round-trip ends only when a deliberate
+   * `setModePersisted` runs or the page reloads.
    */
   private _transientActive = false;
 
@@ -94,27 +95,39 @@ class PanelModeManager {
    * Switch panel mode. Dispatches a `pathfinder-panel-mode-change` event so
    * both the sidebar and floating panel can react.
    *
-   * When switching to 'floating', closes the extension sidebar.
-   * When switching to 'sidebar', notifies the floating panel to unmount.
+   * When switching to 'floating' or 'fullscreen', closes the extension sidebar.
    *
-   * Persistence is the single enforcement point for locked decision 2:
-   * - Outside an auto-launch round-trip this writes the user's durable choice
-   *   to localStorage and drops any in-memory override.
-   * - The first call during a round-trip ENDS it. The base 'sidebar' teardown
-   *   is non-persisting (the stored preference is preserved and 'sidebar' is
-   *   kept as the in-memory current surface); any other, deliberate choice
-   *   (e.g. the user pops out to floating/fullscreen mid-round-trip) persists.
+   * This is the AUTOMATIC path and the single enforcement point for locked
+   * decision 2: while an auto-launch round-trip is active it is non-persisting
+   * for EVERY destination (teardown, exit, auto-dock to sidebar OR floating) and
+   * keeps the round-trip open, so no automatic surface change overwrites the
+   * user's stored preference. Outside a round-trip it persists the mode and
+   * drops any in-memory override. Deliberate user surface choices must use
+   * `setModePersisted`.
    */
   public setMode(mode: PanelMode): void {
     this.applyModeChange(mode, (next) => {
-      const endingRoundTrip = this._transientActive;
-      this._transientActive = false;
-      if (endingRoundTrip && next === 'sidebar') {
-        this._transientMode = 'sidebar';
+      if (this._transientActive) {
+        this._transientMode = next;
       } else {
         this._transientMode = null;
         localStorage.setItem(StorageKeys.PANEL_MODE, next);
       }
+    });
+  }
+
+  /**
+   * Switch panel mode for a DELIBERATE user surface choice (the pop-out /
+   * full-screen controls, a deep-link `panelMode=`). Always persists to
+   * localStorage, ends any active auto-launch round-trip, and drops the
+   * in-memory override so localStorage governs again. Runs the same side effects
+   * as `setMode`.
+   */
+  public setModePersisted(mode: PanelMode): void {
+    this.applyModeChange(mode, (next) => {
+      this._transientActive = false;
+      this._transientMode = null;
+      localStorage.setItem(StorageKeys.PANEL_MODE, next);
     });
   }
 
