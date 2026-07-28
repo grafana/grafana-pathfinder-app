@@ -53,6 +53,20 @@ describe('resolveStartingUrl', () => {
   it('rejects non-HTTP protocols', () => {
     expect(() => resolveStartingUrl('https://play.grafana.org/', 'javascript:alert(1)')).toThrow(/protocol/i);
   });
+
+  it('defaults an empty starting location to the target root', () => {
+    expect(resolveStartingUrl('http://localhost:3000', '')).toBe('http://localhost:3000/');
+  });
+
+  it('preserves query parameters and fragments', () => {
+    expect(resolveStartingUrl('http://localhost:3000', '/explore?orgId=1#panel-2')).toBe(
+      'http://localhost:3000/explore?orgId=1#panel-2'
+    );
+  });
+
+  it('rejects malformed absolute URLs', () => {
+    expect(() => resolveStartingUrl('http://localhost:3000', 'http://[invalid')).toThrow();
+  });
 });
 
 describe('processPlaywrightResults', () => {

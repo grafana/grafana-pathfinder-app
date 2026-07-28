@@ -434,6 +434,7 @@ These variables are consumed by the CLI or passed to the spawned Playwright proc
 | ----------------------- | ------------------------------------------------------------------------------ | ----------------------- |
 | `GUIDE_JSON_PATH`       | Path to JSON guide file                                                        | Required                |
 | `GRAFANA_URL`           | Grafana instance URL                                                           | `http://localhost:3000` |
+| `STARTING_LOCATION`     | Same-origin path where the guide should begin (set from manifest or `/`)       | `/`                     |
 | `AUTH_STATE_FILE`       | Per-guide Playwright storage-state path for form-login auth                    | Temporary CLI path      |
 | `E2E_VERBOSE`           | Enable verbose logging                                                         | `false`                 |
 | `E2E_TRACE`             | Generate Playwright trace file                                                 | `false`                 |
