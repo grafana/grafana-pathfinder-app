@@ -16,6 +16,7 @@ jest.mock('@playwright/test', () => ({
 }));
 
 import {
+  calculateGuideTimeout,
   calculateStepTimeout,
   determineUnmetRequirementOutcome,
   summarizeResults,
@@ -26,6 +27,7 @@ import {
   resolveEffectiveSkippable,
   selectStepAction,
   DEFAULT_STEP_TIMEOUT_MS,
+  GUIDE_INITIAL_TIMEOUT_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
   TIMEOUT_PER_GUIDED_SUBSTEP_MS,
 } from './guide-runner';
@@ -246,6 +248,25 @@ describe('parseNthMatchSelector', () => {
     expect(parseNthMatchSelector("button[data-testid='save']")).toBeUndefined();
   });
 });
+
+describe('calculateGuideTimeout', () => {
+  it('preserves the full initial setup allowance after discovery', () => {
+    expect(calculateGuideTimeout([])).toBe(GUIDE_INITIAL_TIMEOUT_MS);
+  });
+  it('allows the aggregate budget for multiple simple steps to exceed two minutes', () => {
+    const steps = Array.from({ length: 5 }, (_, index) => createTestableStep({ stepId: `step-${index}`, index }));
+
+    expect(calculateGuideTimeout(steps)).toBeGreaterThan(120000);
+  });
+
+  it('includes guided substep budgets', () => {
+    const simple = calculateGuideTimeout([createTestableStep()]);
+    const guided = calculateGuideTimeout([createTestableStep({ isGuided: true, guidedStepCount: 3 })]);
+
+    expect(guided).toBeGreaterThan(simple);
+  });
+});
+
 // ============================================
 // summarizeResults Tests
 // ============================================

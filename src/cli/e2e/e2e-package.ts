@@ -22,6 +22,7 @@ import type { LoadedGuide } from '../utils/file-loader';
 import { resolveTarget, type CloudTargetCapabilities } from './e2e-targets';
 import type { CurrentTier } from './manifest-preflight';
 import { classifyGuideSideEffectsFromString, type SideEffectClassification } from './side-effects';
+import { resolveStartingPath } from './starting-location';
 
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -56,6 +57,7 @@ export interface ResolvedRemoteGuide {
   targetUrl: string;
   /** The content.json URL the guide was fetched from. */
   sourceUrl: string;
+  startingLocation: string;
   /** Conservative side-effect classification for the fetched content. */
   sideEffects: SideEffectClassification;
   /** Plugin IDs required by this guide, from testEnvironment.plugins. */
@@ -127,6 +129,7 @@ async function buildGuideOrSkip(
   id: string,
   type: string | undefined,
   testEnvironment: TestEnvironment,
+  startingLocation: string | undefined,
   contentUrl: string,
   options: RemoteResolveOptions
 ): Promise<{ runnable?: ResolvedRemoteGuide; skipped?: SkippedPackage }> {
@@ -155,6 +158,21 @@ async function buildGuideOrSkip(
         id,
         reason: target.skipReason!,
         message: target.message ?? 'Guide skipped',
+        sourceUrl: contentUrl,
+        tier: target.tier,
+      },
+    };
+  }
+
+  let resolvedStartingLocation: string;
+  try {
+    resolvedStartingLocation = resolveStartingPath(target.targetUrl!, startingLocation);
+  } catch (error) {
+    return {
+      skipped: {
+        id,
+        reason: 'validation_failed',
+        message: `Invalid startingLocation: ${error instanceof Error ? error.message : 'unknown error'}`,
         sourceUrl: contentUrl,
         tier: target.tier,
       },
@@ -196,6 +214,7 @@ async function buildGuideOrSkip(
       instance: target.instance,
       targetUrl: target.targetUrl!,
       sourceUrl: contentUrl,
+      startingLocation: resolvedStartingLocation,
       sideEffects,
       ...(testEnvironment.plugins?.length ? { plugins: testEnvironment.plugins } : {}),
     },
@@ -230,7 +249,7 @@ async function resolveIndexEntry(
       },
     };
   }
-  return buildGuideOrSkip(id, entry.type, entry.testEnvironment ?? {}, contentUrl, options);
+  return buildGuideOrSkip(id, entry.type, entry.testEnvironment ?? {}, entry.startingLocation, contentUrl, options);
 }
 
 /**
@@ -328,6 +347,7 @@ export async function resolveRemotePackage(id: string, options: RemoteResolveOpt
     resolution.id || id,
     resolution.manifest?.type,
     resolution.manifest?.testEnvironment ?? {},
+    resolution.manifest?.startingLocation,
     resolution.contentUrl,
     options
   );

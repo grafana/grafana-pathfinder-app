@@ -45,6 +45,7 @@ import {
   provisioningErrorCode,
   provisioningFailureResults,
   resolveRunMode,
+  runnerFailureResult,
   skipToResult,
   type GuideRunResult,
   type GuideStatus,
@@ -532,7 +533,7 @@ async function runPreflightChecks(
   options: E2ECommandOptions,
   targetUrls: string[],
   packageDir?: string
-): Promise<void> {
+): Promise<ManifestJson | null> {
   console.log('\n🔍 Running pre-flight checks...');
 
   // Manifest pre-flight applies to a local package directory only. Remote modes
@@ -641,6 +642,7 @@ async function runPreflightChecks(
   } else {
     console.log('   → Auth and plugin checks will run in Playwright context');
   }
+  return packageManifest;
 }
 
 /**
@@ -763,6 +765,7 @@ async function runChains(
         const targetUrl = provisionedTargets.targetUrlForGuide(planned.id, meta?.targetUrl ?? options.grafanaUrl);
         const runGuideOptions: RunGuideOptions = {
           targetUrl,
+          startingLocation: meta?.startingLocation ?? '/',
           verbose: options.verbose,
           trace: options.trace,
           headed: options.headed,
@@ -771,7 +774,18 @@ async function runChains(
           token: isCloudTarget ? provisionedTargets.tokenForGuide(planned.id, meta?.targetUrl) : undefined,
         };
 
-        const result = await runPlaywrightTests(planned.guide, runGuideOptions);
+        let result: Awaited<ReturnType<typeof runPlaywrightTests>>;
+        try {
+          result = await runPlaywrightTests(planned.guide, runGuideOptions);
+        } catch (error) {
+          const failure = runnerFailureResult(planned, meta, targetUrl, error);
+          results.push(failure);
+          allPassed = false;
+          chainHadFailure = true;
+          blocked.add(planned.id);
+          console.error(`   ❌ ${failure.abortMessage}`);
+          continue;
+        }
         applyPackageMeta(result.resultsData, meta);
         const status: GuideStatus = result.success
           ? 'passed'
@@ -1024,7 +1038,7 @@ export const e2eCommand = new Command('e2e')
         cloudAuth: inputs.cloudAuth,
         verbose: options.verbose,
       });
-      await runPreflightChecks(
+      const localManifest = await runPreflightChecks(
         options,
         preflightTargetUrlsForPlan({
           plan,
@@ -1035,6 +1049,12 @@ export const e2eCommand = new Command('e2e')
         }),
         inputs.localPackageDir
       );
+      if (localManifest) {
+        inputs.packageMetaById.set(localManifest.id, {
+          packageId: localManifest.id,
+          startingLocation: localManifest.startingLocation ?? '/',
+        });
+      }
 
       const outcome = await runChains(
         plan,

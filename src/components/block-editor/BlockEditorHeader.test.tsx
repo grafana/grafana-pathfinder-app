@@ -215,3 +215,38 @@ describe('BlockEditorHeader: selection mode (in the more-actions kebab)', () => 
     expect(onToggleSelectionMode).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('BlockEditorHeader: toolbar row + undo/redo', () => {
+  it('renders the view-mode rocker as radios', () => {
+    render(<BlockEditorHeader {...baseProps} viewMode="edit" />);
+    expect(screen.getByRole('radio', { name: 'Edit' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Preview' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'JSON' })).toBeInTheDocument();
+  });
+
+  it('shows undo/redo in edit mode, disabled when there is no history', () => {
+    render(<BlockEditorHeader {...baseProps} viewMode="edit" canUndo={false} canRedo={false} />);
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled();
+  });
+
+  it('does not render undo/redo outside edit mode', () => {
+    render(<BlockEditorHeader {...baseProps} viewMode="preview" />);
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Redo' })).not.toBeInTheDocument();
+  });
+});
+
+describe('BlockEditorHeader: preview mode', () => {
+  it('renders a spacer instead of the editable title input in preview', () => {
+    render(<BlockEditorHeader {...baseProps} viewMode="preview" />);
+    expect(screen.queryByLabelText('Guide title')).not.toBeInTheDocument();
+  });
+
+  it('keeps the local-save indicator visible in preview when the backend is unavailable', () => {
+    render(<BlockEditorHeader {...baseProps} viewMode="preview" isBackendAvailable={false} isDirty={false} />);
+    // The Saved-to-local-storage indicator lives in the title row, which stays
+    // rendered in preview — no-backend users don't lose save-state feedback.
+    expect(screen.getByLabelText('Saved')).toBeInTheDocument();
+  });
+});

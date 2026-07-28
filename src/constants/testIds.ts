@@ -218,6 +218,7 @@ export const testIds = {
   blockEditor: {
     container: 'block-editor-container',
     content: 'block-editor-content',
+    titleRow: 'block-editor-title-row',
     palette: 'block-editor-palette',
     jsonEditor: 'block-editor-json-editor',
     // Modals
