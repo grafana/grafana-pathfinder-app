@@ -16,12 +16,14 @@ const LABELED_OPTIONS: Array<SelectableValue<ViewMode>> = [
   { value: 'json', label: 'JSON', icon: 'brackets-curly' },
 ];
 
-// Same options without visible labels. `ariaLabel` keeps each radio named for
-// screen readers and e2e locators when the labeled group is collapsed away.
+// Same options without visible labels. `ariaLabel` names each radio for screen
+// readers and e2e locators; `description` restores the hover tooltip that the
+// old icon rocker had (RadioButton renders `description` as a Tooltip), so the
+// collapsed icon-only rocker stays discoverable for sighted users.
 const ICON_ONLY_OPTIONS: Array<SelectableValue<ViewMode>> = [
-  { value: 'edit', icon: 'pen', ariaLabel: 'Edit' },
-  { value: 'preview', icon: 'eye', ariaLabel: 'Preview' },
-  { value: 'json', icon: 'brackets-curly', ariaLabel: 'JSON' },
+  { value: 'edit', icon: 'pen', ariaLabel: 'Edit', description: 'Edit' },
+  { value: 'preview', icon: 'eye', ariaLabel: 'Preview', description: 'Preview' },
+  { value: 'json', icon: 'brackets-curly', ariaLabel: 'JSON', description: 'JSON' },
 ];
 
 /**
