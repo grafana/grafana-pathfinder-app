@@ -57,7 +57,10 @@ describe('OnlineCdnSnippetResolver.resolve', () => {
 
     const result = await createOnlineSnippetResolver().resolve('datasource-picker');
 
-    expect(global.fetch).toHaveBeenCalledWith(`${SNIPPETS_BASE}/datasource-picker.json`);
+    expect(global.fetch).toHaveBeenCalledWith(
+      `${SNIPPETS_BASE}/datasource-picker.json`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(result).toMatchObject({ ok: true, id: 'datasource-picker', source: 'online-cdn' });
   });
 
@@ -66,7 +69,7 @@ describe('OnlineCdnSnippetResolver.resolve', () => {
 
     await createOnlineSnippetResolver().resolve('../../etc/passwd');
 
-    expect(global.fetch).toHaveBeenCalledWith(`${SNIPPETS_BASE}/..%2F..%2Fetc%2Fpasswd.json`);
+    expect(global.fetch).toHaveBeenCalledWith(`${SNIPPETS_BASE}/..%2F..%2Fetc%2Fpasswd.json`, expect.anything());
   });
 
   it('returns a network-error failure on a non-ok HTTP response (no throw)', async () => {
@@ -117,7 +120,10 @@ describe('OnlineCdnSnippetResolver.list', () => {
 
     const result = await createOnlineSnippetResolver().list();
 
-    expect(global.fetch).toHaveBeenCalledWith(`${SNIPPETS_BASE}/index.json`);
+    expect(global.fetch).toHaveBeenCalledWith(
+      `${SNIPPETS_BASE}/index.json`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(result).toEqual(catalog);
   });
 
@@ -130,5 +136,55 @@ describe('OnlineCdnSnippetResolver.list', () => {
 
     global.fetch = jest.fn().mockRejectedValue(new Error('offline')) as unknown as typeof fetch;
     expect(await createOnlineSnippetResolver().list()).toEqual({});
+  });
+});
+
+describe('OnlineCdnSnippetResolver deadline (PR #1446 review finding 4)', () => {
+  // A CDN request that never settles must not hang the caller forever:
+  // prepareGuideLaunch awaits snippet resolution before committing a launch
+  // surface, and MyLearningTab's in-flight guard blocks all later launches
+  // until it returns. Both fetches carry AbortSignal.timeout; an abort flows
+  // through the existing catch into the unresolved-snippet fail-safe.
+  beforeEach(() => {
+    mockRecommendations.mockResolvedValue({ baseUrl: PACKAGES_BASE, packages: [] });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  function mockNeverSettlingFetch(): AbortController {
+    const controller = new AbortController();
+    jest.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+    global.fetch = jest.fn(
+      (_url: unknown, options?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          const abort = () => reject(new DOMException('This operation was aborted', 'AbortError'));
+          if (options?.signal?.aborted) {
+            abort();
+            return;
+          }
+          options?.signal?.addEventListener('abort', abort);
+        })
+    ) as unknown as typeof fetch;
+    return controller;
+  }
+
+  it('a never-settling snippet fetch resolves to a network-error failure when the deadline fires', async () => {
+    const controller = mockNeverSettlingFetch();
+
+    const pending = createOnlineSnippetResolver().resolve('datasource-picker');
+    controller.abort();
+
+    expect(await pending).toMatchObject({ ok: false, error: { code: 'network-error' } });
+  });
+
+  it('a never-settling catalog fetch resolves to an empty catalog when the deadline fires', async () => {
+    const controller = mockNeverSettlingFetch();
+
+    const pending = createOnlineSnippetResolver().list();
+    controller.abort();
+
+    expect(await pending).toEqual({});
   });
 });
