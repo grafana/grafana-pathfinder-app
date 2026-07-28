@@ -3,7 +3,7 @@
 # Pathfinder Backend aggregator API.
 #
 # This is a convenience wrapper around the Kubernetes-style API at
-# `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/.../interactiveguides`
+# `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/.../interactiveguides`
 # served by Grafana Cloud. It does what callers would otherwise have
 # to write themselves: derive a slugified resource name, GET the
 # existing resource (if any) to discover its `resourceVersion`, then
@@ -32,7 +32,7 @@
 # Requirements:
 #   - curl, jq
 #   - A Grafana service-account token with at least the Editor role
-#   - The aggregator (`pathfinderbackend.ext.grafana.com/v1alpha1`)
+#   - The aggregator (`pathfinderbackend.ext.grafana.app/v1alpha1`)
 #     must be enabled on the stack — true for Grafana Cloud, not for
 #     OSS Grafana
 #
@@ -157,7 +157,7 @@ if [[ -z "$(echo "$SPEC_JSON" | jq -r '.id // ""')" ]]; then
   SPEC_JSON=$(echo "$SPEC_JSON" | jq --arg id "$NAME" '.id = $id')
 fi
 
-BASE="https://${STACK}/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${NAMESPACE}/interactiveguides"
+BASE="https://${STACK}/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${NAMESPACE}/interactiveguides"
 
 # GET to decide between create and update. We intentionally accept any
 # status here so we can branch on it; -f would exit on non-2xx.
@@ -176,7 +176,7 @@ case "$HTTP_CODE" in
       --arg name "$NAME" --arg ns "$NAMESPACE" --arg rv "$RESOURCE_VERSION" \
       --argjson spec "$SPEC_JSON" \
       '{
-        apiVersion: "pathfinderbackend.ext.grafana.com/v1alpha1",
+        apiVersion: "pathfinderbackend.ext.grafana.app/v1alpha1",
         kind: "InteractiveGuide",
         metadata: { name: $name, namespace: $ns, resourceVersion: $rv },
         spec: $spec
@@ -192,7 +192,7 @@ case "$HTTP_CODE" in
       --arg name "$NAME" --arg ns "$NAMESPACE" \
       --argjson spec "$SPEC_JSON" \
       '{
-        apiVersion: "pathfinderbackend.ext.grafana.com/v1alpha1",
+        apiVersion: "pathfinderbackend.ext.grafana.app/v1alpha1",
         kind: "InteractiveGuide",
         metadata: { name: $name, namespace: $ns },
         spec: $spec

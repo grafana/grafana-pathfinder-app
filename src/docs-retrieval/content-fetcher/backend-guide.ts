@@ -4,6 +4,7 @@
 import { ContentFetchResult } from '../../types/content.types';
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
+import { itemUrl } from '../../utils/interactive-guides-api';
 import { validateGuide } from '../../validation';
 
 interface BackendGuideResource {
@@ -31,11 +32,10 @@ export async function fetchBackendInteractive(url: string): Promise<ContentFetch
   }
 
   try {
-    // SECURITY: Encode resourceName to prevent path traversal (F3)
-    const endpoint = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${encodeURIComponent(resourceName)}`;
+    // itemUrl encodes resourceName to prevent path traversal (F3).
     const response = await lastValueFrom(
       getBackendSrv().fetch<BackendGuideResource>({
-        url: endpoint,
+        url: itemUrl(namespace, resourceName),
         method: 'GET',
         // Optional rollout endpoint: don't show a global toast when unavailable.
         showErrorAlert: false,

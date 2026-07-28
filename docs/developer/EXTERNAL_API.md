@@ -20,7 +20,7 @@ For one-off authoring, the in-product editor is still the easier path.
 ## Prerequisites
 
 - **Grafana Cloud** (or any stack where the
-  `aggregation.pathfinderbackend-ext-grafana-com.enabled` feature
+  `aggregation.pathfinderbackend-ext-grafana-app.enabled` feature
   toggle is on). The aggregator does **not** run in OSS Grafana.
 - A **Grafana service-account token** with at least the **Editor**
   role on the stack. Create one in **Administration → Users and
@@ -32,7 +32,7 @@ For one-off authoring, the in-product editor is still the easier path.
 ## Endpoint
 
 ```
-{stack}/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/{namespace}/interactiveguides
+{stack}/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/interactiveguides
 ```
 
 | Operation | Method | Path                         |
@@ -99,7 +99,7 @@ The wire format is the standard Kubernetes envelope:
 
 ```json
 {
-  "apiVersion": "pathfinderbackend.ext.grafana.com/v1alpha1",
+  "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
   "kind": "InteractiveGuide",
   "metadata": {
     "name": "intro-to-loki",
@@ -118,7 +118,7 @@ The wire format is the standard Kubernetes envelope:
 
 | Field                      | Required | Description                                                                                                                                                                                                                                                        |
 | -------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `apiVersion`               | yes      | Always `pathfinderbackend.ext.grafana.com/v1alpha1`.                                                                                                                                                                                                               |
+| `apiVersion`               | yes      | Always `pathfinderbackend.ext.grafana.app/v1alpha1`.                                                                                                                                                                                                               |
 | `kind`                     | yes      | Always `InteractiveGuide`.                                                                                                                                                                                                                                         |
 | `metadata.name`            | yes      | Resource name, typically a slug — see [Resource-name slug rule](#resource-name-slug-rule).                                                                                                                                                                         |
 | `metadata.namespace`       | yes      | Must match the namespace in the URL (`stacks-<id>` in Cloud).                                                                                                                                                                                                      |
@@ -145,10 +145,10 @@ and `$TOKEN` is the service-account token.
 curl -sS -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  "https://${STACK}/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${NS}/interactiveguides" \
+  "https://${STACK}/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${NS}/interactiveguides" \
   -d @- <<'EOF'
 {
-  "apiVersion": "pathfinderbackend.ext.grafana.com/v1alpha1",
+  "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
   "kind": "InteractiveGuide",
   "metadata": { "name": "intro-to-loki", "namespace": "stacks-12345" },
   "spec": {
@@ -169,14 +169,14 @@ Responds 201 with the persisted resource. The returned
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" \
-  "https://${STACK}/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${NS}/interactiveguides/intro-to-loki"
+  "https://${STACK}/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${NS}/interactiveguides/intro-to-loki"
 ```
 
 ### List
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" \
-  "https://${STACK}/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${NS}/interactiveguides"
+  "https://${STACK}/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${NS}/interactiveguides"
 ```
 
 ### Update
@@ -186,16 +186,16 @@ that version echoed in `metadata.resourceVersion`:
 
 ```bash
 RV=$(curl -sS -H "Authorization: Bearer $TOKEN" \
-  "https://${STACK}/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${NS}/interactiveguides/intro-to-loki" \
+  "https://${STACK}/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${NS}/interactiveguides/intro-to-loki" \
   | jq -r .metadata.resourceVersion)
 
 curl -sS -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  "https://${STACK}/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${NS}/interactiveguides/intro-to-loki" \
+  "https://${STACK}/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${NS}/interactiveguides/intro-to-loki" \
   -d @- <<EOF
 {
-  "apiVersion": "pathfinderbackend.ext.grafana.com/v1alpha1",
+  "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
   "kind": "InteractiveGuide",
   "metadata": { "name": "intro-to-loki", "namespace": "${NS}", "resourceVersion": "${RV}" },
   "spec": {
@@ -219,7 +219,7 @@ you get a 409 telling you to re-fetch and retry:
   "status": "Failure",
   "code": 409,
   "reason": "Conflict",
-  "message": "Operation cannot be fulfilled on interactiveguides.pathfinderbackend.ext.grafana.com \"intro-to-loki\": the object has been modified; please apply your changes to the latest version and try again"
+  "message": "Operation cannot be fulfilled on interactiveguides.pathfinderbackend.ext.grafana.app \"intro-to-loki\": the object has been modified; please apply your changes to the latest version and try again"
 }
 ```
 
@@ -227,7 +227,7 @@ you get a 409 telling you to re-fetch and retry:
 
 ```bash
 curl -sS -X DELETE -H "Authorization: Bearer $TOKEN" \
-  "https://${STACK}/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${NS}/interactiveguides/intro-to-loki"
+  "https://${STACK}/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${NS}/interactiveguides/intro-to-loki"
 ```
 
 ## Resource-name slug rule
@@ -256,7 +256,7 @@ The aggregator returns standard Kubernetes `Status` envelopes:
   "status": "Failure",
   "code": 422,
   "reason": "Invalid",
-  "message": "InteractiveGuide.pathfinderbackend.ext.grafana.com \"intro-to-loki\" is invalid: spec.blocks[0].type: …"
+  "message": "InteractiveGuide.pathfinderbackend.ext.grafana.app \"intro-to-loki\" is invalid: spec.blocks[0].type: …"
 }
 ```
 
