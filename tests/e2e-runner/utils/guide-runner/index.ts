@@ -79,8 +79,6 @@ export {
 // ============================================
 export {
   scrollStepIntoView,
-  waitForDoItButtonEnabled,
-  waitForDoItButtonToAppear,
   calculateGuideTimeout,
   calculateStepTimeout,
   determineUnmetRequirementOutcome,

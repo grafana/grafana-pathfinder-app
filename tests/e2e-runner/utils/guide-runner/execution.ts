@@ -85,56 +85,6 @@ export async function scrollStepIntoView(
 }
 
 /**
- * Wait for a step's "Do it" button to become enabled (L3-3C).
- *
- * Per U3 findings: Steps may not be clickable immediately when discovered.
- * Sequential dependencies enforced by isEligibleForChecking mean buttons
- * can be disabled until previous steps complete.
- *
- * This function respects sequential dependencies by waiting for the button
- * to become enabled, not just visible.
- *
- * @param page - Playwright Page object
- * @param stepId - The step identifier
- * @param timeout - Maximum time to wait (ms), default 10s
- */
-export async function waitForDoItButtonEnabled(
-  page: Page,
-  stepId: string,
-  timeout = BUTTON_ENABLE_TIMEOUT_MS
-): Promise<void> {
-  const doItButton = page.getByTestId(testIds.interactive.doItButton(stepId));
-  await expect(doItButton).toBeEnabled({ timeout });
-}
-
-/**
- * Wait for a "Do it" button to appear in the DOM.
- *
- * For steps in sections with sequential dependencies, the button
- * only appears after the previous step completes. This function
- * waits for the button to be present (not necessarily enabled).
- *
- * @param page - Playwright Page object
- * @param stepId - The step identifier
- * @param timeout - Maximum time to wait (ms), default 15s
- * @returns true if button appeared, false if timeout
- */
-export async function waitForDoItButtonToAppear(
-  page: Page,
-  stepId: string,
-  timeout = BUTTON_APPEAR_TIMEOUT_MS
-): Promise<boolean> {
-  const doItButton = page.getByTestId(testIds.interactive.doItButton(stepId));
-  try {
-    await doItButton.waitFor({ state: 'attached', timeout });
-    return true;
-  } catch {
-    // Intentionally silent - button may not exist for this step type
-    return false;
-  }
-}
-
-/**
  * Calculate the appropriate timeout for a step based on its type (L3-3C).
  *
  * Per design doc: 30s base timeout for simple steps, +5s per internal action
