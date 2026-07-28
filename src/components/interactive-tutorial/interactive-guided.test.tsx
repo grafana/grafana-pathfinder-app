@@ -79,10 +79,14 @@ jest.mock('../../security', () => ({
   sanitizeDocumentationHTML: jest.fn((html: string) => html),
 }));
 
-// ─── Mock completion store (no-op for unit tests) ──────────────────────────
+let mockStoredCompleted = false;
+
+// ─── Mock completion store ────────────────────────────────────────────────
 jest.mock('../../global-state/completion-store', () => ({
-  useStepCompletion: jest.fn(() => ({ completed: false, reason: null })),
-  markStepCompleted: jest.fn(),
+  useStepCompletion: jest.fn(() => ({ completed: mockStoredCompleted, reason: null })),
+  markStepCompleted: jest.fn(() => {
+    mockStoredCompleted = true;
+  }),
   resetStep: jest.fn(),
   STANDALONE_SECTION_ID: '__standalone__',
 }));
@@ -142,6 +146,9 @@ jest.mock('../../interactive-engine', () => ({
 }));
 
 // ─────────────────────────────────────────────────────────────────────────────
+beforeEach(() => {
+  mockStoredCompleted = false;
+});
 
 describe('InteractiveGuided — double skip button (issue #786)', () => {
   beforeEach(() => {
@@ -228,30 +235,74 @@ describe('InteractiveGuided — double skip button (issue #786)', () => {
 });
 
 describe('deriveGuidedUiState', () => {
-  it('exposes executing while completeEarly actions are still running', () => {
-    expect(
-      deriveGuidedUiState({
-        isCompleted: true,
-        isExecuting: true,
-        hasError: false,
-        wasCancelled: false,
-        isChecking: false,
-        isEnabled: true,
-      })
-    ).toBe('executing');
-  });
+  const baseState: Parameters<typeof deriveGuidedUiState>[0] = {
+    isCompleted: false,
+    isExecuting: false,
+    hasError: false,
+    wasCancelled: false,
+    isChecking: false,
+    isEnabled: true,
+  };
 
-  it('exposes completed after execution settles', () => {
-    expect(
-      deriveGuidedUiState({
-        isCompleted: true,
-        isExecuting: false,
-        hasError: false,
-        wasCancelled: false,
-        isChecking: false,
-        isEnabled: true,
-      })
-    ).toBe('completed');
+  it.each([
+    [
+      'keeps execution observable after completeEarly completion',
+      { isCompleted: true, isExecuting: true },
+      'executing',
+    ],
+    ['keeps execution observable when an error is also present', { isExecuting: true, hasError: true }, 'executing'],
+    [
+      'reports errors before cancellation or settled completion',
+      { isCompleted: true, hasError: true, wasCancelled: true },
+      'error',
+    ],
+    ['reports cancellation before settled completion', { isCompleted: true, wasCancelled: true }, 'cancelled'],
+    ['reports settled completion', { isCompleted: true }, 'completed'],
+    ['reports requirement checks', { isChecking: true }, 'checking'],
+    ['reports idle when enabled', {}, 'idle'],
+    ['reports unmet requirements when disabled', { isEnabled: false }, 'requirements-unmet'],
+  ])('%s', (_name, overrides, expected) => {
+    expect(deriveGuidedUiState({ ...baseState, ...overrides })).toBe(expected);
+  });
+});
+
+describe('InteractiveGuided — completeEarly lifecycle', () => {
+  it('reports executing until a pre-completed action settles', async () => {
+    let resolveExecution: (result: string) => void = () => {};
+    mockExecuteGuidedStep.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveExecution = resolve;
+        })
+    );
+
+    function CompleteEarlyHarness() {
+      const [, forceRender] = React.useReducer((value) => value + 1, 0);
+      return (
+        <InteractiveGuided
+          stepId="complete-early"
+          completeEarly={true}
+          onComplete={forceRender}
+          internalActions={[{ targetAction: 'noop' }]}
+        />
+      );
+    }
+
+    render(<CompleteEarlyHarness />);
+    const step = screen.getByTestId(testIds.interactive.step('complete-early'));
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(mockExecuteGuidedStep).toHaveBeenCalled();
+    });
+    expect(step).toHaveAttribute('data-test-step-state', 'executing');
+
+    resolveExecution('completed');
+
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', 'completed');
+    });
   });
 });
 

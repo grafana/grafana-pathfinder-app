@@ -17,7 +17,7 @@ import type { InteractiveElementData } from '../../types/interactive.types';
 import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
-import { STEP_STATES } from './step-states';
+import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
@@ -63,6 +63,30 @@ interface InteractiveMultiStepProps {
   // Timing configuration
   stepDelay?: number; // Delay between steps in milliseconds (default: 1800ms)
   resetTrigger?: number; // Signal from parent to reset local completion state
+}
+
+interface MultiStepUiStateInput {
+  isCompleted: boolean;
+  isExecuting: boolean;
+  hasError: boolean;
+  isChecking: boolean;
+  isEnabled: boolean;
+}
+
+export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateValue {
+  if (input.isExecuting) {
+    return STEP_STATES.EXECUTING;
+  }
+  if (input.hasError) {
+    return STEP_STATES.ERROR;
+  }
+  if (input.isCompleted) {
+    return STEP_STATES.COMPLETED;
+  }
+  if (input.isChecking) {
+    return STEP_STATES.CHECKING;
+  }
+  return input.isEnabled ? STEP_STATES.IDLE : STEP_STATES.REQUIREMENTS_UNMET;
 }
 
 /**
@@ -722,6 +746,13 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // — neither needs to appear in the deps array.
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
+    const uiState = deriveMultiStepUiState({
+      isCompleted: isCompletedWithObjectives,
+      isExecuting,
+      hasError: Boolean(executionError),
+      isChecking: checker.isChecking,
+      isEnabled: checker.isEnabled,
+    });
 
     // Generate button title/tooltip based on current state
     const getButtonTitle = () => {
@@ -751,26 +782,14 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     return (
       <div
         className={`interactive-step${className ? ` ${className}` : ''}${
-          isCompletedWithObjectives ? ' completed' : ''
+          uiState === STEP_STATES.COMPLETED ? ' completed' : ''
         }${isCurrentlyExecuting ? ' executing' : ''}`}
         data-targetaction="multistep"
         data-reftarget={renderedStepId}
         data-internal-actions={JSON.stringify(internalActions)}
         data-step-id={stepId || renderedStepId}
         data-testid={testIds.interactive.step(renderedStepId)}
-        data-test-step-state={
-          isCompletedWithObjectives
-            ? 'completed'
-            : executionError
-              ? 'error'
-              : isExecuting
-                ? 'executing'
-                : checker.isChecking
-                  ? 'checking'
-                  : !checker.isEnabled
-                    ? STEP_STATES.REQUIREMENTS_UNMET
-                    : 'idle'
-        }
+        data-test-step-state={uiState}
         data-test-substep-index={isExecuting ? currentActionIndex : undefined}
         data-test-substep-total={internalActions.length}
         data-test-requirements-state={
