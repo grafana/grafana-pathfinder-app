@@ -7,6 +7,7 @@ import { getBackendSrv, config } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import type { JsonGuide } from '../types';
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
+import { APP_PLATFORM_API_VERSION, collectionUrl, itemUrl } from '../../../utils/interactive-guides-api';
 import { stripAuthorNotes } from '../utils/block-export';
 import { logger } from '../../../lib/logging';
 
@@ -158,7 +159,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
 
         // Wrap guide in Kubernetes resource format
         const k8sResource = {
-          apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
+          apiVersion: APP_PLATFORM_API_VERSION,
           kind: 'InteractiveGuide',
           metadata,
           spec: {
@@ -170,30 +171,14 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           },
         };
 
-        const baseUrl = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides`;
-
-        if (existingResourceName) {
-          // Update existing guide (PUT)
-          const url = `${baseUrl}/${existingResourceName}`;
-          await lastValueFrom(
-            getBackendSrv().fetch({
-              url,
-              method: 'PUT',
-              data: k8sResource,
-              showErrorAlert: false,
-            })
-          );
-        } else {
-          // Create new guide (POST)
-          await lastValueFrom(
-            getBackendSrv().fetch({
-              url: baseUrl,
-              method: 'POST',
-              data: k8sResource,
-              showErrorAlert: false,
-            })
-          );
-        }
+        await lastValueFrom(
+          getBackendSrv().fetch({
+            url: existingResourceName ? itemUrl(namespace, existingResourceName) : collectionUrl(namespace),
+            method: existingResourceName ? 'PUT' : 'POST',
+            data: k8sResource,
+            showErrorAlert: false,
+          })
+        );
 
         // Refresh the list after saving
         await refreshGuides();
@@ -226,22 +211,16 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           resourceVersion: currentMetadata.resourceVersion,
         };
 
-        const k8sResource = {
-          apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
-          kind: 'InteractiveGuide',
-          metadata,
-          spec: {
-            ...existing.spec,
-            status: 'published' as const,
-          },
-        };
-
-        const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
         await lastValueFrom(
           getBackendSrv().fetch({
-            url,
+            url: itemUrl(namespace, resourceName),
             method: 'PUT',
-            data: k8sResource,
+            data: {
+              apiVersion: APP_PLATFORM_API_VERSION,
+              kind: 'InteractiveGuide',
+              metadata,
+              spec: { ...existing.spec, status: 'published' as const },
+            },
             showErrorAlert: false,
           })
         );
@@ -276,22 +255,16 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           resourceVersion: currentMetadata.resourceVersion,
         };
 
-        const k8sResource = {
-          apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
-          kind: 'InteractiveGuide',
-          metadata,
-          spec: {
-            ...existing.spec,
-            status: 'draft' as const,
-          },
-        };
-
-        const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
         await lastValueFrom(
           getBackendSrv().fetch({
-            url,
+            url: itemUrl(namespace, resourceName),
             method: 'PUT',
-            data: k8sResource,
+            data: {
+              apiVersion: APP_PLATFORM_API_VERSION,
+              kind: 'InteractiveGuide',
+              metadata,
+              spec: { ...existing.spec, status: 'draft' as const },
+            },
             showErrorAlert: false,
           })
         );
@@ -314,11 +287,9 @@ export function useBackendGuides(): UseBackendGuidesReturn {
       }
 
       try {
-        const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
-
         await lastValueFrom(
           getBackendSrv().fetch({
-            url,
+            url: itemUrl(namespace, resourceName),
             method: 'DELETE',
             showErrorAlert: false,
           })
