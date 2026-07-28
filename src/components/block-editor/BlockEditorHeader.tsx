@@ -92,10 +92,6 @@ export interface BlockEditorHeaderProps {
   redoLabel: string | null;
 }
 
-/**
- * Header component for the block editor.
- * Compact single-row design with better organization.
- */
 export function BlockEditorHeader({
   guideTitle,
   guideId,
@@ -168,53 +164,63 @@ export function BlockEditorHeader({
     );
   };
 
+  const localSaveIndicator = !isBackendAvailable && (
+    <>
+      {isDirty ? (
+        <Tooltip content="Saving changes to local storage">
+          <span className={styles.savingIndicator} aria-label="Saving">
+            <Icon name="fa fa-spinner" size="sm" />
+          </span>
+        </Tooltip>
+      ) : (
+        <Tooltip content="All changes saved to local storage">
+          <span className={styles.savedIndicator} aria-label="Saved">
+            <Icon name="save" size="sm" />
+          </span>
+        </Tooltip>
+      )}
+    </>
+  );
+
+  const previewResetButton = viewMode === 'preview' && hasPreviewProgress && onResetPreviewProgress && (
+    <Button
+      variant="secondary"
+      size="sm"
+      icon="history-alt"
+      onClick={onResetPreviewProgress}
+      tooltip="Resets all interactive steps"
+      data-testid={testIds.blockEditor.previewResetButton}
+    >
+      Reset guide
+    </Button>
+  );
+
   return (
     <div className={styles.header}>
-      <div className={styles.row}>
+      {/* Title row: editable title + guide id on the left, publish status on the
+          right. In preview HeaderTitleRow renders a spacer instead of the input
+          (the rendered guide shows its own <h1>), so the row stays put without
+          duplicating the title. Fully hiding the row in preview is deferred to
+          the title-row PR. */}
+      <div className={styles.titleRow} data-testid={testIds.blockEditor.titleRow}>
         <HeaderTitleRow guideTitle={guideTitle} guideId={guideId} viewMode={viewMode} onTitleCommit={onTitleCommit} />
-
-        <div className={styles.actions}>
-          {!isBackendAvailable &&
-            (isDirty ? (
-              <Tooltip content="Saving changes to local storage">
-                <span className={styles.savingIndicator} aria-label="Saving">
-                  <Icon name="fa fa-spinner" size="sm" />
-                </span>
-              </Tooltip>
-            ) : (
-              <Tooltip content="All changes saved to local storage">
-                <span className={styles.savedIndicator} aria-label="Saved">
-                  <Icon name="save" size="sm" />
-                </span>
-              </Tooltip>
-            ))}
-
-          {/* Backend publish status — kept as a Badge since the
-              Draft/Published distinction is genuinely informative. */}
+        <div className={styles.rightCluster}>
+          {localSaveIndicator}
           {isBackendAvailable && backendBadge()}
+        </div>
+      </div>
 
-          {/* Preview-mode "Reset guide" trigger. Mirrors the affordance that
-              previously lived inside the preview content area, but lifted into
-              the header so the rendered guide stays free of editor chrome. */}
-          {viewMode === 'preview' && hasPreviewProgress && onResetPreviewProgress && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="history-alt"
-              onClick={onResetPreviewProgress}
-              tooltip="Resets all interactive steps"
-              data-testid={testIds.blockEditor.previewResetButton}
-            >
-              Reset guide
-            </Button>
-          )}
+      {/* Single-line — never wraps; the rocker and Save collapse to icons via
+          the container-query tiers instead (see toolbarRow). */}
+      <div className={styles.toolbarRow}>
+        <ViewModeRocker viewMode={viewMode} onSetViewMode={onSetViewMode} />
 
-          {/* Undo / redo for the in-session history ring buffer. The
-              labels (when present) describe the next operation in the
-              stack — useful for tooltip-driven discoverability. The
-              `corner-up-left` / `corner-up-right` icons are the
-              conventional curved-arrow glyphs every word processor /
-              editor uses for undo/redo. */}
+        <div className={styles.rightCluster}>
+          {/* "Reset guide" affordance, lifted out of the preview content area. */}
+          {previewResetButton}
+
+          {/* Undo / redo — edit mode only. Kept visible at all widths: there's no
+              keyboard shortcut, so hiding them would strand the action. */}
           {viewMode === 'edit' && (
             <>
               <IconButton
@@ -239,8 +245,6 @@ export function BlockEditorHeader({
               />
             </>
           )}
-
-          <ViewModeRocker viewMode={viewMode} onSetViewMode={onSetViewMode} />
 
           {isBackendAvailable && (
             <SaveActions

@@ -27,7 +27,7 @@ The current Pathfinder custom-guide storage target is an App Platform resource:
 
 ```json
 {
-  "apiVersion": "pathfinderbackend.ext.grafana.com/v1alpha1",
+  "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
   "kind": "InteractiveGuide",
   "metadata": {
     "name": "hello-world-x7q2k1"
@@ -76,17 +76,17 @@ The tool returns structured fields, not only prose instructions:
     "warnings": []
   },
   "appPlatform": {
-    "apiVersion": "pathfinderbackend.ext.grafana.com/v1alpha1",
+    "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
     "kind": "InteractiveGuide",
     "resource": "interactiveguides",
     "namespacePlaceholder": "{namespace}",
-    "collectionPathTemplate": "/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/{namespace}/interactiveguides",
-    "itemPathTemplate": "/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/{namespace}/interactiveguides/hello-world-x7q2k1",
+    "collectionPathTemplate": "/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/interactiveguides",
+    "itemPathTemplate": "/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/interactiveguides/hello-world-x7q2k1",
     "createMethod": "POST",
     "updateMethod": "PUT"
   },
   "resource": {
-    "apiVersion": "pathfinderbackend.ext.grafana.com/v1alpha1",
+    "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
     "kind": "InteractiveGuide",
     "metadata": {
       "name": "hello-world-x7q2k1"

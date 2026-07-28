@@ -103,7 +103,7 @@ The library (**•••** → **Library**) lists all guides stored in the Pathf
 
 ## External import (CI / Terraform / scripts)
 
-Guides can also be pushed into a stack from outside the editor — useful for CI pipelines, Terraform, or one-off scripts. The Pathfinder backend's Kubernetes-style API at `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/{namespace}/interactiveguides` accepts the same `spec` shape the editor reads and writes, and exposes the full lifecycle (`list`/`get`/`create`/`update`/`delete`).
+Guides can also be pushed into a stack from outside the editor — useful for CI pipelines, Terraform, or one-off scripts. The Pathfinder backend's Kubernetes-style API at `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/interactiveguides` accepts the same `spec` shape the editor reads and writes, and exposes the full lifecycle (`list`/`get`/`create`/`update`/`delete`).
 
 Authentication is a Grafana service-account Bearer token; writes need the **Editor** or **Admin** role. The repo ships a small helper at [`scripts/upsert-guide.sh`](../../scripts/upsert-guide.sh) that handles the GET-then-create-or-update dance:
 
@@ -137,7 +137,7 @@ When the backend is unavailable the badge area instead shows a **Saved** / **Sav
 ## Technical notes
 
 - Guide IDs are auto-generated as `<title-slug>-<4-char-random>` when a new title is first committed. Later title edits do not change the ID or backend resource name.
-- The backend stores guides as `InteractiveGuide` custom resources in the `pathfinderbackend.ext.grafana.com/v1alpha1` API group.
+- The backend stores guides as `InteractiveGuide` custom resources in the `pathfinderbackend.ext.grafana.app/v1alpha1` API group.
 - `resourceVersion` is used for optimistic concurrency control — the editor always fetches the latest version after a save before allowing a subsequent write.
 - Backend tracking state (`resourceName` and the last backend-synced guide JSON) is persisted to localStorage. Draft or published status is derived from the refreshed backend guide list, so the correct button state survives a page refresh.
 

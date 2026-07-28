@@ -37,7 +37,7 @@ import { resolveReadOnlyInput } from './read-input';
 import { textResult, withToolErrorEnvelope } from './result';
 import { ArtifactInputBase, SessionTokenBase } from './two-mode-input';
 
-const APP_PLATFORM_API_VERSION = 'pathfinderbackend.ext.grafana.com/v1alpha1';
+const APP_PLATFORM_API_VERSION = 'pathfinderbackend.ext.grafana.app/v1alpha1';
 const APP_PLATFORM_KIND = 'InteractiveGuide';
 const APP_PLATFORM_RESOURCE = 'interactiveguides';
 const NAMESPACE_PLACEHOLDER = '{namespace}';
@@ -164,7 +164,7 @@ async function finalizeImpl(args: {
     clientGuidance: {
       grafanaAppPlatform: {
         appliesWhen:
-          'You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-com.enabled"] === true). If you are unsure, try this branch first; on a 404 from the collection POST or from pathfinder_manage_guide_drafts, switch to grafanaOss.',
+          'You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-app.enabled"] === true). If you are unsure, try this branch first; on a 404 from the collection POST or from pathfinder_manage_guide_drafts, switch to grafanaOss.',
         confirmationPrompt,
         preferredTools: {
           drafts: {
