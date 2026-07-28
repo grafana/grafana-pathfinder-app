@@ -202,7 +202,7 @@ export function BlockEditorHeader({
           (the rendered guide shows its own <h1>), so the row stays put without
           duplicating the title. Fully hiding the row in preview is deferred to
           the title-row PR. */}
-      <div className={styles.titleRow}>
+      <div className={styles.titleRow} data-testid={testIds.blockEditor.titleRow}>
         <HeaderTitleRow guideTitle={guideTitle} guideId={guideId} viewMode={viewMode} onTitleCommit={onTitleCommit} />
         <div className={styles.rightCluster}>
           {localSaveIndicator}

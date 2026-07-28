@@ -43,14 +43,16 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     marginLeft: 'auto',
     flexShrink: 0,
   }),
-  // Reserves ~180px min and grows to fill the title row. The input inside keeps
-  // `minWidth: 0 + flex: 1` so long titles ellipsis within the reserved space
-  // rather than overflowing.
+  // Grows to fill the title row but can shrink below its ~180px preferred width
+  // when space is tight (e.g. the 320px floating-panel minimum), so the status
+  // badge in `rightCluster` stays visible instead of overflowing the row. The
+  // input inside keeps `minWidth: 0` so long titles truncate rather than push
+  // the row wider.
   titleArea: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
-    minWidth: 180,
+    minWidth: 0,
     flex: '1 1 180px',
     '&:hover .guide-id': {
       opacity: 1,
