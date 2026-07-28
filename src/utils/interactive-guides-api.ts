@@ -1,15 +1,8 @@
 /**
- * Shared definitions for the InteractiveGuide App Platform API.
- *
- * The plugin talks only to the Grafana App Platform (GAP) group
- * `pathfinderbackend.ext.grafana.app`. `isBackendApiAvailable` gates the feature
- * on the aggregation toggle, so on a stack where GAP isn't rolled out yet the
- * feature cleanly hides (same as any not-yet-available backend).
- *
- * Migration of pre-existing guides from the retired Cloud App Platform group
- * (`pathfinderbackend.ext.grafana.com`) is handled out-of-band by the GAP team's
- * data migration (an idempotent CAP→GAP sweep run until CAP retirement), NOT by
- * this client — so there is no dual-write or legacy-fallback here.
+ * Shared definitions for the InteractiveGuide App Platform API (Grafana App
+ * Platform group `pathfinderbackend.ext.grafana.app`). `isBackendApiAvailable`
+ * gates the feature on the aggregation toggle, so it cleanly hides where GAP
+ * isn't enabled.
  */
 import { config } from '@grafana/runtime';
 
@@ -30,7 +23,7 @@ export function isBackendApiAvailable(): boolean {
 }
 
 export function collectionUrl(namespace: string): string {
-  return `/apis/${APP_PLATFORM_API_VERSION}/namespaces/${namespace}/${RESOURCE}`;
+  return `/apis/${APP_PLATFORM_API_VERSION}/namespaces/${encodeURIComponent(namespace)}/${RESOURCE}`;
 }
 
 export function itemUrl(namespace: string, name: string): string {
