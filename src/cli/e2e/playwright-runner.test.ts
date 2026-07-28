@@ -7,7 +7,7 @@ import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 
 import { ExitCode } from './exit-codes';
-import { findRunnerRoot, processPlaywrightResults, runPlaywrightTests } from './playwright-runner';
+import { findRunnerRoot, processPlaywrightResults, resolveStartingUrl, runPlaywrightTests } from './playwright-runner';
 
 jest.mock('child_process', () => ({
   spawn: jest.fn(),
@@ -36,6 +36,22 @@ describe('findRunnerRoot', () => {
     writeFileSync(join(runnerTestDir, 'guide-runner.spec.ts'), '');
 
     expect(findRunnerRoot(compiledModuleDir)).toBe(tempRoot);
+  });
+});
+
+describe('resolveStartingUrl', () => {
+  it('resolves a relative manifest location against the selected target', () => {
+    expect(resolveStartingUrl('https://play.grafana.org/', '/d/example/example?orgId=1')).toBe(
+      'https://play.grafana.org/d/example/example?orgId=1'
+    );
+  });
+
+  it('rejects a starting location on another origin', () => {
+    expect(() => resolveStartingUrl('https://play.grafana.org/', 'https://example.com/')).toThrow(/same origin/i);
+  });
+
+  it('rejects non-HTTP protocols', () => {
+    expect(() => resolveStartingUrl('https://play.grafana.org/', 'javascript:alert(1)')).toThrow(/protocol/i);
   });
 });
 
@@ -143,6 +159,7 @@ describe('runPlaywrightTests', () => {
         headed: false,
         artifacts: 'artifacts',
         alwaysScreenshot: false,
+        startingLocation: '/d/example/example',
       }
     );
     child.emit('close', 1);
@@ -176,6 +193,7 @@ describe('runPlaywrightTests', () => {
         headed: false,
         artifacts: join('output', 'artifacts'),
         alwaysScreenshot: false,
+        startingLocation: '/d/example/example',
       }
     );
     const spawnOptions = spawnMock.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
@@ -183,6 +201,7 @@ describe('runPlaywrightTests', () => {
     await resultPromise;
 
     expect(spawnOptions.env?.ARTIFACTS_DIR).toBe(resolve(process.cwd(), 'output', 'artifacts'));
+    expect(spawnOptions.env?.STARTING_LOCATION).toBe('/d/example/example');
   });
 
   it.each([
@@ -206,6 +225,7 @@ describe('runPlaywrightTests', () => {
         headed: false,
         artifacts: 'artifacts',
         alwaysScreenshot: false,
+        startingLocation: '/',
       }
     );
 

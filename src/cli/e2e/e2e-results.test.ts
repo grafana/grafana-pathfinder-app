@@ -122,6 +122,7 @@ describe('buildPackageMetaMap', () => {
         instance: 'play.grafana.org',
         targetUrl: 'http://localhost:3000',
         sourceUrl: 'https://cdn.test/a/content.json',
+        startingLocation: '/d/example/example',
         sideEffects: READONLY_SIDE_EFFECTS,
       },
     ];
@@ -132,6 +133,7 @@ describe('buildPackageMetaMap', () => {
       instance: 'play.grafana.org',
       targetUrl: 'http://localhost:3000',
       sourceUrl: 'https://cdn.test/a/content.json',
+      startingLocation: '/d/example/example',
       sideEffects: READONLY_SIDE_EFFECTS,
     });
   });
@@ -156,6 +158,7 @@ describe('applyPackageMeta', () => {
       instance: 'play.grafana.org',
       targetUrl: 'http://should-not-overwrite:3000',
       sourceUrl: 'https://cdn.test/a/content.json',
+      startingLocation: '/d/example/example',
       sideEffects: READONLY_SIDE_EFFECTS,
     });
 
@@ -167,6 +170,7 @@ describe('applyPackageMeta', () => {
       tier: 'local',
       instance: 'play.grafana.org',
       sourceUrl: 'https://cdn.test/a/content.json',
+      startingLocation: '/d/example/example',
       sideEffects: READONLY_SIDE_EFFECTS,
     });
   });

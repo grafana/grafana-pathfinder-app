@@ -56,6 +56,7 @@ export interface ResolvedRemoteGuide {
   targetUrl: string;
   /** The content.json URL the guide was fetched from. */
   sourceUrl: string;
+  startingLocation: string;
   /** Conservative side-effect classification for the fetched content. */
   sideEffects: SideEffectClassification;
   /** Plugin IDs required by this guide, from testEnvironment.plugins. */
@@ -127,6 +128,7 @@ async function buildGuideOrSkip(
   id: string,
   type: string | undefined,
   testEnvironment: TestEnvironment,
+  startingLocation: string | undefined,
   contentUrl: string,
   options: RemoteResolveOptions
 ): Promise<{ runnable?: ResolvedRemoteGuide; skipped?: SkippedPackage }> {
@@ -196,6 +198,7 @@ async function buildGuideOrSkip(
       instance: target.instance,
       targetUrl: target.targetUrl!,
       sourceUrl: contentUrl,
+      startingLocation: startingLocation ?? '/',
       sideEffects,
       ...(testEnvironment.plugins?.length ? { plugins: testEnvironment.plugins } : {}),
     },
@@ -230,7 +233,7 @@ async function resolveIndexEntry(
       },
     };
   }
-  return buildGuideOrSkip(id, entry.type, entry.testEnvironment ?? {}, contentUrl, options);
+  return buildGuideOrSkip(id, entry.type, entry.testEnvironment ?? {}, entry.startingLocation, contentUrl, options);
 }
 
 /**
@@ -328,6 +331,7 @@ export async function resolveRemotePackage(id: string, options: RemoteResolveOpt
     resolution.id || id,
     resolution.manifest?.type,
     resolution.manifest?.testEnvironment ?? {},
+    resolution.manifest?.startingLocation,
     resolution.contentUrl,
     options
   );

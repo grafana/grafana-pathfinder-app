@@ -33,6 +33,7 @@ export interface PackageMeta {
   instance?: string;
   targetUrl?: string;
   sourceUrl?: string;
+  startingLocation?: string;
   sideEffects?: SideEffectClassification;
   plugins?: string[];
 }
@@ -161,6 +162,7 @@ export function buildPackageMetaMap(runnable: ResolvedRemoteGuide[]): Map<string
         instance: g.instance,
         targetUrl: g.targetUrl,
         sourceUrl: g.sourceUrl,
+        startingLocation: g.startingLocation,
         sideEffects: g.sideEffects,
         ...(g.plugins?.length ? { plugins: g.plugins } : {}),
       },
@@ -182,6 +184,7 @@ export function applyPackageMeta(data: TestResultsData | undefined, meta: Packag
     tier: meta.tier,
     instance: meta.instance,
     sourceUrl: meta.sourceUrl,
+    startingLocation: meta.startingLocation,
     sideEffects: meta.sideEffects,
   };
 }

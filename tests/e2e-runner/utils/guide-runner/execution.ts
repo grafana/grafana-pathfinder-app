@@ -13,6 +13,8 @@ import { Page, expect } from '@playwright/test';
 import { testIds } from '../../../../src/constants/testIds';
 import {
   DEFAULT_STEP_TIMEOUT_MS,
+  GUIDE_SETUP_TIMEOUT_MS,
+  STEP_OVERHEAD_TIMEOUT_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
   TIMEOUT_PER_GUIDED_SUBSTEP_MS,
   BUTTON_ENABLE_TIMEOUT_MS,
@@ -150,6 +152,13 @@ export function calculateStepTimeout(step: TestableStep): number {
     return DEFAULT_STEP_TIMEOUT_MS + step.internalActionCount * TIMEOUT_PER_MULTISTEP_ACTION_MS;
   }
   return DEFAULT_STEP_TIMEOUT_MS;
+}
+
+export function calculateGuideTimeout(steps: TestableStep[]): number {
+  return (
+    GUIDE_SETUP_TIMEOUT_MS +
+    steps.reduce((total, step) => total + calculateStepTimeout(step) + STEP_OVERHEAD_TIMEOUT_MS, 0)
+  );
 }
 
 /**

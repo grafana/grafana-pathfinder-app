@@ -36,6 +36,8 @@ export const SECTION_SELECTOR = '[data-testid^="interactive-section-"]';
  * Per design doc: 30 seconds as a generous default.
  */
 export const DEFAULT_STEP_TIMEOUT_MS = 30000;
+export const GUIDE_SETUP_TIMEOUT_MS = 60000;
+export const STEP_OVERHEAD_TIMEOUT_MS = 20000;
 
 /**
  * Additional timeout per internal action for multisteps.

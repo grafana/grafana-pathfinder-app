@@ -114,6 +114,7 @@ export const GuideMetadataSchema = z.object({
   instance: z.string().optional(),
   targetUrl: z.string().optional(),
   sourceUrl: z.string().optional(),
+  startingLocation: z.string().optional(),
   contentDigest: z.string().optional(),
   sideEffects: SideEffectClassificationSchema.optional(),
 });

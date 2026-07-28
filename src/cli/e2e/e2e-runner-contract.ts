@@ -17,6 +17,8 @@ export const E2E_ENV = {
   GUIDE_JSON_PATH: 'GUIDE_JSON_PATH',
   /** Grafana base URL under test. */
   GRAFANA_URL: 'GRAFANA_URL',
+  /** Same-origin path where the guide should begin. */
+  STARTING_LOCATION: 'STARTING_LOCATION',
   /**
    * Absolute path the form-login auth setup writes storage state to, and the
    * test project reads in non-token mode. Per-guide and ephemeral.

@@ -29,6 +29,8 @@ import { runPlaywrightPreflightChecks, formatPreflightResults } from './utils/pr
 import {
   discoverStepsFromDOM,
   executeAllSteps,
+  calculateGuideTimeout,
+  GUIDE_SETUP_TIMEOUT_MS,
   ensureDocsPanelOpen,
   summarizeResults,
   AllStepsResult,
@@ -78,6 +80,7 @@ function writeResultsFile(
   results: StepTestResult[],
   guide: { id: string; title: string; path: string },
   targetUrl: string,
+  startingLocation: string,
   timestamp: string,
   allStepsResult: AllStepsResult,
   guideContent: string,
@@ -89,7 +92,7 @@ function writeResultsFile(
   }
 
   const data: TestResultsData = {
-    guide: { ...guide, targetUrl, contentDigest: contentDigest(guideContent) },
+    guide: { ...guide, targetUrl, startingLocation, contentDigest: contentDigest(guideContent) },
     timestamp,
     startedAt: timestamp,
     endedAt: new Date().toISOString(),
@@ -133,11 +136,7 @@ function writeTracePathFile(outputDir: string): void {
 
 test.describe('Guide Runner', () => {
   test('loads and displays guide from JSON', async ({ page }, testInfo) => {
-    // Guide tests may take longer due to fix button attempts and multi-step execution.
-    // Per L3-3C timing design: 30s base + 5s per internal action for multisteps,
-    // plus additional time for fix attempts (up to 3 × 10s each).
-    // Set a generous 2-minute timeout to accommodate complex guides.
-    test.setTimeout(120000);
+    test.setTimeout(GUIDE_SETUP_TIMEOUT_MS * 2);
 
     // L3-5B: Capture timestamp at test start for JSON report
     const testStartTimestamp = new Date().toISOString();
@@ -145,6 +144,7 @@ test.describe('Guide Runner', () => {
     // Read guide JSON from environment variable path
     const guidePath = process.env[E2E_ENV.GUIDE_JSON_PATH];
     const targetUrl = process.env[E2E_ENV.GRAFANA_URL] ?? 'http://localhost:3000';
+    const startingLocation = process.env[E2E_ENV.STARTING_LOCATION] ?? '/';
     const bearerToken = process.env[E2E_ENV.GRAFANA_TOKEN];
     const isVerbose = isEnvFlagEnabled(process.env[E2E_ENV.VERBOSE]);
     // L3-5D: Artifacts directory for artifact collection
@@ -207,9 +207,8 @@ test.describe('Guide Runner', () => {
     // Guide loading and verification
     // ============================================
 
-    // Navigate to Grafana home (pre-flight may have left us on a different page)
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto(startingLocation, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.locator('button[aria-label="Help"]').waitFor({ state: 'visible', timeout: 30000 });
 
     const injectGuide = () =>
       page.evaluate(
@@ -222,7 +221,8 @@ test.describe('Guide Runner', () => {
 
     await ensureDocsPanelOpen(page, {
       beforeRetry: async () => {
-        await page.reload({ waitUntil: 'networkidle', timeout: 10_000 });
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
+        await page.locator('button[aria-label="Help"]').waitFor({ state: 'visible', timeout: 10000 });
         await injectGuide();
       },
     });
@@ -252,6 +252,7 @@ test.describe('Guide Runner', () => {
     // Step discovery: DOM-based step enumeration
     // ============================================
     const discoveryResult = await discoverStepsFromDOM(page);
+    test.setTimeout(calculateGuideTimeout(discoveryResult.steps));
 
     // Verify step discovery found steps
     expect(discoveryResult.totalSteps).toBeGreaterThan(0);
@@ -305,6 +306,7 @@ test.describe('Guide Runner', () => {
       executionResult.results,
       guideMetadata,
       targetUrl,
+      startingLocation,
       testStartTimestamp,
       executionResult,
       guideJson,

@@ -37,6 +37,18 @@ function tryFindRunnerRoot(startDir: string): string | undefined {
   }
 }
 
+export function resolveStartingUrl(targetUrl: string, startingLocation: string): string {
+  const target = new URL(targetUrl);
+  const resolved = new URL(startingLocation || '/', target);
+  if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') {
+    throw new Error(`Guide starting location protocol must be HTTP or HTTPS, received ${resolved.protocol}`);
+  }
+  if (resolved.origin !== target.origin) {
+    throw new Error(`Guide starting location must use the same origin as ${target.origin}`);
+  }
+  return resolved.toString();
+}
+
 export function findRunnerRoot(startDir: string): string {
   const fromStart = tryFindRunnerRoot(startDir);
   if (fromStart !== undefined) {
@@ -103,6 +115,7 @@ export interface PlaywrightResult {
 export interface RunGuideOptions {
   /** Resolved Grafana base URL this guide is tested against. */
   targetUrl: string;
+  startingLocation: string;
   verbose: boolean;
   trace: boolean;
   headed: boolean;
@@ -207,6 +220,8 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
   const resultsFilePath = join(tempDir, 'results.json');
   const authStateFile = join(tempDir, 'auth.json');
   const traceOutputFilePath = join(tempDir, 'trace-path.txt');
+  const startingUrl = new URL(resolveStartingUrl(options.targetUrl, options.startingLocation));
+  const startingPath = `${startingUrl.pathname}${startingUrl.search}${startingUrl.hash}`;
 
   try {
     writeFileSync(guidePath, guide.content);
@@ -238,6 +253,7 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
           ...process.env,
           [E2E_ENV.GUIDE_JSON_PATH]: guidePath,
           [E2E_ENV.GRAFANA_URL]: options.targetUrl,
+          [E2E_ENV.STARTING_LOCATION]: startingPath,
           [E2E_ENV.AUTH_STATE_FILE]: authStateFile,
           ...(options.token ? { [E2E_ENV.GRAFANA_TOKEN]: options.token } : {}),
           [E2E_ENV.TRACE]: encodeEnvFlag(options.trace),

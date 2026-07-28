@@ -31,7 +31,13 @@ export type {
 // ============================================
 // Constants
 // ============================================
-export { DEFAULT_STEP_TIMEOUT_MS, TIMEOUT_PER_MULTISTEP_ACTION_MS, TIMEOUT_PER_GUIDED_SUBSTEP_MS } from './constants';
+export {
+  DEFAULT_STEP_TIMEOUT_MS,
+  GUIDE_SETUP_TIMEOUT_MS,
+  STEP_OVERHEAD_TIMEOUT_MS,
+  TIMEOUT_PER_MULTISTEP_ACTION_MS,
+  TIMEOUT_PER_GUIDED_SUBSTEP_MS,
+} from './constants';
 
 // ============================================
 // Error Classification
@@ -74,6 +80,7 @@ export {
   scrollStepIntoView,
   waitForDoItButtonEnabled,
   waitForDoItButtonToAppear,
+  calculateGuideTimeout,
   calculateStepTimeout,
   waitForStepCompletion,
   checkObjectiveCompletion,
