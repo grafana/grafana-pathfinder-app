@@ -241,6 +241,24 @@ describe('panelModeManager', () => {
       expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
     });
 
+    it('reloading a transient full-screen launch keeps the stored preference intact', () => {
+      // A transient launch pushes a real, reloadable /fullscreen?doc=… URL but
+      // transiency lives in memory only. After a reload (fresh manager,
+      // preserved localStorage) FullScreenPanel's reconcile effect sees the
+      // mode mismatch and re-aligns to the route — that write must be
+      // transient, or the reload persists 'fullscreen' over the preference.
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'sidebar');
+
+      // FullScreenPanel reconcile on a cold /fullscreen load (see the
+      // panel-mode-surface-toggles contract test pinning the call site).
+      if (manager.getMode() !== 'fullscreen') {
+        manager.setModeTransient('fullscreen');
+      }
+
+      expect(manager.getMode()).toBe('fullscreen');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
+    });
+
     it('resumes persistence for a deliberate surface change after a round-trip', () => {
       localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
 

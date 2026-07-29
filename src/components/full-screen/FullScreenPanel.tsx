@@ -60,9 +60,16 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // the extension sidebar is closed. Idempotent — safe on refresh of
   // /fullscreen where mode may already be 'fullscreen' but a stale Grafana
   // dock could otherwise re-mount the sidebar in parallel.
+  //
+  // Transient, not plain setMode: this effect only fires when the route and
+  // the mode disagree, i.e. a cold load / reload of a /fullscreen URL after
+  // the in-memory transient state was lost. Aligning mode to a route we
+  // already landed on is not a preference expression — a persisting write
+  // here would overwrite the user's stored preference with whatever surface
+  // an auto-launch chose before the reload.
   useEffect(() => {
     if (panelModeManager.getMode() !== 'fullscreen') {
-      panelModeManager.setMode('fullscreen');
+      panelModeManager.setModeTransient('fullscreen');
     } else {
       getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
     }

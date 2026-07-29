@@ -83,9 +83,17 @@ describe('panel-mode surface-toggle persistence classification', () => {
       const usePanelMode = read('components/docs-panel/hooks/usePanelMode.ts');
       expect(usePanelMode).toContain("setMode('sidebar')");
       expect(usePanelMode).not.toContain('setModePersisted');
+    });
 
-      // FullScreenPanel cold-load sync keeps plain setMode('fullscreen').
-      expect(read('components/full-screen/FullScreenPanel.tsx')).toContain("setMode('fullscreen')");
+    it('FullScreenPanel cold-load route sync is transient, never a persisting write', () => {
+      // The reconcile effect only fires when route and mode disagree — a cold
+      // load / reload of /fullscreen after in-memory transient state was lost.
+      // Aligning mode to the route is not a preference expression: a plain
+      // setMode here persists 'fullscreen' over the user's stored preference
+      // the moment they reload a transient full-screen launch.
+      const src = read('components/full-screen/FullScreenPanel.tsx');
+      expect(src).toContain("setModeTransient('fullscreen')");
+      expect(src).not.toContain("setMode('fullscreen')");
     });
   });
 });
