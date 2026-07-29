@@ -28,8 +28,10 @@ describe('FloatingPanelInner consumes the pending guide on mount', () => {
 
   it('consumes before the tab-restoration effect runs', () => {
     // Effects run in declaration order; consumption must be declared first
-    // so the restoration gate sees the just-opened tab.
-    expect(src.indexOf('consumePendingGuideOnMount')).toBeLessThan(src.indexOf('restoreTabsAsync'));
+    // so the restoration gate sees the just-opened tab. Anchor on the call
+    // site `(panel,` — a bare name match would hit the import statement and
+    // pass regardless of effect order.
+    expect(src.indexOf('consumePendingGuideOnMount(panel,')).toBeLessThan(src.indexOf('restoreTabsAsync'));
   });
 
   it('gates restoration on LIVE model tabs, not the render snapshot', () => {
