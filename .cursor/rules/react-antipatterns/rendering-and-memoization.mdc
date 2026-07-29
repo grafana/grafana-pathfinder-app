@@ -1,0 +1,175 @@
+---
+alwaysApply: false
+description: React anti-patterns R9, R11, R12 — index-as-key in dynamic lists, context overuse for frequent updates, inline functions breaking memoization. Load on a review hit for any of these codes, or when tuning render performance.
+---
+
+# Rendering and memoization
+
+Part of the R1-R21 catalog. The routing table and the full code list live in `.cursor/rules/react-antipatterns.mdc`.
+
+---
+
+## R9 — Index as Key in Dynamic Lists
+When items are reordered or deleted, index-based keys cause React to mismatch component state.
+
+**Don't**
+```tsx
+function TodoList({ todos, onRemove }) {
+  return (
+    <ul>
+      {todos.map((todo, index) => (
+        <li key={index}> {/* Index shifts on delete */}
+          <input defaultValue={todo.text} />
+          <button onClick={() => onRemove(index)}>×</button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+**Do**
+```tsx
+function TodoList({ todos, onRemove }) {
+  return (
+    <ul>
+      {todos.map((todo) => (
+        // REACT: stable unique identifier (R9)
+        <li key={todo.id}>
+          <input defaultValue={todo.text} />
+          <button onClick={() => onRemove(todo.id)}>×</button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Generate stable IDs when creating items:
+const addTodo = (text) => {
+  setTodos([...todos, { id: crypto.randomUUID(), text }]);
+};
+```
+
+**Agent behavior**
+- Flag `key={index}` in lists where items can be added, removed, or reordered.
+- Index keys are acceptable ONLY for static lists that never change.
+- When reviewing, check that keys are stable across re-renders (not generated randomly each render).
+
+---
+
+---
+
+## R11 — Context Overuse for Frequent Updates
+Context re-renders ALL consuming components when its value changes.
+
+**Don't**
+```tsx
+const AppContext = createContext();
+
+function App() {
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  
+  useEffect(() => {
+    const handler = (e) => setMousePosition({ x: e.clientX, y: e.clientY });
+    window.addEventListener('mousemove', handler);
+    return () => window.removeEventListener('mousemove', handler);
+  }, []);
+  
+  // Every mouse move re-renders ALL consumers
+  return (
+    <AppContext.Provider value={{ mousePosition, user, theme }}>
+      <EntireApp />
+    </AppContext.Provider>
+  );
+}
+```
+
+**Do**
+```tsx
+// REACT: separate contexts by update frequency (R11)
+const MouseContext = createContext();
+const UserContext = createContext();
+const ThemeContext = createContext();
+
+function App() {
+  const mousePosition = useMousePosition(); // Custom hook
+  
+  // Memoize context value to prevent object reference changes
+  const mouseValue = useMemo(() => mousePosition, [mousePosition.x, mousePosition.y]);
+  
+  return (
+    <ThemeContext.Provider value={theme}>
+      <UserContext.Provider value={user}>
+        <MouseContext.Provider value={mouseValue}>
+          <EntireApp />
+        </MouseContext.Provider>
+      </UserContext.Provider>
+    </ThemeContext.Provider>
+  );
+}
+```
+
+**Agent behavior**
+- Flag context providers with frequently-changing values (mouse position, timers, input values).
+- Recommend splitting contexts by update frequency.
+- Ensure context values are memoized to prevent unnecessary reference changes.
+- For high-frequency updates, suggest state management libraries or component-local state.
+
+---
+
+---
+
+## R12 — Inline Functions Breaking Memoization
+Inline functions create new references each render, defeating `React.memo`.
+
+**Don't**
+```tsx
+function ParentList({ items }) {
+  return (
+    <div>
+      {items.map(item => (
+        <MemoizedChild
+          key={item.id}
+          item={item}
+          onClick={() => handleClick(item.id)} // New function every render
+          style={{ color: 'blue' }} // New object every render
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+**Do**
+```tsx
+function ParentList({ items }) {
+  // REACT: stable callback reference (R12)
+  const handleClick = useCallback((id) => {
+    console.log('Clicked:', id);
+  }, []);
+  
+  // REACT: stable object reference (R12)
+  const itemStyle = useMemo(() => ({ color: 'blue' }), []);
+  
+  return (
+    <div>
+      {items.map(item => (
+        <MemoizedChild
+          key={item.id}
+          item={item}
+          onClick={handleClick}
+          style={itemStyle}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+**Agent behavior**
+- When passing callbacks to memoized children, use `useCallback`.
+- When passing objects/arrays as props to memoized children, use `useMemo`.
+- Flag inline arrow functions and object literals passed to `React.memo` components.
+- Note: Only optimize when there's a measurable performance issue—don't prematurely optimize.
+
+---
