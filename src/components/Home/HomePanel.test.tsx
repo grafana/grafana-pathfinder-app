@@ -14,6 +14,7 @@ import { guideLaunchStore } from '../../global-state/guide-launch';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
+import { REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
 import { locationService } from '@grafana/runtime';
 import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import type { RawContent } from '../../types/content.types';
@@ -226,6 +227,25 @@ describe('HomePanelRenderer', () => {
       );
       expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('floating');
       expect(sidebarState.openSidebar).not.toHaveBeenCalled();
+    });
+
+    it('signals an already-mounted floating panel to consume, once per launch, after staging', () => {
+      // A repeat launch leaves the mode at 'floating', so no mode-change event
+      // fires and the panel never remounts — without this signal the second
+      // guide would be staged but never consumed (silently dropped).
+      (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(true);
+      const stagedWhenHeard: number[] = [];
+      const listener = () => {
+        stagedWhenHeard.push((panelModeManager.setPendingGuide as jest.Mock).mock.calls.length);
+      };
+      document.addEventListener(REQUEST_FLOATING_GUIDE_EVENT, listener);
+
+      render(<HomePanelRenderer />);
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: true }));
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: true }));
+
+      document.removeEventListener(REQUEST_FLOATING_GUIDE_EVENT, listener);
+      expect(stagedWhenHeard).toEqual([1, 2]);
     });
 
     it('carries packageInfo through the staged payload on both the event and the queued-link paths', () => {

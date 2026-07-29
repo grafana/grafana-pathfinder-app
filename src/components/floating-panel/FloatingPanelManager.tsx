@@ -12,7 +12,7 @@ import { panelModeManager, type PanelMode } from '../../global-state/panel-mode'
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
 import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
-import { PANEL_MODE_CHANGE_EVENT } from '../../lib/event-names';
+import { PANEL_MODE_CHANGE_EVENT, REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
 import { buildFullScreenRouteUrl } from '../../utils/pathfinder-search-params';
 import { FloatingPanel } from './FloatingPanel';
 import { FloatingPanelContent } from './FloatingPanelContent';
@@ -133,6 +133,22 @@ function FloatingPanelInner() {
       if (panelModeManager.getMode() !== 'sidebar') {
         sidebarState.setIsSidebarMounted(false);
       }
+    };
+  }, [panel]);
+
+  // A launch targeting an already-mounted floating panel changes no mode, so
+  // the mount effect above never re-runs — HomePanel signals with this event
+  // instead. Consume-once semantics make double delivery with the mount path
+  // safe: whichever consumer runs first gets the guide, the other a null.
+  useEffect(() => {
+    const handleRequestGuide = () => {
+      consumePendingGuideOnMount(panel, 'floating_panel_dock', () => {
+        guideOpenInFlightRef.current = true;
+      });
+    };
+    document.addEventListener(REQUEST_FLOATING_GUIDE_EVENT, handleRequestGuide);
+    return () => {
+      document.removeEventListener(REQUEST_FLOATING_GUIDE_EVENT, handleRequestGuide);
     };
   }, [panel]);
 

@@ -29,6 +29,7 @@ import { guideLaunchStore } from '../../global-state/guide-launch';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
+import { REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
 import { PLUGIN_BASE_URL, ROUTES } from '../../constants';
 import { buildFullScreenRouteUrl } from '../../utils/pathfinder-search-params';
 import pluginJson from '../../plugin.json';
@@ -73,6 +74,10 @@ export function HomePanelRenderer() {
     if (isExtensionSidebarOwnedByOther(pluginJson.id)) {
       panelModeManager.setPendingGuide(pendingGuideFrom(launch));
       panelModeManager.setModeTransient('floating');
+      // A same-mode transient launch dispatches no mode-change event, so an
+      // already-mounted floating panel never remounts to consume. Signal it
+      // directly; unheard when the panel isn't up yet (mount consumes then).
+      document.dispatchEvent(new CustomEvent(REQUEST_FLOATING_GUIDE_EVENT));
       return;
     }
 

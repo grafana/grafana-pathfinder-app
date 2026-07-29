@@ -38,3 +38,14 @@ describe('FloatingPanelInner consumes the pending guide on mount', () => {
     expect(src).toMatch(/const liveTabs = panel\.state\.tabs/);
   });
 });
+
+describe('FloatingPanelInner consumes staged guides while already mounted', () => {
+  // A same-mode transient launch fires no PANEL_MODE_CHANGE_EVENT, so the
+  // mount effect never re-runs; HomePanel signals the mounted panel instead.
+  it('listens for the request-floating-guide signal and routes through the shared consume step', () => {
+    expect(src).toContain('addEventListener(REQUEST_FLOATING_GUIDE_EVENT');
+    expect(src).toContain('removeEventListener(REQUEST_FLOATING_GUIDE_EVENT');
+    const listenerEffect = src.slice(src.indexOf('handleRequestGuide'));
+    expect(listenerEffect).toContain('consumePendingGuideOnMount(panel,');
+  });
+});

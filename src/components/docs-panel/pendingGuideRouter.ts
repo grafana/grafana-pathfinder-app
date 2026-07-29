@@ -58,9 +58,12 @@ export function openPendingGuide(
 }
 
 /**
- * Consume any pending guide at surface mount: consume-once read → mark the
- * open as in-flight (BEFORE routing, so the surface's empty-state fallback
- * and tab restoration cannot race the open) → route via `openPendingGuide`.
+ * Consume any pending guide: consume-once read → mark the open as in-flight
+ * (BEFORE routing, so the surface's empty-state fallback and tab restoration
+ * cannot race the open) → route via `openPendingGuide`. Called from surface
+ * mount effects and from already-mounted consume signals (the floating
+ * panel's `REQUEST_FLOATING_GUIDE_EVENT` listener, the fullscreen swap
+ * handler); the consume-once read makes overlapping consumers safe.
  *
  * The guide's own `source` (carried from the original launch so alignment
  * semantics survive the handoff) wins over `fallbackSource`, which is the
