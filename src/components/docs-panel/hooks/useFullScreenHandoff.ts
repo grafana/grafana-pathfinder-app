@@ -100,7 +100,8 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
       // the symmetric fix for the forward handoff. For non-journey tabs the
       // two are equal so the swap is a no-op.
       const guideUrl = activeTab?.currentUrl || activeTab?.baseUrl;
-      const supportedTab = activeTab && activeTab.id !== 'recommendations' && activeTab.type !== 'devtools' && guideUrl;
+      const supportedTab =
+        activeTab && activeTab.type !== 'recommendations' && activeTab.type !== 'devtools' && guideUrl;
 
       if (!supportedTab) {
         getAppEvents().publish({

@@ -103,7 +103,7 @@ describe('useFullScreenHandoff', () => {
 
   it('refuses recommendations tab with an alert', () => {
     const { model } = makeModel({
-      tabs: [{ id: 'recommendations', type: 'docs', title: 'Recs', baseUrl: '' }],
+      tabs: [{ id: 'recommendations', type: 'recommendations', title: 'Recs', baseUrl: '' }],
       activeTabId: 'recommendations',
     });
     renderHook(() => useFullScreenHandoff(model, false));

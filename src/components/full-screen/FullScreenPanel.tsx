@@ -8,7 +8,7 @@ import { useContentReset } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
-import { hasOnlyNonContentTabs, isNonContentTab, RECOMMENDATIONS_TAB_ID } from '../docs-panel/utils';
+import { hasOnlyNonContentTabs, isNonContentTab } from '../docs-panel/utils';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
@@ -236,7 +236,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     tabs,
     activeTabId,
     activeTab: activeTab ?? null,
-    isRecommendationsTab: activeTabId === RECOMMENDATIONS_TAB_ID,
+    isRecommendationsTab: activeTab?.type === 'recommendations',
     model: panel,
   });
 

@@ -147,8 +147,33 @@ describe('usePopOutHandoff', () => {
 
   it('refuses pop-out from the recommendations tab and emits alert-info', async () => {
     const { model, saveTabsToStorage } = makeModel({
-      tabs: [{ id: 'recommendations', type: 'docs', title: 'Recs', baseUrl: '' }],
+      tabs: [{ id: 'recommendations', type: 'recommendations', title: 'Recs', baseUrl: '' }],
       activeTabId: 'recommendations',
+    });
+
+    renderHook(() => usePopOutHandoff(model));
+    await dispatchPopOut();
+
+    expect(publishMock).toHaveBeenCalledWith({
+      type: 'alert-info',
+      payload: ['Open a guide before popping out the panel.'],
+    });
+    expect(saveTabsToStorage).not.toHaveBeenCalled();
+    expect(setModePersistedSpy).not.toHaveBeenCalled();
+  });
+
+  it('refuses pop-out from Dev Tools even if a guide URL is present', async () => {
+    const { model, saveTabsToStorage } = makeModel({
+      tabs: [
+        {
+          id: 'devtools',
+          type: 'devtools',
+          title: 'Dev Tools',
+          baseUrl: 'https://example.com/should-not-pop',
+          currentUrl: 'https://example.com/should-not-pop',
+        },
+      ],
+      activeTabId: 'devtools',
     });
 
     renderHook(() => usePopOutHandoff(model));

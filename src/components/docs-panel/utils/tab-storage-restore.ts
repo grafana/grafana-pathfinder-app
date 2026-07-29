@@ -8,7 +8,7 @@
  * Dev mode allows localhost and GitHub raw URLs for development/testing.
  */
 
-import { LearningJourneyTab, PersistedTabData } from '../../../types/content-panel.types';
+import type { LearningJourneyTab, LearningJourneyTabType, PersistedTabData } from '../../../types/content-panel.types';
 import { isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from '../../../security';
 import { logger } from '../../../lib/logging';
 import { DEVTOOLS_TAB_ID, EDITOR_TAB_ID, RECOMMENDATIONS_TAB_ID } from './tab-kinds';
@@ -52,6 +52,33 @@ export function createUrlValidator(isDevMode: boolean): UrlValidator {
 }
 
 /**
+ * Validate the persisted identity/kind pair before it enters runtime state.
+ *
+ * Runtime behavior dispatches on `type`; singleton IDs remain stable identity
+ * keys. Reserved IDs and types must therefore agree in both directions so a
+ * malformed content record cannot acquire privileged singleton behavior.
+ */
+function getCanonicalPersistedTabType(data: PersistedTabData): LearningJourneyTabType | null {
+  const type: unknown = data.type ?? 'learning-journey';
+
+  if (type === 'recommendations') {
+    return data.id === RECOMMENDATIONS_TAB_ID ? type : null;
+  }
+  if (type === 'devtools') {
+    return data.id === DEVTOOLS_TAB_ID ? type : null;
+  }
+  if (type === 'editor') {
+    return data.id === EDITOR_TAB_ID ? type : null;
+  }
+
+  if (data.id === RECOMMENDATIONS_TAB_ID || data.id === DEVTOOLS_TAB_ID || data.id === EDITOR_TAB_ID) {
+    return null;
+  }
+
+  return type === 'learning-journey' || type === 'docs' || type === 'interactive' ? type : null;
+}
+
+/**
  * Restore tabs from storage with security validation
  *
  * SECURITY: All URLs are validated before restoration to prevent XSS via storage injection
@@ -67,38 +94,52 @@ export async function restoreTabsFromStorage(
   try {
     const parsedData = await tabStorage.getTabs<PersistedTabData>();
 
+    const recommendationsTab: LearningJourneyTab = {
+      id: RECOMMENDATIONS_TAB_ID,
+      type: 'recommendations',
+      title: 'Recommendations', // Will be translated in renderer
+      baseUrl: '',
+      currentUrl: '',
+      content: null,
+      isLoading: false,
+      error: null,
+    };
+
     if (!parsedData || parsedData.length === 0) {
       // Return recommendations home if no stored data
-      return [
-        {
-          id: RECOMMENDATIONS_TAB_ID,
-          title: 'Recommendations',
-          baseUrl: '',
-          currentUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-        },
-      ];
+      return [recommendationsTab];
     }
 
-    const tabs: LearningJourneyTab[] = [
-      {
-        id: RECOMMENDATIONS_TAB_ID,
-        title: 'Recommendations', // Will be translated in renderer
-        baseUrl: '',
-        currentUrl: '',
-        content: null,
-        isLoading: false,
-        error: null,
-      },
-    ];
+    const tabs: LearningJourneyTab[] = [recommendationsTab];
 
     const validateUrl = createUrlValidator(options.isDevMode);
 
     parsedData.forEach((data: PersistedTabData) => {
+      const type = getCanonicalPersistedTabType(data);
+      if (!type) {
+        logger.warn('Rejected tab with invalid persisted identity/type pairing', {
+          id: data.id,
+          type: data.type,
+        });
+        return;
+      }
+
+      // Recommendations is created canonically above and is never restored
+      // from storage, avoiding duplicate home tabs.
+      if (type === 'recommendations') {
+        return;
+      }
+
+      // IDs are the panel's identity key: duplicates would collide on React
+      // keys, and close-by-ID would remove more than one tab. Tampered or
+      // legacy storage is the only way to get here, since saves map from state.
+      if (tabs.some((t) => t.id === data.id)) {
+        logger.warn('Rejected duplicate tab ID from storage', { id: data.id, type });
+        return;
+      }
+
       // Handle devtools tab specially - it has no URLs to validate
-      if (data.type === 'devtools') {
+      if (type === 'devtools') {
         tabs.push({
           id: DEVTOOLS_TAB_ID,
           title: 'Dev Tools',
@@ -113,7 +154,7 @@ export async function restoreTabsFromStorage(
       }
 
       // Handle editor tab specially - it has no URLs to validate
-      if (data.type === 'editor') {
+      if (type === 'editor') {
         tabs.push({
           id: EDITOR_TAB_ID,
           title: data.title || 'New Guide',
@@ -150,7 +191,7 @@ export async function restoreTabsFromStorage(
         content: null, // Will be loaded when tab becomes active
         isLoading: false,
         error: null,
-        type: data.type || 'learning-journey',
+        type,
         packageInfo: data.packageInfo,
       });
     });
@@ -161,6 +202,7 @@ export async function restoreTabsFromStorage(
     return [
       {
         id: RECOMMENDATIONS_TAB_ID,
+        type: 'recommendations',
         title: 'Recommendations',
         baseUrl: '',
         currentUrl: '',

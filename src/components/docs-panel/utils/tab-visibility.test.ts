@@ -4,11 +4,12 @@
  */
 
 import { computeTabVisibility } from './tab-visibility';
-import type { LearningJourneyTab } from '../../../types/content-panel.types';
+import type { LearningJourneyTab, LearningJourneyTabType } from '../../../types/content-panel.types';
 
-function tab(id: string, title: string): LearningJourneyTab {
+function tab(id: string, title: string, type: LearningJourneyTabType = 'learning-journey'): LearningJourneyTab {
   return {
     id,
+    type,
     title,
     baseUrl: '',
     currentUrl: '',
@@ -19,7 +20,7 @@ function tab(id: string, title: string): LearningJourneyTab {
 }
 
 describe('computeTabVisibility', () => {
-  const recs = tab('recommendations', 'Recommendations');
+  const recs = tab('recommendations', 'Recommendations', 'recommendations');
   const guide1 = tab('guide-1', 'Guide 1');
   const guide2 = tab('guide-2', 'Guide 2');
   const guide3 = tab('guide-3', 'Guide 3');

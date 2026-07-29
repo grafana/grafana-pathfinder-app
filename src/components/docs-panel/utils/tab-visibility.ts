@@ -5,7 +5,7 @@
  */
 
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
-import { GUIDE_STRIP_EXCLUDED_TAB_IDS, RECOMMENDATIONS_TAB_ID } from './tab-kinds';
+import { getGuideStripTabs } from './tab-kinds';
 
 const TAB_SPACING = 4;
 const MIN_TAB_WIDTH = 80;
@@ -27,8 +27,8 @@ export function computeTabVisibility(
   containerWidth: number,
   activeTabId: string
 ): TabVisibilityResult {
-  const guideTabs = tabs.filter((t) => !GUIDE_STRIP_EXCLUDED_TAB_IDS.has(t.id));
-  const homeTabs = tabs.filter((t) => t.id === RECOMMENDATIONS_TAB_ID);
+  const guideTabs = getGuideStripTabs(tabs);
+  const homeTabs = tabs.filter((tab) => tab.type === 'recommendations');
 
   if (guideTabs.length === 0) {
     return { visibleTabs: tabs, overflowedTabs: [] };

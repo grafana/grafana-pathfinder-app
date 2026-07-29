@@ -16,6 +16,7 @@ import { pushFaroUserAction } from './telemetry/bridge';
 import { normalizeTelemetryUrl } from './telemetry/url';
 import { logger } from './logging';
 import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
+import type { LearningJourneyTabType } from '../types/content-panel.types';
 
 type GetActiveExperimentsFn = () => ExperimentAnalyticsEntry[];
 let _getActiveExperiments: GetActiveExperimentsFn | null = null;
@@ -292,7 +293,7 @@ export function reportAppInteraction(
  * Type definition for tabs compatible with scroll tracking
  */
 export interface ScrollTrackingTab {
-  type?: 'docs' | 'learning-journey' | 'devtools' | 'interactive' | 'editor';
+  type?: LearningJourneyTabType;
   content?: {
     url?: string;
     metadata?: {

@@ -5,7 +5,7 @@ import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { useContentReset } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
-import { hasOnlyNonContentTabs, isNonContentTab, RECOMMENDATIONS_TAB_ID } from '../docs-panel/utils';
+import { hasOnlyNonContentTabs, isNonContentTab } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
@@ -208,7 +208,7 @@ function FloatingPanelInner() {
     tabs,
     activeTabId,
     activeTab: activeTab ?? null,
-    isRecommendationsTab: activeTabId === RECOMMENDATIONS_TAB_ID,
+    isRecommendationsTab: activeTab?.type === 'recommendations',
     model: panel,
   });
   // Prefer `currentUrl` (the milestone the user is reading) so when the user

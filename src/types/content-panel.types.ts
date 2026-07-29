@@ -42,15 +42,18 @@ export interface PendingAlignment {
  * Learning Path or Documentation Tab
  * Represents an open tab in the docs panel
  */
+export type LearningJourneyTabType =
+  'recommendations' | 'learning-journey' | 'docs' | 'devtools' | 'interactive' | 'editor';
+
 export interface LearningJourneyTab {
   id: string;
+  type: LearningJourneyTabType;
   title: string;
   baseUrl: string;
   currentUrl: string;
   content: RawContent | null;
   isLoading: boolean;
   error: string | null;
-  type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive' | 'editor';
   packageInfo?: PackageOpenInfo;
   /** Cached milestone data from initial path package load, used to persist
    *  learningJourney metadata across milestone arrow navigation. */
@@ -68,7 +71,8 @@ export interface PersistedTabData {
   title: string;
   baseUrl: string;
   currentUrl?: string; // The specific milestone/page URL user was viewing (optional for backward compatibility)
-  type?: 'learning-journey' | 'docs' | 'devtools' | 'interactive' | 'editor';
+  /** Optional for records written before tab kind became a required runtime invariant. */
+  type?: LearningJourneyTabType;
   packageInfo?: PackageOpenInfo;
 }
 

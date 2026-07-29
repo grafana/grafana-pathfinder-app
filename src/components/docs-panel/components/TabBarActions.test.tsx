@@ -236,7 +236,13 @@ describe('TabBarActions', () => {
     });
 
     it('is not rendered for the recommendations home tab', () => {
-      render(<TabBarActions activeTab={makeTab({ id: 'recommendations' })} isDevMode onReloadActiveTab={jest.fn()} />);
+      render(
+        <TabBarActions
+          activeTab={makeTab({ id: 'recommendations', type: 'recommendations' })}
+          isDevMode
+          onReloadActiveTab={jest.fn()}
+        />
+      );
       openMenu();
       expect(screen.queryByRole('menuitem', { name: /refresh \(dev\)/i })).not.toBeInTheDocument();
     });

@@ -20,7 +20,7 @@ import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel
 import { testIds } from '../../../constants/testIds';
 
 type DocsPanelStyles = ReturnType<typeof getDocsPanelStyles>;
-import { RECOMMENDATIONS_TAB_ID, GUIDE_STRIP_EXCLUDED_TAB_IDS, getTranslatedTitle } from '../utils';
+import { RECOMMENDATIONS_TAB_ID, getGuideStripTabs, getTranslatedTitle } from '../utils';
 import { TabBarActions } from './TabBarActions';
 import {
   reportAppInteraction,
@@ -76,7 +76,7 @@ export function DocsPanelTabBar({
 }: DocsPanelTabBarProps): React.ReactElement {
   // visibleTabs may still include strip-excluded chrome (recs, Dev Tools) on
   // computeTabVisibility early returns; keep those out of the guide list.
-  const guideTabs = visibleTabs.filter((tab) => !GUIDE_STRIP_EXCLUDED_TAB_IDS.has(tab.id));
+  const guideTabs = getGuideStripTabs(visibleTabs);
 
   return (
     <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
@@ -86,7 +86,7 @@ export function DocsPanelTabBar({
           <div className={styles.tabDivider} aria-hidden="true" />
         </div>
         <button
-          className={`${styles.iconTab} ${activeTabId === RECOMMENDATIONS_TAB_ID ? styles.iconTabActive : ''}`}
+          className={`${styles.iconTab} ${activeTab?.type === 'recommendations' ? styles.iconTabActive : ''}`}
           onClick={() => onSetActiveTab(RECOMMENDATIONS_TAB_ID)}
           title={t('docsPanel.recommendations', 'Recommendations')}
           data-testid={testIds.docsPanel.recommendationsTab}

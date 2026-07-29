@@ -112,6 +112,94 @@ describe('tab-storage-restore', () => {
       expect(tabs[1]!.type).toBe('devtools');
     });
 
+    it('rejects noncanonical reserved IDs and unknown persisted types', async () => {
+      const persistedTabs: PersistedTabData[] = [
+        {
+          id: 'devtools',
+          title: 'Disguised Dev Tools',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          type: 'docs',
+        },
+        {
+          id: 'tab-1',
+          title: 'Disguised docs tab',
+          baseUrl: '',
+          type: 'devtools',
+        },
+        {
+          id: 'editor',
+          title: 'Disguised editor',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          type: 'docs',
+        },
+        {
+          id: 'tab-1',
+          title: 'Content claiming editor privileges',
+          baseUrl: '',
+          type: 'editor',
+        },
+        {
+          id: 'tab-2',
+          title: 'Garbage kind',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          type: 'not-a-real-kind' as PersistedTabData['type'],
+        },
+        {
+          id: 'tab-3',
+          title: 'Numeric kind',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          // Simulate tampered storage that bypassed TypeScript.
+          type: 42 as unknown as PersistedTabData['type'],
+        },
+        {
+          id: 'recommendations',
+          title: 'Disguised home',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          type: 'docs',
+        },
+        {
+          id: 'tab-4',
+          title: 'Content claiming home',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          type: 'recommendations',
+        },
+      ];
+
+      const storage = createMockTabStorage(persistedTabs);
+      const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
+
+      expect(tabs).toEqual([expect.objectContaining({ id: 'recommendations', type: 'recommendations' })]);
+    });
+
+    it('keeps the first record when persisted tab IDs are duplicated', async () => {
+      const persistedTabs: PersistedTabData[] = [
+        { id: 'devtools', title: 'Dev Tools', baseUrl: '', currentUrl: '', type: 'devtools' },
+        { id: 'devtools', title: 'Dev Tools again', baseUrl: '', currentUrl: '', type: 'devtools' },
+        { id: 'editor', title: 'First guide', baseUrl: '', currentUrl: '', type: 'editor' },
+        { id: 'editor', title: 'Second guide', baseUrl: '', currentUrl: '', type: 'editor' },
+        {
+          id: 'tab-1',
+          title: 'First',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          currentUrl: '',
+          type: 'learning-journey',
+        },
+        {
+          id: 'tab-1',
+          title: 'Impostor reusing the same ID',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/other/',
+          currentUrl: '',
+          type: 'learning-journey',
+        },
+      ];
+
+      const storage = createMockTabStorage(persistedTabs);
+      const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
+
+      expect(tabs.map((t) => t.id)).toEqual(['recommendations', 'devtools', 'editor', 'tab-1']);
+      expect(tabs.map((t) => t.title)).toEqual(['Recommendations', 'Dev Tools', 'First guide', 'First']);
+    });
+
     it('should reject tabs with invalid base URL', async () => {
       const persistedTabs: PersistedTabData[] = [
         {
@@ -275,6 +363,7 @@ describe('tab-storage-restore', () => {
       const tabs = [
         {
           id: 'recommendations',
+          type: 'recommendations' as const,
           title: 'Recommendations',
           baseUrl: '',
           currentUrl: '',
@@ -293,13 +382,13 @@ describe('tab-storage-restore', () => {
       const tabs = [
         {
           id: 'recommendations',
+          type: 'recommendations' as const,
           title: 'Recommendations',
           baseUrl: '',
           currentUrl: '',
           content: null,
           isLoading: false,
           error: null,
-          type: undefined,
         },
         {
           id: 'tab-1',
@@ -322,6 +411,7 @@ describe('tab-storage-restore', () => {
       const tabs = [
         {
           id: 'recommendations',
+          type: 'recommendations' as const,
           title: 'Recommendations',
           baseUrl: '',
           currentUrl: '',
@@ -350,13 +440,13 @@ describe('tab-storage-restore', () => {
       const tabs = [
         {
           id: 'recommendations',
+          type: 'recommendations' as const,
           title: 'Recommendations',
           baseUrl: '',
           currentUrl: '',
           content: null,
           isLoading: false,
           error: null,
-          type: undefined,
         },
       ];
 
@@ -375,6 +465,7 @@ describe('tab-storage-restore', () => {
       const tabs = [
         {
           id: 'recommendations',
+          type: 'recommendations' as const,
           title: 'Recommendations',
           baseUrl: '',
           currentUrl: '',
