@@ -236,9 +236,9 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     flex: 1,
     minWidth: 0, // Allow flex shrinking
   }),
-  // Permanent icon-only tabs (Recommendations, My Learning)
-  permanentTabs: css({
-    label: 'combined-journey-permanent-tabs',
+  // Recommendations home icon (left rail)
+  recommendationsTab: css({
+    label: 'combined-journey-recommendations-tab',
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
@@ -397,6 +397,20 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     minWidth: 0, // Critical for allowing text truncation in flex containers
     maxWidth: '100%', // Ensure it doesn't exceed parent
   }),
+  editorTabTitle: css({
+    label: 'combined-journey-editor-tab-title',
+    fontStyle: 'italic',
+    fontWeight: theme.typography.fontWeightLight,
+  }),
+  editorTabDraftBadge: css({
+    label: 'combined-journey-editor-tab-draft-badge',
+    flexShrink: 0,
+    // Compact so the badge fits tab chrome without dominating the title.
+    fontSize: '10px',
+    padding: `0 ${theme.spacing(0.5)}`,
+    lineHeight: '16px',
+    height: 16,
+  }),
   loadingText: css({
     marginLeft: theme.spacing(0.5),
   }),
@@ -525,6 +539,11 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontWeight: 'inherit',
+  }),
+  editorDropdownItemTitle: css({
+    label: 'combined-journey-editor-dropdown-item-title',
+    fontStyle: 'italic',
+    fontWeight: theme.typography.fontWeightLight,
   }),
   dropdownItemClose: css({
     label: 'combined-journey-dropdown-item-close',

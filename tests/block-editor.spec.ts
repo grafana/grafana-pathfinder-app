@@ -20,8 +20,9 @@ import { TIMEOUTS } from './constants';
  * Block Editor E2E Tests
  *
  * These tests verify the block editor functionality available to admin/editor users.
- * The block editor lives in its own "editor" tab, separate from the dev-mode-gated
- * devtools tab. Dev mode is still enabled here because the recording test needs it
+ * The guide editor opens from the overflow menu ("Create guide") as a strip tab,
+ * separate from the dev-mode-gated Dev tools view. Dev mode is still enabled here
+ * because the recording test needs it
  * for the recording overlay to function.
  *
  * Tests run serially to prevent race conditions from parallel execution

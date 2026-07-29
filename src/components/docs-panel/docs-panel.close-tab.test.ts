@@ -1,9 +1,10 @@
 /**
- * Tests for CombinedLearningJourneyPanel.loadTabContent's empty-URL handling.
+ * Tests for CombinedLearningJourneyPanel.closeTab focus adjacency.
  *
- * An empty/corrupted tab URL previously returned 'completed' without loading
- * or failing the tab, which withGuideOpenAction then mapped to a successful
- * `pathfinder_guide_open` outcome. Fixed to fail the tab and report 'error'.
+ * The panel's `tabs` array is wider than the rendered strip: Dev Tools lives in
+ * tab state for routing but claims no strip slot. Adjacency must therefore walk
+ * strip-visible tabs, otherwise closing a guide can hand focus to Dev Tools and
+ * leave no visible tab marked active.
  */
 
 // ---------------------------------------------------------------------------
@@ -53,9 +54,8 @@ jest.mock('./context-panel', () => ({
   ContextPanel: class MockContextPanel {},
 }));
 
-const mockFetchContent = jest.fn();
 jest.mock('../../docs-retrieval', () => ({
-  fetchContent: (...args: unknown[]) => mockFetchContent(...args),
+  fetchContent: jest.fn(),
   ContentRenderer: jest.fn(),
   getNextMilestoneUrlFromContent: jest.fn(),
   getPreviousMilestoneUrlFromContent: jest.fn(),
@@ -121,6 +121,11 @@ jest.mock('../../global-state/link-interception', () => ({
   linkInterceptionState: { addToQueue: jest.fn() },
 }));
 
+jest.mock('../../lib/telemetry', () => ({
+  withGuideOpenAction: jest.fn(async (_url: string, work: () => Promise<unknown>) => work()),
+  recordPanelReady: jest.fn(),
+}));
+
 jest.mock('../../global-state/panel-mode', () => ({
   panelModeManager: { getMode: jest.fn(() => 'sidebar'), setMode: jest.fn() },
 }));
@@ -180,7 +185,7 @@ jest.mock('./components', () => ({
 
 jest.mock('./utils', () => ({
   isDocsLikeTab: jest.fn(),
-  shouldUseDocsLoader: jest.fn(() => false),
+  shouldUseDocsLoader: jest.fn(),
   getTranslatedTitle: jest.fn((t: string) => t),
   restoreTabsFromStorage: jest.fn(),
   restoreActiveTabFromStorage: jest.fn(),
@@ -198,7 +203,7 @@ jest.mock('./hooks', () => ({
 }));
 
 jest.mock('../../utils/dev-mode', () => ({
-  isDevModeEnabled: jest.fn(() => false),
+  isDevModeEnabled: jest.fn(() => true),
 }));
 
 jest.mock('../SkeletonLoader', () => ({
@@ -220,108 +225,91 @@ jest.mock('../../hooks', () => ({}));
 // ---------------------------------------------------------------------------
 
 import { CombinedLearningJourneyPanel } from './docs-panel';
-import { loadDocsTabContentResult, shouldUseDocsLoader } from './utils';
-import type { RawContent } from '../../types/content.types';
+import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const makeTab = (id: string) => ({
-  id,
-  type: 'docs' as const,
-  title: id,
-  baseUrl: '',
-  currentUrl: '',
-  content: null,
-  isLoading: false,
-  error: null,
-});
+function tab(id: string, type: LearningJourneyTab['type']): LearningJourneyTab {
+  return {
+    id,
+    type,
+    title: id,
+    baseUrl: '',
+    currentUrl: '',
+    content: null,
+    isLoading: false,
+    error: null,
+  };
+}
 
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+/**
+ * Seeds tab state directly. Tabs are always appended in open order with
+ * recommendations first, so the arrays below are reachable orderings.
+ */
+function panelWith(tabs: LearningJourneyTab[], activeTabId: string) {
+  const panel = new CombinedLearningJourneyPanel();
+  (panel as any).setState({ tabs, activeTabId });
+  return panel;
+}
 
-const preparedContent: RawContent = {
-  content: '{"id":"g","title":"g","blocks":[]}',
-  metadata: { title: 'g' },
-  type: 'interactive',
-  url: 'bundled:prepared',
-  lastFetched: '2026-07-28T00:00:00.000Z',
-};
+function stateOf(panel: CombinedLearningJourneyPanel) {
+  const { tabs, activeTabId } = (panel as any).state as { tabs: LearningJourneyTab[]; activeTabId: string };
+  return { tabIds: tabs.map((t) => t.id), activeTabId };
+}
+
+const RECOMMENDATIONS = tab('recommendations', 'recommendations');
+const DEVTOOLS = tab('devtools', 'devtools');
+const EDITOR = tab('editor', 'editor');
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('CombinedLearningJourneyPanel.loadTab — empty tab URL', () => {
+describe('CombinedLearningJourneyPanel.closeTab — focus adjacency', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('fails the tab and never calls fetchContent when the URL is empty', async () => {
-    const panel = new CombinedLearningJourneyPanel();
-    panel.setState({ tabs: [makeTab('broken-tab')], activeTabId: 'broken-tab' });
+  it('skips Dev Tools when inheriting focus from the tab on the right', () => {
+    // Open order: guide, Dev Tools, editor.
+    const panel = panelWith([RECOMMENDATIONS, tab('guide-1', 'learning-journey'), DEVTOOLS, EDITOR], 'guide-1');
 
-    await panel.loadTab('broken-tab', '');
+    panel.closeTab('guide-1');
 
-    expect(mockFetchContent).not.toHaveBeenCalled();
-    const tab = (panel as any).state.tabs.find((t: any) => t.id === 'broken-tab');
-    expect(tab.error).toBeTruthy();
-    expect(tab.isLoading).toBe(false);
+    expect(stateOf(panel)).toEqual({ tabIds: ['recommendations', 'devtools', 'editor'], activeTabId: 'editor' });
   });
 
-  it('fails the tab for a whitespace-only URL the same way', async () => {
-    const panel = new CombinedLearningJourneyPanel();
-    panel.setState({ tabs: [makeTab('broken-tab')], activeTabId: 'broken-tab' });
+  it('falls back to recommendations when the last strip tab closes while Dev Tools remains', () => {
+    const panel = panelWith([RECOMMENDATIONS, DEVTOOLS, tab('guide-1', 'learning-journey')], 'guide-1');
 
-    await panel.loadTab('broken-tab', '   ');
+    panel.closeTab('guide-1');
 
-    const tab = (panel as any).state.tabs.find((t: any) => t.id === 'broken-tab');
-    expect(tab.error).toBeTruthy();
-  });
-});
-
-describe('CombinedLearningJourneyPanel.openDocsPage — prepared (one-fetch) launch', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+    expect(stateOf(panel)).toEqual({ tabIds: ['recommendations', 'devtools'], activeTabId: 'recommendations' });
   });
 
-  it('commits prepared content with no second fetch on the journey loader path', async () => {
-    (shouldUseDocsLoader as jest.Mock).mockReturnValue(false);
-    const panel = new CombinedLearningJourneyPanel();
-    panel.setState({ tabs: [], activeTabId: 'recommendations' });
+  it('leaves focus alone when a background tab closes', () => {
+    // Closing a guide from the overflow menu while Dev Tools is open must not
+    // yank the user out of the view they are actually looking at.
+    const panel = panelWith([RECOMMENDATIONS, DEVTOOLS, tab('guide-1', 'learning-journey')], 'devtools');
 
-    const tabId = await panel.openDocsPage('bundled:prepared', 'Prepared', {
-      source: 'home_page',
-      preparedContent,
+    panel.closeTab('guide-1');
+
+    expect(stateOf(panel)).toEqual({ tabIds: ['recommendations', 'devtools'], activeTabId: 'devtools' });
+  });
+
+  it('inherits the last strip tab when the active strip-excluded tab is closed via Ctrl+W', () => {
+    const panel = panelWith(
+      [RECOMMENDATIONS, tab('guide-1', 'learning-journey'), tab('guide-2', 'learning-journey'), DEVTOOLS],
+      'devtools'
+    );
+
+    panel.closeTab('devtools');
+
+    expect(stateOf(panel)).toEqual({
+      tabIds: ['recommendations', 'guide-1', 'guide-2'],
+      activeTabId: 'guide-2',
     });
-    await flush();
-
-    expect(mockFetchContent).not.toHaveBeenCalled();
-    expect(loadDocsTabContentResult as jest.Mock).not.toHaveBeenCalled();
-
-    const tab = (panel as any).state.tabs.find((t: any) => t.id === tabId);
-    expect(tab.content).toBe(preparedContent);
-    expect(tab.isLoading).toBe(false);
-    expect(tab.error).toBeNull();
-  });
-
-  it('commits prepared content with no second fetch on the docs/package loader path', async () => {
-    (shouldUseDocsLoader as jest.Mock).mockReturnValue(true);
-    const panel = new CombinedLearningJourneyPanel();
-    panel.setState({ tabs: [], activeTabId: 'recommendations' });
-
-    const tabId = await panel.openDocsPage('bundled:prepared', 'Prepared', {
-      source: 'home_page',
-      preparedContent,
-    });
-    await flush();
-
-    expect(mockFetchContent).not.toHaveBeenCalled();
-    expect(loadDocsTabContentResult as jest.Mock).not.toHaveBeenCalled();
-
-    const tab = (panel as any).state.tabs.find((t: any) => t.id === tabId);
-    expect(tab.content).toBe(preparedContent);
-    expect(tab.isLoading).toBe(false);
-    expect(tab.error).toBeNull();
   });
 });

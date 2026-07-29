@@ -8,7 +8,7 @@ import { useContentReset } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
-import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
+import { hasOnlyNonContentTabs, isNonContentTab } from '../docs-panel/utils';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
@@ -127,13 +127,9 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     // for this render. Using the live state stops us from restoring on
     // top of a tab the handoff just opened — that would await tabStorage
     // and overwrite the new tab if storage was empty or stale.
-    // Permanent system tabs (`recommendations`, `devtools`, `editor`) don't
-    // count as user content — restoring on top of them is safe. Mirrors the
-    // sidebar's gate at `docs-panel.tsx` so all three surfaces agree on
-    // when "the panel is empty".
-    const liveTabs = panel.state.tabs;
-    const hasOnlyDefaultTabs = liveTabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
-    const restore = hasOnlyDefaultTabs ? panel.restoreTabsAsync() : Promise.resolve();
+    // Only restore when no content tabs are open (editor chrome alone is OK).
+    // Mirrors the sidebar gate — avoids skipping restore when only Create Guide is open.
+    const restore = hasOnlyNonContentTabs(panel.state.tabs) ? panel.restoreTabsAsync() : Promise.resolve();
     restore.then(() => setRestorationDone(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -191,7 +187,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const isEditorTab = activeTab?.type === 'editor';
   const content = activeTab?.content ?? null;
   const title = isEditorTab ? EDITOR_FULL_SCREEN_TITLE : activeTab?.title || 'Interactive learning';
-  const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations' && !isEditorTab;
+  const hasActiveGuide = activeTab != null && !isNonContentTab(activeTab);
   // Prefer `currentUrl` (the milestone the user is reading) so when the user
   // goes fullscreen → floating via `handleSwitchToFloating`, auto-docks via
   // navigation away, or copies a shareable link, the milestone position
@@ -240,7 +236,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     tabs,
     activeTabId,
     activeTab: activeTab ?? null,
-    isRecommendationsTab: activeTabId === 'recommendations',
+    isRecommendationsTab: activeTab?.type === 'recommendations',
     model: panel,
   });
 

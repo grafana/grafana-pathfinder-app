@@ -37,6 +37,7 @@ jest.mock('../../../docs-retrieval', () => ({
 // Heavy leaf children are irrelevant to the footer button — stub them out so
 // the branch renders without their dependency trees.
 jest.mock('../../content-renderer/content-renderer', () => ({ ContentRenderer: () => null }));
+jest.mock('../../SelectorDebugPanel', () => ({ SelectorDebugPanel: () => null }));
 jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestoneToolbar: () => null }));
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));
 
@@ -74,8 +75,8 @@ function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPane
     isFullScreenActive: false,
     isRecommendationsTab: false,
     isEditorUser: false,
+    isDevMode: false,
     isWysiwygPreview: false,
-    activeTabId: 'tab-1',
     activeTab,
     stableContent: activeTab.content,
     hasInteractiveProgress: false,
@@ -113,6 +114,96 @@ describe('DocsPanelContentArea', () => {
         action: 'navigate_to_recommendations',
         source: 'content_footer',
       });
+    });
+  });
+
+  describe('Dev Tools render gate', () => {
+    const devToolsTab = {
+      id: 'devtools',
+      type: 'devtools' as const,
+      title: 'Dev Tools',
+      baseUrl: '',
+      currentUrl: '',
+      content: null,
+      isLoading: false,
+      error: null,
+    };
+
+    it('renders Dev Tools when the tab type and dev-mode gate both allow it', () => {
+      render(<DocsPanelContentArea {...makeProps({ activeTab: devToolsTab, stableContent: null, isDevMode: true })} />);
+
+      expect(screen.getByTestId('devtools-tab-content')).toBeInTheDocument();
+    });
+
+    it('does not dispatch to Dev Tools from the reserved ID alone', () => {
+      render(
+        <DocsPanelContentArea
+          {...makeProps({
+            activeTab: { ...devToolsTab, type: 'docs' },
+            stableContent: null,
+            isDevMode: true,
+          })}
+        />
+      );
+
+      expect(screen.queryByTestId('devtools-tab-content')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Unauthorized gated chrome', () => {
+    // Pruning removes these tabs from state, but the render pass that observes
+    // the revoked gate must land somewhere coherent rather than falling into the
+    // content branches, which assume a tab with a URL to fetch.
+    const home = { Component: () => <div data-testid="home-content" /> } as any;
+
+    it('renders home for a Dev Tools tab when dev mode is off', () => {
+      render(
+        <DocsPanelContentArea
+          {...makeProps({
+            activeTab: {
+              id: 'devtools',
+              type: 'devtools',
+              title: 'Dev Tools',
+              baseUrl: '',
+              currentUrl: '',
+              content: null,
+              isLoading: false,
+              error: null,
+            } as any,
+            stableContent: null,
+            isDevMode: false,
+            contextPanel: home,
+          })}
+        />
+      );
+
+      expect(screen.getByTestId('home-content')).toBeInTheDocument();
+      expect(screen.queryByTestId('devtools-tab-content')).not.toBeInTheDocument();
+    });
+
+    it('renders home for an editor tab when the user is not an editor', () => {
+      render(
+        <DocsPanelContentArea
+          {...makeProps({
+            activeTab: {
+              id: 'editor',
+              type: 'editor',
+              title: 'New Guide',
+              baseUrl: '',
+              currentUrl: '',
+              content: null,
+              isLoading: false,
+              error: null,
+            } as any,
+            stableContent: null,
+            isEditorUser: false,
+            contextPanel: home,
+          })}
+        />
+      );
+
+      expect(screen.getByTestId('home-content')).toBeInTheDocument();
+      expect(screen.queryByTestId('editor-tab-content')).not.toBeInTheDocument();
     });
   });
 });

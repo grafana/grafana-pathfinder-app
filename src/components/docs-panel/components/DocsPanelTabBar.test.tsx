@@ -38,7 +38,13 @@ jest.mock('../../../docs-retrieval', () => ({
 const { __mockPush: mockPush } = jest.requireMock('@grafana/runtime');
 
 function makeProps(overrides: Partial<DocsPanelTabBarProps> = {}): DocsPanelTabBarProps {
-  const recommendationsTab: any = { id: 'recommendations', title: 'Recommendations', baseUrl: '', currentUrl: '' };
+  const recommendationsTab: any = {
+    id: 'recommendations',
+    type: 'recommendations',
+    title: 'Recommendations',
+    baseUrl: '',
+    currentUrl: '',
+  };
   const styles = new Proxy({}, { get: (_target, prop) => String(prop) }) as any;
   const ref = { current: null } as any;
 
@@ -61,6 +67,8 @@ function makeProps(overrides: Partial<DocsPanelTabBarProps> = {}): DocsPanelTabB
     onSetActiveTab: jest.fn(),
     onCloseTab: jest.fn(),
     reloadActiveTab: jest.fn(),
+    onOpenEditorTab: jest.fn(),
+    onOpenDevToolsTab: jest.fn(),
     ...overrides,
   };
 }

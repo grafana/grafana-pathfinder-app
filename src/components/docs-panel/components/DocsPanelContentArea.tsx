@@ -29,7 +29,12 @@ import { getConfigWithDefaults } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
-import { isDocsLikeTab, pickGrafanaDocsOpenAction, pickControllerTabOpenAction } from '../utils';
+import {
+  isDocsLikeTab,
+  pickGrafanaDocsOpenAction,
+  pickControllerTabOpenAction,
+  RECOMMENDATIONS_TAB_ID,
+} from '../utils';
 import {
   reportAppInteraction,
   UserInteraction,
@@ -79,9 +84,9 @@ export interface DocsPanelContentAreaProps {
   isFullScreenActive: boolean;
   isRecommendationsTab: boolean;
   isEditorUser: boolean;
+  isDevMode: boolean;
   isWysiwygPreview: boolean;
 
-  activeTabId: string;
   activeTab: LearningJourneyTab | null;
   stableContent: LearningJourneyTab['content'] | undefined;
 
@@ -107,8 +112,8 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
     isFullScreenActive,
     isRecommendationsTab,
     isEditorUser,
+    isDevMode,
     isWysiwygPreview,
-    activeTabId,
     activeTab,
     stableContent,
     hasInteractiveProgress,
@@ -134,7 +139,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           return <contextPanel.Component model={contextPanel} />;
         }
 
-        if (activeTabId === 'devtools') {
+        // Defense in depth: authorization is checked again at the render
+        // boundary even though unauthorized tabs are pruned from model state.
+        if (activeTab?.type === 'devtools' && isDevMode) {
           return (
             <div className={styles.devToolsContent} data-testid="devtools-tab-content">
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
@@ -156,7 +163,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           );
         }
 
-        if (activeTabId === 'editor' && isEditorUser) {
+        if (activeTab?.type === 'editor' && isEditorUser) {
           return (
             <div className={styles.devToolsContent} data-testid="editor-tab-content">
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
@@ -164,6 +171,14 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
               </Suspense>
             </div>
           );
+        }
+
+        // Reaching here with gated chrome means its authorization check above
+        // failed. Pruning removes the tab from state, but until that commits,
+        // render home rather than the content paths below, which assume a tab
+        // with a URL to fetch.
+        if (activeTab?.type === 'devtools' || activeTab?.type === 'editor') {
+          return <contextPanel.Component model={contextPanel} />;
         }
 
         if (activeTab?.isLoading) {
@@ -443,7 +458,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         action: 'navigate_to_recommendations',
                         source: 'content_footer',
                       });
-                      model.setActiveTab('recommendations');
+                      model.setActiveTab(RECOMMENDATIONS_TAB_ID);
                     }}
                   >
                     {t('docsPanel.returnToMyLearning', 'Return to my learning')}

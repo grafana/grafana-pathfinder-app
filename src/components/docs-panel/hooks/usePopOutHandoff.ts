@@ -61,7 +61,7 @@ export function usePopOutHandoff(model: PopOutModel): void {
         return;
       }
 
-      if (!activeTab || activeTab.id === 'recommendations' || !guideUrl) {
+      if (!activeTab || activeTab.type === 'recommendations' || activeTab.type === 'devtools' || !guideUrl) {
         getAppEvents().publish({
           type: 'alert-info',
           payload: ['Open a guide before popping out the panel.'],

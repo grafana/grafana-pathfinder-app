@@ -11,9 +11,17 @@ describe('useKeyboardShortcuts', () => {
   };
 
   const mockTabs = [
-    { id: 'tab1', title: 'Tab 1', baseUrl: '', content: null, isLoading: false, error: null },
-    { id: 'tab2', title: 'Tab 2', baseUrl: '', content: null, isLoading: false, error: null },
-    { id: 'recommendations', title: 'Recommendations', baseUrl: '', content: null, isLoading: false, error: null },
+    { id: 'tab1', type: 'docs', title: 'Tab 1', baseUrl: '', content: null, isLoading: false, error: null },
+    { id: 'tab2', type: 'docs', title: 'Tab 2', baseUrl: '', content: null, isLoading: false, error: null },
+    {
+      id: 'recommendations',
+      type: 'recommendations',
+      title: 'Recommendations',
+      baseUrl: '',
+      content: null,
+      isLoading: false,
+      error: null,
+    },
   ] as LearningJourneyTab[];
 
   beforeEach(() => {
@@ -77,6 +85,87 @@ describe('useKeyboardShortcuts', () => {
     // Backward tab
     mockModel.setActiveTab.mockClear();
     fireEvent.keyDown(document, { key: 'Tab', ctrlKey: true, shiftKey: true });
+    expect(mockModel.setActiveTab).toHaveBeenCalledWith('recommendations');
+  });
+
+  it('should skip Dev Tools when cycling with Ctrl+Tab', () => {
+    const tabsWithDevTools = [
+      {
+        id: 'recommendations',
+        type: 'recommendations',
+        title: 'Recommendations',
+        baseUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+      },
+      {
+        id: 'devtools',
+        type: 'devtools',
+        title: 'Dev Tools',
+        baseUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+      },
+      { id: 'tab1', type: 'docs', title: 'Tab 1', baseUrl: '', content: null, isLoading: false, error: null },
+      { id: 'tab2', type: 'docs', title: 'Tab 2', baseUrl: '', content: null, isLoading: false, error: null },
+    ] as LearningJourneyTab[];
+
+    renderHook(() =>
+      useKeyboardShortcuts({
+        tabs: tabsWithDevTools,
+        activeTabId: 'tab1',
+        activeTab: tabsWithDevTools[2]!,
+        isRecommendationsTab: false,
+        model: mockModel,
+      })
+    );
+
+    fireEvent.keyDown(document, { key: 'Tab', ctrlKey: true });
+    expect(mockModel.setActiveTab).toHaveBeenCalledWith('tab2');
+    expect(mockModel.setActiveTab).not.toHaveBeenCalledWith('devtools');
+
+    mockModel.setActiveTab.mockClear();
+    fireEvent.keyDown(document, { key: 'Tab', ctrlKey: true, shiftKey: true });
+    // From tab1 backward → recommendations, skipping Dev Tools between them.
+    expect(mockModel.setActiveTab).toHaveBeenCalledWith('recommendations');
+  });
+
+  it('should leave Dev Tools via Ctrl+Tab onto a focusable tab', () => {
+    const tabsWithDevTools = [
+      {
+        id: 'recommendations',
+        type: 'recommendations',
+        title: 'Recommendations',
+        baseUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+      },
+      {
+        id: 'devtools',
+        type: 'devtools',
+        title: 'Dev Tools',
+        baseUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+      },
+      { id: 'tab1', type: 'docs', title: 'Tab 1', baseUrl: '', content: null, isLoading: false, error: null },
+    ] as LearningJourneyTab[];
+
+    renderHook(() =>
+      useKeyboardShortcuts({
+        tabs: tabsWithDevTools,
+        activeTabId: 'devtools',
+        activeTab: tabsWithDevTools[1]!,
+        isRecommendationsTab: false,
+        model: mockModel,
+      })
+    );
+
+    fireEvent.keyDown(document, { key: 'Tab', ctrlKey: true });
     expect(mockModel.setActiveTab).toHaveBeenCalledWith('recommendations');
   });
 

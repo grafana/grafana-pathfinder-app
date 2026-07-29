@@ -210,7 +210,8 @@ jest.mock('./utils', () => ({
   isGrafanaDocsUrl: jest.fn(),
   cleanDocsUrl: jest.fn((url: string) => url),
   loadDocsTabContentResult: (...args: unknown[]) => mockLoadDocsTabContentResult(...args),
-  PERMANENT_TAB_IDS: new Set(['recommendations', 'devtools', 'editor']),
+  ...jest.requireActual('./utils/tab-kinds'),
+  ...jest.requireActual('./utils/tab-gates'),
 }));
 
 jest.mock('./hooks', () => ({
