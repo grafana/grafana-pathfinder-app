@@ -2,7 +2,7 @@
 
 **Grafana Pathfinder** is a Grafana App Plugin that renders contextual, interactive documentation in a right-hand sidebar inside Grafana: context-aware recommendations, tutorials with "Show me" / "Do it" UI automation, and per-step completion tracking. React + TypeScript + Grafana Scenes frontend, Go backend on `grafana-plugin-sdk-go`.
 
-It targets beginners and intermediate users learning Grafana, not experts after reference docs — when a product call hinges on audience, favour the newcomer. Scope and goals: `.cursor/rules/projectbrief.mdc`.
+It targets beginners and intermediate users learning Grafana, not experts after reference docs — when a product call hinges on audience, favor the newcomer. Scope and goals: `.cursor/rules/projectbrief.mdc`.
 
 ## Code style and conventions
 
@@ -30,7 +30,7 @@ Do not create summary `.md` files (`IMPLEMENTATION_SUMMARY.md`, `CLEANUP_SUMMARY
 
 ## Skills
 
-Skills are reusable agent workflows shared by every agent on this repo, regardless of harness. Bodies live in `.cursor/skills/<name>/SKILL.md`; each has a committed pointer stub at `.claude/skills/<name>/SKILL.md` so Claude Code resolves `/<name>` natively. Frontmatter (`name` + `description`) is the single source of truth for what a skill does and when it applies. Read a skill's `SKILL.md` before running it, and follow it exactly.
+Skills are reusable agent workflows shared by every agent on this repo, regardless of harness. Bodies live in `.cursor/skills/<name>/SKILL.md`; each has a committed pointer stub at `.claude/skills/<name>/SKILL.md` so Claude Code resolves `/<name>` natively. Frontmatter (`name` + `description`) is the single source of truth for what a skill does and when it applies. Invoke a skill by name; harnesses that support slash commands expose it as `/<name>`. Read a skill's `SKILL.md` before running it, and follow it exactly.
 
 Adding a skill means both halves — the body under `.cursor/skills/`, and the stub. `src/validation/skill-references.test.ts` fails if either is missing or their frontmatter diverges.
 

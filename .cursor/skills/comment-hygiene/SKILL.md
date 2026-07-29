@@ -5,7 +5,7 @@ description: The full QC8 comment-quality catalog — eight bad comment shapes t
 
 # Comment hygiene (QC8 catalog)
 
-**Default to no comments.** Add one only when removing it would confuse a reader who can read the surrounding code. The narrow band that earns a comment: counterintuitive code that looks wrong but is correct, hidden invariants, or workarounds for specific external bugs (with a link).
+**Default to no comments.** Add one only when removing it would confuse a reader who can read the surrounding code. The narrow band that earns a comment: counterintuitive code that looks wrong but is correct, hidden invariants the type system can't express, workarounds for specific external bugs (with an upstream link), and security or correctness warnings. The keep-list below expands each.
 
 **Trim on touch.** When editing a function, also trim bad-shape comments inside that function and on adjacent declarations in the same file. Do not sweep whole files or grep across the repo for cleanup — comment removal rides along on code changes, never as a standalone PR.
 

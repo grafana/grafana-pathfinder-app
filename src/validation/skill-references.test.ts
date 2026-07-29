@@ -467,7 +467,8 @@ describe('Skill stub parity — .cursor/skills ↔ .claude/skills', () => {
     }
     if (orphanStub.length > 0) {
       problems.push(
-        `Stubs with no ${SKILL_SOURCE_DIR} body (delete the stub, or add the body if the skill is real):\n` +
+        `Stubs with no ${SKILL_SOURCE_DIR} body (delete the stub, or add the body if the skill is real). ` +
+          `A personal skill you do not want committed belongs in ~/.claude/skills/, which is outside the repo:\n` +
           orphanStub.map((n) => `  - ${SKILL_STUB_DIR}/${n}/SKILL.md`).join('\n')
       );
     }
@@ -497,7 +498,9 @@ describe('Skill stub parity — .cursor/skills ↔ .claude/skills', () => {
   });
 
   it.each(paired)('%s: frontmatter declares a name matching its directory', (name) => {
-    expect(readFrontmatter(`${SKILL_SOURCE_DIR}/${name}/SKILL.md`)).toContain(`name: ${name}`);
+    // Anchored: a substring match would let directory `review` pass on `name: reviewer`.
+    const declared = new RegExp(`^name: ${name}\\s*$`, 'm');
+    expect(readFrontmatter(`${SKILL_SOURCE_DIR}/${name}/SKILL.md`)).toMatch(declared);
   });
 });
 
