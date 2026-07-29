@@ -67,31 +67,26 @@ export function findDocPage(param: string): DocPage | null {
   }
 
   // Case 2: Interactive Learning URL
-  if (param.includes('interactive-learning.grafana')) {
-    let url = param;
-    if (!url.startsWith('http')) {
-      url = 'https://' + url;
-    }
+  let interactiveURL = param;
+  if (!interactiveURL.startsWith('http')) {
+    interactiveURL = 'https://' + interactiveURL;
+  }
 
-    // SECURITY: Use validated interactive learning URL check
-    if (!isInteractiveLearningUrl(url)) {
-      logger.warn('Security: Rejected non-interactive-learning URL', { url });
-      return null;
-    }
-
-    // Derive a readable title from the URL path.
-    // Strip trailing content.json / unstyled.html and use the last meaningful path segment.
-    // e.g. ".../guides/grafana-13-tour-play/content.json" → "Grafana 13 Tour Play"
-    const cleanedUrl = url.replace(/\/(content\.json|unstyled\.html)$/i, '');
-    const parts = cleanedUrl.split('/').filter(Boolean);
+  if (isInteractiveLearningUrl(interactiveURL)) {
+    const cleanedURL = interactiveURL.replace(/\/(content\.json|unstyled\.html)$/i, '');
+    const parts = cleanedURL.split('/').filter(Boolean);
     const slug = parts[parts.length - 1] || 'Interactive tutorial';
     const title = formatSlug(slug);
 
     return {
       type: 'interactive',
-      url: url,
-      title: title,
+      url: interactiveURL,
+      title,
     };
+  }
+
+  if (interactiveURL.includes('interactive-learning')) {
+    logger.warn('Security: Rejected non-interactive-learning URL', { url: interactiveURL });
   }
 
   // Case 3: Check Static Links for curated content (Grafana.com docs)

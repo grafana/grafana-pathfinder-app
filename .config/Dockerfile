@@ -14,7 +14,7 @@ ENV DEV "${development}"
 # Do NOT enable these settings in a public facing / production grafana instance
 ENV GF_AUTH_ANONYMOUS_ORG_ROLE "Admin"
 ENV GF_AUTH_ANONYMOUS_ENABLED "${anonymous_auth_enabled}"
-ENV GF_AUTH_BASIC_ENABLED "false"
+ENV GF_AUTH_BASIC_ENABLED "true"
 # Set development mode so plugins can be loaded without the need to sign
 ENV GF_DEFAULT_APP_MODE "development"
 
