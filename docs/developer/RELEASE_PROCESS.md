@@ -6,14 +6,9 @@ This document describes how releases are created and managed for the Grafana Pat
 
 The project uses several GitHub Actions workflows for different release scenarios:
 
-### 1. Tag-Based Plugin Releases (`.github/workflows/release.yml`)
+### 1. Tag-based build (`.github/workflows/release.yml`) — NOT the release path
 
-- **Trigger**: Push of version tags matching pattern `v*` (e.g., `v1.0.0`)
-- **Process**:
-  - Uses `grafana/plugin-actions/build-plugin` action
-  - Builds the plugin for distribution
-  - Plugin signing is available but currently commented out
-  - Creates GitHub release with built artifacts
+> **Do not release by pushing a tag.** This workflow builds a plugin zip + GitHub release on a `v*` tag push, but it is **not how Pathfinder ships** and is not exercised in practice — no v2.x tag has triggered it, and the v2.x GitHub releases are unpublished drafts. It also currently fails (the `build-plugin` action defaults to Node 20; the repo requires Node ≥ 24). Releases go out via the CD workflow (#2). The file is kept for reference only.
 
 ### 2. Manual Publishing (`.github/workflows/publish.yml`)
 
@@ -74,9 +69,11 @@ npm run sign           # Sign plugin for distribution
 
 ### Environment Progression
 
-1. **Development** (`dev`) - Automatic on push to main
-2. **Operations** (`ops`) - Manual via publish workflow
-3. **Production** (`prod`) - Manual via publish workflow
+All environments deploy **manually** via the CD (`Plugins - CD`) workflow dispatch — **nothing auto-deploys on merge to `main`**:
+
+1. **Development** (`dev`) — manual CD dispatch; deployment_tools PR auto-merges.
+2. **Operations** (`ops`) — manual CD dispatch; deployment_tools PR auto-merges.
+3. **prod-canary / Production** (`prod`) — manual CD dispatch; requires clicking **"Resume"** on the paused approval step in the Argo UI.
 
 ### Plugin Scope
 
@@ -96,25 +93,29 @@ npm run sign           # Sign plugin for distribution
 
 ## Release Process Steps
 
-### For Official Releases
+A release is two phases: **(1)** prep the version + changelog on `main`, then **(2)** deploy `main` to each environment via the CD workflow. **There is no tag-based release.**
 
-1. Update version in `package.json`
-2. Create and push version tag (`git tag v1.1.32 && git push origin v1.1.32`)
-3. GitHub Actions automatically builds and creates release
-4. Optionally sign plugin for distribution
+### Phase 1 — Prepare the release (version + changelog)
 
-### For Development Deployments
+Use the `release-prep` skill (or do it by hand):
 
-1. Push changes to `main` branch
-2. Automatic deployment to `dev` environment
-3. Monitor via Slack channel `#pathfinder-app-release`
+1. Bump the version in `package.json` + `package-lock.json` (never `src/plugin.json` — it carries `%VERSION%`, substituted at build).
+2. Draft the `CHANGELOG.md` entry (via the `changelog` skill).
+3. Validate under the repo's pinned Node (`.nvmrc` = 24.18; e.g. `fnm use` / `nvm use`): `npm run check` and `npm run build`.
+4. Commit `chore: prep v<version> release` on a **branch** and open a **PR** to `main` — `main` is protected, so you cannot push to it directly. Merge once approved + green.
 
-### For Production Deployments
+No git tag is required. (If you want a GitHub release entry for the record, create it manually — the tag→`release.yml` build is not used.)
 
-1. Use manual publish workflow
-2. Select target environment (ops/prod)
-3. Choose branch to deploy from
-4. Monitor deployment via Argo Workflow
+### Phase 2 — Deploy via CD (`Plugins - CD` → `publish.yml`)
+
+Deploy `main` to each environment in order — **dev → ops → prod-canary → prod** — by dispatching the **"Plugins - CD"** workflow (`workflow_dispatch`) with `branch: main` and the target `environment`. **All environments are manual dispatches; nothing auto-deploys on merge to `main`.**
+
+Under the hood, CD opens a `grafana/deployment_tools` PR per environment that bumps the provisioned plugin version:
+
+- **dev + ops** — the deployment_tools PR **auto-merges** once its CI passes; no manual action.
+- **prod-canary + prod** — the Argo workflow **pauses at an approval step**. Monitor the run in the Argo UI (`argo-workflows.grafana.net`, `grafana-plugins-cd`) and click **"Resume"** on each paused approval step to let it proceed. You approve in **Argo**, not in `deployment_tools` — CD handles the PR after approval.
+
+Deploy-start, per-environment PR links, and "waiting for manual approval… click Resume" prompts all post to Slack **`#pathfinder-app-release`**.
 
 ## Monitoring and Notifications
 
