@@ -20,8 +20,6 @@ import { HeaderKebab } from './header/HeaderKebab';
 export interface BlockEditorHeaderProps {
   /** Guide title to display */
   guideTitle: string;
-  /** Guide ID — null means not yet assigned (hides the ID display) */
-  guideId: string | null;
   /** Whether there are unsaved local changes */
   isDirty: boolean;
   /**
@@ -94,7 +92,6 @@ export interface BlockEditorHeaderProps {
 
 export function BlockEditorHeader({
   guideTitle,
-  guideId,
   isDirty,
   publishedStatus,
   hasUnsyncedChanges,
@@ -129,39 +126,31 @@ export function BlockEditorHeader({
   const styles = useStyles2(getHeaderStyles);
 
   const backendBadge = () => {
-    if (publishedStatus === 'not-saved') {
-      return (
-        <Tooltip content="Not yet saved to library">
-          <Badge text="Draft" color="purple" icon="circle" />
-        </Tooltip>
-      );
-    }
-    if (publishedStatus === 'draft') {
-      if (hasUnsyncedChanges) {
-        return (
-          <Tooltip content="Draft has unsaved changes">
-            <Badge text="Draft (modified)" color="orange" icon="exclamation-triangle" />
-          </Tooltip>
-        );
-      }
-      return (
-        <Tooltip content="Saved to library but not published to users">
-          <Badge text="Draft" color="purple" icon="circle" />
-        </Tooltip>
-      );
-    }
-    if (hasUnsyncedChanges) {
-      return (
-        <Tooltip content="Published guide has unsaved changes">
-          <Badge text="Published (modified)" color="orange" icon="exclamation-triangle" />
-        </Tooltip>
-      );
-    }
-    return (
-      <Tooltip content="Published and visible to users">
-        <Badge text="Published" color="blue" icon="cloud-upload" />
+    // The label sits in a [data-badge-label] span so `previewStatusWrap` can hide
+    // it at narrow preview widths — the badge collapses to its colored icon while
+    // the Tooltip keeps the full text, so status never disappears at 320px.
+    const badge = (
+      text: string,
+      color: 'blue' | 'orange' | 'green',
+      icon: 'circle' | 'exclamation-triangle' | 'cloud-upload',
+      tip: string
+    ) => (
+      <Tooltip content={tip}>
+        <Badge text={<span data-badge-label>{text}</span>} color={color} icon={icon} />
       </Tooltip>
     );
+
+    if (publishedStatus === 'not-saved') {
+      return badge('Draft', 'blue', 'circle', 'Not yet saved to library');
+    }
+    if (publishedStatus === 'draft') {
+      return hasUnsyncedChanges
+        ? badge('Draft (modified)', 'orange', 'exclamation-triangle', 'Draft has unsaved changes')
+        : badge('Draft', 'blue', 'circle', 'Saved to library but not published to users');
+    }
+    return hasUnsyncedChanges
+      ? badge('Published (modified)', 'orange', 'exclamation-triangle', 'Published guide has unsaved changes')
+      : badge('Published', 'green', 'cloud-upload', 'Published and visible to users');
   };
 
   const localSaveIndicator = !isBackendAvailable && (
@@ -195,27 +184,36 @@ export function BlockEditorHeader({
     </Button>
   );
 
+  // Publish-status badge, or the local-save indicator when there's no backend.
+  const statusCluster = (
+    <>
+      {localSaveIndicator}
+      {isBackendAvailable && backendBadge()}
+    </>
+  );
+
   return (
     <div className={styles.header}>
-      {/* Title row: editable title + guide id on the left, publish status on the
-          right. In preview HeaderTitleRow renders a spacer instead of the input
-          (the rendered guide shows its own <h1>), so the row stays put without
-          duplicating the title. Fully hiding the row in preview is deferred to
-          the title-row PR. */}
-      <div className={styles.titleRow} data-testid={testIds.blockEditor.titleRow}>
-        <HeaderTitleRow guideTitle={guideTitle} guideId={guideId} viewMode={viewMode} onTitleCommit={onTitleCommit} />
-        <div className={styles.rightCluster}>
-          {localSaveIndicator}
-          {isBackendAvailable && backendBadge()}
+      {/* Title row is hidden entirely in preview — the rendered guide shows its
+          own <h1>, so an editable title would duplicate it; the status cluster
+          moves to the toolbar row (below) to keep publish state visible. */}
+      {viewMode !== 'preview' && (
+        <div className={styles.titleRow} data-testid={testIds.blockEditor.titleRow}>
+          <HeaderTitleRow guideTitle={guideTitle} onTitleCommit={onTitleCommit} />
+          <div className={styles.statusWrap}>{statusCluster}</div>
         </div>
-      </div>
+      )}
 
       {/* Single-line — never wraps; the rocker and Save collapse to icons via
           the container-query tiers instead (see toolbarRow). */}
-      <div className={styles.toolbarRow}>
+      <div className={styles.toolbarRow} data-testid={testIds.blockEditor.toolbarRow}>
         <ViewModeRocker viewMode={viewMode} onSetViewMode={onSetViewMode} />
 
         <div className={styles.rightCluster}>
+          {viewMode === 'preview' && (
+            <div className={`${styles.statusWrap} ${styles.previewStatusWrap}`}>{statusCluster}</div>
+          )}
+
           {/* "Reset guide" affordance, lifted out of the preview content area. */}
           {previewResetButton}
 

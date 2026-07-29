@@ -16,26 +16,28 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     zIndex: theme.zIndex.navbarFixed,
     flexShrink: 0,
   }),
-  // Title row (top): editable title + guide id, then status/badge on the right.
+  // Title row (top): editable title + status badge, above the toolbar row.
   titleRow: css({
     display: 'flex',
     alignItems: 'center',
-    padding: `${theme.spacing(1)} ${theme.spacing(1.5)} ${theme.spacing(0.5)}`,
+    padding: `${theme.spacing(1)} ${theme.spacing(1.5)} 0`,
     gap: theme.spacing(1),
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
   }),
   // Toolbar row (bottom): view-mode rocker on the left, action cluster on the
   // right. Single-line — never wraps. `containerType: inline-size` drives the
   // rocker's icon-only swap and the `saveButton` label/icon collapse, both
-  // keyed off this row's width.
+  // keyed off this row's width. Uniform vertical padding also gives preview mode
+  // (where the title row is hidden and this row sits at the top) its top spacing.
   toolbarRow: css({
     display: 'flex',
     alignItems: 'center',
-    padding: `0 ${theme.spacing(1.5)} ${theme.spacing(1)}`,
+    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
     gap: theme.spacing(0.5),
     flexWrap: 'nowrap',
     containerType: 'inline-size',
   }),
-  // Right-aligned cluster (used on both rows).
+  // Right-aligned action cluster on the toolbar row.
   rightCluster: css({
     display: 'flex',
     alignItems: 'center',
@@ -43,26 +45,50 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     marginLeft: 'auto',
     flexShrink: 0,
   }),
-  // Grows to fill the title row but can shrink below its ~180px preferred width
-  // when space is tight (e.g. the 320px floating-panel minimum), so the status
-  // badge in `rightCluster` stays visible instead of overflowing the row. The
-  // input inside keeps `minWidth: 0` so long titles truncate rather than push
-  // the row wider.
-  titleArea: css({
-    display: 'flex',
+  // Status cluster (publish badge, or local-save indicator when there's no
+  // backend). `flexShrink: 0` + `nowrap` so a long title can't shrink or wrap
+  // the badge in the title row — the title input absorbs the shrink instead.
+  statusWrap: css({
+    display: 'inline-flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+  }),
+  // In preview the status cluster sits in the non-shrinking, no-wrap toolbar. At
+  // narrow widths a full badge would overflow, so collapse it to its colored icon
+  // (hide only the label) instead of hiding status entirely — Draft/Published and
+  // the icon-only local-save indicator stay visible down to the 320px floating min.
+  previewStatusWrap: css({
+    '@container (max-width: 420px)': {
+      '& [data-badge-label]': {
+        display: 'none',
+      },
+    },
+  }),
+  // Wraps the title input so it can carry a persistent gradient underline
+  // (an <input> cannot host a ::after). The bar is always on — it marks the
+  // editor as the active surface, mirroring the tab bar's `iconTabActive`.
+  titleInputWrap: css({
+    position: 'relative',
+    display: 'inline-flex',
     minWidth: 0,
-    flex: '1 1 180px',
-    '&:hover .guide-id': {
-      opacity: 1,
+    maxWidth: '100%',
+    '&::after': {
+      content: '""',
+      position: 'absolute',
+      left: 2,
+      right: 2,
+      bottom: 0,
+      height: '2px',
+      borderRadius: theme.shape.radius.default,
+      backgroundImage: theme.colors.gradients.brandHorizontal,
+      pointerEvents: 'none', // decorative underline must not intercept clicks on the input
     },
   }),
   guideTitleInput: css({
     background: 'transparent',
     border: 'none',
-    borderBottom: `1px solid transparent`,
-    borderRadius: 0,
     color: theme.colors.text.primary,
     fontSize: theme.typography.h5.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
@@ -71,23 +97,16 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     margin: 0,
     outline: 'none',
     minWidth: 0,
-    flex: 1,
-    '&:hover': {
-      borderBottomColor: theme.colors.border.medium,
-    },
+    maxWidth: '100%',
     '&:focus': {
-      borderBottomColor: theme.colors.primary.main,
       background: theme.colors.background.secondary,
     },
-  }),
-  guideId: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
-    fontFamily: theme.typography.fontFamilyMonospace,
-    opacity: 0,
-    transition: 'opacity 0.15s',
-    padding: '0 2px',
-    flexShrink: 0,
+    // Keyboard focus indicator: the always-on gradient underline doesn't signal
+    // focus and `outline: none` above removes the default (WCAG 2.4.7).
+    '&:focus-visible': {
+      outline: `2px solid ${theme.colors.primary.main}`,
+      outlineOffset: 1,
+    },
   }),
   // Save/publish button: label-only at full width, icon-only once the toolbar
   // collapses below 420px (mirrors the rocker's collapse). Grafana's Button

@@ -41,6 +41,17 @@ The source-level tripwires live in `src/components/docs-panel/docs-panel.contrac
 
 ---
 
+## Block editor header contract
+
+The block-editor header exposes two stable row testids that responsive e2e tests depend on to assert the two-row layout holds at narrow widths:
+
+- **`block-editor-title-row`** (`testIds.blockEditor.titleRow`): the editable title + status cluster row. Rendered in edit/JSON view; hidden entirely in preview.
+- **`block-editor-toolbar-row`** (`testIds.blockEditor.toolbarRow`): the view-mode rocker + action cluster row, present in every view. In preview the status cluster relocates here, so `tests/block-editor-title-row.spec.ts` selects it to assert status stays visible at the 320px floating-panel minimum.
+
+A header refactor that renames or removes these rows must update `tests/block-editor-title-row.spec.ts` in the same change.
+
+---
+
 ## Design Principles
 
 ### 1. Semantic Over Syntactic
