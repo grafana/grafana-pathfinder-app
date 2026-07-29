@@ -77,6 +77,28 @@ function loadProseFiles(): ProseFile[] {
   for (const name of fs.readdirSync(rulesDir).sort()) {
     if (name.endsWith('.mdc')) {
       out.push(makeProseFile(`.cursor/rules/${name}`, path.join(rulesDir, name)));
+      continue;
+    }
+    // Rule sets too large to load whole are split into a subdirectory beside
+    // their index. Walk those too, or their refs go unvalidated.
+    const nested = path.join(rulesDir, name);
+    if (!fs.statSync(nested).isDirectory()) {
+      continue;
+    }
+    for (const child of fs.readdirSync(nested).sort()) {
+      if (child.endsWith('.mdc')) {
+        out.push(makeProseFile(`.cursor/rules/${name}/${child}`, path.join(nested, child)));
+        continue;
+      }
+      // The walk is deliberately one level deep. A rule buried deeper would
+      // escape every check in this file, so refuse to walk instead.
+      if (fs.statSync(path.join(nested, child)).isDirectory()) {
+        throw new Error(
+          `.cursor/rules/${name}/${child}/ nests rules two levels deep, which this walker does not ` +
+            `reach — its path, heading, and code-ID references would go unvalidated. Flatten it into ` +
+            `.cursor/rules/${name}/, or extend loadProseFiles() to recurse.`
+        );
+      }
     }
   }
 
@@ -540,5 +562,103 @@ describe('Skill/rule reference graph — self-tests', () => {
     const matches = [...stripped.matchAll(PATH_REF_RE)].map((m) => m[1]);
     expect(matches).toContain('src/module.ts');
     expect(matches).not.toContain('src/does-not-exist.ts');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Split rule-set parity: index table ↔ themed detail files
+// ---------------------------------------------------------------------------
+//
+// `react-antipatterns.mdc` is an index whose table names every R-code and
+// routes it to a themed file holding the actual rule. Two surfaces means a
+// rule can be dropped in a move and still look present in the index — which
+// is exactly what the reader would trust. Assert the sets match.
+
+const RA_INDEX = '.cursor/rules/react-antipatterns.mdc';
+const RA_DETAIL_DIR = '.cursor/rules/react-antipatterns';
+
+describe('Split rule-set parity — react-antipatterns index ↔ detail files', () => {
+  const indexCodes = [
+    ...new Set(
+      [...fs.readFileSync(path.join(REPO_ROOT, RA_INDEX), 'utf-8').matchAll(/\|\s*(R\d+)\s*\|/g)].map((m) => m[1]!)
+    ),
+  ];
+
+  const detailCodes = new Map<string, string>();
+  const duplicates: Array<{ code: string; files: string[] }> = [];
+  for (const file of fs.readdirSync(path.join(REPO_ROOT, RA_DETAIL_DIR)).sort()) {
+    if (!file.endsWith('.mdc')) {
+      continue;
+    }
+    const content = fs.readFileSync(path.join(REPO_ROOT, RA_DETAIL_DIR, file), 'utf-8');
+    for (const m of content.matchAll(/^## (R\d+) — /gm)) {
+      const code = m[1]!;
+      const existing = detailCodes.get(code);
+      if (existing !== undefined) {
+        duplicates.push({ code, files: [existing, file] });
+        continue;
+      }
+      detailCodes.set(code, file);
+    }
+  }
+
+  it('index table is non-empty', () => {
+    expect(indexCodes.length).toBeGreaterThan(0);
+  });
+
+  it('no rule is defined in more than one detail file', () => {
+    if (duplicates.length > 0) {
+      throw new Error(
+        `A rule must live in exactly one file:\n` +
+          duplicates.map(({ code, files }) => `  - ${code} is defined in both ${files.join(' and ')}`).join('\n')
+      );
+    }
+  });
+
+  it('every code in the index table has a rule in a detail file', () => {
+    const orphans = indexCodes.filter((c) => !detailCodes.has(c));
+    if (orphans.length > 0) {
+      throw new Error(
+        `${RA_INDEX} routes codes that no detail file defines: ${orphans.join(', ')}.\n` +
+          `Add a \`## <code> — <title>\` section in the themed file the index points at, ` +
+          `or remove the row.`
+      );
+    }
+  });
+
+  it('every rule in a detail file is listed in the index table', () => {
+    const unlisted = [...detailCodes.entries()].filter(([code]) => !indexCodes.includes(code));
+    if (unlisted.length > 0) {
+      throw new Error(
+        `Rules exist but are unreachable from ${RA_INDEX}:\n` +
+          unlisted.map(([code, file]) => `  - ${code} (in ${file})`).join('\n') +
+          `\nAdd a row to the index table so the rule can be found.`
+      );
+    }
+  });
+
+  it('the index routes each code to the file that actually defines it', () => {
+    const rows = [
+      ...fs
+        .readFileSync(path.join(REPO_ROOT, RA_INDEX), 'utf-8')
+        .matchAll(/\|\s*(R\d+)\s*\|[^|]*\|[^|]*\|\s*`([^`]+)`\s*\|/g),
+    ];
+    expect(rows.length).toBe(indexCodes.length);
+
+    const misrouted = rows
+      .map((m) => ({ code: m[1]!, target: m[2]! }))
+      .filter(({ code, target }) => {
+        const actual = detailCodes.get(code);
+        return actual !== undefined && target !== `${RA_DETAIL_DIR}/${actual}`;
+      });
+
+    if (misrouted.length > 0) {
+      throw new Error(
+        `${RA_INDEX} points at the wrong file for:\n` +
+          misrouted
+            .map(({ code, target }) => `  - ${code}: index says \`${target}\`, rule is in ${detailCodes.get(code)}`)
+            .join('\n')
+      );
+    }
   });
 });

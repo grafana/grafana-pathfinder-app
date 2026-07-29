@@ -462,7 +462,7 @@ Check results are cached during retry cycles to avoid redundant API calls.
 ## See Also
 
 - `src/types/requirements.types.ts` - Type-safe requirement definitions
-- `.cursor/rules/interactiveRequirements.mdc` - Comprehensive requirements documentation
+- `.cursor/rules/interactiveRequirements.mdc` - Prescriptive agent constraints only (workflow, eligibility, objective edge cases)
 - `docs/developer/interactive-examples/requirements-reference.md` - Requirements reference
 - `docs/developer/engines/interactive-engine.md` - Interactive engine documentation
 - `src/constants/interactive-config.ts` - Configuration options

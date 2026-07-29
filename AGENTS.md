@@ -81,7 +81,7 @@ Hot paths, in rough order of how often they apply:
 - `docs/design/CONCERNS.md` — PR review routing, impact analysis, one-way doors
 - `.cursor/rules/systemPatterns.mdc` — architecture and per-subsystem entry points
 - `.cursor/rules/frontend-security.mdc` — F1-F6; applies to any `*.ts`/`*.tsx`/`*.js`/`*.jsx` change
-- `.cursor/rules/react-antipatterns.mdc` — R1-R21, for hooks/effects/state work
+- `.cursor/rules/react-antipatterns.mdc` — R1-R21 routing index; load the themed file it names for the Do/Don't and fix
 - `.cursor/rules/testingStrategy.mdc` — unit/smoke/integration guidance
 - `docs/developer/TELEMETRY.md` — Faro + RudderStack policy and privacy invariants
 
