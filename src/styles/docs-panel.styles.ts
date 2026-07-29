@@ -251,6 +251,7 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     display: 'inline-flex',
     alignItems: 'center',
     flexShrink: 0,
+    gap: theme.spacing(1),
     '@container (max-width: 360px)': {
       display: 'none',
     },
