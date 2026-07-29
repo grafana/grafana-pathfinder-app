@@ -74,6 +74,10 @@ export function DocsPanelTabBar({
     <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
       {/* Permanent icon-only tabs */}
       <div className={styles.permanentTabs}>
+        <div className={styles.wordmarkGroup}>
+          <span className={styles.wordmark}>{t('docsPanel.wordmark', 'Interactive Learning')}</span>
+          <div className={styles.tabDivider} aria-hidden="true" />
+        </div>
         <button
           className={`${styles.iconTab} ${activeTabId === 'recommendations' ? styles.iconTabActive : ''}`}
           onClick={() => onSetActiveTab('recommendations')}

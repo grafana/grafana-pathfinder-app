@@ -80,6 +80,13 @@ describe('DocsPanelTabBar', () => {
     expect(props.onSetActiveTab).not.toHaveBeenCalled();
   });
 
+  // jsdom can't evaluate the @container query that hides the wordmark at narrow
+  // widths, so this asserts presence only — the responsive hide isn't unit-testable.
+  it('renders the "Interactive Learning" wordmark', () => {
+    render(<DocsPanelTabBar {...makeProps()} />);
+    expect(screen.getByText('Interactive Learning')).toBeInTheDocument();
+  });
+
   describe('overflow chevron', () => {
     const overflowTab: any = { id: 'overflow-1', title: 'overflow-1', baseUrl: '', currentUrl: '' };
 
