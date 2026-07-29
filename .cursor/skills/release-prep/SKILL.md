@@ -17,7 +17,7 @@ These constraints are absolute and override any other instructions:
 2. **Never commit to or push `main` (it's protected).** Commit on a branch; the release-prep change lands via a PR the user merges. Do not deploy — the user runs the CD dispatch.
 3. **`npm run check` must pass before claiming "ready".** If it fails, abort with the failure log and stop. Do not "fix-up and retry" — a failing check is real signal.
 4. **Only edit `package.json` (version bump), `package-lock.json` (synced version fields), and `CHANGELOG.md`** (via the `changelog` skill). No other files. `src/plugin.json` carries `"%VERSION%"` and is substituted at build time — never edit it.
-5. **If the proposed tag already exists**, abort.
+5. **If a `v<version>` tag already exists, abort** — version numbers must be unique. Historical `v<version>` tags are used only as version markers / changelog-range boundaries; this skill never creates or pushes one.
 6. **If the working tree is dirty**, abort with `git status` output. Don't try to be clever about which dirt is safe.
 7. **One commit.** Title: `chore: prep v<version> release`. Contains the version bump (manifest + lockfile) + CHANGELOG draft.
 
@@ -68,7 +68,7 @@ If the user passed `/release-prep <version>`, use it. Otherwise suggest one.
 
 - Must be valid semver: `\d+\.\d+\.\d+` (no pre-release suffixes — the repo uses none).
 - Must be strictly greater than the last tag (no regressions).
-- Tag `v<version>` must not already exist: `git tag -l v<version>` returns nothing.
+- The version must be unused — no existing `v<version>` tag (`git tag -l v<version>` returns nothing). These tags are historical version markers used for the changelog range, not release triggers; the skill doesn't create one.
 
 **Auto-suggestion** (when no arg given):
 
@@ -208,15 +208,15 @@ When the `changelog` skill is invoked from `release-prep`, override its Phase 3 
 
 The skill must abort cleanly (no partial state, no commits) if any of these are true:
 
-| Condition                                     | Reason                                                                |
-| --------------------------------------------- | --------------------------------------------------------------------- |
-| Working tree dirty                            | Cannot reason about what state is being released                      |
-| Branch behind origin                          | Upstream commits would be missing from the release                    |
-| Tag `v<version>` already exists               | Cannot reuse a tag; double-tagging breaks GitHub releases             |
-| Version is not strictly > last tag            | Regression — semver violation                                         |
-| `npm run check` fails                         | Test suite or lint catches a real problem                             |
-| `npm run build` fails                         | Production bundle is broken                                           |
-| `git diff --name-only` shows unexpected paths | Skill must only touch package.json + package-lock.json + CHANGELOG.md |
+| Condition                                     | Reason                                                                     |
+| --------------------------------------------- | -------------------------------------------------------------------------- |
+| Working tree dirty                            | Cannot reason about what state is being released                           |
+| Branch behind origin                          | Upstream commits would be missing from the release                         |
+| `v<version>` version marker already exists    | Version numbers must be unique (these tags mark already-released versions) |
+| Version is not strictly > last tag            | Regression — semver violation                                              |
+| `npm run check` fails                         | Test suite or lint catches a real problem                                  |
+| `npm run build` fails                         | Production bundle is broken                                                |
+| `git diff --name-only` shows unexpected paths | Skill must only touch package.json + package-lock.json + CHANGELOG.md      |
 
 When aborting, print the failure reason clearly and (where applicable) the exact log line that triggered the abort. Do not leave partial commits behind.
 

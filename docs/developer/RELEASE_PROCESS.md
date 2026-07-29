@@ -8,7 +8,7 @@ The project uses several GitHub Actions workflows for different release scenario
 
 ### 1. Tag-based build (`.github/workflows/release.yml`) — NOT the release path
 
-> **Do not release by pushing a tag.** This workflow builds a plugin zip + GitHub release on a `v*` tag push, but it is **not how Pathfinder ships** and is not exercised in practice — no v2.x tag has triggered it, and the v2.x GitHub releases are unpublished drafts. It also currently fails (the `build-plugin` action defaults to Node 20; the repo requires Node ≥ 24). Releases go out via the CD workflow (#2). The file is kept for reference only.
+> **Do not release by pushing a tag.** This workflow builds a plugin zip + GitHub release on a `v*` tag push, but it is **not how Pathfinder ships** and is not exercised in practice — no v2.x tag has triggered it, and the v2.x GitHub releases are unpublished drafts. It also currently fails: `release.yml` doesn't pin a Node version, while the repo requires Node ≥ 24 (`package.json` `engines` / `.nvmrc`), so the build runs on too old a Node. Releases go out via the CD workflow (#2). The file is kept for reference only.
 
 ### 2. Manual Publishing (`.github/workflows/publish.yml`)
 
@@ -115,7 +115,7 @@ Under the hood, CD opens a `grafana/deployment_tools` PR per environment that bu
 - **dev + ops** — the deployment_tools PR **auto-merges** once its CI passes; no manual action.
 - **prod-canary + prod** — the Argo workflow **pauses at an approval step**. Monitor the run in the Argo UI (`argo-workflows.grafana.net`, `grafana-plugins-cd`) and click **"Resume"** on each paused approval step to let it proceed. You approve in **Argo**, not in `deployment_tools` — CD handles the PR after approval.
 
-Deploy-start, per-environment PR links, and "waiting for manual approval… click Resume" prompts all post to Slack **`#pathfinder-app-release`**.
+Deploy start, per-environment PR links, and "waiting for manual approval… click Resume" prompts are all posted to Slack **`#pathfinder-app-release`**.
 
 ## Monitoring and Notifications
 
