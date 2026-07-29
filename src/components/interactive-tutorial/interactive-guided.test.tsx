@@ -306,6 +306,40 @@ describe('InteractiveGuided — completeEarly lifecycle', () => {
   });
 });
 
+describe('InteractiveGuided — skip recovery', () => {
+  it('clears a timeout error before reporting the step completed', async () => {
+    mockExecuteGuidedStep.mockResolvedValue('timeout');
+
+    function SkippableHarness() {
+      const [, forceRender] = React.useReducer((value) => value + 1, 0);
+      return (
+        <InteractiveGuided
+          stepId="skippable-timeout"
+          skippable={true}
+          onComplete={forceRender}
+          internalActions={[{ targetAction: 'noop' }]}
+        />
+      );
+    }
+
+    render(<SkippableHarness />);
+    const step = screen.getByTestId(testIds.interactive.step('skippable-timeout'));
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', 'error');
+    });
+
+    fireEvent.click(screen.getByTestId(testIds.interactive.requirementSkipButton('skippable-timeout')));
+
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', 'completed');
+    });
+    expect(screen.queryByTestId(testIds.interactive.errorMessage('skippable-timeout'))).not.toBeInTheDocument();
+  });
+});
+
 describe('InteractiveGuided — AI "Fix this" gating vs sequential block', () => {
   const blockedChecker = {
     isEnabled: false,

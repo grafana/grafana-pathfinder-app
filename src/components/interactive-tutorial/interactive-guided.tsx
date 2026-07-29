@@ -695,8 +695,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       }
     }, [disabled, isExecuting, stepId, onStepReset, persistReset]);
 
-    // Handle skip current step on timeout
     const handleSkipStep = useCallback(async () => {
+      setExecutionError(null);
+      setFailedStepIndex(-1);
+      setCurrentStepStatus('completed');
+      setWasCancelled(false);
       persistCompletion('skipped');
 
       if (onStepComplete && stepId) {

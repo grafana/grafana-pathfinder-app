@@ -980,6 +980,8 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   onClick={async () => {
                     if (checker.markSkipped) {
                       await checker.markSkipped();
+                      setExecutionError(null);
+                      setFailedStepIndex(-1);
                       persistCompletion('skipped');
                       if (onStepComplete && stepId) {
                         onStepComplete(stepId);
