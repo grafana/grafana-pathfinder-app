@@ -12,7 +12,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { useAutoOpenListener } from './useAutoOpenListener';
 import { linkInterceptionState } from '../../../global-state/link-interception';
-import { panelModeManager, type PanelMode } from '../../../global-state/panel-mode';
+import { type PanelMode } from '../../../global-state/panel-mode';
 import { StorageKeys } from '../../../lib/storage-keys';
 import type { DocsPanelModelOperations } from '../types';
 
