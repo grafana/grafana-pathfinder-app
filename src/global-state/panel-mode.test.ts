@@ -302,4 +302,45 @@ describe('panelModeManager', () => {
       expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
     });
   });
+
+  describe('deliberate dock to sidebar persists consistently (decision 3, #1449)', () => {
+    // The floating dock-to-sidebar pill calls setModePersisted('sidebar')
+    // (FloatingPanelManager.handleSwitchToSidebar). Its whole point is that the
+    // outcome must NOT depend on invisible session history — the flow-1 bug was
+    // that a guide auto-launched earlier in the session silently turned the
+    // dock's persist into a no-op. Both paths below must land on 'sidebar'.
+    let manager!: typeof panelModeManager;
+    beforeEach(() => {
+      jest.isolateModules(() => {
+        manager = jest.requireActual('./panel-mode').panelModeManager;
+      });
+    });
+
+    it('persists sidebar for a floating-preference user in a fresh session', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+      manager.setModePersisted('sidebar');
+      expect(manager.getMode()).toBe('sidebar');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
+    });
+
+    it('persists sidebar even mid transient session (no invisible-history dependence)', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+      // A guide was auto-launched earlier in the session (transient session open).
+      manager.setModeTransient('floating');
+      // The user then deliberately docks to the sidebar.
+      manager.setModePersisted('sidebar');
+      expect(manager.getMode()).toBe('sidebar');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
+    });
+
+    it('contrasts with the conditional fullscreen return, which stays transient-safe', () => {
+      // Same starting state, but the fullscreen back-arrow uses plain setMode:
+      // leaving a transient launch must NOT overwrite the stored preference.
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+      manager.setModeTransient('fullscreen');
+      manager.setMode('sidebar');
+      expect(manager.getMode()).toBe('sidebar');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+    });
+  });
 });

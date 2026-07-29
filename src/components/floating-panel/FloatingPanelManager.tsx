@@ -224,28 +224,44 @@ function FloatingPanelInner() {
   // the cover URL; for non-journey tabs the two fields are equal.
   const guideUrl = isEditorTab ? undefined : activeTab?.currentUrl || activeTab?.baseUrl;
 
+  // The pill is a deliberate sidebar ADOPTION → persist; the programmatic dock
+  // request (guide `popout`, generic toggle) is not → conditional `setMode`, so
+  // an automatic launch never overwrites the stored preference. Rationale in
+  // docs/design/PANEL-MODE-PERSISTENCE.md (decisions 2 and 3); mechanics in
+  // global-state/panel-mode.ts.
+  const dockToSidebar = useCallback(
+    (persist: boolean) => {
+      reportAppInteraction(UserInteraction.FloatingPanelDock, {
+        guide_url: guideUrl || '',
+        guide_title: title,
+      });
+      if (persist) {
+        panelModeManager.setModePersisted('sidebar');
+      } else {
+        panelModeManager.setMode('sidebar');
+      }
+      sidebarState.setPendingOpenSource('floating_panel_dock', 'open');
+      sidebarState.openSidebar('Interactive learning');
+    },
+    [guideUrl, title]
+  );
+
   const handleSwitchToSidebar = useCallback(() => {
-    reportAppInteraction(UserInteraction.FloatingPanelDock, {
-      guide_url: guideUrl || '',
-      guide_title: title,
-    });
-    panelModeManager.setMode('sidebar');
-    sidebarState.setPendingOpenSource('floating_panel_dock', 'open');
-    sidebarState.openSidebar('Interactive learning');
-  }, [guideUrl, title]);
+    dockToSidebar(true);
+  }, [dockToSidebar]);
 
   // Symmetric counterpart to `pathfinder-request-pop-out` (see docs-panel.tsx).
   // Dispatched by the popout interactive action so that guides can programmatically
   // dock the floating panel back into the sidebar.
   useEffect(() => {
     const handleDockRequest = () => {
-      handleSwitchToSidebar();
+      dockToSidebar(false);
     };
     document.addEventListener('pathfinder-request-dock', handleDockRequest);
     return () => {
       document.removeEventListener('pathfinder-request-dock', handleDockRequest);
     };
-  }, [handleSwitchToSidebar]);
+  }, [dockToSidebar]);
 
   const handleClose = useCallback(() => {
     panelModeManager.setMode('sidebar');
