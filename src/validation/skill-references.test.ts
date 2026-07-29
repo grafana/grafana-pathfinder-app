@@ -99,7 +99,7 @@ function loadProseFiles(): ProseFile[] {
 // `node_modules/...` or imports from external packages.
 
 const PATH_REF_RE =
-  /`((?:\.cursor\/(?:skills|rules)|docs\/(?:design|developer)|src|pkg|scripts|\.github)\/[A-Za-z0-9_./@-]+|AGENTS\.md|CLAUDE\.md|CHANGELOG\.md|README\.md|package\.json|tsconfig\.json|eslint\.config\.mjs|playwright\.config\.ts|Magefile\.go)(?::\d+)?(?:#[A-Za-z0-9_-]+)?`/g;
+  /`((?:\.cursor\/(?:skills|rules)|\.claude\/skills|docs\/(?:design|developer)|src|pkg|scripts|\.github)\/[A-Za-z0-9_./@-]+|AGENTS\.md|CLAUDE\.md|CHANGELOG\.md|README\.md|package\.json|tsconfig\.json|eslint\.config\.mjs|playwright\.config\.ts|Magefile\.go)(?::\d+)?(?:#[A-Za-z0-9_-]+)?`/g;
 
 /**
  * Paths that legitimately appear in narrative prose but do not correspond to

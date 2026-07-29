@@ -16,7 +16,7 @@ Functional-first and pragmatic: small composable functions, immutable data and p
 
 **Trim on touch.** When editing a function, also trim bad-shape comments inside it and on adjacent declarations in the same file. Do not sweep whole files or grep the repo for cleanup — comment removal rides along on code changes, never as a standalone PR.
 
-The eight bad shapes (QC8), with worked before/after examples and the full keep-list, live in the `comment-hygiene` skill.
+The keep-list above is the whole of it. The eight bad shapes (QC8), with worked before/after examples, live in the `comment-hygiene` skill.
 
 ### Writing style
 
