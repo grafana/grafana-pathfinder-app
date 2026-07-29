@@ -12,7 +12,8 @@
  *   whole viewport is used for reading;
  * - content that drives the Grafana UI → the sidebar, so its "show me / do it"
  *   actions have the Grafana main area to work on — or a floating overlay when
- *   another plugin owns the extension sidebar.
+ *   another plugin owns the extension sidebar or the floating panel is already
+ *   the current surface.
  *
  * The surface choice is transient: it never overwrites the user's persisted
  * panel-mode preference. The prepared content is carried through to the
@@ -71,7 +72,13 @@ export function HomePanelRenderer() {
   // owns the extension sidebar. Carries the prepared content so the tab opens
   // without a second fetch.
   const openBesideGrafana = useCallback((launch: PreparedGuideLaunch) => {
-    if (isExtensionSidebarOwnedByOther(pluginJson.id)) {
+    // A floating panel already IS beside Grafana — deliver the guide there.
+    // Forcing 'sidebar' would unmount the floating panel without anything
+    // opening the extension sidebar: `isSidebarMounted` stays true (the
+    // floating cleanup leaves it for the expected sidebar mount), so the
+    // auto-open event below would fire with no listener and the guide would
+    // be lost. See #1450 for the listener-ownership gap.
+    if (isExtensionSidebarOwnedByOther(pluginJson.id) || panelModeManager.getMode() === 'floating') {
       panelModeManager.setPendingGuide(pendingGuideFrom(launch));
       panelModeManager.setModeTransient('floating');
       // A same-mode transient launch dispatches no mode-change event, so an

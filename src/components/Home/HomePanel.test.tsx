@@ -88,6 +88,7 @@ jest.mock('../../global-state/link-interception', () => ({
 
 jest.mock('../../global-state/panel-mode', () => ({
   panelModeManager: {
+    getMode: jest.fn(() => 'sidebar'),
     setPendingGuide: jest.fn(),
     setModeTransient: jest.fn(),
     capturePriorPath: jest.fn(),
@@ -131,6 +132,7 @@ describe('HomePanelRenderer', () => {
     jest.clearAllMocks();
     capturedOnOpenGuide = undefined;
     (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
+    (panelModeManager.getMode as jest.Mock).mockReturnValue('sidebar');
   });
 
   describe('composition', () => {
@@ -226,6 +228,28 @@ describe('HomePanelRenderer', () => {
         expect.objectContaining({ url: 'bundled:first-dashboard', preparedContent: rawContent })
       );
       expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('floating');
+      expect(sidebarState.openSidebar).not.toHaveBeenCalled();
+    });
+
+    it('delivers to the floating panel when it is the current surface, instead of tearing it down', () => {
+      // Nothing is docked in floating mode (module.tsx clears the key), so the
+      // owned-by-other check alone would force 'sidebar' — unmounting the
+      // floating panel while `isSidebarMounted` stays true, dropping the guide.
+      (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
+      (panelModeManager.getMode as jest.Mock).mockReturnValue('floating');
+      const requestGuideListener = jest.fn();
+      document.addEventListener(REQUEST_FLOATING_GUIDE_EVENT, requestGuideListener);
+
+      render(<HomePanelRenderer />);
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: true }));
+
+      document.removeEventListener(REQUEST_FLOATING_GUIDE_EVENT, requestGuideListener);
+      expect(panelModeManager.setPendingGuide).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'bundled:first-dashboard', preparedContent: rawContent })
+      );
+      expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('floating');
+      expect(panelModeManager.setModeTransient).not.toHaveBeenCalledWith('sidebar');
+      expect(requestGuideListener).toHaveBeenCalledTimes(1);
       expect(sidebarState.openSidebar).not.toHaveBeenCalled();
     });
 
