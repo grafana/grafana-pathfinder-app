@@ -5,6 +5,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 
 import { substituteVariables } from '../../utils/variable-substitution';
 import { escapeHtml } from '../../security/html-sanitizer';
+import { AUTO_OPEN_DOCS_EVENT } from '../../lib/event-names';
 import type {
   GrotGuideWelcome,
   GrotGuideQuestionScreen,
@@ -216,7 +217,7 @@ const ResultScreen: React.FC<ResultScreenProps> = ({ screen, sub, subHtml, onBac
 
           const openInSidebar = () => {
             document.dispatchEvent(
-              new CustomEvent('pathfinder-auto-open-docs', {
+              new CustomEvent(AUTO_OPEN_DOCS_EVENT, {
                 detail: { url: href, title, source: 'grot_guide_block' },
               })
             );

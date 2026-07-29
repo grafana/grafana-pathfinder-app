@@ -139,7 +139,7 @@ describe('OnlineCdnSnippetResolver.list', () => {
   });
 });
 
-describe('OnlineCdnSnippetResolver deadline (PR #1446 review finding 4)', () => {
+describe('OnlineCdnSnippetResolver deadline', () => {
   // A CDN request that never settles must not hang the caller forever:
   // prepareGuideLaunch awaits snippet resolution before committing a launch
   // surface, and MyLearningTab's in-flight guard blocks all later launches

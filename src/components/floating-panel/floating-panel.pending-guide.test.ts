@@ -1,8 +1,8 @@
 /**
  * Tripwire (Pattern J — contract-surface preservation)
  *
- * Pins the floating surface's pending-guide consumption, added for PR #1446
- * review finding 3: HomePanel's occupied-sidebar launch path hands the
+ * Pins the floating surface's pending-guide consumption:
+ * HomePanel's occupied-sidebar launch path hands the
  * prepared guide off via `panelModeManager.setPendingGuide` + transient
  * floating mode, and `FloatingPanelInner` must consume it on mount or the
  * launch is silently dropped (the panel restores stale tabs, or the

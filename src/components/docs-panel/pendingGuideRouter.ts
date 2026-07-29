@@ -15,7 +15,7 @@
  * forget one of the three parts — the floating panel shipped exactly that
  * bug once: it set pending guides but never consumed them, so an
  * occupied-sidebar launch showed stale restored tabs or fell back to
- * sidebar mode (PR #1446 review finding 3).
+ * sidebar mode.
  */
 
 import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';

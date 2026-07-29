@@ -71,6 +71,9 @@ describe('panelModeManager', () => {
       localStorage.setItem(StorageKeys.PANEL_MODE, 'fullscreen');
       panelModeManager.setMode('fullscreen');
       expect(publishMock).not.toHaveBeenCalled();
+      // commit() runs before the same-mode early return, so pin the stored
+      // VALUE too (it is legitimately rewritten, but must not change).
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('fullscreen');
     });
 
     it('dispatches pathfinder-panel-mode-change with previous and next modes', () => {

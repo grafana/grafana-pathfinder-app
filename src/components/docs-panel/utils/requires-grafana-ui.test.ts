@@ -59,7 +59,7 @@ describe('requiresGrafanaUi', () => {
   });
 
   describe('code-block drives the Grafana UI', () => {
-    // Regression for PR #1446 review finding 2: reftarget is schema-required
+    // reftarget is schema-required
     // and targets a live Monaco editor ("Show me" highlights it, "Insert"
     // mutates it), so a guide that is ONLY a code block must still open
     // beside Grafana, never full screen.

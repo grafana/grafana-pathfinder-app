@@ -125,7 +125,7 @@ describe('openPendingGuide', () => {
   });
 });
 
-describe('consumePendingGuideOnMount (PR #1446 review finding 3)', () => {
+describe('consumePendingGuideOnMount', () => {
   // State-level test of the occupied-sidebar launch: HomePanel sets a
   // prepared pending guide and flips to transient floating; the floating
   // surface must consume it on mount or the launch is silently dropped

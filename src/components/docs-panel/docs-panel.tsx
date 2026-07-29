@@ -740,7 +740,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       }
       // Prefetched content skips the network fetch (one-fetch launch) but runs
       // the identical finalization below so alignment / journey / package
-      // parity holds.
+      // parity holds. skipReadyToBegin only exists inside that skipped fetch —
+      // prefetched content was built without it (prepareGuideLaunch doesn't
+      // pass it), so the combination cannot be honored; surface the conflict
+      // instead of silently rendering the wrong variant.
+      if (prefetched && skipReadyToBegin) {
+        logger.warn('[DocsPanel] skipReadyToBegin ignored for prefetched content', { url });
+      }
       const result = prefetched
         ? { content: prefetched }
         : await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo });

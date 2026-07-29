@@ -29,6 +29,7 @@ import * as React from 'react';
 import { guideLaunchStore } from '../../../global-state/guide-launch';
 import { linkInterceptionState } from '../../../global-state/link-interception';
 import { coerceLaunchSource } from '../../../recovery';
+import { AUTO_OPEN_DOCS_EVENT } from '../../../lib/event-names';
 import { isLearningJourneyUrl } from '../utils/url-validation';
 import type { DocsPanelModelOperations } from '../types';
 
@@ -70,13 +71,13 @@ export function useAutoOpenListener(model: DocsPanelModelOperations): void {
     };
 
     // Listen for all auto-open events
-    document.addEventListener('pathfinder-auto-open-docs', handleAutoOpen);
+    document.addEventListener(AUTO_OPEN_DOCS_EVENT, handleAutoOpen);
 
     // todo: investigate why this needs to be kicked to the end of the event loop
     setTimeout(() => linkInterceptionState.processQueuedLinks(), 0);
 
     return () => {
-      document.removeEventListener('pathfinder-auto-open-docs', handleAutoOpen);
+      document.removeEventListener(AUTO_OPEN_DOCS_EVENT, handleAutoOpen);
     };
   }, [model]); // Only model as dependency - this component doesn't remount on tab changes
 }

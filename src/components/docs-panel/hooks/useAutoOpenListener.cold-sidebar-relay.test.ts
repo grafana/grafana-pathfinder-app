@@ -1,5 +1,5 @@
 /**
- * Cold-sidebar payload-relay boundary test (PR #1446 review finding 5).
+ * Cold-sidebar payload-relay boundary test.
  *
  * A prepared (one-fetch) launch from My Learning with the sidebar unmounted
  * crosses several independently owned seams:

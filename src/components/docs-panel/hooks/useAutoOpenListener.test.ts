@@ -108,7 +108,7 @@ describe('useAutoOpenListener', () => {
     removeSpy.mockRestore();
   });
 
-  describe('prepared-launch trust boundary (PR #1446 review finding 1)', () => {
+  describe('prepared-launch trust boundary', () => {
     // The document-level event is dispatchable by any same-page script, so
     // the prepared (one-fetch) payload must never be read from it: the
     // listener redeems an opaque `launchKey` from the module-owned
