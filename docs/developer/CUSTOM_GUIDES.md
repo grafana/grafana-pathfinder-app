@@ -124,10 +124,10 @@ The badge in the top-right of the header reflects the backend sync state:
 
 | Badge                             | Meaning                                                                      |
 | --------------------------------- | ---------------------------------------------------------------------------- |
-| **Draft** (purple, not yet saved) | Exists only in localStorage. Use **Save as draft** to add it to the library. |
-| **Draft** (purple)                | Saved to backend, in sync, not published.                                    |
+| **Draft** (blue, not yet saved)   | Exists only in localStorage. Use **Save as draft** to add it to the library. |
+| **Draft** (blue)                  | Saved to backend, in sync, not published.                                    |
 | **Draft (modified)** (orange)     | Local changes not yet saved to the draft.                                    |
-| **Published** (blue)              | Live and in sync with the backend.                                           |
+| **Published** (green)             | Live and in sync with the backend.                                           |
 | **Published (modified)** (orange) | Local changes not yet pushed to the live guide.                              |
 
 When the backend is unavailable the badge area instead shows a **Saved** / **Saving…** indicator reflecting the localStorage auto-save state.

@@ -4,6 +4,19 @@ import { BlockEditorHeader } from './BlockEditorHeader';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { testIds } from '../../constants/testIds';
 
+// Surface Grafana's Badge `color`/`icon` props as data-attributes so a color
+// regression (e.g. Draft reverting to purple) fails loudly. `text` passes through
+// unchanged, so the presence/location assertions below still exercise real markup.
+jest.mock('@grafana/ui', () => {
+  const actual = jest.requireActual('@grafana/ui');
+  const react = require('react');
+  return {
+    ...actual,
+    Badge: ({ text, color, icon }: { text: React.ReactNode; color: string; icon: string }) =>
+      react.createElement('span', { 'data-testid': 'be-badge', 'data-color': color, 'data-icon': icon }, text),
+  };
+});
+
 const baseProps = {
   guideTitle: 'Test guide',
   isDirty: false,
@@ -311,5 +324,62 @@ describe('BlockEditorHeader: publish-status badge', () => {
   it('hides the badge entirely when the backend is unavailable', () => {
     render(<BlockEditorHeader {...baseProps} viewMode="edit" isBackendAvailable={false} publishedStatus="draft" />);
     expect(screen.queryByText('Draft')).not.toBeInTheDocument();
+  });
+});
+
+describe('BlockEditorHeader: badge colors, compaction, and title size', () => {
+  it('colors the Draft badge blue', () => {
+    render(<BlockEditorHeader {...baseProps} viewMode="edit" isBackendAvailable publishedStatus="draft" />);
+    expect(screen.getByTestId('be-badge')).toHaveAttribute('data-color', 'blue');
+  });
+
+  it('colors the Published badge green', () => {
+    render(
+      <BlockEditorHeader
+        {...baseProps}
+        viewMode="edit"
+        isBackendAvailable
+        publishedStatus="published"
+        hasUnsyncedChanges={false}
+      />
+    );
+    expect(screen.getByTestId('be-badge')).toHaveAttribute('data-color', 'green');
+  });
+
+  it('colors the modified badge orange', () => {
+    render(
+      <BlockEditorHeader
+        {...baseProps}
+        viewMode="edit"
+        isBackendAvailable
+        publishedStatus="published"
+        hasUnsyncedChanges
+      />
+    );
+    expect(screen.getByTestId('be-badge')).toHaveAttribute('data-color', 'orange');
+  });
+
+  it('wraps the badge label so the narrow preview toolbar can collapse it to an icon', () => {
+    const { container } = render(
+      <BlockEditorHeader {...baseProps} viewMode="preview" isBackendAvailable publishedStatus="published" />
+    );
+    expect(container.querySelector('[data-badge-label]')).toHaveTextContent('Published');
+  });
+
+  it('does not wrap the local-save indicator (it must stay visible at every width)', () => {
+    const { container } = render(
+      <BlockEditorHeader {...baseProps} viewMode="preview" isBackendAvailable={false} isDirty={false} />
+    );
+    expect(screen.getByLabelText('Saved')).toBeInTheDocument();
+    expect(container.querySelector('[data-badge-label]')).toBeNull();
+  });
+
+  it.each([
+    ['a', 8], // below MIN_TITLE_CHARS → clamped up to 8
+    ['Test guide', 11], // length 10 + 1
+    ['x'.repeat(80), 60], // above MAX_TITLE_CHARS → clamped down to 60
+  ])('sizes the title input within the 8–60 char bounds (%s → %i)', (title, expectedSize) => {
+    render(<BlockEditorHeader {...baseProps} viewMode="edit" guideTitle={title} />);
+    expect(screen.getByLabelText('Guide title')).toHaveAttribute('size', String(expectedSize));
   });
 });

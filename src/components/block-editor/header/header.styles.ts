@@ -55,12 +55,15 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     flexShrink: 0,
     whiteSpace: 'nowrap',
   }),
-  // In preview the status cluster sits in the non-shrinking, no-wrap toolbar;
-  // hide it below the collapse tier so a wide badge can't overflow the row.
-  // Status still shows in edit/JSON and at wider preview widths.
+  // In preview the status cluster sits in the non-shrinking, no-wrap toolbar. At
+  // narrow widths a full badge would overflow, so collapse it to its colored icon
+  // (hide only the label) instead of hiding status entirely — Draft/Published and
+  // the icon-only local-save indicator stay visible down to the 320px floating min.
   previewStatusWrap: css({
     '@container (max-width: 420px)': {
-      display: 'none',
+      '& [data-badge-label]': {
+        display: 'none',
+      },
     },
   }),
   // Wraps the title input so it can carry a persistent gradient underline
@@ -80,6 +83,7 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
       height: '2px',
       borderRadius: theme.shape.radius.default,
       backgroundImage: theme.colors.gradients.brandHorizontal,
+      pointerEvents: 'none', // decorative underline must not intercept clicks on the input
     },
   }),
   guideTitleInput: css({
