@@ -46,9 +46,12 @@ var packageManifestEnrichTotalBudget = 3 * time.Second
 // allowedPackageRepositoryHosts mirrors the frontend
 // ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES allowlist (exact match).
 var allowedPackageRepositoryHosts = map[string]struct{}{
-	"interactive-learning.grafana-dev.net": {},
-	"interactive-learning.grafana.net":     {},
-	"interactive-learning.grafana-ops.net": {},
+	"interactive-learning.grafana-dev.net":         {},
+	"interactive-learning.grafana.net":             {},
+	"interactive-learning.grafana-ops.net":         {},
+	"interactive-learning-private.grafana-dev.net": {},
+	"interactive-learning-private.grafana-ops.net": {},
+	"interactive-learning-private.grafana.net":     {},
 }
 
 // PackageTargeting wraps the match expression for a repository entry.
