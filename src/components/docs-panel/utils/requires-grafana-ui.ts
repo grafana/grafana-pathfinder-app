@@ -64,8 +64,31 @@ function blockRequiresGrafanaUi(block: JsonBlock): boolean {
       return true;
     case 'snippet-ref':
       return true;
-    default:
+    // Interactive inside Pathfinder or purely presentational — none drive
+    // the live Grafana page. Enumerated (no default) so a new JsonBlock
+    // member is a compile error here instead of silently classifying as
+    // non-interactive and hiding any Grafana-driving action it may nest.
+    case 'markdown':
+    case 'html':
+    case 'image':
+    case 'video':
+    case 'quiz':
+    case 'input':
+    case 'terminal':
+    case 'terminal-connect':
+    case 'challenge':
+    case 'grot-guide':
       return false;
+    default: {
+      // Exhaustiveness: adding a JsonBlock member without classifying it here
+      // is a compile error. At runtime (untyped CDN JSON can still carry an
+      // unknown block type) fail safe in the never-hide-an-action direction:
+      // an unknown container may nest Grafana-driving steps, so keep the
+      // guide beside Grafana rather than full screen with dead buttons.
+      const unhandled: never = block;
+      void unhandled;
+      return true;
+    }
   }
 }
 
