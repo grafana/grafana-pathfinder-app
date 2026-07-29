@@ -29,7 +29,7 @@ import * as React from 'react';
 import { guideLaunchStore } from '../../../global-state/guide-launch';
 import { linkInterceptionState } from '../../../global-state/link-interception';
 import { coerceLaunchSource } from '../../../recovery';
-import { parseUrlSafely } from '../../../security';
+import { isLearningJourneyUrl } from '../utils/url-validation';
 import type { DocsPanelModelOperations } from '../types';
 
 export function useAutoOpenListener(model: DocsPanelModelOperations): void {
@@ -54,14 +54,7 @@ export function useAutoOpenListener(model: DocsPanelModelOperations): void {
       // redeems to null and the loader runs its normal validated fetch.
       const staged = guideLaunchStore.consume(launchKey, url);
 
-      // Always create a new tab for each intercepted link
-      // Call the model method directly to ensure new tabs are created
-      // Use proper URL parsing for security (defense in depth)
-      const urlObj = parseUrlSafely(url);
-      const isLearningJourney =
-        urlObj?.pathname.includes('/learning-journeys/') || urlObj?.pathname.includes('/learning-paths/');
-
-      if (isLearningJourney) {
+      if (isLearningJourneyUrl(url)) {
         model.openLearningJourney(url, title, {
           source: typedSource ?? undefined,
           preparedContent: staged?.preparedContent,

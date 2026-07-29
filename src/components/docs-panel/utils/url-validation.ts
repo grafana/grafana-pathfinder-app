@@ -4,6 +4,19 @@
  */
 
 import { ALLOWED_GRAFANA_DOCS_HOSTNAMES } from '../../../constants';
+import { parseUrlSafely } from '../../../security';
+
+/**
+ * Routing predicate shared by the auto-open listener and `prepareGuideLaunch`:
+ * journey URLs open via `openLearningJourney`, everything else via
+ * `openDocsPage`. Tests the PATHNAME only, so a journey path echoed in a query
+ * string (`/docs/foo/?ref=/learning-paths/x`) does not misroute, and both
+ * consumers stay consistent by construction.
+ */
+export function isLearningJourneyUrl(url: string): boolean {
+  const urlObj = parseUrlSafely(url);
+  return Boolean(urlObj?.pathname.includes('/learning-journeys/') || urlObj?.pathname.includes('/learning-paths/'));
+}
 
 /**
  * Checks if a URL is from an allowed Grafana documentation domain.

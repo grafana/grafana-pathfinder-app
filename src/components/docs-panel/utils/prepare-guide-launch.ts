@@ -24,6 +24,7 @@ import type { JsonGuide } from '../../../types/json-guide.types';
 
 import { loadDocsTabContentResult } from './docs-tab-loader';
 import { requiresGrafanaUi } from './requires-grafana-ui';
+import { isLearningJourneyUrl } from './url-validation';
 
 /**
  * An in-memory, consume-once launch payload. Carries the resolved content plus
@@ -32,7 +33,7 @@ import { requiresGrafanaUi } from './requires-grafana-ui';
 export interface PreparedGuideLaunch {
   url: string;
   title: string;
-  /** Routing discriminator, computed from the URL — mirrors the auto-open listener's rule. */
+  /** Routing discriminator — `isLearningJourneyUrl`, shared with the auto-open listener. */
   type: 'learning-journey' | 'docs';
   source: LaunchSource;
   /** Snippet-expanded content, ready for the renderer's synchronous parse path. */
@@ -50,11 +51,6 @@ interface PrepareGuideLaunchContext {
   source: LaunchSource;
   /** Pre-resolved package context (recommender path); otherwise derived from the URL. */
   packageInfo?: PackageOpenInfo;
-}
-
-/** Mirrors the routing predicate in `useAutoOpenListener` so the surface handoff picks the same open method. */
-function isLearningJourneyUrl(url: string): boolean {
-  return url.includes('/learning-journeys/') || url.includes('/learning-paths/');
 }
 
 /**
