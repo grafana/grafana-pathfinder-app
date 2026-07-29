@@ -6,7 +6,7 @@ import { useStyles2 } from '@grafana/ui';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
-import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
+import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
@@ -87,11 +87,9 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     // `openSidebar`, which now no-ops in fullscreen mode).
     sidebarState.setIsSidebarMounted(true);
 
-    const pendingGuide = panelModeManager.consumePendingGuide();
-    if (pendingGuide) {
+    consumePendingGuideOnMount(panel, 'fullscreen_handoff', () => {
       guideOpenInFlightRef.current = true;
-      openPendingGuide(panel, pendingGuide, 'fullscreen_handoff');
-    }
+    });
 
     return () => {
       document.removeEventListener('pathfinder-auto-launch-pending', handlePending);
@@ -358,12 +356,9 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // happens — typically used to replace a journey with the editor or vice versa.
   useEffect(() => {
     const handleFullScreenRequest = () => {
-      const pendingGuide = panelModeManager.consumePendingGuide();
-      if (!pendingGuide) {
-        return;
-      }
-      guideOpenInFlightRef.current = true;
-      openPendingGuide(panel, pendingGuide, 'fullscreen_handoff');
+      consumePendingGuideOnMount(panel, 'fullscreen_handoff', () => {
+        guideOpenInFlightRef.current = true;
+      });
     };
     document.addEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
     return () => {
