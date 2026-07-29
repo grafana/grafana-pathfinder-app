@@ -46,7 +46,7 @@ describe('floating panel shares tabStorage with the sidebar', () => {
       expect(src).not.toContain(method);
     }
     expect(src).toMatch(/await\s+model\.saveTabsToStorage\(\)/);
-    expect(src).toContain("setMode('floating')");
+    expect(src).toContain("setModePersisted('floating')");
   });
 
   it('full-screen-autodock does not snapshot or set a pending guide for the floating branch', () => {

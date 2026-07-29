@@ -9,7 +9,13 @@ export {
   createOnlineSnippetResolver,
   deriveSnippetsBaseUrl,
 } from './online-snippet-resolver';
-export { guideHasSnippetRefs, inlineSnippetRefsInBlocks, inlineSnippetRefsInGuide } from './inline-refs';
+export {
+  guideHasSnippetRefs,
+  inlineSnippetRefsInBlocks,
+  inlineSnippetRefsInGuide,
+  inlineSnippetRefsInGuideWithStatus,
+} from './inline-refs';
+export type { InlineWithStatusResult } from './inline-refs';
 export type {
   SnippetCatalogProvider,
   SnippetResolution,

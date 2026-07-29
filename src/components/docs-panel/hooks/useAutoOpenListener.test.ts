@@ -1,6 +1,8 @@
 import { renderHook, act } from '@testing-library/react';
 import { useAutoOpenListener } from './useAutoOpenListener';
+import { guideLaunchStore } from '../../../global-state/guide-launch';
 import { linkInterceptionState } from '../../../global-state/link-interception';
+import type { RawContent } from '../../../types/content.types';
 import type { DocsPanelModelOperations } from '../types';
 
 function makeModel(): DocsPanelModelOperations {
@@ -10,7 +12,7 @@ function makeModel(): DocsPanelModelOperations {
   } as unknown as DocsPanelModelOperations;
 }
 
-function dispatchAutoOpen(detail: { url: string; title: string; source?: string }) {
+function dispatchAutoOpen(detail: Record<string, unknown>) {
   act(() => {
     document.dispatchEvent(new CustomEvent('pathfinder-auto-open-docs', { detail }));
   });
@@ -104,5 +106,79 @@ describe('useAutoOpenListener', () => {
     unmount();
     expect(removeSpy).toHaveBeenCalledWith('pathfinder-auto-open-docs', expect.any(Function));
     removeSpy.mockRestore();
+  });
+
+  describe('prepared-launch trust boundary', () => {
+    // The document-level event is dispatchable by any same-page script, so
+    // the prepared (one-fetch) payload must never be read from it: the
+    // listener redeems an opaque `launchKey` from the module-owned
+    // guideLaunchStore, and anything beyond {url, title, source, launchKey}
+    // in the detail is ignored.
+    const DOC_URL = 'https://grafana.com/docs/grafana/latest/';
+    const rawContent: RawContent = {
+      content: '{"id":"g","title":"g","blocks":[]}',
+      metadata: { title: 'g' },
+      type: 'interactive',
+      url: DOC_URL,
+      lastFetched: '2026-07-28T00:00:00.000Z',
+    };
+
+    it('ignores preparedContent and packageInfo smuggled directly in the event detail', () => {
+      const model = makeModel();
+      renderHook(() => useAutoOpenListener(model));
+
+      // A forged event carrying the payload inline — the shape that would
+      // bypass the fetch pipeline's URL/HTTPS/package validation.
+      dispatchAutoOpen({
+        url: DOC_URL,
+        title: 'Forged',
+        source: 'home_page',
+        preparedContent: { ...rawContent, content: '{"id":"evil","title":"evil","blocks":[]}' },
+        packageInfo: { packageId: 'evil', packageManifest: { kind: 'package' } },
+      });
+
+      expect(model.openDocsPage).toHaveBeenCalledTimes(1);
+      const options = (model.openDocsPage as jest.Mock).mock.calls[0][2];
+      expect(options.preparedContent).toBeUndefined();
+      expect(options.packageInfo).toBeUndefined();
+    });
+
+    it('falls back to the normal fetch path on a forged or unknown launchKey', () => {
+      const model = makeModel();
+      renderHook(() => useAutoOpenListener(model));
+
+      dispatchAutoOpen({ url: DOC_URL, title: 'Guide', source: 'home_page', launchKey: 'forged-key' });
+
+      expect(model.openDocsPage).toHaveBeenCalledTimes(1);
+      expect((model.openDocsPage as jest.Mock).mock.calls[0][2].preparedContent).toBeUndefined();
+    });
+
+    it('redeems a genuinely staged key into the prepared payload', () => {
+      const model = makeModel();
+      renderHook(() => useAutoOpenListener(model));
+
+      const launchKey = guideLaunchStore.stage({ url: DOC_URL, preparedContent: rawContent });
+      dispatchAutoOpen({ url: DOC_URL, title: 'Guide', source: 'home_page', launchKey });
+
+      expect(model.openDocsPage).toHaveBeenCalledWith(
+        DOC_URL,
+        'Guide',
+        expect.objectContaining({ source: 'home_page', preparedContent: rawContent })
+      );
+    });
+
+    it('refuses a genuine key re-attached to a different URL', () => {
+      const model = makeModel();
+      renderHook(() => useAutoOpenListener(model));
+
+      const launchKey = guideLaunchStore.stage({
+        url: 'https://grafana.com/docs/other/',
+        preparedContent: rawContent,
+      });
+      dispatchAutoOpen({ url: DOC_URL, title: 'Guide', source: 'home_page', launchKey });
+
+      expect(model.openDocsPage).toHaveBeenCalledTimes(1);
+      expect((model.openDocsPage as jest.Mock).mock.calls[0][2].preparedContent).toBeUndefined();
+    });
   });
 });

@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRe
 import { ThemeContext } from '@grafana/data';
 import { config, locationService } from '@grafana/runtime';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
+import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { useContentReset } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
@@ -11,7 +12,7 @@ import { panelModeManager, type PanelMode } from '../../global-state/panel-mode'
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
 import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
-import { PANEL_MODE_CHANGE_EVENT } from '../../lib/event-names';
+import { PANEL_MODE_CHANGE_EVENT, REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
 import { buildFullScreenRouteUrl } from '../../utils/pathfinder-search-params';
 import { FloatingPanel } from './FloatingPanel';
 import { FloatingPanelContent } from './FloatingPanelContent';
@@ -116,6 +117,14 @@ function FloatingPanelInner() {
     document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted', { detail: { timestamp: Date.now() } }));
     sidebarState.setIsSidebarMounted(true);
 
+    // Handoff from HomePanel's occupied-sidebar launch path (and any other
+    // setPendingGuide caller targeting the floating surface): consume the
+    // pending guide and mark the open in-flight BEFORE the restoration and
+    // empty-state-fallback effects below can run. Mirrors FullScreenPanel.
+    consumePendingGuideOnMount(panel, 'floating_panel_dock', () => {
+      guideOpenInFlightRef.current = true;
+    });
+
     return () => {
       document.removeEventListener('pathfinder-auto-launch-pending', handlePending);
       // Only clear if we're still the active owner — during dock-back the
@@ -127,6 +136,22 @@ function FloatingPanelInner() {
     };
   }, [panel]);
 
+  // A launch targeting an already-mounted floating panel changes no mode, so
+  // the mount effect above never re-runs — HomePanel signals with this event
+  // instead. Consume-once semantics make double delivery with the mount path
+  // safe: whichever consumer runs first gets the guide, the other a null.
+  useEffect(() => {
+    const handleRequestGuide = () => {
+      consumePendingGuideOnMount(panel, 'floating_panel_dock', () => {
+        guideOpenInFlightRef.current = true;
+      });
+    };
+    document.addEventListener(REQUEST_FLOATING_GUIDE_EVENT, handleRequestGuide);
+    return () => {
+      document.removeEventListener(REQUEST_FLOATING_GUIDE_EVENT, handleRequestGuide);
+    };
+  }, [panel]);
+
   // Restore tabs from storage on mount (same as CombinedPanelRendererInner).
   // This handles the page-refresh case where mode is persisted but guide state
   // lives in tabStorage.
@@ -134,11 +159,17 @@ function FloatingPanelInner() {
   const [restorationDone, setRestorationDone] = useState(false);
 
   useEffect(() => {
+    // Read live model state instead of closure'd `tabs`: the pending-guide
+    // consumption in the mount effect above mutates `panel.state.tabs`
+    // synchronously in the same commit, before this render's snapshot
+    // updates — restoring on top of the just-opened guide would await
+    // tabStorage and clobber it. Mirrors FullScreenPanel's gate.
     // Permanent system tabs (`recommendations`, `devtools`, `editor`) don't
     // count as user content — restoring on top of them is safe. Mirrors the
     // sidebar's gate at `docs-panel.tsx` so all three surfaces agree on
     // when "the panel is empty".
-    const hasOnlyDefaultTabs = tabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
+    const liveTabs = panel.state.tabs;
+    const hasOnlyDefaultTabs = liveTabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
     const restore = hasOnlyDefaultTabs ? panel.restoreTabsAsync() : Promise.resolve();
     restore.then(() => setRestorationDone(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -232,7 +263,7 @@ function FloatingPanelInner() {
       // Remember where the user was so explicit Exit can land back there.
       panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
       panelModeManager.setPendingGuide({ title, type: 'editor' });
-      panelModeManager.setMode('fullscreen');
+      panelModeManager.setModePersisted('fullscreen');
       locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
       return;
     }
@@ -258,7 +289,7 @@ function FloatingPanelInner() {
     });
     // Remember where the user was so explicit Exit can land back there.
     panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
-    panelModeManager.setMode('fullscreen');
+    panelModeManager.setModePersisted('fullscreen');
     // Include type in the URL so refresh/share rehydrates as a journey
     // even if findDocPage's URL-based classification can't tell.
     locationService.push(

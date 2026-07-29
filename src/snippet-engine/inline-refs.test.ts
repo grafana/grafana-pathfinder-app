@@ -1,4 +1,4 @@
-import { inlineSnippetRefsInGuide } from './inline-refs';
+import { inlineSnippetRefsInGuide, inlineSnippetRefsInGuideWithStatus } from './inline-refs';
 import type { SnippetResolution, SnippetResolver } from './types';
 import type { JsonBlock, JsonGuide } from '../types/json-guide.types';
 
@@ -116,5 +116,37 @@ describe('inlineSnippetRefsInGuide', () => {
     const placeholder = out.blocks[0]!;
     expect(placeholder.type).toBe('markdown');
     expect((placeholder as { content: string }).content).toMatch(/missing/);
+  });
+});
+
+describe('inlineSnippetRefsInGuideWithStatus', () => {
+  it('reports no unresolved ids and returns the guide unchanged when there are no refs', async () => {
+    const g: JsonGuide = { id: 'g', title: 'g', blocks: [{ type: 'markdown', content: 'hi' }] };
+    const out = await inlineSnippetRefsInGuideWithStatus(g, new StubResolver({}));
+    expect(out.unresolvedSnippetIds).toEqual([]);
+    expect(out.guide).toEqual(g);
+  });
+
+  it('reports the ids of refs that failed to resolve while still splicing placeholders', async () => {
+    const g: JsonGuide = {
+      id: 'g',
+      title: 'g',
+      blocks: [
+        { type: 'snippet-ref', snippetId: 'ok-one' },
+        { type: 'section', title: 's', blocks: [{ type: 'snippet-ref', snippetId: 'missing' }] },
+      ],
+    };
+    const resolver = new StubResolver({ 'ok-one': ok('ok-one', [{ type: 'markdown', content: 'resolved' }]) });
+    const out = await inlineSnippetRefsInGuideWithStatus(g, resolver);
+    expect(out.unresolvedSnippetIds).toEqual(['missing']);
+    expect(out.guide.blocks[0]).toEqual({ type: 'markdown', content: 'resolved' });
+  });
+
+  it('reports an empty list when every ref resolves', async () => {
+    const g: JsonGuide = { id: 'g', title: 'g', blocks: [{ type: 'snippet-ref', snippetId: 's' }] };
+    const resolver = new StubResolver({ s: ok('s', [{ type: 'interactive', action: 'button', content: 'go' }]) });
+    const out = await inlineSnippetRefsInGuideWithStatus(g, resolver);
+    expect(out.unresolvedSnippetIds).toEqual([]);
+    expect(out.guide.blocks[0]).toMatchObject({ type: 'interactive', action: 'button' });
   });
 });

@@ -79,6 +79,7 @@ export enum UserInteraction {
   // Learning Paths & Gamification
   LearningPathProgress = 'learning_path_progress',
   BadgeUnlocked = 'badge_unlocked',
+  GuideLaunchSurfaceChosen = 'guide_launch_surface_chosen',
 
   // Feature Flag Tracking
   FeatureFlagEvaluated = 'feature_flag_evaluated',

@@ -29,11 +29,22 @@ export interface OpenDocsOptions {
   skipReadyToBegin?: boolean;
   /** Optional package context for bundled or remote package guides. */
   packageInfo?: PackageOpenInfo;
+  /**
+   * Content already fetched + snippet-expanded by `prepareGuideLaunch`. When
+   * present the loader skips its network fetch (one-fetch launch) but runs the
+   * identical finalization, so alignment / journey / package parity holds.
+   * One-shot memory state — never persisted to tab storage.
+   */
+  preparedContent?: RawContent;
 }
 
 /** @see OpenDocsOptions */
 export interface OpenLearningJourneyOptions {
   source?: LaunchSource;
+  /** @see OpenDocsOptions.preparedContent */
+  preparedContent?: RawContent;
+  /** @see OpenDocsOptions.packageInfo */
+  packageInfo?: PackageOpenInfo;
 }
 
 /**
@@ -58,7 +69,7 @@ export interface DocsPanelModelOperations {
   loadTab(
     tabId: string,
     url: string,
-    options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo }
+    options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo; prefetched?: RawContent }
   ): Promise<void>;
 
   /** Close a tab by ID */

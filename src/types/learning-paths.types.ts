@@ -169,6 +169,10 @@ export interface LearningPathCardProps {
   onContinue: (guideId: string, pathId: string) => void;
   /** Callback when user clicks to reset the path (optional) */
   onReset?: (pathId: string) => void;
+  /** A launch from THIS card is being prepared (fetch + classify) */
+  isLaunching?: boolean;
+  /** Any launch is in flight — continue is disabled so clicks aren't silently dropped */
+  launchDisabled?: boolean;
 }
 
 /**

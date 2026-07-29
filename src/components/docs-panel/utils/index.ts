@@ -8,7 +8,7 @@ export { computeTabVisibility, PERMANENT_TAB_IDS } from './tab-visibility';
 export type { TabVisibilityResult } from './tab-visibility';
 export { restoreTabsFromStorage, restoreActiveTabFromStorage, createUrlValidator } from './tab-storage-restore';
 export type { UrlValidator, TabRestoreOptions } from './tab-storage-restore';
-export { isGrafanaDocsUrl, cleanDocsUrl } from './url-validation';
+export { isGrafanaDocsUrl, cleanDocsUrl, isLearningJourneyUrl } from './url-validation';
 export { loadDocsTabContentResult, UNRESOLVED_PACKAGE_ERROR } from './docs-tab-loader';
 export { findCurrentMilestoneIndex } from './milestone-index';
 export { pickGrafanaDocsOpenAction } from './grafana-docs-open-action';

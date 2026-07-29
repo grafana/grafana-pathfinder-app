@@ -6,7 +6,7 @@ import { useStyles2 } from '@grafana/ui';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
-import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
+import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
 import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
@@ -60,9 +60,16 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // the extension sidebar is closed. Idempotent — safe on refresh of
   // /fullscreen where mode may already be 'fullscreen' but a stale Grafana
   // dock could otherwise re-mount the sidebar in parallel.
+  //
+  // Transient, not plain setMode: this effect only fires when the route and
+  // the mode disagree, i.e. a cold load / reload of a /fullscreen URL after
+  // the in-memory transient state was lost. Aligning mode to a route we
+  // already landed on is not a preference expression — a persisting write
+  // here would overwrite the user's stored preference with whatever surface
+  // an auto-launch chose before the reload.
   useEffect(() => {
     if (panelModeManager.getMode() !== 'fullscreen') {
-      panelModeManager.setMode('fullscreen');
+      panelModeManager.setModeTransient('fullscreen');
     } else {
       getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
     }
@@ -87,11 +94,9 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     // `openSidebar`, which now no-ops in fullscreen mode).
     sidebarState.setIsSidebarMounted(true);
 
-    const pendingGuide = panelModeManager.consumePendingGuide();
-    if (pendingGuide) {
+    consumePendingGuideOnMount(panel, 'fullscreen_handoff', () => {
       guideOpenInFlightRef.current = true;
-      openPendingGuide(panel, pendingGuide, 'fullscreen_handoff');
-    }
+    });
 
     return () => {
       document.removeEventListener('pathfinder-auto-launch-pending', handlePending);
@@ -271,7 +276,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
         guide_title: title,
       });
       panelModeManager.setPendingGuide({ title, type: 'editor' });
-      panelModeManager.setMode('floating');
+      panelModeManager.setModePersisted('floating');
       locationService.push(PLUGIN_BASE_URL);
       return;
     }
@@ -296,7 +301,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       // direction: raw GitHub URLs aren't recognised package URLs.
       packageInfo: activeTab?.packageInfo,
     });
-    panelModeManager.setMode('floating');
+    panelModeManager.setModePersisted('floating');
     locationService.push(PLUGIN_BASE_URL);
   }, [isEditorTab, guideUrl, title, activeTab?.type, activeTab?.packageInfo]);
 
@@ -353,17 +358,14 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // In-fullscreen swap: when something dispatches `pathfinder-request-full-screen`
   // while we're already on the fullscreen route (e.g. the BlockEditor toolbar
   // in a sidebar that's still mounted alongside fullscreen, see Issue 3), the
-  // host-side handler's `setMode('fullscreen')` is a no-op and the route push
+  // host-side handler's `setModePersisted('fullscreen')` is a no-op and the route push
   // doesn't remount us. Consume any pending guide here too so the swap still
   // happens — typically used to replace a journey with the editor or vice versa.
   useEffect(() => {
     const handleFullScreenRequest = () => {
-      const pendingGuide = panelModeManager.consumePendingGuide();
-      if (!pendingGuide) {
-        return;
-      }
-      guideOpenInFlightRef.current = true;
-      openPendingGuide(panel, pendingGuide, 'fullscreen_handoff');
+      consumePendingGuideOnMount(panel, 'fullscreen_handoff', () => {
+        guideOpenInFlightRef.current = true;
+      });
     };
     document.addEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
     return () => {
