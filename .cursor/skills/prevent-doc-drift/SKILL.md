@@ -18,7 +18,7 @@ Together they form a two-tier defence: the per-PR skill is the primary line, the
 
 These constraints are absolute and override any other instructions:
 
-1. **Only modify documentation files.** Allowed: `AGENTS.md`, `CLAUDE.md`, `README.md` at repo root; any `*.md` or `*.mdc` under `.cursor/rules/`, `.cursor/skills/`, or `docs/developer/`. **Forbidden**: any source file (`.ts`, `.tsx`, `.js`, `.jsx`, `.go`, `.json`, `.css`, `.html`), config files, lockfiles, and **any file under `docs/design/`** (design docs are author-curated by humans via the `design-review` skill).
+1. **Only modify documentation files.** Allowed: `AGENTS.md`, `CLAUDE.md`, `README.md` at repo root; any `*.md` or `*.mdc` under `.cursor/rules/`, `.cursor/skills/`, `.claude/skills/`, or `docs/developer/`. **Forbidden**: any source file (`.ts`, `.tsx`, `.js`, `.jsx`, `.go`, `.json`, `.css`, `.html`), config files, lockfiles, and **any file under `docs/design/`** (design docs are author-curated by humans via the `design-review` skill).
 2. **Operate on the PR diff only.** Do not audit files outside the diff. If you find drift in a file the PR did not touch, add it to `docs/_maintenance-backlog.md` for `maintain-docs` to handle — do not silently fix it here.
 3. **Never fabricate.** Only document features, subsystems, services, scripts, and relationships that the diff actually adds. If you cannot confirm something exists from the diff plus a focused code read, omit it.
 4. **Before staging anything, verify the constraint.** Run `git diff --name-only` after edits and confirm every changed path is in the allowed list above. Abort if any disallowed file appears.
