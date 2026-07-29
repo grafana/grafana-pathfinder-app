@@ -360,6 +360,41 @@ describe('InteractiveGuided — cancellation', () => {
   });
 });
 
+describe('InteractiveGuided — completeEarly retry', () => {
+  it('reruns failed actions even though completion was persisted early', async () => {
+    mockExecuteGuidedStep.mockResolvedValueOnce('error').mockResolvedValueOnce('completed');
+
+    function RetryHarness() {
+      const [, forceRender] = React.useReducer((value) => value + 1, 0);
+      return (
+        <InteractiveGuided
+          stepId="complete-early-retry"
+          completeEarly={true}
+          onComplete={forceRender}
+          internalActions={[{ targetAction: 'noop' }]}
+        />
+      );
+    }
+
+    render(<RetryHarness />);
+    const step = screen.getByTestId(testIds.interactive.step('complete-early-retry'));
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', 'error');
+    });
+
+    fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('complete-early-retry')));
+
+    await waitFor(() => {
+      expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', 'completed');
+    });
+  });
+});
+
 describe('InteractiveGuided — skip recovery', () => {
   it('clears a timeout error before reporting the step completed', async () => {
     mockExecuteGuidedStep.mockResolvedValue('timeout');

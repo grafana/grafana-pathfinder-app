@@ -205,6 +205,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // distinguishes a deliberate cancel from a disconnect/failure (skips the toast).
     const controllerCancelledRef = useRef(false);
     const activeRunIdRef = useRef<string>('');
+    const allowCompletedRetryRef = useRef(false);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [failedStepIndex, setFailedStepIndex] = useState(-1);
     const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
@@ -315,7 +316,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     // Main execution logic
     const executeStep = useCallback(async (): Promise<boolean> => {
-      if (!checker.isEnabled || isCompletedWithObjectives || isExecuting) {
+      if (!checker.isEnabled || (isCompletedWithObjectives && !allowCompletedRetryRef.current) || isExecuting) {
         return false;
       }
 
@@ -710,7 +711,12 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setExecutionError(null);
       setCurrentStepStatus('waiting');
       setWasCancelled(false);
-      await executeStep();
+      allowCompletedRetryRef.current = true;
+      try {
+        await executeStep();
+      } finally {
+        allowCompletedRetryRef.current = false;
+      }
     }, [executeStep]);
 
     // Handle cancel during guided execution

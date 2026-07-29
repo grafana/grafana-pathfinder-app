@@ -232,6 +232,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // distinguishes a deliberate cancel from a disconnect/failure (skips the toast).
     const controllerCancelledRef = React.useRef(false);
     const activeRunIdRef = React.useRef<string>('');
+    const allowCompletedRetryRef = React.useRef(false);
 
     // Handle reset trigger from parent section
     useEffect(() => {
@@ -308,7 +309,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     const executeStep = useCallback(async (): Promise<boolean> => {
       // When called via ref (section execution), ignore disabled prop to avoid race conditions
       // Only check if not enabled, completed, or already executing
-      if (!checker.isEnabled || isCompletedWithObjectives || isExecuting) {
+      if (!checker.isEnabled || (isCompletedWithObjectives && !allowCompletedRetryRef.current) || isExecuting) {
         return false;
       }
 
@@ -946,7 +947,12 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               <Button
                 onClick={async () => {
                   setExecutionError(null);
-                  await executeStep();
+                  allowCompletedRetryRef.current = true;
+                  try {
+                    await executeStep();
+                  } finally {
+                    allowCompletedRetryRef.current = false;
+                  }
                 }}
                 size="sm"
                 variant="primary"
