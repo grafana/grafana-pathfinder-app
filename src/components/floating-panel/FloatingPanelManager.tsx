@@ -226,7 +226,12 @@ function FloatingPanelInner() {
       guide_url: guideUrl || '',
       guide_title: title,
     });
-    panelModeManager.setMode('sidebar');
+    // Decision 3 (#1449): docking to the sidebar is a deliberate surface
+    // ADOPTION, so it persists — the outcome is the same whether or not a guide
+    // was auto-launched earlier in the session. (The fullscreen back-arrow is a
+    // RETURN, not an adoption, and stays conditional setMode.) See the
+    // persistence contract in global-state/panel-mode.ts.
+    panelModeManager.setModePersisted('sidebar');
     sidebarState.setPendingOpenSource('floating_panel_dock', 'open');
     sidebarState.openSidebar('Interactive learning');
   }, [guideUrl, title]);

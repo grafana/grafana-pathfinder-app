@@ -1,16 +1,22 @@
 /**
  * Tripwire (Pattern J — contract-surface preservation)
  *
- * Pins the panel-mode persistence classification (locked decision 2 + the A2
- * mechanism): every `panelModeManager.setMode` call site must match the single
- * rule —
+ * Pins the panel-mode persistence classification (decisions 2 and 3; full
+ * rationale in docs/design/PANEL-MODE-PERSISTENCE.md). Every
+ * `panelModeManager` mode-change call site must match the rule —
  *
- *   Use `setModePersisted` (persist + END the transient session) IFF the call
- *   is an explicit USER choice ADOPTING a NON-SIDEBAR surface (floating or
- *   fullscreen). Everything else (automatic teardown / auto-dock / self-heal /
- *   cold-load, and every return-to-base sidebar dock) stays plain `setMode`,
- *   which is non-persisting while an auto-launch round-trip is active and
- *   persists otherwise.
+ *   Use `setModePersisted` (persist + END the transient session) for a
+ *   deliberate surface ADOPTION: adopting a non-sidebar surface (pop-out to
+ *   floating, switch-to-fullscreen, deep links) OR the floating dock-to-sidebar
+ *   pill (decision 3 — docking is an adoption, so it persists consistently
+ *   regardless of session history). Everything else — automatic teardown /
+ *   auto-dock / self-heal / cold-load, and the fullscreen RETURN-to-sidebar
+ *   exit — stays conditional `setMode`, which does not persist while a
+ *   transient auto-launch session is active and persists otherwise.
+ *
+ * The per-gesture SEMANTICS (persist vs suppress) are proven behaviourally in
+ * `global-state/panel-mode.test.ts`; this file only pins which method each
+ * call site reaches for, since the runtime surfaces can't mount under Jest.
  *
  * Why source-assertion (not runtime mount):
  *   `@grafana/scenes` + `@grafana/ui` require a theme provider that is not
@@ -50,7 +56,18 @@ describe('panel-mode surface-toggle persistence classification', () => {
     });
   });
 
-  describe('automatic and return-to-base sites stay plain setMode', () => {
+  describe('the floating dock-to-sidebar pill is a deliberate adoption (decision 3)', () => {
+    it('FloatingPanelManager docks to the sidebar via setModePersisted', () => {
+      // #1449: docking is a deliberate "adopt the sidebar" gesture, so it must
+      // persist consistently — same outcome whether or not a guide was
+      // auto-launched earlier in the session. The behavioural proof (persists +
+      // ends the transient session) lives in panel-mode.test.ts.
+      const floating = read('components/floating-panel/FloatingPanelManager.tsx');
+      expect(floating).toContain("setModePersisted('sidebar')");
+    });
+  });
+
+  describe('automatic and return-to-base sites stay conditional setMode', () => {
     it('full-screen auto-dock (sidebar OR floating) never persists', () => {
       const src = read('components/full-screen/full-screen-autodock.ts');
       expect(src).not.toContain('setModePersisted');
@@ -58,17 +75,15 @@ describe('panel-mode surface-toggle persistence classification', () => {
       expect(src).toContain("setMode('floating')");
     });
 
-    it('return-to-base sidebar docks and closes never adopt the base via setModePersisted', () => {
-      // Base sidebar is never a deliberate non-sidebar adoption, so it must
-      // never be forced-persisted; plain setMode gives the correct behavior
-      // (suppressed during a transient round-trip, persists otherwise).
+    it('the fullscreen RETURN-to-sidebar exit stays conditional, never a forced sidebar adoption', () => {
+      // The fullscreen back-arrow / notice is a RETURN, not an adoption
+      // (decision 3): forcing setModePersisted('sidebar') here would overwrite a
+      // prose reader's real preference when they leave a transient fullscreen
+      // launch. Conditional setMode is correct — suppressed during a transient
+      // session, persists when leaving a surface the user chose themselves.
       const fullScreen = read('components/full-screen/FullScreenPanel.tsx');
       expect(fullScreen).toContain("setMode('sidebar')");
       expect(fullScreen).not.toContain("setModePersisted('sidebar')");
-
-      const floating = read('components/floating-panel/FloatingPanelManager.tsx');
-      expect(floating).toContain("setMode('sidebar')");
-      expect(floating).not.toContain("setModePersisted('sidebar')");
 
       const notice = read('components/docs-panel/components/FullScreenModeNotice.tsx');
       expect(notice).toContain("setMode('sidebar')");
