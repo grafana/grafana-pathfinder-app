@@ -4,7 +4,7 @@ import { getAppEvents, locationService } from '@grafana/runtime';
 import { useStyles2 } from '@grafana/ui';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
-import { useContentReset } from '../docs-panel/hooks';
+import { useContentReset, useAutoOpenListener } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
@@ -185,6 +185,9 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     onIncoming: markGuideOpenInFlight,
     skipLaunch: skipLaunchWhenGuideInFlight,
   });
+  // Receive intercepted docs links while the full-screen page owns the surface
+  // (#1450). Mode-gated to 'fullscreen' so a dock-back can't double-open.
+  useAutoOpenListener(panel, 'fullscreen');
 
   // Active tab projection.
   const activeTab = tabs.find((t) => t.id === activeTabId);
