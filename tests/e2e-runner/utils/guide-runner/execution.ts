@@ -1208,8 +1208,9 @@ export function logStepResult(result: StepTestResult): void {
  * Summarize execution results (L3-4C enhanced).
  *
  * Per design doc, overall test success is determined by:
- * - Skippable step failures do NOT fail the overall test
- * - Only mandatory step failures count against success
+ * - Mandatory step failures always fail the overall test
+ * - Skippable step failures fail the test only when no step has a verified pass
+ * - A clean all-skipped run succeeds
  *
  * @param results - Array of step test results
  * @returns Summary object with counts and overall status
@@ -1222,7 +1223,7 @@ export function summarizeResults(results: StepTestResult[]): {
   notReached: number;
   /** L3-4C: Count of mandatory step failures (determines overall success) */
   mandatoryFailed: number;
-  /** L3-4C: Count of skippable step failures (do not affect overall success) */
+  /** L3-4C: Count of skippable failures (affect success when no step passed) */
   skippableFailed: number;
   success: boolean;
   totalDurationMs: number;
@@ -1272,7 +1273,11 @@ export function logExecutionSummary(results: StepTestResult[]): void {
       console.log(`      └─ Mandatory: ${summary.mandatoryFailed} (affects result)`);
     }
     if (summary.skippableFailed > 0) {
-      console.log(`      └─ Skippable: ${summary.skippableFailed} (does not affect result)`);
+      const impact =
+        summary.mandatoryFailed === 0 && summary.passed === 0
+          ? 'affects result: no verified pass'
+          : 'does not affect result';
+      console.log(`      └─ Skippable: ${summary.skippableFailed} (${impact})`);
     }
   } else {
     console.log(`   ✗ Failed: 0`);

@@ -266,7 +266,7 @@ export interface ArtifactPaths {
  * Classification types (for future use):
  * - `content-drift`: Selector/requirement issues → Content team
  * - `product-regression`: Action failures → Product team
- * - `infrastructure`: TIMEOUT/NETWORK/AUTH → Environmental
+ * - `infrastructure`: high-confidence network/auth/browser failures → Environmental
  * - `unknown`: Default for anything that can't be reliably classified
  *
  * @see docs/developer/E2E_TESTING.md
@@ -274,7 +274,7 @@ export interface ArtifactPaths {
 export type ErrorClassification =
   | 'content-drift' // Selector/requirement issues (requires human validation)
   | 'product-regression' // Action failures (requires human validation)
-  | 'infrastructure' // TIMEOUT, NETWORK_ERROR, AUTH_EXPIRED
+  | 'infrastructure' // Network, authentication, browser-crash, and closed-target failures
   | 'unknown'; // Default - cannot be reliably classified
 
 // ============================================
@@ -318,8 +318,7 @@ export interface StepTestResult {
 
   /**
    * Whether the step was skippable (L3-4C).
-   * Used to determine if failures count against overall test success.
-   * Per design doc: skippable step failures do NOT fail the overall test.
+   * Skippable failures continue execution, but fail a run with no verified pass.
    */
   skippable: boolean;
 

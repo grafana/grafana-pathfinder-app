@@ -274,7 +274,11 @@ export function printDetailedSummary(
         console.log(`  └─ Mandatory failures: ${summary.mandatoryFailed} (affects overall result)`);
       }
       if (summary.skippableFailed > 0) {
-        console.log(`  └─ Skippable failures: ${summary.skippableFailed} (does not affect overall result)`);
+        const impact =
+          summary.mandatoryFailed === 0 && summary.passed === 0
+            ? 'affects overall result: no verified pass'
+            : 'does not affect overall result';
+        console.log(`  └─ Skippable failures: ${summary.skippableFailed} (${impact})`);
       }
     }
 
