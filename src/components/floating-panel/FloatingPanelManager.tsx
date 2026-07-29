@@ -221,33 +221,47 @@ function FloatingPanelInner() {
   // the cover URL; for non-journey tabs the two fields are equal.
   const guideUrl = isEditorTab ? undefined : activeTab?.currentUrl || activeTab?.baseUrl;
 
+  // Decision 3 (#1449): docking to the sidebar via the pill is a deliberate
+  // surface ADOPTION, so it persists (`persist: true`) — the outcome is the same
+  // whether or not a guide was auto-launched earlier in the session. The
+  // programmatic dock request (guide `popout` action, generic toggle) is NOT an
+  // adoption; it stays conditional `setMode` so an automatic launch never
+  // overwrites the stored preference (decision 2), matching the fullscreen
+  // return-to-sidebar exit. See the persistence contract in
+  // global-state/panel-mode.ts.
+  const dockToSidebar = useCallback(
+    (persist: boolean) => {
+      reportAppInteraction(UserInteraction.FloatingPanelDock, {
+        guide_url: guideUrl || '',
+        guide_title: title,
+      });
+      if (persist) {
+        panelModeManager.setModePersisted('sidebar');
+      } else {
+        panelModeManager.setMode('sidebar');
+      }
+      sidebarState.setPendingOpenSource('floating_panel_dock', 'open');
+      sidebarState.openSidebar('Interactive learning');
+    },
+    [guideUrl, title]
+  );
+
   const handleSwitchToSidebar = useCallback(() => {
-    reportAppInteraction(UserInteraction.FloatingPanelDock, {
-      guide_url: guideUrl || '',
-      guide_title: title,
-    });
-    // Decision 3 (#1449): docking to the sidebar is a deliberate surface
-    // ADOPTION, so it persists — the outcome is the same whether or not a guide
-    // was auto-launched earlier in the session. (The fullscreen back-arrow is a
-    // RETURN, not an adoption, and stays conditional setMode.) See the
-    // persistence contract in global-state/panel-mode.ts.
-    panelModeManager.setModePersisted('sidebar');
-    sidebarState.setPendingOpenSource('floating_panel_dock', 'open');
-    sidebarState.openSidebar('Interactive learning');
-  }, [guideUrl, title]);
+    dockToSidebar(true);
+  }, [dockToSidebar]);
 
   // Symmetric counterpart to `pathfinder-request-pop-out` (see docs-panel.tsx).
   // Dispatched by the popout interactive action so that guides can programmatically
   // dock the floating panel back into the sidebar.
   useEffect(() => {
     const handleDockRequest = () => {
-      handleSwitchToSidebar();
+      dockToSidebar(false);
     };
     document.addEventListener('pathfinder-request-dock', handleDockRequest);
     return () => {
       document.removeEventListener('pathfinder-request-dock', handleDockRequest);
     };
-  }, [handleSwitchToSidebar]);
+  }, [dockToSidebar]);
 
   const handleClose = useCallback(() => {
     panelModeManager.setMode('sidebar');
