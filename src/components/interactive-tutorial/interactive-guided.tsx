@@ -331,7 +331,13 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         return true;
       }
 
-      // NEW: If completeEarly flag is set, mark as completed BEFORE action execution
+      setIsExecuting(true);
+      setExecutionError(null);
+      setCurrentStepIndex(0);
+      setFailedStepIndex(-1);
+      setCurrentStepStatus('waiting');
+      setWasCancelled(false);
+      await waitForReactUpdates();
       if (completeEarly) {
         persistCompletion();
         if (onStepComplete && stepId) {
@@ -341,22 +347,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           onComplete();
         }
 
-        // Small delay to ensure localStorage write completes
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
-
-      setIsExecuting(true);
-      setExecutionError(null);
-      setCurrentStepIndex(0);
-      setFailedStepIndex(-1);
-      setCurrentStepStatus('waiting');
-      setWasCancelled(false);
-
-      // Flush React state before creating any DOM overlays. Without this, the
-      // idle-state skip button (block-level `skippable`) stays in the DOM while
-      // the guided handler synchronously appends its own overlay skip button,
-      // producing two simultaneous skip buttons (issue #786).
-      await waitForReactUpdates();
 
       try {
         // Execute each internal action in sequence, waiting for user
@@ -378,6 +370,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             setExecutionError(`Step ${i + 1} timed out. Click "Skip" to continue or "Retry" to try again.`);
             return false;
           } else if (result === 'cancelled') {
+            setWasCancelled(true);
             return false;
           } else if (result === 'error') {
             setFailedStepIndex(i);
@@ -695,11 +688,12 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       }
     }, [disabled, isExecuting, stepId, onStepReset, persistReset]);
 
+    const markSkipped = checker.markSkipped;
     const handleSkipStep = useCallback(async () => {
       setExecutionError(null);
       setFailedStepIndex(-1);
-      setCurrentStepStatus('completed');
       setWasCancelled(false);
+      await markSkipped?.();
       persistCompletion('skipped');
 
       if (onStepComplete && stepId) {
@@ -709,7 +703,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       if (onComplete) {
         onComplete();
       }
-    }, [stepId, onStepComplete, onComplete, persistCompletion]);
+    }, [stepId, onStepComplete, onComplete, persistCompletion, markSkipped]);
 
     // Handle retry after timeout or cancellation
     const handleRetry = useCallback(async () => {
@@ -732,7 +726,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setExecutionError(null);
       setCurrentStepIndex(0);
       setCurrentStepStatus('waiting');
-      setWasCancelled(false);
+      setWasCancelled(true);
     }, [guidedHandler, controllerChannel, renderedStepId]);
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;

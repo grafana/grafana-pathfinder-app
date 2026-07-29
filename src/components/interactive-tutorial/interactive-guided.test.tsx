@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
@@ -80,6 +80,9 @@ jest.mock('../../security', () => ({
 }));
 
 let mockStoredCompleted = false;
+const mockMarkSkipped = jest.fn(() => {
+  mockStoredCompleted = true;
+});
 
 // ─── Mock completion store ────────────────────────────────────────────────
 jest.mock('../../global-state/completion-store', () => ({
@@ -98,7 +101,7 @@ jest.mock('../../requirements-manager', () => ({
     isChecking: false,
     explanation: null,
     completionReason: 'none',
-    markSkipped: jest.fn(),
+    markSkipped: mockMarkSkipped,
     canFixRequirement: false,
     fixRequirement: null,
     checkStep: jest.fn(),
@@ -148,6 +151,11 @@ jest.mock('../../interactive-engine', () => ({
 // ─────────────────────────────────────────────────────────────────────────────
 beforeEach(() => {
   mockStoredCompleted = false;
+  mockExecuteGuidedStep.mockReset();
+  mockMarkSkipped.mockReset();
+  mockMarkSkipped.mockImplementation(() => {
+    mockStoredCompleted = true;
+  });
 });
 
 describe('InteractiveGuided — double skip button (issue #786)', () => {
@@ -267,6 +275,37 @@ describe('deriveGuidedUiState', () => {
 });
 
 describe('InteractiveGuided — completeEarly lifecycle', () => {
+  it('reports executing before the early-completion delay elapses', async () => {
+    jest.useFakeTimers();
+
+    function CompleteEarlyHarness() {
+      const [, forceRender] = React.useReducer((value) => value + 1, 0);
+      return (
+        <InteractiveGuided
+          stepId="complete-early-window"
+          completeEarly={true}
+          onComplete={forceRender}
+          internalActions={[{ targetAction: 'noop' }]}
+        />
+      );
+    }
+
+    try {
+      render(<CompleteEarlyHarness />);
+      const step = screen.getByTestId(testIds.interactive.step('complete-early-window'));
+
+      fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(step).toHaveAttribute('data-test-step-state', 'executing');
+      expect(mockExecuteGuidedStep).not.toHaveBeenCalled();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
+  });
   it('reports executing until a pre-completed action settles', async () => {
     let resolveExecution: (result: string) => void = () => {};
     mockExecuteGuidedStep.mockImplementation(
@@ -306,6 +345,21 @@ describe('InteractiveGuided — completeEarly lifecycle', () => {
   });
 });
 
+describe('InteractiveGuided — cancellation', () => {
+  it('reports cancelled when guided execution is cancelled', async () => {
+    mockExecuteGuidedStep.mockResolvedValue('cancelled');
+
+    render(<InteractiveGuided stepId="cancelled-step" internalActions={[{ targetAction: 'noop' }]} />);
+    const step = screen.getByTestId(testIds.interactive.step('cancelled-step'));
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', 'cancelled');
+    });
+  });
+});
+
 describe('InteractiveGuided — skip recovery', () => {
   it('clears a timeout error before reporting the step completed', async () => {
     mockExecuteGuidedStep.mockResolvedValue('timeout');
@@ -337,6 +391,38 @@ describe('InteractiveGuided — skip recovery', () => {
       expect(step).toHaveAttribute('data-test-step-state', 'completed');
     });
     expect(screen.queryByTestId(testIds.interactive.errorMessage('skippable-timeout'))).not.toBeInTheDocument();
+  });
+
+  it('records a skipped completion for a section-managed step', async () => {
+    mockExecuteGuidedStep.mockResolvedValue('timeout');
+
+    function SectionManagedHarness() {
+      const [, forceRender] = React.useReducer((value) => value + 1, 0);
+      return (
+        <InteractiveGuided
+          stepId="section-timeout"
+          sectionId="section"
+          skippable={true}
+          onStepComplete={() => forceRender()}
+          internalActions={[{ targetAction: 'noop' }]}
+        />
+      );
+    }
+
+    render(<SectionManagedHarness />);
+    const step = screen.getByTestId(testIds.interactive.step('section-timeout'));
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', 'error');
+    });
+
+    fireEvent.click(screen.getByTestId(testIds.interactive.requirementSkipButton('section-timeout')));
+
+    expect(mockMarkSkipped).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', 'completed');
+    });
   });
 });
 

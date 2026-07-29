@@ -11,6 +11,7 @@ import {
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
+import { waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
 import type { InteractiveElementData } from '../../types/interactive.types';
@@ -328,8 +329,13 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         return true;
       }
 
-      // NEW: If completeEarly flag is set, mark as completed BEFORE action execution
+      setIsExecuting(true);
+      setExecutionError(null);
+      setFailedStepIndex(-1); // Reset failed step tracking
+
+      isCancelledRef.current = false; // Reset ref as well
       if (completeEarly) {
+        await waitForReactUpdates();
         persistCompletion();
         if (onStepComplete && stepId) {
           onStepComplete(stepId);
@@ -338,15 +344,8 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           onComplete();
         }
 
-        // Small delay to ensure localStorage write completes
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
-
-      setIsExecuting(true);
-      setExecutionError(null);
-      setFailedStepIndex(-1); // Reset failed step tracking
-
-      isCancelledRef.current = false; // Reset ref as well
 
       // Clear any existing highlights before starting multi-step execution
       const { NavigationManager } = await import('../../interactive-engine');

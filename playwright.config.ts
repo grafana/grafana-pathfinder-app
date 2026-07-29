@@ -49,6 +49,7 @@ export default defineConfig<PluginOptions>({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        viewport: { width: 1920, height: 1080 },
         storageState: 'playwright/.auth/admin.json',
       },
       dependencies: ['auth'],

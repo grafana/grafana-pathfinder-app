@@ -22,7 +22,6 @@ import {
   summarizeResults,
   logStepResult,
   logExecutionSummary,
-  isGuidedExecutionActive,
   parseNthMatchSelector,
   resolveEffectiveSkippable,
   selectStepAction,
@@ -218,16 +217,6 @@ describe('resolveEffectiveSkippable', () => {
 
   it('preserves explicit skippability for guided steps', () => {
     expect(resolveEffectiveSkippable(true, true)).toBe(true);
-  });
-});
-
-describe('isGuidedExecutionActive', () => {
-  it('treats deployed completeEarly state as active while a substep index is present', () => {
-    expect(isGuidedExecutionActive('completed', '0')).toBe(true);
-  });
-
-  it('treats completed without a substep index as terminal', () => {
-    expect(isGuidedExecutionActive('completed', null)).toBe(false);
   });
 });
 

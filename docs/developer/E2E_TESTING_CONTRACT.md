@@ -374,6 +374,8 @@ React components derive attributes from existing UI state:
 
 For guided and multi-step components, `executing` takes precedence over `completed`. This keeps the active substep observable when `completeEarly` persists completion before the remaining actions settle.
 
+`InteractiveStep` also prioritizes active execution, but after execution settles it lets `completed` override a stale local error because completed rendering suppresses its error affordances. The `cancelled` state applies only to guided execution.
+
 **Key insight**: Attributes ARE the source of truth for rendered state. If they're wrong, the UI is wrong, so tests catch real bugs.
 
 ---

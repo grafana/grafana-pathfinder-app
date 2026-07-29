@@ -277,16 +277,11 @@ export async function waitForCompletionWithObjectivePolling(
 
 const GUIDED_WAIT_EXECUTING_MS = 5000;
 
-export function isGuidedExecutionActive(state: string | null, substepIndex: string | null): boolean {
-  return state === 'executing' || (state === 'completed' && substepIndex !== null);
-}
-
 async function waitForGuidedExecutionStart(page: Page, stepLocator: Locator, timeout: number): Promise<void> {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     const state = await stepLocator.getAttribute('data-test-step-state');
-    const substepIndex = await stepLocator.getAttribute('data-test-substep-index');
-    if (isGuidedExecutionActive(state, substepIndex) || (state === 'completed' && substepIndex === null)) {
+    if (state === 'executing' || state === 'completed') {
       return;
     }
     if (state === 'error' || state === 'cancelled') {
@@ -540,8 +535,7 @@ async function runGuidedSubstepLoop(
     }
 
     const state = await stepLocator.getAttribute('data-test-step-state');
-    const indexStr = await stepLocator.getAttribute('data-test-substep-index');
-    if (state === 'completed' && indexStr === null) {
+    if (state === 'completed') {
       return { completed: true };
     }
     if (state === 'error') {
@@ -552,10 +546,11 @@ async function runGuidedSubstepLoop(
       await captureLoopArtifacts('cancelled-state');
       throw new Error('Guided step was cancelled');
     }
-    if (!isGuidedExecutionActive(state, indexStr)) {
+    if (state !== 'executing') {
       await captureLoopArtifacts(`unexpected-state-${state}`);
       throw new Error(`Unexpected guided step state: ${state}`);
     }
+    const indexStr = await stepLocator.getAttribute('data-test-substep-index');
 
     const currentIndex = indexStr != null ? parseInt(indexStr, 10) : 0;
     const safeIndex = Number.isNaN(currentIndex) ? 0 : currentIndex;
