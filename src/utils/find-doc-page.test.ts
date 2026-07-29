@@ -83,10 +83,14 @@ describe('findDocPage', () => {
 
   describe('interactive CDN URLs', () => {
     it('returns interactive for allowed private interactive-learning URL', () => {
-      const mockIsInteractiveLearningURL = isInteractiveLearningUrl as jest.MockedFunction<typeof isInteractiveLearningUrl>;
+      const mockIsInteractiveLearningURL = isInteractiveLearningUrl as jest.MockedFunction<
+        typeof isInteractiveLearningUrl
+      >;
       mockIsInteractiveLearningURL.mockReturnValueOnce(true);
 
-      expect(findDocPage('https://interactive-learning-private.grafana-dev.net/internal/e2e/guide/content.json')).toEqual({
+      expect(
+        findDocPage('https://interactive-learning-private.grafana-dev.net/internal/e2e/guide/content.json')
+      ).toEqual({
         type: 'interactive',
         url: 'https://interactive-learning-private.grafana-dev.net/internal/e2e/guide/content.json',
         title: 'Guide',
@@ -94,10 +98,14 @@ describe('findDocPage', () => {
     });
 
     it('returns null when interactive-learning host is rejected by validator', () => {
-      const mockIsInteractiveLearningURL = isInteractiveLearningUrl as jest.MockedFunction<typeof isInteractiveLearningUrl>;
+      const mockIsInteractiveLearningURL = isInteractiveLearningUrl as jest.MockedFunction<
+        typeof isInteractiveLearningUrl
+      >;
       mockIsInteractiveLearningURL.mockReturnValueOnce(false);
 
-      expect(findDocPage('https://interactive-learning-private.grafana-dev.net/internal/e2e/guide/content.json')).toBeNull();
+      expect(
+        findDocPage('https://interactive-learning-private.grafana-dev.net/internal/e2e/guide/content.json')
+      ).toBeNull();
     });
   });
 
