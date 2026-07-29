@@ -52,6 +52,21 @@
     "showMoreTabs_other": "Show {{count}} more tabs",
     "switchToTab": "Switch to {{title}}"
   },
+  "myLearning": {
+    "badges": "Badges",
+    "badgesDescription": "Earn badges by completing guides and maintaining streaks",
+    "badgesEarned": "Badges earned",
+    "dayStreak": "Day streak",
+    "guidesCompleted": "Guides completed",
+    "launchErrorMessage": "Something went wrong while loading the guide. Please try again.",
+    "launchErrorTitle": "Could not open the guide",
+    "learningPaths": "Learning paths",
+    "pathsDescription": "Structured guides to help you master Grafana step by step",
+    "showLess": "Show less",
+    "subtitle": "Track your progress, earn badges, and master Grafana",
+    "viewAll_one": "View all ({{count}})",
+    "viewAll_other": "View all ({{count}})"
+  },
   "userProfileBar": {
     "allComplete": "All paths complete!",
     "allCompleteTooltip": "You've completed every learning path — nice work!",

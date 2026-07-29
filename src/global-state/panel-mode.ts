@@ -54,32 +54,51 @@ export interface PendingGuide {
 }
 
 /**
- * Global state manager for the panel display mode.
+ * Global state manager for the panel display mode (sidebar / floating /
+ * fullscreen).
  *
- * Tracks whether Pathfinder guides render in the Grafana extension sidebar
- * or in a free-floating draggable panel. Persists the user's preference
- * to localStorage and coordinates mode transitions by dispatching events.
+ * PERSISTENCE CONTRACT
+ * --------------------
+ * Two things are tracked separately:
+ *   - the CURRENT surface (what the user sees right now), and
+ *   - the PERSISTED preference (localStorage — what a fresh page load restores).
+ *
+ * Three mutators, distinguished only by how they touch those two:
+ *   - `setModePersisted(mode)` — a DELIBERATE surface ADOPTION. Always writes
+ *     localStorage and ends any transient session. Use at explicit user
+ *     surface-switch controls: pop-out, switch-to-fullscreen, the floating
+ *     dock-to-sidebar pill, deep links.
+ *   - `setModeTransient(mode)` — an AUTOMATIC launch selection (a guide opened
+ *     from My Learning picks the surface that best fits its content). In-memory
+ *     only, never persists, so the user's stored preference survives.
+ *   - `setMode(mode)` — everything else: automatic teardown / auto-dock /
+ *     self-heal / cold-load sync, and deliberate RETURN-to-base gestures
+ *     (fullscreen back-arrow, floating close). CONDITIONAL — while a transient
+ *     session is active it does not persist (leaving an auto-launched surface
+ *     restores the stored preference); outside a session it persists (returning
+ *     from a surface the user chose themselves sticks).
+ *
+ * WHY this shape — decisions 2 and 3 and the rejected "setMode never persists"
+ * alternative — is recorded canonically in docs/design/PANEL-MODE-PERSISTENCE.md.
+ * The load-bearing invariant (decision 2): an automatic launch never overwrites
+ * the stored preference. The intentional asymmetry (decision 3, #1449): the
+ * dock-to-sidebar pill persists (an adoption) while the fullscreen
+ * return-to-sidebar exit does not (a return). The conditional `setMode` is
+ * deliberate — do not "simplify" it away; the doc explains what that regresses.
  */
 class PanelModeManager {
   private _pendingGuide: PendingGuide | null = null;
   private _priorPath: string | null = null;
   /**
-   * In-memory current surface. When non-null it wins over the persisted
-   * preference for `getMode()` and mount decisions and is never written to
-   * localStorage. Set by an automatic launch (`setModeTransient`) and updated by
-   * each non-persisting `setMode` during the round-trip; cleared when a
-   * persisting write (`setModePersisted`, or `setMode` outside a round-trip)
-   * takes over so localStorage governs again. Does not survive a page reload.
+   * In-memory current surface, and the single source of truth for whether a
+   * transient auto-launch session is active (`_transientMode !== null`). When
+   * non-null it wins over the persisted preference for `getMode()` and mount
+   * decisions and is never written to localStorage. Set by an automatic launch
+   * (`setModeTransient`) and by each conditional `setMode` during the session;
+   * cleared by a deliberate `setModePersisted` (localStorage governs again) or
+   * a page reload. Does not survive a reload.
    */
   private _transientMode: PanelMode | null = null;
-  /**
-   * Whether an auto-launch round-trip is in progress. Gates ONLY persistence:
-   * while active, plain `setMode` (every automatic teardown / exit / auto-dock,
-   * to sidebar OR floating) does not overwrite the user's stored preference
-   * (locked decision 2). The round-trip ends only when a deliberate
-   * `setModePersisted` runs or the page reloads.
-   */
-  private _transientActive = false;
 
   /**
    * Get the current panel mode. The in-memory surface override wins over the
@@ -101,58 +120,50 @@ class PanelModeManager {
   }
 
   /**
-   * Switch panel mode. Dispatches a `pathfinder-panel-mode-change` event so
-   * both the sidebar and floating panel can react.
-   *
-   * When switching to 'floating' or 'fullscreen', closes the extension sidebar.
-   *
-   * This is the AUTOMATIC path and the single enforcement point for locked
-   * decision 2: while an auto-launch round-trip is active it is non-persisting
-   * for EVERY destination (teardown, exit, auto-dock to sidebar OR floating) and
-   * keeps the round-trip open, so no automatic surface change overwrites the
-   * user's stored preference. Outside a round-trip it persists the mode and
-   * drops any in-memory override. Deliberate user surface choices must use
-   * `setModePersisted`.
+   * Conditional mode change — the default path for automatic transitions
+   * (teardown, auto-dock, self-heal, cold-load sync) and for deliberate
+   * RETURN-to-base gestures (fullscreen back-arrow, floating close). Persists
+   * to localStorage ONLY when no transient session is active; during a session
+   * it updates the in-memory surface without touching the stored preference
+   * (decision 2). Dispatches `pathfinder-panel-mode-change` and closes the
+   * extension sidebar when switching to floating/fullscreen. Deliberate surface
+   * ADOPTIONS must use `setModePersisted` — see the class-level contract.
    */
   public setMode(mode: PanelMode): void {
     this.applyModeChange(mode, (next) => {
-      if (this._transientActive) {
+      if (this._transientMode !== null) {
         this._transientMode = next;
       } else {
-        this._transientMode = null;
         localStorage.setItem(StorageKeys.PANEL_MODE, next);
       }
     });
   }
 
   /**
-   * Switch panel mode for a DELIBERATE user surface choice (the pop-out /
-   * full-screen controls, a deep-link `panelMode=`). Always persists to
-   * localStorage, ends any active auto-launch round-trip, and drops the
-   * in-memory override so localStorage governs again. Runs the same side effects
-   * as `setMode`.
+   * Deliberate surface ADOPTION (pop-out, switch-to-fullscreen, the floating
+   * dock-to-sidebar pill, deep links). Always persists to localStorage, ends
+   * any active transient session, and drops the in-memory override so
+   * localStorage governs again. Runs the same side effects as `setMode`. See
+   * decision 3 in the class-level contract for why the sidebar dock is an
+   * adoption but the fullscreen exit is not.
    */
   public setModePersisted(mode: PanelMode): void {
     this.applyModeChange(mode, (next) => {
-      this._transientActive = false;
       this._transientMode = null;
       localStorage.setItem(StorageKeys.PANEL_MODE, next);
     });
   }
 
   /**
-   * Switch panel mode for an automatic launch WITHOUT persisting it. Runs the
-   * same side effects as `setMode` (close sidebar, telemetry, mode-change
-   * event) but records the choice in memory only, so the user's stored
-   * preference is untouched (locked decision: an automatic launch selection
-   * must not overwrite the persisted preference). Opens an auto-launch
-   * round-trip during which every plain `setMode` (exit / auto-dock / close) is
-   * non-persisting; the round-trip ends only when a deliberate
-   * `setModePersisted` runs or the page reloads. Does not survive a reload.
+   * Automatic launch selection: a guide opened from My Learning chooses the
+   * surface that fits its content. Records the surface in memory only and opens
+   * a transient session; never persists, so the user's stored preference is
+   * untouched (decision 2). The session ends only when a deliberate
+   * `setModePersisted` runs or the page reloads. Runs the same side effects as
+   * `setMode`; does not survive a reload.
    */
   public setModeTransient(mode: PanelMode): void {
     this.applyModeChange(mode, (next) => {
-      this._transientActive = true;
       this._transientMode = next;
     });
   }
@@ -160,11 +171,11 @@ class PanelModeManager {
   private applyModeChange(mode: PanelMode, commit: (mode: PanelMode) => void): void {
     const previous = this.getMode();
 
-    // Record the new state first (idempotent) so a transient session is marked
-    // even when the surface does not visibly change — e.g. an auto-launch to the
-    // surface that already matches the stored preference. Otherwise the session
-    // would not be flagged transient and a later teardown would persist over the
-    // user's preference.
+    // Record the new state first (idempotent) so `setModeTransient` opens the
+    // session even when the surface does not visibly change — e.g. an auto-launch
+    // to the surface that already matches the stored preference. Without this, a
+    // later teardown would find no active session and persist over the user's
+    // preference.
     commit(mode);
 
     if (mode === previous) {
