@@ -39,8 +39,7 @@ function skipOnlyReport(
   cleanupWarnings: string[] = []
 ): MultiGuideReport {
   const timestamp = new Date().toISOString();
-  const failedGuides = (preRunSkipped ?? []).filter((entry) => entry.failed).length;
-  const skippedGuides = (preRunSkipped ?? []).length - failedGuides;
+  const { failedGuides, skippedGuides } = countPreRunGuides(preRunSkipped);
   const runner: RunnerProvenance = {
     name: 'pathfinder-e2e-runner',
     version: process.env.PATHFINDER_E2E_RUNNER_VERSION ?? 'source',
@@ -77,6 +76,14 @@ function skipOnlyReport(
     preRunSkipped,
     cleanupWarnings: cleanupWarnings.length > 0 ? cleanupWarnings : undefined,
   };
+}
+
+function countPreRunGuides(preRunSkipped: MultiGuideReport['preRunSkipped']): {
+  failedGuides: number;
+  skippedGuides: number;
+} {
+  const failedGuides = (preRunSkipped ?? []).filter((entry) => entry.failed).length;
+  return { failedGuides, skippedGuides: (preRunSkipped ?? []).length - failedGuides };
 }
 
 function formatSideEffects(sideEffects: SideEffectClassification | undefined): string {
@@ -254,8 +261,12 @@ export function writeJsonReport(
       const report = generateMultiGuideReport(resultsWithData);
       if (preRunSkipped.length > 0) {
         report.preRunSkipped = preRunSkipped;
+        const counts = countPreRunGuides(preRunSkipped);
+        report.summary.totalGuides += preRunSkipped.length;
+        report.summary.failedGuides += counts.failedGuides;
+        report.summary.skippedGuides += counts.skippedGuides;
         const failureOutcomes: string[] = ['infrastructure_error', 'configuration_error', 'aborted', 'failed'];
-        if (preRunSkipped.some((e) => e.failed) && !failureOutcomes.includes(report.outcome)) {
+        if (counts.failedGuides > 0 && !failureOutcomes.includes(report.outcome)) {
           report.outcome = 'failed';
         }
       }

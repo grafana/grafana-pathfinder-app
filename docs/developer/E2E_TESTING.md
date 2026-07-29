@@ -257,7 +257,7 @@ When a step fails, the runner captures:
 - **DOM snapshot**: `{stepId}-dom.html` for selector debugging
 - **Console errors**: `{stepId}-console.json` when the step records console errors
 
-Artifacts are saved to the `--artifacts` directory (or a temp directory by default). With `--always-screenshot`, the runner also captures pre-step screenshots, success screenshots, and a final screenshot. `--trace` records a Playwright trace in a per-invocation output directory and surfaces the trace path in CLI output. Trace capture is disabled for bearer-token-authenticated cloud runs because Playwright traces can contain authorization headers, cookies, and temporary credentials.
+Artifacts are saved to the `--artifacts` directory (or a temp directory by default). With `--always-screenshot`, the runner also captures pre-step screenshots, success screenshots, and a final screenshot. `--trace` records a Playwright trace in a retained per-invocation output directory and surfaces the trace path in CLI output. Non-trace Playwright output directories are removed after each invocation. Trace capture is disabled for bearer-token-authenticated cloud runs because Playwright traces can contain authorization headers, cookies, and temporary credentials.
 
 ## Guided-block test guide
 

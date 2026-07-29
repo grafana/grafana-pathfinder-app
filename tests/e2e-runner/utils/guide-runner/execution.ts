@@ -1215,7 +1215,7 @@ export function logStepResult(result: StepTestResult): void {
  * @param results - Array of step test results
  * @returns Summary object with counts and overall status
  */
-export function summarizeResults(results: StepTestResult[]): {
+export interface ExecutionSummary {
   total: number;
   passed: number;
   failed: number;
@@ -1227,7 +1227,9 @@ export function summarizeResults(results: StepTestResult[]): {
   skippableFailed: number;
   success: boolean;
   totalDurationMs: number;
-} {
+}
+
+export function summarizeResults(results: StepTestResult[]): ExecutionSummary {
   const failedResults = results.filter((r) => r.status === 'failed');
 
   // L3-4C: Separate mandatory vs skippable failures
@@ -1249,6 +1251,10 @@ export function summarizeResults(results: StepTestResult[]): {
     success: mandatoryFailed === 0 && (counts.passed > 0 || counts.failed === 0),
     totalDurationMs: results.reduce((sum, r) => sum + r.durationMs, 0),
   };
+}
+
+export function skippableFailuresAffectSuccess(summary: ExecutionSummary): boolean {
+  return !summary.success && summary.mandatoryFailed === 0 && summary.skippableFailed > 0;
 }
 
 /**
@@ -1273,10 +1279,9 @@ export function logExecutionSummary(results: StepTestResult[]): void {
       console.log(`      └─ Mandatory: ${summary.mandatoryFailed} (affects result)`);
     }
     if (summary.skippableFailed > 0) {
-      const impact =
-        summary.mandatoryFailed === 0 && summary.passed === 0
-          ? 'affects result: no verified pass'
-          : 'does not affect result';
+      const impact = skippableFailuresAffectSuccess(summary)
+        ? 'affects result: no verified pass'
+        : 'does not affect result';
       console.log(`      └─ Skippable: ${summary.skippableFailed} (${impact})`);
     }
   } else {

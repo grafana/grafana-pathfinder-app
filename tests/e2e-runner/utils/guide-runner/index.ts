@@ -92,5 +92,6 @@ export {
   executeAllSteps,
   logStepResult,
   summarizeResults,
+  skippableFailuresAffectSuccess,
   logExecutionSummary,
 } from './execution';

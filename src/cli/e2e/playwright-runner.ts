@@ -328,6 +328,13 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
     }
     return result;
   } finally {
+    if (!traceEnabled) {
+      try {
+        rmSync(playwrightOutputDir, { recursive: true, force: true });
+      } catch {
+        console.warn(`Warning: Failed to clean up Playwright output directory: ${playwrightOutputDir}`);
+      }
+    }
     try {
       rmSync(tempDir, { recursive: true, force: true });
       if (options.verbose) {

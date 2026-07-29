@@ -14,7 +14,7 @@ import { INFRASTRUCTURE_ERROR_PATTERNS } from './constants';
  * Classify an error for failure triage (L3-5C).
  *
  * Per design doc MVP approach:
- * - TIMEOUT, NETWORK_ERROR, AUTH_EXPIRED → `infrastructure`
+ * - High-confidence network, authentication, and browser failures → `infrastructure`
  * - Everything else → `unknown` (requires human triage)
  *
  * This function analyzes error messages to determine classification.
@@ -27,7 +27,7 @@ import { INFRASTRUCTURE_ERROR_PATTERNS } from './constants';
  *
  * @example
  * ```typescript
- * classifyError('Timeout waiting for step completion')  // → 'infrastructure'
+ * classifyError('Timeout waiting for step completion')  // → 'unknown'
  * classifyError('net::ERR_CONNECTION_REFUSED')          // → 'infrastructure'
  * classifyError('Element not found')                    // → 'unknown'
  * classifyError(undefined, 'AUTH_EXPIRED')              // → 'infrastructure'
