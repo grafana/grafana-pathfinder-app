@@ -30,7 +30,7 @@ import { guideLaunchStore } from '../../global-state/guide-launch';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
-import { REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
+import { AUTO_OPEN_DOCS_EVENT, REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
 import { PLUGIN_BASE_URL, ROUTES } from '../../constants';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { buildFullScreenRouteUrl } from '../../utils/pathfinder-search-params';
@@ -113,7 +113,7 @@ export function HomePanelRenderer() {
     });
     if (sidebarState.getIsSidebarMounted()) {
       document.dispatchEvent(
-        new CustomEvent('pathfinder-auto-open-docs', {
+        new CustomEvent(AUTO_OPEN_DOCS_EVENT, {
           detail: { url: launch.url, title: launch.title, source: launch.source, launchKey },
         })
       );
