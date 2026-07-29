@@ -45,11 +45,21 @@ class GuideLaunchStore {
 
   /**
    * Stage a prepared payload and get back the opaque key to send over the
-   * public channel. Keys are single-use.
+   * public channel. Keys are single-use. Expired entries are swept here —
+   * redemption is the only other eviction path, and an abandoned launch's
+   * key is exactly the one that never gets redeemed, so without the sweep
+   * each abandoned launch would retain a full expanded guide for the life
+   * of the page.
    */
   public stage(payload: StagedLaunchPayload): string {
+    const now = Date.now();
+    for (const [key, entry] of this._staged) {
+      if (now - entry.stagedAt > STALE_AFTER_MS) {
+        this._staged.delete(key);
+      }
+    }
     const key = crypto.randomUUID();
-    this._staged.set(key, { payload, stagedAt: Date.now() });
+    this._staged.set(key, { payload, stagedAt: now });
     return key;
   }
 

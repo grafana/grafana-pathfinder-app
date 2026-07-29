@@ -13,7 +13,7 @@ function payload(overrides: Partial<StagedLaunchPayload> = {}): StagedLaunchPayl
   return { url: 'bundled:first-dashboard', preparedContent: rawContent, ...overrides };
 }
 
-describe('guideLaunchStore (PR #1446 review finding 1)', () => {
+describe('guideLaunchStore', () => {
   it('redeems a staged payload exactly once for the URL it was staged for', () => {
     const key = guideLaunchStore.stage(payload());
 
@@ -49,6 +49,27 @@ describe('guideLaunchStore (PR #1446 review finding 1)', () => {
     nowSpy.mockReturnValue(now + 61_000);
     expect(guideLaunchStore.consume(key, 'bundled:first-dashboard')).toBeNull();
 
+    nowSpy.mockRestore();
+  });
+
+  it('sweeps expired entries on stage so abandoned launches do not accumulate', () => {
+    // Redemption is the only other eviction path, and an abandoned launch's
+    // key is exactly the one that is never redeemed — the sweep keeps memory
+    // bounded by construction instead of by the redeemer's good behaviour.
+    const now = Date.now();
+    const nowSpy = jest.spyOn(Date, 'now');
+    const staged = (guideLaunchStore as unknown as { _staged: Map<string, unknown> })._staged;
+
+    nowSpy.mockReturnValue(now);
+    guideLaunchStore.stage(payload());
+
+    nowSpy.mockReturnValue(now + 61_000);
+    const freshKey = guideLaunchStore.stage(payload());
+
+    // Everything staged before the deadline (including leftovers from other
+    // tests) is expired at this point — only the fresh entry survives.
+    expect(staged.size).toBe(1);
+    guideLaunchStore.consume(freshKey, 'bundled:first-dashboard');
     nowSpy.mockRestore();
   });
 
