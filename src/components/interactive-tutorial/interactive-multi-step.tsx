@@ -804,7 +804,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         {/* ═══════════════════════════════════════════════════════════════════
             IDLE STATE - Ready to start
         ═══════════════════════════════════════════════════════════════════ */}
-        {!isExecuting && !isCompletedWithObjectives && checker.isEnabled && !executionError && (
+        {uiState === STEP_STATES.IDLE && (
           <div className="interactive-guided-idle">
             <div className="interactive-guided-actions">
               <Button
@@ -848,7 +848,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         {/* ═══════════════════════════════════════════════════════════════════
             EXECUTING STATE - Running automated steps
         ═══════════════════════════════════════════════════════════════════ */}
-        {isExecuting && !executionError && (
+        {uiState === STEP_STATES.EXECUTING && (
           <div className="interactive-guided-executing">
             {/* Step indicator */}
             <div className="interactive-guided-step-indicator">
@@ -895,7 +895,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         {/* ═══════════════════════════════════════════════════════════════════
             COMPLETED STATE
         ═══════════════════════════════════════════════════════════════════ */}
-        {isCompletedWithObjectives && (
+        {uiState === STEP_STATES.COMPLETED && (
           <div className="interactive-guided-completed">
             <div className="interactive-guided-completed-badge">
               <span
@@ -922,24 +922,19 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         {/* ═══════════════════════════════════════════════════════════════════
             REQUIREMENTS NOT MET STATE
         ═══════════════════════════════════════════════════════════════════ */}
-        {checker.completionReason !== 'objectives' &&
-          !checker.isEnabled &&
-          !isCompletedWithObjectives &&
-          !checker.isChecking &&
-          !isExecuting &&
-          checker.explanation && (
-            <div
-              className="interactive-step-requirement-explanation"
-              data-testid={testIds.interactive.requirementCheck(renderedStepId)}
-            >
-              {checker.explanation}
-            </div>
-          )}
+        {uiState === STEP_STATES.REQUIREMENTS_UNMET && checker.explanation && (
+          <div
+            className="interactive-step-requirement-explanation"
+            data-testid={testIds.interactive.requirementCheck(renderedStepId)}
+          >
+            {checker.explanation}
+          </div>
+        )}
 
         {/* ═══════════════════════════════════════════════════════════════════
             ERROR STATE
         ═══════════════════════════════════════════════════════════════════ */}
-        {executionError && !checker.isChecking && (
+        {uiState === STEP_STATES.ERROR && executionError && (
           <div className="interactive-guided-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
             <div className="interactive-guided-error-box">
               <span className="interactive-guided-error-icon">!</span>
