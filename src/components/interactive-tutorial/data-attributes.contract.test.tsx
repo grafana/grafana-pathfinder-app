@@ -139,6 +139,7 @@ describe('E2E Contract: data-test-step-state', () => {
   describe('InteractiveMultiStep', () => {
     const baseState: Parameters<typeof deriveMultiStepUiState>[0] = {
       isCompleted: false,
+      isCompletedByObjectives: false,
       isExecuting: false,
       hasError: false,
       isChecking: false,
@@ -153,6 +154,11 @@ describe('E2E Contract: data-test-step-state', () => {
       ],
       ['keeps execution observable when an error is also present', { isExecuting: true, hasError: true }, 'executing'],
       ['reports errors before settled completion', { isCompleted: true, hasError: true }, 'error'],
+      [
+        'reports objectives completion despite a stale error',
+        { isCompleted: true, isCompletedByObjectives: true, hasError: true },
+        'completed',
+      ],
       ['reports settled completion', { isCompleted: true }, 'completed'],
       ['reports requirement checks', { isChecking: true }, 'checking'],
       ['reports idle when enabled', {}, 'idle'],

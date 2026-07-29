@@ -68,6 +68,7 @@ interface InteractiveMultiStepProps {
 
 interface MultiStepUiStateInput {
   isCompleted: boolean;
+  isCompletedByObjectives: boolean;
   isExecuting: boolean;
   hasError: boolean;
   isChecking: boolean;
@@ -77,6 +78,9 @@ interface MultiStepUiStateInput {
 export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateValue {
   if (input.isExecuting) {
     return STEP_STATES.EXECUTING;
+  }
+  if (input.isCompletedByObjectives) {
+    return STEP_STATES.COMPLETED;
   }
   if (input.hasError) {
     return STEP_STATES.ERROR;
@@ -748,6 +752,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
     const uiState = deriveMultiStepUiState({
       isCompleted: isCompletedWithObjectives,
+      isCompletedByObjectives: checker.completionReason === 'objectives',
       isExecuting,
       hasError: Boolean(executionError),
       isChecking: checker.isChecking,

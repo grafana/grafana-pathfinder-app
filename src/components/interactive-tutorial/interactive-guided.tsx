@@ -120,6 +120,7 @@ interface InteractiveGuidedProps {
 
 interface GuidedUiStateInput {
   isCompleted: boolean;
+  isCompletedByObjectives: boolean;
   isExecuting: boolean;
   hasError: boolean;
   wasCancelled: boolean;
@@ -130,6 +131,9 @@ interface GuidedUiStateInput {
 export function deriveGuidedUiState(input: GuidedUiStateInput): StepStateValue {
   if (input.isExecuting) {
     return STEP_STATES.EXECUTING;
+  }
+  if (input.isCompletedByObjectives) {
+    return STEP_STATES.COMPLETED;
   }
   if (input.hasError) {
     return STEP_STATES.ERROR;
@@ -338,6 +342,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setFailedStepIndex(-1);
       setCurrentStepStatus('waiting');
       setWasCancelled(false);
+      // Commit execution before early persistence or overlay creation so observers never see a terminal state mid-run.
       await waitForReactUpdates();
       if (completeEarly) {
         persistCompletion();
@@ -691,10 +696,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     const markSkipped = checker.markSkipped;
     const handleSkipStep = useCallback(async () => {
+      await markSkipped?.();
       setExecutionError(null);
       setFailedStepIndex(-1);
       setWasCancelled(false);
-      await markSkipped?.();
       persistCompletion('skipped');
 
       if (onStepComplete && stepId) {
@@ -743,6 +748,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     const uiState = deriveGuidedUiState({
       isCompleted: isCompletedWithObjectives,
+      isCompletedByObjectives: checker.completionReason === 'objectives',
       isExecuting,
       hasError: Boolean(executionError),
       wasCancelled,

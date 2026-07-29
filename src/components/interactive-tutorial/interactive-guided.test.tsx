@@ -80,6 +80,7 @@ jest.mock('../../security', () => ({
 }));
 
 let mockStoredCompleted = false;
+let mockCompletionReason = 'none';
 const mockMarkSkipped = jest.fn(() => {
   mockStoredCompleted = true;
 });
@@ -100,7 +101,7 @@ jest.mock('../../requirements-manager', () => ({
     isEnabled: true,
     isChecking: false,
     explanation: null,
-    completionReason: 'none',
+    completionReason: mockCompletionReason,
     markSkipped: mockMarkSkipped,
     canFixRequirement: false,
     fixRequirement: null,
@@ -151,6 +152,7 @@ jest.mock('../../interactive-engine', () => ({
 // ─────────────────────────────────────────────────────────────────────────────
 beforeEach(() => {
   mockStoredCompleted = false;
+  mockCompletionReason = 'none';
   mockExecuteGuidedStep.mockReset();
   mockMarkSkipped.mockReset();
   mockMarkSkipped.mockImplementation(() => {
@@ -245,6 +247,7 @@ describe('InteractiveGuided — double skip button (issue #786)', () => {
 describe('deriveGuidedUiState', () => {
   const baseState: Parameters<typeof deriveGuidedUiState>[0] = {
     isCompleted: false,
+    isCompletedByObjectives: false,
     isExecuting: false,
     hasError: false,
     wasCancelled: false,
@@ -265,6 +268,11 @@ describe('deriveGuidedUiState', () => {
       'error',
     ],
     ['reports cancellation before settled completion', { isCompleted: true, wasCancelled: true }, 'cancelled'],
+    [
+      'reports objectives completion despite stale error and cancellation state',
+      { isCompleted: true, isCompletedByObjectives: true, hasError: true, wasCancelled: true },
+      'completed',
+    ],
     ['reports settled completion', { isCompleted: true }, 'completed'],
     ['reports requirement checks', { isChecking: true }, 'checking'],
     ['reports idle when enabled', {}, 'idle'],
@@ -346,10 +354,21 @@ describe('InteractiveGuided — completeEarly lifecycle', () => {
 });
 
 describe('InteractiveGuided — cancellation', () => {
-  it('reports cancelled when guided execution is cancelled', async () => {
+  it('reports cancelled over completeEarly completion', async () => {
     mockExecuteGuidedStep.mockResolvedValue('cancelled');
+    function CancelledHarness() {
+      const [, forceRender] = React.useReducer((value) => value + 1, 0);
+      return (
+        <InteractiveGuided
+          stepId="cancelled-step"
+          completeEarly={true}
+          onComplete={forceRender}
+          internalActions={[{ targetAction: 'noop' }]}
+        />
+      );
+    }
 
-    render(<InteractiveGuided stepId="cancelled-step" internalActions={[{ targetAction: 'noop' }]} />);
+    render(<CancelledHarness />);
     const step = screen.getByTestId(testIds.interactive.step('cancelled-step'));
 
     fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
@@ -360,6 +379,25 @@ describe('InteractiveGuided — cancellation', () => {
   });
 });
 
+describe('InteractiveGuided — objectives completion', () => {
+  it('reports completed after objectives satisfy a step with a stale error', async () => {
+    mockExecuteGuidedStep.mockResolvedValue('error');
+    const props = { stepId: 'objectives-step', internalActions: [{ targetAction: 'noop' as const }] };
+    const { rerender } = render(<InteractiveGuided {...props} />);
+    const step = screen.getByTestId(testIds.interactive.step('objectives-step'));
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', 'error');
+    });
+
+    mockCompletionReason = 'objectives';
+    rerender(<InteractiveGuided {...props} />);
+
+    expect(step).toHaveAttribute('data-test-step-state', 'completed');
+    expect(screen.queryByTestId(testIds.interactive.errorMessage('objectives-step'))).not.toBeInTheDocument();
+  });
+});
 describe('InteractiveGuided — completeEarly retry', () => {
   it('reruns failed actions even though completion was persisted early', async () => {
     mockExecuteGuidedStep.mockResolvedValueOnce('error').mockResolvedValueOnce('completed');
