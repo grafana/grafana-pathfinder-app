@@ -82,7 +82,6 @@ export {
   calculateGuideTimeout,
   calculateStepTimeout,
   determineUnmetRequirementOutcome,
-  isGuidedExecutionActive,
   parseNthMatchSelector,
   selectStepAction,
   waitForStepCompletion,

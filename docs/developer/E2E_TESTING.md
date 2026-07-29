@@ -97,6 +97,10 @@ The CLI accepts these input formats:
 
 ## How it works
 
+### Browser viewport
+
+The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chromium viewport from `playwright.config.ts` and `tests/e2e-runner/playwright.config.ts`. The stable wide viewport prevents responsive layouts from moving common action targets into overflow menus and keeps selector behavior and screenshots consistent across local, CI, and container runs.
+
 ### Architecture overview
 
 ```

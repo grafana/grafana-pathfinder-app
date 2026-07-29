@@ -353,22 +353,30 @@ This ensures consistency between:
 React components derive attributes from existing UI state:
 
 ```tsx
-// interactive-step.tsx
+// interactive-guided.tsx / interactive-multi-step.tsx
 <div
   data-test-step-state={
-    isCompleted
-      ? 'completed'
-      : isExecuting
-        ? 'executing'
-        : isChecking
-          ? 'checking'
-          : !isEnabled
-            ? 'requirements-unmet'
-            : 'idle'
+    isExecuting
+      ? 'executing'
+      : hasError
+        ? 'error'
+        : isCompleted
+          ? 'completed'
+          : isChecking
+            ? 'checking'
+            : !isEnabled
+              ? 'requirements-unmet'
+              : 'idle'
   }
   data-test-substep-index={isExecuting ? currentIndex : undefined}
 />
 ```
+
+For guided and multi-step components, `executing` takes precedence over `completed`. This keeps the active substep observable when `completeEarly` persists completion before the remaining actions settle.
+
+After composite execution settles, genuine objectives completion is authoritative and suppresses stale local error or cancellation state. A `completeEarly` write alone does not receive this exception, so failures remain recoverable through Retry or Skip.
+
+`InteractiveStep` also prioritizes active execution, but after execution settles it lets `completed` override a stale local error because completed rendering suppresses its error affordances. The `cancelled` state applies only to guided execution.
 
 **Key insight**: Attributes ARE the source of truth for rendered state. If they're wrong, the UI is wrong, so tests catch real bugs.
 
