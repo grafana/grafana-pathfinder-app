@@ -73,6 +73,16 @@ function loadProseFiles(): ProseFile[] {
     for (const child of fs.readdirSync(nested).sort()) {
       if (child.endsWith('.mdc')) {
         out.push(makeProseFile(`.cursor/rules/${name}/${child}`, path.join(nested, child)));
+        continue;
+      }
+      // The walk is deliberately one level deep. A rule buried deeper would
+      // escape every check in this file, so refuse to walk instead.
+      if (fs.statSync(path.join(nested, child)).isDirectory()) {
+        throw new Error(
+          `.cursor/rules/${name}/${child}/ nests rules two levels deep, which this walker does not ` +
+            `reach — its path, heading, and code-ID references would go unvalidated. Flatten it into ` +
+            `.cursor/rules/${name}/, or extend loadProseFiles() to recurse.`
+        );
       }
     }
   }

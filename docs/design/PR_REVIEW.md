@@ -49,7 +49,7 @@ If no findings, include:
 
 ## React reliability, security, and quality checks
 
-Scan the diff against the unified detection table below. Security rules (F1-F6) are always loaded; for any React pattern hit, load `.cursor/rules/react-antipatterns.mdc` for the canonical Do/Don't and fix.
+Scan the diff against the unified detection table below. Security rules (F1-F6) are always loaded; for any React pattern hit, resolve the code in `.cursor/rules/react-antipatterns.mdc` and then load the themed file it routes to, which holds the canonical Do/Don't and fix.
 
 ### Unified detection table
 
@@ -104,7 +104,7 @@ Scan the diff against the unified detection table below. Security rules (F1-F6) 
 
 ### Escalation pointers
 
-- **R1-R21 hit**: load `.cursor/rules/react-antipatterns.mdc` for the canonical Do/Don't example and fix pattern.
+- **R1-R21 hit**: resolve the code in `.cursor/rules/react-antipatterns.mdc` (an index), then load the themed file its `Detail` column names — that file holds the canonical Do/Don't example and fix pattern. The index's one-line `Fix` cell is a reminder, not a substitute.
 - **F1-F6 hit**: load `.cursor/rules/frontend-security.mdc` for intent and remediation. For direct F5 sinks, `eslint.config.mjs` owns the mechanical catalog.
 - **QC8 hit**: cite the specific shape (1-8) from `AGENTS.md` §Comments when reporting; load `.cursor/skills/comment-hygiene/SKILL.md` for the worked example when the call is borderline.
 
