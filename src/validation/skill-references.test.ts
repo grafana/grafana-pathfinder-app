@@ -2,14 +2,16 @@
  * Skill / rule reference graph tests.
  *
  * Walks every agent-facing prose file in the repo — `.cursor/skills/*\/SKILL.md`,
- * `.cursor/rules/*.mdc`, `AGENTS.md`, `CLAUDE.md` — and asserts that the things
- * those files point at still exist:
+ * `.claude/skills/*\/SKILL.md`, `.cursor/rules/*.mdc`, `AGENTS.md`, `CLAUDE.md` —
+ * and asserts that the things those files point at still exist:
  *
  *   1. Repo path refs (in backticks) resolve to a real file on disk.
  *   2. Adjacent heading refs (`` `<file>.md` "<heading>" `` or `` `<file>.md` § <heading> ``)
  *      resolve to a real heading in the target file.
  *   3. Code IDs (F1–F6, R1–R21, QC1–QC8, G1–G7) are defined in their
  *      canonical source-of-truth file.
+ *   4. Every `.cursor/skills/` body has a matching `.claude/skills/` pointer stub
+ *      with identical frontmatter, and vice versa.
  *
  * Why this exists: F-2 (per docs/design/AGENT_HARDENING.md) was a real bug
  * where `.cursor/skills/prevent-doc-drift/SKILL.md` instructed the skill to
@@ -47,14 +49,27 @@ function makeProseFile(label: string, absPath: string): ProseFile {
   return { label, absPath, raw, stripped: stripFencedCodeBlocks(raw) };
 }
 
+const SKILL_SOURCE_DIR = '.cursor/skills';
+const SKILL_STUB_DIR = '.claude/skills';
+
+function skillNamesIn(relDir: string): string[] {
+  const abs = path.join(REPO_ROOT, relDir);
+  if (!fs.existsSync(abs)) {
+    return [];
+  }
+  return fs
+    .readdirSync(abs)
+    .filter((name) => fs.existsSync(path.join(abs, name, 'SKILL.md')))
+    .sort();
+}
+
 function loadProseFiles(): ProseFile[] {
   const out: ProseFile[] = [];
 
-  const skillsDir = path.join(REPO_ROOT, '.cursor', 'skills');
-  for (const name of fs.readdirSync(skillsDir).sort()) {
-    const f = path.join(skillsDir, name, 'SKILL.md');
-    if (fs.existsSync(f)) {
-      out.push(makeProseFile(`.cursor/skills/${name}/SKILL.md`, f));
+  for (const relDir of [SKILL_SOURCE_DIR, SKILL_STUB_DIR]) {
+    for (const name of skillNamesIn(relDir)) {
+      const rel = `${relDir}/${name}/SKILL.md`;
+      out.push(makeProseFile(rel, path.join(REPO_ROOT, rel)));
     }
   }
 
@@ -406,6 +421,83 @@ describe('Skill/rule reference graph — code IDs', () => {
           `ID_TOKEN_ALLOWLIST so the test asserts against them normally: ${stale.join(', ')}`
       );
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. Skill stub parity
+// ---------------------------------------------------------------------------
+//
+// Skill bodies live in `.cursor/skills/` so Cursor can read them. Claude Code
+// only discovers skills under `.claude/skills/`, so each body has a committed
+// pointer stub there carrying the same frontmatter. Two directories means two
+// chances to drift; these assertions close that gap. The name-set equality also
+// catches a personal skill accidentally committed into `.claude/skills/`, which
+// `.gitignore` deliberately no longer blocks.
+
+const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n/;
+
+function readFrontmatter(rel: string): string {
+  const raw = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf-8');
+  const m = raw.match(FRONTMATTER_RE);
+  if (!m || m[1] === undefined) {
+    throw new Error(`${rel} has no YAML frontmatter block.`);
+  }
+  return m[1];
+}
+
+describe('Skill stub parity — .cursor/skills ↔ .claude/skills', () => {
+  const sourceNames = skillNamesIn(SKILL_SOURCE_DIR);
+  const stubNames = skillNamesIn(SKILL_STUB_DIR);
+
+  it('at least one skill is discovered', () => {
+    expect(sourceNames.length).toBeGreaterThan(0);
+  });
+
+  it('both directories hold exactly the same skill names', () => {
+    const missingStub = sourceNames.filter((n) => !stubNames.includes(n));
+    const orphanStub = stubNames.filter((n) => !sourceNames.includes(n));
+
+    const problems: string[] = [];
+    if (missingStub.length > 0) {
+      problems.push(
+        `Missing pointer stubs (Claude Code cannot see these skills):\n` +
+          missingStub.map((n) => `  - ${SKILL_STUB_DIR}/${n}/SKILL.md`).join('\n')
+      );
+    }
+    if (orphanStub.length > 0) {
+      problems.push(
+        `Stubs with no ${SKILL_SOURCE_DIR} body (delete the stub, or add the body if the skill is real):\n` +
+          orphanStub.map((n) => `  - ${SKILL_STUB_DIR}/${n}/SKILL.md`).join('\n')
+      );
+    }
+
+    if (problems.length > 0) {
+      throw new Error(
+        `${SKILL_SOURCE_DIR} and ${SKILL_STUB_DIR} are out of sync:\n\n${problems.join('\n\n')}\n\n` +
+          `Every skill needs both: the body in ${SKILL_SOURCE_DIR}/<name>/SKILL.md and a pointer ` +
+          `stub in ${SKILL_STUB_DIR}/<name>/SKILL.md whose frontmatter matches it.`
+      );
+    }
+  });
+
+  const paired = sourceNames.filter((n) => stubNames.includes(n));
+
+  it.each(paired)('%s: stub frontmatter matches its source verbatim', (name) => {
+    const sourceRel = `${SKILL_SOURCE_DIR}/${name}/SKILL.md`;
+    const stubRel = `${SKILL_STUB_DIR}/${name}/SKILL.md`;
+    expect(readFrontmatter(stubRel)).toBe(readFrontmatter(sourceRel));
+  });
+
+  it.each(paired)('%s: stub body points at its source', (name) => {
+    const sourceRel = `${SKILL_SOURCE_DIR}/${name}/SKILL.md`;
+    const stubRel = `${SKILL_STUB_DIR}/${name}/SKILL.md`;
+    const body = fs.readFileSync(path.join(REPO_ROOT, stubRel), 'utf-8').replace(FRONTMATTER_RE, '');
+    expect(body).toContain(`\`${sourceRel}\``);
+  });
+
+  it.each(paired)('%s: frontmatter declares a name matching its directory', (name) => {
+    expect(readFrontmatter(`${SKILL_SOURCE_DIR}/${name}/SKILL.md`)).toContain(`name: ${name}`);
   });
 });
 

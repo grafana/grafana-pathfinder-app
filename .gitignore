@@ -53,8 +53,11 @@ plans/
 # Cursor local prompt context, so as not to pollute repo
 .cursor/local
 
-# Claude Code local agent state (worktrees, settings.local.json) — never commit
-.claude/
+# Claude Code local agent state (worktrees, settings.local.json) — never commit.
+# `.claude/skills/` is the exception: committed pointer stubs that expose the
+# `.cursor/skills/` bodies to Claude Code's native skill loader.
+.claude/*
+!.claude/skills/
 
 # Prevent generated JS artifacts in src from being committed
 src/**/*.js
