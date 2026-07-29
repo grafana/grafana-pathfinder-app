@@ -1,11 +1,11 @@
 ---
 name: comment-hygiene
-description: The full QC8 comment-quality catalog — eight bad comment shapes to delete with before/after examples, plus the keep-list of comments that earn their place. Load before writing or editing code comments, or when a review flags comment quality. AGENTS.md carries the one-line rule and the shape titles; this skill carries the worked examples.
+description: The full QC8 comment-quality catalog — eight bad comment shapes to delete with before/after examples, plus the keep-list of comments that earn their place. Load before writing or editing code comments, when a review flags comment quality, or to cite a QC8 shape number. AGENTS.md carries the rule and the keep-list; this skill carries the shape titles and the worked examples.
 ---
 
 # Comment hygiene (QC8 catalog)
 
-**Default to no comments.** Add one only when removing it would confuse a reader who can read the surrounding code. The narrow band that earns a comment: counterintuitive code that looks wrong but is correct, hidden invariants, or workarounds for specific external bugs (with a link).
+**Default to no comments.** Add one only when removing it would confuse a reader who can read the surrounding code. The narrow band that earns a comment: counterintuitive code that looks wrong but is correct, hidden invariants the type system can't express, workarounds for specific external bugs (with an upstream link), and security or correctness warnings. The keep-list below expands each.
 
 **Trim on touch.** When editing a function, also trim bad-shape comments inside that function and on adjacent declarations in the same file. Do not sweep whole files or grep across the repo for cleanup — comment removal rides along on code changes, never as a standalone PR.
 

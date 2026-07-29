@@ -119,4 +119,4 @@ Load these files **only when working in the relevant domain**.
 
 ## Skills
 
-Skills are not enumerated here. AGENTS.md's "Skills" section holds the canonical names-only index and a command to hydrate each skill's `SKILL.md` frontmatter (`name` + `description`) on demand — the single source of truth for all harnesses. Read a skill's `SKILL.md` before running it.
+Skills are not enumerated here, and no file enumerates them. Bodies live in `.cursor/skills/<name>/SKILL.md`; each has a committed pointer stub at `.claude/skills/<name>/SKILL.md` so Claude Code's skill loader surfaces the `name` + `description` frontmatter automatically and loads the body only when the skill runs. That frontmatter is the single source of truth for all harnesses. `src/validation/skill-references.test.ts` asserts the two directories stay in lockstep. Read a skill's `SKILL.md` before running it.
