@@ -221,13 +221,10 @@ function FloatingPanelInner() {
   // the cover URL; for non-journey tabs the two fields are equal.
   const guideUrl = isEditorTab ? undefined : activeTab?.currentUrl || activeTab?.baseUrl;
 
-  // Decision 3 (#1449): docking to the sidebar via the pill is a deliberate
-  // surface ADOPTION, so it persists (`persist: true`) — the outcome is the same
-  // whether or not a guide was auto-launched earlier in the session. The
-  // programmatic dock request (guide `popout` action, generic toggle) is NOT an
-  // adoption; it stays conditional `setMode` so an automatic launch never
-  // overwrites the stored preference (decision 2), matching the fullscreen
-  // return-to-sidebar exit. See the persistence contract in
+  // The pill is a deliberate sidebar ADOPTION → persist; the programmatic dock
+  // request (guide `popout`, generic toggle) is not → conditional `setMode`, so
+  // an automatic launch never overwrites the stored preference. Rationale in
+  // docs/design/PANEL-MODE-PERSISTENCE.md (decisions 2 and 3); mechanics in
   // global-state/panel-mode.ts.
   const dockToSidebar = useCallback(
     (persist: boolean) => {

@@ -1,18 +1,11 @@
 /**
  * Tripwire (Pattern J — contract-surface preservation)
  *
- * Pins the panel-mode persistence classification (decisions 2 and 3; full
- * rationale in docs/design/PANEL-MODE-PERSISTENCE.md). Every
- * `panelModeManager` mode-change call site must match the rule —
- *
- *   Use `setModePersisted` (persist + END the transient session) for a
- *   deliberate surface ADOPTION: adopting a non-sidebar surface (pop-out to
- *   floating, switch-to-fullscreen, deep links) OR the floating dock-to-sidebar
- *   pill (decision 3 — docking is an adoption, so it persists consistently
- *   regardless of session history). Everything else — automatic teardown /
- *   auto-dock / self-heal / cold-load, and the fullscreen RETURN-to-sidebar
- *   exit — stays conditional `setMode`, which does not persist while a
- *   transient auto-launch session is active and persists otherwise.
+ * Pins which mode-change method each `panelModeManager` call site reaches for,
+ * against the persistence classification recorded canonically in
+ * docs/design/PANEL-MODE-PERSISTENCE.md (decisions 2 and 3): deliberate surface
+ * ADOPTIONS use `setModePersisted`; automatic transitions and RETURN-to-base
+ * gestures stay conditional `setMode`.
  *
  * The per-gesture SEMANTICS (persist vs suppress) are proven behaviourally in
  * `global-state/panel-mode.test.ts`; this file only pins which method each
@@ -57,13 +50,19 @@ describe('panel-mode surface-toggle persistence classification', () => {
   });
 
   describe('the floating dock-to-sidebar pill is a deliberate adoption (decision 3)', () => {
-    it('FloatingPanelManager docks to the sidebar via setModePersisted', () => {
-      // #1449: docking is a deliberate "adopt the sidebar" gesture, so it must
-      // persist consistently — same outcome whether or not a guide was
-      // auto-launched earlier in the session. The behavioural proof (persists +
-      // ends the transient session) lives in panel-mode.test.ts.
+    it('the pill persists (dockToSidebar(true)) while the programmatic dock request stays transient (dockToSidebar(false))', () => {
+      // #1449: docking via the pill is a deliberate "adopt the sidebar" gesture,
+      // so it must persist consistently — same outcome whether or not a guide was
+      // auto-launched earlier in the session. The programmatic dock request
+      // (guide `popout` action / generic toggle, via `pathfinder-request-dock`)
+      // is NOT an adoption and must stay transient-safe. Both route through one
+      // shared `dockToSidebar(persist)` body, so a whole-file check for
+      // `setModePersisted('sidebar')` can't tell the two call sites apart —
+      // scope each assertion to its call site to catch a "right method, wrong
+      // call site" swap. The behavioural proof lives in panel-mode.test.ts.
       const floating = read('components/floating-panel/FloatingPanelManager.tsx');
-      expect(floating).toContain("setModePersisted('sidebar')");
+      expect(floating).toMatch(/handleSwitchToSidebar = useCallback\(\(\) => \{\s*dockToSidebar\(true\);\s*\}/);
+      expect(floating).toMatch(/handleDockRequest = \(\) => \{\s*dockToSidebar\(false\);\s*\}/);
     });
   });
 

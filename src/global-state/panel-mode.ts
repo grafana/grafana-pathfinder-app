@@ -78,22 +78,13 @@ export interface PendingGuide {
  *     restores the stored preference); outside a session it persists (returning
  *     from a surface the user chose themselves sticks).
  *
- * DECISION RECORDS (full rationale: docs/design/PANEL-MODE-PERSISTENCE.md)
- *   - Decision 2 — an automatic launch never overwrites the stored preference.
- *     Enforced structurally by `setModeTransient` + the conditional `setMode`.
- *   - Decision 3 (#1449) — the floating "dock to sidebar" pill is a deliberate
- *     sidebar ADOPTION and persists (`setModePersisted`), so it behaves the
- *     same whether or not a guide was auto-launched earlier in the session
- *     (fixing the invisible-history inconsistency). The fullscreen "return to
- *     sidebar" exit is NOT an adoption — it is a return, and stays conditional
- *     `setMode` so a prose reader leaving a transient fullscreen keeps their
- *     real preference.
- *   - Rejected (#1449 as originally proposed) — making `setMode` never persist.
- *     It would delete the classification and a grep tripwire, but regresses the
- *     common sidebar → fullscreen → back-to-sidebar durable revert: the exit
- *     could no longer persist and nothing else adopts the sidebar from
- *     fullscreen. The conditional `setMode` is intentional; do not "simplify"
- *     it away.
+ * WHY this shape — decisions 2 and 3 and the rejected "setMode never persists"
+ * alternative — is recorded canonically in docs/design/PANEL-MODE-PERSISTENCE.md.
+ * The load-bearing invariant (decision 2): an automatic launch never overwrites
+ * the stored preference. The intentional asymmetry (decision 3, #1449): the
+ * dock-to-sidebar pill persists (an adoption) while the fullscreen
+ * return-to-sidebar exit does not (a return). The conditional `setMode` is
+ * deliberate — do not "simplify" it away; the doc explains what that regresses.
  */
 class PanelModeManager {
   private _pendingGuide: PendingGuide | null = null;
