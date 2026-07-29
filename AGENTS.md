@@ -1,83 +1,38 @@
 # Grafana Pathfinder - AI Agent Guide
 
-## What is this project?
+**Grafana Pathfinder** is a Grafana App Plugin that renders contextual, interactive documentation in a right-hand sidebar inside Grafana: context-aware recommendations, tutorials with "Show me" / "Do it" UI automation, and per-step completion tracking. React + TypeScript + Grafana Scenes frontend, Go backend on `grafana-plugin-sdk-go`.
 
-**Grafana Pathfinder** is a Grafana App Plugin that provides contextual, interactive documentation directly within the Grafana UI. It appears as a right-hand sidebar panel that displays personalized learning content, tutorials, and recommendations to help users learn Grafana products and configurations. Built as a **React + TypeScript + Grafana Scenes** frontend with a **Go backend** using `grafana-plugin-sdk-go`.
-
-### Key features
-
-- **Context-Aware Recommendations**: Automatically detects what you're doing in Grafana and suggests relevant documentation
-- **Interactive Tutorials**: Step-by-step guides with "Show me" and "Do it" buttons that can automate actions in the Grafana UI
-- **Tab-Based Interface**: Browser-like experience with multiple documentation tabs and localStorage persistence
-- **Intelligent Content Delivery**: Multi-strategy content fetching with bundled fallbacks
-- **Progressive Learning**: Tracks completion state and adapts to user experience level
-
-### Target audience
-
-Beginners and intermediate users who need to quickly learn Grafana products. Not intended for deep experts who primarily need reference documentation.
+It targets beginners and intermediate users learning Grafana, not experts after reference docs — when a product call hinges on audience, favor the newcomer. Scope and goals: `.cursor/rules/projectbrief.mdc`.
 
 ## Code style and conventions
 
 ### Coding style
 
-- **Functional-first**: Pragmatic FP approach balancing purity with practicality
-- Break problems into small, reusable functions
-- Use immutable data structures and pure functions for core logic
-- Allow minimal side effects in well-isolated functions (e.g., IO, logging)
-- Favor functional patterns (`map`, `filter`, `reduce`) over loops
-- Use type annotations whenever possible
-- Favor idiomatic React usage consistent with the Grafana codebase
+Functional-first and pragmatic: small composable functions, immutable data and pure functions for core logic, side effects isolated at the edges rather than eliminated. React should read like the Grafana codebase.
 
 ### Comments
 
-**Default to no comments.** Add one only when removing it would confuse a reader who can read the surrounding code. The narrow band that earns a comment: counterintuitive code that looks wrong but is correct, hidden invariants, or workarounds for specific external bugs (with a link).
+**Default to no comments.** Add one only when removing it would confuse a reader who can already read the surrounding code. The narrow band that earns one: counterintuitive-but-correct code, hidden invariants the type system can't express, external-bug workarounds (with an upstream link), and security or correctness warnings. If the comment won't fit on one short line, rename or restructure instead.
 
-**Trim on touch.** When editing a function, also trim bad-shape comments inside that function and on adjacent declarations in the same file. Do not sweep whole files or grep across the repo for cleanup — comment removal rides along on code changes, never as a standalone PR.
+**Trim on touch.** When editing a function, also trim bad-shape comments inside it and on adjacent declarations in the same file. Do not sweep whole files or grep the repo for cleanup — comment removal rides along on code changes, never as a standalone PR.
 
-**Bad shapes to delete (QC8 catalog):** (1) narrates the next line, (2) defends a non-action (`Intentionally NOT X`), (3) references dead process artifacts (pre-mortems, ticket/PR refs), (4) points at where a value came from (`Find References` does that), (5) repeats the user-visible string, (6) big JSDoc on a small internal type, (7) justifies a trivial `||` fallback, (8) whole-file docstring on a `<50`-line module.
-
-**Keep-list:** counterintuitive-but-correct code, hidden invariants the type system can't express, external-bug workarounds (with an upstream link), and security/correctness warnings. If a comment won't fit on one short line, rename or restructure instead.
-
-For the full catalog with before/after examples, load the `comment-hygiene` skill (`.cursor/skills/comment-hygiene/SKILL.md`).
+The keep-list above is the whole of it. The eight bad shapes (QC8), with worked before/after examples, live in the `comment-hygiene` skill.
 
 ### Writing style
 
-All UI text and documentation follows **sentence case** per the [Grafana Writers' Toolkit](https://grafana.com/docs/writers-toolkit/write/style-guide/capitalization-punctuation/#capitalization).
+All UI text and documentation uses **sentence case** per the [Grafana Writers' Toolkit](https://grafana.com/docs/writers-toolkit/write/style-guide/capitalization-punctuation/#capitalization) — capitalize the first word and proper nouns only. Never title case, including headings, button labels, and menu items.
 
-- **Capitalize only the first word** and proper nouns (product names, company names)
-- **Do NOT use title case** for headings, button labels, menu items, or other UI elements
-- Proper nouns to capitalize: **Grafana**, **Loki**, **Prometheus**, **Tempo**, **Mimir**, **Alloy**, **Grafana Cloud**, **Grafana Enterprise**, **Grafana Labs**
-- Generic terms stay lowercase: dashboard, alert, data source, panel, query, plugin
+Product and company names are proper nouns (**Grafana**, **Loki**, **Prometheus**, **Tempo**, **Mimir**, **Alloy**, **Grafana Cloud**, **Grafana Enterprise**, **Grafana Labs**); generic terms are not (dashboard, alert, data source, panel, query, plugin).
 
 ### File creation policy
 
-Do NOT create summary `.md` files unless explicitly requested by the user. No `IMPLEMENTATION_SUMMARY.md`, no `CLEANUP_SUMMARY.md`, no proactive documentation files. Communicate all summaries and completion status directly in chat responses.
-
-### Slash commands
-
-`/review` and `/secure` are defined by their skills (see the "Skills" section below). Two persona-only commands with no backing skill:
-
-| Command | Role                 | Behavior                                                                                                                                                                |
-| ------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/test` | Test writer          | Tests that enable change. Prioritize unit tests, edge cases, failure modes. Property-based tests when useful. Avoid mocking unless necessary. Fast, isolated, reliable. |
-| `/docs` | Documentation writer | Write for humans first. Document purpose, parameters, return values. Small useful examples. Standard docstring style. Avoid unnecessary words.                          |
+Do not create summary `.md` files (`IMPLEMENTATION_SUMMARY.md`, `CLEANUP_SUMMARY.md`, and friends) unless asked. Report completion and summaries in chat.
 
 ## Skills
 
-Skills are reusable agent workflows. Each lives at `.cursor/skills/<name>/SKILL.md` with `name` + `description` frontmatter. Read a skill's `SKILL.md` before running it, and follow it exactly. Invoke a skill by name; harnesses that support slash commands expose it as `/<name>`. Every agent on this repo shares these skills regardless of harness.
+Skills are reusable agent workflows shared by every agent on this repo, regardless of harness. Bodies live in `.cursor/skills/<name>/SKILL.md`; each has a committed pointer stub at `.claude/skills/<name>/SKILL.md` so Claude Code resolves `/<name>` natively. Frontmatter (`name` + `description`) is the single source of truth for what a skill does and when it applies. Invoke a skill by name; harnesses that support slash commands expose it as `/<name>`. Read a skill's `SKILL.md` before running it, and follow it exactly.
 
-Available skills: `bugfix`, `changelog`, `comment-hygiene`, `design-review`, `e2e-guide-analysis`, `i18n-sync`, `maintain-docs`, `plugin-bundle-size`, `pr-summary`, `prevent-doc-drift`, `refactor`, `release-prep`, `review`, `secure`, `techdebt`.
-
-This is a names-only index — the authoritative description of what each skill does and when to use it is its frontmatter, read live. Before starting a non-trivial task, hydrate the descriptions to see which skill applies:
-
-```bash
-for f in .cursor/skills/*/SKILL.md; do
-  echo "### $(basename "$(dirname "$f")")"
-  awk 'NR==1 && /^---/ {f=1; next} f && /^---/ {exit} f' "$f"
-done
-```
-
-To add a skill: create `.cursor/skills/<name>/SKILL.md` with `name` + `description` frontmatter and add `<name>` to the list above. There is no per-skill description to maintain here — the frontmatter is the single source of truth.
+Adding a skill means both halves — the body under `.cursor/skills/`, and the stub. `src/validation/skill-references.test.ts` fails if either is missing or their frontmatter diverges.
 
 ## Essential commands
 
@@ -91,7 +46,7 @@ npm run lint:fix         # Lint + autofix
 npm run check            # Full pre-merge gate: typecheck + lint + prettier + lint:go + test:go + test:coverage
 ```
 
-Dev server runs at http://localhost:3000 (admin/admin). For the complete command reference (build targets, mage tasks, validation, i18n, peerjs, etc.), see `docs/developer/COMMANDS.md` or read `package.json#scripts` directly.
+Dev server runs at http://localhost:3000 (admin/admin). Focused Jest runs need `--coverage=false`, or global thresholds report a false failure. For the complete command reference (build targets, mage tasks, validation, i18n, peerjs, etc.), see `docs/developer/COMMANDS.md` or read `package.json#scripts` directly.
 
 ## Code organization
 
@@ -107,7 +62,7 @@ Imports flow **downward only** to avoid cycles. Cross-tier rules are enforced by
 
 Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-interactives/`, `img/`, `locales/`. The canonical source is `TIER_MAP` in `src/validation/import-graph.ts`; this list must stay in sync with it (enforced by `src/validation/architecture.test.ts`).
 
-**Environment reachability** (orthogonal to tiers): `src/cli/` and `tests/` execute in plain Node — the pathfinder CLI, and Playwright discovery of both the main suite and the e2e-runner — so everything they transitively import must load without browser globals. `architecture.test.ts` walks the value-import closure from those roots and fails on any external package not in its `NODE_SAFE_EXTERNALS` allowlist (and on bundler-only asset imports). Type-only imports are exempt. Shared logic that both the app and the CLI need lives in environment-neutral `*-core.ts` modules with thin browser adapters on top (see `src/lib/dom/grafana-selector-core.ts`). Growing `NODE_SAFE_EXTERNALS` with a genuinely Node-safe dependency is normal maintenance — prove it loads in plain Node first; the test's failure message documents the procedure.
+**Environment reachability** (orthogonal to tiers): `src/cli/` and `tests/` execute in plain Node — the pathfinder CLI, and Playwright discovery of both the main suite and the e2e-runner — so everything they transitively import must load without browser globals. `architecture.test.ts` walks the value-import closure from those roots and fails on any external package outside its `NODE_SAFE_EXTERNALS` allowlist, and on bundler-only asset imports; type-only imports are exempt. Shared app/CLI logic belongs in environment-neutral `*-core.ts` modules with thin browser adapters on top (see `src/lib/dom/grafana-selector-core.ts`). Growing the allowlist with a genuinely Node-safe dependency is normal maintenance — the test's failure message documents the procedure.
 
 For the annotated tier definitions, the per-subsystem reference, and the key dependency-edges table (load-bearing producer → consumer wiring), load `.cursor/rules/systemPatterns.mdc`.
 
@@ -119,31 +74,27 @@ When touching `pkg/`, load `.cursor/rules/coda.mdc` (agent-facing constraints) a
 
 ## On-demand context
 
-Load files only when working in the relevant domain — do not preload. The full routing table (engines, security, testing, CLI/MCP, design docs, skills, history) lives in **[`docs/developer/CONTEXT_INDEX.md`](docs/developer/CONTEXT_INDEX.md)**.
+Load files only when working in the relevant domain — do not preload. The full routing table (engines, security, testing, CLI/MCP, design docs, history) lives in **[`docs/developer/CONTEXT_INDEX.md`](docs/developer/CONTEXT_INDEX.md)**, which also explains why Cursor's `globs:` frontmatter does not auto-load in Claude Code.
 
-Frequently-needed entries:
+Hot paths, in rough order of how often they apply:
 
 - `docs/design/CONCERNS.md` — PR review routing, impact analysis, one-way doors
-- `.cursor/rules/systemPatterns.mdc` — architecture, component relationships, per-subsystem entry points
-- `.cursor/rules/frontend-security.mdc` — frontend security F1-F6; load when working in `*.ts`/`*.tsx`/`*.js`/`*.jsx` files (Cursor auto-loads via `globs:` frontmatter; Claude Code does not — cite by path)
-- `docs/developer/TELEMETRY.md` — Faro and RudderStack instrumentation policy, privacy invariants, and when feature behavior needs custom telemetry
+- `.cursor/rules/systemPatterns.mdc` — architecture and per-subsystem entry points
+- `.cursor/rules/frontend-security.mdc` — F1-F6; applies to any `*.ts`/`*.tsx`/`*.js`/`*.jsx` change
 - `.cursor/rules/react-antipatterns.mdc` — R1-R21 routing index; load the themed file it names for the Do/Don't and fix
-- `.cursor/rules/testingStrategy.mdc` — unit/smoke/integration test guidance
-- `docs/developer/E2E_TESTING.md` + `E2E_TESTING_CONTRACT.md` — E2E runner and `data-test-*` attributes
-- `docs/developer/RELEASE_PROCESS.md` — releasing, deploying, versioning
+- `.cursor/rules/testingStrategy.mdc` — unit/smoke/integration guidance
+- `docs/developer/TELEMETRY.md` — Faro + RudderStack policy and privacy invariants
 
 ## PR reviews
 
-Use `/review`. It invokes `.cursor/skills/review/SKILL.md` (orchestration workflow) which loads `docs/design/CONCERNS.md` (concern routing) and `docs/design/PR_REVIEW.md` (pattern catalog for R1-R21, F1-F6, QC1-QC7, G1-G7); `react-antipatterns.mdc` loads on hit. The review skill also spawns a tech-debt sub-agent (`.cursor/skills/techdebt/SKILL.md`) scoped to the PR's changed files. For Go PRs touching `pkg/**/*.go`, also verify `npm run lint:go`, `npm run test:go`, and `go build ./...` pass.
+Use `/review`. For Go PRs touching `pkg/**/*.go`, also verify `npm run lint:go`, `npm run test:go`, and `go build ./...` pass.
 
-Use `CONCERNS.md` alone for impact analysis, change risk classification, and subsystem-aware debugging.
+`docs/design/CONCERNS.md` is useful on its own — without a review — for impact analysis, change risk classification, and subsystem-aware debugging.
 
 ## Tech-debt audits
 
-Use `/techdebt <subsystem>` to run a confidence-tiered debt audit on a concrete target (directory, glob, or named subsystem). The skill reads `.cursor/skills/techdebt/SKILL.md` and its `PATTERNS.md` catalog (categories A–E: local syntactic, cross-file structural, architectural, process debt, operational seams). Findings are ordered by hotspot score (`churn × severity`) so the highest-risk items surface first. Run with `--suggestive` to include lower-confidence candidates.
+Use `/techdebt <subsystem>` against a concrete target (directory, glob, or named subsystem); add `--suggestive` for lower-confidence candidates.
 
 ## `npx` examples
 
-When generating `npx` examples of new potential CLIs and similar, these should all live under `pathfinder-cli@...`.
-For example, for a hypothetical new package `pathfinder-example`, write `npx pathfinder-cli@... example` instead of `npx pathfinder-example`.
-This ensures we don't get namesquatted.
+Namespace every `npx` example under `pathfinder-cli@...` — for a hypothetical `pathfinder-example` package, write `npx pathfinder-cli@... example`. This keeps us from being namesquatted.

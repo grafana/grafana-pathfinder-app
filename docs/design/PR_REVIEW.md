@@ -93,20 +93,20 @@ Scan the diff against the unified detection table below. Security rules (F1-F6) 
 
 ### QC8 — Comment hygiene on changed code
 
-`AGENTS.md` §Comments carries the shape summary — the eight shape titles plus the keep-list (always loaded in agent context). The canonical catalog with worked before/after examples lives in the `comment-hygiene` skill (`.cursor/skills/comment-hygiene/SKILL.md`); load it when a QC8 call is borderline. This section is reviewer-specific scoping only.
+`AGENTS.md` §Comments carries the rule and the keep-list (always loaded in agent context). The eight shape titles and the canonical catalog with worked before/after examples live in the `comment-hygiene` skill (`.cursor/skills/comment-hygiene/SKILL.md`) — load it to cite a shape number, or when a QC8 call is borderline. This section is reviewer-specific scoping only.
 
 **Reviewer scoping rules:**
 
 - **Flag on changed lines only.** If a bad-shape comment appears in a hunk the PR is modifying, flag it. Do not flag bad-shape comments in untouched files or untouched functions — comment cleanup rides along on code changes, never as a standalone sweep.
 - **Also flag stale comments left in place inside functions the PR is modifying.** If the PR renames a symbol, alters a control flow, or changes a behavior, but leaves an adjacent comment describing the prior shape, the comment is now stale and should have been trimmed.
-- **Reference the shape number** (1-8) from the AGENTS.md catalog when reporting. Example: `QC8.2: defensive "Intentionally NOT" block above doWork()`.
+- **Reference the shape number** (1-8) from the `comment-hygiene` catalog when reporting. Example: `QC8.2: defensive "Intentionally NOT" block above doWork()`.
 - **Severity is Medium and non-blocking.** A single bad-shape comment does not block merge. A PR running 3:1 comments-to-code that doesn't clear should be flagged for cleanup before merge.
 
 ### Escalation pointers
 
 - **R1-R21 hit**: resolve the code in `.cursor/rules/react-antipatterns.mdc` (an index), then load the themed file its `Detail` column names — that file holds the canonical Do/Don't example and fix pattern. The index's one-line `Fix` cell is a reminder, not a substitute.
 - **F1-F6 hit**: load `.cursor/rules/frontend-security.mdc` for intent and remediation. For direct F5 sinks, `eslint.config.mjs` owns the mechanical catalog.
-- **QC8 hit**: cite the specific shape (1-8) from `AGENTS.md` §Comments when reporting; load `.cursor/skills/comment-hygiene/SKILL.md` for the worked example when the call is borderline.
+- **QC8 hit**: load `.cursor/skills/comment-hygiene/SKILL.md` to cite the specific shape (1-8) and for the worked example when the call is borderline.
 
 ## Go backend checks
 
