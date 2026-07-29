@@ -480,6 +480,7 @@ describe('Split rule-set parity — react-antipatterns index ↔ detail files', 
   ];
 
   const detailCodes = new Map<string, string>();
+  const duplicates: Array<{ code: string; files: string[] }> = [];
   for (const file of fs.readdirSync(path.join(REPO_ROOT, RA_DETAIL_DIR)).sort()) {
     if (!file.endsWith('.mdc')) {
       continue;
@@ -489,7 +490,8 @@ describe('Split rule-set parity — react-antipatterns index ↔ detail files', 
       const code = m[1]!;
       const existing = detailCodes.get(code);
       if (existing !== undefined) {
-        throw new Error(`${code} is defined in both ${existing} and ${file} — a rule must live in exactly one file.`);
+        duplicates.push({ code, files: [existing, file] });
+        continue;
       }
       detailCodes.set(code, file);
     }
@@ -497,6 +499,15 @@ describe('Split rule-set parity — react-antipatterns index ↔ detail files', 
 
   it('index table is non-empty', () => {
     expect(indexCodes.length).toBeGreaterThan(0);
+  });
+
+  it('no rule is defined in more than one detail file', () => {
+    if (duplicates.length > 0) {
+      throw new Error(
+        `A rule must live in exactly one file:\n` +
+          duplicates.map(({ code, files }) => `  - ${code} is defined in both ${files.join(' and ')}`).join('\n')
+      );
+    }
   });
 
   it('every code in the index table has a rule in a detail file', () => {

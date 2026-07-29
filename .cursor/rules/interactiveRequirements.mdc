@@ -1,6 +1,6 @@
 ---
 alwaysApply: false
-description: Prescriptive constraints for the interactive requirements and objectives system — workflow nesting limits, sequential-dependency and eligibility rules, step isolation, objective edge cases, and the procedure for adding a requirement type. Load when changing requirements or objectives behaviour, or when authoring guides that gate on Grafana state. Requirement syntax and the full type catalogue live in `docs/developer/interactive-examples/requirements-reference.md`.
+description: Prescriptive constraints for the interactive requirements and objectives system — workflow nesting limits, sequential-dependency and eligibility rules, step isolation, objective edge cases, and the procedure for adding a requirement type. Load when changing requirements or objectives behavior, or when authoring guides that gate on Grafana state. Requirement syntax and the full type catalog live in `docs/developer/interactive-examples/requirements-reference.md`.
 ---
 
 # Interactive requirements — agent constraints
@@ -9,7 +9,7 @@ This file holds only the constraints an agent must preserve. Everything descript
 
 | For                                                                             | Read                                                                         |
 | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Requirement and objective syntax, the full type catalogue, validation rules      | `docs/developer/interactive-examples/requirements-reference.md`               |
+| Requirement and objective syntax, the full type catalog, validation rules      | `docs/developer/interactive-examples/requirements-reference.md`               |
 | Check phases, step state machine, fix types, explanations, heartbeat, monitoring | `docs/developer/engines/requirements-manager.md`                             |
 | Sequence manager, action types, auto-completion                                  | `docs/developer/engines/interactive-engine.md`                               |
 | Step IDs, completion persistence, reset paths, the `section-completed` gate      | `docs/developer/STEP_MODEL.md`                                               |
