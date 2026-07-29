@@ -104,6 +104,38 @@ describe('writeJsonReport', () => {
     expect(report.outcome).toBe('skipped');
   });
 
+  it('counts mixed failed and skipped pre-run guides', () => {
+    const outputPath = join(tempDir, 'results.json');
+    const results: GuideRunResult[] = [
+      {
+        guide: 'https://cdn.test/failed-guide/content.json',
+        id: 'failed-guide',
+        status: 'validation_failed',
+        exitCode: ExitCode.TEST_FAILURE,
+        autoIncluded: false,
+        abortMessage: 'Validation failed',
+        tier: 'cloud',
+      },
+      {
+        guide: 'https://cdn.test/skipped-guide/content.json',
+        id: 'skipped-guide',
+        status: 'skipped_no_auth',
+        exitCode: ExitCode.SUCCESS,
+        autoIncluded: false,
+        abortMessage: 'No auth',
+        tier: 'cloud',
+      },
+    ];
+
+    writeJsonReport(results, outputPath);
+
+    const report = JSON.parse(readFileSync(outputPath, 'utf-8')) as MultiGuideReport;
+    expect(report.outcome).toBe('failed');
+    expect(report.summary.totalGuides).toBe(2);
+    expect(report.summary.failedGuides).toBe(1);
+    expect(report.summary.skippedGuides).toBe(1);
+  });
+
   it('preserves an aborted outcome when a pre-run skip entry failed', () => {
     const outputPath = join(tempDir, 'results.json');
     const results: GuideRunResult[] = [

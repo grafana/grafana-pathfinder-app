@@ -372,6 +372,15 @@ describe('summarizeResults', () => {
     expect(summarizeResults(results).success).toBe(false);
   });
 
+  it('passes when all steps are skipped cleanly', () => {
+    const results = [
+      createStepResult({ stepId: 'step-1', status: 'skipped', skipReason: 'requirements_unmet' }),
+      createStepResult({ stepId: 'step-2', status: 'skipped', skipReason: 'requirements_unmet' }),
+    ];
+
+    expect(summarizeResults(results).success).toBe(true);
+  });
+
   it('success is false when any mandatory step fails', () => {
     const results = [
       createStepResult({ stepId: 'step-1', status: 'passed' }),

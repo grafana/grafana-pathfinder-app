@@ -8,8 +8,13 @@ jest.mock('@playwright/test', () => ({
 import { classifyError } from './classification';
 
 describe('classifyError', () => {
-  it('keeps step completion timeouts out of infrastructure classification', () => {
-    expect(classifyError('Timeout waiting for data-test-step-state="completed"')).toBe('unknown');
+  it.each([
+    'Timeout waiting for data-test-step-state="completed"',
+    'Operation timed out after 30s',
+    'Timeout exceeded while waiting for selector',
+    'Request timeout',
+  ])('keeps timeout pattern "%s" out of infrastructure classification', (errorMessage) => {
+    expect(classifyError(errorMessage)).toBe('unknown');
   });
 
   it('classifies network failures as infrastructure', () => {

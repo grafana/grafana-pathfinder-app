@@ -231,7 +231,7 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
       `--output=${playwrightOutputDir}`,
     ];
 
-    if (options.trace && options.token && options.verbose) {
+    if (options.trace && options.token) {
       console.warn('   ⚠ Trace disabled for bearer-token authentication because traces can contain credentials');
     }
     if (traceEnabled) {

@@ -251,27 +251,35 @@ describe('runPlaywrightTests', () => {
 
   it('disables Playwright tracing when bearer-token authentication is active', async () => {
     const child = new EventEmitter();
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     spawnMock.mockImplementation(() => child as never);
+    try {
+      const resultPromise = runPlaywrightTests(
+        { path: 'fixture.json', content: '{}' },
+        {
+          targetUrl: 'https://play.grafana.org',
+          verbose: false,
+          trace: true,
+          headed: false,
+          artifacts: 'artifacts',
+          alwaysScreenshot: false,
+          startingLocation: '/',
+          token: 'test-token',
+        }
+      );
+      const args = spawnMock.mock.calls[0]?.[1] as string[];
+      const spawnOptions = spawnMock.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
+      child.emit('close', 1);
+      await resultPromise;
 
-    const resultPromise = runPlaywrightTests(
-      { path: 'fixture.json', content: '{}' },
-      {
-        targetUrl: 'https://play.grafana.org',
-        verbose: false,
-        trace: true,
-        headed: false,
-        artifacts: 'artifacts',
-        alwaysScreenshot: false,
-        token: 'test-token',
-      }
-    );
-    const args = spawnMock.mock.calls[0]?.[1] as string[];
-    const spawnOptions = spawnMock.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
-    child.emit('close', 1);
-    await resultPromise;
-
-    expect(args).not.toContain('--trace');
-    expect(spawnOptions.env?.E2E_TRACE).toBe('false');
+      expect(args).not.toContain('--trace');
+      expect(spawnOptions.env?.E2E_TRACE).toBe('false');
+      expect(warnSpy).toHaveBeenCalledWith(
+        '   ⚠ Trace disabled for bearer-token authentication because traces can contain credentials'
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it.each([
