@@ -19,7 +19,7 @@ describe('getTranslatedTitle', () => {
 
     it('translates "Learning Path" (uppercase P)', () => {
       const result = getTranslatedTitle('Learning Path');
-      expect(result).toBe('[translated:docsPanel.learningJourney]Learning Path');
+      expect(result).toBe('[translated:docsPanel.learningJourney]Learning path');
     });
 
     it('translates legacy "Learning journey" (lowercase j) for backwards compatibility', () => {
@@ -29,7 +29,7 @@ describe('getTranslatedTitle', () => {
 
     it('translates legacy "Learning Journey" (uppercase J) for backwards compatibility', () => {
       const result = getTranslatedTitle('Learning Journey');
-      expect(result).toBe('[translated:docsPanel.learningJourney]Learning Path');
+      expect(result).toBe('[translated:docsPanel.learningJourney]Learning path');
     });
 
     it('translates "Documentation"', () => {

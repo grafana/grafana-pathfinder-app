@@ -18,6 +18,7 @@ import { BadgeIcon } from './BadgeIcon';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
+import { logger } from '../../lib/logging';
 import { StorageEvents } from '../../lib/event-names';
 import {
   learningProgressStorage,
@@ -336,9 +337,16 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         if (result.ok) {
           onOpenGuide(result.launch);
         } else {
+          // The raw error is internal-shaped — keep it for the logs (Faro
+          // bridge makes launch failures countable) and show a translated
+          // generic message.
+          logger.error('[MyLearning] Guide launch preparation failed', { url, error: result.error });
           getAppEvents().publish({
             type: 'alert-error',
-            payload: ['Could not open the guide', result.error],
+            payload: [
+              t('myLearning.launchErrorTitle', 'Could not open the guide'),
+              t('myLearning.launchErrorMessage', 'Something went wrong while loading the guide. Please try again.'),
+            ],
           });
         }
       } finally {

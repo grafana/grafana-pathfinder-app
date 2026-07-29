@@ -32,6 +32,7 @@ import { panelModeManager, type PendingGuide } from '../../global-state/panel-mo
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
 import { PLUGIN_BASE_URL, ROUTES } from '../../constants';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { buildFullScreenRouteUrl } from '../../utils/pathfinder-search-params';
 import pluginJson from '../../plugin.json';
 import { MyLearningTab } from '../LearningPaths';
@@ -53,6 +54,17 @@ export class HomePanel extends SceneObjectBase<HomePanelState> {
 // ============================================================================
 // RENDERER
 // ============================================================================
+
+// Answers "is the classifier picking the right surface in the wild?" — the
+// surface itself is also reported by mounts/mode changes, but only this event
+// ties it to the content and the classification that chose it.
+function reportSurfaceChoice(surface: 'sidebar' | 'floating' | 'fullscreen', launch: PreparedGuideLaunch): void {
+  reportAppInteraction(UserInteraction.GuideLaunchSurfaceChosen, {
+    surface,
+    requires_grafana_ui: launch.requiresGrafanaUi,
+    content_url: launch.url,
+  });
+}
 
 function pendingGuideFrom(launch: PreparedGuideLaunch): PendingGuide {
   return {
@@ -79,6 +91,7 @@ export function HomePanelRenderer() {
     // auto-open event below would fire with no listener and the guide would
     // be lost. See #1450 for the listener-ownership gap.
     if (isExtensionSidebarOwnedByOther(pluginJson.id) || panelModeManager.getMode() === 'floating') {
+      reportSurfaceChoice('floating', launch);
       panelModeManager.setPendingGuide(pendingGuideFrom(launch));
       panelModeManager.setModeTransient('floating');
       // A same-mode transient launch dispatches no mode-change event, so an
@@ -88,6 +101,7 @@ export function HomePanelRenderer() {
       return;
     }
 
+    reportSurfaceChoice('sidebar', launch);
     panelModeManager.setModeTransient('sidebar');
 
     // The event and the cold-sidebar queue are public channels — stage the
@@ -123,6 +137,7 @@ export function HomePanelRenderer() {
   // handoff order (pending guide → prior path → mode → route), but selects the
   // mode transiently so the user's stored preference is untouched.
   const openFullScreen = useCallback((launch: PreparedGuideLaunch) => {
+    reportSurfaceChoice('fullscreen', launch);
     panelModeManager.setPendingGuide(pendingGuideFrom(launch));
     panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
     panelModeManager.setModeTransient('fullscreen');

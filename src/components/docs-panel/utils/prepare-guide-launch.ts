@@ -16,6 +16,7 @@
  */
 
 import { fetchPackageInfoFromUrl, isPackageContentUrl } from '../../../docs-retrieval';
+import { logger } from '../../../lib/logging';
 import { inlineSnippetRefsInGuideWithStatus } from '../../../snippet-engine';
 import type { LaunchSource } from '../../../recovery';
 import type { PackageOpenInfo } from '../../../types/content-panel.types';
@@ -81,7 +82,10 @@ export async function prepareGuideLaunch(
     guide = JSON.parse(rawContent.content) as JsonGuide;
   } catch {
     // fetchContent validates native JSON guides, so this is not expected;
-    // fail safe rather than commit a surface for uninspectable content.
+    // fail safe rather than commit a surface for uninspectable content. The
+    // log is the only aggregate signal for this branch — the fetch ladder's
+    // own telemetry saw a successful fetch.
+    logger.error('[PrepareGuideLaunch] Guide content could not be parsed', { url });
     return { ok: false, error: 'Guide content could not be parsed' };
   }
 
