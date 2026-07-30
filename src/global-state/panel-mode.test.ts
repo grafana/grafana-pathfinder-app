@@ -343,4 +343,58 @@ describe('panelModeManager', () => {
       expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
     });
   });
+
+  describe('endTransientSession (browser Back quiet exit, #1448)', () => {
+    // The manager is a singleton and only setModePersisted / endTransientSession
+    // close a session, so load a fresh instance per test to avoid leaking the
+    // in-memory override across cases.
+    let manager!: typeof panelModeManager;
+    beforeEach(() => {
+      jest.isolateModules(() => {
+        manager = jest.requireActual('./panel-mode').panelModeManager;
+      });
+    });
+
+    it('isTransient tracks the session: false → true after a transient launch → false after end', () => {
+      expect(manager.isTransient()).toBe(false);
+      manager.setModeTransient('fullscreen');
+      expect(manager.isTransient()).toBe(true);
+      manager.endTransientSession();
+      expect(manager.isTransient()).toBe(false);
+    });
+
+    it('drops the override so getMode reverts to the stored preference, without persisting', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'sidebar');
+      manager.setModeTransient('fullscreen');
+      expect(manager.getMode()).toBe('fullscreen');
+
+      manager.endTransientSession();
+
+      // Reverts to the stored preference (not stuck on fullscreen — the dead-state
+      // hazard) and leaves the preference untouched (no persisting write).
+      expect(manager.getMode()).toBe('sidebar');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
+    });
+
+    it('is a no-op when no transient session is active', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+      manager.endTransientSession();
+      expect(manager.isTransient()).toBe(false);
+      expect(manager.getMode()).toBe('floating');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+    });
+
+    it('does not dispatch pathfinder-panel-mode-change (surface already unmounted)', () => {
+      const handler = jest.fn();
+      document.addEventListener('pathfinder-panel-mode-change', handler);
+      try {
+        manager.setModeTransient('fullscreen');
+        handler.mockClear();
+        manager.endTransientSession();
+        expect(handler).not.toHaveBeenCalled();
+      } finally {
+        document.removeEventListener('pathfinder-panel-mode-change', handler);
+      }
+    });
+  });
 });

@@ -21,7 +21,7 @@ import { parsePathfinderDeepLink, shouldOpenAsLearningJourney } from '../../util
 import pluginJson from '../../plugin.json';
 import { FullScreenLayout } from './FullScreenLayout';
 import { getFullScreenStyles } from './full-screen.styles';
-import { dockOnLeavingFullScreen } from './full-screen-autodock';
+import { dockOnLeavingFullScreen, type HistoryAction } from './full-screen-autodock';
 
 // Lazy-loaded so the editor only ships when the user actually opens it full screen.
 const BlockEditor = lazy(() =>
@@ -214,7 +214,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   useEffect(() => {
     const fullScreenPathname = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
     const history = locationService.getHistory();
-    const unlisten = history.listen((location: { pathname: string }) => {
+    const unlisten = history.listen((location: { pathname: string }, action: HistoryAction) => {
       const { guideUrl: latestGuideUrl, title: latestTitle } = dockInputsRef.current;
       dockOnLeavingFullScreen({
         pathname: location.pathname,
@@ -222,6 +222,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
         myPluginId: pluginJson.id,
         guideUrl: latestGuideUrl,
         title: latestTitle,
+        action,
       });
     });
     return unlisten;
