@@ -1,0 +1,31 @@
+---
+alwaysApply: false
+description: How an agent applies the R1-R21 catalog — review prioritization by severity band, defaults to follow when implementing features, and the REACT annotation format for fixes. Load alongside any react-antipatterns detail file.
+---
+
+# Agent conduct for R1-R21
+
+The routing table and the full code list live in `.cursor/rules/react-antipatterns.mdc`. Detection scanning and severities are owned by `docs/design/PR_REVIEW.md`.
+
+### During `/review`
+Check code against all R1-R21 rules. Prioritize:
+1. **Critical (R1-R5, R8, R13)**: Memory leaks, infinite loops, state mutation, hook violations
+2. **High (R6-R7, R9-R10, R15-R17)**: Error handling, race conditions, key issues, waterfalls
+3. **Medium (R11-R12, R14, R18-R21)**: Performance, context, derived state, web vitals
+
+### When Implementing Features
+- Always add cleanup to `useEffect` with subscriptions/listeners.
+- Use `AbortController` for fetch operations.
+- Prefer functional updates for state used in callbacks.
+- Compute derived values during render, not in state.
+- Use stable references (`useCallback`, `useMemo`) when passing to memoized children.
+
+### Comment Annotations
+When fixing anti-patterns, annotate with rule reference:
+```tsx
+// REACT: cleanup subscription (R1)
+// REACT: functional update avoids stale closure (R2)
+// REACT: memoize object dependency (R3)
+// REACT: abort on unmount (R4)
+// REACT: immutable update (R5)
+```

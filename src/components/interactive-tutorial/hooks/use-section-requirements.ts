@@ -28,7 +28,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getRequirementExplanation, dispatchFix } from '../../../requirements-manager';
 import { subscribeProgressEvent } from '../../../global-state/progress-events';
 import { logger } from '../../../lib/logging';
-import { DEFAULT_INTERACTIVE_SECTION_TITLE } from '../interactive-section';
+import { DEFAULT_INTERACTIVE_SECTION_TITLE } from '../section-titles';
 
 interface SectionRequirementsResult {
   pass: boolean;

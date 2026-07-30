@@ -23,6 +23,7 @@ import { PackageIOError } from './errors';
 export const CONTAINER_CHILD_KEYS: Record<string, string[]> = {
   section: ['blocks'],
   assistant: ['blocks'],
+  collapsible: ['blocks'],
   conditional: ['whenTrue', 'whenFalse'],
 };
 

@@ -5,10 +5,12 @@
  * Provides a unified experience for users to explore and track their learning journey.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
+import { getAppEvents } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
+import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { useLearningPaths, BADGES, getPathsData } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { LearningPathCard } from './LearningPathCard';
@@ -16,6 +18,7 @@ import { BadgeIcon } from './BadgeIcon';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
+import { logger } from '../../lib/logging';
 import { StorageEvents } from '../../lib/event-names';
 import {
   learningProgressStorage,
@@ -34,7 +37,13 @@ import { getBadgeDetailStyles } from './BadgeDetailCard.styles';
 import { getMyLearningStyles } from './MyLearningTab.styles';
 
 interface MyLearningTabProps {
-  onOpenGuide: (url: string, title: string) => void;
+  /**
+   * Called once the guide has been fetched, snippet-expanded, and classified,
+   * so the host can choose the display surface (full-screen for reading-only
+   * content, sidebar/floating when it drives the Grafana UI) and open the tab
+   * without a second fetch.
+   */
+  onOpenGuide: (launch: PreparedGuideLaunch) => void;
 }
 
 // ============================================================================
@@ -212,6 +221,18 @@ function BadgeGridItem({ badge, index, completedGuides, streakDays, paths, style
 
 export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   const styles = useStyles2(getMyLearningStyles);
+  // Guards against a second launch while the first is still fetching/classifying.
+  const launchInFlightRef = useRef(false);
+  // Drives the pending affordance on the launching card while the ref above
+  // stays the correctness guard.
+  const [launchingPathId, setLaunchingPathId] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const [showAllBadges, setShowAllBadges] = useState(false);
   const [showAllPaths, setShowAllPaths] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
@@ -293,6 +314,51 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     );
   }, [selectedBadge, progress.completedGuides, progress.streakDays, paths]);
 
+  // Fetch + snippet-expand + classify the target, then hand the prepared
+  // launch to the host so it can pick the surface without re-fetching. The
+  // fetch happens while My Learning stays mounted; on failure My Learning stays
+  // visible and the error is surfaced rather than committing a surface.
+  const launch = useCallback(
+    async (url: string, title: string, pathId: string) => {
+      if (launchInFlightRef.current) {
+        return;
+      }
+      launchInFlightRef.current = true;
+      setLaunchingPathId(pathId);
+      try {
+        const result = await prepareGuideLaunch(url, { title, source: 'home_page' });
+        // The prepare step can outlive this page (the fetches are bounded but
+        // slow-CDN cases run tens of seconds). If the user navigated away,
+        // drop the result — launching now would yank them to /fullscreen from
+        // wherever they landed.
+        if (!mountedRef.current) {
+          return;
+        }
+        if (result.ok) {
+          onOpenGuide(result.launch);
+        } else {
+          // The raw error is internal-shaped — keep it for the logs (Faro
+          // bridge makes launch failures countable) and show a translated
+          // generic message.
+          logger.error('[MyLearning] Guide launch preparation failed', { url, error: result.error });
+          getAppEvents().publish({
+            type: 'alert-error',
+            payload: [
+              t('myLearning.launchErrorTitle', 'Could not open the guide'),
+              t('myLearning.launchErrorMessage', 'Something went wrong while loading the guide. Please try again.'),
+            ],
+          });
+        }
+      } finally {
+        launchInFlightRef.current = false;
+        if (mountedRef.current) {
+          setLaunchingPathId(null);
+        }
+      }
+    },
+    [onOpenGuide]
+  );
+
   // Handle opening a guide
   const handleOpenGuide = useCallback(
     (guideId: string, pathId: string) => {
@@ -315,7 +381,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           interaction_location: 'my_learning_tab',
         });
 
-        onOpenGuide(resolvedGuideUrl, title);
+        void launch(resolvedGuideUrl, title, parentPath.id);
         return;
       }
 
@@ -346,9 +412,9 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         });
       }
 
-      onOpenGuide(guideUrl, title);
+      void launch(guideUrl, title, pathId);
     },
-    [onOpenGuide, paths, getPathProgress, getPathGuides, getGuideUrlForPath]
+    [launch, paths, getPathProgress, getPathGuides, getGuideUrlForPath]
   );
 
   // Handle reset all progress (for testing)
@@ -517,6 +583,8 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
                 onContinue={handleOpenGuide}
                 onReset={resetPath}
                 defaultExpanded={isFirstInProgress}
+                isLaunching={launchingPathId === path.id}
+                launchDisabled={launchingPathId !== null}
               />
             );
           })}

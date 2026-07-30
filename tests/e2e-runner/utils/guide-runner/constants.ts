@@ -36,6 +36,9 @@ export const SECTION_SELECTOR = '[data-testid^="interactive-section-"]';
  * Per design doc: 30 seconds as a generous default.
  */
 export const DEFAULT_STEP_TIMEOUT_MS = 30000;
+export const GUIDE_SETUP_TIMEOUT_MS = 60000;
+export const GUIDE_INITIAL_TIMEOUT_MS = GUIDE_SETUP_TIMEOUT_MS * 2;
+export const STEP_OVERHEAD_TIMEOUT_MS = 20000;
 
 /**
  * Additional timeout per internal action for multisteps.
@@ -195,12 +198,6 @@ export const NAVIGATION_FIX_SETTLE_DELAY_MS = 2000;
  * are unlikely to be caused by guide content or product code changes.
  */
 export const INFRASTRUCTURE_ERROR_PATTERNS = [
-  // Timeout patterns - environmental/performance issues
-  /timeout/i,
-  /timed out/i,
-  /waiting for/i, // "Timeout waiting for X"
-  /exceeded/i, // "Timeout exceeded"
-
   // Network patterns - connectivity issues
   /network/i,
   /net::/i, // Chrome network errors like net::ERR_*

@@ -82,7 +82,7 @@ const mockGetActiveExperiments = jest.fn((): Array<Record<string, unknown>> => [
 jest.mock('../utils/openfeature', () => ({ getActiveExperiments: () => mockGetActiveExperiments() }));
 
 // A stable object reference, not a fresh literal per require: `freshFaro()`
-// resets the module registry (so `./faro`'s internal init/instance state
+// resets the module registry (so the telemetry adapter's init/instance state
 // starts clean), and re-requiring this mock must keep resolving to the same
 // `config` object so mutations made between tests are still visible.
 interface MockedBootDataUser {
@@ -128,9 +128,15 @@ const {
   buildResourceIgnorePattern,
 }: typeof import('./faro') = require('./faro');
 
-function freshFaro(): typeof import('./faro') {
+type FreshFaro = typeof import('./faro') &
+  Pick<typeof import('./telemetry/faro-adapter'), 'pushFaroEvent' | 'pushFaroMeasurement'>;
+
+function freshFaro(): FreshFaro {
   jest.resetModules();
-  return require('./faro');
+  return {
+    ...require('./faro'),
+    ...require('./telemetry/faro-adapter'),
+  };
 }
 
 beforeEach(() => {

@@ -13,7 +13,7 @@
  * to exit-code semantics rather than a separate regex matcher type.
  */
 
-import type { CheckResultError } from '../requirements-checker.utils';
+import type { CheckResultError } from '../../types/requirements.types';
 import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 

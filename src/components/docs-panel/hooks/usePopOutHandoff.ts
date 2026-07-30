@@ -30,7 +30,7 @@
  *
  * Contract surfaces preserved (Pattern J):
  *   - CustomEvent name: `pathfinder-request-pop-out`
- *   - `panelModeManager.setMode('floating')`
+ *   - `panelModeManager.setModePersisted('floating')`
  *   - `model.saveTabsToStorage()` awaited before the mode flip
  */
 import * as React from 'react';
@@ -57,11 +57,11 @@ export function usePopOutHandoff(model: PopOutModel): void {
           guide_title: activeTab.title,
         });
         await model.saveTabsToStorage();
-        panelModeManager.setMode('floating');
+        panelModeManager.setModePersisted('floating');
         return;
       }
 
-      if (!activeTab || activeTab.id === 'recommendations' || !guideUrl) {
+      if (!activeTab || activeTab.type === 'recommendations' || activeTab.type === 'devtools' || !guideUrl) {
         getAppEvents().publish({
           type: 'alert-info',
           payload: ['Open a guide before popping out the panel.'],
@@ -75,7 +75,7 @@ export function usePopOutHandoff(model: PopOutModel): void {
       });
 
       await model.saveTabsToStorage();
-      panelModeManager.setMode('floating');
+      panelModeManager.setModePersisted('floating');
     };
 
     document.addEventListener('pathfinder-request-pop-out', handlePopOut);

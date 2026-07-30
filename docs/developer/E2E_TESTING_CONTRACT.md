@@ -26,6 +26,32 @@ Examples: `data-test-step-state`, `data-test-substep-index`, `data-test-action`
 
 ---
 
+## Docs panel bootstrap contract
+
+The guide runner must establish a ready Pathfinder panel before it can load guide content or discover steps. These signals form the stable contract between the plugin surface and `tests/e2e-runner/`:
+
+- **Plugin readiness**: `window.__pathfinderPluginConfig` is assigned when Pathfinder initialization completes. The runner waits for this before treating Grafana's Help control as a Pathfinder open action.
+- **Sidebar mount**: the outer Pathfinder sidebar dispatches `pathfinder-sidebar-mounted` on `window` after Grafana accepts the extension-sidebar open request. The runner uses this event to avoid a duplicate Help click; because it is an edge signal rather than current mounted state, post-click readiness still requires the panel DOM.
+- **Panel readiness**: the inner panel renders `data-testid="docs-panel-container"` when it is ready for guide content. Once this container is visible, the panel must be able to receive the content-open event below.
+- **Content open**: the panel listens for `pathfinder-auto-open-docs` on `document` with detail `{ url: string; title: string; source?: string }`.
+
+The Grafana-owned Help button and `grafana.navigation.extensionSidebarDocked` storage entry are recovery hints, not Pathfinder-owned contracts. A docs-panel or sidebar refactor must preserve the four Pathfinder signals above, or update the guide runner, contract tests, and this document in the same change.
+
+The source-level tripwires live in `src/components/docs-panel/docs-panel.contract.test.tsx` and `src/components/docs-panel/docs-panel.auto-open-event.test.tsx`.
+
+---
+
+## Block editor header contract
+
+The block-editor header exposes two stable row testids that responsive e2e tests depend on to assert the two-row layout holds at narrow widths:
+
+- **`block-editor-title-row`** (`testIds.blockEditor.titleRow`): the editable title + status cluster row. Rendered in edit/JSON view; hidden entirely in preview.
+- **`block-editor-toolbar-row`** (`testIds.blockEditor.toolbarRow`): the view-mode rocker + action cluster row, present in every view. In preview the status cluster relocates here, so `tests/block-editor-title-row.spec.ts` selects it to assert status stays visible at the 320px floating-panel minimum.
+
+A header refactor that renames or removes these rows must update `tests/block-editor-title-row.spec.ts` in the same change.
+
+---
+
 ## Design Principles
 
 ### 1. Semantic Over Syntactic
@@ -338,22 +364,30 @@ This ensures consistency between:
 React components derive attributes from existing UI state:
 
 ```tsx
-// interactive-step.tsx
+// interactive-guided.tsx / interactive-multi-step.tsx
 <div
   data-test-step-state={
-    isCompleted
-      ? 'completed'
-      : isExecuting
-        ? 'executing'
-        : isChecking
-          ? 'checking'
-          : !isEnabled
-            ? 'requirements-unmet'
-            : 'idle'
+    isExecuting
+      ? 'executing'
+      : hasError
+        ? 'error'
+        : isCompleted
+          ? 'completed'
+          : isChecking
+            ? 'checking'
+            : !isEnabled
+              ? 'requirements-unmet'
+              : 'idle'
   }
   data-test-substep-index={isExecuting ? currentIndex : undefined}
 />
 ```
+
+For guided and multi-step components, `executing` takes precedence over `completed`. This keeps the active substep observable when `completeEarly` persists completion before the remaining actions settle.
+
+After composite execution settles, genuine objectives completion is authoritative and suppresses stale local error or cancellation state. A `completeEarly` write alone does not receive this exception, so failures remain recoverable through Retry or Skip.
+
+`InteractiveStep` also prioritizes active execution, but after execution settles it lets `completed` override a stale local error because completed rendering suppresses its error affordances. The `cancelled` state applies only to guided execution.
 
 **Key insight**: Attributes ARE the source of truth for rendered state. If they're wrong, the UI is wrong, so tests catch real bugs.
 

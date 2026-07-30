@@ -220,6 +220,11 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     overflow: 'visible', // Allow dropdown to extend below tab bar
     position: 'relative', // Positioning context for absolute dropdown
     flexShrink: 0, // Don't shrink, stay compact
+    // container-type makes this a query container for the wordmark's narrow-width
+    // hide — which also makes it a stacking context, so lift the whole bar above
+    // page content (below modals) to keep the overflow dropdown painting on top.
+    containerType: 'inline-size',
+    zIndex: theme.zIndex.navbarFixed,
   }),
   tabList: css({
     label: 'combined-journey-tab-list',
@@ -231,13 +236,33 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     flex: 1,
     minWidth: 0, // Allow flex shrinking
   }),
-  // Permanent icon-only tabs (Recommendations, My Learning)
-  permanentTabs: css({
-    label: 'combined-journey-permanent-tabs',
+  // Recommendations home icon (left rail)
+  recommendationsTab: css({
+    label: 'combined-journey-recommendations-tab',
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
     flexShrink: 0,
+  }),
+  // "Interactive Learning" wordmark + divider — the plugin's external name.
+  // Branding is the first thing to drop when the bar is narrow.
+  wordmarkGroup: css({
+    label: 'combined-journey-wordmark-group',
+    display: 'inline-flex',
+    alignItems: 'center',
+    flexShrink: 0,
+    gap: theme.spacing(1),
+    '@container (max-width: 360px)': {
+      display: 'none',
+    },
+  }),
+  wordmark: css({
+    label: 'combined-journey-wordmark',
+    paddingLeft: theme.spacing(0.5),
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
+    whiteSpace: 'nowrap',
   }),
   iconTab: css({
     label: 'combined-journey-icon-tab',
@@ -372,6 +397,20 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     minWidth: 0, // Critical for allowing text truncation in flex containers
     maxWidth: '100%', // Ensure it doesn't exceed parent
   }),
+  editorTabTitle: css({
+    label: 'combined-journey-editor-tab-title',
+    fontStyle: 'italic',
+    fontWeight: theme.typography.fontWeightLight,
+  }),
+  editorTabDraftBadge: css({
+    label: 'combined-journey-editor-tab-draft-badge',
+    flexShrink: 0,
+    // Compact so the badge fits tab chrome without dominating the title.
+    fontSize: '10px',
+    padding: `0 ${theme.spacing(0.5)}`,
+    lineHeight: '16px',
+    height: 16,
+  }),
   loadingText: css({
     marginLeft: theme.spacing(0.5),
   }),
@@ -419,7 +458,7 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     position: 'absolute',
     top: '100%',
     right: 0, // Align with the right edge of the chevron button
-    zIndex: 9999, // High z-index to appear above content
+    zIndex: 9999, // Stack above other tab-bar items (the bar's z-index lifts the dropdown above page content)
     minWidth: '220px',
     maxWidth: '320px',
     backgroundColor: theme.colors.background.primary,
@@ -500,6 +539,11 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontWeight: 'inherit',
+  }),
+  editorDropdownItemTitle: css({
+    label: 'combined-journey-editor-dropdown-item-title',
+    fontStyle: 'italic',
+    fontWeight: theme.typography.fontWeightLight,
   }),
   dropdownItemClose: css({
     label: 'combined-journey-dropdown-item-close',

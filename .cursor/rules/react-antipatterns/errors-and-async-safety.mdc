@@ -1,0 +1,124 @@
+---
+alwaysApply: false
+description: React anti-patterns R6 and R10 — missing error boundaries and unhandled promise rejections. Load on a review hit for either code, or when adding routes, risky component trees, or promise chains.
+---
+
+# Errors and async safety
+
+Part of the R1-R21 catalog. The routing table and the full code list live in `.cursor/rules/react-antipatterns.mdc`.
+
+---
+
+## R6 — Missing Error Boundaries
+Without error boundaries, any render error crashes the entire React tree with a white screen.
+
+**Don't**
+```tsx
+function App() {
+  return (
+    <div>
+      <Header />
+      <UserProfile userId={userId} /> {/* Error here crashes everything */}
+      <Footer />
+    </div>
+  );
+}
+```
+
+**Do**
+```tsx
+class ErrorBoundary extends React.Component {
+  state = { hasError: false, error: null };
+  
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  
+  componentDidCatch(error, errorInfo) {
+    console.error('Error boundary caught:', error, errorInfo);
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return <ErrorFallback error={this.state.error} />;
+    }
+    return this.props.children;
+  }
+}
+
+// REACT: wrap risky components with error boundaries (R6)
+function App() {
+  return (
+    <div>
+      <Header />
+      <ErrorBoundary>
+        <UserProfile userId={userId} />
+      </ErrorBoundary>
+      <Footer />
+    </div>
+  );
+}
+```
+
+**Agent behavior**
+- Recommend error boundaries around components that fetch data, parse external content, or render user-provided data.
+- Wrap major component trees and route definitions — one unhandled render error can unmount the entire app (white screen of death).
+- Note that error boundaries don't catch errors in event handlers, async code, or the boundary itself.
+- When implementing new features with external data, suggest wrapping in an error boundary.
+
+---
+
+---
+
+## R10 — Unhandled Promise Rejections
+Promises without error handling fail silently, leaving users stuck with loading states.
+
+**Don't**
+```tsx
+useEffect(() => {
+  fetch(url)
+    .then(res => res.json())
+    .then(setData);
+  // No error handling - failures are silent
+}, [url]);
+
+const handleSubmit = async () => {
+  await submitForm(formData); // Uncaught rejection
+  navigate('/success');
+};
+```
+
+**Do**
+```tsx
+useEffect(() => {
+  setLoading(true);
+  setError(null);
+  
+  fetch(url)
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then(setData)
+    // REACT: handle errors explicitly (R10)
+    .catch(setError)
+    .finally(() => setLoading(false));
+}, [url]);
+
+const handleSubmit = async () => {
+  try {
+    await submitForm(formData);
+    navigate('/success');
+  } catch (err) {
+    setError(err.message);
+  }
+};
+```
+
+**Agent behavior**
+- Every `fetch` or async operation must have error handling (`.catch()` or `try/catch`).
+- Flag promise chains without `.catch()`.
+- Recommend tracking loading and error states for user feedback.
+- Check that HTTP error responses (4xx, 5xx) are treated as errors.
+
+---

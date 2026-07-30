@@ -12,6 +12,7 @@ import {
   isJsonGuideContent,
   resolveRelativeUrls,
   CodeBlock,
+  CollapsibleBlock,
   ExpandableTable,
   ImageRenderer,
   ContentParsingError,
@@ -1320,6 +1321,17 @@ function renderParsedElement(
           showCopy={element.props.showCopy}
           inline={element.props.inline}
         />
+      );
+    case 'collapsible':
+      return (
+        <CollapsibleBlock
+          key={key}
+          id={element.props.id}
+          title={sub(element.props.title)}
+          collapsed={element.props.collapsed}
+        >
+          {renderChildren(element.children)}
+        </CollapsibleBlock>
       );
     case 'expandable-table':
       return (

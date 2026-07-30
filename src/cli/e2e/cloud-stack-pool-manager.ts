@@ -9,6 +9,8 @@ import type { PackageMeta } from './e2e-results';
 
 const POOL_MANAGER_FETCH_TIMEOUT_MS = 15_000;
 const FALLBACK_POLICY = 'hot_only';
+const CAPACITY_RETRY_BASE_DELAY_MS = 250;
+const CAPACITY_RETRY_MAX_DELAY_MS = 5_000;
 
 export const DEFAULT_CLOUD_STACK_POOL_ID = 'nightly';
 
@@ -18,6 +20,15 @@ export interface CloudStackPoolManagerConfigInput {
   poolId?: string;
   maxWaitSeconds?: number;
   env?: NodeJS.ProcessEnv;
+}
+
+function retryDelayMs(attempt: number, random: () => number): number {
+  const exponential = CAPACITY_RETRY_BASE_DELAY_MS * 2 ** attempt;
+  return Math.round(Math.min(CAPACITY_RETRY_MAX_DELAY_MS, exponential * (0.5 + random())));
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export interface CloudStackPoolManagerConfig {
@@ -298,7 +309,10 @@ export class CloudStackPoolManager {
   constructor(
     private readonly config: CloudStackPoolManagerConfig,
     private readonly verbose: boolean,
-    private readonly fetchImpl: typeof fetch = fetch
+    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly waitImpl: (ms: number) => Promise<void> = wait,
+    private readonly randomImpl: () => number = Math.random,
+    private readonly nowImpl: () => number = Date.now
   ) {}
 
   async leaseForChain(options: LeaseForChainOptions): Promise<CloudStackPoolManagerLease> {
@@ -314,13 +328,35 @@ export class CloudStackPoolManager {
       metadata: metadataFor(packageIds, options.packageMetaById),
       ...(this.config.maxWaitSeconds !== undefined ? { maxWaitSeconds: this.config.maxWaitSeconds } : {}),
     };
-    const response = await postJson<CreateLeaseResponse>(
-      this.config,
-      this.fetchImpl,
-      '/v1/leases',
-      request,
-      `Pool manager could not lease a stack from pool "${this.config.poolId}": `
-    );
+    const startedAt = this.nowImpl();
+    let capacityRetryAttempt = 0;
+    let response: CreateLeaseResponse;
+    while (true) {
+      try {
+        response = await postJson<CreateLeaseResponse>(
+          this.config,
+          this.fetchImpl,
+          '/v1/leases',
+          request,
+          `Pool manager could not lease a stack from pool \"${this.config.poolId}\": `
+        );
+        break;
+      } catch (error) {
+        if (!(error instanceof CloudStackPoolManagerError) || error.code !== 'no_capacity') {
+          throw error;
+        }
+        const budgetMs = (this.config.maxWaitSeconds ?? 0) * 1000;
+        const remainingMs = budgetMs - (this.nowImpl() - startedAt);
+        if (remainingMs <= 0) {
+          throw error;
+        }
+        const delayMs = Math.min(remainingMs, retryDelayMs(capacityRetryAttempt++, this.randomImpl));
+        if (this.verbose) {
+          console.log(`   ⏳ Pool ${this.config.poolId} has no capacity; retrying in ${delayMs}ms`);
+        }
+        await this.waitImpl(delayMs);
+      }
+    }
     const lease = {
       leaseId: stringField(response.leaseId, 'leaseId'),
       targetUrl: normalizeGrafanaUrl(response.grafanaUrl),

@@ -122,7 +122,7 @@ The [block editor](../block-editor/) lets editors and admins compose guides with
 | Draft     | Saved to the Pathfinder backend; visible only in the editor's library, not in the docs panel. |
 | Published | Saved to the Pathfinder backend; visible to all users of the Grafana instance.                |
 
-The backend stores guides as `InteractiveGuide` custom resources in the `pathfinderbackend.ext.grafana.com/v1alpha1` API group. The backend is shipped as part of the plugin's Go server — there is no external service to deploy. Custom guides are scoped to the Grafana stack they are published on; they are not shared between stacks.
+The backend stores guides as `InteractiveGuide` custom resources in the `pathfinderbackend.ext.grafana.app/v1alpha1` API group. The backend is shipped as part of the plugin's Go server — there is no external service to deploy. Custom guides are scoped to the Grafana stack they are published on; they are not shared between stacks.
 
 The block editor can also import and export the underlying JSON, which is useful for bringing a guide from a development stack to production, or for review through a GitHub pull request.
 

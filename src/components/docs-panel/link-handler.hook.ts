@@ -533,7 +533,11 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 markMilestoneDone(
                   activeTab.baseUrl,
                   slug,
-                  activeTab.content?.metadata?.learningJourney?.totalMilestones
+                  activeTab.content?.metadata?.learningJourney?.totalMilestones,
+                  {
+                    packageManifest: activeTab.content?.metadata?.packageManifest,
+                    guideTitle: activeTab.title,
+                  }
                 );
               }
             }

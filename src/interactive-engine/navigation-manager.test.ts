@@ -734,4 +734,52 @@ describe('NavigationManager', () => {
       expect(dockClickSpy).not.toHaveBeenCalled();
     });
   });
+
+  describe('ensureNavigationOpen context check', () => {
+    let megaMenuToggle: HTMLButtonElement;
+    let toggleClickSpy: jest.Mock;
+
+    beforeEach(() => {
+      megaMenuToggle = document.createElement('button');
+      megaMenuToggle.id = 'mega-menu-toggle';
+      document.body.appendChild(megaMenuToggle);
+
+      toggleClickSpy = jest.fn();
+      megaMenuToggle.click = toggleClickSpy;
+    });
+
+    afterEach(() => {
+      megaMenuToggle.remove();
+    });
+
+    it('leaves the sidebar closed for a target inside a page toolbar <nav>', async () => {
+      // Grafana wraps page toolbars in <nav> (e.g. `nav.page-toolbar` in Explore), so
+      // targets like the data source picker must not trigger an open-and-dock.
+      const toolbar = document.createElement('nav');
+      toolbar.className = 'page-toolbar';
+      const target = document.createElement('div');
+      toolbar.appendChild(target);
+      document.body.appendChild(toolbar);
+
+      await navigationManager.ensureNavigationOpen(target);
+
+      expect(toggleClickSpy).not.toHaveBeenCalled();
+
+      toolbar.remove();
+    });
+
+    it('opens the sidebar for a target inside the mega menu', async () => {
+      const megaMenu = document.createElement('div');
+      megaMenu.setAttribute('data-testid', 'data-testid navigation mega-menu');
+      const target = document.createElement('a');
+      megaMenu.appendChild(target);
+      document.body.appendChild(megaMenu);
+
+      await navigationManager.ensureNavigationOpen(target);
+
+      expect(toggleClickSpy).toHaveBeenCalledTimes(1);
+
+      megaMenu.remove();
+    });
+  });
 });

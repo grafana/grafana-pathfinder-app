@@ -118,7 +118,12 @@ describe('useLastMilestoneAutoComplete', () => {
       })
     );
     jest.runAllTimers();
-    expect(markMilestoneDoneMock).toHaveBeenCalledWith('https://example.com/journey/', 'final-slug', 5);
+    expect(markMilestoneDoneMock).toHaveBeenCalledWith(
+      'https://example.com/journey/',
+      'final-slug',
+      5,
+      expect.objectContaining({ guideTitle: 'Journey' })
+    );
   });
 
   it('clears the timeout on unmount', () => {

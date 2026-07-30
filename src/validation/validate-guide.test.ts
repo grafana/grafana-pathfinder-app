@@ -794,4 +794,71 @@ describe('JsonGuideSchema', () => {
       expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(true);
     });
   });
+
+  describe('collapsible block - presentational-only restriction', () => {
+    const wrap = (blocks: unknown[]) =>
+      JSON.stringify({ id: 'test', title: 'Test', blocks: [{ type: 'collapsible', title: 'More', blocks }] });
+
+    it('accepts content blocks inside a collapsible', () => {
+      const result = validateGuideFromString(
+        wrap([
+          { type: 'markdown', content: 'note' },
+          { type: 'image', src: 'https://example.com/x.png' },
+        ])
+      );
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('rejects an interactive step nested inside a collapsible', () => {
+      const result = validateGuideFromString(
+        wrap([{ type: 'interactive', action: 'highlight', reftarget: 'button', content: 'do it' }])
+      );
+      expect(result.isValid).toBe(false);
+    });
+
+    it('rejects a section nested inside a collapsible', () => {
+      const result = validateGuideFromString(wrap([{ type: 'section', title: 'S', blocks: [] }]));
+      expect(result.isValid).toBe(false);
+    });
+
+    it('rejects a collapsible nested inside a collapsible', () => {
+      const result = validateGuideFromString(wrap([{ type: 'collapsible', title: 'Inner', blocks: [] }]));
+      expect(result.isValid).toBe(false);
+    });
+
+    it('rejects a conditional nested inside a collapsible', () => {
+      const result = validateGuideFromString(
+        wrap([{ type: 'conditional', conditions: ['is-admin'], whenTrue: [], whenFalse: [] }])
+      );
+      expect(result.isValid).toBe(false);
+    });
+  });
+
+  describe('authorNote is preserved on container blocks', () => {
+    const firstBlock = (json: string) => {
+      const result = validateGuideFromString(json);
+      expect(result.isValid).toBe(true);
+      return (result.guide?.blocks?.[0] ?? {}) as { authorNote?: string };
+    };
+    const guideWith = (block: unknown) => JSON.stringify({ id: 'g', title: 't', blocks: [block] });
+
+    it('preserves authorNote on section, collapsible, assistant, and conditional', () => {
+      expect(firstBlock(guideWith({ type: 'section', title: 'S', authorNote: 'n', blocks: [] })).authorNote).toBe('n');
+      expect(
+        firstBlock(
+          guideWith({ type: 'collapsible', title: 'C', authorNote: 'n', blocks: [{ type: 'markdown', content: 'x' }] })
+        ).authorNote
+      ).toBe('n');
+      expect(
+        firstBlock(guideWith({ type: 'assistant', authorNote: 'n', blocks: [{ type: 'markdown', content: 'x' }] }))
+          .authorNote
+      ).toBe('n');
+      expect(
+        firstBlock(
+          guideWith({ type: 'conditional', conditions: ['is-admin'], authorNote: 'n', whenTrue: [], whenFalse: [] })
+        ).authorNote
+      ).toBe('n');
+    });
+  });
 });

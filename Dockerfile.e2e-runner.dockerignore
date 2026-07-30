@@ -1,0 +1,15 @@
+.git
+.github
+.cursor
+.config
+.planning
+.vscode
+node_modules
+dist
+coverage
+test-results
+playwright-report
+*.log
+.env
+.env.*
+playwright/.auth/

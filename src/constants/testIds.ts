@@ -218,6 +218,8 @@ export const testIds = {
   blockEditor: {
     container: 'block-editor-container',
     content: 'block-editor-content',
+    titleRow: 'block-editor-title-row',
+    toolbarRow: 'block-editor-toolbar-row',
     palette: 'block-editor-palette',
     jsonEditor: 'block-editor-json-editor',
     // Modals
@@ -236,6 +238,9 @@ export const testIds = {
     sectionTitleInput: 'block-editor-section-title-input',
     sectionIdInput: 'block-editor-section-id-input',
     sectionAutoCollapseToggle: 'block-editor-section-auto-collapse-toggle',
+    // Collapsible form
+    collapsibleTitleInput: 'block-editor-collapsible-title-input',
+    collapsibleCollapsedToggle: 'block-editor-collapsible-collapsed-toggle',
     addAndRecordButton: 'block-editor-add-and-record-button',
     // Section empty state and nested add button
     sectionEmptyState: 'block-editor-section-empty-state',

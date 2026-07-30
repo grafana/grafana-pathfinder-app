@@ -8,7 +8,7 @@
 import { config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: requirements-manager -> context-engine
 import { ContextService } from '../../context-engine';
-import type { CheckResultError } from '../requirements-checker.utils';
+import type { CheckResultError } from '../../types/requirements.types';
 
 /**
  * Permission checking via Grafana's hasPermission helper.

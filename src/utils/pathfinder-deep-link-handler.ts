@@ -82,10 +82,10 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
   }
 
   if (panelModeParam === 'floating') {
-    panelModeManager.setMode('floating');
+    panelModeManager.setModePersisted('floating');
     rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));
   } else if (panelModeParam === 'fullscreen') {
-    panelModeManager.setMode('fullscreen');
+    panelModeManager.setModePersisted('fullscreen');
     rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));
     let target = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
     if (docsParam) {

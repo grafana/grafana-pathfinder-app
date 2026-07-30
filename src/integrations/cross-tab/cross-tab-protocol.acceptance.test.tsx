@@ -227,6 +227,13 @@ async function pairOverBus(): Promise<PairedHarness> {
   await waitFor(() => expect(getAcceptedSession()).not.toBeNull());
   await waitFor(() => expect(channel).not.toBeNull());
 
+  // The above only proves LIVE-side acceptance. The controller binds its
+  // liveTabId after two more async crypto hops (pairing-accept post + proof
+  // verify), and until then signForLive silently drops signed commands. The
+  // controller's post-binding sidebar-handoff is the observable that the
+  // binding landed — without this wait, channel.post races the handshake.
+  await waitFor(() => expect(controller.postedPayloads.some((p) => p.kind === 'sidebar-handoff')).toBe(true));
+
   return {
     bus,
     controller,

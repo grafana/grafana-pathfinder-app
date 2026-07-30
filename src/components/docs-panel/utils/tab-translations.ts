@@ -19,7 +19,7 @@ export const getTranslatedTitle = (title: string): string => {
   }
   // Handle 'Learning Path' (with uppercase 'P') from older data or translations
   if (title === 'Learning Path') {
-    return t('docsPanel.learningJourney', 'Learning Path');
+    return t('docsPanel.learningJourney', 'Learning path');
   }
   // Handle old 'Learning journey' (with lowercase 'j') for backwards compatibility
   if (title === 'Learning journey') {
@@ -27,7 +27,7 @@ export const getTranslatedTitle = (title: string): string => {
   }
   // Handle old 'Learning Journey' (with uppercase 'J') for backwards compatibility
   if (title === 'Learning Journey') {
-    return t('docsPanel.learningJourney', 'Learning Path');
+    return t('docsPanel.learningJourney', 'Learning path');
   }
   if (title === 'Documentation') {
     return t('docsPanel.documentation', 'Documentation');

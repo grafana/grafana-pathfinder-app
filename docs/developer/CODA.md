@@ -140,17 +140,40 @@ The `CodaClient` struct handles all communication with Coda's REST API.
 
 All routes are prefixed by Grafana as `/api/plugins/grafana-pathfinder-app/resources/`.
 
-| Route              | Method | Handler                | Purpose                                   |
-| ------------------ | ------ | ---------------------- | ----------------------------------------- |
-| `/coda/register`   | POST   | `handleCodaRegister`   | Register with Coda using enrollment key   |
-| `/vms`             | POST   | `handleCreateVM`       | Create VM (template + optional config)    |
-| `/vms`             | GET    | `handleListVMs`        | List user's VMs                           |
-| `/vms/{id}`        | GET    | `handleGetVM`          | Get VM details                            |
-| `/vms/{id}`        | DELETE | `handleDeleteVM`       | Destroy VM                                |
-| `/sample-apps`     | GET    | `handleSampleApps`     | Proxy to Coda's sample-apps endpoint      |
-| `/alloy-scenarios` | GET    | `handleAlloyScenarios` | Proxy to Coda's alloy-scenarios endpoint  |
-| `/coda/exec`       | POST   | `handleCodaExec`       | Run one command on the caller's active VM |
-| `/health`          | GET    | `handleHealth`         | Plugin health (includes `codaRegistered`) |
+| Route                            | Method | Handler                      | Purpose                                                                         |
+| -------------------------------- | ------ | ---------------------------- | ------------------------------------------------------------------------------- |
+| `/coda/register`                 | POST   | `handleCodaRegister`         | Register with Coda using enrollment key                                         |
+| `/vms`                           | POST   | `handleCreateVM`             | Create VM (template + optional config)                                          |
+| `/vms`                           | GET    | `handleListVMs`              | List user's VMs                                                                 |
+| `/vms/{id}`                      | GET    | `handleGetVM`                | Get VM details                                                                  |
+| `/vms/{id}`                      | DELETE | `handleDeleteVM`             | Destroy VM                                                                      |
+| `/sample-apps`                   | GET    | `handleSampleApps`           | Proxy to Coda's sample-apps endpoint                                            |
+| `/alloy-scenarios`               | GET    | `handleAlloyScenarios`       | Proxy to Coda's alloy-scenarios endpoint                                        |
+| `/coda/exec`                     | POST   | `handleCodaExec`             | Run one command on the caller's active VM                                       |
+| `/completion-records/my`         | GET    | `handleMyCompletions`        | Per-user collated completion-record summary (App Platform read proxy, not Coda) |
+| `/completion-records/capability` | GET    | `handleCompletionCapability` | Cheap identity + upstream-reachability probe                                    |
+| `/health`                        | GET    | `handleHealth`               | Plugin health (includes `codaRegistered`)                                       |
+
+### App Platform proxies — identity trust boundary
+
+The `/completion-records/*` routes (and any future plugin-backend proxy of the App Platform
+aggregator — see `docs/design/BACKEND_PROXY_PATTERN.md`) authenticate callers by **structural
+(non-signature) validation** of the Grafana-forwarded ID token (`X-Grafana-Id`, via the SDK
+constant `backend.GrafanaUserSignInTokenHeaderName`): well-formed JWT, `exp` present and
+unexpired, with the `sub` claim extracted verbatim only on routes that serve per-user data
+(`pkg/plugin/app_platform_identity.go`). This is defensible **only** because requests reach the
+plugin exclusively via Grafana's trusted server→plugin forwarding, and the plugin backend is not
+independently reachable with a client-set `X-Grafana-Id`.
+
+Outbound, proxies forward identity derived from the ID token only — `Authorization: Bearer
+<id-token>` plus `X-Grafana-Id`, both synthesized from the inbound token via
+`forwardIdentityHeaders` — never the caller's `Cookie`, and never a replay of the inbound
+`Authorization` header (Grafana strips it before plugin resource handlers reach the plugin).
+
+The single future-hardening item is cryptographic verification of the ID token against
+Grafana's JWKS via `github.com/grafana/authlib`; it is not wired today because it needs runtime
+key-endpoint configuration. Do not re-argue this trade-off per PR — this section is the
+canonical statement for all App Platform proxies.
 
 ### Command execution (`pkg/plugin/coda_exec.go`)
 

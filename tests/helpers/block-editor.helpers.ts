@@ -27,7 +27,7 @@ export async function waitForGrafanaReady(page: Page): Promise<void> {
 }
 
 /**
- * Open the block editor via the editor tab.
+ * Open the block editor via the overflow menu ("Create guide").
  * Available to admin and editor users (not gated by dev mode).
  */
 export async function openBlockEditor(page: Page): Promise<void> {
@@ -49,16 +49,16 @@ export async function openBlockEditor(page: Page): Promise<void> {
   const panelContainer = page.getByTestId(testIds.docsPanel.container);
   await expect(panelContainer).toBeVisible();
 
-  // Wait for editor tab to be visible (available to admin/editor users)
+  // Guide editor is opened from the overflow menu (no longer a permanent rail tab).
+  const moreOptions = page.getByRole('button', { name: 'More options' });
+  await expect(moreOptions).toBeVisible({ timeout: TIMEOUTS.DEV_MODE_PROPAGATE });
+  await moreOptions.click();
+  await page.getByRole('menuitem', { name: /create guide/i }).click();
+
+  // Wait for the editor strip tab and block editor content
   const editorTab = page.getByTestId(testIds.docsPanel.tab('editor'));
   await expect(editorTab).toBeVisible({ timeout: TIMEOUTS.DEV_MODE_PROPAGATE });
 
-  // Click with force: true to bypass any lingering portal-rendered tooltip in
-  // Grafana 13+ that briefly intercepts pointer events between Help dismiss
-  // and the editor tab becoming hover-stable.
-  await editorTab.click({ force: true });
-
-  // Wait for block editor to be visible
   const blockEditor = page.getByTestId(testIds.blockEditor.container);
   await expect(blockEditor).toBeVisible();
 }

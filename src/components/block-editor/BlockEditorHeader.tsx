@@ -1,27 +1,25 @@
 /**
  * BlockEditorHeader Component
  *
- * Header section of the block editor containing:
- * - Guide title, ID, and status indicators
- * - View mode toggle
- * - Import/export actions
- * - Publishing controls
+ * Header section of the block editor. Orchestrates the title row, view-mode
+ * rocker, smart save action, and the "more actions" kebab (each extracted into
+ * its own component under `header/`), plus the inline status and undo/redo
+ * controls that live directly on the toolbar.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Button, Badge, ButtonGroup, Icon, IconButton, Tooltip, Dropdown, Menu, useStyles2 } from '@grafana/ui';
-import { css } from '@emotion/css';
-import { GrafanaTheme2 } from '@grafana/data';
+import React from 'react';
+import { Button, Badge, Icon, IconButton, Tooltip, useStyles2 } from '@grafana/ui';
 import type { ViewMode } from './types';
 import { testIds } from '../../constants/testIds';
-import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
-import { PANEL_MODE_CHANGE_EVENT } from '../../lib/event-names';
+import { getHeaderStyles } from './header/header.styles';
+import { HeaderTitleRow } from './header/HeaderTitleRow';
+import { ViewModeRocker } from './header/ViewModeRocker';
+import { SaveActions } from './header/SaveActions';
+import { HeaderKebab } from './header/HeaderKebab';
 
 export interface BlockEditorHeaderProps {
   /** Guide title to display */
   guideTitle: string;
-  /** Guide ID — null means not yet assigned (hides the ID display) */
-  guideId: string | null;
   /** Whether there are unsaved local changes */
   isDirty: boolean;
   /**
@@ -92,150 +90,8 @@ export interface BlockEditorHeaderProps {
   redoLabel: string | null;
 }
 
-const getHeaderStyles = (theme: GrafanaTheme2) => ({
-  // Sticky so the toolbar stays pinned to the top of the editor's scroll
-  // container — same belt-and-braces approach used by the fullscreen layout
-  // (`full-screen.styles.ts:stickyTopBar`). `flexShrink: 0` keeps it from
-  // collapsing inside a flex parent.
-  header: css({
-    display: 'flex',
-    flexDirection: 'column',
-    borderBottom: `1px solid ${theme.colors.border.weak}`,
-    backgroundColor: theme.colors.background.primary,
-    position: 'sticky',
-    top: 0,
-    zIndex: theme.zIndex.navbarFixed,
-    flexShrink: 0,
-  }),
-  // Single-row toolbar: title (flex 1) + actions cluster on the right.
-  // `containerType: inline-size` lets the `@container` rule on `actions`
-  // collapse button labels to icon-only when the row gets narrow. Wraps
-  // to a second line when the cluster still doesn't fit.
-  row: css({
-    display: 'flex',
-    alignItems: 'center',
-    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
-    gap: theme.spacing(1),
-    flexWrap: 'wrap',
-    containerType: 'inline-size',
-  }),
-  // Title is guaranteed at least ~180px so the actions cluster has to wrap
-  // to a new row when the row gets narrow, instead of crushing the title to
-  // zero. The input inside still keeps `minWidth: 0 + flex: 1` so long
-  // titles ellipsis within the reserved 180px rather than overflowing.
-  titleArea: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    minWidth: 180,
-    flex: '1 1 180px',
-    '&:hover .guide-id': {
-      opacity: 1,
-    },
-  }),
-  guideTitleInput: css({
-    background: 'transparent',
-    border: 'none',
-    borderBottom: `1px solid transparent`,
-    borderRadius: 0,
-    color: theme.colors.text.primary,
-    fontSize: theme.typography.h5.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    fontFamily: theme.typography.fontFamily,
-    padding: '0 2px',
-    margin: 0,
-    outline: 'none',
-    minWidth: 0,
-    flex: 1,
-    '&:hover': {
-      borderBottomColor: theme.colors.border.medium,
-    },
-    '&:focus': {
-      borderBottomColor: theme.colors.primary.main,
-      background: theme.colors.background.secondary,
-    },
-  }),
-  guideId: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
-    fontFamily: theme.typography.fontFamilyMonospace,
-    opacity: 0,
-    transition: 'opacity 0.15s',
-    padding: '0 2px',
-    flexShrink: 0,
-  }),
-  // Right-side action cluster.
-  // - `marginLeft: auto` pushes the cluster to the right edge of the row,
-  //   and — when the cluster wraps onto its own line — keeps it right-aligned
-  //   on that line as well.
-  // - `flexWrap` + `rowGap` let the buttons inside the cluster spill onto a
-  //   second line once even the icon-only collapse can't keep them on one row.
-  // - Label collapse below 640px is opt-in via the `collapsibleLabel` class
-  //   on each Button that wants it (rather than a broad `& button > span`
-  //   rule scoped to the whole cluster). That avoids accidentally hiding
-  //   spans nested inside Badges, IconButtons, or future Grafana `Button`
-  //   internals that might add their own child `<span>`s.
-  actions: css({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: theme.spacing(0.5),
-    flexShrink: 0,
-    flexWrap: 'wrap',
-    rowGap: theme.spacing(0.5),
-    marginLeft: 'auto',
-  }),
-  // Opt-in collapse for Grafana `Button` components that carry a text label.
-  // Under 640px we hide Button's content `<span>` (its direct child) and
-  // tighten horizontal padding, leaving the icon visible. Tooltips and
-  // aria-labels carry the meaning. Targets `& > span` so it only affects
-  // the labeled span that Grafana renders as a direct child of the
-  // `<button>` element this class is applied to — never any descendants.
-  // Container query fires off `row`'s `containerType: inline-size`.
-  collapsibleLabel: css({
-    '@container (max-width: 640px)': {
-      paddingLeft: theme.spacing(0.75),
-      paddingRight: theme.spacing(0.75),
-      '& > span': {
-        display: 'none',
-      },
-    },
-  }),
-  // Subtler "Saved" indicator (replaces the green chip) — small
-  // check-circle icon. Tooltip preserved for context.
-  savedIndicator: css({
-    display: 'inline-flex',
-    alignItems: 'center',
-    color: theme.colors.success.text,
-    flexShrink: 0,
-  }),
-  savingIndicator: css({
-    display: 'inline-flex',
-    alignItems: 'center',
-    color: theme.colors.warning.text,
-    flexShrink: 0,
-  }),
-  divider: css({
-    width: '1px',
-    height: '20px',
-    backgroundColor: theme.colors.border.weak,
-    margin: `0 ${theme.spacing(0.25)}`,
-    flexShrink: 0,
-  }),
-  moreButton: css({
-    '& > button': {
-      padding: '4px 8px',
-    },
-  }),
-});
-
-/**
- * Header component for the block editor.
- * Compact single-row design with better organization.
- */
 export function BlockEditorHeader({
   guideTitle,
-  guideId,
   isDirty,
   publishedStatus,
   hasUnsyncedChanges,
@@ -269,332 +125,100 @@ export function BlockEditorHeader({
 }: BlockEditorHeaderProps) {
   const styles = useStyles2(getHeaderStyles);
 
-  // Inline title editing
-  const [titleDraft, setTitleDraft] = useState(guideTitle);
-  // Keep the draft in sync when the title changes externally (e.g. guide loaded
-  // from library) — the "adjust state during render" pattern, no effect needed.
-  const [lastSyncedTitle, setLastSyncedTitle] = useState(guideTitle);
-  if (guideTitle !== lastSyncedTitle) {
-    setLastSyncedTitle(guideTitle);
-    setTitleDraft(guideTitle);
-  }
-  const titleInputRef = useRef<HTMLInputElement>(null);
-
-  // Track the current panel mode so the Pop out button can swap between
-  // "Pop out" (sidebar) and "Dock" (floating) at runtime.
-  const [panelMode, setPanelMode] = useState<PanelMode>(() => panelModeManager.getMode());
-  useEffect(() => {
-    const handleModeChange = (e: CustomEvent<{ mode: PanelMode }>) => {
-      setPanelMode(e.detail.mode);
-    };
-    document.addEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
-    return () => {
-      document.removeEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
-    };
-  }, []);
-
-  // Dispatch the same document-level events used by interactive popout steps.
-  // The sidebar's docs-panel handler picks up pop-out for the editor tab; the
-  // FloatingPanelManager handles dock requests.
-  const handleTogglePanelMode = useCallback(() => {
-    if (panelMode === 'sidebar') {
-      document.dispatchEvent(new CustomEvent('pathfinder-request-pop-out'));
-    } else {
-      document.dispatchEvent(new CustomEvent('pathfinder-request-dock'));
-    }
-  }, [panelMode]);
-
-  // Symmetric to docs-panel / FloatingPanelManager — both listen for this
-  // event to swap the active surface to full screen.
-  const handleGoFullScreen = useCallback(() => {
-    document.dispatchEvent(new CustomEvent('pathfinder-request-full-screen'));
-  }, []);
-
-  const commitTitle = () => {
-    const trimmed = titleDraft.trim();
-    if (!trimmed) {
-      setTitleDraft(guideTitle); // revert if cleared
-      return;
-    }
-    if (trimmed !== guideTitle) {
-      onTitleCommit(trimmed);
-    }
-  };
-
-  const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      titleInputRef.current?.blur();
-    } else if (e.key === 'Escape') {
-      setTitleDraft(guideTitle);
-      titleInputRef.current?.blur();
-    }
-  };
-
-  // Context-sensitive item at the top of the more menu
-  const moreMenuContextItem = () => {
-    if (!isBackendAvailable) {
-      return null;
-    }
-    if (publishedStatus === 'not-saved') {
-      return <Menu.Item label="Publish" icon="cloud-upload" onClick={onPostToBackend} disabled={isPostingToBackend} />;
-    }
-    if (publishedStatus === 'draft' && hasUnsyncedChanges) {
-      // Primary = "Update draft" → offer "Publish" as shortcut
-      return <Menu.Item label="Publish" icon="cloud-upload" onClick={onPostToBackend} disabled={isPostingToBackend} />;
-    }
-    if (publishedStatus === 'draft' && !hasUnsyncedChanges) {
-      // Draft with no changes — nothing extra to show
-      return null;
-    }
-    // published
-    return (
-      <Menu.Item
-        label="Unpublish"
-        icon="times-circle"
-        onClick={onUnpublish}
-        disabled={isPostingToBackend}
-        data-testid={testIds.blockEditor.unpublishButton}
-      />
-    );
-  };
-
-  // More menu for less-used actions. New + Library moved here (from
-  // the toolbar) — both are infrequent and "New" is destructive, so
-  // it's an improvement to guard them behind a menu.
-  // Context item can return null (backend available, draft, no
-  // unsynced changes) — gate its trailing divider on the item itself,
-  // not on backend availability, to avoid an orphan double-divider.
-  const contextItem = moreMenuContextItem();
-  const moreMenu = (
-    <Menu>
-      <Menu.Item
-        label="New guide"
-        icon="file-blank"
-        onClick={onNewGuide}
-        data-testid={testIds.blockEditor.newGuideButton}
-      />
-      {isBackendAvailable && hasBackendGuides && (
-        <Menu.Item
-          label="Library"
-          icon="book-open"
-          onClick={onOpenGuideLibrary}
-          data-testid={testIds.blockEditor.libraryButton}
-        />
-      )}
-      <Menu.Divider />
-      {contextItem}
-      {contextItem && <Menu.Divider />}
-      <Menu.Item label="Import" icon="upload" onClick={onOpenImport} />
-      <Menu.Divider />
-      <Menu.Item label="Copy JSON" icon="copy" onClick={onCopy} data-testid={testIds.blockEditor.copyJsonButton} />
-      <Menu.Item label="Download JSON" icon="download-alt" onClick={onDownload} />
-      <Menu.Item label="Create GitHub PR" icon="github" onClick={onOpenGitHubPR} />
-      <Menu.Divider />
-      <Menu.Item label="Take tour" icon="question-circle" onClick={onOpenTour} />
-    </Menu>
-  );
-
-  // Derive backend status badge
   const backendBadge = () => {
-    if (publishedStatus === 'not-saved') {
-      return (
-        <Tooltip content="Not yet saved to library">
-          <Badge text="Draft" color="purple" icon="circle" />
-        </Tooltip>
-      );
-    }
-    if (publishedStatus === 'draft') {
-      if (hasUnsyncedChanges) {
-        return (
-          <Tooltip content="Draft has unsaved changes">
-            <Badge text="Draft (modified)" color="orange" icon="exclamation-triangle" />
-          </Tooltip>
-        );
-      }
-      return (
-        <Tooltip content="Saved to library but not published to users">
-          <Badge text="Draft" color="purple" icon="circle" />
-        </Tooltip>
-      );
-    }
-    // published
-    if (hasUnsyncedChanges) {
-      return (
-        <Tooltip content="Published guide has unsaved changes">
-          <Badge text="Published (modified)" color="orange" icon="exclamation-triangle" />
-        </Tooltip>
-      );
-    }
-    return (
-      <Tooltip content="Published and visible to users">
-        <Badge text="Published" color="blue" icon="cloud-upload" />
+    // The label sits in a [data-badge-label] span so `previewStatusWrap` can hide
+    // it at narrow preview widths — the badge collapses to its colored icon while
+    // the Tooltip keeps the full text, so status never disappears at 320px.
+    const badge = (
+      text: string,
+      color: 'blue' | 'orange' | 'green',
+      icon: 'circle' | 'exclamation-triangle' | 'cloud-upload',
+      tip: string
+    ) => (
+      <Tooltip content={tip}>
+        <Badge text={<span data-badge-label>{text}</span>} color={color} icon={icon} />
       </Tooltip>
     );
-  };
 
-  // Single smart primary action button based on publishedStatus and hasUnsyncedChanges
-  const renderBackendButton = () => {
     if (publishedStatus === 'not-saved') {
-      return (
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="save"
-          onClick={onSaveDraft}
-          disabled={isPostingToBackend}
-          tooltip="Save as draft without publishing"
-          className={styles.collapsibleLabel}
-          data-testid={testIds.blockEditor.saveDraftButton}
-        >
-          Save as draft
-        </Button>
-      );
+      return badge('Draft', 'blue', 'circle', 'Not yet saved to library');
     }
-
     if (publishedStatus === 'draft') {
-      if (hasUnsyncedChanges) {
-        return (
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="save"
-            onClick={onSaveDraft}
-            disabled={isPostingToBackend}
-            tooltip="Save current changes to library draft"
-            className={styles.collapsibleLabel}
-            data-testid={testIds.blockEditor.saveDraftButton}
-          >
-            Update draft
-          </Button>
-        );
-      }
-      return (
-        <Button
-          variant="primary"
-          size="sm"
-          icon="cloud-upload"
-          onClick={onPostToBackend}
-          disabled={isPostingToBackend}
-          tooltip="Publish and make visible to users"
-          className={styles.collapsibleLabel}
-          data-testid={testIds.blockEditor.publishButton}
-        >
-          Publish
-        </Button>
-      );
+      return hasUnsyncedChanges
+        ? badge('Draft (modified)', 'orange', 'exclamation-triangle', 'Draft has unsaved changes')
+        : badge('Draft', 'blue', 'circle', 'Saved to library but not published to users');
     }
-
-    // published
-    return (
-      <Button
-        variant="primary"
-        size="sm"
-        icon="cloud-upload"
-        onClick={onPostToBackend}
-        disabled={isPostingToBackend}
-        tooltip="Save changes and keep published"
-        className={styles.collapsibleLabel}
-        data-testid={testIds.blockEditor.publishButton}
-      >
-        Update
-      </Button>
-    );
+    return hasUnsyncedChanges
+      ? badge('Published (modified)', 'orange', 'exclamation-triangle', 'Published guide has unsaved changes')
+      : badge('Published', 'green', 'cloud-upload', 'Published and visible to users');
   };
+
+  const localSaveIndicator = !isBackendAvailable && (
+    <>
+      {isDirty ? (
+        <Tooltip content="Saving changes to local storage">
+          <span className={styles.savingIndicator} aria-label="Saving">
+            <Icon name="fa fa-spinner" size="sm" />
+          </span>
+        </Tooltip>
+      ) : (
+        <Tooltip content="All changes saved to local storage">
+          <span className={styles.savedIndicator} aria-label="Saved">
+            <Icon name="save" size="sm" />
+          </span>
+        </Tooltip>
+      )}
+    </>
+  );
+
+  const previewResetButton = viewMode === 'preview' && hasPreviewProgress && onResetPreviewProgress && (
+    <Button
+      variant="secondary"
+      size="sm"
+      icon="history-alt"
+      onClick={onResetPreviewProgress}
+      tooltip="Resets all interactive steps"
+      data-testid={testIds.blockEditor.previewResetButton}
+    >
+      Reset guide
+    </Button>
+  );
+
+  // Publish-status badge, or the local-save indicator when there's no backend.
+  const statusCluster = (
+    <>
+      {localSaveIndicator}
+      {isBackendAvailable && backendBadge()}
+    </>
+  );
 
   return (
     <div className={styles.header}>
-      {/* Single-row toolbar: title (flex 1) + actions on the right.
-          New / Library moved into the kebab menu; selection-mode
-          trigger is a small icon button next to the view-mode toggle. */}
-      <div className={styles.row}>
-        {/* In preview mode the rendered content already shows the guide title
-            as an <h1> (matching how it appears in production). Rendering the
-            editable title input here too would duplicate that heading, so we
-            collapse the title area to a flex spacer. */}
-        {viewMode === 'preview' ? (
-          <div className={styles.titleArea} aria-hidden="true" />
-        ) : (
-          <div className={styles.titleArea}>
-            <input
-              ref={titleInputRef}
-              className={styles.guideTitleInput}
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onBlur={commitTitle}
-              onKeyDown={handleTitleKeyDown}
-              aria-label="Guide title"
-            />
-            {guideId && <div className={`${styles.guideId} guide-id`}>({guideId})</div>}
-          </div>
-        )}
+      {/* Title row is hidden entirely in preview — the rendered guide shows its
+          own <h1>, so an editable title would duplicate it; the status cluster
+          moves to the toolbar row (below) to keep publish state visible. */}
+      {viewMode !== 'preview' && (
+        <div className={styles.titleRow} data-testid={testIds.blockEditor.titleRow}>
+          <HeaderTitleRow guideTitle={guideTitle} onTitleCommit={onTitleCommit} />
+          <div className={styles.statusWrap}>{statusCluster}</div>
+        </div>
+      )}
 
-        <div className={styles.actions}>
-          {/* Local-save indicator — subtle icon (replaces the green
-              chip). Only shown when backend isn't available. The icon
-              is deliberately a floppy `save` so it doesn't visually
-              clash with the `check-square` selection trigger that
-              follows. */}
-          {!isBackendAvailable &&
-            (isDirty ? (
-              <Tooltip content="Saving changes to local storage">
-                <span className={styles.savingIndicator} aria-label="Saving">
-                  <Icon name="fa fa-spinner" size="sm" />
-                </span>
-              </Tooltip>
-            ) : (
-              <Tooltip content="All changes saved to local storage">
-                <span className={styles.savedIndicator} aria-label="Saved">
-                  <Icon name="save" size="sm" />
-                </span>
-              </Tooltip>
-            ))}
+      {/* Single-line — never wraps; the rocker and Save collapse to icons via
+          the container-query tiers instead (see toolbarRow). */}
+      <div className={styles.toolbarRow} data-testid={testIds.blockEditor.toolbarRow}>
+        <ViewModeRocker viewMode={viewMode} onSetViewMode={onSetViewMode} />
 
-          {/* Backend publish status — kept as a Badge since the
-              Draft/Published distinction is genuinely informative. */}
-          {isBackendAvailable && backendBadge()}
-
-          {/* Preview-mode "Reset guide" trigger. Mirrors the affordance that
-              previously lived inside the preview content area, but lifted into
-              the header so the rendered guide stays free of editor chrome. */}
-          {viewMode === 'preview' && hasPreviewProgress && onResetPreviewProgress && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="history-alt"
-              onClick={onResetPreviewProgress}
-              tooltip="Resets all interactive steps"
-              data-testid={testIds.blockEditor.previewResetButton}
-            >
-              Reset guide
-            </Button>
+        <div className={styles.rightCluster}>
+          {viewMode === 'preview' && (
+            <div className={`${styles.statusWrap} ${styles.previewStatusWrap}`}>{statusCluster}</div>
           )}
 
-          {/* Selection-mode trigger — only meaningful in edit mode
-              with at least one block. The preceding divider exists
-              specifically to break the visual pairing between the
-              status icon and this `check-square` button, so it only
-              appears when the trigger does. */}
-          {viewMode === 'edit' && hasBlocks && (
-            <>
-              <div className={styles.divider} />
-              <IconButton
-                name="check-square"
-                size="sm"
-                variant={isSelectionMode ? 'primary' : 'secondary'}
-                onClick={onToggleSelectionMode}
-                aria-label={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
-                tooltip={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
-                data-testid={testIds.blockEditor.toggleSelectionButton}
-              />
-            </>
-          )}
+          {/* "Reset guide" affordance, lifted out of the preview content area. */}
+          {previewResetButton}
 
-          {/* Undo / redo for the in-session history ring buffer. The
-              labels (when present) describe the next operation in the
-              stack — useful for tooltip-driven discoverability. The
-              `corner-up-left` / `corner-up-right` icons are the
-              conventional curved-arrow glyphs every word processor /
-              editor uses for undo/redo. */}
+          {/* Undo / redo — edit mode only. Kept visible at all widths: there's no
+              keyboard shortcut, so hiding them would strand the action. */}
           {viewMode === 'edit' && (
             <>
               <IconButton
@@ -620,77 +244,36 @@ export function BlockEditorHeader({
             </>
           )}
 
-          <ButtonGroup data-testid={testIds.blockEditor.viewModeToggle}>
-            <Button
-              variant={viewMode === 'edit' ? 'primary' : 'secondary'}
-              size="sm"
-              icon="pen"
-              onClick={() => onSetViewMode('edit')}
-              tooltip="Edit"
+          {isBackendAvailable && (
+            <SaveActions
+              publishedStatus={publishedStatus}
+              hasUnsyncedChanges={hasUnsyncedChanges}
+              isPosting={isPostingToBackend}
+              onSaveDraft={onSaveDraft}
+              onPostToBackend={onPostToBackend}
             />
-            <Button
-              variant={viewMode === 'preview' ? 'primary' : 'secondary'}
-              size="sm"
-              icon="eye"
-              onClick={() => onSetViewMode('preview')}
-              tooltip="Preview"
-            />
-            <Button
-              variant={viewMode === 'json' ? 'primary' : 'secondary'}
-              size="sm"
-              icon="brackets-curly"
-              onClick={() => onSetViewMode('json')}
-              tooltip="JSON"
-            />
-          </ButtonGroup>
-
-          {isBackendAvailable && renderBackendButton()}
-
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={panelMode === 'sidebar' ? 'corner-up-right' : 'corner-down-right-alt'}
-            onClick={handleTogglePanelMode}
-            tooltip={
-              panelMode === 'sidebar'
-                ? 'Pop out the editor into a floating window'
-                : 'Dock the editor back into the sidebar'
-            }
-            aria-label={panelMode === 'sidebar' ? 'Pop out editor' : 'Dock editor'}
-            className={styles.collapsibleLabel}
-            data-testid="pathfinder-block-editor-toggle-popout"
-          >
-            {panelMode === 'sidebar' ? 'Pop out' : 'Dock'}
-          </Button>
-
-          {/* Full-screen affordance — hidden when already in fullscreen
-              because the FullScreenLayout's back-arrow handles the inverse. */}
-          {panelMode !== 'fullscreen' && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="expand-arrows"
-              onClick={handleGoFullScreen}
-              tooltip="Open the editor in full screen"
-              aria-label="Open editor in full screen"
-              className={styles.collapsibleLabel}
-              data-testid="pathfinder-block-editor-go-fullscreen"
-            >
-              Full screen
-            </Button>
           )}
 
-          <div className={styles.moreButton}>
-            <Dropdown overlay={moreMenu} placement="bottom-end">
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="ellipsis-v"
-                tooltip="More actions"
-                data-testid={testIds.blockEditor.moreActionsButton}
-              />
-            </Dropdown>
-          </div>
+          <HeaderKebab
+            isBackendAvailable={isBackendAvailable}
+            hasBackendGuides={hasBackendGuides}
+            publishedStatus={publishedStatus}
+            hasUnsyncedChanges={hasUnsyncedChanges}
+            isPosting={isPostingToBackend}
+            viewMode={viewMode}
+            hasBlocks={hasBlocks}
+            isSelectionMode={isSelectionMode}
+            onToggleSelectionMode={onToggleSelectionMode}
+            onNewGuide={onNewGuide}
+            onOpenGuideLibrary={onOpenGuideLibrary}
+            onOpenImport={onOpenImport}
+            onCopy={onCopy}
+            onDownload={onDownload}
+            onOpenGitHubPR={onOpenGitHubPR}
+            onOpenTour={onOpenTour}
+            onPostToBackend={onPostToBackend}
+            onUnpublish={onUnpublish}
+          />
         </div>
       </div>
     </div>

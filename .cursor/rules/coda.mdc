@@ -86,7 +86,10 @@ Terminal states: `destroyed`, `destroying`, `error`.
 | `pkg/plugin/stream.go` | `RunStream`, `resolveVMForUser`, `waitForVMActive`, `vmRequestOpts`, heartbeat, VM expiry poll |
 | `pkg/plugin/terminal.go` | `ConnectSSHViaRelay`, `NewTerminalSessionWithClient`, PTY management, SSH retry logic |
 | `pkg/plugin/wsconn.go` | `WSConn` — `net.Conn` adapter over WebSocket for SSH transport |
-| `pkg/plugin/resources.go` | HTTP handlers: `/coda/register`, `/vms`, `/vms/{id}`, `/sample-apps`, `/alloy-scenarios`, `/health` |
+| `pkg/plugin/resources.go` | HTTP handlers: `/coda/register`, `/vms`, `/vms/{id}`, `/sample-apps`, `/alloy-scenarios`, `/completion-records/my`, `/completion-records/capability`, `/health` |
+| `pkg/plugin/completion_records.go` | App Platform read proxy for completion records: per-user collation, 5-min TTL cache with single-flight refresh, stale-serve/503/capability=false error paths (not a Coda feature) |
+| `pkg/plugin/app_platform_identity.go` | Shared identity helpers for App Platform proxies: `validIDToken`, `subjectFromIDToken`, `forwardIdentityHeaders` (fail-closed structural JWT validation; trust boundary documented in `docs/developer/CODA.md`) |
+| `pkg/plugin/app_platform_client.go` | Shared paginated LIST client for App Platform proxies: `buildAppPlatformURL`, per-kind decode seam, transient/terminal/identity-scoped error classification, first-request credential diagnostics |
 | `pkg/plugin/app.go` | Plugin lifecycle, `CodaClient` creation from settings, `streamSessions` map |
 | `pkg/plugin/settings.go` | Plugin settings: `CodaRegistered`, `CodaAPIURL`, `CodaRelayURL`, secure `RefreshToken`/`EnrollmentKey` |
 

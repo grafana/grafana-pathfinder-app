@@ -94,10 +94,14 @@ export async function detectRequirements(page: Page, step: TestableStep): Promis
     };
   }
 
-  // Check if "Do it" button exists and is enabled (indicates requirements met)
   const doItButton = page.getByTestId(testIds.interactive.doItButton(stepId));
   const doItButtonCount = await doItButton.count();
   const doItButtonEnabled = doItButtonCount > 0 ? await doItButton.isEnabled() : false;
+  const showMeButton = page.getByTestId(testIds.interactive.showMeButton(stepId));
+  const showMeButtonCount = await showMeButton.count();
+  const showMeButtonEnabled = showMeButtonCount > 0 ? await showMeButton.isEnabled() : false;
+  const actionButtonCount = doItButtonCount + showMeButtonCount;
+  const actionButtonEnabled = doItButtonEnabled || showMeButtonEnabled;
 
   // Check for requirement explanation element (indicates requirements not met or checking)
   const explanationElement = page.getByTestId(testIds.interactive.requirementCheck(stepId));
@@ -153,16 +157,14 @@ export async function detectRequirements(page: Page, step: TestableStep): Promis
   if (isChecking) {
     status = 'checking';
     requirementsMet = false;
-  } else if (doItButtonEnabled && !hasExplanation) {
-    // Button enabled and no explanation = requirements met
+  } else if (actionButtonEnabled && !hasExplanation) {
     status = 'met';
     requirementsMet = true;
   } else if (hasExplanation || hasFixButton || hasRetryButton || hasSkipButton) {
     // Has explanation or action buttons = requirements not met
     status = 'unmet';
     requirementsMet = false;
-  } else if (doItButtonCount > 0) {
-    // Button exists but disabled without explanation - could be sequential dependency
+  } else if (actionButtonCount > 0) {
     status = 'unknown';
     requirementsMet = false;
   } else {

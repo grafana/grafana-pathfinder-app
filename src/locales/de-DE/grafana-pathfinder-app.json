@@ -1,5 +1,8 @@
 {
   "contextPanel": {
+    "categoryDocsPage": "Dokumentationsseite",
+    "categoryInteractiveGuide": "Interaktive Anleitung",
+    "categoryLearningJourney": "Lernpfad",
     "failedToLoad": "Fehler beim Laden der Empfehlungen: {{error}}",
     "giveFeedback": "Feedback geben",
     "items_one": "{{count}} Element",
@@ -14,6 +17,7 @@
     "resume": "Fortsetzen",
     "settings": "Einstellungen",
     "start": "Starten",
+    "startInteractiveGuide": "Interaktive Anleitung starten",
     "startLearningJourney": "Lernreise starten",
     "subtitle": "Interaktive Anleitungen und Ressourcen basierend auf Ihrer aktuellen Arbeit.",
     "summary": "Zusammenfassung",
@@ -21,27 +25,34 @@
     "viewDocumentation": "Dokumentation anzeigen"
   },
   "docsPanel": {
+    "closeSidebar": "Seitenleiste schließen",
     "closeTab": "{{title}} schließen",
     "documentation": "Dokumentation",
+    "giveFeedback": "Feedback geben",
     "interactiveJourney": "Interaktive Reise",
     "learningJourney": "Lernreise",
     "loading": "Wird geladen...",
+    "menuAriaLabel": "Weitere Optionen",
+    "menuTooltip": "Weitere Optionen",
     "milestoneProgress": "Meilenstein {{current}} von {{total}}",
     "milestonesCount_one": "{{count}} Meilenstein",
     "milestonesCount_other": "{{count}} Meilensteine",
+    "moreTabsMenu": "Weitere Tabs",
     "moreTabs_one": "{{count}} weitere",
     "moreTabs_other": "{{count}} weitere",
-    "moreTabsMenu": "Weitere Tabs",
     "nextMilestone": "Nächster Meilenstein",
     "nextMilestoneTooltip": "Nächster Meilenstein (Alt + →)",
     "open": "Öffnen",
-    "openControllerInNewTab": "",
+    "openControllerInNewTab": "Im interaktiven Fenster öffnen",
     "openInNewTab": "Diese Seite in neuem Tab öffnen",
     "previousMilestone": "Vorheriger Meilenstein",
     "previousMilestoneTooltip": "Vorheriger Meilenstein (Alt + ←)",
     "recommendations": "Empfehlungen",
     "resetGuide": "Anleitung zurücksetzen",
+    "resetGuideErrorMessage": "Anleitungsfortschritt konnte nicht zurückgesetzt werden. Bitte erneut versuchen oder die Seite neu laden.",
+    "resetGuideErrorTitle": "Zurücksetzen fehlgeschlagen",
     "resetGuideTooltip": "Setzt alle interaktiven Schritte zurück",
+    "settings": "Einstellungen",
     "showMoreTabs_one": "{{count}} weiteren Tab anzeigen",
     "showMoreTabs_other": "{{count}} weitere Tabs anzeigen",
     "switchToTab": "Zu {{title}} wechseln"
@@ -73,5 +84,24 @@
       "simplifiedView": "Dies ist eine vereinfachte Ansicht. Sie können diese durch Grafanas vollständige HelpModal-Komponente ersetzen.",
       "toggleViewMode": "Ansichtsmodus umschalten"
     }
+  },
+  "userProfileBar": {
+    "allComplete": "Alle Lernpfade abgeschlossen!",
+    "allCompleteTooltip": "Sie haben alle Lernpfade abgeschlossen – gut gemacht!",
+    "badgesTooltip": "{{- earned}} von {{- total}} Abzeichen erhalten",
+    "days": "Tage",
+    "days_one": "Tag",
+    "days_other": "Tage",
+    "guides": "Anleitungen",
+    "guides_one": "Anleitung",
+    "guides_other": "Anleitungen",
+    "guidesTooltip": "{{- count}} Lernanleitungen abgeschlossen",
+    "guidesTooltip_one": "{{- count}} Lernanleitung abgeschlossen",
+    "guidesTooltip_other": "{{- count}} Lernanleitungen abgeschlossen",
+    "nextGuide": "Als Nächstes: {{- title}}",
+    "nextTooltip": "„{{- pathTitle}}“ fortsetzen — {{- percent}}% abgeschlossen",
+    "streakTooltip": "{{- days}}-tägige Lernserie – weiter so!",
+    "streakTooltip_one": "{{- days}}-tägige Lernserie – weiter so!",
+    "streakTooltip_other": "{{- days}}-tägige Lernserie – weiter so!"
   }
 }

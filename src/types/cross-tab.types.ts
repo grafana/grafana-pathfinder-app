@@ -23,9 +23,11 @@ interface CrossTabEnvelope {
   timestamp: number;
 }
 
-// Tier-0 structural mirror of requirements-manager's CheckResultError /
-// RequirementsCheckResult, so a live-tab result crosses the channel without an
-// upward import.
+// Deliberate re-statement (not an alias) of CheckResultError /
+// RequirementsCheckResult: this is a wire contract, and the two tabs on a
+// channel may run different plugin versions, so the internal type must not be
+// able to reshape the wire silently. A compile-time guard in
+// cross-tab.types.test.ts forces a conscious update here when they diverge.
 export interface RemoteRequirementError {
   requirement: string;
   pass: boolean;
