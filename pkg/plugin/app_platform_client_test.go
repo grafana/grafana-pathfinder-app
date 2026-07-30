@@ -86,11 +86,15 @@ func TestAppPlatformListClient_UpstreamErrorClassification(t *testing.T) {
 		identityScoped bool
 	}{
 		{http.StatusTooManyRequests, true, false},
+		{http.StatusRequestTimeout, true, false},
 		{http.StatusBadGateway, true, false},
 		{http.StatusUnauthorized, false, true},
 		{http.StatusForbidden, false, true},
 		{http.StatusNotFound, false, false},
 		{http.StatusAccepted, true, false},
+		{http.StatusFound, true, false},
+		{http.StatusTemporaryRedirect, true, false},
+		{http.StatusPermanentRedirect, true, false},
 	}
 	for _, tt := range cases {
 		if got := isTransientUpstreamStatus(tt.status); got != tt.transient {
@@ -130,12 +134,8 @@ func TestAppPlatformCreateClient_RequestContract(t *testing.T) {
 	defer srv.Close()
 
 	client := newAppPlatformListClient(srv.URL, "id-token-abc", log.DefaultLogger)
-	body, err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(payload), 1024)
-	if err != nil {
+	if err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(payload), 1024); err != nil {
 		t.Fatalf("create: %v", err)
-	}
-	if string(body) != `{"metadata":{"name":"created"}}` {
-		t.Fatalf("response body = %q", body)
 	}
 }
 
@@ -226,10 +226,10 @@ func TestCompletionHTTPClient_Create_WireComposition(t *testing.T) {
 	}
 }
 
-// TestCompletionHTTPClient_Create_OversizedSuccessBodyIsNotRetryable pins
-// finding 1 through the production wrapper: a 201 whose body exceeds the write
-// cap is a success, never a retryable error — the record is already durable and
-// a retry would mint a fresh name and duplicate it.
+// TestCompletionHTTPClient_Create_OversizedSuccessBodyIsNotRetryable proves a
+// 201 whose body exceeds the write cap is a success, never a retryable error:
+// the record is already durable, so surfacing the over-cap body as a failure
+// would mask a committed write.
 func TestCompletionHTTPClient_Create_OversizedSuccessBodyIsNotRetryable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
@@ -275,8 +275,62 @@ func TestAppPlatformCreateClient_SuccessBodyReadErrorIsNotRetryable(t *testing.T
 		httpClient: &http.Client{Transport: successThenBodyReadErrorTransport{}},
 		logger:     log.DefaultLogger,
 	}
-	if _, err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(`{}`), 1024); err != nil {
+	if err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(`{}`), 1024); err != nil {
 		t.Fatalf("create returned error on a post-201 body read failure: %v (must be treated as success)", err)
+	}
+}
+
+// TestAppPlatformCreateClient_RedirectNeverFollowed proves the C1 contract: an
+// authenticated create that receives a 3xx must NOT follow it — the redirect
+// target receives neither the ID token nor the POST body, and the redirected
+// response is surfaced as a non-contract upstream status (classified transient,
+// never acknowledged as a durable create). Covers 302, 307, and 308: 307/308
+// preserve the method and body, so they are the dangerous replay cases.
+func TestAppPlatformCreateClient_RedirectNeverFollowed(t *testing.T) {
+	for _, code := range []int{http.StatusFound, http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		t.Run(fmt.Sprintf("%d", code), func(t *testing.T) {
+			var targetHits int
+			var targetSawToken, targetSawBody bool
+			target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				targetHits++
+				if r.Header.Get("Authorization") != "" || r.Header.Get(backend.GrafanaUserSignInTokenHeaderName) != "" {
+					targetSawToken = true
+				}
+				if body, _ := io.ReadAll(r.Body); len(body) > 0 {
+					targetSawBody = true
+				}
+				w.WriteHeader(http.StatusCreated)
+			}))
+			defer target.Close()
+
+			redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Location", target.URL+"/redirected")
+				w.WriteHeader(code)
+			}))
+			defer redirector.Close()
+
+			client := newAppPlatformListClient(redirector.URL, "id-token-secret", log.DefaultLogger)
+			err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(`{"secret":"payload"}`), 1024)
+			if err == nil {
+				t.Fatalf("a %d redirect must not be acknowledged as a durable create", code)
+			}
+			status, ok := upstreamStatusOf(err)
+			if !ok || status != code {
+				t.Fatalf("upstream status = %d (%v), want the unfollowed redirect %d", status, ok, code)
+			}
+			if !isTransientUpstreamStatus(status) {
+				t.Errorf("a %d redirect must classify transient (retryable), not terminal", code)
+			}
+			if targetHits != 0 {
+				t.Errorf("redirect target received %d requests, want 0 (redirect must not be followed)", targetHits)
+			}
+			if targetSawToken {
+				t.Error("redirect target received the ID token — credential exfiltration")
+			}
+			if targetSawBody {
+				t.Error("redirect target received the POST body")
+			}
+		})
 	}
 }
 
@@ -296,8 +350,9 @@ func TestAppPlatformCreateClient_ResponseContract(t *testing.T) {
 		{"202 rejected", http.StatusAccepted, `{}`, 16, "", true, http.StatusAccepted, ""},
 		{"429 preserves retry-after", http.StatusTooManyRequests, `{}`, 16, "12", true, http.StatusTooManyRequests, "12"},
 		// A 201 whose body exceeds the cap is NOT an error: the record is already
-		// durable, the body is unused, and turning it into a retryable failure
-		// would mint a fresh name on retry and duplicate the record (finding 1).
+		// durable and the body is unused, so surfacing it as a retryable failure
+		// would mask a committed write (the name is deterministic, so a retry
+		// targets the same object anyway).
 		{"oversized body on 201 is still success", http.StatusCreated, strings.Repeat("x", 17), 16, "", false, 0, ""},
 	}
 	for _, tc := range tests {
@@ -312,7 +367,7 @@ func TestAppPlatformCreateClient_ResponseContract(t *testing.T) {
 			defer srv.Close()
 
 			client := newAppPlatformListClient(srv.URL, "id-token-abc", log.DefaultLogger)
-			_, err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(`{}`), tc.maxBytes)
+			err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(`{}`), tc.maxBytes)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
 			}

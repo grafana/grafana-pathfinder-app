@@ -79,10 +79,19 @@ type appPlatformListClient struct {
 
 func newAppPlatformListClient(appURL, idToken string, logger log.Logger) *appPlatformListClient {
 	return &appPlatformListClient{
-		appURL:     appURL,
-		idToken:    idToken,
-		httpClient: &http.Client{Timeout: appPlatformUpstreamTimeout},
-		logger:     logger,
+		appURL:  appURL,
+		idToken: idToken,
+		httpClient: &http.Client{
+			Timeout: appPlatformUpstreamTimeout,
+			// Never follow redirects on an authenticated App Platform call: Go does
+			// not classify the custom X-Grafana-Id identity header as sensitive, so a
+			// followed cross-origin 3xx would leak the caller's ID token (and, on
+			// 307/308, replay the POST body) to the redirect target, and a redirected
+			// create must never be acknowledged as a durable write. Returning the last
+			// response lets the caller map the unexpected 3xx onto a retryable status.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+		logger: logger,
 	}
 }
 
@@ -91,6 +100,11 @@ func newAppPlatformListClient(appURL, idToken string, logger log.Logger) *appPla
 // model doesn't authenticate on a real stack", and this log turns that from a
 // mystery into a one-line diagnosis (§9).
 var credentialDiagOnce sync.Once
+
+// createDiagOnce gates the first upstream-create credential diagnostics log,
+// the write-path companion to credentialDiagOnce (which a prior read can
+// consume, leaving POST's credential/RBAC result otherwise undiagnosed).
+var createDiagOnce sync.Once
 
 // listPage fetches one page of a namespace LIST. The body is bounded by
 // maxBytes; errors carry the upstream status for transient/terminal/
@@ -169,13 +183,13 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 }
 
 // create POSTs a single object to a namespace collection (the write companion
-// to listPage). It returns the created object body on 200/201, or an
+// to listPage). The response body is unused, so it returns nil on 200/201, or an
 // appPlatformUpstreamError carrying the upstream status (and Retry-After, when
 // present) so the caller can classify transient/terminal/identity-scoped and
-// echo the upstream backpressure hint. Body is bounded by maxBytes.
-func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namespace, resource string, obj []byte, maxBytes int64) ([]byte, error) {
+// echo the upstream backpressure hint.
+func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namespace, resource string, obj []byte, maxBytes int64) error {
 	if namespace == "" {
-		return nil, fmt.Errorf("app platform create: empty namespace")
+		return fmt.Errorf("app platform create: empty namespace")
 	}
 
 	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource)
@@ -185,7 +199,7 @@ func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namesp
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(obj))
 	if err != nil {
-		return nil, fmt.Errorf("app platform create: build request: %w", err)
+		return fmt.Errorf("app platform create: build request: %w", err)
 	}
 	forwardIdentityHeaders(req.Header, c.idToken)
 	req.Header.Set("Content-Type", "application/json")
@@ -193,31 +207,34 @@ func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namesp
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("app platform create: %w", err)
+		return fmt.Errorf("app platform create: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	createDiagOnce.Do(func() {
+		c.logger.Info("app platform proxy: first upstream create",
+			"resource", resource,
+			"status", resp.StatusCode,
+			"idTokenPresent", c.idToken != "",
+			"identityHeaders", "Authorization=Bearer<id-token>,X-Grafana-Id")
+	})
+
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return nil, &appPlatformUpstreamError{
+		return &appPlatformUpstreamError{
 			status:     resp.StatusCode,
 			retryAfter: resp.Header.Get("Retry-After"),
 			msg:        fmt.Sprintf("app platform create %s: status %d: %s", resource, resp.StatusCode, strings.TrimSpace(string(body))),
 		}
 	}
 
-	// 200/201 means the record is already durable upstream, and the caller does
-	// not use the response body. So a body read error or an over-cap body must
-	// NEVER become a retryable failure: the write has already committed, and
-	// surfacing an error would mask a durable success as failed. Read best-effort,
-	// swallow read/size errors, and drain so the connection can be reused; the
-	// success is not undone by a body that failed to arrive intact.
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
-	if int64(len(body)) > maxBytes {
-		body = body[:maxBytes]
-	}
-	_, _ = io.Copy(io.Discard, resp.Body)
-	return body, nil
+	// 200/201 means the record is already durable upstream and the body is unused,
+	// so a body read error or an over-cap body must NEVER become a retryable
+	// failure: the write has already committed, and surfacing an error would mask a
+	// durable success as failed. Drain best-effort up to the cap (bounding bytes
+	// transferred) so the connection can be reused, and swallow any error.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBytes))
+	return nil
 }
 
 // appPlatformUpstreamError carries the upstream HTTP status so error handling
@@ -254,10 +271,16 @@ func upstreamRetryAfterOf(err error) string {
 }
 
 // isTransientUpstreamStatus reports whether an HTTP status should be retried:
-// 429, 5xx, and unexpected 2xx responses that did not satisfy an operation's
-// narrower success contract.
+// 408 (request timeout), 429, 5xx, and any unexpected 2xx/3xx response that did
+// not satisfy an operation's narrower success contract. 408 and 3xx are the two
+// non-5xx recoverable cases: a request-timeout is inherently retryable, and an
+// unfollowed redirect (CheckRedirect is disabled) is an infrastructure blip the
+// caller must never treat as a durable result.
 func isTransientUpstreamStatus(status int) bool {
-	return status == http.StatusTooManyRequests || status >= 500 || (status >= 200 && status < 300)
+	return status == http.StatusRequestTimeout ||
+		status == http.StatusTooManyRequests ||
+		status >= 500 ||
+		(status >= 200 && status < 400)
 }
 
 // isIdentityScopedUpstreamStatus reports whether a status means the upstream

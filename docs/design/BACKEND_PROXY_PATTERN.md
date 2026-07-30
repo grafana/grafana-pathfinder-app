@@ -227,9 +227,12 @@ Platform RBAC on the caller's own forwarded identity — the proxy adds no privi
 `.app` group the basic viewer role grants write on `CompletionRecord` (verified 2026-07-24 with a
 real Viewer user via a **direct** App Platform write — POST → 201, RBAC enforced — NOT through the
 deployed plugin proxy), so the proxy exists not to lend privilege but for
-what a direct client write cannot do: stamp trustworthy identity (the CRD validates field presence,
-not truth), enforce a per-user rate limit, invalidate the read cache on create, and classify
-failures into the transient/terminal taxonomy the front-end queue consumes. The residual merge gate
+what a direct client write does not do for us: server-stamp identity/org/stack fields (the CRD
+validates field presence, not truth), enforce a per-user rate limit, invalidate the read cache on
+create, and classify failures into the transient/terminal taxonomy the front-end queue consumes.
+**Trust model (MVP):** because a Viewer can create the same CRD directly, these are
+**lightweight self-reported records, not attested facts** — the server stamping is a best-effort
+convenience, not an enforced identity boundary. The residual merge gate
 is a live Viewer-attributed write through the _deployed_ plugin proxy — proving the proxy's identity
 forwarding end-to-end, not the RBAC layer, which is now cleared. The proxy reuses the read
 shape's shared machinery — the URL builder (§1), trusted-context namespace (§2), the identity
@@ -242,9 +245,11 @@ where a create differs from a read:
   decode; `userId` (from the ID-token
   `sub`), `userLogin`, `userDisplayName`, `orgId`, `stackNamespace`, `recordedAt`, and `schemaVersion`
   come from the verified request context. `userLogin`/`userDisplayName` are best-effort **display
-  snapshots** (ID-token claims, then the `X-Grafana-User` header) — a documented exception to §3's
-  no-`X-Grafana-User` rule that is acceptable only because they gate nothing and the read path
-  joins exclusively on `userId`. The inbound gate (§3) still applies, but a write **fails
+  snapshots** — the ID-token `username`/`name` claims (Grafana authlib `IDTokenClaims`) first, then
+  the trusted `PluginContext.User` (the SDK's authenticated session, as in `coda_exec.go`), never
+  the spoofable raw `X-Grafana-User` header. They gate nothing and the read path joins exclusively
+  on `userId`, so an absent claim yielding an empty snapshot is acceptable. The inbound gate (§3)
+  still applies, but a write **fails
   closed with a 401**, not the read path's soft-200; the client retries 401s as transient, since
   an expired session or forwarded token recovers after re-auth.
 - **`metadata.name` is server-derived, deterministic, and identity-scoped.** A non-blank
@@ -260,9 +265,13 @@ where a create differs from a read:
   key. Client-supplied names are never accepted.
 - **Client fact fields are validated against the CRD's value domains** (source, category, and
   platform enums; `completionPercent` bounds; per-field byte caps and a control-character reject on
-  the free-text fields) and `completedAt` is bounded to a sane window
+  the free-text fields; `durationMs` rejected when negative or above a 24h ceiling — a larger value
+  is a producer bug, not durable data) and `completedAt` is bounded to a sane window
   (`[now − 30d, now + 5m]`) to tolerate delayed offline/queued retries while rejecting gross
-  backdating; any violation is a terminal 400.
+  backdating; any violation is a terminal 400. The **30-day backdating horizon is the durability
+  boundary of the whole feature**: a completion queued offline longer than 30 days is deterministically
+  dropped on its eventual retry, so the front-end queue must expire (and surface) items at the same
+  30-day bound rather than retrying a write the backend will reject.
 - **A per-user token-bucket write rate limit** (`completion_records_write_ratelimit.go`, §9 flood
   guard) runs before any upstream work; exhaustion returns 429 with `Retry-After`.
 - **A successful create invalidates the namespace read cache** (§4), advances its generation, and
@@ -273,13 +282,27 @@ where a create differs from a read:
   **404 preserved verbatim** as the structural "route not deployed here" signal — the create POSTs
   to the completionrecords **collection**, so an upstream 404 means the whole group/route is absent
   (never a per-record miss). The client disarms writes for the session (persisted items survive for
-  the next load); the 404 is never a per-record drop and is never remapped to another status; other
-  non-429 4xx
-  terminal (validation / auth / schema — the client drops it); 429 / 5xx / network transient (the
-  client retries with capped exponential backoff — the proxy sets `Retry-After` as a standard
-  hint, but Grafana's `backendSrv` strips response headers from its thrown `FetchError`, so the
-  front-end client cannot honor it). The App Platform create accepts only
-  200/201; any other 2xx is treated as an invalid upstream response and mapped to a retryable 502.
+  the next load); the 404 is never a per-record drop and is never remapped to another status.
+  The full status/outcome table: **201** created (durable); **401** transient — echoed verbatim and
+  retried client-side after re-auth (an expired session/token recovers), the one 4xx that is not a
+  drop; **404** structural disarm/keep; **408 / 429 / 5xx / 3xx / network** transient; **all other
+  4xx** terminal (validation / schema — the client drops it), **including 403**: an upstream 403 is
+  a systemic RBAC/grant-rollout denial that will not fix itself by retrying, so it is terminal/drop
+  and logged at a Faro-visible level (warn), not treated as transient. On the transient path the
+  client retries with capped exponential backoff — the proxy sets `Retry-After` as a standard hint,
+  but Grafana's `backendSrv` strips response headers from its thrown `FetchError`, so the front-end
+  client cannot honor it. Redirects are never followed on an
+  authenticated call (an unfollowed 3xx would otherwise leak the ID token / replay the POST body to
+  the redirect target); the App Platform create accepts only 200/201, and any other 2xx or 3xx is
+  treated as an invalid upstream response and mapped to a retryable 502. The same idempotency key is
+  sent on every retry, so a committed-but-unacknowledged write resolves to a 409 idempotent success.
+
+**Store cutover (`.com` → `.app`).** Completion records read and write exclusively on the `.app`
+group; `main` previously read the legacy `.com` group. The backend owner **confirmed the legacy
+`.com` CompletionRecord store empty (2026-07-30)**, so this is a **hard cut with no migration and no
+dual-read**. Reversibility is asymmetric: once `.app` writes land, a plain revert to the `.com`
+reader would orphan the new records, so **keep the `.app` reader if the POST route is ever backed
+out** — remove the write, not the read.
 
 ---
 

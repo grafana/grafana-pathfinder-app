@@ -178,9 +178,6 @@ func (c *completionHTTPClient) Create(ctx context.Context, namespace string, obj
 	if err != nil {
 		return fmt.Errorf("completion records: encode object: %w", err)
 	}
-	if _, err := c.inner.create(ctx, completionRecordsGroupVersion, namespace,
-		completionRecordsResource, body, completionWriteMaxBytes); err != nil {
-		return err
-	}
-	return nil
+	return c.inner.create(ctx, completionRecordsGroupVersion, namespace,
+		completionRecordsResource, body, completionWriteMaxBytes)
 }

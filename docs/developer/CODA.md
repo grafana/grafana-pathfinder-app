@@ -180,15 +180,19 @@ Every identity field written into the record (`userId` from the
 ID-token `sub`, `userLogin`, `userDisplayName`, `orgId`, `stackNamespace`, `recordedAt`) is stamped
 **server-side from the verified request context**; body-supplied identity is never read (the typed
 request struct has nowhere to put it). `userLogin`/`userDisplayName` are best-effort display
-snapshots only (ID-token claims, then the `X-Grafana-User` header) — they gate nothing, and the
-read path joins exclusively on `userId`. Authorization is delegated to App Platform RBAC on the
-caller's own forwarded identity, so the proxy adds no privilege — on the served `.app` group the
-basic viewer role grants write on `CompletionRecord` (verified 2026-07-24 with a real Viewer user
-via a **direct** App Platform write — POST → 201, RBAC enforced — NOT through the deployed plugin
-proxy). The proxy is retained because a direct client write cannot stamp
-trustworthy identity, rate-limit per user, invalidate the read cache, or classify failures for the
-retry queue. The residual merge gate is a live Viewer-attributed write through the deployed plugin
-proxy — proving identity forwarding end-to-end, not the (now-cleared) RBAC layer.
+snapshots only — the ID-token `username`/`name` claims (Grafana authlib `IDTokenClaims`) first, then
+the trusted `PluginContext.User` (the SDK's authenticated session, as in `coda_exec.go`), never the
+spoofable raw `X-Grafana-User` header. They gate nothing, and the read path joins exclusively on
+`userId`. Authorization is delegated to App Platform RBAC on the caller's own forwarded identity, so
+the proxy adds no privilege — on the served `.app` group the basic viewer role grants write on
+`CompletionRecord` (verified 2026-07-24 with a real Viewer user via a **direct** App Platform write
+— POST → 201, RBAC enforced — NOT through the deployed plugin proxy). Because a Viewer can create
+the same CRD directly, completion records are **lightweight self-reported records, not attested
+facts** (MVP); the proxy's server stamping is a best-effort convenience, not an enforced identity
+boundary. It is retained because a direct write does not rate-limit per user, invalidate the read
+cache, or classify failures for the retry queue. The residual merge gate is a live Viewer-attributed
+write through the deployed plugin proxy — proving identity forwarding end-to-end, not the
+(now-cleared) RBAC layer.
 The request body is limited to one 64 KiB JSON value with per-field byte caps on free text. A
 successful write invalidates the read cache with a generation fence so an older in-flight LIST
 cannot make stale data fresh again, and clears the negative-cache cooldown.

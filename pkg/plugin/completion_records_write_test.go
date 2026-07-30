@@ -73,6 +73,21 @@ func writeRequest(t *testing.T, sub string, body map[string]any, cfg map[string]
 	return r.WithContext(ctx)
 }
 
+// writeRequestWithUser is writeRequest plus a trusted PluginContext.User (the
+// SDK's authenticated session), the profile-snapshot fallback source when the
+// ID token carries no username/name claim. It overlays the user onto the plugin
+// context; the Grafana config from writeRequest survives (different context key).
+func writeRequestWithUser(t *testing.T, sub string, body map[string]any, cfg map[string]string, login, name string) *http.Request {
+	t.Helper()
+	r := writeRequest(t, sub, body, cfg)
+	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{
+		Namespace: testNamespace,
+		OrgID:     testOrgID,
+		User:      &backend.User{Login: login, Name: name},
+	})
+	return r.WithContext(ctx)
+}
+
 func doWrite(t *testing.T, app *App, r *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
 	if app == nil {
@@ -90,8 +105,7 @@ func TestCompletionWrite_Created_StampsServerFields(t *testing.T) {
 	creator := &fakeCreator{}
 	withCreator(t, creator)
 
-	r := writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())
-	r.Header.Set("X-Grafana-User", "alice")
+	r := writeRequestWithUser(t, "user:abc", validWriteBody(), testGrafanaConfig(), "alice", "")
 	rec := doWrite(t, nil, r)
 
 	if rec.Code != http.StatusCreated {
@@ -112,7 +126,7 @@ func TestCompletionWrite_Created_StampsServerFields(t *testing.T) {
 		t.Errorf("userId = %q, want user:abc", s.UserID)
 	}
 	if s.UserLogin != "alice" {
-		t.Errorf("userLogin = %q, want alice (from X-Grafana-User)", s.UserLogin)
+		t.Errorf("userLogin = %q, want alice (from trusted PluginContext.User)", s.UserLogin)
 	}
 	if s.UserDisplayName != "alice" {
 		t.Errorf("userDisplayName = %q, want alice (falls back to login)", s.UserDisplayName)
@@ -176,6 +190,127 @@ func TestCompletionWrite_DurationMsConvertedToSeconds(t *testing.T) {
 	}
 }
 
+// durationMs has a bounded domain (D6): negatives and values above the 24h
+// ceiling are producer bugs, rejected as terminal 400 rather than coerced; the
+// ceiling itself is accepted.
+func TestCompletionWrite_DurationDomain(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+
+	t.Run("negative rejected", func(t *testing.T) {
+		creator := &fakeCreator{}
+		withCreator(t, creator)
+		body := validWriteBody()
+		body["durationMs"] = -1
+		rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400 (negative durationMs)", rec.Code)
+		}
+		if creator.n != 0 {
+			t.Fatalf("must not reach upstream on invalid duration")
+		}
+	})
+
+	t.Run("above ceiling rejected", func(t *testing.T) {
+		creator := &fakeCreator{}
+		withCreator(t, creator)
+		body := validWriteBody()
+		body["durationMs"] = completionMaxDurationMs + 1
+		rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400 (durationMs over ceiling)", rec.Code)
+		}
+		if creator.n != 0 {
+			t.Fatalf("must not reach upstream on invalid duration")
+		}
+	})
+
+	t.Run("ceiling accepted", func(t *testing.T) {
+		creator := &fakeCreator{}
+		withCreator(t, creator)
+		body := validWriteBody()
+		body["durationMs"] = completionMaxDurationMs
+		rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201 (exactly the ceiling is valid)", rec.Code)
+		}
+		if got := creator.last.Spec.DurationSeconds; got != completionMaxDurationMs/1000 {
+			t.Fatalf("durationSeconds = %d, want %d", got, completionMaxDurationMs/1000)
+		}
+	})
+}
+
+// --- Profile snapshot identity (token claims → trusted PluginContext) --------
+
+// The durable login/display-name snapshots prefer the ID-token username/name
+// claims; when both are present, the trusted PluginContext.User must NOT override
+// them (token claims win).
+func TestCompletionWrite_ProfileFromTokenClaims(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	r := writeRequestWithUser(t, "user:abc", validWriteBody(), testGrafanaConfig(), "ctx-login", "Context Name")
+	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName,
+		makeIDTokenWithProfile(t, "user:abc", timeNow().Add(time.Hour).Unix(), "token-login", "Token Name"))
+	rec := doWrite(t, nil, r)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", rec.Code)
+	}
+	s := creator.last.Spec
+	if s.UserLogin != "token-login" {
+		t.Errorf("userLogin = %q, want token-login (token claim wins over PluginContext)", s.UserLogin)
+	}
+	if s.UserDisplayName != "Token Name" {
+		t.Errorf("userDisplayName = %q, want Token Name", s.UserDisplayName)
+	}
+}
+
+// When the token carries no username/name claims, the snapshots fall back to the
+// trusted PluginContext.User (never the spoofable raw X-Grafana-User header).
+func TestCompletionWrite_ProfileFallsBackToTrustedContext(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	// The test token from writeRequest carries only sub/exp — no profile claims.
+	// A raw X-Grafana-User header must be ignored; only PluginContext.User counts.
+	r := writeRequestWithUser(t, "user:abc", validWriteBody(), testGrafanaConfig(), "ctx-login", "Context Name")
+	r.Header.Set("X-Grafana-User", "spoofed")
+	rec := doWrite(t, nil, r)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", rec.Code)
+	}
+	s := creator.last.Spec
+	if s.UserLogin != "ctx-login" {
+		t.Errorf("userLogin = %q, want ctx-login (trusted PluginContext, not X-Grafana-User)", s.UserLogin)
+	}
+	if s.UserDisplayName != "Context Name" {
+		t.Errorf("userDisplayName = %q, want Context Name", s.UserDisplayName)
+	}
+}
+
+// Absent token claims and absent PluginContext.User yield empty snapshots — a
+// valid, schema-permitted value. The raw header is never a fallback.
+func TestCompletionWrite_ProfileEmptyWhenNoTrustedSource(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	r := writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())
+	r.Header.Set("X-Grafana-User", "spoofed")
+	rec := doWrite(t, nil, r)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", rec.Code)
+	}
+	s := creator.last.Spec
+	if s.UserLogin != "" || s.UserDisplayName != "" {
+		t.Errorf("snapshots = (%q, %q), want empty (raw header is never trusted)", s.UserLogin, s.UserDisplayName)
+	}
+}
+
 // --- Body identity is never trusted -----------------------------------------
 
 func TestCompletionWrite_BodyIdentityRejected(t *testing.T) {
@@ -192,8 +327,7 @@ func TestCompletionWrite_BodyIdentityRejected(t *testing.T) {
 	body["recordedAt"] = "2000-01-01T00:00:00Z"
 	body["schemaVersion"] = 999
 
-	r := writeRequest(t, "user:good", body, testGrafanaConfig())
-	r.Header.Set("X-Grafana-User", "good")
+	r := writeRequestWithUser(t, "user:good", body, testGrafanaConfig(), "good", "")
 	rec := doWrite(t, nil, r)
 
 	if rec.Code != http.StatusCreated {
@@ -506,12 +640,13 @@ func TestCompletionWrite_DisplayIdentityBounded(t *testing.T) {
 	creator := &fakeCreator{}
 	withCreator(t, creator)
 
-	// A hostile / oversized identity-provider value arrives via X-Grafana-User
-	// (no login/name claims in the test token, so login falls back to it). Control
-	// characters appear BEFORE the truncation boundary so stripping is exercised
-	// independently of the length cap, not merely truncated away.
-	r := writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())
-	r.Header.Set("X-Grafana-User", "\x00\x07"+strings.Repeat("a", 10)+"\x01"+strings.Repeat("b", completionMaxDisplayLen+50)+"tail")
+	// A hostile / oversized identity-provider value arrives via the trusted
+	// PluginContext.User (no username/name claims in the test token, so login
+	// falls back to it). Control characters appear BEFORE the truncation boundary
+	// so stripping is exercised independently of the length cap, not merely
+	// truncated away.
+	hostile := "\x00\x07" + strings.Repeat("a", 10) + "\x01" + strings.Repeat("b", completionMaxDisplayLen+50) + "tail"
+	r := writeRequestWithUser(t, "user:abc", validWriteBody(), testGrafanaConfig(), hostile, "")
 	rec := doWrite(t, nil, r)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201 (odd identity is sanitized, not rejected)", rec.Code)
@@ -543,11 +678,14 @@ func TestCompletionWrite_UpstreamErrorTaxonomy(t *testing.T) {
 	}{
 		{"transient 503", &appPlatformUpstreamError{status: 503, msg: "boom"}, http.StatusServiceUnavailable, ""},
 		{"transient 429 echoes retry-after", &appPlatformUpstreamError{status: 429, retryAfter: "12", msg: "slow down"}, http.StatusTooManyRequests, "12"},
+		{"transient 408 request timeout", &appPlatformUpstreamError{status: 408, msg: "request timeout"}, http.StatusRequestTimeout, ""},
 		{"terminal 400 schema", &appPlatformUpstreamError{status: 400, msg: "bad spec"}, http.StatusBadRequest, "-"},
 		{"terminal 422 schema", &appPlatformUpstreamError{status: 422, msg: "unprocessable"}, 422, "-"},
 		{"collection 404 preserved as structural disarm signal", &appPlatformUpstreamError{status: 404, msg: "not found"}, http.StatusNotFound, "-"},
-		{"identity-scoped 403", &appPlatformUpstreamError{status: 403, msg: "forbidden"}, http.StatusForbidden, "-"},
+		{"identity-scoped 401 echoed for client-side re-auth retry", &appPlatformUpstreamError{status: 401, msg: "unauthorized"}, http.StatusUnauthorized, "-"},
+		{"identity-scoped 403 is terminal", &appPlatformUpstreamError{status: 403, msg: "forbidden"}, http.StatusForbidden, "-"},
 		{"unexpected success status", &appPlatformUpstreamError{status: 202, msg: "not created"}, http.StatusBadGateway, ""},
+		{"unfollowed redirect mapped to retryable 502", &appPlatformUpstreamError{status: 302, msg: "moved"}, http.StatusBadGateway, ""},
 		{"network error is transient", fmt.Errorf("dial tcp: connection refused"), http.StatusServiceUnavailable, ""},
 	}
 	for _, tc := range cases {
@@ -574,6 +712,27 @@ func TestCompletionWrite_UpstreamErrorTaxonomy(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// An upstream 403 is TERMINAL and drops the completion (write-403-policy): it is
+// echoed verbatim so the front-end classifier drops it, carries no Retry-After
+// (no retry), and never reaches the create-success path. A 403 is not treated as
+// transient — a systemic RBAC/grant denial will not fix itself by retrying.
+func TestCompletionWrite_Forbidden403IsTerminalDrop(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{err: &appPlatformUpstreamError{status: http.StatusForbidden, msg: "forbidden"}}
+	withCreator(t, creator)
+
+	rec := doWrite(t, nil, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (terminal, dropped)", rec.Code)
+	}
+	if ra := rec.Header().Get("Retry-After"); ra != "" {
+		t.Errorf("Retry-After = %q, want absent (403 is terminal, no retry)", ra)
+	}
+	if isTransientUpstreamStatus(http.StatusForbidden) {
+		t.Errorf("403 must not be classified transient")
 	}
 }
 

@@ -20,21 +20,21 @@ import (
 //
 // POST /completion-records persists one terminal completion as a CompletionRecord
 // in the stack's aggregated App Platform store. Authorization is delegated to
-// App Platform RBAC on the caller's own forwarded identity — on the served
-// group the basic viewer role grants write on CompletionRecord, so the proxy
-// adds no privilege beyond what that token already gets upstream.
+// App Platform RBAC on the caller's own forwarded identity — on the served group
+// the basic viewer role grants write on CompletionRecord, so the proxy adds no
+// privilege beyond what that token already gets upstream.
 //
-// The proxy is retained for reasons a direct client write cannot satisfy:
-//   - Identity TRUTHFULNESS: the CRD validates field PRESENCE, not truth. Only a
-//     server can stamp userId/userLogin/userDisplayName/orgId/stackNamespace/
-//     recordedAt trustworthily from the verified request context, never the body.
-//   - Per-user rate limiting (completion_records_write_ratelimit.go).
-//   - Read-cache invalidation on a successful create.
-//   - The transient/terminal retry taxonomy the front-end queue depends on.
+// These are lightweight self-reported records, not attested facts (MVP): because
+// a Viewer can create the same CRD directly, the proxy's server-side stamping is
+// a best-effort convenience, not an enforced identity boundary. What the proxy
+// adds over a direct write is server-stamped identity/org/stack fields (the CRD
+// validates field PRESENCE, not truth), per-user rate limiting
+// (completion_records_write_ratelimit.go), read-cache invalidation on a
+// successful create, and the transient/terminal retry taxonomy the front-end
+// queue depends on.
 //
-// Response contract for the front-end retry queue (RFC §6.9). The taxonomy is
-// stated identically here, in the PR body, and in .cursor/rules/{systemPatterns,
-// coda}.mdc — divergence re-creates the split-review bug:
+// Response contract for the front-end retry queue (RFC §6.9), stated identically
+// here, in the PR body, and in .cursor/rules/{systemPatterns,coda}.mdc:
 //   - 201  created (durable).
 //   - 401  transient: an expired session or forwarded token recovers after
 //          re-auth, so the client retries it with backoff.
@@ -43,25 +43,18 @@ import (
 //          load) rather than dropping. The create POSTs to the completionrecords
 //          COLLECTION, so an upstream 404 means the whole group/route is absent
 //          — it is never a per-record miss and is never remapped away.
-//   - 429 / 5xx / network — transient; the client retries with exponential
-//          backoff. Retry-After is set as a standard backpressure hint, though
-//          Grafana's backendSrv does not expose response headers to the
-//          front-end client.
+//   - 408 / 429 / 5xx / 3xx / network — transient; the client retries with
+//          exponential backoff. Retry-After is set as a standard backpressure
+//          hint, though Grafana's backendSrv does not expose response headers to
+//          the front-end client.
 //   - other 4xx  terminal — validation / schema / 403; the write will never
 //          succeed as posted, so the client drops it (no retry).
 //
-// Idempotency: a non-blank idempotencyKey (the completion event's stable client
-// id, see #1434) is REQUIRED — a blank/missing key is a terminal 400, never a
-// random-name fallback. The record name is derived DETERMINISTICALLY from the
-// trusted server-stamped userID AND the exact key — hash(userID || sep || key) —
-// so a retried POST targets the same object and an upstream "already exists"
-// (409) is treated as idempotent success: a committed-but-unacknowledged write
-// cannot duplicate. The name is scoped to the trusted userID, so two users
-// submitting the same key target DIFFERENT objects — one caller's key can never
-// collide with, or be acknowledged against, another caller's record in the
-// shared namespace. The contract is first-write-wins per (userID, key): the key
-// must be stable per completion event (which is exactly what #1434 sends), so a
-// reused key with different content resolves to the first record for that key.
+// Idempotency: a non-blank idempotencyKey (#1434) is REQUIRED — a blank/missing
+// key is a terminal 400. The record name is hash(userID || sep || key) over the
+// trusted userID, so a retried POST targets the same object (409 → idempotent
+// success) and two users' identical keys can never collide. See
+// completionRecordName for the full invariant.
 
 const (
 	// completionWriteSchemaVersion is the CompletionRecord spec schemaVersion this
@@ -84,6 +77,12 @@ const (
 
 	// completionWriteMaxBodyBytes bounds the decoded request body.
 	completionWriteMaxBodyBytes = 64 * 1024
+
+	// completionMaxDurationMs bounds a client-supplied guide duration (24h). A
+	// single guide completion cannot realistically span longer; a larger value —
+	// or any negative — is a producer bug or bad client clock, not durable data,
+	// and is rejected as a terminal 400 rather than silently coerced.
+	completionMaxDurationMs = 24 * 60 * 60 * 1000
 
 	// Per-field byte caps on client-supplied free text. The CRD enforces field
 	// presence, not content, so this writer is the only bound between a hostile
@@ -126,10 +125,9 @@ type completionWriteRequest struct {
 	DurationMs        *int64 `json:"durationMs"`
 	Platform          string `json:"platform"`
 
-	// IdempotencyKey is the completion event's stable client id (#1434). REQUIRED
-	// and non-blank: it makes the write idempotent by deriving the record name
-	// deterministically from the trusted userID and this key. It is never
-	// persisted. A blank/missing key is a terminal 400 (no random-name fallback).
+	// IdempotencyKey is the completion event's stable client id (#1434). Required
+	// and non-blank; never persisted. See completionRecordName for how it derives
+	// the record name.
 	IdempotencyKey string `json:"idempotencyKey"`
 }
 
@@ -153,6 +151,7 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 	if a.completionWriteRateLimiter != nil {
 		if allow, retryAfter := a.completionWriteRateLimiter.allow(userID); !allow {
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retryAfter.Seconds()))))
+			a.ctxLogger(r.Context()).Debug("completion write rate-limited (local)")
 			a.writeError(w, "rate-limited", http.StatusTooManyRequests)
 			return
 		}
@@ -163,6 +162,7 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 		// Structurally can't write here ("never works here"). Disarms the client
 		// for this session; the front end re-arms on a later app load and
 		// re-attempts, so a stack that gains the backend later starts recording then.
+		a.ctxLogger(r.Context()).Info("completion write route unavailable (structural)", "namespace", namespace, "reason", reason)
 		a.writeError(w, reason, http.StatusNotFound)
 		return
 	}
@@ -179,8 +179,8 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Identity-scoped deterministic name (userID guaranteed present at :140, key
-	// validated non-blank in buildCompletionSpec). Every create carries this name,
+	// Identity-scoped deterministic name: userID is verified above, and the key is
+	// validated non-blank in buildCompletionSpec. Every create carries this name,
 	// which is the invariant that makes an upstream 409 provably our own record.
 	name := completionRecordName(userID, req.IdempotencyKey)
 
@@ -268,7 +268,13 @@ func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, u
 	}
 
 	durationSeconds := int64(0)
-	if req.DurationMs != nil && *req.DurationMs > 0 {
+	if req.DurationMs != nil {
+		if *req.DurationMs < 0 {
+			return completionRecordWriteSpec{}, fmt.Errorf("durationMs must not be negative")
+		}
+		if *req.DurationMs > completionMaxDurationMs {
+			return completionRecordWriteSpec{}, fmt.Errorf("durationMs exceeds maximum of %d", completionMaxDurationMs)
+		}
 		durationSeconds = *req.DurationMs / 1000
 	}
 
@@ -350,7 +356,9 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 		w.Header().Set("Retry-After", retryAfter)
 		logger.Debug("completion write transient upstream failure", "status", status, "error", err)
 		responseStatus := status
-		if status >= 200 && status < 300 {
+		// An unexpected 2xx/3xx (including an unfollowed redirect) is not a real
+		// contract status to echo — normalize it to a retryable 502.
+		if status >= 200 && status < 400 {
 			responseStatus = http.StatusBadGateway
 		}
 		a.writeError(w, "completion-write-unavailable", responseStatus)
@@ -364,7 +372,14 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 	// stack. That is the structural "route not deployed here" signal — the front
 	// end disarms writes for the session and keeps the queued item — never a
 	// per-record drop.
-	logger.Info("completion write terminal upstream failure", "status", status, "error", err)
+	if status == http.StatusForbidden {
+		// A 403 is terminal and drops the completion, but it is not expected to be
+		// transient: it signals a systemic RBAC/grant-rollout denial, so log at a
+		// level the Faro telemetry layer surfaces rather than Debug/Info.
+		logger.Warn("completion write forbidden upstream (terminal, dropped)", "status", status, "error", err)
+	} else {
+		logger.Info("completion write terminal upstream failure", "status", status, "error", err)
+	}
 	a.writeError(w, "completion-write-rejected", status)
 }
 
@@ -396,11 +411,10 @@ func completionRecordName(userID, idempotencyKey string) string {
 }
 
 // isAlreadyExistsUpstream reports whether an upstream create failed only because
-// the record already exists (409). Every create supplies an identity-scoped
-// deterministic name (completionRecordName), so a 409 is unambiguously the
-// caller's OWN prior committed record for this key — never another caller's or
-// an unrelated object — and is an idempotent retry to treat as success, not a
-// duplicate or an error. Returns false for a nil error.
+// the record already exists (409). Because every create supplies the identity-
+// scoped deterministic completionRecordName, a 409 is unambiguously the caller's
+// own prior committed record — an idempotent success, not a duplicate or error.
+// Returns false for a nil error.
 func isAlreadyExistsUpstream(err error) bool {
 	status, ok := upstreamStatusOf(err)
 	return ok && status == http.StatusConflict
