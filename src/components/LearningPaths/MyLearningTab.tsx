@@ -78,30 +78,21 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     isLoading,
   } = useLearningPaths();
 
-  // My Courses = everything not yet complete, in-progress first. Completed
-  // paths move to their own section.
   const courses = useMemo(() => {
-    return [...paths]
-      .filter((path) => !isPathCompleted(path.id))
-      .sort((a, b) => {
-        const aProgress = getPathProgress(a.id);
-        const bProgress = getPathProgress(b.id);
-        const aInProgress = aProgress > 0;
-        const bInProgress = bProgress > 0;
-        if (aInProgress !== bInProgress) {
-          return aInProgress ? -1 : 1;
-        }
-        if (aInProgress && bInProgress) {
-          return bProgress - aProgress;
-        }
-        return 0;
-      });
-  }, [paths, getPathProgress, isPathCompleted]);
+    return paths
+      .filter((path) => {
+        const pathProgress = getPathProgress(path.id);
+        return pathProgress > 0 && pathProgress < 100;
+      })
+      .sort((a, b) => getPathProgress(b.id) - getPathProgress(a.id));
+  }, [paths, getPathProgress]);
 
   const completedPaths = useMemo(() => paths.filter((path) => isPathCompleted(path.id)), [paths, isPathCompleted]);
 
-  // Skip suggesting content the user already sees in My Courses / Completed.
-  const excludeTitles = useMemo(() => new Set(paths.map((p) => p.title)), [paths]);
+  const excludeTitles = useMemo(
+    () => new Set([...courses, ...completedPaths].map((path) => path.title)),
+    [courses, completedPaths]
+  );
   const { items: discoverItems, isLoading: discoverLoading } = useDiscoverMore({ excludeTitles });
 
   // Fetch + snippet-expand + classify the target, then hand the prepared
@@ -149,7 +140,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     [onOpenGuide]
   );
 
-  // Handle opening a guide from a course card
   const handleOpenGuide = useCallback(
     (guideId: string, pathId: string) => {
       // Find the parent path by ID (not by guideId, since multiple paths may share the same guide slugs)
@@ -207,7 +197,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     [launch, paths, getPathProgress, getPathGuides, getGuideUrlForPath]
   );
 
-  // Handle starting a Discover More item (external package content URL).
   const handleDiscoverStart = useCallback(
     (item: DiscoverMoreItem) => {
       reportAppInteraction(UserInteraction.OpenResourceClick, {
@@ -221,7 +210,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     [launch]
   );
 
-  // Handle reset all progress (for testing)
   const handleResetProgress = useCallback(async () => {
     if (window.confirm('Reset all learning progress? This will clear completed guides, badges, and streaks.')) {
       await learningProgressStorage.clear();
@@ -284,7 +272,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     });
   }, [badgesWithStatus, progress.completedGuides, progress.streakDays, pathsForProgress]);
 
-  // Calculate progress for selected badge
   const selectedBadgeProgress = useMemo(() => {
     if (!selectedBadge) {
       return null;

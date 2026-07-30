@@ -39,7 +39,7 @@ function DiscoverMoreCard({
 }) {
   const meta =
     item.milestoneCount != null
-      ? t('myLearning.discoverMoreGuides', '{{count}} guides', { count: item.milestoneCount })
+      ? t('myLearning.discoverMoreMilestones', '{{count}} milestones', { count: item.milestoneCount })
       : item.description;
 
   return (
@@ -58,7 +58,7 @@ function DiscoverMoreCard({
         data-testid={testIds.learningPaths.discoverMoreStart(item.id)}
       >
         <Icon name={isStarting ? 'fa fa-spinner' : 'play'} size="sm" />
-        {isStarting ? 'Opening…' : t('myLearning.discoverMoreStart', 'Start')}
+        {isStarting ? t('myLearning.discoverMoreOpening', 'Opening…') : t('myLearning.discoverMoreStart', 'Start')}
       </button>
     </div>
   );

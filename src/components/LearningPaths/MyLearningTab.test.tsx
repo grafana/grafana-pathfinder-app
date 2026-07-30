@@ -22,8 +22,11 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 jest.mock('@grafana/i18n', () => ({
-  t: (_key: string, fallback: string, vars?: Record<string, unknown>) =>
-    vars ? fallback.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k])) : fallback,
+  t: (key: string, fallback: string, vars?: Record<string, unknown>) => {
+    const template =
+      key === 'myLearning.discoverMoreMilestones' && vars?.count === 1 ? '{{count}} milestone' : fallback;
+    return vars ? template.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k])) : template;
+  },
 }));
 
 jest.mock('@grafana/ui', () => ({
@@ -31,20 +34,28 @@ jest.mock('@grafana/ui', () => ({
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
 }));
 
-// Mutable so a test can inject Discover More items before rendering.
 let mockDiscoverItems: Array<{ id: string; title: string; contentUrl: string; milestoneCount?: number }> = [];
+let mockDiscoverExcludeTitles: Set<string> | undefined;
 
 jest.mock('../../learning-paths', () => ({
   BADGES: [],
   getPathsData: () => ({ guideMetadata: {} }),
-  useDiscoverMore: () => ({ items: mockDiscoverItems, isLoading: false }),
+  useDiscoverMore: ({ excludeTitles }: { excludeTitles?: Set<string> }) => {
+    mockDiscoverExcludeTitles = excludeTitles;
+    return { items: mockDiscoverItems, isLoading: false };
+  },
   useLearningPaths: () => ({
     paths: [
       {
         id: 'path-1',
-        title: 'First path',
+        title: 'Started path',
         guides: ['guide-1'],
         url: 'https://grafana.com/docs/learning-paths/path-1/',
+      },
+      {
+        id: 'path-new',
+        title: 'New path',
+        guides: ['guide-new'],
       },
       {
         id: 'path-done',
@@ -57,8 +68,10 @@ jest.mock('../../learning-paths', () => ({
     getPathGuides: (id: string) =>
       id === 'path-done'
         ? [{ id: 'guide-2', title: 'Guide two', completed: true, isCurrent: false }]
-        : [{ id: 'guide-1', title: 'Guide one', completed: false, isCurrent: true }],
-    getPathProgress: (id: string) => (id === 'path-done' ? 100 : 0),
+        : id === 'path-new'
+          ? [{ id: 'guide-new', title: 'New guide', completed: false, isCurrent: true }]
+          : [{ id: 'guide-1', title: 'Guide one', completed: false, isCurrent: true }],
+    getPathProgress: (id: string) => (id === 'path-done' ? 100 : id === 'path-1' ? 50 : 0),
     isPathCompleted: (id: string) => id === 'path-done',
     getGuideUrlForPath: () => 'https://grafana.com/docs/learning-paths/path-1/guide-1/',
     resetPath: jest.fn(),
@@ -114,6 +127,7 @@ describe('MyLearningTab launch flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockDiscoverItems = [];
+    mockDiscoverExcludeTitles = undefined;
   });
 
   it('shows a pending affordance on the launching card and re-enables after resolve', async () => {
@@ -162,18 +176,35 @@ describe('MyLearningTab launch flow', () => {
     expect(onOpenGuide).not.toHaveBeenCalled();
   });
 
-  it('shows completed paths in the Completed section, not My Courses', () => {
+  it('partitions new, started, and completed paths by progress', () => {
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
 
     const myCourses = screen.getByTestId(testIds.learningPaths.myCoursesSection);
     const completed = screen.getByTestId(testIds.learningPaths.completedSection);
 
-    // In-progress/not-started path lives in My Courses…
-    expect(myCourses).toHaveTextContent('First path');
-    // …while the 100% path lives in Completed with a Done badge.
+    expect(myCourses).toHaveTextContent('Started path');
+    expect(myCourses).not.toHaveTextContent('New path');
+    expect(completed).not.toHaveTextContent('New path');
     expect(completed).toHaveTextContent('Done path');
     expect(completed).toHaveTextContent('Done');
     expect(myCourses).not.toHaveTextContent('Done path');
+    expect(mockDiscoverExcludeTitles).toEqual(new Set(['Started path', 'Done path']));
+  });
+
+  it('labels Discover more path metadata as milestones', () => {
+    mockDiscoverItems = [
+      { id: 'pkg-1', title: 'Package one', contentUrl: 'https://cdn.example/pkg-1/content.json', milestoneCount: 1 },
+      { id: 'pkg-2', title: 'Package two', contentUrl: 'https://cdn.example/pkg-2/content.json', milestoneCount: 2 },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const firstCard = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-1'));
+    const secondCard = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-2'));
+    expect(firstCard).toHaveTextContent('1 milestone');
+    expect(secondCard).toHaveTextContent('2 milestones');
+    expect(firstCard).not.toHaveTextContent('guide');
+    expect(secondCard).not.toHaveTextContent('guide');
   });
 
   it('launches a Discover More item through prepareGuideLaunch', async () => {
