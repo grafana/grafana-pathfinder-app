@@ -51,3 +51,24 @@ describe('FloatingPanelInner consumes staged guides while already mounted', () =
     expect(listenerEffect).toContain('consumePendingGuideOnMount(panel,');
   });
 });
+
+describe('outer FloatingPanelManager re-syncs a stale cached mode on a floating launch (#1448)', () => {
+  // A quiet transient-Back exit clears the session without emitting
+  // PANEL_MODE_CHANGE_EVENT, so the always-mounted outer manager can be cached
+  // stale-'fullscreen' while getMode() has reverted to a persisted 'floating'.
+  // The next floating launch's REQUEST_FLOATING_GUIDE_EVENT must remount the
+  // inner (its only consumer) instead of firing into a void and stranding the
+  // guide. The remount then consumes the pending guide via the mount path pinned
+  // above. Anchor on the OUTER component (before FloatingPanelInner) so this
+  // can't be satisfied by the inner's same-named listener.
+  const outer = src.slice(0, src.indexOf('function FloatingPanelInner'));
+
+  it('the outer manager listens for REQUEST_FLOATING_GUIDE_EVENT', () => {
+    expect(outer).toContain('addEventListener(REQUEST_FLOATING_GUIDE_EVENT');
+    expect(outer).toContain('removeEventListener(REQUEST_FLOATING_GUIDE_EVENT');
+  });
+
+  it('re-derives its rendered mode from the singleton (not the stale event cache)', () => {
+    expect(outer).toContain('setMode(panelModeManager.getMode())');
+  });
+});
