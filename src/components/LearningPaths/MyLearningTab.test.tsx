@@ -1,7 +1,8 @@
 /**
  * Tests for the MyLearningTab launch flow: the pending affordance while
  * `prepareGuideLaunch` runs, and the unmount guard that stops a resolved
- * launch from navigating the user after they've left the page.
+ * launch from navigating the user after they've left the page. Also covers
+ * the My Courses / Completed repartition and Discover More launching.
  * Badge/path presentation is covered by badge-utils tests.
  */
 
@@ -30,9 +31,13 @@ jest.mock('@grafana/ui', () => ({
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
 }));
 
+// Mutable so a test can inject Discover More items before rendering.
+let mockDiscoverItems: Array<{ id: string; title: string; contentUrl: string; milestoneCount?: number }> = [];
+
 jest.mock('../../learning-paths', () => ({
   BADGES: [],
   getPathsData: () => ({ guideMetadata: {} }),
+  useDiscoverMore: () => ({ items: mockDiscoverItems, isLoading: false }),
   useLearningPaths: () => ({
     paths: [
       {
@@ -41,12 +46,20 @@ jest.mock('../../learning-paths', () => ({
         guides: ['guide-1'],
         url: 'https://grafana.com/docs/learning-paths/path-1/',
       },
+      {
+        id: 'path-done',
+        title: 'Done path',
+        guides: ['guide-2'],
+      },
     ],
     badgesWithStatus: [],
-    progress: { completedGuides: [], earnedBadges: [], streakDays: 0 },
-    getPathGuides: () => [{ id: 'guide-1', title: 'Guide one', completed: false, isCurrent: true }],
-    getPathProgress: () => 0,
-    isPathCompleted: () => false,
+    progress: { completedGuides: ['guide-2'], earnedBadges: [], streakDays: 0 },
+    getPathGuides: (id: string) =>
+      id === 'path-done'
+        ? [{ id: 'guide-2', title: 'Guide two', completed: true, isCurrent: false }]
+        : [{ id: 'guide-1', title: 'Guide one', completed: false, isCurrent: true }],
+    getPathProgress: (id: string) => (id === 'path-done' ? 100 : 0),
+    isPathCompleted: (id: string) => id === 'path-done',
     getGuideUrlForPath: () => 'https://grafana.com/docs/learning-paths/path-1/guide-1/',
     resetPath: jest.fn(),
     streakInfo: { days: 0 },
@@ -100,6 +113,7 @@ const okResult: PrepareGuideLaunchResult = {
 describe('MyLearningTab launch flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDiscoverItems = [];
   });
 
   it('shows a pending affordance on the launching card and re-enables after resolve', async () => {
@@ -146,5 +160,34 @@ describe('MyLearningTab launch flow', () => {
     await waitFor(() => expect(publishMock).toHaveBeenCalledTimes(1));
     expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'alert-error' }));
     expect(onOpenGuide).not.toHaveBeenCalled();
+  });
+
+  it('shows completed paths in the Completed section, not My Courses', () => {
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const myCourses = screen.getByTestId(testIds.learningPaths.myCoursesSection);
+    const completed = screen.getByTestId(testIds.learningPaths.completedSection);
+
+    // In-progress/not-started path lives in My Courses…
+    expect(myCourses).toHaveTextContent('First path');
+    // …while the 100% path lives in Completed with a Done badge.
+    expect(completed).toHaveTextContent('Done path');
+    expect(completed).toHaveTextContent('Done');
+    expect(myCourses).not.toHaveTextContent('Done path');
+  });
+
+  it('launches a Discover More item through prepareGuideLaunch', async () => {
+    mockDiscoverItems = [{ id: 'pkg-1', title: 'Package one', contentUrl: 'https://cdn.example/pkg-1/content.json' }];
+    prepareMock.mockResolvedValue(okResult);
+    const onOpenGuide = jest.fn();
+
+    render(<MyLearningTab onOpenGuide={onOpenGuide} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.discoverMoreStart('pkg-1')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
+    expect(prepareMock).toHaveBeenCalledWith(
+      'https://cdn.example/pkg-1/content.json',
+      expect.objectContaining({ title: 'Package one' })
+    );
   });
 });
