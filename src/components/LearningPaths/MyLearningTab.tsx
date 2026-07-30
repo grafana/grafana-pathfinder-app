@@ -369,9 +369,20 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       // on the actual next module instead of the path base / first module
       // (issue #744). When dynamic data has not loaded yet, fall back to the
       // path's base URL.
+      //
+      // Fresh launch (no progress yet) lands on the path's cover page
+      // (milestone 0) instead of module 1 (issue #1467): the base URL is
+      // exactly the cover page, and its working Back button returns here so
+      // resuming users lose nothing. "Continue" (progress > 0) still resumes
+      // the current module below.
       if (parentPath?.url) {
-        const resolvedGuideUrl = getGuideUrlForPath(guideId, parentPath.id) ?? parentPath.url;
-        const guideTitle = getPathGuides(parentPath.id).find((g) => g.id === guideId)?.title;
+        const isFreshLaunch = getPathProgress(parentPath.id) === 0;
+        const resolvedGuideUrl = isFreshLaunch
+          ? parentPath.url
+          : (getGuideUrlForPath(guideId, parentPath.id) ?? parentPath.url);
+        const guideTitle = isFreshLaunch
+          ? parentPath.title
+          : getPathGuides(parentPath.id).find((g) => g.id === guideId)?.title;
         const title = guideTitle || parentPath.title;
 
         reportAppInteraction(UserInteraction.OpenResourceClick, {

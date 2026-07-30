@@ -1,4 +1,7 @@
 {
+  "coverPage": {
+    "tableOfContents": "In this path"
+  },
   "contextPanel": {
     "categoryDocsPage": "Docs page",
     "categoryInteractiveGuide": "Interactive guide",
