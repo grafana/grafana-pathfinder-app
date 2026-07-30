@@ -261,7 +261,16 @@ test.describe('Guide Runner', () => {
       printHeader(guideTitle);
       console.log('   ⊘ No interactive steps — guide is read-only content (0 steps, pass)');
       const emptyResult: AllStepsResult = { results: [], aborted: false };
-      writeResultsFile([], guideMetadata, targetUrl, startingLocation, testStartTimestamp, emptyResult, guideJson, 'passed');
+      writeResultsFile(
+        [],
+        guideMetadata,
+        targetUrl,
+        startingLocation,
+        testStartTimestamp,
+        emptyResult,
+        guideJson,
+        'passed'
+      );
       return;
     }
 
