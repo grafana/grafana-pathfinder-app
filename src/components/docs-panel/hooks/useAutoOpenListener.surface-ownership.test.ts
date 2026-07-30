@@ -96,3 +96,45 @@ describe('useAutoOpenListener surface ownership (#1450)', () => {
     expect(sidebarModel.openDocsPage).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * #1450 — a real cold-relay case for a non-sidebar surface. A docs-link click
+ * while the sidebar flag is briefly cold enqueues the link; the surface that
+ * owns the display must drain that queue on mount through the *actual*
+ * `linkInterceptionState.processQueuedLinks()` path (not a hand-dispatched
+ * event). Before #1450 only the sidebar drained it, so a queued link stranded
+ * whenever the floating panel or full-screen page owned the surface.
+ */
+describe('queued-link relay reaches a non-sidebar surface (#1450)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    localStorage.clear();
+    while (linkInterceptionState.hasQueuedLinks()) {
+      linkInterceptionState.shiftFromQueue();
+    }
+  });
+
+  it('a link queued while floating owns the surface is drained into the floating model on mount', () => {
+    setMode('floating');
+    const model = makeModel();
+    linkInterceptionState.addToQueue({ url: DOC.url, title: DOC.title, timestamp: 0 });
+
+    renderHook(() => useAutoOpenListener(model, 'floating'));
+    act(() => {
+      // Fire the post-registration `setTimeout(processQueuedLinks, 0)` drain.
+      jest.runAllTimers();
+    });
+
+    expect(model.openDocsPage).toHaveBeenCalledWith(DOC.url, DOC.title, {
+      source: 'queued_link',
+      preparedContent: undefined,
+      packageInfo: undefined,
+    });
+    expect(linkInterceptionState.hasQueuedLinks()).toBe(false);
+  });
+});

@@ -340,7 +340,16 @@ if (pathfinderEnabled) {
         window.dispatchEvent(mountEvent);
 
         return () => {
-          sidebarState.setIsSidebarMounted(false);
+          // Only clear the shared mounted flag if the sidebar is still the
+          // active surface. During a sidebar → floating/fullscreen transition
+          // `setMode` has already committed the new mode and the incoming
+          // surface's mount effect (a separate React root) may have set the
+          // flag true before this cleanup runs; clobbering it would strand the
+          // link-interception and HomePanel gates thinking no Pathfinder
+          // surface is up. Mirrors FloatingPanelManager / FullScreenPanel.
+          if (panelModeManager.getMode() === 'sidebar') {
+            sidebarState.setIsSidebarMounted(false);
+          }
           reportPathfinderSurfaceClosed('sidebar');
 
           // Track sidebar close via component unmount
