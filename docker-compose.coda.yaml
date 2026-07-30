@@ -24,7 +24,11 @@ services:
       GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: grafana-pathfinder-app,grafana-coda-app
       GF_LOG_FILTERS: plugin.grafana-pathfinder-app:debug,plugin.grafana-coda-app:debug
     volumes:
-      # Docker creates a missing host path as an empty root-owned directory, and one
-      # of those under /var/lib/grafana/plugins stops Grafana (uid 472) from starting
-      # at all. So point CODA_PLUGIN_DIST at a real, built dist/.
+      # Point CODA_PLUGIN_DIST at a real, built dist/. There is no default: Docker
+      # would create a missing path as an empty directory, Grafana would find no
+      # plugin.json in it, and the provisioning entry below would then be fatal.
       - ${CODA_PLUGIN_DIST:?set CODA_PLUGIN_DIST to the Coda plugin dist/ path}:/var/lib/grafana/plugins/grafana-coda-app
+      # Enables the plugin. Must travel with the mount above and never move into
+      # provisioning/plugins/ — Grafana exits 1 on "plugin not installed", so this
+      # entry without that mount kills the whole stack.
+      - ./demo/coda-app-provisioning.yaml:/etc/grafana/provisioning/plugins/coda-app.yaml

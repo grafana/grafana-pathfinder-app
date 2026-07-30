@@ -1,14 +1,12 @@
 apiVersion: 1
 
+# Only plugins that are always present may be listed here. Grafana treats a missing
+# app plugin as fatal — "app provisioning error: plugin not installed" fails the
+# provisioning module and the process exits 1 — so listing an optional plugin here
+# takes the whole dev stack, and CI, down with it. The Coda plugin is provisioned by
+# docker-compose.coda.yaml, which mounts the plugin and its entry together.
 apps:
   - type: 'grafana-pathfinder-app'
-    org_id: 1
-    org_name: 'grafanalabs'
-    disabled: false
-
-  # Sandbox VMs and terminals. Optional — Pathfinder hides its terminal UI when
-  # this plugin is absent.
-  - type: 'grafana-coda-app'
     org_id: 1
     org_name: 'grafanalabs'
     disabled: false

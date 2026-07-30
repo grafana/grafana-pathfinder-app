@@ -155,10 +155,21 @@ explicitly, without touching `.env`:
 docker compose -f docker-compose.yaml -f docker-compose.coda.yaml up -d --build grafana
 ```
 
-`CODA_PLUGIN_DIST` is **required** by the overlay and has no default, deliberately. Docker creates a
-missing host path as an empty root-owned directory, and one of those under
-`/var/lib/grafana/plugins` stops Grafana (uid 472) from starting at all — a silent, confusing
-failure. Failing fast on an unset variable is easier to diagnose than a Grafana that never serves.
+The overlay mounts two things that must always travel together: the plugin's `dist/`, and a
+provisioning entry (`demo/coda-app-provisioning.yaml`) that enables it.
+
+**Never move that entry into `provisioning/plugins/`.** Grafana treats a provisioned-but-missing app
+plugin as fatal:
+
+```
+app provisioning error: plugin not installed: "grafana-coda-app"
+```
+
+The provisioning module fails, every module depending on it fails, and Grafana **exits 1** — it never
+serves a request. So the entry is only safe next to the mount that installs the plugin. For the same
+reason `CODA_PLUGIN_DIST` is **required with no default**: a wrong default would mount an empty
+directory, Grafana would find no `plugin.json`, and the provisioning entry would then be fatal.
+Failing fast on an unset variable beats debugging a Grafana that never comes up.
 
 Running without the overlay is a supported case, not a broken one: `isAppPluginEnabled` returns
 false, `CodaBackendStatus` says the plugin is absent, and the terminal stays hidden. Worth
