@@ -45,7 +45,7 @@ export function MyCoursesSection({
     <div className={styles.section} data-testid={testIds.learningPaths.myCoursesSection}>
       <div className={styles.sectionHeader}>
         <Icon name="book-open" size="md" className={styles.sectionIcon} />
-        <h2 className={styles.sectionTitle}>{t('myLearning.myCourses', 'My courses')}</h2>
+        <h2 className={styles.sectionTitle}>{t('myLearning.myCourses', 'My paths')}</h2>
         {courses.length > 4 && (
           <button
             className={styles.expandButton}
@@ -64,7 +64,7 @@ export function MyCoursesSection({
       {courses.length === 0 ? (
         <div className={styles.emptyMessage}>
           <Icon name="book" size="xl" className={styles.emptyIcon} />
-          <p>{t('myLearning.myCoursesEmpty', "You haven't started a course yet — pick one from Discover more")}</p>
+          <p>{t('myLearning.myCoursesEmpty', "You haven't started a path yet — pick one from Discover more")}</p>
         </div>
       ) : (
         <div className={styles.pathsGrid}>

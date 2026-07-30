@@ -78,10 +78,6 @@ export function DiscoverMoreSection({
         <Icon name="compass" size="md" className={styles.sectionIcon} />
         <h2 className={styles.sectionTitle}>{t('myLearning.discoverMore', 'Discover more')}</h2>
       </div>
-      <p className={styles.sectionDescription}>
-        {t('myLearning.discoverMoreDescription', 'Fresh guides and journeys to explore next')}
-      </p>
-
       {isLoading ? (
         <SkeletonLoader type="recommendations" />
       ) : items.length === 0 ? (

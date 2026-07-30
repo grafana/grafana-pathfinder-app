@@ -55,7 +55,7 @@ export function BadgesSection({
         </button>
       </div>
       <p className={styles.sectionDescription}>
-        {t('myLearning.badgesDescription', 'Earn badges by completing guides and maintaining streaks')}
+        {t('myLearning.badgesDescription', 'Earn badges by completing paths and maintaining streaks')}
       </p>
 
       <div className={`${styles.badgesGrid} ${showAll ? styles.badgesGridExpanded : ''}`}>
