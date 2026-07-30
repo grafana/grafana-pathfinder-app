@@ -1,12 +1,12 @@
 /**
  * Coda VM exec-based requirement check: `coda-exit-zero:<command>`.
  *
- * Runs the command against the caller's active terminal VM via the
- * `/coda/exec` plugin resource. Always uses gated mode, so the check cannot
- * pass before the challenge's setup phase has written the sentinel file at
- * `/tmp/pathfinder-ready`. This protects against verifications firing
- * before setup completes (e.g., user clicks "Check my work" the instant the
- * terminal connects, before the environment has been broken).
+ * Runs the command against the caller's active terminal session via the Coda
+ * app plugin. Always uses gated mode, so the check cannot pass before the
+ * challenge's setup phase has written the sentinel file at
+ * `/tmp/pathfinder-ready`. This protects against verifications firing before
+ * setup completes (e.g., user clicks "Check my work" the instant the terminal
+ * connects, before the environment has been broken).
  *
  * Use `grep -q`, `jq -e`, `test -f`, or any unix tool that returns 0 on
  * success to express richer matchers — the check is intentionally restricted
@@ -14,18 +14,8 @@
  */
 
 import type { CheckResultError } from '../../types/requirements.types';
-import { getBackendSrv } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
 
-const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
-
-interface CodaExecResponse {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  durationMs: number;
-  truncated?: boolean;
-}
+const NOT_READY_MESSAGE = 'Challenge environment is not ready. Start the challenge to provision a VM.';
 
 export async function codaExitZeroCheck(check: string): Promise<CheckResultError> {
   const command = check.slice('coda-exit-zero:'.length);
@@ -38,19 +28,23 @@ export async function codaExitZeroCheck(check: string): Promise<CheckResultError
     };
   }
 
+  // Dynamic import keeps the Coda integration out of the requirements chunk and
+  // avoids a requirements-manager → integrations cycle.
+  const { getTerminalSessionId } = await import('../../integrations/coda/TerminalContext');
+  const { execInSession } = await import('../../integrations/coda/coda-api');
+
+  const sessionId = getTerminalSessionId();
+  if (!sessionId) {
+    return {
+      requirement: check,
+      pass: false,
+      error: NOT_READY_MESSAGE,
+      context: { error: 'no active session' },
+    };
+  }
+
   try {
-    // .fetch with showErrorAlert: false so a check that finds the env not
-    // ready (or any other backend error) doesn't trigger a global toast on
-    // top of the in-block failure message.
-    const resp = await lastValueFrom(
-      getBackendSrv().fetch<CodaExecResponse>({
-        url: CODA_EXEC_URL,
-        method: 'POST',
-        data: { command, mode: 'gated' },
-        showErrorAlert: false,
-      })
-    );
-    const data = resp.data;
+    const data = await execInSession(sessionId, { command, mode: 'gated' });
 
     const pass = data.exitCode === 0;
     return {
@@ -67,16 +61,13 @@ export async function codaExitZeroCheck(check: string): Promise<CheckResultError
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    // 409 from the backend means no active terminal — translate that to a
-    // user-meaningful explanation that explains the prerequisite rather than
-    // surfacing the raw HTTP error.
-    const isNoSession = /409|no active terminal/i.test(message);
+    // A 409 means the session exists but its terminal is not connected; a 404
+    // means the session is gone. Both are "not ready" from the learner's view.
+    const isNotReady = /404|409|no active terminal|not found/i.test(message);
     return {
       requirement: check,
       pass: false,
-      error: isNoSession
-        ? 'Challenge environment is not ready. Start the challenge to provision a VM.'
-        : `Could not reach the challenge VM: ${message}`,
+      error: isNotReady ? NOT_READY_MESSAGE : `Could not reach the challenge VM: ${message}`,
       context: { error: message },
     };
   }

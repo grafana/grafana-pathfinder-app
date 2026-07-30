@@ -1,23 +1,22 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { from } from 'rxjs';
 
 import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
 import { resetInteractiveCounters } from './interactive-section';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
+import { execInSession } from '../../integrations/coda/coda-api';
 import { checkPostconditions } from '../../requirements-manager';
-import { getBackendSrv } from '@grafana/runtime';
 
 jest.mock('../../integrations/coda/TerminalContext', () => ({
   useTerminalContext: jest.fn(),
 }));
 
-jest.mock('../../requirements-manager', () => ({
-  checkPostconditions: jest.fn(),
+jest.mock('../../integrations/coda/coda-api', () => ({
+  execInSession: jest.fn(),
 }));
 
-jest.mock('@grafana/runtime', () => ({
-  getBackendSrv: jest.fn(),
+jest.mock('../../requirements-manager', () => ({
+  checkPostconditions: jest.fn(),
 }));
 
 jest.mock('../../global-state/completion-store', () => ({
@@ -28,31 +27,30 @@ jest.mock('../../global-state/completion-store', () => ({
 }));
 
 const mockedUseTerminalContext = useTerminalContext as jest.MockedFunction<typeof useTerminalContext>;
+const mockedExecInSession = execInSession as jest.MockedFunction<typeof execInSession>;
 const mockedCheckPostconditions = checkPostconditions as jest.MockedFunction<typeof checkPostconditions>;
-const mockedGetBackendSrv = getBackendSrv as jest.MockedFunction<typeof getBackendSrv>;
+
+const SESSION_ID = 's_0123456789abcdef0123456789abcdef';
 
 /**
- * The challenge block calls getBackendSrv().fetch(...) which returns an
- * Observable. The test mock translates a plain "post-like" mock function
- * (taking url, body → resolved response) into the Observable shape so that
- * existing .mockResolvedValue / .mockResolvedValueOnce calls keep working.
+ * Routes execInSession through a plain "post-like" mock taking
+ * (sessionId, request) so assertions on the request body stay at arg index 1.
  */
 function setBackend(post: jest.Mock): void {
-  const fetch = jest.fn((opts: { url: string; data?: unknown }) => {
-    return from(Promise.resolve(post(opts.url, opts.data)).then((result) => ({ data: result })));
-  });
-  mockedGetBackendSrv.mockReturnValue({ fetch } as unknown as ReturnType<typeof getBackendSrv>);
+  mockedExecInSession.mockImplementation((sessionId, req) => Promise.resolve(post(sessionId, req)));
 }
 
 interface MockCtxOverrides {
   status?: 'disconnected' | 'connecting' | 'connected' | 'error';
   openTerminal?: jest.Mock;
+  sessionId?: string | null;
 }
 
 function mockTerminalCtx(overrides: MockCtxOverrides = {}): { openTerminal: jest.Mock } {
   const openTerminal = overrides.openTerminal ?? jest.fn();
   mockedUseTerminalContext.mockReturnValue({
     status: overrides.status ?? 'disconnected',
+    sessionId: overrides.sessionId === undefined ? SESSION_ID : overrides.sessionId,
     connect: jest.fn(),
     disconnect: jest.fn(),
     sendCommand: jest.fn(),
@@ -212,6 +210,23 @@ describe('ChallengeBlock', () => {
     });
     expect(screen.getByText(/permission denied/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+  });
+
+  // The terminal can report "connected" a beat before the session id lands. Setup
+  // must fail loudly rather than exec against a missing session.
+  it('fails setup when the terminal is connected but there is no session id', async () => {
+    const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    setBackend(post);
+    mockTerminalCtx({ status: 'connected', sessionId: null });
+
+    render(<ChallengeBlock {...baseProps} setupCommands={['echo one']} />);
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/could not start the challenge/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/no active sandbox session/i)).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
   });
 
   it('marks complete and dispatches interactive-action-completed when the success criterion passes', async () => {

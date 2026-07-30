@@ -4,7 +4,7 @@
  * Lifecycle (see `ChallengeState`):
  *   idle → connecting → preparing → ready → checking → solved | failed-check | setup-failed
  *
- * The block runs `setupCommands` server-side via `/coda/exec` after the VM
+ * The block runs `setupCommands` server-side in the sandbox VM after it
  * connects, then makes "Check my work" available. A sentinel file is written
  * as the last setup step, and the success criterion is evaluated with
  * `checkPostconditions` (the underlying `coda-exit-zero` check always runs in
@@ -15,16 +15,14 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button, Icon, useStyles2, Alert } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
-import { getBackendSrv } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
 import { css } from '@emotion/css';
 
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
+import { execInSession, type ExecResponse } from '../../integrations/coda/coda-api';
 import { checkPostconditions } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 
-const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
-// /tmp/pathfinder-ready matches codaSentinelPath in the Go backend. The
+// /tmp/pathfinder-ready matches sentinelPath in the Coda app backend. The
 // atomic temp+rename guarantees the gated coda-exit-zero check never sees a
 // partially-written sentinel.
 const SENTINEL_WRITE_COMMAND = 'touch /tmp/pathfinder-ready.tmp && mv /tmp/pathfinder-ready.tmp /tmp/pathfinder-ready';
@@ -61,7 +59,7 @@ export interface ChallengeBlockProps {
    * work — the loop runs each command sequentially.
    */
   setupCommands?: string[];
-  /** Bash script run as a single /coda/exec call on the remote shell. */
+  /** Bash script run as a single exec call on the remote shell. */
   setupScript?: string;
   successCriteria: string;
   hintLevels?: ChallengeHintProps[];
@@ -72,27 +70,6 @@ export interface ChallengeBlockProps {
   stepIndex?: number;
   totalSteps?: number;
   sectionId?: string;
-}
-
-interface ExecResponse {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  durationMs: number;
-}
-
-async function runExec(command: string, mode: 'raw' | 'gated' = 'raw', timeoutMs = 10000): Promise<ExecResponse> {
-  // Use .fetch with showErrorAlert: false so 4xx/5xx don't trigger Grafana's
-  // global error toast — the challenge block surfaces these errors in-place.
-  const resp = await lastValueFrom(
-    getBackendSrv().fetch<ExecResponse>({
-      url: CODA_EXEC_URL,
-      method: 'POST',
-      data: { command, mode, timeoutMs },
-      showErrorAlert: false,
-    })
-  );
-  return resp.data;
 }
 
 let challengeCounter = 0;
@@ -251,6 +228,18 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     setState('idle');
   }, []);
 
+  const sessionId = terminalCtx?.sessionId ?? null;
+
+  const runExec = useCallback(
+    async (command: string, mode: 'raw' | 'gated' = 'raw', timeoutMs = 10000): Promise<ExecResponse> => {
+      if (!sessionId) {
+        throw new Error('No active sandbox session. Start the challenge to provision a VM.');
+      }
+      return execInSession(sessionId, { command, mode, timeoutMs });
+    },
+    [sessionId]
+  );
+
   const runSetup = useCallback(async () => {
     if (setupStartedRef.current) {
       return;
@@ -329,16 +318,14 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       setState('ready');
     } catch (err) {
       // Grafana FetchError attaches the backend response on .data; fall back to
-      // .message and the status code so the surfaced error is actually useful
-      // (e.g. a 404 means /coda/exec doesn't exist in the running plugin
-      // binary — likely the backend wasn't rebuilt).
+      // .message and the status code so the surfaced error is actually useful.
       const fetchErr = err as { status?: number; statusText?: string; data?: { error?: string }; message?: string };
       const backendMessage = fetchErr?.data?.error;
       const status = fetchErr?.status;
       let message: string;
       if (status === 404) {
         message =
-          'The /coda/exec backend route is missing. Rebuild the plugin binary (npm run build:backend:<platform>) and restart Grafana.';
+          'The sandbox session is gone, or the Coda app plugin is not installed. Reconnect the terminal and try again.';
       } else if (backendMessage) {
         message = status ? `${backendMessage} (HTTP ${status})` : backendMessage;
       } else {
@@ -347,7 +334,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       setErrorDetail(message);
       setState('setup-failed');
     }
-  }, [setupCommands, setupScript, resetToIdle]);
+  }, [setupCommands, setupScript, resetToIdle, runExec]);
 
   // Watch terminal status while we're trying to connect. When it goes live,
   // kick off setup. This effect reacts to an external system (the terminal

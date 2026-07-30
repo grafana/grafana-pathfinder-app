@@ -18,6 +18,7 @@ export type { TerminalVMOptions };
 
 // Module-level status for requirement checker access (outside React tree)
 let _moduleTerminalStatus: ConnectionStatus = 'disconnected';
+let _moduleTerminalSessionId: string | null = null;
 
 /**
  * Read terminal connection status from outside React (for requirement checkers).
@@ -26,8 +27,18 @@ export function getTerminalConnectionStatus(): ConnectionStatus {
   return _moduleTerminalStatus;
 }
 
+/**
+ * Read the active Coda session id from outside React. Exec calls are
+ * session-scoped, and the requirement checker runs outside the React tree.
+ */
+export function getTerminalSessionId(): string | null {
+  return _moduleTerminalSessionId;
+}
+
 export interface TerminalContextValue {
   status: ConnectionStatus;
+  /** Active Coda session id, or null when disconnected */
+  sessionId: string | null;
   connect: (vmOpts?: TerminalVMOptions) => void;
   disconnect: () => void;
   /** Send a command string to the terminal (appends newline to execute) */
@@ -41,6 +52,7 @@ export interface TerminalContextValue {
   /** Register the underlying useTerminalLive hook values */
   _register: (opts: {
     status: ConnectionStatus;
+    sessionId: string | null;
     connect: (vmOpts?: TerminalVMOptions) => void;
     disconnect: () => void;
     sendCommand: (command: string) => Promise<void>;
@@ -66,6 +78,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
   // Store registered hook values from TerminalPanel
   const [registeredStatus, setRegisteredStatus] = useState<ConnectionStatus>('disconnected');
+  const [registeredSessionId, setRegisteredSessionId] = useState<string | null>(null);
   const registeredConnectRef = useRef<((vmOpts?: TerminalVMOptions) => void) | null>(null);
   const registeredDisconnectRef = useRef<(() => void) | null>(null);
   const registeredSendCommandRef = useRef<((command: string) => Promise<void>) | null>(null);
@@ -86,14 +99,20 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     _moduleTerminalStatus = registeredStatus;
   }, [registeredStatus]);
 
+  useEffect(() => {
+    _moduleTerminalSessionId = registeredSessionId;
+  }, [registeredSessionId]);
+
   const register = useCallback(
     (opts: {
       status: ConnectionStatus;
+      sessionId: string | null;
       connect: (vmOpts?: TerminalVMOptions) => void;
       disconnect: () => void;
       sendCommand: (command: string) => Promise<void>;
     }) => {
       setRegisteredStatus(opts.status);
+      setRegisteredSessionId(opts.sessionId);
       registeredConnectRef.current = opts.connect;
       registeredDisconnectRef.current = opts.disconnect;
       registeredSendCommandRef.current = opts.sendCommand;
@@ -174,6 +193,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
   const value: TerminalContextValue = {
     status: registeredStatus,
+    sessionId: registeredSessionId,
     connect,
     disconnect,
     sendCommand,

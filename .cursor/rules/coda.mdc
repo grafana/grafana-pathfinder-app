@@ -1,185 +1,118 @@
 ---
 alwaysApply: false
-description: Coda VM provisioning system and terminal integration with Pathfinder.
+description: Coda sandbox terminal integration — Pathfinder is a client of the grafana-coda-app plugin's v1 API.
 globs:
   - "src/integrations/coda/*"
-  - "pkg/plugin/coda.go"
-  - "pkg/plugin/stream.go"
-  - "pkg/plugin/terminal.go"
-  - "pkg/plugin/wsconn.go"
+  - "src/requirements-manager/checks/coda.ts"
+  - "src/components/interactive-tutorial/challenge-block.tsx"
+  - "src/components/interactive-tutorial/terminal-connect-step.tsx"
+  - "src/components/block-editor/forms/TerminalConnectBlockForm.tsx"
+  - "src/components/block-editor/forms/ChallengeBlockForm.tsx"
 ---
 
-# Coda integration
+# Coda terminal integration
 
-> For full reference, see [`docs/developer/CODA.md`](../../docs/developer/CODA.md).
+> For full reference, see [`docs/developer/CODA.md`](../../docs/developer/CODA.md). The API contract
+> itself is owned by the separate `grafana-coda-app` plugin — see that repo's `docs/API.md`.
 
-## Overview
+## Ownership boundary
 
-**Coda** is a separate backend service (`grafana-coda-app`) that provisions ephemeral 30-minute VMs on AWS. Pathfinder's Go backend is the sole consumer of Coda's REST API — the React frontend never calls Coda directly.
+**Pathfinder owns the terminal UI. It does not own the backend.** VM provisioning, SSH, the relay
+handshake, quota, and the Coda credentials all live in the **`grafana-coda-app`** plugin. Pathfinder
+is its first API consumer.
 
 ```
-Frontend (React / xterm.js)
-    │  Grafana Live WebSocket (bidirectional)
+Pathfinder frontend (React / xterm.js)
+    │  POST /api/plugins/grafana-coda-app/resources/v1/sessions   → { sessionId, channel }
+    │  Grafana Live subscribe + publish on the returned channel
     ↓
-Backend Plugin (Go)
-    ├─ REST API ──→ Coda Server  (VM CRUD, sample apps, auth)
-    └─ WebSocket ─→ Relay ─→ SSH ─→ EC2 VM
+grafana-coda-app backend (Go)
+    ├─ REST ──→ Coda server  (VM CRUD, catalogues, auth)
+    └─ WSS  ──→ Relay ──→ SSH ──→ EC2 VM
 ```
 
-Coda itself has four components: **Server** (Node.js/Express/PostgreSQL), **Job Manager** (K8s webhook service), **Runner** (Terraform/Jsonnet provisioning), and **Relay** (Go WebSocket-to-TCP SSH proxy).
+There is **no Go code in this repo for Coda**. `pkg/` is an App Platform read proxy only. If a task
+mentions `CodaClient`, `RunStream`, `ConnectSSHViaRelay`, or `WSConn`, that work belongs in the
+`grafana-coda-app` repo, not here.
 
-## End-to-end connection flow
+## The session handshake
 
-1. User clicks "Connect" or a guide's terminal-connect button.
-2. `useTerminalLive.connect(vmOpts?)` subscribes to a Grafana Live channel.
-3. Backend `RunStream` calls `resolveVMForUser` (cache → ListVMs → CreateVM).
-4. Backend polls `GetVM` every 3 s until `active` (up to 60 attempts).
-5. Backend opens WebSocket to Relay at `wss://{relayURL}/relay/{vmID}`.
-6. Relay proxies WebSocket bytes to the VM's SSH port (TCP).
-7. Backend performs SSH handshake over the `WSConn` adapter, opens a PTY session.
-8. SSH stdout/stderr → `sender.SendFrame` → frontend `terminal.write()`.
-9. Frontend keystrokes → `PublishStream` → `session.Write()` → SSH stdin.
+VM resolution takes up to ~3 minutes, so the REST call only reserves intent and returns immediately;
+provisioning happens after the client subscribes, where status frames can drive the progress bar.
 
-## Grafana Live stream path
+1. `createSession(vmOpts)` → `POST /v1/sessions` with `{ template?, app?, scenario? }`.
+2. The response carries `sessionId` and a fully-formed `channel` string.
+3. `sessionChannelAddress(channel)` splits it into a `LiveChannelAddress`; the path is **opaque** —
+   never construct or parse it by hand.
+4. Subscribe. The backend provisions, connects SSH, and streams.
+5. Publish `{ type: 'input' | 'resize' }` back over the same channel with `{ useSocket: true }`.
 
-```
-terminal/{vmId}/{nonce}                                → default (vm-aws)
-terminal/{vmId}/{nonce}/{template}                     → custom template
-terminal/{vmId}/{nonce}/{template}/{app}               → custom template + app (sample-app)
-terminal/{vmId}/{nonce}/vm-aws-alloy-scenario/{id}     → alloy scenario (id may contain slashes)
-```
+A scenario ID containing slashes (e.g. `otel-examples/cost-control`) travels in the JSON body. The
+old channel-path grammar had to spread it across trailing segments; do not reintroduce that.
 
-`vmId` is `"new"` on first connect; backend resolves the real VM. For `vm-aws-alloy-scenario`, all remaining path segments are joined as the scenario ID.
+## Live frame shape
 
-## VM resolution (`resolveVMForUser`)
-
-Priority: in-memory cache → `FindActiveVMForUser` (ListVMs) → quota cleanup if needed → `CreateVM`.
-
-Reuse is scoped by **template + app/scenario**:
-
-- Same template, same app/scenario → reuse existing VM.
-- Same template, different app/scenario → **destroy** old VM, create new.
-- Different template → skip old, create new.
-
-Quota: max 3 non-terminal VMs per user (`maxUserVMs`). When quota is full, `cleanupUserVMsForQuota` force-destroys all stale usable VMs and polls until count drops before retrying.
-
-## VM state machine
+One shape only. `parseTerminalOutput` unwraps a single string field holding JSON:
 
 ```
-pending → provisioning → active → destroying → destroyed
-    │           │           │
-    └───────────┴───────────┴──→ error
+frame name: "coda.session.v1"
+fields:     [ { name: "event", type: string } ]
 ```
 
-Additional state: `pooled` (pre-provisioned in hot pool, `vm-aws` only).
+`SessionEvent.type` is one of `output`, `error`, `connected`, `disconnected`, `status`, `heartbeat`.
 
-Usable states: `active`, `pending`, `provisioning`.
-Terminal states: `destroyed`, `destroying`, `error`.
+## Exec is session-scoped
+
+`coda-exit-zero:<command>` and the challenge block's setup both call
+`execInSession(sessionId, { command, mode, timeoutMs })`. There is no "current session" fallback —
+a missing session id is a "not ready" state, not an error to surface raw.
+
+`mode: 'gated'` wraps the command behind the `/tmp/pathfinder-ready` sentinel. That is a **UI-race
+guard, not a security boundary** — the learner has full shell access to the same VM.
+
+## Availability gating
+
+The terminal is optional, so `grafana-coda-app` is **not** a declared plugin dependency. Availability
+is resolved at runtime:
+
+| Gate | Where |
+|------|-------|
+| `jsonData.enableCodaTerminal` | Pathfinder's own setting (default `false`) |
+| `useCodaPluginAvailable()` | `isAppPluginEnabled('grafana-coda-app')`, cached per page load |
+| `isDevMode` | terminal panel only |
+
+`docs-panel.tsx` needs all three; `BlockPalette.tsx` needs the first two. Never assume the plugin is
+present — every failure path must degrade quietly.
 
 ## Key files
 
-### Backend (Go)
-
 | File | Purpose |
 |------|---------|
-| `pkg/plugin/coda.go` | `CodaClient` — REST calls to Coda (CreateVM, GetVM, DeleteVM, ListVMs, ListSampleApps, ListAlloyScenarios), JWT auth refresh |
-| `pkg/plugin/stream.go` | `RunStream`, `resolveVMForUser`, `waitForVMActive`, `vmRequestOpts`, heartbeat, VM expiry poll |
-| `pkg/plugin/terminal.go` | `ConnectSSHViaRelay`, `NewTerminalSessionWithClient`, PTY management, SSH retry logic |
-| `pkg/plugin/wsconn.go` | `WSConn` — `net.Conn` adapter over WebSocket for SSH transport |
-| `pkg/plugin/resources.go` | HTTP handlers: `/coda/register`, `/vms`, `/vms/{id}`, `/sample-apps`, `/alloy-scenarios`, `/completion-records/my`, `/completion-records/capability`, `/health` |
-| `pkg/plugin/completion_records.go` | App Platform read proxy for completion records: per-user collation, 5-min TTL cache with single-flight refresh, stale-serve/503/capability=false error paths (not a Coda feature) |
-| `pkg/plugin/app_platform_identity.go` | Shared identity helpers for App Platform proxies: `validIDToken`, `subjectFromIDToken`, `forwardIdentityHeaders` (fail-closed structural JWT validation; trust boundary documented in `docs/developer/CODA.md`) |
-| `pkg/plugin/app_platform_client.go` | Shared paginated LIST client for App Platform proxies: `buildAppPlatformURL`, per-kind decode seam, transient/terminal/identity-scoped error classification, first-request credential diagnostics |
-| `pkg/plugin/app.go` | Plugin lifecycle, `CodaClient` creation from settings, `streamSessions` map |
-| `pkg/plugin/settings.go` | Plugin settings: `CodaRegistered`, `CodaAPIURL`, `CodaRelayURL`, secure `RefreshToken`/`EnrollmentKey` |
-
-### Frontend (TypeScript)
-
-| File | Purpose |
-|------|---------|
-| `src/integrations/coda/TerminalContext.tsx` | Shared React context: `connect(vmOpts?)`, `openTerminal(vmOpts?)`, `sendCommand`, module-level status |
-| `src/integrations/coda/useTerminalLive.hook.ts` | Grafana Live subscription, `connect(vmOpts?)` with `TerminalVMOptions` (`template`/`app`/`scenario`), animated provision progress bar, handshake timeout |
+| `src/integrations/coda/coda-api.ts` | The only module that knows the Coda plugin id. `createSession`, `execInSession`, `getCapabilities`, `sessionChannelAddress` |
+| `src/integrations/coda/useTerminalLive.hook.ts` | Live subscription, publish, animated provision progress bar, 35 s handshake timeout |
+| `src/integrations/coda/TerminalContext.tsx` | Shared context + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` for the requirements checker |
 | `src/integrations/coda/TerminalPanel.tsx` | xterm.js panel: fit/resize, scrollback persistence, WebGL renderer, auto-reconnect |
-| `src/integrations/coda/terminal-storage.ts` | localStorage/sessionStorage keys for panel state, scrollback, and last VM opts (template/app/scenario for auto-reconnect) |
-| `src/components/interactive-tutorial/terminal-connect-step.tsx` | "Try in terminal" button in guides, accepts `vmTemplate`/`vmApp`/`vmScenario` props |
-| `src/components/block-editor/forms/TerminalConnectBlockForm.tsx` | Guide authoring form for terminal-connect blocks; uses `useCodaOptions` hook to fetch sample apps or alloy scenarios |
-| `src/types/json-guide.types.ts` | `JsonTerminalConnectBlock` type with `vmTemplate`/`vmApp`/`vmScenario` fields |
-| `src/types/json-guide.schema.ts` | Zod schema for terminal-connect blocks |
+| `src/integrations/coda/useCodaAvailability.hook.ts` | Runtime plugin detection |
+| `src/integrations/coda/terminal-storage.ts` | localStorage/sessionStorage keys for panel state, scrollback, last VM opts |
+| `src/requirements-manager/checks/coda.ts` | `coda-exit-zero:` check (always gated mode) |
+| `src/components/AppConfig/CodaBackendStatus.tsx` | Reports backend availability; links to the Coda plugin's own config page |
+| `src/components/interactive-tutorial/challenge-block.tsx` | CTF-style block: setup script, sentinel write, check-my-work |
 
 ## Configuration
 
-### Plugin jsonData (public)
+Pathfinder keeps exactly one Coda setting:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `enableCodaTerminal` | `false` | Feature gate for terminal UI and block palette |
-| `codaRegistered` | `false` | Whether Coda registration succeeded |
-| `codaApiUrl` | — | Coda Server base URL (must be `https`, allowed host suffixes) |
-| `codaRelayUrl` | — | Relay WebSocket URL (must be `wss`, same host allowlist) |
+| `enableCodaTerminal` | `false` | Whether Pathfinder shows terminal UI at all |
 
-### Secure jsonData
+Everything else — API URL, relay URL, enrollment key, refresh token, registration state — belongs to
+`grafana-coda-app` and is configured at `/plugins/grafana-coda-app`. **Secure settings cannot be
+migrated across plugins**, so operators must re-enter their enrollment key there.
 
-| Key | Description |
-|-----|-------------|
-| `refreshToken` | JWT refresh token from Coda registration |
-| `enrollmentKey` | One-time enrollment key used during registration |
+## Guide block types
 
-### Feature gating
-
-The terminal panel is shown when `isDevMode && pluginConfig.enableCodaTerminal`. Block palette terminal blocks require `enableCodaTerminal` only.
-
-## Coda REST API contract (Pathfinder subset)
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `POST` | `/api/v1/auth/register` | Register Grafana instance (enrollment key → refresh token) |
-| `POST` | `/api/v1/auth/refresh` | Refresh JWT access token |
-| `POST` | `/api/v1/vms` | Create VM (`template`, `owner`, `config`) |
-| `GET` | `/api/v1/vms/:id` | Get VM status + credentials |
-| `DELETE` | `/api/v1/vms/:id` | Destroy VM (`?force=true` for stuck VMs) |
-| `GET` | `/api/v1/vms` | List VMs (query: `owner`, `state`, `limit`) |
-| `GET` | `/api/v1/sample-apps` | List available sample apps |
-| `GET` | `/api/v1/alloy-scenarios` | List available Alloy scenarios |
-
-Auth: `Authorization: Bearer {accessToken}` — auto-refreshed by `CodaClient`.
-
-## SSH relay flow
-
-1. `ConnectSSHViaRelay(relayURL, vmID, creds, token)` dials `wss://{relayURL}/relay/{vmID}`.
-2. `WSConn` wraps the WebSocket as a `net.Conn` (binary messages, 30 s write deadline, 90 s pong deadline).
-3. SSH handshake over `WSConn` using the VM's private key (`ssh.PublicKeys`).
-4. `NewTerminalSessionWithClient` opens a PTY (`xterm-256color`, 24×80) with stdin/stdout/stderr pipes.
-
-## Retry and error handling
-
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `maxSSHRetries` | 3 | SSH connection attempts before giving up |
-| `maxCredentialRefreshes` | 2 | Times to re-fetch credentials on auth failure |
-| `sshRetryDelay` | 5 s | Delay between SSH retries |
-| VM poll interval | 3 s | `waitForVMActive` polling frequency |
-| VM poll max attempts | 60 | ~3 minutes total wait for VM to become active |
-| Heartbeat interval | 3 s | Keep Grafana Live stream alive |
-| VM expiry poll | 15 s | Check if active VM entered terminal state |
-| Frontend handshake timeout | 35 s | Reset on each status update from backend |
-
-After all SSH retries fail, the backend destroys the VM and frees the quota slot.
-
-## VM templates
-
-| Template | Instance | AMI | Pool | Use |
-|----------|----------|-----|------|-----|
-| `vm-aws` | t3.micro | `coda-vm` | Hot pool | Default sandbox |
-| `vm-aws-sample-app` | t3.small | `coda-sample-app-vm` | On-demand | Pre-configured integration app |
-| `vm-aws-alloy-scenario` | t3.small | `coda-alloy-scenario-vm` | On-demand | Grafana Alloy learning scenario |
-
-Sample app flow: `CreateVM("vm-aws-sample-app", user, { "app": "nginx" })` → EC2 user-data runs `systemctl start coda-bootstrap@nginx` → bootstrap renders cloud-init template, installs the app + Alloy with placeholder config.
-
-Alloy scenario flow: `CreateVM("vm-aws-alloy-scenario", user, { "scenario": "otel-examples/cost-control" })` → EC2 user-data bootstraps the selected scenario. Scenario IDs may contain slashes and are passed as-is to the Coda API.
-
-## Terminal-connect block type
-
-Guides request specific VM templates via `terminal-connect` blocks:
+`terminal`, `terminal-connect`, and `challenge` are unchanged in the guide schema:
 
 ```json
 {
@@ -191,15 +124,17 @@ Guides request specific VM templates via `terminal-connect` blocks:
 }
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `vmTemplate` | string | `""` (→ `vm-aws`) | VM template to provision |
-| `vmApp` | string | `""` | App name for `vm-aws-sample-app` |
-| `vmScenario` | string | `""` | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
+| Field | Default | Description |
+|-------|---------|-------------|
+| `vmTemplate` | `""` (→ `vm-aws`) | VM template to provision |
+| `vmApp` | `""` | App name for `vm-aws-sample-app` |
+| `vmScenario` | `""` | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
 
-## Security constraints
+## Constraints
 
-- Coda API URL must be `https` with host in `allowedHostSuffixes` (`.lg.grafana-dev.com`, `.grafana.com`).
-- Relay URL must be `wss` with the same host allowlist.
-- SSH host key verification is disabled (`InsecureIgnoreHostKey`) because VMs are ephemeral.
-- VM credentials (private key, IP) are never exposed to the frontend — only the backend handles SSH.
+- Credentials (private key, VM IP) are never exposed to the frontend — only the Coda plugin's
+  backend touches SSH.
+- Never hardcode `grafana-coda-app` outside `coda-api.ts`.
+- Never construct a Live channel path by hand; use the `channel` the backend returned.
+- The requirements checker runs outside React — reach session state through the module-level getters,
+  not the context.

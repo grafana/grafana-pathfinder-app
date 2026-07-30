@@ -9,7 +9,6 @@
 import { useCallback, useEffect, useRef, useState, RefObject } from 'react';
 import { getGrafanaLiveSrv, type GrafanaLiveSrv } from '@grafana/runtime';
 import {
-  LiveChannelScope,
   LiveChannelAddress,
   LiveChannelEvent,
   isLiveChannelMessageEvent,
@@ -19,6 +18,7 @@ import {
 import { Subscription } from 'rxjs';
 import type { Terminal } from '@xterm/xterm';
 import { logger } from '../../lib/logging';
+import { createSession, sessionChannelAddress, type CodaSession, type TerminalVMOptions } from './coda-api';
 
 interface ConnectionLog {
   error: (message: string, error?: unknown, data?: Record<string, unknown>) => void;
@@ -42,22 +42,29 @@ function createConnectionLog(): ConnectionLog {
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
-/** Plugin ID for constructing API paths */
-const PLUGIN_ID = 'grafana-pathfinder-app';
+export type { TerminalVMOptions };
+
+/**
+ * The sandbox backend is a separate plugin, so "not installed" and "not
+ * registered" are both normal states that need distinct guidance.
+ */
+function codaSessionErrorMessage(err: unknown): string {
+  const fetchErr = err as { status?: number; data?: { error?: string } } | undefined;
+  if (fetchErr?.status === 404) {
+    return 'The Coda app plugin is not installed or not enabled in this Grafana instance.';
+  }
+  if (fetchErr?.status === 503) {
+    return fetchErr.data?.error ?? 'Coda is not registered. An administrator must complete registration.';
+  }
+  if (fetchErr?.data?.error) {
+    return fetchErr.data.error;
+  }
+  return err instanceof Error ? err.message : 'Could not start a sandbox session';
+}
 
 interface UseTerminalLiveOptions {
   /** Terminal instance ref - accessed in callbacks, not during render */
   terminalRef: RefObject<Terminal | null>;
-}
-
-/** Options for connecting to a specific VM template */
-export interface TerminalVMOptions {
-  /** VM template (defaults to "vm-aws") */
-  template?: string;
-  /** App name for sample-app templates */
-  app?: string;
-  /** Scenario name for alloy-scenario templates */
-  scenario?: string;
 }
 
 interface UseTerminalLiveReturn {
@@ -73,16 +80,18 @@ interface UseTerminalLiveReturn {
   sendCommand: (command: string) => Promise<void>;
   /** Error message if status is 'error' */
   error: string | null;
+  /** Active Coda session id, or null when disconnected. Needed to run exec calls. */
+  sessionId: string | null;
 }
 
-/** Terminal stream output message (sent from backend via SendJSON) */
-interface TerminalStreamOutput {
+/** Server → client event, carried in the frame's single "event" field. */
+interface SessionEvent {
   type: 'output' | 'error' | 'connected' | 'disconnected' | 'status' | 'heartbeat';
   data?: string;
   error?: string;
-  state?: string; // VM state for 'status' type: 'pending', 'provisioning', 'active'
-  message?: string; // Human-readable status message
-  vmId?: string; // Actual VM ID being used (sent by backend with 'connected' and 'status')
+  state?: string;
+  message?: string;
+  vmId?: string;
 }
 
 // ─── Provision progress bar ──────────────────────────────────────────────────
@@ -122,6 +131,7 @@ function renderProvisionProgress(label: string, elapsedMs: number, complete = fa
 export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTerminalLiveReturn {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   const connectionLogRef = useRef<ConnectionLog>(createConnectionLog());
 
@@ -229,30 +239,14 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   );
 
   /**
-   * Parse terminal output from a Grafana Live message.
-   * With SendJSON, messages arrive as raw JSON objects (not wrapped in DataFrame).
+   * Unwraps a coda.session.v1 frame: one string field holding a JSON SessionEvent.
    */
-  const parseTerminalOutput = useCallback((message: unknown): TerminalStreamOutput | null => {
+  const parseTerminalOutput = useCallback((message: unknown): SessionEvent | null => {
     try {
-      // Direct JSON object (from SendJSON)
-      if (message && typeof message === 'object') {
-        const msg = message as Record<string, unknown>;
-        if (typeof msg.type === 'string') {
-          return message as TerminalStreamOutput;
-        }
-
-        // DataFrame format (from SendFrame): extract JSON string from data.values[0][0]
-        const df = msg as { data?: { values?: unknown[][] }; schema?: unknown };
-        if (df.data?.values?.[0]?.[0]) {
-          const raw = df.data.values[0][0];
-          if (typeof raw === 'string') {
-            return JSON.parse(raw) as TerminalStreamOutput;
-          }
-        }
-      }
-
-      if (typeof message === 'string') {
-        return JSON.parse(message) as TerminalStreamOutput;
+      const frame = message as { data?: { values?: unknown[][] } } | undefined;
+      const raw = frame?.data?.values?.[0]?.[0];
+      if (typeof raw === 'string') {
+        return JSON.parse(raw) as SessionEvent;
       }
     } catch {
       // Parse failures are non-fatal; the stream will deliver subsequent messages
@@ -264,7 +258,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    * Connect to Grafana Live stream for terminal I/O
    */
   const connectLiveStream = useCallback(
-    (id: string, terminal: Terminal, vmOpts?: TerminalVMOptions) => {
+    (session: CodaSession, terminal: Terminal) => {
       const liveSrv = getGrafanaLiveSrv();
       if (!liveSrv) {
         setError('Grafana Live service not available');
@@ -272,30 +266,11 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         return;
       }
 
-      // Append a unique nonce so Grafana Live always starts a fresh RunStream,
-      // even when reconnecting to the same VM. Without this, resubscribing to
-      // the same channel path while the old RunStream is tearing down can cause
-      // the backend to never invoke a new RunStream, leaving us stuck.
-      const nonce = Date.now();
-      // Encode optional template and app as additional path segments:
-      //   terminal/{id}/{nonce}                         → default (vm-aws)
-      //   terminal/{id}/{nonce}/{template}/{app}         → custom template with app
-      let channelPathStr = `terminal/${id}/${nonce}`;
-      if (vmOpts?.template && vmOpts.template !== 'vm-aws') {
-        channelPathStr += `/${vmOpts.template}`;
-        if (vmOpts.template === 'vm-aws-alloy-scenario' && vmOpts.scenario) {
-          channelPathStr += `/${vmOpts.scenario}`;
-        } else if (vmOpts.app) {
-          channelPathStr += `/${vmOpts.app}`;
-        }
-      }
-      const address: LiveChannelAddress = {
-        scope: LiveChannelScope.Plugin,
-        stream: PLUGIN_ID,
-        path: channelPathStr,
-      };
+      // The session id is fresh per connect, so the channel is always new and
+      // Grafana always starts a fresh RunStream.
+      const address = sessionChannelAddress(session.channel);
 
-      currentVmIdRef.current = id;
+      currentVmIdRef.current = session.vmId ?? null;
 
       // Store refs so sendInput/sendResize can publish to this channel
       liveSrvRef.current = liveSrv;
@@ -394,7 +369,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
                 case 'error':
                   connectionLogRef.current.error('Backend error received', null, {
-                    vmId: id,
+                    sessionId: session.sessionId,
                     backendError: msg.error,
                     category: 'backend_error',
                   });
@@ -478,7 +453,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
               terminal.writeln('\x1b[90m       Waiting for SSH handshake...\x1b[0m');
             } else if (event.state === LiveChannelConnectionState.Disconnected) {
               connectionLogRef.current.warn('LiveStream disconnected', {
-                vmId: id,
+                sessionId: session.sessionId,
                 category: 'live_channel_disconnected',
               });
               if (inputDisposerRef.current) {
@@ -505,7 +480,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             inputDisposerRef.current = null;
           }
           connectionLogRef.current.error('LiveStream subscription error', err, {
-            vmId: id,
+            sessionId: session.sessionId,
             category: 'live_stream_error',
           });
           setError('Stream connection failed');
@@ -560,6 +535,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       cleanup();
 
       currentVmIdRef.current = null;
+      setSessionId(null);
 
       terminal.clear();
       terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
@@ -577,7 +553,20 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       terminal.writeln('\x1b[90m   ├─ Backend will assign your VM...\x1b[0m');
       terminal.writeln('\x1b[90m   └─ Establishing connection...\x1b[0m');
 
-      connectLiveStream('new', terminal, vmOpts);
+      let session: CodaSession;
+      try {
+        session = await createSession(vmOpts);
+      } catch (err) {
+        const message = codaSessionErrorMessage(err);
+        connectionLogRef.current.error('Could not create Coda session', err, { category: 'session_create' });
+        setError(message);
+        setStatus('error');
+        terminal.writeln(`\r\n\x1b[31m✖ ${message}\x1b[0m`);
+        return;
+      }
+
+      setSessionId(session.sessionId);
+      connectLiveStream(session, terminal);
     },
     [terminalRef, cleanup, connectLiveStream]
   );
@@ -589,6 +578,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   const disconnect = useCallback(() => {
     cleanup();
     currentVmIdRef.current = null;
+    setSessionId(null);
     setStatus('disconnected');
     setError(null);
 
@@ -632,5 +622,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     resize,
     sendCommand,
     error,
+    sessionId,
   };
 }

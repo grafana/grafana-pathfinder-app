@@ -9,12 +9,20 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: 'false'
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: grafana-pathfinder-app,grafana-coda-app
+      GF_LOG_FILTERS: plugin.grafana-pathfinder-app:debug,plugin.grafana-coda-app:debug
     # Persist Grafana's data directory (SQLite DB with plugin settings, users,
     # dashboards, etc.) across container recreations. Without this, every
     # `docker compose up -d --build` wipes the Coda enrollment key and other
     # plugin settings.
     volumes:
       - grafana-data:/var/lib/grafana
+      # Mounts a locally-built Coda plugin so sandbox terminals work in dev. The
+      # default assumes a sibling checkout of github.com/grafana/grafana-coda-app;
+      # override CODA_PLUGIN_DIST in .env if yours lives elsewhere. Build it there
+      # first (`mage build:linuxARM64 && npm run build`) — an empty or missing dist
+      # just means Grafana loads no Coda plugin, and the terminal stays hidden.
+      - ${CODA_PLUGIN_DIST:-../grafana-coda-app/dist}:/var/lib/grafana/plugins/grafana-coda-app
 
   prometheus:
     image: prom/prometheus:${PROMETHEUS_VERSION:-v3.5.0}

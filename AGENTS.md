@@ -68,9 +68,13 @@ For the annotated tier definitions, the per-subsystem reference, and the key dep
 
 ### Backend (`pkg/`)
 
-The Go backend is a thin bridge between the React frontend and the **Coda VM provisioning service**. No database — all state is ephemeral or delegated to Coda. Three primary request paths: HTTP resource API (`resources.go`), streaming terminal over Grafana Live (`stream.go` + `terminal.go` + `wsconn.go`), and the Coda JWT client (`coda.go`).
+The Go backend is a **read proxy for the App Platform aggregator**, and nothing else. No database, no streaming, no outbound credentials of its own — every route drains a paginated upstream LIST, caches the shaped result in-process, and rides the caller's own forwarded identity. `grafana-plugin-sdk-go` is its only direct dependency.
 
-When touching `pkg/`, load `.cursor/rules/coda.mdc` (agent-facing constraints) and `docs/developer/CODA.md` (full SSH / relay / credential-refresh reference). Plugin entrypoint is `pkg/main.go`.
+Routes live in `resources.go`; the per-feature proxies are `completion_records.go`, `custom_guide_repository.go`, and `package_recommendations.go`, sharing `app_platform_client.go` (paginated LIST) and `app_platform_identity.go` (forwarded-identity validation). Plugin entrypoint is `pkg/main.go`.
+
+When touching `pkg/`, load `docs/design/BACKEND_PROXY_PATTERN.md` — it is the canonical pattern for these routes and holds the identity trust-boundary statement.
+
+**Sandbox VMs and terminals are not here.** That backend lives in the separate [`grafana-coda-app`](https://github.com/grafana/grafana-coda-app) plugin; Pathfinder keeps only the terminal UI and consumes its v1 API. See `.cursor/rules/coda.mdc` and `docs/developer/CODA.md`.
 
 ## On-demand context
 

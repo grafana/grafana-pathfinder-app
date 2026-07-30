@@ -62,15 +62,15 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
-  const { status, connect, disconnect, resize, sendCommand, error } = useTerminalLive({
+  const { status, connect, disconnect, resize, sendCommand, error, sessionId } = useTerminalLive({
     terminalRef: terminalInstanceRef,
   });
 
   // Register with shared context so TerminalStep components can send commands
   const terminalCtx = useTerminalContext();
   useEffect(() => {
-    terminalCtx?._register({ status, connect, disconnect, sendCommand });
-  }, [terminalCtx, status, connect, disconnect, sendCommand]);
+    terminalCtx?._register({ status, sessionId, connect, disconnect, sendCommand });
+  }, [terminalCtx, status, sessionId, connect, disconnect, sendCommand]);
 
   // Sync: when something calls context.openTerminal, the context sets its
   // isExpanded flag. Mirror that into the panel's local state so we actually

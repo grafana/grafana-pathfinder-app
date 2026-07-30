@@ -2,11 +2,7 @@ module github.com/grafana/grafana-pathfinder-app
 
 go 1.26.5
 
-require (
-	github.com/gorilla/websocket v1.5.3
-	github.com/grafana/grafana-plugin-sdk-go v0.294.0
-	golang.org/x/crypto v0.54.0
-)
+require github.com/grafana/grafana-plugin-sdk-go v0.294.0
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
