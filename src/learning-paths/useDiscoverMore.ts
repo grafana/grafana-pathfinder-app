@@ -1,11 +1,12 @@
 /**
  * Discover More Hook
  *
- * Surfaces novel, external content in the My Learning page. Unlike the
+ * Surfaces novel, external learning paths in the My Learning page. Unlike the
  * context recommender — which targets the user's current path and can return
  * nothing on the home surface — this pulls the full upstream package index
- * (`repository.json`, proxied by the backend) and picks a handful of entries,
- * so there is always something new to explore.
+ * (`repository.json`, proxied by the backend), keeps only `path`-typed entries
+ * (whole learning paths, not individual guides), and picks a handful, so there
+ * is always a new path to explore.
  */
 
 import { useState, useEffect } from 'react';
@@ -85,6 +86,9 @@ export function useDiscoverMore(options: UseDiscoverMoreOptions = {}): UseDiscov
         const { baseUrl, packages } = await fetchOnlinePackageRecommendations();
         const exclude = excludeTitles ?? new Set<string>();
         const mapped = packages
+          // Only whole learning paths — the index also carries individual
+          // guides (type 'guide'), which are not what Discover More surfaces.
+          .filter((entry) => entry.type === 'path')
           .map((entry) => toDiscoverItem(entry, baseUrl))
           .filter((item): item is DiscoverMoreItem => item !== null && !exclude.has(item.title))
           .slice(0, count);

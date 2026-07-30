@@ -25,10 +25,19 @@ const fetchMock = fetchOnlinePackageRecommendations as jest.MockedFunction<typeo
 const response: PackageRecommendationsResponse = {
   baseUrl: 'https://cdn.example/base/',
   packages: [
-    { id: 'a', path: 'packages/a', title: 'A', description: 'first', manifest: { milestones: ['m1', 'm2'] } },
-    { id: 'b', path: 'packages/b', title: 'B' },
+    {
+      id: 'a',
+      path: 'packages/a',
+      title: 'A',
+      type: 'path',
+      description: 'first',
+      manifest: { milestones: ['m1', 'm2'] },
+    },
+    { id: 'b', path: 'packages/b', title: 'B', type: 'path' },
+    // Individual guide, not a whole path → filtered out.
+    { id: 'g', path: 'packages/g', title: 'G', type: 'guide' },
     // No usable path → buildPackageFileUrl fails closed and the entry is skipped.
-    { id: 'c', path: '', title: 'C' },
+    { id: 'c', path: '', title: 'C', type: 'path' },
   ],
 };
 
@@ -38,11 +47,13 @@ describe('useDiscoverMore', () => {
     fetchMock.mockResolvedValue(response);
   });
 
-  it('maps entries to path-shaped items and skips those without a content URL', async () => {
+  it('maps path-typed entries, skips guides and those without a content URL', async () => {
     const { result } = renderHook(() => useDiscoverMore());
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
+    // The 'guide'-typed entry is excluded; only whole paths surface.
+    expect(result.current.items.map((i) => i.id)).not.toContain('g');
     expect(result.current.items).toEqual([
       {
         id: 'a',
