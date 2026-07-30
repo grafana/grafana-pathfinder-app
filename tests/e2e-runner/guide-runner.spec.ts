@@ -45,7 +45,7 @@ import {
   printDiscoveryResults,
 } from './utils/console-reporter';
 import { contentDigest, type TestResultsData } from '../../src/cli/e2e/e2e-reporter';
-import { countInteractiveBlocks } from './utils/guide-runner/static-analysis';
+import { countDiscoverableSteps } from './utils/guide-runner/static-analysis';
 import { E2E_ENV, isEnvFlagEnabled } from '../../src/cli/e2e/e2e-runner-contract';
 import {
   createScopedBearerTokenAuthStrategy,
@@ -166,7 +166,7 @@ test.describe('Guide Runner', () => {
 
     const guideJson = readFileSync(guidePath, 'utf-8');
     const guide = JSON.parse(guideJson) as { title?: string; id?: string };
-    const hasInteractiveSteps = countInteractiveBlocks(guide) > 0;
+    const hasDiscoverableSteps = countDiscoverableSteps(guide) > 0;
     const guideTitle = guide.title ?? 'E2E Test Guide';
 
     // L3-5B: Extract guide ID from path or use provided id
@@ -244,22 +244,15 @@ test.describe('Guide Runner', () => {
     // Wait for content to load
     await page.waitForTimeout(1000);
 
-    // ============================================
-    // Markdown-only guides: skip DOM interaction
-    // ============================================
-    // Determine upfront — before any DOM wait — whether this guide has
-    // interactive steps. Guides with no interactive blocks (markdown,
-    // image, video only) never produce any [data-testid^="interactive-step-"]
-    // elements; waiting for them would time out after 15 s. Instead, pass
-    // immediately with 0 steps once the guide is confirmed to have loaded.
+    // Unsupported/read-only blocks never render the runner's `interactive-step-*` contract.
     const guideMetadata = {
       id: guideId,
       title: guideTitle,
       path: guidePath ?? 'unknown',
     };
-    if (!hasInteractiveSteps) {
+    if (!hasDiscoverableSteps) {
       printHeader(guideTitle);
-      console.log('   ⊘ No interactive steps — guide is read-only content (0 steps, pass)');
+      console.log('   ⊘ No E2E-discoverable steps (0 steps, pass)');
       const emptyResult: AllStepsResult = { results: [], aborted: false };
       writeResultsFile(
         [],

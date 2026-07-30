@@ -1,22 +1,7 @@
-const INTERACTIVE_TYPES = new Set([
-  'interactive',
-  'multistep',
-  'guided',
-  'code-block',
-  'terminal',
-  'terminal-connect',
-  'grot-guide',
-]);
+const INTERACTIVE_TYPES = new Set(['interactive', 'multistep', 'guided']);
 
-/**
- * Count interactive blocks in a guide recursively.
- *
- * Walks the full nested block tree, including section, assistant, and
- * conditional containers (both whenTrue and whenFalse branches). The count
- * lets the runner skip the DOM wait entirely for markdown-only guides rather
- * than timing out after 15 s waiting for elements that never appear.
- */
-export function countInteractiveBlocks(guide: unknown): number {
+/** Count blocks discoverable through the runner's `interactive-step-*` selector. */
+export function countDiscoverableSteps(guide: unknown): number {
   let count = 0;
 
   function walk(node: unknown): void {
