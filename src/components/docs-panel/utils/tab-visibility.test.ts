@@ -4,11 +4,12 @@
  */
 
 import { computeTabVisibility } from './tab-visibility';
-import type { LearningJourneyTab } from '../../../types/content-panel.types';
+import type { LearningJourneyTab, LearningJourneyTabType } from '../../../types/content-panel.types';
 
-function tab(id: string, title: string): LearningJourneyTab {
+function tab(id: string, title: string, type: LearningJourneyTabType = 'learning-journey'): LearningJourneyTab {
   return {
     id,
+    type,
     title,
     baseUrl: '',
     currentUrl: '',
@@ -19,12 +20,12 @@ function tab(id: string, title: string): LearningJourneyTab {
 }
 
 describe('computeTabVisibility', () => {
-  const recs = tab('recommendations', 'Recommendations');
+  const recs = tab('recommendations', 'Recommendations', 'recommendations');
   const guide1 = tab('guide-1', 'Guide 1');
   const guide2 = tab('guide-2', 'Guide 2');
   const guide3 = tab('guide-3', 'Guide 3');
 
-  describe('when only permanent tabs exist', () => {
+  describe('when no guide-strip tabs exist', () => {
     it('returns all tabs as visible and no overflow', () => {
       const tabs = [recs];
       const result = computeTabVisibility(tabs, 500, 'recommendations');
@@ -54,7 +55,6 @@ describe('computeTabVisibility', () => {
   describe('with multiple guide tabs and limited width', () => {
     it('splits visible and overflow by available width', () => {
       const tabs = [recs, guide1, guide2, guide3];
-      // reserved 130; available e.g. 200 -> 70 for tabs; 84 per tab -> 0 fit, but we force at least 1
       const result = computeTabVisibility(tabs, 200, 'guide-1');
       expect(result.visibleTabs).toEqual([recs, guide1]);
       expect(result.overflowedTabs).toEqual([guide2, guide3]);
@@ -65,7 +65,6 @@ describe('computeTabVisibility', () => {
       const result = computeTabVisibility(tabs, 200, 'guide-3');
       expect(result.visibleTabs).toContainEqual(guide3);
       expect(result.overflowedTabs).not.toContainEqual(guide3);
-      // With width for only 1 guide tab, visible is active only; rest overflow
       expect(result.visibleTabs).toEqual([recs, guide3]);
       expect(result.overflowedTabs).toEqual([guide1, guide2]);
     });
@@ -80,7 +79,7 @@ describe('computeTabVisibility', () => {
     });
   });
 
-  describe('permanent tabs order', () => {
+  describe('recommendations home order', () => {
     it('keeps recommendations at start of visible', () => {
       const tabs = [recs, guide1];
       const result = computeTabVisibility(tabs, 300, 'guide-1');

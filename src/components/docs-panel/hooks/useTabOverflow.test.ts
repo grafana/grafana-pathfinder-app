@@ -29,6 +29,7 @@ describe('useTabOverflow', () => {
   const mockTabs: LearningJourneyTab[] = [
     {
       id: 'recommendations',
+      type: 'recommendations',
       title: 'Recommendations',
       baseUrl: '',
       currentUrl: '',

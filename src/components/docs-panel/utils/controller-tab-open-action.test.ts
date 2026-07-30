@@ -7,7 +7,7 @@ describe('pickControllerTabOpenAction', () => {
 
   it('returns shouldShow=false for non-interactive tab types', () => {
     expect(pickControllerTabOpenAction('backend-guide:x', 'docs')).toEqual({ shouldShow: false });
-    expect(pickControllerTabOpenAction('backend-guide:x', undefined)).toEqual({ shouldShow: false });
+    expect(pickControllerTabOpenAction('backend-guide:x', 'learning-journey')).toEqual({ shouldShow: false });
   });
 
   it('builds a same-origin controller URL for an interactive tab', () => {

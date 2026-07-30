@@ -5,7 +5,7 @@
 
 import { spawn } from 'child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { dirname, join, resolve } from 'path';
+import { basename, dirname, join, resolve } from 'path';
 import { tmpdir } from 'os';
 
 import { ExitCode } from './exit-codes';
@@ -13,6 +13,9 @@ import { E2E_ENV, encodeEnvFlag } from './e2e-runner-contract';
 import type { LoadedGuide } from '../utils/file-loader';
 import type { E2EErrorCode } from './schemas/e2e-report.schema';
 import { contentDigest, createMinimalResultsData, type TestResultsData } from './e2e-reporter';
+import { resolveStartingPath } from './starting-location';
+
+export { resolveStartingUrl } from './starting-location';
 
 const PLAYWRIGHT_CONFIG_PATH = join('tests', 'e2e-runner', 'playwright.config.ts');
 const GUIDE_RUNNER_SPEC_PATH = join('tests', 'e2e-runner', 'guide-runner.spec.ts');
@@ -103,6 +106,7 @@ export interface PlaywrightResult {
 export interface RunGuideOptions {
   /** Resolved Grafana base URL this guide is tested against. */
   targetUrl: string;
+  startingLocation: string;
   verbose: boolean;
   trace: boolean;
   headed: boolean;
@@ -207,8 +211,11 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
   const resultsFilePath = join(tempDir, 'results.json');
   const authStateFile = join(tempDir, 'auth.json');
   const traceOutputFilePath = join(tempDir, 'trace-path.txt');
+  const playwrightOutputDir = join(artifactsDir, `playwright-${basename(tempDir)}`);
+  const traceEnabled = options.trace && !options.token;
 
   try {
+    const startingPath = resolveStartingPath(options.targetUrl, options.startingLocation);
     writeFileSync(guidePath, guide.content);
 
     if (options.verbose) {
@@ -221,9 +228,13 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
       join(runnerRoot, GUIDE_RUNNER_SPEC_PATH),
       `--config=${join(runnerRoot, PLAYWRIGHT_CONFIG_PATH)}`,
       '--project=chromium',
+      `--output=${playwrightOutputDir}`,
     ];
 
-    if (options.trace) {
+    if (options.trace && options.token) {
+      console.warn('   ⚠ Trace disabled for bearer-token authentication because traces can contain credentials');
+    }
+    if (traceEnabled) {
       playwrightArgs.push('--trace', 'on');
     }
 
@@ -238,9 +249,10 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
           ...process.env,
           [E2E_ENV.GUIDE_JSON_PATH]: guidePath,
           [E2E_ENV.GRAFANA_URL]: options.targetUrl,
+          [E2E_ENV.STARTING_LOCATION]: startingPath,
           [E2E_ENV.AUTH_STATE_FILE]: authStateFile,
           ...(options.token ? { [E2E_ENV.GRAFANA_TOKEN]: options.token } : {}),
-          [E2E_ENV.TRACE]: encodeEnvFlag(options.trace),
+          [E2E_ENV.TRACE]: encodeEnvFlag(traceEnabled),
           [E2E_ENV.VERBOSE]: encodeEnvFlag(options.verbose),
           [E2E_ENV.ABORT_FILE_PATH]: abortFilePath,
           [E2E_ENV.RESULTS_FILE_PATH]: resultsFilePath,
@@ -255,7 +267,7 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
       proc.on('close', (code) => {
         const result = processPlaywrightResults(
           code ?? 1,
-          { trace: options.trace },
+          { trace: traceEnabled },
           {
             abortFilePath,
             resultsFilePath,
@@ -316,6 +328,13 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
     }
     return result;
   } finally {
+    if (!traceEnabled) {
+      try {
+        rmSync(playwrightOutputDir, { recursive: true, force: true });
+      } catch {
+        console.warn(`Warning: Failed to clean up Playwright output directory: ${playwrightOutputDir}`);
+      }
+    }
     try {
       rmSync(tempDir, { recursive: true, force: true });
       if (options.verbose) {

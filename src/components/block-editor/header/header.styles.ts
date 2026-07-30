@@ -16,37 +16,79 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     zIndex: theme.zIndex.navbarFixed,
     flexShrink: 0,
   }),
-  // Single-row toolbar: title (flex 1) + actions cluster on the right.
-  // `containerType: inline-size` lets the per-button `@container` rule in
-  // `collapsibleLabel` collapse button labels to icon-only when the row gets
-  // narrow. Wraps to a second line when the cluster still doesn't fit.
-  row: css({
+  // Title row (top): editable title + status badge, above the toolbar row.
+  titleRow: css({
+    display: 'flex',
+    alignItems: 'center',
+    padding: `${theme.spacing(1)} ${theme.spacing(1.5)} 0`,
+    gap: theme.spacing(1),
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+  }),
+  // Toolbar row (bottom): view-mode rocker on the left, action cluster on the
+  // right. Single-line — never wraps. `containerType: inline-size` drives the
+  // rocker's icon-only swap and the `saveButton` label/icon collapse, both
+  // keyed off this row's width. Uniform vertical padding also gives preview mode
+  // (where the title row is hidden and this row sits at the top) its top spacing.
+  toolbarRow: css({
     display: 'flex',
     alignItems: 'center',
     padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
-    gap: theme.spacing(1),
-    flexWrap: 'wrap',
+    gap: theme.spacing(0.5),
+    flexWrap: 'nowrap',
     containerType: 'inline-size',
   }),
-  // Title is guaranteed at least ~180px so the actions cluster has to wrap
-  // to a new row when the row gets narrow, instead of crushing the title to
-  // zero. The input inside still keeps `minWidth: 0 + flex: 1` so long
-  // titles ellipsis within the reserved 180px rather than overflowing.
-  titleArea: css({
+  // Right-aligned action cluster on the toolbar row.
+  rightCluster: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
-    minWidth: 180,
-    flex: '1 1 180px',
-    '&:hover .guide-id': {
-      opacity: 1,
+    marginLeft: 'auto',
+    flexShrink: 0,
+  }),
+  // Status cluster (publish badge, or local-save indicator when there's no
+  // backend). `flexShrink: 0` + `nowrap` so a long title can't shrink or wrap
+  // the badge in the title row — the title input absorbs the shrink instead.
+  statusWrap: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+  }),
+  // In preview the status cluster sits in the non-shrinking, no-wrap toolbar. At
+  // narrow widths a full badge would overflow, so collapse it to its colored icon
+  // (hide only the label) instead of hiding status entirely — Draft/Published and
+  // the icon-only local-save indicator stay visible down to the 320px floating min.
+  previewStatusWrap: css({
+    '@container (max-width: 420px)': {
+      '& [data-badge-label]': {
+        display: 'none',
+      },
+    },
+  }),
+  // Wraps the title input so it can carry a persistent gradient underline
+  // (an <input> cannot host a ::after). The bar is always on — it marks the
+  // editor as the active surface, mirroring the tab bar's `iconTabActive`.
+  titleInputWrap: css({
+    position: 'relative',
+    display: 'inline-flex',
+    minWidth: 0,
+    maxWidth: '100%',
+    '&::after': {
+      content: '""',
+      position: 'absolute',
+      left: 2,
+      right: 2,
+      bottom: 0,
+      height: '2px',
+      borderRadius: theme.shape.radius.default,
+      backgroundImage: theme.colors.gradients.brandHorizontal,
+      pointerEvents: 'none', // decorative underline must not intercept clicks on the input
     },
   }),
   guideTitleInput: css({
     background: 'transparent',
     border: 'none',
-    borderBottom: `1px solid transparent`,
-    borderRadius: 0,
     color: theme.colors.text.primary,
     fontSize: theme.typography.h5.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
@@ -55,59 +97,60 @@ export const getHeaderStyles = (theme: GrafanaTheme2) => ({
     margin: 0,
     outline: 'none',
     minWidth: 0,
-    flex: 1,
-    '&:hover': {
-      borderBottomColor: theme.colors.border.medium,
-    },
+    maxWidth: '100%',
     '&:focus': {
-      borderBottomColor: theme.colors.primary.main,
       background: theme.colors.background.secondary,
     },
+    // Keyboard focus indicator: the always-on gradient underline doesn't signal
+    // focus and `outline: none` above removes the default (WCAG 2.4.7).
+    '&:focus-visible': {
+      outline: `2px solid ${theme.colors.primary.main}`,
+      outlineOffset: 1,
+    },
   }),
-  guideId: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
-    fontFamily: theme.typography.fontFamilyMonospace,
-    opacity: 0,
-    transition: 'opacity 0.15s',
-    padding: '0 2px',
-    flexShrink: 0,
-  }),
-  // Right-side action cluster.
-  // - `marginLeft: auto` pushes the cluster to the right edge of the row,
-  //   and — when the cluster wraps onto its own line — keeps it right-aligned
-  //   on that line as well.
-  // - `flexWrap` + `rowGap` let the buttons inside the cluster spill onto a
-  //   second line once even the icon-only collapse can't keep them on one row.
-  // - Label collapse below 640px is opt-in via the `collapsibleLabel` class
-  //   on each Button that wants it (rather than a broad `& button > span`
-  //   rule scoped to the whole cluster). That avoids accidentally hiding
-  //   spans nested inside Badges, IconButtons, or future Grafana `Button`
-  //   internals that might add their own child `<span>`s.
-  actions: css({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: theme.spacing(0.5),
-    flexShrink: 0,
-    flexWrap: 'wrap',
-    rowGap: theme.spacing(0.5),
-    marginLeft: 'auto',
-  }),
-  // Opt-in collapse for Grafana `Button` components that carry a text label.
-  // Under 640px we hide Button's content `<span>` (its direct child) and
-  // tighten horizontal padding, leaving the icon visible. Tooltips and
-  // aria-labels carry the meaning. Targets `& > span` so it only affects
-  // the labeled span that Grafana renders as a direct child of the
-  // `<button>` element this class is applied to — never any descendants.
-  // Container query fires off `row`'s `containerType: inline-size`.
-  collapsibleLabel: css({
-    '@container (max-width: 640px)': {
+  // Save/publish button: label-only at full width, icon-only once the toolbar
+  // collapses below 420px (mirrors the rocker's collapse). Grafana's Button
+  // renders the icon as its only `<svg>` and the label as a direct-child
+  // `<span>`, so we toggle those directly. Container query fires off
+  // `toolbarRow`'s `containerType: inline-size`; the aria-label carries the
+  // action name when the label is hidden.
+  saveButton: css({
+    // Full width: show the label, hide the icon glyph.
+    '& svg': {
+      display: 'none',
+    },
+    '@container (max-width: 420px)': {
+      // Collapsed: icon-only — show the icon, hide the label, tighten padding.
       paddingLeft: theme.spacing(0.75),
       paddingRight: theme.spacing(0.75),
+      '& svg': {
+        display: 'inline-block',
+      },
       '& > span': {
         display: 'none',
       },
+    },
+  }),
+  // View-mode rocker wrapper: holds the labeled + icon-only RadioButtonGroups
+  // and carries the viewModeToggle testid (the tour anchors on it). Exactly one
+  // group is visible at a time — see the two classes below.
+  viewModeRocker: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+  }),
+  // Labeled group is the default; it collapses to the icon-only sibling below
+  // the toolbar's collapse breakpoint. The `@container` rule fires off
+  // `toolbarRow`'s `containerType: inline-size`.
+  viewModeRockerLabeled: css({
+    '@container (max-width: 420px)': {
+      display: 'none',
+    },
+  }),
+  // Icon-only fallback: hidden until the toolbar is too narrow for labels.
+  viewModeRockerIconOnly: css({
+    display: 'none',
+    '@container (max-width: 420px)': {
+      display: 'inline-flex',
     },
   }),
   // Subtler "Saved" indicator (replaces the green chip) — small floppy

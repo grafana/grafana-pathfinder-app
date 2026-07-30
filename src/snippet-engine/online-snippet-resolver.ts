@@ -7,6 +7,7 @@
  * `deriveSnippetsBaseUrl`).
  */
 
+import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../constants';
 import { fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
 import { JsonSnippetSchema, SnippetCatalogSchema } from '../types/json-snippet.schema';
 import type { JsonSnippet, SnippetCatalog } from '../types/json-snippet.types';
@@ -41,7 +42,7 @@ export class OnlineCdnSnippetResolver implements SnippetResolver, SnippetCatalog
 
     const url = `${baseUrl}/${encodeURIComponent(snippetId)}.json`;
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: AbortSignal.timeout(DEFAULT_CONTENT_FETCH_TIMEOUT) });
       if (!response.ok) {
         return {
           ok: false,
@@ -72,7 +73,9 @@ export class OnlineCdnSnippetResolver implements SnippetResolver, SnippetCatalog
     }
 
     try {
-      const response = await fetch(`${baseUrl}/index.json`);
+      const response = await fetch(`${baseUrl}/index.json`, {
+        signal: AbortSignal.timeout(DEFAULT_CONTENT_FETCH_TIMEOUT),
+      });
       if (!response.ok) {
         return {};
       }

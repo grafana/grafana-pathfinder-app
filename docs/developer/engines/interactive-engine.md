@@ -83,6 +83,8 @@ Each handler follows a consistent execution pattern:
 5. Mark step as completed and dispatch completion event
 6. Wait for React updates and state propagation
 
+Live-tab `InteractiveStep` controls with `doIt: false` complete only after the Show me action succeeds. Discovery or execution failures leave the step incomplete and expose the error state so the action can be retried. Controller-mode simple steps remain optimistic because the cross-tab command channel has no live acknowledgement.
+
 ### Action Type: Sequence
 
 The special `sequence` action type (handled directly in `interactive.hook.ts`) executes multiple child actions sequentially. It supports two modes:

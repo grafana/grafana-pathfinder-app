@@ -224,7 +224,7 @@ export const BACKEND_TRACKING_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_BACKEND_TRA
  */
 export const DEFAULT_GUIDE_METADATA = {
   id: 'new-guide',
-  title: 'New Guide',
+  title: 'New guide',
 };
 
 /**

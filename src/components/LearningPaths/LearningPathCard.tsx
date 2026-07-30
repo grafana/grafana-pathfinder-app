@@ -24,6 +24,8 @@ export function LearningPathCard({
   onContinue,
   onReset,
   defaultExpanded = false,
+  isLaunching = false,
+  launchDisabled = false,
 }: LearningPathCardProps & { defaultExpanded?: boolean }) {
   const styles = useStyles2(getLearningPathCardStyles);
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -125,10 +127,11 @@ export function LearningPathCard({
             <button
               className={styles.actionButton}
               onClick={handleContinue}
+              disabled={launchDisabled}
               data-testid={testIds.learningPaths.continueButton(path.id)}
             >
-              <Icon name="play" size="sm" />
-              {getButtonText()}
+              <Icon name={isLaunching ? 'fa fa-spinner' : 'play'} size="sm" />
+              {isLaunching ? 'Opening…' : getButtonText()}
             </button>
           )}
           {isCompleted && onReset && !isConfirmingReset && (

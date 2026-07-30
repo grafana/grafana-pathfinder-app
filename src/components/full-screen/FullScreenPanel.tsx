@@ -6,9 +6,9 @@ import { useStyles2 } from '@grafana/ui';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
-import { openPendingGuide } from '../docs-panel/pendingGuideRouter';
+import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
-import { PERMANENT_TAB_IDS } from '../docs-panel/utils';
+import { hasOnlyNonContentTabs, isNonContentTab } from '../docs-panel/utils';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
@@ -60,9 +60,16 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // the extension sidebar is closed. Idempotent — safe on refresh of
   // /fullscreen where mode may already be 'fullscreen' but a stale Grafana
   // dock could otherwise re-mount the sidebar in parallel.
+  //
+  // Transient, not plain setMode: this effect only fires when the route and
+  // the mode disagree, i.e. a cold load / reload of a /fullscreen URL after
+  // the in-memory transient state was lost. Aligning mode to a route we
+  // already landed on is not a preference expression — a persisting write
+  // here would overwrite the user's stored preference with whatever surface
+  // an auto-launch chose before the reload.
   useEffect(() => {
     if (panelModeManager.getMode() !== 'fullscreen') {
-      panelModeManager.setMode('fullscreen');
+      panelModeManager.setModeTransient('fullscreen');
     } else {
       getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
     }
@@ -87,11 +94,9 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     // `openSidebar`, which now no-ops in fullscreen mode).
     sidebarState.setIsSidebarMounted(true);
 
-    const pendingGuide = panelModeManager.consumePendingGuide();
-    if (pendingGuide) {
+    consumePendingGuideOnMount(panel, 'fullscreen_handoff', () => {
       guideOpenInFlightRef.current = true;
-      openPendingGuide(panel, pendingGuide, 'fullscreen_handoff');
-    }
+    });
 
     return () => {
       document.removeEventListener('pathfinder-auto-launch-pending', handlePending);
@@ -122,13 +127,9 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     // for this render. Using the live state stops us from restoring on
     // top of a tab the handoff just opened — that would await tabStorage
     // and overwrite the new tab if storage was empty or stale.
-    // Permanent system tabs (`recommendations`, `devtools`, `editor`) don't
-    // count as user content — restoring on top of them is safe. Mirrors the
-    // sidebar's gate at `docs-panel.tsx` so all three surfaces agree on
-    // when "the panel is empty".
-    const liveTabs = panel.state.tabs;
-    const hasOnlyDefaultTabs = liveTabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
-    const restore = hasOnlyDefaultTabs ? panel.restoreTabsAsync() : Promise.resolve();
+    // Only restore when no content tabs are open (editor chrome alone is OK).
+    // Mirrors the sidebar gate — avoids skipping restore when only Create Guide is open.
+    const restore = hasOnlyNonContentTabs(panel.state.tabs) ? panel.restoreTabsAsync() : Promise.resolve();
     restore.then(() => setRestorationDone(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -186,7 +187,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const isEditorTab = activeTab?.type === 'editor';
   const content = activeTab?.content ?? null;
   const title = isEditorTab ? EDITOR_FULL_SCREEN_TITLE : activeTab?.title || 'Interactive learning';
-  const hasActiveGuide = activeTab != null && activeTab.id !== 'recommendations' && !isEditorTab;
+  const hasActiveGuide = activeTab != null && !isNonContentTab(activeTab);
   // Prefer `currentUrl` (the milestone the user is reading) so when the user
   // goes fullscreen → floating via `handleSwitchToFloating`, auto-docks via
   // navigation away, or copies a shareable link, the milestone position
@@ -235,7 +236,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     tabs,
     activeTabId,
     activeTab: activeTab ?? null,
-    isRecommendationsTab: activeTabId === 'recommendations',
+    isRecommendationsTab: activeTab?.type === 'recommendations',
     model: panel,
   });
 
@@ -271,7 +272,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
         guide_title: title,
       });
       panelModeManager.setPendingGuide({ title, type: 'editor' });
-      panelModeManager.setMode('floating');
+      panelModeManager.setModePersisted('floating');
       locationService.push(PLUGIN_BASE_URL);
       return;
     }
@@ -296,7 +297,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       // direction: raw GitHub URLs aren't recognised package URLs.
       packageInfo: activeTab?.packageInfo,
     });
-    panelModeManager.setMode('floating');
+    panelModeManager.setModePersisted('floating');
     locationService.push(PLUGIN_BASE_URL);
   }, [isEditorTab, guideUrl, title, activeTab?.type, activeTab?.packageInfo]);
 
@@ -353,17 +354,14 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // In-fullscreen swap: when something dispatches `pathfinder-request-full-screen`
   // while we're already on the fullscreen route (e.g. the BlockEditor toolbar
   // in a sidebar that's still mounted alongside fullscreen, see Issue 3), the
-  // host-side handler's `setMode('fullscreen')` is a no-op and the route push
+  // host-side handler's `setModePersisted('fullscreen')` is a no-op and the route push
   // doesn't remount us. Consume any pending guide here too so the swap still
   // happens — typically used to replace a journey with the editor or vice versa.
   useEffect(() => {
     const handleFullScreenRequest = () => {
-      const pendingGuide = panelModeManager.consumePendingGuide();
-      if (!pendingGuide) {
-        return;
-      }
-      guideOpenInFlightRef.current = true;
-      openPendingGuide(panel, pendingGuide, 'fullscreen_handoff');
+      consumePendingGuideOnMount(panel, 'fullscreen_handoff', () => {
+        guideOpenInFlightRef.current = true;
+      });
     };
     document.addEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
     return () => {

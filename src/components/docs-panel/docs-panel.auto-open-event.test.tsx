@@ -37,12 +37,12 @@ const PANEL_ROOT = path.join(__dirname);
 const TRACKED_FILES = ['docs-panel.tsx', 'hooks/useAutoOpenListener.ts'];
 
 const REQUIRED_REFERENCES = {
-  listenerRegistration: "addEventListener('pathfinder-auto-open-docs'",
-  listenerCleanup: "removeEventListener('pathfinder-auto-open-docs'",
+  listenerRegistration: 'addEventListener(AUTO_OPEN_DOCS_EVENT',
+  listenerCleanup: 'removeEventListener(AUTO_OPEN_DOCS_EVENT',
   routeLearningJourney: 'openLearningJourney(',
   routeDocsPage: 'openDocsPage(',
   sourceCoercion: 'coerceLaunchSource(',
-  journeyUrlMatcher: '/learning-journeys/',
+  journeyUrlMatcher: 'isLearningJourneyUrl(',
 };
 
 function loadTrackedSources(): Array<{ file: string; src: string | null }> {
@@ -56,6 +56,20 @@ function loadTrackedSources(): Array<{ file: string; src: string | null }> {
 }
 
 describe('Phase 0 tripwire: pathfinder-auto-open-docs CustomEvent contract', () => {
+  it('the event name constant still carries the wire-contract string', () => {
+    // Dispatchers and the listener share AUTO_OPEN_DOCS_EVENT; the string
+    // itself is the cross-surface contract (external guides may dispatch it),
+    // so renaming the VALUE is a breaking change even if every import compiles.
+    const eventNames = fs.readFileSync(path.join(PANEL_ROOT, '..', '..', 'lib', 'event-names.ts'), 'utf-8');
+    expect(eventNames).toContain("AUTO_OPEN_DOCS_EVENT = 'pathfinder-auto-open-docs'");
+  });
+
+  it('the shared routing predicate still tests journey pathnames', () => {
+    const urlValidation = fs.readFileSync(path.join(PANEL_ROOT, 'utils', 'url-validation.ts'), 'utf-8');
+    expect(urlValidation).toContain('/learning-journeys/');
+    expect(urlValidation).toContain('/learning-paths/');
+  });
+
   it('listener registration exists in exactly one tracked file', () => {
     const matches = loadTrackedSources().filter(
       ({ src }) => src && src.includes(REQUIRED_REFERENCES.listenerRegistration)

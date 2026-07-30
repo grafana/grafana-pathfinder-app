@@ -192,7 +192,8 @@ jest.mock('./utils', () => ({
   isGrafanaDocsUrl: jest.fn(),
   cleanDocsUrl: jest.fn((url: string) => url),
   loadDocsTabContentResult: jest.fn(),
-  PERMANENT_TAB_IDS: new Set(['recommendations', 'devtools', 'editor']),
+  ...jest.requireActual('./utils/tab-kinds'),
+  ...jest.requireActual('./utils/tab-gates'),
 }));
 
 jest.mock('./hooks', () => ({
@@ -224,8 +225,8 @@ jest.mock('../../hooks', () => ({}));
 // Import under test
 // ---------------------------------------------------------------------------
 
+import { isDevModeEnabled } from '../../utils/dev-mode';
 import { CombinedLearningJourneyPanel } from './docs-panel';
-import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -234,6 +235,7 @@ import type { LearningJourneyTab } from '../../types/content-panel.types';
 const RESTORED_TABS = [
   {
     id: 'recommendations',
+    type: 'recommendations' as const,
     title: 'Recommendations',
     baseUrl: '',
     currentUrl: '',
@@ -253,17 +255,6 @@ const RESTORED_TABS = [
   },
 ];
 
-const makeTab = (id: string, type?: LearningJourneyTab['type']) => ({
-  id,
-  title: id,
-  baseUrl: '',
-  currentUrl: '',
-  content: null,
-  isLoading: false,
-  error: null,
-  type,
-});
-
 function setupRestoreMocks() {
   mockRestoreTabsFromStorage.mockResolvedValue(RESTORED_TABS);
   mockRestoreActiveTabFromStorage.mockResolvedValue('tab-guide-1');
@@ -276,6 +267,7 @@ function setupRestoreMocks() {
 describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
     setupRestoreMocks();
   });
 
@@ -338,35 +330,129 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     expect(panelBActiveTab).not.toBe('recommendations');
     expect(panelBTabs.length).toBeGreaterThan(1);
   });
+
+  it('strips restored gated tabs when the user lacks access, without rewriting storage', async () => {
+    mockRestoreTabsFromStorage.mockResolvedValue([
+      ...RESTORED_TABS,
+      {
+        id: 'editor',
+        title: 'New Guide',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+        type: 'editor',
+      },
+      {
+        id: 'devtools',
+        title: 'Dev Tools',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+        type: 'devtools',
+      },
+    ]);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('editor');
+
+    const { tabStorage } = require('../../lib/user-storage');
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+
+    const tabs = (panel as any).state.tabs;
+    expect(tabs.some((t: { type?: string }) => t.type === 'editor')).toBe(false);
+    expect(tabs.some((t: { type?: string }) => t.type === 'devtools')).toBe(false);
+    expect((panel as any).state.activeTabId).toBe('recommendations');
+    // Rendering fails closed, but the first gate read cannot tell "denied"
+    // from "config not resolved yet", so it must not delete from storage.
+    expect(tabStorage.setTabs).not.toHaveBeenCalled();
+  });
+
+  it('keeps restored Dev Tools when pluginConfig enables pathfinder-dev-mode', async () => {
+    // Pins finding 3: empty construction config used to make prune drop an
+    // authorized Dev Tools tab and persist the loss. Construction with real
+    // config + isDevModeEnabled true must keep the tab.
+    (isDevModeEnabled as jest.Mock).mockReturnValue(true);
+    mockRestoreTabsFromStorage.mockResolvedValue([
+      ...RESTORED_TABS,
+      {
+        id: 'devtools',
+        title: 'Dev Tools',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+        type: 'devtools',
+      },
+    ]);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('devtools');
+
+    const { tabStorage } = require('../../lib/user-storage');
+    const panel = new CombinedLearningJourneyPanel({ devMode: true });
+    await panel.restoreTabsAsync();
+
+    const tabs = (panel as any).state.tabs as Array<{ type?: string }>;
+    expect(tabs.some((t) => t.type === 'devtools')).toBe(true);
+    expect((panel as any).state.activeTabId).toBe('devtools');
+    expect(tabStorage.setTabs).not.toHaveBeenCalled();
+  });
 });
 
-describe('CombinedLearningJourneyPanel — closeTab', () => {
+describe('CombinedLearningJourneyPanel — tab gate sync', () => {
+  const DEVTOOLS_TAB = {
+    id: 'devtools',
+    title: 'Dev Tools',
+    baseUrl: '',
+    currentUrl: '',
+    content: null,
+    isLoading: false,
+    error: null,
+    type: 'devtools',
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
+    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
     setupRestoreMocks();
   });
 
-  it('returns to recommendations when closing the final active guide with the editor tab present', () => {
-    const panel = new CombinedLearningJourneyPanel();
-    panel.setState({
-      tabs: [makeTab('recommendations'), makeTab('editor', 'editor'), makeTab('tab-guide-1', 'learning-journey')],
-      activeTabId: 'tab-guide-1',
-    });
+  it('keeps Dev Tools when the renderer reports an unresolved plugin context', async () => {
+    // The regression: an unresolved context produced getConfigWithDefaults({}),
+    // which reads as "dev mode off" and stripped an authorized Dev Tools tab.
+    (isDevModeEnabled as jest.Mock).mockReturnValue(true);
+    mockRestoreTabsFromStorage.mockResolvedValue([...RESTORED_TABS, DEVTOOLS_TAB]);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('devtools');
 
-    panel.closeTab('tab-guide-1');
+    const panel = new CombinedLearningJourneyPanel({ devMode: true, devModeUserIds: [1] });
+    await panel.restoreTabsAsync();
 
-    expect((panel as any).state.activeTabId).toBe('recommendations');
+    panel.syncPluginConfig(null);
+
+    const tabs = (panel as any).state.tabs as Array<{ type?: string }>;
+    expect(tabs.some((t) => t.type === 'devtools')).toBe(true);
+    expect((panel as any).state.pluginConfig).toEqual({ devMode: true, devModeUserIds: [1] });
   });
 
-  it('keeps the current editor tab active when closing an inactive guide', () => {
-    const panel = new CombinedLearningJourneyPanel();
-    panel.setState({
-      tabs: [makeTab('recommendations'), makeTab('editor', 'editor'), makeTab('tab-guide-1', 'learning-journey')],
-      activeTabId: 'editor',
-    });
+  it('persists the prune when a gate the model already observed as open closes', async () => {
+    (isDevModeEnabled as jest.Mock).mockReturnValue(true);
+    mockRestoreTabsFromStorage.mockResolvedValue([...RESTORED_TABS, DEVTOOLS_TAB]);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('devtools');
 
-    panel.closeTab('tab-guide-1');
+    const { tabStorage } = require('../../lib/user-storage');
+    const panel = new CombinedLearningJourneyPanel({ devMode: true, devModeUserIds: [1] });
+    await panel.restoreTabsAsync();
+    expect((panel as any).state.tabs.some((t: { type?: string }) => t.type === 'devtools')).toBe(true);
 
-    expect((panel as any).state.activeTabId).toBe('editor');
+    // Admin revokes dev mode mid-session; plugin meta refreshes.
+    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    panel.syncPluginConfig({ devMode: false });
+
+    const tabs = (panel as any).state.tabs as Array<{ type?: string }>;
+    expect(tabs.some((t) => t.type === 'devtools')).toBe(false);
+    expect((panel as any).state.activeTabId).toBe('recommendations');
+    expect(tabStorage.setTabs).toHaveBeenCalled();
   });
 });

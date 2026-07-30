@@ -20,8 +20,6 @@ import { HeaderKebab } from './header/HeaderKebab';
 export interface BlockEditorHeaderProps {
   /** Guide title to display */
   guideTitle: string;
-  /** Guide ID — null means not yet assigned (hides the ID display) */
-  guideId: string | null;
   /** Whether there are unsaved local changes */
   isDirty: boolean;
   /**
@@ -92,13 +90,8 @@ export interface BlockEditorHeaderProps {
   redoLabel: string | null;
 }
 
-/**
- * Header component for the block editor.
- * Compact single-row design with better organization.
- */
 export function BlockEditorHeader({
   guideTitle,
-  guideId,
   isDirty,
   publishedStatus,
   hasUnsyncedChanges,
@@ -133,88 +126,99 @@ export function BlockEditorHeader({
   const styles = useStyles2(getHeaderStyles);
 
   const backendBadge = () => {
-    if (publishedStatus === 'not-saved') {
-      return (
-        <Tooltip content="Not yet saved to library">
-          <Badge text="Draft" color="purple" icon="circle" />
-        </Tooltip>
-      );
-    }
-    if (publishedStatus === 'draft') {
-      if (hasUnsyncedChanges) {
-        return (
-          <Tooltip content="Draft has unsaved changes">
-            <Badge text="Draft (modified)" color="orange" icon="exclamation-triangle" />
-          </Tooltip>
-        );
-      }
-      return (
-        <Tooltip content="Saved to library but not published to users">
-          <Badge text="Draft" color="purple" icon="circle" />
-        </Tooltip>
-      );
-    }
-    if (hasUnsyncedChanges) {
-      return (
-        <Tooltip content="Published guide has unsaved changes">
-          <Badge text="Published (modified)" color="orange" icon="exclamation-triangle" />
-        </Tooltip>
-      );
-    }
-    return (
-      <Tooltip content="Published and visible to users">
-        <Badge text="Published" color="blue" icon="cloud-upload" />
+    // The label sits in a [data-badge-label] span so `previewStatusWrap` can hide
+    // it at narrow preview widths — the badge collapses to its colored icon while
+    // the Tooltip keeps the full text, so status never disappears at 320px.
+    const badge = (
+      text: string,
+      color: 'blue' | 'orange' | 'green',
+      icon: 'circle' | 'exclamation-triangle' | 'cloud-upload',
+      tip: string
+    ) => (
+      <Tooltip content={tip}>
+        <Badge text={<span data-badge-label>{text}</span>} color={color} icon={icon} />
       </Tooltip>
     );
+
+    if (publishedStatus === 'not-saved') {
+      return badge('Draft', 'blue', 'circle', 'Not yet saved to library');
+    }
+    if (publishedStatus === 'draft') {
+      return hasUnsyncedChanges
+        ? badge('Draft (modified)', 'orange', 'exclamation-triangle', 'Draft has unsaved changes')
+        : badge('Draft', 'blue', 'circle', 'Saved to library but not published to users');
+    }
+    return hasUnsyncedChanges
+      ? badge('Published (modified)', 'orange', 'exclamation-triangle', 'Published guide has unsaved changes')
+      : badge('Published', 'green', 'cloud-upload', 'Published and visible to users');
   };
+
+  const localSaveIndicator = !isBackendAvailable && (
+    <>
+      {isDirty ? (
+        <Tooltip content="Saving changes to local storage">
+          <span className={styles.savingIndicator} aria-label="Saving">
+            <Icon name="fa fa-spinner" size="sm" />
+          </span>
+        </Tooltip>
+      ) : (
+        <Tooltip content="All changes saved to local storage">
+          <span className={styles.savedIndicator} aria-label="Saved">
+            <Icon name="save" size="sm" />
+          </span>
+        </Tooltip>
+      )}
+    </>
+  );
+
+  const previewResetButton = viewMode === 'preview' && hasPreviewProgress && onResetPreviewProgress && (
+    <Button
+      variant="secondary"
+      size="sm"
+      icon="history-alt"
+      onClick={onResetPreviewProgress}
+      tooltip="Resets all interactive steps"
+      data-testid={testIds.blockEditor.previewResetButton}
+    >
+      Reset guide
+    </Button>
+  );
+
+  // Publish-status badge, or the local-save indicator when there's no backend.
+  const statusCluster = (
+    <>
+      {localSaveIndicator}
+      {isBackendAvailable && backendBadge()}
+    </>
+  );
 
   return (
     <div className={styles.header}>
-      <div className={styles.row}>
-        <HeaderTitleRow guideTitle={guideTitle} guideId={guideId} viewMode={viewMode} onTitleCommit={onTitleCommit} />
+      {/* Title row is hidden entirely in preview — the rendered guide shows its
+          own <h1>, so an editable title would duplicate it; the status cluster
+          moves to the toolbar row (below) to keep publish state visible. */}
+      {viewMode !== 'preview' && (
+        <div className={styles.titleRow} data-testid={testIds.blockEditor.titleRow}>
+          <HeaderTitleRow guideTitle={guideTitle} onTitleCommit={onTitleCommit} />
+          <div className={styles.statusWrap}>{statusCluster}</div>
+        </div>
+      )}
 
-        <div className={styles.actions}>
-          {!isBackendAvailable &&
-            (isDirty ? (
-              <Tooltip content="Saving changes to local storage">
-                <span className={styles.savingIndicator} aria-label="Saving">
-                  <Icon name="fa fa-spinner" size="sm" />
-                </span>
-              </Tooltip>
-            ) : (
-              <Tooltip content="All changes saved to local storage">
-                <span className={styles.savedIndicator} aria-label="Saved">
-                  <Icon name="save" size="sm" />
-                </span>
-              </Tooltip>
-            ))}
+      {/* Single-line — never wraps; the rocker and Save collapse to icons via
+          the container-query tiers instead (see toolbarRow). */}
+      <div className={styles.toolbarRow} data-testid={testIds.blockEditor.toolbarRow}>
+        <ViewModeRocker viewMode={viewMode} onSetViewMode={onSetViewMode} />
 
-          {/* Backend publish status — kept as a Badge since the
-              Draft/Published distinction is genuinely informative. */}
-          {isBackendAvailable && backendBadge()}
-
-          {/* Preview-mode "Reset guide" trigger. Mirrors the affordance that
-              previously lived inside the preview content area, but lifted into
-              the header so the rendered guide stays free of editor chrome. */}
-          {viewMode === 'preview' && hasPreviewProgress && onResetPreviewProgress && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="history-alt"
-              onClick={onResetPreviewProgress}
-              tooltip="Resets all interactive steps"
-              data-testid={testIds.blockEditor.previewResetButton}
-            >
-              Reset guide
-            </Button>
+        <div className={styles.rightCluster}>
+          {viewMode === 'preview' && (
+            <div className={`${styles.statusWrap} ${styles.previewStatusWrap}`}>{statusCluster}</div>
           )}
 
-          {/* Undo / redo for the in-session history ring buffer. The
-              labels (when present) describe the next operation in the
-              stack — useful for tooltip-driven discoverability. The
-              `corner-up-left` / `corner-up-right` icons are the
-              conventional curved-arrow glyphs every word processor /
-              editor uses for undo/redo. */}
+          {/* "Reset guide" affordance, lifted out of the preview content area. */}
+          {previewResetButton}
+
+          {/* Undo / redo — edit mode only. Kept visible at all widths: there's no
+              keyboard shortcut, so hiding them would strand the action. */}
           {viewMode === 'edit' && (
             <>
               <IconButton
@@ -239,8 +243,6 @@ export function BlockEditorHeader({
               />
             </>
           )}
-
-          <ViewModeRocker viewMode={viewMode} onSetViewMode={onSetViewMode} />
 
           {isBackendAvailable && (
             <SaveActions

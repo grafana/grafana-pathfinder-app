@@ -31,7 +31,14 @@ export type {
 // ============================================
 // Constants
 // ============================================
-export { DEFAULT_STEP_TIMEOUT_MS, TIMEOUT_PER_MULTISTEP_ACTION_MS, TIMEOUT_PER_GUIDED_SUBSTEP_MS } from './constants';
+export {
+  DEFAULT_STEP_TIMEOUT_MS,
+  GUIDE_INITIAL_TIMEOUT_MS,
+  GUIDE_SETUP_TIMEOUT_MS,
+  STEP_OVERHEAD_TIMEOUT_MS,
+  TIMEOUT_PER_MULTISTEP_ACTION_MS,
+  TIMEOUT_PER_GUIDED_SUBSTEP_MS,
+} from './constants';
 
 // ============================================
 // Error Classification
@@ -51,7 +58,8 @@ export {
 // ============================================
 // Discovery
 // ============================================
-export { discoverStepsFromDOM, logDiscoveryResults } from './discovery';
+export { discoverStepsFromDOM, logDiscoveryResults, resolveEffectiveSkippable } from './discovery';
+export { ensureDocsPanelOpen } from './bootstrap';
 
 // ============================================
 // Requirements
@@ -71,9 +79,11 @@ export {
 // ============================================
 export {
   scrollStepIntoView,
-  waitForDoItButtonEnabled,
-  waitForDoItButtonToAppear,
+  calculateGuideTimeout,
   calculateStepTimeout,
+  determineUnmetRequirementOutcome,
+  parseNthMatchSelector,
+  selectStepAction,
   waitForStepCompletion,
   checkObjectiveCompletion,
   waitForCompletionWithObjectivePolling,
@@ -81,5 +91,6 @@ export {
   executeAllSteps,
   logStepResult,
   summarizeResults,
+  skippableFailuresAffectSuccess,
   logExecutionSummary,
 } from './execution';

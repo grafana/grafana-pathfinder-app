@@ -7,7 +7,7 @@ import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 
 import { ExitCode } from './exit-codes';
-import { findRunnerRoot, processPlaywrightResults, runPlaywrightTests } from './playwright-runner';
+import { findRunnerRoot, processPlaywrightResults, resolveStartingUrl, runPlaywrightTests } from './playwright-runner';
 
 jest.mock('child_process', () => ({
   spawn: jest.fn(),
@@ -36,6 +36,36 @@ describe('findRunnerRoot', () => {
     writeFileSync(join(runnerTestDir, 'guide-runner.spec.ts'), '');
 
     expect(findRunnerRoot(compiledModuleDir)).toBe(tempRoot);
+  });
+});
+
+describe('resolveStartingUrl', () => {
+  it('resolves a relative manifest location against the selected target', () => {
+    expect(resolveStartingUrl('https://play.grafana.org/', '/d/example/example?orgId=1')).toBe(
+      'https://play.grafana.org/d/example/example?orgId=1'
+    );
+  });
+
+  it('rejects a starting location on another origin', () => {
+    expect(() => resolveStartingUrl('https://play.grafana.org/', 'https://example.com/')).toThrow(/same origin/i);
+  });
+
+  it('rejects non-HTTP protocols', () => {
+    expect(() => resolveStartingUrl('https://play.grafana.org/', 'javascript:alert(1)')).toThrow(/protocol/i);
+  });
+
+  it('defaults an empty starting location to the target root', () => {
+    expect(resolveStartingUrl('http://localhost:3000', '')).toBe('http://localhost:3000/');
+  });
+
+  it('preserves query parameters and fragments', () => {
+    expect(resolveStartingUrl('http://localhost:3000', '/explore?orgId=1#panel-2')).toBe(
+      'http://localhost:3000/explore?orgId=1#panel-2'
+    );
+  });
+
+  it('rejects malformed absolute URLs', () => {
+    expect(() => resolveStartingUrl('http://localhost:3000', 'http://[invalid')).toThrow();
   });
 });
 
@@ -143,6 +173,7 @@ describe('runPlaywrightTests', () => {
         headed: false,
         artifacts: 'artifacts',
         alwaysScreenshot: false,
+        startingLocation: '/d/example/example',
       }
     );
     child.emit('close', 1);
@@ -156,6 +187,7 @@ describe('runPlaywrightTests', () => {
         join(runnerRoot, 'tests/e2e-runner/guide-runner.spec.ts'),
         `--config=${join(runnerRoot, 'tests/e2e-runner/playwright.config.ts')}`,
         '--project=chromium',
+        expect.stringMatching(/^--output=/),
       ],
       expect.objectContaining({
         cwd: runnerRoot,
@@ -176,6 +208,7 @@ describe('runPlaywrightTests', () => {
         headed: false,
         artifacts: join('output', 'artifacts'),
         alwaysScreenshot: false,
+        startingLocation: '/d/example/example',
       }
     );
     const spawnOptions = spawnMock.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
@@ -183,6 +216,131 @@ describe('runPlaywrightTests', () => {
     await resultPromise;
 
     expect(spawnOptions.env?.ARTIFACTS_DIR).toBe(resolve(process.cwd(), 'output', 'artifacts'));
+    expect(spawnOptions.env?.STARTING_LOCATION).toBe('/d/example/example');
+  });
+
+  it('cleans the per-invocation Playwright output when tracing is disabled', async () => {
+    const child = new EventEmitter();
+    const fsModule = jest.requireActual<typeof import('fs')>('fs');
+    const rmSpy = jest.spyOn(fsModule, 'rmSync');
+    spawnMock.mockImplementation(() => child as never);
+    try {
+      const resultPromise = runPlaywrightTests(
+        { path: 'fixture.json', content: '{}' },
+        {
+          targetUrl: 'http://localhost:3000',
+          verbose: false,
+          trace: false,
+          headed: false,
+          artifacts: 'artifacts',
+          alwaysScreenshot: false,
+          startingLocation: '/',
+        }
+      );
+      const args = spawnMock.mock.calls[0]?.[1] as string[];
+      const outputDir = args.find((arg) => arg.startsWith('--output='))?.slice('--output='.length);
+      child.emit('close', 1);
+      await resultPromise;
+
+      expect(rmSpy).toHaveBeenCalledWith(outputDir, expect.objectContaining({ recursive: true, force: true }));
+    } finally {
+      rmSpy.mockRestore();
+    }
+  });
+
+  it('cleans up the temp directory when starting-location validation rejects', async () => {
+    const fsModule = jest.requireActual<typeof import('fs')>('fs');
+    const rmSpy = jest.spyOn(fsModule, 'rmSync');
+
+    try {
+      await expect(
+        runPlaywrightTests(
+          { path: 'fixture.json', content: '{}' },
+          {
+            targetUrl: 'https://play.grafana.org',
+            startingLocation: 'https://example.com',
+            verbose: false,
+            trace: false,
+            headed: false,
+            artifacts: 'artifacts',
+            alwaysScreenshot: false,
+          }
+        )
+      ).rejects.toThrow(/same origin/i);
+
+      expect(spawnMock).not.toHaveBeenCalled();
+      expect(rmSpy).toHaveBeenCalledWith(
+        expect.stringContaining('pathfinder-e2e-'),
+        expect.objectContaining({ recursive: true, force: true })
+      );
+    } finally {
+      rmSpy.mockRestore();
+    }
+  });
+
+  it('enables Playwright tracing when bearer-token authentication is absent', async () => {
+    const child = new EventEmitter();
+    const fsModule = jest.requireActual<typeof import('fs')>('fs');
+    const rmSpy = jest.spyOn(fsModule, 'rmSync');
+    spawnMock.mockImplementation(() => child as never);
+    try {
+      const resultPromise = runPlaywrightTests(
+        { path: 'fixture.json', content: '{}' },
+        {
+          targetUrl: 'http://localhost:3000',
+          verbose: false,
+          trace: true,
+          headed: false,
+          artifacts: 'artifacts',
+          alwaysScreenshot: false,
+          startingLocation: '/',
+        }
+      );
+      const args = spawnMock.mock.calls[0]?.[1] as string[];
+      const spawnOptions = spawnMock.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
+      const outputDir = args.find((arg) => arg.startsWith('--output='))?.slice('--output='.length);
+      child.emit('close', 1);
+      await resultPromise;
+
+      expect(args).toEqual(expect.arrayContaining(['--trace', 'on']));
+      expect(spawnOptions.env?.E2E_TRACE).toBe('true');
+      expect(rmSpy).not.toHaveBeenCalledWith(outputDir, expect.objectContaining({ recursive: true, force: true }));
+    } finally {
+      rmSpy.mockRestore();
+    }
+  });
+
+  it('disables Playwright tracing when bearer-token authentication is active', async () => {
+    const child = new EventEmitter();
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    spawnMock.mockImplementation(() => child as never);
+    try {
+      const resultPromise = runPlaywrightTests(
+        { path: 'fixture.json', content: '{}' },
+        {
+          targetUrl: 'https://play.grafana.org',
+          verbose: false,
+          trace: true,
+          headed: false,
+          artifacts: 'artifacts',
+          alwaysScreenshot: false,
+          startingLocation: '/',
+          token: 'test-token',
+        }
+      );
+      const args = spawnMock.mock.calls[0]?.[1] as string[];
+      const spawnOptions = spawnMock.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
+      child.emit('close', 1);
+      await resultPromise;
+
+      expect(args).not.toContain('--trace');
+      expect(spawnOptions.env?.E2E_TRACE).toBe('false');
+      expect(warnSpy).toHaveBeenCalledWith(
+        '   ⚠ Trace disabled for bearer-token authentication because traces can contain credentials'
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it.each([
@@ -206,6 +364,7 @@ describe('runPlaywrightTests', () => {
         headed: false,
         artifacts: 'artifacts',
         alwaysScreenshot: false,
+        startingLocation: '/',
       }
     );
 

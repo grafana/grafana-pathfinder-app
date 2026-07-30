@@ -2,14 +2,16 @@
  * Skill / rule reference graph tests.
  *
  * Walks every agent-facing prose file in the repo — `.cursor/skills/*\/SKILL.md`,
- * `.cursor/rules/*.mdc`, `AGENTS.md`, `CLAUDE.md` — and asserts that the things
- * those files point at still exist:
+ * `.claude/skills/*\/SKILL.md`, `.cursor/rules/*.mdc`, `AGENTS.md`, `CLAUDE.md` —
+ * and asserts that the things those files point at still exist:
  *
  *   1. Repo path refs (in backticks) resolve to a real file on disk.
  *   2. Adjacent heading refs (`` `<file>.md` "<heading>" `` or `` `<file>.md` § <heading> ``)
  *      resolve to a real heading in the target file.
  *   3. Code IDs (F1–F6, R1–R21, QC1–QC8, G1–G7) are defined in their
  *      canonical source-of-truth file.
+ *   4. Every `.cursor/skills/` body has a matching `.claude/skills/` pointer stub
+ *      with identical frontmatter, and vice versa.
  *
  * Why this exists: F-2 (per docs/design/AGENT_HARDENING.md) was a real bug
  * where `.cursor/skills/prevent-doc-drift/SKILL.md` instructed the skill to
@@ -47,14 +49,27 @@ function makeProseFile(label: string, absPath: string): ProseFile {
   return { label, absPath, raw, stripped: stripFencedCodeBlocks(raw) };
 }
 
+const SKILL_SOURCE_DIR = '.cursor/skills';
+const SKILL_STUB_DIR = '.claude/skills';
+
+function skillNamesIn(relDir: string): string[] {
+  const abs = path.join(REPO_ROOT, relDir);
+  if (!fs.existsSync(abs)) {
+    return [];
+  }
+  return fs
+    .readdirSync(abs)
+    .filter((name) => fs.existsSync(path.join(abs, name, 'SKILL.md')))
+    .sort();
+}
+
 function loadProseFiles(): ProseFile[] {
   const out: ProseFile[] = [];
 
-  const skillsDir = path.join(REPO_ROOT, '.cursor', 'skills');
-  for (const name of fs.readdirSync(skillsDir).sort()) {
-    const f = path.join(skillsDir, name, 'SKILL.md');
-    if (fs.existsSync(f)) {
-      out.push(makeProseFile(`.cursor/skills/${name}/SKILL.md`, f));
+  for (const relDir of [SKILL_SOURCE_DIR, SKILL_STUB_DIR]) {
+    for (const name of skillNamesIn(relDir)) {
+      const rel = `${relDir}/${name}/SKILL.md`;
+      out.push(makeProseFile(rel, path.join(REPO_ROOT, rel)));
     }
   }
 
@@ -62,6 +77,28 @@ function loadProseFiles(): ProseFile[] {
   for (const name of fs.readdirSync(rulesDir).sort()) {
     if (name.endsWith('.mdc')) {
       out.push(makeProseFile(`.cursor/rules/${name}`, path.join(rulesDir, name)));
+      continue;
+    }
+    // Rule sets too large to load whole are split into a subdirectory beside
+    // their index. Walk those too, or their refs go unvalidated.
+    const nested = path.join(rulesDir, name);
+    if (!fs.statSync(nested).isDirectory()) {
+      continue;
+    }
+    for (const child of fs.readdirSync(nested).sort()) {
+      if (child.endsWith('.mdc')) {
+        out.push(makeProseFile(`.cursor/rules/${name}/${child}`, path.join(nested, child)));
+        continue;
+      }
+      // The walk is deliberately one level deep. A rule buried deeper would
+      // escape every check in this file, so refuse to walk instead.
+      if (fs.statSync(path.join(nested, child)).isDirectory()) {
+        throw new Error(
+          `.cursor/rules/${name}/${child}/ nests rules two levels deep, which this walker does not ` +
+            `reach — its path, heading, and code-ID references would go unvalidated. Flatten it into ` +
+            `.cursor/rules/${name}/, or extend loadProseFiles() to recurse.`
+        );
+      }
     }
   }
 
@@ -84,7 +121,7 @@ function loadProseFiles(): ProseFile[] {
 // `node_modules/...` or imports from external packages.
 
 const PATH_REF_RE =
-  /`((?:\.cursor\/(?:skills|rules)|docs\/(?:design|developer)|src|pkg|scripts|\.github)\/[A-Za-z0-9_./@-]+|AGENTS\.md|CLAUDE\.md|CHANGELOG\.md|README\.md|package\.json|tsconfig\.json|eslint\.config\.mjs|playwright\.config\.ts|Magefile\.go)(?::\d+)?(?:#[A-Za-z0-9_-]+)?`/g;
+  /`((?:\.cursor\/(?:skills|rules)|\.claude\/skills|docs\/(?:design|developer)|src|pkg|scripts|\.github)\/[A-Za-z0-9_./@-]+|AGENTS\.md|CLAUDE\.md|CHANGELOG\.md|README\.md|package\.json|tsconfig\.json|eslint\.config\.mjs|playwright\.config\.ts|Magefile\.go)(?::\d+)?(?:#[A-Za-z0-9_-]+)?`/g;
 
 /**
  * Paths that legitimately appear in narrative prose but do not correspond to
@@ -410,6 +447,86 @@ describe('Skill/rule reference graph — code IDs', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 4. Skill stub parity
+// ---------------------------------------------------------------------------
+//
+// Skill bodies live in `.cursor/skills/` so Cursor can read them. Claude Code
+// only discovers skills under `.claude/skills/`, so each body has a committed
+// pointer stub there carrying the same frontmatter. Two directories means two
+// chances to drift; these assertions close that gap. The name-set equality also
+// catches a personal skill accidentally committed into `.claude/skills/`, which
+// `.gitignore` deliberately no longer blocks.
+
+const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n/;
+
+function readFrontmatter(rel: string): string {
+  const raw = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf-8');
+  const m = raw.match(FRONTMATTER_RE);
+  if (!m || m[1] === undefined) {
+    throw new Error(`${rel} has no YAML frontmatter block.`);
+  }
+  return m[1];
+}
+
+describe('Skill stub parity — .cursor/skills ↔ .claude/skills', () => {
+  const sourceNames = skillNamesIn(SKILL_SOURCE_DIR);
+  const stubNames = skillNamesIn(SKILL_STUB_DIR);
+
+  it('at least one skill is discovered', () => {
+    expect(sourceNames.length).toBeGreaterThan(0);
+  });
+
+  it('both directories hold exactly the same skill names', () => {
+    const missingStub = sourceNames.filter((n) => !stubNames.includes(n));
+    const orphanStub = stubNames.filter((n) => !sourceNames.includes(n));
+
+    const problems: string[] = [];
+    if (missingStub.length > 0) {
+      problems.push(
+        `Missing pointer stubs (Claude Code cannot see these skills):\n` +
+          missingStub.map((n) => `  - ${SKILL_STUB_DIR}/${n}/SKILL.md`).join('\n')
+      );
+    }
+    if (orphanStub.length > 0) {
+      problems.push(
+        `Stubs with no ${SKILL_SOURCE_DIR} body (delete the stub, or add the body if the skill is real). ` +
+          `A personal skill you do not want committed belongs in ~/.claude/skills/, which is outside the repo:\n` +
+          orphanStub.map((n) => `  - ${SKILL_STUB_DIR}/${n}/SKILL.md`).join('\n')
+      );
+    }
+
+    if (problems.length > 0) {
+      throw new Error(
+        `${SKILL_SOURCE_DIR} and ${SKILL_STUB_DIR} are out of sync:\n\n${problems.join('\n\n')}\n\n` +
+          `Every skill needs both: the body in ${SKILL_SOURCE_DIR}/<name>/SKILL.md and a pointer ` +
+          `stub in ${SKILL_STUB_DIR}/<name>/SKILL.md whose frontmatter matches it.`
+      );
+    }
+  });
+
+  const paired = sourceNames.filter((n) => stubNames.includes(n));
+
+  it.each(paired)('%s: stub frontmatter matches its source verbatim', (name) => {
+    const sourceRel = `${SKILL_SOURCE_DIR}/${name}/SKILL.md`;
+    const stubRel = `${SKILL_STUB_DIR}/${name}/SKILL.md`;
+    expect(readFrontmatter(stubRel)).toBe(readFrontmatter(sourceRel));
+  });
+
+  it.each(paired)('%s: stub body points at its source', (name) => {
+    const sourceRel = `${SKILL_SOURCE_DIR}/${name}/SKILL.md`;
+    const stubRel = `${SKILL_STUB_DIR}/${name}/SKILL.md`;
+    const body = fs.readFileSync(path.join(REPO_ROOT, stubRel), 'utf-8').replace(FRONTMATTER_RE, '');
+    expect(body).toContain(`\`${sourceRel}\``);
+  });
+
+  it.each(paired)('%s: frontmatter declares a name matching its directory', (name) => {
+    // Anchored: a substring match would let directory `review` pass on `name: reviewer`.
+    const declared = new RegExp(`^name: ${name}\\s*$`, 'm');
+    expect(readFrontmatter(`${SKILL_SOURCE_DIR}/${name}/SKILL.md`)).toMatch(declared);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Negative-test fixtures: confirm the parser/comparison logic actually
 // detects breakage on a hand-crafted bad input. Keeps the assertion path
 // exercised even when every real prose file happens to be clean.
@@ -445,5 +562,103 @@ describe('Skill/rule reference graph — self-tests', () => {
     const matches = [...stripped.matchAll(PATH_REF_RE)].map((m) => m[1]);
     expect(matches).toContain('src/module.ts');
     expect(matches).not.toContain('src/does-not-exist.ts');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Split rule-set parity: index table ↔ themed detail files
+// ---------------------------------------------------------------------------
+//
+// `react-antipatterns.mdc` is an index whose table names every R-code and
+// routes it to a themed file holding the actual rule. Two surfaces means a
+// rule can be dropped in a move and still look present in the index — which
+// is exactly what the reader would trust. Assert the sets match.
+
+const RA_INDEX = '.cursor/rules/react-antipatterns.mdc';
+const RA_DETAIL_DIR = '.cursor/rules/react-antipatterns';
+
+describe('Split rule-set parity — react-antipatterns index ↔ detail files', () => {
+  const indexCodes = [
+    ...new Set(
+      [...fs.readFileSync(path.join(REPO_ROOT, RA_INDEX), 'utf-8').matchAll(/\|\s*(R\d+)\s*\|/g)].map((m) => m[1]!)
+    ),
+  ];
+
+  const detailCodes = new Map<string, string>();
+  const duplicates: Array<{ code: string; files: string[] }> = [];
+  for (const file of fs.readdirSync(path.join(REPO_ROOT, RA_DETAIL_DIR)).sort()) {
+    if (!file.endsWith('.mdc')) {
+      continue;
+    }
+    const content = fs.readFileSync(path.join(REPO_ROOT, RA_DETAIL_DIR, file), 'utf-8');
+    for (const m of content.matchAll(/^## (R\d+) — /gm)) {
+      const code = m[1]!;
+      const existing = detailCodes.get(code);
+      if (existing !== undefined) {
+        duplicates.push({ code, files: [existing, file] });
+        continue;
+      }
+      detailCodes.set(code, file);
+    }
+  }
+
+  it('index table is non-empty', () => {
+    expect(indexCodes.length).toBeGreaterThan(0);
+  });
+
+  it('no rule is defined in more than one detail file', () => {
+    if (duplicates.length > 0) {
+      throw new Error(
+        `A rule must live in exactly one file:\n` +
+          duplicates.map(({ code, files }) => `  - ${code} is defined in both ${files.join(' and ')}`).join('\n')
+      );
+    }
+  });
+
+  it('every code in the index table has a rule in a detail file', () => {
+    const orphans = indexCodes.filter((c) => !detailCodes.has(c));
+    if (orphans.length > 0) {
+      throw new Error(
+        `${RA_INDEX} routes codes that no detail file defines: ${orphans.join(', ')}.\n` +
+          `Add a \`## <code> — <title>\` section in the themed file the index points at, ` +
+          `or remove the row.`
+      );
+    }
+  });
+
+  it('every rule in a detail file is listed in the index table', () => {
+    const unlisted = [...detailCodes.entries()].filter(([code]) => !indexCodes.includes(code));
+    if (unlisted.length > 0) {
+      throw new Error(
+        `Rules exist but are unreachable from ${RA_INDEX}:\n` +
+          unlisted.map(([code, file]) => `  - ${code} (in ${file})`).join('\n') +
+          `\nAdd a row to the index table so the rule can be found.`
+      );
+    }
+  });
+
+  it('the index routes each code to the file that actually defines it', () => {
+    const rows = [
+      ...fs
+        .readFileSync(path.join(REPO_ROOT, RA_INDEX), 'utf-8')
+        .matchAll(/\|\s*(R\d+)\s*\|[^|]*\|[^|]*\|\s*`([^`]+)`\s*\|/g),
+    ];
+    expect(rows.length).toBe(indexCodes.length);
+
+    const misrouted = rows
+      .map((m) => ({ code: m[1]!, target: m[2]! }))
+      .filter(({ code, target }) => {
+        const actual = detailCodes.get(code);
+        return actual !== undefined && target !== `${RA_DETAIL_DIR}/${actual}`;
+      });
+
+    if (misrouted.length > 0) {
+      throw new Error(
+        `${RA_INDEX} points at the wrong file for:\n` +
+          misrouted
+            .map(({ code, target }) => `  - ${code}: index says \`${target}\`, rule is in ${detailCodes.get(code)}`)
+            .join('\n')
+      );
+    }
   });
 });

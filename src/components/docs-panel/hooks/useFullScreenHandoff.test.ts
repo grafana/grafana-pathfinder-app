@@ -39,13 +39,13 @@ function dispatchFullScreen() {
 }
 
 describe('useFullScreenHandoff', () => {
-  let setModeSpy: jest.SpyInstance;
+  let setModePersistedSpy: jest.SpyInstance;
   let setPendingGuideSpy: jest.SpyInstance;
   let capturePriorPathSpy: jest.SpyInstance;
   let publishMock: jest.Mock;
 
   beforeEach(() => {
-    setModeSpy = jest.spyOn(panelModeManager, 'setMode').mockImplementation(() => {});
+    setModePersistedSpy = jest.spyOn(panelModeManager, 'setModePersisted').mockImplementation(() => {});
     setPendingGuideSpy = jest.spyOn(panelModeManager, 'setPendingGuide').mockImplementation(() => {});
     capturePriorPathSpy = jest.spyOn(panelModeManager, 'capturePriorPath').mockImplementation(() => {});
     publishMock = jest.fn();
@@ -78,7 +78,7 @@ describe('useFullScreenHandoff', () => {
       type: 'alert-info',
       payload: ['Leave the live session before switching to full screen.'],
     });
-    expect(setModeSpy).not.toHaveBeenCalled();
+    expect(setModePersistedSpy).not.toHaveBeenCalled();
     expect(locationService.push).not.toHaveBeenCalled();
   });
 
@@ -92,7 +92,7 @@ describe('useFullScreenHandoff', () => {
 
     expect(setPendingGuideSpy).toHaveBeenCalledWith({ title: 'Block editor', type: 'editor' });
     expect(capturePriorPathSpy).toHaveBeenCalledTimes(1);
-    expect(setModeSpy).toHaveBeenCalledWith('fullscreen');
+    expect(setModePersistedSpy).toHaveBeenCalledWith('fullscreen');
     expect(locationService.push).toHaveBeenCalledWith(expect.stringContaining('/fullscreen'));
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.FullScreenEnter, {
       guide_url: '',
@@ -103,7 +103,7 @@ describe('useFullScreenHandoff', () => {
 
   it('refuses recommendations tab with an alert', () => {
     const { model } = makeModel({
-      tabs: [{ id: 'recommendations', type: 'docs', title: 'Recs', baseUrl: '' }],
+      tabs: [{ id: 'recommendations', type: 'recommendations', title: 'Recs', baseUrl: '' }],
       activeTabId: 'recommendations',
     });
     renderHook(() => useFullScreenHandoff(model, false));
@@ -113,7 +113,7 @@ describe('useFullScreenHandoff', () => {
       type: 'alert-info',
       payload: ['Open a guide before switching to full screen.'],
     });
-    expect(setModeSpy).not.toHaveBeenCalled();
+    expect(setModePersistedSpy).not.toHaveBeenCalled();
   });
 
   it('refuses devtools tab with an alert', () => {
@@ -128,7 +128,7 @@ describe('useFullScreenHandoff', () => {
       type: 'alert-info',
       payload: ['Open a guide before switching to full screen.'],
     });
-    expect(setModeSpy).not.toHaveBeenCalled();
+    expect(setModePersistedSpy).not.toHaveBeenCalled();
   });
 
   it('hands off the active learning-journey using currentUrl with doc + guideType in the URL', () => {
@@ -155,7 +155,7 @@ describe('useFullScreenHandoff', () => {
       packageInfo: { packageId: 'pkg-y' },
     });
     expect(capturePriorPathSpy).toHaveBeenCalledTimes(1);
-    expect(setModeSpy).toHaveBeenCalledWith('fullscreen');
+    expect(setModePersistedSpy).toHaveBeenCalledWith('fullscreen');
     const pushedUrl = (locationService.push as jest.Mock).mock.calls[0][0];
     expect(pushedUrl).toContain('doc=');
     expect(pushedUrl).toContain('type=learning-journey');

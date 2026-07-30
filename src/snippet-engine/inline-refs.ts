@@ -25,21 +25,10 @@ export async function inlineSnippetRefsInBlocks(
   blocks: JsonBlock[],
   resolver: SnippetResolver = getSnippetResolver()
 ): Promise<JsonBlock[]> {
-  // Resolve all unique ref ids in parallel before the synchronous splice walk.
-  const ids = new Set<string>();
-  collectRefIds(blocks, ids);
-
-  if (ids.size === 0) {
+  const resolutions = await resolveRefs(blocks, resolver);
+  if (resolutions.size === 0) {
     return blocks;
   }
-
-  const resolutions = new Map<string, SnippetResolution>();
-  await Promise.all(
-    [...ids].map(async (id) => {
-      resolutions.set(id, await resolver.resolve(id));
-    })
-  );
-
   return spliceBlocks(blocks, resolutions);
 }
 
@@ -49,6 +38,43 @@ export async function inlineSnippetRefsInGuide(
 ): Promise<JsonGuide> {
   const blocks = await inlineSnippetRefsInBlocks(guide.blocks, resolver);
   return { ...guide, blocks };
+}
+
+/** Result of an expansion that also reports which refs could not be resolved. */
+export interface InlineWithStatusResult {
+  guide: JsonGuide;
+  /** IDs of snippet refs that failed to resolve (rendered as inert placeholders). */
+  unresolvedSnippetIds: string[];
+}
+
+/**
+ * Like {@link inlineSnippetRefsInGuide} but also reports the ids that failed to
+ * resolve. A failed ref is spliced in as an inert markdown placeholder (same as
+ * the plain path), so its id would otherwise be invisible to a downstream
+ * classifier — callers that must fail safe on a hidden action use this.
+ */
+export async function inlineSnippetRefsInGuideWithStatus(
+  guide: JsonGuide,
+  resolver: SnippetResolver = getSnippetResolver()
+): Promise<InlineWithStatusResult> {
+  const resolutions = await resolveRefs(guide.blocks, resolver);
+  const unresolvedSnippetIds = [...resolutions.values()].filter((r) => !r.ok).map((r) => r.id);
+  const blocks = resolutions.size === 0 ? guide.blocks : spliceBlocks(guide.blocks, resolutions);
+  return { guide: { ...guide, blocks }, unresolvedSnippetIds };
+}
+
+/** Resolve every unique ref id in the tree in parallel. Empty map when there are no refs. */
+async function resolveRefs(blocks: JsonBlock[], resolver: SnippetResolver): Promise<Map<string, SnippetResolution>> {
+  const ids = new Set<string>();
+  collectRefIds(blocks, ids);
+
+  const resolutions = new Map<string, SnippetResolution>();
+  await Promise.all(
+    [...ids].map(async (id) => {
+      resolutions.set(id, await resolver.resolve(id));
+    })
+  );
+  return resolutions;
 }
 
 /** True if any block in the guide tree is a `snippet-ref`. */

@@ -71,6 +71,9 @@ describe('panelModeManager', () => {
       localStorage.setItem(StorageKeys.PANEL_MODE, 'fullscreen');
       panelModeManager.setMode('fullscreen');
       expect(publishMock).not.toHaveBeenCalled();
+      // commit() runs before the same-mode early return, so pin the stored
+      // VALUE too (it is legitimately rewritten, but must not change).
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('fullscreen');
     });
 
     it('dispatches pathfinder-panel-mode-change with previous and next modes', () => {
@@ -157,6 +160,187 @@ describe('panelModeManager', () => {
       panelModeManager.capturePriorPath('/dashboards');
       panelModeManager.capturePriorPath('/connections');
       expect(panelModeManager.consumePriorPath()).toBe('/connections');
+    });
+  });
+
+  describe('setModeTransient', () => {
+    // The manager is a singleton: end any open round-trip (only the deliberate
+    // setModePersisted does that) and clear the in-memory override so the next
+    // test reads a clean localStorage state.
+    afterEach(() => {
+      panelModeManager.setModePersisted('sidebar');
+      localStorage.clear();
+    });
+
+    it('does NOT persist the mode to localStorage (user preference untouched)', () => {
+      panelModeManager.setModeTransient('fullscreen');
+      expect(panelModeManager.getMode()).toBe('fullscreen');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBeNull();
+    });
+
+    it('preserves an existing persisted preference under the transient override', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+      panelModeManager.setModeTransient('fullscreen');
+      expect(panelModeManager.getMode()).toBe('fullscreen');
+      // The stored preference is still 'floating' — only the in-memory override changed.
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+    });
+
+    it('runs the same side effects as setMode (close-extension-sidebar)', () => {
+      panelModeManager.setModeTransient('fullscreen');
+      expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'close-extension-sidebar' }));
+    });
+
+    it('does not persist the base sidebar teardown of a round-trip', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+      panelModeManager.setModeTransient('fullscreen');
+      panelModeManager.setMode('sidebar');
+      expect(panelModeManager.getMode()).toBe('sidebar');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+    });
+  });
+
+  describe('transient-session persistence suppression (locked decision 2)', () => {
+    // An auto-launch round-trip's automatic teardown never ends the session
+    // (only a deliberate setModePersisted or a reload does), so the singleton
+    // would leak its in-memory override across tests. Load a fresh instance per
+    // test to simulate a clean page load.
+    let manager!: typeof panelModeManager;
+    beforeEach(() => {
+      jest.isolateModules(() => {
+        manager = jest.requireActual('./panel-mode').panelModeManager;
+      });
+    });
+
+    // Each surface: stored pref = floating → auto-launch enter → teardown via the
+    // persistence-agnostic setMode('sidebar') exit call (as every exit / close /
+    // restoration site does) → stored pref STILL floating.
+    it.each(['fullscreen', 'floating', 'sidebar'] as const)(
+      'never overwrites a non-default preference across a transient %s launch round-trip',
+      (surface) => {
+        localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+
+        manager.setModeTransient(surface);
+        expect(manager.getMode()).toBe(surface);
+
+        manager.setMode('sidebar');
+
+        expect(manager.getMode()).toBe('sidebar');
+        expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+      }
+    );
+
+    it('never persists an automatic auto-dock to FLOATING (full-screen → floating when sidebar occupied)', () => {
+      // review-4: stored pref = sidebar; a reading-only guide auto-launches
+      // full screen; navigating away auto-docks to FLOATING (another plugin owns
+      // the extension sidebar). That automatic teardown must not overwrite the
+      // stored 'sidebar' preference with 'floating'.
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'sidebar');
+
+      manager.setModeTransient('fullscreen');
+      manager.setMode('floating');
+
+      expect(manager.getMode()).toBe('floating');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
+    });
+
+    it('reloading a transient full-screen launch keeps the stored preference intact', () => {
+      // A transient launch pushes a real, reloadable /fullscreen?doc=… URL but
+      // transiency lives in memory only. After a reload (fresh manager,
+      // preserved localStorage) FullScreenPanel's reconcile effect sees the
+      // mode mismatch and re-aligns to the route — that write must be
+      // transient, or the reload persists 'fullscreen' over the preference.
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'sidebar');
+
+      // FullScreenPanel reconcile on a cold /fullscreen load (see the
+      // panel-mode-surface-toggles contract test pinning the call site).
+      if (manager.getMode() !== 'fullscreen') {
+        manager.setModeTransient('fullscreen');
+      }
+
+      expect(manager.getMode()).toBe('fullscreen');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
+    });
+
+    it('resumes persistence for a deliberate surface change after a round-trip', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+
+      // Auto-launch a reading-only guide (transient) and exit to sidebar.
+      manager.setModeTransient('fullscreen');
+      manager.setMode('sidebar');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+
+      // A deliberate change goes through the persisting path and persists.
+      manager.setModePersisted('fullscreen');
+      expect(manager.getMode()).toBe('fullscreen');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('fullscreen');
+    });
+
+    it('setModePersisted persists, ends the session, and lets subsequent setMode persist', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'sidebar');
+
+      // Deliberate pop-out mid-round-trip persists and ends the session.
+      manager.setModeTransient('fullscreen');
+      manager.setModePersisted('floating');
+      expect(manager.getMode()).toBe('floating');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+
+      // Session ended → a plain setMode now persists as a normal user choice.
+      manager.setMode('fullscreen');
+      expect(manager.getMode()).toBe('fullscreen');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('fullscreen');
+    });
+
+    it('persists a manually entered surface on exit (no transient session)', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+
+      manager.setMode('fullscreen');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('fullscreen');
+      manager.setMode('sidebar');
+
+      expect(manager.getMode()).toBe('sidebar');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
+    });
+  });
+
+  describe('deliberate dock to sidebar persists consistently (decision 3, #1449)', () => {
+    // The floating dock-to-sidebar pill calls setModePersisted('sidebar')
+    // (FloatingPanelManager.handleSwitchToSidebar). Its whole point is that the
+    // outcome must NOT depend on invisible session history — the flow-1 bug was
+    // that a guide auto-launched earlier in the session silently turned the
+    // dock's persist into a no-op. Both paths below must land on 'sidebar'.
+    let manager!: typeof panelModeManager;
+    beforeEach(() => {
+      jest.isolateModules(() => {
+        manager = jest.requireActual('./panel-mode').panelModeManager;
+      });
+    });
+
+    it('persists sidebar for a floating-preference user in a fresh session', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+      manager.setModePersisted('sidebar');
+      expect(manager.getMode()).toBe('sidebar');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
+    });
+
+    it('persists sidebar even mid transient session (no invisible-history dependence)', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+      // A guide was auto-launched earlier in the session (transient session open).
+      manager.setModeTransient('floating');
+      // The user then deliberately docks to the sidebar.
+      manager.setModePersisted('sidebar');
+      expect(manager.getMode()).toBe('sidebar');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
+    });
+
+    it('contrasts with the conditional fullscreen return, which stays transient-safe', () => {
+      // Same starting state, but the fullscreen back-arrow uses plain setMode:
+      // leaving a transient launch must NOT overwrite the stored preference.
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+      manager.setModeTransient('fullscreen');
+      manager.setMode('sidebar');
+      expect(manager.getMode()).toBe('sidebar');
+      expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
     });
   });
 });

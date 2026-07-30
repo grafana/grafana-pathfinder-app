@@ -1,6 +1,7 @@
 import { getDocsLinkFromEvent } from 'global-state/utils.link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { reportAppInteraction, UserInteraction } from 'lib/analytics';
+import { AUTO_OPEN_DOCS_EVENT } from 'lib/event-names';
 import type { QueuedDocsLink } from 'types/link-interception.types';
 
 /**
@@ -32,7 +33,7 @@ class GlobalLinkInterceptionState {
     // if sidebar is mounted, auto-open the link
     if (sidebarState.getIsSidebarMounted()) {
       document.dispatchEvent(
-        new CustomEvent('pathfinder-auto-open-docs', {
+        new CustomEvent(AUTO_OPEN_DOCS_EVENT, {
           detail: { ...docsLink, source: 'link_interception' },
         })
       );
@@ -86,11 +87,15 @@ class GlobalLinkInterceptionState {
 
       if (docsLink) {
         document.dispatchEvent(
-          new CustomEvent('pathfinder-auto-open-docs', {
+          new CustomEvent(AUTO_OPEN_DOCS_EVENT, {
             detail: {
               url: docsLink.url,
               title: docsLink.title,
               source: 'queued_link',
+              // Preserve a prepared (one-fetch) launch through the cold-sidebar
+              // queue: the key redeems the payload from guideLaunchStore at the
+              // listener's trusted boundary.
+              launchKey: docsLink.launchKey,
             },
           })
         );
