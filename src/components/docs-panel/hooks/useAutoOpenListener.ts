@@ -28,14 +28,35 @@
 import * as React from 'react';
 import { guideLaunchStore } from '../../../global-state/guide-launch';
 import { linkInterceptionState } from '../../../global-state/link-interception';
+import { panelModeManager, type PanelMode } from '../../../global-state/panel-mode';
 import { coerceLaunchSource } from '../../../recovery';
 import { AUTO_OPEN_DOCS_EVENT } from '../../../lib/event-names';
 import { isLearningJourneyUrl } from '../utils/url-validation';
 import type { DocsPanelModelOperations } from '../types';
 
-export function useAutoOpenListener(model: DocsPanelModelOperations): void {
+/**
+ * Mounted on every surface that renders a `DocsPanelModelOperations` model —
+ * the sidebar (`docs-panel.tsx`), the floating panel, and the full-screen page
+ * (#1450). `AUTO_OPEN_DOCS_EVENT` is fire-and-forget, so a dispatcher (link
+ * interception, `HomePanel`, the cold-sidebar queue drain) drops the launch if
+ * no live listener exists; before #1450 only the sidebar listened, so a
+ * docs-link click while floating/fullscreen owned the surface did nothing.
+ *
+ * `surface` is the panel mode this listener belongs to. The handler is
+ * mode-gated: it acts only when `panelModeManager.getMode()` matches, so during
+ * a dock-back — when the old and new surfaces are both briefly mounted — exactly
+ * one listener handles the event (and drains the queue) instead of two racing to
+ * open the same tab across two models.
+ */
+export function useAutoOpenListener(model: DocsPanelModelOperations, surface: PanelMode = 'sidebar'): void {
   React.useEffect(() => {
     const handleAutoOpen = (event: Event) => {
+      // Mode-gate (#1450): only the surface that currently owns the display
+      // acts. Prevents double-open during the transient dock-back overlap.
+      if (panelModeManager.getMode() !== surface) {
+        return;
+      }
+
       const customEvent = event as CustomEvent<{
         url: string;
         title: string;
@@ -79,5 +100,5 @@ export function useAutoOpenListener(model: DocsPanelModelOperations): void {
     return () => {
       document.removeEventListener(AUTO_OPEN_DOCS_EVENT, handleAutoOpen);
     };
-  }, [model]); // Only model as dependency - this component doesn't remount on tab changes
+  }, [model, surface]); // model is stable across tab changes; surface is stable per mount
 }
