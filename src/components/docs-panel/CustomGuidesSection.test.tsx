@@ -99,7 +99,13 @@ describe('CustomGuidesSection — path cards (launch bridge)', () => {
 
   it('drills in to show the member list, rendering locked members as disabled', async () => {
     mockResolvePackageMilestones.mockResolvedValue([
-      { number: 1, title: 'Alerting module 1', duration: '5-10 min', url: 'backend-guide:fe-alerting-01', isActive: false },
+      {
+        number: 1,
+        title: 'Alerting module 1',
+        duration: '5-10 min',
+        url: 'backend-guide:fe-alerting-01',
+        isActive: false,
+      },
       {
         number: 2,
         title: 'fe-alerting-02',

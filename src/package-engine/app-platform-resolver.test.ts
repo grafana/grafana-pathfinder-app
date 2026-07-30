@@ -2,12 +2,16 @@ import { of, throwError } from 'rxjs';
 import { AppPlatformPackageResolver } from './app-platform-resolver';
 
 let mockNamespace: string | undefined = 'stacks-123';
+let mockFeatureToggles: Record<string, boolean> = { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true };
 const mockFetch = jest.fn();
 
 jest.mock('@grafana/runtime', () => ({
   config: {
     get namespace() {
       return mockNamespace;
+    },
+    get featureToggles() {
+      return mockFeatureToggles;
     },
   },
   getBackendSrv: () => ({ fetch: mockFetch }),
@@ -30,6 +34,7 @@ const okResource = (overrides: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockNamespace = 'stacks-123';
+  mockFeatureToggles = { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true };
 });
 
 describe('AppPlatformPackageResolver — no loadContent', () => {
@@ -53,6 +58,19 @@ describe('AppPlatformPackageResolver — no loadContent', () => {
     const result = await resolver.resolve('fe-alerting-01');
 
     expect(result.ok).toBe(false);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('declines (not-found) when the GAP aggregation toggle is off', async () => {
+    mockFeatureToggles = {};
+    const resolver = new AppPlatformPackageResolver();
+    const result = await resolver.resolve('fe-alerting-01', { loadContent: true });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.code).toBe('not-found');
     expect(mockFetch).not.toHaveBeenCalled();
   });
 });

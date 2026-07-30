@@ -12,7 +12,8 @@
  * resolutions from here (see CompositePackageResolver's repository check).
  *
  * @coupling Types: PackageResolver, PackageResolution in package.types.ts
- * @coupling API: GET /apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/{ns}/interactiveguides/{name}
+ * @coupling API: GET /apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{ns}/interactiveguides/{name}
+ *   — group/version/availability come from utils/interactive-guides-api.ts (GAP).
  * @coupling Catalogue/listing needs (Custom Guides, My Learning) go through the
  *   separate /custom-guide-repository backend proxy instead of this resolver —
  *   a raw per-ID resolve() here doesn't give a cheap way to enumerate packages.
@@ -20,6 +21,8 @@
 
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
+
+import { isBackendApiAvailable, itemUrl } from '../utils/interactive-guides-api';
 
 import { ManifestJsonObjectSchema } from '../types/package.schema';
 import type {
@@ -90,6 +93,13 @@ export class AppPlatformPackageResolver implements PackageResolver {
       return failure(packageId, 'not-found', 'No namespace available to resolve app-platform package');
     }
 
+    // GAP gate: when the aggregation toggle is off the interactiveguides API
+    // isn't served here, so decline (composite resolver falls through) rather
+    // than issue a doomed request.
+    if (!isBackendApiAvailable()) {
+      return failure(packageId, 'not-found', 'App Platform backend is not available on this instance');
+    }
+
     // Scheme is internal to the package-engine/docs-retrieval loader pipeline,
     // not a leaked App Platform detail. manifestUrl is deliberately opaque —
     // the manifest itself is already inlined on the resolution, so nothing
@@ -112,9 +122,10 @@ export class AppPlatformPackageResolver implements PackageResolver {
     const metadataOnly = options.loadContent === 'metadata-only';
 
     try {
-      // SECURITY: encode packageId to prevent path traversal (F3) — mirrors
-      // fetchBackendInteractive in docs-retrieval/content-fetcher/backend-guide.ts.
-      const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${encodeURIComponent(packageId)}`;
+      // SECURITY: itemUrl encodes both namespace and packageId to prevent path
+      // traversal (F3) — mirrors fetchBackendInteractive in
+      // docs-retrieval/content-fetcher/backend-guide.ts.
+      const url = itemUrl(namespace, packageId);
       const response = await lastValueFrom(
         getBackendSrv().fetch<InteractiveGuideResource>({ url, method: 'GET', showErrorAlert: false })
       );
