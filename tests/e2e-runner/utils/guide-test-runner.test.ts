@@ -30,7 +30,8 @@ import {
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
   TIMEOUT_PER_GUIDED_SUBSTEP_MS,
 } from './guide-runner';
-import type { StepTestResult, TestableStep } from './guide-runner';
+import { printDetailedSummary } from './console-reporter';
+import type { AllStepsResult, StepTestResult, TestableStep } from './guide-runner';
 
 // ============================================
 // Test Fixtures
@@ -183,6 +184,31 @@ describe('calculateStepTimeout', () => {
     const timeout = calculateStepTimeout(step);
 
     expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS + 4 * TIMEOUT_PER_GUIDED_SUBSTEP_MS);
+  });
+});
+
+describe('printDetailedSummary', () => {
+  let consoleSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+  });
+
+  afterEach(() => {
+    consoleSpy.mockRestore();
+  });
+
+  it('explains that skippable failures affect a zero-pass result', () => {
+    const results = [
+      createStepResult({ stepId: 'step-1', status: 'failed', skippable: true }),
+      createStepResult({ stepId: 'step-2', status: 'skipped', skipReason: 'requirements_unmet' }),
+    ];
+    const allStepsResult: AllStepsResult = { results, aborted: false };
+
+    printDetailedSummary(results, allStepsResult, true);
+
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('affects overall result: no verified pass'));
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('❌ FAILURE'));
   });
 });
 
@@ -350,6 +376,24 @@ describe('summarizeResults', () => {
     expect(summary.failed).toBe(1);
     expect(summary.skippableFailed).toBe(1);
     expect(summary.mandatoryFailed).toBe(0);
+  });
+
+  it('does not pass when no step was verified and a skippable step failed', () => {
+    const results = [
+      createStepResult({ stepId: 'step-1', status: 'failed', skippable: true }),
+      createStepResult({ stepId: 'step-2', status: 'skipped', skipReason: 'requirements_unmet' }),
+    ];
+
+    expect(summarizeResults(results).success).toBe(false);
+  });
+
+  it('passes when all steps are skipped cleanly', () => {
+    const results = [
+      createStepResult({ stepId: 'step-1', status: 'skipped', skipReason: 'requirements_unmet' }),
+      createStepResult({ stepId: 'step-2', status: 'skipped', skipReason: 'requirements_unmet' }),
+    ];
+
+    expect(summarizeResults(results).success).toBe(true);
   });
 
   it('success is false when any mandatory step fails', () => {
@@ -650,6 +694,18 @@ describe('logExecutionSummary', () => {
 
     logExecutionSummary(results);
 
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('❌ FAILURE'));
+  });
+
+  it('explains that skippable failures affect a zero-pass result', () => {
+    const results = [
+      createStepResult({ stepId: 'step-1', status: 'failed', skippable: true }),
+      createStepResult({ stepId: 'step-2', status: 'skipped', skipReason: 'requirements_unmet' }),
+    ];
+
+    logExecutionSummary(results);
+
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('affects result: no verified pass'));
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('❌ FAILURE'));
   });
 

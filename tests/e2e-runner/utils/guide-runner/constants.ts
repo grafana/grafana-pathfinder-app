@@ -198,12 +198,6 @@ export const NAVIGATION_FIX_SETTLE_DELAY_MS = 2000;
  * are unlikely to be caused by guide content or product code changes.
  */
 export const INFRASTRUCTURE_ERROR_PATTERNS = [
-  // Timeout patterns - environmental/performance issues
-  /timeout/i,
-  /timed out/i,
-  /waiting for/i, // "Timeout waiting for X"
-  /exceeded/i, // "Timeout exceeded"
-
   // Network patterns - connectivity issues
   /network/i,
   /net::/i, // Chrome network errors like net::ERR_*

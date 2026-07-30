@@ -173,6 +173,8 @@ Requirements met? → Execute step
 
 **Skippable steps** (those with a Skip button) allow the test to continue when requirements cannot be met. **Mandatory steps** cause the test to abort on failure, marking remaining steps as `not_reached`.
 
+Overall success requires zero mandatory failures and either at least one verified pass or zero failed steps. A run where every step is skipped cleanly succeeds; a run with no verified pass and any failed skippable step fails.
+
 ## Artifacts and reporting
 
 ### Console output
@@ -259,7 +261,7 @@ When a step fails, the runner captures:
 - **DOM snapshot**: `{stepId}-dom.html` for selector debugging
 - **Console errors**: `{stepId}-console.json` when the step records console errors
 
-Artifacts are saved to the `--artifacts` directory (or a temp directory by default). With `--always-screenshot`, the runner also captures pre-step screenshots, success screenshots, and a final screenshot. `--trace` records a Playwright trace and surfaces the trace path in CLI output.
+Artifacts are saved to the `--artifacts` directory (or a temp directory by default). With `--always-screenshot`, the runner also captures pre-step screenshots, success screenshots, and a final screenshot. `--trace` records a Playwright trace in a retained per-invocation output directory and surfaces the trace path in CLI output. Non-trace Playwright output directories are removed after each invocation. Trace capture is disabled for bearer-token-authenticated cloud runs because Playwright traces can contain authorization headers, cookies, and temporary credentials.
 
 ## Guided-block test guide
 
@@ -459,11 +461,11 @@ When a step fails, the runner assigns an error classification to help with triag
 | `SELECTOR_NOT_FOUND` | `unknown`        | Could be content-drift OR product-regression |
 | `ACTION_FAILED`      | `unknown`        | Needs human triage                           |
 | `REQUIREMENT_FAILED` | `unknown`        | Could be content-drift OR missing setup      |
-| `TIMEOUT`            | `infrastructure` | Likely environmental                         |
+| `TIMEOUT`            | `unknown`        | Could be content, product, or performance    |
 | `NETWORK_ERROR`      | `infrastructure` | Definitely environmental                     |
 | `AUTH_EXPIRED`       | `infrastructure` | Definitely environmental                     |
 
-Only `infrastructure` failures are auto-classified. `SELECTOR_NOT_FOUND`, `ACTION_FAILED`, and `REQUIREMENT_FAILED` default to `unknown` and require human triage — they could indicate content drift, a product regression, or a missing test environment setup.
+Only high-confidence network, authentication, browser-crash, and closed-target failures are auto-classified as `infrastructure`. Selector, action, requirement, and step timeout failures default to `unknown` and require human triage.
 
 The implemented classifier lives in `tests/e2e-runner/utils/guide-runner/classification.ts`.
 
