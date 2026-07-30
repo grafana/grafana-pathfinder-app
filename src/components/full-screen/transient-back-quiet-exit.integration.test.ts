@@ -103,6 +103,40 @@ describe('#1448 quiet exit — real panel-mode + auto-dock + sidebar', () => {
     expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
   });
 
+  it('browser Back (POP) with a persisted floating preference reverts to floating, not sidebar', () => {
+    const { panelModeManager, dockOnLeavingFullScreen } = wireRealModules();
+
+    // Durable preference is floating; the prose launch still auto-picks full
+    // screen transiently (previous='floating' ≠ 'fullscreen', so this DOES emit
+    // the mode-change event that caches the outer FloatingPanelManager stale).
+    localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+    panelModeManager.setModeTransient('fullscreen');
+    expect(panelModeManager.getMode()).toBe('fullscreen');
+    publishedEvents.length = 0;
+
+    const outcome = dockOnLeavingFullScreen({
+      pathname: '/a/grafana-pathfinder-app/journeys',
+      fullScreenPathname: FULL_SCREEN_PATHNAME,
+      myPluginId: 'grafana-pathfinder-app',
+      guideUrl: 'https://example.com/guide.json',
+      title: 'My journey',
+      action: 'POP',
+    });
+    jest.runAllTimers();
+
+    expect(outcome).toBe('transient_back');
+    expect(sidebarOpenRequests()).toHaveLength(0);
+    // The launch never expressed a preference, so Back reverts to the stored
+    // floating one. getMode() reporting 'floating' is what routes the NEXT
+    // launch down HomePanel's floating branch (REQUEST_FLOATING_GUIDE_EVENT),
+    // which the outer manager's resync listener remounts to consume — the
+    // stranding path Leslie flagged. Wiring pinned in
+    // floating-panel.pending-guide.test.ts.
+    expect(panelModeManager.getMode()).toBe('floating');
+    expect(panelModeManager.isTransient()).toBe(false);
+    expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+  });
+
   it('a PUSH mid-session (interactive navigate step) still docks and DOES reopen the sidebar', () => {
     const { panelModeManager, dockOnLeavingFullScreen } = wireRealModules();
 
