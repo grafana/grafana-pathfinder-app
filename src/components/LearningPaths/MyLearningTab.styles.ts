@@ -45,12 +45,15 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
     // Two-column row (My Courses ∥ Badges). Auto-fit + minmax lets the row
     // collapse to a single stacked column when the panel is narrow (docked
     // sidebar) and split into two when it is wide (floating / full-screen),
-    // measured from the row's own width rather than the viewport.
+    // measured from the row's own width rather than the viewport. `stretch`
+    // keeps both panels the same height so the shorter one fills its column
+    // instead of leaving canvas beside the taller one; each panel caps its
+    // own content and offers a "view all" when it overflows.
     columnsRow: css({
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
       gap: theme.spacing(2),
-      alignItems: 'start',
+      alignItems: 'stretch',
     }),
 
     // Hero Section
