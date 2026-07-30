@@ -41,13 +41,14 @@ describe('writeJsonReport', () => {
       },
     ];
 
-    const schemaValid = writeJsonReport(results, outputPath);
+    const schemaValid = writeJsonReport(results, outputPath, [], { id: 'cloud-path', type: 'path' });
 
     const report = JSON.parse(readFileSync(outputPath, 'utf-8')) as MultiGuideReport;
     expect(schemaValid).toBe(true);
     expect(report.type).toBe('multi-guide');
     expect(report.summary.totalGuides).toBe(1);
     expect(report.summary.skippedGuides).toBe(1);
+    expect(report.selection).toEqual({ id: 'cloud-path', type: 'path' });
     expect(report.guides).toEqual([]);
     expect(report.reports).toEqual([]);
     expect(report.preRunSkipped).toEqual([
@@ -61,6 +62,38 @@ describe('writeJsonReport', () => {
       },
     ]);
     expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('No test results available'));
+  });
+
+  it('writes a multi-guide report for a one-milestone path', () => {
+    const outputPath = join(tempDir, 'results.json');
+    const results: GuideRunResult[] = [
+      {
+        guide: 'only/content.json',
+        id: 'only',
+        status: 'passed',
+        exitCode: ExitCode.SUCCESS,
+        autoIncluded: false,
+        resultsData: {
+          guide: {
+            id: 'only',
+            title: 'Only milestone',
+            path: 'only/content.json',
+            targetUrl: 'http://localhost:3000',
+          },
+          timestamp: '2026-01-01T00:00:00.000Z',
+          results: [],
+          aborted: false,
+        },
+      },
+    ];
+
+    const schemaValid = writeJsonReport(results, outputPath, [], { id: 'one-step-path', type: 'path' });
+
+    const report = JSON.parse(readFileSync(outputPath, 'utf-8')) as MultiGuideReport;
+    expect(schemaValid).toBe(true);
+    expect(report.type).toBe('multi-guide');
+    expect(report.selection).toEqual({ id: 'one-step-path', type: 'path' });
+    expect(report.reports).toHaveLength(1);
   });
 
   it('sets outcome to failed when a pre-run skip entry has failed: true', () => {
