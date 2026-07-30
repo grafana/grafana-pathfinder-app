@@ -129,28 +129,40 @@ automatic migration and none can be built from the frontend.
 
 ## Local development
 
-The terminal needs both plugins in one Grafana. This repo's `docker-compose.yaml` already allows the
-Coda plugin unsigned, filters its logs to debug, and bind-mounts its `dist/`:
+The terminal needs both plugins in one Grafana. Coda is **not** part of the base dev stack — it is an
+opt-in overlay, `docker-compose.coda.yaml`, so that the default stack (and CI) runs the same
+no-Coda configuration a user without the plugin gets.
+
+Build the plugin in its own checkout first:
 
 ```bash
 # in a checkout of github.com/grafana/grafana-coda-app
 mage build:linuxARM64        # or build:linuxAMD64 on Intel — must match the container arch
 npm run build
-
-# back here
-docker compose up -d --build grafana
 ```
 
-The mount defaults to `../grafana-coda-app/dist`, i.e. a sibling checkout named after the repo. If
-yours lives elsewhere, set `CODA_PLUGIN_DIST` in `.env` rather than editing the compose file:
+Then enable the overlay by adding this to your (gitignored) `.env`:
 
 ```bash
-CODA_PLUGIN_DIST=/path/to/grafana-coda-app/dist
+COMPOSE_FILE=docker-compose.yaml:docker-compose.coda.yaml
+CODA_PLUGIN_DIST=../grafana-coda-app/dist
 ```
 
-A missing or empty `dist/` is not an error — Grafana simply loads no Coda plugin, `isAppPluginEnabled`
-returns false, and the terminal stays hidden. That is the same path a user without Coda takes, so it
-is worth exercising deliberately.
+after which the usual `docker compose up -d --build grafana` picks it up. Or pass the files
+explicitly, without touching `.env`:
+
+```bash
+docker compose -f docker-compose.yaml -f docker-compose.coda.yaml up -d --build grafana
+```
+
+`CODA_PLUGIN_DIST` is **required** by the overlay and has no default, deliberately. Docker creates a
+missing host path as an empty root-owned directory, and one of those under
+`/var/lib/grafana/plugins` stops Grafana (uid 472) from starting at all — a silent, confusing
+failure. Failing fast on an unset variable is easier to diagnose than a Grafana that never serves.
+
+Running without the overlay is a supported case, not a broken one: `isAppPluginEnabled` returns
+false, `CodaBackendStatus` says the plugin is absent, and the terminal stays hidden. Worth
+exercising deliberately, since that is what most users see.
 
 Rebuilding the Coda **frontend** needs only a page reload; rebuilding its **backend** needs the
 plugin process to restart, so recreate the container. A change to its `plugin.json` needs a full
@@ -231,7 +243,8 @@ The most common cause after the backend extraction is that `grafana-coda-app` is
 `POST /v1/sessions` returned 404, meaning Grafana has no such plugin route. Install and enable
 `grafana-coda-app`.
 
-In local dev this usually means the bind-mount points at nothing — see
+In local dev this usually means the `docker-compose.coda.yaml` overlay is not enabled, or
+`CODA_PLUGIN_DIST` points at a `dist/` that was never built — see
 [Local development](#local-development). Check `docker compose logs grafana | grep coda`: a plugin
 that mounted but failed to start logs a reason, whereas one that never mounted is silent.
 

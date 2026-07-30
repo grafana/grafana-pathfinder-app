@@ -1,0 +1,30 @@
+# Opt-in overlay that adds the Coda plugin to the dev stack, so sandbox terminals
+# work locally. Pathfinder treats Coda as optional and detects it at runtime, so the
+# base stack deliberately does not include it — and CI must not, or the bind-mount
+# below would point at a path that does not exist on the runner.
+#
+# Enable it by putting this in your (gitignored) .env:
+#
+#     COMPOSE_FILE=docker-compose.yaml:docker-compose.coda.yaml
+#     CODA_PLUGIN_DIST=../grafana-coda-app/dist
+#
+# after which plain `docker compose up -d --build grafana` picks it up. Or pass the
+# files explicitly:
+#
+#     docker compose -f docker-compose.yaml -f docker-compose.coda.yaml up -d --build grafana
+#
+# Build the plugin in its own checkout first — `mage build:linuxARM64` (or
+# build:linuxAMD64 on Intel; it must match the container arch) plus `npm run build`.
+# See docs/developer/CODA.md.
+services:
+  grafana:
+    environment:
+      # The base stack already allows grafana-pathfinder-app; this must repeat it,
+      # because Compose replaces scalar values rather than merging them.
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: grafana-pathfinder-app,grafana-coda-app
+      GF_LOG_FILTERS: plugin.grafana-pathfinder-app:debug,plugin.grafana-coda-app:debug
+    volumes:
+      # Docker creates a missing host path as an empty root-owned directory, and one
+      # of those under /var/lib/grafana/plugins stops Grafana (uid 472) from starting
+      # at all. So point CODA_PLUGIN_DIST at a real, built dist/.
+      - ${CODA_PLUGIN_DIST:?set CODA_PLUGIN_DIST to the Coda plugin dist/ path}:/var/lib/grafana/plugins/grafana-coda-app
