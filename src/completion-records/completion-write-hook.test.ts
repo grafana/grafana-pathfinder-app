@@ -194,6 +194,50 @@ describe('direct enqueue', () => {
   });
 });
 
+describe('universal bootstrap arming (surface-agnostic; not root-page scoped)', () => {
+  // Production arms the hook from the universal plugin bootstrap (module.tsx
+  // plugin.init), which fires for every entry surface — the extension sidebar,
+  // floating, and full-screen included — not only the root App page. This
+  // exercises that contract: with NO App root involved, a completion recorded
+  // after the bootstrap call still drains.
+  it('drains a completion recorded when only a non-root surface (e.g. the sidebar) is active', async () => {
+    armCompletionWriteHook(deps()); // the exact call plugin.init makes
+    await runTimer();
+
+    recordGuideCompletion(guideFact({ guideId: 'sidebar-guide' }));
+    await runTimer();
+
+    expect(sent.map((b) => b.guideId)).toEqual(['sidebar-guide']);
+  });
+});
+
+describe('payload boundary normalization (payload-boundary-normalization)', () => {
+  const CONTROL = String.fromCharCode(7); // BEL
+  const CONTROL_RE = new RegExp('[\\u0000-\\u001f\\u007f]');
+
+  it('clamps an oversized title and strips control characters at emission', async () => {
+    armCompletionWriteHook(deps());
+    await runTimer();
+
+    recordGuideCompletion(guideFact({ guideId: 'clamp', guideTitle: 'a'.repeat(5000) + CONTROL }));
+    await runTimer();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.guideTitle.length).toBeLessThanOrEqual(1024);
+    expect(CONTROL_RE.test(sent[0]!.guideTitle)).toBe(false);
+  });
+
+  it('rejects a fact whose identifier normalizes to empty rather than queueing a terminal 400', async () => {
+    armCompletionWriteHook(deps());
+    await runTimer();
+
+    recordGuideCompletion(guideFact({ guideSource: CONTROL, guideId: 'x' }));
+    await runTimer();
+
+    expect(sent).toHaveLength(0);
+  });
+});
+
 describe('error handling', () => {
   it('drops a terminal write without retrying', async () => {
     sendResults = [{ kind: 'terminal' }];
@@ -350,7 +394,7 @@ describe('deployment-skew: missing route matrix', () => {
     expect(sent).toHaveLength(1);
   });
 
-  it('keeps persisting later facts after a structural 404 and drains all on the next arm (finding 2)', async () => {
+  it('keeps persisting later facts after a structural 404 and drains all on the next arm', async () => {
     sendResults = [{ kind: 'route-missing' }];
     armCompletionWriteHook(deps());
     await runTimer();

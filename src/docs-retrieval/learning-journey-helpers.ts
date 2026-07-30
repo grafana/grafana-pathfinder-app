@@ -4,6 +4,7 @@
 
 import {
   RawContent,
+  ContentMetadata,
   Milestone,
   LearningJourneyMetadata,
   SideJourneys,
@@ -27,7 +28,8 @@ import {
 } from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
-export { getMilestoneSlug } from '../lib/learning-journey-url';
+import { getMilestoneSlug } from '../lib/learning-journey-url';
+export { getMilestoneSlug };
 
 /**
  * Optional manifest/display context threaded from the completion call sites so
@@ -470,6 +472,64 @@ export function recordStandaloneGuideCompletion(context: CompletionContext): voi
   });
 }
 
+/**
+ * Identity a surface hands the shared completion controller when its rendered
+ * guide reaches 100%. Every field is view-level state the surface already owns;
+ * the completion DECISION (bundled vs remote, milestone-as-guide vs standalone,
+ * whole-journey membership) lives here so it is identical across the sidebar,
+ * floating, full-screen, and guide-reader surfaces — a surface is only a view
+ * affordance, so completing a guide in any of them records the same fact.
+ */
+export interface SurfaceCompletionInput {
+  /** activeTab.baseUrl — the journey/guide base (undefined when there is no tab). */
+  baseUrl?: string;
+  /** content.url — fallback base for bundled detection when the tab has none. */
+  contentUrl?: string;
+  /** activeTab.currentUrl — the milestone URL used to derive the milestone slug. */
+  currentUrl?: string;
+  /** content.type — 'learning-journey' selects the milestone-as-guide path. */
+  contentType?: string;
+  /** content.metadata — carries packageManifest, repository, and learningJourney. */
+  metadata?: ContentMetadata;
+  /** activeTab.title. */
+  guideTitle?: string;
+}
+
+/**
+ * The single surface-neutral completion emitter. Wired by each content-owning
+ * component (DocsPanelContentArea, FloatingPanelContent, GuideReaderOverlay) so
+ * every surface routes terminal completion through the same decision, rather
+ * than each surface re-deciding (or forgetting to emit).
+ */
+export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): void {
+  const { baseUrl: journeyBase, contentUrl, currentUrl, contentType, metadata, guideTitle } = input;
+  const baseUrl = journeyBase || contentUrl;
+  const slug = contentType === 'learning-journey' && currentUrl ? getMilestoneSlug(currentUrl) : '';
+  const willMarkMilestone = Boolean(slug && journeyBase);
+  const completionContext: CompletionContext = {
+    packageManifest: metadata?.packageManifest,
+    repository: metadata?.repository,
+    guideTitle,
+  };
+  if (baseUrl?.startsWith('bundled:')) {
+    if (willMarkMilestone) {
+      setMilestoneCompletionPercentage(baseUrl, 100);
+    } else {
+      setJourneyCompletionPercentage(baseUrl, 100, completionContext);
+    }
+  }
+  if (willMarkMilestone && journeyBase) {
+    void markMilestoneDone(
+      journeyBase,
+      slug,
+      resolveExpectedMilestoneIds(metadata?.learningJourney),
+      completionContext
+    );
+  } else if (!baseUrl?.startsWith('bundled:')) {
+    recordStandaloneGuideCompletion(completionContext);
+  }
+}
+
 export function clearJourneyCompletion(journeyBaseUrl: string): void {
   // Fire and forget - storage handles errors internally
   journeyCompletionStorage.clear(journeyBaseUrl);
@@ -497,16 +557,36 @@ export async function getAllJourneyCompletionsAsync(): Promise<Record<string, nu
 // ============================================================================
 
 /**
+ * The slugs of every milestone the current journey manifest declares. This is
+ * the authoritative expected set for whole-journey completion: milestone
+ * builders number the list 1..N (no cover page), and each milestone's slug
+ * matches the slug stored when it completes (`getMilestoneSlug(currentUrl)`).
+ * Passing this set — rather than a bare count — to {@link markMilestoneDone}
+ * is what lets a revised journey reject stale/renamed/removed milestone slugs
+ * instead of letting them satisfy a count-only threshold with a false record.
+ */
+export function resolveExpectedMilestoneIds(lj?: Pick<LearningJourneyMetadata, 'milestones'>): string[] {
+  if (!lj?.milestones) {
+    return [];
+  }
+  const ids = lj.milestones.map((m) => getMilestoneSlug(m.url)).filter((slug): slug is string => Boolean(slug));
+  return Array.from(new Set(ids));
+}
+
+/**
  * Marks a learning journey milestone as completed.
  * - Persists the milestone slug in milestoneCompletionStorage
  * - Calls markGuideCompleted (learning-paths/badge-coordinator) to bridge to the badge/progress system
- * - When totalMilestones is provided and all milestones are done, awards the path badge
- *   (URL-based paths have guides: [] in static data so the normal badge flow cannot detect completion)
+ * - When `expectedMilestoneIds` is provided and EVERY one is present in stored
+ *   progress, awards the path badge and fires the whole-journey record. Membership
+ *   (not a bare count) is required so stored slugs from an earlier revision of the
+ *   journey cannot satisfy the threshold and write a false durable journey record.
+ *   Resolve the set with {@link resolveExpectedMilestoneIds} at the call site.
  */
 export async function markMilestoneDone(
   journeyBaseUrl: string,
   milestoneSlug: string,
-  totalMilestones?: number,
+  expectedMilestoneIds?: readonly string[],
   context?: CompletionContext
 ): Promise<void> {
   if (!milestoneSlug) {
@@ -534,11 +614,13 @@ export async function markMilestoneDone(
   });
 
   // Whole-journey completion: award the path badge and fire the journey trigger
-  // when all milestones are complete. URL-based paths have guides: [] in static
-  // data, so the normal badge flow cannot detect completion here.
-  if (totalMilestones && totalMilestones > 0) {
+  // only when every CURRENTLY-expected milestone slug is present. URL-based paths
+  // have guides: [] in static data, so the normal badge flow cannot detect
+  // completion here. Membership (not `completed.size >= count`) rejects stale,
+  // renamed, or removed milestone slugs left over from an earlier journey revision.
+  if (expectedMilestoneIds && expectedMilestoneIds.length > 0) {
     const completed = await milestoneCompletionStorage.getCompleted(journeyBaseUrl);
-    if (completed.size >= totalMilestones) {
+    if (expectedMilestoneIds.every((id) => completed.has(id))) {
       const { getPathsData } = await import('../learning-paths');
       const normalizedBase = journeyBaseUrl.replace(/\/+$/, '');
       const path = getPathsData().paths.find((p) => p.url && normalizedBase === p.url.replace(/\/+$/, ''));
@@ -546,13 +628,11 @@ export async function markMilestoneDone(
         await learningProgressStorage.awardBadge(path.badgeId);
       }
 
-      // The `journey_completed` trigger — no single function represented this
-      // before. Keyed on the journey identity; deduped exactly-once by the
-      // recorder so a re-crossed threshold does not re-emit.
-      // Fail closed when neither a manifest id nor a curated path id resolves:
-      // a loader URL is never an acceptable identity (types.ts contract), and a
-      // URL-keyed fact would become a permanently wrong durable key once the
-      // Track 1/2 subscribers attach.
+      // The `journey_completed` trigger, keyed on the journey identity and
+      // deduped exactly-once by the recorder so a re-crossed threshold does not
+      // re-emit. Fail closed when neither a manifest id nor a curated path id
+      // resolves: a loader URL is never an acceptable identity (types.ts
+      // contract), and a URL-keyed fact would become a permanently wrong durable key.
       const stableJourneyId = manifestGuideId(context?.packageManifest) ?? path?.id;
       if (stableJourneyId) {
         const journeyIdentity = resolveCompletionIdentity({

@@ -666,6 +666,7 @@ describe('resolvePackageNavLinks', () => {
       title: 'Title for alpha',
       contentUrl: 'bundled:alpha/content.json',
       manifest: { id: 'alpha', type: 'guide' },
+      repository: 'bundled',
     });
     expect(result[1]!.packageId).toBe('beta');
   });

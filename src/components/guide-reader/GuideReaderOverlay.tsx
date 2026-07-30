@@ -6,7 +6,7 @@ import { config } from '@grafana/runtime';
 import { Icon, useStyles2 } from '@grafana/ui';
 
 import { ContentRenderer } from '../content-renderer/content-renderer';
-import { fetchUnifiedContent } from '../../docs-retrieval';
+import { fetchUnifiedContent, recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
@@ -185,6 +185,16 @@ function GuideReaderInner({
         containerRef={contentRef}
         className={contentClassName}
         onContentReady={handleContentReady}
+        onGuideComplete={() =>
+          recordGuideCompletionForSurface({
+            baseUrl: content.url,
+            contentUrl: content.url,
+            currentUrl: content.url,
+            contentType: content.type,
+            metadata: content.metadata,
+            guideTitle: content.metadata?.title,
+          })
+        }
       />
     </div>
   ) : null;

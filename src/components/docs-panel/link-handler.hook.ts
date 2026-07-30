@@ -11,7 +11,12 @@ import {
   AnalyticsLinkType,
 } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
-import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
+import {
+  getJourneyProgress,
+  getMilestoneSlug,
+  markMilestoneDone,
+  resolveExpectedMilestoneIds,
+} from '../../docs-retrieval';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
@@ -534,7 +539,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 markMilestoneDone(
                   journey.baseUrl,
                   slug,
-                  activeTab.content?.metadata?.learningJourney?.totalMilestones,
+                  resolveExpectedMilestoneIds(activeTab.content?.metadata?.learningJourney),
                   {
                     packageManifest: activeTab.content?.metadata?.packageManifest,
                     repository: activeTab.content?.metadata?.repository,

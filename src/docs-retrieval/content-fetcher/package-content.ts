@@ -150,6 +150,7 @@ export async function resolvePackageNavLinks(packageIds: string[]): Promise<Reso
       title,
       contentUrl: resolution.contentUrl,
       manifest,
+      repository: resolution.repository,
     });
   }
 
@@ -184,6 +185,7 @@ function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
  * @param contentUrl - Pre-resolved CDN URL or bundled: URL for the content.json
  * @param packageManifest - Optional manifest metadata to attach to the result
  * @param preResolvedMilestones - Optional milestones already resolved by the caller (avoids redundant resolution)
+ * @param repository - Resolved source repository, stamped onto `metadata.repository` so completion keys on the true source rather than the manifest default
  */
 export async function fetchPackageContent(
   contentUrl: string,
@@ -271,6 +273,7 @@ export async function fetchPackageContent(
  *
  * @param packageId - Bare package ID (e.g., "alerting-101")
  * @param packageManifest - Optional manifest metadata to attach to the result
+ * @param repository - Optional explicit source repository; falls back to the resolver's own when omitted
  */
 export async function fetchPackageById(
   packageId: string,
@@ -295,5 +298,8 @@ export async function fetchPackageById(
     };
   }
 
-  return fetchPackageContent(resolution.contentUrl, packageManifest, undefined, repository);
+  // Prefer an explicit caller-supplied repository, but fall back to the
+  // resolver's own source so a bare-ID open still keys the durable completion
+  // on the true repository instead of the manifest schema default.
+  return fetchPackageContent(resolution.contentUrl, packageManifest, undefined, repository ?? resolution.repository);
 }

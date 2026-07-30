@@ -1001,10 +1001,11 @@ export class ContextService {
   }
 
   /**
-   * Get current platform (cloud vs oss)
+   * Get current platform (cloud vs oss). Delegates to the shared `currentPlatform()`
+   * so detection (and its fail-soft) lives in one place.
    */
   private static getCurrentPlatform(): string {
-    return config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud') ? 'cloud' : 'oss';
+    return currentPlatform();
   }
 
   /**

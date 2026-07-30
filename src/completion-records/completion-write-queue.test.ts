@@ -95,7 +95,7 @@ describe('write queue — enqueue and eviction', () => {
   it('enqueues and, on created, removes the item', async () => {
     const s = makeSender([{ kind: 'created' }]);
     const q = createWriteQueue({ now: () => 0, send: s.send });
-    expect(q.enqueue(body())).toBe(true);
+    q.enqueue(body());
     expect(q.size()).toBe(1);
 
     const r = await q.processDue();
@@ -111,8 +111,8 @@ describe('write queue — enqueue and eviction', () => {
     const first = body({ completedAt: '2026-07-20T00:00:00.000Z' });
     const replay = body({ completedAt: '2026-07-20T01:00:00.000Z' });
 
-    expect(q.enqueue(first)).toBe(true);
-    expect(q.enqueue(replay)).toBe(true);
+    q.enqueue(first);
+    q.enqueue(replay);
     expect(q.size()).toBe(2);
   });
 
@@ -186,7 +186,7 @@ describe('write queue — retry/backoff/terminal/disarm', () => {
     expect(s.calls).toHaveLength(9);
   });
 
-  it('route-missing disarms network drains but keeps persisting later facts (finding 2)', async () => {
+  it('route-missing disarms network drains but keeps persisting later facts', async () => {
     const memory = makeStorage();
     const s = makeSender([{ kind: 'route-missing' }]);
     const q = createWriteQueue({ now: () => 0, send: s.send, storage: memory.storage });
@@ -197,7 +197,7 @@ describe('write queue — retry/backoff/terminal/disarm', () => {
     expect(q.isDisarmed()).toBe(true);
     // A later fact in the same session STILL enqueues and persists — a structural
     // 404 suppresses network drains, it is never a per-item drop.
-    expect(q.enqueue(body({ guideId: 'c' }))).toBe(true);
+    q.enqueue(body({ guideId: 'c' }));
     // All three items survive for a later session's startup drain.
     expect(memory.storage.list()).toHaveLength(3);
     // Network stays off: no further send this session.
@@ -282,7 +282,7 @@ describe('write queue — persistence', () => {
     const s2 = makeSender([{ kind: 'created' }]);
     const q2 = createWriteQueue({ now: () => 1_000_000, send: s2.send, storage: storage.storage });
     expect(q2.size()).toBe(1); // reloaded
-    expect(q2.enqueue(body({ completedAt: '2026-07-20T01:00:00.000Z' }))).toBe(true);
+    q2.enqueue(body({ completedAt: '2026-07-20T01:00:00.000Z' }));
     expect(q2.size()).toBe(2);
   });
 
@@ -368,7 +368,7 @@ function makeLeasedStorage(
   };
 }
 
-describe('write queue — idempotency (finding 3, two-tab in-flight lease expiry)', () => {
+describe('write queue — idempotency (two-tab in-flight lease expiry)', () => {
   it('a re-POST after lease expiry carries the same stable idempotency key', async () => {
     const items = new Map<string, QueuedWrite>();
     const leaseRef: { lease: { tabId: string; expiresAt: number } | null } = { lease: null };
@@ -417,7 +417,7 @@ describe('write queue — idempotency (finding 3, two-tab in-flight lease expiry
   });
 });
 
-describe('write queue — emission path does not enumerate storage (finding 4)', () => {
+describe('write queue — emission path does not enumerate storage', () => {
   it('enqueue does not scan stored keys; the async drain reconciles off that stack', async () => {
     const base = makeStorage();
     const listSpy = jest.fn(() => Array.from(base.items.values()).map((i) => ({ ...i })));
@@ -433,7 +433,7 @@ describe('write queue — emission path does not enumerate storage (finding 4)',
   });
 });
 
-describe('write queue — backoff cap is a true ceiling (finding 6)', () => {
+describe('write queue — backoff cap is a true ceiling', () => {
   it('clamps the +25% jitter endpoint back to maxBackoffMs', async () => {
     const s = makeSender([{ kind: 'transient' }]);
     const q = createWriteQueue({
@@ -460,5 +460,150 @@ describe('write queue — backoff cap is a true ceiling (finding 6)', () => {
     q.enqueue(body());
     const r = await q.processDue();
     expect(r.nextDelayMs).toBe(750);
+  });
+});
+
+describe('write queue — drain budget (queue-drain-budget)', () => {
+  it('sends at most drainBudget items per pass and reschedules immediately for the rest', async () => {
+    const s = makeSender([{ kind: 'created' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send, drainBudget: 2 });
+    for (let i = 0; i < 5; i++) {
+      q.enqueue(body({ guideId: `g${i}` }));
+    }
+
+    const r1 = await q.processDue();
+    expect(s.calls).toHaveLength(2);
+    expect(q.size()).toBe(3);
+    // More due items remain → reschedule a fresh pass now (lease released between).
+    expect(r1.nextDelayMs).toBe(0);
+
+    const r2 = await q.processDue();
+    expect(s.calls).toHaveLength(4);
+    expect(q.size()).toBe(1);
+    expect(r2.nextDelayMs).toBe(0);
+
+    const r3 = await q.processDue();
+    expect(s.calls).toHaveLength(5);
+    expect(q.size()).toBe(0);
+    expect(r3.nextDelayMs).toBeNull();
+  });
+
+  it('releases the lease between passes', async () => {
+    const memory = makeStorage();
+    const releases: number[] = [];
+    memory.storage.releaseLease = () => releases.push(1);
+    const s = makeSender([{ kind: 'created' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send, storage: memory.storage, drainBudget: 1 });
+    q.enqueue(body({ guideId: 'a' }));
+    q.enqueue(body({ guideId: 'b' }));
+
+    await q.processDue();
+    await q.processDue();
+
+    expect(releases.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('write queue — in-flight eviction pin (queue-eviction-concurrency)', () => {
+  it('does not evict the item whose POST is in flight when a concurrent enqueue hits the cap', async () => {
+    const ids = ['a', 'b', 'c'];
+    let releaseA: ((o: WriteOutcome) => void) | undefined;
+    const q = createWriteQueue({
+      now: () => 0,
+      maxSize: 2,
+      nextId: () => ids.shift()!,
+      send: (_b, key) =>
+        key === 'a'
+          ? new Promise<WriteOutcome>((resolve) => {
+              releaseA = resolve;
+            })
+          : Promise.resolve<WriteOutcome>({ kind: 'created' }),
+    });
+    q.enqueue(body({ guideId: 'a' }));
+    q.enqueue(body({ guideId: 'b' }));
+
+    const pending = q.processDue(); // send('a') hangs → 'a' is in flight
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Concurrent enqueue at capacity: the in-flight 'a' must survive; 'b' evicts.
+    q.enqueue(body({ guideId: 'c' }));
+    const ids2 = q.snapshot().map((i) => i.id);
+    expect(ids2).toContain('a');
+    expect(ids2).not.toContain('b');
+
+    releaseA?.({ kind: 'created' });
+    await pending;
+  });
+});
+
+describe('write queue — retention horizon (retry-retention-horizon)', () => {
+  const NOW = Date.parse('2026-07-20T00:00:00.000Z');
+  const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+
+  it('drops a persisted record older than the retention horizon on load', () => {
+    const storage = makeStorage();
+    storage.items.set('old', {
+      id: 'old',
+      body: body({ completedAt: new Date(NOW - THIRTY_DAYS - 1000).toISOString() }),
+      attempts: 0,
+      createdAt: NOW - THIRTY_DAYS - 1000,
+      nextAttemptAt: 0,
+    });
+    const q = createWriteQueue({ now: () => NOW, send: makeSender([]).send, storage: storage.storage });
+    expect(q.size()).toBe(0);
+    expect(storage.items.has('old')).toBe(false);
+  });
+
+  it('keeps a record just inside the horizon', () => {
+    const storage = makeStorage();
+    storage.items.set('fresh', {
+      id: 'fresh',
+      body: body({ completedAt: new Date(NOW - THIRTY_DAYS + 60_000).toISOString() }),
+      attempts: 0,
+      createdAt: NOW - THIRTY_DAYS + 60_000,
+      nextAttemptAt: 0,
+    });
+    const q = createWriteQueue({ now: () => NOW, send: makeSender([]).send, storage: storage.storage });
+    expect(q.size()).toBe(1);
+  });
+
+  it('drops an item that ages past the horizon before it drains, without POSTing it', async () => {
+    const s = makeSender([{ kind: 'created' }]);
+    const q = createWriteQueue({ now: () => NOW + THIRTY_DAYS + 1, send: s.send });
+    q.enqueue(body({ completedAt: new Date(NOW).toISOString() }));
+    const r = await q.processDue();
+    expect(s.calls).toHaveLength(0);
+    expect(q.size()).toBe(0);
+    expect(r.disarmed).toBe(false);
+  });
+});
+
+describe('write queue — over-cap persisted load eviction', () => {
+  it('evicts oldest-first when more than maxSize items are already persisted', () => {
+    const NOW = Date.parse('2026-07-20T00:00:00.000Z');
+    const storage = makeStorage();
+    for (const [id, created] of [
+      ['old', NOW - 3000],
+      ['mid', NOW - 2000],
+      ['new', NOW - 1000],
+    ] as const) {
+      storage.items.set(id, {
+        id,
+        body: body({ completedAt: new Date(NOW).toISOString(), guideId: id }),
+        attempts: 0,
+        createdAt: created,
+        nextAttemptAt: 0,
+      });
+    }
+    const q = createWriteQueue({ now: () => NOW, send: makeSender([]).send, storage: storage.storage, maxSize: 2 });
+    expect(q.size()).toBe(2);
+    expect(
+      q
+        .snapshot()
+        .map((i) => i.id)
+        .sort()
+    ).toEqual(['mid', 'new']);
+    expect(storage.items.has('old')).toBe(false);
   });
 });

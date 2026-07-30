@@ -62,9 +62,23 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
     try {
       for (const key of collectKeysByPrefix(localStorage, itemPrefix)) {
         const item = parseQueuedWrite(localStorage.getItem(key));
-        if (item) {
-          result.set(item.id, item);
+        if (!item) {
+          continue;
         }
+        // The record is addressed by its storage key, but sends and removals use
+        // the body id. A mismatch (corruption / partial write) would make the
+        // entry immortal — sent under the body id while removals target the key.
+        // Quarantine it: delete under its ACTUAL key and skip.
+        const expectedId = key.slice(itemPrefix.length);
+        if (item.id !== expectedId) {
+          try {
+            localStorage.removeItem(key);
+          } catch {
+            // Best-effort quarantine; skip regardless.
+          }
+          continue;
+        }
+        result.set(item.id, item);
       }
     } catch {
       // Fall through — the volatile overlay below is still applied.

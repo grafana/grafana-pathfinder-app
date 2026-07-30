@@ -41,7 +41,7 @@ describe('loadDocsTabContentResult', () => {
     expect(mockFetchContent).not.toHaveBeenCalled();
   });
 
-  it('threads the recommendation-level repository through to fetchPackageContent (finding 1)', async () => {
+  it('threads the recommendation-level repository through to fetchPackageContent', async () => {
     mockFetchPackageContent.mockResolvedValueOnce({ content: null, error: 'x', errorType: 'other' });
 
     const packageManifest = { id: 'alerting-101', type: 'guide' };

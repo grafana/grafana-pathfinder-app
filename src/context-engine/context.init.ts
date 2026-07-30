@@ -4,7 +4,6 @@ import { initializeEchoLogging, initializeFromRecentEvents } from './context-eve
 import { collectionUrl } from '../utils/interactive-guides-api';
 import { extractFetchErrorStatus } from '../lib/fetch-error';
 import { logger } from '../lib/logging';
-import { armCompletionWriteHook } from '../completion-records';
 
 /**
  * Fetch interactive guides from Pathfinder backend
@@ -60,10 +59,7 @@ export function initializeContextServices(): void {
 export function onPluginStart(): void {
   // Dev mode is lazily initialized to avoid unnecessary API calls for anonymous users
   initializeContextServices();
-
-  // Arm the durable completion-write hook (Track 2). Fire-and-forget: it
-  // no-ops without a resolvable user/org identity. On a stack without the write
-  // route the first POST's structural 404 suppresses network drains for the
-  // session but keeps persisting later facts, which drain on a future load.
-  armCompletionWriteHook();
+  // The durable completion-write hook is armed from the universal plugin
+  // bootstrap (plugin.init in module.tsx), not here — the root App page is only
+  // one of several entry surfaces, so arming here would miss the others.
 }

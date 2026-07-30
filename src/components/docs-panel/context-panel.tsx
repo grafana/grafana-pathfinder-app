@@ -617,6 +617,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 openDocsPage(link.contentUrl, link.title, {
                                                   packageId: link.packageId,
                                                   packageManifest: link.manifest,
+                                                  repository: link.repository,
                                                 });
                                               }}
                                               className={styles.milestoneItem}
@@ -651,6 +652,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 openDocsPage(link.contentUrl, link.title, {
                                                   packageId: link.packageId,
                                                   packageManifest: link.manifest,
+                                                  repository: link.repository,
                                                 });
                                               }}
                                               className={styles.milestoneItem}

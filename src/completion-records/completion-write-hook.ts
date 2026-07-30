@@ -9,11 +9,13 @@ import {
   type WriteOutcome,
 } from './completion-write-client';
 import { createWriteQueue, type WriteQueue } from './completion-write-queue';
+import { MAX_ID_BYTES, MAX_TITLE_BYTES, isValidIdentifier, normalizeField } from './completion-write-normalize';
 import {
   createCompletionWriteStorage,
   currentCompletionQueueOwnerKey,
   type CompletionWriteStorage,
 } from './completion-write-storage';
+import { reportCompletionWriteDegradation } from './completion-write-telemetry';
 import type { CompletionFact } from './types';
 
 export interface WriteHookDeps {
@@ -107,6 +109,14 @@ class CompletionWriteController {
       if (this.disposed || !this.queue) {
         return;
       }
+      // Reject a fact whose identifiers are invalid after normalization rather
+      // than queue a guaranteed terminal 400. The backend stays authoritative;
+      // this only spares the bounded queue and surfaces the drop.
+      if (!isValidIdentifier(fact.guideSource) || !isValidIdentifier(fact.guideId)) {
+        logger.warn('completion write: rejected fact with invalid identifier');
+        reportCompletionWriteDegradation('enqueue-failed');
+        return;
+      }
       // Always enqueue+persist, even after a structural-404 disarm: the fact
       // survives to the next load and drains once the route exists. Only skip
       // scheduling a drain that would immediately no-op while network-disarmed.
@@ -115,17 +125,21 @@ class CompletionWriteController {
         this.scheduleDrain(0);
       }
     } catch (error) {
-      logger.debug('completion write: enqueue failed (ignored)', { error: String(error) });
+      logger.warn('completion write: enqueue failed (ignored)', { error: String(error) });
+      reportCompletionWriteDegradation('enqueue-failed');
     }
   }
 
+  // Clamp descriptive/identifier fields at emission to the backend's byte bounds
+  // (stripping control characters) so an oversized value can't fill the queue
+  // and then be terminally rejected.
   private toBody(fact: CompletionFact): CompletionWriteBody {
     return {
-      guideSource: fact.guideSource,
-      guideId: fact.guideId,
-      guideTitle: fact.guideTitle,
+      guideSource: normalizeField(fact.guideSource, MAX_ID_BYTES),
+      guideId: normalizeField(fact.guideId, MAX_ID_BYTES),
+      guideTitle: normalizeField(fact.guideTitle, MAX_TITLE_BYTES),
       guideCategory: fact.guideCategory,
-      pathId: fact.pathId,
+      pathId: fact.pathId !== undefined ? normalizeField(fact.pathId, MAX_ID_BYTES) : undefined,
       completionPercent: fact.completionPercent,
       source: fact.source,
       completedAt: fact.completedAt,
@@ -167,7 +181,8 @@ class CompletionWriteController {
         this.scheduleDrain(result.nextDelayMs);
       }
     } catch (error) {
-      logger.debug('completion write: drain failed (ignored)', { error: String(error) });
+      logger.warn('completion write: drain failed (ignored)', { error: String(error) });
+      reportCompletionWriteDegradation('drain-failed');
     } finally {
       this.draining = false;
     }

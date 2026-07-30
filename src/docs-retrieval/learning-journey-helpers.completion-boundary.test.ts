@@ -39,7 +39,10 @@ import {
   setJourneyCompletionPercentageAsync,
   setMilestoneCompletionPercentage,
   markMilestoneDone,
+  resolveExpectedMilestoneIds,
+  recordGuideCompletionForSurface,
 } from './learning-journey-helpers';
+import type { LearningJourneyMetadata, Milestone } from '../types/content.types';
 import { onCompletionRecorded, __resetRecorderForTests, type CompletionFact } from '../completion-records';
 
 let emitted: CompletionFact[];
@@ -197,7 +200,7 @@ describe('learning-journey milestone completion (trigger class B / milestone-as-
   });
 });
 
-describe('real V1 recommendation shape (finding 1 — repository is a manifest sibling)', () => {
+describe('real V1 recommendation shape (repository is a manifest sibling)', () => {
   // V1PackageManifest carries `id`/`type` but NOT `repository`; the recommender
   // returns `repository` as a SIBLING of `manifest`. The completion context must
   // thread that sibling separately, or non-default guides corrupt the durable key.
@@ -235,7 +238,7 @@ describe('real V1 recommendation shape (finding 1 — repository is a manifest s
     milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3']));
     getPathsDataMock.mockReturnValue({ paths: [] });
 
-    await markMilestoneDone('base', 'm3', 3, {
+    await markMilestoneDone('base', 'm3', ['m1', 'm2', 'm3'], {
       packageManifest: { id: 'linux-journey', type: 'journey' },
       repository: 'app-platform',
     });
@@ -252,7 +255,7 @@ describe('whole-journey completion (trigger class D — the new journey_complete
       paths: [{ id: 'linux-path', title: 'Linux', url: 'base', badgeId: 'linux-badge' }],
     });
 
-    await markMilestoneDone('base', 'm3', 3);
+    await markMilestoneDone('base', 'm3', ['m1', 'm2', 'm3']);
 
     const journeyEmits = emitted.filter((f) => f.kind === 'journey');
     expect(journeyEmits).toHaveLength(1);
@@ -271,7 +274,7 @@ describe('whole-journey completion (trigger class D — the new journey_complete
       paths: [{ id: 'linux-path', title: 'Linux', url: 'base', badgeId: 'linux-badge' }],
     });
 
-    await markMilestoneDone('base', 'm3', 3, {
+    await markMilestoneDone('base', 'm3', ['m1', 'm2', 'm3'], {
       packageManifest: { id: 'linux-journey', repository: 'app-platform' },
     });
 
@@ -285,7 +288,7 @@ describe('whole-journey completion (trigger class D — the new journey_complete
     milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3']));
     getPathsDataMock.mockReturnValue({ paths: [] });
 
-    await markMilestoneDone('https://grafana.com/docs/learning-journeys/unregistered/', 'm3', 3);
+    await markMilestoneDone('https://grafana.com/docs/learning-journeys/unregistered/', 'm3', ['m1', 'm2', 'm3']);
 
     expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(0);
     // The milestone-as-guide fact still emits; only the journey fact is skipped.
@@ -294,7 +297,7 @@ describe('whole-journey completion (trigger class D — the new journey_complete
 
   it('does not fire journey_completed before all milestones are complete', async () => {
     milestoneGetCompletedMock.mockResolvedValue(new Set(['m1']));
-    await markMilestoneDone('base', 'm1', 3);
+    await markMilestoneDone('base', 'm1', ['m1', 'm2', 'm3']);
     expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(0);
   });
 
@@ -304,9 +307,173 @@ describe('whole-journey completion (trigger class D — the new journey_complete
       paths: [{ id: 'linux-path', title: 'Linux', url: 'base', badgeId: 'linux-badge' }],
     });
 
-    await markMilestoneDone('base', 'm3', 3);
-    await markMilestoneDone('base', 'm2', 3);
+    await markMilestoneDone('base', 'm3', ['m1', 'm2', 'm3']);
+    await markMilestoneDone('base', 'm2', ['m1', 'm2', 'm3']);
 
     expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(1);
+  });
+});
+
+describe('whole-journey membership, not count (journey-threshold-membership)', () => {
+  it('does NOT fire when stale slugs inflate the stored set to the milestone COUNT', async () => {
+    // The bug this replaces: `completed.size >= totalMilestones` would emit here
+    // (size 3 ≥ 3) even though only one CURRENT milestone (m1) is complete.
+    milestoneGetCompletedMock.mockResolvedValue(new Set(['old-a', 'old-b', 'm1']));
+    getPathsDataMock.mockReturnValue({
+      paths: [{ id: 'linux-path', title: 'Linux', url: 'base', badgeId: 'linux-badge' }],
+    });
+
+    await markMilestoneDone('base', 'm1', ['m1', 'm2', 'm3']);
+
+    expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(0);
+    expect(awardBadgeMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire when a milestone was renamed and its new slug is not yet complete', async () => {
+    milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3-old']));
+    getPathsDataMock.mockReturnValue({
+      paths: [{ id: 'linux-path', title: 'Linux', url: 'base', badgeId: 'linux-badge' }],
+    });
+
+    await markMilestoneDone('base', 'm3-old', ['m1', 'm2', 'm3-new']);
+
+    expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(0);
+  });
+
+  it('fires when a milestone was removed and every remaining expected slug is complete', async () => {
+    // Stored progress still holds the removed slug; the current expected set no
+    // longer includes it, so membership is satisfied by the survivors.
+    milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'removed-c']));
+    getPathsDataMock.mockReturnValue({
+      paths: [{ id: 'linux-path', title: 'Linux', url: 'base', badgeId: 'linux-badge' }],
+    });
+
+    await markMilestoneDone('base', 'm2', ['m1', 'm2']);
+
+    expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(1);
+    expect(awardBadgeMock).toHaveBeenCalledWith('linux-badge');
+  });
+
+  it('does NOT fire when no expected set is provided (fails closed)', async () => {
+    milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3']));
+    await markMilestoneDone('base', 'm3');
+    expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(0);
+  });
+});
+
+describe('surface emitter routing matrix (bundled/remote × milestone/standalone)', () => {
+  const lj = (slug: string) =>
+    ({ milestones: [{ number: 1, title: slug, duration: '5m', url: `https://ex/${slug}/`, isActive: false }] }) as any;
+  // markMilestoneDone is fire-and-forget with internal awaits; drain the queue.
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('bundled + milestone → milestone-as-guide fact + bundled progress write, no standalone', async () => {
+    recordGuideCompletionForSurface({
+      baseUrl: 'bundled:linux',
+      contentUrl: 'bundled:linux',
+      currentUrl: 'https://ex/select-platform/content.json',
+      contentType: 'learning-journey',
+      metadata: {
+        title: '',
+        packageManifest: { id: 'linux-journey', repository: 'app-platform' },
+        ...lj('select-platform'),
+      },
+      guideTitle: 'LJ',
+    });
+    await flush();
+
+    const guide = emitted.filter((f) => f.kind === 'guide');
+    expect(guide).toHaveLength(1);
+    expect(guide[0]).toMatchObject({ guideId: 'select-platform', guideCategory: 'learning-journey' });
+    expect(journeySetMock).toHaveBeenCalledWith('bundled:linux', 100);
+  });
+
+  it('bundled + non-milestone → bundled guide fact, not standalone', () => {
+    recordGuideCompletionForSurface({
+      baseUrl: 'bundled:foo',
+      contentUrl: 'bundled:foo',
+      contentType: 'docs',
+      metadata: { title: '' },
+      guideTitle: 'Foo',
+    });
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ guideSource: 'bundled', guideId: 'foo', guideCategory: 'interactive' });
+    expect(journeySetMock).toHaveBeenCalledWith('bundled:foo', 100);
+  });
+
+  it('remote + non-milestone → standalone guide fact keyed on the manifest, no bundled write', () => {
+    recordGuideCompletionForSurface({
+      baseUrl: 'https://ex/g',
+      contentUrl: 'https://ex/g/content.json',
+      currentUrl: 'https://ex/g/content.json',
+      contentType: 'docs',
+      metadata: { title: '', packageManifest: { id: 'remote-1', repository: 'app-platform' } },
+      guideTitle: 'R',
+    });
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ guideId: 'remote-1', guideCategory: 'interactive' });
+    expect(journeySetMock).not.toHaveBeenCalled();
+  });
+
+  it('remote + milestone → milestone-as-guide fact, no bundled progress write', async () => {
+    recordGuideCompletionForSurface({
+      baseUrl: 'https://ex/lj',
+      contentUrl: 'https://ex/lj',
+      currentUrl: 'https://ex/m1/content.json',
+      contentType: 'learning-journey',
+      metadata: { title: '', packageManifest: { id: 'lj', repository: 'app-platform' }, ...lj('m1') },
+      guideTitle: 'LJ',
+    });
+    await flush();
+
+    const guide = emitted.filter((f) => f.kind === 'guide');
+    expect(guide).toHaveLength(1);
+    expect(guide[0]).toMatchObject({ guideId: 'm1', guideCategory: 'learning-journey' });
+    expect(journeySetMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('surface emitter carries the resolved repository end-to-end (repository-identity-authority)', () => {
+  it('keys the emitted fact on the resolved repository, not the manifest schema default', () => {
+    // As it arrives at the surface: content.metadata carries the manifest (whose
+    // repository is the schema default) AND the resolved top-level repository.
+    recordGuideCompletionForSurface({
+      baseUrl: 'https://cdn.example.com/g',
+      contentUrl: 'https://cdn.example.com/g/content.json',
+      currentUrl: 'https://cdn.example.com/g/content.json',
+      contentType: 'docs',
+      metadata: {
+        title: 'Linux',
+        packageManifest: { id: 'linux-01', repository: 'interactive-tutorials', type: 'guide' },
+        repository: 'online-cdn',
+      },
+      guideTitle: 'Linux',
+    });
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ guideSource: 'online-cdn', guideId: 'linux-01' });
+  });
+});
+
+describe('resolveExpectedMilestoneIds', () => {
+  function milestone(url: string, number: number): Milestone {
+    return { number, title: url, duration: '5 min', url, isActive: false };
+  }
+
+  it('maps each milestone URL to its slug, de-duplicated', () => {
+    const lj = {
+      milestones: [
+        milestone('https://grafana.com/docs/lp/linux/select-platform/content.json', 1),
+        milestone('https://grafana.com/docs/lp/linux/install-alloy/', 2),
+      ],
+    } as unknown as LearningJourneyMetadata;
+    expect(resolveExpectedMilestoneIds(lj)).toEqual(['select-platform', 'install-alloy']);
+  });
+
+  it('returns an empty set when milestones are absent', () => {
+    expect(resolveExpectedMilestoneIds(undefined)).toEqual([]);
+    expect(resolveExpectedMilestoneIds({ milestones: [] } as unknown as LearningJourneyMetadata)).toEqual([]);
   });
 });

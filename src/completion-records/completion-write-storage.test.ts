@@ -85,7 +85,7 @@ describe('completion write cross-tab storage', () => {
     expect(store.list()).toEqual([write]);
   });
 
-  it('overlays a failed-persist update over its stale persisted twin (finding 5)', () => {
+  it('overlays a failed-persist update over its stale persisted twin', () => {
     const store = createCompletionWriteStorage('user-7:org-3', 'tab-a');
     const original = item('evt'); // attempts: 0, persisted successfully
     store.put(original);
@@ -139,5 +139,62 @@ describe('completion write cross-tab storage', () => {
     tabA.releaseLease();
 
     expect(tabA.acquireLease(30_002).acquired).toBe(false);
+  });
+
+  it('fails open (acquires) when localStorage throws during lease acquisition', () => {
+    const store = createCompletionWriteStorage('user-7:org-3', 'tab-a');
+    jest.spyOn(Storage.prototype, 'getItem').mockImplementationOnce(() => {
+      throw new Error('storage blocked');
+    });
+    expect(store.acquireLease(0)).toEqual({ acquired: true, retryAfterMs: 0 });
+  });
+});
+
+describe('completion write corruption recovery (CF-02)', () => {
+  function itemKeyFor(id: string): string {
+    const key = Object.keys(localStorage).find((k) => k.endsWith(`:item:${id}`));
+    if (!key) {
+      throw new Error(`no storage key for item ${id}`);
+    }
+    return key;
+  }
+
+  it('quarantines an entry whose stored key suffix disagrees with its body id', () => {
+    const store = createCompletionWriteStorage('user-7:org-3', 'tab-a');
+    store.put(item('A'));
+    const keyA = itemKeyFor('A');
+
+    // Corrupt: the value stored under key ...item:A now carries body id 'B'.
+    localStorage.setItem(keyA, JSON.stringify({ ...item('B') }));
+
+    // list() must reject the mismatched entry (it would otherwise be immortal:
+    // sent under id 'B' but removed under key 'A') and delete it under its key.
+    expect(store.list()).toEqual([]);
+    expect(localStorage.getItem(keyA)).toBeNull();
+  });
+});
+
+describe('completion write cross-tab subscribe (storage-event filtering)', () => {
+  it('fires only for this owner’s item keys and stops after unsubscribe', () => {
+    const store = createCompletionWriteStorage('user-7:org-3', 'tab-a');
+    store.put(item('a'));
+    const itemKey = Object.keys(localStorage).find((k) => k.endsWith(':item:a'))!;
+    const leaseKey = itemKey.replace(/item:a$/, 'lease');
+
+    const listener = jest.fn();
+    const unsubscribe = store.subscribe(listener);
+
+    window.dispatchEvent(new StorageEvent('storage', { key: itemKey }));
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    // Lease key, an unrelated key, and a null key must NOT trigger a drain.
+    window.dispatchEvent(new StorageEvent('storage', { key: leaseKey }));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'unrelated' }));
+    window.dispatchEvent(new StorageEvent('storage', { key: null }));
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    window.dispatchEvent(new StorageEvent('storage', { key: itemKey }));
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });

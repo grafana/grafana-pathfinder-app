@@ -6,6 +6,7 @@ import { createInteractionName, UserInteraction } from '../analytics';
 import {
   TELEMETRY_EVENTS,
   TELEMETRY_MEASUREMENTS,
+  type CompletionWriteDegradation,
   type ContentFetchOutcome,
   type ContentFetchTier,
   type GuideLoadOutcome,
@@ -97,4 +98,11 @@ export function recordSequenceActionError(
 
 export function recordPanelReady(durationMs: number, surface: string): void {
   pushFaroMeasurement(TELEMETRY_MEASUREMENTS.panel, { panel_lcp_ms: durationMs }, { surface });
+}
+
+// The durable completion-write path degraded (route not served, a record was
+// dropped/evicted/expired, or persistence/drain failed). Only the aggregate
+// reason class is attached — never a guide id/title, user id, URL, or error.
+export function recordCompletionWriteDegradation(reason: CompletionWriteDegradation): void {
+  pushFaroEvent(TELEMETRY_EVENTS.completionWriteDegraded, { reason });
 }
