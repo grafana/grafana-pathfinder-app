@@ -361,7 +361,7 @@ func TestCustomGuide_NoAppURLStructurallyUnavailable(t *testing.T) {
 	l := singlePageGuideLister()
 	withGuideLister(t, l)
 
-	cfg := map[string]string{featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle} // no app URL
+	cfg := map[string]string{featuretoggles.EnabledFeatures: customGuideAggregationToggle} // no app URL
 	_, body := doCustomGuideReq(t, customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1", cfg))
 
 	if body.Capability.Available || body.Capability.Reason != reasonAppURLUnavailable {

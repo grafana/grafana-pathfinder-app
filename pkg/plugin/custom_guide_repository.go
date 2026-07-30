@@ -223,7 +223,7 @@ func (a *App) resolveCustomGuideBackend(r *http.Request) (lister customGuideList
 	if cfg == nil {
 		return nil, namespace, false, reasonGrafanaConfigUnavailable
 	}
-	if !cfg.FeatureToggles().IsEnabled(pathfinderBackendAggregationToggle) {
+	if !cfg.FeatureToggles().IsEnabled(customGuideAggregationToggle) {
 		return nil, namespace, false, reasonFeatureToggleDisabled
 	}
 	if namespace == "" {

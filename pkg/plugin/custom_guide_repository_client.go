@@ -11,10 +11,18 @@ import (
 // customGuideGroupVersion is the App Platform API group/version that serves the
 // InteractiveGuide kind; the plural resource is "interactiveguides". Tracks
 // grafana-pathfinder-backend kinds/interactiveguide.cue (groupOverride
-// pathfinderbackend.ext.grafana.com).
+// pathfinderbackend.ext.grafana.app) — the Grafana App Platform (GAP) group.
 const (
-	customGuideGroupVersion = "pathfinderbackend.ext.grafana.com/v1alpha1"
+	customGuideGroupVersion = "pathfinderbackend.ext.grafana.app/v1alpha1"
 	customGuideResource     = "interactiveguides"
+
+	// customGuideAggregationToggle is the boot-time toggle the aggregation layer
+	// sets when the pathfinderbackend GAP API (group above) is served on this
+	// instance; mirrors the front-end check in src/utils/interactive-guides-api.ts.
+	// Distinct from the shared pathfinderBackendAggregationToggle (the legacy
+	// `.com` group), which still gates the completion-records proxy until that
+	// path migrates to GAP.
+	customGuideAggregationToggle = "aggregation.pathfinderbackend-ext-grafana-app.enabled"
 
 	// customGuideListPageSize bounds each upstream LIST page. The proxy drains
 	// all pages, so this only trades round-trips against per-response size.

@@ -68,10 +68,13 @@ func rec(userID, guideSource, guideID, title, category, pathID, source, complete
 	}
 }
 
-// testGrafanaConfig is the healthy config: aggregation toggle on, app URL set.
+// testGrafanaConfig is the healthy config: aggregation toggles on, app URL set.
+// Enables both the legacy `.com` toggle (completion-records proxy) and the GAP
+// `.app` toggle (custom-guide catalogue proxy) so this shared helper models a
+// transition-state stack aggregating both groups.
 func testGrafanaConfig() map[string]string {
 	return map[string]string{
-		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle,
+		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
 		sdkconfig.AppURL:               "http://grafana.example",
 	}
 }
