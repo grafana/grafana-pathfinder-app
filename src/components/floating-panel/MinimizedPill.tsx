@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { Badge, useStyles2 } from '@grafana/ui';
 import { getFloatingPanelStyles } from './floating-panel.styles';
+import { INTERACTIVE_Z_INDEX } from '../../constants/interactive-z-index';
 import logoSvg from '../../img/logo.svg';
 
 export interface MinimizedPillProps {
@@ -66,7 +67,10 @@ export function MinimizedPill({ hasActiveGuide, stepProgress, onRestore }: Minim
   // No <Portal> needed — the parent (FloatingPanel) already renders
   // via createPortal into document.body
   return (
-    <div className={styles.pillWrapper} style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 9990 }}>
+    <div
+      className={styles.pillWrapper}
+      style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: INTERACTIVE_Z_INDEX.FLOATING_PANEL }}
+    >
       <button
         className={`${styles.pill} ${hasActiveGuide ? styles.pillActive : ''}`}
         style={{ position: 'relative' }}
