@@ -144,6 +144,41 @@ describe('scrubReplayEvent', () => {
       expect(styleNode.childNodes[0]!.textContent).toBe('.a{background:url("https://acme.grafana.net/y.png")}');
     });
 
+    // A quoted CSS url() may legally contain parentheses; an unquoted one may
+    // not. Matching both with one "stop at the first )" rule silently skipped
+    // the quoted case.
+    it.each([
+      ['double-quoted with parentheses', 'url("https://acme.grafana.net/a(1).png?sig=s")'],
+      ['single-quoted with parentheses', "url('https://acme.grafana.net/a(1).png?sig=s')"],
+      ['padded with whitespace', 'url(  "https://acme.grafana.net/a(1).png?sig=s"  )'],
+    ])('scrubs a %s url()', (_label, css) => {
+      const event = fullSnapshot(elementNode({ style: `background-image: ${css}` }));
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        style: 'background-image: url("https://acme.grafana.net/a(1).png")',
+      });
+    });
+
+    it('collapses a quoted data: URI containing parentheses', () => {
+      const event = fullSnapshot(
+        elementNode({ style: 'background: url("data:image/svg+xml,<svg><path d=\'M0 0\'/></svg>)")' })
+      );
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({ style: 'background: url("data:")' });
+    });
+
+    it('scrubs every url() in a rule, not just the first', () => {
+      const event = fullSnapshot(
+        elementNode({
+          _cssText: '.a{background:url("https://acme.grafana.net/1.png?k=v")}.b{background:url(/2.png?k=v)}',
+        })
+      );
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        _cssText: '.a{background:url("https://acme.grafana.net/1.png")}.b{background:url("/2.png")}',
+      });
+    });
+
     it('leaves in-document url(#filter) references alone', () => {
       const event = fullSnapshot(elementNode({ style: 'filter: url(#drop-shadow)' }));
 

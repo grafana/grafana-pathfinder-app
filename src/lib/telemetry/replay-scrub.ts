@@ -180,16 +180,23 @@ const SAFE_ATTRIBUTES = new Set([
 // CSS is the one allowlisted value that can still smuggle a URL, and rrweb
 // absolutifies those before we see them: a relative `url(logo.png?sig=…)`
 // arrives fully qualified with the query intact.
-const CSS_URL_PATTERN = /url\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
+//
+// The three arms are not interchangeable. A quoted URL may legally contain
+// parentheses (`url("a(1).png")`, or a data: SVG full of them), so it has to
+// run to its closing quote rather than to the first `)`. An unquoted one may
+// not contain parens, quotes or whitespace at all, so there the stricter class
+// is what keeps the match from running past the end of the value.
+const CSS_URL_PATTERN = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^'")\s]*))\s*\)/gi;
 
 function scrubCssUrls(css: string): string {
   // Emotion rewrites rules constantly, so the common case has to stay cheap.
   if (!css.includes('url(')) {
     return css;
   }
-  return css.replace(CSS_URL_PATTERN, (match, _quote, target: string) =>
-    target.startsWith('#') ? match : `url("${stripUrlSecrets(target)}")`
-  );
+  return css.replace(CSS_URL_PATTERN, (match, doubleQuoted?: string, singleQuoted?: string, bare?: string): string => {
+    const target = doubleQuoted ?? singleQuoted ?? bare ?? '';
+    return target.startsWith('#') ? match : `url("${stripUrlSecrets(target)}")`;
+  });
 }
 
 function scrubCssText(value: unknown): unknown {
