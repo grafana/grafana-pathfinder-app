@@ -70,4 +70,11 @@ describe('stripUrlSecrets', () => {
     expect(stripUrlSecrets('')).toBe('');
     expect(stripUrlSecrets('http://')).toBe('');
   });
+
+  it.each(['javascript:alert(1)', 'vbscript:msgbox(1)', 'blob:https://acme.grafana.net/abc', 'mailto:a@b.c'])(
+    'drops %s, which a replay player has no reason to resolve',
+    (url) => {
+      expect(stripUrlSecrets(url)).toBe('');
+    }
+  );
 });

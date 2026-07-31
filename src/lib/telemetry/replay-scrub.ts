@@ -20,6 +20,10 @@ const URL_ATTRIBUTES = new Set([
   'rr_src',
 ]);
 
+// Allowlisted for rendering, but their values are CSS, so they get url()
+// treatment rather than passing through verbatim.
+const CSS_ATTRIBUTES = new Set(['style', '_cssText']);
+
 // Allowlist, not denylist. rrweb masks text but never attributes, and Grafana
 // puts real content in them — `data-testid="Panel header <panel title>"`,
 // `aria-label`, `title`, `alt`, `placeholder`. With every text node already
@@ -28,8 +32,6 @@ const URL_ATTRIBUTES = new Set([
 // lives. So: rendering-affecting and enumerated-value attributes only.
 const SAFE_ATTRIBUTES = new Set([
   'class',
-  'style',
-  '_cssText',
   'id',
   'type',
   'width',
@@ -167,19 +169,49 @@ const SAFE_ATTRIBUTES = new Set([
   'rr_mediaVolume',
 ]);
 
+// CSS is the one allowlisted value that can still smuggle a URL, and rrweb
+// absolutifies those before we see them: a relative `url(logo.png?sig=…)`
+// arrives fully qualified with the query intact.
+const CSS_URL_PATTERN = /url\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
+
+function scrubCssUrls(css: string): string {
+  return css.replace(CSS_URL_PATTERN, (match, _quote, target: string) =>
+    target.startsWith('#') ? match : `url("${stripUrlSecrets(target)}")`
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
 function scrubAttributes(attributes: Record<string, unknown>): void {
   for (const key of Object.keys(attributes)) {
+    const value = attributes[key];
     if (URL_ATTRIBUTES.has(key)) {
-      const value = attributes[key];
       if (typeof value === 'string') {
         attributes[key] = stripUrlSecrets(value);
       }
+    } else if (CSS_ATTRIBUTES.has(key)) {
+      if (typeof value === 'string') {
+        attributes[key] = scrubCssUrls(value);
+      }
     } else if (!SAFE_ATTRIBUTES.has(key)) {
       delete attributes[key];
+    }
+  }
+}
+
+// rrweb never masks the text inside <style> (masking it would strip the page
+// of all styling), and it emits _cssText for any <style> with a live sheet
+// whether or not inlineStylesheet is set — so stylesheet text reaches the
+// collector by two routes, both needing the same url() treatment.
+function scrubStyleText(node: Record<string, unknown>): void {
+  if (String(node.tagName).toLowerCase() !== 'style' || !Array.isArray(node.childNodes)) {
+    return;
+  }
+  for (const child of node.childNodes) {
+    if (isRecord(child) && typeof child.textContent === 'string') {
+      child.textContent = scrubCssUrls(child.textContent);
     }
   }
 }
@@ -191,6 +223,7 @@ function scrubNode(node: unknown): void {
   if (isRecord(node.attributes)) {
     scrubAttributes(node.attributes);
   }
+  scrubStyleText(node);
   if (Array.isArray(node.childNodes)) {
     for (const child of node.childNodes) {
       scrubNode(child);

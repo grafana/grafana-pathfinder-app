@@ -1505,7 +1505,7 @@ describe('session replay activation', () => {
     await faro.initFaro({ sessionReplay: true });
     await settleReplayImport();
 
-    expect(addedOptions().blockSelector).toBe('[data-testid="coda-terminal-panel"]');
+    expect(addedOptions().blockSelector).toBe('[data-testid="coda-terminal-panel"], .xterm');
   });
 
   it('scrubs events before they leave the recorder', async () => {

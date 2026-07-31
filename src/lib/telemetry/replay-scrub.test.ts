@@ -108,6 +108,54 @@ describe('scrubReplayEvent', () => {
       });
     });
 
+    it('strips query strings from url() inside inline styles', () => {
+      const event = fullSnapshot(
+        elementNode({
+          style: "background-image: url('https://acme.grafana.net/bg.png?sig=abc123'); color: red",
+        })
+      );
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        style: 'background-image: url("https://acme.grafana.net/bg.png"); color: red',
+      });
+    });
+
+    it('strips query strings from url() inside serialized stylesheets', () => {
+      const event = fullSnapshot(
+        elementNode({ _cssText: '.a{background:url(https://acme.grafana.net/x.svg?token=t)}.b{color:red}' })
+      );
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        _cssText: '.a{background:url("https://acme.grafana.net/x.svg")}.b{color:red}',
+      });
+    });
+
+    it('strips query strings from <style> text, which rrweb never masks', () => {
+      const styleNode = {
+        type: 2,
+        tagName: 'style',
+        id: 5,
+        attributes: {},
+        childNodes: [{ type: 3, id: 6, textContent: '.a{background:url(https://acme.grafana.net/y.png?sig=s)}' }],
+      };
+
+      scrubReplayEvent(fullSnapshot(styleNode));
+
+      expect(styleNode.childNodes[0]!.textContent).toBe('.a{background:url("https://acme.grafana.net/y.png")}');
+    });
+
+    it('leaves in-document url(#filter) references alone', () => {
+      const event = fullSnapshot(elementNode({ style: 'filter: url(#drop-shadow)' }));
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({ style: 'filter: url(#drop-shadow)' });
+    });
+
+    it('drops schemes a replay player has no reason to resolve', () => {
+      const event = fullSnapshot(elementNode({ href: 'javascript:alert(1)', src: 'blob:https://x/abc' }));
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({ href: '', src: '' });
+    });
+
     it('collapses inline data URIs and drops rasterised canvases', () => {
       const event = fullSnapshot(
         elementNode({ src: 'data:image/png;base64,iVBORw0KGgoAAAA', rr_dataURL: 'data:image/png;base64,iVBORw0K' })

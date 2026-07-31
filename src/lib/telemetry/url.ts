@@ -37,6 +37,12 @@ export function stripUrlSecrets(url: string): string {
   }
   try {
     const parsed = new URL(url, window.location.origin);
+    // Only schemes a replay player has any reason to resolve. Drops
+    // javascript:/vbscript:/blob: and friends, none of which mean anything on
+    // playback and all of which are better not round-tripped.
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return '';
+    }
     parsed.search = '';
     parsed.hash = '';
     parsed.username = '';
