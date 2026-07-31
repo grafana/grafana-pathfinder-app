@@ -21,7 +21,14 @@
  * `prepareGuideLaunch` handles that case separately via the inliner's status.
  */
 
+import { isInteractiveBlockType, type InteractiveBlockType } from '../../../constants/json-guide-classification';
 import type { JsonBlock, JsonGuide, JsonInteractiveAction, JsonStep } from '../../../types/json-guide.types';
+
+type InteractiveBlock = Extract<JsonBlock, { type: InteractiveBlockType }>;
+
+function isInteractiveBlock(block: JsonBlock): block is InteractiveBlock {
+  return isInteractiveBlockType(block.type);
+}
 
 /** The action values that require the live Grafana UI. */
 const GRAFANA_DRIVING_ACTIONS: ReadonlySet<JsonInteractiveAction> = new Set<JsonInteractiveAction>([
@@ -44,40 +51,45 @@ function stepDrivesGrafana(step: Pick<JsonStep, 'action' | 'targetAction'>): boo
 function blocksRequireGrafanaUi(blocks: JsonBlock[]): boolean {
   return blocks.some(blockRequiresGrafanaUi);
 }
-
-function blockRequiresGrafanaUi(block: JsonBlock): boolean {
+function interactiveBlockRequiresGrafanaUi(block: InteractiveBlock): boolean {
   switch (block.type) {
     case 'interactive':
       return stepDrivesGrafana(block);
     case 'multistep':
     case 'guided':
       return block.steps.some(stepDrivesGrafana);
-    case 'section':
-    case 'assistant':
-    case 'collapsible':
-      return blocksRequireGrafanaUi(block.blocks);
-    case 'conditional':
-      return blocksRequireGrafanaUi(block.whenTrue) || blocksRequireGrafanaUi(block.whenFalse);
     case 'code-block':
       // `reftarget` is schema-required and targets a live Grafana Monaco
       // editor; without the Grafana UI both "Show me" and "Insert" are dead.
       return true;
-    case 'snippet-ref':
-      return true;
-    // Interactive inside Pathfinder or purely presentational — none drive
-    // the live Grafana page. Enumerated (no default) so a new JsonBlock
-    // member is a compile error here instead of silently classifying as
-    // non-interactive and hiding any Grafana-driving action it may nest.
-    case 'markdown':
-    case 'html':
-    case 'image':
-    case 'video':
+    // Interactive inside Pathfinder, but self-contained; none drive the live Grafana page.
     case 'quiz':
     case 'input':
     case 'terminal':
     case 'terminal-connect':
     case 'challenge':
     case 'grot-guide':
+      return false;
+  }
+}
+
+function blockRequiresGrafanaUi(block: JsonBlock): boolean {
+  if (isInteractiveBlock(block)) {
+    return interactiveBlockRequiresGrafanaUi(block);
+  }
+  switch (block.type) {
+    case 'section':
+    case 'assistant':
+    case 'collapsible':
+      return blocksRequireGrafanaUi(block.blocks);
+    case 'conditional':
+      return blocksRequireGrafanaUi(block.whenTrue) || blocksRequireGrafanaUi(block.whenFalse);
+    case 'snippet-ref':
+      return true;
+    case 'markdown':
+    case 'html':
+    case 'image':
+    case 'video':
       return false;
     default: {
       // Exhaustiveness: adding a JsonBlock member without classifying it here
