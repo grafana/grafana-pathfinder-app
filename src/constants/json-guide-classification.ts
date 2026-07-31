@@ -11,7 +11,7 @@ export const INTERACTIVE_BLOCK_TYPES = [
   'code-block',
   'challenge',
   'grot-guide',
-] as const satisfies readonly JsonBlock['type'][];
+] as const satisfies ReadonlyArray<JsonBlock['type']>;
 
 export type InteractiveBlockType = (typeof INTERACTIVE_BLOCK_TYPES)[number];
 
