@@ -1,7 +1,6 @@
-const INTERACTIVE_TYPES = new Set(['interactive', 'multistep', 'guided']);
+import { isInteractiveBlockType } from '../../../../src/constants/json-guide-classification';
 
-/** Count blocks discoverable through the runner's `interactive-step-*` selector. */
-export function countDiscoverableSteps(guide: unknown): number {
+export function countInteractiveBlocks(guide: unknown): number {
   let count = 0;
 
   function walk(node: unknown): void {
@@ -18,7 +17,7 @@ export function countDiscoverableSteps(guide: unknown): number {
 
     const block = node as Record<string, unknown>;
 
-    if (typeof block.type === 'string' && INTERACTIVE_TYPES.has(block.type)) {
+    if (isInteractiveBlockType(block.type) || block.type === 'snippet-ref') {
       count++;
     }
 
