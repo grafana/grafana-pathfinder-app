@@ -301,6 +301,7 @@ export const testIds = {
     completedSection: 'my-learning-completed-section',
     discoverMoreCard: (id: string) => `discover-more-card-${id}`,
     discoverMoreStart: (id: string) => `discover-more-start-${id}`,
+    tableOfContents: 'learning-paths-toc',
   },
 
   // Live Session

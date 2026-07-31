@@ -1,9 +1,10 @@
 # Panel-mode persistence
 
 > Canonical rationale for `src/global-state/panel-mode.ts`. The persistence
-> contract is enforced in code by three mutators + one predicate, pinned
-> behaviourally by `panel-mode.test.ts` and by the source tripwire
-> `components/full-screen/panel-mode-surface-toggles.contract.test.ts`.
+> contract is enforced in code by three mode mutators, a non-persisting
+> transient-session closer (`endTransientSession`), and the transient predicate
+> (`isTransient`), pinned behaviourally by `panel-mode.test.ts` and by the source
+> tripwire `components/full-screen/panel-mode-surface-toggles.contract.test.ts`.
 
 ## Purpose
 
@@ -101,6 +102,31 @@ to make the dock persist (decision 3) rather than making it never persist.
 The conditional `setMode` is intentional. Do **not** "simplify" it into an
 unconditional in-memory write; doing so silently reintroduces this regression.
 
+### Decision 4 (#1448) — browser Back out of a transient prose launch exits quietly
+
+A prose guide launched from My Learning auto-picks full screen
+(`setModeTransient('fullscreen')`), expressing no durable surface preference.
+Browser **Back** out of that launch previously fell through to the auto-dock's
+return-to-sidebar path, reopening a closed extension sidebar with the prose
+squeezed in.
+
+**Decision.** On a history **POP** while a transient session is active, the
+auto-dock (`dockOnLeavingFullScreen`) ends the session via `endTransientSession`
+— which drops the in-memory override so `getMode()` falls back to the stored
+preference — and forces no surface open (outcome `'transient_back'`). The exit
+is **always** quiet: the prior surface is deliberately never captured or
+restored, so Back never reopens a surface the launch didn't durably choose.
+PUSH/REPLACE keep today's dock (an interactive `navigate` step leaving full
+screen still needs a panel to continue in), and a non-transient POP (a
+deliberately-adopted full screen) docks too. history v4 cannot tell Back from
+Forward — both are POP — which is accepted for this quiet exit.
+
+`endTransientSession` neither persists (the launch never chose a preference —
+decision 2) nor dispatches `PANEL_MODE_CHANGE_EVENT` (the surface is already
+unmounted, so no live listener). Its call is deferred so `FullScreenPanel`'s
+unmount cleanup runs first while `getMode()` is still `'fullscreen'`; see the
+code comments for that hazard and the dead-state hazard it also avoids.
+
 ## What is safe to change vs. load-bearing
 
 - **Safe:** collapsing bookkeeping that is provably redundant. `_transientActive`
@@ -113,5 +139,8 @@ unconditional in-memory write; doing so silently reintroduces this regression.
 
 ## Related
 
-- Return-path interaction with browser Back on a transient prose launch: **#1448**.
+- Return-path interaction with browser Back on a transient prose launch:
+  **#1448** (resolved — see decision 4). The Grafana nav-click-with-prose
+  annoyance is a separate follow-up needing an interactive-step-in-progress
+  signal, still to be filed.
 - Auto-open listener ownership across surfaces: **#1450**.

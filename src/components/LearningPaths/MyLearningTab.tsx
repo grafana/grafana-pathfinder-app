@@ -142,16 +142,18 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   const handleOpenGuide = useCallback(
     (guideId: string, pathId: string) => {
-      // Find the parent path by ID (not by guideId, since multiple paths may share the same guide slugs)
       const parentPath = paths.find((p) => p.id === pathId);
 
-      // URL-based path — open the per-guide URL when known so the user lands
-      // on the actual next module instead of the path base / first module
-      // (issue #744). When dynamic data has not loaded yet, fall back to the
-      // path's base URL.
       if (parentPath?.url) {
-        const resolvedGuideUrl = getGuideUrlForPath(guideId, parentPath.id) ?? parentPath.url;
-        const guideTitle = getPathGuides(parentPath.id).find((g) => g.id === guideId)?.title;
+        const isFreshLaunch = getPathProgress(parentPath.id) === 0;
+        const launchTarget = isFreshLaunch ? 'cover_page' : 'milestone';
+        // The path base URL is its cover page; continuing still resolves the current milestone.
+        const resolvedGuideUrl = isFreshLaunch
+          ? parentPath.url
+          : (getGuideUrlForPath(guideId, parentPath.id) ?? parentPath.url);
+        const guideTitle = isFreshLaunch
+          ? parentPath.title
+          : getPathGuides(parentPath.id).find((g) => g.id === guideId)?.title;
         const title = guideTitle || parentPath.title;
 
         reportAppInteraction(UserInteraction.OpenResourceClick, {
@@ -159,6 +161,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           content_url: resolvedGuideUrl,
           content_type: AnalyticsContentType.LearningJourney,
           interaction_location: 'my_learning_tab',
+          launch_target: launchTarget,
         });
 
         void launch(resolvedGuideUrl, title, parentPath.id);

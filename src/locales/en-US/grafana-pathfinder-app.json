@@ -19,6 +19,9 @@
     "view": "View",
     "viewDocumentation": "View documentation"
   },
+  "coverPage": {
+    "tableOfContents": "In this path"
+  },
   "docsPanel": {
     "closeTab": "Close {{title}}",
     "closeSidebar": "Close sidebar",
@@ -73,9 +76,12 @@
     "launchErrorMessage": "Something went wrong while loading the guide. Please try again.",
     "launchErrorTitle": "Could not open the guide",
     "learningAltitude": "Learning altitude",
+    "learningPaths": "Learning paths",
+    "loadingGuides": "Loading guides...",
     "myCourses": "My paths",
     "myCoursesDescription": "Paths you've started",
     "myCoursesEmpty": "You haven't started a path yet — pick one from Discover more",
+    "pathsDescription": "Structured guides to help you master Grafana step by step",
     "showLess": "Show less",
     "subtitle": "Track your progress, earn badges, and master Grafana",
     "viewAll_one": "View all ({{count}})",

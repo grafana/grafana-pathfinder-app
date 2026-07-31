@@ -2,6 +2,8 @@
 .github
 .cursor
 .config
+# Excluded because it extends the excluded ./.config/tsconfig.json; Playwright 1.62+ hard-fails on the unresolvable extends. Unused in the image (build:cli uses tsconfig.cli.json).
+tsconfig.json
 .planning
 .vscode
 node_modules

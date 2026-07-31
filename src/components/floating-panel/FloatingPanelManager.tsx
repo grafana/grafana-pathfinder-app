@@ -50,6 +50,22 @@ export function FloatingPanelManager() {
     };
   }, []);
 
+  // Re-sync from the singleton on a floating launch. A quiet transient-Back exit
+  // (#1448) clears the session without emitting PANEL_MODE_CHANGE_EVENT, so our
+  // cached mode can be stale-'fullscreen' while getMode() has reverted to a
+  // persisted 'floating'. Without this, the next floating launch's
+  // REQUEST_FLOATING_GUIDE_EVENT fires into a void — FloatingPanelInner (its only
+  // listener) is unmounted — and the guide is stranded. Re-deriving here remounts
+  // the inner, which then consumes the pending guide on mount (a no-op when the
+  // cached mode already matches).
+  useEffect(() => {
+    const resync = () => setMode(panelModeManager.getMode());
+    document.addEventListener(REQUEST_FLOATING_GUIDE_EVENT, resync);
+    return () => {
+      document.removeEventListener(REQUEST_FLOATING_GUIDE_EVENT, resync);
+    };
+  }, []);
+
   if (mode !== 'floating') {
     return null;
   }
