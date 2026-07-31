@@ -525,13 +525,14 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           });
 
           // Mark current milestone done if it has no interactive steps
-          if (activeTab?.content?.type === 'learning-journey' && activeTab?.currentUrl && activeTab?.baseUrl) {
+          const journey = activeTab?.content?.metadata.learningJourney;
+          if (activeTab?.content?.type === 'learning-journey' && activeTab.currentUrl && journey) {
             const hasInteractiveSteps = (contentRef?.current?.querySelectorAll('[data-step-id]').length ?? 0) > 0;
             if (!hasInteractiveSteps) {
               const slug = getMilestoneSlug(activeTab.currentUrl);
               if (slug) {
                 markMilestoneDone(
-                  activeTab.baseUrl,
+                  journey.baseUrl,
                   slug,
                   activeTab.content?.metadata?.learningJourney?.totalMilestones,
                   {
