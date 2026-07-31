@@ -44,7 +44,7 @@ export const DEFAULT_SAMPLING_RATE = 1;
 // arrive as anything — a string from a mistyped MTFF value, NaN, 100 meaning
 // "percent". A previous Faro sample-rate flag was deleted rather than clamped
 // (#1275); this one earns its place by failing to the default instead of
-// silently recording nobody. An explicit 0 is still honoured — that is what
+// silently recording nobody. An explicit 0 is still honored — that is what
 // the enumerated variants offer — but only when it really is the number 0.
 export function resolveSamplingRate(rate: number | undefined): number {
   if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0 || rate > 1) {

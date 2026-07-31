@@ -27,11 +27,17 @@ describe('scrubReplayEvent', () => {
       const event = asEvent({
         type: 4,
         timestamp: 0,
-        data: { href: 'https://acme.grafana.net/d/abc/board?var-user=alice@acme.com&from=now-6h', width: 1, height: 2 },
+        data: {
+          href: 'https://acme.grafana.net/d/abc/acme-revenue?var-user=alice@acme.com&from=now-6h',
+          width: 1,
+          height: 2,
+        },
       });
 
+      // Query gone, and the slugified board title with it — on screen that
+      // title is masked, so leaving it in the href would undo that.
       expect(scrubReplayEvent(event)).toMatchObject({
-        data: { href: 'https://acme.grafana.net/d/abc/board', width: 1, height: 2 },
+        data: { href: 'https://acme.grafana.net/d/abc', width: 1, height: 2 },
       });
     });
   });
@@ -89,13 +95,13 @@ describe('scrubReplayEvent', () => {
       const event = fullSnapshot(
         elementNode({
           src: 'https://acme.grafana.net/avatar.png?token=abc123',
-          href: '/d/abc/board?var-user=alice',
+          href: '/d/abc/acme-revenue?var-user=alice',
         })
       );
 
       expect(attributesOf(scrubReplayEvent(event))).toEqual({
         src: 'https://acme.grafana.net/avatar.png',
-        href: '/d/abc/board',
+        href: '/d/abc',
       });
     });
 
@@ -189,6 +195,47 @@ describe('scrubReplayEvent', () => {
       });
     });
 
+    // Not every CSS resource reference is wrapped in url().
+    it('scrubs @import, which takes a bare string', () => {
+      const event = fullSnapshot(
+        elementNode({ _cssText: '@import "https://acme.grafana.net/sheet.css?token=t"; .a{color:red}' })
+      );
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        _cssText: '@import "https://acme.grafana.net/sheet.css"; .a{color:red}',
+      });
+    });
+
+    it('scrubs the bare-string form of image-set()', () => {
+      const event = fullSnapshot(
+        elementNode({
+          style: 'background: image-set("https://acme.grafana.net/a.png?sig=s" 1x, "/b.png?sig=s" 2x)',
+        })
+      );
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        style: 'background: image-set("https://acme.grafana.net/a.png" 1x, "/b.png" 2x)',
+      });
+    });
+
+    // rrweb masks TEXT_NODEs only, so a comment reaches the collector verbatim.
+    it('masks comment nodes, which rrweb serializes as written', () => {
+      const commented = {
+        type: 2,
+        tagName: 'div',
+        id: 1,
+        attributes: {},
+        childNodes: [{ type: 5, id: 2, textContent: ' TODO: alice@acme.com owns this panel ' }],
+      };
+
+      scrubReplayEvent(fullSnapshot(commented));
+
+      const masked = commented.childNodes[0]!.textContent;
+      expect(masked).not.toContain('alice@acme.com');
+      expect(masked).toMatch(/^[\s*]+$/);
+      expect(masked).toHaveLength(' TODO: alice@acme.com owns this panel '.length);
+    });
+
     it('leaves in-document url(#filter) references alone', () => {
       const event = fullSnapshot(elementNode({ style: 'filter: url(#drop-shadow)' }));
 
@@ -201,7 +248,7 @@ describe('scrubReplayEvent', () => {
       expect(attributesOf(scrubReplayEvent(event))).toEqual({ href: '', src: '' });
     });
 
-    it('collapses inline data URIs and drops rasterised canvases', () => {
+    it('collapses inline data URIs and drops rasterized canvases', () => {
       const event = fullSnapshot(
         elementNode({ src: 'data:image/png;base64,iVBORw0KGgoAAAA', rr_dataURL: 'data:image/png;base64,iVBORw0K' })
       );

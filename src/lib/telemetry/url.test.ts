@@ -39,9 +39,24 @@ describe('normalizeTelemetryUrl', () => {
 
 describe('stripUrlSecrets', () => {
   it('keeps the scheme and host so the URL stays loadable', () => {
-    expect(stripUrlSecrets('https://acme.grafana.net/d/abc/board?var-user=alice#panel-2')).toBe(
-      'https://acme.grafana.net/d/abc/board'
+    expect(stripUrlSecrets('https://acme.grafana.net/explore?var-user=alice#panel-2')).toBe(
+      'https://acme.grafana.net/explore'
     );
+  });
+
+  // Grafana slugifies the board title into the path, so this is the one place
+  // a title survives a recording in which every text node is masked.
+  it.each([
+    ['a dashboard', '/d/abc123/acme-q3-revenue-confidential', '/d/abc123'],
+    ['a solo panel', '/d-solo/abc123/acme-q3-revenue-confidential', '/d-solo/abc123'],
+    ['a folder', '/dashboards/f/fld456/finance-restricted', '/dashboards/f/fld456'],
+  ])('drops the title slug from %s path, keeping the uid', (_label, path, expected) => {
+    expect(stripUrlSecrets(`https://acme.grafana.net${path}?orgId=1`)).toBe(`https://acme.grafana.net${expected}`);
+  });
+
+  it('leaves paths that carry no title alone', () => {
+    expect(stripUrlSecrets('/public/build/app.1a2b3c.js?v=2')).toBe('/public/build/app.1a2b3c.js');
+    expect(stripUrlSecrets('/a/grafana-pathfinder-app/journey')).toBe('/a/grafana-pathfinder-app/journey');
   });
 
   it('strips userinfo', () => {

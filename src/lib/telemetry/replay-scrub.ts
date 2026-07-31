@@ -36,7 +36,7 @@ const CSS_ATTRIBUTES = new Set(['style', '_cssText']);
 // puts real content in them — `data-testid="Panel header <panel title>"`,
 // `aria-label`, `title`, `alt`, `placeholder`. With every text node already
 // masked there is nothing to gain from keeping an attribute we haven't
-// reasoned about, and an unrecognised attribute is exactly where the next leak
+// reasoned about, and an unrecognized attribute is exactly where the next leak
 // lives. So: rendering-affecting and enumerated-value attributes only.
 const SAFE_ATTRIBUTES = new Set([
   'class',
@@ -162,7 +162,7 @@ const SAFE_ATTRIBUTES = new Set([
   'xmlns:xlink',
   'version',
   // rrweb's own synthetic attributes, enumerated rather than prefix-matched so
-  // that rr_dataURL (a rasterised canvas) stays out.
+  // that rr_dataURL (a rasterized canvas) stays out.
   'rr_width',
   'rr_height',
   'rr_scrollLeft',
@@ -188,21 +188,37 @@ const SAFE_ATTRIBUTES = new Set([
 // is what keeps the match from running past the end of the value.
 const CSS_URL_PATTERN = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^'")\s]*))\s*\)/gi;
 
-// Same case-insensitivity as CSS_URL_PATTERN, and deliberately not
+// Not every CSS resource reference is wrapped in url(): `@import "a.css?t=…"`
+// and `image-set("a.png?sig=…" 1x)` are bare strings. Both are Grafana-origin
+// in practice, so this is depth rather than a known leak.
+const CSS_IMPORT_PATTERN = /(@import\s+)(["'])([^"']*)\2/gi;
+const CSS_IMAGE_SET_PATTERN = /((?:-webkit-)?image-set\()([^)]*)\)/gi;
+const CSS_QUOTED_STRING = /(["'])([^"']*)\1/g;
+
+// Same case-insensitivity as the patterns it guards, and deliberately not
 // `toLowerCase().includes(...)` — that would copy the whole stylesheet on
 // every call just to decide there is nothing to do. Non-global, so it carries
 // no lastIndex state between calls.
-const HAS_CSS_URL = /url\(/i;
+const HAS_CSS_RESOURCE = /url\(|@import|image-set\(/i;
 
 function scrubCssUrls(css: string): string {
   // Emotion rewrites rules constantly, so the common case has to stay cheap.
-  if (!HAS_CSS_URL.test(css)) {
+  if (!HAS_CSS_RESOURCE.test(css)) {
     return css;
   }
-  return css.replace(CSS_URL_PATTERN, (match, doubleQuoted?: string, singleQuoted?: string, bare?: string): string => {
-    const target = doubleQuoted ?? singleQuoted ?? bare ?? '';
-    return target.startsWith('#') ? match : `url("${stripUrlSecrets(target)}")`;
-  });
+  return css
+    .replace(CSS_URL_PATTERN, (match, doubleQuoted?: string, singleQuoted?: string, bare?: string): string => {
+      const target = doubleQuoted ?? singleQuoted ?? bare ?? '';
+      return target.startsWith('#') ? match : `url("${stripUrlSecrets(target)}")`;
+    })
+    .replace(CSS_IMPORT_PATTERN, (_match, keyword: string, _quote, target: string) => {
+      return `${keyword}"${stripUrlSecrets(target)}"`;
+    })
+    .replace(CSS_IMAGE_SET_PATTERN, (_match, keyword: string, args: string) => {
+      // url() entries inside image-set were already handled above; this only
+      // catches its bare-string form.
+      return `${keyword}${args.replace(CSS_QUOTED_STRING, (_s, _q, target: string) => `"${stripUrlSecrets(target)}"`)})`;
+    });
 }
 
 function scrubCssText(value: unknown): unknown {
@@ -272,6 +288,19 @@ function scrubStyleText(node: Record<string, unknown>): void {
   }
 }
 
+// rrweb's masking is TEXT_NODE-only, and neither it nor our options slim
+// comments out, so a comment's textContent is serialized verbatim. Pathfinder's
+// own sanitizer strips comments and React's markers hold no data, which leaves
+// third-party panel plugins as the only realistic writer — cheap enough to
+// close rather than reason about per plugin.
+const NODE_TYPE_COMMENT = 5;
+
+function maskCommentText(node: Record<string, unknown>): void {
+  if (node.type === NODE_TYPE_COMMENT && typeof node.textContent === 'string') {
+    node.textContent = node.textContent.replace(/\S/g, '*');
+  }
+}
+
 function scrubNode(node: unknown): void {
   if (!isRecord(node)) {
     return;
@@ -279,6 +308,7 @@ function scrubNode(node: unknown): void {
   if (isRecord(node.attributes)) {
     scrubAttributes(node.attributes);
   }
+  maskCommentText(node);
   scrubStyleText(node);
   if (Array.isArray(node.childNodes)) {
     for (const child of node.childNodes) {

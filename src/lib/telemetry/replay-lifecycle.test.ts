@@ -66,7 +66,7 @@ describe('session replay lifecycle across session-attribute stamps', () => {
   // the default beats silently recording nobody — see #1275, where an earlier
   // Faro sample-rate flag was deleted rather than clamped.
   describe('resolveSamplingRate', () => {
-    it.each([1, 0.5, 0.1, 0])('honours the in-range value %p', (rate) => {
+    it.each([1, 0.5, 0.1, 0])('honors the in-range value %p', (rate) => {
       expect(resolveSamplingRate(rate)).toBe(rate);
     });
 
