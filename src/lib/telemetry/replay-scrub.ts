@@ -188,9 +188,15 @@ const SAFE_ATTRIBUTES = new Set([
 // is what keeps the match from running past the end of the value.
 const CSS_URL_PATTERN = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^'")\s]*))\s*\)/gi;
 
+// Same case-insensitivity as CSS_URL_PATTERN, and deliberately not
+// `toLowerCase().includes(...)` — that would copy the whole stylesheet on
+// every call just to decide there is nothing to do. Non-global, so it carries
+// no lastIndex state between calls.
+const HAS_CSS_URL = /url\(/i;
+
 function scrubCssUrls(css: string): string {
   // Emotion rewrites rules constantly, so the common case has to stay cheap.
-  if (!css.includes('url(')) {
+  if (!HAS_CSS_URL.test(css)) {
     return css;
   }
   return css.replace(CSS_URL_PATTERN, (match, doubleQuoted?: string, singleQuoted?: string, bare?: string): string => {

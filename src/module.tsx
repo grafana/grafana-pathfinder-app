@@ -51,7 +51,7 @@ const { createExperimentDebugger, initializeHighlightedGuideExperiment, setupHig
   await import('./utils/experiments');
 const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
   await import('./utils/sidebar-auto-open');
-const { getFeatureFlagValue } = await import('./utils/openfeature');
+const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfeature');
 
 // The pathfinder.enabled kill-switch is the only gate on whether Pathfinder mounts.
 const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
@@ -68,9 +68,11 @@ try {
     const { initFaro } = await import('./lib/faro');
     // Session replay is a second remote switch on top — also default-on, so a
     // missing flag means recording. It captures the whole page, masked, from
-    // the first time Pathfinder is opened.
+    // the first time Pathfinder is opened. The rate is a volume dial on top of
+    // the switch, range-checked in lib/telemetry/replay.
     const sessionReplay = getFeatureFlagValue('pathfinder.session-replay', true);
-    initFaro({ sessionReplay }).catch((e) => logger.exception(e, { source: 'Faro init' }));
+    const sessionReplaySamplingRate = getNumberFlagValue('pathfinder.session-replay-sampling-rate', 1);
+    initFaro({ sessionReplay, sessionReplaySamplingRate }).catch((e) => logger.exception(e, { source: 'Faro init' }));
   }
 } catch (e) {
   logger.exception(e, { source: 'Faro init' });

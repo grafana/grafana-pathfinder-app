@@ -38,19 +38,36 @@ const MASK_EVERY_INPUT: MaskInputOptions = {
 // (no `:has()`).
 const BLOCK_SELECTOR = `[data-testid="${testIds.codaTerminal.panel}"], .xterm`;
 
-const REPLAY_OPTIONS: ReplayInstrumentationOptions = {
-  maskAllInputs: true,
-  maskInputOptions: MASK_EVERY_INPUT,
-  maskTextSelector: '*',
-  blockSelector: BLOCK_SELECTOR,
-  recordCanvas: false,
-  inlineImages: false,
-  inlineStylesheet: false,
-  collectFonts: false,
-  recordCrossOriginIframes: false,
-  samplingRate: 1,
-  beforeSend: scrubReplayEvent,
-};
+export const DEFAULT_SAMPLING_RATE = 1;
+
+// `pathfinder.session-replay-sampling-rate` is a remote number, so it can
+// arrive as anything — a string from a mistyped MTFF value, NaN, 100 meaning
+// "percent". A previous Faro sample-rate flag was deleted rather than clamped
+// (#1275); this one earns its place by failing to the default instead of
+// silently recording nobody. An explicit 0 is still honoured — that is what
+// the enumerated variants offer — but only when it really is the number 0.
+export function resolveSamplingRate(rate: number | undefined): number {
+  if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0 || rate > 1) {
+    return DEFAULT_SAMPLING_RATE;
+  }
+  return rate;
+}
+
+function buildReplayOptions(samplingRate: number): ReplayInstrumentationOptions {
+  return {
+    maskAllInputs: true,
+    maskInputOptions: MASK_EVERY_INPUT,
+    maskTextSelector: '*',
+    blockSelector: BLOCK_SELECTOR,
+    recordCanvas: false,
+    inlineImages: false,
+    inlineStylesheet: false,
+    collectFonts: false,
+    recordCrossOriginIframes: false,
+    samplingRate,
+    beforeSend: scrubReplayEvent,
+  };
+}
 
 // faro-core's setSession() removes the session meta before adding its
 // replacement, and both halves notify metas listeners — so every
@@ -93,6 +110,6 @@ class ContinuousReplayInstrumentation extends ReplayInstrumentation {
 // full-DOM snapshot, leaving a stream of mutations with nothing to apply them
 // to. rrweb emits a fresh snapshot whenever record() starts, so registering
 // late is what makes the replay playable at all.
-export async function activateSessionReplay(faro: Faro): Promise<void> {
-  faro.instrumentations.add(new ContinuousReplayInstrumentation(REPLAY_OPTIONS));
+export async function activateSessionReplay(faro: Faro, samplingRate?: number): Promise<void> {
+  faro.instrumentations.add(new ContinuousReplayInstrumentation(buildReplayOptions(resolveSamplingRate(samplingRate))));
 }

@@ -35,6 +35,7 @@ export function guardTelemetry(fn: () => void): void {
 
 export interface InitFaroOptions {
   sessionReplay?: boolean;
+  sessionReplaySamplingRate?: number;
 }
 
 export async function initFaro(options?: InitFaroOptions): Promise<void> {
@@ -115,14 +116,14 @@ export async function initFaro(options?: InitFaroOptions): Promise<void> {
   stampSurface();
 
   if (options?.sessionReplay) {
-    startSessionReplayOnFirstOpen(faroInstance);
+    startSessionReplayOnFirstOpen(faroInstance, options.sessionReplaySamplingRate);
   }
 }
 
 // The same open that latches passesActivityGate starts the recording, so the
 // first thing rrweb emits is already past the gate. The trailing start() covers
 // the surface having reported itself while the SDK chunk was still loading.
-function startSessionReplayOnFirstOpen(faro: Faro): void {
+function startSessionReplayOnFirstOpen(faro: Faro, samplingRate?: number): void {
   let started = false;
   const start = () => {
     if (started || !isPathfinderOpen()) {
@@ -131,7 +132,7 @@ function startSessionReplayOnFirstOpen(faro: Faro): void {
     started = true;
     unsubscribe();
     void import('./replay')
-      .then(({ activateSessionReplay }) => activateSessionReplay(faro))
+      .then(({ activateSessionReplay }) => activateSessionReplay(faro, samplingRate))
       .catch(() => {
         // Telemetry must never break the app it's observing.
       });

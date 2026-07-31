@@ -135,6 +135,21 @@ const pathfinderFeatureFlags = {
     trackingKey: 'session_replay',
   },
   /**
+   * Fraction of replay-eligible sessions that are actually recorded, as a
+   * deterministic hash of the session id — a given session either has a
+   * recording for its whole life or never does. Only consulted when
+   * `pathfinder.session-replay` is on; 0 and false both mean "record nobody",
+   * the difference being that this one is a volume dial rather than a switch.
+   * Clamped to [0, 1] at the point of use, since a remote flag can hold any
+   * number.
+   */
+  'pathfinder.session-replay-sampling-rate': {
+    valueType: 'number',
+    values: [0, 0.1, 0.25, 0.5, 1],
+    defaultValue: 1,
+    trackingKey: 'session_replay_sampling_rate',
+  },
+  /**
    * Controls whether the sidebar automatically opens on first Grafana load per session
    * When true: sidebar opens automatically on first page load
    * When false: sidebar only opens when user explicitly requests it
@@ -431,6 +446,36 @@ export const getFeatureFlagValue = (flagName: string, defaultValue: boolean): bo
 
     const client = getFeatureFlagClient();
     return client.getBooleanValue(flagName, defaultValue);
+  } catch (error) {
+    logger.error(`[OpenFeature] Error evaluating flag '${flagName}'`, { error });
+    return defaultValue;
+  }
+};
+
+/**
+ * Synchronously get a number feature flag value (for non-React code)
+ *
+ * Callers are responsible for range-checking the result at the point of use —
+ * a remote flag can hold any number, and a fat-fingered one should not reach
+ * the SDK it configures.
+ *
+ * @param flagName - The feature flag name
+ * @param defaultValue - Default value if flag evaluation fails
+ * @returns The evaluated flag value or default
+ *
+ * @example
+ * const rate = getNumberFlagValue('pathfinder.session-replay-sampling-rate', 1);
+ */
+export const getNumberFlagValue = (flagName: string, defaultValue: number): number => {
+  try {
+    const overrides = getFlagOverrides();
+    if (flagName in overrides && typeof overrides[flagName] === 'number') {
+      logger.warn(`[OpenFeature] Using local override for '${flagName}'`, { override: overrides[flagName] });
+      return overrides[flagName] as number;
+    }
+
+    const client = getFeatureFlagClient();
+    return client.getNumberValue(flagName, defaultValue);
   } catch (error) {
     logger.error(`[OpenFeature] Error evaluating flag '${flagName}'`, { error });
     return defaultValue;

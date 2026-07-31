@@ -5,7 +5,7 @@ import {
   type Faro,
   type TransportItem,
 } from '@grafana/faro-web-sdk';
-import { activateSessionReplay } from './replay';
+import { activateSessionReplay, resolveSamplingRate } from './replay';
 
 class CaptureTransport extends BaseTransport {
   readonly name = '@pathfinder/replay-lifecycle-transport';
@@ -60,6 +60,26 @@ describe('session replay lifecycle across session-attribute stamps', () => {
     stampSurface('sidebar');
 
     expect(recordingEvents()).toEqual(['faro.session_recording.started']);
+  });
+
+  // The rate is a remote number, so it can arrive as anything. Falling back to
+  // the default beats silently recording nobody — see #1275, where an earlier
+  // Faro sample-rate flag was deleted rather than clamped.
+  describe('resolveSamplingRate', () => {
+    it.each([1, 0.5, 0.1, 0])('honours the in-range value %p', (rate) => {
+      expect(resolveSamplingRate(rate)).toBe(rate);
+    });
+
+    it.each([
+      ['undefined (flag unset)', undefined],
+      ['a percentage mistaken for a fraction', 100],
+      ['a negative rate', -1],
+      ['NaN', Number.NaN],
+      ['Infinity', Number.POSITIVE_INFINITY],
+      ['a string from a mistyped remote value', '0.5' as unknown as number],
+    ])('falls back to 1 for %s', (_label, rate) => {
+      expect(resolveSamplingRate(rate)).toBe(1);
+    });
   });
 
   it('keeps the session id stable across those stamps', () => {

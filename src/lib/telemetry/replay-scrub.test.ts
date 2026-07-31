@@ -179,6 +179,16 @@ describe('scrubReplayEvent', () => {
       });
     });
 
+    it.each(['URL', 'Url', 'uRl'])('scrubs %s() — CSS keywords are case-insensitive', (keyword) => {
+      const event = fullSnapshot(
+        elementNode({ style: `background: ${keyword}("https://acme.grafana.net/c.png?token=t")` })
+      );
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        style: 'background: url("https://acme.grafana.net/c.png")',
+      });
+    });
+
     it('leaves in-document url(#filter) references alone', () => {
       const event = fullSnapshot(elementNode({ style: 'filter: url(#drop-shadow)' }));
 

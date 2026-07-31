@@ -127,6 +127,9 @@ describe('openfeature', () => {
         );
         expect(pathfinderFeatureFlags['pathfinder.frontend-telemetry'].trackingKey).toBe('frontend_telemetry');
         expect(pathfinderFeatureFlags['pathfinder.session-replay'].trackingKey).toBe('session_replay');
+        expect(pathfinderFeatureFlags['pathfinder.session-replay-sampling-rate'].trackingKey).toBe(
+          'session_replay_sampling_rate'
+        );
       });
     });
 
@@ -151,6 +154,20 @@ describe('openfeature', () => {
 
         const { pathfinderFeatureFlags } = require('./openfeature');
         expect(pathfinderFeatureFlags['pathfinder.session-replay'].defaultValue).toBe(true);
+      });
+    });
+
+    it('pathfinder.session-replay-sampling-rate should default to 1', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        const flag = pathfinderFeatureFlags['pathfinder.session-replay-sampling-rate'];
+        expect(flag.valueType).toBe('number');
+        expect(flag.defaultValue).toBe(1);
       });
     });
   });

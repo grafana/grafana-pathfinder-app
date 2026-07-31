@@ -74,6 +74,22 @@ See the privacy invariants in [`TELEMETRY.md`](TELEMETRY.md) for what masking do
 
 ---
 
+### `pathfinder.session-replay-sampling-rate`
+
+**Type**: Number
+
+**Purpose**: Volume dial on top of `pathfinder.session-replay` — the fraction of replay-eligible sessions that actually get recorded. Every rrweb event becomes a Faro event carrying a JSON DOM payload, and a Grafana dashboard mutates continuously, so this is the knob to reach for if collector volume becomes a problem before reaching for the switch.
+
+**Default**: `1` (record every eligible session)
+
+**Behavior**: the decision is a deterministic hash of the session id, so a session either has a recording for its whole life or never does — you never get half a replay. `0` records nobody, same net effect as setting `pathfinder.session-replay` to `false`, the difference being intent: the boolean says "off", the rate says "sampled out".
+
+**Important**: this is a remote number, so it can arrive as anything. `resolveSamplingRate` in `src/lib/telemetry/replay.ts` range-checks it at the point of use and **falls back to `1`** for anything that isn't a finite number in `[0, 1]` — a `100` meant as a percentage, a string from a mistyped MTFF value, `NaN`. An earlier Faro sample-rate flag was deleted rather than clamped ([#1275](https://github.com/grafana/grafana-pathfinder-app/pull/1275)) precisely because a fat-fingered value was indistinguishable from a deliberate one; failing to the default rather than to zero is what earns this one its place.
+
+**Tracking key**: `session_replay_sampling_rate`
+
+---
+
 ### `pathfinder.auto-open-sidebar`
 
 **Type**: Boolean
