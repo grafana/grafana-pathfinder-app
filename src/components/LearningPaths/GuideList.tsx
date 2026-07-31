@@ -1,34 +1,26 @@
-/**
- * Guide list
- *
- * Renders an ordered list of a learning path's guides/milestones with a
- * per-item completion icon. Shared by the My Learning card expander and the
- * cover-page table of contents so both read identically.
- */
-
 import React from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
+import { t } from '@grafana/i18n';
 import { cx } from '@emotion/css';
 
 import type { PathGuide } from '../../types/learning-paths.types';
-import { getLearningPathCardStyles } from './learning-paths.styles';
+import { getGuideListStyles } from './learning-paths.styles';
 
 export interface GuideListProps {
   guides: PathGuide[];
-  /** Shows a spinner row instead of the list while guides resolve. */
   isLoading?: boolean;
-  loadingLabel?: string;
+  className?: string;
 }
 
-export function GuideList({ guides, isLoading = false, loadingLabel = 'Loading guides...' }: GuideListProps) {
-  const styles = useStyles2(getLearningPathCardStyles);
+export function GuideList({ guides, isLoading = false, className }: GuideListProps) {
+  const styles = useStyles2(getGuideListStyles);
 
   return (
-    <div className={styles.guideList}>
+    <div className={cx(styles.list, className)}>
       {isLoading ? (
         <div className={styles.guideItem}>
           <Icon name="fa fa-spinner" size="sm" />
-          <span className={styles.guideTitle}>{loadingLabel}</span>
+          <span className={styles.guideTitle}>{t('myLearning.loadingGuides', 'Loading guides...')}</span>
         </div>
       ) : (
         guides.map((guide) => (

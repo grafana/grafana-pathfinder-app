@@ -323,10 +323,19 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       paddingTop: theme.spacing(1),
     }),
     guideList: css({
+      padding: `0 ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
+    }),
+  };
+};
+
+export const getGuideListStyles = (theme: GrafanaTheme2) => {
+  const colors = getColorPalette(theme);
+
+  return {
+    list: css({
       display: 'flex',
       flexDirection: 'column',
       gap: theme.spacing(0.5),
-      padding: `0 ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
     }),
     guideItem: css({
       display: 'flex',

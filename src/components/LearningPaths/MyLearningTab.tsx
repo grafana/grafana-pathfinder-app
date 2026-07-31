@@ -359,24 +359,14 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     [onOpenGuide]
   );
 
-  // Handle opening a guide
   const handleOpenGuide = useCallback(
     (guideId: string, pathId: string) => {
-      // Find the parent path by ID (not by guideId, since multiple paths may share the same guide slugs)
       const parentPath = paths.find((p) => p.id === pathId);
 
-      // URL-based path — open the per-guide URL when known so the user lands
-      // on the actual next module instead of the path base / first module
-      // (issue #744). When dynamic data has not loaded yet, fall back to the
-      // path's base URL.
-      //
-      // Fresh launch (no progress yet) lands on the path's cover page
-      // (milestone 0) instead of module 1 (issue #1467): the base URL is
-      // exactly the cover page, and its working Back button returns here so
-      // resuming users lose nothing. "Continue" (progress > 0) still resumes
-      // the current module below.
       if (parentPath?.url) {
         const isFreshLaunch = getPathProgress(parentPath.id) === 0;
+        const launchTarget = isFreshLaunch ? 'cover_page' : 'milestone';
+        // The path base URL is its cover page; continuing still resolves the current milestone.
         const resolvedGuideUrl = isFreshLaunch
           ? parentPath.url
           : (getGuideUrlForPath(guideId, parentPath.id) ?? parentPath.url);
@@ -390,6 +380,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           content_url: resolvedGuideUrl,
           content_type: AnalyticsContentType.LearningJourney,
           interaction_location: 'my_learning_tab',
+          launch_target: launchTarget,
         });
 
         void launch(resolvedGuideUrl, title, parentPath.id);

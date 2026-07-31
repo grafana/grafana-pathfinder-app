@@ -1,8 +1,3 @@
-/**
- * Tests for the shared GuideList — the milestone/guide row list reused by the
- * My Learning card expander and the cover-page table of contents.
- */
-
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { GuideList } from './GuideList';
@@ -11,6 +6,10 @@ import type { PathGuide } from '../../types/learning-paths.types';
 jest.mock('@grafana/ui', () => ({
   useStyles2: () => new Proxy({}, { get: (_t, p) => String(p) }),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
+}));
+
+jest.mock('@grafana/i18n', () => ({
+  t: (_key: string, fallback: string) => fallback,
 }));
 
 const guides: PathGuide[] = [
@@ -32,9 +31,9 @@ describe('GuideList', () => {
   });
 
   it('shows a loading row instead of the list when isLoading is set', () => {
-    render(<GuideList guides={[]} isLoading loadingLabel="Loading…" />);
+    render(<GuideList guides={[]} isLoading />);
 
-    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    expect(screen.getByText('Loading guides...')).toBeInTheDocument();
     expect(document.querySelector('[data-icon="fa fa-spinner"]')).toBeInTheDocument();
   });
 });

@@ -1,8 +1,3 @@
-/**
- * Tests for the cover-page table of contents: it lists journey milestones and
- * marks per-milestone completion resolved from storage (issue #1467).
- */
-
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { LearningPathTableOfContents } from './LearningPathTableOfContents';
@@ -20,17 +15,6 @@ jest.mock('@grafana/i18n', () => ({
 
 jest.mock('../../lib/user-storage', () => ({
   milestoneCompletionStorage: { getCompleted: jest.fn() },
-}));
-
-// The real docs-retrieval barrel drags content-fetcher (→ @grafana/runtime) at
-// import time; the slug rule under test is a stable one-liner.
-jest.mock('../../docs-retrieval', () => ({
-  getMilestoneSlug: (url: string) =>
-    url
-      .replace(/\/(content\.json|unstyled\.html)$/, '')
-      .replace(/\/+$/, '')
-      .split('/')
-      .pop() || '',
 }));
 
 const getCompletedMock = milestoneCompletionStorage.getCompleted as jest.MockedFunction<
@@ -53,7 +37,12 @@ describe('LearningPathTableOfContents', () => {
     expect(screen.getByText('In this path')).toBeInTheDocument();
     expect(screen.getByText('Set up')).toBeInTheDocument();
     expect(screen.getByText('Explore')).toBeInTheDocument();
-    await waitFor(() => expect(getCompletedMock).toHaveBeenCalledWith(baseUrl));
+    await waitFor(() =>
+      expect(getCompletedMock).toHaveBeenCalledWith(
+        baseUrl,
+        milestones.map((milestone) => milestone.url)
+      )
+    );
   });
 
   it('shows a check for milestones whose slug is in the completed set', async () => {

@@ -1,12 +1,4 @@
-/**
- * Boundary-nav invariants the cover-page landing relies on (issue #1467,
- * feature 3): on the cover page (milestone 0) there is no previous milestone,
- * and on the last milestone there is no next one. The shared milestone toolbar
- * disables its arrows off these results, so landing on the cover disables Back
- * with no extra nav code.
- */
-
-import { getNextMilestoneUrl, getPreviousMilestoneUrl } from './learning-journey-helpers';
+import { getMilestoneSlug, getNextMilestoneUrl, getPreviousMilestoneUrl } from './learning-journey-helpers';
 import type { RawContent, Milestone } from '../types/content.types';
 
 const baseUrl = 'https://grafana.com/docs/learning-paths/demo/';
@@ -43,5 +35,16 @@ describe('milestone navigation boundaries', () => {
 
   it('advances to the next milestone from the cover page', () => {
     expect(getNextMilestoneUrl(contentAtMilestone(0))).toBe(`${baseUrl}one/`);
+  });
+});
+
+describe('getMilestoneSlug', () => {
+  it.each([
+    ['https://grafana.com/docs/learning-paths/demo/set-up/', 'set-up'],
+    ['https://grafana.com/docs/learning-paths/demo/set-up/content.json', 'set-up'],
+    ['https://grafana.com/docs/learning-paths/demo/set-up/unstyled.html', 'set-up'],
+    ['', ''],
+  ])('extracts the milestone slug from %s', (url, expected) => {
+    expect(getMilestoneSlug(url)).toBe(expected);
   });
 });

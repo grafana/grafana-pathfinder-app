@@ -21,6 +21,7 @@ import {
   VimeoVideoRenderer,
   GuideResponseProvider,
   useGuideResponses,
+  isJourneyCoverPage,
 } from '../../docs-retrieval';
 import { guideHasSnippetRefs, inlineSnippetRefsInGuide } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
@@ -397,16 +398,9 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     }
   }, [guideId]);
 
-  // On a learning-path cover page (milestone 0) render a milestone table of
-  // contents (issue #1467). Sourced from journey metadata + async completion
-  // storage, so it's a React sibling rather than injected HTML — the one shared
-  // mount point that reaches every surface (sidebar, floating, full-screen).
   const journey = content.metadata.learningJourney;
-  const coverPageToc =
-    content.type === 'learning-journey' &&
-    journey &&
-    journey.currentMilestone === 0 &&
-    journey.milestones.length > 0 ? (
+  const beforeContent =
+    isJourneyCoverPage(content) && journey && journey.milestones.length > 0 ? (
       <LearningPathTableOfContents milestones={journey.milestones} baseUrl={journey.baseUrl} />
     ) : null;
 
@@ -423,7 +417,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         className={className}
         selectionState={selectionState}
         documentContext={documentContext}
-        coverPageToc={coverPageToc}
+        beforeContent={beforeContent}
       />
     </GuideResponseProvider>
   );
@@ -441,8 +435,7 @@ interface ContentWithVariablesProps {
   className?: string;
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;
-  /** Cover-page milestone TOC, rendered above the content (null off the cover page). */
-  coverPageToc?: React.ReactNode;
+  beforeContent?: React.ReactNode;
 }
 
 function ContentWithVariables({
@@ -456,7 +449,7 @@ function ContentWithVariables({
   className,
   selectionState,
   documentContext,
-  coverPageToc,
+  beforeContent,
 }: ContentWithVariablesProps) {
   // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
   // This avoids breaking JSON structure when user values contain special characters
@@ -532,7 +525,7 @@ function ContentWithVariables({
       }}
     >
       {title && isNativeJson && <h1 className={titleStyle}>{title}</h1>}
-      {coverPageToc}
+      {beforeContent}
       <ContentProcessor
         html={processedContent}
         contentType={contentType}

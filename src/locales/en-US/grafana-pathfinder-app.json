@@ -1,7 +1,4 @@
 {
-  "coverPage": {
-    "tableOfContents": "In this path"
-  },
   "contextPanel": {
     "categoryDocsPage": "Docs page",
     "categoryInteractiveGuide": "Interactive guide",
@@ -21,6 +18,9 @@
     "summary": "Summary",
     "view": "View",
     "viewDocumentation": "View documentation"
+  },
+  "coverPage": {
+    "tableOfContents": "In this path"
   },
   "docsPanel": {
     "closeTab": "Close {{title}}",
@@ -65,6 +65,7 @@
     "launchErrorMessage": "Something went wrong while loading the guide. Please try again.",
     "launchErrorTitle": "Could not open the guide",
     "learningPaths": "Learning paths",
+    "loadingGuides": "Loading guides...",
     "pathsDescription": "Structured guides to help you master Grafana step by step",
     "showLess": "Show less",
     "subtitle": "Track your progress, earn badges, and master Grafana",

@@ -181,7 +181,7 @@ export function LearningPathCard({
       <div className={cx(styles.expandable, isExpanded && styles.expandableOpen)}>
         {path.description && <p className={styles.description}>{path.description}</p>}
 
-        <GuideList guides={guides} isLoading={isLoadingGuides} />
+        <GuideList guides={guides} isLoading={isLoadingGuides} className={styles.guideList} />
       </div>
     </div>
   );

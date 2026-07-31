@@ -9,6 +9,7 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
 import { testIds } from '../../constants/testIds';
+import { reportAppInteraction } from '../../lib/analytics';
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
   prepareGuideLaunch: jest.fn(),
@@ -63,6 +64,7 @@ jest.mock('../../lib/user-storage', () => ({
 jest.mock('../../global-state/completion-store', () => ({ evictAllContentCaches: jest.fn() }));
 
 const prepareMock = prepareGuideLaunch as jest.MockedFunction<typeof prepareGuideLaunch>;
+const reportMock = reportAppInteraction as jest.MockedFunction<typeof reportAppInteraction>;
 
 const okResult: PrepareGuideLaunchResult = {
   ok: true,
@@ -96,6 +98,10 @@ describe('MyLearningTab cover-page launch routing', () => {
 
     await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
     expect(prepareMock).toHaveBeenCalledWith(pathBaseUrl, expect.objectContaining({ title: 'First path' }));
+    expect(reportMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ launch_target: 'cover_page' })
+    );
   });
 
   it('resumes an in-progress path on the resolved module URL', async () => {
@@ -109,5 +115,6 @@ describe('MyLearningTab cover-page launch routing', () => {
 
     await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
     expect(prepareMock).toHaveBeenCalledWith(moduleUrl, expect.objectContaining({ title: 'Guide one' }));
+    expect(reportMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ launch_target: 'milestone' }));
   });
 });
