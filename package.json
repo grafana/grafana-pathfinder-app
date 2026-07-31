@@ -119,6 +119,7 @@
     "@grafana/assistant": "^0.1.25",
     "@grafana/data": "13.1.1",
     "@grafana/e2e-selectors": "13.1.1",
+    "@grafana/faro-instrumentation-replay": "^2.8.2",
     "@grafana/faro-web-sdk": "^2.8.2",
     "@grafana/i18n": "13.1.1",
     "@grafana/runtime": "13.1.1",

@@ -35,7 +35,9 @@ const mockSetSession = jest.fn((session?: { id?: string; attributes?: Record<str
   mockSessionMeta = session as typeof mockSessionMeta;
 });
 const mockPushMeasurement = jest.fn();
+const mockInstrumentationsAdd = jest.fn();
 const mockFaroInstance = {
+  instrumentations: { add: mockInstrumentationsAdd },
   api: {
     pushError: mockPushError,
     pushLog: mockPushLog,
@@ -67,6 +69,12 @@ jest.mock('@grafana/faro-web-sdk', () => ({
   SessionInstrumentation: class SessionInstrumentation {},
   ViewInstrumentation: class ViewInstrumentation {},
   PerformanceInstrumentation: class PerformanceInstrumentation {},
+}));
+
+jest.mock('@grafana/faro-instrumentation-replay', () => ({
+  ReplayInstrumentation: class ReplayInstrumentation {
+    constructor(public readonly options: Record<string, unknown>) {}
+  },
 }));
 
 const mockHashUserData = jest.fn(async (userId: string, email: string) => ({
@@ -1372,5 +1380,143 @@ describe('setFaroViewName', () => {
       throw new Error('transport down');
     });
     expect(() => faro.setFaroViewName('recommendations')).not.toThrow();
+  });
+});
+
+describe('session replay activation', () => {
+  const PANEL_MODE_KEY = 'grafana-pathfinder-app-panel-mode';
+
+  // The `./replay` chunk and the instrumentation package behind it are both
+  // dynamically imported, so the recorder lands one macrotask after the
+  // surface reports itself.
+  const settleReplayImport = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  function freshFaroWithSurface() {
+    const faro = freshFaro();
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    return { faro, surface };
+  }
+
+  const addedOptions = () => (mockInstrumentationsAdd.mock.calls[0][0] as { options: Record<string, unknown> }).options;
+
+  it('adds no recorder when the flag is off, even with Pathfinder open', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+
+    await faro.initFaro();
+    await settleReplayImport();
+
+    expect(mockInstrumentationsAdd).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['self-hosted or OSS Grafana', () => (mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana OSS')],
+    ['Grafana Enterprise', () => (mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise')],
+    ['a Cloud stack with analytics opted out', () => (mockedConfig.analytics = { enabled: false })],
+  ])('never records on %s', async (_label, applyConfig) => {
+    applyConfig();
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+
+    expect(mockInitializeFaro).not.toHaveBeenCalled();
+    expect(mockInstrumentationsAdd).not.toHaveBeenCalled();
+  });
+
+  it('waits for the first open before recording', async () => {
+    const { faro, surface } = freshFaroWithSurface();
+
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+    expect(mockInstrumentationsAdd).not.toHaveBeenCalled();
+
+    surface.reportPathfinderSurface('sidebar');
+    await settleReplayImport();
+    expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it('records straight away when a surface was already open at init', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+
+    expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers the recorder once, however often the surface changes', async () => {
+    const { faro, surface } = freshFaroWithSurface();
+    await faro.initFaro({ sessionReplay: true });
+
+    surface.reportPathfinderSurface('sidebar');
+    await settleReplayImport();
+    surface.reportPathfinderSurface('closed');
+    surface.reportPathfinderSurface('floating');
+    await settleReplayImport();
+
+    expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps recording after Pathfinder is closed again', async () => {
+    const { faro, surface } = freshFaroWithSurface();
+    await faro.initFaro({ sessionReplay: true });
+
+    surface.reportPathfinderSurface('sidebar');
+    await settleReplayImport();
+    surface.reportPathfinderSurface('closed');
+    await settleReplayImport();
+
+    expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it('masks all text and every input type', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+
+    const options = addedOptions();
+    expect(options.maskAllInputs).toBe(true);
+    expect(options.maskTextSelector).toBe('*');
+    expect(Object.values(options.maskInputOptions as Record<string, boolean>).every(Boolean)).toBe(true);
+  });
+
+  it('captures no canvas, fonts, images, stylesheets or cross-origin iframes', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+
+    expect(addedOptions()).toMatchObject({
+      recordCanvas: false,
+      collectFonts: false,
+      inlineImages: false,
+      inlineStylesheet: false,
+      recordCrossOriginIframes: false,
+    });
+  });
+
+  it('blocks the Coda terminal, which renders credentials verbatim', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+
+    expect(addedOptions().blockSelector).toBe('[data-testid="coda-terminal-panel"]');
+  });
+
+  it('scrubs events before they leave the recorder', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+
+    const beforeSend = addedOptions().beforeSend as (event: unknown) => { data: { href: string } };
+    expect(beforeSend({ type: 4, timestamp: 0, data: { href: 'https://foo.grafana.net/d/a?token=x' } })).toMatchObject({
+      data: { href: 'https://foo.grafana.net/d/a' },
+    });
   });
 });

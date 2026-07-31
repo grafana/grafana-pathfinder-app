@@ -126,6 +126,7 @@ describe('openfeature', () => {
           'highlighted_guide_experiment'
         );
         expect(pathfinderFeatureFlags['pathfinder.frontend-telemetry'].trackingKey).toBe('frontend_telemetry');
+        expect(pathfinderFeatureFlags['pathfinder.session-replay'].trackingKey).toBe('session_replay');
       });
     });
 
@@ -138,6 +139,18 @@ describe('openfeature', () => {
 
         const { pathfinderFeatureFlags } = require('./openfeature');
         expect(pathfinderFeatureFlags['pathfinder.frontend-telemetry'].defaultValue).toBe(true);
+      });
+    });
+
+    it('pathfinder.session-replay should default to true', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.session-replay'].defaultValue).toBe(true);
       });
     });
   });

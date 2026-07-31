@@ -119,6 +119,22 @@ const pathfinderFeatureFlags = {
     trackingKey: 'frontend_telemetry',
   },
   /**
+   * Faro session replay — a masked rrweb recording of the page, started the
+   * first time Pathfinder is opened and running for the rest of the page.
+   * Requires `pathfinder.frontend-telemetry`, which owns the Faro instance the
+   * recording rides on. Defaults to true, so this is a remote off-switch
+   * rather than an opt-in: set it false to stop recording on a stack. Grafana
+   * core ships its own replay recorder behind `FlagKeys.FaroSessionReplay` —
+   * two rrweb instances must not run on one page, so this has to go false
+   * wherever core's goes true.
+   */
+  'pathfinder.session-replay': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: true,
+    trackingKey: 'session_replay',
+  },
+  /**
    * Controls whether the sidebar automatically opens on first Grafana load per session
    * When true: sidebar opens automatically on first page load
    * When false: sidebar only opens when user explicitly requests it

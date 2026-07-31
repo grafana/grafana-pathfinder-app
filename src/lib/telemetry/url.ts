@@ -19,3 +19,31 @@ export function normalizeTelemetryUrl(url: string): string {
     return 'invalid-url';
   }
 }
+
+// Session replay carries URLs its player resolves, so normalizeTelemetryUrl's
+// scheme-less `hostname/path` would break every `src`. Same redaction, but the
+// URL stays loadable.
+export function stripUrlSecrets(url: string): string {
+  if (!url) {
+    return '';
+  }
+  // Every Grafana icon is a `<use href="#icon-x">` — here the fragment is the
+  // whole reference, not a discardable tail.
+  if (url.startsWith('#')) {
+    return url;
+  }
+  if (url.startsWith('data:')) {
+    return 'data:';
+  }
+  try {
+    const parsed = new URL(url, window.location.origin);
+    parsed.search = '';
+    parsed.hash = '';
+    parsed.username = '';
+    parsed.password = '';
+    const isAbsolute = /^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//');
+    return (isAbsolute ? parsed.href : `${parsed.pathname}`).slice(0, MAX_TELEMETRY_URL_LENGTH);
+  } catch {
+    return '';
+  }
+}

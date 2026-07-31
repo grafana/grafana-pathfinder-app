@@ -33,6 +33,47 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 ---
 
+### `pathfinder.frontend-telemetry`
+
+**Type**: Boolean
+
+**Purpose**: Remote kill-switch for the Faro telemetry stream (errors, sessions, views, logs, and the analytics-event mirror). Independent of `pathfinder.enabled` — this stops the telemetry, not the plugin. Telemetry is already gated to Grafana Cloud; the flag exists so the stream can be cut fleet-wide without a release if the collector or the filtering misbehaves.
+
+**Default**: `true` (telemetry runs if the flag is not set, and if MTFF is unreachable)
+
+**Behavior**:
+
+- **`true`**: `initFaro()` runs, subject to its own Grafana Cloud / analytics-enabled / hostname gates
+- **`false`**: the Faro SDK chunk is never even imported
+
+**Tracking key**: `frontend_telemetry`
+
+---
+
+### `pathfinder.session-replay`
+
+**Type**: Boolean
+
+**Purpose**: Records a masked rrweb session replay of the page, so a guide that goes wrong can be watched back rather than reconstructed from events. Requires `pathfinder.frontend-telemetry`, which owns the Faro instance the recording rides on.
+
+**Default**: `true` (recording happens if the flag is not set, and if MTFF is unreachable)
+
+**Behavior**:
+
+- **`true`**: the recorder is registered the first time Pathfinder is opened in any surface, and runs for the rest of the page — including after Pathfinder is closed again
+- **`false`**: neither the replay module nor the rrweb bundle is fetched
+
+**Important**: this is an off-switch, not an opt-in — recording is the default state on every Cloud stack where telemetry is enabled. Two consequences worth holding onto:
+
+1. **Never let this run alongside Grafana core's own recorder.** Core ships one behind `FlagKeys.FaroSessionReplay`. Two rrweb instances on one page means double DOM serialisation on every mutation, and rrweb proxies `CSSStyleSheet.prototype.insertRule` globally while recording — Emotion's hot path in core Grafana. Because both flags now default toward recording, nothing prevents the collision automatically: set `pathfinder.session-replay` to `false` on any stack where core's flag goes true.
+2. Recordings are only playable on a stack with Grafana's private-preview Session Replay enabled. That is already on for the ops stack Pathfinder reports to; elsewhere the events are ingested with no UI to view them.
+
+See the privacy invariants in [`TELEMETRY.md`](TELEMETRY.md) for what masking does and does not cover.
+
+**Tracking key**: `session_replay`
+
+---
+
 ### `pathfinder.auto-open-sidebar`
 
 **Type**: Boolean

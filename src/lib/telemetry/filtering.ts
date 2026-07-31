@@ -148,9 +148,10 @@ function redactEmbeddedUrls(text: string): string {
 // Pathfinder, and PerformanceInstrumentation's resource entries must be
 // attributable to a domain we actually fetch from. Page-wide navigation
 // timing (the whole page's load, not a specific resource) is always dropped.
-// Everything else — our own pushed events/user-actions/measurements — only
-// ever originates from this isolated instance's own API, so it passes
-// through unfiltered.
+// Everything else — our own pushed events/user-actions/measurements, plus the
+// faro.session_recording.* stream — only ever originates from this isolated
+// instance's own API, so it passes through unfiltered. Replay payloads are
+// scrubbed at their own source, in telemetry/replay-scrub.
 export function filterPathfinderTelemetry(item: TransportItem<APIEvent>): TransportItem<APIEvent> | null {
   if (isExceptionItem(item)) {
     const isExplicit = item.payload.context?.[EXPLICIT_REPORT_MARKER] === 'true';
