@@ -36,7 +36,7 @@ jest.mock('../../../lib/analytics', () => ({
 
 jest.mock('../../../docs-retrieval', () => ({
   getJourneyProgress: () => 0,
-  getMilestoneSlug: (url: string) => url.split('/').filter(Boolean).pop() ?? null,
+  getMilestoneSlug: jest.requireActual('../../../lib/learning-journey-url').getMilestoneSlug,
   markMilestoneDone: (...args: unknown[]) => markMilestoneDoneMock(...args),
 }));
 
