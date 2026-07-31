@@ -64,8 +64,10 @@ export function MinimizedPill({ hasActiveGuide, stepProgress, onRestore }: Minim
     }
   }, [onRestore]);
 
-  // No <Portal> needed — the parent (FloatingPanel) already renders
-  // via createPortal into document.body
+  // No <Portal> needed — the parent (FloatingPanel) already portals this into
+  // Grafana's shared portal container (getPortalContainer), which is
+  // position: fixed; z-index: 1061, so the pill clears app chrome regardless of
+  // its own z-index value.
   return (
     <div
       className={styles.pillWrapper}
