@@ -192,6 +192,119 @@ describe('scrubReplayEvent', () => {
       expect(changed.attributes).toEqual({ class: 'panel is-loading' });
     });
 
+    it('scrubs style text changed after the snapshot', () => {
+      const event = mutation({ texts: [{ id: 6, value: '.a{background:url(https://acme.grafana.net/z.png?k=v)}' }] });
+      const texts = (event as unknown as { data: { texts: Array<{ value: string }> } }).data.texts;
+
+      scrubReplayEvent(event);
+
+      expect(texts[0]!.value).toBe('.a{background:url("https://acme.grafana.net/z.png")}');
+    });
+
+    it('scrubs the styleOMValue diff an attribute mutation carries', () => {
+      const event = mutation({
+        attributes: [
+          {
+            id: 7,
+            attributes: {
+              style: {
+                'background-image': 'url(https://acme.grafana.net/a.png?k=v)',
+                'border-image': ['url(https://acme.grafana.net/b.png?k=v)', 'important'],
+              },
+            },
+          },
+        ],
+      });
+      const changed = (
+        event as unknown as {
+          data: { attributes: Array<{ attributes: { style: Record<string, unknown> } }> };
+        }
+      ).data.attributes[0]!;
+
+      scrubReplayEvent(event);
+
+      expect(changed.attributes.style).toEqual({
+        'background-image': 'url("https://acme.grafana.net/a.png")',
+        'border-image': ['url("https://acme.grafana.net/b.png")', 'important'],
+      });
+    });
+  });
+
+  // Emotion's insertRule traffic and React's inline-style writes never appear
+  // as DOM mutations — each is its own incremental source.
+  describe('CSS-bearing incremental sources', () => {
+    const incremental = (source: number, data: Record<string, unknown>) =>
+      asEvent({ type: 3, timestamp: 0, data: { source, ...data } });
+
+    const dataOf = (event: ReplayEvent) => (event as unknown as { data: Record<string, unknown> }).data;
+
+    it('scrubs inserted stylesheet rules (Emotion insertRule)', () => {
+      const event = incremental(8, {
+        id: 3,
+        adds: [{ rule: '.x{background:url(https://acme.grafana.net/i.png?sig=s)}', index: 0 }],
+      });
+
+      scrubReplayEvent(event);
+
+      expect((dataOf(event).adds as Array<{ rule: string }>)[0]!.rule).toBe(
+        '.x{background:url("https://acme.grafana.net/i.png")}'
+      );
+    });
+
+    it('scrubs wholesale stylesheet replacement', () => {
+      const event = incremental(8, {
+        id: 3,
+        replace: '.y{background:url(https://acme.grafana.net/r.png?sig=s)}',
+        replaceSync: '.z{background:url(https://acme.grafana.net/s.png?sig=s)}',
+      });
+
+      scrubReplayEvent(event);
+
+      expect(dataOf(event)).toMatchObject({
+        replace: '.y{background:url("https://acme.grafana.net/r.png")}',
+        replaceSync: '.z{background:url("https://acme.grafana.net/s.png")}',
+      });
+    });
+
+    it('scrubs adopted stylesheets', () => {
+      const event = incremental(15, {
+        id: 1,
+        styleIds: [2],
+        styles: [{ styleId: 2, rules: [{ rule: '.a{background:url(https://acme.grafana.net/ad.png?sig=s)}' }] }],
+      });
+
+      scrubReplayEvent(event);
+
+      const styles = dataOf(event).styles as Array<{ rules: Array<{ rule: string }> }>;
+      expect(styles[0]!.rules[0]!.rule).toBe('.a{background:url("https://acme.grafana.net/ad.png")}');
+    });
+
+    it('scrubs single style-property writes', () => {
+      const event = incremental(13, {
+        id: 4,
+        index: [0],
+        set: { property: 'background-image', value: 'url(https://acme.grafana.net/d.png?sig=s)', priority: undefined },
+      });
+
+      scrubReplayEvent(event);
+
+      expect((dataOf(event).set as { value: string }).value).toBe('url("https://acme.grafana.net/d.png")');
+    });
+
+    it('scrubs font sources, which are bare URLs rather than CSS', () => {
+      const event = incremental(10, {
+        family: 'Inter',
+        fontSource: 'https://acme.grafana.net/inter.woff2?sig=s',
+        buffer: false,
+      });
+
+      scrubReplayEvent(event);
+
+      expect(dataOf(event).fontSource).toBe('https://acme.grafana.net/inter.woff2');
+    });
+  });
+
+  describe('other incremental sources', () => {
     it('leaves non-mutation sources alone', () => {
       const event = asEvent({ type: 3, timestamp: 0, data: { source: 2, type: 2, id: 9, x: 10, y: 20 } });
 

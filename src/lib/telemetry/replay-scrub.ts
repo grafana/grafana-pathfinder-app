@@ -6,7 +6,15 @@ type ReplayEvent = Parameters<NonNullable<ReplayInstrumentationOptions['beforeSe
 const EVENT_TYPE_FULL_SNAPSHOT = 2;
 const EVENT_TYPE_INCREMENTAL_SNAPSHOT = 3;
 const EVENT_TYPE_META = 4;
+
+// Emotion's insertRule traffic and React's inline-style writes arrive as their
+// own incremental sources rather than as DOM mutations, so each one is a
+// separate route CSS takes to the collector.
 const INCREMENTAL_SOURCE_MUTATION = 0;
+const INCREMENTAL_SOURCE_STYLESHEET_RULE = 8;
+const INCREMENTAL_SOURCE_FONT = 10;
+const INCREMENTAL_SOURCE_STYLE_DECLARATION = 13;
+const INCREMENTAL_SOURCE_ADOPTED_STYLESHEET = 15;
 
 const URL_ATTRIBUTES = new Set([
   'src',
@@ -175,13 +183,35 @@ const SAFE_ATTRIBUTES = new Set([
 const CSS_URL_PATTERN = /url\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
 
 function scrubCssUrls(css: string): string {
+  // Emotion rewrites rules constantly, so the common case has to stay cheap.
+  if (!css.includes('url(')) {
+    return css;
+  }
   return css.replace(CSS_URL_PATTERN, (match, _quote, target: string) =>
     target.startsWith('#') ? match : `url("${stripUrlSecrets(target)}")`
   );
 }
 
+function scrubCssText(value: unknown): unknown {
+  return typeof value === 'string' ? scrubCssUrls(value) : value;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+// An attribute mutation carries `style` as rrweb's styleOMValue diff — a map
+// of property to either a string or a [value, priority] pair — rather than the
+// flat string a snapshot carries.
+function scrubStyleDiff(style: Record<string, unknown>): void {
+  for (const key of Object.keys(style)) {
+    const value = style[key];
+    if (typeof value === 'string') {
+      style[key] = scrubCssUrls(value);
+    } else if (Array.isArray(value) && typeof value[0] === 'string') {
+      value[0] = scrubCssUrls(value[0]);
+    }
+  }
 }
 
 function scrubAttributes(attributes: Record<string, unknown>): void {
@@ -192,11 +222,24 @@ function scrubAttributes(attributes: Record<string, unknown>): void {
         attributes[key] = stripUrlSecrets(value);
       }
     } else if (CSS_ATTRIBUTES.has(key)) {
-      if (typeof value === 'string') {
-        attributes[key] = scrubCssUrls(value);
+      if (isRecord(value)) {
+        scrubStyleDiff(value);
+      } else {
+        attributes[key] = scrubCssText(value);
       }
     } else if (!SAFE_ATTRIBUTES.has(key)) {
       delete attributes[key];
+    }
+  }
+}
+
+function scrubStyleRules(rules: unknown): void {
+  if (!Array.isArray(rules)) {
+    return;
+  }
+  for (const entry of rules) {
+    if (isRecord(entry)) {
+      entry.rule = scrubCssText(entry.rule);
     }
   }
 }
@@ -253,20 +296,71 @@ export function scrubReplayEvent(event: ReplayEvent): ReplayEvent {
     return event;
   }
 
-  if (type === EVENT_TYPE_INCREMENTAL_SNAPSHOT && data.source === INCREMENTAL_SOURCE_MUTATION) {
-    if (Array.isArray(data.adds)) {
-      for (const added of data.adds) {
-        if (isRecord(added)) {
-          scrubNode(added.node);
+  if (type !== EVENT_TYPE_INCREMENTAL_SNAPSHOT) {
+    return event;
+  }
+
+  switch (data.source) {
+    case INCREMENTAL_SOURCE_MUTATION: {
+      if (Array.isArray(data.adds)) {
+        for (const added of data.adds) {
+          if (isRecord(added)) {
+            scrubNode(added.node);
+          }
         }
       }
+      if (Array.isArray(data.attributes)) {
+        for (const mutation of data.attributes) {
+          if (isRecord(mutation) && isRecord(mutation.attributes)) {
+            scrubAttributes(mutation.attributes);
+          }
+        }
+      }
+      // Text mutations are masked to asterisks except inside <style>, where
+      // rrweb leaves the CSS intact — so this only ever finds a real url() in
+      // the stylesheet case, and is a no-op everywhere else.
+      if (Array.isArray(data.texts)) {
+        for (const text of data.texts) {
+          if (isRecord(text)) {
+            text.value = scrubCssText(text.value);
+          }
+        }
+      }
+      break;
     }
-    if (Array.isArray(data.attributes)) {
-      for (const mutation of data.attributes) {
-        if (isRecord(mutation) && isRecord(mutation.attributes)) {
-          scrubAttributes(mutation.attributes);
+    case INCREMENTAL_SOURCE_STYLESHEET_RULE: {
+      scrubStyleRules(data.adds);
+      if (typeof data.replace === 'string') {
+        data.replace = scrubCssUrls(data.replace);
+      }
+      if (typeof data.replaceSync === 'string') {
+        data.replaceSync = scrubCssUrls(data.replaceSync);
+      }
+      break;
+    }
+    case INCREMENTAL_SOURCE_ADOPTED_STYLESHEET: {
+      if (Array.isArray(data.styles)) {
+        for (const sheet of data.styles) {
+          if (isRecord(sheet)) {
+            scrubStyleRules(sheet.rules);
+          }
         }
       }
+      break;
+    }
+    case INCREMENTAL_SOURCE_STYLE_DECLARATION: {
+      if (isRecord(data.set)) {
+        data.set.value = scrubCssText(data.set.value);
+      }
+      break;
+    }
+    case INCREMENTAL_SOURCE_FONT: {
+      // collectFonts is off, so this should never arrive — but fontSource is a
+      // bare URL, not CSS, and that default is not this module's to rely on.
+      if (typeof data.fontSource === 'string') {
+        data.fontSource = stripUrlSecrets(data.fontSource);
+      }
+      break;
     }
   }
 
