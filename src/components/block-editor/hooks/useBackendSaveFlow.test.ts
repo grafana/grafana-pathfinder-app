@@ -17,7 +17,7 @@ import {
 
 jest.mock('@grafana/runtime', () => ({ getAppEvents: jest.fn() }));
 
-const STORAGE_KEY = StorageKeys.BLOCK_EDITOR_BACKEND_TRACKING;
+const STORAGE_KEY = StorageKeys.BLOCK_EDITOR_STATE;
 const publish = jest.fn();
 
 beforeEach(() => {
@@ -66,7 +66,9 @@ describe('useBackendSaveFlow — initial state', () => {
   it('restores resourceName and lastPublishedJson from localStorage on mount', () => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ resourceName: 'g1', backendStatus: 'draft', lastPublishedJson: '{"a":1}' })
+      JSON.stringify({
+        remote: { resourceName: 'g1', status: 'draft', lastSyncedJson: '{"a":1}' },
+      })
     );
     const editor = { getGuide: () => guide() };
     const backendGuides = makeBackendGuides({ guides: [makeGuideEntry('g1', 'Guide one', 'draft')] });
@@ -221,7 +223,9 @@ describe('useBackendSaveFlow — performUnpublish', () => {
     const g = guide();
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ resourceName: 'g1', backendStatus: 'published', lastPublishedJson: JSON.stringify(g) })
+      JSON.stringify({
+        remote: { resourceName: 'g1', status: 'published', lastSyncedJson: JSON.stringify(g) },
+      })
     );
     const editor = { getGuide: () => g };
     const backendGuides = makeBackendGuides({
@@ -255,7 +259,9 @@ describe('useBackendSaveFlow — performUnpublish', () => {
     const errSpy = jest.spyOn(console, 'error').mockImplementation();
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ resourceName: 'g1', backendStatus: 'published', lastPublishedJson: null })
+      JSON.stringify({
+        remote: { resourceName: 'g1', status: 'published', lastSyncedJson: null },
+      })
     );
     const editor = { getGuide: () => guide() };
     const backendGuides = makeBackendGuides({
@@ -291,10 +297,13 @@ describe('useBackendSaveFlow — trackLoadedGuide / handleClearBackendTracking',
     );
   });
 
-  it('handleClearBackendTracking resets tracking to not-saved and clears localStorage', () => {
+  it('handleClearBackendTracking resets tracking to not-saved and drops remote from storage', () => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ resourceName: 'g1', backendStatus: 'draft', lastPublishedJson: '{}' })
+      JSON.stringify({
+        guide: { id: 'g1', title: 'Guide one', blocks: [] },
+        remote: { resourceName: 'g1', status: 'draft', lastSyncedJson: '{}' },
+      })
     );
     const editor = { getGuide: () => guide() };
     const backendGuides = makeBackendGuides({ guides: [makeGuideEntry('g1', 'Guide one', 'draft')] });
@@ -308,7 +317,10 @@ describe('useBackendSaveFlow — trackLoadedGuide / handleClearBackendTracking',
 
     expect(result.current.publishedStatus).toBe('not-saved');
     expect(result.current.currentGuideResourceName).toBeNull();
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    // Draft half of the unified document is preserved.
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual({
+      guide: { id: 'g1', title: 'Guide one', blocks: [] },
+    });
   });
 });
 
@@ -317,7 +329,9 @@ describe('useBackendSaveFlow — hasUnsyncedChanges', () => {
     const savedGuide = guide();
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ resourceName: 'g1', backendStatus: 'draft', lastPublishedJson: JSON.stringify(savedGuide) })
+      JSON.stringify({
+        remote: { resourceName: 'g1', status: 'draft', lastSyncedJson: JSON.stringify(savedGuide) },
+      })
     );
     const backendGuides = makeBackendGuides({ guides: [makeGuideEntry('g1', 'Guide one', 'draft')] });
 

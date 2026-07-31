@@ -90,7 +90,11 @@ describe('useFullScreenHandoff', () => {
     renderHook(() => useFullScreenHandoff(model, false));
     dispatchFullScreen();
 
-    expect(setPendingGuideSpy).toHaveBeenCalledWith({ title: 'Block editor', type: 'editor' });
+    expect(setPendingGuideSpy).toHaveBeenCalledWith({
+      title: 'Block editor',
+      type: 'editor',
+      tabId: 'editor',
+    });
     expect(capturePriorPathSpy).toHaveBeenCalledTimes(1);
     expect(setModePersistedSpy).toHaveBeenCalledWith('fullscreen');
     expect(locationService.push).toHaveBeenCalledWith(expect.stringContaining('/fullscreen'));

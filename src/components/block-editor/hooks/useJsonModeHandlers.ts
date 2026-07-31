@@ -147,7 +147,8 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
 
       // Regenerate all block IDs (per DT3 - don't pass originalBlockIds)
       editor.loadGuide(result.guide!);
-      // Mark dirty - loadGuide sets isDirty: false, but we want it dirty after JSON edit
+      // loadGuide clears dirty; empty bump re-dirties after JSON apply.
+      // Follow-up: dirty on buffer edit (see getEditorTabChromeStatus).
       editor.updateGuideMetadata({});
 
       setJsonModeState(null);

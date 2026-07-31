@@ -28,6 +28,13 @@ export interface PendingGuide {
    */
   type?: 'learning-journey' | 'docs' | 'interactive' | 'editor';
   /**
+   * Identity of the editor tab being handed off. Required once multiple
+   * editor drafts can coexist — without it the receiving surface would
+   * focus the most recently opened editor instead of the one that was
+   * popped out / expanded.
+   */
+  tabId?: string;
+  /**
    * Carry the manifest + pre-resolved milestones across surface handoffs.
    *
    * Required for synthetic packages whose URL is not a recognised package

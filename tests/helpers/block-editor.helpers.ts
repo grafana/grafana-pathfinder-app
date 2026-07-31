@@ -55,8 +55,9 @@ export async function openBlockEditor(page: Page): Promise<void> {
   await moreOptions.click();
   await page.getByRole('menuitem', { name: /create guide/i }).click();
 
-  // Wait for the editor strip tab and block editor content
-  const editorTab = page.getByTestId(testIds.docsPanel.tab('editor'));
+  // Editor tabs use generateTabId() (`tab-<ts>-<rand>`), not a fixed `editor` id.
+  // Assert the strip gained an editor chrome badge + the editor body mounted.
+  const editorTab = page.locator('[data-testid^="docs-panel-tab-"]').filter({ hasText: 'Draft' }).last();
   await expect(editorTab).toBeVisible({ timeout: TIMEOUTS.DEV_MODE_PROPAGATE });
 
   const blockEditor = page.getByTestId(testIds.blockEditor.container);
@@ -123,6 +124,27 @@ export async function createSectionBlock(
 }
 
 /**
+ * Read the first per-tab editor document from localStorage (`base:<tabId>`).
+ * Returns null when no namespaced (or legacy singleton) key exists.
+ */
+export async function readBlockEditorStoredState(page: Page): Promise<string | null> {
+  return page.evaluate((baseKey) => {
+    const exact = localStorage.getItem(baseKey);
+    if (exact) {
+      return exact;
+    }
+    const prefix = `${baseKey}:`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(prefix)) {
+        return localStorage.getItem(key);
+      }
+    }
+    return null;
+  }, STORAGE_KEYS.BLOCK_EDITOR_STATE);
+}
+
+/**
  * Copy the guide JSON to clipboard and return the parsed object.
  * Falls back to localStorage if clipboard API fails (CI reliability).
  */
@@ -137,7 +159,7 @@ export async function copyGuideJson(page: Page): Promise<Record<string, unknown>
     return JSON.parse(text) as Record<string, unknown>;
   } catch {
     // Fallback: read from localStorage if clipboard fails
-    const state = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEYS.BLOCK_EDITOR_STATE);
+    const state = await readBlockEditorStoredState(page);
     if (!state) {
       throw new Error('No guide state in clipboard or localStorage');
     }
@@ -152,22 +174,31 @@ export async function copyGuideJson(page: Page): Promise<Record<string, unknown>
  */
 export async function waitForAutoSave(page: Page, expectedContent: string): Promise<void> {
   await expect(async () => {
-    const state = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEYS.BLOCK_EDITOR_STATE);
+    const state = await readBlockEditorStoredState(page);
     expect(state).toContain(expectedContent);
   }).toPass({ timeout: TIMEOUTS.AUTO_SAVE });
 }
 
 /**
- * Clear the block editor localStorage state.
+ * Clear all per-tab (and legacy singleton) block-editor localStorage keys.
  * Call this in beforeEach to ensure test isolation.
  * Waits for the page to be ready before attempting to clear localStorage.
  */
 export async function clearBlockEditorState(page: Page): Promise<void> {
   // Wait for the page to be loaded enough to have localStorage available
   await page.waitForLoadState('domcontentloaded');
-  await page.evaluate(() => {
-    localStorage.removeItem('pathfinder-block-editor-state');
-  });
+  await page.evaluate((baseKey) => {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key === baseKey || key?.startsWith(`${baseKey}:`)) {
+        keys.push(key);
+      }
+    }
+    for (const key of keys) {
+      localStorage.removeItem(key);
+    }
+  }, STORAGE_KEYS.BLOCK_EDITOR_STATE);
 }
 
 /**

@@ -67,7 +67,7 @@ The fastest way to learn the editor is to build a small guide end to end.
 
 ### 1. Name your guide
 
-Click the title at the top and type a name. Press **Enter** or click away to confirm. The first time you save, the editor creates a unique guide ID by slugifying the title and appending a four-character random suffix (for example, `setting-up-dashboards-a3f9`). The ID is locked after the first save — renaming the title later does not change it.
+Click the title at the top and type a name. Press **Enter** or click away to confirm. The first time you commit a title, the editor creates a unique guide ID by slugifying the title and appending a four-character random suffix (for example, `setting-up-dashboards-a3f9`). The ID is locked after that — renaming the title later does not change it.
 
 ### 2. Add your first block
 

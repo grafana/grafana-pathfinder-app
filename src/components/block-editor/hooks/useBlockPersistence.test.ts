@@ -120,6 +120,29 @@ describe('useBlockPersistence — debounced auto-save', () => {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
     expect(stored.blockIds).toEqual(['b1', 'b2', 'b3']);
   });
+
+  it('flushes the latest pending guide when an editor tab unmounts', () => {
+    const { rerender, unmount } = renderHook(({ g }) => useBlockPersistence({ guide: g }), {
+      initialProps: { g: guide('a') },
+    });
+
+    rerender({ g: guide('latest-before-tab-switch') });
+    unmount();
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(stored.guide.title).toBe('latest-before-tab-switch');
+  });
+
+  it('saves synchronously when autoSaveDelay is zero', () => {
+    const { rerender } = renderHook(({ g }) => useBlockPersistence({ guide: g, autoSaveDelay: 0 }), {
+      initialProps: { g: guide('a') },
+    });
+
+    rerender({ g: guide('ready-for-close-check') });
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(stored.guide.title).toBe('ready-for-close-check');
+  });
 });
 
 describe('useBlockPersistence — mount-time restore via onLoad', () => {
@@ -141,6 +164,22 @@ describe('useBlockPersistence — mount-time restore via onLoad', () => {
     const [restoredGuide, restoredIds] = onLoad.mock.calls[0]!;
     expect(restoredGuide.title).toBe('restored');
     expect(restoredIds).toEqual(['b1', 'b2']);
+  });
+
+  it('restores the stored draft before the first zero-delay auto-save can overwrite it', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ guide: guide('restored'), savedAt: new Date().toISOString(), version: 2 })
+    );
+
+    const onLoad = jest.fn();
+    // Tab remount: blank initial guide + delay 0; storage must stay "restored".
+    renderHook(() => useBlockPersistence({ guide: guide('blank-initial'), onLoad, autoSaveDelay: 0 }));
+
+    expect(onLoad).toHaveBeenCalledTimes(1);
+    expect(onLoad.mock.calls[0]![0].title).toBe('restored');
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(stored.guide.title).toBe('restored');
   });
 
   it('does not call onLoad when storage is empty', () => {

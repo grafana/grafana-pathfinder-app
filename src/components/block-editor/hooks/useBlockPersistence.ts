@@ -8,6 +8,7 @@ import { useEffect, useCallback, useRef } from 'react';
 import { BLOCK_EDITOR_STORAGE_KEY } from '../constants';
 import type { JsonGuide, JsonModeState, ViewMode } from '../types';
 import { logger } from '../../../lib/logging';
+import { readEditorStoredState, writeEditorDraftState } from '../editor-tab-storage';
 
 /**
  * Debounce delay for auto-save (ms)
@@ -34,7 +35,9 @@ export interface UseBlockPersistenceOptions {
   autoSave?: boolean;
   /** Whether auto-save is paused (e.g., while editing in a modal) */
   autoSavePaused?: boolean;
-  /** Custom storage key */
+  /** Debounce delay in milliseconds. Use 0 when close-time checks need synchronous storage. */
+  autoSaveDelay?: number;
+  /** Unified editor-tab storage key (draft + remote binding). */
   storageKey?: string;
 }
 
@@ -44,21 +47,6 @@ export interface UseBlockPersistenceOptions {
 export interface UseBlockPersistenceReturn {
   /** Clear saved guide from localStorage */
   clear: () => void;
-}
-
-/**
- * Storage format that includes metadata
- */
-interface StoredGuide {
-  guide: JsonGuide;
-  /** Block IDs to preserve across page refreshes (added in v2) */
-  blockIds?: string[];
-  /** View mode to preserve across pop out/dock remounts (optional — absent in older stored guides) */
-  viewMode?: ViewMode;
-  /** Unapplied JSON draft state (optional — absent in older stored guides) */
-  jsonModeState?: JsonModeState;
-  savedAt: string;
-  version: number;
 }
 
 const STORAGE_VERSION = 2;
@@ -103,30 +91,36 @@ export function useBlockPersistence({
   onSave,
   autoSave = true,
   autoSavePaused = false,
+  autoSaveDelay = AUTO_SAVE_DELAY,
   storageKey = BLOCK_EDITOR_STORAGE_KEY,
 }: UseBlockPersistenceOptions): UseBlockPersistenceReturn {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSaveRef = useRef(false);
   const lastGuideRef = useRef<string>('');
   const lastViewModeRef = useRef<ViewMode | undefined>(viewMode);
   const lastJsonModeStateRef = useRef<JsonModeState | null | undefined>(jsonModeState);
 
   const save = useCallback(() => {
     try {
-      const stored: StoredGuide = {
+      writeEditorDraftState(storageKey, {
         guide,
         blockIds,
         viewMode,
         jsonModeState: viewMode === 'json' ? (jsonModeState ?? undefined) : undefined,
         savedAt: new Date().toISOString(),
         version: STORAGE_VERSION,
-      };
-      localStorage.setItem(storageKey, JSON.stringify(stored));
+      });
       lastGuideRef.current = JSON.stringify(guide);
+      pendingSaveRef.current = false;
       onSave?.();
     } catch (e) {
       logger.error('Failed to save guide to localStorage', { error: e });
     }
   }, [guide, blockIds, viewMode, jsonModeState, storageKey, onSave]);
+  const latestSaveRef = useRef(save);
+  useEffect(() => {
+    latestSaveRef.current = save;
+  }, [save]);
 
   const clear = useCallback(() => {
     try {
@@ -137,6 +131,28 @@ export function useBlockPersistence({
     }
   }, [storageKey]);
 
+  // Above auto-save: with delay 0, a mount save would clobber storage with the
+  // blank initial guide before onLoad's parent re-render (chrome/close read storage).
+  useEffect(() => {
+    try {
+      const parsed = readEditorStoredState(storageKey);
+      if (parsed?.guide) {
+        onLoad?.(
+          parsed.guide as JsonGuide,
+          parsed.blockIds,
+          restoreViewMode(parsed.viewMode),
+          restoreJsonModeState(parsed.jsonModeState)
+        );
+        // onLoad is async to the parent — pin so the auto-save below skips this blank guide.
+        lastGuideRef.current = JSON.stringify(guide);
+      }
+    } catch (e) {
+      logger.error('Failed to load guide from localStorage', { error: e });
+    }
+    // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!autoSave || autoSavePaused) {
       return;
@@ -145,6 +161,7 @@ export function useBlockPersistence({
     const currentGuideStr = JSON.stringify(guide);
 
     if (currentGuideStr === lastGuideRef.current) {
+      pendingSaveRef.current = false;
       onSave?.();
       return;
     }
@@ -153,36 +170,33 @@ export function useBlockPersistence({
       clearTimeout(saveTimeoutRef.current);
     }
 
-    saveTimeoutRef.current = setTimeout(() => {
+    if (autoSaveDelay <= 0) {
       save();
-    }, AUTO_SAVE_DELAY);
+      return;
+    }
+
+    pendingSaveRef.current = true;
+    saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = null;
+      save();
+    }, autoSaveDelay);
 
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [guide, autoSave, autoSavePaused, save, onSave]);
+  }, [guide, autoSave, autoSavePaused, autoSaveDelay, save, onSave]);
 
+  // Switching between editor tabs unmounts the active editor. Flush its
+  // debounced guide snapshot so a quick tab switch cannot lose the last edit
+  // or make close-time unsaved-work detection observe stale storage.
   useEffect(() => {
-    if (onLoad) {
-      try {
-        const stored = localStorage.getItem(storageKey);
-        if (stored) {
-          const parsed: StoredGuide = JSON.parse(stored);
-          onLoad(
-            parsed.guide,
-            parsed.blockIds,
-            restoreViewMode(parsed.viewMode),
-            restoreJsonModeState(parsed.jsonModeState)
-          );
-        }
-      } catch (e) {
-        logger.error('Failed to load guide from localStorage', { error: e });
+    return () => {
+      if (pendingSaveRef.current) {
+        latestSaveRef.current();
       }
-    }
-    // Only run on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    };
   }, []);
 
   // Panel handoff can remount before the guide-content debounce completes.

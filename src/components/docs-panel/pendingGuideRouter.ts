@@ -26,7 +26,8 @@ import type { LaunchSource } from '../../recovery';
  * Apply a consumed pending guide to the receiving panel model.
  *
  * The branch order is load-bearing:
- * 1. `editor` handoffs carry no URL — switch the active tab to the editor.
+ * 1. `editor` handoffs carry no URL — focus via `setActiveTab`, or
+ *    `createEditorTab` when the destination has not restored that tab yet.
  * 2. URL + `packageInfo` → `openDocsPage` with the manifest, so synthetic
  *    journeys (PR-tester) get a journey tab with the milestone toolbar even
  *    when the URL isn't a recognised package URL.
@@ -41,7 +42,18 @@ export function openPendingGuide(
   source: LaunchSource
 ): void {
   if (pending.type === 'editor') {
-    panel.openEditorTab();
+    if (pending.tabId) {
+      // Idempotent: focuses if restored, otherwise creates with the handoff id.
+      panel.createEditorTab({ tabId: pending.tabId });
+      return;
+    }
+    // Legacy undirected handoff (no tabId): focus most recent editor, or create.
+    const recent = [...panel.state.tabs].reverse().find((t) => t.type === 'editor');
+    if (recent) {
+      panel.setActiveTab(recent.id);
+    } else {
+      panel.createEditorTab();
+    }
     return;
   }
   if (!pending.url) {

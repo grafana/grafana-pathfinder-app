@@ -214,12 +214,6 @@ export const BLOCK_EDITOR_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_STATE;
 export const RECORDING_STATE_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_RECORDING_STATE;
 
 /**
- * Local storage key for persisting backend tracking state (resource name, status).
- * Ensures the correct save/update button is shown after a page refresh.
- */
-export const BACKEND_TRACKING_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_BACKEND_TRACKING;
-
-/**
  * Default guide metadata for new guides
  */
 export const DEFAULT_GUIDE_METADATA = {

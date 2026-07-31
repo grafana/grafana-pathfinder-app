@@ -87,7 +87,7 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
         // Remember where we came from so explicit Exit can land back on the
         // user's prior Grafana page instead of the plugin home.
         panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
-        panelModeManager.setPendingGuide({ title: activeTab.title, type: 'editor' });
+        panelModeManager.setPendingGuide({ title: activeTab.title, type: 'editor', tabId: activeTab.id });
         panelModeManager.setModePersisted('fullscreen');
         locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
         return;

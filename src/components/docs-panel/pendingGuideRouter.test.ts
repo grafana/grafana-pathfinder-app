@@ -15,9 +15,11 @@ import type { CombinedLearningJourneyPanel } from './docs-panel';
 import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';
 import type { RawContent } from '../../types/content.types';
 
-function makePanel() {
+function makePanel(tabs: Array<{ id: string; type: string }> = []) {
   return {
-    openEditorTab: jest.fn(),
+    state: { tabs },
+    createEditorTab: jest.fn((opts?: { tabId?: string }) => opts?.tabId ?? 'new-editor'),
+    setActiveTab: jest.fn(),
     openLearningJourney: jest.fn(),
     openDocsPage: jest.fn(),
   };
@@ -30,15 +32,44 @@ function asPanel(panel: ReturnType<typeof makePanel>): CombinedLearningJourneyPa
 }
 
 describe('openPendingGuide', () => {
-  it('routes editor handoffs to openEditorTab and ignores any URL/packageInfo', () => {
+  it('routes undirected editor handoffs to createEditorTab when no editor exists', () => {
     const panel = makePanel();
     const pending: PendingGuide = { type: 'editor', title: 'Guide editor' };
 
     openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
 
-    expect(panel.openEditorTab).toHaveBeenCalledTimes(1);
+    expect(panel.createEditorTab).toHaveBeenCalledTimes(1);
+    expect(panel.createEditorTab).toHaveBeenCalledWith();
+    expect(panel.setActiveTab).not.toHaveBeenCalled();
     expect(panel.openLearningJourney).not.toHaveBeenCalled();
     expect(panel.openDocsPage).not.toHaveBeenCalled();
+  });
+
+  it('routes undirected editor handoffs to setActiveTab when an editor already exists', () => {
+    const panel = makePanel([
+      { id: 'recs', type: 'recommendations' },
+      { id: 'editor-a', type: 'editor' },
+      { id: 'editor-b', type: 'editor' },
+    ]);
+    const pending: PendingGuide = { type: 'editor', title: 'Guide editor' };
+
+    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+
+    expect(panel.setActiveTab).toHaveBeenCalledWith('editor-b');
+    expect(panel.createEditorTab).not.toHaveBeenCalled();
+  });
+
+  it('forwards the editor tabId via createEditorTab so multi-draft handoffs bind the right draft', () => {
+    const panel = makePanel();
+    const pending: PendingGuide = {
+      type: 'editor',
+      title: 'Second draft',
+      tabId: 'tab-editor-2',
+    };
+
+    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+
+    expect(panel.createEditorTab).toHaveBeenCalledWith({ tabId: 'tab-editor-2' });
   });
 
   it('does nothing when the pending guide has no URL and is not an editor handoff', () => {
@@ -47,7 +78,8 @@ describe('openPendingGuide', () => {
 
     openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
 
-    expect(panel.openEditorTab).not.toHaveBeenCalled();
+    expect(panel.createEditorTab).not.toHaveBeenCalled();
+    expect(panel.setActiveTab).not.toHaveBeenCalled();
     expect(panel.openLearningJourney).not.toHaveBeenCalled();
     expect(panel.openDocsPage).not.toHaveBeenCalled();
   });
@@ -201,6 +233,7 @@ describe('consumePendingGuideOnMount', () => {
     expect(markInFlight).not.toHaveBeenCalled();
     expect(panel.openDocsPage).not.toHaveBeenCalled();
     expect(panel.openLearningJourney).not.toHaveBeenCalled();
-    expect(panel.openEditorTab).not.toHaveBeenCalled();
+    expect(panel.createEditorTab).not.toHaveBeenCalled();
+    expect(panel.setActiveTab).not.toHaveBeenCalled();
   });
 });

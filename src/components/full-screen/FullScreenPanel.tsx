@@ -1,7 +1,8 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SceneObjectBase, type SceneComponentProps, type SceneObjectState } from '@grafana/scenes';
 import { getAppEvents, locationService } from '@grafana/runtime';
-import { useStyles2 } from '@grafana/ui';
+import { useStyles2, ConfirmModal } from '@grafana/ui';
+import { t } from '@grafana/i18n';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset, useAutoOpenListener } from '../docs-panel/hooks';
@@ -9,6 +10,7 @@ import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
 import { hasOnlyNonContentTabs, isNonContentTab } from '../docs-panel/utils';
+import { editorTabStorageKey } from '../block-editor/editor-tab-storage';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
@@ -116,7 +118,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // Tab restoration from storage. Mirror of the floating panel pattern:
   // restore once on mount, gated on the model still showing only the
   // default recommendations tab.
-  const { tabs, activeTabId } = panel.useState();
+  const { tabs, activeTabId, pendingCloseTabId } = panel.useState();
   const [restorationDone, setRestorationDone] = useState(false);
 
   useEffect(() => {
@@ -275,7 +277,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
         guide_url: '',
         guide_title: title,
       });
-      panelModeManager.setPendingGuide({ title, type: 'editor' });
+      panelModeManager.setPendingGuide({ title, type: 'editor', tabId: activeTab?.id });
       panelModeManager.setModePersisted('floating');
       locationService.push(PLUGIN_BASE_URL);
       return;
@@ -303,7 +305,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     });
     panelModeManager.setModePersisted('floating');
     locationService.push(PLUGIN_BASE_URL);
-  }, [isEditorTab, guideUrl, title, activeTab?.type, activeTab?.packageInfo]);
+  }, [isEditorTab, guideUrl, title, activeTab?.id, activeTab?.type, activeTab?.packageInfo]);
 
   // Stable ref to the latest exit-to-sidebar callback. Without it, the
   // empty-state fallback effect below would re-subscribe whenever
@@ -395,35 +397,60 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       : 'docs'
     : undefined;
 
+  const pendingCloseTab = pendingCloseTabId ? (tabs.find((t) => t.id === pendingCloseTabId) ?? null) : null;
+
   return (
-    <FullScreenLayout
-      title={title}
-      stepProgress={stepProgress}
-      guideUrl={guideUrl}
-      guideType={guideType}
-      hasActiveGuide={hasActiveGuide}
-      onExit={handleExitToSidebar}
-      // Show the pop-out button for both guides AND the editor — the editor
-      // is poppable to floating via the same event/handler, and hiding the
-      // button would create an inconsistency with the BlockEditor toolbar's
-      // own "Pop out" button which dispatches the equivalent event.
-      onGoFloating={hasActiveGuide || isEditorTab ? handleSwitchToFloating : undefined}
-      subHeader={journeyToolbar}
-    >
-      {isEditorTab ? (
-        <Suspense fallback={<SkeletonLoader type="documentation" />}>
-          <BlockEditor />
-        </Suspense>
-      ) : (
-        <FloatingPanelContent
-          content={content}
-          pendingAlignment={activeTab?.pendingAlignment}
-          onAlignmentConfirm={activeTab ? () => void panel.confirmAlignment(activeTab.id) : undefined}
-          onAlignmentCancel={activeTab ? () => panel.dismissAlignment(activeTab.id) : undefined}
-          activeTab={activeTab ?? null}
-          model={panel}
-        />
-      )}
-    </FullScreenLayout>
+    <>
+      <FullScreenLayout
+        title={title}
+        stepProgress={stepProgress}
+        guideUrl={guideUrl}
+        guideType={guideType}
+        hasActiveGuide={hasActiveGuide}
+        onExit={handleExitToSidebar}
+        // Show the pop-out button for both guides AND the editor — the editor
+        // is poppable to floating via the same event/handler, and hiding the
+        // button would create an inconsistency with the BlockEditor toolbar's
+        // own "Pop out" button which dispatches the equivalent event.
+        onGoFloating={hasActiveGuide || isEditorTab ? handleSwitchToFloating : undefined}
+        subHeader={journeyToolbar}
+      >
+        {isEditorTab && activeTab ? (
+          <Suspense fallback={<SkeletonLoader type="documentation" />}>
+            {/* Per-tab keys so the full-screen surface picks up the same draft
+                as the docked tab it was expanded from. */}
+            <BlockEditor
+              key={activeTab.id}
+              persistenceKey={editorTabStorageKey(activeTab.id)}
+              onGuideTitleChange={(newTitle) => panel.updateEditorTabTitle(activeTab.id, newTitle)}
+              onFocusExistingGuide={(resourceName) =>
+                panel.focusEditorTabForResource(resourceName, { excludeTabId: activeTab.id })
+              }
+            />
+          </Suspense>
+        ) : (
+          <FloatingPanelContent
+            content={content}
+            pendingAlignment={activeTab?.pendingAlignment}
+            onAlignmentConfirm={activeTab ? () => void panel.confirmAlignment(activeTab.id) : undefined}
+            onAlignmentCancel={activeTab ? () => panel.dismissAlignment(activeTab.id) : undefined}
+            activeTab={activeTab ?? null}
+            model={panel}
+          />
+        )}
+      </FullScreenLayout>
+      <ConfirmModal
+        isOpen={pendingCloseTab !== null}
+        title={t('docsPanel.discardDraftTitle', 'Discard draft?')}
+        body={t(
+          'docsPanel.discardDraftBody',
+          '"{{title}}" has unsaved work. Closing this tab will discard it permanently.',
+          { title: pendingCloseTab?.title ?? '' }
+        )}
+        confirmText={t('docsPanel.discardDraftConfirm', 'Discard')}
+        onConfirm={() => panel.confirmPendingClose()}
+        onDismiss={() => panel.dismissPendingClose()}
+      />
+    </>
   );
 }

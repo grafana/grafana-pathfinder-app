@@ -96,6 +96,8 @@ export interface ContextPanelState extends SceneObjectState {
 export interface CombinedPanelState extends SceneObjectState {
   tabs: LearningJourneyTab[];
   activeTabId: string;
+  /** Tab id waiting on close confirmation (ephemeral; not persisted). */
+  pendingCloseTabId: string | null;
   contextPanel: SceneObject<ContextPanelState>;
   pluginConfig: DocsPluginConfig;
 }

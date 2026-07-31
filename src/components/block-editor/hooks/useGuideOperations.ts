@@ -16,6 +16,33 @@ import type { JsonGuide } from '../types';
 import type { ModalName } from './useModalManager';
 import blockEditorTutorial from '../../../bundled-interactives/block-editor-tutorial/content.json';
 
+/** Converts a guide title to a URL-safe kebab-case slug (digits kept). */
+export function slugifyTitle(title: string): string {
+  return (
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 40) || 'guide'
+  );
+}
+
+/**
+ * Unique guide ID from a title: `<slug>-<4-char-random>`.
+ * Skips candidates that already appear in `existingNames` (library resource names).
+ */
+export function generateUniqueId(title: string, existingNames: string[] = []): string {
+  const base = slugifyTitle(title);
+  for (let i = 0; i < 20; i++) {
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const candidate = `${base}-${suffix}`;
+    if (!existingNames.includes(candidate)) {
+      return candidate;
+    }
+  }
+  return `${base}-${Date.now().toString(36).slice(-6)}`;
+}
+
 /**
  * Minimal interface for editor functionality needed by this hook.
  */
@@ -66,6 +93,8 @@ export interface UseGuideOperationsOptions {
   onDownload?: (guide: JsonGuide) => void;
   /** Called when creating a new guide to clear backend tracking */
   onNewGuide?: () => void;
+  /** Library resource names to avoid when minting an id for the example template */
+  getExistingResourceNames?: () => string[];
 }
 
 /**
@@ -99,6 +128,7 @@ export function useGuideOperations(options: UseGuideOperationsOptions): UseGuide
     onCopy,
     onDownload,
     onNewGuide,
+    getExistingResourceNames,
   } = options;
 
   // Copy guide JSON to clipboard
@@ -163,11 +193,17 @@ export function useGuideOperations(options: UseGuideOperationsOptions): UseGuide
     [editor, modals, onNewGuide]
   );
 
-  // Load the example template guide
+  // Load the example template guide with a fresh resource id so repeated
+  // "Load example" / multi-tab use does not all bind to `block-editor-tutorial`.
   const handleLoadTemplate = useCallback(() => {
-    editor.loadGuide(blockEditorTutorial as JsonGuide);
+    const template = blockEditorTutorial as JsonGuide;
+    const existingNames = getExistingResourceNames?.() ?? [];
+    editor.loadGuide({
+      ...template,
+      id: generateUniqueId(template.title || template.id, existingNames),
+    });
     onNewGuide?.();
-  }, [editor, onNewGuide]);
+  }, [editor, onNewGuide, getExistingResourceNames]);
 
   return {
     handleCopy,

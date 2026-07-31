@@ -6,6 +6,7 @@ import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { useContentReset, useAutoOpenListener } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { hasOnlyNonContentTabs, isNonContentTab } from '../docs-panel/utils';
+import { editorTabStorageKey } from '../block-editor/editor-tab-storage';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
@@ -17,6 +18,8 @@ import { buildFullScreenRouteUrl } from '../../utils/pathfinder-search-params';
 import { FloatingPanel } from './FloatingPanel';
 import { FloatingPanelContent } from './FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
+import { ConfirmModal } from '@grafana/ui';
+import { t } from '@grafana/i18n';
 
 // Lazy-loaded so the editor only ships when the user actually pops it out.
 const BlockEditor = lazy(() =>
@@ -171,7 +174,7 @@ function FloatingPanelInner() {
   // Restore tabs from storage on mount (same as CombinedPanelRendererInner).
   // This handles the page-refresh case where mode is persisted but guide state
   // lives in tabStorage.
-  const { tabs, activeTabId } = panel.useState();
+  const { tabs, activeTabId, pendingCloseTabId } = panel.useState();
   const [restorationDone, setRestorationDone] = useState(false);
 
   useEffect(() => {
@@ -293,7 +296,7 @@ function FloatingPanelInner() {
       });
       // Remember where the user was so explicit Exit can land back there.
       panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
-      panelModeManager.setPendingGuide({ title, type: 'editor' });
+      panelModeManager.setPendingGuide({ title, type: 'editor', tabId: activeTab?.id });
       panelModeManager.setModePersisted('fullscreen');
       locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
       return;
@@ -331,7 +334,7 @@ function FloatingPanelInner() {
         guideType: tabType,
       })
     );
-  }, [isEditorTab, guideUrl, title, activeTab?.type, activeTab?.packageInfo]);
+  }, [isEditorTab, guideUrl, title, activeTab?.id, activeTab?.type, activeTab?.packageInfo]);
 
   // Symmetric counterpart to the sidebar's `pathfinder-request-full-screen`
   // listener — lets surface-aware components (notably the BlockEditor toolbar)
@@ -359,34 +362,59 @@ function FloatingPanelInner() {
       : 'docs'
     : undefined;
 
+  const pendingCloseTab = pendingCloseTabId ? (tabs.find((t) => t.id === pendingCloseTabId) ?? null) : null;
+
   return (
-    <FloatingPanel
-      title={title}
-      hasActiveGuide={hasActiveGuide}
-      guideUrl={guideUrl}
-      guideType={guideType}
-      stepProgress={stepProgress}
-      onSwitchToSidebar={handleSwitchToSidebar}
-      onSwitchToFullScreen={canSwitchToFullScreen ? handleSwitchToFullScreen : undefined}
-      onClose={handleClose}
-    >
-      {isEditorTab ? (
-        <Suspense fallback={<SkeletonLoader type="documentation" />}>
-          <BlockEditor />
-        </Suspense>
-      ) : (
-        <FloatingPanelContent
-          content={content}
-          pendingAlignment={activeTab?.pendingAlignment}
-          onAlignmentConfirm={activeTab ? () => void panel.confirmAlignment(activeTab.id) : undefined}
-          onAlignmentCancel={activeTab ? () => panel.dismissAlignment(activeTab.id) : undefined}
-          activeTab={activeTab ?? null}
-          model={panel}
-          hasInteractiveProgress={hasInteractiveProgress}
-          progressKey={progressKey}
-          onResetGuide={handleResetGuide}
-        />
-      )}
-    </FloatingPanel>
+    <>
+      <FloatingPanel
+        title={title}
+        hasActiveGuide={hasActiveGuide}
+        guideUrl={guideUrl}
+        guideType={guideType}
+        stepProgress={stepProgress}
+        onSwitchToSidebar={handleSwitchToSidebar}
+        onSwitchToFullScreen={canSwitchToFullScreen ? handleSwitchToFullScreen : undefined}
+        onClose={handleClose}
+      >
+        {isEditorTab && activeTab ? (
+          <Suspense fallback={<SkeletonLoader type="documentation" />}>
+            {/* Per-tab keys so the floating surface picks up the same draft as
+                the docked tab it was popped out from. */}
+            <BlockEditor
+              key={activeTab.id}
+              persistenceKey={editorTabStorageKey(activeTab.id)}
+              onGuideTitleChange={(newTitle) => panel.updateEditorTabTitle(activeTab.id, newTitle)}
+              onFocusExistingGuide={(resourceName) =>
+                panel.focusEditorTabForResource(resourceName, { excludeTabId: activeTab.id })
+              }
+            />
+          </Suspense>
+        ) : (
+          <FloatingPanelContent
+            content={content}
+            pendingAlignment={activeTab?.pendingAlignment}
+            onAlignmentConfirm={activeTab ? () => void panel.confirmAlignment(activeTab.id) : undefined}
+            onAlignmentCancel={activeTab ? () => panel.dismissAlignment(activeTab.id) : undefined}
+            activeTab={activeTab ?? null}
+            model={panel}
+            hasInteractiveProgress={hasInteractiveProgress}
+            progressKey={progressKey}
+            onResetGuide={handleResetGuide}
+          />
+        )}
+      </FloatingPanel>
+      <ConfirmModal
+        isOpen={pendingCloseTab !== null}
+        title={t('docsPanel.discardDraftTitle', 'Discard draft?')}
+        body={t(
+          'docsPanel.discardDraftBody',
+          '"{{title}}" has unsaved work. Closing this tab will discard it permanently.',
+          { title: pendingCloseTab?.title ?? '' }
+        )}
+        confirmText={t('docsPanel.discardDraftConfirm', 'Discard')}
+        onConfirm={() => panel.confirmPendingClose()}
+        onDismiss={() => panel.dismissPendingClose()}
+      />
+    </>
   );
 }

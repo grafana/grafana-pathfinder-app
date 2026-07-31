@@ -10,9 +10,10 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { JsonGuide } from '../types';
-import { BACKEND_TRACKING_STORAGE_KEY } from '../constants';
+import { BLOCK_EDITOR_STORAGE_KEY } from '../constants';
 import { logger } from '../../../lib/logging';
 import { notify } from '../notify';
+import { readEditorStoredState, writeEditorRemoteState } from '../editor-tab-storage';
 
 /**
  * Normalize a guide id or title into a Kubernetes-style resource name:
@@ -27,20 +28,15 @@ function toResourceName(input: string): string {
     .replace(/^-|-$/g, '');
 }
 
-/** Reads persisted backend tracking state from localStorage. Returns null values when nothing is stored. */
-function readBackendTracking(): { resourceName: string | null; lastPublishedJson: string | null } {
-  try {
-    const stored = localStorage.getItem(BACKEND_TRACKING_STORAGE_KEY);
-    if (stored) {
-      const { resourceName, lastPublishedJson } = JSON.parse(stored);
-      if (resourceName) {
-        return { resourceName, lastPublishedJson: lastPublishedJson ?? null };
-      }
-    }
-  } catch {
-    // ignore malformed data
+function readRemoteBinding(storageKey: string): {
+  resourceName: string | null;
+  lastSyncedJson: string | null;
+} {
+  const remote = readEditorStoredState(storageKey)?.remote;
+  if (!remote?.resourceName) {
+    return { resourceName: null, lastSyncedJson: null };
   }
-  return { resourceName: null, lastPublishedJson: null };
+  return { resourceName: remote.resourceName, lastSyncedJson: remote.lastSyncedJson ?? null };
 }
 
 /** Minimal interface for editor functionality needed by this hook. */
@@ -72,6 +68,8 @@ export interface UseBackendSaveFlowOptions {
   editor: BackendSaveFlowEditorInterface;
   /** Backend guide list/save/refresh/unpublish operations */
   backendGuides: BackendSaveFlowGuidesInterface;
+  /** Unified editor-tab storage key (draft + remote binding). */
+  storageKey?: string;
 }
 
 /**
@@ -125,12 +123,16 @@ export interface UseBackendSaveFlowReturn {
 /**
  * Backend draft/publish/unpublish orchestration for the block editor.
  */
-export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlowOptions): UseBackendSaveFlowReturn {
+export function useBackendSaveFlow({
+  editor,
+  backendGuides,
+  storageKey = BLOCK_EDITOR_STORAGE_KEY,
+}: UseBackendSaveFlowOptions): UseBackendSaveFlowReturn {
   const [currentGuideResourceName, setCurrentGuideResourceName] = useState<string | null>(
-    () => readBackendTracking().resourceName
+    () => readRemoteBinding(storageKey).resourceName
   );
   const [lastPublishedJson, setLastPublishedJson] = useState<string | null>(
-    () => readBackendTracking().lastPublishedJson
+    () => readRemoteBinding(storageKey).lastSyncedJson
   );
   const [confirmModal, setConfirmModal] = useState<BackendSaveFlowConfirmModal>(CLOSED_CONFIRM_MODAL);
 
@@ -151,25 +153,19 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
   const hasUnsyncedChanges =
     publishedStatus !== 'not-saved' && lastPublishedJson !== null && currentJson !== lastPublishedJson;
 
-  // Persist backend tracking state to localStorage whenever it changes.
+  // Persist remote binding into the unified document whenever it changes.
+  // Clearing the binding must not wipe the draft half of the same key.
   useEffect(() => {
     if (currentGuideResourceName) {
-      try {
-        localStorage.setItem(
-          BACKEND_TRACKING_STORAGE_KEY,
-          JSON.stringify({
-            resourceName: currentGuideResourceName,
-            backendStatus: currentGuideBackendStatus,
-            lastPublishedJson,
-          })
-        );
-      } catch {
-        // ignore
-      }
+      writeEditorRemoteState(storageKey, {
+        resourceName: currentGuideResourceName,
+        lastSyncedJson: lastPublishedJson,
+        status: currentGuideBackendStatus,
+      });
     } else {
-      localStorage.removeItem(BACKEND_TRACKING_STORAGE_KEY);
+      writeEditorRemoteState(storageKey, null);
     }
-  }, [currentGuideResourceName, currentGuideBackendStatus, lastPublishedJson]);
+  }, [currentGuideResourceName, currentGuideBackendStatus, lastPublishedJson, storageKey]);
 
   const closeConfirmModal = useCallback(() => {
     setConfirmModal((prev) => {

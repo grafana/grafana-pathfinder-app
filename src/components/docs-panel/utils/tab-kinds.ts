@@ -11,8 +11,11 @@ export const RECOMMENDATIONS_TAB_ID = 'recommendations';
 /** Dev Tools singleton (overflow menu; strip-excluded). Contract surface. */
 export const DEVTOOLS_TAB_ID = 'devtools';
 
-/** Guide editor singleton (strip-included, no URL fetch). Contract surface. */
-export const EDITOR_TAB_ID = 'editor';
+/**
+ * IDs that carry singleton identity. Only these are reserved: every other kind
+ * (editor included) is identified by `type` and may hold any unique ID.
+ */
+export const SINGLETON_TAB_IDS = new Set([RECOMMENDATIONS_TAB_ID, DEVTOOLS_TAB_ID]);
 
 /** Strip-excluded chrome: recommendations (left rail) and Dev Tools (overflow). */
 export const GUIDE_STRIP_EXCLUDED_TAB_TYPES = new Set<LearningJourneyTabType>(['recommendations', 'devtools']);

@@ -33,7 +33,8 @@ export function useKeyboardShortcuts({
 }: UseKeyboardShortcutsProps) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Ctrl/Cmd + W to close current tab (except recommendations)
+      // Ctrl/Cmd + W to close current tab (except recommendations).
+      // closeTab itself gates editor discard confirmation.
       if ((event.ctrlKey || event.metaKey) && event.key === 'w') {
         safeEventHandler(event, { preventDefault: true });
         if (activeTab && activeTab.type !== 'recommendations') {

@@ -57,7 +57,6 @@ export const StorageKeys = {
   // ==========================================================================
   BLOCK_EDITOR_STATE: 'pathfinder-block-editor-state',
   BLOCK_EDITOR_RECORDING_STATE: 'pathfinder-block-editor-recording-state',
-  BLOCK_EDITOR_BACKEND_TRACKING: 'pathfinder-block-editor-backend-tracking',
   BLOCK_EDITOR_HEALTH_PANEL_OPEN: 'pathfinder.blockEditor.healthPanel.open',
   BLOCK_EDITOR_CONDITION_RAW_MODE: 'pathfinder.blockEditor.conditionField.rawMode',
 

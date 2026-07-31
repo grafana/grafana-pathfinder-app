@@ -31,8 +31,8 @@ export interface TabBarActionsProps {
   onReloadActiveTab?: (tab: LearningJourneyTab) => void;
   /** Whether the current user can open the guide editor (editor/admin). */
   isEditorUser?: boolean;
-  /** Opens (or focuses) the guide editor tab. */
-  onOpenEditorTab?: () => void;
+  /** Creates a new guide editor tab. */
+  onCreateEditorTab?: () => void;
   /** Focuses (or opens once) the Dev Tools tab. */
   onOpenDevToolsTab?: () => void;
 }
@@ -46,7 +46,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
   isDevMode = false,
   onReloadActiveTab,
   isEditorUser = false,
-  onOpenEditorTab,
+  onCreateEditorTab,
   onOpenDevToolsTab,
 }) => {
   const user = config.bootData?.user;
@@ -123,7 +123,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
       action: 'open_editor',
       source: 'header_menu_editor',
     });
-    onOpenEditorTab?.();
+    onCreateEditorTab?.();
   };
 
   const handleDevToolsClick = () => {
@@ -148,7 +148,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
         placement="bottom-end"
         overlay={
           <Menu>
-            {isEditorUser && onOpenEditorTab && (
+            {isEditorUser && onCreateEditorTab && (
               <Menu.Item label={t('docsPanel.createGuide', 'Create guide')} icon="plus" onClick={handleEditorClick} />
             )}
             {kioskEnabled && (

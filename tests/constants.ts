@@ -24,6 +24,9 @@ export const TIMEOUTS = {
  * localStorage keys used by the block editor
  */
 export const STORAGE_KEYS = {
-  /** Block editor state persistence key */
+  /**
+   * Base key for per-tab editor documents.
+   * Actual keys are `${BLOCK_EDITOR_STATE}:<tabId>` (see editorTabStorageKey).
+   */
   BLOCK_EDITOR_STATE: 'pathfinder-block-editor-state',
 } as const;

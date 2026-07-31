@@ -7,6 +7,7 @@ import {
   copyGuideJson,
   waitForAutoSave,
   clearBlockEditorState,
+  readBlockEditorStoredState,
   waitForRecordingOverlay,
   stopRecording,
   waitForGrafanaReady,
@@ -153,10 +154,8 @@ test.describe.serial('Block Editor', () => {
     // Wait for auto-save using polling assertion (replaces waitForTimeout)
     await waitForAutoSave(page, uniqueContent);
 
-    // Verify the block was saved to localStorage
-    const savedStateBefore = await page.evaluate(() => {
-      return localStorage.getItem('pathfinder-block-editor-state');
-    });
+    // Verify the block was saved to per-tab localStorage
+    const savedStateBefore = await readBlockEditorStoredState(page);
     expect(savedStateBefore).not.toBeNull();
     expect(savedStateBefore).toContain(uniqueContent);
 
@@ -165,9 +164,7 @@ test.describe.serial('Block Editor', () => {
     await waitForGrafanaReady(page);
 
     // Verify localStorage persisted across navigation
-    const savedStateAfter = await page.evaluate(() => {
-      return localStorage.getItem('pathfinder-block-editor-state');
-    });
+    const savedStateAfter = await readBlockEditorStoredState(page);
     expect(savedStateAfter).not.toBeNull();
     expect(savedStateAfter).toContain(uniqueContent);
 

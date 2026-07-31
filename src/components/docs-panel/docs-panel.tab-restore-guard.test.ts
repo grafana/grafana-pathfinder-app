@@ -227,6 +227,8 @@ jest.mock('../../hooks', () => ({}));
 
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { CombinedLearningJourneyPanel } from './docs-panel';
+import type { LearningJourneyTab } from '../../types/content-panel.types';
+import { editorTabStorageKey, writeEditorRemoteState } from '../block-editor/editor-tab-storage';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -254,6 +256,19 @@ const RESTORED_TABS = [
     type: 'learning-journey' as const,
   },
 ];
+
+function makeTab(id: string, type: LearningJourneyTab['type'] = 'recommendations'): LearningJourneyTab {
+  return {
+    id,
+    type,
+    title: id,
+    baseUrl: '',
+    currentUrl: '',
+    content: null,
+    isLoading: false,
+    error: null,
+  };
+}
 
 function setupRestoreMocks() {
   mockRestoreTabsFromStorage.mockResolvedValue(RESTORED_TABS);
@@ -454,5 +469,81 @@ describe('CombinedLearningJourneyPanel — tab gate sync', () => {
     expect(tabs.some((t) => t.type === 'devtools')).toBe(false);
     expect((panel as any).state.activeTabId).toBe('recommendations');
     expect(tabStorage.setTabs).toHaveBeenCalled();
+  });
+});
+
+describe('CombinedLearningJourneyPanel — createEditorTab', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupRestoreMocks();
+  });
+
+  it('creates a distinct tab per call and focuses the newest', () => {
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({ tabs: [makeTab('recommendations')], activeTabId: 'recommendations' });
+
+    panel.createEditorTab();
+    panel.createEditorTab();
+
+    const editorTabs = (panel as any).state.tabs.filter((t: LearningJourneyTab) => t.type === 'editor');
+    expect(editorTabs).toHaveLength(2);
+    expect(editorTabs[0].id).not.toBe(editorTabs[1].id);
+    expect((panel as any).state.activeTabId).toBe(editorTabs[1].id);
+  });
+
+  it('focuses an existing editor when createEditorTab is given that tabId', () => {
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [makeTab('recommendations'), makeTab('editor-older', 'editor'), makeTab('editor-newer', 'editor')],
+      activeTabId: 'recommendations',
+    });
+
+    panel.createEditorTab({ tabId: 'editor-older' });
+
+    expect((panel as any).state.tabs).toHaveLength(3);
+    expect((panel as any).state.activeTabId).toBe('editor-older');
+  });
+
+  it('reuses a handoff tabId when that editor is not mounted yet', () => {
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({ tabs: [makeTab('recommendations')], activeTabId: 'recommendations' });
+
+    panel.createEditorTab({ tabId: 'editor-from-sidebar' });
+
+    const editorTabs = (panel as any).state.tabs.filter((t: LearningJourneyTab) => t.type === 'editor');
+    expect(editorTabs).toHaveLength(1);
+    expect(editorTabs[0].id).toBe('editor-from-sidebar');
+    expect((panel as any).state.activeTabId).toBe('editor-from-sidebar');
+  });
+});
+
+describe('CombinedLearningJourneyPanel — focusEditorTabForResource', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupRestoreMocks();
+    localStorage.clear();
+  });
+
+  it('focuses the editor tab already bound to the resource and skips the active tab when excluded', () => {
+    writeEditorRemoteState(editorTabStorageKey('editor-a'), {
+      resourceName: 'shared-guide',
+      lastSyncedJson: '{}',
+    });
+    writeEditorRemoteState(editorTabStorageKey('editor-b'), {
+      resourceName: 'other-guide',
+      lastSyncedJson: '{}',
+    });
+
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [makeTab('recommendations'), makeTab('editor-a', 'editor'), makeTab('editor-b', 'editor')],
+      activeTabId: 'editor-b',
+    });
+
+    expect(panel.focusEditorTabForResource('shared-guide', { excludeTabId: 'editor-b' })).toBe(true);
+    expect((panel as any).state.activeTabId).toBe('editor-a');
+
+    expect(panel.focusEditorTabForResource('shared-guide', { excludeTabId: 'editor-a' })).toBe(false);
+    expect((panel as any).state.activeTabId).toBe('editor-a');
   });
 });

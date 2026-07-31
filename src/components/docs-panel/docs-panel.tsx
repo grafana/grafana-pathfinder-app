@@ -3,7 +3,8 @@
 
 import React, { useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
-import { useStyles2, useTheme2 } from '@grafana/ui';
+import { ConfirmModal, useStyles2, useTheme2 } from '@grafana/ui';
+import { t } from '@grafana/i18n';
 // (Lazy Coda terminal imports retained below — the renderer still mounts the
 //  terminal panel for dev-mode users.)
 
@@ -84,7 +85,6 @@ import {
   loadDocsTabContentResult,
   RECOMMENDATIONS_TAB_ID,
   DEVTOOLS_TAB_ID,
-  EDITOR_TAB_ID,
   getGuideStripTabs,
   isNonContentTab,
   findCurrentMilestoneIndex,
@@ -93,6 +93,11 @@ import {
   didGateClose,
   type TabGates,
 } from './utils';
+import {
+  clearEditorTabStorage,
+  editorTabHasUnsavedWork,
+  findEditorTabIdByResourceName,
+} from '../block-editor/editor-tab-storage';
 // Import extracted hooks
 import {
   useBadgeCelebrationQueue,
@@ -203,12 +208,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       (url: string, title: string, packageInfo?: PackageOpenInfo) => {
         return this.openDocsPage(url, title, { source: 'recommender', packageInfo });
       },
-      () => this.openEditorTab()
+      () => this.createEditorTab()
     );
 
     super({
       tabs: defaultTabs,
       activeTabId: RECOMMENDATIONS_TAB_ID,
+      pendingCloseTabId: null,
       contextPanel,
       pluginConfig,
     });
@@ -617,7 +623,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     });
   }
 
-  public closeTab(tabId: string) {
+  public closeTab(tabId: string, options?: { discardConfirmed?: boolean }) {
     const currentTabs = this.state.tabs;
     const closing = currentTabs.find((t) => t.id === tabId);
     // Unclosable chrome is a kind rule (type), not an identity check.
@@ -625,17 +631,18 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       return;
     }
 
+    // Defer when close would discard unsaved work (today: editor drafts).
+    if (closing.type === 'editor' && !options?.discardConfirmed && editorTabHasUnsavedWork(tabId)) {
+      this.setState({ pendingCloseTabId: tabId });
+      return;
+    }
+
     const newTabs = currentTabs.filter((t) => t.id !== tabId);
     let newActiveTabId = this.state.activeTabId;
 
-    // Closing a background tab must not move focus — the user may be sitting on
-    // a strip-excluded view (Dev Tools) and closing a guide from the overflow menu.
+    // Only reassign focus when closing the active tab. Walk the guide strip
+    // (not raw tabs) so strip-excluded chrome is never chosen as replacement.
     if (this.state.activeTabId === tabId) {
-      // Adjacency walks the rendered strip, not raw tab state: strip-excluded
-      // chrome holds no slot, so handing it focus would leave no visible tab
-      // marked active. A strip-excluded tab closed via Ctrl+W has no neighbours
-      // of its own, so it inherits the last strip tab instead of sending the
-      // user home to re-navigate. Recommendations is the empty-strip fallback.
       const stripTabs = getGuideStripTabs(currentTabs);
       const closedIndex = stripTabs.findIndex((t) => t.id === tabId);
       const replacement =
@@ -645,12 +652,32 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       newActiveTabId = replacement?.id ?? RECOMMENDATIONS_TAB_ID;
     }
 
+    if (closing.type === 'editor') {
+      clearEditorTabStorage(tabId);
+    }
+
     this.setState({
       tabs: newTabs,
       activeTabId: newActiveTabId,
+      pendingCloseTabId: this.state.pendingCloseTabId === tabId ? null : this.state.pendingCloseTabId,
     });
 
     this.saveTabsToStorage();
+  }
+
+  public confirmPendingClose() {
+    const tabId = this.state.pendingCloseTabId;
+    if (!tabId) {
+      return;
+    }
+    this.closeTab(tabId, { discardConfirmed: true });
+  }
+
+  public dismissPendingClose() {
+    if (this.state.pendingCloseTabId === null) {
+      return;
+    }
+    this.setState({ pendingCloseTabId: null });
   }
 
   public setActiveTab(tabId: string) {
@@ -715,8 +742,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   public openDevToolsTab(): void {
     const existingTab = this.state.tabs.find((t) => t.id === DEVTOOLS_TAB_ID);
     if (existingTab) {
-      this.setState({ activeTabId: DEVTOOLS_TAB_ID });
-      this.saveTabsToStorage();
+      this.setActiveTab(DEVTOOLS_TAB_ID);
       return;
     }
 
@@ -731,27 +757,25 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       type: 'devtools',
     };
 
-    this.setState({
-      tabs: [...this.state.tabs, newTab],
-      activeTabId: DEVTOOLS_TAB_ID,
-    });
-
-    this.saveTabsToStorage();
+    this.setState({ tabs: [...this.state.tabs, newTab] });
+    this.setActiveTab(DEVTOOLS_TAB_ID);
   }
 
   /**
-   * Open the Editor tab (or switch to it if already open)
+   * Create a guide editor tab, then focus it via `setActiveTab`.
+   * Pass `tabId` to reuse a handoff id so persistence keys match across surfaces;
+   * idempotent if that tab already exists.
    */
-  public openEditorTab(): void {
-    const existingTab = this.state.tabs.find((t) => t.id === EDITOR_TAB_ID);
-    if (existingTab) {
-      this.setState({ activeTabId: EDITOR_TAB_ID });
-      this.saveTabsToStorage();
-      return;
+  public createEditorTab(options?: { tabId?: string }): string {
+    const tabId = options?.tabId ?? this.generateTabId();
+    const existing = this.state.tabs.find((t) => t.id === tabId && t.type === 'editor');
+    if (existing) {
+      this.setActiveTab(existing.id);
+      return existing.id;
     }
 
     const newTab: LearningJourneyTab = {
-      id: EDITOR_TAB_ID,
+      id: tabId,
       title: 'New Guide',
       baseUrl: '',
       currentUrl: '',
@@ -761,11 +785,39 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       type: 'editor',
     };
 
-    this.setState({
-      tabs: [...this.state.tabs, newTab],
-      activeTabId: EDITOR_TAB_ID,
-    });
+    this.setState({ tabs: [...this.state.tabs, newTab] });
+    this.setActiveTab(tabId);
+    return tabId;
+  }
 
+  /**
+   * Focus an editor tab already bound to `resourceName` (per-tab remote storage).
+   * Pass `excludeTabId` when loading from the library so the active tab can still
+   * reload that guide into itself.
+   */
+  public focusEditorTabForResource(resourceName: string, options?: { excludeTabId?: string }): boolean {
+    const editorTabIds = this.state.tabs.filter((t) => t.type === 'editor').map((t) => t.id);
+    const match = findEditorTabIdByResourceName(resourceName, editorTabIds, options?.excludeTabId);
+    if (!match) {
+      return false;
+    }
+    this.setActiveTab(match);
+    return true;
+  }
+
+  /**
+   * Sync an editor tab's chrome with its working guide title.
+   */
+  public updateEditorTabTitle(tabId: string, title: string): void {
+    const trimmed = title.trim() || 'New Guide';
+    const editorTab = this.state.tabs.find((t) => t.id === tabId);
+    if (!editorTab || editorTab.title === trimmed) {
+      return;
+    }
+
+    this.setState({
+      tabs: this.state.tabs.map((t) => (t.id === tabId ? { ...t, title: trimmed } : t)),
+    });
     this.saveTabsToStorage();
   }
 
@@ -942,7 +994,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     (window as any).__pathfinderPluginConfig = pluginConfig;
   }, [pluginConfig]);
 
-  const { tabs, activeTabId, contextPanel } = model.useState();
+  const { tabs, activeTabId, contextPanel, pendingCloseTabId } = model.useState();
   const { recommendationsReady = false } = contextPanel.useState();
   React.useEffect(() => {
     addGlobalModalStyles();
@@ -957,6 +1009,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   // Get plugin configuration to check if live sessions are enabled
   const isLiveSessionsEnabled = pluginConfig.enableLiveSessions;
+
+  const pendingCloseTab = pendingCloseTabId ? (tabs.find((t) => t.id === pendingCloseTabId) ?? null) : null;
 
   // Live session state
   const [showPresenterControls, setShowPresenterControls] = React.useState(false);
@@ -1066,7 +1120,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
   const isRecommendationsTab = activeTab?.type === 'recommendations';
-  // Detect WYSIWYG preview tab to show "Return to editor" banner
   const isWysiwygPreview =
     activeTab?.baseUrl === 'bundled:wysiwyg-preview' || activeTab?.content?.url === 'bundled:wysiwyg-preview';
   // `useTheme2()` is the canonical hook for grabbing the raw theme;
@@ -1398,8 +1451,21 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         onSetActiveTab={(tabId) => model.setActiveTab(tabId)}
         onCloseTab={(tabId) => model.closeTab(tabId)}
         reloadActiveTab={reloadActiveTab}
-        onOpenEditorTab={() => model.openEditorTab()}
+        onCreateEditorTab={() => model.createEditorTab()}
         onOpenDevToolsTab={() => model.openDevToolsTab()}
+      />
+
+      <ConfirmModal
+        isOpen={pendingCloseTab !== null}
+        title={t('docsPanel.discardDraftTitle', 'Discard draft?')}
+        body={t(
+          'docsPanel.discardDraftBody',
+          '"{{title}}" has unsaved work. Closing this tab will discard it permanently.',
+          { title: pendingCloseTab?.title ?? '' }
+        )}
+        confirmText={t('docsPanel.discardDraftConfirm', 'Discard')}
+        onConfirm={() => model.confirmPendingClose()}
+        onDismiss={() => model.dismissPendingClose()}
       />
 
       <DocsPanelContentArea

@@ -18,7 +18,7 @@ import { useRecordingState } from './hooks/useRecordingState';
 import { useRecordingActions } from './hooks/useRecordingActions';
 import { useJsonModeHandlers } from './hooks/useJsonModeHandlers';
 import { useBlockConversionHandlers } from './hooks/useBlockConversionHandlers';
-import { useGuideOperations } from './hooks/useGuideOperations';
+import { useGuideOperations, generateUniqueId } from './hooks/useGuideOperations';
 import { useBackendGuides, hasManageableBackendGuides } from './hooks/useBackendGuides';
 import { useBackendSaveFlow } from './hooks/useBackendSaveFlow';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
@@ -47,30 +47,6 @@ import {
   readNestedInstanceId,
 } from './nestedBlockInstanceId';
 
-/** Converts a guide title to a URL-safe kebab-case slug */
-function slugifyTitle(title: string): string {
-  return (
-    title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 40) || 'guide'
-  );
-}
-
-/** Generates a unique guide ID from a title, avoiding collisions with existing resource names */
-function generateUniqueId(title: string, existingNames: string[]): string {
-  const base = slugifyTitle(title);
-  for (let i = 0; i < 20; i++) {
-    const suffix = Math.random().toString(36).slice(2, 6);
-    const candidate = `${base}-${suffix}`;
-    if (!existingNames.includes(candidate)) {
-      return candidate;
-    }
-  }
-  return `${base}-${Date.now().toString(36).slice(-6)}`;
-}
-
 /**
  * Apply an author note to a block. When `note` is empty/undefined the
  * `authorNote` field is removed entirely rather than left as an empty string,
@@ -94,6 +70,15 @@ export interface BlockEditorProps {
   onCopy?: (json: string) => void;
   /** Called when download is requested */
   onDownload?: (guide: JsonGuide) => void;
+  /** Called when the working guide title changes (for tab chrome, etc.) */
+  onGuideTitleChange?: (title: string) => void;
+  /** Unified localStorage key for this editor tab (draft + remote binding). */
+  persistenceKey?: string;
+  /**
+   * When loading a library guide, focus another tab already bound to that
+   * resource instead of duplicating it here. Return true if focused.
+   */
+  onFocusExistingGuide?: (resourceName: string) => boolean;
 }
 
 /**
@@ -234,7 +219,15 @@ function isSamePreviewTarget(a: PreviewTarget, b: PreviewTarget): boolean {
   return false;
 }
 
-function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockEditorProps) {
+function BlockEditorInner({
+  initialGuide,
+  onChange,
+  onCopy,
+  onDownload,
+  onGuideTitleChange,
+  persistenceKey,
+  onFocusExistingGuide,
+}: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
   const editor = useBlockEditor({ initialGuide, onChange });
   const { state } = editor;
@@ -252,6 +245,11 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   useEffect(() => {
     setGuideLintResult(guideLint);
   }, [guideLint, setGuideLintResult]);
+
+  // Keep the owning editor tab's title in sync with the working guide.
+  useEffect(() => {
+    onGuideTitleChange?.(state.guide.title);
+  }, [state.guide.title, onGuideTitleChange]);
 
   // Modal state - useModalManager handles metadata, newGuideConfirm, import, githubPr, tour
   const modals = useModalManager();
@@ -285,7 +283,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
 
   // Backend guides management
   const backendGuides = useBackendGuides();
-  const backendSaveFlow = useBackendSaveFlow({ editor, backendGuides });
+  const backendSaveFlow = useBackendSaveFlow({ editor, backendGuides, storageKey: persistenceKey });
   const [isGuideLibraryOpen, setIsGuideLibraryOpen] = useState(false);
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
@@ -568,6 +566,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     jsonModeState: jsonMode.jsonModeState,
     autoSave: true,
     autoSavePaused: isBlockFormOpen,
+    autoSaveDelay: persistenceKey ? 0 : undefined,
+    storageKey: persistenceKey,
     onLoad: (savedGuide, savedBlockIds, savedViewMode, savedJsonModeState) => {
       if (!hasLoadedFromStorage.current && !initialGuide) {
         hasLoadedFromStorage.current = true;
@@ -592,6 +592,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     onCopy,
     onDownload,
     onNewGuide: backendSaveFlow.handleClearBackendTracking,
+    getExistingResourceNames: () => backendGuides.guides.map((g) => g.metadata.name),
   });
 
   // Handle block type selection from palette
@@ -637,11 +638,15 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   const { trackLoadedGuide, publishedStatus, hasUnsyncedChanges } = backendSaveFlow;
   const handleLoadGuideFromBackend = useCallback(
     (guide: JsonGuide, resourceName: string) => {
+      // Another editor tab already owns this backend guide — switch to it.
+      if (onFocusExistingGuide?.(resourceName)) {
+        return;
+      }
       editor.loadGuide(guide);
       trackLoadedGuide(guide, resourceName);
       editor.markSaved();
     },
-    [editor, trackLoadedGuide]
+    [editor, trackLoadedGuide, onFocusExistingGuide]
   );
 
   // Open guide library
