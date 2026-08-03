@@ -372,6 +372,19 @@ func TestCustomGuide_NoAppURLStructurallyUnavailable(t *testing.T) {
 	}
 }
 
+// An unprovisioned stack has no way to authenticate as the caller upstream, so
+// the route reports itself unavailable rather than attempting a call that can
+// only 401. No lister override here: this is the real resolve path.
+func TestCustomGuide_NoOBOCredentialsStructurallyUnavailable(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+
+	_, body := doCustomGuideReq(t, customGuideRequest(t, "/custom-guide-repository", "user:1"))
+
+	if body.Capability.Available || body.Capability.Reason != reasonOBOUnavailable {
+		t.Errorf("expected obo-unavailable without provisioned credentials, got %+v", body.Capability)
+	}
+}
+
 func TestCustomGuide_MethodNotAllowed(t *testing.T) {
 	app := newTestApp(t)
 	r, _ := http.NewRequest(http.MethodPost, "/custom-guide-repository", nil)
@@ -409,7 +422,7 @@ func TestCustomGuideHTTPClient_StripsBlocksPreservesManifest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newCustomGuideHTTPClient(srv.URL, "id-token-abc", log.DefaultLogger)
+	c := newCustomGuideHTTPClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 	page, err := c.ListPage(context.Background(), testNamespace, "")
 	if err != nil {
 		t.Fatalf("ListPage: %v", err)

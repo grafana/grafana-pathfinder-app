@@ -24,6 +24,10 @@ const (
 	reasonFeatureToggleDisabled    = "feature-toggle-disabled"
 	reasonAppURLUnavailable        = "app-url-unavailable"
 	reasonNamespaceUnavailable     = "namespace-unavailable"
+
+	// reasonOBOUnavailable means the stack has no provisioned on-behalf-of
+	// credentials, so the proxy cannot authenticate as the caller at all.
+	reasonOBOUnavailable = "obo-unavailable"
 )
 
 // Custom guide repository catalogue proxy (docs/design/BACKEND_PROXY_PATTERN.md).
@@ -238,6 +242,13 @@ func (a *App) resolveCustomGuideBackend(r *http.Request) (lister customGuideList
 		return customGuideListerOverride, namespace, true, ""
 	}
 
+	// No provisioned CAP token means there is no way to authenticate as the
+	// caller against the aggregated API, which is a "never works here"
+	// condition rather than a transient one.
+	if a.oboExchanger == nil {
+		return nil, namespace, false, reasonOBOUnavailable
+	}
+
 	idToken := r.Header.Get(backend.GrafanaUserSignInTokenHeaderName)
-	return newCustomGuideHTTPClient(appURL, idToken, a.ctxLogger(r.Context())), namespace, true, ""
+	return newCustomGuideHTTPClient(appURL, a.oboExchanger, idToken, a.ctxLogger(r.Context())), namespace, true, ""
 }

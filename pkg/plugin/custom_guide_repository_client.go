@@ -86,15 +86,15 @@ type customGuideHTTPClient struct {
 	inner *appPlatformListClient
 }
 
-// newCustomGuideHTTPClient builds a lister that calls appURL with identity
-// derived from the caller's ID token (forwardIdentityHeaders). A
+// newCustomGuideHTTPClient builds a lister that calls appURL as the user the
+// caller's ID token identifies, using an access token minted from that token. A
 // namespace-scoped LIST returns every InteractiveGuide in the namespace
 // (Kubernetes RBAC is namespace-, not object-, scoped), which is what lets one
 // refresh serve every caller (see the identity-invariance note in
 // custom_guide_repository.go). A caller lacking list permission gets a 401/403,
 // surfaced as an identity-scoped terminal error.
-func newCustomGuideHTTPClient(appURL, idToken string, logger log.Logger) *customGuideHTTPClient {
-	return &customGuideHTTPClient{inner: newAppPlatformListClient(appURL, idToken, logger)}
+func newCustomGuideHTTPClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *customGuideHTTPClient {
+	return &customGuideHTTPClient{inner: newAppPlatformListClient(appURL, minter, idToken, logger)}
 }
 
 // ListPage fetches one page of InteractiveGuides for the namespace and shapes
