@@ -2,11 +2,11 @@
  * Coda VM exec-based requirement check: `coda-exit-zero:<command>`.
  *
  * Runs the command against the caller's active terminal session via the Coda
- * app plugin. Always uses gated mode, so the check cannot pass before the
- * challenge's setup phase has written the sentinel file at
- * `/tmp/pathfinder-ready`. This protects against verifications firing before
- * setup completes (e.g., user clicks "Check my work" the instant the terminal
- * connects, before the environment has been broken).
+ * app plugin. Always gated on `PATHFINDER_READY_FILE`, so the check cannot pass
+ * before the challenge's setup phase has written it. This protects against
+ * verifications firing before setup completes (e.g., user clicks "Check my
+ * work" the instant the terminal connects, before the environment has been
+ * broken).
  *
  * Use `grep -q`, `jq -e`, `test -f`, or any unix tool that returns 0 on
  * success to express richer matchers — the check is intentionally restricted
@@ -31,7 +31,8 @@ export async function codaExitZeroCheck(check: string): Promise<CheckResultError
   // Dynamic import keeps the Coda integration out of the requirements chunk and
   // avoids a requirements-manager → integrations cycle.
   const { getTerminalSessionId } = await import('../../integrations/coda/TerminalContext');
-  const { execInSession } = await import('../../integrations/coda/coda-api');
+  const { execInSession, isNotReady, isRoleForbidden, isUnavailable, toCodaError, PATHFINDER_READY_FILE } =
+    await import('../../integrations/coda/coda-api');
 
   const sessionId = getTerminalSessionId();
   if (!sessionId) {
@@ -44,7 +45,7 @@ export async function codaExitZeroCheck(check: string): Promise<CheckResultError
   }
 
   try {
-    const data = await execInSession(sessionId, { command, mode: 'gated' });
+    const data = await execInSession(sessionId, { command, readyFile: PATHFINDER_READY_FILE });
 
     const pass = data.exitCode === 0;
     return {
@@ -60,15 +61,26 @@ export async function codaExitZeroCheck(check: string): Promise<CheckResultError
       },
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    // A 409 means the session exists but its terminal is not connected; a 404
-    // means the session is gone. Both are "not ready" from the learner's view.
-    const isNotReady = /404|409|no active terminal|not found/i.test(message);
+    // Branch on the backend's error code, never on the message. Several
+    // distinct failures share a status — the pair that matters here is
+    // terminal_not_connected (409, "not yet") and terminal_disconnected (503,
+    // "not any more"), which a status check cannot tell apart.
+    const codaErr = toCodaError(err);
+    let error: string;
+    if (isNotReady(codaErr)) {
+      error = NOT_READY_MESSAGE;
+    } else if (isRoleForbidden(codaErr)) {
+      error = 'Your Grafana role does not allow running challenge environments. Ask an administrator.';
+    } else if (isUnavailable(codaErr)) {
+      error = 'The sandbox service is unavailable. An administrator may need to finish setting it up.';
+    } else {
+      error = `Could not reach the challenge VM: ${codaErr.message}`;
+    }
     return {
       requirement: check,
       pass: false,
-      error: isNotReady ? NOT_READY_MESSAGE : `Could not reach the challenge VM: ${message}`,
-      context: { error: message },
+      error,
+      context: { error: codaErr.message, code: codaErr.code },
     };
   }
 }

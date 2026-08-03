@@ -18,7 +18,13 @@ import {
 import { Subscription } from 'rxjs';
 import type { Terminal } from '@xterm/xterm';
 import { logger } from '../../lib/logging';
-import { createSession, sessionChannelAddress, type CodaSession, type TerminalVMOptions } from './coda-api';
+import {
+  createSession,
+  sessionChannelAddress,
+  toCodaError,
+  type CodaSession,
+  type TerminalVMOptions,
+} from './coda-api';
 
 interface ConnectionLog {
   error: (message: string, error?: unknown, data?: Record<string, unknown>) => void;
@@ -45,21 +51,31 @@ export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'er
 export type { TerminalVMOptions };
 
 /**
- * The sandbox backend is a separate plugin, so "not installed" and "not
- * registered" are both normal states that need distinct guidance.
+ * The sandbox backend is a separate plugin, so "not installed", "not
+ * registered" and "your role is too low" are all normal states that need
+ * distinct guidance — and they are only distinguishable by the error code,
+ * since the plugin returns several different failures per status.
  */
 function codaSessionErrorMessage(err: unknown): string {
-  const fetchErr = err as { status?: number; data?: { error?: string } } | undefined;
-  if (fetchErr?.status === 404) {
-    return 'The Coda app plugin is not installed or not enabled in this Grafana instance.';
+  const codaErr = toCodaError(err);
+  switch (codaErr.code) {
+    case 'plugin_not_installed':
+      return 'The Coda app plugin is not installed or not enabled in this Grafana instance.';
+    case 'coda_not_registered':
+      return 'Coda is not registered. An administrator must complete registration.';
+    case 'role_forbidden':
+      // The plugin gates sandbox creation on a Grafana basic role, Editor by
+      // default. An admin can lower it with `minimumSessionRole` on the Coda
+      // plugin — worth naming, or a learner on a Viewer account is stuck with
+      // no idea why.
+      return 'Your Grafana role does not allow starting a sandbox. Ask an administrator for Editor access, or to set minimumSessionRole on the Coda plugin.';
+    case 'vm_quota_exceeded':
+      return 'You already have the maximum number of sandbox VMs. Wait for one to expire, or close another terminal.';
+    case 'rate_limited':
+      return 'Too many sandbox requests. Wait a moment and try again.';
+    default:
+      return codaErr.message;
   }
-  if (fetchErr?.status === 503) {
-    return fetchErr.data?.error ?? 'Coda is not registered. An administrator must complete registration.';
-  }
-  if (fetchErr?.data?.error) {
-    return fetchErr.data.error;
-  }
-  return err instanceof Error ? err.message : 'Could not start a sandbox session';
 }
 
 interface UseTerminalLiveOptions {

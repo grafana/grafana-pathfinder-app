@@ -11,7 +11,10 @@ jest.mock('../../integrations/coda/TerminalContext', () => ({
   useTerminalContext: jest.fn(),
 }));
 
+// Only the request is mocked; toCodaError and the error classification are
+// real, so the messages asserted below are the ones a learner would see.
 jest.mock('../../integrations/coda/coda-api', () => ({
+  ...jest.requireActual('../../integrations/coda/coda-api'),
   execInSession: jest.fn(),
 }));
 
@@ -113,11 +116,10 @@ describe('ChallengeBlock', () => {
     await waitFor(() => {
       expect(post).toHaveBeenCalledTimes(3);
     });
-    expect(post.mock.calls[0]![1]).toMatchObject({ command: 'echo one', mode: 'raw' });
-    expect(post.mock.calls[1]![1]).toMatchObject({ command: 'echo two', mode: 'raw' });
+    expect(post.mock.calls[0]![1]).toMatchObject({ command: 'echo one' });
+    expect(post.mock.calls[1]![1]).toMatchObject({ command: 'echo two' });
     expect(post.mock.calls[2]![1]).toMatchObject({
       command: expect.stringContaining('/tmp/pathfinder-ready'),
-      mode: 'raw',
     });
 
     await waitFor(() => {
@@ -138,10 +140,9 @@ describe('ChallengeBlock', () => {
     await waitFor(() => {
       expect(post).toHaveBeenCalledTimes(2);
     });
-    expect(post.mock.calls[0]![1]).toMatchObject({ command: script, mode: 'raw', timeoutMs: 120_000 });
+    expect(post.mock.calls[0]![1]).toMatchObject({ command: script, timeoutMs: 120_000 });
     expect(post.mock.calls[1]![1]).toMatchObject({
       command: expect.stringContaining('/tmp/pathfinder-ready'),
-      mode: 'raw',
     });
 
     await waitFor(() => {

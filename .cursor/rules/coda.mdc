@@ -64,11 +64,15 @@ fields:     [ { name: "event", type: string } ]
 ## Exec is session-scoped
 
 `coda-exit-zero:<command>` and the challenge block's setup both call
-`execInSession(sessionId, { command, mode, timeoutMs })`. There is no "current session" fallback —
-a missing session id is a "not ready" state, not an error to surface raw.
+`execInSession(sessionId, { command, readyFile, timeoutMs })`. There is no "current session"
+fallback — a missing session id is a "not ready" state, not an error to surface raw.
 
-`mode: 'gated'` wraps the command behind the `/tmp/pathfinder-ready` sentinel. That is a **UI-race
-guard, not a security boundary** — the learner has full shell access to the same VM.
+`readyFile` gates the command behind that file existing. That is a **UI-race guard, not a security
+boundary** — the learner has full shell access to the same VM. Use `PATHFINDER_READY_FILE` from
+`coda-api.ts` rather than writing the literal: the setup write and the check must agree.
+
+Classify failures with `isNotReady` / `isRoleForbidden` / `isUnavailable`, never by matching on the
+message. Several distinct failures share a status.
 
 ## Availability gating
 
@@ -94,7 +98,7 @@ present — every failure path must degrade quietly.
 | `src/integrations/coda/TerminalPanel.tsx` | xterm.js panel: fit/resize, scrollback persistence, WebGL renderer, auto-reconnect |
 | `src/integrations/coda/useCodaAvailability.hook.ts` | Runtime plugin detection |
 | `src/integrations/coda/terminal-storage.ts` | localStorage/sessionStorage keys for panel state, scrollback, last VM opts |
-| `src/requirements-manager/checks/coda.ts` | `coda-exit-zero:` check (always gated mode) |
+| `src/requirements-manager/checks/coda.ts` | `coda-exit-zero:` check (always gated on `PATHFINDER_READY_FILE`) |
 | `src/components/AppConfig/CodaBackendStatus.tsx` | Reports backend availability; links to the Coda plugin's own config page |
 | `src/components/interactive-tutorial/challenge-block.tsx` | CTF-style block: setup script, sentinel write, check-my-work |
 

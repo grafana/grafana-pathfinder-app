@@ -80,13 +80,22 @@ fields:     [ { name: "event", type: string } ]   // JSON-encoded SessionEvent
 ## Exec
 
 `coda-exit-zero:<command>` and the challenge block both call
-`execInSession(sessionId, { command, mode, timeoutMs })` against
+`execInSession(sessionId, { command, readyFile, timeoutMs })` against
 `POST /v1/sessions/{id}/exec`. Exec reuses the stream's SSH client and never opens a new
-connection, so a session whose terminal has not connected returns `409`.
+connection, so a session whose terminal has not connected returns `409`
+`terminal_not_connected`.
 
-`mode: 'gated'` wraps the command behind a `/tmp/pathfinder-ready` sentinel so a "Check my work"
-click cannot evaluate the criterion before setup finishes. This is a **UI-race guard, not a security
-boundary** — the learner has full shell access to the same VM.
+`readyFile` gates the command behind that file existing, so a "Check my work" click cannot
+evaluate the criterion before setup finishes. This is a **UI-race guard, not a security boundary** —
+the learner has full shell access to the same VM. We pass `PATHFINDER_READY_FILE`, exported from
+`coda-api.ts` and shared between the setup write and the check; it is our path to choose, not the
+plugin's. The plugin's older `mode: 'gated'` is deprecated.
+
+Errors carry a machine-readable `code` alongside the message — branch on that, never on wording or
+on the status alone. `terminal_not_connected` (409, "not yet") and `terminal_disconnected` (503,
+"no longer") need different handling, and `role_forbidden` (403) means the learner's Grafana role
+is below the plugin's `minimumSessionRole`, which is neither a bug nor something retrying fixes.
+Use `isNotReady`, `isRoleForbidden` and `isUnavailable` from `coda-api.ts`.
 
 Timeouts default to 5 s and are capped at 120 s (the cap accommodates `setupScript` runs such as
 `apt-get install`). Output is capped at 32 KB per stream, with `truncated: true` when it overflows.

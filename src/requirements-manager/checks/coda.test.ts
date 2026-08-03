@@ -3,10 +3,13 @@
  */
 
 import { codaExitZeroCheck } from './coda';
-import { execInSession } from '../../integrations/coda/coda-api';
+import { execInSession, PATHFINDER_READY_FILE } from '../../integrations/coda/coda-api';
 import { getTerminalSessionId } from '../../integrations/coda/TerminalContext';
 
+// Only the request is mocked. toCodaError and the isNotReady/isRoleForbidden
+// classification are the behaviour under test here, so they stay real.
 jest.mock('../../integrations/coda/coda-api', () => ({
+  ...jest.requireActual('../../integrations/coda/coda-api'),
   execInSession: jest.fn(),
 }));
 
@@ -33,7 +36,7 @@ describe('codaExitZeroCheck', () => {
     expect(result.pass).toBe(true);
     expect(mockedExec).toHaveBeenCalledWith(
       SESSION_ID,
-      expect.objectContaining({ command: 'test -f /etc/foo', mode: 'gated' })
+      expect.objectContaining({ command: 'test -f /etc/foo', readyFile: PATHFINDER_READY_FILE })
     );
   });
 
@@ -47,12 +50,14 @@ describe('codaExitZeroCheck', () => {
     expect(result.error).toContain('no such file');
   });
 
-  it('always uses gated mode', async () => {
+  // The gate is what stops a "check my work" click evaluating the criterion
+  // before the challenge's setup phase has finished writing it.
+  it('always gates on the shared ready file', async () => {
     mockedExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
 
     await codaExitZeroCheck('coda-exit-zero:true');
 
-    expect(mockedExec).toHaveBeenCalledWith(SESSION_ID, expect.objectContaining({ mode: 'gated' }));
+    expect(mockedExec).toHaveBeenCalledWith(SESSION_ID, expect.objectContaining({ readyFile: PATHFINDER_READY_FILE }));
   });
 
   it('fails with friendly message when command is missing', async () => {
@@ -75,23 +80,47 @@ describe('codaExitZeroCheck', () => {
     expect(mockedExec).not.toHaveBeenCalled();
   });
 
-  it('translates 409 into a setup-prerequisite error', async () => {
-    mockedExec.mockRejectedValue(new Error('Request failed with status 409: no active terminal'));
+  // 'not yet connected' and 'no longer connected' share neither a status nor
+  // a recovery, but both read as not-ready to a learner. Classified by code:
+  // the message wording is not a contract.
+  it.each([
+    ['terminal_not_connected', 409],
+    ['terminal_disconnected', 503],
+    ['session_not_found', 404],
+  ])('translates %s into a setup-prerequisite error', async (code, status) => {
+    mockedExec.mockRejectedValue({ status, data: { error: 'backend wording', code } });
 
     const result = await codaExitZeroCheck('coda-exit-zero:true');
 
     expect(result.pass).toBe(false);
     expect(result.error).toMatch(/environment is not ready/i);
+    expect(result.context).toMatchObject({ code });
   });
 
-  // A vanished session reads the same as a not-yet-connected one.
-  it('translates 404 into a setup-prerequisite error', async () => {
-    mockedExec.mockRejectedValue(new Error('Request failed with status 404'));
+  // The Coda plugin gates quota-spending routes on a Grafana basic role, so a
+  // Viewer must be told that rather than 'environment is not ready', which
+  // would send them round a loop that cannot succeed.
+  it('explains a role refusal rather than calling it not-ready', async () => {
+    mockedExec.mockRejectedValue({
+      status: 403,
+      data: { error: 'Your Grafana role does not allow creating sandbox sessions', code: 'role_forbidden' },
+    });
 
     const result = await codaExitZeroCheck('coda-exit-zero:true');
 
     expect(result.pass).toBe(false);
-    expect(result.error).toMatch(/environment is not ready/i);
+    expect(result.error).toMatch(/role does not allow/i);
+    expect(result.error).not.toMatch(/not ready/i);
+  });
+
+  // A 404 with no code did not come from the plugin: it is absent entirely.
+  it('reports an absent plugin as unavailable', async () => {
+    mockedExec.mockRejectedValue({ status: 404 });
+
+    const result = await codaExitZeroCheck('coda-exit-zero:true');
+
+    expect(result.pass).toBe(false);
+    expect(result.error).toMatch(/unavailable/i);
   });
 
   it('surfaces other transport errors verbatim', async () => {
