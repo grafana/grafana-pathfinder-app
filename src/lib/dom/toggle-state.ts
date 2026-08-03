@@ -29,8 +29,14 @@ export function parseTargetState(raw: boolean | string | undefined | null): Targ
   if (separator <= 0 || separator === trimmed.length - 1) {
     return null;
   }
+  const attribute = trimmed.slice(0, separator).trim();
+  // The `data-targetstate` DOM path bypasses the Zod schema, so the name is
+  // validated here too before it reaches a selector.
+  if (!/^[A-Za-z][\w-]*$/.test(attribute)) {
+    return null;
+  }
   return {
-    attribute: trimmed.slice(0, separator).trim(),
+    attribute,
     value: trimmed.slice(separator + 1).trim(),
   };
 }
@@ -53,6 +59,21 @@ export function findStatefulControl(element: Element): Element {
 
 export function hasStatefulControl(element: Element): boolean {
   return findStatefulControl(element).matches(STATEFUL_SELECTOR);
+}
+
+/**
+ * Locate the element carrying an explicitly named state attribute.
+ *
+ * Authors reach for the `"<attribute>:<value>"` form precisely when a control
+ * has no standard state signal, so `findStatefulControl` would descend past the
+ * attribute they named — or onto an unrelated inner checkbox. Resolve by the
+ * attribute instead, checking the selected element before its descendants.
+ */
+export function findAttributeSource(element: Element, attribute: string): Element | null {
+  if (element.hasAttribute(attribute)) {
+    return element;
+  }
+  return element.querySelector(`[${attribute}]`);
 }
 
 /**

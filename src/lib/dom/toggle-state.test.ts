@@ -1,4 +1,5 @@
 import {
+  findAttributeSource,
   findStatefulControl,
   hasStatefulControl,
   parseTargetState,
@@ -31,6 +32,36 @@ describe('parseTargetState', () => {
   it('rejects malformed attribute forms', () => {
     expect(parseTargetState(':true')).toBeNull();
     expect(parseTargetState('aria-expanded:')).toBeNull();
+  });
+
+  // The data-targetstate DOM path bypasses the Zod schema, so a name that
+  // would break a selector must be rejected here.
+  it('rejects attribute names that are not selector-safe', () => {
+    expect(parseTargetState('aria expanded:true')).toBeNull();
+    expect(parseTargetState('[aria-expanded]:true')).toBeNull();
+    expect(parseTargetState('1bad:true')).toBeNull();
+    expect(parseTargetState('a"],[b:true')).toBeNull();
+  });
+});
+
+describe('findAttributeSource', () => {
+  it('prefers the element itself over a descendant', () => {
+    const host = document.createElement('div');
+    host.innerHTML = '<div data-state="open"><span data-state="closed"></span></div>';
+    const outer = host.firstElementChild!;
+
+    expect(findAttributeSource(outer, 'data-state')).toBe(outer);
+  });
+
+  it('falls back to a descendant carrying the attribute', () => {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = '<button aria-expanded="false"></button>';
+
+    expect(findAttributeSource(wrapper, 'aria-expanded')).toBe(wrapper.firstElementChild);
+  });
+
+  it('returns null when the attribute is absent', () => {
+    expect(findAttributeSource(document.createElement('div'), 'data-state')).toBeNull();
   });
 });
 

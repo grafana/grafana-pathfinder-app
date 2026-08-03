@@ -240,6 +240,14 @@ When a control carries its state somewhere else, name the attribute:
 { "targetstate": "data-state:open" }
 ```
 
+Naming an attribute also changes _where_ the state is read. The step looks for
+that attribute on the element you selected first, then on its descendants —
+rather than descending to the nearest checkbox or ARIA toggle, which is what the
+`true`/`false` form does. That matters because the named-attribute form exists
+for controls with no standard signal, so the element you point at usually is not
+one the auto-detector would recognise. The click still lands on the interactive
+control, which is not always the element carrying the attribute.
+
 A step with `targetstate` never blocks. Requirements are unaffected — the
 control exists in both states, so `exists-reftarget` still passes and "Do it"
 stays enabled. Pressing it when the control is already in the requested state

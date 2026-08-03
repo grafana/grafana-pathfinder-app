@@ -1,5 +1,10 @@
 import { describeElement } from '../../lib/dom';
-import { findStatefulControl, satisfiesTargetState, type TargetState } from '../../lib/dom/toggle-state';
+import {
+  findAttributeSource,
+  findStatefulControl,
+  satisfiesTargetState,
+  type TargetState,
+} from '../../lib/dom/toggle-state';
 import { logger } from '../../lib/logging';
 
 /**
@@ -17,7 +22,10 @@ export async function clickToTargetState(
   waitForReactUpdates: () => Promise<void>
 ): Promise<void> {
   const control = findStatefulControl(element);
-  const satisfied = satisfiesTargetState(control, target);
+  // Read where the state lives, click the control that changes it — they are
+  // not always the same element.
+  const stateSource = target.attribute ? (findAttributeSource(element, target.attribute) ?? element) : control;
+  const satisfied = satisfiesTargetState(stateSource, target);
 
   if (satisfied === null) {
     logger.warn('targetState is set but the control exposes no readable state; clicking unconditionally', {
@@ -35,7 +43,7 @@ export async function clickToTargetState(
   (control as HTMLElement).click();
   await waitForReactUpdates();
 
-  if (satisfiesTargetState(control, target) === false) {
+  if (satisfiesTargetState(stateSource, target) === false) {
     logger.warn('Clicked to reach targetState but the control did not change', {
       element: describeElement(element),
       target,

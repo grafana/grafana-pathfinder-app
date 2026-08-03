@@ -167,6 +167,85 @@ describe('clickToTargetState — Grafana Switch', () => {
   });
 });
 
+describe('clickToTargetState — explicitly named attribute', () => {
+  /**
+   * The wrapper carries the author's named attribute and also contains a real
+   * control. Reading state on the descended control would miss the attribute
+   * entirely and blind-click forever.
+   */
+  function makeCustomToggle(state: 'open' | 'closed') {
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-state', state);
+    const inner = document.createElement('input');
+    inner.type = 'checkbox';
+    wrapper.appendChild(inner);
+    let clicks = 0;
+    inner.addEventListener('click', () => {
+      clicks++;
+      wrapper.setAttribute('data-state', wrapper.getAttribute('data-state') === 'open' ? 'closed' : 'open');
+    });
+    document.body.appendChild(wrapper);
+    return { wrapper, clicks: () => clicks, state: () => wrapper.getAttribute('data-state') };
+  }
+
+  it('reads the named attribute on the selected element, not a stateful child', async () => {
+    const toggle = makeCustomToggle('open');
+
+    await clickToTargetState(toggle.wrapper, parseTargetState('data-state:open')!, waitForReactUpdates);
+
+    expect(toggle.clicks()).toBe(0);
+    expect(toggle.state()).toBe('open');
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('converges when the named attribute does not yet match', async () => {
+    const toggle = makeCustomToggle('closed');
+
+    await clickToTargetState(toggle.wrapper, parseTargetState('data-state:open')!, waitForReactUpdates);
+
+    expect(toggle.clicks()).toBe(1);
+    expect(toggle.state()).toBe('open');
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent across repeated runs', async () => {
+    const toggle = makeCustomToggle('closed');
+    const target = parseTargetState('data-state:open')!;
+
+    await clickToTargetState(toggle.wrapper, target, waitForReactUpdates);
+    await clickToTargetState(toggle.wrapper, target, waitForReactUpdates);
+    await clickToTargetState(toggle.wrapper, target, waitForReactUpdates);
+
+    expect(toggle.clicks()).toBe(1);
+    expect(toggle.state()).toBe('open');
+  });
+
+  it('still finds the attribute when it sits on a descendant', async () => {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = '<button aria-expanded="false"></button>';
+    const button = wrapper.querySelector('button')!;
+    button.addEventListener('click', () => button.setAttribute('aria-expanded', 'true'));
+    document.body.appendChild(wrapper);
+
+    await clickToTargetState(wrapper, parseTargetState('aria-expanded:true')!, waitForReactUpdates);
+
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('falls back to an unconditional click when the attribute is nowhere', async () => {
+    const div = document.createElement('div');
+    const onClick = jest.fn();
+    div.addEventListener('click', onClick);
+    document.body.appendChild(div);
+
+    await clickToTargetState(div, parseTargetState('data-missing:open')!, waitForReactUpdates);
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('no readable state'), expect.anything());
+  });
+});
+
 describe('clickToTargetState — unreadable and unresponsive controls', () => {
   it('clicks anyway and warns when the control exposes no state', async () => {
     const div = document.createElement('div');
