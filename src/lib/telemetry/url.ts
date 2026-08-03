@@ -20,17 +20,6 @@ export function normalizeTelemetryUrl(url: string): string {
   }
 }
 
-// Grafana slugifies the dashboard or folder title into the path. Every text
-// node in a replay is masked, so leaving the slug in would make the URL the
-// one place a title survives — `/d/abc/acme-q3-revenue-confidential` on every
-// recording of that board. The uid is kept because it identifies the board
-// without describing it.
-const TITLE_BEARING_PATH = /^(\/(?:d|d-solo)\/[^/]+|\/dashboards\/f\/[^/]+)\/[^/]+/;
-
-function redactTitleSlug(pathname: string): string {
-  return pathname.replace(TITLE_BEARING_PATH, '$1');
-}
-
 // Session replay carries URLs its player resolves, so normalizeTelemetryUrl's
 // scheme-less `hostname/path` would break every `src`. Same redaction, but the
 // URL stays loadable.
@@ -58,7 +47,10 @@ export function stripUrlSecrets(url: string): string {
     parsed.hash = '';
     parsed.username = '';
     parsed.password = '';
-    parsed.pathname = redactTitleSlug(parsed.pathname);
+    // The path is kept whole, dashboard title slug included. It is what makes
+    // a replay navigable, it is not a secret — anyone who can see the
+    // recording can see the board — and Faro is first-party. The query string
+    // is the part that carries `var-*` filter values, and that is what goes.
     const isAbsolute = /^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//');
     return (isAbsolute ? parsed.href : `${parsed.pathname}`).slice(0, MAX_TELEMETRY_URL_LENGTH);
   } catch {

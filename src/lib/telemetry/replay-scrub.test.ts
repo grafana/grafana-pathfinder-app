@@ -34,10 +34,8 @@ describe('scrubReplayEvent', () => {
         },
       });
 
-      // Query gone, and the slugified board title with it — on screen that
-      // title is masked, so leaving it in the href would undo that.
       expect(scrubReplayEvent(event)).toMatchObject({
-        data: { href: 'https://acme.grafana.net/d/abc', width: 1, height: 2 },
+        data: { href: 'https://acme.grafana.net/d/abc/acme-revenue', width: 1, height: 2 },
       });
     });
   });
@@ -101,7 +99,7 @@ describe('scrubReplayEvent', () => {
 
       expect(attributesOf(scrubReplayEvent(event))).toEqual({
         src: 'https://acme.grafana.net/avatar.png',
-        href: '/d/abc',
+        href: '/d/abc/acme-revenue',
       });
     });
 

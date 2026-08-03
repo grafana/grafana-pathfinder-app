@@ -44,19 +44,21 @@ describe('stripUrlSecrets', () => {
     );
   });
 
-  // Grafana slugifies the board title into the path, so this is the one place
-  // a title survives a recording in which every text node is masked.
+  // The path is kept whole — the dashboard title slug is what makes a replay
+  // navigable and is visible to anyone who can see the recording. Only the
+  // query, which carries `var-*` filter values, is dropped.
   it.each([
-    ['a dashboard', '/d/abc123/acme-q3-revenue-confidential', '/d/abc123'],
-    ['a solo panel', '/d-solo/abc123/acme-q3-revenue-confidential', '/d-solo/abc123'],
-    ['a folder', '/dashboards/f/fld456/finance-restricted', '/dashboards/f/fld456'],
-  ])('drops the title slug from %s path, keeping the uid', (_label, path, expected) => {
-    expect(stripUrlSecrets(`https://acme.grafana.net${path}?orgId=1`)).toBe(`https://acme.grafana.net${expected}`);
+    ['a dashboard', '/d/abc123/acme-q3-revenue'],
+    ['a solo panel', '/d-solo/abc123/acme-q3-revenue'],
+    ['a folder', '/dashboards/f/fld456/finance'],
+  ])('keeps the whole %s path and drops only the query', (_label, path) => {
+    expect(stripUrlSecrets(`https://acme.grafana.net${path}?var-customer=AcmeCorp`)).toBe(
+      `https://acme.grafana.net${path}`
+    );
   });
 
-  it('leaves paths that carry no title alone', () => {
+  it('keeps asset paths intact', () => {
     expect(stripUrlSecrets('/public/build/app.1a2b3c.js?v=2')).toBe('/public/build/app.1a2b3c.js');
-    expect(stripUrlSecrets('/a/grafana-pathfinder-app/journey')).toBe('/a/grafana-pathfinder-app/journey');
   });
 
   it('strips userinfo', () => {

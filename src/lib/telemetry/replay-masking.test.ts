@@ -100,8 +100,10 @@ describe('what the real recorder actually sends', () => {
     expect(recorded).toContain('*');
   });
 
-  it('keeps the dashboard uid while dropping its title slug', () => {
-    expect(recorded).toContain('/d/abc123');
-    expect(recorded).not.toContain('acme-corp-quarterly-revenue');
+  // The board path is deliberately kept — it is what makes a replay navigable.
+  // The query is not: `var-*` values are user-selected filter text.
+  it('keeps the dashboard path and drops the query', () => {
+    expect(recorded).toContain('/d/abc123/acme-corp-quarterly-revenue');
+    expect(recorded).not.toContain(SECRETS.imageQuery);
   });
 });
