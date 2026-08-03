@@ -6,6 +6,8 @@ import { describeElement, isElementVisible } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
+import { hasStatefulControl, parseTargetState, type TargetState } from '../../lib/dom/toggle-state';
+import { clickToTargetState } from './toggle-click';
 
 export class ButtonHandler {
   constructor(
@@ -18,14 +20,15 @@ export class ButtonHandler {
     this.stateManager.setState(data, 'running');
 
     try {
-      const buttons = await this.findButtons(data.refTarget);
+      const target = parseTargetState(data.targetState);
+      const buttons = await this.findButtons(data.refTarget, target);
 
       if (!click) {
         await this.handleShowMode(buttons, data.targetComment);
         return;
       }
 
-      await this.handleDoMode(buttons);
+      await this.handleDoMode(buttons, target);
       await this.markAsCompleted(data);
     } catch (error) {
       this.stateManager.handleError(error as Error, 'ButtonHandler', data, false);
@@ -36,14 +39,18 @@ export class ButtonHandler {
    * Find buttons using intelligent selector/text detection with retry support
    * Uses resolveWithRetry for resilience against timing issues
    */
-  private async findButtons(refTarget: string): Promise<HTMLElement[]> {
+  private async findButtons(refTarget: string, target: TargetState | null): Promise<HTMLElement[]> {
     // For CSS selectors, use resolveWithRetry then filter to buttons
     if (isCssSelector(refTarget)) {
       const resolved = await resolveWithRetry(refTarget, 'button');
       if (resolved) {
-        // Filter to only button elements
+        // A targetState step may point at a Switch wrapper, which is neither a
+        // button nor role=button but does contain the control we need to drive.
         const buttons = resolved.elements.filter(
-          (el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
+          (el) =>
+            el.tagName === 'BUTTON' ||
+            el.getAttribute('role') === 'button' ||
+            (target !== null && hasStatefulControl(el))
         );
         if (buttons.length > 0) {
           return buttons;
@@ -74,9 +81,11 @@ export class ButtonHandler {
     }
   }
 
-  private async handleDoMode(buttons: HTMLElement[]): Promise<void> {
+  private async handleDoMode(buttons: HTMLElement[], target: TargetState | null): Promise<void> {
     // Clear any existing highlights before performing action
     this.navigationManager.clearAllHighlights();
+
+    let unreached = 0;
 
     // Do mode: ensure visibility then click, don't highlight
     for (const button of buttons) {
@@ -88,7 +97,18 @@ export class ButtonHandler {
 
       await this.navigationManager.ensureNavigationOpen(button);
       await this.navigationManager.ensureElementVisible(button);
-      button.click();
+
+      if (target) {
+        if (!(await clickToTargetState(button, target, this.waitForReactUpdates))) {
+          unreached++;
+        }
+      } else {
+        button.click();
+      }
+    }
+
+    if (unreached > 0) {
+      throw new Error(`Could not reach the requested state for ${unreached} of ${buttons.length} element(s)`);
     }
   }
 

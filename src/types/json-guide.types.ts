@@ -301,6 +301,14 @@ export interface JsonInteractiveBlock extends AssistantProps, AuthorAnnotated {
   targetvalue?: string;
   /** camelCase alias for `targetvalue`. Tolerated by the runtime parser. */
   targetValue?: string;
+  /**
+   * Desired end state for a toggle target, so the step drives the control to
+   * that state instead of clicking it blindly. `true`/`false` auto-detects the
+   * control's state signal; `"<attribute>:<value>"` names it explicitly.
+   */
+  targetstate?: boolean | string;
+  /** camelCase alias for `targetstate`. Tolerated by the runtime parser. */
+  targetState?: boolean | string;
   /** Markdown description shown to the user */
   content: string;
   /** Tooltip/comment shown when highlighting the element */

@@ -14,6 +14,8 @@ export interface InteractiveElementData {
   refTarget: string;
   targetAction: string;
   targetValue?: string;
+  /** Desired end state for a toggle target; see `lib/dom/toggle-state`. */
+  targetState?: boolean | string;
   targetComment?: string;
   requirements?: string;
   objectives?: string;

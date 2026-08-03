@@ -5,6 +5,8 @@ import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { describeElement, isElementVisible } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
+import { parseTargetState } from '../../lib/dom/toggle-state';
+import { clickToTargetState } from './toggle-click';
 
 export class FocusHandler {
   constructor(
@@ -33,7 +35,7 @@ export class FocusHandler {
         return;
       }
 
-      await this.handleDoMode(targetElements);
+      await this.handleDoMode(targetElements, data.targetState);
       await this.markAsCompleted(data);
     } catch (error) {
       this.stateManager.handleError(error as Error, 'FocusHandler', data, false);
@@ -55,9 +57,12 @@ export class FocusHandler {
     }
   }
 
-  private async handleDoMode(targetElements: HTMLElement[]): Promise<void> {
+  private async handleDoMode(targetElements: HTMLElement[], rawTargetState?: boolean | string): Promise<void> {
     // Clear any existing highlights before performing action
     this.navigationManager.clearAllHighlights();
+
+    const target = parseTargetState(rawTargetState);
+    let unreached = 0;
 
     // Do mode: ensure visibility then click, don't highlight
     for (const element of targetElements) {
@@ -69,7 +74,18 @@ export class FocusHandler {
 
       await this.navigationManager.ensureNavigationOpen(element);
       await this.navigationManager.ensureElementVisible(element);
-      element.click();
+
+      if (target) {
+        if (!(await clickToTargetState(element, target, this.waitForReactUpdates))) {
+          unreached++;
+        }
+      } else {
+        element.click();
+      }
+    }
+
+    if (unreached > 0) {
+      throw new Error(`Could not reach the requested state for ${unreached} of ${targetElements.length} element(s)`);
     }
   }
 

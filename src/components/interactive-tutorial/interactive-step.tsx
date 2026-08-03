@@ -173,6 +173,7 @@ export const InteractiveStep = forwardRef<
       targetAction,
       refTarget,
       targetValue,
+      targetState,
       targetComment,
       postVerify,
       doIt = true, // Default to true - show "Do it" button unless explicitly disabled
@@ -485,7 +486,8 @@ export const InteractiveStep = forwardRef<
           refTarget,
           currentTargetValue,
           'do',
-          targetComment
+          targetComment,
+          targetState
         );
         if (actionOutcome === 'error') {
           setPostVerifyError('Action did not complete successfully.');
@@ -552,6 +554,7 @@ export const InteractiveStep = forwardRef<
       targetAction,
       refTarget,
       currentTargetValue,
+      targetState,
       targetComment,
       postVerify,
       verifyStepResult,
@@ -959,6 +962,7 @@ export const InteractiveStep = forwardRef<
         data-targetaction={targetAction}
         data-reftarget={refTarget}
         data-targetvalue={currentTargetValue}
+        data-targetstate={targetState === undefined ? undefined : String(targetState)}
         data-targetcomment={targetComment}
         data-openguide={openGuide}
         data-step-id={stepId || renderedStepId}

@@ -50,6 +50,22 @@ const RequirementTokenSchema = z.string().superRefine((token, ctx) => {
 });
 
 /**
+ * Desired end state for a toggle target. `true`/`false` auto-detects the
+ * control's state signal; `"<attribute>:<value>"` names it explicitly.
+ */
+const TargetStateSchema = z
+  .union([z.boolean(), z.string()])
+  .optional()
+  .refine(
+    (value) =>
+      typeof value !== 'string' || value === 'true' || value === 'false' || /^[a-zA-Z][\w-]*:.+$/.test(value.trim()),
+    { error: 'targetstate must be true, false, or "<attribute>:<value>" (e.g. "aria-expanded:true")' }
+  )
+  .describe(
+    'Desired end state for a toggle target. The step reads the control and only clicks when the state differs, so it is safe to re-run. Use true/false to auto-detect (aria-expanded, aria-pressed, checked, aria-checked, aria-selected), or "<attribute>:<value>" when the control exposes state some other way.'
+  );
+
+/**
  * Schema for safe URLs (http/https only).
  */
 const SafeUrlSchema = z
@@ -286,6 +302,7 @@ export const JsonInteractiveBlockSchema = z
       .string()
       .optional()
       .describe('Value for formfill or popout (formfill: input value; popout: sidebar|floating)'),
+    targetstate: TargetStateSchema,
     content: z
       .string()
       .min(1, 'Interactive content is required')
@@ -1063,6 +1080,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'reftarget',
 
     'targetvalue',
+    'targetstate',
     'content',
     'tooltip',
     'requirements',

@@ -198,7 +198,7 @@ Located in `src/interactive-engine/auto-completion/`, this optional subsystem au
 
 The action detector (`src/lib/dom/action-detector.ts`) determines action type based on element characteristics and available selectors:
 
-- **formfill**: Input fields, textareas, selects (except radio/checkbox)
+- **formfill**: Input fields, textareas, selects. Radio and checkbox inputs are driven by a real click (React wires `onChange` for them to the click event), and only when the current state differs from the requested one.
 - **button**: Buttons identified by text content (text matching heuristic when no unique selector is available)
 - **highlight**: Clickable elements and buttons with `data-testid` or other unique selectors (uses CSS selector matching)
 - **navigate**: External links (href starts with `http`)

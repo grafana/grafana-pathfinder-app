@@ -16,3 +16,4 @@ export * from './selector-resolver';
 export * from './selector-detector';
 export * from './selector-retry';
 export * from './selector-pipeline';
+export * from './toggle-state';

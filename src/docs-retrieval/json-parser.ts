@@ -639,6 +639,7 @@ function convertInteractiveBlock(
   const targetAction = block.action ?? block.targetAction;
   const refTargetValue = block.reftarget ?? block.refTarget;
   const targetValue = block.targetvalue ?? block.targetValue;
+  const targetState = block.targetstate ?? block.targetState;
   const stepId = resolveStepId(block.id, stepContext, targetAction, refTargetValue);
 
   // Parse content as markdown for children
@@ -668,6 +669,7 @@ function convertInteractiveBlock(
         targetAction,
         refTarget: refTargetValue,
         targetValue,
+        targetState,
         targetComment: block.tooltip ? markdownToHtml(block.tooltip) : undefined,
         ...(stepId ? { stepId } : {}),
         requirements,

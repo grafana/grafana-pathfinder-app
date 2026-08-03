@@ -65,6 +65,12 @@ const POPOUT_TARGET_OPTIONS: Array<ComboboxOption<PopoutTargetMode>> = POPOUT_TA
 }));
 const DEFAULT_POPOUT_TARGET: PopoutTargetMode = 'floating';
 
+const TARGET_STATE_OPTIONS: ComboboxOption[] = [
+  { value: '', label: 'Click unconditionally' },
+  { value: 'true', label: 'On — expanded, pressed or checked' },
+  { value: 'false', label: 'Off — collapsed, unpressed or unchecked' },
+];
+
 function isPopoutTargetMode(value: string): value is PopoutTargetMode {
   return value === 'sidebar' || value === 'floating';
 }
@@ -87,6 +93,7 @@ export function InteractiveBlockForm({
   const [action, setAction] = useState<JsonInteractiveAction>(initial?.action ?? 'highlight');
   const [reftarget, setReftarget] = useState(initial?.reftarget ?? '');
   const [targetvalue, setTargetvalue] = useState(initial?.targetvalue ?? '');
+  const [targetstate, setTargetstate] = useState(initial?.targetstate === undefined ? '' : String(initial.targetstate));
   const [content, setContent] = useState(initial?.content ?? '');
   const [tooltip, setTooltip] = useState(initial?.tooltip ?? '');
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
@@ -162,6 +169,11 @@ export function InteractiveBlockForm({
         ...(!isStateOnlyAction && targetvalue.trim() && { targetvalue: targetvalue.trim() }),
         ...(isPopoutAction &&
           isPopoutTargetMode(targetvalue.trim()) && { targetvalue: targetvalue.trim() as PopoutTargetMode }),
+        ...((action === 'highlight' || action === 'button') &&
+          targetstate.trim() && {
+            targetstate:
+              targetstate.trim() === 'true' ? true : targetstate.trim() === 'false' ? false : targetstate.trim(),
+          }),
         ...(!isNoopAction && tooltip.trim() && { tooltip: tooltip.trim() }),
         ...(!isNoopAction && reqArray.length > 0 && { requirements: reqArray }),
         ...(!isNoopAction && objArray.length > 0 && { objectives: objArray }),
@@ -188,6 +200,7 @@ export function InteractiveBlockForm({
       action,
       reftarget,
       targetvalue,
+      targetstate,
       content,
       tooltip,
       requirements,
@@ -293,6 +306,7 @@ export function InteractiveBlockForm({
     content.trim().length > 0 &&
     (!isPopout || isPopoutTargetMode(targetvalue.trim()));
   const showTargetValue = action === 'formfill';
+  const showTargetState = action === 'highlight' || action === 'button';
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
@@ -377,7 +391,9 @@ export function InteractiveBlockForm({
           </Field>
 
           {/* Selector health badge */}
-          {reftarget && <SelectorHealthBadge reftarget={reftarget} />}
+          {reftarget && (
+            <SelectorHealthBadge reftarget={reftarget} checkTargetState={showTargetState} targetstate={targetstate} />
+          )}
 
           {/* Test result overlay */}
           {testResult && <SelectorTestOverlay elements={testResult.elements} onDismiss={clearTest} />}
@@ -427,6 +443,22 @@ export function InteractiveBlockForm({
             <span style={{ fontSize: 12, color: '#8e8e8e' }}>No alternative selectors found for this element.</span>
           )}
         </>
+      )}
+
+      {/* Desired end state (for toggle targets) */}
+      {showTargetState && (
+        <Field
+          label="Target state"
+          description="For toggles, switches and expanders. The step reads the control and only clicks when the state differs, so it is safe to re-run. Leave blank to click unconditionally."
+        >
+          <Combobox
+            options={TARGET_STATE_OPTIONS}
+            value={targetstate}
+            onChange={(option) => setTargetstate(option?.value ?? '')}
+            placeholder="Click unconditionally"
+            createCustomValue
+          />
+        </Field>
       )}
 
       {/* Target Value (for formfill) */}

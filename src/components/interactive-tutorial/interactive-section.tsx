@@ -629,7 +629,8 @@ export function InteractiveSection({
           stepInfo.refTarget!,
           stepInfo.targetValue,
           'do',
-          stepInfo.targetComment
+          stepInfo.targetComment,
+          stepInfo.targetState
         );
         if (actionOutcome === 'error') {
           logger.warn(`Sequence action did not complete for ${stepInfo.stepId}`);

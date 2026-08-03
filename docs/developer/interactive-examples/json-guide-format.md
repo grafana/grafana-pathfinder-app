@@ -173,37 +173,75 @@ A single interactive step with "Show me" and "Do it" buttons.
 }
 ```
 
-| Field             | Type     | Required | Default             | Description                                                        |
-| ----------------- | -------- | -------- | ------------------- | ------------------------------------------------------------------ |
-| `action`          | string   | ✅       | —                   | Action type (see below)                                            |
-| `reftarget`       | string   | ✅\*     | —                   | CSS selector or button text (\*optional for `noop` actions)        |
-| `content`         | string   | ✅       | —                   | Markdown description shown to user                                 |
-| `targetvalue`     | string   | ❌       | —                   | Value for `formfill` actions (supports regex, see below)           |
-| `tooltip`         | string   | ❌       | —                   | Tooltip shown on highlight (supports markdown)                     |
-| `requirements`    | string[] | ❌       | —                   | Conditions that must be met                                        |
-| `objectives`      | string[] | ❌       | —                   | Objectives marked complete after this step                         |
-| `skippable`       | boolean  | ❌       | `false`             | Allow skipping if requirements fail                                |
-| `hint`            | string   | ❌       | —                   | Hint shown when step cannot be completed                           |
-| `formHint`        | string   | ❌       | —                   | Hint shown when form validation fails (formfill only)              |
-| `validateInput`   | boolean  | ❌       | `false`             | Require input to match `targetvalue` pattern                       |
-| `showMe`          | boolean  | ❌       | `true`              | Show the "Show me" button                                          |
-| `doIt`            | boolean  | ❌       | `true`              | Show the "Do it" button                                            |
-| `completeEarly`   | boolean  | ❌       | `false`             | Mark step complete BEFORE action executes                          |
-| `verify`          | string   | ❌       | —                   | Post-action verification (e.g., `"on-page:/path"`)                 |
-| `lazyRender`      | boolean  | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers     |
-| `scrollContainer` | string   | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled |
+| Field             | Type              | Required | Default             | Description                                                        |
+| ----------------- | ----------------- | -------- | ------------------- | ------------------------------------------------------------------ |
+| `action`          | string            | ✅       | —                   | Action type (see below)                                            |
+| `reftarget`       | string            | ✅\*     | —                   | CSS selector or button text (\*optional for `noop` actions)        |
+| `content`         | string            | ✅       | —                   | Markdown description shown to user                                 |
+| `targetvalue`     | string            | ❌       | —                   | Value for `formfill` actions (supports regex, see below)           |
+| `targetstate`     | boolean \| string | ❌       | —                   | Desired end state for a toggle target (see below)                  |
+| `tooltip`         | string            | ❌       | —                   | Tooltip shown on highlight (supports markdown)                     |
+| `requirements`    | string[]          | ❌       | —                   | Conditions that must be met                                        |
+| `objectives`      | string[]          | ❌       | —                   | Objectives marked complete after this step                         |
+| `skippable`       | boolean           | ❌       | `false`             | Allow skipping if requirements fail                                |
+| `hint`            | string            | ❌       | —                   | Hint shown when step cannot be completed                           |
+| `formHint`        | string            | ❌       | —                   | Hint shown when form validation fails (formfill only)              |
+| `validateInput`   | boolean           | ❌       | `false`             | Require input to match `targetvalue` pattern                       |
+| `showMe`          | boolean           | ❌       | `true`              | Show the "Show me" button                                          |
+| `doIt`            | boolean           | ❌       | `true`              | Show the "Do it" button                                            |
+| `completeEarly`   | boolean           | ❌       | `false`             | Mark step complete BEFORE action executes                          |
+| `verify`          | string            | ❌       | —                   | Post-action verification (e.g., `"on-page:/path"`)                 |
+| `lazyRender`      | boolean           | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers     |
+| `scrollContainer` | string            | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled |
 
 **Action Types:**
 
-| Action      | Description                    | `reftarget`             | `targetvalue`                          |
-| ----------- | ------------------------------ | ----------------------- | -------------------------------------- |
-| `highlight` | Highlight an element           | CSS selector            | —                                      |
-| `button`    | Click a button                 | Button text or selector | —                                      |
-| `formfill`  | Enter text in input            | CSS selector            | Text to enter                          |
-| `navigate`  | Navigate to URL                | URL path                | —                                      |
-| `hover`     | Hover over element             | CSS selector            | —                                      |
-| `noop`      | Informational step (no action) | Optional                | —                                      |
-| `popout`    | Dock or undock the docs panel  | —                       | `"floating"` or `"sidebar"` (required) |
+| Action      | Description                    | `reftarget`             | `targetvalue`                          | `targetstate` |
+| ----------- | ------------------------------ | ----------------------- | -------------------------------------- | ------------- |
+| `highlight` | Highlight an element           | CSS selector            | —                                      | ✅            |
+| `button`    | Click a button                 | Button text or selector | —                                      | ✅            |
+| `formfill`  | Enter text in input            | CSS selector            | Text to enter                          | —             |
+| `navigate`  | Navigate to URL                | URL path                | —                                      | —             |
+| `hover`     | Hover over element             | CSS selector            | —                                      | —             |
+| `noop`      | Informational step (no action) | Optional                | —                                      | —             |
+| `popout`    | Dock or undock the docs panel  | —                       | `"floating"` or `"sidebar"` (required) | —             |
+
+**Toggle targets — `targetstate`:**
+
+Without `targetstate`, a step clicks its target unconditionally. For anything with
+toggle semantics that is a trap: the step's effect depends on where the user left
+the UI. Clicking Grafana's dashboard **+ New** button when the drawer is already
+open _closes_ it, taking the next step's target out of the DOM with it.
+
+`targetstate` declares the state you want instead of the click you want. The step
+reads the control, clicks only if the state differs, then re-reads to confirm — so
+it is safe to re-run and converges from either starting state.
+
+```json
+{
+  "type": "interactive",
+  "action": "highlight",
+  "reftarget": "button[data-testid='data-testid Dashboard Sidebar new button']",
+  "targetstate": true,
+  "content": "Open the edit sidebar."
+}
+```
+
+`true` / `false` auto-detects the control's state signal, probing `checked`,
+`aria-pressed`, `aria-expanded`, `aria-checked`, `aria-selected`, and finally an
+`aria-label` that names the action ("Collapse …" means already expanded). If the
+step targets a wrapper, it descends to the control that actually holds the state —
+necessary for Grafana's `Switch`, where the stable `data-testid` sits on a wrapper
+whose click does nothing.
+
+When a control carries its state somewhere else, name the attribute:
+
+```json
+{ "targetstate": "data-state:open" }
+```
+
+If the state cannot be read at all, the step clicks unconditionally and logs a
+warning, so adding `targetstate` can never make a working step worse.
 
 **Formfill Validation:**
 
