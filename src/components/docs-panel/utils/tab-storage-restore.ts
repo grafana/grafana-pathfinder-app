@@ -231,7 +231,7 @@ export async function restoreActiveTabFromStorage(tabStorage: TabStorage, tabs: 
     if (activeTabId) {
       const tabExists = tabs.some((t) => t.id === activeTabId);
 
-      // Restore the stored tab if it exists (including Dev Tools — strip-excluded but persisted).
+      // Restore the stored tab if it exists.
       // closeTab ensures recommendations is saved when the strip is empty.
       return tabExists ? activeTabId : RECOMMENDATIONS_TAB_ID;
     }

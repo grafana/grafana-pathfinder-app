@@ -641,7 +641,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     let newActiveTabId = this.state.activeTabId;
 
     // Only reassign focus when closing the active tab. Walk the guide strip
-    // (not raw tabs) so strip-excluded chrome is never chosen as replacement.
+    // (not raw tabs) so the recommendations rail is never chosen as a strip neighbor.
     if (this.state.activeTabId === tabId) {
       const stripTabs = getGuideStripTabs(currentTabs);
       const closedIndex = stripTabs.findIndex((t) => t.id === tabId);
@@ -737,7 +737,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   /**
    * Open the Dev Tools view (or switch to it if already open).
-   * Singleton lives in tab state for routing but is excluded from the guide strip.
+   * Singleton strip tab opened from the overflow menu when Dev Mode is on.
    */
   public openDevToolsTab(): void {
     const existingTab = this.state.tabs.find((t) => t.id === DEVTOOLS_TAB_ID);

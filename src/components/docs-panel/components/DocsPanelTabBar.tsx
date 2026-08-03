@@ -86,8 +86,8 @@ export function DocsPanelTabBar({
   onCreateEditorTab,
   onOpenDevToolsTab,
 }: DocsPanelTabBarProps): React.ReactElement {
-  // visibleTabs may still include strip-excluded chrome (recs, Dev Tools) on
-  // computeTabVisibility early returns; keep those out of the guide list.
+  // visibleTabs may still include recommendations on computeTabVisibility early
+  // returns; keep that rail-only chrome out of the guide list.
   const guideTabs = getGuideStripTabs(visibleTabs);
 
   // One subscription for the whole strip: per-tab status is then a plain read,
