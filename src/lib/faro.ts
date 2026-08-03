@@ -23,4 +23,5 @@ export {
   getEnvironment,
   isGrafanaCloud,
   passesActivityGate,
+  redactPageUrl,
 } from './telemetry/filtering';

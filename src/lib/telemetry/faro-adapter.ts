@@ -7,6 +7,7 @@ import {
   filterPathfinderTelemetry,
   LOG_PREFIX,
   passesActivityGate,
+  redactPageUrl,
   resolveFaroEnvironment,
   EXPLICIT_REPORT_MARKER,
   TRACKED_RESOURCE_HOSTNAMES,
@@ -101,7 +102,13 @@ export async function initFaro(options?: InitFaroOptions): Promise<void> {
         },
       },
     },
-    beforeSend: (item) => (passesActivityGate(item) ? filterPathfinderTelemetry(item) : null),
+    beforeSend: (item) => {
+      if (!passesActivityGate(item)) {
+        return null;
+      }
+      const kept = filterPathfinderTelemetry(item);
+      return kept === null ? null : redactPageUrl(kept);
+    },
   });
 
   void stampFaroUser();

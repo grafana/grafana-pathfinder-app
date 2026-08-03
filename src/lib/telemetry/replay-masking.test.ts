@@ -2,7 +2,7 @@
  * Pins the jsdom URL so the recorded `Meta` href and the relative `<a href>`
  * resolve to something assertable.
  *
- * @jest-environment-options {"url": "https://foo.grafana.net/d/abc123/acme-corp-quarterly-revenue"}
+ * @jest-environment-options {"url": "https://foo.grafana.net/d/abc123/acme-corp-quarterly-revenue?var-customer=AcmeCorpFilterValue&orgId=1"}
  */
 import {
   BaseTransport,
@@ -12,6 +12,7 @@ import {
   type TransportItem,
 } from '@grafana/faro-web-sdk';
 import { activateSessionReplay } from './replay';
+import { redactPageUrl } from './filtering';
 
 const REPLAY_INSTRUMENTATION_NAME = '@grafana/faro-instrumentation-replay';
 
@@ -42,10 +43,13 @@ describe('what the real recorder actually sends', () => {
     placeholder: 'EnterYourEmailAddress',
     comment: 'InternalCommentSecret',
     imageQuery: 'signedtokenvalue',
+    // Not in the DOM — this one rides in on location.href via the page meta.
+    urlFilterValue: 'AcmeCorpFilterValue',
   };
 
   let faro: Faro;
   let recorded: string;
+  let pageUrls: string[];
 
   beforeAll(async () => {
     document.body.innerHTML = `
@@ -67,15 +71,21 @@ describe('what the real recorder actually sends', () => {
       globalObjectKey: 'pathfinderReplayMasking',
       batching: { enabled: false },
       dedupe: false,
+      // Mirrors the production beforeSend so the transport metadata assertions
+      // below exercise the real redaction rather than a stand-in.
+      beforeSend: (item) => redactPageUrl(item),
     });
     await activateSessionReplay(faro);
 
-    recorded = transport.items
-      .filter(
-        (item) => item.type === 'event' && (item.payload as { name?: string }).name === 'faro.session_recording.event'
-      )
+    const replayItems = transport.items.filter(
+      (item) => item.type === 'event' && (item.payload as { name?: string }).name === 'faro.session_recording.event'
+    );
+    recorded = replayItems
       .map((item) => JSON.stringify((item.payload as { attributes?: Record<string, string> }).attributes ?? {}))
       .join('\n');
+    // The transport metadata is a second channel out, set by Faro from
+    // location.href rather than by anything in the rrweb payload.
+    pageUrls = [...new Set(transport.items.map((item) => item.meta.page?.url ?? ''))].filter(Boolean);
   });
 
   // rrweb keeps a MutationObserver on the document; left running it emits into
@@ -105,5 +115,17 @@ describe('what the real recorder actually sends', () => {
   it('keeps the dashboard path and drops the query', () => {
     expect(recorded).toContain('/d/abc123/acme-corp-quarterly-revenue');
     expect(recorded).not.toContain(SECRETS.imageQuery);
+  });
+
+  // Faro sets meta.page.url from location.href independently of the rrweb
+  // payload, and Grafana Cloud's collector explodes its query into
+  // page.attributes — so an unscrubbed query arrives as searchable var-* fields.
+  it('sends a page url on the transport metadata', () => {
+    expect(pageUrls.length).toBeGreaterThan(0);
+    expect(pageUrls.every((url) => url.includes('/d/abc123/acme-corp-quarterly-revenue'))).toBe(true);
+  });
+
+  it('strips the query from that page url', () => {
+    expect(pageUrls.every((url) => !url.includes('?'))).toBe(true);
   });
 });

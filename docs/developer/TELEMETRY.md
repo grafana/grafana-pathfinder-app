@@ -57,7 +57,7 @@ Span helpers (`withFaroUserAction`, `setFaroUserActionAttributes`), explicit err
 
 Privacy protection is split between enforced normalization and caller discipline:
 
-- **URLs** in structured `*_url` attributes go through `normalizeTelemetryUrl` (query/fragment stripped). Free-text log and exception values have embedded URL substrings normalized in `beforeSend`; other free text is preserved.
+- **URLs** in structured `*_url` attributes go through `normalizeTelemetryUrl` (query/fragment stripped). Free-text log and exception values have embedded URL substrings normalized in `beforeSend`; other free text is preserved. `meta.page.url` goes through `redactPageUrl` on every item — see the page-URL bullet below for what that keeps and why.
 - **Errors** in typed facade events use low-cardinality classifications such as `recordSequenceActionError`. `logger.error`, `logger.exception`, and direct `pushFaroError` calls retain the exception message, so callers must not include selectors, echoed input, or user-derived text.
 - **Attributes** passed through `stringifyAttributes`—including event, user-action, and session attributes—are stringified and truncated to 500 characters. Measurement and exception contexts must use small, typed values at the call site.
 - Never add high-cardinality or user-derived free-text attributes; new user-derived fields need privacy review (`analytics-and-telemetry` concern).
@@ -65,6 +65,10 @@ Privacy protection is split between enforced normalization and caller discipline
   - **Covered by the SDK**: every text node is masked, every input type is masked, and canvas, fonts, inline images, inline stylesheets and cross-origin iframes are all off. The Coda terminal is blocked outright — it is the one surface that renders credentials verbatim.
   - **Not covered by the SDK**: rrweb never masks DOM attributes, and Grafana puts real content in them (`data-testid="Panel header <panel title>"`, `aria-label`, `title`, `alt`, `placeholder`). URLs, including dashboard `var-*` query parameters, are recorded whole.
   - **Closed by `replay-scrub.ts`**: an attribute allowlist — rendering-affecting and enumerated-value attributes survive, URL attributes go through `stripUrlSecrets`, and everything else is dropped. It is an allowlist rather than a denylist because with all text already masked, an unrecognized attribute is pure downside. Adding to `SAFE_ATTRIBUTES` means asserting the attribute cannot carry user-authored text.
+- **Page URLs are deliberately kept, minus their query.** This is the one place the "all text is masked" line does not hold, so it is worth stating plainly rather than leaving as a gap:
+  - The **path is recorded whole**, dashboard title slug included — `/d/<uid>/acme-q3-revenue`. That is a considered trade: it is what makes a replay navigable, and the board name is not a secret to anyone who can already read this telemetry. The masking guarantee covers rendered text and DOM attributes; page URLs are outside it.
+  - The **query is stripped**, everywhere. On a Grafana URL the query is where the user's own choices live — `var-*` template values, Explore's serialized queries, `?doc=` deep links — which is a different class of data from a title.
+  - This applies on **two independent channels**. `replay-scrub.ts` covers URLs inside the rrweb payload; `redactPageUrl` in `filtering.ts` covers `meta.page.url`, which Faro sets from `location.href` on every item regardless of payload. The second one matters more than it looks: Grafana Cloud's collector explodes that query into `page.attributes`, so an unscrubbed URL arrives as first-class searchable `page_attr_var_*` fields.
 
 ## Gating and environments
 

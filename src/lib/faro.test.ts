@@ -1383,6 +1383,48 @@ describe('setFaroViewName', () => {
   });
 });
 
+describe('redactPageUrl', () => {
+  const itemWithPageUrl = (url: string) =>
+    ({
+      type: 'event',
+      payload: { name: 'x' },
+      meta: { page: { url, id: '/d/*' } },
+    }) as unknown as TransportItem<APIEvent>;
+
+  const urlOf = (item: TransportItem<APIEvent> | null) => item?.meta.page?.url;
+
+  it('drops the query, where var-* filter values live', () => {
+    const faro = freshFaro();
+    const url = 'https://acme.grafana.net/d/abc/acme-revenue?var-customer=AcmeCorp&var-email=alice@acme.com&orgId=1';
+
+    expect(urlOf(faro.redactPageUrl(itemWithPageUrl(url)))).toBe('https://acme.grafana.net/d/abc/acme-revenue');
+  });
+
+  it('keeps the board path, so a session is still attributable to a page', () => {
+    const faro = freshFaro();
+    const kept = faro.redactPageUrl(itemWithPageUrl('https://acme.grafana.net/d/abc/acme-revenue'));
+
+    expect(urlOf(kept)).toBe('https://acme.grafana.net/d/abc/acme-revenue');
+  });
+
+  it('leaves the rest of the meta alone', () => {
+    const faro = freshFaro();
+    const redacted = faro.redactPageUrl(
+      itemWithPageUrl('https://acme.grafana.net/explore?left=%7B%22expr%22%3A%22x%22%7D')
+    );
+
+    expect(redacted.meta.page?.id).toBe('/d/*');
+    expect(urlOf(redacted)).toBe('https://acme.grafana.net/explore');
+  });
+
+  it('tolerates an item with no page meta', () => {
+    const faro = freshFaro();
+    const bare = { type: 'event', payload: {}, meta: {} } as unknown as TransportItem<APIEvent>;
+
+    expect(() => faro.redactPageUrl(bare)).not.toThrow();
+  });
+});
+
 describe('session replay activation', () => {
   const PANEL_MODE_KEY = 'grafana-pathfinder-app-panel-mode';
 

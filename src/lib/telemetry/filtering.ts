@@ -8,7 +8,7 @@ import {
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../../constants';
 import { isPathfinderOpen } from './surface';
-import { normalizeTelemetryUrl } from './url';
+import { normalizeTelemetryUrl, stripUrlSecrets } from './url';
 
 const APP_NAME = packageJson.name;
 const LOCAL_OVERRIDE_KEY = 'pathfinder.faro.local';
@@ -178,6 +178,25 @@ export function filterPathfinderTelemetry(item: TransportItem<APIEvent>): Transp
     }
   }
   return item;
+}
+
+// Faro builds page meta as `url: location.href`, verbatim, on every item —
+// independent of anything the payload filters touch. On a Grafana URL the
+// query is where the user's own choices live: `var-*` template values,
+// Explore's serialized queries, `?doc=` deep links. Grafana Cloud's collector
+// then explodes that query into `page.attributes`, so `var-member`,
+// `var-ticker` and friends arrive as first-class searchable fields. Dropping
+// the query here removes both — there is nothing left to explode.
+//
+// The path stays. Knowing which board a session was on is the point; the
+// board's name is not a secret to anyone who can already read the telemetry.
+export function redactPageUrl(item: TransportItem<APIEvent>): TransportItem<APIEvent> {
+  const url = item.meta.page?.url;
+  if (typeof url !== 'string') {
+    return item;
+  }
+  const redacted = stripUrlSecrets(url);
+  return redacted === url ? item : { ...item, meta: { ...item.meta, page: { ...item.meta.page, url: redacted } } };
 }
 
 // Latched for the rest of the page load: the sidebar-close mirror fires
