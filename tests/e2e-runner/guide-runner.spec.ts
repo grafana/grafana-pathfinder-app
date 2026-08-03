@@ -29,6 +29,9 @@ import { runPlaywrightPreflightChecks, formatPreflightResults } from './utils/pr
 import {
   discoverStepsFromDOM,
   executeAllSteps,
+  calculateGuideTimeout,
+  GUIDE_INITIAL_TIMEOUT_MS,
+  ensureDocsPanelOpen,
   summarizeResults,
   AllStepsResult,
   AbortReason,
@@ -41,7 +44,8 @@ import {
   printPreflightChecks,
   printDiscoveryResults,
 } from './utils/console-reporter';
-import type { TestResultsData } from '../../src/cli/e2e/e2e-reporter';
+import { contentDigest, type TestResultsData } from '../../src/cli/e2e/e2e-reporter';
+import { countInteractiveBlocks } from './utils/guide-runner/static-analysis';
 import { E2E_ENV, isEnvFlagEnabled } from '../../src/cli/e2e/e2e-runner-contract';
 import {
   createScopedBearerTokenAuthStrategy,
@@ -77,8 +81,11 @@ function writeResultsFile(
   results: StepTestResult[],
   guide: { id: string; title: string; path: string },
   targetUrl: string,
+  startingLocation: string,
   timestamp: string,
-  allStepsResult: AllStepsResult
+  allStepsResult: AllStepsResult,
+  guideContent: string,
+  outcome: TestResultsData['outcome']
 ): void {
   const resultsFilePath = process.env[E2E_ENV.RESULTS_FILE_PATH];
   if (!resultsFilePath) {
@@ -86,8 +93,13 @@ function writeResultsFile(
   }
 
   const data: TestResultsData = {
-    guide: { ...guide, targetUrl },
+    guide: { ...guide, targetUrl, startingLocation, contentDigest: contentDigest(guideContent) },
     timestamp,
+    startedAt: timestamp,
+    endedAt: new Date().toISOString(),
+    outcome,
+    errorCode: allStepsResult.abortReason ?? (outcome === 'failed' ? 'UNKNOWN' : undefined),
+    errorMessage: allStepsResult.abortMessage,
     results: results.map((r) => ({
       stepId: r.stepId,
       status: r.status,
@@ -125,11 +137,7 @@ function writeTracePathFile(outputDir: string): void {
 
 test.describe('Guide Runner', () => {
   test('loads and displays guide from JSON', async ({ page }, testInfo) => {
-    // Guide tests may take longer due to fix button attempts and multi-step execution.
-    // Per L3-3C timing design: 30s base + 5s per internal action for multisteps,
-    // plus additional time for fix attempts (up to 3 × 10s each).
-    // Set a generous 2-minute timeout to accommodate complex guides.
-    test.setTimeout(120000);
+    test.setTimeout(GUIDE_INITIAL_TIMEOUT_MS);
 
     // L3-5B: Capture timestamp at test start for JSON report
     const testStartTimestamp = new Date().toISOString();
@@ -137,6 +145,7 @@ test.describe('Guide Runner', () => {
     // Read guide JSON from environment variable path
     const guidePath = process.env[E2E_ENV.GUIDE_JSON_PATH];
     const targetUrl = process.env[E2E_ENV.GRAFANA_URL] ?? 'http://localhost:3000';
+    const startingLocation = process.env[E2E_ENV.STARTING_LOCATION] ?? '/';
     const bearerToken = process.env[E2E_ENV.GRAFANA_TOKEN];
     const isVerbose = isEnvFlagEnabled(process.env[E2E_ENV.VERBOSE]);
     // L3-5D: Artifacts directory for artifact collection
@@ -157,6 +166,7 @@ test.describe('Guide Runner', () => {
 
     const guideJson = readFileSync(guidePath, 'utf-8');
     const guide = JSON.parse(guideJson) as { title?: string; id?: string };
+    const hasInteractiveSteps = countInteractiveBlocks(guide) > 0;
     const guideTitle = guide.title ?? 'E2E Test Guide';
 
     // L3-5B: Extract guide ID from path or use provided id
@@ -199,25 +209,24 @@ test.describe('Guide Runner', () => {
     // Guide loading and verification
     // ============================================
 
-    // Navigate to Grafana home (pre-flight may have left us on a different page)
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto(startingLocation, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.locator('button[aria-label="Help"]').waitFor({ state: 'visible', timeout: 30000 });
 
-    // Inject guide into localStorage BEFORE opening the panel
-    await page.evaluate(
-      ({ key, json }) => {
-        localStorage.setItem(key, json);
+    const injectGuide = () =>
+      page.evaluate(
+        ({ key, json }) => {
+          localStorage.setItem(key, json);
+        },
+        { key: StorageKeys.E2E_TEST_GUIDE, json: guideJson }
+      );
+    await injectGuide();
+    await ensureDocsPanelOpen(page, {
+      beforeRetry: async () => {
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
+        await page.locator('button[aria-label="Help"]').waitFor({ state: 'visible', timeout: 10000 });
+        await injectGuide();
       },
-      { key: StorageKeys.E2E_TEST_GUIDE, json: guideJson }
-    );
-
-    // Open the docs panel first via Help button (panel must be mounted for event listener)
-    const helpButton = page.locator('button[aria-label="Help"]');
-    await helpButton.click();
-
-    // Verify panel is visible
-    const panel = page.getByTestId(testIds.docsPanel.container);
-    await expect(panel).toBeVisible({ timeout: 10000 });
+    });
 
     // Now dispatch the event to load the specific guide content
     // The event listener is only active when the docs panel is mounted
@@ -235,6 +244,28 @@ test.describe('Guide Runner', () => {
     // Wait for content to load
     await page.waitForTimeout(1000);
 
+    const guideMetadata = {
+      id: guideId,
+      title: guideTitle,
+      path: guidePath ?? 'unknown',
+    };
+    if (!hasInteractiveSteps) {
+      printHeader(guideTitle);
+      console.log('   ⊘ No interactive steps — guide is read-only content (0 steps, pass)');
+      const emptyResult: AllStepsResult = { results: [], aborted: false };
+      writeResultsFile(
+        [],
+        guideMetadata,
+        targetUrl,
+        startingLocation,
+        testStartTimestamp,
+        emptyResult,
+        guideJson,
+        'passed'
+      );
+      return;
+    }
+
     // Verify guide content loaded (first step visible indicates interactive content rendered)
     // Use a more general selector since step IDs vary by guide
     const firstStep = page.locator('[data-testid^="interactive-step-"]').first();
@@ -244,6 +275,7 @@ test.describe('Guide Runner', () => {
     // Step discovery: DOM-based step enumeration
     // ============================================
     const discoveryResult = await discoverStepsFromDOM(page);
+    test.setTimeout(calculateGuideTimeout(discoveryResult.steps));
 
     // Verify step discovery found steps
     expect(discoveryResult.totalSteps).toBeGreaterThan(0);
@@ -288,12 +320,20 @@ test.describe('Guide Runner', () => {
     printDetailedSummary(executionResult.results, executionResult, isVerbose);
 
     // L3-5B: Write results file for CLI to generate JSON report
-    const guideMetadata = {
-      id: guideId,
-      title: guideTitle,
-      path: guidePath ?? 'unknown',
-    };
-    writeResultsFile(executionResult.results, guideMetadata, targetUrl, testStartTimestamp, executionResult);
+    writeResultsFile(
+      executionResult.results,
+      guideMetadata,
+      targetUrl,
+      startingLocation,
+      testStartTimestamp,
+      executionResult,
+      guideJson,
+      executionResult.abortReason === 'AUTH_EXPIRED'
+        ? 'aborted'
+        : executionResult.abortReason === 'MANDATORY_FAILURE' || !summary.success
+          ? 'failed'
+          : 'passed'
+    );
 
     // L3-3D: Handle session expiry with specific exit code
     if (executionResult.aborted && executionResult.abortReason === 'AUTH_EXPIRED') {
@@ -304,8 +344,6 @@ test.describe('Guide Runner', () => {
       throw new Error(`AUTH_EXPIRED: ${executionResult.abortMessage}`);
     }
 
-    // L3-4C: Verify no mandatory failures occurred
-    // Per design doc: skippable step failures do NOT fail the overall test
-    expect(summary.mandatoryFailed).toBe(0);
+    expect(summary.success).toBe(true);
   });
 });

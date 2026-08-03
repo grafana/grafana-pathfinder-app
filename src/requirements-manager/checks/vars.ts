@@ -6,7 +6,7 @@
  */
 
 import { guideResponseStorage } from '../../lib/user-storage';
-import type { CheckResultError } from '../requirements-checker.utils';
+import type { CheckResultError } from '../../types/requirements.types';
 
 /**
  * Get the current guide ID from the global context set by ContentRenderer.

@@ -16,6 +16,7 @@ import { pushFaroUserAction } from './telemetry/bridge';
 import { normalizeTelemetryUrl } from './telemetry/url';
 import { logger } from './logging';
 import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
+import type { LearningJourneyTabType } from '../types/content-panel.types';
 
 type GetActiveExperimentsFn = () => ExperimentAnalyticsEntry[];
 let _getActiveExperiments: GetActiveExperimentsFn | null = null;
@@ -79,6 +80,7 @@ export enum UserInteraction {
   // Learning Paths & Gamification
   LearningPathProgress = 'learning_path_progress',
   BadgeUnlocked = 'badge_unlocked',
+  GuideLaunchSurfaceChosen = 'guide_launch_surface_chosen',
 
   // Feature Flag Tracking
   FeatureFlagEvaluated = 'feature_flag_evaluated',
@@ -291,7 +293,7 @@ export function reportAppInteraction(
  * Type definition for tabs compatible with scroll tracking
  */
 export interface ScrollTrackingTab {
-  type?: 'docs' | 'learning-journey' | 'devtools' | 'interactive' | 'editor';
+  type?: LearningJourneyTabType;
   content?: {
     url?: string;
     metadata?: {

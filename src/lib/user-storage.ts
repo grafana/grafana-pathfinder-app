@@ -42,6 +42,7 @@ import { z } from 'zod';
 
 import type { LearningProgress, EarnedBadgeRecord } from '../types/learning-paths.types';
 import { StorageEvents } from './event-names';
+import { getLearningJourneyBaseUrl } from './learning-journey-url';
 import { logger } from './logging';
 import { createBoundedRecordStorage } from './storage/bounded-record-storage';
 import { StorageKeys } from './storage-keys';
@@ -757,6 +758,21 @@ export const journeyCompletionStorage = createBoundedRecordStorage({
   onQuotaExceeded: warnQuotaExceededOnce,
 });
 
+function getStoredMilestoneSlugs(
+  data: Record<string, string[]>,
+  journeyBaseUrl: string,
+  milestoneUrls: string[] = []
+): Set<string> {
+  const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
+  const exactKeys = new Set([journeyBaseUrl, ...milestoneUrls].map((key) => key.replace(/\/+$/, '')));
+  const slugs = Object.entries(data).flatMap(([storedKey, storedSlugs]) =>
+    getLearningJourneyBaseUrl(storedKey) === canonicalKey || exactKeys.has(storedKey.replace(/\/+$/, ''))
+      ? storedSlugs
+      : []
+  );
+  return new Set(slugs);
+}
+
 /**
  * Milestone completion storage operations
  *
@@ -764,13 +780,13 @@ export const journeyCompletionStorage = createBoundedRecordStorage({
  * Stored as a map of journeyBaseUrl -> array of completed milestone slugs.
  */
 export const milestoneCompletionStorage = {
-  async getCompleted(journeyBaseUrl: string): Promise<Set<string>> {
+  async getCompleted(journeyBaseUrl: string, milestoneUrls: string[] = []): Promise<Set<string>> {
     try {
       const storage = createUserStorage();
       const data = await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION);
-      const slugs = data?.[journeyBaseUrl] || [];
-      return new Set(slugs);
-    } catch {
+      return getStoredMilestoneSlugs(data ?? {}, journeyBaseUrl, milestoneUrls);
+    } catch (error) {
+      logger.warn('Failed to load milestone completion', { error });
       return new Set();
     }
   },
@@ -779,9 +795,17 @@ export const milestoneCompletionStorage = {
     try {
       const storage = createUserStorage();
       const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
-      const existing = new Set(data[journeyBaseUrl] || []);
+      const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
+      const existing = getStoredMilestoneSlugs(data, canonicalKey);
       existing.add(milestoneSlug);
-      data[journeyBaseUrl] = Array.from(existing);
+      const completedSlugs = Array.from(existing);
+      for (const storedKey of Object.keys(data)) {
+        if (getLearningJourneyBaseUrl(storedKey) === canonicalKey) {
+          data[storedKey] = completedSlugs;
+        }
+      }
+      data[canonicalKey] = completedSlugs;
+      data[journeyBaseUrl] = completedSlugs;
       await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
     } catch (error) {
       logger.warn('Failed to save milestone completion', { error });
@@ -797,7 +821,12 @@ export const milestoneCompletionStorage = {
     try {
       const storage = createUserStorage();
       const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
-      delete data[journeyBaseUrl];
+      const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
+      for (const storedKey of Object.keys(data)) {
+        if (getLearningJourneyBaseUrl(storedKey) === canonicalKey) {
+          delete data[storedKey];
+        }
+      }
       await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
     } catch (error) {
       logger.warn('Failed to clear milestone completion', { error });

@@ -105,6 +105,7 @@ import {
 } from '../../global-state/completion-store';
 import { dispatchProgress } from '../../global-state/progress-events';
 import { computeCursor, deriveSectionState, initialSectionState, sectionReducer } from './section-state';
+import { DEFAULT_INTERACTIVE_SECTION_TITLE, PASSIVE_SECTION_TITLE } from './section-titles';
 import {
   getDocumentStepPosition,
   nextSectionCounter,
@@ -118,12 +119,6 @@ export {
   getTotalDocumentSteps,
   getDocumentStepPosition,
 } from '../../global-state/section-registry';
-
-// Interactive Section title fallback
-export const DEFAULT_INTERACTIVE_SECTION_TITLE = 'Interactive section';
-
-// Interactive Section title fallback for sections with no interactive steps (passive content only)
-export const PASSIVE_SECTION_TITLE = 'Steps';
 
 // Reset every counter (registry + offsets + per-step-type anonymous-ID
 // counters). Called when new content loads. The registry's own state

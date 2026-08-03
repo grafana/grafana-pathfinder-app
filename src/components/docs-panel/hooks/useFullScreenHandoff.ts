@@ -24,18 +24,18 @@
  *   - Live session active: alert "Leave the live session before switching
  *     to full screen." and return.
  *   - Editor tab: capturePriorPath → setPendingGuide({ title, type: 'editor' })
- *     → setMode('fullscreen') → push the bare FullScreen route. No
+ *     → setModePersisted('fullscreen') → push the bare FullScreen route. No
  *     snapshot, no guideUrl in the route.
  *   - No supported guide (no tab, recommendations, devtools, or no URL):
  *     alert "Open a guide before switching to full screen." and return.
  *   - Active guide: setPendingGuide({ url, title, type, packageInfo }),
- *     capturePriorPath, setMode('fullscreen'), push the full-screen route
+ *     capturePriorPath, setModePersisted('fullscreen'), push the full-screen route
  *     with `doc` and `guideType` query params (so a refresh rehydrates
  *     the right tab kind via the URL fallback in FullScreenPanel).
  *
  * Contract surfaces preserved (Pattern J):
  *   - CustomEvent name: `pathfinder-request-full-screen`
- *   - `panelModeManager.setMode('fullscreen')`
+ *   - `panelModeManager.setModePersisted('fullscreen')`
  *   - `panelModeManager.setPendingGuide(...)` payload shapes (editor vs guide)
  *   - `panelModeManager.capturePriorPath(...)`
  *   - Full-screen route built via `buildFullScreenRouteUrl` (URL contract
@@ -76,7 +76,7 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
       // Editor tab: the block editor itself moves into full screen.
       // We set a pending editor handoff so when the user clicks "Full screen"
       // on the editor while another guide is already in fullscreen
-      // (`setMode('fullscreen')` no-ops in that case), the receiving panel
+      // (`setModePersisted('fullscreen')` no-ops in that case), the receiving panel
       // still switches its active tab to the editor — replacing the journey.
       if (activeTab?.type === 'editor') {
         reportAppInteraction(UserInteraction.FullScreenEnter, {
@@ -88,7 +88,7 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
         // user's prior Grafana page instead of the plugin home.
         panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
         panelModeManager.setPendingGuide({ title: activeTab.title, type: 'editor' });
-        panelModeManager.setMode('fullscreen');
+        panelModeManager.setModePersisted('fullscreen');
         locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
         return;
       }
@@ -100,7 +100,8 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
       // the symmetric fix for the forward handoff. For non-journey tabs the
       // two are equal so the swap is a no-op.
       const guideUrl = activeTab?.currentUrl || activeTab?.baseUrl;
-      const supportedTab = activeTab && activeTab.id !== 'recommendations' && activeTab.type !== 'devtools' && guideUrl;
+      const supportedTab =
+        activeTab && activeTab.type !== 'recommendations' && activeTab.type !== 'devtools' && guideUrl;
 
       if (!supportedTab) {
         getAppEvents().publish({
@@ -129,7 +130,7 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
       // Remember where we came from so explicit Exit can land back on the
       // user's prior Grafana page instead of the plugin home.
       panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
-      panelModeManager.setMode('fullscreen');
+      panelModeManager.setModePersisted('fullscreen');
       // Encode the tab type in the URL so a refresh / shared link rehydrates
       // the right kind of tab. Without this, FullScreenPanel's URL fallback
       // would call findDocPage and classify a journey package URL as

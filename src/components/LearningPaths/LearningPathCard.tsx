@@ -11,6 +11,7 @@ import { cx } from '@emotion/css';
 import type { LearningPathCardProps } from '../../types/learning-paths.types';
 import { testIds } from '../../constants/testIds';
 import { getLearningPathCardStyles } from './learning-paths.styles';
+import { GuideList } from './GuideList';
 import { ProgressRing } from './ProgressRing';
 
 /**
@@ -24,6 +25,8 @@ export function LearningPathCard({
   onContinue,
   onReset,
   defaultExpanded = false,
+  isLaunching = false,
+  launchDisabled = false,
 }: LearningPathCardProps & { defaultExpanded?: boolean }) {
   const styles = useStyles2(getLearningPathCardStyles);
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -125,10 +128,11 @@ export function LearningPathCard({
             <button
               className={styles.actionButton}
               onClick={handleContinue}
+              disabled={launchDisabled}
               data-testid={testIds.learningPaths.continueButton(path.id)}
             >
-              <Icon name="play" size="sm" />
-              {getButtonText()}
+              <Icon name={isLaunching ? 'fa fa-spinner' : 'play'} size="sm" />
+              {isLaunching ? 'Opening…' : getButtonText()}
             </button>
           )}
           {isCompleted && onReset && !isConfirmingReset && (
@@ -177,30 +181,7 @@ export function LearningPathCard({
       <div className={cx(styles.expandable, isExpanded && styles.expandableOpen)}>
         {path.description && <p className={styles.description}>{path.description}</p>}
 
-        <div className={styles.guideList}>
-          {isLoadingGuides ? (
-            <div className={styles.guideItem}>
-              <Icon name="fa fa-spinner" size="sm" />
-              <span className={styles.guideTitle}>Loading guides...</span>
-            </div>
-          ) : (
-            guides.map((guide) => (
-              <div key={guide.id} className={cx(styles.guideItem, guide.isCurrent && styles.guideItemCurrent)}>
-                <span
-                  className={cx(
-                    styles.guideIcon,
-                    guide.completed && styles.guideIconCompleted,
-                    guide.isCurrent && styles.guideIconCurrent,
-                    !guide.completed && !guide.isCurrent && styles.guideIconPending
-                  )}
-                >
-                  {guide.completed ? <Icon name="check" size="sm" /> : <Icon name="circle" size="sm" />}
-                </span>
-                <span className={styles.guideTitle}>{guide.title}</span>
-              </div>
-            ))
-          )}
-        </div>
+        <GuideList guides={guides} isLoading={isLoadingGuides} className={styles.guideList} />
       </div>
     </div>
   );

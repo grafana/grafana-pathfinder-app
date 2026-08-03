@@ -12,6 +12,7 @@ import {
   isJsonGuideContent,
   resolveRelativeUrls,
   CodeBlock,
+  CollapsibleBlock,
   ExpandableTable,
   ImageRenderer,
   ContentParsingError,
@@ -20,6 +21,7 @@ import {
   VimeoVideoRenderer,
   GuideResponseProvider,
   useGuideResponses,
+  isJourneyCoverPage,
 } from '../../docs-retrieval';
 import { guideHasSnippetRefs, inlineSnippetRefsInGuide } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
@@ -55,6 +57,7 @@ import {
 import { substituteVariables } from '../../utils/variable-substitution';
 import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
+import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
 
 /**
  * Scroll to and highlight an element with the given fragment ID
@@ -395,6 +398,12 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     }
   }, [guideId]);
 
+  const journey = content.metadata.learningJourney;
+  const beforeContent =
+    isJourneyCoverPage(content) && journey && journey.milestones.length > 0 ? (
+      <LearningPathTableOfContents milestones={journey.milestones} baseUrl={journey.baseUrl} />
+    ) : null;
+
   return (
     <GuideResponseProvider guideId={guideId}>
       <ContentWithVariables
@@ -408,6 +417,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         className={className}
         selectionState={selectionState}
         documentContext={documentContext}
+        beforeContent={beforeContent}
       />
     </GuideResponseProvider>
   );
@@ -425,6 +435,7 @@ interface ContentWithVariablesProps {
   className?: string;
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;
+  beforeContent?: React.ReactNode;
 }
 
 function ContentWithVariables({
@@ -438,6 +449,7 @@ function ContentWithVariables({
   className,
   selectionState,
   documentContext,
+  beforeContent,
 }: ContentWithVariablesProps) {
   // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
   // This avoids breaking JSON structure when user values contain special characters
@@ -513,6 +525,7 @@ function ContentWithVariables({
       }}
     >
       {title && isNativeJson && <h1 className={titleStyle}>{title}</h1>}
+      {beforeContent}
       <ContentProcessor
         html={processedContent}
         contentType={contentType}
@@ -1320,6 +1333,17 @@ function renderParsedElement(
           showCopy={element.props.showCopy}
           inline={element.props.inline}
         />
+      );
+    case 'collapsible':
+      return (
+        <CollapsibleBlock
+          key={key}
+          id={element.props.id}
+          title={sub(element.props.title)}
+          collapsed={element.props.collapsed}
+        >
+          {renderChildren(element.children)}
+        </CollapsibleBlock>
       );
     case 'expandable-table':
       return (

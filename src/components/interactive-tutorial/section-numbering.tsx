@@ -17,7 +17,7 @@
 import React from 'react';
 
 import { ImageRenderer, VideoRenderer, YouTubeVideoRenderer, VimeoVideoRenderer } from '../../docs-retrieval';
-import { InteractiveConditional } from './interactive-conditional';
+import { skipsSectionNumbering } from './skip-section-numbering';
 
 /** Returns `true` if the child should receive a step number in the
  *  section's ordered list. Media (image/video/youtube) and wrapper
@@ -34,7 +34,7 @@ export function shouldNumberSectionChild(child: React.ReactNode): boolean {
     t !== VideoRenderer &&
     t !== YouTubeVideoRenderer &&
     t !== VimeoVideoRenderer &&
-    t !== InteractiveConditional
+    !skipsSectionNumbering(t)
   );
 }
 

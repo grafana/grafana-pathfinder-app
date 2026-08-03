@@ -19,6 +19,9 @@
     "view": "View",
     "viewDocumentation": "View documentation"
   },
+  "coverPage": {
+    "tableOfContents": "In this path"
+  },
   "docsPanel": {
     "closeTab": "Close {{title}}",
     "closeSidebar": "Close sidebar",
@@ -50,18 +53,43 @@
     "settings": "Settings",
     "showMoreTabs_one": "Show {{count}} more tab",
     "showMoreTabs_other": "Show {{count}} more tabs",
-    "switchToTab": "Switch to {{title}}"
+    "switchToTab": "Switch to {{title}}",
+    "wordmark": "Interactive Learning"
+  },
+  "myLearning": {
+    "badges": "Badges",
+    "badgesDescription": "Earn badges by completing guides and maintaining streaks",
+    "badgesEarned": "Badges earned",
+    "dayStreak": "Day streak",
+    "guidesCompleted": "Guides completed",
+    "launchErrorMessage": "Something went wrong while loading the guide. Please try again.",
+    "launchErrorTitle": "Could not open the guide",
+    "learningPaths": "Learning paths",
+    "loadingGuides": "Loading guides...",
+    "pathsDescription": "Structured guides to help you master Grafana step by step",
+    "showLess": "Show less",
+    "subtitle": "Track your progress, earn badges, and master Grafana",
+    "viewAll_one": "View all ({{count}})",
+    "viewAll_other": "View all ({{count}})"
   },
   "userProfileBar": {
     "allComplete": "All paths complete!",
     "allCompleteTooltip": "You've completed every learning path — nice work!",
     "badgesTooltip": "{{- earned}} of {{- total}} badges earned",
     "days": "days",
+    "days_one": "day",
+    "days_other": "days",
     "guides": "guides",
+    "guides_one": "guide",
+    "guides_other": "guides",
     "guidesTooltip": "{{- count}} learning guides completed",
+    "guidesTooltip_one": "{{- count}} learning guide completed",
+    "guidesTooltip_other": "{{- count}} learning guides completed",
     "nextGuide": "Next: {{- title}}",
     "nextTooltip": "Continue \"{{- pathTitle}}\" — {{- percent}}% done",
-    "streakTooltip": "{{- days}}-day learning streak — keep it going!"
+    "streakTooltip": "{{- days}}-day learning streak — keep it going!",
+    "streakTooltip_one": "{{- days}}-day learning streak — keep it going!",
+    "streakTooltip_other": "{{- days}}-day learning streak — keep it going!"
   },
   "feedbackButton": {
     "ariaLabel": "Give feedback about this plugin",

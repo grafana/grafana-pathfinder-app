@@ -1,5 +1,7 @@
 import { isInteractiveLearningUrl } from '../../security';
 
+export { getLearningJourneyBaseUrl } from '../../lib/learning-journey-url';
+
 /**
  * Generate a simple ID from a URL for use in wrapped JSON guides.
  */
@@ -67,35 +69,6 @@ export function getContentUrls(url: string): { jsonUrl: string; htmlUrl: string 
     jsonUrl: `${baseUrl}/content.json`,
     htmlUrl: `${baseUrl}/unstyled.html`,
   };
-}
-
-/**
- * Learning journey specific functions
- * These are simplified versions that focus on data extraction only
- */
-export function getLearningJourneyBaseUrl(url: string): string {
-  // Handle cases like:
-  // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs (legacy)
-  // https://grafana.com/docs/learning-paths/drilldown-logs/ -> https://grafana.com/docs/learning-paths/drilldown-logs (new)
-  // https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-1/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
-  // https://grafana.com/tutorials/alerting-get-started/ -> https://grafana.com/tutorials/alerting-get-started
-
-  const learningJourneyMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-journeys\/[^\/]+)/);
-  if (learningJourneyMatch) {
-    return learningJourneyMatch[1]!;
-  }
-
-  const learningPathMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-paths\/[^\/]+)/);
-  if (learningPathMatch) {
-    return learningPathMatch[1]!;
-  }
-
-  const tutorialMatch = url.match(/^(https?:\/\/[^\/]+\/tutorials\/[^\/]+)/);
-  if (tutorialMatch) {
-    return tutorialMatch[1]!;
-  }
-
-  return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
 }
 
 /**

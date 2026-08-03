@@ -5,6 +5,7 @@ import {
   interactiveCompletionStorage,
   interactiveStepStorage,
   journeyCompletionStorage,
+  milestoneCompletionStorage,
   sectionAcknowledgementStorage,
   tabStorage,
   unwrapEnvelope,
@@ -127,6 +128,51 @@ describe('unwrapEnvelope', () => {
     // A real envelope has a numeric timestamp
     const newFormat = JSON.stringify({ v: 'data', t: 42 });
     expect(unwrapEnvelope(newFormat)).toEqual({ v: 'data', t: 42 });
+  });
+});
+
+describe('milestoneCompletionStorage', () => {
+  const journeyUrl = 'https://grafana.com/docs/learning-paths/linux-server-integration';
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('reads completions written with launch URL variants under the journey base URL', async () => {
+    await milestoneCompletionStorage.markCompleted(`${journeyUrl}/`, 'install-alloy');
+    await milestoneCompletionStorage.markCompleted(`${journeyUrl}/view-data/content.json`, 'view-data');
+
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(
+      new Set(['install-alloy', 'view-data'])
+    );
+
+    const stored = JSON.parse(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION) ?? '{}');
+    expect(stored[journeyUrl]).toEqual(['install-alloy', 'view-data']);
+    expect(stored[`${journeyUrl}/`]).toEqual(['install-alloy', 'view-data']);
+    expect(stored[`${journeyUrl}/view-data/content.json`]).toEqual(['install-alloy', 'view-data']);
+  });
+
+  it('reads non-HTTP milestone aliases supplied by journey metadata', async () => {
+    localStorage.setItem(
+      StorageKeys.MILESTONE_COMPLETION,
+      JSON.stringify({ 'bundled:demo-milestone/content.json': ['demo-milestone'] })
+    );
+
+    await expect(
+      milestoneCompletionStorage.getCompleted('bundled:demo-cover/content.json', [
+        'bundled:demo-milestone/content.json',
+      ])
+    ).resolves.toEqual(new Set(['demo-milestone']));
+  });
+
+  it('clears canonical and legacy URL variants together', async () => {
+    await milestoneCompletionStorage.markCompleted(`${journeyUrl}/`, 'install-alloy');
+    await milestoneCompletionStorage.markCompleted(`${journeyUrl}/view-data/content.json`, 'view-data');
+
+    await milestoneCompletionStorage.clear(journeyUrl);
+
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set());
+    expect(JSON.parse(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION) ?? '{}')).toEqual({});
   });
 });
 

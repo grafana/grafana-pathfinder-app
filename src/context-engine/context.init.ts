@@ -1,6 +1,7 @@
 import { getBackendSrv, config } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { initializeEchoLogging, initializeFromRecentEvents } from './context-event-bus';
+import { collectionUrl } from '../utils/interactive-guides-api';
 import { logger } from '../lib/logging';
 
 /**
@@ -14,10 +15,9 @@ export async function fetchInteractiveGuidesFromBackend(): Promise<void> {
   }
 
   try {
-    const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides`;
     await lastValueFrom(
       getBackendSrv().fetch({
-        url,
+        url: collectionUrl(namespace),
         method: 'GET',
         // Optional rollout endpoint: don't show global toast when absent.
         showErrorAlert: false,

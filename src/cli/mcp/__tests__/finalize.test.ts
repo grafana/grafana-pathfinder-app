@@ -104,10 +104,10 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
     expect(payload).toMatchInlineSnapshot(`
       {
         "appPlatform": {
-          "apiVersion": "pathfinderbackend.ext.grafana.com/v1alpha1",
-          "collectionPathTemplate": "/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/{namespace}/interactiveguides",
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "collectionPathTemplate": "/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/interactiveguides",
           "createMethod": "POST",
-          "itemPathTemplate": "/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/{namespace}/interactiveguides/snapshot-fixture",
+          "itemPathTemplate": "/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/interactiveguides/snapshot-fixture",
           "kind": "InteractiveGuide",
           "namespacePlaceholder": "{namespace}",
           "resource": "interactiveguides",
@@ -136,7 +136,7 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
         },
         "clientGuidance": {
           "grafanaAppPlatform": {
-            "appliesWhen": "You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-com.enabled"] === true). If you are unsure, try this branch first; on a 404 from the collection POST or from pathfinder_manage_guide_drafts, switch to grafanaOss.",
+            "appliesWhen": "You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-app.enabled"] === true). If you are unsure, try this branch first; on a 404 from the collection POST or from pathfinder_manage_guide_drafts, switch to grafanaOss.",
             "confirmationPrompt": "Publish guide "Snapshot Fixture" to <namespace> as <status>?",
             "errorHandling": [
               "pathfinder_manage_guide_drafts conflict response (concurrent edit): the tool returns the current server-side resourceVersion in its conflict artifact. Re-read it, ask the user to confirm overwrite, then call op=apply again. A second conflict means concurrent edits are racing — tell the user and offer localExport.",
@@ -228,7 +228,7 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
           "summary": "Fallback used by the grafanaOss and nonGrafanaClient branches to preserve the authored guide as files on disk that the user can later import via the block editor.",
         },
         "resource": {
-          "apiVersion": "pathfinderbackend.ext.grafana.com/v1alpha1",
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
           "kind": "InteractiveGuide",
           "metadata": {
             "name": "snapshot-fixture",

@@ -69,6 +69,10 @@ Notes:
 - Default credentials: `admin` / `admin`.
 - The sidebar **Help** icon opens the docs panel.
 
+## Testing against Grafana Cloud (Graft)
+
+Some contributors test their local `dist/` build against a live Grafana Cloud stack instead of (or alongside) the Docker Grafana above, using [Graft](https://github.com/grafana/plugin-graft) — an internal, Grafanista-only browser-extension + local-server tool that intercepts Cloud requests and serves your local build with hot reload. See [`GRAFT_TESTING.md`](GRAFT_TESTING.md) for what this means when debugging or reviewing changes.
+
 ## Pre-merge check
 
 Run before pushing or opening a pull request. CI runs the same set:

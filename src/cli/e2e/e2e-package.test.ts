@@ -76,9 +76,22 @@ describe('resolveRemotePackage (single, recommender)', () => {
       contentUrl: 'https://cdn.test/alerting-101/content.json',
       manifestUrl: 'https://cdn.test/alerting-101/manifest.json',
       repository: 'r',
-      manifest: { id: 'alerting-101', type: 'guide', testEnvironment: { tier: 'local' } },
+      manifest: {
+        id: 'alerting-101',
+        type: 'guide',
+        startingLocation: '/alerting',
+        testEnvironment: { tier: 'local' },
+      },
     });
-    mockIndex([{ id: 'alerting-101', path: 'alerting-101/', type: 'guide', testEnvironment: { tier: 'local' } }]);
+    mockIndex([
+      {
+        id: 'alerting-101',
+        path: 'alerting-101/',
+        type: 'guide',
+        startingLocation: '/alerting',
+        testEnvironment: { tier: 'local' },
+      },
+    ]);
     mockFetch({
       ok: true,
       text: '{"id":"alerting-101","title":"Alerting","blocks":[{"type":"markdown","content":"Read this"}]}',
@@ -93,6 +106,7 @@ describe('resolveRemotePackage (single, recommender)', () => {
       tier: 'local',
       targetUrl: 'http://localhost:3000',
       sourceUrl: 'https://cdn.test/alerting-101/content.json',
+      startingLocation: '/alerting',
       sideEffects: { level: 'readonly', reasons: [] },
     });
     expect(result.runnable[0]!.guide.content).toBe(
@@ -172,6 +186,31 @@ describe('resolveRemotePackage (single, recommender)', () => {
     const result = await resolveRemotePackage('g', OPTIONS);
 
     expect(result.skipped[0]).toMatchObject({ id: 'g', reason: 'validation_failed' });
+  });
+
+  it('maps an invalid starting location to validation_failed before execution', async () => {
+    mockResolve({
+      ok: true,
+      id: 'invalid-start',
+      contentUrl: 'https://cdn.test/invalid-start/content.json',
+      manifestUrl: 'https://cdn.test/invalid-start/manifest.json',
+      repository: 'r',
+      manifest: {
+        id: 'invalid-start',
+        type: 'guide',
+        startingLocation: 'https://example.com/dashboard',
+        testEnvironment: { tier: 'local' },
+      },
+    });
+
+    const result = await resolveRemotePackage('invalid-start', OPTIONS);
+
+    expect(result.runnable).toHaveLength(0);
+    expect(result.skipped[0]).toMatchObject({
+      id: 'invalid-start',
+      reason: 'validation_failed',
+      message: expect.stringMatching(/startingLocation.*same origin/i),
+    });
   });
 
   it('resolves a runnable cloud guide against the cloud target URL when credentials are present', async () => {

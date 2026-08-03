@@ -1,633 +1,78 @@
 ---
 alwaysApply: false
-description: This document describes the requirements and design constraints of interactive guides found in this repository.
+description: Prescriptive constraints for the interactive requirements and objectives system — workflow nesting limits, sequential-dependency and eligibility rules, step isolation, objective edge cases, and the procedure for adding a requirement type. Load when changing requirements or objectives behavior, or when authoring guides that gate on Grafana state. Requirement syntax and the full type catalog live in `docs/developer/interactive-examples/requirements-reference.md`.
 ---
 
-# Interactive Elements Requirements System
+# Interactive requirements — agent constraints
 
-This document describes the requirements and objectives system for interactive elements in the Grafana Documentation Plugin.
+This file holds only the constraints an agent must preserve. Everything descriptive lives in a doc that is kept closer to the code:
 
-For full reference on interactive guide authoring (JSON format, action types, selectors, guided interactions), see `docs/developer/interactive-examples/`.
+| For                                                                             | Read                                                                         |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Requirement and objective syntax, the full type catalog, validation rules      | `docs/developer/interactive-examples/requirements-reference.md`               |
+| Check phases, step state machine, fix types, explanations, heartbeat, monitoring | `docs/developer/engines/requirements-manager.md`                             |
+| Sequence manager, action types, auto-completion                                  | `docs/developer/engines/interactive-engine.md`                               |
+| Step IDs, completion persistence, reset paths, the `section-completed` gate      | `docs/developer/STEP_MODEL.md`                                               |
+| `data-*` attribute contract                                                     | `docs/developer/E2E_TESTING_CONTRACT.md`, `.cursor/rules/systemPatterns.mdc` |
+| Multistep authoring                                                             | `docs/developer/interactive-examples/interactive-types.md`                    |
 
-## Overview
+## Why the gating exists
 
-Interactive elements in documentation content have a system of requirements that must be satisfied before they can be executed, and a potential system of objectives or goals, that the
-guides are trying to accomplish.  This document lays all of that out.
+Three goals justify every rule below. Weigh changes against them:
 
-1. **Docs Plugin Requirements**: Built-in system rules that govern interactive behavior
-2. **Guide-Specific Requirements**: Declared in the `data-requirements` attribute by content authors
-3. **Guide-Specific Objectives**: Declared in `data-objectives` attribute by content authors.
+1. Make it hard for the user to take confusing or nonsense actions, such as doing steps out of order.
+2. Maximize the chance the workflow goes as the user expects.
+3. Maximize safety — never allow a step that cannot succeed, because that creates negative surprise.
 
-## Docs Plugin Requirements
+## Structural constraints
 
-Docs plugin requirements are automatically enforced by the system and control interactive behavior.
-The objective of these requirements are as follows:
+A guide is a sequence of sections, each holding discrete steps. **No further nesting is permitted**: sections may not contain sections.
 
-1. Make it hard for the user to take confusing or nonsense actions (doing steps out of order)
-2. Maximize the chances that the workflow goes smoothly as the user expects
-3. Maximize safety: the docs-plugin should not allow you to take a step which can't succeed, as
-this creates negative surprise.
+Three workflow kinds coexist — regular (sequential "Show me" / "Do it" steps), section ("Do section", each its own independent workflow, enabled alongside regular steps), and multistep (a hybrid).
 
-## Guide-Specific Requirements
+## Sequential dependency
 
-Guide-specific requirements are declared in the `data-requirements` attribute of interactive elements. Multiple requirements are comma-separated. It is expected that this list will grow 
-over time as we have new kinds of interactive guides. For example, one guide might require
-that you have Alloy set up sending data to Grafana Cloud before you can proceed with learning
-how the Kubernetes product works; for that guide, we'd have to extend data-requirements so that
-the docs-plugin could check that condition was true.
+- Only one step in a regular workflow is enabled at a time, and users may not skip steps — skipping leads to broken states. If a step is genuinely skippable, change the guide content rather than relaxing the gate.
+- When an element fails its requirements check, every subsequent element is disabled.
+- **Trust but verify the first step.** The first step is always checked when nothing else has completed, so users have somewhere to start. This is an exception to sequential dependency, not to requirements checking: a button that cannot work must never be clickable.
 
-### Currently Supported Requirements
+## Eligibility
 
-#### `exists-reftarget`
-- **Purpose**: Ensures the target element exists in the DOM before the interactive action can be executed
-- **Usage**: Most common requirement for interactive elements
-- **Example**: `data-requirements="exists-reftarget"`
+These rules are load-bearing for both correctness and cost — requirements checks are expensive.
 
-#### `has-datasources`
-- **Purpose**: Ensures that at least one data source exists in Grafana
-- **Usage**: For interactive elements that require any data source to be configured
-- **Example**: `data-requirements="has-datasources"`
+- Only the first non-completed regular step is eligible for checking.
+- All non-completed section steps are eligible.
+- Completed steps are never eligible. They cannot be executed, so checking them is pure waste.
+- All buttons in a logical step share one requirements result; the first button is the representative.
 
-#### `has-datasource:name`
-- **Purpose**: Ensures that a data source exists with the specified name or type
-- **Usage**: The value is matched against both the data source name AND type (case-insensitive). First match wins.
-- **Example**: `data-requirements="has-datasource:prometheus"` matches a data source named "prometheus" OR of type "prometheus"
+## Completion applies to the whole logical step
 
-#### `has-plugin:plugin-id`
-- **Purpose**: Ensures that a given plugin is installed and enabled
-- **Usage**: plugin-id should match Grafana's plugin ID concept, e.g. `volkovlabs-rss-datasource`
-- **Example**: `data-requirements="has-plugin:volkovlabs-rss-datasource"`
+Actions are **not** assumed idempotent. Completing any button in a logical step completes the entire step so it cannot run twice.
 
-#### `has-dashboard-named:name`
-- **Purpose**: Ensures that a dashboard exists with the specified exact title
-- **Usage**: dashboard-name should match the exact dashboard title in Grafana (case-insensitive)
-- **Example**: `data-requirements="has-dashboard-named:Foobar"`
+Steps with identical actions in different sections are fully independent: a "Save dashboard" step in section 1 and one in section 2 never affect each other. Completion applies only within the same unique step ID. Grouping keys are `section-{sectionId}`, `step-{stepId}`, or `fallback-{reftarget}|{targetaction}` for legacy elements with no ID.
 
-#### `has-permission:action`
-- **Purpose**: Ensures the current user has the specified Grafana permission
-- **Usage**: Uses Grafana's permission system to check user access
-- **Example**: `data-requirements="has-permission:dashboards:write"`
+## Objectives
 
-#### `has-role:role`
-- **Purpose**: Ensures the current user has the specified organizational role
-- **Usage**: Supports roles: admin, editor, viewer, or grafana-admin
-- **Example**: `data-requirements="has-role:admin"`
+Objectives are checked before requirements and shortcut them — `docs/developer/engines/requirements-manager.md` owns the priority hierarchy, and `requirements-reference.md` owns syntax and the all-or-nothing rule. The constraints stated in neither:
 
-#### `is-admin`
-- **Purpose**: Ensures the current user has Grafana admin privileges
-- **Usage**: For interactive elements that require admin access to function properly
-- **Example**: `data-requirements="is-admin"`
+- A missing or empty objective never auto-completes a step; it must be completed manually.
+- If an objective check fails because of a network or API error, the objective is not met: log the error and let requirements checking proceed normally.
+- When a section's objectives are met, every step under it is marked complete too — sections own their subordinate steps.
+- Do not interrupt a step mid-execution because its objective became met. Finish, then mark complete.
 
-#### `navmenu-open`
-- **Purpose**: Ensures the Grafana navigation menu is open/visible
-- **Usage**: For interactive elements that need to interact with navigation menu items
-- **Example**: `data-requirements="navmenu-open"`
+## Avoiding recheck loops
 
-#### `on-page:path`
-- **Purpose**: Ensures the user is currently on a specific page/URL path
-- **Usage**: Supports both partial and exact path matching
-- **Example**: `data-requirements="on-page:/dashboard"`
+DOM monitoring must stay narrow or requirements rechecking feeds itself:
 
-#### `has-feature:toggle`
-- **Purpose**: Ensures that a specific Grafana feature toggle is enabled
-- **Usage**: Check if experimental or optional features are available
-- **Example**: `data-requirements="has-feature:alerting"`
+- Observe only `data-requirements` and `data-reftarget` attribute changes.
+- Only treat a DOM change as significant when interactive elements were actually added or removed.
+- Debounce rapid changes into a single recheck.
 
-#### `in-environment:env`
-- **Purpose**: Ensures the guide runs in a specific environment
-- **Usage**: Useful for dev vs prod specific guide
-- **Example**: `data-requirements="in-environment:development"`
+## Adding a requirement type
 
-#### `min-version:x.y.z`
-- **Purpose**: Ensures Grafana version meets minimum requirements
-- **Usage**: Uses semantic version comparison (major.minor.patch)
-- **Example**: `data-requirements="min-version:9.0.0"`
+1. Add it to `FixedRequirementType` or `ParameterizedRequirementPrefix` in `src/types/requirements.types.ts`.
+2. Add a handler in `src/requirements-manager/requirements-checker.utils.ts`.
+3. The static validator picks it up automatically via enum imports.
+4. Add coverage in `src/validation/condition-validator.test.ts` — the coupling test fails otherwise.
 
-#### `section-completed:sectionId`
-- **Purpose**: Creates dependencies between tutorial sections, ensuring prerequisite sections are completed first
-- **Usage**: Looks for a DOM element with the specified ID and checks if it has the `completed` CSS class
-- **Example**: `data-requirements="section-completed:setup-datasource"`
-
-#### `renderer:value`
-- **Purpose**: Conditionally shows content based on renderer context (app vs website)
-- **Usage**: Supports `renderer:pathfinder` (always true in app) or `renderer:website` (always false in app). Different tools evaluate this differently to render different content in different contexts.
-- **Example**: `data-requirements="renderer:pathfinder"` - only show in pathfinder app context
-
-### Combining Requirements
-
-Multiple requirements can be combined:
-```html
-<button data-requirements="exists-reftarget,has-datasources,is-admin" 
-        data-targetaction="button" 
-        data-reftarget="Add Dashboard">
-  Click to add dashboard
-</button>
-```
-
-### Static Validation
-
-The CLI validates condition strings (requirements and objectives) at build time. When adding new requirement types:
-
-1. Add to `FixedRequirementType` or `ParameterizedRequirementPrefix` in `src/types/requirements.types.ts`
-2. Add handler in `src/requirements-manager/requirements-checker.utils.ts`
-3. The validator automatically recognizes new types via enum imports
-4. Add test coverage in `src/validation/condition-validator.test.ts` (coupling test will fail otherwise)
-
-## Guide-Specific Objectives
-
-An objective statement for a guide step is a statement of what an interactive step will make
-true.  It is expressed in the same language as requirements listed above, but instead, uses the
-`data-objectives` attribute in interactive/semantic HTML.
-
-For example, if the purpose of a section is to have the user install the Volkov Labs RSS plugin
-so they can get something working with Grafana, then we would state the objective of the step this
-way: `data-objectives="has-plugin:volkovlabs-rss-datasource"`.
-
-This is important for multiple different reasons:
-
-1. By knowing what a guide is trying to accomplish, we can optionally add extra UI elements
-to explain that to the user.
-2. State management and completion marking.  Suppose you're doing a guide, and you've already
-accomplished the first section, resulting in the plugin being installed.  What you'll expect is
-that every time you return to the guide, that section is marked "finished". The way the system
-will accomplish this is by adding "objectives" to requirements checking.  If an interactive step
-states an objective, and that objective has already been met, then the step can be marked as 
-finished without ever being executed!
-
-Objectives and requirements are kind of opposites of one another.  You cannot execute an
-interactive step if a requirement has been met.  And you automatically mark as successfully
-done any step whose objective has been met.  In both cases, the functionality blocks or 
-prevents execution of a step, but for different reasons.
-
-The syntax of objectives is processed exactly the same as requirements. There may be more than one objective, comma separated just as with requirements. 
-
-The differences in behavior are these:
-
-1. All items whose objectives are met are automatically marked done.
-2. If the item is a section, and the objectives are met, this means that all interactive items underneath of the section are marked done. All individual steps within that section should be marked
-as complete, AND the section should be marked as complete. This is because sections override or "own"
-all of their subordinate steps.
-3. Objectives being met does not trigger an error condition. And so: if the objective has been
-met, this may shortcut requirements checking for that item.
-
-### Clarifications on the Objectives Feature
-
-Let's consider this example:
-
-```
-  <span data-requirements="exists-reftarget,is-admin" 
-        data-objectives="has-plugin:volkovlabs-rss-datasource"
-        data-targetaction="button">
-```
-
-0. Objectives may be missing or empty on any interactive element. In such cases, this means the
-objective check always fails, as there is nothing to evaluate.
-1. Objectives can be checked at the same time, in parallel with requirements to speed things up.
-But if an objective is met, then the output of requirements checking does not matter. If, for example,
-in this example case, the `has-plugin` objective is true, then this item would be marked as done,
-_even if the user was not an admin_ (i.e. the `is-admin` requirement fails)
-2. Objectives always win, and shortcut any error messages or feedback on requirements.
-3. If an element specifies multiple objectives, e.g. `data-objectives="has-plugin:foo,has-datasource:bar"`, then ALL objectives must be met. Objective checking is "all or nothing". If any
-partial objective is not met, then the objectives are not met.
-4. Objective checking should happen continuously during user interaction, and should follow the same
-model as requirements checking.  If something is marked done, it doesn't need requirements or objectives
-checking. If something is not done, it should be checked. 
-5. At this point, live checking of Grafana state is suffient, there is no completion state persistence
-that is necessary at this point.
-6. Elements that are auto-completed via objectives should show the same green checkmark as manually
-completed steps.
-7. For sections where objectives are met, all other display stays the same; they will be shown with
-completion indicators, and with the same visual and CSS styling as if they'd been completed in the 
-usual way.
-8. Objectives are a first class part of the InteractiveElementData interface, on par with requirements.
-9. (Previous requirement removed)
-10. The objective checking system should reuse all check functions (hasPluginCHECK, hasDatasourceCHECK, etc) as requirements. 
-11. If an objective check fails due to network or API error, the objective is not met, and the error
-is logged to the console.  This does mean that because requirements checking is happening in parallel,
-normal requirements handling should still proceed.
-12. It is possible to have objectives without requirements.  Requirements gate when an item can be 
-executed (no requirements means it can always be executed).  Objectives gate _whether or not it needs
-to be executed_.
-13. Scope: objectives should be supported for InteractiveSteps, InteractiveSections, and InteractiveMultiSteps.
-14. `data-objectives` should be parsed, extracted, and handled as a react component prop exactly the
-same as `data-requirements`.
-15. Objectives checking should use the same timeout and debounce logic as requirements checking. Ideally
-this logic is shared.
-16. Parent sections should use direct state management of children for completion marking
-17. When objectives are met, the explanation text should simply state: "Already done!"
-18. For InteractiveMultiStep, objectives should be checked before executing any internal actions,
-as with all other steps. Again as with others, if the InteractiveMultiStep component's objectives 
-have been met, all internal actions can be skipped, and marked as completed.
-
-## Disambiguating Requirements and Objectives
-
-1. When both data-requirements and data-objectives exist, we check objectives first, and ignore
-requirements if they exist.  
-2. If a step 1 has objectives that are met, step 2 is automatically eligible, because it is the
-next step (see the "one step at a time" principle)
-3. Error state priority: if objective checks fail, and requirements check succeeds, show the 
-requirements state (enabled) and log the error to the console.
-4. Performance strategy: use smart checking: skip requirements checking if objectives have been
-met.  This means check objectives first, requirements second.
-5. Always expose the first specific condition that was met or failed. An explanation can be
-"Already done!" (objectives met) or "Plugin foo is missing" (requirements failed).
-6. For now, the manager does not need to understand the difference between completion types
-(manually completed vs. satisifed via objective checking)
-7. If an objective becomes met while a user is manually executing a step, continue execution, and
-mark complete at the end. Do not interrupt the execution of a step.
-
-## Dual Workflow System
-
-Imagine a guide that has multiple sections of instructions. An example might be "create a 
-datasource" (5 steps) followed by "configure an alert" (5 steps).  This would be a total of 
-10 steps in two discrete sections.
-
-The system supports two types of workflows:
-
-1. **Regular Workflow**: Sequential steps using "Show Me" and "Do It" buttons
-   - Follow strict sequential dependency rules
-   - Only one step enabled at a time within the workflow
-   - Steps must be completed in order
-
-2. **Section Workflows**: Independent workflows using "Do Section" buttons
-   - Each "do section" button is its own separate workflow
-   - Can be enabled simultaneously with regular workflow steps
-   - Function as parent containers for sequences of interactive steps
-
-3. **Multistep Workflows**: These are a hybrid of the two above. For a full
-discussion, see `multistepActions.mdc`.
-
-Interactive guide can be thought of as a sequence of sections, each section having any
-number of discrete actions. **No further nesting is permitted**.  Sections may not contain
-sections, only discrete steps/regular workflows.
-
-### Sequential Dependency
-
-**Rule**: Only one step in a regular workflow can be enabled at a time. Later steps are automatically disabled until previous steps complete.
-
-In other words, users are not permitted to skip steps, this easily leads to broken states. If steps
-are truly useless, the guide's content should change.
-
-**Implementation**:
-- Interactive elements are processed in DOM order
-- When an element fails its requirements check, all subsequent elements are automatically disabled
-- Only the first non-completed element gets requirements checking for performance
-- Visual state: `requirements-disabled` class with dimmed appearance
-
-**Example Flow**:
-```
-Step 1: ✅ Requirements met → Enabled
-Step 2: ❌ Requirements failed → Disabled  
-Step 3: 🚫 Auto-disabled (previous step failed)
-Step 4: 🚫 Auto-disabled (previous step failed)
-```
-
-### Completion State
-
-**Rule**: Once an interactive action completes successfully, the entire logical step becomes disabled to prevent re-execution.
-
-We _do not assume that actions are idempotent_. 
-
-**Implementation**:
-- Completion is applied to entire logical steps, not individual buttons
-- All buttons within the same step (same unique ID) are marked as completed simultaneously
-- Completed elements are marked with `data-completed="true"`
-- Visual state: `requirements-completed` class with green background and checkmark
-- Button text is appended with "✓" to indicate completion
-
-**Step-Level Completion**:
-When any button in a logical step is executed:
-1. System identifies the step using the button's unique identifier (`data-section-id` or `data-step-id`)
-2. All buttons within that step are marked as completed
-3. Only buttons with the same unique ID are affected (cross-section isolation)
-
-**Example States**:
-```
-Before: [Show me] [Do it]
-After:  [Show me ✓] [Do it ✓] (both disabled, green background)
-```
-
-**Cross-Section Independence**:
-```
-Section 1: [Save Dashboard ✓] (completed)
-Section 2: [Save Dashboard]   (still enabled - different unique ID)
-```
-
-### Trust But Verify the First Step
-
-**Rule**: The first step of an interactive workflow is always checked for requirements when no other step has been completed.
-
-**Rationale**: Users need a place to start. This provides a special exception to the sequential dependency rule for the first step only.  Still, requirements checking must be done for every 
-element which could be executed, to avoid brokenness. (Clicking a button that cannot work, because
-its requirements haven't been met; bad experience).
-
-### Logical Step Grouping
-
-**Concept**: Interactive elements are grouped into logical steps using **unique section/step identifiers** to ensure precise step isolation across different sections.
-
-#### Step Identification System
-
-- **Section Elements**: Elements with `data-section-id` represent "Do Section" buttons that execute entire sequences
-  - Use `data-section-id` (e.g., "1", "2", "3") to identify the section
-  - Each section button is treated as a separate logical step regardless of content similarity
-  
-- **Step Elements**: Elements with `data-step-id` represent individual interactive steps within sections
-  - Use `data-step-id` (e.g., "1.1", "1.2", "2.1", "2.2") to identify the specific step
-  - Format: `{sectionNumber}.{stepNumber}` where section and step numbers increment independently
-
-**To be clear, the specific formatting of step IDs is not important; they need not be formatted
-as 1.1, 1.2, etc. The function of these step IDs is to keep a logical flow that a human can
-follow by looking at the step IDs, and also to keep steps guaranteed unique from one another.
-As such, any "identification scheme" that satisfies these requirements is acceptable.**
-
-These attributes are automatically generated by code and attached when importing guide HTML, and are not 
-expected to be present in documentation material.
-
-#### Unique Step Keys
-
-The system generates unique identifiers for precise step targeting:
-- **Section steps**: `section-{sectionId}` (e.g., "section-1", "section-2")
-- **Regular steps**: `step-{stepId}` (e.g., "step-1.1", "step-1.2", "step-2.1")
-- **Fallback**: `fallback-{reftarget}|{targetaction}` (for elements without unique IDs)
-
-#### Step Isolation
-
-**Critical**: Steps with identical actions in different sections are completely independent:
-- A "Save Dashboard" button in Section 1 (`data-step-id="1.3"`) is separate from a "Save Dashboard" button in Section 2 (`data-step-id="2.3"`)
-- Completing one step affects only buttons within the same logical step (same unique ID)
-- No cross-section interference or unintended completions
-
-#### Button Grouping Within Steps
-
-Within each logical step, multiple buttons can exist:
-- **Show Me** buttons (`data-button-type="show"`) - highlight the target
-- **Do It** buttons (`data-button-type="do"`) - execute the action
-- **Anchor elements** - direct navigation elements
-
-All buttons within the same logical step share the same unique identifier and are managed as a group.
-
-### Processing Order
-
-The system processes interactive elements using the following order and rules:
-
-#### 1. Element Discovery and Grouping
-- All interactive elements in the container are discovered via `[data-requirements]` selector
-- Elements are grouped by their unique identifiers (`data-section-id` or `data-step-id`)
-- Each group becomes a logical step with one or more buttons
-
-#### 2. Step Classification
-- **Regular Steps**: Elements with `data-step-id` that follow sequential dependency rules
-- **Section Steps**: Elements with `data-section-id` that operate independently
-- **Fallback Steps**: Elements without unique IDs that use legacy `reftarget|targetaction` grouping
-
-#### 3. Sequential Processing (Default Mode)
-- **Regular Steps**: Only the first non-completed regular step is eligible for requirements checking
-- **Section Steps**: All non-completed section steps are eligible (Trust But Verify principle)
-- **Completed Steps**: Fast-disabled without requirements checking for performance
-- **Future Steps**: Auto-disabled when previous regular steps fail (One Step at a Time rule)
-
-#### 4. Requirements Checking
-- Only eligible steps receive expensive requirements checking
-- Completed steps are never eligible for requirements checking, because requirements checking requires resources, and completed steps are not eligible for execution, hence they do not need requirements checking.
-- All buttons within a step share the same requirements result
-- First button in each step is used as the representative for requirements checking
-
-#### 5. State Application
-- Visual states are applied to all buttons within each logical step simultaneously
-- Completion state is applied to entire steps, not individual buttons
-- Cross-section isolation ensures no interference between similar steps
-
-## Element States
-
-The requirements system manages several visual states:
-
-| Class | Description | Button State | Visual Appearance |
-|-------|-------------|--------------|-------------------|
-| `requirements-checking` | Requirements being validated | Enabled | Loading spinner |
-| `requirements-satisfied` | All requirements met | Enabled | Normal appearance |
-| `requirements-failed` | Guide-specific requirements not met | Disabled | Dimmed, error tooltip |
-| `requirements-disabled` | Disabled due to sequential dependency | Disabled | Very dimmed |
-| `requirements-completed` | Action already completed | Disabled | Green background, checkmark |
-
-## Technical Implementation
-
-### Event System Architecture
-
-**Unified Event Handling**: The system uses a single, modern event handling architecture:
-
-- **Direct Click Handlers**: Interactive elements use direct click event listeners attached via `attachInteractiveEventListeners()`
-- **Requirements Rechecking**: Completion events trigger automatic requirements rechecking via `interactive-action-completed` events
-- **Mutation Monitoring**: DOM changes are monitored to detect new interactive content
-
-**Infinite Loop Prevention**:
-- **Mutation Observer Filtering**: Only monitors changes to `data-requirements` and `data-reftarget` attributes
-- **Interactive Content Detection**: DOM changes only trigger rechecking if actual interactive elements are added/removed
-- **Debounced Rechecking**: Multiple rapid changes are batched to prevent excessive processing
-
-### DOM Attributes
-
-#### Core Interactive Attributes
-- `data-requirements`: Comma-separated list of guide-specific requirements
-- `data-targetaction`: Type of action to perform (button, formfill, highlight, sequence, multistep, code-block)
-- `data-reftarget`: Target element selector or button text to interact with
-- `data-targetvalue`: Value to use for formfill actions (optional)
-- `data-button-type`: Button type (show, do) to distinguish behavior
-
-#### Unique Identification Attributes
-- `data-section-id`: Section identifier for "Do Section" buttons (e.g., "1", "2", "3")
-- `data-step-id`: Step identifier for individual steps (e.g., "1.1", "1.2", "2.1")
-- **Note**: Elements must have either `data-section-id` OR `data-step-id` for proper isolation
-
-#### State Management Attributes
-- `data-completed`: Set to "true" when action is completed
-- `data-original-text`: Stores original button text for restoration
-- `data-listener-attached`: Marks elements with modern click handlers attached
-
-#### Attribute Inheritance
-- Generated buttons inherit the `data-section-id` or `data-step-id` from their parent interactive elements
-- This ensures all buttons within a logical step share the same unique identifier
-- Fallback elements without unique IDs use legacy `reftarget|targetaction` grouping
-
-### Performance Optimization
-
-When using sequential mode, the system stops checking requirements as soon as one element fails, automatically disabling all subsequent elements. This provides:
-
-- **Performance**: Avoids unnecessary requirement checks
-- **User Experience**: Clear indication that previous steps must be completed
-- **Logical Flow**: Enforces step-by-step progression
-
-### Heartbeat Mechanism
-
-For fragile prerequisites like `navmenu-open` that can change frequently, the system supports an optional scoped heartbeat recheck:
-
-- **Purpose**: Re-validates fragile prerequisites within a short window after they pass
-- **Configuration**: Controlled via `INTERACTIVE_CONFIG.requirements.heartbeat`
-- **Default**: Disabled for performance
-- **When enabled**: Periodically rechecks requirements that might change (e.g., nav menu state)
-
-Configuration options:
-- `enabled`: Whether heartbeat is active (default: false)
-- `intervalMs`: How often to recheck
-- `watchWindowMs`: How long to watch after initial pass
-- `onlyForFragile`: Only recheck fragile requirements like `navmenu-open`
-
-### Debug Tools
-
-For development and testing, you can enable detailed logging:
-
-```javascript
-// Enable debug logging
-localStorage.setItem('grafana-docs-debug', 'true');
-// Reload page to see detailed requirement checking logs
-```
-
-Check requirement state:
-```javascript
-// Access the sequential requirements manager
-const manager = window.SequentialRequirementsManager?.getInstance();
-if (manager) {
-  // Manager provides step state coordination
-  console.log('Manager available for step coordination');
-}
-```
-
-## Usage Examples
-
-### Basic Interactive Element with Unique ID
-```html
-<span class="interactive" 
-      data-targetaction="button" 
-      data-reftarget="Save Dashboard" 
-      data-requirements="exists-reftarget"
-      data-step-id="1.3">
-  Click the Save Dashboard button
-</span>
-```
-
-### Sequential Guide Steps with Unique IDs
-```html
-<!-- Step 1: Will be checked first -->
-<span class="interactive" 
-      data-requirements="has-datasources" 
-      data-targetaction="button" 
-      data-reftarget="Add Panel"
-      data-step-id="1.1">
-  Add a new panel
-</span>
-
-<!-- Step 2: Only enabled if Step 1 succeeds -->
-<span class="interactive" 
-      data-requirements="exists-reftarget" 
-      data-targetaction="formfill" 
-      data-reftarget="#panel-title" 
-      data-targetvalue="My Panel"
-      data-step-id="1.2">
-  Set panel title
-</span>
-
-<!-- Step 3: Only enabled if Step 2 succeeds -->
-<span class="interactive" 
-      data-requirements="exists-reftarget" 
-      data-targetaction="button" 
-      data-reftarget="Apply"
-      data-step-id="1.3">
-  Apply changes
-</span>
-
-<!-- Step 4: Requires navigation menu to be open -->
-<span class="interactive" 
-      data-requirements="navmenu-open,exists-reftarget" 
-      data-targetaction="button" 
-      data-reftarget="Connections"
-      data-step-id="1.4">
-  Navigate to Connections
-</span>
-```
-
-### Multi-Section Guide with Step Isolation
-```html
-<!-- Section 1: Create Dashboard -->
-<span class="interactive"
-      data-targetaction="sequence"
-      data-reftarget="#section-1-steps"
-      data-section-id="1">
-  Complete dashboard creation
-</span>
-
-<span class="interactive" 
-      data-targetaction="button" 
-      data-reftarget="Save Dashboard" 
-      data-requirements="exists-reftarget"
-      data-step-id="1.1">
-  Save the dashboard
-</span>
-
-<!-- Section 2: Configure Alerts -->
-<span class="interactive"
-      data-targetaction="sequence"
-      data-reftarget="#section-2-steps"
-      data-section-id="2">
-  Complete alert configuration
-</span>
-
-<span class="interactive" 
-      data-targetaction="button" 
-      data-reftarget="Save Dashboard" 
-      data-requirements="exists-reftarget"
-      data-step-id="2.1">
-  Save the dashboard (independent from Section 1)
-</span>
-```
-
-### Legacy Element (Fallback Support)
-```html
-<!-- Elements without unique IDs still work but use legacy grouping -->
-<span class="interactive" 
-      data-targetaction="button" 
-      data-reftarget="Save Dashboard" 
-      data-requirements="exists-reftarget">
-  Click the Save Dashboard button (legacy mode)
-</span>
-```
-
-## Configuration
-
-### Sequential Mode (Default)
-```typescript
-await checkAllElementRequirements(container, checkFn, true);
-```
-
-### Parallel Mode
-```typescript
-await checkAllElementRequirements(container, checkFn, false);
-```
-
-Sequential mode is recommended for guide-style content where step order matters. Parallel mode can be used for independent interactive elements that don't depend on each other.
-
-## Error Handling
-
-### Requirements Checking Errors
-- **Unknown Requirements**: Elements with unsupported requirements are marked as failed
-- **Requirement Check Errors**: Network or validation errors mark elements as failed
-- **Missing Elements**: Elements that can't be found are marked as failed
-- **Graceful Degradation**: System continues processing other elements when individual checks fail
-
-### Unique ID System Fallbacks
-- **Missing Unique IDs**: Elements without `data-section-id` or `data-step-id` trigger warnings
-- **Fallback Grouping**: Elements without unique IDs use legacy `reftarget|targetaction` grouping
-- **Backwards Compatibility**: Existing content without unique IDs continues to function
-- **Progressive Enhancement**: New content with unique IDs gets improved isolation behavior
-
-### Step Finding Errors
-- **Step Not Found**: When completion system can't find a step, it falls back to individual element completion
-- **Multiple Fallbacks**: System tries unique ID matching first, then legacy matching if needed
-- **Isolation Preservation**: Fallback methods maintain cross-section isolation where possible
-
-## Accessibility
-
-The requirements system includes accessibility features:
-
-- **ARIA Attributes**: `aria-disabled` reflects button state
-- **Tooltips**: Disabled buttons show reason via `title` attribute
-- **Visual Indicators**: Color and opacity changes provide visual feedback
-- **Screen Readers**: State changes are announced through ARIA attributes
+Configuration defaults, including the heartbeat interval and watch window, live in `src/constants/interactive-config.ts`. Read the current values there rather than restating them here.

@@ -22,7 +22,7 @@ import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { sanitizeDocumentationHTML } from '../../security';
-import { STEP_STATES } from './step-states';
+import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
@@ -118,6 +118,38 @@ interface InteractiveGuidedProps {
   resetTrigger?: number;
 }
 
+interface GuidedUiStateInput {
+  isCompleted: boolean;
+  isCompletedByObjectives: boolean;
+  isExecuting: boolean;
+  hasError: boolean;
+  wasCancelled: boolean;
+  isChecking: boolean;
+  isEnabled: boolean;
+}
+
+export function deriveGuidedUiState(input: GuidedUiStateInput): StepStateValue {
+  if (input.isExecuting) {
+    return STEP_STATES.EXECUTING;
+  }
+  if (input.isCompletedByObjectives) {
+    return STEP_STATES.COMPLETED;
+  }
+  if (input.hasError) {
+    return STEP_STATES.ERROR;
+  }
+  if (input.wasCancelled) {
+    return STEP_STATES.CANCELLED;
+  }
+  if (input.isCompleted) {
+    return STEP_STATES.COMPLETED;
+  }
+  if (input.isChecking) {
+    return STEP_STATES.CHECKING;
+  }
+  return input.isEnabled ? STEP_STATES.IDLE : STEP_STATES.REQUIREMENTS_UNMET;
+}
+
 let anonymousGuidedCounter = 0;
 
 /** Reset the anonymous guided counter (called by resetInteractiveCounters). */
@@ -177,6 +209,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // distinguishes a deliberate cancel from a disconnect/failure (skips the toast).
     const controllerCancelledRef = useRef(false);
     const activeRunIdRef = useRef<string>('');
+    const allowCompletedRetryRef = useRef(false);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [failedStepIndex, setFailedStepIndex] = useState(-1);
     const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
@@ -287,7 +320,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     // Main execution logic
     const executeStep = useCallback(async (): Promise<boolean> => {
-      if (!checker.isEnabled || isCompletedWithObjectives || isExecuting) {
+      if (!checker.isEnabled || (isCompletedWithObjectives && !allowCompletedRetryRef.current) || isExecuting) {
         return false;
       }
 
@@ -303,7 +336,14 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         return true;
       }
 
-      // NEW: If completeEarly flag is set, mark as completed BEFORE action execution
+      setIsExecuting(true);
+      setExecutionError(null);
+      setCurrentStepIndex(0);
+      setFailedStepIndex(-1);
+      setCurrentStepStatus('waiting');
+      setWasCancelled(false);
+      // Commit execution before early persistence or overlay creation so observers never see a terminal state mid-run.
+      await waitForReactUpdates();
       if (completeEarly) {
         persistCompletion();
         if (onStepComplete && stepId) {
@@ -313,22 +353,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           onComplete();
         }
 
-        // Small delay to ensure localStorage write completes
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
-
-      setIsExecuting(true);
-      setExecutionError(null);
-      setCurrentStepIndex(0);
-      setFailedStepIndex(-1);
-      setCurrentStepStatus('waiting');
-      setWasCancelled(false);
-
-      // Flush React state before creating any DOM overlays. Without this, the
-      // idle-state skip button (block-level `skippable`) stays in the DOM while
-      // the guided handler synchronously appends its own overlay skip button,
-      // producing two simultaneous skip buttons (issue #786).
-      await waitForReactUpdates();
 
       try {
         // Execute each internal action in sequence, waiting for user
@@ -350,6 +376,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             setExecutionError(`Step ${i + 1} timed out. Click "Skip" to continue or "Retry" to try again.`);
             return false;
           } else if (result === 'cancelled') {
+            setWasCancelled(true);
             return false;
           } else if (result === 'error') {
             setFailedStepIndex(i);
@@ -667,8 +694,12 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       }
     }, [disabled, isExecuting, stepId, onStepReset, persistReset]);
 
-    // Handle skip current step on timeout
+    const markSkipped = checker.markSkipped;
     const handleSkipStep = useCallback(async () => {
+      await markSkipped?.();
+      setExecutionError(null);
+      setFailedStepIndex(-1);
+      setWasCancelled(false);
       persistCompletion('skipped');
 
       if (onStepComplete && stepId) {
@@ -678,14 +709,19 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       if (onComplete) {
         onComplete();
       }
-    }, [stepId, onStepComplete, onComplete, persistCompletion]);
+    }, [stepId, onStepComplete, onComplete, persistCompletion, markSkipped]);
 
     // Handle retry after timeout or cancellation
     const handleRetry = useCallback(async () => {
       setExecutionError(null);
       setCurrentStepStatus('waiting');
       setWasCancelled(false);
-      await executeStep();
+      allowCompletedRetryRef.current = true;
+      try {
+        await executeStep();
+      } finally {
+        allowCompletedRetryRef.current = false;
+      }
     }, [executeStep]);
 
     // Handle cancel during guided execution
@@ -701,7 +737,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setExecutionError(null);
       setCurrentStepIndex(0);
       setCurrentStepStatus('waiting');
-      setWasCancelled(false);
+      setWasCancelled(true);
     }, [guidedHandler, controllerChannel, renderedStepId]);
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
@@ -710,28 +746,15 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     const currentAction = internalActions[currentStepIndex];
     const currentActionComment = currentAction?.targetComment || 'Complete this step';
 
-    // Determine the current UI state for cleaner rendering
-    const uiState = (() => {
-      if (isCompletedWithObjectives) {
-        return 'completed';
-      }
-      if (executionError) {
-        return 'error';
-      }
-      if (wasCancelled) {
-        return 'cancelled';
-      }
-      if (isExecuting) {
-        return 'executing';
-      }
-      if (checker.isChecking) {
-        return 'checking';
-      }
-      if (!checker.isEnabled) {
-        return STEP_STATES.REQUIREMENTS_UNMET;
-      }
-      return 'idle';
-    })();
+    const uiState = deriveGuidedUiState({
+      isCompleted: isCompletedWithObjectives,
+      isCompletedByObjectives: checker.completionReason === 'objectives',
+      isExecuting,
+      hasError: Boolean(executionError),
+      wasCancelled,
+      isChecking: checker.isChecking,
+      isEnabled: checker.isEnabled,
+    });
 
     return (
       <div
@@ -933,7 +956,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               <div className="interactive-guided-error-content">
                 <span className="interactive-guided-error-title">Step {failedStepIndex + 1} didn&apos;t complete</span>
                 <span className="interactive-guided-error-detail">
-                  {currentStepStatus === 'timeout' ? 'Timed out waiting for action' : 'Something went wrong'}
+                  {executionError ||
+                    (currentStepStatus === 'timeout' ? 'Timed out waiting for action' : 'Something went wrong')}
                 </span>
               </div>
             </div>

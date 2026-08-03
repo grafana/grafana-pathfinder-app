@@ -1,6 +1,15 @@
 import { SCHEMA_REGISTRY, listSchemas, exportSchema, exportAllSchemas } from '../commands/schema';
 
-const EXPECTED_SCHEMA_NAMES = ['guide', 'block', 'content', 'manifest', 'repository', 'graph'];
+const EXPECTED_SCHEMA_NAMES = [
+  'guide',
+  'block',
+  'content',
+  'manifest',
+  'repository',
+  'graph',
+  'e2e-report',
+  'e2e-multi-report',
+];
 
 describe('schema command', () => {
   describe('SCHEMA_REGISTRY', () => {

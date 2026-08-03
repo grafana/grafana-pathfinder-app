@@ -75,6 +75,7 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
 
     // Check if "Do it" button exists (U1: not all steps have buttons)
     const hasDoItButton = await checkDoItButtonExists(page, stepId);
+    const hasShowMeButton = (await page.getByTestId(testIds.interactive.showMeButton(stepId)).count()) > 0;
 
     // Check if already completed (U2: objectives-based or noop completion)
     const isPreCompleted = await checkStepCompleted(page, stepId);
@@ -92,9 +93,7 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
     // E2E contract: detect guided steps and substep count from DOM only
     const { isGuided, guidedStepCount } = await extractGuidedInfo(element, targetAction);
 
-    // Guided steps require user to click each target; E2E runner does not automate that.
-    // Treat as skippable when skip button wasn't detected so guides with guided blocks can pass (skippable failure).
-    const effectiveSkippable = skippable || isGuided;
+    const effectiveSkippable = resolveEffectiveSkippable(skippable, isGuided);
 
     steps.push({
       stepId,
@@ -102,6 +101,7 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
       sectionId,
       skippable: effectiveSkippable,
       hasDoItButton,
+      hasShowMeButton,
       isPreCompleted,
       targetAction,
       isMultistep,
@@ -122,6 +122,10 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
     noDoItButtonCount: steps.filter((s) => !s.hasDoItButton).length,
     durationMs,
   };
+}
+
+export function resolveEffectiveSkippable(skippable: boolean, _isGuided: boolean): boolean {
+  return skippable;
 }
 
 /**

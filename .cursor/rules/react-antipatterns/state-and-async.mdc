@@ -1,0 +1,212 @@
+---
+alwaysApply: false
+description: React anti-patterns R4, R5, R7, R14 — state updates after unmount, direct mutation, async race conditions, derived state. Load on a review hit for any of these codes, or when writing state and data-fetching logic.
+---
+
+# State and async updates
+
+Part of the R1-R21 catalog. The routing table and the full code list live in `.cursor/rules/react-antipatterns.mdc`.
+
+---
+
+## R4 — State Update on Unmounted Component
+Async operations may complete after component unmounts. Attempting to `setState` on unmounted components causes memory leaks.
+
+**Don't**
+```tsx
+useEffect(() => {
+  fetch(`/api/users/${userId}`)
+    .then(res => res.json())
+    .then(setData); // May run after unmount
+}, [userId]);
+```
+
+**Do**
+```tsx
+useEffect(() => {
+  const controller = new AbortController();
+  
+  fetch(`/api/users/${userId}`, { signal: controller.signal })
+    .then(res => res.json())
+    .then(setData)
+    .catch(err => {
+      // REACT: ignore abort errors (R4)
+      if (err.name !== 'AbortError') throw err;
+    });
+  
+  return () => controller.abort();
+}, [userId]);
+
+// Alternative: mounted flag
+useEffect(() => {
+  let isMounted = true;
+  
+  fetchData().then(result => {
+    if (isMounted) setData(result);
+  });
+  
+  return () => { isMounted = false; };
+}, []);
+```
+
+**Agent behavior**
+- For any `fetch` or async operation in `useEffect`, require either `AbortController` or a mounted flag.
+- Prefer `AbortController` as it actually cancels the network request.
+- Flag async callbacks that call `setState` without cancellation handling.
+
+---
+
+---
+
+## R5 — Direct State Mutation
+React uses reference equality to detect changes. Mutating objects/arrays in place prevents re-renders.
+
+**Don't**
+```tsx
+const [todos, setTodos] = useState([{ id: 1, text: 'Learn React' }]);
+
+const updateTodo = (id, newText) => {
+  const todo = todos.find(t => t.id === id);
+  todo.text = newText; // Mutation!
+  setTodos(todos); // Same reference - no re-render
+};
+
+const addTodo = (text) => {
+  todos.push({ id: Date.now(), text }); // Mutation!
+  setTodos(todos);
+};
+```
+
+**Do**
+```tsx
+const updateTodo = (id, newText) => {
+  // REACT: immutable update (R5)
+  setTodos(todos.map(todo => 
+    todo.id === id ? { ...todo, text: newText } : todo
+  ));
+};
+
+const addTodo = (text) => {
+  // REACT: spread to create new array (R5)
+  setTodos([...todos, { id: Date.now(), text }]);
+};
+
+// For deeply nested state, consider Immer:
+import { produce } from 'immer';
+setTodos(produce(todos, draft => {
+  const todo = draft.find(t => t.id === id);
+  todo.text = newText;
+}));
+```
+
+**Agent behavior**
+- Flag any direct property assignment on state objects (`state.prop = value`).
+- Flag `.push()`, `.pop()`, `.splice()`, `.sort()` on state arrays without spread.
+- Recommend spread operators or `map`/`filter` for immutable updates.
+- For complex nested updates, suggest Immer if not already in use.
+
+---
+
+---
+
+## R7 — Race Condition in Async State Updates
+Network requests don't complete in order. Earlier requests may resolve after later ones, showing stale data.
+
+**Don't**
+```tsx
+function SearchResults({ query }) {
+  const [results, setResults] = useState([]);
+  
+  useEffect(() => {
+    fetchResults(query).then(setResults);
+    // User types "re" -> "rea" -> "react"
+    // Responses may arrive out of order
+  }, [query]);
+}
+```
+
+**Do**
+```tsx
+function SearchResults({ query }) {
+  const [results, setResults] = useState([]);
+  
+  useEffect(() => {
+    let cancelled = false;
+    
+    fetchResults(query).then(data => {
+      // REACT: ignore stale responses (R7)
+      if (!cancelled) setResults(data);
+    });
+    
+    return () => { cancelled = true; };
+  }, [query]);
+}
+
+// Better: AbortController
+useEffect(() => {
+  const controller = new AbortController();
+  
+  fetchResults(query, { signal: controller.signal })
+    .then(setResults)
+    .catch(err => {
+      if (err.name !== 'AbortError') throw err;
+    });
+    
+  return () => controller.abort();
+}, [query]);
+```
+
+**Agent behavior**
+- For any search/filter/autocomplete pattern, require race condition handling.
+- Flag effects that fetch based on rapidly-changing inputs (search terms, filters) without cancellation.
+- Prefer `AbortController` over boolean flags when possible.
+
+---
+
+---
+
+## R14 — Derived State Anti-Pattern
+Storing computed values in state creates synchronization bugs and unnecessary renders.
+
+**Don't**
+```tsx
+function FilteredList({ items, filter }) {
+  // Storing derived data in state - must manually sync
+  const [filteredItems, setFilteredItems] = useState(
+    items.filter(i => i.category === filter)
+  );
+  
+  useEffect(() => {
+    setFilteredItems(items.filter(i => i.category === filter));
+  }, [items, filter]); // Extra render to sync
+  
+  return <List items={filteredItems} />;
+}
+```
+
+**Do**
+```tsx
+function FilteredList({ items, filter }) {
+  // REACT: compute during render - always in sync (R14)
+  const filteredItems = useMemo(
+    () => items.filter(i => i.category === filter),
+    [items, filter]
+  );
+  
+  return <List items={filteredItems} />;
+}
+
+// For simple calculations, memoization may not be needed:
+function FilteredList({ items, filter }) {
+  const filteredItems = items.filter(i => i.category === filter);
+  return <List items={filteredItems} />;
+}
+```
+
+**Agent behavior**
+- If a value can be computed from props or other state, don't store it in state.
+- Flag `useState` + `useEffect` patterns that sync derived values.
+- Prefer computing during render with optional `useMemo` for expensive calculations.
+- When reviewing, ask: "Can this state be derived from existing props/state?"
+
+---

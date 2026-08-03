@@ -1,0 +1,103 @@
+---
+alwaysApply: false
+description: React anti-patterns R16-R21 — main-thread blocking, request waterfalls, localStorage abuse, LCP, CLS, third-party script contention. Load on a review hit for any of these codes, or when auditing production performance and reliability.
+---
+
+# Web vitals and SRE reliability
+
+Part of the R1-R21 catalog. The routing table and the full code list live in `.cursor/rules/react-antipatterns.mdc`.
+
+---
+
+## R16 — Unbounded Main Thread Blocking
+Heavy synchronous work in the render path freezes the UI.
+
+*   **Detection**: Heavy synchronous computations inside `useMemo`, `useEffect`, or the render body. Large loops (`map`, `filter`) on un-memoized arrays derived from props.
+*   **Risk**: Freezes the UI, fails Interaction to Next Paint (INP).
+*   **Fix**: Move to Web Worker, use `useTransition`, or break into async chunks.
+
+**Agent behavior**
+- Flag large synchronous array transformations on data derived from props without `useMemo`.
+- Flag CPU-intensive work (parsing, sorting, tree traversal) in the render body or effects.
+- Suggest `useTransition` for non-urgent state updates, Web Workers for heavy computation.
+
+---
+
+---
+
+## R17 — Network Waterfalls & Request Storms
+Nested components that each fetch on mount create sequential request chains and amplified load.
+
+*   **Detection**: Nested components that *both* trigger data fetching on mount. `useEffect` dependency arrays that include unstable object/array references (creating infinite fetch loops).
+*   **Risk**: Slow loading, self-inflicted DDoS.
+*   **Fix**: Hoist data fetching to parent/loader, or use React Query/TanStack Query.
+
+**Agent behavior**
+- Flag parent/child pairs where both independently fetch data on mount.
+- Flag `useEffect` fetch calls with object/array dependencies that are recreated each render (combines with R3).
+- Recommend hoisting data requirements to a single parent or using a data-fetching library with deduplication.
+
+---
+
+---
+
+## R18 — LocalStorage Abuse
+Synchronous `localStorage` calls block the main thread and can crash on quota limits.
+
+*   **Detection**: `localStorage.setItem/getItem` in critical render paths or loops. Storing large objects in storage.
+*   **Risk**: Blocks main thread (I/O is sync), crashes on `QuotaExceededError`.
+*   **Fix**: Use `indexedDB` (async), debounce writes, or wrap in try/catch.
+
+**Agent behavior**
+- Flag `localStorage` calls inside render functions, `useMemo`, or effects that run frequently.
+- Flag storage of large serialized objects (full state trees, large arrays).
+- Recommend try/catch around all `localStorage` calls to handle `QuotaExceededError`.
+
+---
+
+---
+
+## R19 — LCP Failures
+"Render-then-fetch" patterns delay the largest visible content, causing user bounce.
+
+*   **Detection**: Loading spinners as the initial render for primary content. Lazy loading the hero image or LCP element.
+*   **Risk**: High LCP score, user bounce.
+*   **Fix**: Eager load LCP assets, avoid lazy loading primary content.
+*   **Note**: Less applicable to Grafana plugins rendered inside the Grafana shell. Focus on plugin-owned content that dominates the visible panel.
+
+**Agent behavior**
+- Flag primary content areas that show a loading spinner before any meaningful paint.
+- Flag lazy-loaded images or components that constitute the largest visible element.
+
+---
+
+---
+
+## R20 — CLS Violations (Layout Shifts)
+Content that loads without reserved space causes jarring layout shifts.
+
+*   **Detection**: `<img>` tags without `width`/`height`. Content blocks that load asynchronously without a skeleton placeholder of fixed height.
+*   **Risk**: UI jumps, users click wrong buttons.
+*   **Fix**: Enforce aspect-ratio CSS or fixed dimensions on images. Use skeleton placeholders with fixed height for async content.
+
+**Agent behavior**
+- Flag `<img>` elements without explicit `width` and `height` attributes or CSS aspect-ratio.
+- Flag async-loaded content blocks without a fixed-height skeleton or placeholder.
+
+---
+
+---
+
+## R21 — Third-Party Script Contention
+Undeferred scripts block the main thread during page load.
+
+*   **Detection**: External scripts loaded without `defer` or `async`. Analytics/tracking code running in the main render loop.
+*   **Risk**: High Total Blocking Time (TBT).
+*   **Fix**: Defer scripts, move non-critical work to `requestIdleCallback`.
+*   **Note**: Less applicable to Grafana plugins, which typically don't load third-party scripts directly.
+
+**Agent behavior**
+- Flag `<script>` tags without `defer` or `async`.
+- Flag analytics or tracking calls in the render path or effects.
+
+---

@@ -16,7 +16,7 @@ import {
   type LearningJourneyMilestoneToolbarProps,
 } from './LearningJourneyMilestoneToolbar';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
-import type { CombinedLearningJourneyPanel } from '../docs-panel';
+import type { DocsPanelModelOperations } from '../types';
 
 const reportAppInteractionMock = jest.fn();
 const markMilestoneDoneMock = jest.fn();
@@ -36,7 +36,7 @@ jest.mock('../../../lib/analytics', () => ({
 
 jest.mock('../../../docs-retrieval', () => ({
   getJourneyProgress: () => 0,
-  getMilestoneSlug: (url: string) => url.split('/').filter(Boolean).pop() ?? null,
+  getMilestoneSlug: jest.requireActual('../../../lib/learning-journey-url').getMilestoneSlug,
   markMilestoneDone: (...args: unknown[]) => markMilestoneDoneMock(...args),
 }));
 
@@ -78,7 +78,7 @@ function makePanel() {
     navigateToNextMilestone: jest.fn(),
     canNavigatePrevious: jest.fn(() => true),
     canNavigateNext: jest.fn(() => true),
-  } as unknown as CombinedLearningJourneyPanel & {
+  } as unknown as DocsPanelModelOperations & {
     navigateToPreviousMilestone: jest.Mock;
     navigateToNextMilestone: jest.Mock;
     canNavigatePrevious: jest.Mock;
@@ -103,6 +103,7 @@ function makeJourneyTab(overrides: Partial<LearningJourneyTab> = {}): LearningJo
         learningJourney: {
           currentMilestone: 1,
           totalMilestones: 3,
+          baseUrl: 'https://grafana.com/docs/learning-journeys/foo-canonical',
           milestones: [
             { number: 1, title: 'm1', duration: '', url: 'm1', isActive: true, websiteUrl: 'https://grafana.com/m1' },
             { number: 2, title: 'm2', duration: '', url: 'm2', isActive: false },
@@ -187,7 +188,12 @@ describe('LearningJourneyMilestoneToolbar', () => {
     renderToolbar({ contentRoot });
     fireEvent.click(screen.getByLabelText('Next milestone'));
 
-    expect(markMilestoneDoneMock).toHaveBeenCalledWith('https://grafana.com/docs/learning-journeys/foo', 'm1', 3);
+    expect(markMilestoneDoneMock).toHaveBeenCalledWith(
+      'https://grafana.com/docs/learning-journeys/foo-canonical',
+      'm1',
+      3,
+      expect.objectContaining({ packageManifest: undefined })
+    );
   });
 
   it('does NOT mark the milestone done when the rendered DOM has interactive steps', () => {

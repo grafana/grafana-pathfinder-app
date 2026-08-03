@@ -1,4 +1,4 @@
-import { isGrafanaDocsUrl, cleanDocsUrl } from './url-validation';
+import { isGrafanaDocsUrl, cleanDocsUrl, isLearningJourneyUrl } from './url-validation';
 
 // Mock the constants
 jest.mock('../../../constants', () => ({
@@ -89,6 +89,25 @@ describe('url-validation', () => {
     it('does not modify URLs without known suffixes', () => {
       const url = 'https://grafana.com/docs/learning-paths/my-path';
       expect(cleanDocsUrl(url)).toBe(url);
+    });
+  });
+
+  describe('isLearningJourneyUrl', () => {
+    it('matches journey and path pathnames', () => {
+      expect(isLearningJourneyUrl('https://grafana.com/docs/learning-journeys/drilldown/')).toBe(true);
+      expect(isLearningJourneyUrl('https://grafana.com/learning-paths/grafana-basics/')).toBe(true);
+    });
+
+    it('routes plain docs pages to the docs loader', () => {
+      expect(isLearningJourneyUrl('https://grafana.com/docs/grafana/latest/')).toBe(false);
+    });
+
+    it('tests the pathname only — a journey path echoed in the query string does not misroute', () => {
+      expect(isLearningJourneyUrl('https://grafana.com/docs/foo/?ref=/learning-paths/x')).toBe(false);
+    });
+
+    it('treats bundled URLs as docs', () => {
+      expect(isLearningJourneyUrl('bundled:first-dashboard')).toBe(false);
     });
   });
 });

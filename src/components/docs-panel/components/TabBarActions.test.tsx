@@ -235,8 +235,14 @@ describe('TabBarActions', () => {
       expect(screen.queryByRole('menuitem', { name: /refresh \(dev\)/i })).not.toBeInTheDocument();
     });
 
-    it('is not rendered for a permanent (non-content) tab', () => {
-      render(<TabBarActions activeTab={makeTab({ id: 'recommendations' })} isDevMode onReloadActiveTab={jest.fn()} />);
+    it('is not rendered for the recommendations home tab', () => {
+      render(
+        <TabBarActions
+          activeTab={makeTab({ id: 'recommendations', type: 'recommendations' })}
+          isDevMode
+          onReloadActiveTab={jest.fn()}
+        />
+      );
       openMenu();
       expect(screen.queryByRole('menuitem', { name: /refresh \(dev\)/i })).not.toBeInTheDocument();
     });
@@ -249,6 +255,90 @@ describe('TabBarActions', () => {
       const item = screen.getByRole('menuitem', { name: /refresh \(dev\)/i });
       fireEvent.click(item);
       expect(onReloadActiveTab).toHaveBeenCalledWith(tab);
+    });
+  });
+
+  describe('kiosk mode menu item', () => {
+    const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+
+    afterEach(() => {
+      delete (window as any).__pathfinderKioskConfig;
+    });
+
+    it('is not rendered when kiosk is disabled', () => {
+      render(<TabBarActions />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: /kiosk mode/i })).not.toBeInTheDocument();
+    });
+
+    it('is rendered in the overflow menu when kiosk is enabled and opens kiosk on click', () => {
+      (window as any).__pathfinderKioskConfig = { rulesUrl: '' };
+      const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
+
+      render(<TabBarActions />);
+      openMenu();
+
+      const item = screen.getByRole('menuitem', { name: /kiosk mode/i });
+      expect(item).toBeInTheDocument();
+      expect(screen.queryByTestId(testIds.kioskMode.button)).not.toBeInTheDocument();
+
+      fireEvent.click(item);
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'pathfinder-open-kiosk' }));
+
+      dispatchSpy.mockRestore();
+    });
+  });
+
+  describe('guide editor menu item', () => {
+    const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+
+    it('is not rendered when the user cannot edit', () => {
+      render(<TabBarActions isEditorUser={false} onOpenEditorTab={jest.fn()} />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: /create guide/i })).not.toBeInTheDocument();
+    });
+
+    it('is rendered for editor users and opens the editor on click', () => {
+      const onOpenEditorTab = jest.fn();
+      const { reportAppInteraction } = require('../../../lib/analytics');
+      render(<TabBarActions isEditorUser onOpenEditorTab={onOpenEditorTab} />);
+      openMenu();
+
+      const item = screen.getByRole('menuitem', { name: /create guide/i });
+      fireEvent.click(item);
+
+      expect(onOpenEditorTab).toHaveBeenCalledTimes(1);
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        'docs_panel_interaction',
+        expect.objectContaining({ action: 'open_editor', source: 'header_menu_editor' })
+      );
+    });
+  });
+
+  describe('dev tools menu item', () => {
+    const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+
+    it('is not rendered outside dev mode', () => {
+      render(<TabBarActions isDevMode={false} onOpenDevToolsTab={jest.fn()} />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: /dev tools/i })).not.toBeInTheDocument();
+    });
+
+    it('is last in the menu and focuses the tab on click', () => {
+      const onOpenDevToolsTab = jest.fn();
+      const { reportAppInteraction } = require('../../../lib/analytics');
+      render(<TabBarActions isDevMode onOpenDevToolsTab={onOpenDevToolsTab} />);
+      openMenu();
+
+      const items = screen.getAllByRole('menuitem');
+      expect(items[items.length - 1]).toHaveAccessibleName(/dev tools/i);
+
+      fireEvent.click(items[items.length - 1]!);
+      expect(onOpenDevToolsTab).toHaveBeenCalledTimes(1);
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        'docs_panel_interaction',
+        expect.objectContaining({ action: 'open_devtools', source: 'header_menu_devtools' })
+      );
     });
   });
 

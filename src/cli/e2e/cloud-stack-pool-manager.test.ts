@@ -43,6 +43,77 @@ describe('createCloudStackPoolManagerConfig', () => {
     expect(createCloudStackPoolManagerConfig({ poolId: DEFAULT_CLOUD_STACK_POOL_ID, env: {} })).toBeUndefined();
   });
 
+  it('retries structured no_capacity responses with bounded jitter before succeeding', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ error: { code: 'no_capacity', message: 'capacity is temporarily exhausted' } }, 503)
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ error: { code: 'no_capacity', message: 'capacity is temporarily exhausted' } }, 503)
+      )
+      .mockResolvedValueOnce(jsonResponse(leaseResponse(), 201, 'Created'));
+    const waits: number[] = [];
+    const manager = new CloudStackPoolManager(
+      { ...CONFIG, maxWaitSeconds: 2 },
+      false,
+      fetchImpl as unknown as typeof fetch,
+      async (ms) => {
+        waits.push(ms);
+      },
+      () => 0
+    );
+
+    await expect(manager.leaseForChain({ chain: [{ id: 'a' }], packageMetaById: new Map() })).resolves.toBeDefined();
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(waits).toEqual([125, 250]);
+  });
+
+  it('exhausts retry budget correctly when the injected clock advances with each wait', async () => {
+    let now = 0;
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ error: { code: 'no_capacity', message: 'capacity is temporarily exhausted' } }, 503)
+      );
+    const manager = new CloudStackPoolManager(
+      { ...CONFIG, maxWaitSeconds: 1 },
+      false,
+      fetchImpl as unknown as typeof fetch,
+      async (ms) => {
+        now += ms;
+      },
+      () => 0,
+      () => now
+    );
+
+    await expect(manager.leaseForChain({ chain: [{ id: 'a' }], packageMetaById: new Map() })).rejects.toMatchObject({
+      code: 'no_capacity',
+    });
+    // With random=0 and budget=1000ms the delays are 125, 250, 500, 125 (clamped) before
+    // the 5th attempt finds remaining=0 and throws. If the budget were double-counted the
+    // run would stop after only 2 attempts.
+    expect(fetchImpl).toHaveBeenCalledTimes(5);
+  });
+
+  it('does not retry non-capacity errors', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ error: { code: 'invalid_request', message: 'bad request' } }, 400, 'Bad Request')
+      );
+    const manager = new CloudStackPoolManager(
+      { ...CONFIG, maxWaitSeconds: 0 },
+      false,
+      fetchImpl as unknown as typeof fetch
+    );
+
+    await expect(manager.leaseForChain({ chain: [{ id: 'a' }], packageMetaById: new Map() })).rejects.toMatchObject({
+      code: 'invalid_request',
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('loads the manager token and defaults the pool id', () => {
     expect(
       createCloudStackPoolManagerConfig({
@@ -187,7 +258,11 @@ describe('CloudStackPoolManager', () => {
           'Service Unavailable'
         )
       );
-    const manager = new CloudStackPoolManager(CONFIG, false, fetchImpl as unknown as typeof fetch);
+    const manager = new CloudStackPoolManager(
+      { ...CONFIG, maxWaitSeconds: 0 },
+      false,
+      fetchImpl as unknown as typeof fetch
+    );
 
     await expect(manager.leaseForChain({ chain: [{ id: 'a' }], packageMetaById: new Map() })).rejects.toThrow(
       'no_capacity: no hot stack is available [redacted]'

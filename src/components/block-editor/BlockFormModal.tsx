@@ -38,6 +38,7 @@ import { HtmlBlockForm } from './forms/HtmlBlockForm';
 import { ImageBlockForm } from './forms/ImageBlockForm';
 import { VideoBlockForm } from './forms/VideoBlockForm';
 import { SectionBlockForm } from './forms/SectionBlockForm';
+import { CollapsibleBlockForm } from './forms/CollapsibleBlockForm';
 import { ConditionalBlockForm } from './forms/ConditionalBlockForm';
 import { InteractiveBlockForm } from './forms/InteractiveBlockForm';
 import { MultistepBlockForm } from './forms/MultistepBlockForm';
@@ -115,6 +116,7 @@ const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = 
   image: ImageBlockForm,
   video: VideoBlockForm,
   section: SectionBlockForm,
+  collapsible: CollapsibleBlockForm,
   conditional: ConditionalBlockForm,
   interactive: InteractiveBlockForm,
   multistep: MultistepBlockForm,

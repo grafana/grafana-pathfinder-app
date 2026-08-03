@@ -7,183 +7,29 @@
  * @see docs/developer/E2E_TESTING.md#json-report
  */
 
+import { createHash } from 'crypto';
 import { writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
-import type { SideEffectClassification } from './side-effects';
+import { z } from 'zod';
 
-// ============================================
-// Types - JSON Report Structure
-// ============================================
-
-/**
- * Guide metadata in the JSON report.
- */
-export interface GuideMetadata {
-  /** Guide identifier (extracted from filename or guide ID) */
-  id: string;
-  /** Human-readable guide title */
-  title: string;
-  /** Path to the guide file (relative or absolute) */
-  path: string;
-  /** Bare package ID, when the guide was resolved from a package. */
-  packageId?: string;
-  /** Declared test-environment tier (e.g. "local", "cloud"). */
-  tier?: string;
-  /** Specific Grafana instance the guide targets, if any. */
-  instance?: string;
-  /** Grafana URL the guide was tested against. */
-  targetUrl?: string;
-  /** Source content.json URL for remotely-resolved guides. */
-  sourceUrl?: string;
-  sideEffects?: SideEffectClassification;
-}
-
-/**
- * Test execution configuration captured in the report.
- */
-export interface ReportConfig {
-  /** Grafana version (if available) */
-  grafanaVersion?: string;
-  /** ISO timestamp of when the test started */
-  timestamp: string;
-}
-
-/**
- * Summary statistics for the test run.
- */
-export interface ReportSummary {
-  /** Total number of steps */
-  total: number;
-  /** Number of passed steps */
-  passed: number;
-  /** Number of failed steps */
-  failed: number;
-  /** Number of skipped steps */
-  skipped: number;
-  /** Number of steps not reached (due to abort) */
-  notReached: number;
-  /** Total test duration in milliseconds */
-  duration: number;
-  /** Number of mandatory step failures (L3-4C) */
-  mandatoryFailed: number;
-  /** Number of skippable step failures (L3-4C) */
-  skippableFailed: number;
-}
-
-/**
- * Error classification for failure triage (L3-5C).
- *
- * Per design doc MVP approach:
- * - Only `infrastructure` can be reliably auto-classified
- * - All other failures default to `unknown` and require human triage
- */
-export type ErrorClassification =
-  | 'content-drift' // Selector/requirement issues (requires human validation)
-  | 'product-regression' // Action failures (requires human validation)
-  | 'infrastructure' // TIMEOUT, NETWORK_ERROR, AUTH_EXPIRED
-  | 'unknown'; // Default - cannot be reliably classified
-
-/**
- * Paths to captured failure artifacts (L3-5D).
- *
- * Artifacts are captured when a step fails to provide debugging context.
- */
-export interface ArtifactPaths {
-  /** Path to screenshot PNG file (POST step execution) */
-  screenshot?: string;
-  /** Path to screenshot PNG file (PRE step execution) */
-  screenshotPre?: string;
-  /** Path to DOM snapshot HTML file */
-  dom?: string;
-  /** Path to console errors JSON file */
-  console?: string;
-}
-
-/**
- * Step result in the JSON report.
- *
- * Per design doc, each step includes:
- * - stepId, index, status, duration, currentUrl, consoleErrors
- * - Optional: skipReason, error, classification, artifacts
- */
-export interface ReportStepResult {
-  /** The step identifier */
-  stepId: string;
-  /** Zero-based index in execution order */
-  index: number;
-  /** Execution outcome */
-  status: 'passed' | 'failed' | 'skipped' | 'not_reached';
-  /** Execution duration in milliseconds */
-  duration: number;
-  /** Page URL when step completed/failed */
-  currentUrl: string;
-  /** Console errors captured during step execution */
-  consoleErrors: string[];
-  /** Reason if status is 'skipped' */
-  skipReason?: string;
-  /** Error message if status is 'failed' */
-  error?: string;
-  /** Whether the step was skippable (L3-4C) */
-  skippable?: boolean;
-  /**
-   * Error classification for failure triage (L3-5C).
-   * Only present for failed or not_reached steps.
-   * Per MVP: only `infrastructure` is auto-classified, others default to `unknown`.
-   */
-  classification?: ErrorClassification;
-  /**
-   * Paths to failure artifacts (L3-5D).
-   * Only present for failed steps when artifacts were captured.
-   * Contains screenshot, DOM snapshot, and console errors file paths.
-   */
-  artifacts?: ArtifactPaths;
-}
-
-/**
- * A package skipped before execution (not fetched/run), with a structured
- * reason. Surfaced in JSON reports so batch runs record why guides were not run.
- */
-export interface PreRunSkip {
-  /** Package ID (or source URL when no ID is known). */
-  id: string;
-  /** Structured skip reason (e.g. "skipped_no_auth", "fetch_failed"). */
-  reason: string;
-  /** Human-readable explanation. */
-  message: string;
-  /** Whether this entry counts as a test failure. True for `validation_failed` */
-  failed: boolean;
-  /** Declared tier, when known. */
-  tier?: string;
-  /** Source content.json URL, when known. */
-  sourceUrl?: string;
-  sideEffects?: SideEffectClassification;
-}
-
-/**
- * Complete JSON report structure per design doc.
- *
- * @see docs/developer/E2E_TESTING.md#json-report
- */
-export interface E2ETestReport {
-  /** Guide metadata */
-  guide: GuideMetadata;
-  /** Test configuration */
-  config: ReportConfig;
-  /** Summary statistics */
-  summary: ReportSummary;
-  /** Individual step results */
-  steps: ReportStepResult[];
-  /** Whether test was aborted (L3-3D) */
-  aborted?: boolean;
-  /** Reason for abort if aborted is true */
-  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ' | 'PROVISIONING_FAILED';
-  /** Human-readable abort message */
-  abortMessage?: string;
-  /** Packages skipped before execution (remote modes). */
-  preRunSkipped?: PreRunSkip[];
-  /** Best-effort cleanup failures that did not replace the primary guide outcome. */
-  cleanupWarnings?: string[];
-}
+import {
+  E2E_REPORT_SCHEMA_VERSION,
+  E2ETestReportSchema,
+  MultiGuideReportSchema,
+  type E2EExecutionOutcome,
+  type E2EErrorCode,
+  type ErrorClassification,
+  type RunnerProvenance,
+  type ReportSummary,
+  type ArtifactPaths,
+  type ReportStepResult,
+  type GuideMetadata,
+  type ReportConfig,
+  type E2ETestReport,
+  type GuideResult,
+  type MultiGuideSummary,
+  type MultiGuideReport,
+} from './schemas/e2e-report.schema';
 
 // ============================================
 // Types - Input from Test Execution
@@ -217,6 +63,12 @@ export interface TestResultsData {
   guide: GuideMetadata;
   /** ISO timestamp when test started */
   timestamp: string;
+  startedAt?: string;
+  endedAt?: string;
+  outcome?: E2EExecutionOutcome;
+  errorCode?: E2EErrorCode;
+  errorMessage?: string;
+  runner?: Partial<RunnerProvenance>;
   /** Individual step results */
   results: TestStepResult[];
   /** Whether execution was aborted */
@@ -230,6 +82,14 @@ export interface TestResultsData {
 // ============================================
 // Report Generation Functions
 // ============================================
+
+export function resolvePlaywrightVersion(): string {
+  try {
+    return (require('playwright/package.json') as { version: string }).version;
+  } catch {
+    return process.env.PLAYWRIGHT_VERSION ?? 'unknown';
+  }
+}
 
 /**
  * Generate the summary statistics from step results.
@@ -309,8 +169,43 @@ export function convertStepResults(results: TestStepResult[]): ReportStepResult[
 export function generateReport(data: TestResultsData, grafanaVersion?: string): E2ETestReport {
   const summary = generateSummary(data.results);
   const steps = convertStepResults(data.results);
+  const startedAt = data.startedAt ?? data.timestamp;
+  const endedAt = data.endedAt ?? data.timestamp;
+  const outcome =
+    data.outcome ??
+    (data.abortReason === 'SKIPPED_PREREQ'
+      ? 'skipped'
+      : data.abortReason
+        ? 'aborted'
+        : summary.mandatoryFailed > 0
+          ? 'failed'
+          : 'passed');
+  const errorCode =
+    data.errorCode ??
+    (data.abortReason as E2EErrorCode | undefined) ??
+    (outcome === 'failed' ? 'MANDATORY_FAILURE' : undefined);
+  const targetUrl = data.guide.targetUrl ?? 'unknown://target';
 
   const report: E2ETestReport = {
+    schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+    outcome,
+    ...(errorCode ? { errorCode } : {}),
+    ...((data.errorMessage ?? data.abortMessage) ? { errorMessage: data.errorMessage ?? data.abortMessage } : {}),
+    runner: {
+      name: 'pathfinder-e2e-runner',
+      version: process.env.PATHFINDER_E2E_RUNNER_VERSION ?? 'source',
+      nodeVersion: process.version,
+      playwrightVersion: resolvePlaywrightVersion(),
+      ...(process.env.PATHFINDER_E2E_RUNNER_IMAGE ? { image: process.env.PATHFINDER_E2E_RUNNER_IMAGE } : {}),
+      ...data.runner,
+    },
+    startedAt,
+    endedAt,
+    target: {
+      url: targetUrl,
+      ...(data.guide.tier ? { tier: data.guide.tier } : {}),
+      ...(data.guide.instance ? { instance: data.guide.instance } : {}),
+    },
     guide: data.guide,
     config: {
       timestamp: data.timestamp,
@@ -338,6 +233,48 @@ export function generateReport(data: TestResultsData, grafanaVersion?: string): 
   return report;
 }
 
+export function contentDigest(content: string): string {
+  return `sha256:${createHash('sha256').update(content, 'utf8').digest('hex')}`;
+}
+
+export function createMinimalResultsData(input: {
+  guide: GuideMetadata;
+  outcome: E2EExecutionOutcome;
+  errorCode: E2EErrorCode;
+  errorMessage: string;
+  abortReason?: TestResultsData['abortReason'];
+  startedAt?: string;
+  endedAt?: string;
+}): TestResultsData {
+  const startedAt = input.startedAt ?? new Date().toISOString();
+  const endedAt = input.endedAt ?? new Date().toISOString();
+  const abortReason =
+    input.abortReason ?? (input.errorCode === 'SKIPPED_PREREQ' ? ('SKIPPED_PREREQ' as const) : undefined);
+  return {
+    guide: input.guide,
+    timestamp: startedAt,
+    startedAt,
+    endedAt,
+    outcome: input.outcome,
+    errorCode: input.errorCode,
+    errorMessage: input.errorMessage,
+    results: [],
+    aborted: input.outcome !== 'passed',
+    ...(abortReason ? { abortReason } : {}),
+    abortMessage: input.errorMessage,
+  };
+}
+
+function validateAndNormalize<T>(schema: z.ZodType<T>, report: T, kind: string): { report: T; schemaValid: boolean } {
+  const result = schema.safeParse(report);
+  if (result.success) {
+    return { report: result.data, schemaValid: true };
+  }
+  console.error(`⚠️  ${kind} failed self-validation against its schema:`);
+  console.error(z.prettifyError(result.error));
+  return { report, schemaValid: false };
+}
+
 /**
  * Write a JSON report to a file.
  *
@@ -346,16 +283,15 @@ export function generateReport(data: TestResultsData, grafanaVersion?: string): 
  * @param report - The report to write
  * @param outputPath - Path to write the report to
  */
-export function writeReport(report: E2ETestReport, outputPath: string): void {
-  // Ensure parent directory exists
+export function writeReport(report: E2ETestReport, outputPath: string): boolean {
+  const validated = validateAndNormalize(E2ETestReportSchema, report, 'E2E report');
   const dir = dirname(outputPath);
   if (dir !== '.') {
     mkdirSync(dir, { recursive: true });
   }
-
-  // Write JSON with pretty formatting
-  const json = JSON.stringify(report, null, 2);
+  const json = JSON.stringify(validated.report, null, 2);
   writeFileSync(outputPath, json, 'utf-8');
+  return validated.schemaValid;
 }
 
 /**
@@ -388,7 +324,9 @@ export function generateAndWriteReport(
  * @returns true if the test passed without mandatory or provisioning failures
  */
 export function isReportSuccess(report: E2ETestReport): boolean {
-  return report.summary.mandatoryFailed === 0 && report.abortReason !== 'PROVISIONING_FAILED';
+  return (
+    report.outcome === 'passed' && report.summary.mandatoryFailed === 0 && report.abortReason !== 'PROVISIONING_FAILED'
+  );
 }
 
 /**
@@ -417,82 +355,6 @@ export function formatReportSummary(report: E2ETestReport): string {
 }
 
 // ============================================
-// Multi-Guide Report Types (L3-7B)
-// ============================================
-
-/**
- * Summary statistics for a multi-guide test run (L3-7B).
- */
-export interface MultiGuideSummary {
-  /** Total number of guides tested */
-  totalGuides: number;
-  /** Number of guides that passed (no mandatory failures) */
-  passedGuides: number;
-  /** Number of guides that failed (at least one mandatory failure) */
-  failedGuides: number;
-  /** Number of guides where auth expired during testing */
-  authExpiredGuides: number;
-  /** Number of guides skipped because a dependency-chain prerequisite failed */
-  skippedGuides: number;
-  /** Aggregated step counts across all guides */
-  steps: {
-    total: number;
-    passed: number;
-    failed: number;
-    skipped: number;
-    notReached: number;
-    mandatoryFailed: number;
-    skippableFailed: number;
-  };
-  /** Total test duration across all guides in milliseconds */
-  totalDuration: number;
-}
-
-/**
- * Individual guide result in the multi-guide report (L3-7B).
- */
-export interface GuideResult {
-  /** Guide identifier */
-  id: string;
-  /** Guide title */
-  title: string;
-  /** Path to the guide file */
-  path: string;
-  /** Whether this guide passed (no mandatory failures) */
-  success: boolean;
-  /** Reason for failure/abort if any */
-  abortReason?: 'AUTH_EXPIRED' | 'MANDATORY_FAILURE' | 'SKIPPED_PREREQ' | 'PROVISIONING_FAILED';
-  /** Summary statistics for this guide */
-  summary: ReportSummary;
-  /** Duration in milliseconds */
-  duration: number;
-  sideEffects?: SideEffectClassification;
-}
-
-/**
- * Complete multi-guide E2E test report (L3-7B).
- *
- * This report aggregates results from multiple guides tested with --bundled
- * or when multiple guide paths are provided.
- */
-export interface MultiGuideReport {
-  /** Report type identifier */
-  type: 'multi-guide';
-  /** Test configuration */
-  config: ReportConfig;
-  /** Aggregated summary across all guides */
-  summary: MultiGuideSummary;
-  /** Individual guide results (condensed, without step details) */
-  guides: GuideResult[];
-  /** Full reports for each guide (includes step details) */
-  reports: E2ETestReport[];
-  /** Packages skipped before execution (remote modes). */
-  preRunSkipped?: PreRunSkip[];
-  /** Best-effort cleanup failures that did not replace the primary guide outcome. */
-  cleanupWarnings?: string[];
-}
-
-// ============================================
 // Multi-Guide Report Generation (L3-7B)
 // ============================================
 
@@ -504,9 +366,15 @@ export interface MultiGuideReport {
  */
 export function generateMultiGuideSummary(reports: E2ETestReport[]): MultiGuideSummary {
   const skippedGuides = reports.filter((r) => r.abortReason === 'SKIPPED_PREREQ').length;
-  const passedGuides = reports.filter((r) => isReportSuccess(r) && r.abortReason !== 'SKIPPED_PREREQ').length;
-  const failedGuides = reports.filter((r) => !isReportSuccess(r) && r.abortReason !== 'AUTH_EXPIRED').length;
-  const authExpiredGuides = reports.filter((r) => r.abortReason === 'AUTH_EXPIRED').length;
+  const isAuthExpired = (report: E2ETestReport): boolean =>
+    report.abortReason === 'AUTH_EXPIRED' || report.errorCode === 'AUTH_EXPIRED';
+  const passedGuides = reports.filter(
+    (r) => isReportSuccess(r) && r.abortReason !== 'SKIPPED_PREREQ' && !isAuthExpired(r)
+  ).length;
+  const failedGuides = reports.filter(
+    (r) => !isReportSuccess(r) && r.abortReason !== 'SKIPPED_PREREQ' && !isAuthExpired(r)
+  ).length;
+  const authExpiredGuides = reports.filter(isAuthExpired).length;
 
   // Aggregate step counts
   const steps = reports.reduce(
@@ -587,12 +455,38 @@ export function generateMultiGuideReport(resultsArray: TestResultsData[], grafan
   const config: ReportConfig = {
     timestamp: new Date().toISOString(),
   };
+  const startedAt = resultsArray.map((result) => result.startedAt ?? result.timestamp).sort()[0] ?? config.timestamp;
+  const endedAt =
+    resultsArray
+      .map((result) => result.endedAt ?? result.timestamp)
+      .sort()
+      .slice(-1)[0] ?? config.timestamp;
+  const reportOutcomes = new Set<E2EExecutionOutcome>(reports.map(({ outcome }) => outcome));
+  const outcomePriority: E2EExecutionOutcome[] = [
+    'infrastructure_error',
+    'configuration_error',
+    'aborted',
+    'failed',
+    'passed',
+    'skipped',
+  ];
+  const outcome = outcomePriority.find((candidate) => reportOutcomes.has(candidate)) ?? 'passed';
 
   if (grafanaVersion) {
     config.grafanaVersion = grafanaVersion;
   }
 
   return {
+    schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+    outcome,
+    runner: reports[0]?.runner ?? {
+      name: 'pathfinder-e2e-runner',
+      version: process.env.PATHFINDER_E2E_RUNNER_VERSION ?? 'source',
+      nodeVersion: process.version,
+      playwrightVersion: resolvePlaywrightVersion(),
+    },
+    startedAt,
+    endedAt,
     type: 'multi-guide',
     config,
     summary,
@@ -607,15 +501,15 @@ export function generateMultiGuideReport(resultsArray: TestResultsData[], grafan
  * @param report - The multi-guide report to write
  * @param outputPath - Path to write the report to
  */
-export function writeMultiGuideReport(report: MultiGuideReport, outputPath: string): void {
-  // Reuse writeReport's directory creation logic
+export function writeMultiGuideReport(report: MultiGuideReport, outputPath: string): boolean {
+  const validated = validateAndNormalize(MultiGuideReportSchema, report, 'Multi-guide report');
   const dir = dirname(outputPath);
   if (dir !== '.') {
     mkdirSync(dir, { recursive: true });
   }
-
-  const json = JSON.stringify(report, null, 2);
+  const json = JSON.stringify(validated.report, null, 2);
   writeFileSync(outputPath, json, 'utf-8');
+  return validated.schemaValid;
 }
 
 /**

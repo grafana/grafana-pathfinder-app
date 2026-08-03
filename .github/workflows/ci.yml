@@ -28,7 +28,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -51,7 +51,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -74,7 +74,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -97,7 +97,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -126,7 +126,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -156,7 +156,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -169,7 +169,7 @@ jobs:
 
       - name: Setup Go environment
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: '1.26'
 
@@ -194,7 +194,7 @@ jobs:
     env:
       GRAFANA_ACCESS_POLICY_TOKEN: ${{ secrets.GRAFANA_ACCESS_POLICY_TOKEN }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -222,7 +222,7 @@ jobs:
 
       - name: Setup Go environment
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: '1.26'
 
@@ -306,6 +306,93 @@ jobs:
 
           echo "All required jobs passed!"
 
+  # Alerts #grafana-pathfinder-alerts on main-branch CI failures only.
+  notify-ci-failure:
+    name: Notify CI failure
+    needs: [lint, typecheck, prettier, test, validate-packages, build, test-backend]
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      (needs.lint.result == 'failure' ||
+       needs.typecheck.result == 'failure' ||
+       needs.prettier.result == 'failure' ||
+       needs.test.result == 'failure' ||
+       needs.validate-packages.result == 'failure' ||
+       needs.build.result == 'failure' ||
+       needs.test-backend.result == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # required by the shared action's checkout step
+      id-token: write # required by get-vault-secrets for OIDC auth to Vault
+      actions: read   # required to fetch job URLs from the GitHub API
+    steps:
+      - name: Build Slack payload
+        id: payload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
+          PRETTIER_RESULT: ${{ needs.prettier.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          VALIDATE_RESULT: ${{ needs.validate-packages.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          TEST_BACKEND_RESULT: ${{ needs.test-backend.result }}
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          jobs_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs")
+
+          declare -A results=(
+            ["Lint"]="$LINT_RESULT"
+            ["Typecheck"]="$TYPECHECK_RESULT"
+            ["Prettier"]="$PRETTIER_RESULT"
+            ["Test"]="$TEST_RESULT"
+            ["Validate packages"]="$VALIDATE_RESULT"
+            ["Build"]="$BUILD_RESULT"
+            ["Test backend"]="$TEST_BACKEND_RESULT"
+          )
+
+          nl=$'\n'
+          text="*CI failed on \`main\`*${nl}*Failed jobs:*"
+          for name in "Lint" "Typecheck" "Prettier" "Test" "Validate packages" "Build" "Test backend"; do
+            if [[ "${results[$name]}" == "failure" ]]; then
+              url=$(echo "$jobs_json" | jq -r --arg n "$name" '.jobs[] | select(.name == $n) | .html_url')
+              text="${text}${nl}• <${url}|${name}>"
+            fi
+          done
+
+          payload=$(jq -n \
+            --arg text "$text" \
+            --arg run_url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" \
+            --arg sha "${SHA}" \
+            --arg actor "${ACTOR}" \
+            '{
+              channel: "C0A2VAPHCBT",
+              text: "CI failed on main",
+              blocks: [
+                {
+                  type: "section",
+                  text: { type: "mrkdwn", text: $text }
+                },
+                {
+                  type: "section",
+                  text: { type: "mrkdwn", text: "<\($run_url)|Open CI run>\nCommit: `\($sha)` \u00b7 triggered by `\($actor)`" }
+                }
+              ]
+            }')
+
+          echo "payload<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$payload" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack
+        uses: grafana/shared-workflows/actions/send-slack-message@551bc8d50017d3e95d5da3f8a4826e733a208dc0 # send-slack-message/v3.0.2
+        with:
+          method: chat.postMessage
+          payload: ${{ steps.payload.outputs.payload }}
+
   # Resolve E2E versions runs in parallel (no dependency on build)
   resolve-versions:
     name: Resolve e2e images
@@ -317,7 +404,7 @@ jobs:
       matrix: ${{ steps.resolve-versions.outputs.matrix }}
       has-e2e: ${{ steps.check-for-e2e.outputs.has-e2e }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Check for E2E
@@ -349,7 +436,7 @@ jobs:
       contents: read # Read repository contents
       pull-requests: write # Upload test report artifacts to PRs
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - name: Download plugin
@@ -427,7 +514,7 @@ jobs:
       contents: read # Checkout to access the comment-generation script
       pull-requests: write # Comment on PRs with the e2e results table
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 

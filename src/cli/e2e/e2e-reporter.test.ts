@@ -6,7 +6,19 @@
  * undercount and lose the skip reason relative to the console summary.
  */
 
-import { generateMultiGuideReport, type TestResultsData } from './e2e-reporter';
+import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+
+import { E2E_REPORT_SCHEMA_VERSION, E2ETestReportSchema, type E2ETestReport } from './schemas/e2e-report.schema';
+import {
+  contentDigest,
+  generateMultiGuideReport,
+  generateReport,
+  isReportSuccess,
+  writeReport,
+  type TestResultsData,
+} from './e2e-reporter';
 
 function ranGuide(id: string, opts: { failed?: boolean } = {}): TestResultsData {
   return {
@@ -82,5 +94,127 @@ describe('generateMultiGuideReport — dependency-skipped guides', () => {
 
     const failedResult = report.guides.find((g) => g.id === 'cloud-guide');
     expect(failedResult).toMatchObject({ abortReason: 'PROVISIONING_FAILED', success: false });
+  });
+});
+
+describe('versioned report contract', () => {
+  it('includes normalized outcome, provenance, target, timestamps, and content digest', () => {
+    const report = generateReport({
+      ...ranGuide('always-passes'),
+      guide: {
+        ...ranGuide('always-passes').guide,
+        contentDigest: contentDigest('fixture'),
+        sourceUrl: 'https://cdn.example/always-passes/content.json',
+      },
+      startedAt: '2026-01-01T00:00:00.000Z',
+      endedAt: '2026-01-01T00:00:01.000Z',
+    });
+
+    expect(report).toMatchObject({
+      schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+      outcome: 'passed',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      endedAt: '2026-01-01T00:00:01.000Z',
+      target: { url: 'http://localhost:3000' },
+      runner: { name: 'pathfinder-e2e-runner' },
+      guide: {
+        sourceUrl: 'https://cdn.example/always-passes/content.json',
+        contentDigest: 'sha256:f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d',
+      },
+    });
+  });
+
+  it('generated reports validate against the Zod schema', () => {
+    const pass = generateReport(ranGuide('always-passes'));
+    const fail = generateReport(ranGuide('always-fails', { failed: true }));
+
+    expect(() => E2ETestReportSchema.parse(pass)).not.toThrow();
+    expect(() => E2ETestReportSchema.parse(fail)).not.toThrow();
+    expect(pass.outcome).toBe('passed');
+    expect(fail.outcome).toBe('failed');
+    expect(fail.errorCode).toBe('MANDATORY_FAILURE');
+  });
+});
+
+describe('report outcome classification', () => {
+  it('does not treat an explicit infrastructure outcome as successful', () => {
+    const report = generateReport({
+      guide: { id: 'capacity', title: 'capacity', path: 'capacity/content.json' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      outcome: 'infrastructure_error',
+      errorCode: 'NO_CAPACITY',
+      errorMessage: 'No hot stack is available',
+      results: [],
+      aborted: true,
+      abortReason: 'PROVISIONING_FAILED',
+    });
+
+    expect(report).toMatchObject({
+      outcome: 'infrastructure_error',
+      errorCode: 'NO_CAPACITY',
+      abortReason: 'PROVISIONING_FAILED',
+    });
+    expect(isReportSuccess(report)).toBe(false);
+  });
+
+  it('keeps auth-expired reports out of the passed multi-guide count', () => {
+    const report = generateMultiGuideReport([
+      {
+        guide: { id: 'auth-guide', title: 'auth-guide', path: 'auth-guide/content.json' },
+        timestamp: '2026-01-01T00:00:00.000Z',
+        outcome: 'aborted',
+        errorCode: 'AUTH_EXPIRED',
+        errorMessage: 'Session expired',
+        results: [],
+        aborted: true,
+        abortReason: 'AUTH_EXPIRED',
+      },
+    ]);
+
+    expect(report.summary).toMatchObject({
+      passedGuides: 0,
+      failedGuides: 0,
+      authExpiredGuides: 1,
+    });
+  });
+});
+
+describe('writeReport self-validation', () => {
+  let dir: string;
+  let errorSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'e2e-report-'));
+    errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('writes a normalized report and strips unknown keys', () => {
+    const report = { ...generateReport(ranGuide('always-passes')), bogusField: 'nope' } as unknown as E2ETestReport;
+    const out = join(dir, 'report.json');
+
+    const schemaValid = writeReport(report, out);
+
+    const written = JSON.parse(readFileSync(out, 'utf-8'));
+    expect(written.bogusField).toBeUndefined();
+    expect(written.outcome).toBe('passed');
+    expect(schemaValid).toBe(true);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('still writes a diagnostic report when validation fails', () => {
+    const invalid = { schemaVersion: '1.0.0', outcome: 'not-a-real-outcome' } as unknown as E2ETestReport;
+    const out = join(dir, 'report.json');
+
+    const schemaValid = writeReport(invalid, out);
+
+    const written = JSON.parse(readFileSync(out, 'utf-8'));
+    expect(written.outcome).toBe('not-a-real-outcome');
+    expect(schemaValid).toBe(false);
+    expect(errorSpy).toHaveBeenCalled();
   });
 });

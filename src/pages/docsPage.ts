@@ -1,6 +1,6 @@
 import { EmbeddedScene, SceneAppPage, SceneFlexItem, SceneFlexLayout } from '@grafana/scenes';
 import { prefixRoute } from '../utils/utils.routing';
-import { ROUTES } from '../constants';
+import { ROUTES, getConfigWithDefaults } from '../constants';
 import { CombinedLearningJourneyPanel } from '../components/docs-panel/docs-panel';
 
 export const docsPage = new SceneAppPage({
@@ -12,13 +12,18 @@ export const docsPage = new SceneAppPage({
 });
 
 function contextScene() {
+  // Scene construction is outside Grafana's plugin context provider, so read the
+  // config `plugin.init` publishes. An empty config here reads as "dev mode off"
+  // and makes the model prune authorized Dev Tools tabs during restore.
+  const config = getConfigWithDefaults((window as any).__pathfinderPluginConfig || {});
+
   return new EmbeddedScene({
     body: new SceneFlexLayout({
       children: [
         new SceneFlexItem({
           width: '100%',
           height: 600,
-          body: new CombinedLearningJourneyPanel({}), // Pass empty config, will use defaults
+          body: new CombinedLearningJourneyPanel(config),
         }),
       ],
     }),

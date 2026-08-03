@@ -33,6 +33,11 @@ interface PendingOpenInfo {
  * Manages sidebar mounting and unmounting.
  */
 class GlobalSidebarState {
+  // Despite the name, this means "some Pathfinder surface is mounted" — set by
+  // the sidebar, the floating panel, AND the full-screen page. As of #1450 every
+  // one of those surfaces registers `useAutoOpenListener`, so a `true` value now
+  // also implies "the auto-open listener is ready," which is what the dispatch
+  // sites (link interception, HomePanel) actually gate on.
   private _isSidebarMounted = false;
   private _pendingOpenInfo: PendingOpenInfo | null = null;
 

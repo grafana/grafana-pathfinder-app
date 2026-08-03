@@ -24,7 +24,7 @@ function makeContent(overrides: Record<string, unknown> = {}): any {
   return {
     type: 'learning-journey',
     url: 'https://example.com/journey/final',
-    metadata: { learningJourney: { totalMilestones: 5 } },
+    metadata: { learningJourney: { baseUrl: 'https://example.com/journey-canonical', totalMilestones: 5 } },
     ...overrides,
   };
 }
@@ -118,7 +118,12 @@ describe('useLastMilestoneAutoComplete', () => {
       })
     );
     jest.runAllTimers();
-    expect(markMilestoneDoneMock).toHaveBeenCalledWith('https://example.com/journey/', 'final-slug', 5);
+    expect(markMilestoneDoneMock).toHaveBeenCalledWith(
+      'https://example.com/journey-canonical',
+      'final-slug',
+      5,
+      expect.objectContaining({ guideTitle: 'Journey' })
+    );
   });
 
   it('clears the timeout on unmount', () => {

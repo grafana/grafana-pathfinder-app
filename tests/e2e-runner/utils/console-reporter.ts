@@ -7,7 +7,7 @@
  * @see docs/developer/E2E_TESTING.md#console-output
  */
 
-import { StepTestResult, AllStepsResult, summarizeResults } from './guide-runner';
+import { StepTestResult, AllStepsResult, summarizeResults, skippableFailuresAffectSuccess } from './guide-runner';
 
 // ============================================
 // Constants
@@ -274,7 +274,10 @@ export function printDetailedSummary(
         console.log(`  └─ Mandatory failures: ${summary.mandatoryFailed} (affects overall result)`);
       }
       if (summary.skippableFailed > 0) {
-        console.log(`  └─ Skippable failures: ${summary.skippableFailed} (does not affect overall result)`);
+        const impact = skippableFailuresAffectSuccess(summary)
+          ? 'affects overall result: no verified pass'
+          : 'does not affect overall result';
+        console.log(`  └─ Skippable failures: ${summary.skippableFailed} (${impact})`);
       }
     }
 
