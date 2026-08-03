@@ -334,14 +334,13 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 0,
-    // Flexible width that respects container bounds
     flex: '1 1 80px',
-    minWidth: 0, // Allow flex shrinking below content size
-    maxWidth: '220px', // Still cap maximum width for aesthetics
+    minWidth: 0,
+    maxWidth: '220px',
     position: 'relative',
     transition: 'all 0.2s ease',
     color: theme.colors.text.secondary,
-    overflow: 'hidden', // Prevent content overflow
+    overflow: 'hidden',
     '&:hover': {
       backgroundColor: 'transparent',
       color: theme.colors.text.primary,
@@ -352,7 +351,6 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     '&:not(:first-child)': {
       marginLeft: theme.spacing(0.25),
     },
-    // Underline (hidden by default, shown on active)
     '&::after': {
       content: '""',
       position: 'absolute',
@@ -370,7 +368,6 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: 'transparent',
     color: theme.colors.text.primary,
     fontWeight: theme.typography.fontWeightMedium,
-    // Primary blue underline like Grafana UI Tabs
     '&::after': {
       backgroundImage: theme.colors.gradients.brandHorizontal,
     },
@@ -382,8 +379,8 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     gap: theme.spacing(1),
     width: '100%',
-    minWidth: 0, // Allow shrinking to fit parent
-    overflow: 'hidden', // Prevent overflow
+    minWidth: 0,
+    overflow: 'hidden',
   }),
   tabIcon: css({
     label: 'combined-journey-tab-icon',
@@ -398,22 +395,23 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     fontWeight: 'inherit',
     color: 'inherit',
     flex: 1,
-    minWidth: 0, // Critical for allowing text truncation in flex containers
-    maxWidth: '100%', // Ensure it doesn't exceed parent
+    minWidth: 0,
+    maxWidth: '100%',
   }),
   editorTabTitle: css({
     label: 'combined-journey-editor-tab-title',
     fontWeight: theme.typography.fontWeightLight,
   }),
-  // Italics mark a tab whose content has diverged from its saved remote entry.
   editorTabTitleModified: css({
     label: 'combined-journey-editor-tab-title-modified',
     fontStyle: 'italic',
   }),
   editorTabStatusBadge: css({
     label: 'combined-journey-editor-tab-status-badge',
-    flexShrink: 0,
-    // Compact so the badge fits tab chrome without dominating the title.
+    // Shrink/clip under pressure so the close control stays in frame.
+    flexShrink: 1,
+    minWidth: 0,
+    overflow: 'hidden',
     fontSize: '10px',
     padding: `0 ${theme.spacing(0.5)}`,
     lineHeight: '16px',
