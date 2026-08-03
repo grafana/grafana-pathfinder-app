@@ -85,8 +85,6 @@ export class ButtonHandler {
     // Clear any existing highlights before performing action
     this.navigationManager.clearAllHighlights();
 
-    let unreached = 0;
-
     // Do mode: ensure visibility then click, don't highlight
     for (const button of buttons) {
       // Validate visibility before interaction
@@ -99,16 +97,10 @@ export class ButtonHandler {
       await this.navigationManager.ensureElementVisible(button);
 
       if (target) {
-        if (!(await clickToTargetState(button, target, this.waitForReactUpdates))) {
-          unreached++;
-        }
+        await clickToTargetState(button, target, this.waitForReactUpdates);
       } else {
         button.click();
       }
-    }
-
-    if (unreached > 0) {
-      throw new Error(`Could not reach the requested state for ${unreached} of ${buttons.length} element(s)`);
     }
   }
 

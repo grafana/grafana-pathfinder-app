@@ -196,6 +196,29 @@ describe('installLiveTabExecutor', () => {
     uninstall();
   });
 
+  // Paired-tab runs replay the command on the live tab. Dropping targetState
+  // here would make the live tab blind-click a toggle that the controller-side
+  // guide explicitly asked to put in a given state.
+  it('carries targetState from the command onto the replayed action', async () => {
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'toggle-step',
+      runId: 'run-1',
+      action: { targetAction: 'highlight', refTarget: '#drawer-toggle', targetState: true },
+    });
+
+    await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalled());
+    expect(executeOf(FocusHandler)).toHaveBeenCalledWith(expect.objectContaining({ targetState: true }), true);
+    uninstall();
+  });
+
   it('paces each composite action through show then do', async () => {
     const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);

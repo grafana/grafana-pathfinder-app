@@ -159,6 +159,7 @@ export function installLiveTabExecutor(
       refTarget: action.refTarget ?? '',
       targetAction: action.targetAction,
       targetValue: action.targetValue,
+      targetState: action.targetState,
       targetComment: action.targetComment,
       tagName: 'button',
       textContent: `${isShow ? 'Show me' : 'Do'}: ${action.refTarget ?? ''}`,

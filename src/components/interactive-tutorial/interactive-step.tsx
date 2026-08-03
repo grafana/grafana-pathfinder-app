@@ -714,7 +714,7 @@ export const InteractiveStep = forwardRef<
           phase: 'show',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
         });
         if (!doIt) {
           // Simple controller steps complete optimistically because no live acknowledgement is available.
@@ -772,6 +772,7 @@ export const InteractiveStep = forwardRef<
       targetAction,
       refTarget,
       currentTargetValue,
+      targetState,
       targetComment,
       doIt,
       disabled,
@@ -825,7 +826,7 @@ export const InteractiveStep = forwardRef<
           phase: 'do',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
         });
         // Simple controller steps complete optimistically because no live acknowledgement is available.
         persistCompletion();
@@ -866,6 +867,7 @@ export const InteractiveStep = forwardRef<
       executeStep,
       targetAction,
       currentTargetValue,
+      targetState,
       analyticsStepMeta,
       mode,
       controllerChannel,

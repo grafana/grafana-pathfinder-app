@@ -6,6 +6,7 @@ export interface CrossTabInternalAction {
   targetAction: string;
   refTarget?: string;
   targetValue?: string;
+  targetState?: boolean | string;
   targetComment?: string;
 }
 
@@ -13,6 +14,7 @@ export interface CrossTabAction {
   targetAction: string;
   refTarget: string;
   targetValue?: string;
+  targetState?: boolean | string;
   targetComment?: string;
   internalActions?: CrossTabInternalAction[];
 }

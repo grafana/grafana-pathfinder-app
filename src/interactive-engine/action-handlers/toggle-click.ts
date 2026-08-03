@@ -4,14 +4,18 @@ import { logger } from '../../lib/logging';
 
 /**
  * Drive a control to the state the author asked for, instead of clicking it
- * blindly. Returns false when the click ran but the state did not change, so
- * the caller can surface a failure rather than reporting a false success.
+ * blindly.
+ *
+ * A control that never reaches the requested state warns but still lets the
+ * step complete. Blocking would strand the user on a step they cannot pass,
+ * and it would make `targetState` the only action in the engine that fails
+ * hard — every other handler logs and continues.
  */
 export async function clickToTargetState(
   element: HTMLElement,
   target: TargetState,
   waitForReactUpdates: () => Promise<void>
-): Promise<boolean> {
+): Promise<void> {
   const control = findStatefulControl(element);
   const satisfied = satisfiesTargetState(control, target);
 
@@ -21,11 +25,11 @@ export async function clickToTargetState(
       target,
     });
     element.click();
-    return true;
+    return;
   }
 
   if (satisfied) {
-    return true;
+    return;
   }
 
   (control as HTMLElement).click();
@@ -36,8 +40,5 @@ export async function clickToTargetState(
       element: describeElement(element),
       target,
     });
-    return false;
   }
-
-  return true;
 }

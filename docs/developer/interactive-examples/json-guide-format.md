@@ -240,8 +240,23 @@ When a control carries its state somewhere else, name the attribute:
 { "targetstate": "data-state:open" }
 ```
 
-If the state cannot be read at all, the step clicks unconditionally and logs a
-warning, so adding `targetstate` can never make a working step worse.
+A step with `targetstate` never blocks. Requirements are unaffected — the
+control exists in both states, so `exists-reftarget` still passes and "Do it"
+stays enabled. Pressing it when the control is already in the requested state
+does nothing and marks the step complete, so the user always moves on. Two
+cases warn rather than fail:
+
+- the control exposes no readable state → clicks unconditionally, i.e. exactly
+  today's behaviour
+- the click ran but the state did not change → completes, leaving the user free
+  to set it by hand
+
+So adding `targetstate` can never make a working step worse, and can never
+strand someone mid-guide.
+
+Note that `targetstate` does not auto-complete a step on arrival — the user
+still presses "Do it". Auto-completing an already-satisfied step is what
+`objectives` is for.
 
 **Formfill Validation:**
 

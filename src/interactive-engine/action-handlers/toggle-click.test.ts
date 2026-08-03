@@ -60,9 +60,8 @@ describe('clickToTargetState — the Add new element drawer', () => {
   it('does not collapse a drawer that is already open', async () => {
     const drawer = makeAddDrawer(true);
 
-    const ok = await clickToTargetState(drawer.button, parseTargetState(true)!, waitForReactUpdates);
+    await clickToTargetState(drawer.button, parseTargetState(true)!, waitForReactUpdates);
 
-    expect(ok).toBe(true);
     expect(drawer.clicks()).toBe(0);
     expect(drawer.isOpen()).toBe(true);
     expect(drawer.panelTargetPresent()).toBe(true);
@@ -72,9 +71,8 @@ describe('clickToTargetState — the Add new element drawer', () => {
     const drawer = makeAddDrawer(false);
     expect(drawer.panelTargetPresent()).toBe(false);
 
-    const ok = await clickToTargetState(drawer.button, parseTargetState(true)!, waitForReactUpdates);
+    await clickToTargetState(drawer.button, parseTargetState(true)!, waitForReactUpdates);
 
-    expect(ok).toBe(true);
     expect(drawer.clicks()).toBe(1);
     expect(drawer.panelTargetPresent()).toBe(true);
   });
@@ -111,9 +109,8 @@ describe('clickToTargetState — the Add new element drawer', () => {
   it('closes the drawer when the author asks for the off state', async () => {
     const drawer = makeAddDrawer(true);
 
-    const ok = await clickToTargetState(drawer.button, parseTargetState(false)!, waitForReactUpdates);
+    await clickToTargetState(drawer.button, parseTargetState(false)!, waitForReactUpdates);
 
-    expect(ok).toBe(true);
     expect(drawer.isOpen()).toBe(false);
     expect(drawer.panelTargetPresent()).toBe(false);
   });
@@ -177,21 +174,21 @@ describe('clickToTargetState — unreadable and unresponsive controls', () => {
     div.addEventListener('click', onClick);
     document.body.appendChild(div);
 
-    const ok = await clickToTargetState(div, parseTargetState(true)!, waitForReactUpdates);
+    await clickToTargetState(div, parseTargetState(true)!, waitForReactUpdates);
 
-    expect(ok).toBe(true);
     expect(onClick).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('no readable state'), expect.anything());
   });
 
-  it('reports failure when the click does not move the control', async () => {
+  // Warn rather than throw: blocking would strand the user on a step they
+  // cannot pass, and no other handler in the engine fails hard.
+  it('warns but does not throw when the click does not move the control', async () => {
     const button = document.createElement('button');
     button.setAttribute('aria-expanded', 'false');
     document.body.appendChild(button);
 
-    const ok = await clickToTargetState(button, parseTargetState(true)!, waitForReactUpdates);
+    await expect(clickToTargetState(button, parseTargetState(true)!, waitForReactUpdates)).resolves.toBeUndefined();
 
-    expect(ok).toBe(false);
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('did not change'), expect.anything());
   });
 });

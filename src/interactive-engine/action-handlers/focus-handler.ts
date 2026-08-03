@@ -62,7 +62,6 @@ export class FocusHandler {
     this.navigationManager.clearAllHighlights();
 
     const target = parseTargetState(rawTargetState);
-    let unreached = 0;
 
     // Do mode: ensure visibility then click, don't highlight
     for (const element of targetElements) {
@@ -76,16 +75,10 @@ export class FocusHandler {
       await this.navigationManager.ensureElementVisible(element);
 
       if (target) {
-        if (!(await clickToTargetState(element, target, this.waitForReactUpdates))) {
-          unreached++;
-        }
+        await clickToTargetState(element, target, this.waitForReactUpdates);
       } else {
         element.click();
       }
-    }
-
-    if (unreached > 0) {
-      throw new Error(`Could not reach the requested state for ${unreached} of ${targetElements.length} element(s)`);
     }
   }
 
