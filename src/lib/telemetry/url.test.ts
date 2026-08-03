@@ -57,6 +57,15 @@ describe('stripUrlSecrets', () => {
     );
   });
 
+  // A title slug is not a secret; a share token is — it is the whole
+  // credential, and the path is otherwise kept.
+  it.each([
+    ['a public dashboard access token', '/public-dashboards/abc123def456', '/public-dashboards/redacted'],
+    ['a snapshot key', '/dashboard/snapshot/xyz789key', '/dashboard/snapshot/redacted'],
+  ])('redacts %s', (_label, path, expected) => {
+    expect(stripUrlSecrets(`https://acme.grafana.net${path}`)).toBe(`https://acme.grafana.net${expected}`);
+  });
+
   it('keeps asset paths intact', () => {
     expect(stripUrlSecrets('/public/build/app.1a2b3c.js?v=2')).toBe('/public/build/app.1a2b3c.js');
   });

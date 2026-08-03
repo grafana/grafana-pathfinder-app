@@ -20,6 +20,15 @@ export function normalizeTelemetryUrl(url: string): string {
   }
 }
 
+// The path is kept because a dashboard title is not a secret. These two are:
+// the segment after them is the whole credential — anyone holding a
+// public-dashboard access token or a snapshot key can open it unauthenticated.
+const CAPABILITY_PATH = /^(\/(?:public-dashboards|dashboard\/snapshot)\/)[^/]+/;
+
+function redactCapabilityToken(pathname: string): string {
+  return pathname.replace(CAPABILITY_PATH, '$1redacted');
+}
+
 // Session replay carries URLs its player resolves, so normalizeTelemetryUrl's
 // scheme-less `hostname/path` would break every `src`. Same redaction, but the
 // URL stays loadable.
@@ -47,10 +56,10 @@ export function stripUrlSecrets(url: string): string {
     parsed.hash = '';
     parsed.username = '';
     parsed.password = '';
-    // The path is kept whole, dashboard title slug included. It is what makes
-    // a replay navigable, it is not a secret — anyone who can see the
-    // recording can see the board — and Faro is first-party. The query string
-    // is the part that carries `var-*` filter values, and that is what goes.
+    // The path is kept, dashboard title slug included: it is what makes a
+    // replay navigable and it is not a secret. Capability tokens in the path
+    // are, and the query carries `var-*` filter values, so both of those go.
+    parsed.pathname = redactCapabilityToken(parsed.pathname);
     const isAbsolute = /^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//');
     return (isAbsolute ? parsed.href : `${parsed.pathname}`).slice(0, MAX_TELEMETRY_URL_LENGTH);
   } catch {
