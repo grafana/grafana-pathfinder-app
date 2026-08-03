@@ -1,4 +1,4 @@
-import { clickToTargetState } from './toggle-click';
+import { clickToTargetState, commentForTargetState, isAlreadyInTargetState } from './toggle-click';
 import { parseTargetState } from '../../lib/dom/toggle-state';
 
 jest.mock('../../lib/logging', () => ({
@@ -164,6 +164,57 @@ describe('clickToTargetState — Grafana Switch', () => {
     await clickToTargetState(wrapper, parseTargetState(true)!, waitForReactUpdates);
 
     expect(input.checked).toBe(true);
+  });
+});
+
+describe('commentForTargetState', () => {
+  const NOTE = 'Already in the right position';
+
+  const button = (expanded: boolean) => {
+    const el = document.createElement('button');
+    el.setAttribute('aria-expanded', String(expanded));
+    document.body.appendChild(el);
+    return el;
+  };
+
+  it('leaves the comment alone when there is something to do', () => {
+    expect(commentForTargetState('<p>Open it</p>', button(false), true)).toBe('<p>Open it</p>');
+  });
+
+  it('leaves the comment alone when no targetState is authored', () => {
+    expect(commentForTargetState('<p>Click it</p>', button(true), undefined)).toBe('<p>Click it</p>');
+  });
+
+  it('explains above the author comment when nothing needs changing', () => {
+    const result = commentForTargetState('<p>Open it</p>', button(true), true)!;
+
+    expect(result).toContain(NOTE);
+    expect(result).toContain('<p>Open it</p>');
+    expect(result.indexOf(NOTE)).toBeLessThan(result.indexOf('Open it'));
+  });
+
+  it('stands alone when the author wrote no comment', () => {
+    const result = commentForTargetState(undefined, button(true), true)!;
+
+    expect(result).toContain(NOTE);
+  });
+
+  it('says nothing when the state cannot be read, since we still click', () => {
+    const div = document.createElement('div');
+    document.body.appendChild(div);
+
+    expect(isAlreadyInTargetState(div, true)).toBe(false);
+    expect(commentForTargetState('<p>Click it</p>', div, true)).toBe('<p>Click it</p>');
+  });
+
+  it('honours the explicitly named attribute form', () => {
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-state', 'open');
+    wrapper.innerHTML = '<input type="checkbox">';
+    document.body.appendChild(wrapper);
+
+    expect(commentForTargetState('<p>Open it</p>', wrapper, 'data-state:open')).toContain(NOTE);
+    expect(commentForTargetState('<p>Close it</p>', wrapper, 'data-state:closed')).toBe('<p>Close it</p>');
   });
 });
 

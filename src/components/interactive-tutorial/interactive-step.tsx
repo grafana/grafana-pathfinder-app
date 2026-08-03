@@ -741,7 +741,8 @@ export const InteractiveStep = forwardRef<
               refTarget,
               currentTargetValue,
               'show',
-              targetComment
+              targetComment,
+              targetState
             );
             return outcome !== 'error';
           },

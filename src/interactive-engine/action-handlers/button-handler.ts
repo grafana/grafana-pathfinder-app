@@ -7,7 +7,7 @@ import { logger } from '../../lib/logging';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { hasStatefulControl, parseTargetState, type TargetState } from '../../lib/dom/toggle-state';
-import { clickToTargetState } from './toggle-click';
+import { clickToTargetState, commentForTargetState } from './toggle-click';
 
 export class ButtonHandler {
   constructor(
@@ -24,7 +24,7 @@ export class ButtonHandler {
       const buttons = await this.findButtons(data.refTarget, target);
 
       if (!click) {
-        await this.handleShowMode(buttons, data.targetComment);
+        await this.handleShowMode(buttons, data.targetComment, data.targetState);
         return;
       }
 
@@ -66,7 +66,11 @@ export class ButtonHandler {
     return resolved ? resolved.elements : [];
   }
 
-  private async handleShowMode(buttons: HTMLElement[], comment?: string): Promise<void> {
+  private async handleShowMode(
+    buttons: HTMLElement[],
+    comment?: string,
+    rawTargetState?: boolean | string
+  ): Promise<void> {
     // Show mode: ensure visibility and highlight, don't click - NO step completion
     for (const button of buttons) {
       // Validate visibility before interaction
@@ -77,7 +81,7 @@ export class ButtonHandler {
 
       await this.navigationManager.ensureNavigationOpen(button);
       await this.navigationManager.ensureElementVisible(button);
-      await this.navigationManager.highlightWithComment(button, comment);
+      await this.navigationManager.highlightWithComment(button, commentForTargetState(comment, button, rawTargetState));
     }
   }
 

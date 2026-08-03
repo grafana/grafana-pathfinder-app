@@ -262,9 +262,15 @@ cases warn rather than fail:
 So adding `targetstate` can never make a working step worse, and can never
 strand someone mid-guide.
 
-Note that `targetstate` does not auto-complete a step on arrival — the user
-still presses "Do it". Auto-completing an already-satisfied step is what
-`objectives` is for.
+When there is nothing to change, the comment box says so — "Already in the right
+position — nothing to change." is prepended above your own comment, so the guide
+never instructs someone to flip a control that is already correct. This applies
+to "Show me", to each step of a multistep, and to guided steps, which complete
+straight away rather than waiting for a click that would undo the state.
+
+Note that `targetstate` does not auto-complete a top-level step on arrival — the
+user still presses "Do it", it just does nothing. Auto-completing an
+already-satisfied step is what `objectives` is for.
 
 **Formfill Validation:**
 

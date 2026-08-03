@@ -929,7 +929,8 @@ export function InteractiveSection({
                 stepInfo.refTarget!,
                 stepInfo.targetValue,
                 'show',
-                stepInfo.targetComment
+                stepInfo.targetComment,
+                stepInfo.targetState
               );
 
               // Wait for highlight to be visible and animation to complete

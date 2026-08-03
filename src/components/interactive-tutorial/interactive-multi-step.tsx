@@ -408,7 +408,8 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               action.refTarget || '',
               action.targetValue,
               'show',
-              action.targetComment
+              action.targetComment,
+              action.targetState
             );
 
             // Delay between show and do with cancellation check

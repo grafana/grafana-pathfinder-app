@@ -1,11 +1,41 @@
 import { describeElement } from '../../lib/dom';
 import {
   findStatefulControl,
+  parseTargetState,
   resolveStateSource,
   satisfiesTargetState,
   type TargetState,
 } from '../../lib/dom/toggle-state';
 import { logger } from '../../lib/logging';
+
+// Rendered as HTML in the comment box, so it needs a block wrapper to sit above
+// the author's own comment rather than running into it.
+const ALREADY_IN_STATE_NOTE = '<p>Already in the right position — nothing to change.</p>';
+
+/** True when the control already satisfies the authored `targetState`. */
+export function isAlreadyInTargetState(element: Element, rawTargetState?: boolean | string): boolean {
+  const target = parseTargetState(rawTargetState);
+  if (!target) {
+    return false;
+  }
+  return satisfiesTargetState(resolveStateSource(element, target), target) === true;
+}
+
+/**
+ * Explain that there is nothing to do, so the comment box stops instructing the
+ * user to change something that is already correct. Mirrors the hidden-element
+ * warning in `navigation-manager`.
+ */
+export function commentForTargetState(
+  comment: string | undefined,
+  element: Element,
+  rawTargetState?: boolean | string
+): string | undefined {
+  if (!isAlreadyInTargetState(element, rawTargetState)) {
+    return comment;
+  }
+  return comment ? `${ALREADY_IN_STATE_NOTE}${comment}` : ALREADY_IN_STATE_NOTE;
+}
 
 /**
  * Drive a control to the state the author asked for, instead of clicking it

@@ -19,6 +19,7 @@ import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 import { matchFormValue } from '../auto-completion/action-matcher';
 import { applyE2ECommentBoxAttributes } from '../e2e-attributes';
+import { commentForTargetState } from './toggle-click';
 
 export type { CompletionResult };
 
@@ -176,7 +177,9 @@ export class GuidedHandler {
         targetAction,
         stepIndex,
         totalSteps,
-        action.targetComment,
+        // The completion listener above already resolved if the state matched,
+        // so without this the box would flash "click this" and vanish.
+        commentForTargetState(action.targetComment, targetElement, action.targetState),
         action.isSkippable,
         action.formHint, // Pass form hint for formfill validation feedback
         action.targetValue, // Pass target value for data-test-target-value attribute

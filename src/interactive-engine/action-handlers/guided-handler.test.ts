@@ -180,7 +180,7 @@ describe('GuidedHandler', () => {
       mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
 
       const result = await guidedHandler.executeGuidedStep(
-        { targetAction: 'highlight', refTarget: '#drawer', targetState: true },
+        { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: '<p>Click Add</p>' },
         0,
         1,
         5
@@ -188,6 +188,11 @@ describe('GuidedHandler', () => {
 
       expect(result).toBe('completed');
       expect(button.getAttribute('aria-expanded')).toBe('true');
+      // Without the note the box would flash "Click Add" and vanish.
+      const [highlighted, shownComment] = (mockNavigationManager.highlightWithComment as jest.Mock).mock.calls[0];
+      expect(highlighted).toBe(button);
+      expect(shownComment).toContain('Already in the right position');
+      expect(shownComment).toContain('Click Add');
     });
 
     it('still waits for the user when targetState is not yet satisfied', async () => {

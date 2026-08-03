@@ -6,7 +6,7 @@ import { describeElement, isElementVisible } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { parseTargetState } from '../../lib/dom/toggle-state';
-import { clickToTargetState } from './toggle-click';
+import { clickToTargetState, commentForTargetState } from './toggle-click';
 
 export class FocusHandler {
   constructor(
@@ -31,7 +31,7 @@ export class FocusHandler {
       }
 
       if (!click) {
-        await this.handleShowMode(targetElements, data.targetComment);
+        await this.handleShowMode(targetElements, data.targetComment, data.targetState);
         return;
       }
 
@@ -42,7 +42,11 @@ export class FocusHandler {
     }
   }
 
-  private async handleShowMode(targetElements: HTMLElement[], comment?: string): Promise<void> {
+  private async handleShowMode(
+    targetElements: HTMLElement[],
+    comment?: string,
+    rawTargetState?: boolean | string
+  ): Promise<void> {
     // Show mode: ensure visibility and highlight, don't click - NO step completion
     for (const element of targetElements) {
       // Validate visibility before interaction
@@ -53,7 +57,10 @@ export class FocusHandler {
 
       await this.navigationManager.ensureNavigationOpen(element);
       await this.navigationManager.ensureElementVisible(element);
-      await this.navigationManager.highlightWithComment(element, comment);
+      await this.navigationManager.highlightWithComment(
+        element,
+        commentForTargetState(comment, element, rawTargetState)
+      );
     }
   }
 
