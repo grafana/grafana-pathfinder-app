@@ -428,7 +428,8 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               action.refTarget || '',
               action.targetValue,
               'do',
-              action.targetComment
+              action.targetComment,
+              action.targetState
             );
             if (doOutcome === 'error') {
               setFailedStepIndex(i);

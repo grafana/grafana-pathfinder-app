@@ -156,6 +156,7 @@ export const JsonStepSchema = z
       .string()
       .optional()
       .describe('Value for formfill or popout (formfill: input value; popout: sidebar|floating)'),
+    targetstate: TargetStateSchema,
     requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
     tooltip: z.string().optional().describe('Tooltip shown on highlighted element'),
     description: z.string().optional().describe('Step description shown to the user'),
@@ -1056,6 +1057,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'reftarget',
 
     'targetvalue',
+    'targetstate',
     'requirements',
     'tooltip',
     'description',

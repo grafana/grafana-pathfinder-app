@@ -419,6 +419,14 @@ export interface JsonStep {
   targetvalue?: string;
   /** camelCase alias for `targetvalue`. Tolerated by the runtime parser. */
   targetValue?: string;
+  /**
+   * Desired end state for a toggle target. In a multistep the engine drives the
+   * control to it; in a guided step an already-satisfied control completes
+   * without asking the user to click it.
+   */
+  targetstate?: boolean | string;
+  /** camelCase alias for `targetstate`. Tolerated by the runtime parser. */
+  targetState?: boolean | string;
   /** Requirements for this specific step */
   requirements?: string[];
   /** Tooltip shown during this step (multistep) */

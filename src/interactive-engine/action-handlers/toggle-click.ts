@@ -1,7 +1,7 @@
 import { describeElement } from '../../lib/dom';
 import {
-  findAttributeSource,
   findStatefulControl,
+  resolveStateSource,
   satisfiesTargetState,
   type TargetState,
 } from '../../lib/dom/toggle-state';
@@ -24,7 +24,7 @@ export async function clickToTargetState(
   const control = findStatefulControl(element);
   // Read where the state lives, click the control that changes it — they are
   // not always the same element.
-  const stateSource = target.attribute ? (findAttributeSource(element, target.attribute) ?? element) : control;
+  const stateSource = resolveStateSource(element, target);
   const satisfied = satisfiesTargetState(stateSource, target);
 
   if (satisfied === null) {

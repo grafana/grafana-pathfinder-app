@@ -110,6 +110,18 @@ export function readToggleState(element: Element): ToggleState {
   return 'unknown';
 }
 
+/**
+ * Where the state for a given target lives, relative to the selected element.
+ * An explicitly named attribute is resolved by that attribute; otherwise we
+ * descend to the nearest control that carries a standard signal.
+ */
+export function resolveStateSource(element: Element, target: TargetState): Element {
+  if (target.attribute) {
+    return findAttributeSource(element, target.attribute) ?? element;
+  }
+  return findStatefulControl(element);
+}
+
 /** `null` when the control exposes no readable state. */
 export function satisfiesTargetState(element: Element, target: TargetState): boolean | null {
   if (target.attribute) {

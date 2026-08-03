@@ -555,6 +555,28 @@ Executes multiple actions **automatically** when user clicks "Do it".
 | `objectives`   | string[]   | ❌       | Objectives tracked                |
 | `skippable`    | boolean    | ❌       | Allow skipping                    |
 
+Individual steps accept `targetstate` too, and a sequence is where toggles bite
+hardest — one blind click part-way through can remove the target the next step
+needs:
+
+```json
+{
+  "type": "multistep",
+  "content": "Open the edit sidebar and add a panel.",
+  "steps": [
+    {
+      "action": "highlight",
+      "reftarget": "button[data-testid='data-testid Dashboard Sidebar new button']",
+      "targetstate": true
+    },
+    {
+      "action": "highlight",
+      "reftarget": "div[data-testid='data-testid sidebar add new panel']"
+    }
+  ]
+}
+```
+
 #### Guided Block
 
 Highlights elements and **waits for user** to perform actions.
@@ -590,6 +612,12 @@ Highlights elements and **waits for user** to perform actions.
 | `requirements`  | string[]   | ❌       | Requirements for the block               |
 | `objectives`    | string[]   | ❌       | Objectives tracked                       |
 | `skippable`     | boolean    | ❌       | Allow skipping                           |
+
+Steps accept `targetstate` here too, with the meaning adjusted for a step the
+user performs: a control already in the requested state completes immediately
+instead of asking the user to click it. Without that, the guide would tell
+someone to click a toggle that is already correct, and their click would move it
+the wrong way.
 
 #### Quiz Block
 
