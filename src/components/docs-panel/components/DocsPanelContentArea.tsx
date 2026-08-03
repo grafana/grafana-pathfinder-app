@@ -172,7 +172,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                     from its own per-tab draft storage */}
                 <BlockEditor
                   key={activeTab.id}
-                  persistenceKey={editorTabStorageKey(activeTab.id)}
+                  storageKey={editorTabStorageKey(activeTab.id)}
                   onGuideTitleChange={(title) => model.updateEditorTabTitle(activeTab.id, title)}
                   onFocusExistingGuide={(resourceName) =>
                     model.focusEditorTabForResource(resourceName, { excludeTabId: activeTab.id })

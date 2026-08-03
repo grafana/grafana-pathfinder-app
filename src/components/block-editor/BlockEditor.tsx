@@ -73,7 +73,7 @@ export interface BlockEditorProps {
   /** Called when the working guide title changes (for tab chrome, etc.) */
   onGuideTitleChange?: (title: string) => void;
   /** Unified localStorage key for this editor tab (draft + remote binding). */
-  persistenceKey?: string;
+  storageKey?: string;
   /**
    * When loading a library guide, focus another tab already bound to that
    * resource instead of duplicating it here. Return true if focused.
@@ -225,7 +225,7 @@ function BlockEditorInner({
   onCopy,
   onDownload,
   onGuideTitleChange,
-  persistenceKey,
+  storageKey,
   onFocusExistingGuide,
 }: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
@@ -283,7 +283,11 @@ function BlockEditorInner({
 
   // Backend guides management
   const backendGuides = useBackendGuides();
-  const backendSaveFlow = useBackendSaveFlow({ editor, backendGuides, storageKey: persistenceKey });
+  const backendSaveFlow = useBackendSaveFlow({
+    editor,
+    backendGuides,
+    storageKey,
+  });
   const [isGuideLibraryOpen, setIsGuideLibraryOpen] = useState(false);
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
@@ -566,8 +570,7 @@ function BlockEditorInner({
     jsonModeState: jsonMode.jsonModeState,
     autoSave: true,
     autoSavePaused: isBlockFormOpen,
-    autoSaveDelay: persistenceKey ? 0 : undefined,
-    storageKey: persistenceKey,
+    storageKey,
     onLoad: (savedGuide, savedBlockIds, savedViewMode, savedJsonModeState) => {
       if (!hasLoadedFromStorage.current && !initialGuide) {
         hasLoadedFromStorage.current = true;
@@ -592,7 +595,6 @@ function BlockEditorInner({
     onCopy,
     onDownload,
     onNewGuide: backendSaveFlow.handleClearBackendTracking,
-    getExistingResourceNames: () => backendGuides.guides.map((g) => g.metadata.name),
   });
 
   // Handle block type selection from palette
@@ -748,8 +750,7 @@ function BlockEditorInner({
       editor.updateGuideMetadata({ title });
       if (!isIdLocked) {
         const existingNames = backendGuides.guides.map((g) => g.metadata.name);
-        const newId = generateUniqueId(title, existingNames);
-        editor.updateGuideMetadata({ id: newId });
+        editor.updateGuideMetadata({ id: generateUniqueId(title, existingNames) });
       }
     },
     [editor, isIdLocked, backendGuides.guides]

@@ -421,7 +421,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
                 as the docked tab it was expanded from. */}
             <BlockEditor
               key={activeTab.id}
-              persistenceKey={editorTabStorageKey(activeTab.id)}
+              storageKey={editorTabStorageKey(activeTab.id)}
               onGuideTitleChange={(newTitle) => panel.updateEditorTabTitle(activeTab.id, newTitle)}
               onFocusExistingGuide={(resourceName) =>
                 panel.focusEditorTabForResource(resourceName, { excludeTabId: activeTab.id })

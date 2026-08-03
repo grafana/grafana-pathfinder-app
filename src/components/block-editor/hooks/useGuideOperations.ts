@@ -93,8 +93,6 @@ export interface UseGuideOperationsOptions {
   onDownload?: (guide: JsonGuide) => void;
   /** Called when creating a new guide to clear backend tracking */
   onNewGuide?: () => void;
-  /** Library resource names to avoid when minting an id for the example template */
-  getExistingResourceNames?: () => string[];
 }
 
 /**
@@ -128,7 +126,6 @@ export function useGuideOperations(options: UseGuideOperationsOptions): UseGuide
     onCopy,
     onDownload,
     onNewGuide,
-    getExistingResourceNames,
   } = options;
 
   // Copy guide JSON to clipboard
@@ -193,17 +190,11 @@ export function useGuideOperations(options: UseGuideOperationsOptions): UseGuide
     [editor, modals, onNewGuide]
   );
 
-  // Load the example template guide with a fresh resource id so repeated
-  // "Load example" / multi-tab use does not all bind to `block-editor-tutorial`.
+  // Load the example template guide
   const handleLoadTemplate = useCallback(() => {
-    const template = blockEditorTutorial as JsonGuide;
-    const existingNames = getExistingResourceNames?.() ?? [];
-    editor.loadGuide({
-      ...template,
-      id: generateUniqueId(template.title || template.id, existingNames),
-    });
+    editor.loadGuide(blockEditorTutorial as JsonGuide);
     onNewGuide?.();
-  }, [editor, onNewGuide, getExistingResourceNames]);
+  }, [editor, onNewGuide]);
 
   return {
     handleCopy,

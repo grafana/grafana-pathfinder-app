@@ -1,5 +1,5 @@
 import { renderHook, act } from '@testing-library/react';
-import { useGuideOperations } from './useGuideOperations';
+import { generateUniqueId, useGuideOperations } from './useGuideOperations';
 import type { JsonGuide } from '../types';
 import blockEditorTutorial from '../../../bundled-interactives/block-editor-tutorial/content.json';
 
@@ -26,43 +26,25 @@ function makeOps(overrides: Partial<Parameters<typeof useGuideOperations>[0]> = 
   return { result, loadGuide };
 }
 
+describe('generateUniqueId', () => {
+  it('avoids ids already present in existingNames', () => {
+    const existing: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      existing.push(generateUniqueId('Hello', existing));
+    }
+    expect(new Set(existing).size).toBe(30);
+  });
+});
+
 describe('useGuideOperations — handleLoadTemplate', () => {
-  it('mints a distinct resource id on each example load so copies do not collide', () => {
+  it('loads the bundled tutorial as-is (same id as the template)', () => {
     const { result, loadGuide } = makeOps();
 
     act(() => {
       result.current.handleLoadTemplate();
-      result.current.handleLoadTemplate();
     });
 
-    expect(loadGuide).toHaveBeenCalledTimes(2);
-    const first = loadGuide.mock.calls[0][0] as JsonGuide;
-    const second = loadGuide.mock.calls[1][0] as JsonGuide;
-
-    expect(first.id).not.toBe(blockEditorTutorial.id);
-    expect(second.id).not.toBe(blockEditorTutorial.id);
-    expect(first.id).not.toBe(second.id);
-    expect(first.title).toBe(blockEditorTutorial.title);
-    expect(second.title).toBe(blockEditorTutorial.title);
-  });
-
-  it('avoids library resource names already claimed by a prior example load', () => {
-    const claimed: string[] = [];
-    const { result, loadGuide } = makeOps({
-      getExistingResourceNames: () => claimed,
-    });
-
-    act(() => {
-      result.current.handleLoadTemplate();
-    });
-    claimed.push((loadGuide.mock.calls[0][0] as JsonGuide).id);
-
-    act(() => {
-      result.current.handleLoadTemplate();
-    });
-
-    const secondId = (loadGuide.mock.calls[1][0] as JsonGuide).id;
-    expect(secondId).not.toBe(claimed[0]);
-    expect(claimed).not.toContain(secondId);
+    expect(loadGuide).toHaveBeenCalledWith(blockEditorTutorial);
+    expect((loadGuide.mock.calls[0][0] as JsonGuide).id).toBe(blockEditorTutorial.id);
   });
 });

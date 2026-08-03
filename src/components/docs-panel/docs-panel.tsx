@@ -96,7 +96,9 @@ import {
 import {
   clearEditorTabStorage,
   editorTabHasUnsavedWork,
+  editorTabStorageKey,
   findEditorTabIdByResourceName,
+  flushEditorDraft,
 } from '../block-editor/editor-tab-storage';
 // Import extracted hooks
 import {
@@ -632,9 +634,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
 
     // Defer when close would discard unsaved work (today: editor drafts).
-    if (closing.type === 'editor' && !options?.discardConfirmed && editorTabHasUnsavedWork(tabId)) {
-      this.setState({ pendingCloseTabId: tabId });
-      return;
+    // Flush any pending debounced draft first so the check sees current content.
+    if (closing.type === 'editor' && !options?.discardConfirmed) {
+      flushEditorDraft(editorTabStorageKey(tabId));
+      if (editorTabHasUnsavedWork(tabId)) {
+        this.setState({ pendingCloseTabId: tabId });
+        return;
+      }
     }
 
     const newTabs = currentTabs.filter((t) => t.id !== tabId);

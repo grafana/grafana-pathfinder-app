@@ -41,6 +41,14 @@ export function editorTabStorageKey(tabId: string): string {
   return `${STATE_BASE_KEY}:${tabId}`;
 }
 
+/** Pending debounced draft writers, keyed by unified storage key. */
+export const editorDraftFlushers = new Map<string, () => void>();
+
+/** Run the pending debounced draft write for this storage key, if any. */
+export function flushEditorDraft(storageKey: string): void {
+  editorDraftFlushers.get(storageKey)?.();
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -382,7 +382,7 @@ function FloatingPanelInner() {
                 the docked tab it was popped out from. */}
             <BlockEditor
               key={activeTab.id}
-              persistenceKey={editorTabStorageKey(activeTab.id)}
+              storageKey={editorTabStorageKey(activeTab.id)}
               onGuideTitleChange={(newTitle) => panel.updateEditorTabTitle(activeTab.id, newTitle)}
               onFocusExistingGuide={(resourceName) =>
                 panel.focusEditorTabForResource(resourceName, { excludeTabId: activeTab.id })

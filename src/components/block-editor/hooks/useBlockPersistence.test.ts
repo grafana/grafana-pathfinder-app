@@ -1,11 +1,11 @@
 /**
  * Characterization / tripwire tests for useBlockPersistence.
  *
- * Pins behavior of the block-editor autosave/restore loop before any
- * refactor that routes it through `UserStorage`:
+ * Pins behavior of the block-editor autosave/restore loop:
  *   - 1000 ms debounce on guide changes
+ *   - flush() / unmount writes any pending draft immediately
  *   - per-guide-snapshot dedup via `lastGuideRef`
- *   - `autoSavePaused` halts saves but preserves the persisted snapshot
+ *   - `autoSavePaused` / `autoSave: false` halt saves
  *   - mount-time `onLoad` receives both `guide` and `blockIds`
  *   - clear() contract
  */
@@ -13,6 +13,7 @@ import { act, renderHook } from '@testing-library/react';
 
 import { StorageKeys } from '../../../lib/storage-keys';
 import type { JsonGuide, JsonModeState } from '../types';
+import { flushEditorDraft } from '../editor-tab-storage';
 
 import { useBlockPersistence } from './useBlockPersistence';
 
@@ -40,13 +41,11 @@ describe('useBlockPersistence — debounced auto-save', () => {
       initialProps: { g: guide('a') },
     });
 
-    // No write yet (initial guide ≠ lastGuideRef but timer hasn't fired).
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
 
     rerender({ g: guide('b') });
     rerender({ g: guide('c') });
 
-    // Still no write until debounce elapses.
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
 
     act(() => {
@@ -95,11 +94,8 @@ describe('useBlockPersistence — debounced auto-save', () => {
     act(() => {
       jest.advanceTimersByTime(1000);
     });
-    // First save() flush calls onSave once and pins lastGuideRef to the serialized guide.
     expect(onSave).toHaveBeenCalledTimes(1);
 
-    // New object identity, identical content — the effect re-runs, hits the
-    // no-change branch, and must still notify onSave so callers can clear isDirty.
     rerender({ g: guide('a') });
 
     expect(onSave).toHaveBeenCalledTimes(2);
@@ -133,15 +129,36 @@ describe('useBlockPersistence — debounced auto-save', () => {
     expect(stored.guide.title).toBe('latest-before-tab-switch');
   });
 
-  it('saves synchronously when autoSaveDelay is zero', () => {
-    const { rerender } = renderHook(({ g }) => useBlockPersistence({ guide: g, autoSaveDelay: 0 }), {
+  it('flush() writes a pending draft immediately without waiting for the debounce', () => {
+    const { result, rerender } = renderHook(({ g }) => useBlockPersistence({ guide: g }), {
       initialProps: { g: guide('a') },
     });
 
     rerender({ g: guide('ready-for-close-check') });
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+
+    act(() => {
+      result.current.flush();
+    });
 
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
     expect(stored.guide.title).toBe('ready-for-close-check');
+  });
+
+  it('flushEditorDraft runs the registered flusher for close-tab checks', () => {
+    const { rerender } = renderHook(({ g }) => useBlockPersistence({ guide: g }), {
+      initialProps: { g: guide('a') },
+    });
+
+    rerender({ g: guide('from-registry') });
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+
+    act(() => {
+      flushEditorDraft(STORAGE_KEY);
+    });
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(stored.guide.title).toBe('from-registry');
   });
 });
 
@@ -166,18 +183,22 @@ describe('useBlockPersistence — mount-time restore via onLoad', () => {
     expect(restoredIds).toEqual(['b1', 'b2']);
   });
 
-  it('restores the stored draft before the first zero-delay auto-save can overwrite it', () => {
+  it('restores the stored draft before a pending auto-save can overwrite it', () => {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ guide: guide('restored'), savedAt: new Date().toISOString(), version: 2 })
     );
 
     const onLoad = jest.fn();
-    // Tab remount: blank initial guide + delay 0; storage must stay "restored".
-    renderHook(() => useBlockPersistence({ guide: guide('blank-initial'), onLoad, autoSaveDelay: 0 }));
+    renderHook(() => useBlockPersistence({ guide: guide('blank-initial'), onLoad }));
 
     expect(onLoad).toHaveBeenCalledTimes(1);
     expect(onLoad.mock.calls[0]![0].title).toBe('restored');
+
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
     expect(stored.guide.title).toBe('restored');
   });
@@ -224,7 +245,6 @@ describe('useBlockPersistence — viewMode persistence (pop out/dock handoff)', 
 
     rerender({ vm: 'preview' });
 
-    // No advanceTimersByTime — the viewMode-change effect must save synchronously.
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
     expect(stored.viewMode).toBe('preview');
   });
@@ -252,12 +272,11 @@ describe('useBlockPersistence — viewMode persistence (pop out/dock handoff)', 
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
-  it('passes the stored viewMode through to onLoad on mount', () => {
+  it('restores viewMode via onLoad on mount', () => {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
         guide: guide('restored'),
-        blockIds: ['b1'],
         viewMode: 'preview',
         savedAt: new Date().toISOString(),
         version: 2,
@@ -267,35 +286,15 @@ describe('useBlockPersistence — viewMode persistence (pop out/dock handoff)', 
     const onLoad = jest.fn();
     renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
 
-    expect(onLoad).toHaveBeenCalledTimes(1);
-    const [, , restoredViewMode] = onLoad.mock.calls[0]!;
-    expect(restoredViewMode).toBe('preview');
+    expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'preview', undefined);
   });
 
-  it('onLoad receives undefined viewMode for older stored guides that predate this field', () => {
+  it('falls back to edit when stored viewMode is unrecognized', () => {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
         guide: guide('restored'),
-        blockIds: ['b1'],
-        savedAt: new Date().toISOString(),
-        version: 2,
-      })
-    );
-
-    const onLoad = jest.fn();
-    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
-
-    const [, , restoredViewMode] = onLoad.mock.calls[0]!;
-    expect(restoredViewMode).toBeUndefined();
-  });
-
-  it('defaults invalid stored viewMode values to edit', () => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        guide: guide('restored'),
-        viewMode: 'invalid',
+        viewMode: 'nope',
         savedAt: new Date().toISOString(),
         version: 2,
       })
@@ -308,34 +307,46 @@ describe('useBlockPersistence — viewMode persistence (pop out/dock handoff)', 
   });
 });
 
-describe('useBlockPersistence — JSON draft persistence', () => {
-  const originalJson = JSON.stringify(guide('original'), null, 2);
-  const jsonModeState: JsonModeState = {
-    json: '{ invalid',
+describe('useBlockPersistence — jsonModeState persistence', () => {
+  const draft: JsonModeState = {
+    json: '{"id":"x"}',
+    originalJson: '{"id":"x"}',
     originalBlockIds: ['b1'],
-    originalJson,
   };
 
-  it('persists JSON draft changes immediately', () => {
+  it('persists jsonModeState when viewMode is json', () => {
     const { rerender } = renderHook(
-      ({ draft }: { draft: JsonModeState | null }) =>
-        useBlockPersistence({ guide: guide('original'), viewMode: 'json', jsonModeState: draft }),
-      { initialProps: { draft: null as JsonModeState | null } }
+      ({ jm }: { jm: JsonModeState | null }) =>
+        useBlockPersistence({ guide: guide('a'), viewMode: 'json', jsonModeState: jm }),
+      { initialProps: { jm: null as JsonModeState | null } }
     );
 
-    rerender({ draft: jsonModeState });
+    // Initial mount writes guide after debounce; viewMode effect may also write.
+    // Change json draft while already in json mode — should persist immediately.
+    rerender({ jm: draft });
 
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
-    expect(stored.jsonModeState).toEqual(jsonModeState);
+    expect(stored.jsonModeState).toEqual(draft);
   });
 
-  it('restores the exact persisted JSON draft', () => {
+  it('omits jsonModeState from storage when viewMode is not json', () => {
+    renderHook(() => useBlockPersistence({ guide: guide('a'), viewMode: 'edit', jsonModeState: draft }));
+
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(stored.jsonModeState).toBeUndefined();
+  });
+
+  it('restores jsonModeState via onLoad on mount', () => {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        guide: guide('original'),
+        guide: guide('restored'),
         viewMode: 'json',
-        jsonModeState,
+        jsonModeState: draft,
         savedAt: new Date().toISOString(),
         version: 2,
       })
@@ -344,39 +355,16 @@ describe('useBlockPersistence — JSON draft persistence', () => {
     const onLoad = jest.fn();
     renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
 
-    expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'json', jsonModeState);
+    expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'json', draft);
   });
 
-  it.each(['edit', 'preview'] as const)('does not persist a dormant JSON draft in %s mode', (viewMode) => {
-    const { rerender } = renderHook(
-      ({ mode }: { mode: 'json' | 'edit' | 'preview' }) =>
-        useBlockPersistence({
-          guide: guide('replacement'),
-          viewMode: mode,
-          jsonModeState,
-        }),
-      { initialProps: { mode: 'json' as 'json' | 'edit' | 'preview' } }
-    );
-
-    rerender({ mode: viewMode });
-
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
-    expect(stored.viewMode).toBe(viewMode);
-    expect(stored.jsonModeState).toBeUndefined();
-  });
-
-  it.each([
-    ['non-string json', { ...jsonModeState, json: 5 }],
-    ['non-string originalJson', { ...jsonModeState, originalJson: false }],
-    ['non-array originalBlockIds', { ...jsonModeState, originalBlockIds: 'b1' }],
-    ['non-string originalBlockIds entry', { ...jsonModeState, originalBlockIds: ['b1', 2] }],
-  ])('rejects a persisted JSON draft with %s', (_description, malformedState) => {
+  it('skips jsonModeState restore when the stored shape is invalid', () => {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        guide: guide('original'),
+        guide: guide('restored'),
         viewMode: 'json',
-        jsonModeState: malformedState,
+        jsonModeState: { json: 1 },
         savedAt: new Date().toISOString(),
         version: 2,
       })

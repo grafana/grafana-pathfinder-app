@@ -2,17 +2,17 @@
  * useBlockPersistence Hook
  *
  * Auto-save and restore functionality for the block editor using localStorage.
+ * Guide content writes are debounced; call `flush` (or unmount / close-tab) to
+ * write any pending draft immediately.
  */
 
 import { useEffect, useCallback, useRef } from 'react';
 import { BLOCK_EDITOR_STORAGE_KEY } from '../constants';
 import type { JsonGuide, JsonModeState, ViewMode } from '../types';
 import { logger } from '../../../lib/logging';
-import { readEditorStoredState, writeEditorDraftState } from '../editor-tab-storage';
+import { readEditorStoredState, editorDraftFlushers, writeEditorDraftState } from '../editor-tab-storage';
 
-/**
- * Debounce delay for auto-save (ms)
- */
+/** Debounce delay for guide-content auto-save (ms). */
 const AUTO_SAVE_DELAY = 1000;
 
 /**
@@ -35,8 +35,6 @@ export interface UseBlockPersistenceOptions {
   autoSave?: boolean;
   /** Whether auto-save is paused (e.g., while editing in a modal) */
   autoSavePaused?: boolean;
-  /** Debounce delay in milliseconds. Use 0 when close-time checks need synchronous storage. */
-  autoSaveDelay?: number;
   /** Unified editor-tab storage key (draft + remote binding). */
   storageKey?: string;
 }
@@ -47,6 +45,8 @@ export interface UseBlockPersistenceOptions {
 export interface UseBlockPersistenceReturn {
   /** Clear saved guide from localStorage */
   clear: () => void;
+  /** Write any pending debounced draft now (no-op if nothing pending). */
+  flush: () => void;
 }
 
 const STORAGE_VERSION = 2;
@@ -91,7 +91,6 @@ export function useBlockPersistence({
   onSave,
   autoSave = true,
   autoSavePaused = false,
-  autoSaveDelay = AUTO_SAVE_DELAY,
   storageKey = BLOCK_EDITOR_STORAGE_KEY,
 }: UseBlockPersistenceOptions): UseBlockPersistenceReturn {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -117,13 +116,29 @@ export function useBlockPersistence({
       logger.error('Failed to save guide to localStorage', { error: e });
     }
   }, [guide, blockIds, viewMode, jsonModeState, storageKey, onSave]);
+
   const latestSaveRef = useRef(save);
   useEffect(() => {
     latestSaveRef.current = save;
   }, [save]);
 
+  const flush = useCallback(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    if (pendingSaveRef.current) {
+      latestSaveRef.current();
+    }
+  }, []);
+
   const clear = useCallback(() => {
     try {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      pendingSaveRef.current = false;
       localStorage.removeItem(storageKey);
       lastGuideRef.current = '';
     } catch (e) {
@@ -131,8 +146,24 @@ export function useBlockPersistence({
     }
   }, [storageKey]);
 
-  // Above auto-save: with delay 0, a mount save would clobber storage with the
-  // blank initial guide before onLoad's parent re-render (chrome/close read storage).
+  // Close-tab / strip chrome read localStorage — register so they can flush first.
+  useEffect(() => {
+    editorDraftFlushers.set(storageKey, flush);
+    return () => {
+      if (editorDraftFlushers.get(storageKey) === flush) {
+        editorDraftFlushers.delete(storageKey);
+      }
+    };
+  }, [storageKey, flush]);
+
+  // Tab switch / surface handoff unmounts the editor — flush any pending draft.
+  useEffect(() => {
+    return () => {
+      flush();
+    };
+  }, [flush]);
+
+  // Restore before the first auto-save can overwrite storage with the blank initial guide.
   useEffect(() => {
     try {
       const parsed = readEditorStoredState(storageKey);
@@ -170,34 +201,19 @@ export function useBlockPersistence({
       clearTimeout(saveTimeoutRef.current);
     }
 
-    if (autoSaveDelay <= 0) {
-      save();
-      return;
-    }
-
     pendingSaveRef.current = true;
     saveTimeoutRef.current = setTimeout(() => {
       saveTimeoutRef.current = null;
       save();
-    }, autoSaveDelay);
+    }, AUTO_SAVE_DELAY);
 
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
       }
     };
-  }, [guide, autoSave, autoSavePaused, autoSaveDelay, save, onSave]);
-
-  // Switching between editor tabs unmounts the active editor. Flush its
-  // debounced guide snapshot so a quick tab switch cannot lose the last edit
-  // or make close-time unsaved-work detection observe stale storage.
-  useEffect(() => {
-    return () => {
-      if (pendingSaveRef.current) {
-        latestSaveRef.current();
-      }
-    };
-  }, []);
+  }, [guide, autoSave, autoSavePaused, save, onSave]);
 
   // Panel handoff can remount before the guide-content debounce completes.
   useEffect(() => {
@@ -213,5 +229,6 @@ export function useBlockPersistence({
 
   return {
     clear,
+    flush,
   };
 }

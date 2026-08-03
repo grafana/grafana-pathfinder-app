@@ -347,3 +347,35 @@ describe('useBackendSaveFlow — hasUnsyncedChanges', () => {
     expect(result.current.hasUnsyncedChanges).toBe(true);
   });
 });
+
+describe('useBackendSaveFlow — placeholder id mint on save', () => {
+  it('mints a unique id before first save when still on new-guide', async () => {
+    const updateGuideMetadata = jest.fn();
+    const g = guide({ id: 'new-guide', title: 'New guide' });
+    const editor = { getGuide: () => g, updateGuideMetadata };
+    const backendGuides = makeBackendGuides({
+      refreshGuides: jest.fn().mockImplementation(async () => {
+        const name = (backendGuides.saveGuide as jest.Mock).mock.calls[0][0].id;
+        backendGuides.guides = [makeGuideEntry(name, 'New guide', 'draft')];
+        return backendGuides.guides;
+      }),
+    });
+
+    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+
+    expect(updateGuideMetadata).toHaveBeenCalledWith(expect.objectContaining({ id: expect.any(String) }));
+    const mintedId = updateGuideMetadata.mock.calls[0][0].id as string;
+    expect(mintedId).not.toBe('new-guide');
+    expect(backendGuides.saveGuide).toHaveBeenCalledWith(
+      expect.objectContaining({ id: mintedId }),
+      undefined,
+      undefined,
+      'draft'
+    );
+    expect(result.current.currentGuideResourceName).toBe(mintedId);
+  });
+});

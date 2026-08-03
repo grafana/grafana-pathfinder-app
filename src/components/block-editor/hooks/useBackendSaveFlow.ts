@@ -10,10 +10,11 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { JsonGuide } from '../types';
-import { BLOCK_EDITOR_STORAGE_KEY } from '../constants';
+import { BLOCK_EDITOR_STORAGE_KEY, DEFAULT_GUIDE_METADATA } from '../constants';
 import { logger } from '../../../lib/logging';
 import { notify } from '../notify';
 import { readEditorStoredState, writeEditorRemoteState } from '../editor-tab-storage';
+import { generateUniqueId } from './useGuideOperations';
 
 /**
  * Normalize a guide id or title into a Kubernetes-style resource name:
@@ -42,6 +43,8 @@ function readRemoteBinding(storageKey: string): {
 /** Minimal interface for editor functionality needed by this hook. */
 export interface BackendSaveFlowEditorInterface {
   getGuide: () => JsonGuide;
+  /** Used when minting a unique id on first save while still on the placeholder. */
+  updateGuideMetadata?: (updates: Partial<{ id: string; title: string }>) => void;
 }
 
 /** A backend-tracked guide entry, as returned by useBackendGuides. */
@@ -149,9 +152,12 @@ export function useBackendSaveFlow({
       ? 'published'
       : 'draft';
 
-  const currentJson = JSON.stringify(editor.getGuide());
+  const currentGuide = editor.getGuide();
+  const currentJson = JSON.stringify(currentGuide);
+  // Match tab-strip chrome: bound with no sync baseline is unsynced when content exists.
   const hasUnsyncedChanges =
-    publishedStatus !== 'not-saved' && lastPublishedJson !== null && currentJson !== lastPublishedJson;
+    publishedStatus !== 'not-saved' &&
+    (lastPublishedJson === null ? currentGuide.blocks.length > 0 : currentJson !== lastPublishedJson);
 
   // Persist remote binding into the unified document whenever it changes.
   // Clearing the binding must not wipe the draft half of the same key.
@@ -222,11 +228,20 @@ export function useBackendSaveFlow({
   const orchestrateSave = useCallback(
     async (status: 'draft' | 'published') => {
       try {
-        const guide = editor.getGuide();
+        let guide = editor.getGuide();
 
         if (!guide.blocks || guide.blocks.length === 0) {
           notify('error', 'Cannot save guide', 'Add at least one block before saving.');
           return;
+        }
+
+        // First save with the placeholder id — mint so two "New guide" drafts
+        // don't both land on resource name `new-guide`.
+        if (guide.id === DEFAULT_GUIDE_METADATA.id) {
+          const existingNames = backendGuides.guides.map((g) => g.metadata.name);
+          const id = generateUniqueId(guide.title || guide.id, existingNames);
+          guide = { ...guide, id };
+          editor.updateGuideMetadata?.({ id });
         }
 
         const isUpdate = !!currentGuideResourceName;
