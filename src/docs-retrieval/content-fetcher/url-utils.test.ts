@@ -91,6 +91,9 @@ describe('url-utils', () => {
       expect(getLearningJourneyBaseUrl('https://grafana.com/docs/learning-paths/intro/')).toBe(
         'https://grafana.com/docs/learning-paths/intro'
       );
+      expect(getLearningJourneyBaseUrl('https://grafana.com/docs/learning-paths/intro/set-up/content.json')).toBe(
+        'https://grafana.com/docs/learning-paths/intro'
+      );
       expect(getLearningJourneyBaseUrl('https://grafana.com/tutorials/alerting-get-started/')).toBe(
         'https://grafana.com/tutorials/alerting-get-started'
       );
