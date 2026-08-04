@@ -8,7 +8,7 @@ import type { LearningJourneyTab } from '../../../types/content-panel.types';
 /** Recommendations home (left-rail icon). Contract surface — do not rename. */
 export const RECOMMENDATIONS_TAB_ID = 'recommendations';
 
-/** Dev Tools singleton tab id (overflow menu → one closable strip tab). Contract surface. */
+/** Dev Tools singleton (overflow menu). Contract surface. */
 export const DEVTOOLS_TAB_ID = 'devtools';
 
 /**
@@ -24,7 +24,8 @@ export const NON_CONTENT_TAB_KINDS = new Set(['recommendations', 'devtools', 'ed
  *
  * Recommendations stays in `tabs` for routing/content but uses the left-rail
  * icon instead of a strip slot. Close adjacency, strip rendering, and overflow
- * math must use this projection.
+ * math must use this projection — otherwise focus can land on a tab with no
+ * active marker.
  */
 export function getGuideStripTabs<T extends Pick<LearningJourneyTab, 'type'>>(tabs: T[]): T[] {
   return tabs.filter((tab) => tab.type !== 'recommendations');

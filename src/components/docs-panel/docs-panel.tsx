@@ -280,7 +280,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   /**
    * Remove editor / devtools tabs when their gates are off, so stale tabs
    * cannot linger in the strip after a role downgrade or a dev-mode flip.
-   * Cleared editor tabs also drop their per-tab localStorage documents.
    *
    * Gates are derived from this model's own `pluginConfig` — never from flags
    * a caller computed against a second config source, which is how restore
@@ -295,8 +294,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     this.setState({ tabs: pruned.tabs, activeTabId: pruned.activeTabId });
     if (pruned.gateClosed) {
-      // Observed gate closure — persist the strip and drop per-tab editor
-      // drafts so dead tab ids don't orphan localStorage (re-enable starts fresh).
       const keptIds = new Set(pruned.tabs.map((t) => t.id));
       for (const tab of before) {
         if (tab.type === 'editor' && !keptIds.has(tab.id)) {
@@ -644,8 +641,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       return;
     }
 
-    // Defer when close would discard unsaved work (today: editor drafts).
-    // Flush any pending debounced draft first so the check sees current content.
+    // Flush pending draft, then confirm if closing would discard unsaved work.
     if (closing.type === 'editor' && !options?.discardConfirmed) {
       flushEditorDraft(editorTabStorageKey(tabId));
       if (editorTabHasUnsavedWork(tabId)) {
@@ -657,9 +653,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     const newTabs = currentTabs.filter((t) => t.id !== tabId);
     let newActiveTabId = this.state.activeTabId;
 
-    // Only reassign focus when closing the active tab. Walk the guide strip
-    // (not raw tabs) so the recommendations rail is never chosen as a strip neighbor.
+    // Only reassign focus when closing the active tab.
     if (this.state.activeTabId === tabId) {
+      // Adjacency walks the rendered strip, not raw tab state — recommendations
+      // is strip-excluded and must not become the focus neighbor. Empty strip
+      // falls back to recommendations.
       const stripTabs = getGuideStripTabs(currentTabs);
       const closedIndex = stripTabs.findIndex((t) => t.id === tabId);
       const replacement =
@@ -752,10 +750,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return activeTab?.content ? getPreviousMilestoneUrlFromContent(activeTab.content) !== null : false;
   }
 
-  /**
-   * Open the Dev Tools view (or switch to it if already open).
-   * Singleton strip tab opened from the overflow menu when Dev Mode is on.
-   */
+  /** Open the Dev Tools view (or switch to it if already open). */
   public openDevToolsTab(): void {
     const existingTab = this.state.tabs.find((t) => t.id === DEVTOOLS_TAB_ID);
     if (existingTab) {
@@ -778,11 +773,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.setActiveTab(DEVTOOLS_TAB_ID);
   }
 
-  /**
-   * Create a guide editor tab, then focus it via `setActiveTab`.
-   * Pass `tabId` to reuse a handoff id so persistence keys match across surfaces;
-   * idempotent if that tab already exists.
-   */
+  /** Create or focus a guide editor tab. Pass `tabId` to reuse a handoff id. */
   public createEditorTab(options?: { tabId?: string }): string {
     const tabId = options?.tabId ?? this.generateTabId();
     const existing = this.state.tabs.find((t) => t.id === tabId && t.type === 'editor');
@@ -807,11 +798,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return tabId;
   }
 
-  /**
-   * Focus an editor tab already bound to `resourceName` (per-tab remote storage).
-   * Pass `excludeTabId` when loading from the library so the active tab can still
-   * reload that guide into itself.
-   */
+  /** Focus an editor tab already bound to `resourceName`. */
   public focusEditorTabForResource(resourceName: string, options?: { excludeTabId?: string }): boolean {
     const editorTabIds = this.state.tabs.filter((t) => t.type === 'editor').map((t) => t.id);
     const match = findEditorTabIdByResourceName(resourceName, editorTabIds, options?.excludeTabId);
@@ -822,9 +809,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return true;
   }
 
-  /**
-   * Sync an editor tab's chrome with its working guide title.
-   */
+  /** Update an editor tab's strip title from the working guide. */
   public updateEditorTabTitle(tabId: string, title: string): void {
     const trimmed = title.trim() || 'New Guide';
     const editorTab = this.state.tabs.find((t) => t.id === tabId);

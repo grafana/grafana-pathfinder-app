@@ -54,10 +54,10 @@ export function createUrlValidator(isDevMode: boolean): UrlValidator {
 /**
  * Validate the persisted identity/kind pair before it enters runtime state.
  *
- * Runtime behavior dispatches on `type`; only the singleton chrome tabs also
- * pin an ID. Those ID/type pairs must agree in both directions so a malformed
- * record cannot acquire privileged singleton behavior. Every other kind —
- * editor included — is free to carry whatever unique ID it was persisted with.
+ * Runtime behavior dispatches on `type`; singleton IDs remain stable identity
+ * keys. Reserved IDs and types must therefore agree in both directions so a
+ * malformed content record cannot acquire privileged singleton behavior.
+ * Editor is multi-instance and may use any unique ID.
  */
 function getCanonicalPersistedTabType(data: PersistedTabData): LearningJourneyTabType | null {
   const type: unknown = data.type ?? 'learning-journey';
@@ -139,9 +139,7 @@ export async function restoreTabsFromStorage(
         return;
       }
 
-      // Handle editor tabs specially - they have no URLs to validate.
-      // Each editor tab keeps its persisted id so it re-attaches to its
-      // per-tab draft in localStorage.
+      // Editor tabs have no URLs; keep persisted id for per-tab draft storage.
       if (type === 'editor') {
         tabs.push({
           id: data.id,

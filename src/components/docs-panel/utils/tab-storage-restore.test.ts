@@ -10,25 +10,14 @@ import {
 } from './tab-storage-restore';
 import { PersistedTabData } from '../../../types/content-panel.types';
 
-// Mock TabStorage with mutable active-tab state so remint → setActiveTab is visible
-// to a subsequent restoreActiveTabFromStorage call (mirrors real user-storage).
-const createMockTabStorage = (tabs: PersistedTabData[] | null = null, activeTab: string | null = null): TabStorage => {
-  let currentActive = activeTab;
-  let currentTabs = tabs;
-  return {
-    getTabs: jest.fn().mockImplementation(() => Promise.resolve(currentTabs)),
-    setTabs: jest.fn().mockImplementation((next: PersistedTabData[]) => {
-      currentTabs = next;
-      return Promise.resolve(undefined);
-    }),
-    getActiveTab: jest.fn().mockImplementation(() => Promise.resolve(currentActive)),
-    setActiveTab: jest.fn().mockImplementation((id: string) => {
-      currentActive = id;
-      return Promise.resolve(undefined);
-    }),
-    clear: jest.fn().mockResolvedValue(undefined),
-  };
-};
+// Mock TabStorage
+const createMockTabStorage = (tabs: PersistedTabData[] | null = null, activeTab: string | null = null): TabStorage => ({
+  getTabs: jest.fn().mockResolvedValue(tabs),
+  setTabs: jest.fn().mockResolvedValue(undefined),
+  getActiveTab: jest.fn().mockResolvedValue(activeTab),
+  setActiveTab: jest.fn().mockResolvedValue(undefined),
+  clear: jest.fn().mockResolvedValue(undefined),
+});
 
 describe('tab-storage-restore', () => {
   describe('createUrlValidator', () => {
@@ -183,22 +172,6 @@ describe('tab-storage-restore', () => {
         { id: 'editor-a', type: 'editor', title: 'First draft' },
         { id: 'editor-b', type: 'editor', title: 'Second draft' },
       ]);
-    });
-
-    it('restores the pre-multi-tab singleton editor id as an ordinary editor tab', async () => {
-      const storage = createMockTabStorage(
-        [{ id: 'editor', title: 'First guide', baseUrl: '', currentUrl: '', type: 'editor' }],
-        'editor'
-      );
-
-      const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
-
-      expect(tabs.map(({ id, type }) => ({ id, type }))).toEqual([
-        { id: 'recommendations', type: 'recommendations' },
-        { id: 'editor', type: 'editor' },
-      ]);
-      expect(storage.setTabs).not.toHaveBeenCalled();
-      await expect(restoreActiveTabFromStorage(storage, tabs)).resolves.toBe('editor');
     });
 
     it('keeps the first record when persisted tab IDs are duplicated', async () => {

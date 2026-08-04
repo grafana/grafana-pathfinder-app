@@ -37,7 +37,6 @@ export interface HeaderKebabProps {
  * "More actions" kebab menu: guide actions (Library, block selection), a
  * context-sensitive publish shortcut, view controls (pop out / dock, full
  * screen), and file actions (import, copy/download JSON, GitHub PR, tour).
- * Blank drafts come from Create Guide (new editor tab), not an in-editor reset.
  */
 export function HeaderKebab({
   isBackendAvailable,
@@ -62,7 +61,7 @@ export function HeaderKebab({
 
   const { panelMode, handleTogglePanelMode, handleGoFullScreen } = usePanelModeControls();
 
-  // Context-sensitive publish/unpublish shortcut, rendered after Library / selection.
+  // Context-sensitive publish/unpublish shortcut, rendered after the Library section.
   const moreMenuContextItem = () => {
     if (!isBackendAvailable) {
       return null;

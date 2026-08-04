@@ -71,14 +71,11 @@ export interface BlockEditorProps {
   onCopy?: (json: string) => void;
   /** Called when download is requested */
   onDownload?: (guide: JsonGuide) => void;
-  /** Called when the working guide title changes (for tab chrome, etc.) */
+  /** Called when the working guide title changes (tab chrome). */
   onGuideTitleChange?: (title: string) => void;
-  /** Unified localStorage key for this editor tab (draft + remote binding). */
+  /** Per-tab localStorage key (draft + remote binding). */
   storageKey?: string;
-  /**
-   * When loading a library guide, focus another tab already bound to that
-   * resource instead of duplicating it here. Return true if focused.
-   */
+  /** Focus another tab already bound to this library resource; return true if focused. */
   onFocusExistingGuide?: (resourceName: string) => boolean;
 }
 
@@ -289,7 +286,9 @@ function BlockEditorInner({
     backendGuides,
     storageKey,
   });
-  // Stable callback — used by import/template clear and library load binding.
+  // useBackendSaveFlow returns a fresh object literal every render, so depending
+  // on `backendSaveFlow` directly defeats the memoization below. Destructure the
+  // stable pieces and depend on those instead.
   const { setRemoteBinding } = backendSaveFlow;
   const [isGuideLibraryOpen, setIsGuideLibraryOpen] = useState(false);
 

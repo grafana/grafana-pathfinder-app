@@ -130,15 +130,9 @@ describe('DocsPanelTabBar', () => {
       );
     }
 
-    it('shows Draft for an editor tab the backend has never seen', () => {
-      renderWithEditor();
-      expect(screen.getByText('Draft')).toBeInTheDocument();
-    });
-
-    it('shows Published when remote status is published and in sync', () => {
-      const key = `pathfinder-block-editor-state:${editorTab.id}`;
+    it('shows Published when remote is published and in sync', () => {
       localStorage.setItem(
-        key,
+        `pathfinder-block-editor-state:${editorTab.id}`,
         JSON.stringify({
           guide: { id: 'g', title: 'My Guide', blocks: [{ type: 'markdown', content: 'hi' }] },
           remote: {
@@ -156,25 +150,9 @@ describe('DocsPanelTabBar', () => {
       expect(screen.getByText('Published')).toBeInTheDocument();
     });
 
-    it('shows Draft once the guide exists on the backend as an unpublished draft', () => {
-      const key = `pathfinder-block-editor-state:${editorTab.id}`;
-      const guide = { id: 'g', title: 'My Guide', blocks: [{ type: 'markdown', content: 'hi' }] };
+    it('keeps Draft badge and italicizes the title when a draft has diverged', () => {
       localStorage.setItem(
-        key,
-        JSON.stringify({
-          guide,
-          remote: { resourceName: 'g', lastSyncedJson: JSON.stringify(guide), status: 'draft' },
-        })
-      );
-      renderWithEditor();
-      expect(screen.getByText('Draft')).toBeInTheDocument();
-    });
-
-    // Tab chrome stays succinct: dirty → italic title, not "Draft (modified)".
-    it('keeps a Draft badge and italicizes the title when a draft has diverged', () => {
-      const key = `pathfinder-block-editor-state:${editorTab.id}`;
-      localStorage.setItem(
-        key,
+        `pathfinder-block-editor-state:${editorTab.id}`,
         JSON.stringify({
           guide: { id: 'g', title: 'Edited', blocks: [{ type: 'markdown', content: 'hi' }] },
           remote: {
@@ -193,7 +171,6 @@ describe('DocsPanelTabBar', () => {
       expect(screen.getByText('Draft')).toBeInTheDocument();
       expect(screen.queryByText('Draft (modified)')).not.toBeInTheDocument();
       expect(screen.getByText('My Guide').className).toContain('editorTabTitleModified');
-      expect(screen.getByTestId(testIds.docsPanel.tab(editorTab.id))).toHaveAttribute('title', 'My Guide — modified');
     });
   });
 

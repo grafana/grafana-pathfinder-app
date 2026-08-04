@@ -15,7 +15,7 @@ import type { JsonGuide } from '../types';
 import type { ModalName } from './useModalManager';
 import blockEditorTutorial from '../../../bundled-interactives/block-editor-tutorial/content.json';
 
-/** Converts a guide title to a URL-safe kebab-case slug (digits kept). */
+/** Converts a guide title to a URL-safe kebab-case slug */
 export function slugifyTitle(title: string): string {
   return (
     title
@@ -26,10 +26,7 @@ export function slugifyTitle(title: string): string {
   );
 }
 
-/**
- * Unique guide ID from a title: `<slug>-<4-char-random>`.
- * Skips candidates that already appear in `existingNames` (library resource names).
- */
+/** Generates a unique guide ID from a title, avoiding collisions with existing resource names */
 export function generateUniqueId(title: string, existingNames: string[] = []): string {
   const base = slugifyTitle(title);
   for (let i = 0; i < 20; i++) {

@@ -36,15 +36,13 @@ export interface EditorTabStoredState extends EditorTabDraftState {
   remote?: EditorTabRemoteState;
 }
 
-/** localStorage key for a given editor tab's unified state. */
 export function editorTabStorageKey(tabId: string): string {
   return `${STATE_BASE_KEY}:${tabId}`;
 }
 
-/** Pending debounced draft writers, keyed by unified storage key. */
+/** Pending debounced draft writers, keyed by storage key. */
 export const editorDraftFlushers = new Map<string, () => void>();
 
-/** Run the pending debounced draft write for this storage key, if any. */
 export function flushEditorDraft(storageKey: string): void {
   editorDraftFlushers.get(storageKey)?.();
 }
@@ -64,7 +62,6 @@ function parseRemote(raw: unknown): EditorTabRemoteState | undefined {
   };
 }
 
-/** Parse a unified editor document from localStorage. */
 export function parseEditorStoredState(raw: string | null): EditorTabStoredState | null {
   if (!raw) {
     return null;
@@ -127,21 +124,11 @@ function writeRaw(key: string, state: EditorTabStoredState): void {
   notifyEditorTabChromeListeners();
 }
 
-/** Backend lifecycle visible on an editor tab (mirrors BlockEditorHeader badges). */
 export type EditorTabChromeStatus = {
   publishedStatus: 'not-saved' | 'draft' | 'published';
   hasUnsyncedChanges: boolean;
 };
 
-/**
- * Header badge vocabulary (matches BlockEditorHeader on main):
- *   blue   "Draft" / "Draft (modified)"
- *   green  "Published"
- *   orange "Draft (modified)" / "Published (modified)"
- *
- * Tab strip uses {@link editorTabStatusBadge} — same lifecycle labels without
- * the "(modified)" suffix; dirty state is italic title + tooltip instead.
- */
 export type EditorStatusBadge = {
   text: string;
   color: 'orange' | 'blue' | 'green';
@@ -149,6 +136,7 @@ export type EditorStatusBadge = {
   tooltip: string;
 };
 
+/** Header badge labels (Draft / Published, with optional "(modified)"). */
 export function editorStatusBadge({ publishedStatus, hasUnsyncedChanges }: EditorTabChromeStatus): EditorStatusBadge {
   if (publishedStatus === 'not-saved') {
     return {
@@ -190,7 +178,7 @@ export function editorStatusBadge({ publishedStatus, hasUnsyncedChanges }: Edito
       };
 }
 
-/** Compact tab-strip badge: Draft / Published only; dirty → italic title. */
+/** Tab-strip badge: Draft / Published only; dirty → italic title. */
 export function editorTabStatusBadge(status: EditorTabChromeStatus): Omit<EditorStatusBadge, 'icon'> {
   const full = editorStatusBadge(status);
   if (status.publishedStatus === 'published') {
@@ -200,11 +188,8 @@ export function editorTabStatusBadge(status: EditorTabChromeStatus): Omit<Editor
 }
 
 /**
- * Derive strip/header chrome status from the unified per-tab document.
- * Used by the tab bar (inactive tabs included) without mounting BlockEditor.
- *
- * Applied `guide` only (same as header sync) — unapplied JSON text is ignored.
- * Follow-up: dirty on JSON buffer divergence so header/tab/close share one source.
+ * Strip chrome from per-tab storage (works for inactive tabs).
+ * Uses applied guide only — unapplied JSON buffer ignored (follow-up).
  */
 export function getEditorTabChromeStatus(tabId: string): EditorTabChromeStatus {
   try {
@@ -218,7 +203,6 @@ export function getEditorTabChromeStatus(tabId: string): EditorTabChromeStatus {
 
     const guide = state?.guide as { id?: string; title?: string; blocks?: unknown[] } | undefined;
     const hasGuideContent = Boolean(guide && Array.isArray(guide.blocks) && guide.blocks.length > 0);
-    // No sync baseline yet — treat any local content as unsynced so chrome matches close.
     if (!guide || typeof remote.lastSyncedJson !== 'string') {
       return { publishedStatus, hasUnsyncedChanges: hasGuideContent };
     }
@@ -229,15 +213,11 @@ export function getEditorTabChromeStatus(tabId: string): EditorTabChromeStatus {
   }
 }
 
-/**
- * Dirty baseline shared by BlockEditor header, tab-strip chrome, and close confirm.
- * Only id/title/blocks — matches `getGuide()` for sync purposes (ignores schemaVersion etc.).
- */
+/** id/title/blocks only — shared dirty baseline for header, strip, and close. */
 export function guideSyncSnapshot(guide: { id?: unknown; title?: unknown; blocks?: unknown }): string {
   return JSON.stringify({ id: guide.id, title: guide.title, blocks: guide.blocks });
 }
 
-/** Same-window subscribers (localStorage `storage` events do not fire in the writing window). */
 let chromeVersion = 0;
 const chromeListeners = new Set<() => void>();
 
@@ -288,7 +268,6 @@ export function writeEditorRemoteState(storageKey: string, remote: EditorTabRemo
   }
 }
 
-/** Remove all persisted state for an editor tab. */
 export function clearEditorTabStorage(tabId: string): void {
   try {
     localStorage.removeItem(editorTabStorageKey(tabId));
@@ -298,11 +277,7 @@ export function clearEditorTabStorage(tabId: string): void {
   }
 }
 
-/**
- * First editor tab (among `editorTabIds`) whose remote binding matches
- * `resourceName`. Used to focus an existing draft instead of opening a second
- * tab for the same backend guide.
- */
+/** First editor tab bound to `resourceName` (optional exclude for library reload). */
 export function findEditorTabIdByResourceName(
   resourceName: string,
   editorTabIds: string[],
@@ -320,10 +295,7 @@ export function findEditorTabIdByResourceName(
   return undefined;
 }
 
-/**
- * True when closing this editor tab would discard applied guide work
- * (never saved with local content, or diverged from lastSyncedJson).
- */
+/** True when closing would discard applied guide work. */
 export function editorTabHasUnsavedWork(tabId: string): boolean {
   try {
     const state = readEditorStoredState(editorTabStorageKey(tabId));
@@ -336,7 +308,7 @@ export function editorTabHasUnsavedWork(tabId: string): boolean {
     const remote = state?.remote;
     if (!remote?.resourceName || typeof remote.lastSyncedJson !== 'string') {
       // No sync baseline — only confirm if there's local content to lose.
-      return guide.blocks.length > 0;
+      return Boolean(guide.blocks.length > 0);
     }
 
     return guideSyncSnapshot(guide) !== remote.lastSyncedJson;

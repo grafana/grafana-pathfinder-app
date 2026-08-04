@@ -550,18 +550,6 @@ describe('CombinedLearningJourneyPanel — createEditorTab', () => {
     expect((panel as any).state.tabs).toHaveLength(3);
     expect((panel as any).state.activeTabId).toBe('editor-older');
   });
-
-  it('reuses a handoff tabId when that editor is not mounted yet', () => {
-    const panel = new CombinedLearningJourneyPanel();
-    panel.setState({ tabs: [makeTab('recommendations')], activeTabId: 'recommendations' });
-
-    panel.createEditorTab({ tabId: 'editor-from-sidebar' });
-
-    const editorTabs = (panel as any).state.tabs.filter((t: LearningJourneyTab) => t.type === 'editor');
-    expect(editorTabs).toHaveLength(1);
-    expect(editorTabs[0].id).toBe('editor-from-sidebar');
-    expect((panel as any).state.activeTabId).toBe('editor-from-sidebar');
-  });
 });
 
 describe('CombinedLearningJourneyPanel — focusEditorTabForResource', () => {

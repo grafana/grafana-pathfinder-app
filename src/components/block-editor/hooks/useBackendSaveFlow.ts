@@ -1,10 +1,11 @@
 /**
  * useBackendSaveFlow Hook
  *
- * Owns draft/publish/unpublish against the InteractiveGuide API, plus this
- * tab's server binding (`setRemoteBinding`: React state + localStorage `remote`).
- * Library load / import clear the binding via that same helper from BlockEditor;
- * they are not save operations.
+ * Owns the block editor's backend draft/publish/unpublish lifecycle:
+ * resource-name tracking, overwrite-conflict confirmation, status derivation,
+ * backend refreshes, notifications, and error handling.
+ *
+ * Extracted from BlockEditor to reduce component complexity.
  */
 
 import { useState, useCallback } from 'react';
@@ -47,7 +48,6 @@ function readRemoteBinding(storageKey: string): {
 /** Minimal interface for editor functionality needed by this hook. */
 export interface BackendSaveFlowEditorInterface {
   getGuide: () => JsonGuide;
-  /** Used when minting a unique id on first save while still on the placeholder. */
   updateGuideMetadata?: (updates: Partial<{ id: string; title: string }>) => void;
 }
 
@@ -128,7 +128,7 @@ export interface UseBackendSaveFlowReturn {
   handlePostToBackend: () => Promise<void>;
   /** Unpublish a published guide back to draft */
   performUnpublish: () => Promise<void>;
-  /** Set or clear this tab's server binding in React state and localStorage together. */
+  /** Set or clear this tab's server binding (React + localStorage). */
   setRemoteBinding: (binding: EditorRemoteBinding | null) => void;
 }
 
@@ -155,7 +155,7 @@ export function useBackendSaveFlow({
     ? (backendGuides.guides.find((g) => g.metadata.name === currentGuideResourceName)?.spec.status ?? null)
     : null;
 
-  // Library list when present; else persisted remote.status (same source as tab chrome).
+  // Library list when present; else remote.status (same source as tab chrome).
   const publishedStatus: 'not-saved' | 'draft' | 'published' = !currentGuideResourceName
     ? 'not-saved'
     : (currentGuideBackendStatus ?? readEditorStoredState(storageKey)?.remote?.status) === 'published'
@@ -164,16 +164,11 @@ export function useBackendSaveFlow({
 
   const currentGuide = editor.getGuide();
   const currentJson = guideSyncSnapshot(currentGuide);
-  // Bound with no sync baseline is unsynced when content exists (same rule as tab chrome / close).
   const hasUnsyncedChanges =
     publishedStatus !== 'not-saved' &&
     (lastPublishedJson === null ? currentGuide.blocks.length > 0 : currentJson !== lastPublishedJson);
 
-  /**
-   * One place for “this tab ↔ server resource” updates: React state + localStorage.
-   * Inactive tabs unmount this hook; strip/close/focus only read storage, so the
-   * write must happen in the same turn as setState (not a later effect).
-   */
+  /** Update React + localStorage remote binding together (inactive tabs only see storage). */
   const setRemoteBinding = useCallback(
     (binding: EditorRemoteBinding | null) => {
       if (binding === null) {
@@ -261,8 +256,7 @@ export function useBackendSaveFlow({
           return;
         }
 
-        // First save with the placeholder id — mint so two "New guide" drafts
-        // don't both land on resource name `new-guide`.
+        // Mint placeholder id so two "New guide" drafts don't collide on `new-guide`.
         if (guide.id === DEFAULT_GUIDE_METADATA.id) {
           const existingNames = backendGuides.guides.map((g) => g.metadata.name);
           const id = generateUniqueId(guide.title || guide.id, existingNames);
@@ -282,33 +276,26 @@ export function useBackendSaveFlow({
         if (!isUpdate) {
           const existingGuide = backendGuides.guides.find((g) => g.metadata.name === resourceName);
           if (existingGuide) {
-            await new Promise<void>((resolve) => {
+            return new Promise<void>((resolve) => {
               setConfirmModal({
                 isOpen: true,
                 resourceName,
                 existingTitle: existingGuide.spec.title,
                 onConfirm: async () => {
                   setConfirmModal((prev) => ({ ...prev, isOpen: false }));
-                  try {
-                    await performBackendSave(
-                      guide,
-                      existingGuide.metadata.name,
-                      existingGuide.metadata,
-                      true,
-                      status,
-                      existingGuide.spec.status ?? 'draft'
-                    );
-                  } catch (error) {
-                    logger.error('[BlockEditor] Failed to save guide', { error });
-                    notify('error', 'Save failed', error instanceof Error ? error.message : 'Unknown error');
-                  } finally {
-                    resolve();
-                  }
+                  await performBackendSave(
+                    guide,
+                    existingGuide.metadata.name,
+                    existingGuide.metadata,
+                    true,
+                    status,
+                    existingGuide.spec.status ?? 'draft'
+                  );
+                  resolve();
                 },
                 onCancel: resolve,
               });
             });
-            return;
           }
         }
 
@@ -349,7 +336,6 @@ export function useBackendSaveFlow({
       await backendGuides.unpublishGuide(currentGuideResourceName, currentGuideMetadata);
 
       await backendGuides.refreshGuides();
-      // Content unchanged; only status flips to draft — keep the sync baseline.
       setRemoteBinding({
         resourceName: currentGuideResourceName,
         lastSyncedJson: guideSyncSnapshot(editor.getGuide()),

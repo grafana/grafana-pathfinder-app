@@ -41,11 +41,13 @@ describe('useBlockPersistence — debounced auto-save', () => {
       initialProps: { g: guide('a') },
     });
 
+    // No write yet (initial guide ≠ lastGuideRef but timer hasn't fired).
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
 
     rerender({ g: guide('b') });
     rerender({ g: guide('c') });
 
+    // Still no write until debounce elapses.
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
 
     act(() => {
@@ -94,8 +96,11 @@ describe('useBlockPersistence — debounced auto-save', () => {
     act(() => {
       jest.advanceTimersByTime(1000);
     });
+    // First save() flush calls onSave once and pins lastGuideRef to the serialized guide.
     expect(onSave).toHaveBeenCalledTimes(1);
 
+    // New object identity, identical content — the effect re-runs, hits the
+    // no-change branch, and must still notify onSave so callers can clear isDirty.
     rerender({ g: guide('a') });
 
     expect(onSave).toHaveBeenCalledTimes(2);
@@ -245,6 +250,7 @@ describe('useBlockPersistence — viewMode persistence (pop out/dock handoff)', 
 
     rerender({ vm: 'preview' });
 
+    // No advanceTimersByTime — the viewMode-change effect must save synchronously.
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
     expect(stored.viewMode).toBe('preview');
   });
