@@ -1,4 +1,5 @@
 import { normalizeJsonGuideAliases } from './normalize-guide-aliases';
+import { validateGuide } from './validate-guide';
 
 describe('normalizeJsonGuideAliases', () => {
   it('renames each camelCase alias to its canonical lowercase name', () => {
@@ -7,6 +8,7 @@ describe('normalizeJsonGuideAliases', () => {
       targetAction: 'highlight',
       refTarget: '.my-element',
       targetValue: 'expected',
+      targetState: true,
     });
 
     expect(out).toEqual({
@@ -14,6 +16,21 @@ describe('normalizeJsonGuideAliases', () => {
       action: 'highlight',
       reftarget: '.my-element',
       targetvalue: 'expected',
+      targetstate: true,
+    });
+  });
+
+  it('renames targetState on nested multistep and guided steps', () => {
+    const out = normalizeJsonGuideAliases({
+      blocks: [
+        { type: 'multistep', steps: [{ action: 'button', reftarget: 'Add', targetState: 'aria-expanded:true' }] },
+      ],
+    }) as { blocks: Array<Record<string, any>> };
+
+    expect(out.blocks[0]!.steps[0]).toEqual({
+      action: 'button',
+      reftarget: 'Add',
+      targetstate: 'aria-expanded:true',
     });
   });
 
@@ -23,12 +40,16 @@ describe('normalizeJsonGuideAliases', () => {
       targetAction: 'highlight',
       reftarget: 'A',
       refTarget: 'B',
+      targetstate: true,
+      targetState: false,
     }) as Record<string, unknown>;
 
     expect(out.action).toBe('button');
     expect(out.reftarget).toBe('A');
+    expect(out.targetstate).toBe(true);
     expect(out).not.toHaveProperty('targetAction');
     expect(out).not.toHaveProperty('refTarget');
+    expect(out).not.toHaveProperty('targetState');
   });
 
   it('recurses into blocks[], multistep steps[], and nested section/conditional branches', () => {
@@ -75,5 +96,50 @@ describe('normalizeJsonGuideAliases', () => {
     expect(normalizeJsonGuideAliases(42)).toBe(42);
     expect(normalizeJsonGuideAliases(null)).toBe(null);
     expect(normalizeJsonGuideAliases(['a', 'b'])).toEqual(['a', 'b']);
+  });
+});
+
+// An alias the normalizer doesn't know is not a validation error — the schema
+// strips it and the guide comes back valid without the field. This is what the
+// missing targetState entry did: camelCase guides validated clean and lost the
+// toggle state on the way through.
+describe('camelCase aliases survive validateGuide', () => {
+  const guideWith = (block: Record<string, unknown>, step: Record<string, unknown>) => ({
+    schemaVersion: '1.0.0',
+    id: 'alias-guide',
+    title: 'Alias guide',
+    blocks: [
+      { type: 'interactive', content: 'Open the drawer', ...block },
+      { type: 'multistep', content: 'Add a panel', steps: [step] },
+    ],
+  });
+
+  it('keeps targetState as targetstate on a block and a nested step', () => {
+    const result = validateGuide(
+      guideWith(
+        { action: 'highlight', reftarget: '#drawer', targetState: true },
+        { action: 'button', reftarget: 'Add', targetState: 'aria-expanded:true' }
+      )
+    );
+
+    expect(result.isValid).toBe(true);
+    expect(result.warnings).toEqual([]);
+    const blocks = result.guide!.blocks as Array<Record<string, any>>;
+    expect(blocks[0]!.targetstate).toBe(true);
+    expect(blocks[1]!.steps[0]!.targetstate).toBe('aria-expanded:true');
+  });
+
+  it('keeps the other three aliases, so targetState is not a special case', () => {
+    const result = validateGuide(
+      guideWith(
+        { targetAction: 'formfill', refTarget: '#name', targetValue: 'demo' },
+        { targetAction: 'button', refTarget: 'Add' }
+      )
+    );
+
+    expect(result.isValid).toBe(true);
+    const blocks = result.guide!.blocks as Array<Record<string, any>>;
+    expect(blocks[0]).toMatchObject({ action: 'formfill', reftarget: '#name', targetvalue: 'demo' });
+    expect(blocks[1]!.steps[0]).toMatchObject({ action: 'button', reftarget: 'Add' });
   });
 });

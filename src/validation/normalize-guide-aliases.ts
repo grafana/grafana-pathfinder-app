@@ -1,15 +1,20 @@
 /**
  * Pre-schema normalizer: rewrites the camelCase field aliases the runtime
- * parser tolerates (`targetAction`/`refTarget`/`targetValue`) to their
- * canonical lowercase schema names, so hand-written camelCase guides pass
+ * parser tolerates (`targetAction`/`refTarget`/`targetValue`/`targetState`) to
+ * their canonical lowercase schema names, so hand-written camelCase guides pass
  * `JsonGuideSchema`. Canonical wins when both are present. Pure and
  * idempotent; runs immediately before the schema in `validateGuide`.
+ *
+ * An alias missing from this map does not fail loudly: the schema strips it and
+ * the guide validates without it, so the field is silently gone downstream.
+ * Every alias the parser reads must therefore have an entry here.
  */
 
 const FIELD_ALIASES: ReadonlyMap<string, string> = new Map([
   ['targetAction', 'action'],
   ['refTarget', 'reftarget'],
   ['targetValue', 'targetvalue'],
+  ['targetState', 'targetstate'],
 ]);
 
 export function normalizeJsonGuideAliases(raw: unknown): unknown {
