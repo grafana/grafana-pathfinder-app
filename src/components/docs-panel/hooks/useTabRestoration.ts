@@ -1,8 +1,8 @@
 /**
  * Triggers tab restoration from storage when the sidebar instance is
  * actually responsible for owning the tab surface — gated by `panelMode`
- * and by the "only non-content tabs" predicate so we don't overwrite
- * user-opened guide/docs tabs on a remount (editor chrome alone is OK).
+ * and by an empty guide strip so we don't overwrite live chrome tabs
+ * (docs, journey, editor, Dev Tools) on a remount.
  *
  * Why the dep array is `[panelMode]` only (preserved verbatim — Pattern J
  * boundary touching the `_hasRestoredTabs` instance guard, deferred to a
@@ -13,7 +13,7 @@
  *     re-fire on every tab open/close — but the in-class `_hasRestoredTabs`
  *     guard makes those re-fires no-ops, so it'd be wasted work, not a
  *     bug.
- *   - The non-content check reads `tabs` via closure capture from
+ *   - The strip-empty check reads `tabs` via closure capture from
  *     the render that registered the effect. That's safe because the
  *     restoration trigger only matters at the boundary where `panelMode`
  *     flips away from `'fullscreen'`. The `tabs` snapshot at that moment
@@ -33,18 +33,19 @@
  *
  * Contract surfaces preserved (Pattern J — pinned by
  * docs-panel.tab-restore-guard.test.ts and utils/tab-storage-restore.test.ts):
- *   - hasOnlyNonContentTabs predicate (does NOT touch tabStorage)
+ *   - getGuideStripTabs(...).length === 0 gate (does NOT touch tabStorage)
  *   - model.restoreTabsAsync() entry point (unchanged)
  *   - `_hasRestoredTabs` guard semantics (untouched on the class)
  */
 import * as React from 'react';
-import { hasOnlyNonContentTabs } from '../utils';
+import { getGuideStripTabs } from '../utils';
 import type { LearningJourneyTab, CombinedPanelState } from '../../../types/content-panel.types';
 import type { PanelMode } from '../../../global-state/panel-mode';
 
 interface TabRestorationModel {
   state: CombinedPanelState;
   restoreTabsAsync(): Promise<void>;
+  recoverLegacyEditorTab(): void;
 }
 
 export interface UseTabRestorationArgs {
@@ -56,15 +57,15 @@ export interface UseTabRestorationArgs {
 export function useTabRestoration({ model, panelMode, tabs }: UseTabRestorationArgs): void {
   // Restore tabs after storage is initialized (fixes race condition)
   React.useEffect(() => {
-    // Restore when only chrome / editor are present. Content tabs mean live
-    // user state we must not clobber; a lone Create Guide tab must not block
-    // pulling guides written by fullscreen/floating into shared tabStorage.
+    // Empty strip → hydrate from tabStorage. Any strip tab is live state.
     if (panelMode === 'fullscreen') {
       return;
     }
 
-    if (hasOnlyNonContentTabs(tabs)) {
-      model.restoreTabsAsync();
+    if (getGuideStripTabs(tabs).length === 0) {
+      void model.restoreTabsAsync().then(() => model.recoverLegacyEditorTab());
+    } else {
+      model.recoverLegacyEditorTab();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelMode]);

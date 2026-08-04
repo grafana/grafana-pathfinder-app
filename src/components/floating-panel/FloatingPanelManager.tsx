@@ -5,7 +5,7 @@ import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { useContentReset, useAutoOpenListener } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
-import { hasOnlyNonContentTabs, isNonContentTab } from '../docs-panel/utils';
+import { getGuideStripTabs, isNonContentTab } from '../docs-panel/utils';
 import { editorTabStorageKey } from '../block-editor/editor-tab-storage';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
@@ -183,10 +183,13 @@ function FloatingPanelInner() {
     // synchronously in the same commit, before this render's snapshot
     // updates — restoring on top of the just-opened guide would await
     // tabStorage and clobber it. Mirrors FullScreenPanel's gate.
-    // Only restore when no content tabs are open (editor chrome alone is OK).
+    // Empty guide strip → hydrate from storage; any strip tab is live state.
     const liveTabs = panel.state.tabs;
-    const restore = hasOnlyNonContentTabs(liveTabs) ? panel.restoreTabsAsync() : Promise.resolve();
-    restore.then(() => setRestorationDone(true));
+    const restore = getGuideStripTabs(liveTabs).length === 0 ? panel.restoreTabsAsync() : Promise.resolve();
+    restore.then(() => {
+      panel.recoverLegacyEditorTab();
+      setRestorationDone(true);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
 

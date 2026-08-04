@@ -14,6 +14,7 @@ import { useCallback } from 'react';
 import type { JsonGuide } from '../types';
 import type { ModalName } from './useModalManager';
 import blockEditorTutorial from '../../../bundled-interactives/block-editor-tutorial/content.json';
+import { editorGuideIdExists } from '../editor-tab-storage';
 
 /** Converts a guide title to a URL-safe kebab-case slug */
 export function slugifyTitle(title: string): string {
@@ -26,13 +27,13 @@ export function slugifyTitle(title: string): string {
   );
 }
 
-/** Generates a unique guide ID from a title, avoiding collisions with existing resource names */
+/** Generates a guide ID that avoids backend resources and sibling local drafts. */
 export function generateUniqueId(title: string, existingNames: string[] = []): string {
   const base = slugifyTitle(title);
   for (let i = 0; i < 20; i++) {
     const suffix = Math.random().toString(36).slice(2, 6);
     const candidate = `${base}-${suffix}`;
-    if (!existingNames.includes(candidate)) {
+    if (!existingNames.includes(candidate) && !editorGuideIdExists(candidate)) {
       return candidate;
     }
   }

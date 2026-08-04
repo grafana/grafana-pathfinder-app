@@ -7,7 +7,6 @@
  */
 
 import { useEffect, useCallback, useRef } from 'react';
-import { BLOCK_EDITOR_STORAGE_KEY } from '../constants';
 import type { JsonGuide, JsonModeState, ViewMode } from '../types';
 import { logger } from '../../../lib/logging';
 import { readEditorStoredState, editorDraftFlushers, writeEditorDraftState } from '../editor-tab-storage';
@@ -21,6 +20,8 @@ const AUTO_SAVE_DELAY = 1000;
 export interface UseBlockPersistenceOptions {
   /** Current guide data */
   guide: JsonGuide;
+  /** Local-only policy controlling whether title changes may replace guide.id. */
+  idIsLocked?: boolean;
   /** Current block IDs (to preserve across refreshes) */
   blockIds?: string[];
   /** Current view mode (to preserve across pop out/dock remounts) */
@@ -35,18 +36,8 @@ export interface UseBlockPersistenceOptions {
   autoSave?: boolean;
   /** Whether auto-save is paused (e.g., while editing in a modal) */
   autoSavePaused?: boolean;
-  /** Unified editor-tab storage key (draft + remote binding). */
-  storageKey?: string;
-}
-
-/**
- * Hook return type
- */
-export interface UseBlockPersistenceReturn {
-  /** Clear saved guide from localStorage */
-  clear: () => void;
-  /** Write any pending debounced draft now (no-op if nothing pending). */
-  flush: () => void;
+  /** Per-tab localStorage key (draft + remote). Required — no shared default. */
+  storageKey: string;
 }
 
 const STORAGE_VERSION = 2;
@@ -84,6 +75,7 @@ function restoreJsonModeState(value: unknown): JsonModeState | undefined {
  */
 export function useBlockPersistence({
   guide,
+  idIsLocked,
   blockIds,
   viewMode,
   jsonModeState,
@@ -91,8 +83,8 @@ export function useBlockPersistence({
   onSave,
   autoSave = true,
   autoSavePaused = false,
-  storageKey = BLOCK_EDITOR_STORAGE_KEY,
-}: UseBlockPersistenceOptions): UseBlockPersistenceReturn {
+  storageKey,
+}: UseBlockPersistenceOptions): void {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef(false);
   const lastGuideRef = useRef<string>('');
@@ -103,6 +95,7 @@ export function useBlockPersistence({
     try {
       writeEditorDraftState(storageKey, {
         guide,
+        idIsLocked,
         blockIds,
         viewMode,
         jsonModeState: viewMode === 'json' ? (jsonModeState ?? undefined) : undefined,
@@ -115,7 +108,7 @@ export function useBlockPersistence({
     } catch (e) {
       logger.error('Failed to save guide to localStorage', { error: e });
     }
-  }, [guide, blockIds, viewMode, jsonModeState, storageKey, onSave]);
+  }, [guide, idIsLocked, blockIds, viewMode, jsonModeState, storageKey, onSave]);
 
   const latestSaveRef = useRef(save);
   useEffect(() => {
@@ -131,20 +124,6 @@ export function useBlockPersistence({
       latestSaveRef.current();
     }
   }, []);
-
-  const clear = useCallback(() => {
-    try {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-      }
-      pendingSaveRef.current = false;
-      localStorage.removeItem(storageKey);
-      lastGuideRef.current = '';
-    } catch (e) {
-      logger.error('Failed to clear guide from localStorage', { error: e });
-    }
-  }, [storageKey]);
 
   // Close-tab / strip chrome read localStorage — register so they can flush first.
   useEffect(() => {
@@ -226,9 +205,4 @@ export function useBlockPersistence({
     lastJsonModeStateRef.current = jsonModeState;
     save();
   }, [viewMode, jsonModeState, autoSave, autoSavePaused, save]);
-
-  return {
-    clear,
-    flush,
-  };
 }

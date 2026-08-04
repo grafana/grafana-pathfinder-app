@@ -106,6 +106,9 @@ export interface DocsPanelModelOperations {
    */
   createEditorTab(options?: { tabId?: string }): string;
 
+  /** Recover and open singleton-era editor work after a surface mounts. */
+  recoverLegacyEditorTab(): void;
+
   /**
    * Focus an editor tab already bound to this backend resource.
    * Returns true when a tab was found and focused (skips loading into another tab).

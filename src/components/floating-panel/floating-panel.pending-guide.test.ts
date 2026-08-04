@@ -39,6 +39,10 @@ describe('FloatingPanelInner consumes the pending guide on mount', () => {
     // same commit; a closure'd snapshot would restore on top of it.
     expect(src).toMatch(/const liveTabs = panel\.state\.tabs/);
   });
+
+  it('skips restore when the guide strip already has tabs', () => {
+    expect(src).toContain('getGuideStripTabs(liveTabs).length === 0');
+  });
 });
 
 describe('FloatingPanelInner consumes staged guides while already mounted', () => {

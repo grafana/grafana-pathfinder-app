@@ -46,7 +46,19 @@ import {
   findSectionNestedBlockByInstanceId,
   readNestedInstanceId,
 } from './nestedBlockInstanceId';
-import { guideSyncSnapshot } from './editor-tab-storage';
+import { guideSyncSnapshot, readEditorStoredState, writeEditorDraftState } from './editor-tab-storage';
+
+function readInitialGuideIdLock(storageKey: string): boolean {
+  const stored = readEditorStoredState(storageKey);
+  if (stored?.remote) {
+    return true;
+  }
+  if (typeof stored?.idIsLocked === 'boolean') {
+    return stored.idIsLocked;
+  }
+  const storedGuide = stored?.guide as { id?: unknown } | undefined;
+  return typeof storedGuide?.id === 'string' && storedGuide.id !== DEFAULT_GUIDE_METADATA.id;
+}
 
 /**
  * Apply an author note to a block. When `note` is empty/undefined the
@@ -73,8 +85,8 @@ export interface BlockEditorProps {
   onDownload?: (guide: JsonGuide) => void;
   /** Called when the working guide title changes (tab chrome). */
   onGuideTitleChange?: (title: string) => void;
-  /** Per-tab localStorage key (draft + remote binding). */
-  storageKey?: string;
+  /** Per-tab localStorage key (draft + remote binding). Required — no shared default. */
+  storageKey: string;
   /** Focus another tab already bound to this library resource; return true if focused. */
   onFocusExistingGuide?: (resourceName: string) => boolean;
 }
@@ -227,9 +239,19 @@ function BlockEditorInner({
   onFocusExistingGuide,
 }: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
-  const editor = useBlockEditor({ initialGuide, onChange });
+  const newGuideId = useMemo(() => generateUniqueId(DEFAULT_GUIDE_METADATA.title), [storageKey]);
+  const editor = useBlockEditor({ initialGuide, newGuideId, onChange });
   const { state } = editor;
   const hasLoadedFromStorage = useRef(false);
+  const [idIsLocked, setIdIsLocked] = useState(() => readInitialGuideIdLock(storageKey));
+
+  const persistIdLock = useCallback(
+    (locked: boolean) => {
+      setIdIsLocked(locked);
+      writeEditorDraftState(storageKey, { idIsLocked: locked });
+    },
+    [storageKey]
+  );
 
   // Block editor context - replaces window globals for section/conditional editing
   const { sectionContext, conditionalContext, setGuideLintResult } = useBlockEditorContext();
@@ -246,8 +268,11 @@ function BlockEditorInner({
 
   // Keep the owning editor tab's title in sync with the working guide.
   useEffect(() => {
+    if (!initialGuide && !hasLoadedFromStorage.current && readEditorStoredState(storageKey)?.guide) {
+      return;
+    }
     onGuideTitleChange?.(state.guide.title);
-  }, [state.guide.title, onGuideTitleChange]);
+  }, [state.guide.title, onGuideTitleChange, storageKey, initialGuide]);
 
   // Modal state - useModalManager handles metadata, import, githubPr, tour
   const modals = useModalManager();
@@ -290,6 +315,11 @@ function BlockEditorInner({
   // on `backendSaveFlow` directly defeats the memoization below. Destructure the
   // stable pieces and depend on those instead.
   const { setRemoteBinding } = backendSaveFlow;
+  useEffect(() => {
+    if (backendSaveFlow.currentGuideResourceName && !idIsLocked) {
+      persistIdLock(true);
+    }
+  }, [backendSaveFlow.currentGuideResourceName, idIsLocked, persistIdLock]);
   const [isGuideLibraryOpen, setIsGuideLibraryOpen] = useState(false);
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
@@ -568,6 +598,7 @@ function BlockEditorInner({
   // Autosave / restore side effects only — clear() was for the removed New-guide path.
   useBlockPersistence({
     guide: editor.getGuide(),
+    idIsLocked,
     blockIds: editor.state.blocks.map((b) => b.id),
     viewMode: state.viewMode,
     jsonModeState: jsonMode.jsonModeState,
@@ -587,9 +618,25 @@ function BlockEditorInner({
     onSave: handlePersistenceSave,
   });
 
+  const previewProgressKey = `block-editor://preview/${state.guide.id}`;
+  const previewProgress = useGuidePreviewProgress(previewProgressKey);
+
+  const localGuideOpsEditor = useMemo(
+    () => ({
+      getGuide: editor.getGuide,
+      loadGuide: (guide: JsonGuide, savedBlockIds?: string[]) => {
+        void previewProgress.reset();
+        persistIdLock(false);
+        const existingNames = backendGuides.guides.map((g) => g.metadata.name);
+        editor.loadGuide({ ...guide, id: generateUniqueId(guide.title, existingNames) }, savedBlockIds);
+      },
+    }),
+    [editor, backendGuides.guides, persistIdLock, previewProgress.reset]
+  );
+
   // Guide operations - extracted hook for copy/download/import/template
   const guideOps = useGuideOperations({
-    editor,
+    editor: localGuideOpsEditor,
     modals,
     onCopy,
     onDownload,
@@ -638,6 +685,8 @@ function BlockEditorInner({
       if (onFocusExistingGuide?.(resourceName)) {
         return;
       }
+      void previewProgress.reset();
+      persistIdLock(true);
       editor.loadGuide(guide);
       // Bind this tab to the library resource (not a save — just local↔remote bookkeeping).
       const status = backendGuides.guides.find((g) => g.metadata.name === resourceName)?.spec.status ?? 'draft';
@@ -648,7 +697,7 @@ function BlockEditorInner({
       });
       editor.markSaved();
     },
-    [editor, setRemoteBinding, onFocusExistingGuide, backendGuides.guides]
+    [editor, setRemoteBinding, onFocusExistingGuide, backendGuides.guides, persistIdLock, previewProgress.reset]
   );
 
   // Open guide library
@@ -703,9 +752,6 @@ function BlockEditorInner({
 
   const hasBlocks = state.blocks.length > 0;
 
-  // ID is locked once it has been set (i.e. diverged from the default placeholder)
-  const isIdLocked = state.guide.id !== DEFAULT_GUIDE_METADATA.id;
-
   const pinnedPreviews = useMemo(
     () =>
       pinnedPreviewTargets
@@ -723,21 +769,19 @@ function BlockEditorInner({
   // instance id so reordering does not swap preview content. Legacy index-only pins may still
   // mis-associate until the user toggles preview again. Orphan entries are pruned on the next toggle.
 
-  // Track interactive progress for the full-guide preview so the header can render
-  // the "Reset guide" button instead of BlockPreview rendering it inside the
-  // content area (which would inject editor chrome into the rendered guide).
-  const previewProgressKey = `block-editor://preview/${state.guide.id}`;
-  const previewProgress = useGuidePreviewProgress(previewProgressKey);
-
   const handleTitleCommit = useCallback(
     (title: string) => {
       editor.updateGuideMetadata({ title });
-      if (!isIdLocked) {
+      if (!idIsLocked) {
+        // The local provisional ID is also the preview-progress key; remove
+        // that disposable progress before replacing the ID with its title slug.
+        void previewProgress.reset();
         const existingNames = backendGuides.guides.map((g) => g.metadata.name);
         editor.updateGuideMetadata({ id: generateUniqueId(title, existingNames) });
+        persistIdLock(true);
       }
     },
-    [editor, isIdLocked, backendGuides.guides]
+    [editor, idIsLocked, backendGuides.guides, persistIdLock, previewProgress.reset]
   );
 
   return (

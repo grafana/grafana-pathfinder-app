@@ -202,8 +202,9 @@ export const BLOCK_TYPE_GROUPS: ReadonlyArray<{
 ] as const;
 
 /**
- * Local storage key for persisting editor state.
- * Canonical value lives in the centralized `StorageKeys` registry.
+ * Prefix for per-tab editor documents (`${BLOCK_EDITOR_STORAGE_KEY}:${tabId}`).
+ * The bare key is singleton-era legacy only — migrated on read. Do not use as a
+ * live document key; always pass an explicit per-tab `storageKey`.
  */
 export const BLOCK_EDITOR_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_STATE;
 

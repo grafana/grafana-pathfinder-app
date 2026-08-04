@@ -9,7 +9,7 @@ export { useBlockEditor } from './useBlockEditor';
 export type { UseBlockEditorOptions, UseBlockEditorReturn } from './useBlockEditor';
 
 export { useBlockPersistence } from './useBlockPersistence';
-export type { UseBlockPersistenceOptions, UseBlockPersistenceReturn } from './useBlockPersistence';
+export type { UseBlockPersistenceOptions } from './useBlockPersistence';
 
 export { useRecordingPersistence } from './useRecordingPersistence';
 export type {

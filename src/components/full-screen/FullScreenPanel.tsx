@@ -9,7 +9,7 @@ import { useContentReset, useAutoOpenListener } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
-import { hasOnlyNonContentTabs, isNonContentTab } from '../docs-panel/utils';
+import { getGuideStripTabs, isNonContentTab } from '../docs-panel/utils';
 import { editorTabStorageKey } from '../block-editor/editor-tab-storage';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -129,10 +129,13 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     // for this render. Using the live state stops us from restoring on
     // top of a tab the handoff just opened — that would await tabStorage
     // and overwrite the new tab if storage was empty or stale.
-    // Only restore when no content tabs are open (editor chrome alone is OK).
-    // Mirrors the sidebar gate — avoids skipping restore when only Create Guide is open.
-    const restore = hasOnlyNonContentTabs(panel.state.tabs) ? panel.restoreTabsAsync() : Promise.resolve();
-    restore.then(() => setRestorationDone(true));
+    // Empty guide strip → hydrate from storage; any strip tab is live state.
+    // Mirrors FloatingPanelManager.
+    const restore = getGuideStripTabs(panel.state.tabs).length === 0 ? panel.restoreTabsAsync() : Promise.resolve();
+    restore.then(() => {
+      panel.recoverLegacyEditorTab();
+      setRestorationDone(true);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

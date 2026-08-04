@@ -10,7 +10,7 @@
 
 import { useState, useCallback } from 'react';
 import type { JsonGuide } from '../types';
-import { BLOCK_EDITOR_STORAGE_KEY, DEFAULT_GUIDE_METADATA } from '../constants';
+import { DEFAULT_GUIDE_METADATA } from '../constants';
 import { logger } from '../../../lib/logging';
 import { notify } from '../notify';
 import {
@@ -75,8 +75,8 @@ export interface UseBackendSaveFlowOptions {
   editor: BackendSaveFlowEditorInterface;
   /** Backend guide list/save/refresh/unpublish operations */
   backendGuides: BackendSaveFlowGuidesInterface;
-  /** Unified editor-tab storage key (draft + remote binding). */
-  storageKey?: string;
+  /** Per-tab localStorage key (draft + remote). Required — no shared default. */
+  storageKey: string;
 }
 
 /**
@@ -138,7 +138,7 @@ export interface UseBackendSaveFlowReturn {
 export function useBackendSaveFlow({
   editor,
   backendGuides,
-  storageKey = BLOCK_EDITOR_STORAGE_KEY,
+  storageKey,
 }: UseBackendSaveFlowOptions): UseBackendSaveFlowReturn {
   const [currentGuideResourceName, setCurrentGuideResourceName] = useState<string | null>(
     () => readRemoteBinding(storageKey).resourceName

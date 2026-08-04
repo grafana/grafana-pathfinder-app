@@ -14,6 +14,18 @@ import { StorageKeys } from '../../lib/storage-keys';
 
 const STATE_BASE_KEY = StorageKeys.BLOCK_EDITOR_STATE;
 
+/**
+ * Singleton editor tab id from before multi-draft tabs. Old tabStorage chrome
+ * and the unscoped draft migrate onto this id (`${BLOCK_EDITOR_STATE}:editor`).
+ */
+export const LEGACY_EDITOR_TAB_ID = 'editor';
+
+/** Unscoped singleton draft key (exact `BLOCK_EDITOR_STATE`, not a `:tabId` suffix). */
+const LEGACY_BLOCK_EDITOR_STATE_KEY = StorageKeys.BLOCK_EDITOR_STATE;
+
+/** Singleton-era remote binding key (resourceName + lastPublishedJson). */
+const LEGACY_BLOCK_EDITOR_BACKEND_TRACKING_KEY = StorageKeys.LEGACY_BLOCK_EDITOR_BACKEND_TRACKING;
+
 export interface EditorTabRemoteState {
   resourceName: string;
   /** Guide JSON as of the last successful backend save/load. */
@@ -24,6 +36,8 @@ export interface EditorTabRemoteState {
 /** Draft / UI half of the document. */
 export interface EditorTabDraftState {
   guide?: unknown;
+  /** Local-only policy: whether title edits may still replace guide.id. */
+  idIsLocked?: boolean;
   blockIds?: string[];
   viewMode?: string;
   jsonModeState?: unknown;
@@ -38,6 +52,72 @@ export interface EditorTabStoredState extends EditorTabDraftState {
 
 export function editorTabStorageKey(tabId: string): string {
   return `${STATE_BASE_KEY}:${tabId}`;
+}
+
+function parseLegacyBackendTracking(raw: string | null): EditorTabRemoteState | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed) || typeof parsed.resourceName !== 'string' || parsed.resourceName.length === 0) {
+      return undefined;
+    }
+    return {
+      resourceName: parsed.resourceName,
+      lastSyncedJson: typeof parsed.lastPublishedJson === 'string' ? parsed.lastPublishedJson : null,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * One-shot: singleton-era unscoped draft + backend-tracking → per-tab document
+ * at `editorTabStorageKey(LEGACY_EDITOR_TAB_ID)`. No-ops when legacy keys are
+ * absent. If the target already exists, keeps it and only removes legacy keys.
+ *
+ * @returns `true` when bare legacy keys were present (migration ran this call).
+ *   Callers then `createEditorTab({ tabId: LEGACY_EDITOR_TAB_ID })` to bind a
+ *   strip tab to that draft storage — same as any other editor handoff.
+ */
+export function migrateLegacyEditorTabStorage(): boolean {
+  try {
+    const legacyDraftRaw = localStorage.getItem(LEGACY_BLOCK_EDITOR_STATE_KEY);
+    const legacyTrackingRaw = localStorage.getItem(LEGACY_BLOCK_EDITOR_BACKEND_TRACKING_KEY);
+    if (!legacyDraftRaw && !legacyTrackingRaw) {
+      return false;
+    }
+
+    const targetKey = editorTabStorageKey(LEGACY_EDITOR_TAB_ID);
+    const existing = parseEditorStoredState(localStorage.getItem(targetKey));
+    if (!existing) {
+      const draft = parseEditorStoredState(legacyDraftRaw) ?? {};
+      const remote = draft.remote ?? parseLegacyBackendTracking(legacyTrackingRaw);
+      const migrated: EditorTabStoredState = remote ? { ...draft, remote } : { ...draft };
+      if (migrated.guide !== undefined || migrated.remote !== undefined) {
+        writeRaw(targetKey, migrated);
+      }
+    }
+
+    localStorage.removeItem(LEGACY_BLOCK_EDITOR_STATE_KEY);
+    localStorage.removeItem(LEGACY_BLOCK_EDITOR_BACKEND_TRACKING_KEY);
+    return true;
+  } catch {
+    // localStorage unavailable or quota — leave legacy keys for a later attempt
+    return false;
+  }
+}
+
+/** True when the legacy singleton tab id has a draft and/or remote binding. */
+export function legacyEditorTabHasStoredWork(): boolean {
+  migrateLegacyEditorTabStorage();
+  try {
+    const state = parseEditorStoredState(localStorage.getItem(editorTabStorageKey(LEGACY_EDITOR_TAB_ID)));
+    return state?.guide !== undefined || state?.remote !== undefined;
+  } catch {
+    return false;
+  }
 }
 
 /** Pending debounced draft writers, keyed by storage key. */
@@ -76,6 +156,9 @@ export function parseEditorStoredState(raw: string | null): EditorTabStoredState
     if ('guide' in parsed) {
       state.guide = parsed.guide;
     }
+    if (typeof parsed.idIsLocked === 'boolean') {
+      state.idIsLocked = parsed.idIsLocked;
+    }
     if (Array.isArray(parsed.blockIds)) {
       state.blockIds = parsed.blockIds as string[];
     }
@@ -105,11 +188,32 @@ export function parseEditorStoredState(raw: string | null): EditorTabStoredState
 }
 
 export function readEditorStoredState(storageKey: string): EditorTabStoredState | null {
+  migrateLegacyEditorTabStorage();
   try {
     return parseEditorStoredState(localStorage.getItem(storageKey));
   } catch {
     return null;
   }
+}
+
+/** True when another per-tab draft already uses this guide id. */
+export function editorGuideIdExists(guideId: string): boolean {
+  try {
+    const prefix = `${STATE_BASE_KEY}:`;
+    for (let index = 0; index < localStorage.length; index++) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(prefix)) {
+        continue;
+      }
+      const guide = parseEditorStoredState(localStorage.getItem(key))?.guide;
+      if (isRecord(guide) && guide.id === guideId) {
+        return true;
+      }
+    }
+  } catch {
+    // localStorage unavailable
+  }
+  return false;
 }
 
 function writeRaw(key: string, state: EditorTabStoredState): void {

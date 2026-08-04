@@ -7,17 +7,15 @@
  *   - per-guide-snapshot dedup via `lastGuideRef`
  *   - `autoSavePaused` / `autoSave: false` halt saves
  *   - mount-time `onLoad` receives both `guide` and `blockIds`
- *   - clear() contract
  */
 import { act, renderHook } from '@testing-library/react';
 
-import { StorageKeys } from '../../../lib/storage-keys';
 import type { JsonGuide, JsonModeState } from '../types';
-import { flushEditorDraft } from '../editor-tab-storage';
+import { editorTabStorageKey, flushEditorDraft } from '../editor-tab-storage';
 
 import { useBlockPersistence } from './useBlockPersistence';
 
-const STORAGE_KEY = StorageKeys.BLOCK_EDITOR_STATE;
+const STORAGE_KEY = editorTabStorageKey('test-tab');
 
 function guide(title = 'g'): JsonGuide {
   return {
@@ -37,7 +35,7 @@ afterEach(() => {
 
 describe('useBlockPersistence — debounced auto-save', () => {
   it('writes to localStorage exactly once after the 1000 ms debounce', () => {
-    const { rerender } = renderHook(({ g }) => useBlockPersistence({ guide: g }), {
+    const { rerender } = renderHook(({ g }) => useBlockPersistence({ storageKey: STORAGE_KEY, guide: g }), {
       initialProps: { g: guide('a') },
     });
 
@@ -60,9 +58,12 @@ describe('useBlockPersistence — debounced auto-save', () => {
   });
 
   it('does not write when autoSavePaused is true', () => {
-    const { rerender } = renderHook(({ g, paused }) => useBlockPersistence({ guide: g, autoSavePaused: paused }), {
-      initialProps: { g: guide('a'), paused: true },
-    });
+    const { rerender } = renderHook(
+      ({ g, paused }) => useBlockPersistence({ storageKey: STORAGE_KEY, guide: g, autoSavePaused: paused }),
+      {
+        initialProps: { g: guide('a'), paused: true },
+      }
+    );
 
     rerender({ g: guide('b'), paused: true });
 
@@ -74,9 +75,12 @@ describe('useBlockPersistence — debounced auto-save', () => {
   });
 
   it('does not write when autoSave is false', () => {
-    const { rerender } = renderHook(({ g }) => useBlockPersistence({ guide: g, autoSave: false }), {
-      initialProps: { g: guide('a') },
-    });
+    const { rerender } = renderHook(
+      ({ g }) => useBlockPersistence({ storageKey: STORAGE_KEY, guide: g, autoSave: false }),
+      {
+        initialProps: { g: guide('a') },
+      }
+    );
 
     rerender({ g: guide('b') });
 
@@ -89,7 +93,7 @@ describe('useBlockPersistence — debounced auto-save', () => {
 
   it('fires onSave on the no-change branch when the serialized guide is unchanged', () => {
     const onSave = jest.fn();
-    const { rerender } = renderHook(({ g }) => useBlockPersistence({ guide: g, onSave }), {
+    const { rerender } = renderHook(({ g }) => useBlockPersistence({ storageKey: STORAGE_KEY, guide: g, onSave }), {
       initialProps: { g: guide('a') },
     });
 
@@ -108,7 +112,8 @@ describe('useBlockPersistence — debounced auto-save', () => {
 
   it('stores blockIds alongside guide when provided', () => {
     const { rerender } = renderHook(
-      ({ g, ids }: { g: JsonGuide; ids: string[] }) => useBlockPersistence({ guide: g, blockIds: ids }),
+      ({ g, ids }: { g: JsonGuide; ids: string[] }) =>
+        useBlockPersistence({ storageKey: STORAGE_KEY, guide: g, blockIds: ids }),
       { initialProps: { g: guide('a'), ids: ['b1', 'b2'] } }
     );
 
@@ -123,7 +128,7 @@ describe('useBlockPersistence — debounced auto-save', () => {
   });
 
   it('flushes the latest pending guide when an editor tab unmounts', () => {
-    const { rerender, unmount } = renderHook(({ g }) => useBlockPersistence({ guide: g }), {
+    const { rerender, unmount } = renderHook(({ g }) => useBlockPersistence({ storageKey: STORAGE_KEY, guide: g }), {
       initialProps: { g: guide('a') },
     });
 
@@ -134,24 +139,8 @@ describe('useBlockPersistence — debounced auto-save', () => {
     expect(stored.guide.title).toBe('latest-before-tab-switch');
   });
 
-  it('flush() writes a pending draft immediately without waiting for the debounce', () => {
-    const { result, rerender } = renderHook(({ g }) => useBlockPersistence({ guide: g }), {
-      initialProps: { g: guide('a') },
-    });
-
-    rerender({ g: guide('ready-for-close-check') });
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
-
-    act(() => {
-      result.current.flush();
-    });
-
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
-    expect(stored.guide.title).toBe('ready-for-close-check');
-  });
-
   it('flushEditorDraft runs the registered flusher for close-tab checks', () => {
-    const { rerender } = renderHook(({ g }) => useBlockPersistence({ guide: g }), {
+    const { rerender } = renderHook(({ g }) => useBlockPersistence({ storageKey: STORAGE_KEY, guide: g }), {
       initialProps: { g: guide('a') },
     });
 
@@ -180,7 +169,7 @@ describe('useBlockPersistence — mount-time restore via onLoad', () => {
     );
 
     const onLoad = jest.fn();
-    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+    renderHook(() => useBlockPersistence({ storageKey: STORAGE_KEY, guide: guide('current'), onLoad }));
 
     expect(onLoad).toHaveBeenCalledTimes(1);
     const [restoredGuide, restoredIds] = onLoad.mock.calls[0]!;
@@ -195,7 +184,7 @@ describe('useBlockPersistence — mount-time restore via onLoad', () => {
     );
 
     const onLoad = jest.fn();
-    renderHook(() => useBlockPersistence({ guide: guide('blank-initial'), onLoad }));
+    renderHook(() => useBlockPersistence({ storageKey: STORAGE_KEY, guide: guide('blank-initial'), onLoad }));
 
     expect(onLoad).toHaveBeenCalledTimes(1);
     expect(onLoad.mock.calls[0]![0].title).toBe('restored');
@@ -210,7 +199,7 @@ describe('useBlockPersistence — mount-time restore via onLoad', () => {
 
   it('does not call onLoad when storage is empty', () => {
     const onLoad = jest.fn();
-    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+    renderHook(() => useBlockPersistence({ storageKey: STORAGE_KEY, guide: guide('current'), onLoad }));
     expect(onLoad).not.toHaveBeenCalled();
   });
 
@@ -219,32 +208,20 @@ describe('useBlockPersistence — mount-time restore via onLoad', () => {
     const onLoad = jest.fn();
     const errSpy = jest.spyOn(console, 'error').mockImplementation();
 
-    expect(() => renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }))).not.toThrow();
+    expect(() =>
+      renderHook(() => useBlockPersistence({ storageKey: STORAGE_KEY, guide: guide('current'), onLoad }))
+    ).not.toThrow();
 
     expect(onLoad).not.toHaveBeenCalled();
     errSpy.mockRestore();
   });
 });
 
-describe('useBlockPersistence — clear()', () => {
-  it('clear() removes the storage key, and a subsequent mount finds nothing to restore', () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ guide: guide('a'), savedAt: '', version: 2 }));
-    const { result } = renderHook(() => useBlockPersistence({ guide: guide('a') }));
-
-    act(() => result.current.clear());
-
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
-
-    const onLoad = jest.fn();
-    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
-    expect(onLoad).not.toHaveBeenCalled();
-  });
-});
-
 describe('useBlockPersistence — viewMode persistence (pop out/dock handoff)', () => {
   it('persists viewMode immediately on change, without waiting for the guide debounce', () => {
     const { rerender } = renderHook(
-      ({ vm }: { vm: 'edit' | 'preview' }) => useBlockPersistence({ guide: guide('a'), viewMode: vm }),
+      ({ vm }: { vm: 'edit' | 'preview' }) =>
+        useBlockPersistence({ storageKey: STORAGE_KEY, guide: guide('a'), viewMode: vm }),
       { initialProps: { vm: 'edit' } }
     );
 
@@ -258,7 +235,7 @@ describe('useBlockPersistence — viewMode persistence (pop out/dock handoff)', 
   it('does not persist viewMode changes when autoSavePaused is true', () => {
     const { rerender } = renderHook(
       ({ vm }: { vm: 'edit' | 'preview' }) =>
-        useBlockPersistence({ guide: guide('a'), viewMode: vm, autoSavePaused: true }),
+        useBlockPersistence({ storageKey: STORAGE_KEY, guide: guide('a'), viewMode: vm, autoSavePaused: true }),
       { initialProps: { vm: 'edit' } }
     );
 
@@ -269,7 +246,8 @@ describe('useBlockPersistence — viewMode persistence (pop out/dock handoff)', 
 
   it('does not persist viewMode changes when autoSave is false', () => {
     const { rerender } = renderHook(
-      ({ vm }: { vm: 'edit' | 'preview' }) => useBlockPersistence({ guide: guide('a'), viewMode: vm, autoSave: false }),
+      ({ vm }: { vm: 'edit' | 'preview' }) =>
+        useBlockPersistence({ storageKey: STORAGE_KEY, guide: guide('a'), viewMode: vm, autoSave: false }),
       { initialProps: { vm: 'edit' } }
     );
 
@@ -290,7 +268,7 @@ describe('useBlockPersistence — viewMode persistence (pop out/dock handoff)', 
     );
 
     const onLoad = jest.fn();
-    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+    renderHook(() => useBlockPersistence({ storageKey: STORAGE_KEY, guide: guide('current'), onLoad }));
 
     expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'preview', undefined);
   });
@@ -307,7 +285,7 @@ describe('useBlockPersistence — viewMode persistence (pop out/dock handoff)', 
     );
 
     const onLoad = jest.fn();
-    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+    renderHook(() => useBlockPersistence({ storageKey: STORAGE_KEY, guide: guide('current'), onLoad }));
 
     expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'edit', undefined);
   });
@@ -323,7 +301,7 @@ describe('useBlockPersistence — jsonModeState persistence', () => {
   it('persists jsonModeState when viewMode is json', () => {
     const { rerender } = renderHook(
       ({ jm }: { jm: JsonModeState | null }) =>
-        useBlockPersistence({ guide: guide('a'), viewMode: 'json', jsonModeState: jm }),
+        useBlockPersistence({ storageKey: STORAGE_KEY, guide: guide('a'), viewMode: 'json', jsonModeState: jm }),
       { initialProps: { jm: null as JsonModeState | null } }
     );
 
@@ -336,7 +314,9 @@ describe('useBlockPersistence — jsonModeState persistence', () => {
   });
 
   it('omits jsonModeState from storage when viewMode is not json', () => {
-    renderHook(() => useBlockPersistence({ guide: guide('a'), viewMode: 'edit', jsonModeState: draft }));
+    renderHook(() =>
+      useBlockPersistence({ storageKey: STORAGE_KEY, guide: guide('a'), viewMode: 'edit', jsonModeState: draft })
+    );
 
     act(() => {
       jest.advanceTimersByTime(1000);
@@ -359,7 +339,7 @@ describe('useBlockPersistence — jsonModeState persistence', () => {
     );
 
     const onLoad = jest.fn();
-    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+    renderHook(() => useBlockPersistence({ storageKey: STORAGE_KEY, guide: guide('current'), onLoad }));
 
     expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'json', draft);
   });
@@ -377,7 +357,7 @@ describe('useBlockPersistence — jsonModeState persistence', () => {
     );
 
     const onLoad = jest.fn();
-    renderHook(() => useBlockPersistence({ guide: guide('current'), onLoad }));
+    renderHook(() => useBlockPersistence({ storageKey: STORAGE_KEY, guide: guide('current'), onLoad }));
 
     expect(onLoad).toHaveBeenCalledWith(expect.anything(), undefined, 'json', undefined);
   });

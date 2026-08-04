@@ -107,7 +107,6 @@ export async function restoreTabsFromStorage(
     };
 
     if (!parsedData || parsedData.length === 0) {
-      // Return recommendations home if no stored data
       return [recommendationsTab];
     }
 

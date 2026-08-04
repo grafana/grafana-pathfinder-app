@@ -99,6 +99,9 @@ import {
   editorTabStorageKey,
   findEditorTabIdByResourceName,
   flushEditorDraft,
+  LEGACY_EDITOR_TAB_ID,
+  legacyEditorTabHasStoredWork,
+  migrateLegacyEditorTabStorage,
 } from '../block-editor/editor-tab-storage';
 // Import extracted hooks
 import {
@@ -260,6 +263,23 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     // Initialize the active tab if needed
     this.initializeRestoredActiveTab();
+  }
+
+  /**
+   * Recover singleton-era editor work independently of tab restoration.
+   *
+   * Every owning surface calls this once on mount, after its optional restore
+   * attempt. It must not live inside restoreTabsAsync: a pending guide makes
+   * the guide strip non-empty and intentionally skips restore.
+   */
+  public recoverLegacyEditorTab(): void {
+    const migrated = migrateLegacyEditorTabStorage();
+    const { allowEditor } = resolveTabGates(this.state.pluginConfig);
+    const hasLegacyChrome = this.state.tabs.some((t) => t.id === LEGACY_EDITOR_TAB_ID && t.type === 'editor');
+
+    if (allowEditor && legacyEditorTabHasStoredWork() && (migrated || !hasLegacyChrome)) {
+      this.createEditorTab({ tabId: LEGACY_EDITOR_TAB_ID });
+    }
   }
 
   /**

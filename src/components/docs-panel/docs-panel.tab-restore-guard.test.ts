@@ -235,6 +235,7 @@ import {
   writeEditorDraftState,
   writeEditorRemoteState,
 } from '../block-editor/editor-tab-storage';
+import { StorageKeys } from '../../lib/storage-keys';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -288,7 +289,10 @@ function setupRestoreMocks() {
 describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorage.clear();
     (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    const user = (config as { bootData: { user: { id: number; orgRole?: string } } }).bootData.user;
+    delete user.orgRole;
     setupRestoreMocks();
   });
 
@@ -420,6 +424,29 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     expect((panel as any).state.activeTabId).toBe('devtools');
     expect(tabStorage.setTabs).not.toHaveBeenCalled();
   });
+
+  it('opens a recovered legacy editor independently of tab restoration', () => {
+    const user = (config as { bootData: { user: { id: number; orgRole?: string } } }).bootData.user;
+    user.orgRole = 'Editor';
+
+    localStorage.setItem(
+      StorageKeys.BLOCK_EDITOR_STATE,
+      JSON.stringify({
+        guide: { id: 'g1', title: 'Recovered draft', blocks: [{ type: 'markdown', content: 'hi' }] },
+      })
+    );
+
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({ tabs: RESTORED_TABS, activeTabId: 'tab-guide-1' });
+    panel.recoverLegacyEditorTab();
+
+    expect((panel as any).state.activeTabId).toBe('editor');
+    expect(
+      (panel as any).state.tabs.some((t: { id: string; type?: string }) => t.id === 'editor' && t.type === 'editor')
+    ).toBe(true);
+    // Body lives at editorTabStorageKey('editor'); strip title syncs when BlockEditor mounts.
+    expect(localStorage.getItem(editorTabStorageKey('editor'))).toContain('Recovered draft');
+  });
 });
 
 describe('CombinedLearningJourneyPanel — tab gate sync', () => {
@@ -436,7 +463,10 @@ describe('CombinedLearningJourneyPanel — tab gate sync', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorage.clear();
     (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    const user = (config as { bootData: { user: { id: number; orgRole?: string } } }).bootData.user;
+    delete user.orgRole;
     setupRestoreMocks();
   });
 
@@ -522,6 +552,9 @@ describe('CombinedLearningJourneyPanel — tab gate sync', () => {
 describe('CombinedLearningJourneyPanel — createEditorTab', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorage.clear();
+    const user = (config as { bootData: { user: { id: number; orgRole?: string } } }).bootData.user;
+    delete user.orgRole;
     setupRestoreMocks();
   });
 

@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { useTabRestoration } from './useTabRestoration';
 import type { PanelMode } from '../../../global-state/panel-mode';
 
@@ -6,6 +6,7 @@ function makeModel() {
   return {
     state: { tabs: [], activeTabId: '' } as any,
     restoreTabsAsync: jest.fn().mockResolvedValue(undefined),
+    recoverLegacyEditorTab: jest.fn(),
   } as any;
 }
 
@@ -30,7 +31,19 @@ describe('useTabRestoration', () => {
     expect(model.restoreTabsAsync).toHaveBeenCalledTimes(1);
   });
 
-  it('calls restoreTabsAsync when only the editor tab is open (handoff-safe)', () => {
+  it('recovers legacy editor work after restoration completes', async () => {
+    const model = makeModel();
+    renderHook(() =>
+      useTabRestoration({ model, panelMode: 'sidebar', tabs: [tab('recommendations', 'recommendations')] })
+    );
+
+    await waitFor(() => expect(model.recoverLegacyEditorTab).toHaveBeenCalledTimes(1));
+    expect(model.restoreTabsAsync.mock.invocationCallOrder[0]).toBeLessThan(
+      model.recoverLegacyEditorTab.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('does NOT restore when an editor tab is already in the strip', () => {
     const model = makeModel();
     renderHook(() =>
       useTabRestoration({
@@ -39,7 +52,7 @@ describe('useTabRestoration', () => {
         tabs: [tab('recommendations', 'recommendations'), tab('editor', 'editor')],
       })
     );
-    expect(model.restoreTabsAsync).toHaveBeenCalledTimes(1);
+    expect(model.restoreTabsAsync).not.toHaveBeenCalled();
   });
 
   it('does NOT restore when a user-opened guide tab is present', () => {
@@ -52,6 +65,7 @@ describe('useTabRestoration', () => {
       })
     );
     expect(model.restoreTabsAsync).not.toHaveBeenCalled();
+    expect(model.recoverLegacyEditorTab).toHaveBeenCalledTimes(1);
   });
 
   it('skips restoration when panelMode is "fullscreen"', () => {
@@ -60,6 +74,7 @@ describe('useTabRestoration', () => {
       useTabRestoration({ model, panelMode: 'fullscreen', tabs: [tab('recommendations', 'recommendations')] })
     );
     expect(model.restoreTabsAsync).not.toHaveBeenCalled();
+    expect(model.recoverLegacyEditorTab).not.toHaveBeenCalled();
   });
 
   it('re-fires when panelMode transitions away from fullscreen', () => {

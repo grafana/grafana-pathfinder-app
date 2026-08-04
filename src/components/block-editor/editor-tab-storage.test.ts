@@ -9,11 +9,14 @@ import {
   findEditorTabIdByResourceName,
   editorStatusBadge,
   editorTabStatusBadge,
+  migrateLegacyEditorTabStorage,
+  LEGACY_EDITOR_TAB_ID,
 } from './editor-tab-storage';
 import { StorageKeys } from '../../lib/storage-keys';
 
 const TAB_ID = 'tab-123';
 const KEY = editorTabStorageKey(TAB_ID);
+const LEGACY_KEY = editorTabStorageKey(LEGACY_EDITOR_TAB_ID);
 
 const guide = { id: 'my-guide', title: 'My Guide', blocks: [{ type: 'markdown', content: 'hi' }] };
 
@@ -64,9 +67,10 @@ describe('unified storage', () => {
   beforeEach(() => localStorage.clear());
 
   it('merges draft/remote writes and clears the key', () => {
-    seedDraft();
+    writeEditorDraftState(KEY, { guide, idIsLocked: false });
     writeEditorRemoteState(KEY, { resourceName: 'my-guide', lastSyncedJson: '{}' });
     expect(readEditorStoredState(KEY)?.guide).toEqual(guide);
+    expect(readEditorStoredState(KEY)?.idIsLocked).toBe(false);
     expect(readEditorStoredState(KEY)?.remote?.resourceName).toBe('my-guide');
 
     writeEditorRemoteState(KEY, null);
@@ -79,6 +83,52 @@ describe('unified storage', () => {
 
   it('namespaces keys per tab id', () => {
     expect(editorTabStorageKey('any-id')).toBe(`${StorageKeys.BLOCK_EDITOR_STATE}:any-id`);
+  });
+});
+
+describe('migrateLegacyEditorTabStorage', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('copies unscoped singleton draft + backend tracking into :editor and clears legacy keys', () => {
+    localStorage.setItem(
+      StorageKeys.BLOCK_EDITOR_STATE,
+      JSON.stringify({ guide, viewMode: 'edit', savedAt: '2026-01-01T00:00:00.000Z' })
+    );
+    localStorage.setItem(
+      StorageKeys.LEGACY_BLOCK_EDITOR_BACKEND_TRACKING,
+      JSON.stringify({ resourceName: 'my-guide', lastPublishedJson: JSON.stringify(guide) })
+    );
+
+    expect(migrateLegacyEditorTabStorage()).toBe(true);
+
+    expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)).toBeNull();
+    expect(localStorage.getItem(StorageKeys.LEGACY_BLOCK_EDITOR_BACKEND_TRACKING)).toBeNull();
+    expect(readEditorStoredState(LEGACY_KEY)).toEqual({
+      guide,
+      viewMode: 'edit',
+      savedAt: '2026-01-01T00:00:00.000Z',
+      remote: { resourceName: 'my-guide', lastSyncedJson: JSON.stringify(guide), status: null },
+    });
+  });
+
+  it('does not overwrite an existing :editor document; still clears legacy keys', () => {
+    writeEditorDraftState(LEGACY_KEY, { guide: { ...guide, title: 'Already migrated' } });
+    localStorage.setItem(StorageKeys.BLOCK_EDITOR_STATE, JSON.stringify({ guide }));
+
+    expect(migrateLegacyEditorTabStorage()).toBe(true);
+
+    expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)).toBeNull();
+    expect(readEditorStoredState(LEGACY_KEY)?.guide).toEqual({ ...guide, title: 'Already migrated' });
+  });
+
+  it('returns false when there is nothing to migrate', () => {
+    expect(migrateLegacyEditorTabStorage()).toBe(false);
+  });
+
+  it('runs automatically on readEditorStoredState', () => {
+    localStorage.setItem(StorageKeys.BLOCK_EDITOR_STATE, JSON.stringify({ guide }));
+    expect(readEditorStoredState(LEGACY_KEY)?.guide).toEqual(guide);
+    expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)).toBeNull();
   });
 });
 
