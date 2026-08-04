@@ -203,7 +203,12 @@ const CSS_IMAGE_SET_ENTRY = /(type\(\s*)?(["'])([^"']*)\2/g;
 // author-supplied text on screen, and rrweb masks neither: stylesheet text is
 // exempt from maskTextSelector (masking it would strip the page of styling),
 // and CSSOM writes never pass through the text path at all.
-const CSS_TEXT_DECLARATION = /(^|[^\w-])((?:content|--[\w-]+)\s*:\s*)([^;}]*)/gi;
+//
+// The value runs to the declaration's end, but `;` and `}` are legal inside a
+// quoted string — `content: "Acme; Inc"` — so the quoted arms have to consume
+// those before the bare class sees them. The three arms cannot match the same
+// first character, so there is no backtracking to pay for.
+const CSS_TEXT_DECLARATION = /(^|[^\w-])((?:content|--[\w-]+)\s*:\s*)((?:[^;}"']|"[^"]*"|'[^']*')*)/gi;
 const CSS_TEXT_PROPERTY = /^(?:content|--)/i;
 
 // Escapes survive masking so `content: "\e900"` still draws its icon glyph

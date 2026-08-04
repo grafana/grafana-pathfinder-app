@@ -269,6 +269,19 @@ describe('scrubReplayEvent', () => {
       });
     });
 
+    // `;` and `}` are legal inside a quoted string, so a value pattern that
+    // stops at either ends mid-string and masks nothing.
+    it.each([
+      ['a semicolon', 'alice;bob@acme.com', '"******************"'],
+      ['a closing brace', 'alice}bob@acme.com', '"******************"'],
+    ])('masks a content string containing %s', (_label, secret, expected) => {
+      const event = fullSnapshot(elementNode({ _cssText: `.a::after{content:"${secret}";color:red}` }));
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        _cssText: `.a::after{content:${expected};color:red}`,
+      });
+    });
+
     it('masks text held in a custom property', () => {
       const event = fullSnapshot(elementNode({ style: '--tenant-name: "Acme Corp"; color: red' }));
 
