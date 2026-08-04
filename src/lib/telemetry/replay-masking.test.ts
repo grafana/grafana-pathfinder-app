@@ -43,6 +43,10 @@ describe('what the real recorder actually sends', () => {
     placeholder: 'EnterYourEmailAddress',
     comment: 'InternalCommentSecret',
     imageQuery: 'signedtokenvalue',
+    // rrweb exempts <style> text from masking, so CSS is a text channel of its
+    // own — one a third-party panel can write customer data into.
+    cssContent: 'CssRenderedTenantName',
+    cssCustomProperty: 'CssCustomPropertySecret',
     // Not in the DOM — this one rides in on location.href via the page meta.
     urlFilterValue: 'AcmeCorpFilterValue',
   };
@@ -53,7 +57,9 @@ describe('what the real recorder actually sends', () => {
 
   beforeAll(async () => {
     document.body.innerHTML = `
-      <div id="fixture" aria-label="${SECRETS.ariaLabel}" data-testid="${SECRETS.testId}" title="${SECRETS.title}">
+      <style>.tenant::after{content:"${SECRETS.cssContent}"}</style>
+      <div id="fixture" aria-label="${SECRETS.ariaLabel}" data-testid="${SECRETS.testId}" title="${SECRETS.title}"
+           style="--tenant-name: '${SECRETS.cssCustomProperty}'">
         <h1>${SECRETS.heading}</h1>
         <p>${SECRETS.paragraph}</p>
         <!-- ${SECRETS.comment} -->

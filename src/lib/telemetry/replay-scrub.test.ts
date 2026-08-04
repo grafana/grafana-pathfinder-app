@@ -216,6 +216,87 @@ describe('scrubReplayEvent', () => {
       });
     });
 
+    // A match that stops at the first `)` ends inside the argument list, so
+    // every entry after the first url() — or after a filename with a paren in
+    // it — went unscrubbed.
+    it('scrubs bare strings that follow a url() entry in the same image-set()', () => {
+      const event = fullSnapshot(
+        elementNode({ style: 'background: image-set(url(/a.png?sig=s) 1x, "/b.png?sig=s" 2x)' })
+      );
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        style: 'background: image-set(url("/a.png") 1x, "/b.png" 2x)',
+      });
+    });
+
+    it('scrubs an image-set() whose first entry contains a parenthesis', () => {
+      const event = fullSnapshot(
+        elementNode({ style: 'background: -webkit-image-set("/a(1).png?sig=s" 1x, "/c.png?sig=s" 2x)' })
+      );
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        style: 'background: -webkit-image-set("/a(1).png" 1x, "/c.png" 2x)',
+      });
+    });
+
+    it('leaves the MIME type in an image-set() type() descriptor alone', () => {
+      const event = fullSnapshot(
+        elementNode({ style: 'background: image-set("/a.avif?sig=s" type("image/avif"), "/b.png" type("image/png"))' })
+      );
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        style: 'background: image-set("/a.avif" type("image/avif"), "/b.png" type("image/png"))',
+      });
+    });
+
+    it('keeps the density descriptors it walks past', () => {
+      const event = fullSnapshot(
+        elementNode({ style: 'background: image-set("/a.png" 1x, "/b.png" 2dppx) no-repeat' })
+      );
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        style: 'background: image-set("/a.png" 1x, "/b.png" 2dppx) no-repeat',
+      });
+    });
+
+    // rrweb exempts stylesheet text from masking, so a third-party panel that
+    // renders customer text through CSS bypasses maskTextSelector entirely.
+    it('masks text rendered by content:, which rrweb never masks', () => {
+      const event = fullSnapshot(elementNode({ _cssText: '.a::after{content:"alice@acme.com";color:red}' }));
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        _cssText: '.a::after{content:"**************";color:red}',
+      });
+    });
+
+    it('masks text held in a custom property', () => {
+      const event = fullSnapshot(elementNode({ style: '--tenant-name: "Acme Corp"; color: red' }));
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({ style: '--tenant-name: "**** ****"; color: red' });
+    });
+
+    it('keeps escape sequences so icon glyphs still render', () => {
+      const event = fullSnapshot(elementNode({ _cssText: '.i::before{content:"\\e900"}' }));
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({ _cssText: '.i::before{content:"\\e900"}' });
+    });
+
+    it('leaves a resource-bearing content value to the url() pass', () => {
+      const event = fullSnapshot(elementNode({ style: 'content: url("https://acme.grafana.net/i.png?sig=s")' }));
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        style: 'content: url("https://acme.grafana.net/i.png")',
+      });
+    });
+
+    it('leaves align-content and justify-content alone', () => {
+      const event = fullSnapshot(elementNode({ style: 'align-content: center; justify-content: space-between' }));
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        style: 'align-content: center; justify-content: space-between',
+      });
+    });
+
     // rrweb masks TEXT_NODEs only, so a comment reaches the collector verbatim.
     it('masks comment nodes, which rrweb serializes as written', () => {
       const commented = {
@@ -318,6 +399,21 @@ describe('scrubReplayEvent', () => {
         'border-image': ['url("https://acme.grafana.net/b.png")', 'important'],
       });
     });
+
+    // A CSSOM diff carries the property name separately, so the value alone
+    // has no `content:` for the declaration pattern to key off.
+    it('masks a content write in the styleOMValue diff', () => {
+      const event = mutation({
+        attributes: [{ id: 8, attributes: { style: { content: '"alice@acme.com"' } } }],
+      });
+      const changed = (
+        event as unknown as { data: { attributes: Array<{ attributes: { style: Record<string, unknown> } }> } }
+      ).data.attributes[0]!;
+
+      scrubReplayEvent(event);
+
+      expect(changed.attributes.style).toEqual({ content: '"**************"' });
+    });
   });
 
   // Emotion's insertRule traffic and React's inline-style writes never appear
@@ -379,6 +475,29 @@ describe('scrubReplayEvent', () => {
       scrubReplayEvent(event);
 
       expect((dataOf(event).set as { value: string }).value).toBe('url("https://acme.grafana.net/d.png")');
+    });
+
+    it('masks a single content write', () => {
+      const event = incremental(13, {
+        id: 4,
+        index: [0],
+        set: { property: 'content', value: '"alice@acme.com"', priority: undefined },
+      });
+
+      scrubReplayEvent(event);
+
+      expect((dataOf(event).set as { value: string }).value).toBe('"**************"');
+    });
+
+    it('masks text in an inserted rule, not just its urls', () => {
+      const event = incremental(8, {
+        id: 3,
+        adds: [{ rule: '.x::after{content:"alice@acme.com"}', index: 0 }],
+      });
+
+      scrubReplayEvent(event);
+
+      expect((dataOf(event).adds as Array<{ rule: string }>)[0]!.rule).toBe('.x::after{content:"**************"}');
     });
 
     it('scrubs font sources, which are bare URLs rather than CSS', () => {

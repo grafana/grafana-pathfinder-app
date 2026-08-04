@@ -192,37 +192,131 @@ const CSS_URL_PATTERN = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^'")\s]*))\s*\)/gi;
 // and `image-set("a.png?sig=…" 1x)` are bare strings. Both are Grafana-origin
 // in practice, so this is depth rather than a known leak.
 const CSS_IMPORT_PATTERN = /(@import\s+)(["'])([^"']*)\2/gi;
-const CSS_IMAGE_SET_PATTERN = /((?:-webkit-)?image-set\()([^)]*)\)/gi;
+const CSS_IMAGE_SET_OPEN = /(?:-webkit-)?image-set\(/gi;
 const CSS_QUOTED_STRING = /(["'])([^"']*)\1/g;
+// Every quoted string in an image-set argument list is a resource reference
+// except the MIME type in `type("image/avif")`, which a URL rewrite would
+// mangle into an absolute path.
+const CSS_IMAGE_SET_ENTRY = /(type\(\s*)?(["'])([^"']*)\2/g;
 
-// Same case-insensitivity as the patterns it guards, and deliberately not
+// `content` and custom properties are the two declarations that can put
+// author-supplied text on screen, and rrweb masks neither: stylesheet text is
+// exempt from maskTextSelector (masking it would strip the page of styling),
+// and CSSOM writes never pass through the text path at all.
+const CSS_TEXT_DECLARATION = /(^|[^\w-])((?:content|--[\w-]+)\s*:\s*)([^;}]*)/gi;
+const CSS_TEXT_PROPERTY = /^(?:content|--)/i;
+
+// Escapes survive masking so `content: "\e900"` still draws its icon glyph
+// rather than an asterisk; everything else in the string is author text.
+const CSS_ESCAPE_OR_GLYPH = /\\(?:[0-9a-f]{1,6}\s?|[\s\S])|\S/gi;
+
+// Same case-insensitivity as the patterns they guard, and deliberately not
 // `toLowerCase().includes(...)` — that would copy the whole stylesheet on
-// every call just to decide there is nothing to do. Non-global, so it carries
-// no lastIndex state between calls.
+// every call just to decide there is nothing to do. Non-global, so they carry
+// no lastIndex state between calls. The `content` arm excludes `align-content`
+// and `justify-content`, which are everywhere in Grafana's flex layouts.
 const HAS_CSS_RESOURCE = /url\(|@import|image-set\(/i;
+const HAS_SCRUBBABLE_CSS = /url\(|@import|image-set\(|(?:^|[^\w-])content\s*:|--[\w-]+\s*:/i;
 
-function scrubCssUrls(css: string): string {
+function maskCssString(text: string): string {
+  return text.replace(CSS_ESCAPE_OR_GLYPH, (token) => (token.startsWith('\\') ? token : '*'));
+}
+
+// A resource-bearing value is left alone: `content: url("…")` has already been
+// through the URL pass, and masking its quoted target would break the image
+// for a leak the URL pass has already closed.
+function maskCssTextValue(value: string): string {
+  return HAS_CSS_RESOURCE.test(value)
+    ? value
+    : value.replace(
+        CSS_QUOTED_STRING,
+        (_match, quote: string, text: string) => `${quote}${maskCssString(text)}${quote}`
+      );
+}
+
+function findClosingParen(css: string, from: number): number {
+  let depth = 1;
+  let quote = '';
+  for (let index = from; index < css.length; index++) {
+    const char = css[index];
+    if (quote) {
+      if (char === '\\') {
+        index++;
+      } else if (char === quote) {
+        quote = '';
+      }
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === '(') {
+      depth++;
+    } else if (char === ')' && --depth === 0) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+// image-set mixes url() entries with bare strings, and either can contain a
+// parenthesis — `image-set(url(a.png) 1x, "b.png?sig=…" 2x)` and a filename
+// like `a(1).png` both defeat a match that stops at the first `)`, leaving
+// every later entry unscrubbed. Walking to the balanced close is what makes
+// the whole argument list reachable.
+function scrubImageSets(css: string): string {
+  CSS_IMAGE_SET_OPEN.lastIndex = 0;
+  let scrubbed = '';
+  let cursor = 0;
+  let opening: RegExpExecArray | null;
+  while ((opening = CSS_IMAGE_SET_OPEN.exec(css)) !== null) {
+    const argsStart = opening.index + opening[0].length;
+    const argsEnd = findClosingParen(css, argsStart);
+    if (argsEnd < 0) {
+      break;
+    }
+    const args = css
+      .slice(argsStart, argsEnd)
+      .replace(CSS_IMAGE_SET_ENTRY, (match, mimeType: string | undefined, _quote, target: string) =>
+        mimeType === undefined ? `"${stripUrlSecrets(target)}"` : match
+      );
+    scrubbed += css.slice(cursor, argsStart) + args;
+    cursor = argsEnd;
+    CSS_IMAGE_SET_OPEN.lastIndex = argsEnd;
+  }
+  return cursor === 0 ? css : scrubbed + css.slice(cursor);
+}
+
+function scrubCss(css: string): string {
   // Emotion rewrites rules constantly, so the common case has to stay cheap.
-  if (!HAS_CSS_RESOURCE.test(css)) {
+  if (!HAS_SCRUBBABLE_CSS.test(css)) {
     return css;
   }
-  return css
-    .replace(CSS_URL_PATTERN, (match, doubleQuoted?: string, singleQuoted?: string, bare?: string): string => {
-      const target = doubleQuoted ?? singleQuoted ?? bare ?? '';
-      return target.startsWith('#') ? match : `url("${stripUrlSecrets(target)}")`;
-    })
-    .replace(CSS_IMPORT_PATTERN, (_match, keyword: string, _quote, target: string) => {
-      return `${keyword}"${stripUrlSecrets(target)}"`;
-    })
-    .replace(CSS_IMAGE_SET_PATTERN, (_match, keyword: string, args: string) => {
-      // url() entries inside image-set were already handled above; this only
-      // catches its bare-string form.
-      return `${keyword}${args.replace(CSS_QUOTED_STRING, (_s, _q, target: string) => `"${stripUrlSecrets(target)}"`)})`;
-    });
+  const withUrlsScrubbed = scrubImageSets(
+    css
+      .replace(CSS_URL_PATTERN, (match, doubleQuoted?: string, singleQuoted?: string, bare?: string): string => {
+        const target = doubleQuoted ?? singleQuoted ?? bare ?? '';
+        return target.startsWith('#') ? match : `url("${stripUrlSecrets(target)}")`;
+      })
+      .replace(CSS_IMPORT_PATTERN, (_match, keyword: string, _quote, target: string) => {
+        return `${keyword}"${stripUrlSecrets(target)}"`;
+      })
+  );
+  return withUrlsScrubbed.replace(
+    CSS_TEXT_DECLARATION,
+    (_match, before: string, property: string, value: string) => `${before}${property}${maskCssTextValue(value)}`
+  );
 }
 
 function scrubCssText(value: unknown): unknown {
-  return typeof value === 'string' ? scrubCssUrls(value) : value;
+  return typeof value === 'string' ? scrubCss(value) : value;
+}
+
+// A CSSOM write arrives as a property/value pair rather than as a declaration,
+// so the text mask has no `content:` to key off and needs the name passed in.
+function scrubCssDeclaration(property: unknown, value: unknown): unknown {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  const scrubbed = scrubCss(value);
+  return typeof property === 'string' && CSS_TEXT_PROPERTY.test(property) ? maskCssTextValue(scrubbed) : scrubbed;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -236,9 +330,9 @@ function scrubStyleDiff(style: Record<string, unknown>): void {
   for (const key of Object.keys(style)) {
     const value = style[key];
     if (typeof value === 'string') {
-      style[key] = scrubCssUrls(value);
+      style[key] = scrubCssDeclaration(key, value);
     } else if (Array.isArray(value) && typeof value[0] === 'string') {
-      value[0] = scrubCssUrls(value[0]);
+      value[0] = scrubCssDeclaration(key, value[0]);
     }
   }
 }
@@ -283,7 +377,7 @@ function scrubStyleText(node: Record<string, unknown>): void {
   }
   for (const child of node.childNodes) {
     if (isRecord(child) && typeof child.textContent === 'string') {
-      child.textContent = scrubCssUrls(child.textContent);
+      child.textContent = scrubCss(child.textContent);
     }
   }
 }
@@ -360,8 +454,8 @@ export function scrubReplayEvent(event: ReplayEvent): ReplayEvent {
         }
       }
       // Text mutations are masked to asterisks except inside <style>, where
-      // rrweb leaves the CSS intact — so this only ever finds a real url() in
-      // the stylesheet case, and is a no-op everywhere else.
+      // rrweb leaves the CSS intact — so this only has real work to do in the
+      // stylesheet case, and is a no-op everywhere else.
       if (Array.isArray(data.texts)) {
         for (const text of data.texts) {
           if (isRecord(text)) {
@@ -374,10 +468,10 @@ export function scrubReplayEvent(event: ReplayEvent): ReplayEvent {
     case INCREMENTAL_SOURCE_STYLESHEET_RULE: {
       scrubStyleRules(data.adds);
       if (typeof data.replace === 'string') {
-        data.replace = scrubCssUrls(data.replace);
+        data.replace = scrubCss(data.replace);
       }
       if (typeof data.replaceSync === 'string') {
-        data.replaceSync = scrubCssUrls(data.replaceSync);
+        data.replaceSync = scrubCss(data.replaceSync);
       }
       break;
     }
@@ -393,7 +487,7 @@ export function scrubReplayEvent(event: ReplayEvent): ReplayEvent {
     }
     case INCREMENTAL_SOURCE_STYLE_DECLARATION: {
       if (isRecord(data.set)) {
-        data.set.value = scrubCssText(data.set.value);
+        data.set.value = scrubCssDeclaration(data.set.property, data.set.value);
       }
       break;
     }

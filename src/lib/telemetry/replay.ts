@@ -110,6 +110,10 @@ class ContinuousReplayInstrumentation extends ReplayInstrumentation {
 // full-DOM snapshot, leaving a stream of mutations with nothing to apply them
 // to. rrweb emits a fresh snapshot whenever record() starts, so registering
 // late is what makes the replay playable at all.
-export async function activateSessionReplay(faro: Faro, samplingRate?: number): Promise<void> {
-  faro.instrumentations.add(new ContinuousReplayInstrumentation(buildReplayOptions(resolveSamplingRate(samplingRate))));
+// Returns the rate actually used so the caller can tell a remote value that
+// was honored from one that fell back — it has no other way to know.
+export async function activateSessionReplay(faro: Faro, samplingRate?: number): Promise<number> {
+  const resolved = resolveSamplingRate(samplingRate);
+  faro.instrumentations.add(new ContinuousReplayInstrumentation(buildReplayOptions(resolved)));
+  return resolved;
 }

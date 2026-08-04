@@ -1,7 +1,6 @@
 import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, usePluginContext } from '@grafana/data';
 import React, { lazy, Suspense, useEffect, useMemo } from 'react';
 import { LoadingPlaceholder } from '@grafana/ui';
-import { config } from '@grafana/runtime';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { logger } from './lib/logging';
 import { initPluginTranslations } from '@grafana/i18n';
@@ -66,22 +65,18 @@ const hostname = window.location.hostname;
 try {
   if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
     // Session enrichment (identity, surface, experiment cohorts) is owned by initFaro.
-    const { initFaro } = await import('./lib/faro');
+    const { initFaro, resolveSessionReplayOptions } = await import('./lib/faro');
     // Session replay is a second remote switch on top — also default-on, so a
     // missing flag means recording. It captures the whole page, masked, from
     // the first time Pathfinder is opened. The rate is a volume dial on top of
-    // the switch, range-checked in lib/telemetry/replay.
-    //
-    // Yielding to core's own recorder is automatic rather than a runbook step:
-    // two rrweb instances on one page double DOM serialization per mutation and
-    // compound its global CSSStyleSheet.insertRule proxy, which is Emotion's
-    // hot path. The toggle is private-preview and may not be surfaced to the
-    // frontend at all, so this is belt-and-braces over the flag, not a
-    // replacement for it.
-    const coreIsRecording = config.featureToggles?.faroSessionReplay === true;
-    const sessionReplay = !coreIsRecording && getFeatureFlagValue('pathfinder.session-replay', true);
-    const sessionReplaySamplingRate = getNumberFlagValue('pathfinder.session-replay-sampling-rate', 1);
-    initFaro({ sessionReplay, sessionReplaySamplingRate }).catch((e) => logger.exception(e, { source: 'Faro init' }));
+    // the switch, range-checked in lib/telemetry/replay. Both are read once,
+    // here: a later flip reaches a tab only on its next load.
+    initFaro(
+      resolveSessionReplayOptions(
+        getFeatureFlagValue('pathfinder.session-replay', true),
+        getNumberFlagValue('pathfinder.session-replay-sampling-rate', 1)
+      )
+    ).catch((e) => logger.exception(e, { source: 'Faro init' }));
   }
 } catch (e) {
   logger.exception(e, { source: 'Faro init' });

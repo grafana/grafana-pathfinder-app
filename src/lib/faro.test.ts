@@ -113,6 +113,7 @@ const mockedConfig = {
     } as MockedBootDataUser,
   } as { settings: { buildInfo: { versionString: string } }; user: MockedBootDataUser } | undefined,
   analytics: { enabled: true } as { enabled: boolean } | undefined,
+  featureToggles: {} as { faroSessionReplay?: boolean },
 };
 
 jest.mock('@grafana/runtime', () => ({ config: mockedConfig }));
@@ -157,6 +158,7 @@ beforeEach(() => {
     user: { email: 'x@y.z', orgRole: 'Admin', orgName: 'Acme Corp', analytics: { identifier: 'abc' } },
   };
   mockedConfig.analytics = { enabled: true };
+  mockedConfig.featureToggles = {};
   mockSessionMeta = { id: 'session-1', attributes: {} };
 });
 
@@ -1560,5 +1562,135 @@ describe('session replay activation', () => {
     expect(beforeSend({ type: 4, timestamp: 0, data: { href: 'https://foo.grafana.net/d/a?token=x' } })).toMatchObject({
       data: { href: 'https://foo.grafana.net/d/a' },
     });
+  });
+
+  it('reports a remote sampling rate that had to fall back', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+
+    await faro.initFaro({ sessionReplay: true, sessionReplaySamplingRate: 100 });
+    await settleReplayImport();
+
+    expect(addedOptions().samplingRate).toBe(1);
+    expect(mockPushEvent).toHaveBeenCalledWith(
+      'pathfinder_session_replay_sampling_fallback',
+      { reason: 'out_of_range' },
+      undefined,
+      { skipDedupe: true }
+    );
+  });
+
+  it('stays quiet when the remote sampling rate is honored', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+
+    await faro.initFaro({ sessionReplay: true, sessionReplaySamplingRate: 0.25 });
+    await settleReplayImport();
+
+    expect(addedOptions().samplingRate).toBe(0.25);
+    expect(mockPushEvent).not.toHaveBeenCalledWith(
+      'pathfinder_session_replay_sampling_fallback',
+      expect.anything(),
+      undefined,
+      expect.anything()
+    );
+  });
+});
+
+// Core ships its own rrweb recorder behind a private-preview toggle. Two on one
+// page compound rrweb's global insertRule proxy on Emotion's hot path, so the
+// decision to yield is made here rather than left to whoever sets the flags.
+describe('resolveSessionReplayOptions', () => {
+  const resolve = (enabled: boolean, rate = 1) => freshFaro().resolveSessionReplayOptions(enabled, rate);
+
+  it('records when the flag is on and core is not recording', () => {
+    expect(resolve(true)).toEqual({ sessionReplay: true, sessionReplaySamplingRate: 1 });
+  });
+
+  it('yields to core rather than running a second recorder', () => {
+    mockedConfig.featureToggles = { faroSessionReplay: true };
+    expect(resolve(true).sessionReplay).toBe(false);
+  });
+
+  it('leaves the flag in charge when the toggle is not surfaced to the frontend', () => {
+    mockedConfig.featureToggles = {};
+    expect(resolve(true).sessionReplay).toBe(true);
+    expect(resolve(false).sessionReplay).toBe(false);
+  });
+
+  it('passes the rate through for range-checking at the point of use', () => {
+    expect(resolve(true, 100).sessionReplaySamplingRate).toBe(100);
+  });
+});
+
+// A chunk fetch can fail transiently. Latching on the attempt rather than on
+// the activation would disable replay for the rest of the tab.
+describe('session replay activation failures', () => {
+  const activateSessionReplay = jest.fn<Promise<number>, [unknown, number | undefined]>();
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  function freshFaroWithFailingReplay() {
+    jest.resetModules();
+    jest.doMock('./telemetry/replay', () => ({ activateSessionReplay }));
+    const faro: typeof import('./faro') = require('./faro');
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    return { faro, surface };
+  }
+
+  beforeEach(() => {
+    activateSessionReplay.mockReset();
+    activateSessionReplay.mockRejectedValue(new Error('chunk load failed'));
+  });
+
+  afterEach(() => {
+    jest.unmock('./telemetry/replay');
+  });
+
+  it('retries on the next open instead of spending the one trigger', async () => {
+    const { faro, surface } = freshFaroWithFailingReplay();
+    await faro.initFaro({ sessionReplay: true });
+
+    surface.reportPathfinderSurface('sidebar');
+    await settle();
+    expect(activateSessionReplay).toHaveBeenCalledTimes(1);
+
+    surface.reportPathfinderSurface('closed');
+    surface.reportPathfinderSurface('sidebar');
+    await settle();
+    expect(activateSessionReplay).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up after three attempts rather than re-importing on every toggle', async () => {
+    const { faro, surface } = freshFaroWithFailingReplay();
+    await faro.initFaro({ sessionReplay: true });
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      surface.reportPathfinderSurface('sidebar');
+      await settle();
+      surface.reportPathfinderSurface('closed');
+    }
+
+    expect(activateSessionReplay).toHaveBeenCalledTimes(3);
+    expect(mockPushEvent).toHaveBeenCalledWith(
+      'pathfinder_session_replay_activation_failed',
+      { exhausted: 'true' },
+      undefined,
+      { skipDedupe: true }
+    );
+  });
+
+  it('latches once activation resolves, so a later open does not re-register', async () => {
+    const { faro, surface } = freshFaroWithFailingReplay();
+    activateSessionReplay.mockReset();
+    activateSessionReplay.mockResolvedValue(1);
+    await faro.initFaro({ sessionReplay: true });
+
+    surface.reportPathfinderSurface('sidebar');
+    await settle();
+    surface.reportPathfinderSurface('closed');
+    surface.reportPathfinderSurface('sidebar');
+    await settle();
+
+    expect(activateSessionReplay).toHaveBeenCalledTimes(1);
   });
 });
