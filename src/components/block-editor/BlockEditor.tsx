@@ -239,7 +239,7 @@ function BlockEditorInner({
   onFocusExistingGuide,
 }: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
-  const newGuideId = useMemo(() => generateUniqueId(DEFAULT_GUIDE_METADATA.title), [storageKey]);
+  const [newGuideId] = useState(() => generateUniqueId(DEFAULT_GUIDE_METADATA.title));
   const editor = useBlockEditor({ initialGuide, newGuideId, onChange });
   const { state } = editor;
   const hasLoadedFromStorage = useRef(false);
@@ -314,12 +314,8 @@ function BlockEditorInner({
   // useBackendSaveFlow returns a fresh object literal every render, so depending
   // on `backendSaveFlow` directly defeats the memoization below. Destructure the
   // stable pieces and depend on those instead.
-  const { setRemoteBinding } = backendSaveFlow;
-  useEffect(() => {
-    if (backendSaveFlow.currentGuideResourceName && !idIsLocked) {
-      persistIdLock(true);
-    }
-  }, [backendSaveFlow.currentGuideResourceName, idIsLocked, persistIdLock]);
+  const { currentGuideResourceName, setRemoteBinding } = backendSaveFlow;
+  const effectiveIdIsLocked = idIsLocked || Boolean(currentGuideResourceName);
   const [isGuideLibraryOpen, setIsGuideLibraryOpen] = useState(false);
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
@@ -598,7 +594,7 @@ function BlockEditorInner({
   // Autosave / restore side effects only — clear() was for the removed New-guide path.
   useBlockPersistence({
     guide: editor.getGuide(),
-    idIsLocked,
+    idIsLocked: effectiveIdIsLocked,
     blockIds: editor.state.blocks.map((b) => b.id),
     viewMode: state.viewMode,
     jsonModeState: jsonMode.jsonModeState,
@@ -619,19 +615,19 @@ function BlockEditorInner({
   });
 
   const previewProgressKey = `block-editor://preview/${state.guide.id}`;
-  const previewProgress = useGuidePreviewProgress(previewProgressKey);
+  const { hasProgress: hasPreviewProgress, reset: resetPreviewProgress } = useGuidePreviewProgress(previewProgressKey);
 
   const localGuideOpsEditor = useMemo(
     () => ({
       getGuide: editor.getGuide,
       loadGuide: (guide: JsonGuide, savedBlockIds?: string[]) => {
-        void previewProgress.reset();
+        void resetPreviewProgress();
         persistIdLock(false);
         const existingNames = backendGuides.guides.map((g) => g.metadata.name);
         editor.loadGuide({ ...guide, id: generateUniqueId(guide.title, existingNames) }, savedBlockIds);
       },
     }),
-    [editor, backendGuides.guides, persistIdLock, previewProgress.reset]
+    [editor, backendGuides.guides, persistIdLock, resetPreviewProgress]
   );
 
   // Guide operations - extracted hook for copy/download/import/template
@@ -685,7 +681,7 @@ function BlockEditorInner({
       if (onFocusExistingGuide?.(resourceName)) {
         return;
       }
-      void previewProgress.reset();
+      void resetPreviewProgress();
       persistIdLock(true);
       editor.loadGuide(guide);
       // Bind this tab to the library resource (not a save — just local↔remote bookkeeping).
@@ -697,7 +693,7 @@ function BlockEditorInner({
       });
       editor.markSaved();
     },
-    [editor, setRemoteBinding, onFocusExistingGuide, backendGuides.guides, persistIdLock, previewProgress.reset]
+    [editor, setRemoteBinding, onFocusExistingGuide, backendGuides.guides, persistIdLock, resetPreviewProgress]
   );
 
   // Open guide library
@@ -772,16 +768,16 @@ function BlockEditorInner({
   const handleTitleCommit = useCallback(
     (title: string) => {
       editor.updateGuideMetadata({ title });
-      if (!idIsLocked) {
+      if (!effectiveIdIsLocked) {
         // The local provisional ID is also the preview-progress key; remove
         // that disposable progress before replacing the ID with its title slug.
-        void previewProgress.reset();
+        void resetPreviewProgress();
         const existingNames = backendGuides.guides.map((g) => g.metadata.name);
         editor.updateGuideMetadata({ id: generateUniqueId(title, existingNames) });
         persistIdLock(true);
       }
     },
-    [editor, idIsLocked, backendGuides.guides, persistIdLock, previewProgress.reset]
+    [editor, effectiveIdIsLocked, backendGuides.guides, persistIdLock, resetPreviewProgress]
   );
 
   return (
@@ -810,8 +806,8 @@ function BlockEditorInner({
         hasBlocks={hasBlocks}
         isSelectionMode={selection.isSelectionMode}
         onToggleSelectionMode={selection.toggleSelectionMode}
-        hasPreviewProgress={previewProgress.hasProgress}
-        onResetPreviewProgress={() => void previewProgress.reset()}
+        hasPreviewProgress={hasPreviewProgress}
+        onResetPreviewProgress={() => void resetPreviewProgress()}
         onUndo={editor.undo}
         onRedo={editor.redo}
         canUndo={editor.canUndo}

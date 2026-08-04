@@ -10,7 +10,7 @@
  * journeys whose URL is a raw GitHub URL).
  */
 
-import { consumePendingGuideOnMount, openPendingGuide } from './pendingGuideRouter';
+import { consumePendingGuideOnMount, initializePanelTabsOnMount, openPendingGuide } from './pendingGuideRouter';
 import type { CombinedLearningJourneyPanel } from './docs-panel';
 import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';
 import type { RawContent } from '../../types/content.types';
@@ -22,6 +22,8 @@ function makePanel(tabs: Array<{ id: string; type: string }> = []) {
     setActiveTab: jest.fn(),
     openLearningJourney: jest.fn(),
     openDocsPage: jest.fn(),
+    restoreTabsAsync: jest.fn().mockResolvedValue(undefined),
+    recoverLegacyEditorTab: jest.fn(),
   };
 }
 
@@ -32,6 +34,16 @@ function asPanel(panel: ReturnType<typeof makePanel>): CombinedLearningJourneyPa
 }
 
 describe('openPendingGuide', () => {
+  it('focuses a restored tab by id instead of opening a duplicate', () => {
+    const panel = makePanel([{ id: 'tab-a', type: 'docs' }]);
+    const pending: PendingGuide = { tabId: 'tab-a', url: 'bundled:a', title: 'A', type: 'docs' };
+
+    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+
+    expect(panel.setActiveTab).toHaveBeenCalledWith('tab-a');
+    expect(panel.openDocsPage).not.toHaveBeenCalled();
+  });
+
   it('routes undirected editor handoffs to createEditorTab when no editor exists', () => {
     const panel = makePanel();
     const pending: PendingGuide = { type: 'editor', title: 'Guide editor' };
@@ -154,6 +166,30 @@ describe('openPendingGuide', () => {
       pending.title,
       expect.objectContaining({ source: 'fullscreen_handoff' })
     );
+  });
+});
+
+describe('initializePanelTabsOnMount', () => {
+  afterEach(() => {
+    panelModeManager.consumePendingGuide();
+  });
+
+  it('restores the full strip before applying the pending tab focus', async () => {
+    const order: string[] = [];
+    const panel = makePanel();
+    panel.restoreTabsAsync.mockImplementation(async () => {
+      order.push('restore');
+      panel.state.tabs.push({ id: 'tab-a', type: 'docs' }, { id: 'tab-b', type: 'docs' });
+    });
+    panel.recoverLegacyEditorTab.mockImplementation(() => order.push('recover'));
+    panel.setActiveTab.mockImplementation(() => order.push('focus'));
+    panelModeManager.setPendingGuide({ tabId: 'tab-b', url: 'bundled:b', title: 'B', type: 'docs' });
+
+    await initializePanelTabsOnMount(asPanel(panel), 'fullscreen_handoff', () => order.push('in-flight'));
+
+    expect(order).toEqual(['in-flight', 'restore', 'recover', 'focus']);
+    expect(panel.state.tabs).toHaveLength(2);
+    expect(panel.openDocsPage).not.toHaveBeenCalled();
   });
 });
 

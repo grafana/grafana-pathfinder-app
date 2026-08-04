@@ -25,6 +25,7 @@ function makeModel(initial: { tabs: any[]; activeTabId: string }) {
       get state() {
         return state;
       },
+      saveTabsToStorage: jest.fn().mockResolvedValue(undefined),
     } as any,
     setActive(id: string) {
       state.activeTabId = id;
@@ -32,9 +33,10 @@ function makeModel(initial: { tabs: any[]; activeTabId: string }) {
   };
 }
 
-function dispatchFullScreen() {
-  act(() => {
+async function dispatchFullScreen() {
+  await act(async () => {
     document.dispatchEvent(new CustomEvent('pathfinder-request-full-screen'));
+    await Promise.resolve();
   });
 }
 
@@ -58,7 +60,7 @@ describe('useFullScreenHandoff', () => {
     jest.restoreAllMocks();
   });
 
-  it('refuses when a live session is active and surfaces an alert', () => {
+  it('refuses when a live session is active and surfaces an alert', async () => {
     const { model } = makeModel({
       tabs: [
         {
@@ -72,7 +74,7 @@ describe('useFullScreenHandoff', () => {
       activeTabId: 'tab-a',
     });
     renderHook(() => useFullScreenHandoff(model, true));
-    dispatchFullScreen();
+    await dispatchFullScreen();
 
     expect(publishMock).toHaveBeenCalledWith({
       type: 'alert-info',
@@ -82,19 +84,20 @@ describe('useFullScreenHandoff', () => {
     expect(locationService.push).not.toHaveBeenCalled();
   });
 
-  it('editor branch: pushes the bare full-screen route with no doc query', () => {
+  it('editor branch: pushes the bare full-screen route with no doc query', async () => {
     const { model } = makeModel({
       tabs: [{ id: 'editor', type: 'editor', title: 'Block editor', baseUrl: 'bundled:editor' }],
       activeTabId: 'editor',
     });
     renderHook(() => useFullScreenHandoff(model, false));
-    dispatchFullScreen();
+    await dispatchFullScreen();
 
     expect(setPendingGuideSpy).toHaveBeenCalledWith({
       title: 'Block editor',
       type: 'editor',
       tabId: 'editor',
     });
+    expect(model.saveTabsToStorage).toHaveBeenCalledTimes(1);
     expect(capturePriorPathSpy).toHaveBeenCalledTimes(1);
     expect(setModePersistedSpy).toHaveBeenCalledWith('fullscreen');
     expect(locationService.push).toHaveBeenCalledWith(expect.stringContaining('/fullscreen'));
@@ -105,13 +108,13 @@ describe('useFullScreenHandoff', () => {
     });
   });
 
-  it('refuses recommendations tab with an alert', () => {
+  it('refuses recommendations tab with an alert', async () => {
     const { model } = makeModel({
       tabs: [{ id: 'recommendations', type: 'recommendations', title: 'Recs', baseUrl: '' }],
       activeTabId: 'recommendations',
     });
     renderHook(() => useFullScreenHandoff(model, false));
-    dispatchFullScreen();
+    await dispatchFullScreen();
 
     expect(publishMock).toHaveBeenCalledWith({
       type: 'alert-info',
@@ -120,13 +123,13 @@ describe('useFullScreenHandoff', () => {
     expect(setModePersistedSpy).not.toHaveBeenCalled();
   });
 
-  it('refuses devtools tab with an alert', () => {
+  it('refuses devtools tab with an alert', async () => {
     const { model } = makeModel({
       tabs: [{ id: 'devtools', type: 'devtools', title: 'Devtools', baseUrl: '' }],
       activeTabId: 'devtools',
     });
     renderHook(() => useFullScreenHandoff(model, false));
-    dispatchFullScreen();
+    await dispatchFullScreen();
 
     expect(publishMock).toHaveBeenCalledWith({
       type: 'alert-info',
@@ -135,7 +138,7 @@ describe('useFullScreenHandoff', () => {
     expect(setModePersistedSpy).not.toHaveBeenCalled();
   });
 
-  it('hands off the active learning-journey using currentUrl with doc + guideType in the URL', () => {
+  it('hands off the active learning-journey using currentUrl with doc + guideType in the URL', async () => {
     const { model } = makeModel({
       tabs: [
         {
@@ -150,12 +153,13 @@ describe('useFullScreenHandoff', () => {
       activeTabId: 'tab-a',
     });
     renderHook(() => useFullScreenHandoff(model, false));
-    dispatchFullScreen();
+    await dispatchFullScreen();
 
     expect(setPendingGuideSpy).toHaveBeenCalledWith({
       url: 'https://example.com/a/milestone-2',
       title: 'Journey A',
       type: 'learning-journey',
+      tabId: 'tab-a',
       packageInfo: { packageId: 'pkg-y' },
     });
     expect(capturePriorPathSpy).toHaveBeenCalledTimes(1);
@@ -165,7 +169,7 @@ describe('useFullScreenHandoff', () => {
     expect(pushedUrl).toContain('type=learning-journey');
   });
 
-  it('treats docs-type tabs as type "docs" in payload and URL', () => {
+  it('treats docs-type tabs as type "docs" in payload and URL', async () => {
     const { model } = makeModel({
       tabs: [
         {
@@ -179,14 +183,14 @@ describe('useFullScreenHandoff', () => {
       activeTabId: 'tab-d',
     });
     renderHook(() => useFullScreenHandoff(model, false));
-    dispatchFullScreen();
+    await dispatchFullScreen();
 
     expect(setPendingGuideSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'docs' }));
     const pushedUrl = (locationService.push as jest.Mock).mock.calls[0][0];
     expect(pushedUrl).toContain('type=docs');
   });
 
-  it('H1 — re-reads model.state inside the handler (tab switched after mount)', () => {
+  it('H1 — re-reads model.state inside the handler (tab switched after mount)', async () => {
     const { model, setActive } = makeModel({
       tabs: [
         {
@@ -208,7 +212,7 @@ describe('useFullScreenHandoff', () => {
     });
     renderHook(() => useFullScreenHandoff(model, false));
     setActive('tab-b');
-    dispatchFullScreen();
+    await dispatchFullScreen();
 
     expect(setPendingGuideSpy).toHaveBeenCalledWith(
       expect.objectContaining({ url: 'https://example.com/b', title: 'Journey B' })

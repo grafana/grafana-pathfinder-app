@@ -28,10 +28,8 @@ export interface PendingGuide {
    */
   type?: 'learning-journey' | 'docs' | 'interactive' | 'editor';
   /**
-   * Identity of the editor tab being handed off. Required once multiple
-   * editor drafts can coexist — without it the receiving surface would
-   * focus the most recently opened editor instead of the one that was
-   * popped out / expanded.
+   * Identity of an existing tab moving between surfaces. After restoration,
+   * the receiving surface focuses this tab instead of creating a duplicate.
    */
   tabId?: string;
   /**

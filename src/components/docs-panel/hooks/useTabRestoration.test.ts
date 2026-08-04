@@ -77,7 +77,7 @@ describe('useTabRestoration', () => {
     expect(model.recoverLegacyEditorTab).not.toHaveBeenCalled();
   });
 
-  it('re-fires when panelMode transitions away from fullscreen', () => {
+  it('force-refreshes the sidebar model when returning from fullscreen', () => {
     const model = makeModel();
     const { rerender } = renderHook(
       (props: { panelMode: PanelMode; tabs: any[] }) =>
@@ -88,6 +88,21 @@ describe('useTabRestoration', () => {
 
     rerender({ panelMode: 'sidebar', tabs: [tab('recommendations', 'recommendations')] });
     expect(model.restoreTabsAsync).toHaveBeenCalledTimes(1);
+    expect(model.restoreTabsAsync).toHaveBeenCalledWith({ force: true });
+  });
+
+  it('force-refreshes the sidebar model when returning from floating mode', () => {
+    const model = makeModel();
+    const tabs = [tab('recommendations', 'recommendations'), tab('editor', 'editor')];
+    const { rerender } = renderHook(
+      ({ panelMode }: { panelMode: PanelMode }) => useTabRestoration({ model, panelMode, tabs }),
+      { initialProps: { panelMode: 'floating' as PanelMode } }
+    );
+
+    expect(model.restoreTabsAsync).not.toHaveBeenCalled();
+    rerender({ panelMode: 'sidebar' });
+
+    expect(model.restoreTabsAsync).toHaveBeenCalledWith({ force: true });
   });
 
   it('does NOT re-fire on tab or model changes when panelMode is unchanged (preserves [panelMode]-only dep array)', () => {

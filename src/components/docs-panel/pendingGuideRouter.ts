@@ -41,6 +41,11 @@ export function openPendingGuide(
   pending: PendingGuide,
   source: LaunchSource
 ): void {
+  if (pending.tabId && panel.state.tabs.some((tab) => tab.id === pending.tabId)) {
+    panel.setActiveTab(pending.tabId);
+    return;
+  }
+
   if (pending.type === 'editor') {
     if (pending.tabId) {
       // Idempotent: focuses if restored, otherwise creates with the handoff id.
@@ -96,4 +101,27 @@ export function consumePendingGuideOnMount(
   markInFlight();
   openPendingGuide(panel, pending, pending.source ?? fallbackSource);
   return true;
+}
+
+/**
+ * Restore the complete workspace before applying a one-tab launch intent.
+ * Applying first would persist a partial model and erase sibling tabs.
+ */
+export async function initializePanelTabsOnMount(
+  panel: CombinedLearningJourneyPanel,
+  fallbackSource: LaunchSource,
+  markInFlight: () => void
+): Promise<boolean> {
+  const pending = panelModeManager.consumePendingGuide();
+  if (pending) {
+    markInFlight();
+  }
+
+  await panel.restoreTabsAsync();
+  panel.recoverLegacyEditorTab();
+
+  if (pending) {
+    openPendingGuide(panel, pending, pending.source ?? fallbackSource);
+  }
+  return pending !== null;
 }

@@ -316,6 +316,19 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(1);
   });
 
+  it('force-refreshes an existing model after another surface updates storage', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+    mockRestoreTabsFromStorage.mockResolvedValueOnce([makeTab('recommendations'), makeTab('tab-guide-2', 'docs')]);
+    mockRestoreActiveTabFromStorage.mockResolvedValueOnce('tab-guide-2');
+
+    await panel.restoreTabsAsync({ force: true });
+
+    expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(2);
+    expect((panel as any).state.activeTabId).toBe('tab-guide-2');
+    expect((panel as any).state.tabs.map((tab: LearningJourneyTab) => tab.id)).toContain('tab-guide-2');
+  });
+
   it('should allow a NEW instance to restore tabs after the first instance already restored', async () => {
     // Simulate: sidebar mounts, panel A restores tabs
     const panelA = new CombinedLearningJourneyPanel();

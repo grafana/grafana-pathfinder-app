@@ -1,8 +1,9 @@
 /**
- * Triggers tab restoration from storage when the sidebar instance is
- * actually responsible for owning the tab surface — gated by `panelMode`
- * and by an empty guide strip so we don't overwrite live chrome tabs
- * (docs, journey, editor, Dev Tools) on a remount.
+ * Keeps the sidebar model aligned with the shared tab workspace.
+ *
+ * Initial mount restores only an empty strip. Returning from floating or
+ * fullscreen force-refreshes even a populated strip because those surfaces
+ * own separate models and may have changed editor titles or tab state.
  *
  * Why the dep array is `[panelMode]` only (preserved verbatim — Pattern J
  * boundary touching the `_hasRestoredTabs` instance guard, deferred to a
@@ -19,10 +20,8 @@
  *     flips away from `'fullscreen'`. The `tabs` snapshot at that moment
  *     is whatever the renderer last rendered.
  *
- * Full-screen mode skip (preserved verbatim):
- *   When the full-screen panel owns the session, the sidebar instance
- *   must NOT call restoreTabsAsync — otherwise both instances race on
- *   tabStorage and drift the saved tab content.
+ * Non-sidebar modes are skipped while they own the workspace; their outbound
+ * transitions flush storage before changing modes.
  *
  * Restore-once guard (preserved — Pattern I, deferred):
  *   `_hasRestoredTabs` lives on the model instance, not the hook. The
@@ -31,11 +30,8 @@
  *   guard into a hook would change StrictMode and fullscreen-remount
  *   semantics — see the deferred-work note in the refactor plan.
  *
- * Contract surfaces preserved (Pattern J — pinned by
- * docs-panel.tab-restore-guard.test.ts and utils/tab-storage-restore.test.ts):
- *   - getGuideStripTabs(...).length === 0 gate (does NOT touch tabStorage)
- *   - model.restoreTabsAsync() entry point (unchanged)
- *   - `_hasRestoredTabs` guard semantics (untouched on the class)
+ * The model's restore-once guard still protects initial StrictMode replay;
+ * `{ force: true }` is reserved for a surface ownership transition.
  */
 import * as React from 'react';
 import { getGuideStripTabs } from '../utils';
@@ -44,7 +40,7 @@ import type { PanelMode } from '../../../global-state/panel-mode';
 
 interface TabRestorationModel {
   state: CombinedPanelState;
-  restoreTabsAsync(): Promise<void>;
+  restoreTabsAsync(options?: { force?: boolean }): Promise<void>;
   recoverLegacyEditorTab(): void;
 }
 
@@ -55,10 +51,22 @@ export interface UseTabRestorationArgs {
 }
 
 export function useTabRestoration({ model, panelMode, tabs }: UseTabRestorationArgs): void {
+  const previousModeRef = React.useRef(panelMode);
+
   // Restore tabs after storage is initialized (fixes race condition)
   React.useEffect(() => {
+    const previousMode = previousModeRef.current;
+    previousModeRef.current = panelMode;
+
     // Empty strip → hydrate from tabStorage. Any strip tab is live state.
-    if (panelMode === 'fullscreen') {
+    if (panelMode !== 'sidebar') {
+      return;
+    }
+
+    // Floating/fullscreen own separate models. Reconcile their saved strip
+    // when this long-lived sidebar model becomes the owner again.
+    if (previousMode !== 'sidebar') {
+      void model.restoreTabsAsync({ force: true }).then(() => model.recoverLegacyEditorTab());
       return;
     }
 

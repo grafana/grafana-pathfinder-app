@@ -7,10 +7,10 @@ import { t } from '@grafana/i18n';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset, useAutoOpenListener } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
-import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
+import { consumePendingGuideOnMount, initializePanelTabsOnMount } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
-import { getGuideStripTabs, isNonContentTab } from '../docs-panel/utils';
-import { editorTabStorageKey } from '../block-editor/editor-tab-storage';
+import { isNonContentTab } from '../docs-panel/utils';
+import { editorTabStorageKey, flushEditorDraft } from '../block-editor/editor-tab-storage';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
@@ -80,8 +80,9 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // Track whether a guide open is in-flight so the empty-state fallback
   // doesn't fire before the handoff or auto-launch has resolved.
   const guideOpenInFlightRef = useRef(false);
+  const initializationRef = useRef<Promise<boolean> | null>(null);
 
-  // Handoff from sidebar/floating: open the pending guide if one was set.
+  // Announce surface ownership before ordered tab initialization below.
   useEffect(() => {
     const handlePending = () => {
       guideOpenInFlightRef.current = true;
@@ -95,10 +96,6 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     // `getIsSidebarMounted()` and silently fall through (or try to call
     // `openSidebar`, which now no-ops in fullscreen mode).
     sidebarState.setIsSidebarMounted(true);
-
-    consumePendingGuideOnMount(panel, 'fullscreen_handoff', () => {
-      guideOpenInFlightRef.current = true;
-    });
 
     return () => {
       document.removeEventListener('pathfinder-auto-launch-pending', handlePending);
@@ -115,25 +112,16 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     };
   }, [panel]);
 
-  // Tab restoration from storage. Mirror of the floating panel pattern:
-  // restore once on mount, gated on the model still showing only the
-  // default recommendations tab.
+  // Restore the complete strip before applying a pending handoff. Opening the
+  // handoff first would persist a one-tab model over the shared workspace.
   const { tabs, activeTabId, pendingCloseTabId } = panel.useState();
   const [restorationDone, setRestorationDone] = useState(false);
 
   useEffect(() => {
-    // Read live model state instead of closure'd `tabs`. The pending-guide
-    // useEffect above runs BEFORE this one and synchronously calls
-    // `panel.openDocsPage`, which mutates `panel.state.tabs` immediately
-    // but doesn't update the closure'd snapshot from `panel.useState()`
-    // for this render. Using the live state stops us from restoring on
-    // top of a tab the handoff just opened — that would await tabStorage
-    // and overwrite the new tab if storage was empty or stale.
-    // Empty guide strip → hydrate from storage; any strip tab is live state.
-    // Mirrors FloatingPanelManager.
-    const restore = getGuideStripTabs(panel.state.tabs).length === 0 ? panel.restoreTabsAsync() : Promise.resolve();
-    restore.then(() => {
-      panel.recoverLegacyEditorTab();
+    initializationRef.current ??= initializePanelTabsOnMount(panel, 'fullscreen_handoff', () => {
+      guideOpenInFlightRef.current = true;
+    });
+    initializationRef.current.then(() => {
       setRestorationDone(true);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -249,12 +237,16 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     model: panel,
   });
 
-  const handleExitToSidebar = useCallback(() => {
+  const handleExitToSidebar = useCallback(async () => {
     reportAppInteraction(UserInteraction.FullScreenExit, {
       destination: 'sidebar',
       guide_url: guideUrl || '',
       guide_title: title,
     });
+    if (isEditorTab && activeTab) {
+      flushEditorDraft(editorTabStorageKey(activeTab.id));
+    }
+    await panel.saveTabsToStorage();
     panelModeManager.setMode('sidebar');
     sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');
     sidebarState.openSidebar('Interactive learning');
@@ -263,7 +255,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     // URLs (no captured prior path).
     const priorPath = panelModeManager.consumePriorPath();
     locationService.push(priorPath ?? PLUGIN_BASE_URL);
-  }, [guideUrl, title]);
+  }, [guideUrl, title, panel, isEditorTab, activeTab]);
 
   /**
    * Hand off to the floating panel — works for both guides and the editor.
@@ -273,14 +265,19 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
    * whatever tabStorage happens to hold (mirrors the inbound direction
    * `FloatingPanelManager.handleSwitchToFullScreen`).
    */
-  const handleSwitchToFloating = useCallback(() => {
+  const handleSwitchToFloating = useCallback(async () => {
     if (isEditorTab) {
       reportAppInteraction(UserInteraction.FullScreenExit, {
         destination: 'floating',
         guide_url: '',
         guide_title: title,
       });
+      if (activeTab) {
+        flushEditorDraft(editorTabStorageKey(activeTab.id));
+      }
+      const saveTabs = panel.saveTabsToStorage();
       panelModeManager.setPendingGuide({ title, type: 'editor', tabId: activeTab?.id });
+      await saveTabs;
       panelModeManager.setModePersisted('floating');
       locationService.push(PLUGIN_BASE_URL);
       return;
@@ -297,18 +294,21 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     // panel reopens it as a learning journey (with milestone navigation)
     // rather than a flat docs tab.
     const tabType = activeTab?.type === 'learning-journey' ? 'learning-journey' : 'docs';
+    const saveTabs = panel.saveTabsToStorage();
     panelModeManager.setPendingGuide({
       url: guideUrl,
       title,
       type: tabType,
+      tabId: activeTab?.id,
       // Preserve synthetic packageInfo (PR-tester journeys) across the
       // fullscreen → floating handoff for the same reason as the inbound
       // direction: raw GitHub URLs aren't recognised package URLs.
       packageInfo: activeTab?.packageInfo,
     });
+    await saveTabs;
     panelModeManager.setModePersisted('floating');
     locationService.push(PLUGIN_BASE_URL);
-  }, [isEditorTab, guideUrl, title, activeTab?.id, activeTab?.type, activeTab?.packageInfo]);
+  }, [isEditorTab, guideUrl, title, activeTab, panel]);
 
   // Stable ref to the latest exit-to-sidebar callback. Without it, the
   // empty-state fallback effect below would re-subscribe whenever
@@ -329,7 +329,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // the ref above so identity changes don't re-fire this effect.
   useEffect(() => {
     if (restorationDone && !hasActiveGuide && !isEditorTab && !guideOpenInFlightRef.current) {
-      handleExitToSidebarRef.current();
+      void handleExitToSidebarRef.current();
     }
   }, [restorationDone, hasActiveGuide, isEditorTab]);
 
@@ -338,7 +338,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // fullscreen to hand off without knowing about FullScreenPanel internals.
   useEffect(() => {
     const handleDockRequest = () => {
-      handleExitToSidebar();
+      void handleExitToSidebar();
     };
     document.addEventListener('pathfinder-request-dock', handleDockRequest);
     return () => {
