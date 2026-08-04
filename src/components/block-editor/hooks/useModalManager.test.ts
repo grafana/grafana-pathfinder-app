@@ -10,7 +10,7 @@ describe('useModalManager', () => {
     const { result } = renderHook(() => useModalManager());
 
     expect(result.current.isOpen('metadata')).toBe(false);
-    expect(result.current.isOpen('newGuideConfirm')).toBe(false);
+    expect(result.current.isOpen('import')).toBe(false);
     expect(result.current.isOpen('import')).toBe(false);
     expect(result.current.isOpen('githubPr')).toBe(false);
     expect(result.current.isOpen('tour')).toBe(false);

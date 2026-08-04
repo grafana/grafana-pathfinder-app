@@ -63,7 +63,6 @@ export type {
   UseGuideOperationsOptions,
   UseGuideOperationsReturn,
   GuideOpsEditorInterface,
-  GuideOpsPersistenceInterface,
   GuideOpsModalInterface,
 } from './useGuideOperations';
 

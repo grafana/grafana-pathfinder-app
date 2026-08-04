@@ -280,18 +280,29 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   /**
    * Remove editor / devtools tabs when their gates are off, so stale tabs
    * cannot linger in the strip after a role downgrade or a dev-mode flip.
+   * Cleared editor tabs also drop their per-tab localStorage documents.
    *
    * Gates are derived from this model's own `pluginConfig` — never from flags
    * a caller computed against a second config source, which is how restore
    * and the renderer used to disagree.
    */
   public pruneGatedTabs(): void {
-    const pruned = this.pruneUnauthorizedGatedTabs(this.state.tabs, this.state.activeTabId);
+    const before = this.state.tabs;
+    const pruned = this.pruneUnauthorizedGatedTabs(before, this.state.activeTabId);
     if (!pruned.didPrune) {
       return;
     }
+
     this.setState({ tabs: pruned.tabs, activeTabId: pruned.activeTabId });
     if (pruned.gateClosed) {
+      // Observed gate closure — persist the strip and drop per-tab editor
+      // drafts so dead tab ids don't orphan localStorage (re-enable starts fresh).
+      const keptIds = new Set(pruned.tabs.map((t) => t.id));
+      for (const tab of before) {
+        if (tab.type === 'editor' && !keptIds.has(tab.id)) {
+          clearEditorTabStorage(tab.id);
+        }
+      }
       void this.saveTabsToStorage();
     }
   }

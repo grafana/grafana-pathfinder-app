@@ -46,6 +46,7 @@ import {
   findSectionNestedBlockByInstanceId,
   readNestedInstanceId,
 } from './nestedBlockInstanceId';
+import { guideSyncSnapshot } from './editor-tab-storage';
 
 /**
  * Apply an author note to a block. When `note` is empty/undefined the
@@ -251,7 +252,7 @@ function BlockEditorInner({
     onGuideTitleChange?.(state.guide.title);
   }, [state.guide.title, onGuideTitleChange]);
 
-  // Modal state - useModalManager handles metadata, newGuideConfirm, import, githubPr, tour
+  // Modal state - useModalManager handles metadata, import, githubPr, tour
   const modals = useModalManager();
 
   // Block form state - manages form modal and editing context
@@ -288,6 +289,8 @@ function BlockEditorInner({
     backendGuides,
     storageKey,
   });
+  // Stable callback — used by import/template clear and library load binding.
+  const { setRemoteBinding } = backendSaveFlow;
   const [isGuideLibraryOpen, setIsGuideLibraryOpen] = useState(false);
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
@@ -563,7 +566,8 @@ function BlockEditorInner({
     editor.markSaved();
   }, [editor]);
 
-  const persistence = useBlockPersistence({
+  // Autosave / restore side effects only — clear() was for the removed New-guide path.
+  useBlockPersistence({
     guide: editor.getGuide(),
     blockIds: editor.state.blocks.map((b) => b.id),
     viewMode: state.viewMode,
@@ -584,17 +588,13 @@ function BlockEditorInner({
     onSave: handlePersistenceSave,
   });
 
-  // Guide operations - extracted hook for copy/download/new/import/template
+  // Guide operations - extracted hook for copy/download/import/template
   const guideOps = useGuideOperations({
     editor,
-    persistence,
-    recordingPersistence,
-    actionRecorder,
-    recordingState,
     modals,
     onCopy,
     onDownload,
-    onNewGuide: backendSaveFlow.handleClearBackendTracking,
+    onClearBackendTracking: () => setRemoteBinding(null),
   });
 
   // Handle block type selection from palette
@@ -633,11 +633,6 @@ function BlockEditorInner({
     selection.clearSelection();
   }, [selection, editor]);
 
-  // useBackendSaveFlow returns a fresh object literal every render, so depending
-  // on `backendSaveFlow` directly defeats the memoization below. Destructure the
-  // stable pieces (trackLoadedGuide is a []-stable useCallback; the others are
-  // primitives) and depend on those instead.
-  const { trackLoadedGuide, publishedStatus, hasUnsyncedChanges } = backendSaveFlow;
   const handleLoadGuideFromBackend = useCallback(
     (guide: JsonGuide, resourceName: string) => {
       // Another editor tab already owns this backend guide — switch to it.
@@ -645,10 +640,16 @@ function BlockEditorInner({
         return;
       }
       editor.loadGuide(guide);
-      trackLoadedGuide(guide, resourceName);
+      // Bind this tab to the library resource (not a save — just local↔remote bookkeeping).
+      const status = backendGuides.guides.find((g) => g.metadata.name === resourceName)?.spec.status ?? 'draft';
+      setRemoteBinding({
+        resourceName,
+        lastSyncedJson: guideSyncSnapshot(guide),
+        status,
+      });
       editor.markSaved();
     },
-    [editor, trackLoadedGuide, onFocusExistingGuide]
+    [editor, setRemoteBinding, onFocusExistingGuide, backendGuides.guides]
   );
 
   // Open guide library
@@ -656,22 +657,6 @@ function BlockEditorInner({
     setIsGuideLibraryOpen(true);
     backendGuides.refreshGuides();
   }, [backendGuides]);
-
-  // Handle new guide with smart warning logic
-  const handleNewGuideClick = useCallback(() => {
-    const currentGuide = editor.getGuide();
-    const hasBlocksNow = currentGuide.blocks && currentGuide.blocks.length > 0;
-    // Has content, and either never saved to backend or diverged from the last backend save
-    const hasChanges = hasBlocksNow && (publishedStatus === 'not-saved' || hasUnsyncedChanges);
-
-    if (hasChanges) {
-      // Show warning modal
-      modals.open('newGuideConfirm');
-    } else {
-      // No changes to lose, just create new guide
-      guideOps.handleNewGuide();
-    }
-  }, [editor, publishedStatus, hasUnsyncedChanges, modals, guideOps]);
 
   // Modified form submit to handle section insertions, nested block edits, and conditional branch blocks
   const handleBlockFormSubmitWithSection = useCallback(
@@ -777,7 +762,6 @@ function BlockEditorInner({
         onPostToBackend={backendSaveFlow.handlePostToBackend}
         onUnpublish={backendSaveFlow.performUnpublish}
         isPostingToBackend={backendGuides.isSaving}
-        onNewGuide={handleNewGuideClick}
         isBackendAvailable={backendAvailable}
         hasBackendGuides={hasManageableBackendGuides(backendGuides)}
         hasBlocks={hasBlocks}
@@ -837,7 +821,6 @@ function BlockEditorInner({
         isDirty={state.isDirty}
         hasBlocks={hasBlocks}
         onUpdateGuideMetadata={editor.updateGuideMetadata}
-        onNewGuideConfirm={guideOps.handleNewGuide}
         onImportGuide={guideOps.handleImportGuide}
       />
 

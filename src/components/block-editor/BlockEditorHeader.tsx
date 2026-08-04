@@ -58,8 +58,6 @@ export interface BlockEditorHeaderProps {
   onUnpublish: () => void;
   /** Whether a backend operation is in progress */
   isPostingToBackend?: boolean;
-  /** Callback to start new guide */
-  onNewGuide: () => void;
   /** Whether the Pathfinder backend API is available; hides Library and Publish controls when false */
   isBackendAvailable: boolean;
   /** Whether the guide Library entry should be offered (stays hidden until the user has a saved guide) */
@@ -109,7 +107,6 @@ export function BlockEditorHeader({
   onPostToBackend,
   onUnpublish,
   isPostingToBackend = false,
-  onNewGuide,
   isBackendAvailable,
   hasBackendGuides,
   hasBlocks,
@@ -250,7 +247,6 @@ export function BlockEditorHeader({
             hasBlocks={hasBlocks}
             isSelectionMode={isSelectionMode}
             onToggleSelectionMode={onToggleSelectionMode}
-            onNewGuide={onNewGuide}
             onOpenGuideLibrary={onOpenGuideLibrary}
             onOpenImport={onOpenImport}
             onCopy={onCopy}

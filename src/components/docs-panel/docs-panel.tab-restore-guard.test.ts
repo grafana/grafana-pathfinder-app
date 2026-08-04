@@ -225,10 +225,16 @@ jest.mock('../../hooks', () => ({}));
 // Import under test
 // ---------------------------------------------------------------------------
 
+import { config } from '@grafana/runtime';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { CombinedLearningJourneyPanel } from './docs-panel';
 import type { LearningJourneyTab } from '../../types/content-panel.types';
-import { editorTabStorageKey, writeEditorRemoteState } from '../block-editor/editor-tab-storage';
+import {
+  editorTabStorageKey,
+  readEditorStoredState,
+  writeEditorDraftState,
+  writeEditorRemoteState,
+} from '../block-editor/editor-tab-storage';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -468,6 +474,47 @@ describe('CombinedLearningJourneyPanel — tab gate sync', () => {
     const tabs = (panel as any).state.tabs as Array<{ type?: string }>;
     expect(tabs.some((t) => t.type === 'devtools')).toBe(false);
     expect((panel as any).state.activeTabId).toBe('recommendations');
+    expect(tabStorage.setTabs).toHaveBeenCalled();
+  });
+
+  it('clears per-tab editor storage when the editor gate closes after being open', async () => {
+    const user = (config as { bootData: { user: { id: number; orgRole?: string } } }).bootData.user;
+    user.orgRole = 'Editor';
+
+    const editorTab = {
+      id: 'editor-a',
+      title: 'My draft',
+      baseUrl: '',
+      currentUrl: '',
+      content: null,
+      isLoading: false,
+      error: null,
+      type: 'editor' as const,
+    };
+    mockRestoreTabsFromStorage.mockResolvedValue([...RESTORED_TABS, editorTab]);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('editor-a');
+
+    const storageKey = editorTabStorageKey('editor-a');
+    writeEditorDraftState(storageKey, {
+      guide: { id: 'g1', title: 'My draft', blocks: [{ id: 'b1', type: 'markdown', content: 'x' }] },
+    });
+    writeEditorRemoteState(storageKey, {
+      resourceName: 'g1',
+      lastSyncedJson: '{}',
+      status: 'draft',
+    });
+    expect(readEditorStoredState(storageKey)).not.toBeNull();
+
+    const { tabStorage } = require('../../lib/user-storage');
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+    expect((panel as any).state.tabs.some((t: { id: string }) => t.id === 'editor-a')).toBe(true);
+
+    user.orgRole = 'Viewer';
+    panel.syncPluginConfig({});
+
+    expect((panel as any).state.tabs.some((t: { type?: string }) => t.type === 'editor')).toBe(false);
+    expect(readEditorStoredState(storageKey)).toBeNull();
     expect(tabStorage.setTabs).toHaveBeenCalled();
   });
 });

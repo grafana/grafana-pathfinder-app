@@ -223,11 +223,18 @@ export function getEditorTabChromeStatus(tabId: string): EditorTabChromeStatus {
       return { publishedStatus, hasUnsyncedChanges: hasGuideContent };
     }
 
-    const currentJson = JSON.stringify({ id: guide.id, title: guide.title, blocks: guide.blocks });
-    return { publishedStatus, hasUnsyncedChanges: currentJson !== remote.lastSyncedJson };
+    return { publishedStatus, hasUnsyncedChanges: guideSyncSnapshot(guide) !== remote.lastSyncedJson };
   } catch {
     return { publishedStatus: 'not-saved', hasUnsyncedChanges: false };
   }
+}
+
+/**
+ * Dirty baseline shared by BlockEditor header, tab-strip chrome, and close confirm.
+ * Only id/title/blocks — matches `getGuide()` for sync purposes (ignores schemaVersion etc.).
+ */
+export function guideSyncSnapshot(guide: { id?: unknown; title?: unknown; blocks?: unknown }): string {
+  return JSON.stringify({ id: guide.id, title: guide.title, blocks: guide.blocks });
 }
 
 /** Same-window subscribers (localStorage `storage` events do not fire in the writing window). */
@@ -315,23 +322,24 @@ export function findEditorTabIdByResourceName(
 
 /**
  * True when closing this editor tab would discard applied guide work
- * (never saved, or diverged from lastSyncedJson). Same rule as chrome status.
+ * (never saved with local content, or diverged from lastSyncedJson).
  */
 export function editorTabHasUnsavedWork(tabId: string): boolean {
   try {
     const state = readEditorStoredState(editorTabStorageKey(tabId));
 
     const guide = state?.guide as { id?: string; title?: string; blocks?: unknown[] } | undefined;
-    if (!guide || !Array.isArray(guide.blocks) || guide.blocks.length === 0) {
+    if (!guide || !Array.isArray(guide.blocks)) {
       return false;
     }
 
     const remote = state?.remote;
     if (!remote?.resourceName || typeof remote.lastSyncedJson !== 'string') {
-      return true;
+      // No sync baseline — only confirm if there's local content to lose.
+      return guide.blocks.length > 0;
     }
-    const currentJson = JSON.stringify({ id: guide.id, title: guide.title, blocks: guide.blocks });
-    return currentJson !== remote.lastSyncedJson;
+
+    return guideSyncSnapshot(guide) !== remote.lastSyncedJson;
   } catch {
     return false;
   }

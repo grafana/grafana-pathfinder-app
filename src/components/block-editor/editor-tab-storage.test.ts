@@ -29,7 +29,7 @@ function seedDraft(g: unknown = guide) {
 describe('editorTabHasUnsavedWork', () => {
   beforeEach(() => localStorage.clear());
 
-  it('is false when there is no draft or the draft has no blocks', () => {
+  it('is false when there is no draft or an empty never-saved draft', () => {
     expect(editorTabHasUnsavedWork(TAB_ID)).toBe(false);
 
     seedDraft({ ...guide, blocks: [] });
@@ -51,6 +51,18 @@ describe('editorTabHasUnsavedWork', () => {
 
     seedDraft({ ...guide, title: 'Edited After Save' });
     expect(editorTabHasUnsavedWork(TAB_ID)).toBe(true);
+  });
+
+  it('is true when every block was deleted but the guide still diverges from lastSyncedJson', () => {
+    seedDraft();
+    writeEditorRemoteState(KEY, {
+      resourceName: 'my-guide',
+      lastSyncedJson: JSON.stringify(guide),
+    });
+
+    seedDraft({ ...guide, blocks: [] });
+    expect(editorTabHasUnsavedWork(TAB_ID)).toBe(true);
+    expect(getEditorTabChromeStatus(TAB_ID).hasUnsyncedChanges).toBe(true);
   });
 
   it('ignores unapplied JSON-mode text (matches guide isDirty / header sync)', () => {

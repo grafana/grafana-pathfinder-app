@@ -98,6 +98,12 @@ describe('useBackendSaveFlow — performSaveDraft', () => {
     expect(backendGuides.saveGuide).toHaveBeenCalledWith(g, undefined, undefined, 'draft');
     expect(result.current.currentGuideResourceName).toBe('g1');
     expect(result.current.lastPublishedJson).toBe(JSON.stringify(g));
+    // Binding is in storage before paint — survives an immediate tab switch/unmount.
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).remote).toEqual({
+      resourceName: 'g1',
+      lastSyncedJson: JSON.stringify(g),
+      status: 'draft',
+    });
     expect(publish).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'alert-success', payload: ['Guide saved as draft.'] })
     );
@@ -281,23 +287,33 @@ describe('useBackendSaveFlow — performUnpublish', () => {
   });
 });
 
-describe('useBackendSaveFlow — trackLoadedGuide / handleClearBackendTracking', () => {
-  it('trackLoadedGuide sets resourceName and a normalized lastPublishedJson', () => {
+describe('useBackendSaveFlow — setRemoteBinding', () => {
+  it('binds resourceName + lastSyncedJson into React state and localStorage together', () => {
     const editor = { getGuide: () => guide() };
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides: makeBackendGuides() }));
+    const backendGuides = makeBackendGuides({
+      guides: [makeGuideEntry('loaded-guide', 'Loaded', 'published')],
+    });
+    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
 
-    const loaded = guide({ id: 'loaded-guide', title: 'Loaded' });
+    const syncedJson = JSON.stringify({ id: 'loaded-guide', title: 'Loaded', blocks: [] });
     act(() => {
-      result.current.trackLoadedGuide(loaded, 'loaded-guide');
+      result.current.setRemoteBinding({
+        resourceName: 'loaded-guide',
+        lastSyncedJson: syncedJson,
+        status: 'published',
+      });
     });
 
     expect(result.current.currentGuideResourceName).toBe('loaded-guide');
-    expect(result.current.lastPublishedJson).toBe(
-      JSON.stringify({ id: loaded.id, title: loaded.title, blocks: loaded.blocks })
-    );
+    expect(result.current.lastPublishedJson).toBe(syncedJson);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).remote).toEqual({
+      resourceName: 'loaded-guide',
+      lastSyncedJson: syncedJson,
+      status: 'published',
+    });
   });
 
-  it('handleClearBackendTracking resets tracking to not-saved and drops remote from storage', () => {
+  it('clearing the binding resets to not-saved and drops remote from storage', () => {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
@@ -312,7 +328,7 @@ describe('useBackendSaveFlow — trackLoadedGuide / handleClearBackendTracking',
     expect(result.current.publishedStatus).toBe('draft');
 
     act(() => {
-      result.current.handleClearBackendTracking();
+      result.current.setRemoteBinding(null);
     });
 
     expect(result.current.publishedStatus).toBe('not-saved');
@@ -377,5 +393,25 @@ describe('useBackendSaveFlow — placeholder id mint on save', () => {
       'draft'
     );
     expect(result.current.currentGuideResourceName).toBe(mintedId);
+  });
+});
+
+describe('useBackendSaveFlow — sync snapshot', () => {
+  it('stores id/title/blocks only so schemaVersion does not keep the guide dirty after save', async () => {
+    const g = guide({ schemaVersion: '1.0.0' });
+    const editor = { getGuide: () => g };
+    const backendGuides = makeBackendGuides({
+      refreshGuides: jest.fn().mockResolvedValue([makeGuideEntry('g1', 'Guide one', 'draft')]),
+    });
+    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+
+    const expected = JSON.stringify({ id: g.id, title: g.title, blocks: g.blocks });
+    expect(result.current.lastPublishedJson).toBe(expected);
+    expect(result.current.hasUnsyncedChanges).toBe(false);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).remote.lastSyncedJson).toBe(expected);
   });
 });

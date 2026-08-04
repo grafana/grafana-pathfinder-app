@@ -8,16 +8,11 @@ function makeOps(overrides: Partial<Parameters<typeof useGuideOperations>[0]> = 
   const editor = {
     getGuide: jest.fn(() => ({ id: 'x', title: 'x', blocks: [] })),
     loadGuide,
-    resetGuide: jest.fn(),
   };
 
   const { result } = renderHook(() =>
     useGuideOperations({
       editor,
-      persistence: { clear: jest.fn() },
-      recordingPersistence: { clear: jest.fn() },
-      actionRecorder: { clearRecording: jest.fn() },
-      recordingState: { reset: jest.fn() },
       modals: { close: jest.fn() },
       ...overrides,
     })

@@ -34,7 +34,6 @@ const baseProps = {
   onSaveDraft: jest.fn(),
   onPostToBackend: jest.fn(),
   onUnpublish: jest.fn(),
-  onNewGuide: jest.fn(),
   isBackendAvailable: true,
   hasBackendGuides: true,
   hasBlocks: false,
