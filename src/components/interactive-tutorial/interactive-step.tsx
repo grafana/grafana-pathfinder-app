@@ -481,14 +481,14 @@ export const InteractiveStep = forwardRef<
         }
 
         // Execute the action using existing interactive logic
-        const actionOutcome = await executeInteractiveAction(
+        const actionOutcome = await executeInteractiveAction({
           targetAction,
           refTarget,
-          currentTargetValue,
-          'do',
+          targetValue: currentTargetValue,
+          targetState,
           targetComment,
-          targetState
-        );
+          buttonType: 'do',
+        });
         if (actionOutcome === 'error') {
           setPostVerifyError('Action did not complete successfully.');
           return false;
@@ -736,14 +736,14 @@ export const InteractiveStep = forwardRef<
           lazyRender,
           scrollContainer,
           async () => {
-            const outcome = await executeInteractiveAction(
+            const outcome = await executeInteractiveAction({
               targetAction,
               refTarget,
-              currentTargetValue,
-              'show',
+              targetValue: currentTargetValue,
+              targetState,
               targetComment,
-              targetState
-            );
+              buttonType: 'show',
+            });
             return outcome !== 'error';
           },
           targetAction

@@ -1,21 +1,24 @@
+import type { InternalAction } from './interactive-actions.types';
+
 export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
 
 export type CrossTabRole = 'controller' | 'live';
 
-export interface CrossTabInternalAction {
-  targetAction: string;
-  refTarget?: string;
-  targetValue?: string;
-  targetState?: boolean | string;
-  targetComment?: string;
+// Derived by exclusion rather than restated: a field the engine reads off an
+// action must reach the live tab, and hand-listing the fields is what dropped
+// targetState on this wire three times over. Only `requirements` stays behind —
+// the controller gates them, the live tab replays. Fields added to
+// InternalAction therefore reach the wire by default rather than by remembering.
+export type CrossTabInternalAction = Omit<InternalAction, 'requirements'>;
+
+/** Narrow an engine action to what the wire carries. */
+export function toCrossTabInternalAction(action: InternalAction): CrossTabInternalAction {
+  const { requirements, ...wire } = action;
+  return wire;
 }
 
-export interface CrossTabAction {
-  targetAction: string;
+export interface CrossTabAction extends CrossTabInternalAction {
   refTarget: string;
-  targetValue?: string;
-  targetState?: boolean | string;
-  targetComment?: string;
   internalActions?: CrossTabInternalAction[];
 }
 
@@ -231,7 +234,8 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
   if (
     typeof action.refTarget !== 'string' ||
     typeof action.targetAction !== 'string' ||
-    !KNOWN_TARGET_ACTIONS.has(action.targetAction)
+    !KNOWN_TARGET_ACTIONS.has(action.targetAction) ||
+    !isOptionalTargetState(action.targetState)
   ) {
     return false;
   }
@@ -249,7 +253,8 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
           KNOWN_TARGET_ACTIONS.has(sub.targetAction) &&
           isOptionalString(sub.refTarget) &&
           isOptionalString(sub.targetValue) &&
-          isOptionalString(sub.targetComment)
+          isOptionalString(sub.targetComment) &&
+          isOptionalTargetState(sub.targetState)
       )
     );
   }
@@ -266,6 +271,10 @@ function isValidSidebarHandoff(message: Record<string, unknown>): boolean {
 
 function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === 'string';
+}
+
+function isOptionalTargetState(value: unknown): boolean {
+  return value === undefined || typeof value === 'boolean' || typeof value === 'string';
 }
 
 const MAX_PAIRING_FIELD_LENGTH = 512;

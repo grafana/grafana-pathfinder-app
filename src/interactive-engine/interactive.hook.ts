@@ -10,7 +10,7 @@ import { outcomeFromSequenceRun } from './outcome-classifier';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
 import { checkRequirements, checkPostconditions, RequirementsCheckOptions } from '../requirements-manager';
 import { extractInteractiveDataFromElement } from '../lib/dom';
-import { InteractiveElementData } from '../types/interactive.types';
+import { InteractiveActionRequest, InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { SequenceManager } from './sequence-manager';
@@ -388,14 +388,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    * without needing DOM elements or the bridge pattern
    */
   const executeInteractiveAction = useCallback(
-    async (
-      targetAction: string,
-      refTarget: string,
-      targetValue?: string,
-      buttonType: 'show' | 'do' = 'do',
-      targetComment?: string,
-      targetState?: boolean | string
-    ): Promise<StepOutcome> => {
+    async (request: InteractiveActionRequest): Promise<StepOutcome> => {
+      const { targetAction, refTarget = '', targetValue, targetState, targetComment, buttonType = 'do' } = request;
       // Create InteractiveElementData directly from parameters
       const elementData: InteractiveElementData = {
         refTarget: refTarget,

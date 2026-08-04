@@ -18,7 +18,7 @@ import {
   type ComboboxOption,
 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
-import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
+import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES, TARGET_STATE_OPTIONS, parseAuthoredTargetState } from '../constants';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
 import { ConditionChipsField } from './ConditionChipsField';
@@ -64,12 +64,6 @@ const POPOUT_TARGET_OPTIONS: Array<ComboboxOption<PopoutTargetMode>> = POPOUT_TA
   label: m.label,
 }));
 const DEFAULT_POPOUT_TARGET: PopoutTargetMode = 'floating';
-
-const TARGET_STATE_OPTIONS: ComboboxOption[] = [
-  { value: '', label: 'Click unconditionally' },
-  { value: 'true', label: 'On — expanded, pressed or checked' },
-  { value: 'false', label: 'Off — collapsed, unpressed or unchecked' },
-];
 
 function isPopoutTargetMode(value: string): value is PopoutTargetMode {
   return value === 'sidebar' || value === 'floating';
@@ -158,6 +152,7 @@ export function InteractiveBlockForm({
       const isPopoutAction = action === 'popout';
       // Treat both actions like noop for the bulk of the optional-field gating below.
       const isStateOnlyAction = isNoopAction || isPopoutAction;
+      const authoredTargetState = parseAuthoredTargetState(targetstate);
 
       const block: JsonInteractiveBlock = {
         type: 'interactive',
@@ -170,10 +165,7 @@ export function InteractiveBlockForm({
         ...(isPopoutAction &&
           isPopoutTargetMode(targetvalue.trim()) && { targetvalue: targetvalue.trim() as PopoutTargetMode }),
         ...((action === 'highlight' || action === 'button') &&
-          targetstate.trim() && {
-            targetstate:
-              targetstate.trim() === 'true' ? true : targetstate.trim() === 'false' ? false : targetstate.trim(),
-          }),
+          authoredTargetState !== undefined && { targetstate: authoredTargetState }),
         ...(!isNoopAction && tooltip.trim() && { tooltip: tooltip.trim() }),
         ...(!isNoopAction && reqArray.length > 0 && { requirements: reqArray }),
         ...(!isNoopAction && objArray.length > 0 && { objectives: objArray }),

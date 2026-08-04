@@ -39,7 +39,7 @@ The Interactive Engine provides the core automation and interaction capabilities
 
 **High-level API** (preferred for most consumers):
 
-- `executeInteractiveAction()` - Execute any interactive action programmatically (routes to the appropriate handler)
+- `executeInteractiveAction(request)` - Execute any interactive action programmatically (routes to the appropriate handler). Takes a single `InteractiveActionRequest`, so a caller holding a step object passes it by reference (`{ ...step, buttonType: 'do' }`) and a field added to the step reaches the engine without editing every call site
 - `checkRequirementsFromData()` - Validate pre-conditions from step data before action execution
 - `checkElementRequirements()` - Validate pre-conditions from a DOM element's `data-*` attributes
 - `verifyStepResult()` - Validate post-conditions after action execution
@@ -326,23 +326,21 @@ const InteractiveGuide = () => {
 
   const handleShowAction = async () => {
     // Execute in show mode (highlight only, no interaction)
-    await executeInteractiveAction(
-      'highlight',                    // targetAction
-      '[data-testid="nav-datasources"]', // refTarget (CSS selector)
-      undefined,                      // targetValue
-      'show',                         // buttonType
-      'Click here to open data sources' // targetComment
-    );
+    await executeInteractiveAction({
+      targetAction: 'highlight',
+      refTarget: '[data-testid="nav-datasources"]',
+      targetComment: 'Click here to open data sources',
+      buttonType: 'show',
+    });
   };
 
   const handleDoAction = async () => {
     // Execute in do mode (actual interaction)
-    await executeInteractiveAction(
-      'button',
-      'Add data source',  // Will find button by text
-      undefined,
-      'do'
-    );
+    await executeInteractiveAction({
+      targetAction: 'button',
+      refTarget: 'Add data source', // Will find button by text
+      buttonType: 'do',
+    });
   };
 
   return (

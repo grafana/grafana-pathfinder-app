@@ -241,12 +241,7 @@ export function installLiveTabExecutor(
         return false;
       }
       const result = await guidedHandler.executeGuidedStep(
-        {
-          targetAction: action.targetAction as GuidedAction['targetAction'],
-          refTarget: action.refTarget,
-          targetValue: action.targetValue,
-          targetComment: action.targetComment,
-        },
+        { ...action, targetAction: action.targetAction as GuidedAction['targetAction'] },
         i,
         actions.length
       );

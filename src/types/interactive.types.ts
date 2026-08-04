@@ -44,3 +44,16 @@ export interface InteractiveElementData {
   // Custom data attributes (extensible)
   customData?: Record<string, string>;
 }
+
+/**
+ * Everything `executeInteractiveAction` needs, bundled by reference.
+ *
+ * Callers pass the step object they already hold, so a new field reaches the
+ * engine by being on the step rather than by being threaded through every
+ * caller. The previous positional list silently degraded a toggle step to
+ * blind clicking whenever a call site forgot the tail argument.
+ */
+export type InteractiveActionRequest = Pick<InteractiveElementData, 'targetAction'> &
+  Partial<Pick<InteractiveElementData, 'refTarget' | 'targetValue' | 'targetState' | 'targetComment'>> & {
+    buttonType?: 'show' | 'do';
+  };
