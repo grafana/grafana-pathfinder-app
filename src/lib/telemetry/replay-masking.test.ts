@@ -47,6 +47,10 @@ describe('what the real recorder actually sends', () => {
     // own — one a third-party panel can write customer data into.
     cssContent: 'CssRenderedTenantName',
     cssCustomProperty: 'CssCustomPropertySecret',
+    // An apostrophe and an escaped quote each end a naive quoted-string match
+    // early, leaving the tail outside it.
+    cssApostrophe: "CssApostropheSecret'sTail",
+    cssEscapedQuote: 'CssEscapedQuote\\"Tail',
     // Not in the DOM — this one rides in on location.href via the page meta.
     urlFilterValue: 'AcmeCorpFilterValue',
   };
@@ -57,7 +61,11 @@ describe('what the real recorder actually sends', () => {
 
   beforeAll(async () => {
     document.body.innerHTML = `
-      <style>.tenant::after{content:"${SECRETS.cssContent}"}</style>
+      <style>
+        .tenant::after{content:"${SECRETS.cssContent}"}
+        .apostrophe::after{content:"${SECRETS.cssApostrophe}"}
+        .escaped::after{content:"${SECRETS.cssEscapedQuote}"}
+      </style>
       <div id="fixture" aria-label="${SECRETS.ariaLabel}" data-testid="${SECRETS.testId}" title="${SECRETS.title}"
            style="--tenant-name: '${SECRETS.cssCustomProperty}'">
         <h1>${SECRETS.heading}</h1>

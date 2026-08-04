@@ -282,6 +282,20 @@ describe('scrubReplayEvent', () => {
       });
     });
 
+    // A CSS string ends at the next unescaped delimiter of its own kind. Both
+    // of these leave the tail outside a naive `[^"']*` match, and the second
+    // is what the CSSOM serializer emits for a quote inside `content`.
+    it.each([
+      ['an apostrophe', String.raw`it's alice@acme.com`, `"**** **************"`],
+      ['an escaped quote', String.raw`alice\"secret@acme.com`, String.raw`"*****\"***************"`],
+    ])('masks a content string containing %s', (_label, secret, expected) => {
+      const event = fullSnapshot(elementNode({ _cssText: `.a::after{content:"${secret}";color:red}` }));
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        _cssText: `.a::after{content:${expected};color:red}`,
+      });
+    });
+
     it('masks text held in a custom property', () => {
       const event = fullSnapshot(elementNode({ style: '--tenant-name: "Acme Corp"; color: red' }));
 

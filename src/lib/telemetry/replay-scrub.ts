@@ -186,18 +186,24 @@ const SAFE_ATTRIBUTES = new Set([
 // run to its closing quote rather than to the first `)`. An unquoted one may
 // not contain parens, quotes or whitespace at all, so there the stricter class
 // is what keeps the match from running past the end of the value.
-const CSS_URL_PATTERN = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^'")\s]*))\s*\)/gi;
+const CSS_URL_PATTERN = /url\(\s*(?:"((?:\\[\s\S]|[^\\"])*)"|'((?:\\[\s\S]|[^\\'])*)'|([^'")\s]*))\s*\)/gi;
 
 // Not every CSS resource reference is wrapped in url(): `@import "a.css?t=…"`
 // and `image-set("a.png?sig=…" 1x)` are bare strings. Both are Grafana-origin
 // in practice, so this is depth rather than a known leak.
-const CSS_IMPORT_PATTERN = /(@import\s+)(["'])([^"']*)\2/gi;
+// The `(?:\\[\s\S]|(?!\N)[^\\])*` body these three share is what a CSS string
+// actually is: it ends at the next *unescaped* delimiter of its own kind, and
+// may hold the other kind freely. A plain `[^"']*` ends `"it's here"` at the
+// apostrophe and `"a\"b"` at the escape, and in both cases the tail falls
+// outside the match — which, for the text mask, means it ships unmasked. Two
+// arms that cannot match the same first character, so no backtracking.
+const CSS_IMPORT_PATTERN = /(@import\s+)(["'])((?:\\[\s\S]|(?!\2)[^\\])*)\2/gi;
 const CSS_IMAGE_SET_OPEN = /(?:-webkit-)?image-set\(/gi;
-const CSS_QUOTED_STRING = /(["'])([^"']*)\1/g;
+const CSS_QUOTED_STRING = /(["'])((?:\\[\s\S]|(?!\1)[^\\])*)\1/g;
 // Every quoted string in an image-set argument list is a resource reference
 // except the MIME type in `type("image/avif")`, which a URL rewrite would
 // mangle into an absolute path.
-const CSS_IMAGE_SET_ENTRY = /(type\(\s*)?(["'])([^"']*)\2/g;
+const CSS_IMAGE_SET_ENTRY = /(type\(\s*)?(["'])((?:\\[\s\S]|(?!\2)[^\\])*)\2/g;
 
 // `content` and custom properties are the two declarations that can put
 // author-supplied text on screen, and rrweb masks neither: stylesheet text is
@@ -208,7 +214,8 @@ const CSS_IMAGE_SET_ENTRY = /(type\(\s*)?(["'])([^"']*)\2/g;
 // quoted string — `content: "Acme; Inc"` — so the quoted arms have to consume
 // those before the bare class sees them. The three arms cannot match the same
 // first character, so there is no backtracking to pay for.
-const CSS_TEXT_DECLARATION = /(^|[^\w-])((?:content|--[\w-]+)\s*:\s*)((?:[^;}"']|"[^"]*"|'[^']*')*)/gi;
+const CSS_TEXT_DECLARATION =
+  /(^|[^\w-])((?:content|--[\w-]+)\s*:\s*)((?:[^;}"']|"(?:\\[\s\S]|[^\\"])*"|'(?:\\[\s\S]|[^\\'])*')*)/gi;
 const CSS_TEXT_PROPERTY = /^(?:content|--)/i;
 
 // Escapes survive masking so `content: "\e900"` still draws its icon glyph
