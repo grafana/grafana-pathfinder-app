@@ -203,6 +203,14 @@ export function redactPageUrl(item: TransportItem<APIEvent>): TransportItem<APIE
 // after unmount, when the docked key is already gone.
 let pathfinderWasOpen = false;
 
+// Latching on the surface transition rather than only on the next item to
+// come through: a surface that opens and closes before anything is pushed
+// would otherwise leave the gate shut, and session replay is the payload most
+// likely to arrive late — its chunk is fetched on that same open.
+export function markPathfinderActive(): void {
+  pathfinderWasOpen ||= isPathfinderOpen();
+}
+
 // Attribution (filterPathfinderTelemetry) asks "is this ours?"; this gate
 // asks "is Pathfinder actually in use?". Everything except exceptions and
 // error-level logs is dropped until Pathfinder is open in one of its

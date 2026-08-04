@@ -302,6 +302,26 @@ describe('scrubReplayEvent', () => {
       });
     });
 
+    // `content: <image> / <string>` is the standard alt-text form: a real URL
+    // and a real string in one value, so the resource cannot gate the mask.
+    it('masks the alt text beside a url() in the same content value', () => {
+      const event = fullSnapshot(
+        elementNode({ style: 'content: url("https://acme.grafana.net/i.png?sig=s") / "alice@acme.com"' })
+      );
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        style: 'content: url("https://acme.grafana.net/i.png") / "**************"',
+      });
+    });
+
+    it('masks a string that precedes an image-set() in the same value', () => {
+      const event = fullSnapshot(elementNode({ style: 'content: "alice@acme.com" image-set("/i.png?sig=s" 1x)' }));
+
+      expect(attributesOf(scrubReplayEvent(event))).toEqual({
+        style: 'content: "**************" image-set("/i.png" 1x)',
+      });
+    });
+
     it('leaves align-content and justify-content alone', () => {
       const event = fullSnapshot(elementNode({ style: 'align-content: center; justify-content: space-between' }));
 

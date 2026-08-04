@@ -6,6 +6,7 @@ import {
   buildResourceIgnorePattern,
   filterPathfinderTelemetry,
   LOG_PREFIX,
+  markPathfinderActive,
   passesActivityGate,
   redactPageUrl,
   resolveFaroEnvironment,
@@ -118,7 +119,10 @@ export async function initFaro(options?: InitFaroOptions): Promise<void> {
   // sees every future reportPathfinderSurface call — including the one that
   // flips passesActivityGate open — so the session attribute is never stale
   // when a payload first clears the gate.
-  const stampSurface = () => setFaroSessionAttributes({ surface: getPathfinderSurface() });
+  const stampSurface = () => {
+    markPathfinderActive();
+    setFaroSessionAttributes({ surface: getPathfinderSurface() });
+  };
   onPathfinderSurfaceChange(stampSurface);
   stampSurface();
 
@@ -147,8 +151,10 @@ export function resolveSessionReplayOptions(enabled: boolean, samplingRate: numb
 const MAX_REPLAY_ACTIVATION_ATTEMPTS = 3;
 
 // The same open that latches passesActivityGate starts the recording, so the
-// first thing rrweb emits is already past the gate. The trailing start() covers
-// the surface having reported itself while the SDK chunk was still loading.
+// first thing rrweb emits is already past the gate — markPathfinderActive in
+// stampSurface is what makes that hold even if the surface closes again before
+// the chunk lands. The trailing start() covers the surface having reported
+// itself while the SDK chunk was still loading.
 function startSessionReplayOnFirstOpen(faro: Faro, samplingRate?: number): void {
   let attempts = 0;
   let activating = false;

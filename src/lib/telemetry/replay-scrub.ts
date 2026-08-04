@@ -215,28 +215,46 @@ const CSS_TEXT_PROPERTY = /^(?:content|--)/i;
 // rather than an asterisk; everything else in the string is author text.
 const CSS_ESCAPE_OR_GLYPH = /\\(?:[0-9a-f]{1,6}\s?|[\s\S])|\S/gi;
 
-// Same case-insensitivity as the patterns they guard, and deliberately not
+// Same case-insensitivity as the patterns it guards, and deliberately not
 // `toLowerCase().includes(...)` — that would copy the whole stylesheet on
-// every call just to decide there is nothing to do. Non-global, so they carry
+// every call just to decide there is nothing to do. Non-global, so it carries
 // no lastIndex state between calls. The `content` arm excludes `align-content`
 // and `justify-content`, which are everywhere in Grafana's flex layouts.
-const HAS_CSS_RESOURCE = /url\(|@import|image-set\(/i;
 const HAS_SCRUBBABLE_CSS = /url\(|@import|image-set\(|(?:^|[^\w-])content\s*:|--[\w-]+\s*:/i;
 
 function maskCssString(text: string): string {
   return text.replace(CSS_ESCAPE_OR_GLYPH, (token) => (token.startsWith('\\') ? token : '*'));
 }
 
-// A resource-bearing value is left alone: `content: url("…")` has already been
-// through the URL pass, and masking its quoted target would break the image
-// for a leak the URL pass has already closed.
+function maskQuotedStrings(value: string): string {
+  return value.replace(
+    CSS_QUOTED_STRING,
+    (_match, quote: string, text: string) => `${quote}${maskCssString(text)}${quote}`
+  );
+}
+
+// Resource functions are stepped over rather than masked — their targets came
+// through the URL pass already, and asterisking one would break the image.
+// Everything around them is still author text: `content: url(i.png) / "alt"`
+// is the standard alt-text form and puts a real string beside a real URL, so
+// skipping the whole declaration on sight of a `url(` would ship it.
+const CSS_RESOURCE_OPEN = /(?:-webkit-)?(?:url|image-set)\(/gi;
+
 function maskCssTextValue(value: string): string {
-  return HAS_CSS_RESOURCE.test(value)
-    ? value
-    : value.replace(
-        CSS_QUOTED_STRING,
-        (_match, quote: string, text: string) => `${quote}${maskCssString(text)}${quote}`
-      );
+  CSS_RESOURCE_OPEN.lastIndex = 0;
+  let masked = '';
+  let cursor = 0;
+  let opening: RegExpExecArray | null;
+  while ((opening = CSS_RESOURCE_OPEN.exec(value)) !== null) {
+    const resourceEnd = findClosingParen(value, opening.index + opening[0].length);
+    if (resourceEnd < 0) {
+      break;
+    }
+    masked += maskQuotedStrings(value.slice(cursor, opening.index)) + value.slice(opening.index, resourceEnd + 1);
+    cursor = resourceEnd + 1;
+    CSS_RESOURCE_OPEN.lastIndex = cursor;
+  }
+  return masked + maskQuotedStrings(value.slice(cursor));
 }
 
 function findClosingParen(css: string, from: number): number {

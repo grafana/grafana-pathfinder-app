@@ -1235,6 +1235,21 @@ describe('passesActivityGate', () => {
     expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
+  // The gate is sampled at item time, so a surface that opened and closed
+  // with nothing pushed in between would leave it shut — and replay is the
+  // payload most likely to arrive late, since its chunk is fetched on that
+  // same open. initFaro's surface listener latches it at the transition.
+  it('stays open when a surface opened and closed before anything was pushed', async () => {
+    const faro = freshFaro();
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    await faro.initFaro();
+
+    surface.reportPathfinderSurface('floating');
+    surface.reportPathfinderSurface('closed');
+
+    expect(faro.passesActivityGate(eventItem())).toBe(true);
+  });
+
   it('opens on a later check after starting closed — closed does not latch', () => {
     const faro = freshFaro();
     const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
