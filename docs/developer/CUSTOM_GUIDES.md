@@ -114,7 +114,16 @@ scripts/upsert-guide.sh \
   --spec ./my-guide.json
 ```
 
-See [`EXTERNAL_API.md`](EXTERNAL_API.md) for the full reference, including the K8s envelope shape, error codes, and curl recipes for each operation.
+To upload a whole learning path or journey — a `manifest.json` plus the milestone guides it sequences — use [`scripts/upsert-learning-path.sh`](../../scripts/upsert-learning-path.sh) instead. It walks a package directory, uploads each milestone, then the path's cover page, and attaches the package metadata as `spec.manifest`:
+
+```bash
+scripts/upsert-learning-path.sh \
+  --stack learn.grafana.net \
+  --token "$GRAFANA_SA_TOKEN" \
+  --package ./drilldown-logs-lj
+```
+
+See [`EXTERNAL_API.md`](EXTERNAL_API.md) for the full reference, including the K8s envelope shape, the `spec.manifest` field table, error codes, and curl recipes for each operation.
 
 ---
 
