@@ -94,7 +94,7 @@ the fixed internal aggregator.
   instance's embedded aggregator signs the onward hop to GAP itself, which is why the audience is
   the stack's own front door (`grafana`) and not the API group.
 - **A stack with no provisioned CAP token is structurally unavailable** (`reason:
-  "obo-unavailable"`), not a transient failure. A failed exchange, by contrast, is transient: it
+"obo-unavailable"`), not a transient failure. A failed exchange, by contrast, is transient: it
   carries no HTTP status, so the shared classifier retries rather than caching a terminal result.
 - **Never forward `Cookie`.** No branch in this repo's history has ever needed it against the
   aggregator; the caller's full session is the broadest possible ambient grant and the classic
