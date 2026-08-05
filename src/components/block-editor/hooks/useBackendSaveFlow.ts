@@ -10,10 +10,9 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { JsonGuide } from '../types';
-import { BACKEND_TRACKING_STORAGE_KEY, DEFAULT_GUIDE_METADATA } from '../constants';
+import { BACKEND_TRACKING_STORAGE_KEY } from '../constants';
 import { logger } from '../../../lib/logging';
 import { notify } from '../notify';
-import { generateUniqueId } from '../utils/guide-id';
 
 /**
  * Normalize a guide id or title into a Kubernetes-style resource name:
@@ -47,8 +46,6 @@ function readBackendTracking(): { resourceName: string | null; lastPublishedJson
 /** Minimal interface for editor functionality needed by this hook. */
 export interface BackendSaveFlowEditorInterface {
   getGuide: () => JsonGuide;
-  /** Used to write back an id minted at save time. */
-  updateGuideMetadata?: (updates: Partial<{ id: string; title: string }>) => void;
 }
 
 /** A backend-tracked guide entry, as returned by useBackendGuides. */
@@ -229,23 +226,11 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
   const orchestrateSave = useCallback(
     async (status: 'draft' | 'published') => {
       try {
-        let guide = editor.getGuide();
+        const guide = editor.getGuide();
 
         if (!guide.blocks || guide.blocks.length === 0) {
           notify('error', 'Cannot save guide', 'Add at least one block before saving.');
           return;
-        }
-
-        // Renaming mints an id, but a guide saved under the untouched default
-        // title still carries `new-guide` — and so would every other one, all
-        // resolving to the same resource name. Mint here instead.
-        if (guide.id === DEFAULT_GUIDE_METADATA.id) {
-          const id = generateUniqueId(
-            guide.title || guide.id,
-            backendGuides.guides.map((g) => g.metadata.name)
-          );
-          guide = { ...guide, id };
-          editor.updateGuideMetadata?.({ id });
         }
 
         const isUpdate = !!currentGuideResourceName;

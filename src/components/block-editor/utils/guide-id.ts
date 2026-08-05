@@ -1,10 +1,10 @@
 /**
- * Guide ID derivation.
+ * Guide ID helpers for title → id derivation in the singleton editor.
  *
- * The ID is what `toResourceName` turns into the backend resource name, so two
- * guides that share an ID collide in the library. Both places that can leave a
- * guide on the default placeholder — the title commit and the first save — mint
- * through here.
+ * The ID is what `toResourceName` turns into the backend resource name. Title
+ * commit mints once while the guide is still on the default placeholder
+ * (`isIdLocked`); after that the id stays put. Multi-editor collision handling
+ * is intentionally out of scope here.
  */
 
 /** Converts a guide title to a URL-safe kebab-case slug. */
@@ -18,7 +18,7 @@ export function slugifyTitle(title: string): string {
   );
 }
 
-/** Generates a unique guide ID from a title, avoiding collisions with existing resource names. */
+/** Generates a guide ID from a title, avoiding collisions with existing resource names. */
 export function generateUniqueId(title: string, existingNames: string[] = []): string {
   const base = slugifyTitle(title);
   for (let i = 0; i < 20; i++) {

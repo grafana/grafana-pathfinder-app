@@ -101,25 +101,6 @@ describe('useBackendSaveFlow — performSaveDraft', () => {
     );
   });
 
-  it('mints a unique id when saving a guide still on the default placeholder', async () => {
-    const g = guide({ id: 'new-guide', title: 'New guide' });
-    const updateGuideMetadata = jest.fn();
-    const editor = { getGuide: () => g, updateGuideMetadata };
-    const backendGuides = makeBackendGuides({ guides: [makeGuideEntry('new-guide', 'Someone else’s new guide')] });
-
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
-
-    await act(async () => {
-      await result.current.performSaveDraft();
-    });
-
-    const [savedGuide] = (backendGuides.saveGuide as jest.Mock).mock.calls[0]!;
-    expect(savedGuide.id).toMatch(/^new-guide-.+/);
-    expect(updateGuideMetadata).toHaveBeenCalledWith({ id: savedGuide.id });
-    // A minted id means no collision, so the overwrite prompt stays closed.
-    expect(result.current.confirmModal.isOpen).toBe(false);
-  });
-
   it('rejects an empty guide without calling saveGuide', async () => {
     const editor = { getGuide: () => guide({ blocks: [] }) };
     const backendGuides = makeBackendGuides();
