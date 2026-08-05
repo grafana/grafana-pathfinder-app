@@ -403,12 +403,19 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
   }),
   editorTabTitle: css({
     label: 'combined-journey-editor-tab-title',
-    fontStyle: 'italic',
     fontWeight: theme.typography.fontWeightLight,
   }),
-  editorTabDraftBadge: css({
-    label: 'combined-journey-editor-tab-draft-badge',
-    flexShrink: 0,
+  // Italics mark a tab whose content has diverged from its saved remote entry.
+  editorTabTitleModified: css({
+    label: 'combined-journey-editor-tab-title-modified',
+    fontStyle: 'italic',
+  }),
+  editorTabStatusBadge: css({
+    label: 'combined-journey-editor-tab-status-badge',
+    // Shrink/clip under pressure so the close control stays in frame.
+    flexShrink: 1,
+    minWidth: 0,
+    overflow: 'hidden',
     // Compact so the badge fits tab chrome without dominating the title.
     fontSize: '10px',
     padding: `0 ${theme.spacing(0.5)}`,
@@ -546,7 +553,6 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
   }),
   editorDropdownItemTitle: css({
     label: 'combined-journey-editor-dropdown-item-title',
-    fontStyle: 'italic',
     fontWeight: theme.typography.fontWeightLight,
   }),
   dropdownItemClose: css({

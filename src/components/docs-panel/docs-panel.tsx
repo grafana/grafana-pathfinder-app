@@ -93,6 +93,7 @@ import {
   didGateClose,
   type TabGates,
 } from './utils';
+import { DEFAULT_GUIDE_TITLE } from '../block-editor/editor-chrome-status';
 // Import extracted hooks
 import {
   useBadgeCelebrationQueue,
@@ -753,7 +754,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     const newTab: LearningJourneyTab = {
       id: EDITOR_TAB_ID,
-      title: 'New Guide',
+      title: DEFAULT_GUIDE_TITLE,
       baseUrl: '',
       currentUrl: '',
       content: null,
@@ -767,6 +768,20 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       activeTabId: EDITOR_TAB_ID,
     });
 
+    this.saveTabsToStorage();
+  }
+
+  /** Update the editor tab's strip title from the working guide. */
+  public updateEditorTabTitle(title: string): void {
+    const trimmed = title.trim() || DEFAULT_GUIDE_TITLE;
+    const editorTab = this.state.tabs.find((t) => t.id === EDITOR_TAB_ID);
+    if (!editorTab || editorTab.title === trimmed) {
+      return;
+    }
+
+    this.setState({
+      tabs: this.state.tabs.map((t) => (t.id === EDITOR_TAB_ID ? { ...t, title: trimmed } : t)),
+    });
     this.saveTabsToStorage();
   }
 

@@ -372,7 +372,7 @@ function FloatingPanelInner() {
     >
       {isEditorTab ? (
         <Suspense fallback={<SkeletonLoader type="documentation" />}>
-          <BlockEditor />
+          <BlockEditor onGuideTitleChange={(newTitle) => panel.updateEditorTabTitle(newTitle)} />
         </Suspense>
       ) : (
         <FloatingPanelContent

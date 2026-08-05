@@ -2,6 +2,7 @@
  * useBlockPersistence Hook
  *
  * Auto-save and restore functionality for the block editor using localStorage.
+ * Guide content writes are debounced; unmount flushes anything still pending.
  */
 
 import { useEffect, useCallback, useRef } from 'react';
@@ -106,6 +107,7 @@ export function useBlockPersistence({
   storageKey = BLOCK_EDITOR_STORAGE_KEY,
 }: UseBlockPersistenceOptions): UseBlockPersistenceReturn {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSaveRef = useRef(false);
   const lastGuideRef = useRef<string>('');
   const lastViewModeRef = useRef<ViewMode | undefined>(viewMode);
   const lastJsonModeStateRef = useRef<JsonModeState | null | undefined>(jsonModeState);
@@ -122,20 +124,52 @@ export function useBlockPersistence({
       };
       localStorage.setItem(storageKey, JSON.stringify(stored));
       lastGuideRef.current = JSON.stringify(guide);
+      pendingSaveRef.current = false;
       onSave?.();
     } catch (e) {
       logger.error('Failed to save guide to localStorage', { error: e });
     }
   }, [guide, blockIds, viewMode, jsonModeState, storageKey, onSave]);
 
+  // The debounced timeout closes over the `save` from the render that scheduled
+  // it; flushing must use the newest one so it writes the latest edit.
+  const latestSaveRef = useRef(save);
+  useEffect(() => {
+    latestSaveRef.current = save;
+  }, [save]);
+
+  const flush = useCallback(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    if (pendingSaveRef.current) {
+      latestSaveRef.current();
+    }
+  }, []);
+
   const clear = useCallback(() => {
     try {
+      // Drop the pending write too, or it would resurrect the guide we just removed.
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      pendingSaveRef.current = false;
       localStorage.removeItem(storageKey);
       lastGuideRef.current = '';
     } catch (e) {
       logger.error('Failed to clear guide from localStorage', { error: e });
     }
   }, [storageKey]);
+
+  // Switching tabs or handing off between surfaces unmounts the editor within
+  // the debounce window — write the pending draft instead of dropping it.
+  useEffect(() => {
+    return () => {
+      flush();
+    };
+  }, [flush]);
 
   useEffect(() => {
     if (!autoSave || autoSavePaused) {
@@ -145,6 +179,7 @@ export function useBlockPersistence({
     const currentGuideStr = JSON.stringify(guide);
 
     if (currentGuideStr === lastGuideRef.current) {
+      pendingSaveRef.current = false;
       onSave?.();
       return;
     }
@@ -153,13 +188,16 @@ export function useBlockPersistence({
       clearTimeout(saveTimeoutRef.current);
     }
 
+    pendingSaveRef.current = true;
     saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = null;
       save();
     }, AUTO_SAVE_DELAY);
 
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
       }
     };
   }, [guide, autoSave, autoSavePaused, save, onSave]);
