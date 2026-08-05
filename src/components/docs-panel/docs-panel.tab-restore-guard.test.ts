@@ -226,6 +226,7 @@ jest.mock('../../hooks', () => ({}));
 // ---------------------------------------------------------------------------
 
 import { isDevModeEnabled } from '../../utils/dev-mode';
+import { tabStorage } from '../../lib/user-storage';
 import { CombinedLearningJourneyPanel } from './docs-panel';
 
 // ---------------------------------------------------------------------------
@@ -308,6 +309,41 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(2);
     expect((panel as any).state.activeTabId).toBe('tab-guide-2');
     expect((panel as any).state.tabs.map((tab: { id: string }) => tab.id)).toContain('tab-guide-2');
+  });
+
+  it('waits for an in-flight save before restoring, so return paths that cannot flush still see the latest strip', async () => {
+    // Tab mutations save fire-and-forget, and the return paths that cannot
+    // await that write — the sidebar's "Return to sidebar" notice (no handle on
+    // the full-screen model) and auto-dock on navigation — would otherwise let
+    // this force restore read the pre-handoff strip.
+    let writeLanded = false;
+    let resolveWrite!: () => void;
+    (tabStorage.setTabs as jest.Mock).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveWrite = () => {
+          writeLanded = true;
+          resolve();
+        };
+      })
+    );
+    mockRestoreTabsFromStorage.mockImplementation(async () =>
+      writeLanded ? [RESTORED_TABS[0], { ...RESTORED_TABS[1], id: 'tab-from-fullscreen' }] : [RESTORED_TABS[0]]
+    );
+    mockRestoreActiveTabFromStorage.mockImplementation(async () =>
+      writeLanded ? 'tab-from-fullscreen' : 'recommendations'
+    );
+
+    const outgoing = new CombinedLearningJourneyPanel();
+    void outgoing.saveTabsToStorage();
+
+    const sidebar = new CombinedLearningJourneyPanel();
+    // Land the write a macrotask later so restore's own microtask-resolved
+    // storage reads would win the race if the barrier were removed.
+    const restore = sidebar.restoreTabsAsync({ force: true });
+    setTimeout(resolveWrite, 0);
+    await restore;
+
+    expect((sidebar as any).state.tabs.map((tab: { id: string }) => tab.id)).toContain('tab-from-fullscreen');
   });
 
   it('should allow a NEW instance to restore tabs after the first instance already restored', async () => {
