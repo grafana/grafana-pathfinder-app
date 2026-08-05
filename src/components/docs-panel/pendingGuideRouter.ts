@@ -85,3 +85,33 @@ export function consumePendingGuideOnMount(
   openPendingGuide(panel, pending, pending.source ?? fallbackSource);
   return true;
 }
+
+/**
+ * Restore the complete workspace before applying a one-tab launch intent.
+ *
+ * Order is the whole point. Opening the handoff first makes the strip
+ * non-empty, which skips restore — the surface then owns a single-tab model
+ * and the next `saveTabsToStorage()` erases every sibling tab from the shared
+ * workspace. Consuming the pending guide up front (before the await) keeps the
+ * consume-once read synchronous with mount, so the in-flight flag is set
+ * before the empty-state fallback can look at it.
+ *
+ * Returns true when a pending guide was consumed.
+ */
+export async function initializePanelTabsOnMount(
+  panel: CombinedLearningJourneyPanel,
+  fallbackSource: LaunchSource,
+  markInFlight: () => void
+): Promise<boolean> {
+  const pending = panelModeManager.consumePendingGuide();
+  if (pending) {
+    markInFlight();
+  }
+
+  await panel.restoreTabsAsync();
+
+  if (pending) {
+    openPendingGuide(panel, pending, pending.source ?? fallbackSource);
+  }
+  return pending !== null;
+}

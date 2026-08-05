@@ -61,8 +61,10 @@ describe('panel-mode surface-toggle persistence classification', () => {
       // scope each assertion to its call site to catch a "right method, wrong
       // call site" swap. The behavioural proof lives in panel-mode.test.ts.
       const floating = read('components/floating-panel/FloatingPanelManager.tsx');
-      expect(floating).toMatch(/handleSwitchToSidebar = useCallback\(\(\) => \{\s*dockToSidebar\(true\);\s*\}/);
-      expect(floating).toMatch(/handleDockRequest = \(\) => \{\s*dockToSidebar\(false\);\s*\}/);
+      expect(floating).toMatch(
+        /handleSwitchToSidebar = useCallback\(async \(\) => \{\s*await dockToSidebar\(true\);\s*\}/
+      );
+      expect(floating).toMatch(/handleDockRequest = \(\) => \{\s*void dockToSidebar\(false\);\s*\}/);
     });
   });
 

@@ -291,6 +291,25 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(1);
   });
 
+  it('force-refreshes an existing model after another surface updates storage', async () => {
+    // Fullscreen/floating own separate models. Without the force escape hatch
+    // the returning sidebar keeps its pre-handoff snapshot and their tab work
+    // looks discarded.
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+    mockRestoreTabsFromStorage.mockResolvedValueOnce([
+      RESTORED_TABS[0],
+      { ...RESTORED_TABS[1], id: 'tab-guide-2', title: 'Opened in full screen' },
+    ]);
+    mockRestoreActiveTabFromStorage.mockResolvedValueOnce('tab-guide-2');
+
+    await panel.restoreTabsAsync({ force: true });
+
+    expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(2);
+    expect((panel as any).state.activeTabId).toBe('tab-guide-2');
+    expect((panel as any).state.tabs.map((tab: { id: string }) => tab.id)).toContain('tab-guide-2');
+  });
+
   it('should allow a NEW instance to restore tabs after the first instance already restored', async () => {
     // Simulate: sidebar mounts, panel A restores tabs
     const panelA = new CombinedLearningJourneyPanel();

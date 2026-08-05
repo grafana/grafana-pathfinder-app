@@ -12,7 +12,6 @@ export {
   EDITOR_TAB_ID,
   getGuideStripTabs,
   isNonContentTab,
-  hasOnlyNonContentTabs,
 } from './tab-kinds';
 export { isCurrentUserEditor, resolveTabGates, didGateClose } from './tab-gates';
 export type { TabGates } from './tab-gates';

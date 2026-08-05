@@ -223,11 +223,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // to avoid race condition with useUserStorage hook
   }
 
-  public async restoreTabsAsync(): Promise<void> {
+  public async restoreTabsAsync(options?: { force?: boolean }): Promise<void> {
     // Guard: only restore once per model lifetime to prevent double-restore race condition
     // where a second restore (triggered by component remount or React Strict Mode) replaces
-    // tabs that already had content loaded, leaving them in {content: null} blank state
-    if (this._hasRestoredTabs) {
+    // tabs that already had content loaded, leaving them in {content: null} blank state.
+    // `force` is reserved for a surface ownership handover: floating/fullscreen own
+    // separate models, so a returning sidebar must re-read the shared workspace.
+    if (this._hasRestoredTabs && !options?.force) {
       return;
     }
     this._hasRestoredTabs = true;

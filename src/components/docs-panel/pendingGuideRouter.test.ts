@@ -10,7 +10,7 @@
  * journeys whose URL is a raw GitHub URL).
  */
 
-import { consumePendingGuideOnMount, openPendingGuide } from './pendingGuideRouter';
+import { consumePendingGuideOnMount, initializePanelTabsOnMount, openPendingGuide } from './pendingGuideRouter';
 import type { CombinedLearningJourneyPanel } from './docs-panel';
 import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';
 import type { RawContent } from '../../types/content.types';
@@ -20,6 +20,7 @@ function makePanel() {
     openEditorTab: jest.fn(),
     openLearningJourney: jest.fn(),
     openDocsPage: jest.fn(),
+    restoreTabsAsync: jest.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -122,6 +123,42 @@ describe('openPendingGuide', () => {
       pending.title,
       expect.objectContaining({ source: 'fullscreen_handoff' })
     );
+  });
+});
+
+describe('initializePanelTabsOnMount', () => {
+  afterEach(() => {
+    panelModeManager.consumePendingGuide();
+  });
+
+  it('restores the full strip before opening the pending guide', async () => {
+    // Reversing this order is what erased sibling tabs: the handoff tab made
+    // the strip non-empty, restore was skipped, and the surface's next
+    // `saveTabsToStorage()` persisted its one-tab model over the workspace.
+    const order: string[] = [];
+    const panel = makePanel();
+    panel.restoreTabsAsync.mockImplementation(async () => {
+      order.push('restore');
+    });
+    panel.openDocsPage.mockImplementation(() => order.push('open'));
+    panelModeManager.setPendingGuide({ url: 'bundled:b', title: 'B', type: 'docs' });
+
+    await expect(
+      initializePanelTabsOnMount(asPanel(panel), 'fullscreen_handoff', () => order.push('in-flight'))
+    ).resolves.toBe(true);
+
+    expect(order).toEqual(['in-flight', 'restore', 'open']);
+  });
+
+  it('restores without marking an open in-flight when nothing was handed off', async () => {
+    const panel = makePanel();
+    const markInFlight = jest.fn();
+
+    await expect(initializePanelTabsOnMount(asPanel(panel), 'fullscreen_handoff', markInFlight)).resolves.toBe(false);
+
+    expect(panel.restoreTabsAsync).toHaveBeenCalledTimes(1);
+    expect(markInFlight).not.toHaveBeenCalled();
+    expect(panel.openDocsPage).not.toHaveBeenCalled();
   });
 });
 
