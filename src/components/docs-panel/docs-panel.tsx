@@ -123,6 +123,17 @@ import { getPackageRenderType } from '../../types/package.types';
 import type { RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
+/**
+ * Newest in-flight `saveTabsToStorage`, shared by every panel model.
+ *
+ * Surfaces own separate models but one `tabStorage`. Tab mutations save
+ * fire-and-forget, and not every return path can await that write first: the
+ * sidebar's "Return to sidebar" notice has no handle on the full-screen model,
+ * and auto-dock on navigation flips mode from a history listener. Readers wait
+ * on this instead, so a handover can never restore the pre-handoff strip.
+ */
+let pendingTabStorageWrite: Promise<void> | null = null;
+
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
   public static Component = CombinedPanelRenderer;
 
@@ -223,14 +234,21 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // to avoid race condition with useUserStorage hook
   }
 
-  public async restoreTabsAsync(): Promise<void> {
+  public async restoreTabsAsync(options?: { force?: boolean }): Promise<void> {
     // Guard: only restore once per model lifetime to prevent double-restore race condition
     // where a second restore (triggered by component remount or React Strict Mode) replaces
-    // tabs that already had content loaded, leaving them in {content: null} blank state
-    if (this._hasRestoredTabs) {
+    // tabs that already had content loaded, leaving them in {content: null} blank state.
+    // `force` is reserved for a surface ownership handover: floating/fullscreen own
+    // separate models, so a returning sidebar must re-read the shared workspace.
+    if (this._hasRestoredTabs && !options?.force) {
       return;
     }
     this._hasRestoredTabs = true;
+
+    // The surface handing the workspace back may still have a write in flight,
+    // so read after it lands — otherwise we restore its pre-handoff strip and
+    // its opens, closes, renames, and milestone position look discarded.
+    await pendingTabStorageWrite;
 
     // `isDevMode` here only widens URL validation (localhost / GitHub raw).
     // Tab-level gating is applied below, after the storage awaits.
@@ -358,7 +376,20 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  public async saveTabsToStorage(): Promise<void> {
+  public saveTabsToStorage(): Promise<void> {
+    const write = this.writeTabsToStorage();
+    pendingTabStorageWrite = write;
+    // Only the newest write clears the barrier; an older one settling late must
+    // not retire a save that is still in flight.
+    void write.finally(() => {
+      if (pendingTabStorageWrite === write) {
+        pendingTabStorageWrite = null;
+      }
+    });
+    return write;
+  }
+
+  private async writeTabsToStorage(): Promise<void> {
     try {
       // Save user-opened tabs (recommendations home is always present and not persisted)
       const tabsToSave: PersistedTabData[] = this.state.tabs

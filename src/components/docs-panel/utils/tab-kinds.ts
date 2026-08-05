@@ -32,12 +32,3 @@ export function getGuideStripTabs<T extends Pick<LearningJourneyTab, 'type'>>(ta
 export function isNonContentTab(tab: Pick<LearningJourneyTab, 'type'>): boolean {
   return NON_CONTENT_TAB_TYPES.has(tab.type);
 }
-
-/**
- * True when tabStorage restore won't clobber in-memory content tabs.
- * Not the same as an empty strip: the editor (and Dev Tools) are strip tabs
- * but still permit restore (they hold no fetched content).
- */
-export function hasOnlyNonContentTabs(tabs: Array<Pick<LearningJourneyTab, 'type'>>): boolean {
-  return tabs.every((t) => isNonContentTab(t));
-}
