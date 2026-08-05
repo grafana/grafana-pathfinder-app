@@ -12,6 +12,7 @@ import type { LearningJourneyTab, LearningJourneyTabType, PersistedTabData } fro
 import { isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from '../../../security';
 import { logger } from '../../../lib/logging';
 import { DEVTOOLS_TAB_ID, EDITOR_TAB_ID, RECOMMENDATIONS_TAB_ID } from './tab-kinds';
+import { DEFAULT_GUIDE_TITLE } from '../../block-editor/editor-chrome-status';
 
 /**
  * Tab storage interface for dependency injection
@@ -157,7 +158,7 @@ export async function restoreTabsFromStorage(
       if (type === 'editor') {
         tabs.push({
           id: EDITOR_TAB_ID,
-          title: data.title || 'New Guide',
+          title: data.title || DEFAULT_GUIDE_TITLE,
           baseUrl: '',
           currentUrl: '',
           content: null,
@@ -228,7 +229,7 @@ export async function restoreActiveTabFromStorage(tabStorage: TabStorage, tabs: 
     if (activeTabId) {
       const tabExists = tabs.some((t) => t.id === activeTabId);
 
-      // Restore the stored tab if it exists (including Dev Tools — strip-excluded but persisted).
+      // Restore the stored tab if it exists.
       // closeTab ensures recommendations is saved when the strip is empty.
       return tabExists ? activeTabId : RECOMMENDATIONS_TAB_ID;
     }
