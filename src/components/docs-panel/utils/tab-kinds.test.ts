@@ -5,7 +5,7 @@
 import { getGuideStripTabs, hasOnlyNonContentTabs } from './tab-kinds';
 
 describe('getGuideStripTabs', () => {
-  it('keeps ordered strip tabs while excluding recommendations and Dev Tools', () => {
+  it('keeps ordered strip tabs while excluding recommendations', () => {
     expect(
       getGuideStripTabs([
         { type: 'recommendations' },
@@ -14,7 +14,7 @@ describe('getGuideStripTabs', () => {
         { type: 'devtools' },
         { type: 'docs' },
       ])
-    ).toEqual([{ type: 'editor' }, { type: 'learning-journey' }, { type: 'docs' }]);
+    ).toEqual([{ type: 'editor' }, { type: 'learning-journey' }, { type: 'devtools' }, { type: 'docs' }]);
   });
 });
 
