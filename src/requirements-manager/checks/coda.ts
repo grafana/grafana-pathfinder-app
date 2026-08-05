@@ -1,12 +1,12 @@
 /**
  * Coda VM exec-based requirement check: `coda-exit-zero:<command>`.
  *
- * Runs the command against the caller's active terminal VM via the
- * `/coda/exec` plugin resource. Always uses gated mode, so the check cannot
- * pass before the challenge's setup phase has written the sentinel file at
- * `/tmp/pathfinder-ready`. This protects against verifications firing
- * before setup completes (e.g., user clicks "Check my work" the instant the
- * terminal connects, before the environment has been broken).
+ * Runs the command against the caller's active terminal session via the Coda
+ * app plugin. Always gated on `PATHFINDER_READY_FILE`, so the check cannot pass
+ * before the challenge's setup phase has written it. This protects against
+ * verifications firing before setup completes (e.g., user clicks "Check my
+ * work" the instant the terminal connects, before the environment has been
+ * broken).
  *
  * Use `grep -q`, `jq -e`, `test -f`, or any unix tool that returns 0 on
  * success to express richer matchers — the check is intentionally restricted
@@ -14,18 +14,8 @@
  */
 
 import type { CheckResultError } from '../../types/requirements.types';
-import { getBackendSrv } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
 
-const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
-
-interface CodaExecResponse {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  durationMs: number;
-  truncated?: boolean;
-}
+const NOT_READY_MESSAGE = 'Challenge environment is not ready. Start the challenge to provision a VM.';
 
 export async function codaExitZeroCheck(check: string): Promise<CheckResultError> {
   const command = check.slice('coda-exit-zero:'.length);
@@ -38,19 +28,24 @@ export async function codaExitZeroCheck(check: string): Promise<CheckResultError
     };
   }
 
+  // Dynamic import keeps the Coda integration out of the requirements chunk and
+  // avoids a requirements-manager → integrations cycle.
+  const { getTerminalSessionId } = await import('../../integrations/coda/TerminalContext');
+  const { execInSession, isNotReady, isRoleForbidden, isUnavailable, toCodaError, PATHFINDER_READY_FILE } =
+    await import('../../integrations/coda/coda-api');
+
+  const sessionId = getTerminalSessionId();
+  if (!sessionId) {
+    return {
+      requirement: check,
+      pass: false,
+      error: NOT_READY_MESSAGE,
+      context: { error: 'no active session' },
+    };
+  }
+
   try {
-    // .fetch with showErrorAlert: false so a check that finds the env not
-    // ready (or any other backend error) doesn't trigger a global toast on
-    // top of the in-block failure message.
-    const resp = await lastValueFrom(
-      getBackendSrv().fetch<CodaExecResponse>({
-        url: CODA_EXEC_URL,
-        method: 'POST',
-        data: { command, mode: 'gated' },
-        showErrorAlert: false,
-      })
-    );
-    const data = resp.data;
+    const data = await execInSession(sessionId, { command, readyFile: PATHFINDER_READY_FILE });
 
     const pass = data.exitCode === 0;
     return {
@@ -66,18 +61,26 @@ export async function codaExitZeroCheck(check: string): Promise<CheckResultError
       },
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    // 409 from the backend means no active terminal — translate that to a
-    // user-meaningful explanation that explains the prerequisite rather than
-    // surfacing the raw HTTP error.
-    const isNoSession = /409|no active terminal/i.test(message);
+    // Branch on the backend's error code, never on the message. Several
+    // distinct failures share a status — the pair that matters here is
+    // terminal_not_connected (409, "not yet") and terminal_disconnected (503,
+    // "not any more"), which a status check cannot tell apart.
+    const codaErr = toCodaError(err);
+    let error: string;
+    if (isNotReady(codaErr)) {
+      error = NOT_READY_MESSAGE;
+    } else if (isRoleForbidden(codaErr)) {
+      error = 'Your Grafana role does not allow running challenge environments. Ask an administrator.';
+    } else if (isUnavailable(codaErr)) {
+      error = 'The sandbox service is unavailable. An administrator may need to finish setting it up.';
+    } else {
+      error = `Could not reach the challenge VM: ${codaErr.message}`;
+    }
     return {
       requirement: check,
       pass: false,
-      error: isNoSession
-        ? 'Challenge environment is not ready. Start the challenge to provision a VM.'
-        : `Could not reach the challenge VM: ${message}`,
-      context: { error: message },
+      error,
+      context: { error: codaErr.message, code: codaErr.code },
     };
   }
 }

@@ -94,11 +94,32 @@ the fixed internal aggregator.
   handlers (verified on a dev stack: every Editor call returned 502 "authorization header
   missing" until the ID-token switch), so replaying it forwards an absent header — dead code that
   reads as load-bearing.
-- Write down the trust assumption **once**, in `docs/developer/CODA.md`, identically for all
-  proxies: structural (non-signature) JWT validation is defensible _only_ because requests reach
-  the plugin exclusively via Grafana's trusted server→plugin forwarding, and the plugin backend
-  is not independently reachable with a client-set `X-Grafana-Id`. Name JWKS verification via
-  `github.com/grafana/authlib` as the single future-hardening item; do not re-argue it per PR.
+
+### The identity trust boundary — canonical statement
+
+This subsection is the single authoritative statement for **all** App Platform proxies. Do not
+re-argue this trade-off per PR; link here instead. (It previously lived in
+`docs/developer/CODA.md`, which was correct only by accident — it moved here when the Coda backend
+was extracted into the `grafana-coda-app` plugin.)
+
+The `/completion-records/*` and `/custom-guide-repository` routes authenticate callers by
+**structural (non-signature) validation** of the Grafana-forwarded ID token (`X-Grafana-Id`, via the
+SDK constant `backend.GrafanaUserSignInTokenHeaderName`): well-formed JWT, `exp` present and
+unexpired, with the `sub` claim extracted verbatim only on routes that serve per-user data
+(`pkg/plugin/app_platform_identity.go`).
+
+This is defensible **only** because requests reach the plugin exclusively via Grafana's trusted
+server→plugin forwarding, and the plugin backend is not independently reachable with a client-set
+`X-Grafana-Id`.
+
+Outbound, proxies forward identity derived from the ID token only — `Authorization: Bearer
+<id-token>` plus `X-Grafana-Id`, both synthesized from the inbound token via
+`forwardIdentityHeaders` — never the caller's `Cookie`, and never a replay of the inbound
+`Authorization` header (Grafana strips it before plugin resource handlers reach the plugin).
+
+The single future-hardening item is cryptographic verification of the ID token against Grafana's
+JWKS via `github.com/grafana/authlib`; it is not wired today because it needs runtime key-endpoint
+configuration.
 
 ## 4. Cache
 

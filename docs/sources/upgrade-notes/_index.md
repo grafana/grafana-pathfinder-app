@@ -9,6 +9,30 @@ weight: 100
 
 This section contains the headline changes for each Interactive learning release, including breaking changes and migration steps. For the full per-release detail, see the project [CHANGELOG](https://github.com/grafana/grafana-pathfinder-app/blob/main/CHANGELOG.md).
 
+## Version 3.0: Coda sandbox terminal moves to its own plugin
+
+**Breaking change for anyone using the Coda terminal.** If you have never enabled it, nothing changes for you.
+
+### What changed
+
+The sandbox VM and terminal backend has moved out of Interactive learning into a separate app plugin, **`grafana-coda-app`**. Interactive learning keeps the terminal panel and the guide block types (`terminal`, `terminal-connect`, `challenge`) and now talks to that plugin over a documented, versioned API.
+
+This makes the sandbox terminal usable by any Grafana plugin rather than only Interactive learning, and reduces Interactive learning's own backend to a single purpose.
+
+### Action required
+
+If you use the Coda terminal:
+
+1. Install and enable the **Coda app plugin** (`grafana-coda-app`).
+2. Go to its configuration page at **Administration → Plugins → Coda-App** and enter your Coda API URL, relay URL, and enrollment key, then select **Register with Coda**.
+3. Leave **Enable Coda terminal** switched on in Interactive learning's settings.
+
+**Your enrollment key must be re-entered.** Grafana stores encrypted plugin settings per plugin and never exposes their values back, so the existing registration cannot be migrated automatically — by Interactive learning or by anyone else. Use the same enrollment key you used originally; if you no longer have it, ask your Coda administrator for a new one.
+
+Until the Coda app plugin is installed and registered, Interactive learning hides the terminal panel and the terminal block types. Guides containing those blocks still load; the affected steps report that the sandbox is unavailable rather than failing. Interactive learning's configuration page names whichever step is still outstanding.
+
+The following Interactive learning settings are removed, having moved to the Coda app plugin: `codaApiUrl`, `codaRelayUrl`, `codaRegistered`, and the stored enrollment key and refresh token. `enableCodaTerminal` stays, and still controls whether Interactive learning shows terminal UI at all.
+
 ## Version 2.9: Floating panel and popout step
 
 **Released April 2026.**

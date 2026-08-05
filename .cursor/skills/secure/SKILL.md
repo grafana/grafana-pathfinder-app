@@ -92,19 +92,19 @@ For each `*.go` file in `pkg/` that the diff touches, check for:
 **B1. Allowlist bypass** (severity: Critical)
 
 - Any new HTTP request to an external URL that does not pass `isAllowedCodaURL`, `IsAllowedRelayURL`, or the equivalent host-allowlist check.
-- The canonical functions live in `pkg/plugin/resources.go` (`isAllowedCodaURL`, `isAllowedHost`, `IsAllowedRelayURL`) and `pkg/plugin/package_recommendations.go` (`allowedPackageRepositoryHosts`).
+- The canonical function lives in `pkg/plugin/package_recommendations.go` (`allowedPackageRepositoryHosts`). URL allowlists for the Coda API and relay now live in the `grafana-coda-app` plugin.
 - Remediation: route the URL through the existing allowlist function or extend the allowlist with a documented justification.
 
-**B2. JWT bearer without refresh** (severity: High)
+**B2. Forwarded identity without validation** (severity: High)
 
-- Any new HTTP call using a JWT bearer that does not call `CodaClient.setAuthHeader` (which handles token refresh) or that hardcodes a token.
-- Remediation: route through `setAuthHeader(ctx, req)` per the pattern in `pkg/plugin/coda.go`.
+- Any new App Platform proxy route that reads the caller's ID token without going through `validIDToken` / `subjectFromIDToken`, or that forwards headers other than those set by `forwardIdentityHeaders`.
+- Remediation: route through the helpers in `pkg/plugin/app_platform_identity.go` per `docs/design/BACKEND_PROXY_PATTERN.md`.
 
 **B3. Hardcoded secrets** (severity: Critical)
 
 - Regex-match for: `Bearer\s+[A-Za-z0-9._-]{20,}` in source (not comments), `password\s*=\s*"[^"]{4,}"`, `token\s*=\s*"[^"]{20,}"`, and `secret\s*=\s*"[^"]{8,}"`.
 - Skip test fixtures (`*_test.go`) that intentionally use stub values.
-- Remediation: move to `pkg/plugin/settings.go` and decrypt via `SecureJSONData`.
+- Remediation: move the value into the plugin's `secureJsonData` and read it via `AppInstanceSettings.DecryptedSecureJSONData`.
 
 **B4. Unbounded payload reads** (severity: Medium)
 
@@ -225,8 +225,7 @@ This helps the reviewer scan the surface quickly.
 
 - `.cursor/rules/frontend-security.mdc` — F1-F6 canonical rules and Do / Don't examples.
 - `src/security/` — canonical sanitization APIs (`parseUrlSafely`, `sanitizeDocumentationHTML`, `validateTutorialUrl`, etc.).
-- `pkg/plugin/resources.go` — backend allowlist functions.
-- `pkg/plugin/coda.go` — token refresh + auth header pattern.
+- `pkg/plugin/app_platform_identity.go` — forwarded-identity validation helpers.
 - `pkg/plugin/package_recommendations.go` — bounded memory + allowlist pattern.
 - `src/cli/mcp/transports/http.ts` — MCP HTTP transport safety caps.
 - `docs/design/CONCERNS.md` — security concern routing + one-way doors.

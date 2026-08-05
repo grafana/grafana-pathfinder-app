@@ -3,7 +3,6 @@ package plugin
 import (
 	"context"
 	"net/http"
-	"sync"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
@@ -15,63 +14,23 @@ import (
 var (
 	_ instancemgmt.InstanceDisposer = (*App)(nil)
 	_ backend.CallResourceHandler   = (*App)(nil)
-	_ backend.StreamHandler         = (*App)(nil)
 )
 
-// App is the main plugin application struct.
+// App is the main plugin application struct. The backend is a read proxy for the
+// App Platform aggregator; sandbox VMs and terminals live in the separate
+// grafana-coda-app plugin.
 type App struct {
 	backend.CallResourceHandler
 
-	// Coda client for VM management (uses JWT Bearer token auth)
-	coda *CodaClient
-
-	// Plugin settings
-	settings *Settings
-
-	// Logger
 	logger log.Logger
-
-	// Active streaming sessions (channel path -> session)
-	streamSessions   map[string]*streamSession
-	streamSessionsMu sync.Mutex
-
-	// Active VMs per user (userLogin -> vmID) for cross-reconnection reuse
-	userVMs   map[string]string
-	userVMsMu sync.RWMutex
-
-	// Per-user rate limiter for POST /coda/exec
-	execRateLimiter *execRateLimiter
 }
 
 // NewApp creates a new App instance.
-func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (instancemgmt.Instance, error) {
-	logger := log.DefaultLogger.With("plugin", "grafana-pathfinder-app")
-
-	// Parse settings
-	settings, err := ParseSettings(appSettings)
-	if err != nil {
-		logger.Warn("Failed to parse settings, using defaults", "error", err)
-		settings = &Settings{}
-	}
-
+func NewApp(_ context.Context, _ backend.AppInstanceSettings) (instancemgmt.Instance, error) {
 	app := &App{
-		settings:        settings,
-		logger:          logger,
-		streamSessions:  make(map[string]*streamSession),
-		userVMs:         make(map[string]string),
-		execRateLimiter: newExecRateLimiter(),
+		logger: log.DefaultLogger.With("plugin", "grafana-pathfinder-app"),
 	}
 
-	if settings.RefreshToken != "" && settings.CodaAPIURL != "" {
-		app.coda = NewCodaClient(settings.CodaAPIURL, settings.RefreshToken)
-		logger.Info("Coda client initialized", "url", settings.CodaAPIURL)
-	} else if settings.RefreshToken != "" {
-		logger.Warn("Coda API URL not configured, VM features disabled")
-	} else {
-		logger.Warn("Coda refresh token not configured, VM features disabled until registration")
-	}
-
-	// Set up HTTP routes using httpadapter
 	mux := http.NewServeMux()
 	app.registerRoutes(mux)
 	app.CallResourceHandler = httpadapter.New(mux)
@@ -82,28 +41,6 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 // Dispose is called when the plugin is being shut down.
 func (a *App) Dispose() {
 	a.logger.Info("Disposing plugin instance")
-
-	// Close all active streaming sessions
-	a.streamSessionsMu.Lock()
-	for path, sess := range a.streamSessions {
-		if sess != nil {
-			if sess.session != nil {
-				_ = sess.session.Close()
-			}
-			if sess.cancel != nil {
-				sess.cancel()
-			}
-			delete(a.streamSessions, path)
-		}
-	}
-	a.streamSessionsMu.Unlock()
-
-	// Clear user VM mappings
-	a.userVMsMu.Lock()
-	for k := range a.userVMs {
-		delete(a.userVMs, k)
-	}
-	a.userVMsMu.Unlock()
 }
 
 // ctxLogger returns a contextual logger that automatically includes traceID,
@@ -113,19 +50,9 @@ func (a *App) ctxLogger(ctx context.Context) log.Logger {
 }
 
 // CheckHealth handles health check requests.
-func (a *App) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	// Basic health check
-	status := backend.HealthStatusOk
-	message := "Plugin is running"
-
-	// Check if Coda is configured (has JWT token)
-	if a.coda == nil {
-		status = backend.HealthStatusUnknown
-		message = "Coda not registered - configure enrollment key and register to enable VM features"
-	}
-
+func (a *App) CheckHealth(_ context.Context, _ *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
 	return &backend.CheckHealthResult{
-		Status:  status,
-		Message: message,
+		Status:  backend.HealthStatusOk,
+		Message: "Plugin is running",
 	}, nil
 }

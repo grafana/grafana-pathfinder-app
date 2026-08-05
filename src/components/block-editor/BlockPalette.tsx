@@ -12,6 +12,7 @@ import { css } from '@emotion/css';
 import { BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER, BLOCK_TYPE_GROUPS } from './constants';
 import { getConfigWithDefaults } from '../../constants';
 import { testIds } from '../../constants/testIds';
+import { useCodaPluginAvailable } from '../../integrations/coda/useCodaAvailability.hook';
 import type { BlockType, OnBlockTypeSelect } from './types';
 
 const CODA_BLOCK_TYPES: BlockType[] = ['terminal', 'terminal-connect'];
@@ -272,12 +273,15 @@ export function BlockPalette({
     return compact ? styles.triggerCompact : styles.trigger;
   };
 
+  // Terminal blocks need both Pathfinder's own toggle and the separate Coda app
+  // plugin; offering them when the backend is absent would author broken guides.
+  const codaAvailable = useCodaPluginAvailable();
   const effectiveExcludeTypes = useMemo(() => {
-    if (pluginConfig.enableCodaTerminal) {
+    if (pluginConfig.enableCodaTerminal && codaAvailable) {
       return excludeTypes;
     }
     return [...excludeTypes, ...CODA_BLOCK_TYPES];
-  }, [excludeTypes, pluginConfig.enableCodaTerminal]);
+  }, [excludeTypes, pluginConfig.enableCodaTerminal, codaAvailable]);
 
   const availableTypes = BLOCK_TYPE_ORDER.filter((type) => !effectiveExcludeTypes.includes(type));
 

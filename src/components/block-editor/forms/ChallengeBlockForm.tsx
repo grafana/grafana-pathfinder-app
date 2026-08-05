@@ -29,7 +29,7 @@ import { useCodaOptions } from './useCodaOptions';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonChallengeBlock, JsonChallengeHint } from '../../../types/json-guide.types';
-import { PLUGIN_BACKEND_URL } from '../../../constants';
+import { sampleAppsUrl, alloyScenariosUrl } from '../../../integrations/coda/coda-api';
 
 const VM_TEMPLATE_OPTIONS: Array<ComboboxOption<string>> = [
   { label: 'Default (vm-aws)', value: '' },
@@ -241,14 +241,10 @@ export function ChallengeBlockForm({
   const isAlloyScenario = vmTemplate === 'vm-aws-alloy-scenario';
   const isSampleApp = vmTemplate === 'vm-aws-sample-app';
 
-  const { options: sampleAppOptions, isLoading: isLoadingApps } = useCodaOptions(
-    isSampleApp,
-    `${PLUGIN_BACKEND_URL}/sample-apps`,
-    'apps'
-  );
+  const { options: sampleAppOptions, isLoading: isLoadingApps } = useCodaOptions(isSampleApp, sampleAppsUrl(), 'apps');
   const { options: scenarioOptions, isLoading: isLoadingScenarios } = useCodaOptions(
     isAlloyScenario,
-    `${PLUGIN_BACKEND_URL}/alloy-scenarios`,
+    alloyScenariosUrl(),
     'scenarios'
   );
 

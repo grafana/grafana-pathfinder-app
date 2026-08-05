@@ -28,6 +28,7 @@ import { useInteractiveElements, NavigationManager } from '../../interactive-eng
 import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
 import { useLinkClickHandler } from './link-handler.hook';
 import { isDevModeEnabled } from '../../utils/dev-mode';
+import { useCodaPluginAvailable } from '../../integrations/coda/useCodaAvailability.hook';
 
 import {
   reportAppInteraction,
@@ -933,6 +934,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   const isEditorUser = isCurrentUserEditor();
 
+  const codaAvailable = useCodaPluginAvailable();
+
   // SECURITY: Scoped logger that only emits in dev mode to prevent user data leaking to console.
   // Stable callback identity so effects depending on it do not re-run when isDevMode toggles.
   const logSession = useDevModeLogger(isDevMode);
@@ -1426,8 +1429,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         restoreScrollPosition={restoreScrollPosition}
       />
 
-      {/* Coda Terminal Panel - only shown in dev mode with terminal feature enabled */}
-      {isDevMode && pluginConfig.enableCodaTerminal && (
+      {/* Coda terminal panel — needs dev mode, Pathfinder's toggle, and the
+          separate Coda app plugin to be installed and enabled. */}
+      {isDevMode && pluginConfig.enableCodaTerminal && codaAvailable && (
         <Suspense fallback={null}>
           <TerminalPanel />
         </Suspense>
