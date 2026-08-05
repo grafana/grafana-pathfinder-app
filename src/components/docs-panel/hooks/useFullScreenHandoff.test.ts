@@ -144,6 +144,9 @@ describe('useFullScreenHandoff', () => {
     expect(setPendingGuideSpy).toHaveBeenCalledWith({
       url: 'https://example.com/a/milestone-2',
       title: 'Journey A',
+      // Identity travels with the handoff: the full-screen page restores this
+      // same tab from storage and focuses it rather than opening a second copy.
+      tabId: 'tab-a',
       type: 'learning-journey',
       packageInfo: { packageId: 'pkg-y' },
     });

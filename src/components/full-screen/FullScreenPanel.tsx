@@ -292,6 +292,9 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     panelModeManager.setPendingGuide({
       url: guideUrl,
       title,
+      // The floating panel restores this tab from storage; identify it so the
+      // handoff focuses the restored tab instead of duplicating it.
+      tabId: activeTab?.id,
       type: tabType,
       // Preserve synthetic packageInfo (PR-tester journeys) across the
       // fullscreen → floating handoff for the same reason as the inbound
@@ -301,7 +304,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     await saveTabs;
     panelModeManager.setModePersisted('floating');
     locationService.push(PLUGIN_BASE_URL);
-  }, [isEditorTab, guideUrl, title, activeTab?.type, activeTab?.packageInfo, panel]);
+  }, [isEditorTab, guideUrl, title, activeTab?.id, activeTab?.type, activeTab?.packageInfo, panel]);
 
   // Stable ref to the latest exit-to-sidebar callback. Without it, the
   // empty-state fallback effect below would re-subscribe whenever

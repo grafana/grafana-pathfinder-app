@@ -309,6 +309,9 @@ function FloatingPanelInner() {
     panelModeManager.setPendingGuide({
       url: guideUrl,
       title,
+      // Full screen restores this tab from storage; identify it so the
+      // handoff focuses the restored tab instead of duplicating it.
+      tabId: activeTab?.id,
       type: tabType,
       // Forward synthetic packageInfo (e.g. PR-tester journeys backed by
       // raw GitHub URLs) so the full-screen page rebuilds the milestone
@@ -329,7 +332,7 @@ function FloatingPanelInner() {
         guideType: tabType,
       })
     );
-  }, [isEditorTab, guideUrl, title, activeTab?.type, activeTab?.packageInfo, panel]);
+  }, [isEditorTab, guideUrl, title, activeTab?.id, activeTab?.type, activeTab?.packageInfo, panel]);
 
   // Symmetric counterpart to the sidebar's `pathfinder-request-full-screen`
   // listener — lets surface-aware components (notably the BlockEditor toolbar)

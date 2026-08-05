@@ -15,8 +15,10 @@ import type { CombinedLearningJourneyPanel } from './docs-panel';
 import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';
 import type { RawContent } from '../../types/content.types';
 
-function makePanel() {
+function makePanel(state: { tabs: Array<{ id: string }>; activeTabId: string } = { tabs: [], activeTabId: '' }) {
   return {
+    state,
+    setActiveTab: jest.fn(),
     openEditorTab: jest.fn(),
     openLearningJourney: jest.fn(),
     openDocsPage: jest.fn(),
@@ -31,6 +33,53 @@ function asPanel(panel: ReturnType<typeof makePanel>): CombinedLearningJourneyPa
 }
 
 describe('openPendingGuide', () => {
+  // The receiving surface restores the whole strip before applying the
+  // handoff, so the guide being handed off is already a tab. Every open
+  // method below mints a fresh id and appends, so without the tabId guard a
+  // sidebar → fullscreen switch shows the guide twice and persists the
+  // duplicate back into the shared workspace.
+  it('focuses the restored tab named by tabId instead of opening a duplicate', () => {
+    const panel = makePanel({ tabs: [{ id: 'recommendations' }, { id: 'tab-a' }], activeTabId: 'recommendations' });
+    const pending: PendingGuide = {
+      url: 'https://grafana.com/docs/learning-journeys/foo/milestone-2',
+      title: 'Foo',
+      type: 'learning-journey',
+      tabId: 'tab-a',
+    };
+
+    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+
+    expect(panel.setActiveTab).toHaveBeenCalledWith('tab-a');
+    expect(panel.openLearningJourney).not.toHaveBeenCalled();
+    expect(panel.openDocsPage).not.toHaveBeenCalled();
+  });
+
+  it('leaves an already-active restored tab alone so its in-flight load is not duplicated', () => {
+    const panel = makePanel({ tabs: [{ id: 'tab-a' }], activeTabId: 'tab-a' });
+    const pending: PendingGuide = { url: 'bundled:foo', title: 'Foo', type: 'docs', tabId: 'tab-a' };
+
+    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+
+    expect(panel.setActiveTab).not.toHaveBeenCalled();
+    expect(panel.openDocsPage).not.toHaveBeenCalled();
+  });
+
+  it('opens normally when tabId names a tab this surface does not have', () => {
+    // Mounted-surface swaps (the fullscreen `pathfinder-request-full-screen`
+    // handler) route without restoring, so the handoff target can be absent.
+    const panel = makePanel({ tabs: [{ id: 'recommendations' }], activeTabId: 'recommendations' });
+    const pending: PendingGuide = { url: 'bundled:foo', title: 'Foo', type: 'docs', tabId: 'tab-gone' };
+
+    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+
+    expect(panel.setActiveTab).not.toHaveBeenCalled();
+    expect(panel.openDocsPage).toHaveBeenCalledWith(
+      'bundled:foo',
+      'Foo',
+      expect.objectContaining({ source: 'fullscreen_handoff' })
+    );
+  });
+
   it('routes editor handoffs to openEditorTab and ignores any URL/packageInfo', () => {
     const panel = makePanel();
     const pending: PendingGuide = { type: 'editor', title: 'Guide editor' };
@@ -148,6 +197,20 @@ describe('initializePanelTabsOnMount', () => {
     ).resolves.toBe(true);
 
     expect(order).toEqual(['in-flight', 'restore', 'open']);
+  });
+
+  it('does not duplicate a handoff guide that restore just brought back', async () => {
+    const panel = makePanel({ tabs: [{ id: 'recommendations' }], activeTabId: 'recommendations' });
+    panel.restoreTabsAsync.mockImplementation(async () => {
+      panel.state.tabs = [{ id: 'recommendations' }, { id: 'tab-a' }, { id: 'tab-b' }];
+      panel.state.activeTabId = 'tab-a';
+    });
+    panelModeManager.setPendingGuide({ url: 'bundled:a', title: 'A', type: 'docs', tabId: 'tab-a' });
+
+    await initializePanelTabsOnMount(asPanel(panel), 'fullscreen_handoff', jest.fn());
+
+    expect(panel.openDocsPage).not.toHaveBeenCalled();
+    expect(panel.state.tabs).toHaveLength(3);
   });
 
   it('restores without marking an open in-flight when nothing was handed off', async () => {

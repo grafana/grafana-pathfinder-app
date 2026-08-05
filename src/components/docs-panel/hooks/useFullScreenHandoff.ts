@@ -121,6 +121,9 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
       panelModeManager.setPendingGuide({
         url: guideUrl,
         title: activeTab.title,
+        // The full-screen page restores this same tab from storage, so hand
+        // over its identity and let it focus rather than open a second copy.
+        tabId: activeTab.id,
         type: activeTab.type === 'learning-journey' ? 'learning-journey' : 'docs',
         // Forward synthetic packageInfo (e.g. PR-tester journeys whose URL
         // is a raw GitHub URL, not a recognised package URL) so the
