@@ -58,7 +58,10 @@ export async function fetchAppPlatformLearningPaths(namespace: string): Promise<
     .filter((entry) => entry.manifest?.type === 'path' || entry.manifest?.type === 'journey')
     .map((entry) => ({
       id: entry.id,
-      title: entry.manifest?.description || entry.title || entry.id,
+      // Prefer the entry title; fall back to the manifest description only when
+      // a title is absent, so a path with both set doesn't render its whole
+      // description sentence as the card heading (and repeat it below).
+      title: entry.title || entry.manifest?.description || entry.id,
       description: entry.manifest?.description || '',
       guides: entry.manifest?.milestones ?? [],
       badgeId: '',

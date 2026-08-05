@@ -198,6 +198,12 @@ export function ensureNonEmptyCoverContent(jsonContent: string): string {
         blocks: [
           {
             type: 'markdown',
+            // i18n gap, deliberate: this is the one user-facing string authored
+            // in docs-retrieval (a content-transform tier that has no `t()` and
+            // shouldn't grow an i18n/tier dependency just for a rare misconfig).
+            // It only appears for an empty-cover path (a publishing error), so it
+            // ships untranslated by choice. If this stops being an edge case,
+            // thread a localized string down from the component layer instead.
             content: 'Cover content is missing for this path. Check back soon, or contact whoever published it.',
           },
         ],

@@ -31,13 +31,18 @@ interface CustomGuidesSectionProps {
 function packageInfoForPath(path: PublishedGuide, resolvedMilestones?: Milestone[]): PackageOpenInfo {
   return {
     packageId: path.id,
-    packageManifest: path.manifest as unknown as Record<string, unknown>,
+    // The catalogue manifest is slim and carries no `id` (it lives on the
+    // entry), but fetchPackageContent recovers the path cover baseUrl via
+    // `packageManifest.id` — thread it through, or "back to cover" breaks.
+    packageManifest: { ...(path.manifest as unknown as Record<string, unknown>), id: path.id },
     resolvedMilestones,
   };
 }
 
 function pathTitle(path: PublishedGuide): string {
-  return path.manifest?.description || path.title || path.id;
+  // Prefer the entry title; fall back to the manifest description only when a
+  // title is absent (e.g. a synthesized manifest, where description IS the label).
+  return path.title || path.manifest?.description || path.id;
 }
 
 export function CustomGuidesSection({
@@ -84,7 +89,11 @@ export function CustomGuidesSection({
     setExpandedMembers((prev) => ({ ...prev, [path.id]: 'loading' }));
     const milestoneIds = path.manifest?.milestones ?? [];
     const resolved = await resolvePackageMilestones(milestoneIds);
-    setExpandedMembers((prev) => ({ ...prev, [path.id]: resolved }));
+    // Only apply the resolved members if this expand is still the pending one.
+    // If the user collapsed (or collapsed + re-expanded) while the resolve was
+    // in flight, the entry is no longer 'loading' and this late write must not
+    // resurrect the panel or clobber a newer resolve.
+    setExpandedMembers((prev) => (prev[path.id] === 'loading' ? { ...prev, [path.id]: resolved } : prev));
   };
 
   const openMember = (path: PublishedGuide, member: Milestone) => {

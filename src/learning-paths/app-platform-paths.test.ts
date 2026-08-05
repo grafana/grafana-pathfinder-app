@@ -29,12 +29,12 @@ describe('fetchAppPlatformLearningPaths', () => {
     mockFetchCustomGuideRepository.mockResolvedValue([
       {
         id: 'fe-alerting-path',
-        title: 'fe-alerting-path',
+        title: 'Alerting enablement',
         status: 'published',
         manifest: {
           type: 'path',
           repository: 'app-platform',
-          description: 'Alerting enablement',
+          description: 'Learn to build alert rules, contact points, and notification policies.',
           milestones: ['fe-alerting-01', 'fe-alerting-02'],
         },
       },
@@ -44,11 +44,13 @@ describe('fetchAppPlatformLearningPaths', () => {
 
     const result = await fetchAppPlatformLearningPaths('stacks-123');
 
+    // Card heading prefers the entry title; the description stays distinct
+    // below it (rather than repeating the description as the heading).
     expect(result.paths).toEqual([
       {
         id: 'fe-alerting-path',
         title: 'Alerting enablement',
-        description: 'Alerting enablement',
+        description: 'Learn to build alert rules, contact points, and notification policies.',
         guides: ['fe-alerting-01', 'fe-alerting-02'],
         badgeId: '',
       },

@@ -35,8 +35,12 @@ export interface CustomGuideRepositoryEntry {
 
 /**
  * Availability signal the catalogue surfaces gate on. `available` is false with
- * a machine `reason` (`identity-unavailable` / `backend-unavailable`) when the
- * proxy can't serve; the response is still a soft-200 in that case.
+ * a machine `reason` when the proxy can't serve (the response is still a
+ * soft-200 in that case). Reasons: `identity-unavailable`,
+ * `grafana-config-unavailable`, `feature-toggle-disabled`, `namespace-unavailable`,
+ * `app-url-unavailable`, `obo-unavailable` (no provisioned on-behalf-of token —
+ * check this first when the surface is unexpectedly empty), `backend-unavailable`,
+ * or `upstream-<status>` for an upstream error.
  */
 interface CustomGuideCapability {
   available: boolean;
@@ -51,31 +55,72 @@ interface CustomGuideRepositoryResponse {
 
 const CUSTOM_GUIDE_REPOSITORY_URL = `${PLUGIN_BACKEND_URL}/custom-guide-repository`;
 
+// Short TTL + in-flight de-duplication. Several callers fetch the catalogue on
+// panel open (the Custom Guides surface, My Learning ingestion, and the
+// panel-open probe), and the proxy deliberately keeps no cross-request cache of
+// its own (custom_guide_repository.go). Without this, each caller drives a full
+// paginated upstream drain plus its own on-behalf-of token exchange,
+// concurrently. The proxy derives the namespace server-side, so keying on the
+// client-side namespace gate is safe. A full reload always refetches.
+const CACHE_TTL_MS = 30_000;
+const cache = new Map<string, { entries: CustomGuideRepositoryEntry[]; at: number }>();
+const inflight = new Map<string, Promise<CustomGuideRepositoryEntry[]>>();
+
+async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
+  const response = await getBackendSrv().get<CustomGuideRepositoryResponse>(
+    CUSTOM_GUIDE_REPOSITORY_URL,
+    undefined,
+    undefined,
+    { showErrorAlert: false, showSuccessAlert: false }
+  );
+  if (!response?.capability?.available) {
+    return [];
+  }
+  return Array.isArray(response.guides) ? response.guides : [];
+}
+
 /**
  * Fetch the caller's custom guide catalogue. The proxy derives the namespace
  * from the trusted plugin context, so none is sent here; `namespace` is only a
  * client-side gate for "am I on a provisioned stack". Returns an empty array
  * when the backend API isn't rolled out, there's no namespace, the proxy
  * reports itself unavailable, or the request fails — a best-effort listing, not
- * a hard dependency (mirrors fetchBackendGuides).
+ * a hard dependency (mirrors fetchBackendGuides). Successful results are cached
+ * per namespace for CACHE_TTL_MS with in-flight de-duplication so concurrent
+ * callers share a single upstream drain; failures are not cached.
  */
 export async function fetchCustomGuideRepository(namespace: string): Promise<CustomGuideRepositoryEntry[]> {
   if (!isBackendApiAvailable() || !namespace) {
     return [];
   }
 
-  try {
-    const response = await getBackendSrv().get<CustomGuideRepositoryResponse>(
-      CUSTOM_GUIDE_REPOSITORY_URL,
-      undefined,
-      undefined,
-      { showErrorAlert: false, showSuccessAlert: false }
-    );
-    if (!response?.capability?.available) {
-      return [];
-    }
-    return Array.isArray(response.guides) ? response.guides : [];
-  } catch {
-    return [];
+  const cached = cache.get(namespace);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+    return cached.entries;
   }
+
+  const existing = inflight.get(namespace);
+  if (existing) {
+    return existing;
+  }
+
+  const request = requestCatalogue()
+    .then((entries) => {
+      cache.set(namespace, { entries, at: Date.now() });
+      return entries;
+    })
+    // Best-effort: never surface a listing failure, and don't cache it so a
+    // transient error doesn't stick for the whole TTL.
+    .catch(() => [] as CustomGuideRepositoryEntry[])
+    .finally(() => {
+      inflight.delete(namespace);
+    });
+
+  inflight.set(namespace, request);
+  return request;
+}
+
+/** Drop cached catalogue entries so the next fetch re-lists (e.g. after a publish, or in tests). */
+export function invalidateCustomGuideRepositoryCache(): void {
+  cache.clear();
 }

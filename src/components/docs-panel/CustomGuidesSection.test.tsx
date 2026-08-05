@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CustomGuidesSection } from './CustomGuidesSection';
 import type { PublishedGuide } from '../../utils/usePublishedGuides';
 
@@ -21,12 +21,12 @@ const orphanGuide: PublishedGuide = { id: 'standalone-guide', title: 'A standalo
 
 const pathGuide: PublishedGuide = {
   id: 'fe-alerting-path',
-  title: 'fe-alerting-path',
+  title: 'Alerting enablement',
   status: 'published',
   manifest: {
     type: 'path',
     repository: 'app-platform',
-    description: 'Alerting enablement',
+    description: 'Learn to build alert rules, contact points, and notification policies.',
     milestones: ['fe-alerting-01', 'fe-alerting-02'],
   },
 };
@@ -92,7 +92,9 @@ describe('CustomGuidesSection — path cards (launch bridge)', () => {
 
     expect(openDocsPage).toHaveBeenCalledWith('backend-guide:fe-alerting-path', 'Alerting enablement', {
       packageId: 'fe-alerting-path',
-      packageManifest: pathGuide.manifest,
+      // The entry id is threaded onto the slim manifest so fetchPackageContent
+      // can recover the cover baseUrl.
+      packageManifest: { ...pathGuide.manifest, id: 'fe-alerting-path' },
       resolvedMilestones: undefined,
     });
   });
@@ -148,6 +150,48 @@ describe('CustomGuidesSection — path cards (launch bridge)', () => {
     openDocsPage.mockClear();
     fireEvent.click(lockedButton);
     expect(openDocsPage).not.toHaveBeenCalled();
+  });
+
+  it('does not re-expand members when collapsed while the resolve is in flight', async () => {
+    let resolveMilestones!: (m: unknown[]) => void;
+    mockResolvePackageMilestones.mockReturnValue(
+      new Promise((resolve) => {
+        resolveMilestones = resolve;
+      })
+    );
+
+    render(
+      <CustomGuidesSection
+        guides={[pathGuide]}
+        paths={[pathGuide]}
+        orphanGuides={[]}
+        isLoading={false}
+        expanded
+        onToggleExpanded={jest.fn()}
+        openDocsPage={jest.fn()}
+      />
+    );
+
+    const drillIn = screen.getByRole('button', { name: /View members/i });
+    fireEvent.click(drillIn); // expand -> loading
+    expect(screen.getByText('Loading members...')).toBeInTheDocument();
+    fireEvent.click(drillIn); // collapse while the resolve is still in flight
+
+    // Late resolve must not resurrect the panel.
+    await act(async () => {
+      resolveMilestones([
+        {
+          number: 1,
+          title: 'Alerting module 1',
+          duration: '5-10 min',
+          url: 'backend-guide:fe-alerting-01',
+          isActive: false,
+        },
+      ]);
+    });
+
+    expect(screen.queryByText('Alerting module 1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Loading members...')).not.toBeInTheDocument();
   });
 });
 

@@ -8,13 +8,14 @@ jest.mock('../utils/fetchBackendGuides', () => ({
 }));
 
 import { getBackendSrv } from '@grafana/runtime';
-import { fetchCustomGuideRepository } from './custom-guide-repository-client';
+import { fetchCustomGuideRepository, invalidateCustomGuideRepositoryCache } from './custom-guide-repository-client';
 
 const mockGet = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockAvailable = true;
+  invalidateCustomGuideRepositoryCache();
   (getBackendSrv as jest.Mock).mockReturnValue({ get: mockGet });
 });
 
@@ -79,5 +80,34 @@ describe('fetchCustomGuideRepository', () => {
     const result = await fetchCustomGuideRepository('stacks-123');
 
     expect(result).toEqual([]);
+  });
+
+  it('caches a successful result within the TTL and de-duplicates concurrent calls', async () => {
+    mockGet.mockResolvedValue({ capability: { available: true }, guides: [{ id: 'g1', status: 'published' }] });
+
+    const [a, b] = await Promise.all([
+      fetchCustomGuideRepository('stacks-123'),
+      fetchCustomGuideRepository('stacks-123'),
+    ]);
+    const third = await fetchCustomGuideRepository('stacks-123');
+
+    expect(a).toEqual(b);
+    expect(third).toEqual(a);
+    expect(mockGet).toHaveBeenCalledTimes(1); // one shared drain for all three
+
+    invalidateCustomGuideRepositoryCache();
+    await fetchCustomGuideRepository('stacks-123');
+    expect(mockGet).toHaveBeenCalledTimes(2); // re-lists after invalidate
+  });
+
+  it('does not cache failures (a transient error does not stick for the TTL)', async () => {
+    mockGet.mockRejectedValueOnce(new Error('network error'));
+    mockGet.mockResolvedValueOnce({ capability: { available: true }, guides: [{ id: 'g1', status: 'published' }] });
+
+    expect(await fetchCustomGuideRepository('stacks-123')).toEqual([]);
+    const retry = await fetchCustomGuideRepository('stacks-123');
+
+    expect(retry.map((g) => g.id)).toEqual(['g1']);
+    expect(mockGet).toHaveBeenCalledTimes(2);
   });
 });
