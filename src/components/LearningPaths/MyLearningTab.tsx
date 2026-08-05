@@ -80,10 +80,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   const courses = useMemo(() => {
     return paths
-      .filter((path) => {
-        const pathProgress = getPathProgress(path.id);
-        return pathProgress > 0 && pathProgress < 100;
-      })
+      .filter((path) => getPathProgress(path.id) < 100)
       .sort((a, b) => getPathProgress(b.id) - getPathProgress(a.id));
   }, [paths, getPathProgress]);
 

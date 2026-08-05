@@ -58,6 +58,16 @@ jest.mock('../../learning-paths', () => ({
         guides: ['guide-new'],
       },
       {
+        id: 'edge-low',
+        title: 'Barely started',
+        guides: ['guide-1'],
+      },
+      {
+        id: 'edge-high',
+        title: 'Almost done',
+        guides: ['guide-1'],
+      },
+      {
         id: 'path-done',
         title: 'Done path',
         guides: ['guide-2'],
@@ -71,7 +81,8 @@ jest.mock('../../learning-paths', () => ({
         : id === 'path-new'
           ? [{ id: 'guide-new', title: 'New guide', completed: false, isCurrent: true }]
           : [{ id: 'guide-1', title: 'Guide one', completed: false, isCurrent: true }],
-    getPathProgress: (id: string) => (id === 'path-done' ? 100 : id === 'path-1' ? 50 : 0),
+    getPathProgress: (id: string) =>
+      id === 'path-done' ? 100 : id === 'path-1' ? 50 : id === 'edge-low' ? 1 : id === 'edge-high' ? 99 : 0,
     isPathCompleted: (id: string) => id === 'path-done',
     getGuideUrlForPath: () => 'https://grafana.com/docs/learning-paths/path-1/guide-1/',
     resetPath: jest.fn(),
@@ -176,19 +187,39 @@ describe('MyLearningTab launch flow', () => {
     expect(onOpenGuide).not.toHaveBeenCalled();
   });
 
-  it('partitions new, started, and completed paths by progress', () => {
+  it('keeps every not-yet-complete path in My Courses and only 100% in Completed', () => {
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
 
     const myCourses = screen.getByTestId(testIds.learningPaths.myCoursesSection);
     const completed = screen.getByTestId(testIds.learningPaths.completedSection);
 
+    // Not-started (0%), boundary (1%/99%), and mid-progress (50%) all stay in My
+    // Courses so a first-time user's bundled onboarding paths never disappear.
+    expect(myCourses).toHaveTextContent('New path');
+    expect(myCourses).toHaveTextContent('Barely started');
     expect(myCourses).toHaveTextContent('Started path');
-    expect(myCourses).not.toHaveTextContent('New path');
-    expect(completed).not.toHaveTextContent('New path');
+    expect(myCourses).toHaveTextContent('Almost done');
+    expect(myCourses).not.toHaveTextContent('Done path');
+
     expect(completed).toHaveTextContent('Done path');
     expect(completed).toHaveTextContent('Done');
-    expect(myCourses).not.toHaveTextContent('Done path');
-    expect(mockDiscoverExcludeTitles).toEqual(new Set(['Started path', 'Done path']));
+    expect(completed).not.toHaveTextContent('New path');
+    expect(completed).not.toHaveTextContent('Almost done');
+
+    // Everything shown in My Courses / Completed is suppressed from Discover
+    // More, so a bundled path never double-lists.
+    expect(mockDiscoverExcludeTitles).toEqual(
+      new Set(['New path', 'Barely started', 'Started path', 'Almost done', 'Done path'])
+    );
+  });
+
+  it('renders the stable My Learning section landmarks', () => {
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    expect(screen.getByTestId(testIds.learningPaths.myCoursesSection)).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.learningPaths.badgesSection)).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.learningPaths.discoverMoreSection)).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.learningPaths.completedSection)).toBeInTheDocument();
   });
 
   it('labels Discover more path metadata as milestones', () => {

@@ -59,12 +59,14 @@ export function MyCoursesSection({
           </button>
         )}
       </div>
-      <p className={styles.sectionDescription}>{t('myLearning.myCoursesDescription', "Paths you've started")}</p>
+      <p className={styles.sectionDescription}>
+        {t('myLearning.myCoursesDescription', 'Paths to explore and continue')}
+      </p>
 
       {courses.length === 0 ? (
         <div className={styles.emptyMessage}>
           <Icon name="book" size="xl" className={styles.emptyIcon} />
-          <p>{t('myLearning.myCoursesEmpty', "You haven't started a path yet — pick one from Discover more")}</p>
+          <p>{t('myLearning.myCoursesEmpty', 'No learning paths available yet')}</p>
         </div>
       ) : (
         <div className={styles.pathsGrid}>
