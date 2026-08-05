@@ -11,6 +11,8 @@ export interface InternalAction {
   targetAction: string;
   refTarget?: string;
   targetValue?: string;
+  /** Desired end state for a toggle target; see `lib/dom/toggle-state`. */
+  targetState?: boolean | string;
   requirements?: string;
   targetComment?: string; // Optional comment to display during this step
 }

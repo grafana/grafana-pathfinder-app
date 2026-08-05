@@ -12,10 +12,14 @@ import { css } from '@emotion/css';
 import { querySelectorAllEnhanced } from '../../lib/dom/enhanced-selector';
 import { resolveSelector } from '../../lib/dom/selector-resolver';
 import { analyzeSelectorString } from '../../lib/dom/selector-generator';
+import { findStatefulControl, readToggleState } from '../../lib/dom/toggle-state';
 import { useDebouncedValue } from './useDebouncedValue';
 
 interface SelectorHealthBadgeProps {
   reftarget: string;
+  /** Set when the action supports `targetstate`, so we can flag blind toggle clicks. */
+  checkTargetState?: boolean;
+  targetstate?: string;
 }
 
 const QUALITY_COLORS: Record<string, string> = {
@@ -32,7 +36,7 @@ interface BadgeInfo {
   warnings: string[];
 }
 
-export function SelectorHealthBadge({ reftarget }: SelectorHealthBadgeProps) {
+export function SelectorHealthBadge({ reftarget, checkTargetState, targetstate }: SelectorHealthBadgeProps) {
   const styles = useStyles2(getStyles);
 
   // Debounce the reftarget so DOM queries don't fire on every keystroke
@@ -49,10 +53,12 @@ export function SelectorHealthBadge({ reftarget }: SelectorHealthBadgeProps) {
     const allWarnings = [...analysis.warnings];
 
     let matchCount = 0;
+    let firstMatch: Element | undefined;
     try {
       const resolved = resolveSelector(debouncedTarget);
       const result = querySelectorAllEnhanced(resolved);
       matchCount = result.elements.length;
+      firstMatch = result.elements[0];
     } catch {
       // Selector may be invalid or not resolvable in current page context
     }
@@ -63,6 +69,15 @@ export function SelectorHealthBadge({ reftarget }: SelectorHealthBadgeProps) {
       allWarnings.push(`Selector matches ${matchCount} elements; consider making it more specific`);
     }
 
+    if (checkTargetState && !targetstate?.trim() && firstMatch) {
+      const state = readToggleState(findStatefulControl(firstMatch));
+      if (state !== 'unknown') {
+        allWarnings.push(
+          `This looks like a toggle (currently ${state === 'true' ? 'on' : 'off'}). Set "Target state" so the step drives it to the state you want instead of flipping whatever it finds`
+        );
+      }
+    }
+
     return {
       method: analysis.method,
       stabilityScore: analysis.stabilityScore,
@@ -70,7 +85,7 @@ export function SelectorHealthBadge({ reftarget }: SelectorHealthBadgeProps) {
       matchCount,
       warnings: allWarnings,
     };
-  }, [debouncedTarget]);
+  }, [debouncedTarget, checkTargetState, targetstate]);
 
   if (!info) {
     return null;

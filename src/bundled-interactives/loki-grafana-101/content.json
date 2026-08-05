@@ -80,7 +80,7 @@
     },
     {
       "type": "markdown",
-      "content": "## Section 2: Add a Loki panel to your existing dashboard\n\nNext, add a logs panel to the **Alloy Self Monitoring** dashboard you created in the previous tutorial. Adding logs alongside your metrics gives you a single place to investigate both.\n\n> **Tip:** If your dashboard is already in **edit mode** or the **edit sidebar** is already open, use the **Skip** option on the first two steps below to jump straight to adding the visualization."
+      "content": "## Section 2: Add a Loki panel to your existing dashboard\n\nNext, add a logs panel to the **Alloy Self Monitoring** dashboard you created in the previous tutorial. Adding logs alongside your metrics gives you a single place to investigate both.\n\n> **Tip:** If your dashboard is already in **edit mode**, use the **Skip** option on the first step below to jump straight to adding the visualization."
     },
     {
       "type": "section",
@@ -123,10 +123,10 @@
           "type": "interactive",
           "action": "highlight",
           "reftarget": "div[data-testid='data-testid Sidebar container'] button[data-testid='data-testid Dashboard Sidebar new button']",
+          "targetstate": "true",
           "requirements": ["exists-reftarget"],
           "content": "Open the **edit sidebar** by clicking the **+ New** button in the right-hand sidebar.",
-          "tooltip": "The edit sidebar is where you add new panels, rows, and other elements to a dashboard. If the sidebar is already expanded, use **Skip** to continue.",
-          "skippable": true
+          "tooltip": "The edit sidebar is where you add new panels, rows, and other elements to a dashboard."
         },
         {
           "type": "interactive",

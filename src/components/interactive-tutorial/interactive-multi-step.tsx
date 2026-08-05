@@ -23,7 +23,7 @@ import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
-import type { CrossTabInternalAction } from '../../types/cross-tab.types';
+import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
 
 let anonymousMultiStepCounter = 0;
@@ -403,13 +403,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           // Execute the action (show first, then do)
           try {
             // Show mode (highlight what will be acted upon, with comment if available)
-            await executeInteractiveAction(
-              action.targetAction,
-              action.refTarget || '',
-              action.targetValue,
-              'show',
-              action.targetComment
-            );
+            await executeInteractiveAction({ ...action, buttonType: 'show' });
 
             // Delay between show and do with cancellation check
             for (let j = 0; j < INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations; j++) {
@@ -423,13 +417,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             } // Skip to cancellation check at loop start
 
             // Do mode (actually perform the action)
-            const doOutcome = await executeInteractiveAction(
-              action.targetAction,
-              action.refTarget || '',
-              action.targetValue,
-              'do',
-              action.targetComment
-            );
+            const doOutcome = await executeInteractiveAction({ ...action, buttonType: 'do' });
             if (doOutcome === 'error') {
               setFailedStepIndex(i);
               setExecutionError(`Step ${i + 1} did not complete successfully.`);
@@ -676,12 +664,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           action: {
             targetAction: 'multistep',
             refTarget: '',
-            internalActions: internalActions.map((a): CrossTabInternalAction => ({
-              targetAction: a.targetAction,
-              refTarget: a.refTarget,
-              targetValue: a.targetValue,
-              targetComment: a.targetComment,
-            })),
+            internalActions: internalActions.map(toCrossTabInternalAction),
           },
         });
         try {

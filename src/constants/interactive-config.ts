@@ -215,6 +215,7 @@ export const DATA_ATTRIBUTES = {
   REQUIREMENTS: 'data-requirements',
   DO_IT: 'data-doit',
   TARGET_VALUE: 'data-targetvalue',
+  TARGET_STATE: 'data-targetstate',
 } as const;
 
 /**

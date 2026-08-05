@@ -1092,6 +1092,7 @@ function renderParsedElement(
           targetAction={element.props.targetAction}
           refTarget={sub(element.props.refTarget) ?? element.props.refTarget}
           targetValue={sub(element.props.targetValue)}
+          targetState={element.props.targetState}
           hints={element.props.hints}
           targetComment={element.props.targetComment}
           doIt={element.props.doIt}

@@ -196,44 +196,63 @@ describe('FormFillHandler', () => {
       expect(divElement.textContent).toBe('test-value');
     });
 
-    it('should handle checkbox input correctly', async () => {
-      const checkboxElement = {
-        ...mockElement,
-        type: 'checkbox',
-        checked: false,
-      } as unknown as HTMLInputElement;
-      mockQuerySelectorAll.mockReturnValue([checkboxElement]);
+    // These use real DOM nodes rather than object literals: assigning `.checked`
+    // on a literal "passes" while telling us nothing, which is how the missing
+    // React onChange went unnoticed. React wires onChange for checkbox/radio to
+    // the click event, so the click is the behaviour worth asserting.
+    const makeInput = (type: 'checkbox' | 'radio', checked: boolean) => {
+      const input = document.createElement('input');
+      input.type = type;
+      input.checked = checked;
+      const onClick = jest.fn();
+      input.addEventListener('click', onClick);
+      mockQuerySelectorAll.mockReturnValue([input]);
+      return { input, onClick };
+    };
+
+    it('should check an unchecked checkbox via a real click', async () => {
+      const { input, onClick } = makeInput('checkbox', false);
 
       await formFillHandler.execute(mockData, true);
 
-      expect(checkboxElement.checked).toBe(true);
+      expect(input.checked).toBe(true);
+      expect(onClick).toHaveBeenCalledTimes(1);
     });
 
-    it('should handle unchecked checkbox correctly', async () => {
-      const checkboxElement = {
-        ...mockElement,
-        type: 'checkbox',
-        checked: true,
-      } as unknown as HTMLInputElement;
-      const uncheckedData = { ...mockData, targetValue: 'false' };
-      mockQuerySelectorAll.mockReturnValue([checkboxElement]);
+    it('should uncheck a checked checkbox via a real click', async () => {
+      const { input, onClick } = makeInput('checkbox', true);
 
-      await formFillHandler.execute(uncheckedData, true);
+      await formFillHandler.execute({ ...mockData, targetValue: 'false' }, true);
 
-      expect(checkboxElement.checked).toBe(false);
+      expect(input.checked).toBe(false);
+      expect(onClick).toHaveBeenCalledTimes(1);
     });
 
-    it('should handle radio input correctly', async () => {
-      const radioElement = {
-        ...mockElement,
-        type: 'radio',
-        checked: false,
-      } as unknown as HTMLInputElement;
-      mockQuerySelectorAll.mockReturnValue([radioElement]);
+    it('should leave a checkbox alone when it is already in the requested state', async () => {
+      const { input, onClick } = makeInput('checkbox', true);
 
       await formFillHandler.execute(mockData, true);
 
-      expect(radioElement.checked).toBe(true);
+      expect(input.checked).toBe(true);
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it('should select a radio via a real click', async () => {
+      const { input, onClick } = makeInput('radio', false);
+
+      await formFillHandler.execute(mockData, true);
+
+      expect(input.checked).toBe(true);
+      expect(onClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('should refuse to uncheck a radio, since clicking cannot deselect one', async () => {
+      const { input, onClick } = makeInput('radio', true);
+
+      await formFillHandler.execute({ ...mockData, targetValue: 'false' }, true);
+
+      expect(input.checked).toBe(true);
+      expect(onClick).not.toHaveBeenCalled();
     });
 
     it('should handle Monaco editor correctly', async () => {
