@@ -47,14 +47,14 @@ const targetStateField = () => screen.getByLabelText('Click unconditionally');
 describe('StepEditor', () => {
   it('round-trips targetstate through an open-then-save with no other edit', () => {
     const onChange = jest.fn();
-    renderEditor([{ action: 'highlight', reftarget: '#drawer', targetstate: true }], onChange);
+    renderEditor([{ action: 'highlight', reftarget: '#drawer', targetstate: 'true' }], onChange);
 
     openFirstStepForEditing();
     expect(targetStateField()).toHaveValue('true');
     save();
 
     expect(onChange).toHaveBeenCalledWith([
-      expect.objectContaining({ action: 'highlight', reftarget: '#drawer', targetstate: true }),
+      expect.objectContaining({ action: 'highlight', reftarget: '#drawer', targetstate: 'true' }),
     ]);
   });
 
@@ -82,7 +82,7 @@ describe('StepEditor', () => {
 
   it('drops targetstate when the author clears it', () => {
     const onChange = jest.fn();
-    renderEditor([{ action: 'highlight', reftarget: '#drawer', targetstate: true }], onChange);
+    renderEditor([{ action: 'highlight', reftarget: '#drawer', targetstate: 'true' }], onChange);
 
     openFirstStepForEditing();
     fireEvent.change(targetStateField(), { target: { value: '' } });
@@ -99,12 +99,12 @@ describe('StepEditor', () => {
     fireEvent.change(targetStateField(), { target: { value: 'false' } });
     save();
 
-    expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ targetstate: false })]);
+    expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ targetstate: 'false' })]);
   });
 
   it('does not persist targetstate for actions that cannot toggle', () => {
     const onChange = jest.fn();
-    renderEditor([{ action: 'formfill', reftarget: '#name', targetstate: true }], onChange);
+    renderEditor([{ action: 'formfill', reftarget: '#name', targetstate: 'true' }], onChange);
 
     openFirstStepForEditing();
     save();

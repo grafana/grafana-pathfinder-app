@@ -61,7 +61,7 @@ toggle semantics — the outcome depends on where the user left the UI. Add
   "type": "interactive",
   "action": "highlight",
   "reftarget": "button[data-testid='data-testid Dashboard Sidebar new button']",
-  "targetstate": true,
+  "targetstate": "true",
   "content": "Open the edit sidebar"
 }
 ```

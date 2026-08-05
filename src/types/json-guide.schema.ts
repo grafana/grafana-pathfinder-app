@@ -54,15 +54,14 @@ const RequirementTokenSchema = z.string().superRefine((token, ctx) => {
  * control's state signal; `"<attribute>:<value>"` names it explicitly.
  */
 const TargetStateSchema = z
-  .union([z.boolean(), z.string()])
+  .string()
   .optional()
   .refine(
-    (value) =>
-      typeof value !== 'string' || value === 'true' || value === 'false' || /^[a-zA-Z][\w-]*:.+$/.test(value.trim()),
-    { error: 'targetstate must be true, false, or "<attribute>:<value>" (e.g. "aria-expanded:true")' }
+    (value) => value === undefined || value === 'true' || value === 'false' || /^[a-zA-Z][\w-]*:.+$/.test(value.trim()),
+    { error: 'targetstate must be "true", "false", or "<attribute>:<value>" (e.g. "aria-expanded:true")' }
   )
   .describe(
-    'Desired end state for a toggle target. The step reads the control and only clicks when the state differs, so it is safe to re-run. Use true/false to auto-detect (aria-expanded, aria-pressed, checked, aria-checked, aria-selected), or "<attribute>:<value>" when the control exposes state some other way.'
+    'Desired end state for a toggle target. The step reads the control and only clicks when the state differs, so it is safe to re-run. Use "true"/"false" to auto-detect (aria-expanded, aria-pressed, checked, aria-checked, aria-selected), or "<attribute>:<value>" when the control exposes state some other way. Authoring a bare `true`/`false` is accepted: `normalizeJsonGuideAliases` coerces it to the string form before this schema runs, because the backend InteractiveGuide CRD cannot model a boolean-or-string field.'
   );
 
 /**

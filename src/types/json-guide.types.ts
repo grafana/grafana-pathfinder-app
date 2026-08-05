@@ -303,10 +303,14 @@ export interface JsonInteractiveBlock extends AssistantProps, AuthorAnnotated {
   targetValue?: string;
   /**
    * Desired end state for a toggle target, so the step drives the control to
-   * that state instead of clicking it blindly. `true`/`false` auto-detects the
-   * control's state signal; `"<attribute>:<value>"` names it explicitly.
+   * that state instead of clicking it blindly. `"true"`/`"false"` auto-detects
+   * the control's state signal; `"<attribute>:<value>"` names it explicitly.
+   *
+   * String-only by the time it reaches the schema: a bare `true`/`false` is
+   * accepted when authoring and coerced by `normalizeJsonGuideAliases`, because
+   * the backend InteractiveGuide CRD cannot model a boolean-or-string field.
    */
-  targetstate?: boolean | string;
+  targetstate?: string;
   /** camelCase alias for `targetstate`. Tolerated by the runtime parser. */
   targetState?: boolean | string;
   /** Markdown description shown to the user */
@@ -423,8 +427,11 @@ export interface JsonStep {
    * Desired end state for a toggle target. In a multistep the engine drives the
    * control to it; in a guided step an already-satisfied control completes
    * without asking the user to click it.
+   *
+   * String-only by the time it reaches the schema — see `targetstate` on
+   * `JsonInteractiveBlock` for why a bare boolean is coerced, not carried.
    */
-  targetstate?: boolean | string;
+  targetstate?: string;
   /** camelCase alias for `targetstate`. Tolerated by the runtime parser. */
   targetState?: boolean | string;
   /** Requirements for this specific step */

@@ -173,26 +173,26 @@ A single interactive step with "Show me" and "Do it" buttons.
 }
 ```
 
-| Field             | Type              | Required | Default             | Description                                                        |
-| ----------------- | ----------------- | -------- | ------------------- | ------------------------------------------------------------------ |
-| `action`          | string            | ✅       | —                   | Action type (see below)                                            |
-| `reftarget`       | string            | ✅\*     | —                   | CSS selector or button text (\*optional for `noop` actions)        |
-| `content`         | string            | ✅       | —                   | Markdown description shown to user                                 |
-| `targetvalue`     | string            | ❌       | —                   | Value for `formfill` actions (supports regex, see below)           |
-| `targetstate`     | boolean \| string | ❌       | —                   | Desired end state for a toggle target (see below)                  |
-| `tooltip`         | string            | ❌       | —                   | Tooltip shown on highlight (supports markdown)                     |
-| `requirements`    | string[]          | ❌       | —                   | Conditions that must be met                                        |
-| `objectives`      | string[]          | ❌       | —                   | Objectives marked complete after this step                         |
-| `skippable`       | boolean           | ❌       | `false`             | Allow skipping if requirements fail                                |
-| `hint`            | string            | ❌       | —                   | Hint shown when step cannot be completed                           |
-| `formHint`        | string            | ❌       | —                   | Hint shown when form validation fails (formfill only)              |
-| `validateInput`   | boolean           | ❌       | `false`             | Require input to match `targetvalue` pattern                       |
-| `showMe`          | boolean           | ❌       | `true`              | Show the "Show me" button                                          |
-| `doIt`            | boolean           | ❌       | `true`              | Show the "Do it" button                                            |
-| `completeEarly`   | boolean           | ❌       | `false`             | Mark step complete BEFORE action executes                          |
-| `verify`          | string            | ❌       | —                   | Post-action verification (e.g., `"on-page:/path"`)                 |
-| `lazyRender`      | boolean           | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers     |
-| `scrollContainer` | string            | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled |
+| Field             | Type     | Required | Default             | Description                                                        |
+| ----------------- | -------- | -------- | ------------------- | ------------------------------------------------------------------ |
+| `action`          | string   | ✅       | —                   | Action type (see below)                                            |
+| `reftarget`       | string   | ✅\*     | —                   | CSS selector or button text (\*optional for `noop` actions)        |
+| `content`         | string   | ✅       | —                   | Markdown description shown to user                                 |
+| `targetvalue`     | string   | ❌       | —                   | Value for `formfill` actions (supports regex, see below)           |
+| `targetstate`     | string   | ❌       | —                   | Desired end state for a toggle target (see below)                  |
+| `tooltip`         | string   | ❌       | —                   | Tooltip shown on highlight (supports markdown)                     |
+| `requirements`    | string[] | ❌       | —                   | Conditions that must be met                                        |
+| `objectives`      | string[] | ❌       | —                   | Objectives marked complete after this step                         |
+| `skippable`       | boolean  | ❌       | `false`             | Allow skipping if requirements fail                                |
+| `hint`            | string   | ❌       | —                   | Hint shown when step cannot be completed                           |
+| `formHint`        | string   | ❌       | —                   | Hint shown when form validation fails (formfill only)              |
+| `validateInput`   | boolean  | ❌       | `false`             | Require input to match `targetvalue` pattern                       |
+| `showMe`          | boolean  | ❌       | `true`              | Show the "Show me" button                                          |
+| `doIt`            | boolean  | ❌       | `true`              | Show the "Do it" button                                            |
+| `completeEarly`   | boolean  | ❌       | `false`             | Mark step complete BEFORE action executes                          |
+| `verify`          | string   | ❌       | —                   | Post-action verification (e.g., `"on-page:/path"`)                 |
+| `lazyRender`      | boolean  | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers     |
+| `scrollContainer` | string   | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled |
 
 **Action Types:**
 
@@ -222,17 +222,24 @@ it is safe to re-run and converges from either starting state.
   "type": "interactive",
   "action": "highlight",
   "reftarget": "button[data-testid='data-testid Dashboard Sidebar new button']",
-  "targetstate": true,
+  "targetstate": "true",
   "content": "Open the edit sidebar."
 }
 ```
 
-`true` / `false` auto-detects the control's state signal, probing `checked`,
+`"true"` / `"false"` auto-detects the control's state signal, probing `checked`,
 `aria-pressed`, `aria-expanded`, `aria-checked`, `aria-selected`, and finally an
 `aria-label` that names the action ("Collapse …" means already expanded). If the
 step targets a wrapper, it descends to the control that actually holds the state —
 necessary for Grafana's `Switch`, where the stable `data-testid` sits on a wrapper
 whose click does nothing.
+
+A bare `true` / `false` is accepted too and means the same thing — validation
+coerces it to the string form. The stored value is always a string, because the
+backend `InteractiveGuide` CRD cannot model a field that is boolean-or-string
+(the generated Kubernetes schema would be invalid), and a raw boolean sent to
+that API is rejected. Prefer `"true"` when writing guides by hand so the file
+matches what round-trips.
 
 When a control carries its state somewhere else, name the attribute:
 
@@ -573,7 +580,7 @@ needs:
     {
       "action": "highlight",
       "reftarget": "button[data-testid='data-testid Dashboard Sidebar new button']",
-      "targetstate": true
+      "targetstate": "true"
     },
     {
       "action": "highlight",

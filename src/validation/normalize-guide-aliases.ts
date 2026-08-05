@@ -8,6 +8,9 @@
  * An alias missing from this map does not fail loudly: the schema strips it and
  * the guide validates without it, so the field is silently gone downstream.
  * Every alias the parser reads must therefore have an entry here.
+ *
+ * It also coerces boolean `targetstate` to its string form — see
+ * `BOOLEAN_VALUED_FIELDS` below.
  */
 
 const FIELD_ALIASES: ReadonlyMap<string, string> = new Map([
@@ -16,6 +19,30 @@ const FIELD_ALIASES: ReadonlyMap<string, string> = new Map([
   ['targetValue', 'targetvalue'],
   ['targetState', 'targetstate'],
 ]);
+
+/**
+ * Fields authored as `true`/`false` but carried as `"true"`/`"false"`.
+ *
+ * `targetstate`'s canonical form is a string: it has to express both a boolean
+ * ("drive this to on") and an `"<attribute>:<value>"` pair, and the backend
+ * InteractiveGuide CRD cannot model a field that is boolean-or-string. A CUE
+ * disjunction across two JSON types renders `"type": ["string","boolean"]`,
+ * which is not valid Kubernetes JSONSchemaProps — the CRD would fail to apply.
+ * Declaring it string-only there instead means a raw boolean is rejected with a
+ * 422, so the boolean has to be gone before the guide reaches the API.
+ *
+ * Authors keep writing `true`, which reads better than `"true"`; this is where
+ * that becomes the wire form. Coercing pre-schema (rather than teaching the
+ * schema a union) keeps exactly one shape flowing downstream.
+ */
+const BOOLEAN_VALUED_FIELDS: ReadonlySet<string> = new Set(['targetstate']);
+
+function normalizeFieldValue(canonicalKey: string, value: unknown): unknown {
+  if (typeof value === 'boolean' && BOOLEAN_VALUED_FIELDS.has(canonicalKey)) {
+    return String(value);
+  }
+  return normalizeJsonGuideAliases(value);
+}
 
 export function normalizeJsonGuideAliases(raw: unknown): unknown {
   if (Array.isArray(raw)) {
@@ -31,7 +58,10 @@ export function normalizeJsonGuideAliases(raw: unknown): unknown {
       const canonical = FIELD_ALIASES.get(key);
       return canonical === undefined || !Object.prototype.hasOwnProperty.call(source, canonical);
     })
-    .map(([key, value]) => [FIELD_ALIASES.get(key) ?? key, normalizeJsonGuideAliases(value)] as const);
+    .map(([key, value]) => {
+      const canonical = FIELD_ALIASES.get(key) ?? key;
+      return [canonical, normalizeFieldValue(canonical, value)] as const;
+    });
 
   return Object.fromEntries(entries);
 }
