@@ -44,15 +44,19 @@ export class CompositePackageResolver implements PackageResolver {
     const promise = this.resolveUncached(packageId, options);
     this.cache.set(cacheKey, promise);
 
-    // App Platform is a mutable repository (§6.8) — a successful resolution
-    // must never be served stale on a later call. Evict right after it
-    // settles: truly concurrent callers still share this in-flight promise
-    // (dedup preserved), but the next call re-fetches fresh. The `.catch()`
-    // only silences this derived promise — a thrown/rejected `promise` still
-    // propagates normally to whoever awaits the `resolve()` call itself.
+    // App Platform is a mutable repository (§6.8) — neither a successful
+    // resolution NOR a failure may be served stale on a later call. A
+    // not-found for a not-yet-published member must re-resolve once it's
+    // published, so we evict on failure too (app-platform failures carry
+    // `repository`; static-tier failures don't, so their negative caching is
+    // preserved). Evict right after it settles: truly concurrent callers still
+    // share this in-flight promise (dedup preserved), but the next call
+    // re-fetches fresh. The `.catch()` only silences this derived promise — a
+    // thrown/rejected `promise` still propagates normally to whoever awaits the
+    // `resolve()` call itself.
     promise
       .then((result) => {
-        if (result.ok && UNCACHEABLE_REPOSITORIES.has(result.repository)) {
+        if (result.repository && UNCACHEABLE_REPOSITORIES.has(result.repository)) {
           this.cache.delete(cacheKey);
         }
       })

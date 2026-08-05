@@ -218,19 +218,26 @@ describe('CompositePackageResolver', () => {
       expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
     });
 
-    it('still caches app-platform failures (not-found should not hammer the backend)', async () => {
+    it('does not cache app-platform failures — a member published later re-resolves (§6.8)', async () => {
       const appPlatformFailure: PackageResolution = {
         ok: false,
         id: 'fe-missing',
         error: { code: 'not-found', message: 'not found' },
+        // App-platform failures carry the repository so the composite can skip
+        // negative-caching them (static-tier failures don't, so they stay cached).
+        repository: 'app-platform',
       };
-      (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(appPlatformFailure);
+      (mockBundledResolver.resolve as jest.Mock)
+        .mockResolvedValueOnce(appPlatformFailure) // not published yet
+        .mockResolvedValueOnce(SUCCESS_APP_PLATFORM); // author publishes it
 
       const composite = new CompositePackageResolver([mockBundledResolver]);
-      await composite.resolve('fe-missing');
-      await composite.resolve('fe-missing');
+      const first = await composite.resolve('fe-missing');
+      const second = await composite.resolve('fe-missing');
 
-      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
+      expect(first.ok).toBe(false);
+      expect(second.ok).toBe(true);
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(2);
     });
 
     it('truly concurrent calls still share one in-flight resolution (dedup preserved)', async () => {

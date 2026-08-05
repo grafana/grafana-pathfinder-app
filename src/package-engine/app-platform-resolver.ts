@@ -57,7 +57,10 @@ function failure(
   code: PackageResolutionFailure['error']['code'],
   message: string
 ): PackageResolutionFailure {
-  return { ok: false, id, error: { code, message } };
+  // Tag failures with the repository so the composite resolver can skip
+  // negative-caching them (app-platform is mutable — a later publish must
+  // re-resolve rather than stay cached-missing).
+  return { ok: false, id, error: { code, message }, repository: APP_PLATFORM_REPOSITORY };
 }
 
 /**
@@ -72,7 +75,9 @@ function failure(
  */
 function buildManifest(packageId: string, spec: InteractiveGuideResource['spec']): ManifestJson {
   if (spec?.manifest) {
-    const parsed = ManifestJsonObjectSchema.loose().safeParse({ id: packageId, ...spec.manifest });
+    // Spread the persisted manifest first, then force the resolved id last so a
+    // stray spec.manifest.id can never override the package being resolved.
+    const parsed = ManifestJsonObjectSchema.loose().safeParse({ ...spec.manifest, id: packageId });
     if (parsed.success) {
       return parsed.data as ManifestJson;
     }
@@ -133,6 +138,14 @@ export class AppPlatformPackageResolver implements PackageResolver {
 
       if (!resource?.spec) {
         return failure(packageId, 'not-found', `App platform guide "${packageId}" has no spec`);
+      }
+
+      // Published-only, matching every other catalogue surface (usePublishedGuides,
+      // fetchAppPlatformLearningPaths). Without this a draft member of a published
+      // path renders unlocked and opens for every namespace viewer. A draft
+      // therefore resolves not-found → renders locked, like an unpublished member.
+      if (resource.spec.status !== 'published') {
+        return failure(packageId, 'not-found', `App platform guide "${packageId}" is not published`);
       }
 
       resolution.manifest = buildManifest(packageId, resource.spec);

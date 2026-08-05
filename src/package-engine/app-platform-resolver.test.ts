@@ -164,7 +164,9 @@ describe('AppPlatformPackageResolver — full content', () => {
   });
 
   it('fails validation when blocks or title are missing', async () => {
-    mockFetch.mockReturnValue(of({ data: { metadata: { name: 'x' }, spec: { title: 'No blocks' } } }));
+    mockFetch.mockReturnValue(
+      of({ data: { metadata: { name: 'x' }, spec: { status: 'published', title: 'No blocks' } } })
+    );
     const resolver = new AppPlatformPackageResolver();
 
     const result = await resolver.resolve('x', { loadContent: true });
@@ -174,5 +176,44 @@ describe('AppPlatformPackageResolver — full content', () => {
       return;
     }
     expect(result.error.code).toBe('validation-error');
+  });
+
+  it('resolves not-found for a non-published (draft) guide', async () => {
+    mockFetch.mockReturnValue(of(okResource({ status: 'draft' })));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('fe-alerting-01', { loadContent: 'metadata-only' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.code).toBe('not-found');
+  });
+
+  it('does not let a persisted spec.manifest.id override the resolved packageId', async () => {
+    mockFetch.mockReturnValue(of(okResource({ manifest: { type: 'guide', id: 'some-other-id' } })));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('fe-alerting-01', { loadContent: 'metadata-only' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest?.id).toBe('fe-alerting-01');
+  });
+
+  it('tags failures with the app-platform repository so the composite resolver can skip caching them', async () => {
+    mockFetch.mockReturnValue(throwError(() => ({ status: 404 })));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('missing', { loadContent: 'metadata-only' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.repository).toBe('app-platform');
   });
 });
