@@ -38,7 +38,7 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
+import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES, TARGET_STATE_OPTIONS, parseAuthoredTargetState } from '../constants';
 import { useActionRecorder } from '../../../utils/devtools';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
 import { ConditionChipsField } from './ConditionChipsField';
@@ -218,6 +218,43 @@ function isPopoutTargetMode(value: string): value is PopoutTargetMode {
   return value === 'sidebar' || value === 'floating';
 }
 
+function showTargetStateFor(action: JsonInteractiveAction): boolean {
+  return action === 'highlight' || action === 'button';
+}
+
+/**
+ * Fields the two forms below own outright: a save rebuilds them from form
+ * state, and their absence means the author cleared them. Every other field on
+ * the step — `id`, and whatever `JsonStep` gains next — is carried over
+ * untouched, so opening a step in the editor cannot silently delete it.
+ */
+const FORM_OWNED_STEP_FIELDS = [
+  'action',
+  'targetAction',
+  'reftarget',
+  'refTarget',
+  'targetvalue',
+  'targetValue',
+  'targetstate',
+  'targetState',
+  'formHint',
+  'validateInput',
+  'tooltip',
+  'description',
+  'lazyRender',
+  'scrollContainer',
+  'requirements',
+  'skippable',
+] as const satisfies ReadonlyArray<keyof JsonStep>;
+
+function carriedOverFields(step: JsonStep): Partial<JsonStep> {
+  const carried: Record<string, unknown> = { ...step };
+  for (const field of FORM_OWNED_STEP_FIELDS) {
+    delete carried[field];
+  }
+  return carried as Partial<JsonStep>;
+}
+
 export interface StepEditorProps {
   /** Current steps */
   steps: JsonStep[];
@@ -308,6 +345,7 @@ export function StepEditor({
   const [newAction, setNewAction] = useState<JsonInteractiveAction>('highlight');
   const [newReftarget, setNewReftarget] = useState('');
   const [newTargetvalue, setNewTargetvalue] = useState('');
+  const [newTargetstate, setNewTargetstate] = useState('');
   const [newTooltip, setNewTooltip] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newFormHint, setNewFormHint] = useState('');
@@ -322,6 +360,7 @@ export function StepEditor({
   const [editAction, setEditAction] = useState<JsonInteractiveAction>('highlight');
   const [editReftarget, setEditReftarget] = useState('');
   const [editTargetvalue, setEditTargetvalue] = useState('');
+  const [editTargetstate, setEditTargetstate] = useState('');
   const [editTooltip, setEditTooltip] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editFormHint, setEditFormHint] = useState('');
@@ -423,6 +462,8 @@ export function StepEditor({
       setEditAction(step.action ?? step.targetAction ?? 'highlight');
       setEditReftarget(step.reftarget ?? step.refTarget ?? '');
       setEditTargetvalue(step.targetvalue ?? step.targetValue ?? '');
+      const loadedTargetstate = step.targetstate ?? step.targetState;
+      setEditTargetstate(loadedTargetstate === undefined ? '' : String(loadedTargetstate));
       setEditFormHint(step.formHint ?? '');
       setEditValidateInput(step.validateInput ?? false);
       setEditLazyRender(step.lazyRender ?? false);
@@ -462,10 +503,15 @@ export function StepEditor({
       .map((r) => r.trim())
       .filter((r) => r.length > 0);
 
+    const editAuthoredTargetState = parseAuthoredTargetState(editTargetstate);
+
     const updatedStep: JsonStep = {
+      ...carriedOverFields(steps[editingStepIndex]!),
       action: editAction,
       // Only persist reftarget when the action operates on a DOM element
       ...(!editIsStateOnly && { reftarget: editReftarget.trim() }),
+      ...(showTargetStateFor(editAction) &&
+        editAuthoredTargetState !== undefined && { targetstate: editAuthoredTargetState }),
       ...(editAction === 'formfill' && editTargetvalue.trim() && { targetvalue: editTargetvalue.trim() }),
       ...(editAction === 'formfill' && editFormHint.trim() && { formHint: editFormHint.trim() }),
       ...(editAction === 'formfill' && editValidateInput && { validateInput: true }),
@@ -492,6 +538,7 @@ export function StepEditor({
     editAction,
     editReftarget,
     editTargetvalue,
+    editTargetstate,
     editFormHint,
     editValidateInput,
     editTooltip,
@@ -569,10 +616,14 @@ export function StepEditor({
       .map((r) => r.trim())
       .filter((r) => r.length > 0);
 
+    const newAuthoredTargetState = parseAuthoredTargetState(newTargetstate);
+
     const step: JsonStep = {
       action: newAction,
       // Only persist reftarget when the action operates on a DOM element
       ...(!newIsStateOnly && { reftarget: newReftarget.trim() }),
+      ...(showTargetStateFor(newAction) &&
+        newAuthoredTargetState !== undefined && { targetstate: newAuthoredTargetState }),
       ...(newAction === 'formfill' && newTargetvalue.trim() && { targetvalue: newTargetvalue.trim() }),
       ...(newAction === 'formfill' && newFormHint.trim() && { formHint: newFormHint.trim() }),
       ...(newAction === 'formfill' && newValidateInput && { validateInput: true }),
@@ -592,6 +643,7 @@ export function StepEditor({
     onChange([...steps, step]);
     setNewReftarget('');
     setNewTargetvalue('');
+    setNewTargetstate('');
     setNewTooltip('');
     setNewDescription('');
     setNewFormHint('');
@@ -605,6 +657,7 @@ export function StepEditor({
     newAction,
     newReftarget,
     newTargetvalue,
+    newTargetstate,
     newFormHint,
     newValidateInput,
     newLazyRender,
@@ -768,6 +821,22 @@ export function StepEditor({
                           </>
                         )}
                       </div>
+
+                      {showTargetStateFor(editAction) && (
+                        <Field
+                          label="Target state"
+                          description="For toggles, switches and expanders. The step reads the control and only acts when the state differs, so it is safe to re-run. Leave blank to click unconditionally."
+                          style={{ marginBottom: 0 }}
+                        >
+                          <Combobox
+                            options={TARGET_STATE_OPTIONS}
+                            value={editTargetstate}
+                            onChange={(opt) => setEditTargetstate(opt?.value ?? '')}
+                            placeholder="Click unconditionally"
+                            createCustomValue
+                          />
+                        </Field>
+                      )}
 
                       {editAction === 'formfill' && (
                         <>
@@ -1057,6 +1126,22 @@ export function StepEditor({
               </>
             )}
           </div>
+
+          {showTargetStateFor(newAction) && (
+            <Field
+              label="Target state"
+              description="For toggles, switches and expanders. The step reads the control and only acts when the state differs, so it is safe to re-run. Leave blank to click unconditionally."
+              style={{ marginBottom: 0 }}
+            >
+              <Combobox
+                options={TARGET_STATE_OPTIONS}
+                value={newTargetstate}
+                onChange={(opt) => setNewTargetstate(opt?.value ?? '')}
+                placeholder="Click unconditionally"
+                createCustomValue
+              />
+            </Field>
+          )}
 
           {newAction === 'formfill' && (
             <>

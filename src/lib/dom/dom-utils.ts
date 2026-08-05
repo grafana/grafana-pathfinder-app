@@ -39,6 +39,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
         'data-reftarget',
         'data-targetaction',
         'data-targetvalue',
+        'data-targetstate',
         'data-requirements',
         'data-objectives',
         'data-skippable',
@@ -58,6 +59,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   const refTarget = element.getAttribute('data-reftarget') || '';
   const targetAction = element.getAttribute('data-targetaction') || '';
   const targetValue = element.getAttribute('data-targetvalue') || undefined;
+  const targetState = element.getAttribute('data-targetstate') || undefined;
   const requirements = element.getAttribute('data-requirements') || undefined;
   const objectives = element.getAttribute('data-objectives') || undefined;
   const skippable = element.getAttribute('data-skippable') === 'true'; // Default to false, only true if explicitly set
@@ -74,6 +76,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     refTarget,
     targetAction,
     targetValue,
+    targetState,
     requirements,
     objectives,
     skippable,

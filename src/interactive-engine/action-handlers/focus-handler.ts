@@ -5,6 +5,8 @@ import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { describeElement, isElementVisible } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
+import { parseTargetState } from '../../lib/dom/toggle-state';
+import { clickToTargetState, commentForTargetState } from './toggle-click';
 
 export class FocusHandler {
   constructor(
@@ -29,18 +31,22 @@ export class FocusHandler {
       }
 
       if (!click) {
-        await this.handleShowMode(targetElements, data.targetComment);
+        await this.handleShowMode(targetElements, data.targetComment, data.targetState);
         return;
       }
 
-      await this.handleDoMode(targetElements);
+      await this.handleDoMode(targetElements, data.targetState);
       await this.markAsCompleted(data);
     } catch (error) {
       this.stateManager.handleError(error as Error, 'FocusHandler', data, false);
     }
   }
 
-  private async handleShowMode(targetElements: HTMLElement[], comment?: string): Promise<void> {
+  private async handleShowMode(
+    targetElements: HTMLElement[],
+    comment?: string,
+    rawTargetState?: boolean | string
+  ): Promise<void> {
     // Show mode: ensure visibility and highlight, don't click - NO step completion
     for (const element of targetElements) {
       // Validate visibility before interaction
@@ -51,13 +57,18 @@ export class FocusHandler {
 
       await this.navigationManager.ensureNavigationOpen(element);
       await this.navigationManager.ensureElementVisible(element);
-      await this.navigationManager.highlightWithComment(element, comment);
+      await this.navigationManager.highlightWithComment(
+        element,
+        commentForTargetState(comment, element, rawTargetState)
+      );
     }
   }
 
-  private async handleDoMode(targetElements: HTMLElement[]): Promise<void> {
+  private async handleDoMode(targetElements: HTMLElement[], rawTargetState?: boolean | string): Promise<void> {
     // Clear any existing highlights before performing action
     this.navigationManager.clearAllHighlights();
+
+    const target = parseTargetState(rawTargetState);
 
     // Do mode: ensure visibility then click, don't highlight
     for (const element of targetElements) {
@@ -69,7 +80,12 @@ export class FocusHandler {
 
       await this.navigationManager.ensureNavigationOpen(element);
       await this.navigationManager.ensureElementVisible(element);
-      element.click();
+
+      if (target) {
+        await clickToTargetState(element, target, this.waitForReactUpdates);
+      } else {
+        element.click();
+      }
     }
   }
 

@@ -251,6 +251,28 @@ export const POPOUT_TARGET_MODES = [
 ] as const;
 
 /**
+ * Desired end state options for toggle targets, shared by the top-level
+ * interactive block form and the nested step editor.
+ */
+export const TARGET_STATE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: 'Click unconditionally' },
+  { value: 'true', label: 'On — expanded, pressed or checked' },
+  { value: 'false', label: 'Off — collapsed, unpressed or unchecked' },
+];
+
+/**
+ * Author-typed target state → the authored value, with `''` meaning unset.
+ *
+ * Stays a string. The editor already holds the value as one (the select above
+ * emits `'true'`/`'false'`), and `targetstate` is persisted as a string so the
+ * backend InteractiveGuide CRD can carry it — that schema cannot model a
+ * boolean-or-string field, and a raw boolean would be rejected on write.
+ */
+export function parseAuthoredTargetState(value: string): string | undefined {
+  return value.trim() || undefined;
+}
+
+/**
  * Video provider options
  */
 export const VIDEO_PROVIDERS = [
