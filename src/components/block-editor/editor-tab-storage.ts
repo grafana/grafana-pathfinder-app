@@ -36,8 +36,8 @@ export interface EditorTabRemoteState {
 /** Draft / UI half of the document. */
 export interface EditorTabDraftState {
   guide?: unknown;
-  /** Local-only policy: whether title edits may still replace guide.id. */
-  idIsLocked?: boolean;
+  /** Local-only policy: whether title edits must preserve guide.id. */
+  idIsFinalized?: boolean;
   blockIds?: string[];
   viewMode?: string;
   jsonModeState?: unknown;
@@ -156,8 +156,8 @@ export function parseEditorStoredState(raw: string | null): EditorTabStoredState
     if ('guide' in parsed) {
       state.guide = parsed.guide;
     }
-    if (typeof parsed.idIsLocked === 'boolean') {
-      state.idIsLocked = parsed.idIsLocked;
+    if (typeof parsed.idIsFinalized === 'boolean') {
+      state.idIsFinalized = parsed.idIsFinalized;
     }
     if (Array.isArray(parsed.blockIds)) {
       state.blockIds = parsed.blockIds as string[];
@@ -393,6 +393,24 @@ export function findEditorTabIdByResourceName(
     }
     const remote = readEditorStoredState(editorTabStorageKey(tabId))?.remote;
     if (remote?.resourceName === resourceName) {
+      return tabId;
+    }
+  }
+  return undefined;
+}
+
+/** First sibling editor draft whose guide uses `guideId`. */
+export function findEditorTabIdByGuideId(
+  guideId: string,
+  editorTabIds: string[],
+  excludeTabId?: string
+): string | undefined {
+  for (const tabId of editorTabIds) {
+    if (tabId === excludeTabId) {
+      continue;
+    }
+    const guide = readEditorStoredState(editorTabStorageKey(tabId))?.guide;
+    if (isRecord(guide) && guide.id === guideId) {
       return tabId;
     }
   }

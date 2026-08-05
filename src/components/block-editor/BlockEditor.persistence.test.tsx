@@ -46,7 +46,7 @@ describe('BlockEditor persistence', () => {
 
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
     expect(stored.guide.id).toMatch(/^new-guide-[a-z0-9]+$/);
-    expect(stored.idIsLocked).toBe(false);
+    expect(stored.idIsFinalized).toBe(false);
   });
 
   it('locks a title-derived ID after the first title commit', () => {
@@ -59,7 +59,7 @@ describe('BlockEditor persistence', () => {
 
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
     expect(stored.guide.id).toMatch(/^my-useful-guide-[a-z0-9]+$/);
-    expect(stored.idIsLocked).toBe(true);
+    expect(stored.idIsFinalized).toBe(true);
   });
 
   it('remints the bundled template ID for the local draft', () => {
@@ -70,7 +70,7 @@ describe('BlockEditor persistence', () => {
 
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
     expect(stored.guide.id).not.toBe(blockEditorTutorial.id);
-    expect(stored.idIsLocked).toBe(false);
+    expect(stored.idIsFinalized).toBe(false);
   });
 
   it('restores preview mode after a remount', () => {

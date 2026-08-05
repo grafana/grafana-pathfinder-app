@@ -115,6 +115,15 @@ export interface DocsPanelModelOperations {
    */
   focusEditorTabForResource(resourceName: string, options?: { excludeTabId?: string }): boolean;
 
+  /** Find another open editor tab whose local draft uses this guide ID. */
+  findEditorTabForGuideId(
+    guideId: string,
+    options?: { excludeTabId?: string }
+  ): { tabId: string; title: string } | null;
+
+  /** Destructively close an editor tab after explicit confirmation. */
+  discardEditorTab(tabId: string): void;
+
   /** Update an editor tab's display title from its in-progress guide */
   updateEditorTabTitle(tabId: string, title: string): void;
 

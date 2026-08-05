@@ -230,6 +230,7 @@ import { isDevModeEnabled } from '../../utils/dev-mode';
 import { CombinedLearningJourneyPanel } from './docs-panel';
 import type { LearningJourneyTab } from '../../types/content-panel.types';
 import {
+  editorDraftFlushers,
   editorTabStorageKey,
   readEditorStoredState,
   writeEditorDraftState,
@@ -546,6 +547,12 @@ describe('CombinedLearningJourneyPanel — tab gate sync', () => {
       lastSyncedJson: '{}',
       status: 'draft',
     });
+    const flush = jest.fn(() => {
+      writeEditorDraftState(storageKey, {
+        guide: { id: 'g1', title: 'Latest pending draft', blocks: [{ id: 'b2', type: 'markdown', content: 'y' }] },
+      });
+    });
+    editorDraftFlushers.set(storageKey, flush);
     expect(readEditorStoredState(storageKey)).not.toBeNull();
 
     const { tabStorage } = require('../../lib/user-storage');
@@ -555,7 +562,9 @@ describe('CombinedLearningJourneyPanel — tab gate sync', () => {
 
     user.orgRole = 'Viewer';
     panel.syncPluginConfig({});
+    editorDraftFlushers.delete(storageKey);
 
+    expect(flush).toHaveBeenCalledTimes(1);
     expect((panel as any).state.tabs.some((t: { type?: string }) => t.type === 'editor')).toBe(false);
     expect(readEditorStoredState(storageKey)).toBeNull();
     expect(tabStorage.setTabs).toHaveBeenCalled();
@@ -626,5 +635,38 @@ describe('CombinedLearningJourneyPanel — focusEditorTabForResource', () => {
 
     expect(panel.focusEditorTabForResource('shared-guide', { excludeTabId: 'editor-a' })).toBe(false);
     expect((panel as any).state.activeTabId).toBe('editor-a');
+  });
+});
+
+describe('CombinedLearningJourneyPanel — local guide ID collisions', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupRestoreMocks();
+    localStorage.clear();
+  });
+
+  it('finds and destructively discards a sibling draft using the same guide ID', () => {
+    writeEditorDraftState(editorTabStorageKey('editor-a'), {
+      guide: { id: 'shared-guide', title: 'First guide', blocks: [{ type: 'markdown', content: 'unsaved' }] },
+    });
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [
+        makeTab('recommendations'),
+        { ...makeTab('editor-a', 'editor'), title: 'First guide' },
+        makeTab('editor-b', 'editor'),
+      ],
+      activeTabId: 'editor-b',
+    });
+
+    expect(panel.findEditorTabForGuideId('shared-guide', { excludeTabId: 'editor-b' })).toEqual({
+      tabId: 'editor-a',
+      title: 'First guide',
+    });
+
+    panel.discardEditorTab('editor-a');
+
+    expect((panel as any).state.tabs.map((tab: { id: string }) => tab.id)).toEqual(['recommendations', 'editor-b']);
+    expect(localStorage.getItem(editorTabStorageKey('editor-a'))).toBeNull();
   });
 });

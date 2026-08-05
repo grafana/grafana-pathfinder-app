@@ -392,6 +392,10 @@ function FloatingPanelInner() {
               onFocusExistingGuide={(resourceName) =>
                 panel.focusEditorTabForResource(resourceName, { excludeTabId: activeTab.id })
               }
+              onFindGuideIdCollision={(guideId) =>
+                panel.findEditorTabForGuideId(guideId, { excludeTabId: activeTab.id })
+              }
+              onDiscardGuideIdCollision={(tabId) => panel.discardEditorTab(tabId)}
             />
           </Suspense>
         ) : (

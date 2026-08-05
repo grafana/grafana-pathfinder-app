@@ -21,7 +21,7 @@ export interface UseBlockPersistenceOptions {
   /** Current guide data */
   guide: JsonGuide;
   /** Local-only policy controlling whether title changes may replace guide.id. */
-  idIsLocked?: boolean;
+  idIsFinalized?: boolean;
   /** Current block IDs (to preserve across refreshes) */
   blockIds?: string[];
   /** Current view mode (to preserve across pop out/dock remounts) */
@@ -75,7 +75,7 @@ function restoreJsonModeState(value: unknown): JsonModeState | undefined {
  */
 export function useBlockPersistence({
   guide,
-  idIsLocked,
+  idIsFinalized,
   blockIds,
   viewMode,
   jsonModeState,
@@ -95,7 +95,7 @@ export function useBlockPersistence({
     try {
       writeEditorDraftState(storageKey, {
         guide,
-        idIsLocked,
+        idIsFinalized,
         blockIds,
         viewMode,
         jsonModeState: viewMode === 'json' ? (jsonModeState ?? undefined) : undefined,
@@ -108,7 +108,7 @@ export function useBlockPersistence({
     } catch (e) {
       logger.error('Failed to save guide to localStorage', { error: e });
     }
-  }, [guide, idIsLocked, blockIds, viewMode, jsonModeState, storageKey, onSave]);
+  }, [guide, idIsFinalized, blockIds, viewMode, jsonModeState, storageKey, onSave]);
 
   const latestSaveRef = useRef(save);
   useEffect(() => {

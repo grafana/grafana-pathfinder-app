@@ -67,10 +67,10 @@ describe('unified storage', () => {
   beforeEach(() => localStorage.clear());
 
   it('merges draft/remote writes and clears the key', () => {
-    writeEditorDraftState(KEY, { guide, idIsLocked: false });
+    writeEditorDraftState(KEY, { guide, idIsFinalized: false });
     writeEditorRemoteState(KEY, { resourceName: 'my-guide', lastSyncedJson: '{}' });
     expect(readEditorStoredState(KEY)?.guide).toEqual(guide);
-    expect(readEditorStoredState(KEY)?.idIsLocked).toBe(false);
+    expect(readEditorStoredState(KEY)?.idIsFinalized).toBe(false);
     expect(readEditorStoredState(KEY)?.remote?.resourceName).toBe('my-guide');
 
     writeEditorRemoteState(KEY, null);

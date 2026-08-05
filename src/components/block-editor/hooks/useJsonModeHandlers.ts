@@ -49,6 +49,10 @@ export interface UseJsonModeHandlersOptions {
   onClearSelection: () => void;
   /** Whether selection mode is active */
   isSelectionMode: boolean;
+  /** Optional gate before applying JSON that manually changes the guide ID. */
+  onBeforeGuideIdChange?: (previousId: string, nextId: string) => boolean | Promise<boolean>;
+  /** Called after a manual guide ID change has been applied. */
+  onGuideIdChanged?: (previousId: string, nextId: string) => void;
 }
 
 /**
@@ -88,6 +92,8 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
     onStopRecording,
     onClearSelection,
     isSelectionMode,
+    onBeforeGuideIdChange,
+    onGuideIdChanged,
   } = options;
 
   // JSON mode state
@@ -145,18 +151,43 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
         return; // Block switch - inline errors visible
       }
 
-      // Regenerate all block IDs (per DT3 - don't pass originalBlockIds)
-      editor.loadGuide(result.guide!);
-      // loadGuide clears dirty; empty bump re-dirties after JSON apply.
-      // Follow-up: dirty on buffer edit (see getEditorTabChromeStatus).
-      editor.updateGuideMetadata({});
+      const nextGuide = result.guide!;
+      const previousId = editor.getGuide().id;
+      const applyGuide = () => {
+        // Regenerate all block IDs (per DT3 - don't pass originalBlockIds)
+        editor.loadGuide(nextGuide);
+        // loadGuide clears dirty; empty bump re-dirties after JSON apply.
+        // Follow-up: dirty on buffer edit (see getEditorTabChromeStatus).
+        editor.updateGuideMetadata({});
+        if (nextGuide.id !== previousId) {
+          onGuideIdChanged?.(previousId, nextGuide.id);
+        }
 
-      setJsonModeState(null);
-      setJsonValidationErrors([]);
-      setIsJsonValid(true);
-      editor.setViewMode(targetMode);
+        setJsonModeState(null);
+        setJsonValidationErrors([]);
+        setIsJsonValid(true);
+        editor.setViewMode(targetMode);
+      };
+
+      if (nextGuide.id === previousId || !onBeforeGuideIdChange) {
+        applyGuide();
+        return;
+      }
+
+      const approval = onBeforeGuideIdChange(previousId, nextGuide.id);
+      if (typeof approval === 'boolean') {
+        if (approval) {
+          applyGuide();
+        }
+        return;
+      }
+      void approval.then((approved) => {
+        if (approved) {
+          applyGuide();
+        }
+      });
     },
-    [editor, jsonModeState]
+    [editor, jsonModeState, onBeforeGuideIdChange, onGuideIdChanged]
   );
 
   // Handle JSON text changes - update state and validate

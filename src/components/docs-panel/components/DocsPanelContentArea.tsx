@@ -177,6 +177,10 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   onFocusExistingGuide={(resourceName) =>
                     model.focusEditorTabForResource(resourceName, { excludeTabId: activeTab.id })
                   }
+                  onFindGuideIdCollision={(guideId) =>
+                    model.findEditorTabForGuideId(guideId, { excludeTabId: activeTab.id })
+                  }
+                  onDiscardGuideIdCollision={(tabId) => model.discardEditorTab(tabId)}
                 />
               </Suspense>
             </div>

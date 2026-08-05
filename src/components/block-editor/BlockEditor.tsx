@@ -48,13 +48,13 @@ import {
 } from './nestedBlockInstanceId';
 import { guideSyncSnapshot, readEditorStoredState, writeEditorDraftState } from './editor-tab-storage';
 
-function readInitialGuideIdLock(storageKey: string): boolean {
+function readInitialGuideIdFinalization(storageKey: string): boolean {
   const stored = readEditorStoredState(storageKey);
   if (stored?.remote) {
     return true;
   }
-  if (typeof stored?.idIsLocked === 'boolean') {
-    return stored.idIsLocked;
+  if (typeof stored?.idIsFinalized === 'boolean') {
+    return stored.idIsFinalized;
   }
   const storedGuide = stored?.guide as { id?: unknown } | undefined;
   return typeof storedGuide?.id === 'string' && storedGuide.id !== DEFAULT_GUIDE_METADATA.id;
@@ -89,6 +89,16 @@ export interface BlockEditorProps {
   storageKey: string;
   /** Focus another tab already bound to this library resource; return true if focused. */
   onFocusExistingGuide?: (resourceName: string) => boolean;
+  /** Find another open local editor draft using this guide ID. */
+  onFindGuideIdCollision?: (guideId: string) => { tabId: string; title: string } | null;
+  /** Destructively discard a colliding editor draft after confirmation. */
+  onDiscardGuideIdCollision?: (tabId: string) => void;
+}
+
+interface PendingGuideIdCollision {
+  collision: { tabId: string; title: string };
+  nextId: string;
+  resolve: (approved: boolean) => void;
 }
 
 /**
@@ -237,18 +247,20 @@ function BlockEditorInner({
   onGuideTitleChange,
   storageKey,
   onFocusExistingGuide,
+  onFindGuideIdCollision,
+  onDiscardGuideIdCollision,
 }: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
   const [newGuideId] = useState(() => generateUniqueId(DEFAULT_GUIDE_METADATA.title));
   const editor = useBlockEditor({ initialGuide, newGuideId, onChange });
   const { state } = editor;
   const hasLoadedFromStorage = useRef(false);
-  const [idIsLocked, setIdIsLocked] = useState(() => readInitialGuideIdLock(storageKey));
+  const [idIsFinalized, setIdIsFinalized] = useState(() => readInitialGuideIdFinalization(storageKey));
 
-  const persistIdLock = useCallback(
-    (locked: boolean) => {
-      setIdIsLocked(locked);
-      writeEditorDraftState(storageKey, { idIsLocked: locked });
+  const persistIdFinalization = useCallback(
+    (finalized: boolean) => {
+      setIdIsFinalized(finalized);
+      writeEditorDraftState(storageKey, { idIsFinalized: finalized });
     },
     [storageKey]
   );
@@ -276,6 +288,8 @@ function BlockEditorInner({
 
   // Modal state - useModalManager handles metadata, import, githubPr, tour
   const modals = useModalManager();
+  const [pendingGuideIdCollision, setPendingGuideIdCollision] = useState<PendingGuideIdCollision | null>(null);
+  const pendingGuideIdCollisionRef = useRef<PendingGuideIdCollision | null>(null);
 
   // Block form state - manages form modal and editing context
   const formState = useBlockFormState();
@@ -315,7 +329,7 @@ function BlockEditorInner({
   // on `backendSaveFlow` directly defeats the memoization below. Destructure the
   // stable pieces and depend on those instead.
   const { currentGuideResourceName, setRemoteBinding } = backendSaveFlow;
-  const effectiveIdIsLocked = idIsLocked || Boolean(currentGuideResourceName);
+  const effectiveIdIsFinalized = idIsFinalized || Boolean(currentGuideResourceName);
   const [isGuideLibraryOpen, setIsGuideLibraryOpen] = useState(false);
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
@@ -379,16 +393,6 @@ function BlockEditorInner({
       addBlockToConditionalBranch: editor.addBlockToConditionalBranch,
     },
     onClear: recordingPersistence.clear,
-  });
-
-  // JSON mode handlers - extracted hook for JSON editing
-  const jsonMode = useJsonModeHandlers({
-    editor,
-    recordingIntoSection,
-    recordingIntoConditionalBranch,
-    onStopRecording: recordingActions.stopRecording,
-    onClearSelection: selection.clearSelection,
-    isSelectionMode: selection.isSelectionMode,
   });
 
   // Block conversion handlers - extracted hook for type conversions
@@ -591,10 +595,70 @@ function BlockEditorInner({
     editor.markSaved();
   }, [editor]);
 
+  const previewProgressKey = `block-editor://preview/${state.guide.id}`;
+  const { hasProgress: hasPreviewProgress, reset: resetPreviewProgress } = useGuidePreviewProgress(previewProgressKey);
+
+  const handleBeforeGuideIdChange = useCallback(
+    (_previousId: string, nextId: string): boolean | Promise<boolean> => {
+      const collision = onFindGuideIdCollision?.(nextId);
+      if (!collision || !onDiscardGuideIdCollision) {
+        return true;
+      }
+      return new Promise<boolean>((resolve) => {
+        const pending = { collision, nextId, resolve };
+        pendingGuideIdCollisionRef.current = pending;
+        setPendingGuideIdCollision(pending);
+      });
+    },
+    [onFindGuideIdCollision, onDiscardGuideIdCollision]
+  );
+
+  const settleGuideIdCollision = useCallback(
+    (approved: boolean) => {
+      const pending = pendingGuideIdCollisionRef.current;
+      if (!pending) {
+        return;
+      }
+      pendingGuideIdCollisionRef.current = null;
+      setPendingGuideIdCollision(null);
+      if (approved) {
+        onDiscardGuideIdCollision?.(pending.collision.tabId);
+      }
+      pending.resolve(approved);
+    },
+    [onDiscardGuideIdCollision]
+  );
+
+  useEffect(
+    () => () => {
+      pendingGuideIdCollisionRef.current?.resolve(false);
+      pendingGuideIdCollisionRef.current = null;
+    },
+    []
+  );
+
+  const handleGuideIdChanged = useCallback(() => {
+    // The old ID is the current preview-progress key until this render completes.
+    void resetPreviewProgress();
+    persistIdFinalization(true);
+  }, [persistIdFinalization, resetPreviewProgress]);
+
+  // JSON mode owns parsing/application; tab collision policy stays with the parent surface.
+  const jsonMode = useJsonModeHandlers({
+    editor,
+    recordingIntoSection,
+    recordingIntoConditionalBranch,
+    onStopRecording: recordingActions.stopRecording,
+    onClearSelection: selection.clearSelection,
+    isSelectionMode: selection.isSelectionMode,
+    onBeforeGuideIdChange: handleBeforeGuideIdChange,
+    onGuideIdChanged: handleGuideIdChanged,
+  });
+
   // Autosave / restore side effects only — clear() was for the removed New-guide path.
   useBlockPersistence({
     guide: editor.getGuide(),
-    idIsLocked: effectiveIdIsLocked,
+    idIsFinalized: effectiveIdIsFinalized,
     blockIds: editor.state.blocks.map((b) => b.id),
     viewMode: state.viewMode,
     jsonModeState: jsonMode.jsonModeState,
@@ -614,20 +678,17 @@ function BlockEditorInner({
     onSave: handlePersistenceSave,
   });
 
-  const previewProgressKey = `block-editor://preview/${state.guide.id}`;
-  const { hasProgress: hasPreviewProgress, reset: resetPreviewProgress } = useGuidePreviewProgress(previewProgressKey);
-
   const localGuideOpsEditor = useMemo(
     () => ({
       getGuide: editor.getGuide,
       loadGuide: (guide: JsonGuide, savedBlockIds?: string[]) => {
         void resetPreviewProgress();
-        persistIdLock(false);
+        persistIdFinalization(false);
         const existingNames = backendGuides.guides.map((g) => g.metadata.name);
         editor.loadGuide({ ...guide, id: generateUniqueId(guide.title, existingNames) }, savedBlockIds);
       },
     }),
-    [editor, backendGuides.guides, persistIdLock, resetPreviewProgress]
+    [editor, backendGuides.guides, persistIdFinalization, resetPreviewProgress]
   );
 
   // Guide operations - extracted hook for copy/download/import/template
@@ -682,7 +743,7 @@ function BlockEditorInner({
         return;
       }
       void resetPreviewProgress();
-      persistIdLock(true);
+      persistIdFinalization(true);
       editor.loadGuide(guide);
       // Bind this tab to the library resource (not a save — just local↔remote bookkeeping).
       const status = backendGuides.guides.find((g) => g.metadata.name === resourceName)?.spec.status ?? 'draft';
@@ -693,7 +754,7 @@ function BlockEditorInner({
       });
       editor.markSaved();
     },
-    [editor, setRemoteBinding, onFocusExistingGuide, backendGuides.guides, persistIdLock, resetPreviewProgress]
+    [editor, setRemoteBinding, onFocusExistingGuide, backendGuides.guides, persistIdFinalization, resetPreviewProgress]
   );
 
   // Open guide library
@@ -768,16 +829,16 @@ function BlockEditorInner({
   const handleTitleCommit = useCallback(
     (title: string) => {
       editor.updateGuideMetadata({ title });
-      if (!effectiveIdIsLocked) {
+      if (!effectiveIdIsFinalized) {
         // The local provisional ID is also the preview-progress key; remove
         // that disposable progress before replacing the ID with its title slug.
         void resetPreviewProgress();
         const existingNames = backendGuides.guides.map((g) => g.metadata.name);
         editor.updateGuideMetadata({ id: generateUniqueId(title, existingNames) });
-        persistIdLock(true);
+        persistIdFinalization(true);
       }
     },
-    [editor, effectiveIdIsLocked, backendGuides.guides, persistIdLock, resetPreviewProgress]
+    [editor, effectiveIdIsFinalized, backendGuides.guides, persistIdFinalization, resetPreviewProgress]
   );
 
   return (
@@ -928,6 +989,27 @@ function BlockEditorInner({
       )}
 
       {/* Notification Modals */}
+      <ConfirmModal
+        isOpen={pendingGuideIdCollision !== null}
+        title="Replace open local guide?"
+        message={
+          <>
+            <p>
+              <strong>&quot;{pendingGuideIdCollision?.collision.title}&quot;</strong> already uses the guide ID{' '}
+              <strong>&quot;{pendingGuideIdCollision?.nextId}&quot;</strong> in another editor tab.
+            </p>
+            <p>Applying this JSON will close that tab and permanently discard its local draft.</p>
+            <p style={{ marginTop: '16px', fontSize: '0.9em', color: '#888' }}>
+              Any guide already saved to the backend is not deleted.
+            </p>
+          </>
+        }
+        confirmText="Discard other draft"
+        variant="destructive"
+        onConfirm={() => settleGuideIdCollision(true)}
+        onCancel={() => settleGuideIdCollision(false)}
+      />
+
       <ConfirmModal
         isOpen={backendSaveFlow.confirmModal.isOpen}
         title="Overwrite existing guide?"

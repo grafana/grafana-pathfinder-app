@@ -97,6 +97,7 @@ import {
   clearEditorTabStorage,
   editorTabHasUnsavedWork,
   editorTabStorageKey,
+  findEditorTabIdByGuideId,
   findEditorTabIdByResourceName,
   flushEditorDraft,
   LEGACY_EDITOR_TAB_ID,
@@ -311,14 +312,18 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       return;
     }
 
-    this.setState({ tabs: pruned.tabs, activeTabId: pruned.activeTabId });
     if (pruned.gateClosed) {
       const keptIds = new Set(pruned.tabs.map((t) => t.id));
       for (const tab of before) {
         if (tab.type === 'editor' && !keptIds.has(tab.id)) {
+          flushEditorDraft(editorTabStorageKey(tab.id));
           clearEditorTabStorage(tab.id);
         }
       }
+    }
+
+    this.setState({ tabs: pruned.tabs, activeTabId: pruned.activeTabId });
+    if (pruned.gateClosed) {
       void this.saveTabsToStorage();
     }
   }
@@ -826,6 +831,29 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
     this.setActiveTab(match);
     return true;
+  }
+
+  /** Find another open editor tab whose local draft uses `guideId`. */
+  public findEditorTabForGuideId(
+    guideId: string,
+    options?: { excludeTabId?: string }
+  ): { tabId: string; title: string } | null {
+    const editorTabs = this.state.tabs.filter((tab) => tab.type === 'editor');
+    const match = findEditorTabIdByGuideId(
+      guideId,
+      editorTabs.map((tab) => tab.id),
+      options?.excludeTabId
+    );
+    if (!match) {
+      return null;
+    }
+    const tab = editorTabs.find((candidate) => candidate.id === match);
+    return tab ? { tabId: tab.id, title: tab.title } : null;
+  }
+
+  /** Destructively close an editor tab after an explicit collision confirmation. */
+  public discardEditorTab(tabId: string): void {
+    this.closeTab(tabId, { discardConfirmed: true });
   }
 
   /** Update an editor tab's strip title from the working guide. */
