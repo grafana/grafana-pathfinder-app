@@ -33,6 +33,65 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 ---
 
+### `pathfinder.frontend-telemetry`
+
+**Type**: Boolean
+
+**Purpose**: Remote kill-switch for the Faro telemetry stream (errors, sessions, views, logs, and the analytics-event mirror). Independent of `pathfinder.enabled` — this stops the telemetry, not the plugin. Telemetry is already gated to Grafana Cloud; the flag exists so the stream can be cut fleet-wide without a release if the collector or the filtering misbehaves.
+
+**Default**: `true` (telemetry runs if the flag is not set, and if MTFF is unreachable)
+
+**Behavior**:
+
+- **`true`**: `initFaro()` runs, subject to its own Grafana Cloud / analytics-enabled / hostname gates
+- **`false`**: the Faro SDK chunk is never even imported
+
+**Tracking key**: `frontend_telemetry`
+
+---
+
+### `pathfinder.session-replay`
+
+**Type**: Boolean
+
+**Purpose**: Records a masked rrweb session replay of the page, so a guide that goes wrong can be watched back rather than reconstructed from events. Requires `pathfinder.frontend-telemetry`, which owns the Faro instance the recording rides on.
+
+**Default**: `true` (recording happens if the flag is not set, and if MTFF is unreachable)
+
+**Behavior**:
+
+- **`true`**: the recorder is registered the first time Pathfinder is opened in any surface, and runs for the rest of the page — including after Pathfinder is closed again
+- **`false`**: neither the replay module nor the rrweb bundle is fetched
+
+**This flag is read once, at plugin bootstrap.** Flipping it to `false` stops _new_ recordings; a tab that is already recording carries on until it is reloaded or closed, and recordings already ingested are unaffected. See [Stopping a recording](TELEMETRY.md#stopping-a-recording) for why, and for what the actual remediation path is.
+
+**Important**: this is an off-switch, not an opt-in — recording is the default state on every Cloud stack where telemetry is enabled. Two consequences worth holding onto:
+
+1. **Never let this run alongside Grafana core's own recorder.** Core ships one behind the `faroSessionReplay` toggle, which is `@default false` in `@grafana/data` — so there is no automatic default-state collision; it takes an operator deliberately enabling core's toggle on a stack that also has this flag on. The consequence if that happens is real: two rrweb instances on one page double DOM serialization per mutation, and rrweb's global proxy of `CSSStyleSheet.prototype.insertRule` is not idempotent-guarded, so they compound on Emotion's hot path. `resolveSessionReplayOptions` yields automatically when `config.featureToggles.faroSessionReplay === true`, but that toggle is private-preview and may not be surfaced to the frontend at all, so still set `pathfinder.session-replay` to `false` on any stack where core's goes true.
+2. Recordings are only playable on a stack with Grafana's private-preview Session Replay enabled. That is already on for the ops stack Pathfinder reports to; elsewhere the events are ingested with no UI to view them.
+
+See the privacy invariants in [`TELEMETRY.md`](TELEMETRY.md) for what masking does and does not cover.
+
+**Tracking key**: `session_replay`
+
+---
+
+### `pathfinder.session-replay-sampling-rate`
+
+**Type**: Number
+
+**Purpose**: Volume dial on top of `pathfinder.session-replay` — the fraction of replay-eligible sessions that actually get recorded. Every rrweb event becomes a Faro event carrying a JSON DOM payload, and a Grafana dashboard mutates continuously, so this is the knob to reach for if collector volume becomes a problem before reaching for the switch.
+
+**Default**: `1` (record every eligible session)
+
+**Behavior**: the decision is a deterministic hash of the session id, so a session either has a recording for its whole life or never does — you never get half a replay. `0` records nobody, same net effect as setting `pathfinder.session-replay` to `false`, the difference being intent: the boolean says "off", the rate says "sampled out".
+
+**Important**: this is a remote number, so it can arrive as anything. `resolveSamplingRate` in `src/lib/telemetry/replay.ts` range-checks it at the point of use and **falls back to `1`** for anything that isn't a finite number in `[0, 1]` — a `100` meant as a percentage, a string from a mistyped MTFF value, `NaN`. An earlier Faro sample-rate flag was deleted rather than clamped ([#1275](https://github.com/grafana/grafana-pathfinder-app/pull/1275)) precisely because a fat-fingered value was indistinguishable from a deliberate one; failing to the default rather than to zero is what earns this one its place.
+
+**Tracking key**: `session_replay_sampling_rate`
+
+---
+
 ### `pathfinder.auto-open-sidebar`
 
 **Type**: Boolean

@@ -10,7 +10,12 @@
  */
 
 import { CLEAN_COMPOSE_PROJECT } from './clean-environment';
-import { E2E_REPORT_SCHEMA_VERSION, type MultiGuideReport, type RunnerProvenance } from './schemas/e2e-report.schema';
+import {
+  E2E_REPORT_SCHEMA_VERSION,
+  type ExecutionSelection,
+  type MultiGuideReport,
+  type RunnerProvenance,
+} from './schemas/e2e-report.schema';
 import {
   generateReport,
   writeReport,
@@ -36,7 +41,8 @@ import type { SideEffectClassification } from './side-effects';
 
 function skipOnlyReport(
   preRunSkipped: MultiGuideReport['preRunSkipped'],
-  cleanupWarnings: string[] = []
+  cleanupWarnings: string[] = [],
+  selection?: ExecutionSelection
 ): MultiGuideReport {
   const timestamp = new Date().toISOString();
   const { failedGuides, skippedGuides } = countPreRunGuides(preRunSkipped);
@@ -53,6 +59,7 @@ function skipOnlyReport(
     startedAt: timestamp,
     endedAt: timestamp,
     type: 'multi-guide',
+    ...(selection ? { selection } : {}),
     config: { timestamp },
     summary: {
       totalGuides: (preRunSkipped ?? []).length,
@@ -232,19 +239,20 @@ export function printSummary(results: GuideRunResult[], cleanupWarnings: string[
 export function writeJsonReport(
   results: GuideRunResult[],
   outputPath: string | undefined,
-  cleanupWarnings: string[] = []
+  cleanupWarnings: string[] = [],
+  selection?: ExecutionSelection
 ): boolean {
   if (!outputPath) {
     return true;
   }
 
   const resultsWithData = results.filter((r) => r.resultsData).map((r) => r.resultsData!);
-  const isMultiGuide = results.length > 1;
+  const isMultiGuide = results.length > 1 || selection !== undefined;
   const preRunSkipped = preRunSkipsFromResults(results);
 
   if (resultsWithData.length === 0 && preRunSkipped.length > 0) {
     try {
-      const report = skipOnlyReport(preRunSkipped, cleanupWarnings);
+      const report = skipOnlyReport(preRunSkipped, cleanupWarnings, selection);
       const schemaValid = writeMultiGuideReport(report, outputPath);
       console.log(`\n📄 Multi-guide JSON report written to: ${outputPath}`);
       console.log(`   ${formatMultiGuideSummary(report)}`);
@@ -258,7 +266,7 @@ export function writeJsonReport(
     return true;
   } else if (isMultiGuide) {
     try {
-      const report = generateMultiGuideReport(resultsWithData);
+      const report = generateMultiGuideReport(resultsWithData, undefined, selection);
       if (preRunSkipped.length > 0) {
         report.preRunSkipped = preRunSkipped;
         const counts = countPreRunGuides(preRunSkipped);

@@ -323,9 +323,9 @@ jobs:
        needs.test-backend.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
-      contents: read  # required by the shared action's checkout step
+      contents: read # required by the shared action's checkout step
       id-token: write # required by get-vault-secrets for OIDC auth to Vault
-      actions: read   # required to fetch job URLs from the GitHub API
+      actions: read # required to fetch job URLs from the GitHub API
     steps:
       - name: Build Slack payload
         id: payload

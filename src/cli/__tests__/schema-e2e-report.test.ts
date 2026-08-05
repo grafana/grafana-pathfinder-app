@@ -6,6 +6,8 @@
 
 import Ajv2020 from 'ajv/dist/2020';
 import { exportSchema, listSchemas } from '../commands/schema';
+import { ExecutionSelectionSchema, MultiGuideReportSchema } from '../e2e/schemas/e2e-report.schema';
+import { generateMultiGuideReport } from '../e2e/e2e-reporter';
 
 describe('schema command — e2e-report registration', () => {
   it('lists the e2e report schemas', () => {
@@ -23,7 +25,9 @@ describe('schema command — e2e-report registration', () => {
 
   it('exports the multi-guide report schema without throwing', () => {
     expect(() => exportSchema('e2e-multi-report', false)).not.toThrow();
-    expect(exportSchema('e2e-multi-report', false)).not.toBeNull();
+    const schema = exportSchema('e2e-multi-report', false);
+    expect(schema).not.toBeNull();
+    expect(JSON.stringify(schema)).toContain('"selection"');
   });
 
   it('produces ajv-compilable JSON Schema for e2e-report and e2e-multi-report', () => {
@@ -45,5 +49,25 @@ describe('schema command — e2e-report registration', () => {
     };
     expect(hasAdditionalPropertiesFalse(exportSchema('e2e-report', false))).toBe(false);
     expect(hasAdditionalPropertiesFalse(exportSchema('e2e-multi-report', false))).toBe(false);
+  });
+});
+
+describe('ExecutionSelection schema', () => {
+  it('is absent on non-metapackage multi-guide reports', () => {
+    const report = generateMultiGuideReport([]);
+    expect(report.selection).toBeUndefined();
+    expect(() => MultiGuideReportSchema.parse(report)).not.toThrow();
+  });
+
+  it('accepts a journey selection type', () => {
+    expect(() => ExecutionSelectionSchema.parse({ id: 'learn-grafana', type: 'journey' })).not.toThrow();
+    const result = ExecutionSelectionSchema.parse({ id: 'learn-grafana', type: 'journey' });
+    expect(result.type).toBe('journey');
+  });
+
+  it('rejects invalid selection types', () => {
+    expect(() => ExecutionSelectionSchema.parse({ id: 'x', type: 'guide' })).toThrow();
+    expect(() => ExecutionSelectionSchema.parse({ id: 'x', type: 'course' })).toThrow();
+    expect(() => ExecutionSelectionSchema.parse({ id: 'x' })).toThrow();
   });
 });
