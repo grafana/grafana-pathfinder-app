@@ -171,7 +171,13 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
   unavailable on this stack** (toggle off / identity not forwarded / terminal upstream), and
   **transient hiccup**.
 - Structural unavailability is signaled **in-band**: HTTP 200 with
-  `capability: { available: false, reason: "identity-unavailable" | "backend-unavailable" }`.
+  `capability: { available: false, reason: "<machine-token>" }`. Split the token by cause rather
+  than lumping — the custom-guide route distinguishes missing identity, toggle off, no app URL, no
+  namespace, no provisioned on-behalf-of credential, and `upstream-<status>` for a terminal
+  upstream, so the envelope alone is diagnosable without backend log access; the completion
+  routes still collapse the config causes into the catch-all `backend-unavailable`. The `reason*`
+  constants in `pkg/plugin/` are the definition, and the front-end gates on `available` and
+  ignores the string.
   A bare 503 conflates "never works here" with "blip": the front-end already lumps 503 into its
   not-rolled-out status set (`UNAVAILABLE_STATUSES` in `src/utils/fetchBackendGuides.ts`, mirrored
   in `src/context-engine/context.init.ts`) and silently renders empty with no retry, so a

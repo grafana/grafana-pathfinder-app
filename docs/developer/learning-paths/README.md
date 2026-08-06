@@ -4,24 +4,25 @@ The `src/learning-paths/` module provides the business logic layer for the gamif
 
 ## File listing
 
-| File                            | Purpose                                                                              |
-| ------------------------------- | ------------------------------------------------------------------------------------ |
-| `index.ts`                      | Public API barrel export                                                             |
-| `paths-data.ts`                 | Runtime platform selection (OSS vs Grafana Cloud)                                    |
-| `paths.json`                    | OSS path definitions (static, bundled guide IDs)                                     |
-| `paths-cloud.json`              | Grafana Cloud path definitions (superset of OSS; includes URL-based paths)           |
-| `badges.ts`                     | 12 badge definitions, trigger types, and earning logic                               |
-| `learning-paths.hook.ts`        | Main `useLearningPaths()` hook — unified state management                            |
-| `streak-tracker.ts`             | Streak calculation, milestones, and display helpers                                  |
-| `fetch-path-guides.ts`          | Fetches guide lists from remote `index.json` for URL-based paths                     |
-| `useNextLearningAction.ts`      | `useNextLearningAction()` hook and pure `computeNextAction()` for the UserProfileBar |
-| `learning-paths.test.ts`        | Tests for the main hook                                                              |
-| `fetch-path-guides.test.ts`     | Tests for remote guide fetching                                                      |
-| `useNextLearningAction.test.ts` | Tests for next-action computation                                                    |
+| File                            | Purpose                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------- |
+| `index.ts`                      | Public API barrel export                                                                    |
+| `paths-data.ts`                 | Runtime platform selection (OSS vs Grafana Cloud)                                           |
+| `paths.json`                    | OSS path definitions (static, bundled guide IDs)                                            |
+| `paths-cloud.json`              | Grafana Cloud path definitions (superset of OSS; includes URL-based paths)                  |
+| `badges.ts`                     | 12 badge definitions, trigger types, and earning logic                                      |
+| `learning-paths.hook.ts`        | Main `useLearningPaths()` hook — unified state management                                   |
+| `streak-tracker.ts`             | Streak calculation, milestones, and display helpers                                         |
+| `fetch-path-guides.ts`          | Fetches guide lists from remote `index.json` for URL-based paths                            |
+| `app-platform-paths.ts`         | Synthesizes `LearningPath` entries from the namespace's App Platform custom-guide catalogue |
+| `useNextLearningAction.ts`      | `useNextLearningAction()` hook and pure `computeNextAction()` for the UserProfileBar        |
+| `learning-paths.test.ts`        | Tests for the main hook                                                                     |
+| `fetch-path-guides.test.ts`     | Tests for remote guide fetching                                                             |
+| `useNextLearningAction.test.ts` | Tests for next-action computation                                                           |
 
 ## Path types
 
-Learning paths come in two variants based on how their guides are sourced.
+Learning paths come in three variants based on how their guides are sourced.
 
 ### Static paths
 
@@ -55,6 +56,12 @@ URL-based paths point to a remote docs site and declare `guides: []` in their st
 At runtime, `fetchPathGuides()` fetches `{url}index.json` and parses the response (a Hugo/Jekyll page listing) into an ordered list of guide slugs and metadata. Items with `params.grafana.skip` set are filtered out. The slug is derived from the last segment of each item's `relpermalink`.
 
 The `useLearningPaths()` hook merges these dynamically fetched guides into the path objects, so consumers see a unified `LearningPath` with a populated `guides` array regardless of the path type.
+
+### App Platform paths
+
+Published `path` and `journey` packages from the stack's own custom-guide catalogue are ingested at runtime, so private paths appear on My Learning alongside the bundled ones. They are not declared in `paths.json` / `paths-cloud.json` at all: `fetchAppPlatformLearningPaths(namespace)` in `app-platform-paths.ts` reads the catalogue through the `/custom-guide-repository` proxy and synthesizes `LearningPath` entries whose `guides` are the manifest's milestone IDs (bare package IDs, the same identifier completions are recorded under, so progress calculation needs no glue).
+
+`useLearningPaths()` appends them after the bundled and URL-based paths — bundled-first, matching the composite resolver's precedence. The same fetch also yields a guide-ID → title/URL map that `resolveGuideMetadata` consults before the static `paths.json` metadata, so member titles resolve without a second round-trip. A stack with no namespace, no catalogue, or an unavailable backend simply contributes no paths.
 
 ## Platform selection
 

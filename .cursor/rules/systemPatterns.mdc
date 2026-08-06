@@ -107,7 +107,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 
 **Tier 1 — support:**
 
-- `lib/` — Shared utilities. Sub-areas: `analytics.ts`, `user-storage.ts`, `dom/` (selector pipeline: detect → generate → validate → retry), `async-utils.ts`, `package-recommendations-client.ts`.
+- `lib/` — Shared utilities. Sub-areas: `analytics.ts`, `user-storage.ts`, `dom/` (selector pipeline: detect → generate → validate → retry), `async-utils.ts`, `package-recommendations-client.ts`, `custom-guide-repository-client.ts`.
 - `security/` — URL allowlists, HTML / log sanitization. Entry: `security/index.ts`. Key: `parseUrlSafely`, `validateTutorialUrl`, `sanitizeDocumentationHTML`. See `.cursor/rules/frontend-security.mdc`.
 - `styles/` — Theme-aware CSS-in-JS factories (Emotion). One `*.styles.ts` per component.
 - `global-state/` — Cross-component stores (Zustand + React context). Files: `sidebar.ts`, `panel-mode.ts`, `link-interception.ts`, `alignment-pending-context.ts`.
@@ -123,7 +123,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 - `interactive-engine/` — Executes interactive step actions. Entry: `interactive.hook.ts` (`useInteractiveElements`). Action handlers under `action-handlers/`. See `docs/developer/engines/interactive-engine.md`.
 - `requirements-manager/` — Prereqs + postconditions for steps. Entry: `requirements-checker.hook.ts` (`useStepChecker`). State machine in `step-state.ts`. See `docs/developer/engines/requirements-manager.md`.
 - `learning-paths/` — Progress / badges / streaks / next-action. Entry: `learning-paths.hook.ts`. Badge definitions in `badges.ts`. See `docs/developer/learning-paths/README.md`.
-- `package-engine/` — Package resolution + loading. Entry: `composite-resolver.ts` (`createCompositeResolver`). Resolver chain: bundled → online CDN → recommender API.
+- `package-engine/` — Package resolution + loading. Entry: `composite-resolver.ts` (`createCompositeResolver`). Resolver chain: bundled → recommender API (when enabled) or online CDN index (when not) → App Platform (`app-platform-resolver.ts`, namespace-scoped custom guides, always last so bundled/CDN win any ID collision). App Platform resolutions are never memoized — it is a mutable read-write repository.
 - `snippet-engine/` — Resolves `snippet-ref` blocks to their content. Entry: `caching-snippet-resolver.ts` (`getSnippetResolver`). Fetches from CDN at `<host>/guides/shared/snippets/<id>.json` (the `/guides/` prefix reflects the existing interactive-tutorials deploy convention); no bundled fallback. `inline-refs.ts` splices resolved snippets into a guide before parsing.
 - `hooks/` — Cross-cutting hooks: `useGuideProgressState`, `useAutoLaunchTutorial`, `useStepProgressFromEvents`.
 

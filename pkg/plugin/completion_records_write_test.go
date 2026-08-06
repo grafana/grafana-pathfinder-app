@@ -742,6 +742,38 @@ func TestCompletionWrite_Forbidden403IsTerminalDrop(t *testing.T) {
 	}
 }
 
+// An upstream 401 means the MINTED access token was rejected — the handler's own
+// gate already gave a missing/expired inbound ID token its 401. The client retries
+// it as transient, so a persistent cause (wrong audience, bad access policy,
+// missing CAP scopes) retries until the 30-day horizon. Same shape as the 403 and
+// token-exchange warns, so it must clear the same Faro-visible bar.
+func TestCompletionWrite_Upstream401IsLoud(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	withCreator(t, &fakeCreator{err: &appPlatformUpstreamError{status: http.StatusUnauthorized, msg: "unauthorized"}})
+
+	logger := newCapturingLogger()
+	app := newTestApp(t)
+	app.logger = logger
+
+	rec := doWrite(t, app, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want the upstream 401 echoed verbatim", rec.Code)
+	}
+	if !logger.warnedWith("unauthorized upstream") {
+		t.Errorf("a rejected minted credential must be logged at warn (Faro-visible), got %+v", *logger.lines)
+	}
+
+	// An ordinary terminal 4xx stays quiet — only the credential-rejection case is
+	// loud, or the signal drowns.
+	quiet := newCapturingLogger()
+	app.logger = quiet
+	withCreator(t, &fakeCreator{err: &appPlatformUpstreamError{status: http.StatusBadRequest, msg: "schema"}})
+	doWrite(t, app, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
+	if quiet.warnedWith("unauthorized upstream") {
+		t.Error("a plain 400 must not be reported as a rejected credential")
+	}
+}
+
 // A runtime token-exchange failure is retryable, but it must not be silent. The
 // one bad shape it can hide — a provisioned credential in an environment whose
 // delegated-permissions grant is missing — retries every queued write until the

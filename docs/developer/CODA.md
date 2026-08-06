@@ -409,19 +409,21 @@ Terminal block types (`terminal`, `terminal-connect`) are only shown in the bloc
 
 **jsonData** (public):
 
-| Key                  | Type    | Default | Description                            |
-| -------------------- | ------- | ------- | -------------------------------------- |
-| `enableCodaTerminal` | boolean | `false` | Feature gate for terminal UI           |
-| `codaRegistered`     | boolean | `false` | Set after successful Coda registration |
-| `codaApiUrl`         | string  | —       | Coda Server HTTPS URL                  |
-| `codaRelayUrl`       | string  | —       | Relay WSS URL                          |
+| Key                  | Type    | Default | Description                                                                                                      |
+| -------------------- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
+| `enableCodaTerminal` | boolean | `false` | Feature gate for terminal UI                                                                                     |
+| `codaRegistered`     | boolean | `false` | Set after successful Coda registration                                                                           |
+| `codaApiUrl`         | string  | —       | Coda Server HTTPS URL                                                                                            |
+| `codaRelayUrl`       | string  | —       | Relay WSS URL                                                                                                    |
+| `stackId`            | string  | —       | Stack ID provisioned by stack-state-service; the App Platform proxies derive the `stacks-<id>` namespace from it |
 
 **secureJsonData** (encrypted):
 
-| Key             | Description                            |
-| --------------- | -------------------------------------- |
-| `refreshToken`  | JWT refresh token from registration    |
-| `enrollmentKey` | One-time key provided by administrator |
+| Key             | Description                                                                                                                                                                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `refreshToken`  | JWT refresh token from registration                                                                                                                                                                                                                    |
+| `enrollmentKey` | One-time key provided by administrator                                                                                                                                                                                                                 |
+| `accessToken`   | Cloud Access Policy token provisioned by stack-state-service; the App Platform proxies mint their on-behalf-of access token from it. Absent on local dev and on stacks that predate provisioning — those report `capability.reason: "obo-unavailable"` |
 
 ### Registration flow
 
